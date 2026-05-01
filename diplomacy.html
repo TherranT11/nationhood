@@ -2190,24 +2190,44 @@ function computeCompatibility(myNationId, theirNationId) {
     return Math.min(99, Math.round((matchScore / totalVol) * 200));
 }
 
+// Compute a nation's Energy production / demand / net using the same
+// formula as the YOUR ECONOMY panel. Stat-based, not dollar.
+//   Production = energy / 3
+//   Demand     = ((infrastructure + industry) \u00D7 standard_of_living
+//                 \u00D7 \u221Apopulation_M) / 3500
+function getNationEnergyBalance(nation) {
+    const n = nation || {};
+    const energyStat   = Number(n.energy)             || 0;
+    const infraStat    = Number(n.infrastructure)     || 0;
+    const industryStat = Number(n.industry)           || 0;
+    const solStat      = Number(n.standard_of_living) || 0;
+    const popMillions  = (Number(n.population) || 0) / 1_000_000;
+    const production   = energyStat / 3;
+    const demand       = ((infraStat + industryStat) * solStat * Math.sqrt(popMillions)) / 3500;
+    return { production, demand, net: production - demand };
+}
+
+// Build a nation's surplus / deficit list. Energy is the only tradeable
+// commodity right now, so we compute it from stats rather than reading
+// trade_flows (which is dollar-denominated and doesn't track Energy).
 function getNationSurplusesAndDeficits(nationId) {
-    const flows = _allNationFlows[nationId] || {};
+    const nation = (_worldAllNations || []).find(n => n.id === nationId);
     const surpluses = [];
     const deficits = [];
-    for (const [sector, flow] of Object.entries(flows)) {
-        if (sector === 'food_agriculture' && (flows.grains_staples || flows.livestock_dairy)) continue;
-        const bal = Number(flow.net_flow) || 0;
+
+    const { net } = getNationEnergyBalance(nation);
+    if (net !== 0) {
         const entry = {
-            sector,
-            icon: TRADE_SECTOR_ICONS[sector] || '\uD83D\uDCE6',
-            name: TRADE_SECTOR_LABELS[sector] || sector,
-            amount: Math.abs(bal),
+            sector: 'energy',
+            icon: '\u26A1',
+            name: 'Energy',
+            amount: Math.abs(net),
+            statBased: true,
         };
-        if (bal > 0) surpluses.push(entry);
-        else if (bal < 0) deficits.push(entry);
+        if (net > 0) surpluses.push(entry);
+        else deficits.push(entry);
     }
-    surpluses.sort((a, b) => b.amount - a.amount);
-    deficits.sort((a, b) => b.amount - a.amount);
+
     return { surpluses, deficits };
 }
 
@@ -2343,13 +2363,14 @@ function renderTradePartners() {
                         <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--teal);margin-bottom:6px;display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;background:var(--teal);"></span>THEY CAN OFFER</div>`;
             for (const s of surpluses.slice(0, 6)) {
                 const isWeNeed = myDeficits.includes(s.sector);
+                const amountDisplay = s.statBased ? Number(s.amount).toFixed(0) : fmtBudgetCurrency(s.amount);
                 html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.15);">
                     <div style="display:flex;align-items:center;gap:6px;">
                         <span style="font-size:13px;">${s.icon}</span>
                         <span style="font-size:13px;color:var(--text-bright);font-weight:${isWeNeed ? '700' : '400'};">${escapeHtml(s.name)}</span>
                         ${isWeNeed ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:8px;">MATCH</span>' : ''}
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--teal);">${fmtBudgetCurrency(s.amount)}<span style="font-weight:400;color:var(--text-dim);font-size:10px;">/mo</span></span>
+                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--teal);">${amountDisplay}<span style="font-weight:400;color:var(--text-dim);font-size:10px;">/mo</span></span>
                 </div>`;
             }
             if (surpluses.length === 0) html += `<div style="font-size:12px;color:var(--text-dim);font-style:italic;">No surpluses</div>`;
@@ -2358,13 +2379,14 @@ function renderTradePartners() {
                         <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--green);margin-bottom:6px;display:flex;align-items:center;gap:5px;"><span style="width:7px;height:7px;background:var(--green);"></span>THEY NEED</div>`;
             for (const d of deficits.slice(0, 6)) {
                 const weHave = mySurpluses.includes(d.sector);
+                const amountDisplay = d.statBased ? Number(d.amount).toFixed(0) : fmtBudgetCurrency(d.amount);
                 html += `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(42,42,36,0.15);">
                     <div style="display:flex;align-items:center;gap:6px;">
                         <span style="font-size:13px;">${d.icon}</span>
                         <span style="font-size:13px;color:var(--text-bright);font-weight:${weHave ? '700' : '400'};">${escapeHtml(d.name)}</span>
                         ${weHave ? '<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:8px;">MATCH</span>' : ''}
                     </div>
-                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">${fmtBudgetCurrency(d.amount)}<span style="font-weight:400;color:var(--text-dim);font-size:10px;">/mo</span></span>
+                    <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">${amountDisplay}<span style="font-weight:400;color:var(--text-dim);font-size:10px;">/mo</span></span>
                 </div>`;
             }
             if (deficits.length === 0) html += `<div style="font-size:12px;color:var(--text-dim);font-style:italic;">No deficits</div>`;
@@ -19625,9 +19647,10 @@ function negStructuredTradeFlowForm() {
     const nameA = _activeNegModal?.myNationName || 'Nation A';
     const nameB = _activeNegModal?.partnerNationName || 'Nation B';
 
-    const sectorOpts = TRADEABLE_SECTORS.map(s =>
-        `<option value="${s.key}">${escapeHtml(s.label)}</option>`
-    ).join('');
+    // Energy is the only tradeable commodity right now — no demand
+    // modeling exists for the other sectors yet, so the dropdown is
+    // pinned to a single accurate option.
+    const sectorOpts = `<option value="energy">⚡ Energy</option>`;
 
     form.innerHTML = `<div class="trade-neg-add-form">
         <div class="trade-neg-add-form__label">Trade Flow</div>
