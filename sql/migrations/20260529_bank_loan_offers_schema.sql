@@ -18,10 +18,13 @@
 --      Bank then explicitly pay_out_loans to disburse.
 --
 -- Design notes:
--- ── UNIQUE (request_id, bank_faction_id) enforces one-shot per
---    bank per request. To revise, a bank must reject its own offer
---    and the new submit goes through cleanly (the rejected row no
---    longer collides on the unique).
+-- ── UNIQUE (request_id, bank_faction_id) enforces strict one-shot
+--    per bank per request. The constraint matches on ALL statuses
+--    (not just 'pending'), so once a bank's offer reaches a
+--    terminal state it cannot re-bid the same request. There is
+--    no withdraw-my-own-offer RPC. If revision support is wanted
+--    later, swap for a partial unique index `WHERE status =
+--    'pending'` and add a withdraw flow.
 -- ── status enum: 'pending' (awaiting borrower decision),
 --    'accepted' (the one offer borrower picked), 'rejected'
 --    (borrower explicitly turned this down), 'auto_rejected'
@@ -67,8 +70,8 @@ CREATE TABLE IF NOT EXISTS bank_loan_offers (
     resolved_at_tick  INT,
     updated_at        TIMESTAMPTZ  NOT NULL DEFAULT now(),
 
-    -- One offer per (request, bank). Banks revise by rejecting their
-    -- old offer first; the L2 RPCs enforce that flow.
+    -- One offer per (request, bank), strictly. UNIQUE matches on all
+    -- statuses; banks cannot re-bid after their offer terminates.
     UNIQUE (request_id, bank_faction_id)
 );
 

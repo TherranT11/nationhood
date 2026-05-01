@@ -112,12 +112,16 @@ BEGIN
             'error', format('APR %s below your bank''s floor of %s%%', p_offered_apr, v_floor));
     END IF;
 
-    -- One-shot guard. Friendlier than the UNIQUE constraint error.
+    -- One-shot guard. Strict: a bank cannot re-bid the same request,
+    -- even after their offer reaches a terminal state. The UNIQUE
+    -- constraint matches on all statuses; this explicit check
+    -- produces a friendlier error message than the constraint
+    -- violation would.
     SELECT id INTO v_existing_id FROM bank_loan_offers
      WHERE request_id = p_request_id AND bank_faction_id = p_bank_faction_id;
     IF v_existing_id IS NOT NULL THEN
         RETURN jsonb_build_object('success', false,
-            'error', 'You already submitted an offer on this request — reject it first to revise');
+            'error', 'You already submitted an offer on this request — one offer per bank per request');
     END IF;
 
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
@@ -228,13 +232,14 @@ BEGIN
        AND status = 'pending';
     GET DIAGNOSTICS v_updated_count = ROW_COUNT;
     IF v_updated_count = 0 THEN
-        -- Roll the offer back. Rare race; the borrower will see the
-        -- request as already-resolved on next refresh.
-        UPDATE bank_loan_offers
-           SET status = 'pending', resolved_at_tick = NULL
-         WHERE id = p_offer_id;
-        RETURN jsonb_build_object('success', false,
-            'error', 'Request resolved by another action just now; try refresh');
+        -- Audit fix (race recovery): RAISE EXCEPTION instead of manual
+        -- rollback. By this point steps 1 + 2 have flipped the chosen
+        -- offer to 'accepted' AND the sibling offers to 'auto_rejected'.
+        -- A return-on-failure here would commit those writes for a
+        -- request that's now in some other terminal state — orphan
+        -- auto_rejected rows. The exception forces Postgres to roll
+        -- back the entire transaction (steps 1 + 2 both undone).
+        RAISE EXCEPTION 'Request resolved by another action just now; try refresh';
     END IF;
 
     -- Mint the loan in 'pending_payout'. Terms snapshot from the
