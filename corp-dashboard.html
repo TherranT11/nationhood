@@ -951,7 +951,7 @@ async function init() {
     // Shard + nation + per-tick P&L history + ownership in parallel.
     const [shardRes, nationRes, pnlRes, ownershipRes] = await Promise.all([
         _supabase.from('shard')
-            .select('current_tick, current_date, name')
+            .select('current_tick, current_date, name, next_tick_at, tick_interval_hours')
             .eq('name', 'Alpha Shard').single(),
         faction.nation_id
             ? _supabase.from('nations')
