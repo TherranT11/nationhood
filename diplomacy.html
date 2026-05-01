@@ -536,7 +536,9 @@ function renderTradeEconomy() {
 
     // Net trade position = trade_flows.net_flow (export_volume − import_volume)
     // computed once at tick time. Same source as getNationSurplusesAndDeficits
-    // so YOUR ECONOMY and partner views agree.
+    // so YOUR ECONOMY and partner views agree. Stat-derived rows (Energy,
+    // etc.) are included but formatted as unit-less numbers in the rendering
+    // below so they don't print as dollar amounts.
     const surpluses = commodities.filter(c => c.netFlow > 0).sort((a, b) => b.netFlow - a.netFlow);
     const deficits = commodities.filter(c => c.netFlow < 0).sort((a, b) => a.netFlow - b.netFlow);
 
@@ -730,9 +732,10 @@ function renderTradeEconomy() {
     html += `<div class="tr-panel" style="flex:1;padding:12px 14px;">
         <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--green);margin-bottom:8px;">SURPLUSES</div>`;
     for (const c of surpluses.slice(0, 5)) {
+        const val = c.statBased ? Number(c.netFlow).toFixed(0) : fmtBudgetCurrency(c.netFlow);
         html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;">
             <span style="font-size:13px;color:var(--text-dim);">${c.icon} ${escapeHtml(c.name)}</span>
-            <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">+${fmtBudgetCurrency(c.netFlow)}</span>
+            <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--green);">+${val}</span>
         </div>`;
     }
     if (surpluses.length === 0) html += `<div style="font-size:13px;color:var(--text-dim);font-style:italic;">None</div>`;
@@ -742,9 +745,10 @@ function renderTradeEconomy() {
     html += `<div class="tr-panel" style="flex:1;padding:12px 14px;">
         <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--red);margin-bottom:8px;">DEFICITS</div>`;
     for (const c of deficits.slice(0, 5)) {
+        const val = c.statBased ? Number(c.netFlow).toFixed(0) : fmtBudgetCurrency(c.netFlow);
         html += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;">
             <span style="font-size:13px;color:var(--text-dim);">${c.icon} ${escapeHtml(c.name)}</span>
-            <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--red);">${fmtBudgetCurrency(c.netFlow)}</span>
+            <span style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--red);">${val}</span>
         </div>`;
     }
     if (deficits.length === 0) html += `<div style="font-size:13px;color:var(--text-dim);font-style:italic;">None</div>`;
