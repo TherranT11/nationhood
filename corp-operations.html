@@ -401,6 +401,31 @@ body.corp-operations-construction.light-mode {
 .co-issue-card.sev-moderate { border-left-color: var(--co-accent-rust); }
 .co-issue-card.sev-high     { border-left-color: var(--co-accent-red); }
 .co-issue-card.sev-critical { border-left-color: var(--co-accent-red); box-shadow: inset 3px 0 12px rgba(217,83,79,0.15); }
+/* Loan-offer variant. Sits in the same Pressing Issues stack but uses
+   a gold accent so the financial nature reads at a glance instead of
+   being parsed as a project-event severity. */
+.co-issue-card.kind-loan-offer { border-left-color: var(--co-accent-gold); }
+.co-issue-card.kind-loan-offer .co-issue-terms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 4px 0 10px;
+  font-family: var(--co-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--co-text-secondary);
+}
+.co-issue-card.kind-loan-offer .co-issue-terms .label { color: var(--co-text-tertiary); margin-right: 4px; }
+.co-issue-card.kind-loan-offer .co-issue-terms .value {
+  font-family: var(--co-serif);
+  font-style: italic;
+  font-size: 15px;
+  letter-spacing: 0;
+  color: var(--co-text-primary);
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
 
 .co-issue-tag {
   font-family: var(--co-mono);
@@ -416,6 +441,7 @@ body.corp-operations-construction.light-mode {
 .co-issue-tag.sev-moderate { color: var(--co-accent-rust); border-color: rgba(232,114,74,0.35); background: rgba(232,114,74,0.06); }
 .co-issue-tag.sev-high     { color: var(--co-accent-red); border-color: rgba(217,83,79,0.40); background: rgba(217,83,79,0.06); }
 .co-issue-tag.sev-critical { color: #fff; background: var(--co-accent-red); border-color: var(--co-accent-red); }
+.co-issue-tag.kind-loan-offer { color: var(--co-accent-gold); border-color: rgba(200,168,50,0.40); background: rgba(200,168,50,0.06); }
 
 .co-issue-desc {
   font-family: var(--co-sans);
@@ -1272,20 +1298,43 @@ function renderHeroMeter(score, band) {
 // ── PRESSING ISSUES (Section II) ──
 
 let _pressingIssues = [];
+// Received bank_loan_offers (status='pending') on requests this corp
+// opened. Surfaced as Pressing Issues so the borrower can accept the
+// best offer or reject individuals — siblings auto-reject on accept.
+let _receivedOffers = [];
 
 async function loadPressingIssues() {
     if (!faction?.id) return;
-    const { data, error } = await _supabase
-        .from('corp_contract_events')
-        .select('id, contract_id, type, severity, title, description, impact, responses, expires_at_tick, corp_contracts:contract_id(name)')
-        .eq('faction_id', faction.id)
-        .eq('status', 'ACTIVE')
-        .order('expires_at_tick', { ascending: true });
-    if (error) {
-        console.warn('[corp-operations] Pressing Issues fetch failed:', error.message);
+    const [eventsRes, offersRes] = await Promise.all([
+        _supabase
+            .from('corp_contract_events')
+            .select('id, contract_id, type, severity, title, description, impact, responses, expires_at_tick, corp_contracts:contract_id(name)')
+            .eq('faction_id', faction.id)
+            .eq('status', 'ACTIVE')
+            .order('expires_at_tick', { ascending: true }),
+        _supabase
+            .from('bank_loan_offers')
+            .select(`
+                id, offered_apr, offered_term_ticks, expires_at_tick,
+                bank:factions!bank_faction_id ( faction_name, corp_ticker ),
+                request:bank_loan_requests!inner ( principal, purpose )
+            `)
+            .eq('status', 'pending')
+            .eq('request.requesting_faction_id', faction.id)
+            .eq('request.status', 'pending')
+            .order('expires_at_tick', { ascending: true }),
+    ]);
+    if (eventsRes.error) {
+        console.warn('[corp-operations] Pressing Issues fetch failed:', eventsRes.error.message);
         _pressingIssues = [];
     } else {
-        _pressingIssues = data || [];
+        _pressingIssues = eventsRes.data || [];
+    }
+    if (offersRes.error) {
+        console.warn('[corp-operations] Loan offers fetch failed:', offersRes.error.message);
+        _receivedOffers = [];
+    } else {
+        _receivedOffers = offersRes.data || [];
     }
     renderPressingIssues();
 }
@@ -1298,27 +1347,72 @@ function severityClass(sev) {
     return 'low';
 }
 
+// Tick-countdown copy shared by every Pressing Issues card variant
+// (project events + loan offers). Same null-defensive arithmetic and
+// pluralization rules.
+function formatExpiresIn(expiresAtTick, currentTick) {
+    const ticksLeft = Math.max(0, Number(expiresAtTick || 0) - (Number(currentTick) || 0));
+    if (ticksLeft <= 0) return 'Resolving now';
+    return `Expires in ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}`;
+}
+
 function renderPressingIssues() {
     const list = document.getElementById('co-issues-list');
     const meta = document.getElementById('co-issues-meta');
     if (!list || !meta) return;
 
-    const count = _pressingIssues.length;
-    meta.textContent = count === 0
+    const total = _pressingIssues.length + _receivedOffers.length;
+    meta.textContent = total === 0
         ? 'Time-Sensitive ◊ Decide Before Tick Resolves'
-        : `${count} OPEN ◊ DECIDE BEFORE TICK RESOLVES`;
+        : `${total} OPEN ◊ DECIDE BEFORE TICK RESOLVES`;
 
-    if (count === 0) {
+    if (total === 0) {
         list.innerHTML = '<div class="co-contract-empty">No pressing issues right now. Time-sensitive decisions will appear here when triggered.</div>';
         return;
     }
 
     const currentTick = Number(shard?.current_tick) || 0;
-    list.innerHTML = _pressingIssues.map(ev => {
-        const ticksLeft = Math.max(0, Number(ev.expires_at_tick || 0) - currentTick);
-        const expiresText = ticksLeft <= 0
-            ? 'Resolving now'
-            : `Expires in ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}`;
+
+    // Loan offers render first — direct money implications and the
+    // borrower's accept-one-auto-rejects-rest semantics make them the
+    // most consequential decisions in the stack.
+    const offerCards = _receivedOffers.map(of => {
+        const expiresText = formatExpiresIn(of.expires_at_tick, currentTick);
+        const bank = of.bank || {};
+        const req = of.request || {};
+        const bankTicker = bank.corp_ticker || '—';
+        const bankName = bank.faction_name || 'Lender';
+        const apr = Number(of.offered_apr) || 0;
+        const term = Number(of.offered_term_ticks) || 0;
+        const principal = Number(req.principal) || 0;
+        const purpose = req.purpose ? String(req.purpose).trim() : '';
+        const inflight = _loanOfferInflight.has(of.id);
+
+        return `<div class="co-issue-card kind-loan-offer">
+            <div class="co-contract-meta-row">
+                <span class="co-issue-tag kind-loan-offer">LOAN OFFER ◊ FINANCE</span>
+                <span class="co-contract-deadline">${escapeHtml(expiresText)}</span>
+            </div>
+            <div class="co-contract-name">${escapeHtml(bankTicker)} — ${escapeHtml(bankName)}</div>
+            ${purpose ? `<div class="co-contract-client">— ${escapeHtml(purpose)}</div>` : ''}
+            <div class="co-issue-terms">
+                <span><span class="label">PRINCIPAL</span><span class="value">${escapeHtml(fmtMoney(principal))}</span></span>
+                <span><span class="label">APR</span><span class="value">${apr.toFixed(1)}%</span></span>
+                <span><span class="label">TERM</span><span class="value">${term} TICKS</span></span>
+            </div>
+            <div class="co-contract-actions">
+                <button class="co-contract-btn primary" data-action="accept-offer" data-id="${escapeHtml(of.id)}" ${inflight ? 'disabled' : ''}>
+                    ${inflight ? 'Working…' : 'Accept ▸'}
+                </button>
+                <button class="co-contract-btn" data-action="reject-offer" data-id="${escapeHtml(of.id)}" ${inflight ? 'disabled' : ''}>
+                    Reject
+                </button>
+            </div>
+        </div>`;
+    });
+
+    const eventCards = _pressingIssues.map(ev => {
+        const expiresText = formatExpiresIn(ev.expires_at_tick, currentTick);
         const sev = severityClass(ev.severity);
         const contractName = ev.corp_contracts?.name || 'Project';
         const resp = (Array.isArray(ev.responses) && ev.responses[0]) || {};
@@ -1349,10 +1443,70 @@ function renderPressingIssues() {
                 <button class="co-contract-btn primary" data-action="ack-issue" data-id="${escapeHtml(ev.id)}">Acknowledge ▸</button>
             </div>
         </div>`;
-    }).join('');
+    });
+
+    list.innerHTML = offerCards.concat(eventCards).join('');
 }
 
 let _ackInflight = new Set();
+let _loanOfferInflight = new Set();
+
+// Accept reloads Pressing Issues regardless of outcome — on success
+// the request flips to 'approved' and every sibling offer auto-rejects
+// (they all need to disappear); on a server-side failure (offer or
+// request changed state in a race) the reload syncs the visible cards
+// to canonical state so the user isn't stuck retrying a stale row.
+// Cash doesn't move until the bank disburses, so no faction refetch.
+async function acceptLoanOffer(offerId) {
+    if (!offerId || _loanOfferInflight.has(offerId)) return;
+    _loanOfferInflight.add(offerId);
+    renderPressingIssues();
+    try {
+        const { data, error } = await _supabase.rpc('accept_loan_offer', {
+            p_offer_id: offerId,
+        });
+        if (error) {
+            showToast('Failed: ' + error.message, 'error');
+        } else if (!data?.success) {
+            showToast(data?.error || 'Failed to accept', 'error');
+        } else {
+            showToast('Offer accepted. Awaiting bank disbursement.', 'success');
+        }
+        await loadPressingIssues();
+    } catch (err) {
+        console.error('[corp-operations] accept_loan_offer failed:', err);
+        showToast('Accept failed: ' + (err?.message || 'unknown'), 'error');
+    } finally {
+        _loanOfferInflight.delete(offerId);
+        renderPressingIssues();
+    }
+}
+
+async function rejectLoanOffer(offerId) {
+    if (!offerId || _loanOfferInflight.has(offerId)) return;
+    _loanOfferInflight.add(offerId);
+    renderPressingIssues();
+    try {
+        const { data, error } = await _supabase.rpc('reject_loan_offer', {
+            p_offer_id: offerId,
+        });
+        if (error) {
+            showToast('Failed: ' + error.message, 'error');
+        } else if (!data?.success) {
+            showToast(data?.error || 'Failed to reject', 'error');
+        } else {
+            showToast('Offer rejected.', 'success');
+        }
+        await loadPressingIssues();
+    } catch (err) {
+        console.error('[corp-operations] reject_loan_offer failed:', err);
+        showToast('Reject failed: ' + (err?.message || 'unknown'), 'error');
+    } finally {
+        _loanOfferInflight.delete(offerId);
+        renderPressingIssues();
+    }
+}
+
 async function acknowledgeIssue(eventId) {
     if (_ackInflight.has(eventId)) return;
     _ackInflight.add(eventId);
@@ -1692,14 +1846,18 @@ function bindContractActions() {
     document.getElementById('co-available-list')?.addEventListener('click', handleContractClick);
     document.getElementById('co-active-list')?.addEventListener('click', handleContractClick);
 
-    // Pressing Issues delegation. Single Acknowledge action for now;
-    // multi-choice events (when the catalog grows them) will hang off
-    // the same handler with the response key as a second data attr.
+    // Pressing Issues delegation. Routes by data-action: ack-issue
+    // for project events, accept-offer / reject-offer for inbound
+    // loan offers.
     document.getElementById('co-issues-list')?.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-action="ack-issue"]');
-        if (!btn) return;
+        const btn = e.target.closest('[data-action]');
+        if (!btn || btn.disabled) return;
+        const action = btn.getAttribute('data-action');
         const id = btn.getAttribute('data-id');
-        if (id) acknowledgeIssue(id);
+        if (!id) return;
+        if (action === 'ack-issue')     return acknowledgeIssue(id);
+        if (action === 'accept-offer')  return acceptLoanOffer(id);
+        if (action === 'reject-offer')  return rejectLoanOffer(id);
     });
 
     // Modal background / close-button click → dismiss.
