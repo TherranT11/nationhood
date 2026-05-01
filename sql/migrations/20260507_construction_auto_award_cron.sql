@@ -42,23 +42,34 @@ BEGIN
           AND expires_at_tick     <= v_tick
         ORDER BY expires_at_tick  -- oldest first, deterministic
     LOOP
-        v_result := award_construction_contract(v_contract.id);
+        -- Each award is wrapped in its own BEGIN/EXCEPTION so a single
+        -- contract that throws an unhandled exception (rather than
+        -- returning {"success": false, ...}) doesn't abort the rest of
+        -- the sweep. The exception is logged but the loop continues.
+        BEGIN
+            v_result := award_construction_contract(v_contract.id);
 
-        IF COALESCE((v_result ->> 'success')::boolean, false) THEN
-            -- award_construction_contract returns success=true with
-            -- winner=null when there were zero bids (contract gets
-            -- cancelled). Track those separately for visibility.
-            IF v_result -> 'winner' IS NULL OR v_result ->> 'winner' = 'null' THEN
-                v_cancelled := v_cancelled + 1;
+            IF COALESCE((v_result ->> 'success')::boolean, false) THEN
+                -- award_construction_contract returns success=true with
+                -- winner=null when there were zero bids (contract gets
+                -- cancelled). Detect this via the ->> operator on the
+                -- winner key — JSON null comes back as SQL NULL through
+                -- ->>, whereas -> returns jsonb 'null' (which is NOT SQL
+                -- NULL). Counting cancellations and awards separately
+                -- keeps the log line readable.
+                IF (v_result ->> 'winner') IS NULL THEN
+                    v_cancelled := v_cancelled + 1;
+                ELSE
+                    v_awarded := v_awarded + 1;
+                END IF;
             ELSE
-                v_awarded := v_awarded + 1;
+                RAISE NOTICE 'auto-award rejected for contract %: %',
+                    v_contract.id, v_result ->> 'error';
             END IF;
-        ELSE
-            -- Log but don't abort the loop — one bad contract
-            -- shouldn't stop the rest from being processed.
-            RAISE NOTICE 'auto-award failed for contract %: %',
-                v_contract.id, v_result ->> 'error';
-        END IF;
+        EXCEPTION WHEN OTHERS THEN
+            RAISE NOTICE 'auto-award exception for contract %: % (%)',
+                v_contract.id, SQLERRM, SQLSTATE;
+        END;
     END LOOP;
 
     IF v_awarded > 0 OR v_cancelled > 0 THEN
