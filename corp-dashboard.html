@@ -611,11 +611,21 @@ body.corp-redesign.light-mode .cr-event-tag { background: var(--bg-panel); borde
   background: var(--amber-faint);
 }
 .cr-event-nation {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-family: var(--font-mono);
   font-size: 9px;
   color: var(--text-dim);
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+.cr-event-flag {
+  width: 14px;
+  height: 9px;
+  object-fit: cover;
+  border-radius: 1px;
+  flex-shrink: 0;
 }
 .cr-event-time {
   font-family: var(--font-mono);
@@ -794,7 +804,7 @@ body.corp-redesign.light-mode .cr-footer-strip { border-top-color: var(--panel-b
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { escapeHtml, tickToDate } from './js/utils.js';
+import { escapeHtml, escapeAttr, tickToDate } from './js/utils.js';
 
 let faction = null;
 let nation = null;
@@ -1294,6 +1304,14 @@ function renderOperatingIndicators(ownership, currentUserId) {
 
 // ─── DISPATCHES FEED ─────────────────────────────────────────
 
+// Convert raw event_name (often SCREAMING_SNAKE) to title-cased prose, matching
+// the legacy corp dashboard's `formatEventName` so events like
+// FORMATION_WINDOW_START render as "Formation Window Start".
+function formatEventName(raw) {
+    if (!raw) return '';
+    return String(raw).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 // event_log.category has many values across the codebase. Map each into one
 // of two buckets that drive the Politics/Corporate tab. Keep these in sync
 // with whatever new categories the event-template system introduces.
@@ -1349,7 +1367,7 @@ async function loadDispatches() {
         : CORPORATE_CATEGORIES;
 
     let q = _supabase.from('event_log')
-        .select('id, event_name, description_used, category, fired_at_tick, nation_id, nations(name)')
+        .select('id, event_name, description_used, category, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
         .in('category', categories)
         .order('fired_at_tick', { ascending: false })
         .limit(30);
@@ -1417,12 +1435,20 @@ function renderDispatchList(rows) {
                        : `${ticksAgo} TICKS AGO`;
 
         const nationName = row.nations?.name || row.nation || null;
+        // nations -> nation_profiles is a 1:1 join in Supabase. The shape
+        // comes back as either an object or a single-item array depending on
+        // the relation cardinality; normalise both before reading flag_url.
+        const np = row.nations?.nation_profiles;
+        const flagUrl = (Array.isArray(np) ? np[0]?.flag_url : np?.flag_url) || null;
+        const flagImg = flagUrl
+            ? `<img class="cr-event-flag" src="${escapeAttr(flagUrl)}" alt="" />`
+            : '';
         const nationBadge = (showNation && nationName)
-            ? `<span class="cr-event-nation">◊ ${escapeHtml(nationName)}</span>`
+            ? `<span class="cr-event-nation">${flagImg}${escapeHtml(nationName)}</span>`
             : '';
 
-        const headline = row.event_name || 'Untitled dispatch';
-        const body     = row.description_used || '';
+        const headlineRaw = formatEventName(row.event_name) || 'Untitled dispatch';
+        const body = (row.description_used || '').trim();
 
         return `<li class="cr-event-item ${itemClass}">
             <div class="cr-event-meta">
@@ -1430,7 +1456,7 @@ function renderDispatchList(rows) {
                 ${nationBadge}
                 <span class="cr-event-time">${timeStr}</span>
             </div>
-            <div class="cr-event-headline">${escapeHtml(headline)}</div>
+            <div class="cr-event-headline">${escapeHtml(headlineRaw)}</div>
             ${body ? `<div class="cr-event-body">${escapeHtml(body)}</div>` : ''}
         </li>`;
     }).join('');
