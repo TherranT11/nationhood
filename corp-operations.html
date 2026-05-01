@@ -1233,11 +1233,28 @@ const CONTRACT_FIELDS = [
 ].join(', ') + ', nations:issuer_nation_id(name)';
 
 async function loadContracts() {
+    // Visibility scope: home nation + every nation where this corp owns an
+    // active Regional HQ. The point is so a corp expanding internationally
+    // can see — and bid on — contracts in its Regional HQ markets without
+    // needing to relocate. Auto-generated government contracts and player-
+    // issued private contracts both flow through the same query.
+    const { data: hqRows } = await _supabase
+        .from('corp_properties')
+        .select('nation_id')
+        .eq('faction_id', faction.id)
+        .eq('role', 'regional_hq')
+        .eq('is_active', true);
+    const visibleNationIds = Array.from(new Set([
+        faction.nation_id,
+        ...((hqRows || []).map(r => r.nation_id).filter(Boolean)),
+    ]));
+
     const [availRes, activeRes] = await Promise.all([
         _supabase.from('corp_contracts')
             .select(CONTRACT_FIELDS)
             .eq('required_sector', 'Construction')
             .eq('status', 'open')
+            .in('issuer_nation_id', visibleNationIds)
             .order('budget', { ascending: false })
             .limit(40),
         _supabase.from('corp_contracts')
