@@ -511,13 +511,15 @@ function renderTradeEconomy() {
     const commodities = [];
 
     // ── Energy (stat-derived) ──
+    // ── Energy (stat-derived) ──
     // Production = nations.energy / 3.
     // Demand     = ((infrastructure + industry) × standard_of_living
     //              × √(population_M)) / 3500
-    // Net        = Production − Demand (positive = surplus, green;
-    //              negative = shortfall, red).
-    // Distinct from fuel_energy (petroleum, barrels). Displayed unit-less
-    // since it's a stat number, not a dollar value.
+    // Trading    = signed sum of Energy trade_flow volumes on active
+    //              agreements that have shipping in place
+    //              (+ = net imports, − = net exports).
+    // Net        = Production − Demand + Trading. Green if positive,
+    //              red if negative.
     const _n = _worldState?.nation || {};
     const energyStat   = Number(_n.energy)             || 0;
     const infraStat    = Number(_n.infrastructure)     || 0;
@@ -526,6 +528,7 @@ function renderTradeEconomy() {
     const popMillions  = (Number(_n.population) || 0) / 1_000_000;
     const energyProd   = energyStat / 3;
     const energyDemand = ((infraStat + industryStat) * solStat * Math.sqrt(popMillions)) / 3500;
+    const energyTrading = getEnergyTradingVolume();
     commodities.push({
         key: 'energy',
         icon: '⚡',
@@ -533,7 +536,8 @@ function renderTradeEconomy() {
         production: energyProd,
         domesticDemand: energyDemand,
         demand: 0,
-        netFlow: energyProd - energyDemand,
+        trading: energyTrading,
+        netFlow: energyProd - energyDemand + energyTrading,
         selfSufficiencyBalance: null,
         statBased: true,
     });
@@ -597,6 +601,7 @@ function renderTradeEconomy() {
                 <span>Commodity</span>
                 <span>Production</span>
                 <span>Demand</span>
+                <span>Trading</span>
                 <span>Net</span>
             </div>`;
 
@@ -606,10 +611,15 @@ function renderTradeEconomy() {
     const fmtProd = (c, n) => c.statBased ? Number(n).toFixed(0) : fmtBudgetCurrency(n);
     for (const c of commodities) {
         // Total demand = own consumption + foreign demand on our exports.
-        // Net = production minus total demand (positive = surplus).
+        // Trading  = signed import/export delta from active agreements
+        //            (+ = imports, − = exports). Only Energy carries it
+        //            today; trade-flow commodities default to 0.
+        // Net      = production − totalDemand + trading.
         const totalDemand = (Number(c.domesticDemand) || 0) + (Number(c.demand) || 0);
-        const net = (Number(c.production) || 0) - totalDemand;
+        const trading = Number(c.trading) || 0;
+        const net = (Number(c.production) || 0) - totalDemand + trading;
         const netCls = net > 0 ? 'positive' : net < 0 ? 'negative' : 'zero';
+        const tradingCls = trading > 0 ? 'positive' : trading < 0 ? 'negative' : 'zero';
         const isExp = _expandedCommodity === c.key;
         const rowAttrs = c.statBased ? ' data-statbased="1"' : '';
         const rowStyle = c.statBased ? 'cursor:default;' : '';
@@ -620,6 +630,7 @@ function renderTradeEconomy() {
             </div>
             <span class="tr-econ-value">${fmtProd(c, c.production)}</span>
             <span class="tr-econ-value${totalDemand > 0 ? '' : ' tr-econ-muted'}">${totalDemand > 0 ? fmtProd(c, totalDemand) : '—'}</span>
+            <span class="tr-econ-net ${tradingCls}">${trading === 0 ? '0' : (trading > 0 ? '+' : '−') + fmtProd(c, Math.abs(trading))}</span>
             <span class="tr-econ-net ${netCls}">${net === 0 ? '—' : (net > 0 ? '+' : '−') + fmtProd(c, Math.abs(net))}</span>
         </div>`;
 
@@ -2228,6 +2239,48 @@ function computeCompatibility(myNationId, theirNationId) {
     // Normalize to 0-100 scale based on total trade volume
     const totalVol = Object.values(myFlows).reduce((s, f) => s + (f.export_capacity || 0) + (f.import_demand || 0), 0) || 1;
     return Math.min(99, Math.round((matchScore / totalVol) * 200));
+}
+
+// Sum the signed Energy volume from this nation's active trade
+// agreements (positive = net importing, negative = net exporting).
+// Only counts trade_flow articles where:
+//   - article_type === 'trade_flow' and data.commodity === 'energy'
+//   - the agreement has shipping in place: either both parties share a
+//     land border / one is landlocked (no shipping needed), or a
+//     shipping corp is actively servicing the agreement's routes.
+// Returns 0 when there are no qualifying agreements.
+function getEnergyTradingVolume() {
+    const myId = _worldState?.nation?.id;
+    if (!myId) return 0;
+    const active = (_tradeAgreementsList || []).filter(a => a.status === 'active');
+    let total = 0;
+    for (const ag of active) {
+        const partnerId = ag.nation_a_id === myId ? ag.nation_b_id : ag.nation_a_id;
+        if (!partnerId) continue;
+        const shipNeed = _shippingNeedForPartner(partnerId) || { needsShipping: true };
+        const hasLogistics = !!getAgreementShippingInfo(ag.id)?.hasLogistics;
+        const shippingOk = !shipNeed.needsShipping || hasLogistics;
+        if (!shippingOk) continue;
+
+        for (const art of (ag.articles || [])) {
+            if (art.article_type !== 'trade_flow') continue;
+            const d = art.data || {};
+            if (d.commodity !== 'energy') continue;
+            const volume = Number(d.volume) || 0;
+            if (volume <= 0) continue;
+
+            // Resolve buyer/seller relative to MY nation. direction is
+            // author-relative \u2014 author is partyA, the other party is partyB.
+            const authorIsMe = art.author_nation_id
+                ? art.author_nation_id === myId
+                : (ag.nation_a_id === myId);
+            const partyAId = authorIsMe ? myId : partnerId;
+            const buyerNationId = d.direction === 'a_buys_b' ? partyAId : (authorIsMe ? partnerId : myId);
+            if (buyerNationId === myId) total += volume;
+            else                        total -= volume;
+        }
+    }
+    return total;
 }
 
 // Compute a nation's Energy production / demand / net using the same
