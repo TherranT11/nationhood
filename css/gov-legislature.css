@@ -88,6 +88,14 @@
     font-family: var(--font-mono); font-size: calc(6px * var(--leg-scale, 1.35)); font-weight: 700;
     padding: 2px 6px; border: 1px solid;
 }
+.leg-article-fiscal-chip {
+    font-family: var(--font-mono);
+    font-size: calc(6px * var(--leg-scale, 1.35));
+    font-weight: 700;
+    padding: 2px 6px;
+    border: 1px solid;
+    letter-spacing: 0.5px;
+}
 .leg-effects-title {
     font-family: var(--font-mono);
     font-size: calc(7px * var(--leg-scale, 1.35));
