@@ -897,9 +897,13 @@ function styleTier(style) {
 // ── LOADERS ──
 async function loadOwnedRegionalHqs() {
     if (!faction?.id) { _ownedRegionalHqs = []; return; }
+    // sellProperty re-lists on available_properties using catalog_id +
+    // style, so both must be in the projection. faction_id / role /
+    // is_active / purchased_at_tick are filter / order-by columns that
+    // PostgREST applies regardless of select; no need to hydrate them.
     const { data, error } = await _supabase
         .from('corp_properties')
-        .select('id, faction_id, nation_id, name, type, role, condition, purchase_price, monthly_maintenance, city, capacity, purchased_at_tick, is_active, nations:nation_id(name)')
+        .select('id, nation_id, name, type, style, catalog_id, condition, purchase_price, monthly_maintenance, city, capacity, nations:nation_id(name)')
         .eq('faction_id', faction.id)
         .eq('is_active', true)
         .eq('type', 'regional_hq')
@@ -1356,6 +1360,19 @@ async function buyProperty(propId) {
     try {
         const currentTick = Number(shard?.current_tick) || 0;
 
+        // Deduct cash first; refund if INSERT fails. Mirrors build's
+        // ordering — if we inserted first and the cash UPDATE failed,
+        // we'd own a property for free. Same cross-tab stale-cash
+        // carry-over flagged on build (closing it needs an RPC).
+        const newCash = Math.max(0, cash - cost);
+        const { error: cashErr } = await _supabase.from('factions')
+            .update({ corp_cash_reserves: newCash }).eq('id', faction.id);
+        if (cashErr) {
+            showToast('Failed to deduct cash: ' + cashErr.message, 'error');
+            return;
+        }
+        faction.corp_cash_reserves = newCash;
+
         const { error: insertErr } = await _supabase.from('corp_properties').insert({
             faction_id: faction.id,
             nation_id: faction.nation_id,
@@ -1373,17 +1390,24 @@ async function buyProperty(propId) {
             is_active: true,
         });
         if (insertErr) {
-            showToast('Purchase failed: ' + insertErr.message, 'error');
+            // Refund the cash we just deducted.
+            await _supabase.from('factions')
+                .update({ corp_cash_reserves: cash }).eq('id', faction.id);
+            faction.corp_cash_reserves = cash;
+            showToast('Purchase failed: ' + insertErr.message + ' (cash refunded)', 'error');
             return;
         }
 
-        // Deduct cash. Same cross-tab stale-cash carry-over as build.
-        const newCash = Math.max(0, cash - cost);
-        await _supabase.from('factions').update({ corp_cash_reserves: newCash }).eq('id', faction.id);
-        faction.corp_cash_reserves = newCash;
-
-        await _supabase.from('available_properties')
+        // Flip the listing to 'sold'. Best-effort — if the UPDATE fails
+        // the property is still ours; the stale 'available' row will
+        // get cleared when the next viewer tries to buy it (server-
+        // side reservation race is a pre-existing concern needing an
+        // RPC; out of scope for this rewrite).
+        const { error: listErr } = await _supabase.from('available_properties')
             .update({ status: 'sold', purchased_by: faction.id }).eq('id', prop.id);
+        if (listErr) {
+            console.warn('[Expansion] listing flip failed:', listErr.message);
+        }
 
         showToast('Purchased ' + prop.name + '.', 'success');
         await Promise.all([loadOwnedRegionalHqs(), loadMarketProperties()]);
