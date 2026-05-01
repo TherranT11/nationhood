@@ -503,6 +503,129 @@ body.corp-operations-finance.light-mode {
 .fo-offer-card-foot .urgent { color: var(--fo-accent-red); }
 .fo-offer-card-cta { color: var(--fo-accent-gold); font-weight: 600; }
 
+/* ── ACTIVE AGREEMENT CARD (Section IV — L3.C) ──
+   Lender-side view of bank_loans rows where this faction is the
+   lender. Two states render:
+     pending_payout — accepted by borrower; awaiting Pay Out Loan
+     active         — disbursed; outstanding/matures countdown live */
+.fo-active-card {
+  background: var(--fo-bg-card);
+  border: 1px solid var(--fo-line);
+  padding: 16px 18px 14px;
+  display: grid;
+  gap: 8px;
+}
+.fo-active-card.pending {
+  border-color: rgba(232,114,74,0.35);
+}
+.fo-active-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.fo-active-card-ticker {
+  font-family: var(--fo-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fo-accent-gold);
+}
+.fo-active-card-status {
+  font-family: var(--fo-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  padding: 3px 8px;
+  border: 1px solid var(--fo-line-bright);
+  text-transform: uppercase;
+  color: var(--fo-text-secondary);
+}
+.fo-active-card-status.pending {
+  color: var(--fo-accent-rust);
+  border-color: rgba(232,114,74,0.5);
+  background: rgba(232,114,74,0.08);
+}
+.fo-active-card-status.active {
+  color: var(--fo-accent-green);
+  border-color: rgba(92,184,92,0.4);
+}
+.fo-active-card-borrower {
+  font-family: var(--fo-serif);
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--fo-text-primary);
+  line-height: 1.25;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fo-active-card-borrower .meta {
+  font-family: var(--fo-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 400;
+  color: var(--fo-text-tertiary);
+}
+.fo-active-card-principal {
+  font-family: var(--fo-serif);
+  font-size: 26px;
+  font-weight: 400;
+  color: var(--fo-text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.fo-active-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-family: var(--fo-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--fo-text-secondary);
+  text-transform: uppercase;
+}
+.fo-active-card-meta .label { color: var(--fo-text-tertiary); margin-right: 4px; }
+.fo-active-card-meta .warn  { color: var(--fo-accent-red); }
+.fo-active-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--fo-line-bright);
+}
+.fo-active-card-note {
+  font-family: var(--fo-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fo-text-tertiary);
+}
+.fo-active-card-note.warn { color: var(--fo-accent-rust); }
+.fo-payout-btn {
+  font-family: var(--fo-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 8px 14px;
+  background: var(--fo-accent-rust);
+  border: 1px solid var(--fo-accent-rust);
+  color: var(--fo-bg-primary);
+  cursor: pointer;
+  transition: filter 0.15s, opacity 0.15s;
+}
+.fo-payout-btn:hover:not(:disabled) { filter: brightness(1.1); }
+.fo-payout-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ── REVIEW MODAL (L3.B) ──
    Click a card → modal opens with the borrower's profile, the loan
    request terms, an APR slider (clamped to corp_interest_rates …
@@ -1579,7 +1702,7 @@ async function submitLoanOffer(requestId) {
             showToast(error.message || 'Submission failed.', 'error');
             return;
         }
-        if (!data?.ok) {
+        if (!data?.success) {
             showToast(data?.error || 'Submission failed.', 'error');
             return;
         }
@@ -1628,6 +1751,189 @@ function showToast(message, kind) {
         el.classList.add('fade');
         setTimeout(() => el.remove(), 280);
     }, 3000);
+}
+
+// ── ACTIVE AGREEMENTS (Section IV — L3.C) ──
+// Lender-side bank_loans where this faction is the lender. Two live
+// statuses render: pending_payout (awaiting Pay Out Loan) and active
+// (disbursed, accruing). Terminal states (paid/defaulted/etc.) are
+// excluded — they belong to a future Closed Loans section.
+async function loadActiveAgreements() {
+    if (!faction?.id) {
+        _activeAgreements = [];
+        return;
+    }
+    const { data, error } = await _supabase
+        .from('bank_loans')
+        .select(`
+            id, principal, apr, term_ticks, outstanding, payments_missed,
+            status, issued_at_tick, matures_at_tick,
+            borrower:factions!borrower_faction_id (
+                faction_name, corp_ticker, corp_sector
+            ),
+            nation:nations!nation_id ( name )
+        `)
+        .eq('lender_faction_id', faction.id)
+        .in('status', ['pending_payout', 'active'])
+        .order('status', { ascending: true })
+        .order('matures_at_tick', { ascending: true });
+    if (error) {
+        console.error('[fo] active agreements fetch error:', error.message);
+        _activeAgreements = [];
+        return;
+    }
+    _activeAgreements = data || [];
+}
+
+function renderActiveAgreements() {
+    const list = document.getElementById('fo-active-list');
+    const meta = document.getElementById('fo-active-meta');
+    const count = document.getElementById('fo-active-count');
+    if (!list) return;
+
+    if (count) count.textContent = String(_activeAgreements.length);
+
+    if (_activeAgreements.length === 0) {
+        if (meta) meta.textContent = 'No active loans';
+        list.innerHTML = '<div class="fo-contract-empty">You have no live loans on the books. Submit offers from Available Offers to start lending.</div>';
+        return;
+    }
+
+    if (meta) {
+        const pending = _activeAgreements.filter(l => l.status === 'pending_payout').length;
+        const active  = _activeAgreements.length - pending;
+        const parts = [];
+        if (pending) parts.push(`${pending} Pending Payout`);
+        if (active)  parts.push(`${active} Active`);
+        meta.textContent = parts.join(' ◊ ');
+    }
+
+    const cur = Number(shard?.current_tick || 0);
+    list.innerHTML = _activeAgreements.map(loan => {
+        const b = loan.borrower || {};
+        const nat = loan.nation || {};
+        const ticker = b.corp_ticker || '—';
+        const name = b.faction_name || '—';
+        const apr = Number(loan.apr) || 0;
+        const term = Number(loan.term_ticks) || 0;
+        const isPending = loan.status === 'pending_payout';
+        const inflight = _payoutInflight.has(loan.id);
+
+        const head = `<div class="fo-active-card-head">
+            <div class="fo-active-card-ticker">${escapeHtml(ticker)}</div>
+            <div class="fo-active-card-status ${isPending ? 'pending' : 'active'}">
+                ${isPending ? 'Pending Payout' : 'Active'}
+            </div>
+        </div>
+        <div class="fo-active-card-borrower">
+            <span class="name">${escapeHtml(name)}</span>
+            ${nat.name ? `<span class="meta">◊ ${escapeHtml(nat.name)}</span>` : ''}
+        </div>
+        <div class="fo-active-card-principal">${escapeHtml(fmtMoney(loan.principal))}</div>`;
+
+        let metaRow;
+        let foot;
+        if (isPending) {
+            metaRow = `<div class="fo-active-card-meta">
+                <span><span class="label">APR</span>${apr.toFixed(1)}%</span>
+                <span><span class="label">TERM</span>${term} TICKS</span>
+            </div>`;
+            const btnLabel = inflight ? 'Disbursing…' : 'Pay Out Loan ▸';
+            foot = `<div class="fo-active-card-foot">
+                <span class="fo-active-card-note warn">⚠ Awaiting your disbursement</span>
+                <button type="button" class="fo-payout-btn" data-payout-id="${escapeHtml(loan.id)}" ${inflight ? 'disabled' : ''}>
+                    ${escapeHtml(btnLabel)}
+                </button>
+            </div>`;
+        } else {
+            const matures = Number(loan.matures_at_tick) || 0;
+            const remaining = Math.max(0, matures - cur);
+            const missed = Number(loan.payments_missed) || 0;
+            metaRow = `<div class="fo-active-card-meta">
+                <span><span class="label">OUTSTANDING</span>${escapeHtml(fmtMoney(loan.outstanding))}</span>
+                <span><span class="label">APR</span>${apr.toFixed(1)}%</span>
+                <span><span class="label">MATURES IN</span>${remaining} TICKS</span>
+                ${missed > 0 ? `<span class="warn"><span class="label">MISSED</span>${missed}</span>` : ''}
+            </div>`;
+            foot = '';
+        }
+
+        return `<div class="fo-active-card ${isPending ? 'pending' : ''}" data-loan-id="${escapeHtml(loan.id)}">
+            ${head}
+            ${metaRow}
+            ${foot}
+        </div>`;
+    }).join('');
+}
+
+// Per-loan inflight set so a stuck disbursement on one loan doesn't
+// block payouts on others.
+const _payoutInflight = new Set();
+
+async function payOutLoan(loanId) {
+    if (!loanId || _payoutInflight.has(loanId)) return;
+    _payoutInflight.add(loanId);
+    // Re-render so the targeted card's button shows the disabled
+    // "Disbursing…" state.
+    renderActiveAgreements();
+
+    try {
+        const { data, error } = await _supabase.rpc('pay_out_loan', {
+            p_loan_id: loanId,
+        });
+        if (error) {
+            showToast(error.message || 'Payout failed.', 'error');
+            return;
+        }
+        if (!data?.success) {
+            showToast(data?.error || 'Payout failed.', 'error');
+            return;
+        }
+        showToast(`Disbursed ${fmtMoney(data.principal_disbursed)}.`, 'success');
+        // Cash and state both moved server-side; refresh the loan list
+        // and refetch faction so hero stats reflect the new reserves.
+        await Promise.all([
+            loadActiveAgreements(),
+            refetchFactionState(),
+        ]);
+    } catch (err) {
+        console.error('[fo] pay_out_loan failed:', err);
+        showToast('Payout failed: ' + (err?.message || 'unknown'), 'error');
+    } finally {
+        _payoutInflight.delete(loanId);
+        renderActiveAgreements();
+        renderHeroStats();
+    }
+}
+
+// Refetch the faction columns hero stats and the slider floor read so
+// they stay in sync after RPCs that mutate cash/leverage/etc.
+async function refetchFactionState() {
+    if (!faction?.id) return;
+    const { data, error } = await _supabase
+        .from('factions')
+        .select('corp_cash_reserves, corp_lending_capital, corp_interest_rates, corp_overleverage, corp_finance_action_locked_until_tick')
+        .eq('id', faction.id)
+        .single();
+    if (error || !data) {
+        console.error('[fo] refetch faction state failed:', error?.message);
+        return;
+    }
+    Object.assign(faction, data);
+}
+
+// One-time delegated click for the Active Agreements list. Pay-out
+// buttons each carry data-payout-id; payOutLoan handles its own
+// inflight lock.
+function attachActiveAgreementsHandlers() {
+    const list = document.getElementById('fo-active-list');
+    if (!list || list.dataset.boundFo === '1') return;
+    list.dataset.boundFo = '1';
+    list.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-payout-id]');
+        if (!btn || btn.disabled) return;
+        payOutLoan(btn.getAttribute('data-payout-id'));
+    });
 }
 
 // One-time delegated click handler for the Available Offers list.
@@ -1692,6 +1998,10 @@ let allUserFactions = [];
 // Pending bank_loan_requests targeting this bank that this bank has NOT
 // already responded to. Populated by loadAvailableLoanRequests().
 let _availableRequests = [];
+
+// Live bank_loans where this faction is the lender (pending_payout +
+// active). Populated by loadActiveAgreements().
+let _activeAgreements = [];
 
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
@@ -1774,24 +2084,25 @@ async function init() {
         }
     }
 
-    // Active count placeholder — Active Agreements (Section IV) lands in
-    // L3.C and will replace this with a real count of bank_loans where
-    // this faction is the lender.
-    document.getElementById('fo-active-count').textContent = '0';
     document.getElementById('fo-footer-date').textContent =
         shard?.current_date || tickToDate(shard?.current_tick) || '—';
 
     renderHeroStats();
     renderActionCooldownPill();
 
-    // Available Offers (Section III). Attach the delegated click /
-    // keyboard handler BEFORE the first render so cards never exist
-    // without a live listener. Modal dismiss handlers (overlay click,
-    // Escape) are bound once and survive every modal open/close.
+    // Sections III + IV. Attach the delegated handlers BEFORE the
+    // first render so cards never exist without a live listener.
+    // Modal dismiss handlers (overlay click, Escape) are bound once
+    // and survive every modal open/close.
     attachAvailableOffersHandlers();
+    attachActiveAgreementsHandlers();
     attachModalDismissHandlers();
-    await loadAvailableLoanRequests();
+    await Promise.all([
+        loadAvailableLoanRequests(),
+        loadActiveAgreements(),
+    ]);
     renderAvailableLoanRequests();
+    renderActiveAgreements();
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = '';
