@@ -2083,7 +2083,7 @@ function renderActionOption(card, opt, cardIdx, oIdx, isLocked) {
 }
 
 function renderActionEffects(opt) {
-    const parts = [`<span class="so-effect cost">−${hfFmtBig(opt.cost).replace('-', '')}</span>`];
+    const parts = [`<span class="so-effect cost">−${hfFmtBig(opt.cost)}</span>`];
     for (const [key, delta] of Object.entries(opt.effects || {})) {
         const sign = delta > 0 ? '+' : '';
         const cls = delta > 0 ? 'positive' : 'negative';
