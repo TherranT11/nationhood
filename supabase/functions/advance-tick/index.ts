@@ -12198,12 +12198,6 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
         .eq('faction_type', 'party')
         .order('seats', { ascending: false });
 
-    const failedAttempts = nation.failed_formation_attempts || 0;
-    // Deal Maker trait: lead party (largest by seats) extends formation deadline by 3 ticks
-    const leadPartyTraits = allParties?.[0]?.leader_positive_traits || [];
-    const dealMakerExtension = leadPartyTraits.includes('deal_maker') ? 3 : 0;
-    const deadline = FORMATION_DEADLINE_TICKS + dealMakerExtension;
-
     const result = {
         nation: nation.name,
         ticksElapsed,
@@ -12211,9 +12205,11 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
         approvalLoss: -2,
     };
 
-    // ===== ONGOING PENALTIES (every tick during vacancy) =====
-    // Top 2 parties by seats lose -2 approval each tick
-
+    // Top 2 parties by seats lose -2 approval each tick during vacancy —
+    // ongoing pressure to form a government. The auto-snap that used to
+    // fire after FORMATION_DEADLINE_TICKS has been removed; if the nation
+    // stays deadlocked, any party leader can break it via the
+    // call_snap_election Party Leader action.
     if (allParties && allParties.length > 0) {
         await supabase.rpc('adjust_momentum', { p_faction_id: allParties[0].id, p_delta: -2, p_label: 'Formation timeout (-2)', p_tick: currentTick });
         if (allParties.length > 1) {
@@ -12221,179 +12217,21 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
         }
     }
 
-    console.log(`Government vacancy: ${nation.name} tick ${ticksElapsed}/${deadline} — top 2 parties -2 approval`);
-
-    // ===== FORMATION WINDOW NOTIFICATIONS =====
-    if (ticksElapsed === 1 && failedAttempts < 1) {
+    // One-shot informational event when vacancy begins.
+    if (ticksElapsed === 1) {
         await supabase.from('event_log').insert({
             nation_id: nation.id,
             event_name: 'FORMATION_WINDOW_START',
             trigger_key: 'coalition_formation_started',
-            description_used: `Coalition formation underway in ${nation.name}. Parties have ${deadline} ticks to form a government.`,
+            description_used: `Coalition formation underway in ${nation.name}. Top two parties lose -2 approval per tick until a government forms; any party leader can call a snap election to break a deadlock.`,
             category: 'POLITICAL',
-            effects_applied: { ticks_remaining: deadline, ongoing_penalty: -2 },
+            effects_applied: { ongoing_penalty: -2 },
             fired_at_tick: currentTick
         }).then(({ error }) => {
             if (error) console.warn('Formation window start event log failed:', error.message);
         });
-    } else if (ticksElapsed === deadline - 1) {
-        const warningMsg = failedAttempts >= 1
-            ? `1 tick remaining before another snap election in ${nation.name}. Form a coalition now.`
-            : `1 tick remaining before snap elections in ${nation.name}. Form a coalition now or face snap elections.`;
-        await supabase.from('event_log').insert({
-            nation_id: nation.id,
-            event_name: 'FORMATION_DEADLINE_WARNING',
-            description_used: warningMsg,
-            category: 'POLITICAL',
-            effects_applied: { ticks_remaining: 1 },
-            fired_at_tick: currentTick
-        }).then(({ error }) => {
-            if (error) console.warn('Formation deadline warning event log failed:', error.message);
-        });
     }
 
-    // ===== ESCALATION CHECK =====
-    if (ticksElapsed < deadline) {
-        return result;
-    }
-
-    // ===== STAGE 1: SNAP ELECTION =====
-    if (failedAttempts < 1) {
-        console.log(`STAGE 1: SNAP ELECTION triggered for ${nation.name} — ${ticksElapsed} ticks without government (attempt ${failedAttempts + 1})`);
-
-        // Non-responsive invitee penalty: -3 approval
-        // Find parties invited to formations but never gave support
-        const { data: formations } = await supabase
-            .from('government_formations')
-            .select('id, party_ids, proposed_by')
-            .eq('election_id', election.id)
-            .in('status', ['active', 'rejected', 'expired']);
-
-        if (formations && formations.length > 0) {
-            // Collect all invited parties (from party_ids, excluding the proposer)
-            const invitedPartyIds = new Set();
-            for (const f of formations) {
-                for (const pid of (f.party_ids || [])) {
-                    if (pid !== f.proposed_by) {
-                        invitedPartyIds.add(pid);
-                    }
-                }
-            }
-
-            // Check which invitees gave support to ANY formation in this election
-            const formationIds = formations.map(f => f.id);
-            const { data: supportRecords } = await supabase
-                .from('government_formation_support')
-                .select('faction_id, supports')
-                .in('formation_id', formationIds)
-                .eq('supports', true);
-
-            const respondedPartyIds = new Set((supportRecords || []).map(s => s.faction_id));
-
-            // Penalize non-responsive invitees
-            for (const pid of invitedPartyIds) {
-                if (!respondedPartyIds.has(pid)) {
-                    await supabase.rpc('adjust_momentum', { p_faction_id: pid, p_delta: -3, p_label: 'Formation timeout — non-responsive (-3)', p_tick: currentTick });
-                    const partyName = allParties?.find(p => p.id === pid)?.faction_name || pid;
-                    console.log(`  Non-responsive penalty: ${partyName} -3 approval`);
-                }
-            }
-        }
-
-        // Schedule snap election for next tick
-        const { data: existingScheduled } = await supabase
-            .from('elections')
-            .select('id')
-            .eq('nation_id', nation.id)
-            .eq('status', 'scheduled')
-            .limit(1)
-            .maybeSingle();
-
-        if (existingScheduled) {
-            await supabase.from('elections')
-                .update({ election_tick: currentTick + 1 })
-                .eq('id', existingScheduled.id);
-            console.log(`  Moved existing scheduled election to tick ${currentTick + 1}`);
-        } else {
-            await supabase.from('elections').insert({
-                nation_id: nation.id,
-                election_tick: currentTick + 1,
-                status: 'scheduled'
-            });
-            console.log(`  Scheduled snap election for tick ${currentTick + 1}`);
-        }
-
-        // Increment failed formation attempts
-        await supabase.from('nations')
-            .update({ failed_formation_attempts: failedAttempts + 1 })
-            .eq('id', nation.id);
-        nation.failed_formation_attempts = failedAttempts + 1;
-
-        // Log event
-        await supabase.from('event_log').insert({
-            nation_id: nation.id,
-            event_name: 'FORMATION_SNAP_ELECTION',
-            trigger_key: 'formation_snap_election',
-            description_used: `Snap election called in ${nation.name} after coalition formation failed. Parties had ${deadline} ticks to negotiate.`,
-            category: 'POLITICAL',
-            effects_applied: {
-                stage: 1,
-                non_responsive_penalty: -3,
-                ticks_without_gov: ticksElapsed,
-                failed_attempts: failedAttempts + 1
-            },
-            fired_at_tick: currentTick
-        }).then(({ error }) => {
-            if (error) console.warn('Formation snap election event log failed:', error.message);
-        });
-
-        result.snapElection = true;
-        result.snapTick = currentTick + 1;
-        result.stage = 1;
-        return result;
-    }
-
-    // ===== STAGE 2: NO AUTO-FORMATION =====
-    // Design rule: never auto-form or auto-accept a government.
-    // Keep the nation in vacancy and force another snap election cycle.
-    console.log(`STAGE 2: formation still failed for ${nation.name} — scheduling another snap election (no auto-formation)`);
-
-    const { data: existingScheduledStage2 } = await supabase
-        .from('elections')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('status', 'scheduled')
-        .limit(1)
-        .maybeSingle();
-
-    if (existingScheduledStage2) {
-        await supabase.from('elections')
-            .update({ election_tick: currentTick + 1 })
-            .eq('id', existingScheduledStage2.id);
-    } else {
-        await supabase.from('elections').insert({
-            nation_id: nation.id,
-            election_tick: currentTick + 1,
-            status: 'scheduled',
-            election_type: 'parliamentary'
-        });
-    }
-
-    await supabase.from('event_log').insert({
-        nation_id: nation.id,
-        event_name: 'FORMATION_FAILED_CONTINUED',
-        trigger_key: 'formation_failed_continued',
-        description_used: `Coalition formation still unresolved in ${nation.name}. A new snap election has been scheduled.`,
-        category: 'POLITICAL',
-        effects_applied: { stage: 2, auto_formation: false, next_snap_tick: currentTick + 1 },
-        fired_at_tick: currentTick
-    }).then(({ error }) => {
-        if (error) console.warn('Formation failed continued event log failed:', error.message);
-    });
-
-    result.stage = 2;
-    result.snapElection = true;
-    result.snapTick = currentTick + 1;
     return result;
 }
 
@@ -16011,12 +15849,19 @@ async function genesisElectorate(supabase, nation, factions, currentTick = 0) {
  * @param {boolean} [opts.snap] - If true, bypass drift caps and snap pillars to target values immediately
  */
 async function tickElectorate(supabase, nation, currentTick, opts = {}) {
-    // ── 3-Pillar Electoral Standing Calculator ──
-    // Runs each tick to compute contested_vote_share and turnout_rate
-    // for all active parties in a nation.
+    // ── DEAD CODE — engine retired 2026-05 ──
+    // The momentum/engagement softmax pipeline produced grossly skewed
+    // vote shares (a 30-point raw_appeal lead became a 77% landslide
+    // through softmax temperature 12). Vote share is now computed
+    // directly from faction_sector_popularity inside the run_election
+    // SQL function — see sql/migrations/20260517_run_election_sector_popularity.sql.
     //
-    // Pillars: Engagement (35%) + Momentum (25%) + Ideology (30%) + Gov Approval (10%)
+    // The body below is preserved for reference but never runs. The
+    // function returns immediately so per-tick CPU drops to zero and
+    // faction_electoral_standing is no longer overwritten.
+    return;
 
+    // eslint-disable-next-line no-unreachable
     const nationId = nation.id;
 
     // 1. Load all active parties with momentum
@@ -16221,6 +16066,13 @@ async function tickElectorate(supabase, nation, currentTick, opts = {}) {
  * @param {object[]} updates - Array of standing update objects (mutated in place)
  */
 function computeContestedVoteShares(updates) {
+    // ── DEAD CODE — softmax pipeline retired 2026-05 ──
+    // tickElectorate is now a no-op so this is never invoked, but the
+    // body is kept for archival reference. See run_election SQL for
+    // the replacement vote-share math.
+    return;
+
+    // eslint-disable-next-line no-unreachable
     if (updates.length === 0) return;
 
     const k = CFG.SOFTMAX_TEMPERATURE || 8; // guard against zero/undefined

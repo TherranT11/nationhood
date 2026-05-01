@@ -644,12 +644,19 @@ async function genesisElectorate(supabase, nation, factions, currentTick = 0) {
  * @param {boolean} [opts.snap] - If true, bypass drift caps and snap pillars to target values immediately
  */
 export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
-    // ── 3-Pillar Electoral Standing Calculator ──
-    // Runs each tick to compute contested_vote_share and turnout_rate
-    // for all active parties in a nation.
+    // ── DEAD CODE — engine retired 2026-05 ──
+    // The momentum/engagement softmax pipeline produced grossly skewed
+    // vote shares (a 30-point raw_appeal lead became a 77% landslide
+    // through softmax temperature 12). Vote share is now computed
+    // directly from faction_sector_popularity inside the run_election
+    // SQL function — see sql/migrations/20260517_run_election_sector_popularity.sql.
     //
-    // Pillars: Engagement (35%) + Momentum (25%) + Ideology (30%) + Gov Approval (10%)
+    // The body below is preserved for reference but never runs. The
+    // function returns immediately so per-tick CPU drops to zero and
+    // faction_electoral_standing is no longer overwritten.
+    return;
 
+    // eslint-disable-next-line no-unreachable
     const nationId = nation.id;
 
     // 1. Load all active parties with momentum
@@ -854,6 +861,13 @@ export async function tickElectorate(supabase, nation, currentTick, opts = {}) {
  * @param {object[]} updates - Array of standing update objects (mutated in place)
  */
 function computeContestedVoteShares(updates) {
+    // ── DEAD CODE — softmax pipeline retired 2026-05 ──
+    // tickElectorate is now a no-op so this is never invoked, but the
+    // body is kept for archival reference. See run_election SQL for
+    // the replacement vote-share math.
+    return;
+
+    // eslint-disable-next-line no-unreachable
     if (updates.length === 0) return;
 
     const k = CFG.SOFTMAX_TEMPERATURE || 8; // guard against zero/undefined

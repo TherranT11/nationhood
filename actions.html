@@ -118,7 +118,7 @@ body {
 
 <!-- Loan Request Modal -->
 <div id="lr-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:500;align-items:center;justify-content:center;">
-  <div style="width:520px;max-height:94vh;background:var(--panel-main);border:1px solid var(--panel-border);display:flex;flex-direction:column;overflow:hidden;">
+  <div style="width:880px;max-width:94vw;max-height:94vh;background:var(--panel-main);border:1px solid var(--panel-border);display:flex;flex-direction:column;overflow:hidden;">
     <div id="lr-modal-content" style="display:flex;flex-direction:column;overflow:hidden;max-height:94vh;"></div>
   </div>
 </div>
@@ -688,243 +688,293 @@ async function actSubmitStatement() {
 // CFO: Request Loan (moved from corp-dashboard)
 // ═══════════════════════════════════════════════════
 
-const LR_PURPOSES = [
-    { id: 'equipment', label: 'Equipment Acquisition', desc: 'Purchase vehicles, cranes, or heavy machinery', icon: '&#9881;' },
-    { id: 'working', label: 'Working Capital', desc: 'Bridge financing for active project costs', icon: '$' },
-    { id: 'property', label: 'Property Purchase', desc: 'Acquire office, warehouse, or HQ building', icon: '&#9632;' },
-    { id: 'subsidiary', label: 'Subsidiary Expansion', desc: 'Fund new subsidiary establishment', icon: '&#9672;' },
-    { id: 'materials', label: 'Material Procurement', desc: 'Bulk material purchase for upcoming projects', icon: '&#9638;' },
-];
-const LR_COLLATERAL = [
-    { id: 'none', label: 'None', desc: 'Unsecured — lenders may charge higher rates', risk: 'HIGH', riskColor: '#c84' },
-    { id: 'equipment', label: 'Equipment', desc: 'Financed equipment serves as collateral', risk: 'MODERATE', riskColor: '#ca5' },
-    { id: 'property', label: 'Property', desc: 'Corporate property lien', risk: 'LOW', riskColor: '#8b9a6b' },
-    { id: 'full', label: 'Full Assets', desc: 'All corporate assets — maximum lender security', risk: 'MINIMAL', riskColor: '#5c5' },
-];
+// Loan-amount slider granularity. $5M step matches the design spec's
+// "each $5M = +0.1 Lending Capital" demand calculation.
+const LR_AMOUNT_MIN  = 5000000;     // $5M
+const LR_AMOUNT_MAX  = 500000000;   // $500M
+const LR_AMOUNT_STEP = 5000000;     // $5M
 
 let lrAmount = 250000000;
-let lrPurpose = 'equipment';
-let lrTerm = 48;
-let lrCollateral = 'equipment';
-let lrNote = '';
-let lrFinanceCorps = [];
+// Sets — toggled by row-click. Sets are O(1) lookup for the
+// "selected" class check during render.
+let lrSelectedBankIds = new Set();
+let lrSelectedCollateralIds = new Set();
+let lrFinanceCorps = [];        // Banks the player can target
+let lrCollateralProps = [];     // Player corp's owned properties
 
 function lrOpen() {
     lrAmount = 250000000;
-    lrPurpose = 'equipment';
-    lrTerm = 48;
-    lrCollateral = 'equipment';
-    lrNote = '';
+    lrSelectedBankIds = new Set();
+    lrSelectedCollateralIds = new Set();
+    lrFinanceCorps = [];
+    lrCollateralProps = [];
     document.getElementById('lr-overlay').style.display = 'flex';
-    lrLoadFinanceCorps();
     renderLoanModal();
+    Promise.all([lrLoadFinanceCorps(), lrLoadCollateral()])
+        .then(() => renderLoanModal())
+        .catch(err => console.error('[lrOpen] load failed:', err));
 }
 function lrClose() { document.getElementById('lr-overlay').style.display = 'none'; }
-function lrSetAmount(v) { lrAmount = Math.max(1000000, Math.min(5000000000, Number(v) || 0)); renderLoanModal(); }
-function lrSetPurpose(id) { lrPurpose = id; renderLoanModal(); }
-function lrSetTerm(t) { lrTerm = t; renderLoanModal(); }
-function lrSetCollateral(id) { lrCollateral = id; renderLoanModal(); }
+
+function lrSetAmount(v) {
+    const raw = Number(v) || 0;
+    // Snap to step.
+    const snapped = Math.round(raw / LR_AMOUNT_STEP) * LR_AMOUNT_STEP;
+    lrAmount = Math.max(LR_AMOUNT_MIN, Math.min(LR_AMOUNT_MAX, snapped));
+    renderLoanModal();
+}
+function lrToggleBank(id) {
+    if (!id) return;
+    if (lrSelectedBankIds.has(id)) lrSelectedBankIds.delete(id);
+    else lrSelectedBankIds.add(id);
+    renderLoanModal();
+}
+function lrToggleCollateral(id) {
+    if (!id) return;
+    if (lrSelectedCollateralIds.has(id)) lrSelectedCollateralIds.delete(id);
+    else lrSelectedCollateralIds.add(id);
+    renderLoanModal();
+}
 
 async function lrLoadFinanceCorps() {
-    if (!faction) return;
-    const { data } = await _supabase.from('factions')
-        .select('id, faction_name, abbreviation, corp_ticker, corp_company_type')
+    if (!faction) { lrFinanceCorps = []; return; }
+    // Shard-wide lookup: borrower can target any Finance corp regardless
+    // of nation. The design spec covers domestic + foreign banks.
+    const { data, error } = await _supabase.from('factions')
+        .select('id, faction_name, abbreviation, corp_ticker, corp_company_type, nation_id, corp_lending_capital, corp_interest_rates, corp_overleverage, nations:nation_id(name)')
         .eq('faction_type', 'corporation')
         .eq('corp_sector', 'Finance')
         .is('abandoned_at', null)
         .neq('id', faction.id);
+    if (error) { console.warn('[lrLoadFinanceCorps] error:', error.message); lrFinanceCorps = []; return; }
     lrFinanceCorps = data || [];
-    renderLoanModal();
+}
+
+async function lrLoadCollateral() {
+    if (!faction) { lrCollateralProps = []; return; }
+    const { data, error } = await _supabase.from('corp_properties')
+        .select('id, name, purchase_price, nation_id, role, nations:nation_id(name)')
+        .eq('faction_id', faction.id)
+        .eq('is_active', true)
+        .order('purchase_price', { ascending: false });
+    if (error) { console.warn('[lrLoadCollateral] error:', error.message); lrCollateralProps = []; return; }
+    lrCollateralProps = data || [];
+}
+
+// Build a 10-pip meter. tier='gold'|'green'|'rust'|'red'|'leverage'.
+// 'leverage' colors the pips by index: 0-2 green, 3-5 rust, 6-9 red.
+function lrPipMeter(value, tier) {
+    const v = Math.max(0, Math.min(10, Math.round(Number(value) || 0)));
+    const cells = [];
+    for (let i = 0; i < 10; i++) {
+        const filled = i < v;
+        let extraClass = '';
+        if (filled) {
+            if (tier === 'leverage') {
+                extraClass = i <= 2 ? ' green' : i <= 5 ? ' rust' : ' red';
+            } else if (tier && tier !== 'gold') {
+                extraClass = ' ' + tier;
+            }
+        }
+        cells.push(`<span class="lr-pip${filled ? ' filled' + extraClass : ''}"></span>`);
+    }
+    return cells.join('');
+}
+
+function lrLeverageColor(v) {
+    const n = Number(v) || 0;
+    if (n >= 7) return 'var(--red, #d9534f)';
+    if (n >= 4) return 'var(--orange, #e8724a)';
+    return 'var(--green, #5cb85c)';
 }
 
 function renderLoanModal() {
     const container = document.getElementById('lr-modal-content');
     if (!container) return;
 
-    const cash = Number(faction?.corp_cash_reserves ?? 0);
-    const debt = Number(faction?.corp_loans ?? 0);
-    const rep = Number(faction?.corp_reputation ?? 50);
     const corpName = faction?.faction_name || 'Corporation';
     const ticker = (faction?.abbreviation || faction?.corp_ticker || '??').toUpperCase();
 
-    const newDebt = debt + lrAmount;
-    const drColor = newDebt > cash * 3 ? '#c55' : newDebt > cash * 1.5 ? '#c84' : newDebt > cash ? '#ca5' : '#5c5';
-    const drLabel = newDebt > cash * 3 ? 'DANGEROUS' : newDebt > cash * 1.5 ? 'HEAVY' : newDebt > cash ? 'MODERATE' : 'HEALTHY';
+    // Loan amount \u2192 display + Lending Capital demand. Spec: each $5M
+    // demands +0.1 of the bank's lending_capital stat.
+    const amountM = Math.round(lrAmount / 1000000);
+    const lcDemand = (amountM / 5) * 0.1;
 
-    const estRate = lrCollateral === 'none' ? '10-16%' : lrCollateral === 'equipment' ? '7-12%' : lrCollateral === 'property' ? '5-9%' : '4-7%';
-    const midRate = lrCollateral === 'none' ? 0.13 : lrCollateral === 'equipment' ? 0.095 : lrCollateral === 'property' ? 0.07 : 0.055;
-    const estMonthly = Math.round(lrAmount * midRate / 12 + lrAmount / lrTerm);
-    const collObj = LR_COLLATERAL.find(c => c.id === lrCollateral) || LR_COLLATERAL[0];
+    // Collateral totals.
+    let totalPledged = 0;
+    for (const p of lrCollateralProps) {
+        if (lrSelectedCollateralIds.has(p.id)) {
+            totalPledged += Number(p.purchase_price || 0);
+        }
+    }
+    const coveragePct = lrAmount > 0 ? Math.round((totalPledged / lrAmount) * 100) : 0;
+    const coverageTier = totalPledged === 0 ? 'unsecured'
+                       : coveragePct < 100 ? 'partial'
+                       : coveragePct < 150 ? 'full'
+                       : 'over';
+    const coverageColor = coverageTier === 'unsecured' ? 'var(--text-dim, #6a6660)'
+                       : coverageTier === 'partial'   ? 'var(--orange, #e8724a)'
+                       : 'var(--green, #5cb85c)';
+
+    const bankCount = lrSelectedBankIds.size;
+    const submitDisabled = bankCount === 0;
 
     let html = '';
 
-    // Header
-    html += `<div style="padding:10px 16px;border-bottom:1px solid var(--panel-border);background:var(--bg-panel);flex-shrink:0;">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-            <div style="display:flex;align-items:center;gap:8px;">
-                <span style="font-size:8px;color:#5a8aaa;">&#9679;</span>
-                <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:2px;color:#9e9a92;text-transform:uppercase;">Request Loan</span>
+    // \u2500\u2500 HEADER \u2500\u2500
+    html += `<div style="padding:18px 24px 16px;border-bottom:1px solid var(--panel-border);background:var(--bg-panel);flex-shrink:0;display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+            <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:2px;color:#8a722f;text-transform:uppercase;margin-bottom:4px;">\u2014 Treasury Action \u2014</div>
+            <div style="font-family:var(--font-serif, 'IBM Plex Serif', serif);font-weight:500;font-size:28px;line-height:1;letter-spacing:-0.02em;color:var(--text-bright, #f0efe6);">Request <em style="font-style:italic;color:var(--gold, #c8a832);">Loan</em></div>
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:1px;color:#6a6660;margin-top:6px;">From: <strong style="color:var(--gold, #c8a832);font-weight:500;">${escapeHtml(ticker)}</strong> ${escapeHtml(corpName)}</div>
+        </div>
+        <div onclick="lrClose()" style="font-family:var(--font-mono);font-size:14px;color:#6a6660;cursor:pointer;border:1px solid var(--panel-border);width:28px;height:28px;display:flex;align-items:center;justify-content:center;">&#215;</div>
+    </div>`;
+
+    // \u2500\u2500 BODY \u2500\u2500
+    html += '<div style="flex:1;overflow-y:auto;padding:24px;">';
+
+    // Section I \u2014 Loan Amount
+    html += `<div style="margin-bottom:24px;">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;padding-bottom:8px;border-bottom:1px dashed var(--panel-border);">
+            <div style="font-family:var(--font-serif,'IBM Plex Serif',serif);font-style:italic;font-weight:500;font-size:16px;color:var(--text-bright,#f0efe6);">
+                <span style="font-family:var(--font-mono);font-style:normal;font-size:10px;color:#8a722f;margin-right:8px;letter-spacing:0.1em;">I.</span>Loan Amount
             </div>
-            <span onclick="lrClose()" style="font-family:var(--font-mono);font-size:14px;color:#6a6660;cursor:pointer;">&#215;</span>
+            <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.16em;text-transform:uppercase;color:#6a6660;">$5M = +0.1 LENDING CAPITAL</span>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
-            <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">From:</span>
-            <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c8a832;">${escapeHtml(ticker)}</span>
-            <span style="font-size:10px;color:var(--panel-text);">${escapeHtml(corpName)}</span>
-        </div>
-    </div>`;
-
-    // Scrollable body
-    html += '<div style="flex:1;overflow-y:auto;">';
-
-    // Financial Snapshot
-    html += `<div style="padding:6px 16px;border-bottom:1px solid var(--panel-border);background:var(--bg-panel);">
-        <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;">Your Financials (visible to lenders)</span>
-    </div>
-    <div style="display:flex;gap:0;border-bottom:1px solid var(--panel-border);">
-        <div style="flex:1;padding:6px 10px;text-align:center;border-right:1px solid var(--panel-border);">
-            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">CASH</div>
-            <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--panel-text);margin-top:1px;">${hfFmtBig(cash)}</div>
-        </div>
-        <div style="flex:1;padding:6px 10px;text-align:center;border-right:1px solid var(--panel-border);">
-            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">CURRENT DEBT</div>
-            <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#c84;margin-top:1px;">${hfFmtBig(debt)}</div>
-        </div>
-        <div style="flex:1;padding:6px 10px;text-align:center;">
-            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.5px;">REPUTATION</div>
-            <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#8b9a6b;margin-top:1px;">${rep}</div>
+        <div style="background:var(--bg-panel);border:1px solid var(--panel-border);padding:18px 20px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px;">
+                <div style="font-family:var(--font-serif,'IBM Plex Serif',serif);font-weight:400;font-size:44px;line-height:1;color:var(--text-bright,#f0efe6);font-variant-numeric:tabular-nums;letter-spacing:-0.025em;">
+                    <span style="font-family:var(--font-sans,'IBM Plex Sans',sans-serif);font-size:18px;color:#6a6660;margin-right:2px;vertical-align:top;line-height:44px;">$</span>${amountM}M
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.16em;text-transform:uppercase;color:#6a6660;margin-bottom:4px;">Lending Capital Demand</div>
+                    <div style="font-family:var(--font-serif,'IBM Plex Serif',serif);font-weight:500;font-size:22px;color:var(--gold,#c8a832);line-height:1;font-variant-numeric:tabular-nums;">+${lcDemand.toFixed(1)}</div>
+                </div>
+            </div>
+            <input type="range" min="${LR_AMOUNT_MIN}" max="${LR_AMOUNT_MAX}" step="${LR_AMOUNT_STEP}" value="${lrAmount}"
+                oninput="lrSetAmount(this.value)"
+                style="width:100%;height:4px;accent-color:var(--gold,#c8a832);" />
+            <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;color:#6a6660;text-transform:uppercase;margin-top:6px;">
+                <span>$5M</span><span>$500M</span>
+            </div>
         </div>
     </div>`;
 
-    // Loan Amount
-    html += `<div style="padding:10px 16px;border-bottom:1px solid var(--panel-border);">
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
-            <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">LOAN AMOUNT</span>
-            <span style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:#5a8aaa;">${hfFmtBig(lrAmount)}</span>
+    // Section II \u2014 Collateral
+    html += `<div style="margin-bottom:24px;">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;padding-bottom:8px;border-bottom:1px dashed var(--panel-border);">
+            <div style="font-family:var(--font-serif,'IBM Plex Serif',serif);font-style:italic;font-weight:500;font-size:16px;color:var(--text-bright,#f0efe6);">
+                <span style="font-family:var(--font-mono);font-style:normal;font-size:10px;color:#8a722f;margin-right:8px;letter-spacing:0.1em;">II.</span>Collateral Offered
+            </div>
+            <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.16em;text-transform:uppercase;color:#6a6660;">Optional \u25ca Stronger pledges earn better terms</span>
         </div>
-        <input type="range" min="1000000" max="5000000000" step="10000000" value="${lrAmount}" oninput="lrSetAmount(this.value)" style="width:100%;height:4px;accent-color:#5a8aaa;" />
-        <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:2px;"><span>$1M</span><span>$5B</span></div>
-    </div>`;
-
-    // Purpose
-    html += `<div style="padding:8px 16px;border-bottom:1px solid var(--panel-border);">
-        <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;margin-bottom:6px;">PURPOSE</div>
-        <div style="display:flex;flex-direction:column;gap:3px;">`;
-    for (const p of LR_PURPOSES) {
-        const active = lrPurpose === p.id;
-        html += `<div onclick="lrSetPurpose('${p.id}')" style="display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;background:${active ? 'rgba(90,138,170,0.06)' : 'transparent'};border:1px solid ${active ? '#5a8aaa44' : 'var(--panel-border)'};border-left:2px solid ${active ? '#5a8aaa' : 'transparent'};">
-            <span style="font-family:var(--font-mono);font-size:10px;color:${active ? '#5a8aaa' : '#6a6660'};width:14px;text-align:center;">${p.icon}</span>
-            <div><div style="font-size:11px;font-weight:600;color:${active ? 'var(--panel-text)' : '#9e9a92'};">${p.label}</div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">${p.desc}</div></div>
+        <div style="background:var(--bg-panel);border:1px solid var(--panel-border);padding:12px 16px;margin-bottom:10px;display:grid;grid-template-columns:1fr auto 1fr;gap:18px;align-items:center;">
+            <div>
+                <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.16em;text-transform:uppercase;color:#6a6660;margin-bottom:3px;">Total Pledged</div>
+                <div style="font-family:var(--font-serif,'IBM Plex Serif',serif);font-size:20px;color:var(--text-bright,#f0efe6);font-variant-numeric:tabular-nums;line-height:1;">${totalPledged === 0 ? '\u2014' : '$' + Math.round(totalPledged / 1e6) + '<span style="font-family:var(--font-sans,sans-serif);font-size:11px;color:#6a6660;margin-left:2px;">M</span>'}</div>
+            </div>
+            <div style="font-family:var(--font-serif,'IBM Plex Serif',serif);font-style:italic;font-size:18px;color:#8a722f;">\u25ca</div>
+            <div style="text-align:right;">
+                <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.16em;text-transform:uppercase;color:#6a6660;margin-bottom:3px;">Coverage of Loan</div>
+                <div style="font-family:var(--font-serif,'IBM Plex Serif',serif);font-size:20px;font-variant-numeric:tabular-nums;line-height:1;color:${coverageColor};">${coverageTier === 'unsecured' ? 'UNSECURED' : coveragePct + '<span style="font-family:var(--font-sans,sans-serif);font-size:11px;color:#6a6660;margin-left:2px;">%</span>'}</div>
+            </div>
         </div>`;
-    }
-    html += '</div></div>';
 
-    // Term
-    html += `<div style="padding:8px 16px;border-bottom:1px solid var(--panel-border);">
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-            <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">PREFERRED TERM</span>
-            <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--panel-text);">${lrTerm} months</span>
-        </div>
-        <div style="display:flex;gap:3px;">`;
-    for (const t of [12, 24, 36, 48, 60, 84, 120]) {
-        const active = lrTerm === t;
-        html += `<span onclick="lrSetTerm(${t})" style="flex:1;text-align:center;padding:4px 0;font-family:var(--font-mono);font-size:9px;font-weight:700;cursor:pointer;color:${active ? '#000' : '#6a6660'};background:${active ? '#5a8aaa' : 'transparent'};border:1px solid ${active ? '#5a8aaa' : 'var(--panel-border)'};">${t}</span>`;
-    }
-    html += `</div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:4px;">Lenders may offer different terms. This is your preference, not a guarantee.</div></div>`;
-
-    // Collateral
-    html += `<div style="padding:8px 16px;border-bottom:1px solid var(--panel-border);">
-        <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;margin-bottom:6px;">COLLATERAL OFFERED</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;">`;
-    for (const c of LR_COLLATERAL) {
-        const active = lrCollateral === c.id;
-        html += `<div onclick="lrSetCollateral('${c.id}')" style="padding:6px 8px;cursor:pointer;background:${active ? 'rgba(90,138,170,0.06)' : 'transparent'};border:1px solid ${active ? '#5a8aaa44' : 'var(--panel-border)'};">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${active ? '#5a8aaa' : '#6a6660'};">${c.label}</span>
-                <span style="font-family:var(--font-mono);font-size:7px;color:${c.riskColor};">${c.risk} RISK</span>
-            </div>
-            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:2px;">${c.desc}</div>
-        </div>`;
-    }
-    html += '</div></div>';
-
-    // Note
-    html += `<div style="padding:8px 16px;border-bottom:1px solid var(--panel-border);">
-        <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;margin-bottom:4px;">NOTE TO LENDERS (OPTIONAL)</div>
-        <textarea id="lr-note" rows="2" maxlength="300" onchange="lrNote=this.value"
-            placeholder="e.g., Expanding into Heavy Infrastructure. Equipment purchase will generate $12M+ in annual contract revenue."
-            style="width:100%;padding:6px 8px;font-family:var(--font-ui);font-size:10px;color:var(--panel-text);background:var(--bg-panel);border:1px solid var(--panel-border);outline:none;resize:none;box-sizing:border-box;line-height:1.5;">${escapeHtml(lrNote)}</textarea>
-    </div>`;
-
-    // Debt Impact
-    html += `<div style="padding:8px 16px;border-bottom:1px solid var(--panel-border);">
-        <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;margin-bottom:6px;">Debt Impact Preview</div>
-        <div style="background:var(--bg-panel);border:1px solid var(--panel-border);padding:6px 10px;">
-            <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--panel-border);">
-                <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">CURRENT DEBT</span>
-                <span style="font-family:var(--font-mono);font-size:9px;color:#9e9a92;">${hfFmtBig(debt)}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--panel-border);">
-                <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">+ THIS LOAN</span>
-                <span style="font-family:var(--font-mono);font-size:9px;color:#5a8aaa;">+${hfFmtBig(lrAmount)}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--panel-border);">
-                <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:var(--panel-text);">NEW TOTAL DEBT</span>
-                <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c55;">${hfFmtBig(newDebt)}</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;padding:4px 0;align-items:center;">
-                <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">DEBT HEALTH</span>
-                <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:0 4px;line-height:12px;color:${drColor};background:${drColor}12;border:1px solid ${drColor}25;">${drLabel}</span>
-            </div>
-        </div>
-    </div>`;
-
-    // Broadcast
-    html += `<div style="padding:8px 16px;border-bottom:1px solid var(--panel-border);">
-        <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;margin-bottom:6px;">This request will be sent to</div>`;
-    if (lrFinanceCorps.length > 0) {
-        html += '<div style="display:flex;flex-direction:column;gap:3px;">';
-        for (const fc of lrFinanceCorps) {
-            const typeColor = (fc.corp_company_type || '').toLowerCase() === 'state' ? '#c84' : (fc.corp_company_type || '').toLowerCase() === 'public' ? '#5c5' : '#c8a832';
-            html += `<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:var(--bg-panel);border:1px solid var(--panel-border);">
-                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#c8a832;">${escapeHtml((fc.abbreviation || fc.corp_ticker || '??').toUpperCase())}</span>
-                <span style="font-size:10px;color:var(--panel-text);flex:1;">${escapeHtml(fc.faction_name)}</span>
-                ${fc.corp_company_type ? `<span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:0 4px;line-height:12px;color:${typeColor};background:${typeColor}12;border:1px solid ${typeColor}25;">${escapeHtml(fc.corp_company_type.toUpperCase())}</span>` : ''}
+    if (lrCollateralProps.length === 0) {
+        html += `<div style="background:var(--bg-panel);border:1px solid var(--panel-border);padding:18px;text-align:center;font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;color:#6a6660;font-style:italic;">No corporate properties available to pledge.</div>`;
+    } else {
+        html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;">';
+        for (const p of lrCollateralProps) {
+            const sel = lrSelectedCollateralIds.has(p.id);
+            const valM = Math.round(Number(p.purchase_price || 0) / 1e6);
+            const propName = p.name || (p.role || 'Property').replace(/_/g, ' ').toUpperCase();
+            const nationName = p.nations?.name || '\u2014';
+            html += `<div onclick="lrToggleCollateral('${escapeHtml(p.id)}')" style="background:${sel ? 'rgba(200,168,50,0.04)' : 'var(--bg-panel)'};border:1px solid ${sel ? 'var(--gold,#c8a832)' : 'var(--panel-border)'};padding:10px 12px;cursor:pointer;display:grid;grid-template-columns:14px 1fr auto;gap:10px;align-items:center;">
+                <div style="width:12px;height:12px;border:1px solid ${sel ? 'var(--gold,#c8a832)' : 'var(--panel-border)'};background:${sel ? 'var(--gold,#c8a832)' : 'var(--bg-panel)'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#0e0e0c;">${sel ? '\u2713' : ''}</div>
+                <div style="min-width:0;">
+                    <div style="font-family:var(--font-serif,'IBM Plex Serif',serif);font-weight:500;font-size:13px;color:var(--text-bright,#f0efe6);line-height:1.2;">${escapeHtml(propName)}</div>
+                    <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.1em;color:#6a6660;text-transform:uppercase;margin-top:2px;">${escapeHtml(nationName)} \u25ca ${escapeHtml((p.role || '').replace(/_/g, ' '))}</div>
+                </div>
+                <div style="font-family:var(--font-mono);font-size:12px;font-weight:500;color:var(--green,#5cb85c);font-variant-numeric:tabular-nums;">$${valM}M</div>
             </div>`;
         }
         html += '</div>';
-    } else {
-        html += '<div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;text-align:center;padding:8px 0;">No finance corporations in this nation yet.</div>';
     }
-    html += `<div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:4px;">All finance corporations in your nation will see this request. You choose which offer to accept.</div></div>`;
+    html += '</div>';
 
-    // Estimated terms
-    html += `<div style="padding:8px 16px;">
-        <div style="padding:6px 10px;background:rgba(90,138,170,0.04);border:1px solid rgba(90,138,170,0.12);">
-            <div style="font-family:var(--font-mono);font-size:8px;color:#5a8aaa;letter-spacing:0.8px;margin-bottom:4px;">ESTIMATED MARKET TERMS</div>
-            <div style="display:flex;gap:12px;">
-                <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">EST. RATE RANGE</div><div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--panel-text);">${estRate}</div></div>
-                <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;">EST. MONTHLY PAYMENT</div><div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--panel-text);">~${hfFmtBig(estMonthly)}</div></div>
+    // Section III \u2014 Lenders
+    html += `<div>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;padding-bottom:8px;border-bottom:1px dashed var(--panel-border);">
+            <div style="font-family:var(--font-serif,'IBM Plex Serif',serif);font-style:italic;font-weight:500;font-size:16px;color:var(--text-bright,#f0efe6);">
+                <span style="font-family:var(--font-mono);font-style:normal;font-size:10px;color:#8a722f;margin-right:8px;letter-spacing:0.1em;">III.</span>Select Lenders
             </div>
-            <div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;margin-top:4px;">Estimates based on collateral offer and current market rates. Actual terms set by each lender.</div>
-        </div>
-    </div>`;
+            <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.16em;text-transform:uppercase;color:#6a6660;">${bankCount} of ${lrFinanceCorps.length} selected</span>
+        </div>`;
 
-    html += '</div>'; // close scrollable
+    if (lrFinanceCorps.length === 0) {
+        html += `<div style="background:var(--bg-panel);border:1px solid var(--panel-border);padding:18px;text-align:center;font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;color:#6a6660;font-style:italic;">No Finance corporations available to lend.</div>`;
+    } else {
+        html += '<div style="display:flex;flex-direction:column;gap:5px;">';
+        for (const fc of lrFinanceCorps) {
+            const sel = lrSelectedBankIds.has(fc.id);
+            const lc = Number(fc.corp_lending_capital ?? 0);
+            const ir = Number(fc.corp_interest_rates ?? 0);
+            const lev = Number(fc.corp_overleverage ?? 0);
+            const nationName = fc.nations?.name || '\u2014';
+            const compType = (fc.corp_company_type || 'PRIVATE').toUpperCase();
 
-    // Footer
-    html += `<div style="padding:10px 16px;border-top:1px solid var(--panel-border);background:var(--bg-panel);flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
-        <div style="display:flex;gap:12px;">
-            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">REQUESTING</div><div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:#5a8aaa;">${hfFmtBig(lrAmount)}</div></div>
-            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">COLLATERAL</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--panel-text);">${collObj.label}</div></div>
-            <div><div style="font-family:var(--font-mono);font-size:7px;color:#6a6660;letter-spacing:0.8px;">SENT TO</div><div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:#9e9a92;">${lrFinanceCorps.length} lender${lrFinanceCorps.length !== 1 ? 's' : ''}</div></div>
+            html += `<div onclick="lrToggleBank('${escapeHtml(fc.id)}')" style="background:${sel ? 'rgba(200,168,50,0.04)' : 'var(--bg-panel)'};border:1px solid ${sel ? 'var(--gold,#c8a832)' : 'var(--panel-border)'};padding:12px 14px;cursor:pointer;display:grid;grid-template-columns:16px 1fr 88px 88px 88px;gap:14px;align-items:center;">
+                <div style="width:12px;height:12px;border:1px solid ${sel ? 'var(--gold,#c8a832)' : 'var(--panel-border)'};background:${sel ? 'var(--gold,#c8a832)' : 'var(--bg-panel)'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#0e0e0c;">${sel ? '\u2713' : ''}</div>
+                <div style="min-width:0;">
+                    <div style="font-family:var(--font-serif,'IBM Plex Serif',serif);font-weight:500;font-size:14px;color:var(--text-bright,#f0efe6);line-height:1.2;">${escapeHtml(fc.faction_name || 'Bank')}</div>
+                    <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.12em;color:#6a6660;text-transform:uppercase;margin-top:3px;"><span style="color:var(--gold,#c8a832);">\u25ca</span> ${escapeHtml(nationName)} \u25ca ${escapeHtml(compType)}</div>
+                </div>
+                <div>
+                    <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.16em;color:#6a6660;text-transform:uppercase;margin-bottom:3px;">Lending Cap.</div>
+                    <div style="font-family:var(--font-mono);font-size:12px;font-weight:500;color:var(--text-bright,#f0efe6);font-variant-numeric:tabular-nums;">${lc.toFixed(lc % 1 === 0 ? 0 : 1)}</div>
+                    <div style="display:flex;gap:2px;margin-top:2px;">${lrPipMeter(lc, 'green')}</div>
+                </div>
+                <div>
+                    <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.16em;color:#6a6660;text-transform:uppercase;margin-bottom:3px;">Interest</div>
+                    <div style="font-family:var(--font-mono);font-size:12px;font-weight:500;color:var(--text-bright,#f0efe6);font-variant-numeric:tabular-nums;">${ir.toFixed(1)}%</div>
+                    <div style="display:flex;gap:2px;margin-top:2px;">${lrPipMeter(ir, 'rust')}</div>
+                </div>
+                <div>
+                    <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.16em;color:#6a6660;text-transform:uppercase;margin-bottom:3px;">Leverage</div>
+                    <div style="font-family:var(--font-mono);font-size:12px;font-weight:500;font-variant-numeric:tabular-nums;color:${lrLeverageColor(lev)};">${lev.toFixed(lev % 1 === 0 ? 0 : 1)}</div>
+                    <div style="display:flex;gap:2px;margin-top:2px;">${lrPipMeter(lev, 'leverage')}</div>
+                </div>
+            </div>`;
+        }
+        html += '</div>';
+    }
+    html += '</div>';
+
+    html += '</div>'; // close scrollable body
+
+    // \u2500\u2500 FOOTER \u2500\u2500
+    html += `<div style="padding:14px 24px;border-top:1px solid var(--panel-border);background:var(--bg-panel);flex-shrink:0;display:flex;justify-content:space-between;align-items:center;gap:24px;">
+        <div style="display:flex;gap:24px;">
+            <div>
+                <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:#6a6660;margin-bottom:2px;">Requesting</div>
+                <div style="font-family:var(--font-serif,'IBM Plex Serif',serif);font-weight:500;font-size:16px;color:var(--gold,#c8a832);font-variant-numeric:tabular-nums;line-height:1;">$${amountM}M</div>
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:#6a6660;margin-bottom:2px;">Collateral</div>
+                <div style="font-family:var(--font-serif,'IBM Plex Serif',serif);font-weight:500;font-size:16px;color:${coverageColor};font-variant-numeric:tabular-nums;line-height:1;">${totalPledged === 0 ? 'Unsecured' : '$' + Math.round(totalPledged / 1e6) + 'M'}</div>
+            </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:#6a6660;margin-bottom:2px;">Sent To</div>
+                <div style="font-family:var(--font-serif,'IBM Plex Serif',serif);font-weight:500;font-size:16px;color:var(--text-bright,#f0efe6);font-variant-numeric:tabular-nums;line-height:1;">${bankCount} Lender${bankCount === 1 ? '' : 's'}</div>
+            </div>
         </div>
         <div style="display:flex;gap:6px;">
-            <div onclick="lrClose()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid var(--panel-border);cursor:pointer;">CANCEL</div>
-            <div id="lr-submit-btn" onclick="lrSubmit()" style="padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:#5a8aaa;cursor:pointer;">SUBMIT REQUEST</div>
+            <div onclick="lrClose()" style="padding:9px 18px;font-family:var(--font-mono);font-size:10px;font-weight:500;letter-spacing:0.16em;text-transform:uppercase;color:#6a6660;border:1px solid var(--panel-border);cursor:pointer;">Cancel</div>
+            <div id="lr-submit-btn" onclick="${submitDisabled ? '' : 'lrSubmit()'}" style="padding:9px 22px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:#0e0e0c;background:var(--gold,#c8a832);border:1px solid var(--gold,#c8a832);cursor:${submitDisabled ? 'not-allowed' : 'pointer'};${submitDisabled ? 'opacity:0.4;' : ''}">Submit Request \u25b8</div>
         </div>
     </div>`;
-    html += '<div id="lr-error" style="padding:4px 16px;font-family:var(--font-mono);font-size:8px;color:#c55;display:none;"></div>';
+    html += '<div id="lr-error" style="padding:6px 24px;font-family:var(--font-mono);font-size:9px;color:var(--red,#d9534f);display:none;background:var(--bg-panel);border-top:1px solid var(--panel-border);"></div>';
 
     container.innerHTML = html;
 }
@@ -933,42 +983,39 @@ let _lrSubmitting = false;
 async function lrSubmit() {
     if (!faction || !shard || _lrSubmitting) return;
     const errEl = document.getElementById('lr-error');
+    const showErr = msg => {
+        if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+    };
 
-    if (lrAmount < 1000000) { errEl.textContent = 'Minimum loan amount is $1M.'; errEl.style.display = 'block'; return; }
-    if (lrAmount > 5000000000) { errEl.textContent = 'Maximum loan amount is $5B.'; errEl.style.display = 'block'; return; }
-
-    const purposeLabel = (LR_PURPOSES.find(p => p.id === lrPurpose) || {}).label || lrPurpose;
-    const fullPurpose = purposeLabel + (lrNote ? ' \u2014 ' + lrNote : '');
+    if (lrAmount < LR_AMOUNT_MIN) return showErr(`Minimum loan amount is $${LR_AMOUNT_MIN/1e6}M.`);
+    if (lrAmount > LR_AMOUNT_MAX) return showErr(`Maximum loan amount is $${LR_AMOUNT_MAX/1e6}M.`);
+    if (lrSelectedBankIds.size === 0) return showErr('Select at least one lender.');
 
     const btn = document.getElementById('lr-submit-btn');
     _lrSubmitting = true;
-    btn.style.opacity = '0.5';
-    btn.style.pointerEvents = 'none';
+    if (btn) { btn.style.opacity = '0.5'; btn.style.pointerEvents = 'none'; }
 
-    const currentTick = shard.current_tick || 0;
-    const { error } = await _supabase.from('finance_loan_requests').insert({
-        requesting_faction_id: faction.id,
-        nation_id: faction.nation_id,
-        amount: lrAmount,
-        term_months: lrTerm,
-        purpose: fullPurpose,
-        created_tick: currentTick,
-        expires_tick: currentTick + 5,
+    // Defaults: term/APR/grade aren't surfaced in this UI yet. Lenders
+    // will counter-offer terms in C3+. Default 60-tick (5-year) term,
+    // 0% requested APR (bank prices it), grade B (mid-tier).
+    const targetBankIds = Array.from(lrSelectedBankIds);
+    const { data, error } = await _supabase.rpc('submit_loan_request', {
+        p_requesting_faction_id: faction.id,
+        p_target_bank_ids:       targetBankIds,
+        p_principal:             lrAmount,
+        p_term_ticks:            60,
+        p_requested_apr:         0,
+        p_risk_grade:            'B',
+        p_purpose:               null,
+        p_expiry_ticks:          6,
     });
 
-    btn.style.opacity = '1';
-    btn.style.pointerEvents = 'auto';
-
-    if (error) {
-        _lrSubmitting = false;
-        errEl.textContent = 'Failed to submit: ' + error.message;
-        errEl.style.display = 'block';
-        btn.style.opacity = '1';
-        btn.style.pointerEvents = 'auto';
-        return;
-    }
-
     _lrSubmitting = false;
+    if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+
+    if (error) return showErr('Failed to submit: ' + error.message);
+    if (data && data.success === false) return showErr(data.error || 'Loan request rejected.');
+
     lrClose();
 }
 
@@ -2121,9 +2168,8 @@ window.actSubmitDonation = actSubmitDonation;
 window.donateSelectParty = donateSelectParty;
 window.lrClose = lrClose;
 window.lrSetAmount = lrSetAmount;
-window.lrSetPurpose = lrSetPurpose;
-window.lrSetTerm = lrSetTerm;
-window.lrSetCollateral = lrSetCollateral;
+window.lrToggleBank = lrToggleBank;
+window.lrToggleCollateral = lrToggleCollateral;
 window.lrSubmit = lrSubmit;
 window.openExecSearch = openExecSearch;
 window.closeExecSearch = closeExecSearch;

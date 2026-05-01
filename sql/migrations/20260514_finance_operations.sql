@@ -50,7 +50,7 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 UPDATE factions
    SET corp_lending_capital = 3,
        corp_interest_rates  = 3,
-       corp_overleverage    = 3
+       corp_overleverage    = 0
  WHERE faction_type = 'corporation'
    AND corp_sector  = 'Finance';
 
