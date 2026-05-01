@@ -1334,18 +1334,52 @@ function renderArticles() {
                         '<strong>The constitution becomes far easier to rewrite.</strong>' +
                     '</div>' +
                 '</div>';
-        } else {
-            // Electoral Makeup subtype (default)
+        } else if (bill.proposed_monarchy_reform) {
+            // Monarchy Reform subtype — keys stored without the
+            // "monarchy_" prefix (see laws.html billInsert mapping).
+            const reformKey = bill.proposed_monarchy_reform;
+            const MR_TITLES = {
+                freedom_of_press:        '📰 Freedom of the Press Act',
+                right_of_assembly:       '✊ Right of Assembly Act',
+                independent_judiciary:   '⚖️ Independent Judiciary Act',
+                parliamentary_inquiry:   '🔍 Parliamentary Inquiry Act',
+                civil_liberties_charter: '📜 Civil Liberties Charter',
+                electoral_reform:        '🗳 Electoral Reform Act',
+                parliamentary_supremacy: '🏛 Parliamentary Supremacy Act',
+                act_of_abdication:       '👑 Act of Abdication',
+            };
+            const MR_HEADLINE = {
+                freedom_of_press:        'Press Freedom +5, Freedom Index +3, Legitimacy +2.',
+                right_of_assembly:       'Freedom +3, Civil Unrest -2, Stability +2.',
+                independent_judiciary:   'Judicial Independence +5, Legitimacy -2, Corruption -3.',
+                parliamentary_inquiry:   'Corruption -3, Legitimacy -3, Transparency +3.',
+                civil_liberties_charter: 'Freedom +5, Stability +2, Legitimacy -3, Happiness +3.',
+                electoral_reform:        'Freedom +3, Legitimacy -5, Political Engagement +5.',
+                parliamentary_supremacy: 'Legitimacy -5, Stability -3, Freedom +5.',
+                act_of_abdication:       'Stability -5, Civil Unrest +10, Freedom +8. Dissolves the monarchy.',
+            };
+            const title = MR_TITLES[reformKey] || 'Monarchy Reform';
+            const headline = MR_HEADLINE[reformKey] || 'Reforms the monarchy.';
+            foundationalHTML =
+                '<div class="article preamble" style="border-left-color:var(--purple);">' +
+                    '<div class="article-number" style="color:var(--purple);">FOUNDATIONAL LAW</div>' +
+                    '<div class="article-title">' + escapeHtml(title) + '</div>' +
+                    '<div class="article-description">' + (bill.preamble || 'This bill proposes a reform to the monarchy.') + '</div>' +
+                '</div>' +
+                '<div class="repeal-notice" style="border-color:var(--purple);">' +
+                    '<div class="repeal-notice-icon">📜</div>' +
+                    '<div class="repeal-notice-text">' + escapeHtml(headline) + '</div>' +
+                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                        'Requires <strong style="color:var(--purple);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.' +
+                    '</div>' +
+                '</div>';
+        } else if (bill.proposed_seats != null) {
+            // Electoral Makeup subtype — only when proposed_seats is
+            // actually set on the bill. Previously this was the
+            // catch-all fallback, which mislabeled every other
+            // foundational subtype the chain didn't recognize.
             const currentSeatsDisplay = GAME_CONFIG.TOTAL_SEATS;
-            let proposedSeats = bill.proposed_seats;
-            if (!proposedSeats && bill.preamble) {
-                const match = bill.preamble.match(/from\s+\d+\s+to\s+(\d+)/i);
-                if (match) proposedSeats = parseInt(match[1], 10);
-            }
-            if (!proposedSeats) {
-                console.warn('[bill.html] proposed_seats is null for foundational bill', bill.id);
-                proposedSeats = currentSeatsDisplay;
-            }
+            const proposedSeats = bill.proposed_seats;
             const change = proposedSeats - currentSeatsDisplay;
             const changeText = change > 0 ? `+${change}` : `${change}`;
             foundationalHTML =
@@ -1361,6 +1395,23 @@ function renderArticles() {
                         'Requires <strong style="color:var(--purple);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.<br>' +
                         'If passed: legislature resized, seats redistributed proportionally.<br>' +
                         'No ideology penalties apply to this bill.' +
+                    '</div>' +
+                '</div>';
+        } else {
+            // Unknown foundational subtype — render a generic notice
+            // from the bill's own name + preamble so we don't mislabel
+            // it as something it isn't.
+            console.warn('[bill.html] Unrecognized foundational bill subtype', bill.id, bill);
+            foundationalHTML =
+                '<div class="article preamble" style="border-left-color:var(--purple);">' +
+                    '<div class="article-number" style="color:var(--purple);">FOUNDATIONAL LAW</div>' +
+                    '<div class="article-title">' + escapeHtml(bill.bill_name || 'Foundational Law') + '</div>' +
+                    '<div class="article-description">' + (bill.preamble || 'This bill proposes a foundational change.') + '</div>' +
+                '</div>' +
+                '<div class="repeal-notice" style="border-color:var(--purple);">' +
+                    '<div class="repeal-notice-icon">📜</div>' +
+                    '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                        'Requires <strong style="color:var(--purple);">two-thirds supermajority</strong> (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.' +
                     '</div>' +
                 '</div>';
         }
