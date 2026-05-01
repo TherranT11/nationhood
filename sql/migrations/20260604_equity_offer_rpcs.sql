@@ -30,6 +30,10 @@
 -- ─────────────────────────────────────────────────────────────
 -- submit_equity_raise: borrower posts a raise targeting Finance corps
 -- ─────────────────────────────────────────────────────────────
+-- Caller passes p_requesting_faction_id explicitly (matches the
+-- L2 submit_loan_request pattern). The RPC verifies the caller
+-- owns that faction and that it's a non-Finance corp.
+--
 -- Auto-classifies series from the count of prior funded raises by
 -- this borrower (every equity_positions row counts, regardless of
 -- pending_payout / active / closed). Clamped at 'Z' for late-stage
@@ -37,12 +41,23 @@
 -- replace 'Z' with 'LATE' / 'PRE-IPO' / etc. without churning a
 -- CHECK constraint.
 -- ─────────────────────────────────────────────────────────────
+
+-- Drop any pre-audit version of submit_equity_raise. Audit pass
+-- found the original signature was missing p_requesting_faction_id
+-- and picked the first owned corp non-deterministically, which
+-- misattributed raises for users with multiple corps. The DROP is
+-- idempotent (IF EXISTS) and runs before the CREATE OR REPLACE so
+-- both pre-audit and re-applied versions converge on the same
+-- corrected signature.
+DROP FUNCTION IF EXISTS submit_equity_raise(UUID[], BIGINT, NUMERIC, TEXT, INT);
+
 CREATE OR REPLACE FUNCTION submit_equity_raise(
-    p_target_finance_ids UUID[],
-    p_amount             BIGINT,
-    p_equity_pct         NUMERIC,
-    p_purpose            TEXT,
-    p_expires_in_ticks   INT DEFAULT 12
+    p_requesting_faction_id UUID,
+    p_target_finance_ids    UUID[],
+    p_amount                BIGINT,
+    p_equity_pct            NUMERIC,
+    p_purpose               TEXT,
+    p_expires_in_ticks      INT DEFAULT 12
 ) RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -61,16 +76,17 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
     END IF;
 
-    -- Ownership: the caller must own a faction. The /first/ owned
-    -- corporation in their wallet is taken as the requester (matches
-    -- the existing equity-apply.js pattern where `faction` is the
-    -- active corp at action time).
-    SELECT * INTO v_borrower FROM factions
-     WHERE faction_type = 'corporation'
-       AND (id = v_user OR linked_user_id = v_user)
-     LIMIT 1;
+    -- Caller owns the requesting faction.
+    SELECT * INTO v_borrower FROM factions WHERE id = p_requesting_faction_id;
     IF v_borrower.id IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'error', 'No corporation linked to this account');
+        RETURN jsonb_build_object('success', false, 'error', 'Requesting faction not found');
+    END IF;
+    IF v_borrower.id <> v_user AND v_borrower.linked_user_id IS DISTINCT FROM v_user THEN
+        RETURN jsonb_build_object('success', false, 'error', 'You do not own this faction');
+    END IF;
+    IF v_borrower.faction_type <> 'corporation' THEN
+        RETURN jsonb_build_object('success', false,
+            'error', 'Only corporations can raise equity');
     END IF;
 
     -- Hard sector gate: Finance corps fund equity, they do not raise it.
@@ -142,10 +158,10 @@ BEGIN
 END;
 $func$;
 
-GRANT EXECUTE ON FUNCTION submit_equity_raise(UUID[], BIGINT, NUMERIC, TEXT, INT) TO authenticated;
+GRANT EXECUTE ON FUNCTION submit_equity_raise(UUID, UUID[], BIGINT, NUMERIC, TEXT, INT) TO authenticated;
 
-COMMENT ON FUNCTION submit_equity_raise(UUID[], BIGINT, NUMERIC, TEXT, INT) IS
-    'Borrower posts an equity raise targeting Finance corps. Auto-classifies series A/B/C from prior funded raise count. Returns raise_id + assigned series.';
+COMMENT ON FUNCTION submit_equity_raise(UUID, UUID[], BIGINT, NUMERIC, TEXT, INT) IS
+    'Borrower posts an equity raise targeting Finance corps. Caller passes p_requesting_faction_id explicitly (matches submit_loan_request). Auto-classifies series A/B/C from prior funded raise count. Returns raise_id + assigned series.';
 
 
 -- ─────────────────────────────────────────────────────────────
