@@ -4123,16 +4123,18 @@ async function processEquipmentDeliveries(supabase, currentTick) {
 // .eq('status', 'pending') filter excludes rows that already terminated.
 async function processBankLoanExpiry(supabase, currentTick) {
     const results = { expiredRequests: 0, expiredOffersCascade: 0, expiredOffersOrphan: 0 };
-    const nowIso = new Date().toISOString();
+    // Single payload reused across both tables — every expiry update sets
+    // the same three columns identically.
+    const expirePayload = {
+        status: 'expired',
+        resolved_at_tick: currentTick,
+        updated_at: new Date().toISOString(),
+    };
 
     // 1. Flip pending requests past their expiry to 'expired'.
     const { data: expiredReqs, error: reqErr } = await supabase
         .from('bank_loan_requests')
-        .update({
-            status: 'expired',
-            resolved_at_tick: currentTick,
-            updated_at: nowIso,
-        })
+        .update(expirePayload)
         .eq('status', 'pending')
         .lte('expires_at_tick', currentTick)
         .select('id');
@@ -4148,11 +4150,7 @@ async function processBankLoanExpiry(supabase, currentTick) {
         const expiredIds = expiredReqs.map(r => r.id);
         const { data: cascadeOffers, error: cascadeErr } = await supabase
             .from('bank_loan_offers')
-            .update({
-                status: 'expired',
-                resolved_at_tick: currentTick,
-                updated_at: nowIso,
-            })
+            .update(expirePayload)
             .in('request_id', expiredIds)
             .eq('status', 'pending')
             .select('id');
@@ -4165,14 +4163,13 @@ async function processBankLoanExpiry(supabase, currentTick) {
 
     // 3. Defensive catch-all for orphan offers whose own expires_at_tick
     //    has passed but whose parent request hasn't (shouldn't happen
-    //    given the schema invariant; runs anyway).
+    //    given the schema invariant; runs anyway). Also recovers any
+    //    rows missed if Step 2 hit a transient failure — those offers
+    //    have inherited their parent's now-passed expires_at_tick and
+    //    will be caught here.
     const { data: orphanOffers, error: orphanErr } = await supabase
         .from('bank_loan_offers')
-        .update({
-            status: 'expired',
-            resolved_at_tick: currentTick,
-            updated_at: nowIso,
-        })
+        .update(expirePayload)
         .eq('status', 'pending')
         .lte('expires_at_tick', currentTick)
         .select('id');
