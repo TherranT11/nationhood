@@ -6053,6 +6053,14 @@ async function refreshFactionAndCash() {
 // corp_contract_events (project events on this corp's projects) and
 // bank_loan_offers (incoming offers on requests this corp opened).
 // One combined render in pi-list, offers first.
+//
+// NOTE on duplication: this block intentionally mirrors the L4.A
+// implementation in corp-operations.html rather than living in a
+// shared module. The two pages have different visual languages (co-
+// vs pi- chrome, fmtMoney vs hfFmtBig, different card markup); a
+// shared module would either accumulate config knobs or force
+// premature visual coupling. Revisit if/when a third page needs the
+// pattern or both pages stabilize on identical chrome.
 let _pressingIssues = [];
 let _receivedOffers = [];
 let _ackInflight = new Set();
@@ -6203,6 +6211,12 @@ function renderPressingIssues() {
     list.innerHTML = offerCards.concat(eventCards).join('');
 }
 
+// Accept reloads Pressing Issues regardless of outcome — on success
+// the request flips to 'approved' and every sibling offer auto-rejects
+// (they all need to disappear); on a server-side failure (offer or
+// request changed state in a race) the reload syncs visible cards to
+// canonical state. Cash doesn't move until the bank disburses, so no
+// refreshFactionAndCash call here.
 async function acceptLoanOffer(offerId) {
     if (!offerId || _loanOfferInflight.has(offerId)) return;
     _loanOfferInflight.add(offerId);
