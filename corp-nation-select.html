@@ -405,7 +405,7 @@ body {
   <div class="page-header">
     <h1>Home Nation</h1>
     <div class="title">Choose Your Home Nation</div>
-    <div class="subtitle">Select the nation where your corporation will be headquartered. Industry demand shows how many competitors already operate in your subsector.</div>
+    <div class="subtitle">Select the nation where your corporation will be headquartered. Industry demand shows how many competitors already operate in your sector.</div>
   </div>
 
   <!-- Corp summary -->
@@ -451,10 +451,8 @@ body {
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 import { getNationNames } from './js/game/political-actions.js';
-import { getStartingEquipment } from './js/game/equipment.js';
 import { hasElectedPresident } from './js/game/government-types.js';
 import { generateExecutivePool, createCEORecord } from './js/game/corp-executives.js';
-import { VESSEL_SPECS } from './js/game/vessels.js';
 
 const FLAG_URLS = {
     'Melizea': 'assets/flags/Melizea.png',
@@ -490,7 +488,7 @@ const NATION_CULTURE = {
 let currentUser = null;
 let corpSetup = null;
 let allNations = [];
-let corpsByNation = {};  // nation_id → array of corp factions in this subsector
+let corpsByNation = {};  // nation_id → array of corp factions in this sector
 let selectedNationId = null;
 let activeContinent = 'Crucera';
 // Company details state (filled after nation selection)
@@ -508,7 +506,7 @@ async function init() {
     const raw = sessionStorage.getItem('corp_setup');
     if (!raw) { window.location.href = 'corp-setup.html'; return; }
     corpSetup = JSON.parse(raw);
-    if (!corpSetup.sector || !corpSetup.subsector) {
+    if (!corpSetup.sector) {
         window.location.href = 'corp-setup.html';
         return;
     }
@@ -516,13 +514,14 @@ async function init() {
     // Render corp summary tags
     renderCorpSummary();
 
-    // Load nations + count corps per nation for this subsector
+    // Load nations + count corps per nation in this sector (used for the
+    // "Industry Demand" badge — fewer competitors = higher demand).
     const [nationsRes, corpsRes] = await Promise.all([
         _supabase.from('nations').select('*, nation_profiles(flag_url)').order('name'),
         _supabase.from('factions')
-            .select('id, nation_id, corp_subsector')
+            .select('id, nation_id, corp_sector')
             .eq('faction_type', 'corporation')
-            .eq('corp_subsector', corpSetup.subsector),
+            .eq('corp_sector', corpSetup.sector),
     ]);
 
     allNations = nationsRes.data || [];
@@ -542,7 +541,7 @@ async function init() {
 
 function renderCorpSummary() {
     const el = document.getElementById('corp-summary-tags');
-    const tags = [corpSetup.sector, corpSetup.subsector, corpSetup.companyType];
+    const tags = [corpSetup.sector, corpSetup.companyType].filter(Boolean);
     if (corpSetup.corpName) tags.push(corpSetup.corpName);
     if (corpSetup.ticker) tags.push(corpSetup.ticker);
     el.innerHTML = tags.map(t => `<span class="corp-summary__tag">${escapeHtml(t)}</span>`).join('');
@@ -620,7 +619,7 @@ function renderNations() {
                         <span class="stat-row__value">${corpTax}</span>
                     </div>
                     <div class="stat-row">
-                        <span class="stat-row__label">${escapeHtml(corpSetup.subsector)}</span>
+                        <span class="stat-row__label">${escapeHtml(corpSetup.sector)} Demand</span>
                         <span class="stat-row__value">
                             <span class="demand-badge ${demand.cls}">${demand.label}</span>
                             <span style="font-size:9px;color:var(--text-dim);margin-left:4px;">(${corpCount} corp${corpCount !== 1 ? 's' : ''})</span>
@@ -798,16 +797,46 @@ async function confirmNation() {
         const ceoLast = lastNames[Math.floor(Math.random() * lastNames.length)];
         const ceoAge = 40 + Math.floor(Math.random() * 36);
 
-        // Starting financials, scaled by currency strength + inflation for Finance corps
-        // PHASE 7 TODO: currency_strength drops in Phase 9
-        const currencyMult = (Number(nation.currency_strength) || 50) / 50;
-        // PHASE 7 TODO: inflation drops in Phase 9
+        // ── Starting cash ──
+        // Construction: $50M baseline scaled by the host nation's standard
+        // of living. Linear formula maps SoL 0→0.5×, 50→1.0×, 100→1.5×,
+        // so starting cash spans $25M at SoL 0 to $75M at SoL 100 with the
+        // $50M number landing at the neutral SoL 50.
+        // Other sectors keep the legacy currency/inflation-scaled formula
+        // until they get their own creation refresh.
+        const currencyMult  = (Number(nation.currency_strength) || 50) / 50;
         const inflationMult = corpSetup.sector === 'Finance'
-            ? Math.max(0.5, 1 - (Number(nation.inflation) || 0) / 200) // high inflation reduces starting capital
+            ? Math.max(0.5, 1 - (Number(nation.inflation) || 0) / 200)
             : 1;
-        const baseCash = corpSetup.sector === 'Finance' ? 225_000_000 : corpSetup.sector === 'Shipping' ? 80_000_000 : 36_000_000;
-        const startingCash = Math.round(baseCash * currencyMult * inflationMult);
-        const startingLoans = Math.round(8_000_000 * currencyMult);
+        let startingCash;
+        if (corpSetup.sector === 'Construction') {
+            // ?? not || so SoL=0 stays 0 (gives $25M) instead of getting
+            // coerced to the 50 default (which would give $50M).
+            const sol = Number(nation.standard_of_living ?? 50);
+            startingCash = Math.round(50_000_000 * (0.5 + sol / 100));
+        } else {
+            const baseCash = corpSetup.sector === 'Finance'  ? 225_000_000
+                           : corpSetup.sector === 'Shipping' ?  80_000_000
+                           :                                    36_000_000;
+            startingCash = Math.round(baseCash * currencyMult * inflationMult);
+        }
+
+        // ── Construction starting stats (per spec). Other sectors fall
+        //    through to the schema defaults (assets=0, market_share=0,
+        //    innovation=0, reputation=5, productivity=0, employee_wages=0,
+        //    work_crews=0, regulatory_standing=0, supply_chain=0).
+        //    Sector-specific seeding for Finance/Shipping comes later.
+        const sectorSeeds = corpSetup.sector === 'Construction' ? {
+            corp_assets:               2,
+            corp_market_share:         1,
+            corp_innovation:           5,
+            corp_reputation:           5,
+            corp_productivity:         5,
+            corp_employee_wages:       5,
+            corp_work_crews:           3,
+            corp_regulatory_standing:  3,
+            corp_supply_chain:         3,
+        } : {};
 
         // Check if user already has a faction (party) — if so, create corp as linked faction
         const { data: existingFaction } = await _supabase
@@ -820,7 +849,12 @@ async function confirmNation() {
         const isLinkedCorp = existingFaction && existingFaction.faction_type === 'party';
         const corpId = isLinkedCorp ? crypto.randomUUID() : currentUser.id;
 
-        // Insert (new linked corp) or upsert (first faction for this user)
+        // Insert (new linked corp) or upsert (first faction for this user).
+        // Dropped fields: corp_subsector / corp_loans / corp_general_workforce
+        // / corp_skilled_workforce / corp_innovative_workforce — all removed
+        // in 20260430_corp_simplify_v2.sql / Phase 1 of the corp redesign.
+        // The 100% corp_ownership row is auto-seeded by the
+        // trg_corp_ownership_auto_seed trigger; no explicit insert here.
         const corpRow = {
             id: corpId,
             faction_type: 'corporation',
@@ -839,19 +873,12 @@ async function confirmNation() {
             founded_tick: currentTick,
             action_points: 0,
             corp_sector: corpSetup.sector,
-            corp_subsector: corpSetup.subsector,
             corp_company_type: companyType,
             corp_ticker: ticker,
             corp_cash_reserves: startingCash,
-            corp_loans: startingLoans,
-            corp_general_workforce: 375,
-            corp_skilled_workforce: 100,
-            corp_innovative_workforce: 25,
-            corp_reputation: corpSetup.subsector === 'Megaprojects' ? 85
-                : corpSetup.subsector === 'Industrial Construction' ? 50
-                : 65,
             abandoned_at: null,
             custom_logo_url: null,
+            ...sectorSeeds,
         };
 
         if (isLinkedCorp) {
@@ -863,81 +890,12 @@ async function confirmNation() {
             if (upsertError) throw upsertError;
         }
 
-        // Set fleet capacity for shipping corps + seed starting vessels
-        if (corpSetup.sector === 'Shipping') {
-            const fleetCapacity = corpSetup.subsector === 'Bulk Cargo' ? 3 : 2;
-            await _supabase.from('factions').update({
-                shipping_fleet_capacity: fleetCapacity,
-                shipping_fleet_deployed: 0,
-            }).eq('id', isLinkedCorp ? currentUser.id : corpRow.id);
-
-            // Seed starting vessels based on subsector. Specs come from
-            // js/game/vessels.js (shared with market-buy and shipyard-order
-            // paths) so capacity and maintenance can't drift per entry point.
-            const STARTING_FLEET = {
-                'Bulk Cargo':             [{ cls: 'Coastal', idx: 1 }, { cls: 'Coastal', idx: 2 }, { cls: 'Reefer', idx: 3 }],
-                'Container Freight':      [{ cls: 'Coastal', idx: 1 }, { cls: 'Container', idx: 2 }],
-                'Specialized Transport':  [{ cls: 'Tanker', idx: 1 }, { cls: 'Bulk', idx: 2 }],
-            };
-
-            const startingShips = STARTING_FLEET[corpSetup.subsector] || STARTING_FLEET['Bulk Cargo'];
-            const vesselRows = startingShips.map(ship => {
-                const specs = VESSEL_SPECS[ship.cls];
-                return {
-                    faction_id: corpId,
-                    nation_id: nation.id,
-                    vessel_name: ticker + '-' + corpName.split(' ')[0] + ' ' + ship.idx,
-                    vessel_class: ship.cls,
-                    condition: 85 + Math.floor(Math.random() * 16), // 85-100
-                    fuel: 70 + Math.floor(Math.random() * 31),      // 70-100
-                    status: 'in_port',
-                    capacity_dwt: specs.capacity_dwt,
-                    capacity_unit: specs.capacity_unit,
-                    base_maintenance: specs.base_maintenance,
-                    fuel_capacity: specs.fuel_capacity,
-                    purchase_price: specs.purchase_price,
-                    built_at_tick: currentTick,
-                    current_port_nation_id: nation.id,
-                };
-            });
-            const { error: vesselSeedErr } = await _supabase.from('corp_vessels').insert(vesselRows);
-            if (vesselSeedErr) console.warn('Failed to seed starting fleet:', vesselSeedErr.message);
-        }
-
-        // Seed starting equipment + warehouse for construction corps
-        if (corpSetup.sector === 'Construction') {
-            const startingEquip = getStartingEquipment();
-            if (startingEquip.length > 0) {
-                const equipRows = startingEquip.map(e => ({
-                    faction_id: currentUser.id,
-                    nation_id: nation.id,
-                    equipment_key: e.equipment_key,
-                    tier: e.tier,
-                    owned: e.owned,
-                    deployed: e.deployed,
-                    condition: e.condition,
-                    maintenance_per_tick: e.maintenance_per_tick,
-                }));
-                await _supabase.from('corp_equipment').insert(equipRows);
-            }
-
-            // Starting warehouse for construction corps
-            await _supabase.from('corp_properties').insert({
-                faction_id: currentUser.id,
-                nation_id: nation.id,
-                name: 'Starting Warehouse — ' + nation.name,
-                type: 'warehouse',
-                role: 'warehouse',
-                style: 'Basic',
-                capacity: 100,
-                purchase_price: 15000000,
-                monthly_maintenance: 75000,
-                condition: 95,
-                city: nation.capital || nation.name,
-                purchased_at_tick: currentTick,
-                is_active: true,
-            });
-        }
+        // Legacy sector-specific seeding (Shipping vessels, Construction
+        // equipment + starting warehouse) targeted tables that v2 dropped
+        // (corp_vessels / corp_equipment / corp_properties). Removed here
+        // along with the orphan imports below; sector-specific starting
+        // assets live on the corp row now (corp_assets / corp_work_crews
+        // / etc., seeded above for Construction).
 
         // Seed CEO executive record from faction leader data
         const corpFactionId = isLinkedCorp ? corpId : currentUser.id;

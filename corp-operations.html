@@ -767,6 +767,108 @@ body.corp-operations-construction::before {
   color: var(--co-accent-gold);
 }
 
+/* ── BID MODAL (rich, redesigned) ── */
+.co-bid-modal { max-width: 580px; }
+.co-bid-section { margin-bottom: 18px; }
+.co-bid-section-title {
+  font-family: var(--co-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--co-text-tertiary);
+  margin-bottom: 10px;
+}
+.co-bid-section-help {
+  font-size: 11px;
+  color: var(--co-text-secondary);
+  margin-top: 8px;
+  line-height: 1.45;
+}
+.co-bid-button-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.co-bid-pill {
+  flex: 1;
+  min-width: 60px;
+  background: var(--co-bg-secondary);
+  border: 1px solid var(--co-line-bright);
+  color: var(--co-text-primary);
+  font-family: var(--co-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-align: center;
+  padding: 10px 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.co-bid-pill:hover:not([disabled]):not(.active) {
+  border-color: var(--co-accent-gold);
+  color: var(--co-accent-gold);
+}
+.co-bid-pill.active {
+  background: var(--co-accent-gold);
+  border-color: var(--co-accent-gold);
+  color: var(--co-bg-primary);
+  font-weight: 600;
+}
+.co-bid-pill[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.co-bid-pill .sub {
+  display: block;
+  margin-top: 3px;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  color: var(--co-text-tertiary);
+}
+.co-bid-pill.active .sub { color: rgba(13,14,12,0.7); }
+
+/* Computed-summary box (what the issuer will see) */
+.co-bid-summary {
+  border: 1px dashed var(--co-line-bright);
+  background: var(--co-bg-secondary);
+  padding: 14px 16px;
+  margin-top: 4px;
+}
+.co-bid-summary-title {
+  font-family: var(--co-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--co-accent-gold-dim);
+  margin-bottom: 10px;
+}
+.co-bid-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-family: var(--co-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.co-bid-summary-row:last-child { border-bottom: none; }
+.co-bid-summary-row .label { color: var(--co-text-tertiary); }
+.co-bid-summary-row .value {
+  color: var(--co-text-primary);
+  font-family: var(--co-serif);
+  font-size: 16px;
+  font-style: italic;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.co-bid-summary-row .value .muted { color: var(--co-text-tertiary); font-size: 11px; font-style: normal; }
+.co-bid-summary-row .value.warn { color: var(--co-accent-red); }
+.co-bid-summary-row .value.good { color: var(--co-accent-green); }
+
 /* Toast */
 .co-toast {
   position: fixed;
@@ -1385,24 +1487,8 @@ async function handleContractClick(e) {
         return;
     }
     if (action === 'bid') {
-        if (_bidInflight) return;
-        _bidInflight = true;
-        btn.disabled = true;
-        try {
-            const result = await placeBid(id);
-            if (result?.success) {
-                showToast('Bid placed.', 'success');
-                await loadContracts();
-            } else {
-                showToast(result?.error || 'Failed to place bid', 'error');
-            }
-        } catch (err) {
-            console.error('[corp-operations] place bid failed:', err);
-            showToast('Failed to place bid: ' + (err?.message || 'unknown'), 'error');
-        } finally {
-            _bidInflight = false;
-            btn.disabled = false;
-        }
+        const c = _availableContracts.find(x => x.id === id);
+        if (c) showBidModal(c);
         return;
     }
     if (action === 'view-details') {
@@ -1422,14 +1508,198 @@ async function handleContractClick(e) {
     }
 }
 
-async function placeBid(contractId) {
-    const { data, error } = await _supabase.rpc('place_construction_bid', {
-        p_contract_id: contractId,
-        p_bidder_faction_id: faction.id,
-        p_bid_message: null,
-    });
-    if (error) return { success: false, error: error.message };
-    return data;
+// ── Rich bid modal ──
+// Mirrors fire-side formulas in 20260505_construction_rich_bid_rpc.sql.
+// The server is canonical; this clientside math is for the live preview only.
+const CREW_COST_MULT = { 1: 1.00, 2: 1.05, 3: 1.10 };
+const CREW_TIME_MULT = { 1: 1.00, 2: 0.80, 3: 0.70 };
+
+function computeBid(contract, crews, markupPct) {
+    const supplyMult = 1.30 - ((Number(faction.corp_supply_chain) || 0) * 0.06);
+    const crewCost   = CREW_COST_MULT[crews] || 1.00;
+    const crewTime   = CREW_TIME_MULT[crews] || 1.00;
+    const baseCost   = (Number(contract.budget) || 0) * 0.70;
+    const bidAmount  = Math.round(baseCost * supplyMult * crewCost * (1 + markupPct / 100));
+    const months     = Math.round((Number(contract.timeline_months) || 0) * crewTime);
+    return { bidAmount, months, supplyMult, crewCost, crewTime };
+}
+
+function showBidModal(contract) {
+    const modal = document.getElementById('co-modal');
+    if (!modal) return;
+    modal.classList.add('co-bid-modal');
+
+    const myCrews = Math.floor(Number(faction.corp_work_crews) || 0);
+    const myReg   = Number(faction.corp_regulatory_standing) || 0;
+    const mySupply = Number(faction.corp_supply_chain) || 0;
+    const reqs = (contract.requirements && typeof contract.requirements === 'object')
+        ? contract.requirements : {};
+    const regReq = Number(reqs.regulatory_standing) || 0;
+
+    // Per-crew availability — disable if your stat doesn't reach it.
+    const crewAvail = { 1: myCrews >= 1, 2: myCrews >= 2, 3: myCrews >= 3 };
+    // Default crew = highest crew the player can pick.
+    let crews = crewAvail[3] ? 3 : (crewAvail[2] ? 2 : (crewAvail[1] ? 1 : 1));
+    let markup = 30;  // sensible mid default
+
+    const renderModal = () => {
+        const { bidAmount, months, supplyMult } = computeBid(contract, crews, markup);
+        const budget = Number(contract.budget) || 0;
+        const pctOfBudget = budget > 0 ? (bidAmount / budget * 100) : 0;
+        const overBudget = bidAmount > budget;
+
+        // Crew pills
+        const crewPillsHtml = [1, 2, 3].map(n => {
+            const enabled = crewAvail[n];
+            const active  = (n === crews && enabled);
+            const sub = n === 1 ? 'baseline'
+                      : n === 2 ? '−20% time · ×1.05 cost'
+                      :           '−30% time · ×1.10 cost';
+            return `<button type="button" class="co-bid-pill${active ? ' active' : ''}"
+                    data-bid-crews="${n}" ${enabled ? '' : 'disabled'}>
+                <strong>${n} crew${n === 1 ? '' : 's'}</strong>
+                <span class="sub">${sub}</span>
+            </button>`;
+        }).join('');
+
+        // Markup pills
+        const markupPillsHtml = [10, 20, 30, 40, 50].map(m =>
+            `<button type="button" class="co-bid-pill${m === markup ? ' active' : ''}"
+                    data-bid-markup="${m}">${m}%</button>`
+        ).join('');
+
+        // Summary lines (what the issuer sees)
+        const regClass = myReg >= regReq ? 'good' : 'warn';
+        const regText  = `${myReg.toFixed(myReg % 1 === 0 ? 0 : 1)}<span class="muted"> / 10${regReq ? ` · req ${regReq}+` : ''}</span>`;
+        const costClass = overBudget ? 'warn' : (pctOfBudget < 85 ? 'good' : '');
+        const costText  = `${fmtMoney(bidAmount)}<span class="muted"> · ${pctOfBudget.toFixed(0)}% of budget</span>`;
+
+        const insufficientCrews = !crewAvail[crews];
+        const apShort = (Number(faction.action_points) || 0) < 2;
+        const regShort = myReg < regReq;
+        const submitDisabled = insufficientCrews || apShort || regShort;
+        const submitLabel = apShort ? 'Need 2 AP'
+                          : regShort ? `Need Reg. ${regReq}+`
+                          : insufficientCrews ? 'No crews available'
+                          : 'Submit Bid ▸';
+
+        modal.innerHTML = `
+            <div class="co-modal-title">Place Bid — ${escapeHtml(contract.name || 'Contract')}</div>
+            <div class="co-modal-body" style="margin-bottom:12px;">
+                <strong>${escapeHtml(contract.issuer_name || 'Unknown issuer')}</strong>
+                ${contract.nations?.name ? `, ${escapeHtml(contract.nations.name)}` : ''}
+                · Budget <strong>${fmtMoney(budget)}</strong>
+                · Timeline <strong>${contract.timeline_months || '—'} ticks</strong>
+            </div>
+
+            <div class="co-bid-section">
+                <div class="co-bid-section-title">Work Crews</div>
+                <div class="co-bid-button-row" id="co-bid-crews">${crewPillsHtml}</div>
+                <div class="co-bid-section-help">More crews shorten the timeline at a slightly higher cost. Your Work Crews stat caps the maximum (you have <strong>${myCrews}</strong>).</div>
+            </div>
+
+            <div class="co-bid-section">
+                <div class="co-bid-section-title">Markup</div>
+                <div class="co-bid-button-row" id="co-bid-markup">${markupPillsHtml}</div>
+                <div class="co-bid-section-help">Profit you add over your computed cost. Lower markup wins more bids; higher markup grows your margin if you win.</div>
+            </div>
+
+            <div class="co-bid-section co-bid-summary">
+                <div class="co-bid-summary-title">What the issuer sees</div>
+                <div class="co-bid-summary-row">
+                    <span class="label">Timeline</span>
+                    <span class="value">${months}<span class="muted"> tick${months === 1 ? '' : 's'}</span></span>
+                </div>
+                <div class="co-bid-summary-row">
+                    <span class="label">Cost</span>
+                    <span class="value ${costClass}">${costText}</span>
+                </div>
+                <div class="co-bid-summary-row">
+                    <span class="label">Regulatory Standing</span>
+                    <span class="value ${regClass}">${regText}</span>
+                </div>
+            </div>
+
+            <div class="co-bid-section co-bid-summary" style="margin-top:14px;">
+                <div class="co-bid-summary-title">Your side</div>
+                <div class="co-bid-summary-row">
+                    <span class="label">Supply Chain mult</span>
+                    <span class="value">${supplyMult.toFixed(2)}×<span class="muted"> · supply ${mySupply.toFixed(mySupply % 1 === 0 ? 0 : 1)}/10</span></span>
+                </div>
+                <div class="co-bid-summary-row">
+                    <span class="label">AP Cost</span>
+                    <span class="value ${apShort ? 'warn' : ''}">2 AP<span class="muted"> · you have ${Number(faction.action_points) || 0}</span></span>
+                </div>
+            </div>
+
+            <div class="co-modal-actions" style="margin-top:18px;">
+                <button class="co-contract-btn" data-modal-close>Cancel</button>
+                <button class="co-contract-btn primary" id="co-bid-submit" ${submitDisabled ? 'disabled' : ''}>${escapeHtml(submitLabel)}</button>
+            </div>
+        `;
+
+        // Wire pill click handlers (re-bound on every render — modals are
+        // small enough this is cheaper than tracking handler references).
+        modal.querySelectorAll('[data-bid-crews]').forEach(b => {
+            b.addEventListener('click', () => {
+                if (b.disabled) return;
+                crews = Number(b.getAttribute('data-bid-crews'));
+                renderModal();
+            });
+        });
+        modal.querySelectorAll('[data-bid-markup]').forEach(b => {
+            b.addEventListener('click', () => {
+                markup = Number(b.getAttribute('data-bid-markup'));
+                renderModal();
+            });
+        });
+        // Submit listener: NOT { once: true } — if the server rejects the
+        // bid (e.g. requirement check trips post-modal-open because state
+        // shifted, or AP went to 0), we want the user to be able to fix
+        // their inputs and retry. _bidInflight guards against double-fire.
+        modal.querySelector('#co-bid-submit')?.addEventListener('click', () => {
+            submitRichBid(contract.id, crews, markup);
+        });
+    };
+
+    renderModal();
+    document.getElementById('co-modal-overlay').classList.add('open');
+}
+
+async function submitRichBid(contractId, crews, markup) {
+    if (_bidInflight) return;
+    _bidInflight = true;
+    const btn = document.getElementById('co-bid-submit');
+    if (btn) btn.disabled = true;
+    try {
+        const { data, error } = await _supabase.rpc('place_construction_bid', {
+            p_contract_id: contractId,
+            p_bidder_faction_id: faction.id,
+            p_crews_committed: crews,
+            p_markup_pct: markup,
+            p_bid_message: null,
+        });
+        if (error) {
+            showToast(error.message, 'error');
+            return;
+        }
+        if (!data?.success) {
+            showToast(data?.error || 'Failed to place bid', 'error');
+            return;
+        }
+        showToast(`Bid placed: ${fmtMoney(data.bid_amount)} · ${data.quoted_timeline_months} ticks`, 'success');
+        closeModal();
+        // AP changed; reload contracts + faction state so the topbar AP and
+        // bid eligibility reflect the deduction.
+        await refetchFactionState();
+        await loadContracts();
+    } catch (err) {
+        console.error('[corp-operations] place bid failed:', err);
+        showToast('Failed to place bid: ' + (err?.message || 'unknown'), 'error');
+    } finally {
+        _bidInflight = false;
+        if (btn) btn.disabled = false;
+    }
 }
 
 // ── Modals ──
@@ -1539,6 +1809,8 @@ function showCrewsModal(c) {
 
 function closeModal() {
     document.getElementById('co-modal-overlay')?.classList.remove('open');
+    // Clear bid-modal sizing class so the next modal renders at default width.
+    document.getElementById('co-modal')?.classList.remove('co-bid-modal');
 }
 
 // ── STRATEGIC ACTIONS (Section IV) ──
@@ -1778,7 +2050,7 @@ function showActionConfirmModal(card, opt) {
 async function refetchFactionState() {
     const { data, error } = await _supabase
         .from('factions')
-        .select('corp_cash_reserves, corp_work_crews, corp_regulatory_standing, corp_supply_chain, corp_construction_action_locked_until_tick')
+        .select('corp_cash_reserves, corp_work_crews, corp_regulatory_standing, corp_supply_chain, corp_construction_action_locked_until_tick, action_points')
         .eq('id', faction.id)
         .single();
     if (error || !data) {
