@@ -253,6 +253,7 @@ const EXEC_ACTIONS = {
     ],
     CMO: [
         { id: 'rebrand', name: 'Rebrand Corporation', desc: 'Change name and abbreviation. Cost and reputation hit scale with CMO skill — high skill reduces both.', cost: '~$2M', costColor: '#ca5', tags: ['STRUCTURAL'], cooldown: 'once/tick' },
+        { id: 'branding', name: 'Branding', desc: 'Upload a custom corporate logo. Replaces the default monogram on the dashboard, nation roster, and shipping vessels.', cost: '$1M', costColor: '#ca5', tags: ['IDENTITY'], cooldownTicks: 12 },
     ],
     CLO: [
         { id: 'sue_corp', name: 'Sue Corporation', desc: 'File a lawsuit against another corporation for patent infringement, contract breach, or predatory practices.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['LEGAL'], locked: true, lockReason: 'Coming soon' },
@@ -494,16 +495,39 @@ function actExecute(actionId, role) {
         alert('This action can only be used once per tick. Wait for the next tick.');
         return;
     }
+    // Multi-tick persistent cooldowns (read from faction columns)
+    if (actionDef?.cooldownTicks) {
+        const remaining = brandingCooldownRemaining(actionId);
+        if (remaining > 0) {
+            alert(`On cooldown — ${remaining} tick${remaining === 1 ? '' : 's'} remaining.`);
+            return;
+        }
+    }
     switch (actionId) {
         case 'statement': return actOpenStatement();
         case 'loan': return lrOpen();
         case 'equity': return applyForEquity(faction, shard, _supabase);
         case 'restructure': return actOpenRestructure();
         case 'rebrand': return actOpenRebrand();
+        case 'branding': return actOpenBranding();
         case 'donate': return actOpenDonation();
         case 'bankruptcy': return declareBankruptcy();
         default: break;
     }
+}
+
+// Returns ticks-remaining for any persistent-column cooldown action, or
+// 0 if the action is ready. Reads from the in-memory faction row, which
+// the page refreshes after each action submit.
+function brandingCooldownRemaining(actionId) {
+    if (actionId !== 'branding') return 0;
+    const def = (EXEC_ACTIONS.CMO || []).find(a => a.id === actionId);
+    const max = def?.cooldownTicks || 0;
+    const last = Number(faction?.last_branding_tick);
+    if (!Number.isFinite(last) || last <= 0) return 0;
+    const cur = Number(shard?.current_tick) || 0;
+    const elapsed = cur - last;
+    return elapsed >= max ? 0 : (max - elapsed);
 }
 
 // ═══════════════════════════════════════════════════
@@ -1248,6 +1272,221 @@ async function actSubmitRebrand(costOverride, repLossOverride) {
     const logoEl = document.getElementById('corp-logo');
     if (logoEl) logoEl.textContent = newAbbr.slice(0, 2);
 }
+
+// ═══════════════════════════════════════════════════
+// CMO: Branding ($1M → upload custom logo, 12-tick cooldown)
+// ═══════════════════════════════════════════════════
+
+const BRANDING_COST = 1000000;
+const BRANDING_COOLDOWN_TICKS = 12;
+let _brandingFile = null;
+let _brandingSubmitting = false;
+
+function actOpenBranding() {
+    _brandingFile = null;
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    const currentLogo = faction?.custom_logo_url || '';
+
+    const overlay = document.createElement('div');
+    overlay.id = 'branding-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:600;display:flex;align-items:center;justify-content:center;';
+    overlay.onclick = function(e) { if (e.target === overlay) actCloseBranding(); };
+
+    const previewSrc = currentLogo
+        ? `<img src="${escapeHtml(currentLogo)}" alt="" style="width:100%;height:100%;object-fit:cover;">`
+        : `<span style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:#6a6660;">${escapeHtml((faction?.abbreviation || faction?.corp_ticker || '??').slice(0, 2))}</span>`;
+
+    overlay.innerHTML = `<div onclick="event.stopPropagation()" style="width:460px;background:var(--panel-main);border:1px solid var(--panel-border);display:flex;flex-direction:column;overflow:hidden;">
+        <div style="padding:10px 16px;border-bottom:1px solid var(--panel-border);background:var(--bg-panel);">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span style="font-size:8px;color:#c84;">&#9679;</span>
+                    <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:2px;color:#9e9a92;text-transform:uppercase;">Branding</span>
+                </div>
+                <span onclick="actCloseBranding()" style="font-family:var(--font-mono);font-size:14px;color:#6a6660;cursor:pointer;">&#215;</span>
+            </div>
+        </div>
+        <div style="padding:14px 16px;display:flex;gap:14px;align-items:center;">
+            <div id="branding-preview" style="width:84px;height:84px;background:var(--bg-panel);border:1px solid var(--panel-border);border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;">${previewSrc}</div>
+            <div style="flex:1;">
+                <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;margin-bottom:6px;">CORPORATE LOGO</div>
+                <div style="font-size:11px;color:var(--text-muted);line-height:1.4;margin-bottom:8px;">PNG, JPG, or SVG. Max 128 KB. Square images render best — non-square will be cropped to fit.</div>
+                <label for="branding-file" style="display:inline-block;padding:5px 14px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#c8a832;border:1px solid rgba(200,168,50,0.4);background:rgba(200,168,50,0.06);cursor:pointer;text-transform:uppercase;">Choose File</label>
+                <input id="branding-file" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" style="display:none;" onchange="actBrandingPickFile(event)" />
+                <span id="branding-filename" style="font-family:var(--font-mono);font-size:9px;color:#6a6660;margin-left:8px;"></span>
+            </div>
+        </div>
+        <div style="padding:8px 16px;border-top:1px solid var(--panel-border);">
+            <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;margin-bottom:6px;">Impact</div>
+            <div style="background:var(--bg-panel);border:1px solid var(--panel-border);padding:6px 10px;">
+                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--panel-border);">
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">COST</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#c84;">${hfFmtBig(BRANDING_COST)}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--panel-border);">
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">COOLDOWN</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--panel-text);">${BRANDING_COOLDOWN_TICKS} TICKS</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:3px 0;">
+                    <span style="font-family:var(--font-mono);font-size:8px;color:#6a6660;">CASH AFTER</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${cash < BRANDING_COST ? '#c55' : 'var(--panel-text)'};">${hfFmtBig(cash - BRANDING_COST)}</span>
+                </div>
+            </div>
+        </div>
+        <div style="padding:8px 16px;border-top:1px solid var(--panel-border);display:flex;justify-content:flex-end;gap:6px;">
+            <div onclick="actCloseBranding()" style="padding:6px 16px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid var(--panel-border);cursor:pointer;">CANCEL</div>
+            <div id="branding-btn" onclick="actSubmitBranding()" style="padding:6px 20px;font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:#000;background:#c84;cursor:${cash >= BRANDING_COST ? 'pointer' : 'not-allowed'};${cash < BRANDING_COST ? 'opacity:0.4;pointer-events:none;' : ''}">UPLOAD &amp; CONFIRM</div>
+        </div>
+        <div id="branding-error" style="padding:4px 16px;font-family:var(--font-mono);font-size:8px;color:#c55;display:none;"></div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+}
+
+function actCloseBranding() {
+    const o = document.getElementById('branding-overlay');
+    if (o) o.remove();
+    _brandingFile = null;
+}
+
+function actBrandingPickFile(e) {
+    const file = e.target.files?.[0];
+    const errEl = document.getElementById('branding-error');
+    const nameEl = document.getElementById('branding-filename');
+    if (!file) { _brandingFile = null; if (nameEl) nameEl.textContent = ''; return; }
+    if (file.size > 128 * 1024) {
+        _brandingFile = null;
+        if (nameEl) nameEl.textContent = '';
+        if (errEl) { errEl.textContent = 'File too large — must be under 128 KB.'; errEl.style.display = 'block'; }
+        return;
+    }
+    _brandingFile = file;
+    if (errEl) errEl.style.display = 'none';
+    if (nameEl) nameEl.textContent = file.name;
+
+    // Live preview
+    const preview = document.getElementById('branding-preview');
+    if (preview) {
+        const reader = new FileReader();
+        reader.onload = ev => {
+            preview.innerHTML = `<img src="${ev.target.result}" alt="" style="width:100%;height:100%;object-fit:cover;">`;
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+async function actSubmitBranding() {
+    if (!faction || !shard || _brandingSubmitting) return;
+    const errEl = document.getElementById('branding-error');
+    const btn = document.getElementById('branding-btn');
+
+    if (!_brandingFile) {
+        if (errEl) { errEl.textContent = 'Choose a logo file first.'; errEl.style.display = 'block'; }
+        return;
+    }
+
+    const currentTick = Number(shard.current_tick) || 0;
+
+    // Atomic cooldown + cash read
+    const { data: fresh, error: freshErr } = await _supabase
+        .from('factions')
+        .select('corp_cash_reserves, last_branding_tick')
+        .eq('id', faction.id)
+        .single();
+    if (freshErr || !fresh) {
+        if (errEl) { errEl.textContent = 'Failed to verify cooldown: ' + (freshErr?.message || 'unknown'); errEl.style.display = 'block'; }
+        return;
+    }
+    const prevTick = fresh.last_branding_tick == null ? null : Number(fresh.last_branding_tick);
+    if (prevTick != null && currentTick - prevTick < BRANDING_COOLDOWN_TICKS) {
+        const remaining = BRANDING_COOLDOWN_TICKS - (currentTick - prevTick);
+        if (errEl) { errEl.textContent = `On cooldown — ${remaining} tick${remaining === 1 ? '' : 's'} remaining.`; errEl.style.display = 'block'; }
+        return;
+    }
+    const cash = Number(fresh.corp_cash_reserves ?? 0);
+    if (cash < BRANDING_COST) {
+        if (errEl) { errEl.textContent = 'Insufficient cash. Need ' + hfFmtBig(BRANDING_COST) + '.'; errEl.style.display = 'block'; }
+        return;
+    }
+
+    _brandingSubmitting = true;
+    if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; btn.textContent = 'UPLOADING...'; }
+
+    // Upload to storage
+    let logoUrl;
+    try {
+        const ext = (_brandingFile.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+        const filePath = `party-logos/${faction.id}/${Date.now()}.${ext}`;
+        const { error: uploadErr } = await _supabase.storage
+            .from('public-assets')
+            .upload(filePath, _brandingFile, { contentType: _brandingFile.type, upsert: true });
+        if (uploadErr) throw uploadErr;
+        const { data: urlData } = _supabase.storage.from('public-assets').getPublicUrl(filePath);
+        logoUrl = urlData?.publicUrl || null;
+        if (!logoUrl) throw new Error('Could not resolve public URL.');
+    } catch (uploadErr) {
+        _brandingSubmitting = false;
+        if (errEl) { errEl.textContent = 'Upload failed: ' + (uploadErr.message || 'Unknown error'); errEl.style.display = 'block'; }
+        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; btn.textContent = 'UPLOAD & CONFIRM'; }
+        return;
+    }
+
+    // Persist + cooldown stamp + cash deduct, with optimistic lock on
+    // last_branding_tick so two concurrent submits can't both win.
+    const updatePayload = {
+        custom_logo_url: logoUrl,
+        corp_cash_reserves: cash - BRANDING_COST,
+        last_branding_tick: currentTick,
+    };
+    let updateQuery = _supabase.from('factions').update(updatePayload).eq('id', faction.id);
+    updateQuery = prevTick == null
+        ? updateQuery.is('last_branding_tick', null)
+        : updateQuery.eq('last_branding_tick', prevTick);
+    const { data: updated, error: updateErr } = await updateQuery.select('id');
+
+    if (updateErr) {
+        _brandingSubmitting = false;
+        if (errEl) { errEl.textContent = 'Failed: ' + updateErr.message; errEl.style.display = 'block'; }
+        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; btn.textContent = 'UPLOAD & CONFIRM'; }
+        return;
+    }
+    if (!updated || updated.length === 0) {
+        _brandingSubmitting = false;
+        if (errEl) { errEl.textContent = 'Branding is on cooldown. Refresh to see the latest state.'; errEl.style.display = 'block'; }
+        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; btn.textContent = 'UPLOAD & CONFIRM'; }
+        return;
+    }
+
+    // Update local state
+    faction.custom_logo_url = logoUrl;
+    faction.corp_cash_reserves = cash - BRANDING_COST;
+    faction.last_branding_tick = currentTick;
+
+    // Log event
+    const { error: logErr } = await _supabase.from('event_log').insert({
+        nation_id: faction.nation_id,
+        faction_id: faction.id,
+        event_name: 'Corporation Rebranded (Logo)',
+        description_used: `${faction.faction_name || 'Corporation'} unveiled a new corporate logo.`,
+        category: 'corporate',
+        trigger_key: 'corp_branding',
+        effects_applied: { logo_url: logoUrl, cost: BRANDING_COST, cooldown_ticks: BRANDING_COOLDOWN_TICKS },
+        fired_at_tick: currentTick,
+    });
+    if (logErr) console.warn('Failed to log branding event:', logErr.message);
+
+    _brandingSubmitting = false;
+    actCloseBranding();
+    renderActionsTab();
+
+    // Update top-bar logo if it's currently rendering the monogram
+    const topLogo = document.getElementById('corp-logo');
+    if (topLogo) topLogo.innerHTML = `<img src="${logoUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:5px;">`;
+}
+
+window.actBrandingPickFile = actBrandingPickFile;
+window.actSubmitBranding = actSubmitBranding;
+window.actCloseBranding = actCloseBranding;
 
 // ═══════════════════════════════════════════════════
 // Lobbyist: Political Donation ($10M → party gets 5 AP, once/tick)
