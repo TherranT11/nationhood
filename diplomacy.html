@@ -481,20 +481,29 @@ function renderTradeEconomy() {
     const commodities = [];
 
     // ── Energy (stat-derived) ──
-    // Energy production = nations.energy / 3. No demand model yet, so
-    // the entire production reads as surplus. Distinct from fuel_energy
-    // (petroleum, barrels). Displayed unit-less since it's a stat number,
-    // not a dollar value.
-    const energyStat = Number(_worldState?.nation?.energy) || 0;
-    const energyProd = energyStat / 3;
+    // Production = nations.energy / 3.
+    // Demand     = ((infrastructure + industry) × standard_of_living
+    //              × √(population_M)) / 3500
+    // Net        = Production − Demand (positive = surplus, green;
+    //              negative = shortfall, red).
+    // Distinct from fuel_energy (petroleum, barrels). Displayed unit-less
+    // since it's a stat number, not a dollar value.
+    const _n = _worldState?.nation || {};
+    const energyStat   = Number(_n.energy)             || 0;
+    const infraStat    = Number(_n.infrastructure)     || 0;
+    const industryStat = Number(_n.industry)           || 0;
+    const solStat      = Number(_n.standard_of_living) || 0;
+    const popMillions  = (Number(_n.population) || 0) / 1_000_000;
+    const energyProd   = energyStat / 3;
+    const energyDemand = ((infraStat + industryStat) * solStat * Math.sqrt(popMillions)) / 3500;
     commodities.push({
         key: 'energy',
         icon: '⚡',
         name: 'Energy',
         production: energyProd,
-        domesticDemand: 0,
+        domesticDemand: energyDemand,
         demand: 0,
-        netFlow: energyProd,
+        netFlow: energyProd - energyDemand,
         selfSufficiencyBalance: null,
         statBased: true,
     });
