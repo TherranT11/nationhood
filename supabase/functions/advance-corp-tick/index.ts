@@ -3217,6 +3217,14 @@ async function resolveExpiredEvents(supabase, nationId, currentTick) {
 //  shared helper now would be undone in Phase 1E when the legacy version
 //  is deleted, so the duplication is parked here on purpose.
 //
+//  Within this function, the "build response array + insert event row"
+//  pattern repeats across three branches (main template / permit-compliance
+//  regulatory / Phase 1C gap roll). Two of those use ALL_EVENT_TEMPLATES
+//  shape; the third uses REGULATORY_EVENTS shape. Extraction would either
+//  bridge two source-catalog shapes in one helper (more complex than the
+//  inline duplication) or only dedupe two of three branches (low net win).
+//  Left inline; revisit if a fourth branch ever lands.
+//
 //  Known carry-overs (not regressions): two read-modify-write patterns
 //  (corp_reputation update on regulatory hits; corp_cash_reserves debit on
 //  expired-event cost) inherit the legacy code's race window between
@@ -3231,15 +3239,58 @@ function projectTypeToSectorKey(projectType) {
     return norm === 'megaproject' ? 'mega_project' : norm;
 }
 
+// Gap-roll helpers. An event template counts as "negative" (incident-
+// suitable) if any of its effect dimensions hurts the corp. Used to
+// filter the catalog when the regulatory-gap roll picks a random event;
+// firing positive_inspection because a corp is below its regulatory
+// requirement would be incoherent.
+function isNegativeEvent(template) {
+    const e = template.effects || {};
+    return (Number(e.cost) > 0)
+        || (Number(e.delay) > 0)
+        || (Number(e.quality) < 0)
+        || (Number(e.phaseProgress) < 0)
+        || (Number(e.reputation) < 0);
+}
+
+// Computes a corp's effective regulatory standing on a specific contract.
+// Live evaluation per spec: re-read each tick from the corp's current
+// stat plus held permits, minus required-but-missing permits.
+function computeEffectiveRegulatoryStanding({
+    factionId, regStanding, sectorKey, requiredPermits,
+    permitsByFaction, permitDefMap,
+}) {
+    let effective = Number(regStanding) || 0;
+    const heldPermits = permitsByFaction[factionId] || new Set();
+
+    // +regulatory_bonus from held permits whose applies_to matches the
+    // project's sector. Empty applies_to means "applies to all sectors".
+    for (const permitKey of heldPermits) {
+        const def = permitDefMap[permitKey];
+        if (!def) continue;
+        const appliesTo = def.applies_to || [];
+        const matches = appliesTo.length === 0 || appliesTo.includes(sectorKey);
+        if (matches) effective += def.regulatory_bonus;
+    }
+
+    // −1 per required permit the corp doesn't hold.
+    for (const reqKey of (requiredPermits || [])) {
+        if (!heldPermits.has(reqKey)) effective -= 1;
+    }
+
+    return effective;
+}
+
 async function generateCorpContractProjectEvents(supabase, nationId, currentTick) {
     const results = [];
     const permitScopeCache = {};
 
-    // Load active corp_contracts on this nation. Same shape as the legacy
-    // query, with the new field names.
+    // Load active corp_contracts on this nation. Includes timeline_months
+    // (denominator for per-tick gap probability) and requirements (source
+    // of regulatory_standing threshold + required_permits list).
     const { data: contracts } = await supabase
         .from('corp_contracts')
-        .select('id, name, current_phase, project_type, winner_faction_id')
+        .select('id, name, current_phase, project_type, winner_faction_id, timeline_months, requirements')
         .eq('issuer_nation_id', nationId)
         .eq('status', 'active');
 
@@ -3252,10 +3303,31 @@ async function generateCorpContractProjectEvents(supabase, nationId, currentTick
         .single();
     const ns = (key) => Number(nation?.[key] ?? 50);
 
-    // Permit event modifiers (same logic as legacy — corp_permits is shared).
+    // Pre-fetch bidder corp_regulatory_standing for the gap math. One
+    // batch query keyed by all winner_faction_ids on this nation's
+    // active contracts.
+    const factionIds = [...new Set(contracts.map(c => c.winner_faction_id).filter(Boolean))];
+    const regStandingByFaction = {};
+    if (factionIds.length > 0) {
+        const { data: bidders, error: biddersErr } = await supabase
+            .from('factions')
+            .select('id, corp_regulatory_standing')
+            .in('id', factionIds);
+        if (biddersErr) {
+            console.warn(`[CorpEvents] Bidder reg-standing fetch failed for nation ${nationId}:`, biddersErr.message);
+        }
+        for (const b of (bidders || [])) {
+            regStandingByFaction[b.id] = Number(b.corp_regulatory_standing || 0);
+        }
+    }
+
+    // Permit modifiers + bonuses + applies_to. Same lookup as legacy
+    // serves both the event-modifier pipeline AND the new effective-
+    // standing math (regulatory_bonus, applies_to).
     const _permitEventMods = {};
+    const permitDefMap = {};        // permit_key -> { event_modifiers, regulatory_bonus, applies_to }
+    const permitsByFaction = {};    // faction_id -> Set<permit_key>
     try {
-        const factionIds = [...new Set(contracts.map(c => c.winner_faction_id).filter(Boolean))];
         if (factionIds.length > 0) {
             const { data: activePermits } = await supabase
                 .from('corp_permits')
@@ -3264,14 +3336,28 @@ async function generateCorpContractProjectEvents(supabase, nationId, currentTick
                 .eq('status', 'active');
             if (activePermits && activePermits.length > 0) {
                 const permitKeys = [...new Set(activePermits.map(p => p.permit_key))];
-                const { data: defs } = await supabase.from('construction_permits')
-                    .select('permit_key, event_modifiers')
+                const { data: defs, error: defsErr } = await supabase.from('construction_permits')
+                    .select('permit_key, event_modifiers, regulatory_bonus, applies_to')
                     .in('permit_key', permitKeys);
-                const defModMap = {};
-                for (const d of (defs || [])) defModMap[d.permit_key] = d.event_modifiers || {};
+                if (defsErr) {
+                    // Without this warning, a failed permit-defs fetch silently
+                    // zeroes both permit event modifiers AND regulatory bonuses
+                    // — every corp would look unprotected.
+                    console.warn(`[CorpEvents] Permit defs fetch failed for nation ${nationId}:`, defsErr.message);
+                }
+                for (const d of (defs || [])) {
+                    permitDefMap[d.permit_key] = {
+                        event_modifiers:  d.event_modifiers || {},
+                        regulatory_bonus: Number(d.regulatory_bonus || 0),
+                        applies_to:       d.applies_to || [],
+                    };
+                }
                 for (const p of activePermits) {
+                    if (!permitsByFaction[p.faction_id]) permitsByFaction[p.faction_id] = new Set();
+                    permitsByFaction[p.faction_id].add(p.permit_key);
+
                     if (!_permitEventMods[p.faction_id]) _permitEventMods[p.faction_id] = {};
-                    const mods = defModMap[p.permit_key] || {};
+                    const mods = (permitDefMap[p.permit_key] || {}).event_modifiers || {};
                     for (const [eventKey, multiplier] of Object.entries(mods)) {
                         const current = _permitEventMods[p.faction_id][eventKey];
                         _permitEventMods[p.faction_id][eventKey] = current !== undefined ? Math.min(current, multiplier) : multiplier;
@@ -3420,6 +3506,93 @@ async function generateCorpContractProjectEvents(supabase, nationId, currentTick
                     }
                 }
             } catch (_regErr) { /* non-fatal */ }
+        }
+
+        // ── Regulatory-gap incident roll (Phase 1C). ──
+        // Live evaluation: each tick, recompute effective standing from
+        // the corp's current corp_regulatory_standing + permit bonuses
+        // − missing-required-permit penalty. Spec: lifetime probability
+        // of an incident attributable to the gap is min(0.90, 0.15 × gap).
+        // Spread over the contract's timeline_months as per-tick rolls.
+        if (!results.some(r => r.contract === contract.name)) {
+            const reqs = contract.requirements || {};
+            const requiredStanding = Number(reqs.regulatory_standing || 0);
+            if (requiredStanding > 0 && contract.winner_faction_id) {
+                const factionRegStanding = regStandingByFaction[contract.winner_faction_id] ?? 0;
+                const requiredPermits = Array.isArray(reqs.required_permits) ? reqs.required_permits : [];
+                const effective = computeEffectiveRegulatoryStanding({
+                    factionId:        contract.winner_faction_id,
+                    regStanding:      factionRegStanding,
+                    sectorKey,
+                    requiredPermits,
+                    permitsByFaction,
+                    permitDefMap,
+                });
+                const gap = Math.max(0, requiredStanding - effective);
+                if (gap > 0) {
+                    const lifetimeProb = Math.min(0.90, 0.15 * gap);
+                    // Denominator: original contract timeline. Approximate;
+                    // good enough for typical gaps. Tune later if needed.
+                    const timelineTicks = Math.max(1, Number(contract.timeline_months || 60));
+                    const perTickProb = lifetimeProb / timelineTicks;
+                    if (Math.random() < perTickProb) {
+                        // Pool: any catalog event whose sector + phase match
+                        // this contract AND whose effects are negative.
+                        // Excludes positive_inspection-style positive events
+                        // since those firing because a corp is under-regulated
+                        // would be incoherent.
+                        //
+                        // If the pool is empty (no catalog event applies to
+                        // this sector+phase combo), the roll silently no-ops.
+                        // The 26-event catalog covers most combinations so
+                        // this is rare; player just feels lucky.
+                        const eligible = ALL_EVENT_TEMPLATES.filter(t => {
+                            if (!t.appliesTo.includes('all') && !t.appliesTo.includes(sectorKey)) return false;
+                            const allowedPhases = PHASE_WINDOW_LOOKUP[t.phaseWindow] || PHASE_WINDOWS.ANY;
+                            if (!allowedPhases.includes(phase)) return false;
+                            return isNegativeEvent(t);
+                        });
+                        if (eligible.length > 0) {
+                            const tmpl = eligible[Math.floor(Math.random() * eligible.length)];
+                            const responses = [{
+                                key: 'acknowledge',
+                                label: 'Acknowledged',
+                                tag: tmpl.severity,
+                                detail: tmpl.impact,
+                                cost: tmpl.effects.cost || 0,
+                                delay: tmpl.effects.delay || 0,
+                                qualityImpact: tmpl.effects.quality || 0,
+                            }];
+                            const { error: gapInsertErr } = await supabase.from('corp_contract_events').insert({
+                                contract_id: contract.id,
+                                faction_id:  contract.winner_faction_id,
+                                nation_id:   nationId,
+                                event_key:   tmpl.key,
+                                type:        tmpl.type,
+                                severity:    tmpl.severity,
+                                title:       tmpl.title,
+                                description: tmpl.desc,
+                                impact:      tmpl.impact,
+                                responses,
+                                status:           'ACTIVE',
+                                fired_at_tick:    currentTick,
+                                expires_at_tick:  currentTick + 3,
+                            });
+                            if (gapInsertErr) {
+                                console.warn(`[CorpEvents] Gap-driven event insert failed for ${contract.name}:`, gapInsertErr.message);
+                            } else {
+                                results.push({
+                                    contract: contract.name,
+                                    event:    tmpl.title,
+                                    severity: tmpl.severity,
+                                    source:   'regulatory_gap',
+                                    gap,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
