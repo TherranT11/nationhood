@@ -4400,34 +4400,34 @@ async function processShippingRoutes(supabase, currentTick) {
     };
 
     // ── Pass A: Auto-award ──
-    const { data: closingRoutes, error: closingErr } = await supabase
-        .from('shipping_routes')
+    const { data: closingContracts, error: closingErr } = await supabase
+        .from('shipping_contracts')
         .select('id, award_criterion, freighters_required, min_fleet_health, max_route_risk, revenue_per_tick, term_ticks')
         .eq('status', 'open')
         .lte('expires_at_tick', currentTick);
 
     if (closingErr) {
-        console.warn('[ShippingRoutes] closing-routes fetch failed:', closingErr.message);
-    } else if (closingRoutes && closingRoutes.length > 0) {
-        for (const route of closingRoutes) {
+        console.warn('[ShippingRoutes] closing-contracts fetch failed:', closingErr.message);
+    } else if (closingContracts && closingContracts.length > 0) {
+        for (const contract of closingContracts) {
             const { data: bids, error: bidsErr } = await supabase
-                .from('shipping_route_bids')
+                .from('shipping_contract_bids')
                 .select('id, bidder_faction_id, offered_revenue_per_tick, offered_term_ticks, bidder_route_risk_snapshot, created_at_tick')
-                .eq('route_id', route.id)
+                .eq('contract_id', contract.id)
                 .eq('status', 'pending')
                 .order('created_at_tick', { ascending: true });
             if (bidsErr) {
-                console.warn(`[ShippingRoutes] bids fetch failed for route ${route.id}:`, bidsErr.message);
+                console.warn(`[ShippingRoutes] bids fetch failed for contract ${contract.id}:`, bidsErr.message);
                 continue;
             }
 
             if (!bids || bids.length === 0) {
-                // No bids — flip route to 'expired'.
-                const { error: expErr } = await supabase.from('shipping_routes').update({
+                // No bids — flip contract to 'expired'.
+                const { error: expErr } = await supabase.from('shipping_contracts').update({
                     status: 'expired',
                     updated_at: new Date().toISOString(),
-                }).eq('id', route.id).eq('status', 'open');
-                if (expErr) console.warn(`[ShippingRoutes] expire failed for route ${route.id}:`, expErr.message);
+                }).eq('id', contract.id).eq('status', 'open');
+                if (expErr) console.warn(`[ShippingRoutes] expire failed for contract ${contract.id}:`, expErr.message);
                 else results.expired++;
                 continue;
             }
@@ -4439,10 +4439,10 @@ async function processShippingRoutes(supabase, currentTick) {
             for (let i = 1; i < bids.length; i++) {
                 const b = bids[i];
                 let winnerScore, candidateScore;
-                if (route.award_criterion === 'fastest_delivery') {
+                if (contract.award_criterion === 'fastest_delivery') {
                     winnerScore = Number(winner.offered_term_ticks);
                     candidateScore = Number(b.offered_term_ticks);
-                } else if (route.award_criterion === 'lowest_risk') {
+                } else if (contract.award_criterion === 'lowest_risk') {
                     winnerScore = Number(winner.bidder_route_risk_snapshot);
                     candidateScore = Number(b.bidder_route_risk_snapshot);
                 } else {
@@ -4458,34 +4458,34 @@ async function processShippingRoutes(supabase, currentTick) {
             const nowIso        = new Date().toISOString();
 
             // Flip winner bid → accepted.
-            const { error: winErr } = await supabase.from('shipping_route_bids').update({
+            const { error: winErr } = await supabase.from('shipping_contract_bids').update({
                 status: 'accepted',
                 resolved_at_tick: currentTick,
                 updated_at: nowIso,
             }).eq('id', winner.id).eq('status', 'pending');
             if (winErr) {
-                console.warn(`[ShippingRoutes] winner-bid flip failed for route ${route.id}:`, winErr.message);
+                console.warn(`[ShippingRoutes] winner-bid flip failed for contract ${contract.id}:`, winErr.message);
                 continue;
             }
             results.bidsAccepted++;
 
             // Auto-reject siblings.
-            const { data: rejected, error: rejErr } = await supabase.from('shipping_route_bids').update({
+            const { data: rejected, error: rejErr } = await supabase.from('shipping_contract_bids').update({
                 status: 'auto_rejected',
                 resolved_at_tick: currentTick,
                 updated_at: nowIso,
-            }).eq('route_id', route.id)
+            }).eq('contract_id', contract.id)
               .neq('id', winner.id)
               .eq('status', 'pending')
               .select('id');
             if (rejErr) {
-                console.warn(`[ShippingRoutes] sibling-reject failed for route ${route.id}:`, rejErr.message);
+                console.warn(`[ShippingRoutes] sibling-reject failed for contract ${contract.id}:`, rejErr.message);
             } else {
                 results.bidsAutoRejected += rejected?.length || 0;
             }
 
-            // Flip route → awarded with snapshot.
-            const { error: awErr } = await supabase.from('shipping_routes').update({
+            // Flip contract → awarded with snapshot.
+            const { error: awErr } = await supabase.from('shipping_contracts').update({
                 status: 'awarded',
                 winner_faction_id: winner.bidder_faction_id,
                 awarded_at_tick:   currentTick,
@@ -4493,9 +4493,9 @@ async function processShippingRoutes(supabase, currentTick) {
                 revenue_per_tick:  winnerRevenue,
                 term_ticks:        winnerTerm,
                 updated_at:        nowIso,
-            }).eq('id', route.id).eq('status', 'open');
+            }).eq('id', contract.id).eq('status', 'open');
             if (awErr) {
-                console.warn(`[ShippingRoutes] award flip failed for route ${route.id}:`, awErr.message);
+                console.warn(`[ShippingRoutes] award flip failed for contract ${contract.id}:`, awErr.message);
                 continue;
             }
             results.awarded++;
@@ -4504,7 +4504,7 @@ async function processShippingRoutes(supabase, currentTick) {
 
     // ── Pass B: Maturity sweep ──
     const { data: matured, error: matErr } = await supabase
-        .from('shipping_routes')
+        .from('shipping_contracts')
         .update({ status: 'completed', updated_at: new Date().toISOString() })
         .eq('status', 'awarded')
         .lte('ends_at_tick', currentTick)
@@ -4516,24 +4516,24 @@ async function processShippingRoutes(supabase, currentTick) {
     }
 
     // ── Pass C: Per-tick payment ──
-    const { data: activeRoutes, error: activeErr } = await supabase
-        .from('shipping_routes')
+    const { data: activeContracts, error: activeErr } = await supabase
+        .from('shipping_contracts')
         .select('id, winner_faction_id, revenue_per_tick, total_paid, last_payment_tick')
         .eq('status', 'awarded')
         .or(`last_payment_tick.is.null,last_payment_tick.neq.${currentTick}`);
 
     if (activeErr) {
-        console.warn('[ShippingRoutes] active-routes fetch failed:', activeErr.message);
+        console.warn('[ShippingRoutes] active-contracts fetch failed:', activeErr.message);
         return results;
     }
-    if (!activeRoutes || activeRoutes.length === 0) return results;
+    if (!activeContracts || activeContracts.length === 0) return results;
 
     // Reset corp_revenue_current_tick for unique winners. Same
     // tick-orchestration carry-over flagged in LRP2 — assumes this
     // processor is the only writer to the per-tick revenue column
     // within a tick. When other revenue sources land, the reset moves
     // up to a tick-start orchestrator instead of per-processor.
-    const winnerIds = [...new Set(activeRoutes.map(r => r.winner_faction_id).filter(Boolean))];
+    const winnerIds = [...new Set(activeContracts.map(r => r.winner_faction_id).filter(Boolean))];
     if (winnerIds.length > 0) {
         const { error: resetErr } = await supabase.from('factions')
             .update({ corp_revenue_current_tick: 0 })
@@ -4543,35 +4543,35 @@ async function processShippingRoutes(supabase, currentTick) {
         }
     }
 
-    for (const route of activeRoutes) {
-        if (!route.winner_faction_id) continue;
-        const revenue = Number(route.revenue_per_tick) || 0;
+    for (const contract of activeContracts) {
+        if (!contract.winner_faction_id) continue;
+        const revenue = Number(contract.revenue_per_tick) || 0;
         if (revenue <= 0) continue;
 
         const { data: winner, error: wErr } = await supabase.from('factions')
             .select('corp_cash_reserves, corp_revenue_current_tick')
-            .eq('id', route.winner_faction_id).single();
+            .eq('id', contract.winner_faction_id).single();
         if (wErr || !winner) {
-            console.warn(`[ShippingRoutes] winner fetch failed for route ${route.id}:`, wErr?.message);
+            console.warn(`[ShippingRoutes] winner fetch failed for contract ${contract.id}:`, wErr?.message);
             continue;
         }
 
         const { error: credErr } = await supabase.from('factions').update({
             corp_cash_reserves:        (Number(winner.corp_cash_reserves) || 0) + revenue,
             corp_revenue_current_tick: (Number(winner.corp_revenue_current_tick) || 0) + revenue,
-        }).eq('id', route.winner_faction_id);
+        }).eq('id', contract.winner_faction_id);
         if (credErr) {
-            console.warn(`[ShippingRoutes] credit failed for route ${route.id}:`, credErr.message);
+            console.warn(`[ShippingRoutes] credit failed for contract ${contract.id}:`, credErr.message);
             continue;
         }
 
-        const { error: routeErr } = await supabase.from('shipping_routes').update({
+        const { error: contractErr } = await supabase.from('shipping_contracts').update({
             last_payment_tick: currentTick,
-            total_paid:        (Number(route.total_paid) || 0) + revenue,
+            total_paid:        (Number(contract.total_paid) || 0) + revenue,
             updated_at:        new Date().toISOString(),
-        }).eq('id', route.id);
-        if (routeErr) {
-            console.warn(`[ShippingRoutes] route-payment update failed for route ${route.id}:`, routeErr.message);
+        }).eq('id', contract.id);
+        if (contractErr) {
+            console.warn(`[ShippingRoutes] contract-payment update failed for contract ${contract.id}:`, contractErr.message);
             continue;
         }
 
