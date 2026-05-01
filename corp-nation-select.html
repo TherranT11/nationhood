@@ -405,7 +405,7 @@ body {
   <div class="page-header">
     <h1>Home Nation</h1>
     <div class="title">Choose Your Home Nation</div>
-    <div class="subtitle">Select the nation where your corporation will be headquartered. Industry demand shows how many competitors already operate in your subsector.</div>
+    <div class="subtitle">Select the nation where your corporation will be headquartered. Industry demand shows how many competitors already operate in your sector.</div>
   </div>
 
   <!-- Corp summary -->
@@ -488,7 +488,7 @@ const NATION_CULTURE = {
 let currentUser = null;
 let corpSetup = null;
 let allNations = [];
-let corpsByNation = {};  // nation_id → array of corp factions in this subsector
+let corpsByNation = {};  // nation_id → array of corp factions in this sector
 let selectedNationId = null;
 let activeContinent = 'Crucera';
 // Company details state (filled after nation selection)
@@ -810,7 +810,9 @@ async function confirmNation() {
             : 1;
         let startingCash;
         if (corpSetup.sector === 'Construction') {
-            const sol = Number(nation.standard_of_living) || 50;
+            // ?? not || so SoL=0 stays 0 (gives $25M) instead of getting
+            // coerced to the 50 default (which would give $50M).
+            const sol = Number(nation.standard_of_living ?? 50);
             startingCash = Math.round(50_000_000 * (0.5 + sol / 100));
         } else {
             const baseCash = corpSetup.sector === 'Finance'  ? 225_000_000
