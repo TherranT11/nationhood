@@ -1129,10 +1129,19 @@ function renderAdministrationTab(container) {
 function adm2RenderAdminCard() {
     const el = document.getElementById('adm2-admin-card');
     if (!el || !_govData) return;
-    const { coalition, hog, admin, parties, president } = _govData;
+    const { coalition, hog, admin, parties, president, coalitionAvgApproval } = _govData;
     const nation = currentNation;
-    const approval = Number(nation?.gov_approval ?? 50).toFixed(1);
-    const approvalColor = approval >= 55 ? 'var(--green)' : approval >= 40 ? 'var(--amber)' : 'var(--red)';
+
+    // Headline approval = average party_approval across all parties in the
+    // governing coalition (sourced from faction_electoral_standing, which
+    // is fed by the sector-popularity engine). Falls back to "—" when the
+    // coalition has no parties or none of them have a standings row yet.
+    const approvalKnown = Number.isFinite(coalitionAvgApproval);
+    const approvalText  = approvalKnown ? `${coalitionAvgApproval.toFixed(1)}%` : '—';
+    const approvalColor = !approvalKnown ? 'var(--text-muted)'
+        : coalitionAvgApproval >= 55 ? 'var(--green)'
+        : coalitionAvgApproval >= 40 ? 'var(--amber)'
+        : 'var(--red)';
 
     const adminName = admin?.admin_name || (hog ? (hog.last_name || 'Interim') + ' Administration' : 'No Government');
     const startDate = admin?.started_at_date || tickToDate(admin?.started_at_tick);
@@ -1214,7 +1223,7 @@ function adm2RenderAdminCard() {
         </div>
         <div class="adm2-approval-strip">
             <span class="lbl">Approval</span>
-            <span class="val" style="color:${approvalColor};">${approval}%</span>
+            <span class="val" style="color:${approvalColor};">${approvalText}</span>
         </div>
         <div class="adm2-regime-strip" style="display:flex;gap:18px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-hair);font-family:var(--font-mono);">
             ${regimeStatsHtml}
@@ -3894,6 +3903,31 @@ async function loadGovData() {
             }
         }
 
+        // Coalition-average party approval — replaces the legacy
+        // nation.gov_approval as the headline approval number on the
+        // admin card. Same source of truth used elsewhere in this file
+        // (faction_electoral_standing.party_approval, derived from the
+        // sector-popularity engine).
+        let coalitionAvgApproval = null;
+        const coalitionPartyIds = coalition?.party_ids || [];
+        if (coalitionPartyIds.length > 0) {
+            const { data: coalitionStandings, error: standingsErr } = await _supabase
+                .from('faction_electoral_standing')
+                .select('faction_id, party_approval')
+                .eq('nation_id', currentNation.id)
+                .in('faction_id', coalitionPartyIds);
+            if (standingsErr) {
+                console.warn('[Government] coalition approval fetch error:', standingsErr.message);
+            } else if (coalitionStandings && coalitionStandings.length > 0) {
+                const vals = coalitionStandings
+                    .map(s => Number(s.party_approval))
+                    .filter(v => Number.isFinite(v));
+                if (vals.length > 0) {
+                    coalitionAvgApproval = vals.reduce((a, b) => a + b, 0) / vals.length;
+                }
+            }
+        }
+
         _govData = {
             coalition,
             ministries: ministryData,
@@ -3901,6 +3935,7 @@ async function loadGovData() {
             hog,
             president,
             admin: reconciledAdmin,
+            coalitionAvgApproval,
         };
     } catch (err) {
         console.error('[Government] loadGovData failed:', err);
