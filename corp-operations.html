@@ -204,6 +204,163 @@ body.corp-operations-construction::before {
   font-style: normal;
 }
 
+/* ── HERO STATS (Phase 2) ── */
+.co-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--co-line-bright);
+  border: 1px solid var(--co-line-bright);
+}
+.co-hero-stat {
+  background: var(--co-bg-card);
+  padding: 32px 32px 28px;
+  position: relative;
+  overflow: hidden;
+}
+/* Sector-identity stripe at the top of each card. Eyebrow color follows
+   the same accent so the three cards read as distinct subjects. */
+.co-hero-stat::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(to right, var(--co-accent-gold-dim), transparent);
+}
+.co-hero-stat[data-stat="crews"]::before {
+  background: linear-gradient(to right, var(--co-accent-blue), transparent);
+}
+.co-hero-stat[data-stat="regulatory"]::before {
+  background: linear-gradient(to right, var(--co-accent-gold), transparent);
+}
+.co-hero-stat[data-stat="supply"]::before {
+  background: linear-gradient(to right, var(--co-accent-rust), transparent);
+}
+.co-hero-stat-eyebrow {
+  font-family: var(--co-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--co-accent-gold-dim);
+  margin-bottom: 10px;
+}
+.co-hero-stat[data-stat="crews"] .co-hero-stat-eyebrow      { color: var(--co-accent-blue); }
+.co-hero-stat[data-stat="regulatory"] .co-hero-stat-eyebrow { color: var(--co-accent-gold-dim); }
+.co-hero-stat[data-stat="supply"] .co-hero-stat-eyebrow     { color: var(--co-accent-rust); }
+.co-hero-stat-name {
+  font-family: var(--co-serif);
+  font-weight: 500;
+  font-size: 30px;
+  line-height: 1;
+  color: var(--co-text-primary);
+  margin-bottom: 18px;
+  letter-spacing: -0.015em;
+}
+.co-hero-stat-name em {
+  font-style: italic;
+}
+.co-hero-stat-value-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.co-hero-stat-value {
+  font-family: var(--co-serif);
+  font-weight: 400;
+  font-size: 64px;
+  line-height: 0.9;
+  color: var(--co-text-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+.co-hero-stat-value .co-max {
+  font-size: 26px;
+  color: var(--co-text-tertiary);
+  margin-left: 4px;
+}
+.co-hero-stat-trend {
+  font-family: var(--co-mono);
+  font-size: 11px;
+  padding: 4px 9px;
+  border: 1px solid var(--co-line-bright);
+  background: var(--co-bg-secondary);
+  color: var(--co-text-secondary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.co-hero-stat-trend.up   { color: var(--co-accent-green); border-color: rgba(138,166,83,0.4); }
+.co-hero-stat-trend.down { color: var(--co-accent-red);   border-color: rgba(200,90,58,0.4); }
+
+/* 10-cell meter — uses score-band colors (good/mid/warn) like the
+   dashboard's perf cards rather than fixed sector accents, so a 7+
+   reads green regardless of which stat it belongs to. */
+.co-hero-meter {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.co-hero-meter-cell {
+  flex: 1;
+  height: 14px;
+  background: var(--co-bg-secondary);
+  border: 1px solid var(--co-line-bright);
+}
+.co-hero-meter-cell.filled {
+  background: var(--co-accent-gold);
+  border-color: var(--co-accent-gold);
+  box-shadow: 0 0 6px rgba(201, 164, 73, 0.3);
+}
+.co-hero-meter-cell.filled.warn {
+  background: var(--co-accent-red);
+  border-color: var(--co-accent-red);
+  box-shadow: 0 0 6px rgba(200, 90, 58, 0.4);
+}
+.co-hero-meter-cell.filled.good {
+  background: var(--co-accent-green);
+  border-color: var(--co-accent-green);
+  box-shadow: 0 0 6px rgba(138, 166, 83, 0.4);
+}
+
+.co-hero-stat-desc {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--co-text-secondary);
+  margin-bottom: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--co-line-bright);
+}
+.co-hero-stat-desc strong {
+  color: var(--co-text-primary);
+  font-weight: 500;
+}
+
+.co-hero-stat-impact {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  font-family: var(--co-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.co-hero-stat-impact > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.co-hero-stat-impact .label {
+  color: var(--co-text-tertiary);
+  font-size: 9px;
+}
+.co-hero-stat-impact .value {
+  color: var(--co-text-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+.co-hero-stat-impact .value.warn { color: var(--co-accent-red); }
+.co-hero-stat-impact .value.rust { color: var(--co-accent-rust); }
+.co-hero-stat-impact .value.good { color: var(--co-accent-green); }
+
 /* ── FOOTER ── */
 .co-footer-strip {
   margin-top: 48px;
@@ -249,10 +406,13 @@ body.corp-operations-construction::before {
   .co-page-title { font-size: 40px; }
   .co-page-header { grid-template-columns: 1fr; }
   .co-page-stats { text-align: left; }
+  .co-hero-stats { grid-template-columns: 1fr; }
 }
 @media (max-width: 720px) {
   .co-layout { padding: 16px 18px 40px; }
   .co-page-title { font-size: 32px; }
+  .co-hero-stat { padding: 24px 22px 22px; }
+  .co-hero-stat-value { font-size: 52px; }
 }
 </style>
 </head>
@@ -289,14 +449,14 @@ body.corp-operations-construction::before {
       </div>
     </div>
 
-    <!-- SECTION I — STRATEGIC POSITION (Phase 2) -->
+    <!-- SECTION I — STRATEGIC POSITION -->
     <div class="co-section">
       <div class="co-section-header">
         <h2><span class="num">I.</span>Strategic Position</h2>
-        <span class="desc">Industry-Specific Indicators ◊ Phase 2</span>
+        <span class="desc">Industry-Specific Indicators ◊ Scored 0—10</span>
       </div>
-      <div class="co-placeholder">
-        Work Crews · Regulatory Standing · Material Supply Chain hero stats land in <strong>Phase 2</strong>.
+      <div class="co-hero-stats" id="co-hero-stats">
+        <!-- Populated by renderHeroStats() -->
       </div>
     </div>
 
@@ -346,7 +506,7 @@ body.corp-operations-construction::before {
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { tickToDate } from './js/utils.js';
+import { escapeHtml, tickToDate } from './js/utils.js';
 
 // Operations pages are sector-gated. Construction stays here; Finance and
 // Shipping each have their own ops page; anything else falls back to the
@@ -355,6 +515,150 @@ const SECTOR_OPS_PAGE = {
     Finance:  'corp-operations-finance.html',
     Shipping: 'corp-operations-shipping.html',
 };
+
+// ── HERO STATS (Section I) ──
+// Score-band lookup powers per-card blurbs and impact metrics. Same
+// good/mid/warn taxonomy as the dashboard's perf cards.
+//   good: score >= 7   mid: 4-6   warn: < 4
+function scoreBand(score) {
+    const n = Number(score) || 0;
+    if (n >= 7) return 'good';
+    if (n >= 4) return 'mid';
+    return 'warn';
+}
+
+// Three construction-sector hero stats. Each entry pairs a column on
+// factions with display copy and impact metrics keyed by score band.
+const HERO_STATS = [
+    {
+        key: 'crews',
+        column: 'corp_work_crews',
+        eyebrow: 'CAPACITY',
+        name: 'Work',
+        emName: 'Crews',
+        blurb: {
+            good: '<strong>Strong skilled labor pool.</strong> Crews fully staffed; apprenticeship pipeline producing qualified hires.',
+            mid:  '<strong>Adequate crew strength.</strong> Operating at workable capacity, room to scale before next bid window.',
+            warn: '<strong>Crew shortages.</strong> Active bids limited; recruitment overdue and turnover rising.',
+        },
+        impacts: {
+            good: [
+                { label: 'Max Active Projects', value: '5+' },
+                { label: 'Avg. Bid Speed',      value: '+18%', tone: 'good' },
+            ],
+            mid:  [
+                { label: 'Max Active Projects', value: '3' },
+                { label: 'Avg. Bid Speed',      value: 'Average' },
+            ],
+            warn: [
+                { label: 'Max Active Projects', value: '1–2' },
+                { label: 'Avg. Bid Speed',      value: '−12%', tone: 'warn' },
+            ],
+        },
+    },
+    {
+        key: 'regulatory',
+        column: 'corp_regulatory_standing',
+        eyebrow: 'RISK',
+        name: 'Regulatory',
+        emName: 'Standing',
+        blurb: {
+            good: '<strong>Strong ministry rapport.</strong> Permits clear quickly; audit risk minimal; the regime takes your calls.',
+            mid:  '<strong>Average standing.</strong> No major scandals on the books; permits move at the standard pace.',
+            warn: '<strong>Recent incidents have soured ministry relations.</strong> Permits stall; audit risk elevated; favors are no longer free.',
+        },
+        impacts: {
+            good: [
+                { label: 'Permit Speed', value: '+22%',     tone: 'good' },
+                { label: 'Audit Risk',   value: 'Low',      tone: 'good' },
+            ],
+            mid:  [
+                { label: 'Permit Speed', value: 'Average' },
+                { label: 'Audit Risk',   value: 'Standard' },
+            ],
+            warn: [
+                { label: 'Permit Speed', value: '−15%',     tone: 'warn' },
+                { label: 'Audit Risk',   value: 'Elevated', tone: 'warn' },
+            ],
+        },
+    },
+    {
+        key: 'supply',
+        column: 'corp_supply_chain',
+        eyebrow: 'REACH',
+        name: 'Material',
+        emName: 'Supply Chain',
+        blurb: {
+            good: '<strong>Diversified sourcing across domestic and overseas suppliers.</strong> Reserves healthy; sanctions exposure manageable.',
+            mid:  '<strong>Mixed sourcing.</strong> Reserves stable but vulnerable to single-source disruption; suppliers cordial, not loyal.',
+            warn: '<strong>Single-source dependence.</strong> Stock running low; one disruption away from project delays.',
+        },
+        impacts: {
+            good: [
+                { label: 'Material Reserves',    value: '60+ days', tone: 'good' },
+                { label: 'Sanctions Exposure',   value: 'Low',      tone: 'good' },
+            ],
+            mid:  [
+                { label: 'Material Reserves',    value: '30–45 days' },
+                { label: 'Sanctions Exposure',   value: 'Moderate', tone: 'rust' },
+            ],
+            warn: [
+                { label: 'Material Reserves',    value: '<14 days', tone: 'warn' },
+                { label: 'Sanctions Exposure',   value: 'High',     tone: 'warn' },
+            ],
+        },
+    },
+];
+
+function renderHeroStats() {
+    const container = document.getElementById('co-hero-stats');
+    if (!container) return;
+    container.innerHTML = HERO_STATS.map(renderHeroStat).join('');
+}
+
+function renderHeroStat(stat) {
+    const score = Number(faction[stat.column]) || 0;
+    const band  = scoreBand(score);
+    const display = Number.isInteger(score) ? String(score) : score.toFixed(1);
+
+    // Per-tick stat history isn't tracked yet, so the trend tag is a
+    // neutral "—" until a corp_construction_stat_history table lands.
+    const trendHtml = '<div class="co-hero-stat-trend">— Latest</div>';
+
+    const meterHtml = renderHeroMeter(score, band);
+    const blurb = stat.blurb[band] || '';
+    const impacts = stat.impacts[band] || [];
+    const impactsHtml = impacts.map(i =>
+        `<div>
+            <span class="label">${escapeHtml(i.label)}</span>
+            <span class="value ${i.tone || ''}">${escapeHtml(i.value)}</span>
+        </div>`
+    ).join('');
+
+    return `<div class="co-hero-stat" data-stat="${stat.key}">
+        <div class="co-hero-stat-eyebrow">${escapeHtml(stat.eyebrow)}</div>
+        <div class="co-hero-stat-name">${escapeHtml(stat.name)} <em>${escapeHtml(stat.emName)}</em></div>
+        <div class="co-hero-stat-value-row">
+            <div class="co-hero-stat-value">${escapeHtml(display)}<span class="co-max">/10</span></div>
+            ${trendHtml}
+        </div>
+        ${meterHtml}
+        <div class="co-hero-stat-desc">${blurb}</div>
+        <div class="co-hero-stat-impact">${impactsHtml}</div>
+    </div>`;
+}
+
+function renderHeroMeter(score, band) {
+    const filled = Math.max(0, Math.min(10, Math.round(Number(score) || 0)));
+    const fillClass = band === 'good' ? 'filled good'
+                    : band === 'warn' ? 'filled warn'
+                    : 'filled';
+    const cells = [];
+    for (let i = 0; i < 10; i++) {
+        cells.push(`<div class="co-hero-meter-cell${i < filled ? ' ' + fillClass : ''}"></div>`);
+    }
+    return `<div class="co-hero-meter">${cells.join('')}</div>`;
+}
 
 let faction = null;
 let nation = null;
@@ -456,6 +760,8 @@ async function init() {
     document.getElementById('co-active-count').textContent = String(activeCount);
     document.getElementById('co-footer-date').textContent =
         shard?.current_date || tickToDate(shard?.current_tick) || '—';
+
+    renderHeroStats();
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = '';
