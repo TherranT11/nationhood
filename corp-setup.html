@@ -380,19 +380,15 @@ body {
     <div class="subtitle" id="step-subtitle">Choose the industry your corporation will operate in. This determines your contracts, revenue, and growth path.</div>
   </div>
 
-  <!-- Step progress pips -->
+  <!-- Step progress pip — single step now that subsector is gone -->
   <div class="step-indicator" id="step-indicator">
     <div class="step-pip active" data-step="1"></div>
-    <div class="step-pip" data-step="2"></div>
   </div>
 
-  <!-- Step container — each step rendered here -->
+  <!-- Step container -->
   <div class="step-container" id="step-container">
-    <!-- Step 1: Select Sector (Phase 3 will populate) -->
+    <!-- Step 1: Select Sector -->
     <div class="step-section active" id="step-1"></div>
-
-    <!-- Step 2: Select Subsector (Phase 4 will populate) -->
-    <div class="step-section" id="step-2"></div>
 
   </div>
 
@@ -420,23 +416,17 @@ import { _supabase } from './js/supabase-client.js';
 
 // ── State ──
 let currentStep = 1;
-const TOTAL_STEPS = 2;
+const TOTAL_STEPS = 1;
 const state = {
     sector: null,
-    subsector: null,
 };
 
 // ── Step definitions ──
 const STEP_META = {
     1: {
-        label: 'Step 1 of 2',
+        label: 'Step 1 of 1',
         title: 'Select Your Sector',
         subtitle: 'Choose the industry your corporation will operate in. This determines your contracts, revenue, and growth path.',
-    },
-    2: {
-        label: 'Step 2 of 2',
-        title: 'Select Your Subsector',
-        subtitle: 'Pick a specialization within your sector. This sets your starting contracts and equipment.',
     },
 };
 
@@ -488,122 +478,11 @@ function renderStep1() {
 }
 
 function selectSector(el) {
-    const prev = state.sector;
     // Deselect all
     document.querySelectorAll('#step-1 .option-card').forEach(c => c.classList.remove('selected'));
     // Select this one
     el.classList.add('selected');
     state.sector = el.dataset.name;
-
-    // If sector changed, reset subsector
-    if (prev !== state.sector) {
-        state.subsector = null;
-    }
-
-    updateSelectionBar();
-    updateButtons();
-}
-
-// ── Subsector data (per sector) ──
-const SUBSECTORS = {
-    construction: [
-        {
-            key: 'civil_construction',
-            name: 'Civil Engineering',
-            desc: 'Civil engineering covers the design, construction, and maintenance of the physical and naturally built environment, including public works such as roads, bridges, canals, dams, tunnels, airports, water and sewerage systems, pipelines, and railways.',
-        },
-        {
-            key: 'industrial_construction',
-            name: 'Industrial Construction',
-            desc: 'Industrial construction includes offshore construction (mainly of energy installations: oil and gas platforms, wind power), mining and quarrying, refineries, food processing plants, breweries and distilleries, power stations, steel mills, warehouses and factories.',
-        },
-        {
-            key: 'megaprojects',
-            name: 'Megaprojects',
-            desc: 'Nation-defining projects: international airports, hydroelectric dams, national rail networks. Very long timelines (20-40+ ticks), enormous capital requirements, massive payoff on success and devastating loss on failure.',
-        },
-    ],
-    shipping: [
-        {
-            key: 'bulk_cargo',
-            name: 'Bulk Cargo',
-            desc: 'Haul raw commodities in bulk carriers — fuel, minerals, grain, livestock feed, and cash crops. Highest volume, lowest margins. Revenue driven by commodity prices and trade agreement volumes. Your ships move the raw materials that keep economies running.',
-        },
-        {
-            key: 'container_freight',
-            name: 'Container Freight',
-            desc: 'Move manufactured goods, electronics, and perishables in standardized containers. The backbone of global trade — port efficiency, container turnaround, and cold chain logistics for perishables determine your competitive edge.',
-        },
-        {
-            key: 'specialized_transport',
-            name: 'Specialized Transport',
-            desc: 'Handle arms, military equipment, oversized cargo, and hazardous materials. Fewest routes but highest margins. Requires government security clearance and specialized insurance. Defense contracts are exclusive to this subsector.',
-        },
-    ],
-    finance: [
-        {
-            key: 'banking',
-            name: 'Banking',
-            desc: 'Commercial and retail banking — accept deposits, issue loans, manage credit lines, and facilitate payments. Your revenue comes from the spread between deposit interest and lending rates. Growth depends on trust, regulation, and the health of the economy you operate in.',
-        },
-        {
-            key: 'insurance',
-            name: 'Insurance',
-            desc: 'Underwrite risk for individuals, businesses, and governments. Collect premiums, pay claims, and invest the float. Profitability hinges on actuarial accuracy — price risk too low and a single disaster wipes you out; price it too high and clients go elsewhere.',
-        },
-        {
-            key: 'investment',
-            name: 'Investment',
-            desc: 'Asset management, securities trading, and venture capital. Raise funds from investors, deploy capital into markets, and earn returns through fees and performance. High risk, high reward — your reputation is your product.',
-        },
-    ],
-};
-
-function renderStep2() {
-    const sectorKey = SECTORS.find(s => s.name === state.sector)?.key;
-    const subs = SUBSECTORS[sectorKey] || [];
-
-    const container = document.getElementById('step-2');
-    container.innerHTML = `
-        <div class="section-block">
-            <div class="section-header">
-                <div class="section-dot" style="background:var(--teal)"></div>
-                <span class="section-label">Select a Subsector</span>
-            </div>
-            <div class="section-body">
-                ${subs.map(s => `
-                    <div class="option-card${state.subsector === s.name ? ' selected' : ''}"
-                         data-subsector="${s.key}" data-name="${s.name}"
-                         onclick="selectSubsector(this)">
-                        <div class="option-card__name">${s.name}</div>
-                        <div class="option-card__desc">${s.desc}</div>
-                    </div>
-                `).join('')}
-            </div>
-        </div>
-    `;
-}
-
-function selectSubsector(el) {
-    const cards = document.querySelectorAll('#step-2 .option-card');
-    const name = el.dataset.name;
-
-    // Toggle: clicking the already-selected card deselects it
-    if (el.classList.contains('selected')) {
-        el.classList.remove('selected');
-        state.subsector = null;
-        cards.forEach(c => c.classList.remove('disabled'));
-    } else {
-        // Select this one, grey out the others
-        cards.forEach(c => {
-            c.classList.remove('selected', 'disabled');
-        });
-        el.classList.add('selected');
-        state.subsector = name;
-        cards.forEach(c => {
-            if (c !== el) c.classList.add('disabled');
-        });
-    }
 
     updateSelectionBar();
     updateButtons();
@@ -655,7 +534,6 @@ function renderStep(step) {
 
     // Render step content
     if (step === 1) renderStep1();
-    else if (step === 2) renderStep2();
 
     // Update selection bar
     updateSelectionBar();
@@ -669,24 +547,16 @@ function renderStep(step) {
 
 function updateSelectionBar() {
     const tags = document.getElementById('sel-tags');
-    const parts = [];
-    if (state.sector) parts.push(state.sector);
-    if (state.subsector) parts.push(state.subsector);
-
-    if (parts.length === 0) {
+    if (!state.sector) {
         tags.innerHTML = '<span class="sel-placeholder">Choose a sector to begin</span>';
     } else {
-        tags.innerHTML = parts.map(p => `<span class="sel-tag">${p}</span>`).join('');
+        tags.innerHTML = `<span class="sel-tag">${state.sector}</span>`;
     }
 }
 
 function updateButtons() {
     const nextBtn = document.getElementById('btn-next');
-    let canProceed = false;
-
-    if (currentStep === 1) canProceed = !!state.sector;
-    else if (currentStep === 2) canProceed = !!state.subsector;
-
+    const canProceed = currentStep === 1 && !!state.sector;
     nextBtn.disabled = !canProceed;
     nextBtn.classList.toggle('ready', canProceed);
     nextBtn.textContent = 'Next \u25B6';
@@ -715,7 +585,6 @@ function goBack() {
 window.goNext = goNext;
 window.goBack = goBack;
 window.selectSector = selectSector;
-window.selectSubsector = selectSubsector;
 window.corpState = state;
 window.updateButtons = updateButtons;
 window.updateSelectionBar = updateSelectionBar;
