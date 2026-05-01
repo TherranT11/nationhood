@@ -1543,7 +1543,7 @@ function showBidModal(contract) {
     let markup = 30;  // sensible mid default
 
     const renderModal = () => {
-        const { bidAmount, months } = computeBid(contract, crews, markup);
+        const { bidAmount, months, supplyMult } = computeBid(contract, crews, markup);
         const budget = Number(contract.budget) || 0;
         const pctOfBudget = budget > 0 ? (bidAmount / budget * 100) : 0;
         const overBudget = bidAmount > budget;
@@ -1624,7 +1624,7 @@ function showBidModal(contract) {
                 <div class="co-bid-summary-title">Your side</div>
                 <div class="co-bid-summary-row">
                     <span class="label">Supply Chain mult</span>
-                    <span class="value">${(1.30 - mySupply * 0.06).toFixed(2)}×<span class="muted"> · supply ${mySupply.toFixed(mySupply % 1 === 0 ? 0 : 1)}/10</span></span>
+                    <span class="value">${supplyMult.toFixed(2)}×<span class="muted"> · supply ${mySupply.toFixed(mySupply % 1 === 0 ? 0 : 1)}/10</span></span>
                 </div>
                 <div class="co-bid-summary-row">
                     <span class="label">AP Cost</span>
@@ -1653,9 +1653,13 @@ function showBidModal(contract) {
                 renderModal();
             });
         });
-        modal.querySelector('#co-bid-submit')?.addEventListener('click', async () => {
-            await submitRichBid(contract.id, crews, markup);
-        }, { once: true });
+        // Submit listener: NOT { once: true } — if the server rejects the
+        // bid (e.g. requirement check trips post-modal-open because state
+        // shifted, or AP went to 0), we want the user to be able to fix
+        // their inputs and retry. _bidInflight guards against double-fire.
+        modal.querySelector('#co-bid-submit')?.addEventListener('click', () => {
+            submitRichBid(contract.id, crews, markup);
+        });
     };
 
     renderModal();
