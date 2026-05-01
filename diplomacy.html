@@ -505,6 +505,26 @@ function renderTradeEconomy() {
 
     // Build commodity rows from trade flows
     const commodities = [];
+
+    // ── Energy (stat-derived) ──
+    // Energy production = nations.energy / 3. No demand model yet, so
+    // the entire production reads as surplus. Distinct from fuel_energy
+    // (petroleum, barrels). Displayed unit-less since it's a stat number,
+    // not a dollar value.
+    const energyStat = Number(_worldState?.nation?.energy) || 0;
+    const energyProd = energyStat / 3;
+    commodities.push({
+        key: 'energy',
+        icon: '⚡',
+        name: 'Energy',
+        production: energyProd,
+        domesticDemand: 0,
+        demand: 0,
+        netFlow: energyProd,
+        selfSufficiencyBalance: null,
+        statBased: true,
+    });
+
     for (const [sector, flow] of Object.entries(_tradeFlows)) {
         // Skip parent food_agriculture if subsectors exist
         if (sector === 'food_agriculture' && (_tradeFlows.grains_staples || _tradeFlows.livestock_dairy)) continue;
@@ -532,8 +552,13 @@ function renderTradeEconomy() {
                 : null,
         });
     }
-    // Sort by total volume descending
-    commodities.sort((a, b) => (b.production + b.demand) - (a.production + a.demand));
+    // Sort by total volume descending — but keep stat-based commodities
+    // (Energy, etc.) pinned to the top regardless of magnitude since
+    // they're on a different scale than the dollar-denominated rows.
+    commodities.sort((a, b) => {
+        if (!!a.statBased !== !!b.statBased) return a.statBased ? -1 : 1;
+        return (b.production + b.demand) - (a.production + a.demand);
+    });
 
     // Net trade position = trade_flows.net_flow (export_volume − import_volume)
     // computed once at tick time. Same source as getNationSurplusesAndDeficits
@@ -558,22 +583,25 @@ function renderTradeEconomy() {
         </div>`;
 
     const nationId = _worldState?.nation?.id;
+    // Stat-based rows render unit-less decimals (toFixed(1)) since the
+    // values are derived from a 0-100 nation stat, not dollar volumes.
+    const fmtProd = (c, n) => c.statBased ? Number(n).toFixed(1) : fmtBudgetCurrency(n);
     for (const c of commodities) {
         const bal = c.selfSufficiencyBalance !== null ? c.selfSufficiencyBalance : c.netFlow;
         const isExp = _expandedCommodity === c.key;
         const isSelected = _tradeCommodityFilter === c.key;
         const bgStyle = isExp ? 'background:var(--bg-card);' : isSelected ? (bal > 0 ? 'background:rgba(92,204,92,0.04);' : 'background:rgba(204,85,85,0.04);') : '';
-        html += `<div class="tr-commodity-row" data-sector="${c.key}" style="${bgStyle}">
+        html += `<div class="tr-commodity-row" data-sector="${c.key}"${c.statBased ? ' data-statbased="1"' : ''} style="${bgStyle}${c.statBased ? 'cursor:default;' : ''}">
             <div style="flex:1;display:flex;align-items:center;gap:8px;">
                 <span style="font-size:16px;">${c.icon}</span>
                 <span style="font-size:14px;color:${isExp || isSelected ? 'var(--text-bright)' : 'var(--text-secondary)'};font-weight:${isExp || isSelected ? '700' : '400'};">${escapeHtml(c.name)}</span>
-                ${!isExp ? '<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);opacity:0.5;margin-left:2px;">click to expand</span>' : ''}
+                ${!isExp && !c.statBased ? '<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);opacity:0.5;margin-left:2px;">click to expand</span>' : ''}
             </div>
-            <span style="width:75px;font-family:var(--font-mono);font-size:13px;color:var(--text-dim);text-align:right;">${fmtBudgetCurrency(c.production)}</span>
-            <span style="width:75px;font-family:var(--font-mono);font-size:13px;color:var(--text-dim);text-align:right;">${c.domesticDemand > 0 ? fmtBudgetCurrency(c.domesticDemand) : '—'}</span>
-            <span style="width:75px;font-family:var(--font-mono);font-size:13px;color:var(--text-dim);text-align:right;">${fmtBudgetCurrency(c.demand)}</span>
+            <span style="width:75px;font-family:var(--font-mono);font-size:13px;color:var(--text-dim);text-align:right;">${fmtProd(c, c.production)}</span>
+            <span style="width:75px;font-family:var(--font-mono);font-size:13px;color:var(--text-dim);text-align:right;">${c.domesticDemand > 0 ? fmtProd(c, c.domesticDemand) : '—'}</span>
+            <span style="width:75px;font-family:var(--font-mono);font-size:13px;color:var(--text-dim);text-align:right;">${c.demand > 0 ? fmtProd(c, c.demand) : '—'}</span>
             <span style="width:75px;font-family:var(--font-mono);font-size:14px;font-weight:700;text-align:right;color:${bal > 0 ? 'var(--green)' : bal < 0 ? 'var(--red)' : 'var(--text-dim)'};">
-                ${bal === 0 ? '\u2014' : (bal > 0 ? '+' : '') + fmtBudgetCurrency(bal)}
+                ${bal === 0 ? '\u2014' : (bal > 0 ? '+' : '') + fmtProd(c, Math.abs(bal))}
             </span>
         </div>`;
 
@@ -756,6 +784,9 @@ function renderTradeEconomy() {
     left.onclick = (e) => {
         const row = e.target.closest('.tr-commodity-row');
         if (!row) return;
+        // Stat-derived rows (Energy etc.) have no trade-flow detail to
+        // expand — bail before toggling so the empty panel never opens.
+        if (row.dataset.statbased === '1') return;
         const sector = row.dataset.sector;
         // Toggle expansion
         _expandedCommodity = _expandedCommodity === sector ? null : sector;
