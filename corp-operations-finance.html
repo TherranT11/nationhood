@@ -870,17 +870,17 @@ async function loadAvailableLoanRequests() {
     }
 
     const cur = Number(shard?.current_tick || 0);
+    // Slim select: only the fields the card render reads. L3.B adds the
+    // borrower-profile fields (corp_cash_reserves / corp_loans /
+    // corp_reputation) when the modal needs them.
     const { data: requests, error: reqErr } = await _supabase
         .from('bank_loan_requests')
         .select(`
-            id, principal, term_ticks, requested_apr, risk_grade,
-            purpose, status, expires_at_tick, created_at_tick,
-            requesting_faction_id, requesting_nation_id,
+            id, principal, term_ticks, risk_grade, purpose, expires_at_tick,
             requesting_faction:factions!requesting_faction_id (
-                id, faction_name, corp_ticker, corp_sector,
-                corp_cash_reserves, corp_loans, corp_reputation
+                faction_name, corp_ticker, corp_sector
             ),
-            requesting_nation:nations!requesting_nation_id ( id, name )
+            requesting_nation:nations!requesting_nation_id ( name )
         `)
         .eq('status', 'pending')
         .gt('expires_at_tick', cur)
@@ -964,10 +964,11 @@ function renderAvailableLoanRequests() {
     }).join('');
 }
 
-// Stub. The Loan Review modal lands in L3.B; this just confirms wiring.
-function openLoanReviewModal(requestId) {
-    const req = _availableRequests.find(r => r.id === requestId);
-    console.log('[fo] openLoanReviewModal stub — request:', requestId, req);
+// Stub — silent no-op until L3.B replaces this with the Loan Review
+// modal. The click handler stays wired so L3.B's only change is to
+// fill in this function body.
+function openLoanReviewModal(_requestId) {
+    // intentionally empty
 }
 
 // One-time delegated click handler for the Available Offers list.
@@ -1124,10 +1125,12 @@ async function init() {
     renderHeroStats();
     renderActionCooldownPill();
 
-    // Available Offers (Section III).
+    // Available Offers (Section III). Attach the delegated click /
+    // keyboard handler BEFORE the first render so cards never exist
+    // without a live listener.
+    attachAvailableOffersHandlers();
     await loadAvailableLoanRequests();
     renderAvailableLoanRequests();
-    attachAvailableOffersHandlers();
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = '';
