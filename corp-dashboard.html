@@ -101,14 +101,47 @@ body.corp-redesign.light-mode {
 /* ── MASTHEAD ── */
 .cr-masthead {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 36px;
+  grid-template-columns: auto 1fr auto;  /* logo | identity | ticker */
+  gap: 28px;
   align-items: end;
   padding-bottom: 22px;
   border-bottom: 1px solid var(--border-0);
   margin-bottom: 24px;
 }
 body.corp-redesign.light-mode .cr-masthead { border-bottom-color: var(--panel-border); }
+
+/* Corp logo block — shows custom_logo_url when present, otherwise the
+   first two characters of the ticker as a fallback monogram. Sized to
+   sit visually balanced against the 52px serif corp name. */
+.cr-corp-logo {
+  width: 96px;
+  height: 96px;
+  border-radius: 4px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  margin-bottom: 6px; /* aligns visual baseline with the meta row */
+}
+body.corp-redesign.light-mode .cr-corp-logo {
+  background: var(--bg-panel);
+  border-color: var(--panel-border);
+}
+.cr-corp-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cr-corp-logo-monogram {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
 
 .cr-masthead-eyebrow {
   font-family: var(--font-mono);
@@ -688,18 +721,24 @@ body.corp-redesign.light-mode .cr-footer-strip { border-top-color: var(--panel-b
   .cr-main-grid { grid-template-columns: 1fr; }
   .cr-corp-name { font-size: 40px; }
   .cr-financial-row { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 720px) {
-  .cr-layout { padding: 16px 14px 40px; }
-  .cr-masthead { grid-template-columns: 1fr; }
+  /* Logo + identity stay together on the left, ticker drops below. */
+  .cr-masthead { grid-template-columns: auto 1fr; }
   .cr-ticker-block {
+    grid-column: 1 / -1;
     border-left: none;
     padding-left: 0;
     text-align: left;
     border-top: 1px solid var(--border-0);
     padding-top: 16px;
+    margin-top: 8px;
   }
   body.corp-redesign.light-mode .cr-ticker-block { border-top-color: var(--panel-border); }
+}
+@media (max-width: 720px) {
+  .cr-layout { padding: 16px 14px 40px; }
+  .cr-masthead { grid-template-columns: 1fr; }
+  .cr-corp-logo { width: 72px; height: 72px; }
+  .cr-corp-logo-monogram { font-size: 22px; }
   .cr-corp-name { font-size: 32px; }
   .cr-perf-grid { grid-template-columns: 1fr; }
 }
@@ -719,6 +758,9 @@ body.corp-redesign.light-mode .cr-footer-strip { border-top-color: var(--panel-b
 
     <!-- MASTHEAD -->
     <div class="cr-masthead">
+      <div class="cr-corp-logo" id="cr-corp-logo">
+        <span class="cr-corp-logo-monogram" id="cr-corp-logo-monogram">—</span>
+      </div>
       <div>
         <div class="cr-masthead-eyebrow" id="cr-sector">— —</div>
         <h1 class="cr-corp-name" id="cr-corp-name">Loading…</h1>
@@ -1014,6 +1056,18 @@ async function init() {
 function renderMasthead(history) {
     const sector = faction.corp_sector || 'Unspecified Sector';
     document.getElementById('cr-sector').textContent = `— ${sector} —`;
+
+    // Corp logo: custom upload if present, otherwise ticker-initials monogram.
+    const logoEl = document.getElementById('cr-corp-logo');
+    const monoEl = document.getElementById('cr-corp-logo-monogram');
+    if (logoEl && monoEl) {
+        if (faction.custom_logo_url) {
+            logoEl.innerHTML = `<img src="${escapeAttr(faction.custom_logo_url)}" alt="${escapeAttr(faction.faction_name || '')}" />`;
+        } else {
+            const tk = (faction.corp_ticker || faction.abbreviation || '').toUpperCase();
+            monoEl.textContent = tk.slice(0, 2) || '—';
+        }
+    }
 
     document.getElementById('cr-corp-name').innerHTML =
         renderCorpNameHtml(faction.faction_name);
