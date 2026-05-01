@@ -130,12 +130,6 @@ const CC_CIVIL = [
     'water_treatment','government_office','bridge_construction','transit_station',
     'waste_processing','flood_defense'
 ];
-// Private-sector civil engineering templates (used when issuer_type = PRIVATE)
-const CC_CIVIL_PRIVATE = [
-    'commercial_tower','retail_complex','residential_tower','hotel_resort',
-    'corporate_campus','logistics_center','mixed_use_development','medical_center',
-    'shopping_mall','parking_structure'
-];
 const CC_INDUSTRIAL = [
     'power_station','hydroelectric_dam','manufacturing_complex','oil_refinery',
     'shipping_port','military_installation','telecom_network','railway_corridor',
@@ -939,364 +933,14 @@ async function insertCorpContract(supabase, nation, sector, currentTick, gameYea
     return true;
 }
 
-async function generateConstructionContracts(supabase, nation, currentTick) {
-    // Only generate every 3 ticks
-    if (currentTick % 3 !== 0) return [];
-
-    // Load building modifier definitions once
-    let _buildingModifiers = null;
-    try {
-        const { data: modDefs } = await supabase.from('building_modifiers').select('*');
-        _buildingModifiers = modDefs || [];
-    } catch (_) { /* table may not exist yet */ }
-
-    const gdp = Number(nation.gdp_growth ?? 50);
-
-    // Determine how many contracts this GDP tier generates
-    let targetContracts = 2;
-    if (gdp >= 75) targetContracts = 5;
-    else if (gdp >= 51) targetContracts = 4;
-    else if (gdp >= 26) targetContracts = 3;
-
-    // Count active corporations in this nation (exclude dissolved)
-    const { count: corpCount } = await supabase
-        .from('factions')
-        .select('id', { count: 'exact', head: true })
-        .eq('nation_id', nation.id)
-        .eq('faction_type', 'corporation')
-        .is('abandoned_at', null);
-    const maxOpen = (corpCount || 0) + 2;
-
-    // Count currently open contracts
-    const { count: openCount } = await supabase
-        .from('construction_contracts')
-        .select('id', { count: 'exact', head: true })
-        .eq('nation_id', nation.id)
-        .in('status', ['open', 'bidding']);
-    const currentOpen = openCount || 0;
-
-    const slotsAvailable = Math.max(0, maxOpen - currentOpen);
-    const toGenerate = Math.min(targetContracts, slotsAvailable);
-    if (toGenerate === 0) return [];
-
-    // Check mega project cooldown — available at moderate GDP growth (was 75)
-    let megaAllowed = gdp >= 50;
-    if (megaAllowed) {
-        const { data: cooldown } = await supabase
-            .from('mega_project_cooldowns')
-            .select('cooldown_until_tick')
-            .eq('nation_id', nation.id)
-            .maybeSingle();
-        if (cooldown && cooldown.cooldown_until_tick > currentTick) {
-            megaAllowed = false;
-        }
-    }
-
-    // Build the slot allocation: civil engineering gets at least 1
-    const slots = [];
-    slots.push('civil_engineering'); // guaranteed first slot
-
-    for (let i = 1; i < toGenerate; i++) {
-        if (megaAllowed && Math.random() < 0.15) {
-            slots.push('mega_project');
-            megaAllowed = false; // only one mega per cycle
-        } else if (gdp >= 25 && Math.random() < 0.35) {
-            // Industrial available even in struggling economies (was gdp>=51)
-            slots.push('industrial');
-        } else {
-            slots.push('civil_engineering');
-        }
-    }
-
-    // Private organization issuers for auto-generated contracts
-    const PRIVATE_ISSUERS = [
-        'Meridian Development Group', 'Atlas Property Holdings', 'Continental Realty Corp',
-        'Sovereign Capital Partners', 'Pinnacle Urban Development', 'Citadel Land Trust',
-        'Pacific Rim Investments', 'Heritage Builders Alliance', 'Vanguard Real Estate Ltd',
-        'Summit Infrastructure Fund', 'Cornerstone Properties Inc', 'Ironclad Holdings Group',
-        'Anchor Estates Development', 'Sterling Land Associates', 'Bedrock Capital Partners',
-    ];
-
-    // Sector prefix for project IDs
-    const SECTOR_PREFIX = { civil_engineering: 'PVT-C', industrial: 'PVT-I', mega_project: 'PVT-M' };
-
-    // Material base prices (must match client-side MAT_BASE_PRICE)
-    const MAT_PRICE = {
-        concrete: 360000, steel: 500000, glass_facades: 560000, em_systems: 640000,
-        lumber: 240000, heavy_parts: 800000, aggregate: 160000, asphalt: 280000,
-    };
-    const GRADE_LOW = 0.5;
-    const GRADE_HIGH = 2.0;
-
-    // GDP growth scaling factor: 0.3 at gdp_growth=0, 1.0 at gdp_growth=50, 1.8 at gdp_growth=100
-    const gdpGrowth = Number(nation.gdp_growth ?? 50);
-    const gdpScale = 0.3 + (gdpGrowth / 100) * 1.5;
-
-    // Game year for project ID (e.g., "2014")
-    const { data: shardDate } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-    const gameYear = (shardDate?.current_date || '').match(/\d{4}/)?.[0] || '2014';
-
-    const generated = [];
-    let contractSeq = 1; // sequence number within this generation batch
-    for (const sector of slots) {
-        // Private issuers get private-appropriate civil templates (Commercial Tower, Hotel, etc.)
-        const pool = sector === 'mega_project' ? CC_MEGA : sector === 'industrial' ? CC_INDUSTRIAL : CC_CIVIL_PRIVATE;
-        const key = ccPick(pool);
-        const tmpl = CC_TEMPLATES[key];
-        if (!tmpl) continue;
-
-        // Generate required materials first (needed for budget calculation) — 10x base quantities
-        const requiredMats: Record<string, number> = {};
-        const reqs = CC_REQUIREMENTS[key];
-        if (reqs?.mat) {
-            for (const [k, [lo, hi]] of Object.entries(reqs.mat)) requiredMats[k] = Math.round(ccRand(lo as number, hi as number) * 10);
-        }
-
-        // Generate workforce — template ranges are realistic counts (e.g. 500-700
-        // for a mega project). Earlier code multiplied by 100 which produced
-        // 50,000-70,000 worker requirements, blowing budgets into the hundreds
-        // of billions and leaving contracts unbiddable.
-        const requiredWf = reqs?.wf
-            ? { general: ccRand((reqs.wf as any).general[0], (reqs.wf as any).general[1]), skilled: ccRand((reqs.wf as any).skilled[0], (reqs.wf as any).skilled[1]) }
-            : {};
-
-        // Budget: range from [all LOW materials, 0% markup] to [all HIGH materials, 40% markup]
-        // Budget stays strictly within the range a player can bid
-        let lowCost = 0, highCost = 0;
-        for (const [matKey, qty] of Object.entries(requiredMats)) {
-            const basePrice = (MAT_PRICE as any)[matKey] || 300000;
-            lowCost += qty * Math.round(basePrice * GRADE_LOW);
-            highCost += qty * Math.round(basePrice * GRADE_HIGH);
-        }
-        // Add labor cost estimate (wage rate 15200 per worker per tick)
-        const totalWorkers = ((requiredWf as any).general || 0) + ((requiredWf as any).skilled || 0);
-        const estTimeline = ccRand(tmpl.ticks[0], tmpl.ticks[1]);
-        const laborCost = totalWorkers * 15200 * estTimeline;
-        lowCost += laborCost;
-        highCost += laborCost;
-        // Apply 40% markup to high end (matches max player markup)
-        highCost = Math.round(highCost * 1.40);
-        const budget = ccRand(lowCost, highCost);
-
-        // Timeline from template range
-        let timeline = estTimeline;
-        if (sector === 'mega_project') {
-            timeline += ccRand(-3, 3);
-            timeline = Math.max(tmpl.ticks[0], Math.min(tmpl.ticks[1], timeline));
-        }
-
-        // Project ID: PVT-C1-2014, PVT-I2-2014, PVT-M1-2014
-        const projectId = `${SECTOR_PREFIX[sector]}${contractSeq}-${gameYear}`;
-        contractSeq++;
-
-        // Issuer: auto-generated contracts are private sector offerings
-        const issuerName = PRIVATE_ISSUERS[Math.floor(Math.random() * PRIVATE_ISSUERS.length)];
-
-        // Roll building modifiers based on nation stats (0-3 per contract)
-        const contractModifiers = [];
-        if (_buildingModifiers) {
-            const eligible = _buildingModifiers.filter(m =>
-                m.category === 'site' || m.category === 'nation'
-            ).filter(m => {
-                // Check sector applicability
-                const appliesTo = m.applies_to || [];
-                if (!appliesTo.includes(sector)) return false;
-                // Check stat threshold
-                if (m.probability_stat) {
-                    const statVal = Number(nation[m.probability_stat] ?? 50);
-                    // For seismic_zone: low stability = higher chance (below threshold)
-                    if (m.modifier_key === 'seismic_zone') return statVal < m.probability_threshold;
-                    return statVal >= m.probability_threshold;
-                }
-                return m.probability_base > 0;
-            });
-            for (const mod of eligible) {
-                if (contractModifiers.length >= 3) break; // max 3 modifiers
-                if (Math.random() < (mod.probability_base || 0.1)) {
-                    contractModifiers.push(mod.modifier_key);
-                }
-            }
-        }
-
-        // Apply cost multiplier from modifiers
-        let modifiedBudget = budget;
-        if (_buildingModifiers && contractModifiers.length > 0) {
-            for (const mk of contractModifiers) {
-                const mod = _buildingModifiers.find(m => m.modifier_key === mk);
-                if (mod) modifiedBudget = Math.round(modifiedBudget * mod.cost_multiplier);
-            }
-        }
-
-        const { data: contract, error } = await supabase.from('construction_contracts').insert({
-            nation_id: nation.id,
-            template_key: key,
-            sector: tmpl.sector,
-            name: tmpl.name,
-            description: tmpl.desc,
-            project_code: projectId,
-            budget_ceiling: modifiedBudget,
-            timeline_ticks: timeline,
-            required_materials: requiredMats,
-            required_equipment: (() => {
-                const equipDef = CC_REQUIREMENTS[key]?.equip || {};
-                const result = {};
-                for (const [ek, range] of Object.entries(equipDef)) {
-                    result[ek] = Array.isArray(range) ? ccRand(range[0], range[1]) * 5 : ((range || 1) * 5);
-                }
-                return result;
-            })(),
-            required_workforce: requiredWf,
-            modifiers: contractModifiers,
-            status: 'open',
-            min_reputation: sector === 'mega_project' ? 60 : sector === 'industrial' ? 30 : 0,
-            insurance_required: modifiedBudget >= 100000000,   // $100M+ requires insurance
-            bond_required: modifiedBudget >= 200000000,        // $200M+ requires performance bond
-            generated_at_tick: currentTick,
-            bidding_ends_tick: currentTick + 3,
-            issuer_type: 'PRIVATE',
-            issuer_name: issuerName,
-        }).select('id, name, sector').single();
-
-        if (error) {
-            console.error(`[ContractGen] Failed to insert contract for ${nation.name}:`, error.message);
-        } else {
-            generated.push(contract);
-        }
-    }
-
-    if (generated.length > 0) {
-        console.log(`[ContractGen] ${nation.name}: generated ${generated.length} contracts (GDP=${gdp}, open=${currentOpen}/${maxOpen})`);
-    }
-    return generated;
-}
-
-// ==================== INFRASTRUCTURE RENEWAL POLICY CONTRACTS ====================
-// When the National Infrastructure Renewal Act is active, generate bonus construction
-// contracts on a staggered schedule:
-//   Wave 1 (tick offset 1): 3 civil, 1 industrial, 1 megaproject
-//   Wave 2 (tick offset 6): 3 civil, 2 industrial
-//   Wave 3 (tick offset 12): 3 civil
-
-const INFRA_RENEWAL_WAVES = [
-    { tickOffset: 1,  civil: 3, industrial: 1, mega: 1 },
-    { tickOffset: 6,  civil: 3, industrial: 2, mega: 0 },
-    { tickOffset: 12, civil: 3, industrial: 0, mega: 0 },
-];
-
-async function generateInfraRenewalContracts(supabase, nation, currentTick) {
-    // Check for active Infrastructure Renewal policy in this nation
-    const { data: activePolicy } = await supabase
-        .from('nation_policies')
-        .select('id, activated_at_tick, ticks_elapsed')
-        .eq('nation_id', nation.id)
-        .eq('status', 'active')
-        .eq('major_sector', 'ECONOMICS')
-        .maybeSingle();
-
-    // Also look up by joining to policies table for the specific policy_key
-    const { data: renewalPolicy } = await supabase
-        .from('nation_policies')
-        .select('id, activated_at_tick, ticks_elapsed, policy_id, policies!inner(policy_key)')
-        .eq('nation_id', nation.id)
-        .eq('status', 'active')
-        .eq('policies.policy_key', 'national_infrastructure_renewal')
-        .maybeSingle();
-
-    if (!renewalPolicy) return;
-
-    const ticksSinceActivation = currentTick - (renewalPolicy.activated_at_tick || 0);
-
-    // Check which wave fires this tick
-    const wave = INFRA_RENEWAL_WAVES.find(w => w.tickOffset === ticksSinceActivation);
-    if (!wave) return;
-
-    console.log(`[InfraRenewal] ${nation.name}: Wave at tick offset ${wave.tickOffset} — ${wave.civil} civil, ${wave.industrial} industrial, ${wave.mega} mega`);
-
-    // Game year for project codes
-    const { data: shardDate } = await supabase.from('shard').select('current_date').eq('name', 'Alpha Shard').single();
-    const gameYear = (shardDate?.current_date || '').match(/\d{4}/)?.[0] || '2014';
-
-    const GOVT_ISSUERS = [
-        'Ministry of Public Works', 'National Infrastructure Agency',
-        'Department of Urban Development', 'Bureau of Civil Engineering',
-        'Government Construction Authority', 'National Building Commission',
-    ];
-
-    // Build the slot list
-    const slots: string[] = [];
-    for (let i = 0; i < wave.civil; i++) slots.push('civil_engineering');
-    for (let i = 0; i < wave.industrial; i++) slots.push('industrial');
-    for (let i = 0; i < wave.mega; i++) slots.push('mega_project');
-
-    let seq = 1;
-    for (const sector of slots) {
-        const pool = sector === 'mega_project' ? CC_MEGA : sector === 'industrial' ? CC_INDUSTRIAL : CC_CIVIL_PRIVATE;
-        const key = ccPick(pool);
-        const tmpl = CC_TEMPLATES[key];
-        if (!tmpl) continue;
-
-        const reqs = CC_REQUIREMENTS[key];
-        const requiredMats: Record<string, number> = {};
-        if (reqs?.mat) {
-            for (const [k, [lo, hi]] of Object.entries(reqs.mat)) requiredMats[k] = Math.round(ccRand(lo as number, hi as number) * 10);
-        }
-        // Workforce uses template ranges directly; the ×100 from the legacy
-        // generator was a bug (see ContractGen path above for context).
-        const requiredWf = reqs?.wf
-            ? { general: ccRand((reqs.wf as any).general[0], (reqs.wf as any).general[1]), skilled: ccRand((reqs.wf as any).skilled[0], (reqs.wf as any).skilled[1]) }
-            : {};
-
-        // Budget calculation (same as regular generation)
-        const MAT_PRICE = { concrete: 360000, steel: 500000, glass_facades: 560000, em_systems: 640000, lumber: 240000, heavy_parts: 800000, aggregate: 160000, asphalt: 280000 };
-        let lowCost = 0, highCost = 0;
-        for (const [matKey, qty] of Object.entries(requiredMats)) {
-            const basePrice = (MAT_PRICE as any)[matKey] || 300000;
-            lowCost += qty * Math.round(basePrice * 0.5);
-            highCost += qty * Math.round(basePrice * 2.0);
-        }
-        const totalWorkers = ((requiredWf as any).general || 0) + ((requiredWf as any).skilled || 0);
-        const estTimeline = ccRand(tmpl.ticks[0], tmpl.ticks[1]);
-        const laborCost = totalWorkers * 15200 * estTimeline;
-        lowCost += laborCost;
-        highCost = Math.round((highCost + laborCost) * 1.40);
-        const budget = ccRand(lowCost, highCost);
-
-        const projectId = `GOV-R${seq}-${gameYear}`;
-        seq++;
-
-        const issuerName = GOVT_ISSUERS[Math.floor(Math.random() * GOVT_ISSUERS.length)];
-
-        const { error } = await supabase.from('construction_contracts').insert({
-            nation_id: nation.id,
-            template_key: key,
-            sector: tmpl.sector,
-            name: tmpl.name + ' (Infrastructure Renewal)',
-            description: tmpl.desc + ' — Funded by the National Infrastructure Renewal Act.',
-            project_code: projectId,
-            budget_ceiling: budget,
-            timeline_ticks: estTimeline,
-            required_materials: requiredMats,
-            required_equipment: (() => {
-                const equipDef = CC_REQUIREMENTS[key]?.equip || {};
-                const result = {};
-                for (const [ek, range] of Object.entries(equipDef)) {
-                    result[ek] = Array.isArray(range) ? ccRand(range[0], range[1]) * 5 : ((range || 1) * 5);
-                }
-                return result;
-            })(),
-            required_workforce: requiredWf,
-            status: 'open',
-            min_reputation: sector === 'mega_project' ? 60 : sector === 'industrial' ? 30 : 0,
-            insurance_required: budget >= 100000000,
-            bond_required: budget >= 200000000,
-            generated_at_tick: currentTick,
-            bidding_ends_tick: currentTick + 3,
-            issuer_type: 'GOVERNMENT',
-            issuer_name: issuerName,
-        });
-        if (error) console.error(`[InfraRenewal] Contract insert failed:`, error.message);
-    }
-}
+// Legacy stubs — see Path 1 Phase 1A cull (2026-05). No new
+// construction_contracts rows. The new pipeline writes to
+// corp_contracts via generateCorpContractsByGdpTier (called once
+// per shard tick). Both stubs stay only because they're still
+// referenced from the per-nation construction try-block; they go
+// away in Phase 1E along with the legacy table.
+async function generateConstructionContracts() { return []; }
+async function generateInfraRenewalContracts() { return; }
 
 // ==================== PROPERTY MARKETPLACE GENERATOR ====================
 
@@ -3544,6 +3188,310 @@ async function resolveExpiredEvents(supabase, nationId, currentTick) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
+//  NEW PIPELINE: corp_contract_events
+//
+//  Path 1 Phase 1B retarget. Mirrors the legacy generateProjectEvents +
+//  resolveExpiredEvents pair but reads from corp_contracts and writes to
+//  corp_contract_events. Both old + new run concurrently during the drain;
+//  the legacy pair dies with construction_contracts in Phase 1E.
+//
+//  Differences from the legacy version:
+//    - Status filter: corp_contracts uses 'active', not 'in_progress'.
+//    - Faction column: winner_faction_id, not awarded_to_faction.
+//    - Sector match: corp_contracts.project_type is "Civil Engineering" /
+//      "Industrial" / "Megaproject" (display form). The event catalog's
+//      appliesTo uses 'civil_engineering' / 'industrial' / 'mega_project'
+//      (snake_case keys). projectTypeToSectorKey() bridges them.
+//    - The legacy material-grade regulatory branch is dropped — the new
+//      bid pipeline (corp_contract_bids) doesn't track material_grades
+//      yet. Permit-compliance regulatory branch is kept since corp_permits
+//      is shared by both pipelines.
+//    - resolveExpiredCorpContractEvents is simpler than its legacy
+//      counterpart: no insurance integration, no claims-office reductions
+//      (those rely on the dead finance_active_loans table). Just apply
+//      response effect, flip to EXPIRED. Insurance will be re-added when
+//      the new bank_loans pipeline grows insurance products.
+//
+//  Intentional duplication: ~90% of the template-iteration / probability /
+//  permit-modifier logic mirrors the legacy generator. Refactoring into a
+//  shared helper now would be undone in Phase 1E when the legacy version
+//  is deleted, so the duplication is parked here on purpose.
+//
+//  Known carry-overs (not regressions): two read-modify-write patterns
+//  (corp_reputation update on regulatory hits; corp_cash_reserves debit on
+//  expired-event cost) inherit the legacy code's race window between
+//  SELECT and UPDATE. Concurrent updates between the two queries would
+//  lose changes. Low-frequency code paths; legacy has identical issue.
+//  Refactor target when these paths move into a SECURITY DEFINER RPC.
+// ════════════════════════════════════════════════════════════════════════════════
+
+function projectTypeToSectorKey(projectType) {
+    if (!projectType) return null;
+    const norm = String(projectType).toLowerCase().replace(/\s+/g, '_');
+    return norm === 'megaproject' ? 'mega_project' : norm;
+}
+
+async function generateCorpContractProjectEvents(supabase, nationId, currentTick) {
+    const results = [];
+    const permitScopeCache = {};
+
+    // Load active corp_contracts on this nation. Same shape as the legacy
+    // query, with the new field names.
+    const { data: contracts } = await supabase
+        .from('corp_contracts')
+        .select('id, name, current_phase, project_type, winner_faction_id')
+        .eq('issuer_nation_id', nationId)
+        .eq('status', 'active');
+
+    if (!contracts || contracts.length === 0) return results;
+
+    const { data: nation } = await supabase
+        .from('nations')
+        .select('stability, inflation, corruption, civil_unrest, pollution, happiness, physical_infrastructure')
+        .eq('id', nationId)
+        .single();
+    const ns = (key) => Number(nation?.[key] ?? 50);
+
+    // Permit event modifiers (same logic as legacy — corp_permits is shared).
+    const _permitEventMods = {};
+    try {
+        const factionIds = [...new Set(contracts.map(c => c.winner_faction_id).filter(Boolean))];
+        if (factionIds.length > 0) {
+            const { data: activePermits } = await supabase
+                .from('corp_permits')
+                .select('faction_id, permit_key')
+                .in('faction_id', factionIds)
+                .eq('status', 'active');
+            if (activePermits && activePermits.length > 0) {
+                const permitKeys = [...new Set(activePermits.map(p => p.permit_key))];
+                const { data: defs } = await supabase.from('construction_permits')
+                    .select('permit_key, event_modifiers')
+                    .in('permit_key', permitKeys);
+                const defModMap = {};
+                for (const d of (defs || [])) defModMap[d.permit_key] = d.event_modifiers || {};
+                for (const p of activePermits) {
+                    if (!_permitEventMods[p.faction_id]) _permitEventMods[p.faction_id] = {};
+                    const mods = defModMap[p.permit_key] || {};
+                    for (const [eventKey, multiplier] of Object.entries(mods)) {
+                        const current = _permitEventMods[p.faction_id][eventKey];
+                        _permitEventMods[p.faction_id][eventKey] = current !== undefined ? Math.min(current, multiplier) : multiplier;
+                    }
+                }
+            }
+        }
+    } catch (_pemErr) { /* non-fatal */ }
+
+    // Active-event dedup against corp_contract_events. If this query
+    // fails, hasActiveEvent stays empty — without that warning it would
+    // silently produce duplicate events on the same contract.
+    const contractIds = contracts.map(c => c.id);
+    const { data: activeEvents, error: activeEventsErr } = await supabase
+        .from('corp_contract_events')
+        .select('contract_id')
+        .in('contract_id', contractIds)
+        .eq('status', 'ACTIVE');
+    if (activeEventsErr) {
+        console.warn(`[CorpEvents] Active-event dedup query failed for nation ${nationId}; proceeding without dedup:`, activeEventsErr.message);
+    }
+    const hasActiveEvent = new Set((activeEvents || []).map(e => e.contract_id));
+
+    for (const contract of contracts) {
+        if (hasActiveEvent.has(contract.id)) continue;
+
+        const phase = contract.current_phase || 'Permits';
+        const sectorKey = projectTypeToSectorKey(contract.project_type);
+
+        for (const template of ALL_EVENT_TEMPLATES) {
+            if (!template.appliesTo.includes('all') && !template.appliesTo.includes(sectorKey)) continue;
+
+            const allowedPhases = PHASE_WINDOW_LOOKUP[template.phaseWindow] || PHASE_WINDOWS.ANY;
+            if (!allowedPhases.includes(phase)) continue;
+
+            let prob = template.probability;
+            for (const mod of (template.statModifiers || [])) {
+                const statVal = ns(mod.stat);
+                if (mod.direction === 'above' && statVal > mod.baseline) {
+                    prob += (statVal - mod.baseline) * mod.perPoint;
+                } else if (mod.direction === 'below' && statVal < mod.baseline) {
+                    prob += (mod.baseline - statVal) * Math.abs(mod.perPoint);
+                }
+            }
+            prob = Math.max(0, Math.min(0.5, prob));
+
+            if (_permitEventMods && _permitEventMods[contract.winner_faction_id]) {
+                const mods = _permitEventMods[contract.winner_faction_id];
+                if (mods[template.key] !== undefined) prob *= mods[template.key];
+            }
+
+            if (Math.random() > prob) continue;
+
+            const responses = [{
+                key: 'acknowledge',
+                label: 'Acknowledged',
+                tag: template.severity,
+                detail: template.impact,
+                cost: template.effects.cost || 0,
+                delay: template.effects.delay || 0,
+                qualityImpact: template.effects.quality || 0,
+            }];
+
+            const { error: insertErr } = await supabase.from('corp_contract_events').insert({
+                contract_id: contract.id,
+                faction_id: contract.winner_faction_id,
+                nation_id: nationId,
+                event_key: template.key,
+                type: template.type,
+                severity: template.severity,
+                title: template.title,
+                description: template.desc,
+                impact: template.impact,
+                responses,
+                status: 'ACTIVE',
+                fired_at_tick: currentTick,
+                expires_at_tick: currentTick + 3,
+            });
+
+            if (insertErr) {
+                console.warn(`[CorpEvents] Failed to create event ${template.key} for ${contract.name}:`, insertErr.message);
+            } else {
+                results.push({ contract: contract.name, event: template.title, severity: template.severity });
+            }
+            break; // Max 1 event per project per tick.
+        }
+
+        // Permit-compliance regulatory branch (no material_grades — that
+        // table doesn't exist on the new pipeline yet).
+        if (!results.some(r => r.contract === contract.name)) {
+            try {
+                const permitSnapshot = await getPermitComplianceSnapshot(supabase, {
+                    nationId,
+                    sector: sectorKey,
+                    factionId: contract.winner_faction_id,
+                    contractId: contract.id,
+                    checkpoint: 'events',
+                    cache: permitScopeCache,
+                });
+                const missingPermits = permitSnapshot.missingPermitKeys;
+                const missingCount = missingPermits.length;
+
+                let regEvent = null;
+                if (missingCount >= 3 && Math.random() < 0.25) {
+                    regEvent = REGULATORY_EVENTS.stop_work_order;
+                } else if (missingPermits.includes('ohs_compliance') || missingPermits.includes('working_hours')) {
+                    if (Math.random() < 0.15) regEvent = REGULATORY_EVENTS.worker_whistleblower;
+                } else if (missingCount >= 1 && Math.random() < 0.12) {
+                    regEvent = REGULATORY_EVENTS.regulatory_inspection;
+                }
+
+                if (regEvent) {
+                    const responses = [{
+                        key: 'acknowledge', label: 'Acknowledged', tag: regEvent.severity,
+                        detail: regEvent.description,
+                        cost: regEvent.cost, delay: regEvent.delay, qualityImpact: regEvent.quality,
+                    }];
+                    const { error: regInsertErr } = await supabase.from('corp_contract_events').insert({
+                        contract_id: contract.id,
+                        faction_id: contract.winner_faction_id,
+                        nation_id: nationId,
+                        event_key: regEvent.key,
+                        type: 'REGULATORY',
+                        severity: regEvent.severity,
+                        title: regEvent.name,
+                        description: regEvent.description,
+                        impact: regEvent.description,
+                        responses,
+                        status: 'ACTIVE',
+                        fired_at_tick: currentTick,
+                        expires_at_tick: currentTick + 3,
+                    });
+                    if (regInsertErr) {
+                        console.warn(`[CorpEvents] Failed to create regulatory event for ${contract.name}:`, regInsertErr.message);
+                    } else {
+                        results.push({ contract: contract.name, event: regEvent.name, severity: regEvent.severity });
+
+                        // Apply reputation penalty immediately (same as legacy).
+                        if (regEvent.reputation && regEvent.reputation < 0) {
+                            const { data: corp } = await supabase.from('factions')
+                                .select('corp_reputation').eq('id', contract.winner_faction_id).single();
+                            await supabase.from('factions').update({
+                                corp_reputation: Math.max(0, Number(corp?.corp_reputation ?? 5) + regEvent.reputation),
+                            }).eq('id', contract.winner_faction_id);
+                        }
+                    }
+                }
+            } catch (_regErr) { /* non-fatal */ }
+        }
+    }
+
+    return results;
+}
+
+async function resolveExpiredCorpContractEvents(supabase, nationId, currentTick) {
+    const results = [];
+
+    const { data: expired } = await supabase
+        .from('corp_contract_events')
+        .select('id, contract_id, faction_id, event_key, title, responses, severity')
+        .eq('nation_id', nationId)
+        .eq('status', 'ACTIVE')
+        .lte('expires_at_tick', currentTick);
+
+    if (!expired || expired.length === 0) return results;
+
+    for (const event of expired) {
+        const response = event.responses?.[0] || { key: 'auto', cost: 0, delay: 0 };
+        const costApplied = Number(response.cost) || 0;
+        const delayApplied = Number(response.delay) || 0;
+        // qualityImpact is dropped here — corp_contracts has no quality
+        // column to apply it to. If quality lands as a contract column
+        // later, re-add the read+write here.
+
+        // Apply cash cost directly to the corp. No insurance integration in
+        // this phase — when the new bank_loans pipeline grows insurance,
+        // this is where the lookup goes.
+        // Known race: read-modify-write on corp_cash_reserves; concurrent
+        // debits between SELECT and UPDATE would be lost. Same pattern as
+        // legacy resolveExpiredEvents. Low-frequency path; safe to live
+        // with until SECURITY DEFINER RPC refactor.
+        if (costApplied > 0 && event.faction_id) {
+            const { data: corp } = await supabase.from('factions')
+                .select('corp_cash_reserves').eq('id', event.faction_id).single();
+            if (corp) {
+                await supabase.from('factions').update({
+                    corp_cash_reserves: Math.max(0, Number(corp.corp_cash_reserves || 0) - costApplied),
+                }).eq('id', event.faction_id);
+            }
+        }
+
+        // Apply delay to the contract. expected_finish_tick slips by N ticks.
+        if (delayApplied > 0) {
+            const { data: contract } = await supabase.from('corp_contracts')
+                .select('expected_finish_tick').eq('id', event.contract_id).single();
+            if (contract && contract.expected_finish_tick != null) {
+                await supabase.from('corp_contracts').update({
+                    expected_finish_tick: contract.expected_finish_tick + delayApplied,
+                }).eq('id', event.contract_id);
+            }
+        }
+
+        const { error: updErr } = await supabase.from('corp_contract_events').update({
+            status: 'EXPIRED',
+            resolved_at_tick: currentTick,
+            resolution_choice: response.key || 'auto',
+            updated_at: new Date().toISOString(),
+        }).eq('id', event.id);
+        if (updErr) {
+            console.warn(`[CorpEvents] Failed to expire event ${event.title}:`, updErr.message);
+            continue;
+        }
+
+        results.push({ event: event.title, contract_id: event.contract_id, severity: event.severity });
+    }
+
+    return results;
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 //  CORPORATION INCOME
 // ════════════════════════════════════════════════════════════════════════════════
 
@@ -4779,10 +4727,22 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     console.warn(`[advance-corp-tick] Infra Renewal contract gen failed for ${nation.name}:`, irErr.message);
                 }
 
-                // Project events: generate random events on in_progress projects
+                // Project events: generate random events on in_progress projects.
+                // Legacy table (drains with the 41 in-flight contracts; goes
+                // away in Phase 1E):
                 const eventResults = await generateProjectEvents(supabase, nation.id, currentTick);
                 if (eventResults.length > 0) {
                     summary.construction.push({ nation: nation.name, type: 'events', data: eventResults });
+                }
+                // New pipeline (corp_contracts → corp_contract_events). Runs in
+                // parallel with the legacy generator during the drain.
+                try {
+                    const corpEventResults = await generateCorpContractProjectEvents(supabase, nation.id, currentTick);
+                    if (corpEventResults.length > 0) {
+                        summary.construction.push({ nation: nation.name, type: 'corp_events', data: corpEventResults });
+                    }
+                } catch (cceErr) {
+                    console.warn(`[advance-corp-tick] corp_contract_events gen failed for ${nation.name}:`, cceErr?.message || cceErr);
                 }
 
                 // Property marketplace: ensure 8 available per nation
@@ -4793,9 +4753,19 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 }
 
                 // Expired events: auto-resolve events the player ignored
+                // Legacy:
                 const expiredResults = await resolveExpiredEvents(supabase, nation.id, currentTick);
                 if (expiredResults.length > 0) {
                     summary.construction.push({ nation: nation.name, type: 'expired_events', data: expiredResults });
+                }
+                // New pipeline:
+                try {
+                    const expiredCorpResults = await resolveExpiredCorpContractEvents(supabase, nation.id, currentTick);
+                    if (expiredCorpResults.length > 0) {
+                        summary.construction.push({ nation: nation.name, type: 'expired_corp_events', data: expiredCorpResults });
+                    }
+                } catch (exCceErr) {
+                    console.warn(`[advance-corp-tick] corp_contract_events expiry failed for ${nation.name}:`, exCceErr?.message || exCceErr);
                 }
 
                 // ── Permit Lifecycle (pending→active, expiry) ─────────────

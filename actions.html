@@ -740,8 +740,10 @@ async function lrLoadFinanceCorps() {
     if (!faction) { lrFinanceCorps = []; return; }
     // Shard-wide lookup: borrower can target any Finance corp regardless
     // of nation. The design spec covers domestic + foreign banks.
+    // Only fields actually rendered: faction_name, corp_company_type,
+    // the three Finance stats, and the joined nation name.
     const { data, error } = await _supabase.from('factions')
-        .select('id, faction_name, abbreviation, corp_ticker, corp_company_type, nation_id, corp_lending_capital, corp_interest_rates, corp_overleverage, nations:nation_id(name)')
+        .select('id, faction_name, corp_company_type, corp_lending_capital, corp_interest_rates, corp_overleverage, nations:nation_id(name)')
         .eq('faction_type', 'corporation')
         .eq('corp_sector', 'Finance')
         .is('abandoned_at', null)
@@ -999,16 +1001,29 @@ async function lrSubmit() {
     // will counter-offer terms in C3+. Default 60-tick (5-year) term,
     // 0% requested APR (bank prices it), grade B (mid-tier).
     const targetBankIds = Array.from(lrSelectedBankIds);
-    const { data, error } = await _supabase.rpc('submit_loan_request', {
-        p_requesting_faction_id: faction.id,
-        p_target_bank_ids:       targetBankIds,
-        p_principal:             lrAmount,
-        p_term_ticks:            60,
-        p_requested_apr:         0,
-        p_risk_grade:            'B',
-        p_purpose:               null,
-        p_expiry_ticks:          6,
-    });
+    let data, error;
+    try {
+        const result = await _supabase.rpc('submit_loan_request', {
+            p_requesting_faction_id: faction.id,
+            p_target_bank_ids:       targetBankIds,
+            p_principal:             lrAmount,
+            p_term_ticks:            60,
+            p_requested_apr:         0,
+            p_risk_grade:            'B',
+            p_purpose:               null,
+            p_expiry_ticks:          6,
+        });
+        data = result.data;
+        error = result.error;
+    } catch (rpcErr) {
+        // Network / unexpected throw — supabase normally returns
+        // { error } but a connection failure can throw outright.
+        // Without this catch, _lrSubmitting would stay true and the
+        // user would be locked out until reload.
+        _lrSubmitting = false;
+        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+        return showErr('Network error: ' + (rpcErr?.message || rpcErr));
+    }
 
     _lrSubmitting = false;
     if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
