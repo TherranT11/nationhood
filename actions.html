@@ -729,6 +729,26 @@ function lrToggleBank(id) {
     else lrSelectedBankIds.add(id);
     renderLoanModal();
 }
+// Bulk-select helpers. Toggle: if everything's already selected, clear;
+// otherwise select all. Nation-only: union with banks in the player's
+// nation (additive — doesn't deselect cross-nation picks the player
+// already made).
+function lrToggleSelectAll() {
+    if (lrSelectedBankIds.size === lrFinanceCorps.length && lrFinanceCorps.length > 0) {
+        lrSelectedBankIds = new Set();
+    } else {
+        lrSelectedBankIds = new Set(lrFinanceCorps.map(fc => fc.id));
+    }
+    renderLoanModal();
+}
+function lrSelectAllInMyNation() {
+    const nationId = faction?.nation_id;
+    if (!nationId) return;
+    for (const fc of lrFinanceCorps) {
+        if (fc.nation_id === nationId) lrSelectedBankIds.add(fc.id);
+    }
+    renderLoanModal();
+}
 function lrToggleCollateral(id) {
     if (!id) return;
     if (lrSelectedCollateralIds.has(id)) lrSelectedCollateralIds.delete(id);
@@ -740,10 +760,10 @@ async function lrLoadFinanceCorps() {
     if (!faction) { lrFinanceCorps = []; return; }
     // Shard-wide lookup: borrower can target any Finance corp regardless
     // of nation. The design spec covers domestic + foreign banks.
-    // Only fields actually rendered: faction_name, corp_company_type,
-    // the three Finance stats, and the joined nation name.
+    // nation_id is needed by lrSelectAllInMyNation; the rest are
+    // displayed in the bank rows.
     const { data, error } = await _supabase.from('factions')
-        .select('id, faction_name, corp_company_type, corp_lending_capital, corp_interest_rates, corp_overleverage, nations:nation_id(name)')
+        .select('id, faction_name, corp_company_type, nation_id, corp_lending_capital, corp_interest_rates, corp_overleverage, nations:nation_id(name)')
         .eq('faction_type', 'corporation')
         .eq('corp_sector', 'Finance')
         .is('abandoned_at', null)
@@ -905,13 +925,27 @@ function renderLoanModal() {
     }
     html += '</div>';
 
-    // Section III \u2014 Lenders
+    // Section III \u2014 Lenders. Bulk-select chips: Select All / Deselect All
+    // toggle, plus Select All in <my nation> when at least one bank in
+    // that nation is in the list.
+    const allSelected = lrFinanceCorps.length > 0 && bankCount === lrFinanceCorps.length;
+    const selectAllLabel = allSelected ? 'Deselect All' : 'Select All';
+    const myNationName = faction?.nation || '';
+    const hasNationButton = !!faction?.nation_id && lrFinanceCorps.some(fc => fc.nation_id === faction.nation_id);
+    const allEnabled = lrFinanceCorps.length > 0;
+    const bulkChipStyle = (enabled) =>
+        `font-family:var(--font-mono);font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--gold,#c8a832);padding:4px 9px;border:1px solid rgba(200,168,50,0.4);background:rgba(200,168,50,0.06);user-select:none;${enabled ? 'cursor:pointer;' : 'opacity:0.4;pointer-events:none;'}`;
+
     html += `<div>
-        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;padding-bottom:8px;border-bottom:1px dashed var(--panel-border);">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px;padding-bottom:8px;border-bottom:1px dashed var(--panel-border);gap:12px;flex-wrap:wrap;">
             <div style="font-family:var(--font-serif,'IBM Plex Serif',serif);font-style:italic;font-weight:500;font-size:16px;color:var(--text-bright,#f0efe6);">
                 <span style="font-family:var(--font-mono);font-style:normal;font-size:10px;color:#8a722f;margin-right:8px;letter-spacing:0.1em;">III.</span>Select Lenders
             </div>
-            <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.16em;text-transform:uppercase;color:#6a6660;">${bankCount} of ${lrFinanceCorps.length} selected</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span ${allEnabled ? 'onclick="lrToggleSelectAll()"' : ''} style="${bulkChipStyle(allEnabled)}">${selectAllLabel}</span>
+                ${myNationName ? `<span ${hasNationButton ? 'onclick="lrSelectAllInMyNation()"' : ''} style="${bulkChipStyle(hasNationButton)}">Select All in ${escapeHtml(myNationName)}</span>` : ''}
+                <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.16em;text-transform:uppercase;color:#6a6660;">${bankCount} of ${lrFinanceCorps.length} selected</span>
+            </div>
         </div>`;
 
     if (lrFinanceCorps.length === 0) {
@@ -2185,6 +2219,8 @@ window.lrClose = lrClose;
 window.lrSetAmount = lrSetAmount;
 window.lrToggleBank = lrToggleBank;
 window.lrToggleCollateral = lrToggleCollateral;
+window.lrToggleSelectAll = lrToggleSelectAll;
+window.lrSelectAllInMyNation = lrSelectAllInMyNation;
 window.lrSubmit = lrSubmit;
 window.openExecSearch = openExecSearch;
 window.closeExecSearch = closeExecSearch;
