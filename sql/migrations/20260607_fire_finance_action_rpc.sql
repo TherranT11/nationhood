@@ -133,7 +133,7 @@ BEGIN
         );
     END IF;
 
-    -- ── Apply ──
+    -- ── Apply (atomic against double-fire) ──
     -- Deltas applied to action-controlled columns and clamped to each
     -- column's CHECK range:
     --   corp_lending_capital_max     ∈ [0, 10]
@@ -141,6 +141,15 @@ BEGIN
     --   corp_overleverage_offset     ∈ [-10, 10]
     -- Clamping at the SET prevents constraint-violation errors when
     -- an action's delta would push a column past its bound.
+    --
+    -- Race safety: the pre-checks above read a snapshot of v_corp
+    -- under READ COMMITTED isolation. Two concurrent fire calls can
+    -- both pass the snapshot checks and both UPDATE without an extra
+    -- guard, double-deducting cash and double-applying effects. The
+    -- WHERE clause below re-evaluates the cooldown + cash conditions
+    -- atomically against the row's current state, so a race is
+    -- caught by ROW_COUNT = 0 and we return a generic error rather
+    -- than letting a double-fire commit.
     UPDATE factions
     SET corp_cash_reserves                      = corp_cash_reserves - v_cost,
         corp_lending_capital_max                = LEAST(GREATEST(
@@ -153,7 +162,16 @@ BEGIN
                                                       COALESCE(corp_overleverage_offset, 0) + v_e_over,
                                                       -10::numeric), 10::numeric),
         corp_finance_action_locked_until_tick   = v_tick + v_lock_ticks
-    WHERE id = p_corp_id;
+    WHERE id = p_corp_id
+      AND COALESCE(corp_finance_action_locked_until_tick, 0) <= v_tick
+      AND COALESCE(corp_cash_reserves, 0) >= v_cost;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Action raced — cooldown engaged or cash dropped after the pre-check; try again'
+        );
+    END IF;
 
     -- ── Recompute derived stats ──
     -- corp_lending_capital and corp_overleverage are derived from
