@@ -1767,9 +1767,9 @@ async function loadActiveAgreements() {
         .from('bank_loans')
         .select(`
             id, principal, apr, term_ticks, outstanding, payments_missed,
-            status, issued_at_tick, matures_at_tick,
+            status, matures_at_tick,
             borrower:factions!borrower_faction_id (
-                faction_name, corp_ticker, corp_sector
+                faction_name, corp_ticker
             ),
             nation:nations!nation_id ( name )
         `)
@@ -1858,7 +1858,7 @@ function renderActiveAgreements() {
             foot = '';
         }
 
-        return `<div class="fo-active-card ${isPending ? 'pending' : ''}" data-loan-id="${escapeHtml(loan.id)}">
+        return `<div class="fo-active-card${isPending ? ' pending' : ''}">
             ${head}
             ${metaRow}
             ${foot}
@@ -1907,12 +1907,14 @@ async function payOutLoan(loanId) {
 }
 
 // Refetch the faction columns hero stats and the slider floor read so
-// they stay in sync after RPCs that mutate cash/leverage/etc.
+// they stay in sync after RPCs that mutate cash/leverage. Action-lock
+// state is unaffected by pay_out_loan, so the cooldown pill columns
+// stay out of the slim select.
 async function refetchFactionState() {
     if (!faction?.id) return;
     const { data, error } = await _supabase
         .from('factions')
-        .select('corp_cash_reserves, corp_lending_capital, corp_interest_rates, corp_overleverage, corp_finance_action_locked_until_tick')
+        .select('corp_cash_reserves, corp_lending_capital, corp_interest_rates, corp_overleverage')
         .eq('id', faction.id)
         .single();
     if (error || !data) {
