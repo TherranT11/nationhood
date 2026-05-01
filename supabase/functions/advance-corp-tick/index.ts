@@ -3217,6 +3217,14 @@ async function resolveExpiredEvents(supabase, nationId, currentTick) {
 //  shared helper now would be undone in Phase 1E when the legacy version
 //  is deleted, so the duplication is parked here on purpose.
 //
+//  Within this function, the "build response array + insert event row"
+//  pattern repeats across three branches (main template / permit-compliance
+//  regulatory / Phase 1C gap roll). Two of those use ALL_EVENT_TEMPLATES
+//  shape; the third uses REGULATORY_EVENTS shape. Extraction would either
+//  bridge two source-catalog shapes in one helper (more complex than the
+//  inline duplication) or only dedupe two of three branches (low net win).
+//  Left inline; revisit if a fourth branch ever lands.
+//
 //  Known carry-overs (not regressions): two read-modify-write patterns
 //  (corp_reputation update on regulatory hits; corp_cash_reserves debit on
 //  expired-event cost) inherit the legacy code's race window between
@@ -3328,9 +3336,15 @@ async function generateCorpContractProjectEvents(supabase, nationId, currentTick
                 .eq('status', 'active');
             if (activePermits && activePermits.length > 0) {
                 const permitKeys = [...new Set(activePermits.map(p => p.permit_key))];
-                const { data: defs } = await supabase.from('construction_permits')
+                const { data: defs, error: defsErr } = await supabase.from('construction_permits')
                     .select('permit_key, event_modifiers, regulatory_bonus, applies_to')
                     .in('permit_key', permitKeys);
+                if (defsErr) {
+                    // Without this warning, a failed permit-defs fetch silently
+                    // zeroes both permit event modifiers AND regulatory bonuses
+                    // — every corp would look unprotected.
+                    console.warn(`[CorpEvents] Permit defs fetch failed for nation ${nationId}:`, defsErr.message);
+                }
                 for (const d of (defs || [])) {
                     permitDefMap[d.permit_key] = {
                         event_modifiers:  d.event_modifiers || {},
@@ -3527,6 +3541,11 @@ async function generateCorpContractProjectEvents(supabase, nationId, currentTick
                         // Excludes positive_inspection-style positive events
                         // since those firing because a corp is under-regulated
                         // would be incoherent.
+                        //
+                        // If the pool is empty (no catalog event applies to
+                        // this sector+phase combo), the roll silently no-ops.
+                        // The 26-event catalog covers most combinations so
+                        // this is rare; player just feels lucky.
                         const eligible = ALL_EVENT_TEMPLATES.filter(t => {
                             if (!t.appliesTo.includes('all') && !t.appliesTo.includes(sectorKey)) return false;
                             const allowedPhases = PHASE_WINDOW_LOOKUP[t.phaseWindow] || PHASE_WINDOWS.ANY;
