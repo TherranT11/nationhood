@@ -1598,11 +1598,12 @@ function showBidModal(contract) {
         const costClass = overBudget ? 'warn' : (pctOfBudget < 85 ? 'good' : '');
         const costText  = `${fmtMoney(bidAmount)}<span class="muted"> · ${pctOfBudget.toFixed(0)}% of budget</span>`;
 
+        const BID_FEE = 50000;
         const insufficientCrews = !crewAvail[crews];
-        const apShort = (Number(faction.action_points) || 0) < 2;
+        const cashShort = (Number(faction.corp_cash_reserves) || 0) < BID_FEE;
         const regShort = myReg < regReq;
-        const submitDisabled = insufficientCrews || apShort || regShort;
-        const submitLabel = apShort ? 'Need 2 AP'
+        const submitDisabled = insufficientCrews || cashShort || regShort;
+        const submitLabel = cashShort ? 'Need $50k'
                           : regShort ? `Need Reg. ${regReq}+`
                           : insufficientCrews ? 'No crews available'
                           : 'Submit Bid ▸';
@@ -1651,8 +1652,8 @@ function showBidModal(contract) {
                     <span class="value">${supplyMult.toFixed(2)}×<span class="muted"> · supply ${mySupply.toFixed(mySupply % 1 === 0 ? 0 : 1)}/10</span></span>
                 </div>
                 <div class="co-bid-summary-row">
-                    <span class="label">AP Cost</span>
-                    <span class="value ${apShort ? 'warn' : ''}">2 AP<span class="muted"> · you have ${Number(faction.action_points) || 0}</span></span>
+                    <span class="label">Bid Fee</span>
+                    <span class="value ${cashShort ? 'warn' : ''}">${fmtMoney(BID_FEE)}<span class="muted"> · cash ${fmtMoney(Number(faction.corp_cash_reserves) || 0)}</span></span>
                 </div>
             </div>
 
