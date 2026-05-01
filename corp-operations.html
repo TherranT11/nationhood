@@ -632,6 +632,141 @@ body.corp-operations-construction::before {
   justify-content: flex-end;
 }
 
+/* ── STRATEGIC ACTIONS (Phase 4) ── */
+.co-actions-cooldown-pill {
+  font-family: var(--co-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  padding: 4px 9px;
+  background: rgba(160, 99, 58, 0.12);
+  border: 1px solid rgba(160, 99, 58, 0.4);
+  color: var(--co-accent-rust);
+  margin-left: 12px;
+  vertical-align: middle;
+  text-transform: uppercase;
+}
+.co-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  position: relative;
+  transition: opacity 0.15s;
+}
+.co-actions-grid.locked { opacity: 0.55; }
+.co-actions-grid.locked .co-action-option { cursor: not-allowed; }
+
+.co-action-card {
+  background: var(--co-bg-card);
+  border: 1px solid var(--co-line);
+  padding: 22px 24px 20px;
+  position: relative;
+  overflow: hidden;
+}
+.co-action-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 28px; height: 1px;
+  background: var(--co-accent-gold-dim);
+}
+.co-action-name {
+  font-family: var(--co-serif);
+  font-weight: 500;
+  font-style: italic;
+  font-size: 21px;
+  color: var(--co-text-primary);
+  margin-bottom: 16px;
+  letter-spacing: -0.005em;
+}
+.co-action-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.co-action-option {
+  background: var(--co-bg-secondary);
+  border: 1px solid var(--co-line);
+  padding: 16px 18px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  gap: 14px;
+  align-items: center;
+}
+.co-action-option:hover:not([data-locked]) {
+  border-color: var(--co-accent-gold);
+  background: var(--co-bg-elevated);
+}
+.co-action-option[data-locked] { cursor: not-allowed; }
+.co-action-option-letter {
+  font-family: var(--co-serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 22px;
+  color: var(--co-accent-gold);
+  line-height: 1;
+}
+.co-action-option-content { min-width: 0; }
+.co-action-option-title {
+  font-family: var(--co-sans);
+  font-size: 14px;
+  color: var(--co-text-primary);
+  font-weight: 600;
+  margin-bottom: 5px;
+  line-height: 1.25;
+}
+.co-action-option-desc {
+  font-family: var(--co-sans);
+  font-size: 12px;
+  color: var(--co-text-secondary);
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+.co-action-option-effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+.co-effect {
+  font-family: var(--co-mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+.co-effect.positive {
+  color: var(--co-accent-green);
+  border-color: rgba(138, 166, 83, 0.4);
+  background: rgba(138, 166, 83, 0.06);
+}
+.co-effect.negative {
+  color: var(--co-accent-red);
+  border-color: rgba(200, 90, 58, 0.4);
+  background: rgba(200, 90, 58, 0.06);
+}
+.co-effect.cost {
+  color: var(--co-text-secondary);
+  border-color: var(--co-line-bright);
+  background: var(--co-bg-card);
+}
+.co-action-option-cta {
+  font-family: var(--co-mono);
+  font-size: 10px;
+  color: var(--co-text-tertiary);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  transition: color 0.15s;
+  align-self: center;
+}
+.co-action-option:hover:not([data-locked]) .co-action-option-cta {
+  color: var(--co-accent-gold);
+}
+
 /* Toast */
 .co-toast {
   position: fixed;
@@ -700,6 +835,7 @@ body.corp-operations-construction::before {
   .co-page-stats { text-align: left; }
   .co-hero-stats { grid-template-columns: 1fr; }
   .co-contracts-grid { grid-template-columns: 1fr; }
+  .co-actions-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 720px) {
   .co-layout { padding: 16px 18px 40px; }
@@ -776,14 +912,16 @@ body.corp-operations-construction::before {
       </div>
     </div>
 
-    <!-- SECTION IV — STRATEGIC ACTIONS (Phase 4) -->
+    <!-- SECTION IV — STRATEGIC ACTIONS -->
     <div class="co-section">
       <div class="co-section-header">
-        <h2><span class="num">IV.</span>Strategic Actions</h2>
-        <span class="desc">Phase 4</span>
+        <h2>
+          <span class="num">IV.</span>Strategic Actions<span id="co-actions-cooldown-pill"></span>
+        </h2>
+        <span class="desc" id="co-actions-meta">10 Initiatives ◊ Choose A or B</span>
       </div>
-      <div class="co-placeholder">
-        10 strategic action cards (A/B branches, confirm modal, 12-tick global cooldown) land in <strong>Phase 4</strong>.
+      <div class="co-actions-grid" id="co-actions-grid">
+        <!-- Populated by renderActions() -->
       </div>
     </div>
 
@@ -1403,6 +1541,253 @@ function closeModal() {
     document.getElementById('co-modal-overlay')?.classList.remove('open');
 }
 
+// ── STRATEGIC ACTIONS (Section IV) ──
+
+// Display data for the 10 cards. Costs and effects are mirrored on the
+// server inside fire_construction_action's VALUES table — keep these
+// two in sync. The RPC ignores any client-provided amounts; this array
+// drives the UI only.
+const ACTIONS = [
+    { key: 'hiring', name: 'Hiring Initiative', options: [
+        { letter: 'A', title: 'Quick Hire Recruitment Drive',
+          desc: 'Rush new workers onto the books with minimal vetting — fast capacity, but materials budget gets squeezed.',
+          cost: 40_000_000, effects: { crews: +2, supply: -2 } },
+        { letter: 'B', title: 'Comprehensive Talent Program',
+          desc: 'Build a full pipeline with apprenticeships and benefits — slower, but earns the labor ministry’s respect.',
+          cost: 70_000_000, effects: { crews: +3, regulatory: +1 } },
+    ]},
+    { key: 'lobbying', name: 'Government Lobbying', options: [
+        { letter: 'A', title: 'Backroom Lobbying Campaign',
+          desc: 'Pull executives off worksites to schmooze ministers in private clubs — quiet influence, but crews suffer without leadership.',
+          cost: 50_000_000, effects: { regulatory: +2, crews: -2 } },
+        { letter: 'B', title: 'Public Affairs & Industry Coalition',
+          desc: 'Lead a formal coalition that wins over both the press and your suppliers — slow, expensive, transformative.',
+          cost: 80_000_000, effects: { regulatory: +3, supply: +1 } },
+    ]},
+    { key: 'megaproject', name: 'Megaproject Bid Strategy', options: [
+        { letter: 'A', title: 'Lowball Bid Strategy',
+          desc: 'Underbid the competition aggressively — wins the contract and ministry favor, but thin margins force cheap material sourcing.',
+          cost: 30_000_000, effects: { regulatory: +2, supply: -2 } },
+        { letter: 'B', title: 'Premium Bid with Guarantees',
+          desc: 'Bid at full price with delivery and quality bonds — the regime sees you as a serious partner, and crews see job security.',
+          cost: 90_000_000, effects: { regulatory: +3, crews: +1 } },
+    ]},
+    { key: 'material', name: 'Material Sourcing', options: [
+        { letter: 'A', title: 'Cheap Foreign Imports',
+          desc: 'Buy steel and machinery overseas at deep discount — supply problem solved, but nationalists in the regime won’t forget.',
+          cost: 40_000_000, effects: { supply: +2, regulatory: -2 } },
+        { letter: 'B', title: 'Strategic Domestic Partnership',
+          desc: 'Lock in long-term contracts with domestic mills and quarries — costlier, but builds loyalty across the supply chain and your workforce.',
+          cost: 70_000_000, effects: { supply: +3, crews: +1 } },
+    ]},
+    { key: 'vertical', name: 'Vertical Integration', options: [
+        { letter: 'A', title: 'Acquire Small Quarry',
+          desc: 'Buy out a regional gravel and limestone operation — secures basic materials, but workers reassigned to mining ops.',
+          cost: 60_000_000, effects: { supply: +2, crews: -2 } },
+        { letter: 'B', title: 'Build Modern Cement Plant',
+          desc: 'Construct a flagship facility with the regime’s blessing — full supply independence and a ribbon-cutting with the President.',
+          cost: 100_000_000, effects: { supply: +3, regulatory: +1 } },
+    ]},
+    { key: 'safety', name: 'Worker Safety Program', options: [
+        { letter: 'A', title: 'Mandatory Training Rollout',
+          desc: 'Pull crews off active sites for safety training — wins ministry approval but slows progress.',
+          cost: 40_000_000, effects: { regulatory: +2, crews: -2 } },
+        { letter: 'B', title: 'Industry-Leading Safety Standards',
+          desc: 'Build a flagship safety program crews are proud of — costly but lifts morale and the regulator’s opinion together.',
+          cost: 80_000_000, effects: { regulatory: +3, crews: +1 } },
+    ]},
+    { key: 'equipment', name: 'Equipment Upgrade', options: [
+        { letter: 'A', title: 'Used Machinery Purchase',
+          desc: 'Pick up second-hand fleet at auction — fast capacity, but parts and supply chain take a hit.',
+          cost: 50_000_000, effects: { crews: +2, supply: -2 } },
+        { letter: 'B', title: 'New Fleet Investment',
+          desc: 'Order modern equipment direct from the manufacturer — lifts capacity and supply both, but the cheque is large.',
+          cost: 90_000_000, effects: { crews: +3, supply: +1 } },
+    ]},
+    { key: 'patriotic', name: 'Patriotic Project Acceptance', options: [
+        { letter: 'A', title: 'Discounted Government Build',
+          desc: 'Accept a state project below market rate — wins favor, but pulls crews off paying work.',
+          cost: 30_000_000, effects: { regulatory: +2, crews: -2 } },
+        { letter: 'B', title: 'Below-Cost Prestige Project',
+          desc: 'Take a flagship national build at a loss — the regime is grateful and supply partners follow.',
+          cost: 60_000_000, effects: { regulatory: +3, supply: +1 } },
+    ]},
+    { key: 'apprenticeship', name: 'Apprenticeship Program', options: [
+        { letter: 'A', title: 'Basic Trades School Sponsorship',
+          desc: 'Bankroll a regional trades program — feeds the workforce, but ministers grumble about private capture of public training.',
+          cost: 40_000_000, effects: { crews: +2, regulatory: -2 } },
+        { letter: 'B', title: 'National Engineering Initiative',
+          desc: 'Partner with the state on a national engineering program — lifts both crews and standing.',
+          cost: 80_000_000, effects: { crews: +3, regulatory: +1 } },
+    ]},
+    { key: 'stockpile', name: 'Stockpile Strategy', options: [
+        { letter: 'A', title: 'Emergency Material Reserves',
+          desc: 'Bulk-buy materials for a rainy day — supply secured, but storage and handling pull crews off worksites.',
+          cost: 50_000_000, effects: { supply: +2, crews: -2 } },
+        { letter: 'B', title: 'Strategic National Stockpile',
+          desc: 'Co-fund a national reserves program — supply security plus regulatory goodwill.',
+          cost: 90_000_000, effects: { supply: +3, regulatory: +1 } },
+    ]},
+];
+
+const EFFECT_LABEL = { crews: 'Crews', regulatory: 'Reg.', supply: 'Supply' };
+
+let _actionInflight = false;  // Double-fire guard for the confirm-modal click
+
+function actionsLockedTicks() {
+    const lock = Number(faction?.corp_construction_action_locked_until_tick) || 0;
+    const now  = Number(shard?.current_tick) || 0;
+    return Math.max(0, lock - now);
+}
+
+function renderActions() {
+    const grid = document.getElementById('co-actions-grid');
+    const meta = document.getElementById('co-actions-meta');
+    const pill = document.getElementById('co-actions-cooldown-pill');
+    if (!grid) return;
+
+    const lockedTicks = actionsLockedTicks();
+    const isLocked    = lockedTicks > 0;
+
+    grid.classList.toggle('locked', isLocked);
+    if (pill) {
+        pill.innerHTML = isLocked
+            ? `<span class="co-actions-cooldown-pill">🔒 Locked ${lockedTicks} more tick${lockedTicks === 1 ? '' : 's'}</span>`
+            : '';
+    }
+    if (meta) {
+        meta.textContent = isLocked
+            ? `Locked until tick ${faction.corp_construction_action_locked_until_tick}`
+            : `${ACTIONS.length} Initiatives ◊ Choose A or B (12-tick global cooldown)`;
+    }
+
+    grid.innerHTML = ACTIONS.map((card, cIdx) => renderActionCard(card, cIdx, isLocked)).join('');
+}
+
+function renderActionCard(card, cardIdx, isLocked) {
+    const optionsHtml = card.options.map((opt, oIdx) => renderActionOption(card, opt, cardIdx, oIdx, isLocked)).join('');
+    return `<div class="co-action-card">
+        <div class="co-action-name">${escapeHtml(card.name)}</div>
+        <div class="co-action-options">${optionsHtml}</div>
+    </div>`;
+}
+
+function renderActionOption(card, opt, cardIdx, oIdx, isLocked) {
+    const effectsHtml = renderActionEffects(opt);
+    const lockedAttrs = isLocked ? 'data-locked="1"' : '';
+    return `<div class="co-action-option" ${lockedAttrs}
+                 data-action-key="${escapeHtml(card.key)}"
+                 data-choice="${escapeHtml(opt.letter)}"
+                 data-card-idx="${cardIdx}" data-opt-idx="${oIdx}">
+        <span class="co-action-option-letter">${escapeHtml(opt.letter)}</span>
+        <div class="co-action-option-content">
+            <div class="co-action-option-title">${escapeHtml(opt.title)}</div>
+            <div class="co-action-option-desc">${escapeHtml(opt.desc)}</div>
+            <div class="co-action-option-effects">${effectsHtml}</div>
+        </div>
+        <span class="co-action-option-cta">${isLocked ? 'Locked' : 'Take ▸'}</span>
+    </div>`;
+}
+
+function renderActionEffects(opt) {
+    const parts = [`<span class="co-effect cost">−${fmtMoney(opt.cost).replace('-', '')}</span>`];
+    for (const [key, delta] of Object.entries(opt.effects || {})) {
+        const sign = delta > 0 ? '+' : '';
+        const cls  = delta > 0 ? 'positive' : 'negative';
+        parts.push(`<span class="co-effect ${cls}">${sign}${delta} ${escapeHtml(EFFECT_LABEL[key] || key)}</span>`);
+    }
+    return parts.join('');
+}
+
+function bindActionClicks() {
+    document.getElementById('co-actions-grid')?.addEventListener('click', (e) => {
+        const opt = e.target.closest('.co-action-option');
+        if (!opt) return;
+        if (opt.hasAttribute('data-locked')) return;  // grid-locked: no-op
+        const cardIdx = Number(opt.getAttribute('data-card-idx'));
+        const oIdx    = Number(opt.getAttribute('data-opt-idx'));
+        const card    = ACTIONS[cardIdx];
+        const choice  = card?.options[oIdx];
+        if (!card || !choice) return;
+        showActionConfirmModal(card, choice);
+    });
+}
+
+function showActionConfirmModal(card, opt) {
+    const modal = document.getElementById('co-modal');
+    if (!modal) return;
+    const effectsHtml = renderActionEffects(opt);
+
+    modal.innerHTML = `
+        <div class="co-modal-title">Confirm: ${escapeHtml(opt.title)}</div>
+        <div class="co-modal-body">
+            <p style="margin-bottom:12px;"><strong>${escapeHtml(card.name)} — Option ${escapeHtml(opt.letter)}</strong></p>
+            <p style="margin-bottom:12px;">${escapeHtml(opt.desc)}</p>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:14px;">${effectsHtml}</div>
+            <p style="font-family:var(--co-mono);font-size:11px;color:var(--co-accent-rust);letter-spacing:0.06em;text-transform:uppercase;">
+                ⚠ This locks all 10 Strategic Actions for 12 ticks.
+            </p>
+        </div>
+        <div class="co-modal-actions">
+            <button class="co-contract-btn" data-modal-close>Cancel</button>
+            <button class="co-contract-btn primary" id="co-action-confirm"
+                    data-action-key="${escapeHtml(card.key)}"
+                    data-choice="${escapeHtml(opt.letter)}">Confirm ▸</button>
+        </div>
+    `;
+    document.getElementById('co-modal-overlay').classList.add('open');
+
+    document.getElementById('co-action-confirm')?.addEventListener('click', async () => {
+        if (_actionInflight) return;
+        _actionInflight = true;
+        const btn = document.getElementById('co-action-confirm');
+        if (btn) btn.disabled = true;
+        try {
+            const { data, error } = await _supabase.rpc('fire_construction_action', {
+                p_corp_id: faction.id,
+                p_action_key: card.key,
+                p_choice: opt.letter,
+            });
+            if (error) {
+                showToast(error.message, 'error');
+                return;
+            }
+            if (!data?.success) {
+                showToast(data?.error || 'Action failed', 'error');
+                return;
+            }
+            showToast(`Action taken — locked for 12 ticks.`, 'success');
+            closeModal();
+            // Refresh local state so the lock + new stat values render.
+            await refetchFactionState();
+            renderActions();
+            renderHeroStats();
+        } catch (err) {
+            console.error('[corp-operations] fire_construction_action failed:', err);
+            showToast('Failed: ' + (err?.message || 'unknown'), 'error');
+        } finally {
+            _actionInflight = false;
+            if (btn) btn.disabled = false;
+        }
+    }, { once: true });
+}
+
+// Pull just the columns Section I + IV depend on, so the lock state and the
+// hero stats both reflect the post-RPC values. Cheaper than refetching the
+// whole faction row + topbar.
+async function refetchFactionState() {
+    const { data, error } = await _supabase
+        .from('factions')
+        .select('corp_cash_reserves, corp_work_crews, corp_regulatory_standing, corp_supply_chain, corp_construction_action_locked_until_tick')
+        .eq('id', faction.id)
+        .single();
+    if (error || !data) {
+        console.error('[corp-operations] refetch faction state failed:', error?.message);
+        return;
+    }
+    Object.assign(faction, data);
+}
+
 // ── Toast ──
 function showToast(message, kind) {
     document.querySelectorAll('.co-toast').forEach(n => n.remove());
@@ -1518,7 +1903,9 @@ async function init() {
         shard?.current_date || tickToDate(shard?.current_tick) || '—';
 
     renderHeroStats();
+    renderActions();
     bindContractActions();
+    bindActionClicks();
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = '';
