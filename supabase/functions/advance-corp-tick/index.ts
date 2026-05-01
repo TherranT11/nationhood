@@ -940,6 +940,14 @@ async function insertCorpContract(supabase, nation, sector, currentTick, gameYea
 }
 
 async function generateConstructionContracts(supabase, nation, currentTick) {
+    // ── DISABLED — legacy table cull, Path 1 Phase 1A (2026-05) ──
+    // No new construction_contracts rows. The new pipeline writes to
+    // corp_contracts via generateCorpContractsByGdpTier (called once
+    // per shard tick, not per nation). Body preserved below for
+    // archival reference; never executes.
+    return [];
+
+    // eslint-disable-next-line no-unreachable
     // Only generate every 3 ticks
     if (currentTick % 3 !== 0) return [];
 
@@ -1184,6 +1192,14 @@ const INFRA_RENEWAL_WAVES = [
 ];
 
 async function generateInfraRenewalContracts(supabase, nation, currentTick) {
+    // ── DISABLED — legacy table cull, Path 1 Phase 1A (2026-05) ──
+    // Stops writing Infrastructure Renewal Act contracts to the
+    // legacy construction_contracts table. The policy hook still
+    // exists; when the new corp_contracts pipeline grows a policy-
+    // driven generator, that's where these contracts get re-routed.
+    return;
+
+    // eslint-disable-next-line no-unreachable
     // Check for active Infrastructure Renewal policy in this nation
     const { data: activePolicy } = await supabase
         .from('nation_policies')
