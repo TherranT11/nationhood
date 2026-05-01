@@ -15,7 +15,6 @@ import { resolveNoConfidence } from './elections.js';
 import { computeTaxArticleEffects, computeTaxArticleOngoingCost, validateTaxArticlePayload, TAX_RATE_MIN, TAX_RATE_MAX, TAX_EFFECT_NATION_COLUMNS } from './tax-articles.js';
 import { MILITARY_LOYALTY_POLICY_KEY, onMilitaryLoyaltyEnacted } from './military-loyalty.js';
 import { getNationNames, isFemaleName, installHOG } from './political-actions.js';
-import { allocateSeatsByVotes } from './election-simulation.js';
 import { repealActiveLaw } from './repeal-helper.js';
 import { fireBillEvent } from './event-helpers.js';
 import { computeSectorShifts, sumSectorEffects } from './sectors.js';
@@ -5079,93 +5078,24 @@ const { data: nationData } = await supabase
 const currentTotalSeats = nationData?.total_seats || GAME_CONFIG.TOTAL_SEATS;
 const delta = newTotalSeats - currentTotalSeats;
 
-// 1. Update nation's total_seats
-await supabase.from('nations').update({
-    total_seats: newTotalSeats
-}).eq('id', bill.nation_id);
+// Atomic resize: enact_seat_change RPC updates nations.total_seats AND
+// rescales every party's faction.seats in one transaction, so a partial
+// failure can't leave us with mismatched numbers (the bug where
+// total_seats=100 while parties still summed to 500). Picks election-
+// vote redistribution when last-election results are available, falls
+// back to proportional rescale, then even distribution.
+const { data: rpcResult, error: rpcError } = await supabase.rpc('enact_seat_change', {
+    p_nation_id: bill.nation_id,
+    p_new_total_seats: newTotalSeats,
+});
+if (rpcError || !rpcResult?.success) {
+    console.error('[enactFoundationalBill] enact_seat_change failed:',
+        rpcError?.message || rpcResult?.error);
+    return false;
+}
 
 if (delta !== 0) {
-    // SEATS CHANGE — proportionally rescale all party seats to the new total
-    let redistributed = false;
-
-    // Attempt 1: use vote totals from last completed parliamentary election
-    const { data: election } = await supabase
-        .from('elections')
-        .select('id, results')
-        .eq('nation_id', bill.nation_id)
-        .eq('status', 'completed')
-        .eq('election_type', 'parliamentary')
-        .order('election_tick', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-    if (election?.results?.votes) {
-        const votes = election.results.votes;
-        const voteTotals = {};
-        // Handle both array format (SQL RPC) and object format (JS simulation)
-        if (Array.isArray(votes)) {
-            for (const v of votes) voteTotals[v.party_id] = v.votes || 0;
-        } else {
-            for (const [pid, v] of Object.entries(votes)) voteTotals[pid] = v || 0;
-        }
-        if (Object.keys(voteTotals).length > 0) {
-            const newSeats = allocateSeatsByVotes(voteTotals, newTotalSeats);
-            for (const [partyId, seats] of Object.entries(newSeats)) {
-                const { error: seatErr } = await supabase.from('factions').update({ seats }).eq('id', partyId);
-                if (seatErr) {
-                    console.error(`[enactFoundationalBill] Failed to update seats for faction ${partyId}:`, seatErr);
-                    await supabase.from('nations').update({ total_seats: currentTotalSeats }).eq('id', bill.nation_id);
-                    return false;
-                }
-            }
-            redistributed = true;
-            console.log(`[enactFoundationalBill] Redistributed from election vote data.`);
-        }
-    }
-
-    // Fallback: proportionally scale existing faction seats to fill the new total
-    if (!redistributed) {
-        console.warn(`[enactFoundationalBill] No election vote data found — scaling existing seats proportionally.`);
-        const { data: factions } = await supabase
-            .from('factions')
-            .select('id, seats')
-            .eq('nation_id', bill.nation_id)
-            .eq('faction_type', 'party');
-
-        if (factions && factions.length > 0) {
-            const oldSum = factions.reduce((s, f) => s + (f.seats || 0), 0);
-            if (oldSum > 0) {
-                // Use Largest Remainder to cleanly distribute newTotalSeats
-                const seatTotals = {};
-                for (const f of factions) seatTotals[f.id] = f.seats || 0;
-                const newSeats = allocateSeatsByVotes(seatTotals, newTotalSeats);
-                for (const [partyId, seats] of Object.entries(newSeats)) {
-                    const { error: seatErr } = await supabase.from('factions').update({ seats }).eq('id', partyId);
-                    if (seatErr) {
-                        console.error(`[enactFoundationalBill] Failed to update seats for faction ${partyId}:`, seatErr);
-                        await supabase.from('nations').update({ total_seats: currentTotalSeats }).eq('id', bill.nation_id);
-                        return false;
-                    }
-                }
-            } else {
-                // All parties at 0 seats — distribute evenly
-                const perParty = Math.floor(newTotalSeats / factions.length);
-                let remainder = newTotalSeats - perParty * factions.length;
-                for (const f of factions) {
-                    const seats = perParty + (remainder > 0 ? 1 : 0);
-                    if (remainder > 0) remainder--;
-                    const { error: seatErr } = await supabase.from('factions').update({ seats }).eq('id', f.id);
-                    if (seatErr) {
-                        console.error(`[enactFoundationalBill] Failed to update seats for faction ${f.id}:`, seatErr);
-                        await supabase.from('nations').update({ total_seats: currentTotalSeats }).eq('id', bill.nation_id);
-                        return false;
-                    }
-                }
-            }
-        }
-    }
-
-    console.log(`[enactFoundationalBill] ${currentTotalSeats} -> ${newTotalSeats} (${delta > 0 ? '+' : ''}${delta}). Seats rescaled.`);
+    console.log(`[enactFoundationalBill] ${currentTotalSeats} -> ${newTotalSeats} (${delta > 0 ? '+' : ''}${delta}). Method: ${rpcResult.method}.`);
 } else {
     console.log(`[enactFoundationalBill] No seat change (already ${newTotalSeats}).`);
 }
