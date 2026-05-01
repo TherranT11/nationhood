@@ -43,6 +43,17 @@ DO $$ BEGIN
     ADD CONSTRAINT corp_overleverage_range CHECK (corp_overleverage BETWEEN 0 AND 10);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+-- ── Backfill existing Finance corps to 3/3/3 ──
+-- The column DEFAULT of 0 only applies to new rows; corps that already
+-- exist need an explicit UPDATE so they match the founding-position
+-- baseline. Idempotent — re-running just resets to 3/3/3.
+UPDATE factions
+   SET corp_lending_capital = 3,
+       corp_interest_rates  = 3,
+       corp_overleverage    = 3
+ WHERE faction_type = 'corporation'
+   AND corp_sector  = 'Finance';
+
 -- ── Finance Strategic Action global cooldown ──
 ALTER TABLE factions
   ADD COLUMN IF NOT EXISTS corp_finance_action_locked_until_tick INT NOT NULL DEFAULT 0;
