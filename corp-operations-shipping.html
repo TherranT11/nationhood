@@ -647,17 +647,137 @@ body.corp-operations-shipping.light-mode {
 .so-route-status .text { color: var(--so-text-secondary); }
 .so-route-status .text strong { color: var(--so-text-primary); font-weight: 500; }
 
-/* ── STRATEGIC ACTIONS PLACEHOLDER (Section V) ── */
-.so-actions-placeholder {
-  background: var(--so-bg-card);
-  border: 1px dashed var(--so-line-bright);
-  padding: 40px 24px;
-  text-align: center;
+/* ── STRATEGIC ACTIONS (Section V) ── */
+.so-actions-cooldown-pill {
   font-family: var(--mono);
-  font-size: 11px;
-  color: var(--so-text-tertiary);
-  letter-spacing: 0.05em;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  padding: 4px 9px;
+  background: rgba(160,99,58,0.12);
+  border: 1px solid rgba(160,99,58,0.4);
+  color: var(--so-accent-rust);
+  margin-left: 12px;
+  vertical-align: middle;
+  text-transform: uppercase;
+}
+.so-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+.so-actions-grid.locked { opacity: 0.55; }
+.so-actions-grid.locked .so-action-option { cursor: not-allowed; }
+
+.so-action-card {
+  background: var(--so-bg-card);
+  border: 1px solid var(--so-line);
+  padding: 22px 24px 20px;
+  position: relative;
+  overflow: hidden;
+}
+.so-action-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 28px; height: 1px;
+  background: var(--so-accent-gold-dim);
+}
+.so-action-name {
+  font-family: var(--serif);
+  font-weight: 500;
   font-style: italic;
+  font-size: 21px;
+  color: var(--so-text-primary);
+  margin-bottom: 16px;
+  letter-spacing: -0.005em;
+}
+.so-action-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.so-action-option {
+  background: var(--so-bg-secondary);
+  border: 1px solid var(--so-line);
+  padding: 16px 18px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  gap: 14px;
+  align-items: center;
+}
+.so-action-option:hover:not([data-locked]) {
+  border-color: var(--so-accent-gold);
+  background: var(--so-bg-elevated);
+}
+.so-action-option[data-locked] { cursor: not-allowed; }
+.so-action-option-letter {
+  font-family: var(--serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 22px;
+  color: var(--so-accent-gold);
+  line-height: 1;
+}
+.so-action-option-content { min-width: 0; }
+.so-action-option-title {
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--so-text-primary);
+  font-weight: 600;
+  margin-bottom: 5px;
+  line-height: 1.25;
+}
+.so-action-option-desc {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--so-text-secondary);
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+.so-action-option-effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+.so-effect {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+.so-effect.positive {
+  color: var(--so-accent-green);
+  border-color: rgba(138,166,83,0.4);
+  background: rgba(138,166,83,0.06);
+}
+.so-effect.negative {
+  color: var(--so-accent-red);
+  border-color: rgba(200,90,58,0.4);
+  background: rgba(200,90,58,0.06);
+}
+.so-effect.cost {
+  color: var(--so-text-secondary);
+  border-color: var(--so-line-bright);
+  background: var(--so-bg-card);
+}
+.so-action-option-cta {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--so-text-tertiary);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  transition: color 0.15s;
+  align-self: center;
+}
+.so-action-option:hover:not([data-locked]) .so-action-option-cta {
+  color: var(--so-accent-gold);
 }
 
 /* ── BID MODAL ── */
@@ -957,13 +1077,13 @@ body.corp-operations-shipping.light-mode {
       </div>
     </div>
 
-    <!-- SECTION V — STRATEGIC ACTIONS placeholder -->
+    <!-- SECTION V — STRATEGIC ACTIONS -->
     <div class="so-section">
       <div class="so-section-header">
-        <h2><span class="num">V.</span>Strategic Actions</h2>
-        <span class="desc">10 Initiatives ◊ Choose A or B</span>
+        <h2><span class="num">V.</span>Strategic Actions<span id="so-actions-cooldown-pill"></span></h2>
+        <span class="desc" id="so-actions-meta">10 Initiatives ◊ Choose A or B</span>
       </div>
-      <div class="so-actions-placeholder">Strategic Actions wiring coming next phase.</div>
+      <div class="so-actions-grid" id="so-actions-grid"></div>
     </div>
 
     <!-- FOOTER -->
@@ -1798,6 +1918,267 @@ function attachModalDismissHandlers() {
     }
 }
 
+// ── STRATEGIC ACTIONS (Section V) ──
+//
+// Effect keys map to server columns directly (no split-layer
+// max/offset since the three Shipping stats aren't portfolio-
+// derived — direct writes are clean):
+//   freighters   → corp_freighters
+//   fleet_health → corp_fleet_health
+//   route_risk   → corp_route_risk
+//
+// Effect signs use displayed-stat semantics. The user's
+// "(utilization)" suffix from the design spec means the dial drops
+// (more freighters utilized = fewer spare = stat down), encoded
+// here as a negative `freighters` delta. "Route Risk Reduction"
+// means risk goes down → negative `route_risk` delta;
+// "−X Route Risk Reduction" reverses to positive (concentrates
+// exposure).
+const ACTION_DEFS = [
+    { key: 'fleet_expansion', name: 'Fleet Expansion', options: [
+        { letter: 'A', title: 'Used Vessel Acquisition',
+          desc: 'Buy second-hand cargo ships from a struggling rival fleet — fast capacity, but the hulls bring maintenance headaches.',
+          cost: 50_000_000, effects: { freighters: +2, fleet_health: -2 } },
+        { letter: 'B', title: 'New Build Order',
+          desc: 'Commission new vessels from the shipyards — slow and expensive, but the modern hulls bring reliability.',
+          cost: 90_000_000, effects: { freighters: +3 } },
+    ]},
+    { key: 'maintenance_program', name: 'Maintenance Program', options: [
+        { letter: 'A', title: 'Emergency Drydock Repairs',
+          desc: 'Pull vessels from active routes for urgent fixes — Fleet Health stabilizes, but ships out of service mean lost capacity.',
+          cost: 40_000_000, effects: { fleet_health: +2, freighters: -2 } },
+        { letter: 'B', title: 'Comprehensive Refit & Modernization',
+          desc: 'Major overhaul of older vessels with new tech — restores Fleet Health and equips ships for safer routes.',
+          cost: 80_000_000, effects: { fleet_health: +3, route_risk: -1 } },
+    ]},
+    { key: 'route_diversification', name: 'Route Diversification', options: [
+        { letter: 'A', title: 'Open Secondary Trade Lane',
+          desc: 'Spread freighters thin across a new corridor — diversifies your exposure, but pulls vessels from existing lanes.',
+          cost: 50_000_000, effects: { route_risk: -2, freighters: -2 } },
+        { letter: 'B', title: 'Multi-Region Network Expansion',
+          desc: 'Build a fully diversified global network — major risk reduction and the new infrastructure improves fleet reliability.',
+          cost: 90_000_000, effects: { route_risk: -3, fleet_health: +1 } },
+    ]},
+    { key: 'insurance_hedging', name: 'Insurance & Hedging', options: [
+        { letter: 'A', title: 'Basic Marine Insurance Package',
+          desc: 'Buy bargain coverage from a discount underwriter — risk shifts to insurers, but cheap policies skimp on maintenance support.',
+          cost: 30_000_000, effects: { route_risk: -2, fleet_health: -2 } },
+        { letter: 'B', title: 'Premium Risk Management Contract',
+          desc: 'Engage Lloyd’s-tier underwriters with full advisory services — superior coverage, plus they help fund a new vessel.',
+          cost: 70_000_000, effects: { route_risk: -3, freighters: +1 } },
+    ]},
+    { key: 'high_risk_route', name: 'High-Risk Lucrative Route', options: [
+        { letter: 'A', title: 'Run the Contested Strait',
+          desc: 'Sail through dangerous waters that rivals avoid — premium freight rates demand high vessel utilization, and every voyage gambles with disaster.',
+          cost: 20_000_000, effects: { freighters: -2, route_risk: +2 } },
+        { letter: 'B', title: 'Convoy with Naval Escort',
+          desc: 'Pay for naval protection on dangerous routes — slower and costlier, but your fleet returns intact with full holds.',
+          cost: 80_000_000, effects: { freighters: -3, route_risk: -1 } },
+    ]},
+    { key: 'crew_training', name: 'Crew Training', options: [
+        { letter: 'A', title: 'Basic Mariner Certification',
+          desc: 'Run minimum-standard certification courses — better-trained crews keep ships running, but pulled vessels create capacity gaps.',
+          cost: 40_000_000, effects: { fleet_health: +2, freighters: -2 } },
+        { letter: 'B', title: 'Elite Maritime Academy Partnership',
+          desc: 'Sponsor a top-tier officer program — your fleet earns elite certification and gains access to safer chartered lanes.',
+          cost: 80_000_000, effects: { fleet_health: +3, route_risk: -1 } },
+    ]},
+    { key: 'vessel_decommissioning', name: 'Vessel Decommissioning', options: [
+        { letter: 'A', title: 'Scrap Aging Vessels',
+          desc: 'Send the oldest hulls to the breakers’ yards — overall fleet quality rises, but headcount drops with the scrapped ships.',
+          cost: 30_000_000, effects: { fleet_health: +2, freighters: -2 } },
+        { letter: 'B', title: 'Modernize & Repurpose Old Fleet',
+          desc: 'Refit aging vessels for niche routes instead of scrapping — keeps capacity and quality intact through clever redesign.',
+          cost: 70_000_000, effects: { fleet_health: +3, freighters: +1 } },
+    ]},
+    { key: 'cargo_specialization', name: 'Cargo Specialization', options: [
+        { letter: 'A', title: 'Convert to Bulk Carrier Focus',
+          desc: 'Specialize the fleet for bulk commodities — ships become more efficient, but concentrating cargo type concentrates exposure.',
+          cost: 50_000_000, effects: { freighters: +2, route_risk: +2 } },
+        { letter: 'B', title: 'Diversified Cargo Capability',
+          desc: 'Outfit vessels for everything from containers to break-bulk — maximum flexibility, slightly safer routes.',
+          cost: 90_000_000, effects: { freighters: +3, route_risk: -1 } },
+    ]},
+    { key: 'geopolitical_lobbying', name: 'Geopolitical Lobbying', options: [
+        { letter: 'A', title: 'Bribe Port Authorities',
+          desc: 'Slip envelopes to harbormasters along your routes — paperwork moves faster, but the dirty deals breed neglect on the docks.',
+          cost: 40_000_000, effects: { route_risk: -2, fleet_health: -2 } },
+        { letter: 'B', title: 'Diplomatic Trade Relations Initiative',
+          desc: 'Build formal trade ties with foreign governments — slow, expensive, but unlocks safer corridors and a new vessel from a partnership deal.',
+          cost: 80_000_000, effects: { route_risk: -3, freighters: +1 } },
+    ]},
+    { key: 'fleet_modernization', name: 'Fleet Modernization', options: [
+        { letter: 'A', title: 'Engine Retrofit Program',
+          desc: 'Upgrade engines on existing vessels — better reliability, but ships out of service during the retrofit hurts capacity.',
+          cost: 50_000_000, effects: { fleet_health: +2, freighters: -2 } },
+        { letter: 'B', title: 'Next-Generation Vessel Conversion',
+          desc: 'Full conversion to next-gen propulsion across the fleet — major investment, but emerges as a younger, larger fleet.',
+          cost: 100_000_000, effects: { fleet_health: +3, freighters: +1 } },
+    ]},
+];
+
+const SO_EFFECT_LABEL = { freighters: 'Freighters', fleet_health: 'Fleet Health', route_risk: 'Route Risk' };
+
+let _soActionInflight = false;
+
+function soActionsLockedTicks() {
+    const lock = Number(faction?.corp_shipping_action_locked_until_tick) || 0;
+    const now  = Number(shard?.current_tick) || 0;
+    return Math.max(0, lock - now);
+}
+
+function renderStrategicActions() {
+    const grid = document.getElementById('so-actions-grid');
+    const meta = document.getElementById('so-actions-meta');
+    const pill = document.getElementById('so-actions-cooldown-pill');
+    if (!grid) return;
+
+    const lockedTicks = soActionsLockedTicks();
+    const isLocked = lockedTicks > 0;
+
+    grid.classList.toggle('locked', isLocked);
+    if (pill) {
+        if (isLocked) {
+            pill.className = 'so-actions-cooldown-pill';
+            pill.textContent = `LOCKED — ${lockedTicks} TICK${lockedTicks === 1 ? '' : 'S'}`;
+        } else {
+            pill.textContent = '';
+            pill.className = '';
+        }
+    }
+    if (meta) {
+        meta.textContent = isLocked
+            ? `Locked until tick ${faction.corp_shipping_action_locked_until_tick}`
+            : `${ACTION_DEFS.length} Initiatives ◊ Choose A or B (12-tick global cooldown)`;
+    }
+
+    grid.innerHTML = ACTION_DEFS.map((card, cIdx) => renderActionCard(card, cIdx, isLocked)).join('');
+}
+
+function renderActionCard(card, cardIdx, isLocked) {
+    const optionsHtml = card.options
+        .map((opt, oIdx) => renderActionOption(card, opt, cardIdx, oIdx, isLocked))
+        .join('');
+    return `<div class="so-action-card">
+        <div class="so-action-name">${escapeHtml(card.name)}</div>
+        <div class="so-action-options">${optionsHtml}</div>
+    </div>`;
+}
+
+function renderActionOption(card, opt, cardIdx, oIdx, isLocked) {
+    const effectsHtml = renderActionEffects(opt);
+    const lockedAttrs = isLocked ? 'data-locked="1"' : '';
+    return `<div class="so-action-option" ${lockedAttrs}
+                 data-action-key="${escapeHtml(card.key)}"
+                 data-choice="${escapeHtml(opt.letter)}"
+                 data-card-idx="${cardIdx}" data-opt-idx="${oIdx}">
+        <span class="so-action-option-letter">${escapeHtml(opt.letter)}</span>
+        <div class="so-action-option-content">
+            <div class="so-action-option-title">${escapeHtml(opt.title)}</div>
+            <div class="so-action-option-desc">${escapeHtml(opt.desc)}</div>
+            <div class="so-action-option-effects">${effectsHtml}</div>
+        </div>
+        <span class="so-action-option-cta">${isLocked ? 'Locked' : 'Take ▸'}</span>
+    </div>`;
+}
+
+function renderActionEffects(opt) {
+    const parts = [`<span class="so-effect cost">−${hfFmtBig(opt.cost).replace('-', '')}</span>`];
+    for (const [key, delta] of Object.entries(opt.effects || {})) {
+        const sign = delta > 0 ? '+' : '';
+        const cls = delta > 0 ? 'positive' : 'negative';
+        parts.push(`<span class="so-effect ${cls}">${sign}${delta} ${escapeHtml(SO_EFFECT_LABEL[key] || key)}</span>`);
+    }
+    return parts.join('');
+}
+
+function attachStrategicActionsHandlers() {
+    const grid = document.getElementById('so-actions-grid');
+    if (!grid || grid.dataset.boundSo === '1') return;
+    grid.dataset.boundSo = '1';
+    grid.addEventListener('click', (e) => {
+        const opt = e.target.closest('.so-action-option');
+        if (!opt) return;
+        if (opt.hasAttribute('data-locked')) return;
+        const cardIdx = Number(opt.getAttribute('data-card-idx'));
+        const oIdx    = Number(opt.getAttribute('data-opt-idx'));
+        const card    = ACTION_DEFS[cardIdx];
+        const choice  = card?.options[oIdx];
+        if (!card || !choice) return;
+        showActionConfirmModal(card, choice);
+    });
+}
+
+function showActionConfirmModal(card, opt) {
+    const overlay = document.getElementById('so-modal-overlay');
+    const modal = document.getElementById('so-modal');
+    if (!overlay || !modal) return;
+
+    const effectsHtml = renderActionEffects(opt);
+
+    modal.innerHTML = `
+        <div class="so-modal-head">
+            <div>
+                <span class="so-modal-title-eyebrow">Confirm Strategic Action</span>
+                <h2 id="so-modal-title" class="so-modal-title">${escapeHtml(opt.title)}</h2>
+            </div>
+            <button type="button" class="so-modal-close" data-modal-close aria-label="Close">×</button>
+        </div>
+        <div class="so-modal-section">
+            <div class="so-modal-section-title">${escapeHtml(card.name)} — Option ${escapeHtml(opt.letter)}</div>
+            <p style="font-size:13px;color:var(--so-text-secondary);line-height:1.55;margin:0 0 14px;">${escapeHtml(opt.desc)}</p>
+            <div class="so-action-option-effects" style="margin-bottom:12px;">${effectsHtml}</div>
+            <div class="so-modal-blocked" style="border-color:var(--so-accent-rust);background:rgba(160,99,58,0.08);color:var(--so-accent-rust);">
+                ⚠ This locks all 10 Shipping Strategic Actions for 12 ticks.
+            </div>
+        </div>
+        <div class="so-modal-actions">
+            <button type="button" class="so-modal-btn" data-modal-close>Cancel</button>
+            <button type="button" class="so-modal-btn primary" id="so-action-confirm">Confirm ▸</button>
+        </div>
+    `;
+
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
+
+    document.getElementById('so-action-confirm')?.addEventListener('click', () => {
+        submitShippingAction(card, opt);
+    });
+}
+
+async function submitShippingAction(card, opt) {
+    if (_soActionInflight) return;
+    const btn = document.getElementById('so-action-confirm');
+    _soActionInflight = true;
+    if (btn) btn.disabled = true;
+    try {
+        const { data, error } = await _supabase.rpc('fire_shipping_action', {
+            p_corp_id:    faction.id,
+            p_action_key: card.key,
+            p_choice:     opt.letter,
+        });
+        if (error) {
+            showToast(error.message || 'Action failed.', 'error');
+            return;
+        }
+        if (!data?.success) {
+            showToast(data?.error || 'Action failed.', 'error');
+            return;
+        }
+        showToast(`Action taken — locked for 12 ticks.`, 'success');
+        closeBidModal();
+        await refreshFactionAndCash();
+        renderHeroStats();
+        renderStrategicActions();
+    } catch (err) {
+        console.error('[corp-shipping] fire_shipping_action failed:', err);
+        showToast('Action failed: ' + (err?.message || 'unknown'), 'error');
+    } finally {
+        _soActionInflight = false;
+        if (btn) btn.disabled = false;
+    }
+}
+
 // ── INIT ──
 const SECTOR_OPS_PAGE = {
     Construction: 'corp-operations.html',
@@ -1877,8 +2258,10 @@ async function init() {
     document.getElementById('page-content').style.display = '';
 
     renderHeroStats();
+    renderStrategicActions();
     attachPressingIssuesHandler();
     attachContractsHandlers();
+    attachStrategicActionsHandlers();
     attachModalDismissHandlers();
 
     await Promise.all([
