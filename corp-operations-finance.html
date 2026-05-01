@@ -503,6 +503,332 @@ body.corp-operations-finance.light-mode {
 .fo-offer-card-foot .urgent { color: var(--fo-accent-red); }
 .fo-offer-card-cta { color: var(--fo-accent-gold); font-weight: 600; }
 
+/* ── REVIEW MODAL (L3.B) ──
+   Click a card → modal opens with the borrower's profile, the loan
+   request terms, an APR slider (clamped to corp_interest_rates …
+   12%), term-tick buttons (12/24/36/48/60/84), and a live impact
+   preview. Submit hits submit_loan_offer RPC. */
+.fo-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 9000;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.fo-modal-overlay.open { display: flex; }
+.fo-modal {
+  background: var(--fo-bg-card);
+  border: 1px solid var(--fo-line-bright);
+  width: 100%;
+  max-width: 720px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 24px 26px 22px;
+}
+.fo-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 22px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--fo-line);
+}
+.fo-modal-title {
+  font-family: var(--fo-serif);
+  font-weight: 500;
+  font-style: italic;
+  font-size: 26px;
+  letter-spacing: -0.01em;
+  color: var(--fo-text-primary);
+  margin: 0;
+}
+.fo-modal-title-eyebrow {
+  display: block;
+  font-family: var(--fo-mono);
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--fo-accent-gold-dim);
+  margin-bottom: 6px;
+}
+.fo-modal-close {
+  background: transparent;
+  border: 1px solid var(--fo-line-bright);
+  color: var(--fo-text-tertiary);
+  font-family: var(--fo-mono);
+  font-size: 14px;
+  width: 30px; height: 30px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.fo-modal-close:hover {
+  border-color: var(--fo-accent-red);
+  color: var(--fo-accent-red);
+}
+
+.fo-review-section { margin-bottom: 22px; }
+.fo-review-section-title {
+  font-family: var(--fo-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--fo-accent-gold-dim);
+  margin-bottom: 10px;
+}
+.fo-review-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--fo-line);
+  font-family: var(--fo-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.fo-review-row:last-child { border-bottom: none; }
+.fo-review-row .label { color: var(--fo-text-tertiary); }
+.fo-review-row .value {
+  color: var(--fo-text-primary);
+  font-family: var(--fo-serif);
+  font-style: italic;
+  font-size: 16px;
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+.fo-review-row .value.muted { color: var(--fo-text-tertiary); font-style: normal; }
+.fo-review-row .value.warn  { color: var(--fo-accent-red); }
+.fo-review-row .value.good  { color: var(--fo-accent-green); }
+
+.fo-review-applicant-name {
+  font-family: var(--fo-serif);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--fo-text-primary);
+  margin-bottom: 4px;
+  line-height: 1.2;
+}
+.fo-review-applicant-meta {
+  font-family: var(--fo-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fo-text-tertiary);
+  margin-bottom: 12px;
+}
+.fo-review-applicant-meta strong { color: var(--fo-text-secondary); font-weight: 500; }
+
+.fo-review-principal {
+  font-family: var(--fo-serif);
+  font-size: 38px;
+  font-weight: 400;
+  color: var(--fo-text-primary);
+  letter-spacing: -0.025em;
+  line-height: 1;
+  margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.fo-review-purpose {
+  font-style: italic;
+  color: var(--fo-text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.fo-review-collateral-empty {
+  font-family: var(--fo-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fo-text-tertiary);
+  font-style: italic;
+  padding: 14px;
+  border: 1px dashed var(--fo-line);
+  text-align: center;
+}
+
+/* APR slider */
+.fo-offer-rate-block { margin-bottom: 18px; }
+.fo-offer-rate-display {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.fo-offer-rate-display .rate {
+  font-family: var(--fo-serif);
+  font-size: 42px;
+  font-weight: 400;
+  color: var(--fo-accent-gold);
+  letter-spacing: -0.025em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.fo-offer-rate-display .pct {
+  font-family: var(--fo-serif);
+  font-size: 26px;
+  color: var(--fo-accent-gold-dim);
+  margin-left: -4px;
+}
+.fo-offer-rate-display .label {
+  font-family: var(--fo-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--fo-text-tertiary);
+  margin-left: 8px;
+}
+.fo-offer-slider {
+  width: 100%;
+  margin: 6px 0;
+  accent-color: var(--fo-accent-gold);
+}
+.fo-offer-slider:disabled { opacity: 0.4; cursor: not-allowed; }
+.fo-offer-rate-bounds {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--fo-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fo-text-tertiary);
+}
+
+/* Term button row */
+.fo-offer-term-block { margin-bottom: 18px; }
+.fo-offer-term-label {
+  font-family: var(--fo-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--fo-text-tertiary);
+  margin-bottom: 8px;
+}
+.fo-offer-term-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.fo-term-btn {
+  flex: 1;
+  min-width: 70px;
+  background: var(--fo-bg-secondary);
+  border: 1px solid var(--fo-line-bright);
+  color: var(--fo-text-primary);
+  font-family: var(--fo-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-align: center;
+  padding: 10px 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.fo-term-btn .sub {
+  display: block;
+  margin-top: 3px;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  color: var(--fo-text-tertiary);
+}
+.fo-term-btn:hover:not(.active) {
+  border-color: var(--fo-accent-gold);
+  color: var(--fo-accent-gold);
+}
+.fo-term-btn.active {
+  background: var(--fo-accent-gold);
+  border-color: var(--fo-accent-gold);
+  color: var(--fo-bg-primary);
+  font-weight: 600;
+}
+.fo-term-btn.active .sub { color: rgba(13,14,12,0.7); }
+
+/* Impact preview box */
+.fo-impact-box {
+  border: 1px dashed var(--fo-line-bright);
+  background: var(--fo-bg-secondary);
+  padding: 14px 16px;
+}
+
+/* Submit-block guards (overleverage, floor>cap) */
+.fo-modal-blocked {
+  border: 1px solid var(--fo-accent-red);
+  background: rgba(217,83,79,0.08);
+  color: var(--fo-accent-red);
+  padding: 12px 14px;
+  font-family: var(--fo-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.fo-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+.fo-modal-btn {
+  font-family: var(--fo-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 10px 18px;
+  background: transparent;
+  border: 1px solid var(--fo-line-bright);
+  color: var(--fo-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.fo-modal-btn:hover:not(:disabled) {
+  border-color: var(--fo-accent-gold);
+  color: var(--fo-accent-gold);
+}
+.fo-modal-btn.primary {
+  background: var(--fo-accent-gold);
+  border-color: var(--fo-accent-gold);
+  color: var(--fo-bg-primary);
+  font-weight: 600;
+}
+.fo-modal-btn.primary:hover:not(:disabled) {
+  background: var(--fo-accent-gold);
+  color: var(--fo-bg-primary);
+  filter: brightness(1.08);
+}
+.fo-modal-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Toast */
+.fo-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9100;
+  font-family: var(--fo-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  padding: 12px 18px;
+  background: var(--fo-bg-elevated);
+  border: 1px solid var(--fo-line-bright);
+  color: var(--fo-text-primary);
+  max-width: 400px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+  transition: opacity 0.25s ease;
+}
+.fo-toast.success { border-color: rgba(92,184,92,0.5);   color: var(--fo-accent-green); }
+.fo-toast.error   { border-color: rgba(217,83,79,0.5);   color: var(--fo-accent-red); }
+.fo-toast.fade    { opacity: 0; }
+
 /* ── STRATEGIC ACTIONS ── */
 .fo-actions-cooldown-pill {
   font-family: var(--fo-mono);
@@ -685,6 +1011,11 @@ body.corp-operations-finance.light-mode {
       </div>
     </div>
   </div>
+</div>
+
+<!-- Loan Review modal (L3.B) — populated by openLoanReviewModal(). -->
+<div class="fo-modal-overlay" id="fo-modal-overlay" aria-hidden="true">
+  <div class="fo-modal" id="fo-modal" role="dialog" aria-modal="true" aria-labelledby="fo-modal-title"></div>
 </div>
 
 <script type="module">
@@ -870,15 +1201,17 @@ async function loadAvailableLoanRequests() {
     }
 
     const cur = Number(shard?.current_tick || 0);
-    // Slim select: only the fields the card render reads. L3.B adds the
-    // borrower-profile fields (corp_cash_reserves / corp_loans /
-    // corp_reputation) when the modal needs them.
+    // Card render uses: ticker, name, sector, risk_grade, principal,
+    // term_ticks, purpose, expires_at_tick, nation.name. Modal also
+    // uses corp_cash_reserves / corp_debt / corp_reputation for the
+    // Applicant Profile section.
     const { data: requests, error: reqErr } = await _supabase
         .from('bank_loan_requests')
         .select(`
             id, principal, term_ticks, risk_grade, purpose, expires_at_tick,
             requesting_faction:factions!requesting_faction_id (
-                faction_name, corp_ticker, corp_sector
+                faction_name, corp_ticker, corp_sector,
+                corp_cash_reserves, corp_debt, corp_reputation
             ),
             requesting_nation:nations!requesting_nation_id ( name )
         `)
@@ -964,11 +1297,333 @@ function renderAvailableLoanRequests() {
     }).join('');
 }
 
-// Stub — silent no-op until L3.B replaces this with the Loan Review
-// modal. The click handler stays wired so L3.B's only change is to
-// fill in this function body.
-function openLoanReviewModal(_requestId) {
-    // intentionally empty
+// ── REVIEW MODAL (L3.B) ──
+// Term-tick options shown as buttons in Section IV. Constant: borrowers
+// pick a target term in the request, banks counter with one of these.
+// Bank can adjust away from the requested term.
+const TERM_TICK_OPTIONS = [12, 24, 36, 48, 60, 84];
+const TICKS_PER_YEAR = 12;
+
+// Pick the term button closest to the borrower's requested term so the
+// modal opens with a sensible default. Ties break toward the longer
+// option (more interest revenue).
+function pickDefaultTerm(requestedTerm) {
+    const t = Number(requestedTerm) || 0;
+    if (!t) return 36;
+    let best = TERM_TICK_OPTIONS[0];
+    let bestGap = Math.abs(best - t);
+    for (const opt of TERM_TICK_OPTIONS) {
+        const gap = Math.abs(opt - t);
+        if (gap < bestGap || (gap === bestGap && opt > best)) {
+            best = opt; bestGap = gap;
+        }
+    }
+    return best;
+}
+
+// Default APR inside the bank's [floor, 12] window. Midpoint, rounded
+// to one decimal so it lines up with the slider step.
+function defaultApr(floor) {
+    const f = Math.max(0, Number(floor) || 0);
+    if (f >= 12) return 12;
+    return Math.round(((f + 12) / 2) * 10) / 10;
+}
+
+// Total simple interest over the loan term. For preview only — actual
+// repayment math lives server-side. ticks → years via TICKS_PER_YEAR.
+function calcTotalInterest(principal, aprPct, termTicks) {
+    const p = Number(principal) || 0;
+    const apr = Number(aprPct) || 0;
+    const termYears = (Number(termTicks) || 0) / TICKS_PER_YEAR;
+    return Math.round(p * (apr / 100) * termYears);
+}
+
+let _offerInflight = false;
+
+function openLoanReviewModal(requestId) {
+    const req = _availableRequests.find(r => r.id === requestId);
+    if (!req) return;
+
+    const overlay = document.getElementById('fo-modal-overlay');
+    const modal = document.getElementById('fo-modal');
+    if (!overlay || !modal) return;
+
+    const borrower = req.requesting_faction || {};
+    const borrowerNation = req.requesting_nation || {};
+    const principal = Number(req.principal) || 0;
+    const requestedTerm = Number(req.term_ticks) || 0;
+    const cur = Number(shard?.current_tick || 0);
+    const expiresIn = Math.max(0, Number(req.expires_at_tick || 0) - cur);
+
+    const floor = Math.max(0, Number(faction?.corp_interest_rates) || 0);
+    const overleverage = Number(faction?.corp_overleverage) || 0;
+
+    // Submit-block conditions: (a) bank is Stressed (overleverage ≥ 8 —
+    // server's Stressed gate); (b) bank's floor exceeds the 12% market
+    // cap, leaving no valid window.
+    const isStressed = overleverage >= 8;
+    const floorAboveCap = floor > 12;
+    const blockedReason = isStressed
+        ? `You are Stressed (overleverage ${overleverage.toFixed(1)} ≥ 8). The Central Bank has frozen new loan offers until you reduce risk.`
+        : floorAboveCap
+            ? `Your interest-rates floor (${floor.toFixed(1)}%) exceeds the 12% market cap. You cannot make a competitive offer at current pricing power.`
+            : null;
+
+    let selectedApr = defaultApr(floor);
+    let selectedTerm = pickDefaultTerm(requestedTerm);
+
+    const renderModal = () => {
+        const totalInterest = calcTotalInterest(principal, selectedApr, selectedTerm);
+        const perTickPayment = selectedTerm > 0
+            ? Math.round((principal + totalInterest) / selectedTerm)
+            : 0;
+        const termYears = (selectedTerm / TICKS_PER_YEAR);
+
+        const termPills = TERM_TICK_OPTIONS.map(t => {
+            const active = t === selectedTerm;
+            const yrs = (t / TICKS_PER_YEAR);
+            const yrsLabel = Number.isInteger(yrs) ? `${yrs} yr${yrs === 1 ? '' : 's'}` : `${yrs.toFixed(1)} yrs`;
+            const matches = t === requestedTerm ? ' (REQ.)' : '';
+            return `<button type="button" class="fo-term-btn${active ? ' active' : ''}" data-term="${t}">
+                <strong>${t} TICKS</strong>
+                <span class="sub">${escapeHtml(yrsLabel)}${matches}</span>
+            </button>`;
+        }).join('');
+
+        const sliderDisabled = blockedReason ? 'disabled' : '';
+        const submitDisabled = blockedReason ? 'disabled' : '';
+
+        modal.innerHTML = `
+            <div class="fo-modal-head">
+                <div>
+                    <span class="fo-modal-title-eyebrow">Review Loan Request</span>
+                    <h2 id="fo-modal-title" class="fo-modal-title">${escapeHtml(borrower.faction_name || 'Unknown Borrower')}</h2>
+                </div>
+                <button type="button" class="fo-modal-close" data-modal-close aria-label="Close">×</button>
+            </div>
+
+            ${blockedReason ? `<div class="fo-modal-blocked">${escapeHtml(blockedReason)}</div>` : ''}
+
+            <div class="fo-review-section">
+                <div class="fo-review-section-title">I. Applicant Profile</div>
+                <div class="fo-review-applicant-name">${escapeHtml(borrower.faction_name || '—')}</div>
+                <div class="fo-review-applicant-meta">
+                    ${borrower.corp_ticker ? `<strong>${escapeHtml(borrower.corp_ticker)}</strong> ◊ ` : ''}
+                    ${borrower.corp_sector ? `${escapeHtml(borrower.corp_sector)} ◊ ` : ''}
+                    ${borrowerNation.name ? `${escapeHtml(borrowerNation.name)}` : ''}
+                </div>
+                <div class="fo-review-row">
+                    <span class="label">Cash Reserves</span>
+                    <span class="value">${escapeHtml(fmtMoney(borrower.corp_cash_reserves))}</span>
+                </div>
+                <div class="fo-review-row">
+                    <span class="label">Outstanding Debt</span>
+                    <span class="value">${escapeHtml(fmtMoney(borrower.corp_debt))}</span>
+                </div>
+                <div class="fo-review-row">
+                    <span class="label">Reputation</span>
+                    <span class="value">${escapeHtml((Number(borrower.corp_reputation) || 0).toFixed(1))}<span class="muted"> / 10</span></span>
+                </div>
+            </div>
+
+            <div class="fo-review-section">
+                <div class="fo-review-section-title">II. Loan Request</div>
+                <div class="fo-review-principal">${escapeHtml(fmtMoney(principal))}</div>
+                ${req.purpose ? `<div class="fo-review-purpose">"${escapeHtml(req.purpose)}"</div>` : ''}
+                <div class="fo-review-row">
+                    <span class="label">Requested Term</span>
+                    <span class="value">${requestedTerm} TICK${requestedTerm === 1 ? '' : 'S'}<span class="muted"> · ${(requestedTerm / TICKS_PER_YEAR).toFixed(requestedTerm % TICKS_PER_YEAR === 0 ? 0 : 1)} YR</span></span>
+                </div>
+                <div class="fo-review-row">
+                    <span class="label">Risk Grade</span>
+                    <span class="value">${escapeHtml(req.risk_grade || '—')}</span>
+                </div>
+                <div class="fo-review-row">
+                    <span class="label">Window Closes</span>
+                    <span class="value ${expiresIn <= 3 ? 'warn' : ''}">${expiresIn} TICK${expiresIn === 1 ? '' : 'S'}</span>
+                </div>
+            </div>
+
+            <div class="fo-review-section">
+                <div class="fo-review-section-title">III. Pledged Collateral</div>
+                <div class="fo-review-collateral-empty">Unsecured ◊ No collateral pledged</div>
+            </div>
+
+            <div class="fo-review-section">
+                <div class="fo-review-section-title">IV. Your Offer Terms</div>
+
+                <div class="fo-offer-rate-block">
+                    <div class="fo-offer-rate-display">
+                        <span class="rate" id="fo-rate-display">${selectedApr.toFixed(1)}</span><span class="pct">%</span>
+                        <span class="label">APR</span>
+                    </div>
+                    <input type="range" class="fo-offer-slider" id="fo-offer-slider"
+                        min="${floor.toFixed(2)}" max="12" step="0.1"
+                        value="${selectedApr.toFixed(1)}" ${sliderDisabled}
+                        aria-label="Offered APR">
+                    <div class="fo-offer-rate-bounds">
+                        <span>FLOOR ${floor.toFixed(1)}%</span>
+                        <span>CAP 12.0%</span>
+                    </div>
+                </div>
+
+                <div class="fo-offer-term-block">
+                    <div class="fo-offer-term-label">TERM</div>
+                    <div class="fo-offer-term-buttons" id="fo-term-buttons">${termPills}</div>
+                </div>
+            </div>
+
+            <div class="fo-review-section fo-impact-box">
+                <div class="fo-review-section-title">V. Impact Preview</div>
+                <div class="fo-review-row">
+                    <span class="label">Total Interest Earned</span>
+                    <span class="value good" id="fo-impact-interest">${escapeHtml(fmtMoney(totalInterest))}</span>
+                </div>
+                <div class="fo-review-row">
+                    <span class="label">Borrower Per-Tick Payment</span>
+                    <span class="value" id="fo-impact-per-tick">${escapeHtml(fmtMoney(perTickPayment))}</span>
+                </div>
+                <div class="fo-review-row">
+                    <span class="label">Term in Years</span>
+                    <span class="value" id="fo-impact-years">${termYears.toFixed(termYears % 1 === 0 ? 0 : 1)} YR${termYears === 1 ? '' : 'S'}</span>
+                </div>
+            </div>
+
+            <div class="fo-modal-actions">
+                <button type="button" class="fo-modal-btn" data-modal-close>Cancel</button>
+                <button type="button" class="fo-modal-btn primary" id="fo-offer-submit" ${submitDisabled}>Submit Offer ▸</button>
+            </div>
+        `;
+
+        // Slider — update only the affected nodes on input (no full
+        // re-render — keeps the thumb's drag focus alive).
+        const slider = modal.querySelector('#fo-offer-slider');
+        slider?.addEventListener('input', () => {
+            selectedApr = Number(slider.value);
+            updateImpactDisplay();
+        });
+
+        // Term buttons — re-render so the active class shifts.
+        modal.querySelectorAll('[data-term]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedTerm = Number(btn.getAttribute('data-term')) || selectedTerm;
+                renderModal();
+            });
+        });
+
+        // Submit — NOT { once: true }; if the server rejects we want to
+        // let the user retry. _offerInflight guards against double-fire.
+        modal.querySelector('#fo-offer-submit')?.addEventListener('click', () => {
+            submitLoanOffer(req.id);
+        });
+    };
+
+    // Cheaper than re-rendering on every slider input — only the three
+    // impact rows + APR display change as the slider moves.
+    const updateImpactDisplay = () => {
+        const totalInterest = calcTotalInterest(principal, selectedApr, selectedTerm);
+        const perTickPayment = selectedTerm > 0
+            ? Math.round((principal + totalInterest) / selectedTerm)
+            : 0;
+        const rate = modal.querySelector('#fo-rate-display');
+        const interest = modal.querySelector('#fo-impact-interest');
+        const perTick = modal.querySelector('#fo-impact-per-tick');
+        if (rate)     rate.textContent     = selectedApr.toFixed(1);
+        if (interest) interest.textContent = fmtMoney(totalInterest);
+        if (perTick)  perTick.textContent  = fmtMoney(perTickPayment);
+    };
+
+    renderModal();
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
+}
+
+function closeLoanReviewModal() {
+    const overlay = document.getElementById('fo-modal-overlay');
+    const modal = document.getElementById('fo-modal');
+    if (!overlay) return;
+    overlay.classList.remove('open');
+    overlay.setAttribute('aria-hidden', 'true');
+    if (modal) modal.innerHTML = '';
+}
+
+async function submitLoanOffer(requestId) {
+    if (_offerInflight) return;
+    const slider = document.getElementById('fo-offer-slider');
+    const activeTermBtn = document.querySelector('#fo-term-buttons .fo-term-btn.active');
+    const submitBtn = document.getElementById('fo-offer-submit');
+    if (!slider || !activeTermBtn) return;
+
+    const offeredApr = Number(slider.value);
+    const offeredTerm = Number(activeTermBtn.getAttribute('data-term'));
+    if (!Number.isFinite(offeredApr) || !Number.isFinite(offeredTerm) || offeredTerm <= 0) {
+        showToast('Pick a valid rate and term.', 'error');
+        return;
+    }
+
+    _offerInflight = true;
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+        const { data, error } = await _supabase.rpc('submit_loan_offer', {
+            p_request_id:        requestId,
+            p_bank_faction_id:   faction.id,
+            p_offered_apr:       offeredApr,
+            p_offered_term_ticks: offeredTerm,
+        });
+        if (error) {
+            showToast(error.message || 'Submission failed.', 'error');
+            return;
+        }
+        if (!data?.ok) {
+            showToast(data?.error || 'Submission failed.', 'error');
+            return;
+        }
+        showToast(`Offer submitted at ${offeredApr.toFixed(1)}% for ${offeredTerm} ticks.`, 'success');
+        closeLoanReviewModal();
+        // Refresh the list — the request drops out (one-shot per bank).
+        await loadAvailableLoanRequests();
+        renderAvailableLoanRequests();
+    } catch (err) {
+        console.error('[fo] submit_loan_offer failed:', err);
+        showToast('Submission failed: ' + (err?.message || 'unknown'), 'error');
+    } finally {
+        _offerInflight = false;
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
+
+// Modal dismiss bindings — overlay-click, [data-modal-close], Escape.
+// Attached once at init so they survive every render.
+function attachModalDismissHandlers() {
+    const overlay = document.getElementById('fo-modal-overlay');
+    if (overlay && overlay.dataset.boundFo !== '1') {
+        overlay.dataset.boundFo = '1';
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay || e.target.matches('[data-modal-close]')) {
+                closeLoanReviewModal();
+            }
+        });
+    }
+    if (document.body.dataset.foEscBound !== '1') {
+        document.body.dataset.foEscBound = '1';
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeLoanReviewModal();
+        });
+    }
+}
+
+// Toast — mirrors corp-operations.html's pattern.
+function showToast(message, kind) {
+    document.querySelectorAll('.fo-toast').forEach(n => n.remove());
+    const el = document.createElement('div');
+    el.className = 'fo-toast' + (kind ? ' ' + kind : '');
+    el.textContent = message;
+    document.body.appendChild(el);
+    setTimeout(() => {
+        el.classList.add('fade');
+        setTimeout(() => el.remove(), 280);
+    }, 3000);
 }
 
 // One-time delegated click handler for the Available Offers list.
@@ -1127,8 +1782,10 @@ async function init() {
 
     // Available Offers (Section III). Attach the delegated click /
     // keyboard handler BEFORE the first render so cards never exist
-    // without a live listener.
+    // without a live listener. Modal dismiss handlers (overlay click,
+    // Escape) are bound once and survive every modal open/close.
     attachAvailableOffersHandlers();
+    attachModalDismissHandlers();
     await loadAvailableLoanRequests();
     renderAvailableLoanRequests();
 
