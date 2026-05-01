@@ -51,18 +51,23 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-    v_contract     corp_contracts%ROWTYPE;
-    v_caller       UUID := auth.uid();
-    v_caller_owns  BOOLEAN;
-    v_tick         INT;
+    v_contract       corp_contracts%ROWTYPE;
+    v_caller         UUID := auth.uid();
+    v_caller_owns    BOOLEAN;
+    v_tick           INT;
 
-    v_winning_bid  corp_contract_bids%ROWTYPE;
-    v_winning_score NUMERIC;
+    v_winning_bid    corp_contract_bids%ROWTYPE;
+    v_winning_bid_id UUID;
+    v_winning_score  NUMERIC;
     v_winner_faction factions%ROWTYPE;
-    v_bid_count    INT;
+    v_bid_count      INT;
 BEGIN
     -- ── Contract lookup + status guard ──
-    SELECT * INTO v_contract FROM corp_contracts WHERE id = p_contract_id;
+    -- FOR UPDATE locks the contract row for the duration of this txn so
+    -- two concurrent award calls (e.g. a UI double-click or the cron
+    -- racing a manual call) can't both set winner_faction_id. The second
+    -- caller waits, then sees status='active' and bails on the open check.
+    SELECT * INTO v_contract FROM corp_contracts WHERE id = p_contract_id FOR UPDATE;
     IF v_contract.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Contract not found');
     END IF;
@@ -109,37 +114,35 @@ BEGIN
     END IF;
 
     -- ── Pick the winning bid via composite score ──
-    -- Budget / timeline guard against div-by-zero (default to 1 so a
-    -- malformed contract row doesn't crash the function).
-    SELECT b.*,
-           ((
-              GREATEST(0, LEAST(1, 1 - (b.bid_amount::numeric / GREATEST(v_contract.budget, 1))))
-            + GREATEST(0, LEAST(1,
-                (v_contract.timeline_months - COALESCE(b.quoted_timeline_months, v_contract.timeline_months))::numeric
-                / GREATEST(v_contract.timeline_months * 0.30, 0.01)))
-            + GREATEST(0, LEAST(1, COALESCE(f.corp_reputation, 0)::numeric / 10))
-           ) / 3.0) AS composite_score
-    INTO v_winning_bid
-    FROM corp_contract_bids b
-    JOIN factions f ON f.id = b.faction_id
-    WHERE b.contract_id = p_contract_id
-    ORDER BY composite_score DESC, b.bid_amount ASC, b.created_at_tick ASC
+    -- Computed once via a CTE then pulled into scalars (id + score). The
+    -- alternative — selecting `b.*, score INTO v_winning_bid` — fails at
+    -- runtime because v_winning_bid is a %ROWTYPE that doesn't hold the
+    -- extra score column. GREATEST(...) guards against div-by-zero on a
+    -- malformed contract row.
+    WITH ranked AS (
+        SELECT b.id,
+               b.bid_amount,
+               b.created_at_tick,
+               ((
+                  GREATEST(0, LEAST(1, 1 - (b.bid_amount::numeric / GREATEST(v_contract.budget, 1))))
+                + GREATEST(0, LEAST(1,
+                    (v_contract.timeline_months - COALESCE(b.quoted_timeline_months, v_contract.timeline_months))::numeric
+                    / GREATEST(v_contract.timeline_months * 0.30, 0.01)))
+                + GREATEST(0, LEAST(1, COALESCE(f.corp_reputation, 0)::numeric / 10))
+               ) / 3.0) AS score
+        FROM corp_contract_bids b
+        JOIN factions f ON f.id = b.faction_id
+        WHERE b.contract_id = p_contract_id
+    )
+    SELECT id, score
+    INTO v_winning_bid_id, v_winning_score
+    FROM ranked
+    ORDER BY score DESC, bid_amount ASC, created_at_tick ASC
     LIMIT 1;
 
-    -- Recompute the score on the winner so we can return it (we discarded
-    -- it from the row by virtue of selecting INTO a typed rowtype).
-    SELECT (
-              GREATEST(0, LEAST(1, 1 - (v_winning_bid.bid_amount::numeric / GREATEST(v_contract.budget, 1))))
-            + GREATEST(0, LEAST(1,
-                (v_contract.timeline_months - COALESCE(v_winning_bid.quoted_timeline_months, v_contract.timeline_months))::numeric
-                / GREATEST(v_contract.timeline_months * 0.30, 0.01)))
-            + GREATEST(0, LEAST(1, COALESCE(f.corp_reputation, 0)::numeric / 10))
-           ) / 3.0
-    INTO v_winning_score
-    FROM factions f
-    WHERE f.id = v_winning_bid.faction_id;
-
-    SELECT * INTO v_winner_faction FROM factions WHERE id = v_winning_bid.faction_id;
+    -- Load the full winner row + faction for the return payload.
+    SELECT * INTO v_winning_bid   FROM corp_contract_bids WHERE id = v_winning_bid_id;
+    SELECT * INTO v_winner_faction FROM factions          WHERE id = v_winning_bid.faction_id;
 
     -- ── Apply award ──
     UPDATE corp_contracts
