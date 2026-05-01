@@ -4,39 +4,42 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Operations | Nationhood</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,900;1,9..144,400;1,9..144,500&family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter+Tight:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/corp-topbar.css">
+<link rel="stylesheet" href="css/corp-light-theme.css">
 <style>
 /* ──────────────────────────────────────────────────────────
-   CONSTRUCTION OPERATIONS — Phase 1 skeleton
-   Scoped under body.corp-operations-construction so the
-   bespoke palette + Fraunces type don't leak. Class prefix:
+   CONSTRUCTION OPERATIONS
+   Scoped under body.corp-operations-construction. Uses the
+   shared site palette + IBM Plex Sans/Serif + JetBrains Mono
+   to match corp-dashboard.html and the other corp pages.
+   The --co-* token names are kept (the rules below reference
+   them everywhere); they're just repointed at the dashboard's
+   colors so the two pages read as one product. Class prefix:
    .co-* (corp-operations).
    ────────────────────────────────────────────────────────── */
 body.corp-operations-construction {
-  --co-bg-primary:   #0d0e0c;
-  --co-bg-secondary: #14150f;
-  --co-bg-card:      #1a1b14;
-  --co-bg-elevated:  #21221a;
-  --co-line:         #2c2d22;
-  --co-line-bright:  #3d3f30;
-  --co-text-primary: #e8e3d3;
-  --co-text-secondary:#9a9580;
-  --co-text-tertiary:#6b6856;
-  --co-accent-gold:  #c9a449;
-  --co-accent-gold-dim:#8a722f;
-  --co-accent-red:   #c85a3a;
-  --co-accent-green: #8aa653;
-  --co-accent-blue:  #5a7896;
-  --co-accent-rust:  #a0633a;
-  --co-serif: 'Fraunces', Georgia, serif;
-  --co-sans:  'Inter Tight', system-ui, sans-serif;
+  --co-bg-primary:    #0e0e0c;
+  --co-bg-secondary:  #1a1a17;
+  --co-bg-card:       #1a1a17;
+  --co-bg-elevated:   #252525;
+  --co-line:          rgba(255,255,255,0.06);
+  --co-line-bright:   rgba(255,255,255,0.12);
+  --co-text-primary:  #f0efe6;
+  --co-text-secondary:#c4c2b8;
+  --co-text-tertiary: #888;
+  --co-accent-gold:   #c8a832;
+  --co-accent-gold-dim: rgba(200,168,50,0.55);
+  --co-accent-red:    #d9534f;
+  --co-accent-green:  #5cb85c;
+  --co-accent-blue:   #5bc0de;
+  --co-accent-rust:   #e8724a;
+  --co-serif: 'IBM Plex Serif', Georgia, serif;
+  --co-sans:  'IBM Plex Sans', system-ui, sans-serif;
   --co-mono:  'JetBrains Mono', monospace;
 
   background: var(--co-bg-primary);
-  color: var(--co-text-primary);
+  color: var(--co-text-secondary);
   font-family: var(--co-sans);
   font-size: 14px;
   line-height: 1.45;
@@ -46,18 +49,17 @@ body.corp-operations-construction {
 }
 body.corp-operations-construction * { box-sizing: border-box; }
 
-/* Subtle paper-grain overlay matching the dashboard's bespoke look. */
-body.corp-operations-construction::before {
-  content: '';
-  position: fixed; inset: 0;
-  background-image:
-    radial-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
-    radial-gradient(rgba(255,255,255,0.008) 1px, transparent 1px);
-  background-size: 3px 3px, 7px 7px;
-  background-position: 0 0, 1px 1px;
-  pointer-events: none;
-  z-index: 1;
-  mix-blend-mode: overlay;
+/* Light-mode overrides so the corp-topbar theme toggle works here too. */
+body.corp-operations-construction.light-mode {
+  --co-bg-primary:    #faf9f5;
+  --co-bg-secondary:  #f8f7f2;
+  --co-bg-card:       #ffffff;
+  --co-bg-elevated:   #faf9f5;
+  --co-line:          #e8e7e0;
+  --co-line-bright:   #e0dfd6;
+  --co-text-primary:  #1a1a17;
+  --co-text-secondary:#2d2d28;
+  --co-text-tertiary: #6a6660;
 }
 
 .co-loading {
@@ -78,27 +80,6 @@ body.corp-operations-construction::before {
   z-index: 2;
 }
 
-/* ── BREADCRUMB ── */
-.co-breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 18px;
-  font-family: var(--co-mono);
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--co-text-tertiary);
-}
-.co-breadcrumb a {
-  color: var(--co-text-tertiary);
-  text-decoration: none;
-  transition: color 0.15s;
-}
-.co-breadcrumb a:hover { color: var(--co-accent-gold); }
-.co-breadcrumb .current { color: var(--co-accent-gold); }
-.co-breadcrumb .arrow { color: var(--co-line-bright); }
-
 /* ── PAGE HEADER ── */
 .co-page-header {
   display: grid;
@@ -108,14 +89,6 @@ body.corp-operations-construction::before {
   padding-bottom: 28px;
   border-bottom: 1px solid var(--co-line);
   margin-bottom: 36px;
-}
-.co-page-eyebrow {
-  font-family: var(--co-mono);
-  font-size: 10px;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--co-accent-gold-dim);
-  margin-bottom: 12px;
 }
 .co-page-title {
   font-family: var(--co-serif);
@@ -959,17 +932,9 @@ body.corp-operations-construction::before {
 
   <div class="co-layout">
 
-    <!-- BREADCRUMB -->
-    <div class="co-breadcrumb">
-      <a href="corp-dashboard.html">Dashboard</a>
-      <span class="arrow">›</span>
-      <span class="current">Operations</span>
-    </div>
-
     <!-- PAGE HEADER -->
     <div class="co-page-header">
       <div>
-        <div class="co-page-eyebrow" id="co-sector-eyebrow">— Construction Corporation —</div>
         <h1 class="co-page-title">Operations<em>.</em></h1>
       </div>
       <div class="co-page-stats">
@@ -2167,9 +2132,7 @@ async function init() {
         }
     }
 
-    // Eyebrow + active count + footer.
-    document.getElementById('co-sector-eyebrow').textContent =
-        `— ${sector} Corporation —`;
+    // Active count + footer.
     document.getElementById('co-active-count').textContent = String(activeCount);
     document.getElementById('co-footer-date').textContent =
         shard?.current_date || tickToDate(shard?.current_tick) || '—';
