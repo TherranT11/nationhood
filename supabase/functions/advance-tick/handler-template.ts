@@ -1929,16 +1929,19 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Stat decay failed for ${nation.name} (non-fatal):`, decayErr);
         }
 
-        // Energy demand-met effects (per-tick stat deltas based on
-        // supply / demand bucket).
+        // Commodity demand-met effects (per-tick stat deltas across
+        // every stat-derived commodity — Energy + Minerals today).
+        // Single merged update per nation so two commodities nudging
+        // the same column (e.g. industry under Energy + Minerals)
+        // sum cleanly rather than overwriting.
         try {
-            const energyDemandRes = await processEnergyDemandEffects(supabase, nation, _energyTradingByNation);
-            if (energyDemandRes) {
-                summary.energyDemand = summary.energyDemand || [];
-                summary.energyDemand.push({ nation: nation.name, ...energyDemandRes });
+            const commodityDemandRes = await processCommodityDemandEffects(supabase, nation, _energyTradingByNation);
+            if (commodityDemandRes) {
+                summary.commodityDemand = summary.commodityDemand || [];
+                summary.commodityDemand.push({ nation: nation.name, ...commodityDemandRes });
             }
-        } catch (edErr) {
-            console.error(`[advanceTick] Energy demand effects failed for ${nation.name} (non-fatal):`, edErr);
+        } catch (cdErr) {
+            console.error(`[advanceTick] Commodity demand effects failed for ${nation.name} (non-fatal):`, cdErr);
         }
 
         // Stat connections (threshold-triggered ripple effects)
