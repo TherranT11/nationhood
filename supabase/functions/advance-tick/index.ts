@@ -9009,9 +9009,16 @@ async function enactBill(supabase, bill, currentTick) {
                             debt: Math.round(Number(nation?.debt || 0) + drawDebt),
                             gdp_growth: newGdp,
                         }).eq('id', bill.nation_id);
-                        await supabase.from('factions').update({
-                            corp_cash_reserves: corpCash + payout,
-                        }).eq('id', corpId);
+                        // Bailout payout flows through the SSoT helper so
+                        // corp_cash_events stays in sync with the balance.
+                        // 20260712_emit_corp_cash_event_helper.sql.
+                        await supabase.rpc('emit_corp_cash_event', {
+                            p_corp_id:  corpId,
+                            p_category: 'capital_in',
+                            p_label:    'Government bailout payout',
+                            p_delta:    payout,
+                            p_tick:     currentTick,
+                        });
                         console.log(`[enactBill] gov_bailout: $${Math.round(payout / 1e6)}M to ${corp.faction_name} (reserves: $${Math.round(drawReserves / 1e6)}M, debt: +$${Math.round(drawDebt / 1e6)}M, gdp_growth: ${currentGdp} → ${newGdp})`);
                     } else {
                         console.log(`[enactBill] gov_bailout: payout capped to 0 (valuation $${Math.round(valuation / 1e6)}M)`);
