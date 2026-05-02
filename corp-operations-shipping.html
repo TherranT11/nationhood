@@ -2046,6 +2046,7 @@ async function loadActiveContracts() {
             revenue_per_tick, term_ticks, freighters_required,
             awarded_at_tick, ends_at_tick, last_payment_tick, total_paid,
             trade_agreement_id, commodity, volume_required, delivery_priority,
+            consecutive_missed_payments,
             origin_nation:nations!nation_id ( name ),
             destination_nation:nations!destination_nation_id ( name ),
             shipping_contract_bids!contract_id (
@@ -2283,9 +2284,11 @@ function renderActiveContracts() {
                     ${escapeHtml((c.destination_port || '—').toUpperCase())} ◊
                 </div>
             </div>
-            <div class="so-route-status">
+            <div class="so-route-status${(Number(c.consecutive_missed_payments) || 0) > 0 ? ' warn' : ''}">
                 <span class="dot"></span>
-                <span class="text">STATUS: <strong>RUNNING</strong></span>
+                <span class="text">${(Number(c.consecutive_missed_payments) || 0) > 0
+                    ? `STATUS: <strong>PAYMENT DELAYED</strong> · ${Number(c.consecutive_missed_payments)} missed tick${Number(c.consecutive_missed_payments) === 1 ? '' : 's'}`
+                    : 'STATUS: <strong>RUNNING</strong>'}</span>
             </div>
             <div class="so-contract-stats">
                 <div>

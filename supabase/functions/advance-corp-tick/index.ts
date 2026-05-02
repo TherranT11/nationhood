@@ -4614,7 +4614,7 @@ async function processShippingRoutes(supabase, currentTick) {
 async function processTradeAgreementShipping(supabase, currentTick) {
     const results = {
         awarded: 0, completed: 0, paid: 0, polling: 0, renewed: 0,
-        bidsAccepted: 0, bidsAutoRejected: 0,
+        missed: 0, bidsAccepted: 0, bidsAutoRejected: 0,
     };
     const nowIso = () => new Date().toISOString();
 
@@ -4995,7 +4995,7 @@ async function processTradeAgreementShipping(supabase, currentTick) {
     // credited. Buyer's nation_id was set on the contract by Phase 2.
     const { data: active, error: activeErr } = await supabase
         .from('shipping_contracts')
-        .select('id, winner_faction_id, revenue_per_tick, total_paid, last_payment_tick, nation_id')
+        .select('id, name, winner_faction_id, revenue_per_tick, total_paid, last_payment_tick, nation_id, consecutive_missed_payments')
         .eq('status', 'awarded')
         .not('trade_agreement_id', 'is', null)
         .or(`last_payment_tick.is.null,last_payment_tick.neq.${currentTick}`);
@@ -5049,9 +5049,58 @@ async function processTradeAgreementShipping(supabase, currentTick) {
             continue;
         }
         const buyerReserves = Number(buyer.budget_reserves) || 0;
-        const actualPayment = Math.min(buyerReserves, revenue);
-        if (actualPayment <= 0) continue;
+        const canPay        = buyerReserves >= revenue;
 
+        // Phase 8: payment-skipped tracking. When the buyer treasury
+        // can't cover the contract this tick, increment
+        // consecutive_missed_payments so the UI can surface the
+        // problem on both buyer and corp sides. Fire event_log
+        // entries only on the 0 → 1 transition (first miss in a
+        // streak) so chronic problems don't spam the log every tick.
+        if (!canPay) {
+            const priorMisses = Number(contract.consecutive_missed_payments) || 0;
+            const { error: missErr } = await supabase.from('shipping_contracts').update({
+                consecutive_missed_payments: priorMisses + 1,
+                updated_at: nowIso(),
+            }).eq('id', contract.id);
+            if (missErr) {
+                console.warn(`[TradeAgreementShipping] miss-counter update failed for ${contract.id}:`, missErr.message);
+                continue;
+            }
+            results.missed = (results.missed || 0) + 1;
+            if (priorMisses === 0) {
+                try {
+                    const events = [];
+                    if (contract.nation_id) {
+                        events.push({
+                            nation_id:          contract.nation_id,
+                            event_name:         'Shipping payment skipped',
+                            category:           'trade',
+                            description_chosen: `Treasury insufficient — couldn't pay this tick's shipping fee on '${contract.name || 'an Energy route'}'. The contract remains active; payment will resume once reserves are restored.`,
+                            fired_at_tick:      currentTick,
+                        });
+                    }
+                    const { data: wf } = await supabase.from('factions')
+                        .select('faction_name, nation_id').eq('id', contract.winner_faction_id).maybeSingle();
+                    events.push({
+                        nation_id:          wf?.nation_id || null,
+                        faction_id:         contract.winner_faction_id,
+                        event_name:         'Shipping payment delayed',
+                        category:           'corporate',
+                        description_chosen: `Buyer's treasury was insufficient — your shipping payment for '${contract.name || 'an Energy route'}' was skipped this tick. Service continues; payment resumes when their reserves recover.`,
+                        fired_at_tick:      currentTick,
+                    });
+                    if (events.length > 0) {
+                        await supabase.from('event_log').insert(events);
+                    }
+                } catch (logErr) {
+                    console.warn(`[TradeAgreementShipping] miss event_log insert failed for ${contract.id}:`, logErr?.message || logErr);
+                }
+            }
+            continue;
+        }
+
+        const actualPayment = revenue;
         const { error: debitErr } = await supabase.from('nations')
             .update({ budget_reserves: buyerReserves - actualPayment })
             .eq('id', contract.nation_id);
@@ -5076,10 +5125,14 @@ async function processTradeAgreementShipping(supabase, currentTick) {
             continue;
         }
 
+        // Phase 8: reset consecutive_missed_payments on any successful
+        // payment so the UI's "delayed" indicator clears once the buyer
+        // catches up.
         const { error: contractErr } = await supabase.from('shipping_contracts').update({
-            last_payment_tick: currentTick,
-            total_paid:        (Number(contract.total_paid) || 0) + actualPayment,
-            updated_at:        nowIso(),
+            last_payment_tick:           currentTick,
+            total_paid:                  (Number(contract.total_paid) || 0) + actualPayment,
+            consecutive_missed_payments: 0,
+            updated_at:                  nowIso(),
         }).eq('id', contract.id);
         if (contractErr) {
             console.warn(`[TradeAgreementShipping] contract update failed for ${contract.id}:`, contractErr.message);
@@ -7122,9 +7175,10 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             || tradeShipResults.completed > 0
             || tradeShipResults.paid > 0
             || tradeShipResults.polling > 0
-            || tradeShipResults.renewed > 0) {
+            || tradeShipResults.renewed > 0
+            || tradeShipResults.missed > 0) {
             summary.tradeAgreementShipping = tradeShipResults;
-            console.log(`[TradeAgreementShipping] tick ${currentTick}: ${tradeShipResults.awarded} awarded (${tradeShipResults.bidsAccepted} bids accepted, ${tradeShipResults.bidsAutoRejected} auto-rejected), ${tradeShipResults.polling} polling for bids, ${tradeShipResults.completed} completed (${tradeShipResults.renewed} renewed), ${tradeShipResults.paid} paid`);
+            console.log(`[TradeAgreementShipping] tick ${currentTick}: ${tradeShipResults.awarded} awarded (${tradeShipResults.bidsAccepted} bids accepted, ${tradeShipResults.bidsAutoRejected} auto-rejected), ${tradeShipResults.polling} polling for bids, ${tradeShipResults.completed} completed (${tradeShipResults.renewed} renewed), ${tradeShipResults.paid} paid, ${tradeShipResults.missed} skipped`);
         }
     } catch (shipErr) {
         console.error('[advance-corp-tick] FAILED shipping route processor:', shipErr);

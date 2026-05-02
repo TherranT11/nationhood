@@ -1258,6 +1258,7 @@ async function loadAgreementShippingContracts() {
         .select(`
             id, trade_agreement_id, status, winner_faction_id, revenue_per_tick,
             volume_required, delivery_priority, expires_at_tick,
+            consecutive_missed_payments,
             winner:factions!winner_faction_id(faction_name, abbreviation),
             shipping_contract_bids!contract_id(energy_per_tick, route_risk_delta, status)
         `)
@@ -1272,15 +1273,16 @@ async function loadAgreementShippingContracts() {
         const energyPerTick = Number(acceptedBid?.energy_per_tick) || 0;
         const list = _shippingContractsByAgreement[c.trade_agreement_id] || [];
         list.push({
-            id:                  c.id,
-            status:              c.status,
-            energy_per_tick:     energyPerTick,
-            volume_required:     Number(c.volume_required) || 0,
-            delivery_priority:   c.delivery_priority || null,
-            expires_at_tick:     Number(c.expires_at_tick) || null,
-            winner_faction_id:   c.winner_faction_id,
-            winner_faction_name: c.winner?.faction_name || null,
-            revenue_per_tick:    Number(c.revenue_per_tick) || 0,
+            id:                          c.id,
+            status:                      c.status,
+            energy_per_tick:             energyPerTick,
+            volume_required:             Number(c.volume_required) || 0,
+            delivery_priority:           c.delivery_priority || null,
+            expires_at_tick:             Number(c.expires_at_tick) || null,
+            winner_faction_id:           c.winner_faction_id,
+            winner_faction_name:         c.winner?.faction_name || null,
+            revenue_per_tick:            Number(c.revenue_per_tick) || 0,
+            consecutive_missed_payments: Number(c.consecutive_missed_payments) || 0,
         });
         _shippingContractsByAgreement[c.trade_agreement_id] = list;
     }
@@ -2115,7 +2117,13 @@ function renderTradeAgreements() {
         let energyBadge = '';
         if (hasEnergyArticle) {
             const totalDelivered = phase4Awarded.reduce((s, c) => s + (Number(c.energy_per_tick) || 0), 0);
-            if (totalDelivered > 0) {
+            // Phase 8: missed-payment heads-up when any awarded contract
+            // has a non-zero counter. Overrides the regular delivery
+            // badge so the player notices the problem before the totals.
+            const anyMissed = phase4Awarded.some(c => (Number(c.consecutive_missed_payments) || 0) > 0);
+            if (anyMissed) {
+                energyBadge = `<span class="tr-badge" style="color:var(--red);background:rgba(200,90,58,0.08);border-color:rgba(200,90,58,0.25);font-size:5px;">\u26A0 PAYMENT DELAYED</span>`;
+            } else if (totalDelivered > 0) {
                 energyBadge = `<span class="tr-badge" style="color:var(--gold,#c8a832);background:rgba(200,168,50,0.08);border-color:rgba(200,168,50,0.25);font-size:5px;">\u26A1 ${totalDelivered}/TICK</span>`;
             } else {
                 energyBadge = `<span class="tr-badge" style="color:var(--orange);background:rgba(200,136,68,0.06);border-color:rgba(200,136,68,0.15);font-size:5px;">\u26A1 AWAITING SHIPPING</span>`;
@@ -2254,9 +2262,15 @@ function renderTradeAgreements() {
                     <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;">⚡ ENERGY SHIPPING</div>`;
                 for (const c of phase4Contracts) {
                     let lineColor, lineLabel;
+                    const missed = Number(c.consecutive_missed_payments) || 0;
                     if (c.status === 'awarded' && c.winner_faction_name) {
-                        lineColor = 'var(--green)';
-                        lineLabel = `${c.energy_per_tick} Energy/tick · ${c.winner_faction_name}`;
+                        if (missed > 0) {
+                            lineColor = 'var(--red)';
+                            lineLabel = `⚠ ${c.energy_per_tick} Energy/tick · ${c.winner_faction_name} · ${missed} missed payment${missed === 1 ? '' : 's'}`;
+                        } else {
+                            lineColor = 'var(--green)';
+                            lineLabel = `${c.energy_per_tick} Energy/tick · ${c.winner_faction_name}`;
+                        }
                     } else if (c.status === 'open') {
                         lineColor = 'var(--amber, #b8860b)';
                         const ticksLeft = c.expires_at_tick != null ? Math.max(0, c.expires_at_tick - currentTk) : 0;
