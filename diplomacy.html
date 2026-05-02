@@ -570,20 +570,21 @@ function renderTradeEconomy() {
 
     // ── Food (stat-derived) ──
     // Production = (farmland / 2) × (workforce / 100)
-    // No demand or trade-agreement plumbing yet — Trading = 0 and
-    // Net = Production. Demand model lands alongside the stat-effects
-    // pass when speced.
+    // Demand     = population_M / 3
+    // No trade-agreement plumbing yet — Trading = 0.
+    // Net = Production − Demand.
     const farmlandStat = Number(_n.farmland) || 0;
     const foodProd     = (farmlandStat / 2) * (workforceStat / 100);
+    const foodDemand   = popMillions / 3;
     commodities.push({
         key: 'food',
         icon: '🌾',
         name: 'Food',
         production: foodProd,
-        domesticDemand: 0,
+        domesticDemand: foodDemand,
         demand: 0,
         trading: 0,
-        netFlow: foodProd,
+        netFlow: foodProd - foodDemand,
         selfSufficiencyBalance: null,
         statBased: true,
     });
@@ -2567,13 +2568,15 @@ function getNationMineralsBalance(nation) {
 
 // Same shape for Food \u2014 mirrors the YOUR ECONOMY panel:
 //   Production = (farmland / 2) \u00D7 (workforce / 100)
-//   Demand     = 0 (no demand model yet)
+//   Demand     = population_M / 3
 function getNationFoodBalance(nation) {
     const n = nation || {};
     const farmlandStat  = Number(n.farmland)  || 0;
     const workforceStat = Number(n.workforce) || 0;
+    const popMillions   = (Number(n.population) || 0) / 1_000_000;
     const production    = (farmlandStat / 2) * (workforceStat / 100);
-    return { production, demand: 0, net: production };
+    const demand        = popMillions / 3;
+    return { production, demand, net: production - demand };
 }
 
 // Build a nation's surplus / deficit list. Energy + Minerals + Food are
