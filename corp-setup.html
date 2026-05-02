@@ -419,6 +419,7 @@ let currentStep = 1;
 const TOTAL_STEPS = 1;
 const state = {
     sector: null,
+    unlockedCodes: new Set(),  // sector keys whose access code has been entered correctly
 };
 
 // ── Step definitions ──
@@ -451,6 +452,13 @@ const SECTORS = [
         desc: 'Banks, investment firms, and insurance companies. Control the flow of capital, manage risk, and shape the economic landscape through lending, underwriting, and strategic investment.',
         available: true,
     },
+    {
+        key: 'airline',
+        name: 'Airline',
+        desc: 'Operate passenger and cargo flights between nations. Build a fleet of regional, narrowbody, and widebody aircraft, secure terminals, and run profitable routes — all while keeping your operational safety record clean.',
+        available: true,
+        requiresCode: 'Airways1',
+    },
 ];
 
 function renderStep1() {
@@ -462,16 +470,20 @@ function renderStep1() {
                 <span class="section-label">Select a Sector</span>
             </div>
             <div class="section-body">
-                ${SECTORS.map(s => `
-                    <div class="option-card${s.available ? '' : ' disabled'}${state.sector === s.name ? ' selected' : ''}"
+                ${SECTORS.map(s => {
+                    const locked = s.requiresCode && !state.unlockedCodes?.has(s.key);
+                    const clickable = s.available && !locked;
+                    return `
+                    <div class="option-card${clickable ? '' : ' disabled'}${state.sector === s.name ? ' selected' : ''}"
                          data-sector="${s.key}" data-name="${s.name}"
-                         onclick="${s.available ? 'selectSector(this)' : ''}">
+                         onclick="${clickable ? 'selectSector(this)' : (locked ? `promptAccessCode('${s.key}')` : '')}">
                         ${!s.available ? '<span class="option-card__badge option-card__badge--soon">Coming Soon</span>' : ''}
+                        ${locked ? '<span class="option-card__badge" style="background:#3a2a4a;color:#c89adb;font-size:0.55rem;">Requires Access Code</span>' : ''}
                         ${s.coastalOnly ? '<span class="option-card__badge" style="background:#2a3a4a;color:#6aa3d9;font-size:0.55rem;">Coastal Nations Only</span>' : ''}
                         <div class="option-card__name">${s.name}</div>
                         <div class="option-card__desc">${s.desc}</div>
                     </div>
-                `).join('')}
+                `;}).join('')}
             </div>
         </div>
     `;
@@ -486,6 +498,25 @@ function selectSector(el) {
 
     updateSelectionBar();
     updateButtons();
+}
+
+// Alpha-gated sectors require an access code before the card unlocks.
+// On a correct entry the sector is added to state.unlockedCodes and the
+// step re-renders so the card flips from disabled to clickable. Code
+// matching is case-sensitive and intentionally lives client-side — this
+// is a soft gate for alpha testing, not a security boundary.
+function promptAccessCode(sectorKey) {
+    const sector = SECTORS.find(s => s.key === sectorKey);
+    if (!sector || !sector.requiresCode) return;
+    if (state.unlockedCodes.has(sectorKey)) return;
+    const entered = window.prompt(`Enter the access code to unlock ${sector.name}:`);
+    if (entered === null) return;  // cancelled
+    if (entered === sector.requiresCode) {
+        state.unlockedCodes.add(sectorKey);
+        renderStep(1);
+    } else {
+        window.alert('Incorrect access code.');
+    }
 }
 
 // ── Init ──
@@ -585,6 +616,7 @@ function goBack() {
 window.goNext = goNext;
 window.goBack = goBack;
 window.selectSector = selectSector;
+window.promptAccessCode = promptAccessCode;
 window.corpState = state;
 window.updateButtons = updateButtons;
 window.updateSelectionBar = updateSelectionBar;

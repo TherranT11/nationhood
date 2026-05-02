@@ -25,8 +25,9 @@ function applyStoredCorpTheme() {
 // page instead of the Construction default.
 export const SECTOR_OPS_PAGE = {
     Construction: 'corp-operations.html',
-    Shipping: 'corp-operations-shipping.html',
-    Finance: 'corp-operations-finance.html',
+    Shipping:     'corp-operations-shipping.html',
+    Finance:      'corp-operations-finance.html',
+    Airline:      'airline-operations.html',
 };
 
 // Corps with access to the Home2 test dashboard (Chairman's Desk redesign).
