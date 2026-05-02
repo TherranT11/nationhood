@@ -4786,14 +4786,34 @@ async function processTradeAgreementShipping(supabase, currentTick) {
     }
     if (!active || active.length === 0) return results;
 
-    // Reset corp_revenue_current_tick for unique winners (mirrors SOP
-    // tick-orchestration carry-over: this processor is the only writer
-    // to the per-tick revenue column for trade-agreement contracts).
+    // Reset corp_revenue_current_tick for trade-agreement winners that
+    // AREN'T also winners on a SOP contract this tick. The SOP processor
+    // (processShippingRoutes) ran first and already zeroed those corps;
+    // re-zeroing here would clobber the SOP revenue accumulated in its
+    // Pass C. The fix preserves dashboard correctness for corps with
+    // mixed portfolios (winning both SOP + trade-agreement contracts in
+    // the same tick).
+    //
+    // Known loose end: a corp whose only revenue source is trade-agreement
+    // contracts ALL just expired this tick won't be zeroed by either
+    // processor — last tick's revenue lingers on the dashboard until the
+    // next active payment. Same pre-existing wart on the SOP side; full
+    // fix is to lift the reset to a tick-start orchestrator across both
+    // processors. Phase 5+ cleanup.
     const winnerIds = [...new Set(active.map(r => r.winner_faction_id).filter(Boolean))];
     if (winnerIds.length > 0) {
-        const { error: resetErr } = await supabase.from('factions')
-            .update({ corp_revenue_current_tick: 0 }).in('id', winnerIds);
-        if (resetErr) console.warn('[TradeAgreementShipping] revenue reset failed:', resetErr.message);
+        const { data: sopWinners } = await supabase.from('shipping_contracts')
+            .select('winner_faction_id')
+            .eq('status', 'awarded')
+            .is('trade_agreement_id', null)
+            .in('winner_faction_id', winnerIds);
+        const sopWinnerSet = new Set((sopWinners || []).map(r => r.winner_faction_id));
+        const tradeAgOnlyWinners = winnerIds.filter(id => !sopWinnerSet.has(id));
+        if (tradeAgOnlyWinners.length > 0) {
+            const { error: resetErr } = await supabase.from('factions')
+                .update({ corp_revenue_current_tick: 0 }).in('id', tradeAgOnlyWinners);
+            if (resetErr) console.warn('[TradeAgreementShipping] revenue reset failed:', resetErr.message);
+        }
     }
 
     for (const contract of active) {
