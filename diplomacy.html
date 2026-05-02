@@ -563,6 +563,24 @@ function renderTradeEconomy() {
         statBased: true,
     });
 
+    // ── Consumer Goods (stat-derived) ──
+    // Production = (industry / 3) × (workforce / 100)
+    // No demand or trade-agreement plumbing yet — Trading = 0,
+    // Net = Production. Demand model lands when speced.
+    const consumerProd = (industryStat / 3) * (workforceStat / 100);
+    commodities.push({
+        key: 'consumer_goods',
+        icon: '📦',
+        name: 'Consumer Goods',
+        production: consumerProd,
+        domesticDemand: 0,
+        demand: 0,
+        trading: 0,
+        netFlow: consumerProd,
+        selfSufficiencyBalance: null,
+        statBased: true,
+    });
+
     for (const [sector, flow] of Object.entries(_tradeFlows)) {
         // Skip parent food_agriculture if subsectors exist
         if (sector === 'food_agriculture' && (_tradeFlows.grains_staples || _tradeFlows.livestock_dairy)) continue;
@@ -2566,6 +2584,17 @@ function getNationFoodBalance(nation) {
     return { production, demand, net: production - demand };
 }
 
+// Same shape for Consumer Goods \u2014 mirrors the YOUR ECONOMY panel:
+//   Production = (industry / 3) \u00D7 (workforce / 100)
+//   Demand     = 0 (no demand model yet)
+function getNationConsumerGoodsBalance(nation) {
+    const n = nation || {};
+    const industryStat  = Number(n.industry)  || 0;
+    const workforceStat = Number(n.workforce) || 0;
+    const production    = (industryStat / 3) * (workforceStat / 100);
+    return { production, demand: 0, net: production };
+}
+
 // Build a nation's surplus / deficit list. Energy + Minerals + Food are
 // the tradeable commodities right now, all stat-derived.
 function getNationSurplusesAndDeficits(nationId) {
@@ -2576,7 +2605,8 @@ function getNationSurplusesAndDeficits(nationId) {
     const goods = [
         { sector: 'energy',   icon: '\u26A1', name: 'Energy',   balance: getNationEnergyBalance(nation)   },
         { sector: 'minerals', icon: '\u26CF', name: 'Minerals', balance: getNationMineralsBalance(nation) },
-        { sector: 'food',     icon: '\uD83C\uDF3E', name: 'Food',     balance: getNationFoodBalance(nation)     },
+        { sector: 'food',           icon: '\uD83C\uDF3E', name: 'Food',           balance: getNationFoodBalance(nation)           },
+        { sector: 'consumer_goods', icon: '\uD83D\uDCE6', name: 'Consumer Goods', balance: getNationConsumerGoodsBalance(nation) },
     ];
     for (const g of goods) {
         const net = g.balance.net;

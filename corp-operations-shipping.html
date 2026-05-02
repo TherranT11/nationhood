@@ -2411,12 +2411,12 @@ function openBidModal(contractId) {
 // and computes final numbers from a trusted server-side table.
 
 const OFFER_MODIFIERS = [
-    { key: 'known',              name: 'Known Shipping Route',     desc: 'Standard commercial corridor with charted waters and predictable conditions.',                                                  energy: 0,  risk:  0, costM: 0, baseline: true },
-    { key: 'dangerous_waters',   name: 'Dangerous Waters',         desc: 'Cut through contested or pirate-active waters. Faster delivery, more cargo per tick — but exposure rises.',                    energy: 2,  risk:  1, costM: 0 },
-    { key: 'naval_escort',       name: 'Naval Escort',             desc: 'Coordinate naval armed convoy protection across the route.',                                                                   energy: 0,  risk: -2, costM: 8 },
-    { key: 'premium_insurance',  name: 'Premium Insurance Bond',   desc: "Lloyd's-tier coverage. Insurers reduce risk dramatically but skim a portion of cargo value.",                                  energy: -1, risk: -3, costM: 3 },
-    { key: 'bribe_port',         name: 'Bribe Port Authorities',   desc: 'Slip envelopes to harbormasters. Faster customs clearance, fewer delays — at a cost.',                                          energy: 1,  risk: -1, costM: 4 },
-    { key: 'rush_schedule',      name: 'Rush Schedule',            desc: 'Push crews and engines hard. Maximum throughput — but breakdowns and accidents climb.',                                         energy: 3,  risk:  2, costM: 5 },
+    { key: 'known',              name: 'Known Shipping Route',     desc: 'Standard commercial corridor with charted waters and predictable conditions.',                                                  energy: 0,  risk:  0, costM:  0,    baseline: true },
+    { key: 'dangerous_waters',   name: 'Dangerous Waters',         desc: 'Cut through contested or pirate-active waters. Faster delivery, more cargo per tick — but exposure rises.',                    energy: 2,  risk:  1, costM:  0    },
+    { key: 'naval_escort',       name: 'Naval Escort',             desc: 'Coordinate naval armed convoy protection across the route.',                                                                   energy: 0,  risk: -2, costM:  0.3  },
+    { key: 'premium_insurance',  name: 'Premium Insurance Bond',   desc: "Lloyd's-tier coverage. Insurers reduce risk dramatically but skim a portion of cargo value.",                                  energy: -1, risk: -3, costM:  0.1  },
+    { key: 'bribe_port',         name: 'Bribe Port Authorities',   desc: 'Slip envelopes to harbormasters. Faster customs clearance, fewer delays — bribes come out of skim, not your line.',           energy: 1,  risk: -1, costM: -0.2  },
+    { key: 'rush_schedule',      name: 'Rush Schedule',            desc: 'Push crews and engines hard. Maximum throughput, less idle time — fuel burn drops, but breakdowns climb.',                     energy: 3,  risk:  2, costM: -0.5  },
 ];
 const OFFER_MARKUPS = [10, 15, 20, 25, 30];
 const OFFER_FREIGHTER_COST_M = 3;        // $3M / tick / freighter
@@ -2629,7 +2629,14 @@ function renderOfferModifierCard(m, selected) {
     const effectChips = [];
     if (m.energy !== 0) effectChips.push(`<span class="so-offer-effect ${m.energy > 0 ? 'positive' : 'negative'}">${m.energy > 0 ? '+' : ''}${m.energy} Energy/tick</span>`);
     if (m.risk   !== 0) effectChips.push(`<span class="so-offer-effect ${m.risk   > 0 ? 'negative' : 'positive'}">${m.risk   > 0 ? '+' : ''}${m.risk} Route Risk</span>`);
-    if (m.costM  !== 0) effectChips.push(`<span class="so-offer-effect cost">+$${m.costM}M/tick</span>`);
+    if (m.costM  !== 0) {
+        // Negative-cost modifiers (Bribe Port, Rush Schedule) reduce
+        // operating cost — show as savings (green) with a leading −,
+        // not '+$-0.2M' which reads weird.
+        const sign = m.costM > 0 ? '+' : '−';
+        const cls  = m.costM > 0 ? 'cost' : 'positive';
+        effectChips.push(`<span class="so-offer-effect ${cls}">${sign}$${Math.abs(m.costM)}M/tick</span>`);
+    }
     if (effectChips.length === 0)
         effectChips.push('<span class="so-offer-effect cost">BASELINE</span>');
     return `<div class="so-offer-modifier-card${selected ? ' selected' : ''}${m.baseline ? ' baseline' : ''}" data-key="${m.key}">
@@ -2666,7 +2673,12 @@ function recalcOffer() {
     const markupCost = Math.round(operatingCost * markup / 100);
     const totalOffer = operatingCost + markupCost;
 
-    const fmt = (n) => '$' + (n / 1_000_000).toFixed(1) + 'M';
+    // Signed dollar formatter: '$1.5M' for positive, '−$0.5M' for
+    // negative (clean leading minus, no '$-0.5M' awkwardness).
+    const fmt = (n) => {
+        const sign = n < 0 ? '−' : '';
+        return sign + '$' + (Math.abs(n) / 1_000_000).toFixed(1) + 'M';
+    };
 
     document.getElementById('so-offer-op-label').textContent =
         `Operating Cost (${freighters} freighters × $${OFFER_FREIGHTER_COST_M}M)`;
