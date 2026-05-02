@@ -1853,6 +1853,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Diplomatic relations decay failed (non-fatal):', relDecayErr);
     }
 
+    // Energy demand-met trading volumes — computed once per tick so
+    // the per-nation processEnergyDemandEffects call doesn't refetch
+    // shipping_contracts + bids + agreements 13 times. Map<nation_id,
+    // signed_energy_per_tick> where + = net imports, − = net exports.
+    let _energyTradingByNation = new Map();
+    try {
+        _energyTradingByNation = await computeEnergyTradingByNation(supabase);
+    } catch (etErr) {
+        console.error('[advanceTick] Energy trading prefetch failed (non-fatal):', etErr);
+    }
+
     // 4. Process each nation
     for (const nation of nationList) {
       try {
@@ -1916,6 +1927,18 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (decayErr) {
             console.error(`[advanceTick] Stat decay failed for ${nation.name} (non-fatal):`, decayErr);
+        }
+
+        // Energy demand-met effects (per-tick stat deltas based on
+        // supply / demand bucket).
+        try {
+            const energyDemandRes = await processEnergyDemandEffects(supabase, nation, _energyTradingByNation);
+            if (energyDemandRes) {
+                summary.energyDemand = summary.energyDemand || [];
+                summary.energyDemand.push({ nation: nation.name, ...energyDemandRes });
+            }
+        } catch (edErr) {
+            console.error(`[advanceTick] Energy demand effects failed for ${nation.name} (non-fatal):`, edErr);
         }
 
         // Stat connections (threshold-triggered ripple effects)

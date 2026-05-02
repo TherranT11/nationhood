@@ -98,6 +98,120 @@ export async function buildPolicyDecayAdjustments(supabase, nationId) {
     return adjustments;
 }
 
+// ════════════════════════════════════════════════════════════════
+// Energy demand-met effects per tick.
+//
+// Runs alongside processStatDecay in the per-nation loop. Uses the
+// same production/demand formulas as the YOUR ECONOMY panel:
+//   production = energy / 3
+//   demand     = ((infra + industry) × sol × √pop_M) / 3500
+//   supply     = production + net_trading_imports
+//   met_pct    = supply / demand
+//
+// Buckets:
+//   met_pct < 1.00 (under-supplied):
+//     standard_of_living -0.1, public_approval -0.1, industry -0.1
+//   met_pct ≥ 1.20 (over-supplied):
+//     standard_of_living +0.05, cost_of_living -0.05,
+//     public_approval +0.05, service_sector +0.05
+//   100-119% inclusive: no effects.
+//   demand = 0: skip (no effects either way).
+//
+// Trading volumes are pre-computed once per tick by
+// computeEnergyTradingByNation since it requires a join across
+// shipping_contracts + bids + agreements; iterating per-nation would
+// blow up query counts for no reason.
+// ════════════════════════════════════════════════════════════════
+export async function computeEnergyTradingByNation(supabase) {
+    const map = new Map();
+    const { data: contracts } = await supabase.from('shipping_contracts')
+        .select('id, nation_id, trade_agreement_id')
+        .eq('status', 'awarded')
+        .not('trade_agreement_id', 'is', null);
+    if (!contracts || contracts.length === 0) return map;
+
+    const contractIds = contracts.map(c => c.id);
+    const { data: bids } = await supabase.from('shipping_contract_bids')
+        .select('contract_id, energy_per_tick')
+        .in('contract_id', contractIds)
+        .eq('status', 'accepted');
+    const energyByContract = new Map(
+        (bids || []).map(b => [b.contract_id, Number(b.energy_per_tick) || 0])
+    );
+
+    const agreementIds = [...new Set(contracts.map(c => c.trade_agreement_id).filter(Boolean))];
+    if (agreementIds.length === 0) return map;
+    const { data: agreements } = await supabase.from('trade_agreements')
+        .select('id, nation_a_id, nation_b_id, status')
+        .in('id', agreementIds);
+    const agByAgId = new Map(
+        (agreements || []).filter(a => a.status === 'active').map(a => [a.id, a])
+    );
+
+    for (const c of contracts) {
+        const energyPerTick = energyByContract.get(c.id) || 0;
+        if (energyPerTick === 0) continue;
+        const ag = agByAgId.get(c.trade_agreement_id);
+        if (!ag) continue;
+        const buyerId  = c.nation_id;
+        const sellerId = ag.nation_a_id === buyerId ? ag.nation_b_id : ag.nation_a_id;
+        if (buyerId)  map.set(buyerId,  (map.get(buyerId)  || 0) + energyPerTick);
+        if (sellerId) map.set(sellerId, (map.get(sellerId) || 0) - energyPerTick);
+    }
+    return map;
+}
+
+export async function processEnergyDemandEffects(supabase, nation, tradingByNation) {
+    const energyStat   = Number(nation.energy)             || 0;
+    const infraStat    = Number(nation.infrastructure)     || 0;
+    const industryStat = Number(nation.industry)           || 0;
+    const solStat      = Number(nation.standard_of_living) || 0;
+    const popMillions  = (Number(nation.population) || 0) / 1_000_000;
+
+    const production = energyStat / 3;
+    const demand     = ((infraStat + industryStat) * solStat * Math.sqrt(popMillions)) / 3500;
+    if (demand <= 0) return null;
+
+    const trading = Number(tradingByNation.get(nation.id) || 0);
+    const supply  = production + trading;
+    const metPct  = supply / demand;
+
+    let deltas = null;
+    if (metPct < 1.0) {
+        deltas = {
+            standard_of_living: -0.1,
+            public_approval:    -0.1,
+            industry:           -0.1,
+        };
+    } else if (metPct >= 1.2) {
+        deltas = {
+            standard_of_living:  0.05,
+            cost_of_living:     -0.05,
+            public_approval:     0.05,
+            service_sector:      0.05,
+        };
+    }
+    if (!deltas) return null;
+
+    const updates = {};
+    for (const [k, d] of Object.entries(deltas)) {
+        const cur  = Number(nation[k]) || 0;
+        const next = Math.max(0, Math.min(100, cur + d));
+        if (next !== cur) updates[k] = next;
+    }
+    if (Object.keys(updates).length === 0) return null;
+    const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
+    if (error) {
+        console.warn(`[EnergyDemand] update failed for ${nation.name}:`, error.message);
+        return null;
+    }
+    return {
+        bucket:  metPct < 1.0 ? 'under' : 'over',
+        met_pct: Math.round(metPct * 100),
+        deltas,
+    };
+}
+
 export async function processStatDecay(supabase, nation, statInstitutionMap, policyDecayAdjustments = null, currentTick = 0) {
     const appliedDecay = [];
     const nationUpdates = {};
