@@ -4613,7 +4613,7 @@ async function processShippingRoutes(supabase, currentTick) {
 // ════════════════════════════════════════════════════════════════
 async function processTradeAgreementShipping(supabase, currentTick) {
     const results = {
-        awarded: 0, completed: 0, paid: 0, polling: 0,
+        awarded: 0, completed: 0, paid: 0, polling: 0, renewed: 0,
         bidsAccepted: 0, bidsAutoRejected: 0,
     };
     const nowIso = () => new Date().toISOString();
@@ -4675,7 +4675,51 @@ async function processTradeAgreementShipping(supabase, currentTick) {
                 return (Number(a.applied_at_tick) || 0) - (Number(b.applied_at_tick) || 0);
             });
 
-            const winner = bids[0];
+            // Phase 6 freighter-availability gate. Walk bids in score
+            // order, skip any whose bidder no longer has enough free
+            // freighters (committed elsewhere on awarded contracts since
+            // the bid was placed). place_shipping_offer validates at bid
+            // time; this is the second-line check at award time.
+            let winner = null;
+            for (const b of bids) {
+                const need = Number(b.freighters_allocated) || 0;
+                const { data: bidderRow } = await supabase.from('factions')
+                    .select('corp_freighters').eq('id', b.bidder_faction_id).single();
+                const total = Math.floor(Number(bidderRow?.corp_freighters) || 0);
+                const { data: committedRows } = await supabase.from('shipping_contract_bids')
+                    .select('freighters_allocated, shipping_contracts!inner(status)')
+                    .eq('bidder_faction_id', b.bidder_faction_id)
+                    .eq('status', 'accepted')
+                    .eq('shipping_contracts.status', 'awarded');
+                const committed = (committedRows || []).reduce((s, r) => s + (Number(r.freighters_allocated) || 0), 0);
+                const available = Math.max(0, total - committed);
+                if (need <= available) {
+                    winner = b;
+                    break;
+                }
+                // Bidder over-committed since bid time → reject this bid
+                // and continue scoring. Mark the bid auto_rejected so it
+                // doesn't sit pending forever.
+                await supabase.from('shipping_contract_bids')
+                    .update({ status: 'auto_rejected', resolved_at_tick: currentTick, updated_at: nowIso() })
+                    .eq('id', b.id).eq('status', 'pending');
+                results.bidsAutoRejected++;
+            }
+
+            // No bid had enough free capacity → contract polls again next
+            // tick (treat same as zero-bid case: extend the window).
+            if (!winner) {
+                const { error: pollErr } = await supabase.from('shipping_contracts')
+                    .update({ expires_at_tick: currentTick + 1, updated_at: nowIso() })
+                    .eq('id', contract.id).eq('status', 'open');
+                if (pollErr) {
+                    console.warn(`[TradeAgreementShipping] poll-extend (no eligible) failed for ${contract.id}:`, pollErr.message);
+                } else {
+                    results.polling++;
+                }
+                continue;
+            }
+
             const winnerRevenue   = Number(winner.offered_revenue_per_tick) || 0;
             const winnerRiskDelta = Number(winner.route_risk_delta)         || 0;
             const term            = Math.max(1, Number(contract.term_ticks) || 1);
@@ -4735,10 +4779,18 @@ async function processTradeAgreementShipping(supabase, currentTick) {
         }
     }
 
-    // ── Pass B: Maturity sweep (revert route_risk on completion) ──
+    // ── Pass B: Maturity sweep (revert route_risk + auto-renew) ──
+    // Pull every awarded trade-ag contract whose term has run out.
+    // Pulling more columns now since Phase 6 also re-spawns a fresh
+    // open contract when the parent agreement is still active —
+    // reuses the same operational parameters so the buyer doesn't
+    // have to re-sign for permanent agreements.
     const { data: maturing, error: matErr } = await supabase
         .from('shipping_contracts')
-        .select('id, winner_faction_id')
+        .select(`id, winner_faction_id, trade_agreement_id, nation_id, issuer_name,
+                 name, description, origin_port, destination_port, destination_nation_id,
+                 term_ticks, freighters_required, min_fleet_health, max_route_risk,
+                 commodity, volume_required, delivery_priority, award_criterion`)
         .eq('status', 'awarded')
         .not('trade_agreement_id', 'is', null)
         .lte('ends_at_tick', currentTick);
@@ -4766,8 +4818,57 @@ async function processTradeAgreementShipping(supabase, currentTick) {
             const { error: doneErr } = await supabase.from('shipping_contracts')
                 .update({ status: 'completed', updated_at: nowIso() })
                 .eq('id', contract.id).eq('status', 'awarded');
-            if (doneErr) console.warn(`[TradeAgreementShipping] complete-flip failed for ${contract.id}:`, doneErr.message);
-            else        results.completed++;
+            if (doneErr) {
+                console.warn(`[TradeAgreementShipping] complete-flip failed for ${contract.id}:`, doneErr.message);
+                continue;
+            }
+            results.completed++;
+
+            // Phase 6 auto-renewal: if the parent agreement is still
+            // 'active', spawn a fresh open contract with the same
+            // parameters. Buyer keeps getting deliveries; corps re-bid.
+            // Skip if the agreement ended for any reason — the cancel
+            // cascade trigger from Phase 5 already handled cleanup.
+            const { data: parent } = await supabase.from('trade_agreements')
+                .select('status, expires_at_tick, duration_type')
+                .eq('id', contract.trade_agreement_id).maybeSingle();
+            if (parent?.status === 'active') {
+                // Don't re-spawn past the agreement's expiration.
+                const aExp = Number(parent.expires_at_tick) || null;
+                const isPermanent = parent.duration_type === 'permanent' || aExp === null;
+                const wouldExpire = !isPermanent && aExp !== null && aExp <= currentTick;
+                if (!wouldExpire) {
+                    const { error: spawnErr } = await supabase.from('shipping_contracts').insert({
+                        nation_id:             contract.nation_id,
+                        issuer_faction_id:     null,
+                        issuer_name:           contract.issuer_name,
+                        contract_type:         'foreign',
+                        name:                  contract.name,
+                        description:           contract.description,
+                        origin_port:           contract.origin_port,
+                        destination_port:      contract.destination_port,
+                        destination_nation_id: contract.destination_nation_id,
+                        revenue_per_tick:      1,
+                        term_ticks:            contract.term_ticks,
+                        freighters_required:   contract.freighters_required,
+                        min_fleet_health:      contract.min_fleet_health,
+                        max_route_risk:        contract.max_route_risk,
+                        status:                'open',
+                        expires_at_tick:       currentTick + 1,
+                        created_at_tick:       currentTick,
+                        trade_agreement_id:    contract.trade_agreement_id,
+                        commodity:             contract.commodity,
+                        volume_required:       contract.volume_required,
+                        delivery_priority:     contract.delivery_priority,
+                        award_criterion:       contract.award_criterion,
+                    });
+                    if (spawnErr) {
+                        console.warn(`[TradeAgreementShipping] auto-renew spawn failed for ${contract.id}:`, spawnErr.message);
+                    } else {
+                        results.renewed = (results.renewed || 0) + 1;
+                    }
+                }
+            }
         }
     }
 
@@ -6896,13 +6997,16 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
         // Phase 4 — trade-agreement-spawned shipping. Auto-award by
         // delivery_priority, route_risk delta on award/completion,
         // per-tick payment from buyer nation → corp.
+        // Phase 6: Pass B auto-renews completed contracts when the
+        // parent agreement is still active.
         const tradeShipResults = await processTradeAgreementShipping(supabase, currentTick);
         if (tradeShipResults.awarded > 0
             || tradeShipResults.completed > 0
             || tradeShipResults.paid > 0
-            || tradeShipResults.polling > 0) {
+            || tradeShipResults.polling > 0
+            || tradeShipResults.renewed > 0) {
             summary.tradeAgreementShipping = tradeShipResults;
-            console.log(`[TradeAgreementShipping] tick ${currentTick}: ${tradeShipResults.awarded} awarded (${tradeShipResults.bidsAccepted} bids accepted, ${tradeShipResults.bidsAutoRejected} auto-rejected), ${tradeShipResults.polling} polling for bids, ${tradeShipResults.completed} completed, ${tradeShipResults.paid} paid`);
+            console.log(`[TradeAgreementShipping] tick ${currentTick}: ${tradeShipResults.awarded} awarded (${tradeShipResults.bidsAccepted} bids accepted, ${tradeShipResults.bidsAutoRejected} auto-rejected), ${tradeShipResults.polling} polling for bids, ${tradeShipResults.completed} completed (${tradeShipResults.renewed} renewed), ${tradeShipResults.paid} paid`);
         }
     } catch (shipErr) {
         console.error('[advance-corp-tick] FAILED shipping route processor:', shipErr);
