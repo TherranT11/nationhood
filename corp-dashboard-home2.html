@@ -2675,13 +2675,16 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     let netProfit = 0;
     if (faction?.id && currentTick > 0) {
         try {
-            const { data: priorEvents } = await _supabase
+            const { data: priorEvents, error: priorErr } = await _supabase
                 .from('corp_cash_events')
                 .select('delta')
                 .eq('corp_id', faction.id)
                 .eq('tick', currentTick - 1);
+            if (priorErr) console.warn('[home2] corp_cash_events lookup failed:', priorErr.message);
             netProfit = (priorEvents || []).reduce((s, e) => s + (Number(e.delta) || 0), 0);
-        } catch (_) { /* netProfit stays 0 on lookup failure */ }
+        } catch (err) {
+            console.warn('[home2] netProfit lookup threw:', err?.message || err);
+        }
     }
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     const debt = outstandingDebt;

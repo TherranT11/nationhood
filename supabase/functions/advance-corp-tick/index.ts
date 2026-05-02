@@ -62,9 +62,8 @@ const DEFAULT_MISSED_THRESHOLD = 4;
 //  Events buffer in memory and flush in one batch at tick end so the
 //  insert doesn't fan out into one round-trip per accrual. _currentTick is
 //  captured at the top of advanceCorpTick so call sites don't have to thread
-//  it through. Two in-tick consumers (the equity dividend block and the
-//  corp_cash_history writer) read from _pendingCashEvents to derive the
-//  current corp's accrued profit before flush.
+//  it through. The corp_cash_history writer reads from _pendingCashEvents
+//  to derive non_pnl_cash_movements before flush.
 //
 //  KNOWN SCOPE GAP — cash events that still bypass the event log:
 //    - advance-tick/index.ts gov_bailout path (non-P&L equity infusion — correct to skip)
@@ -82,8 +81,8 @@ let _currentTick = 0;
 const _pendingCashEvents = [];
 
 // Sum buffered P&L deltas for one corp at the current tick. Used by the
-// equity block and the corp_cash_history writer to read this tick's
-// accrued profit before flushCashEvents persists it.
+// corp_cash_history writer to derive non_pnl_cash_movements before
+// flushCashEvents persists the events.
 function _accruedProfitForCorp(corpId) {
     let sum = 0;
     for (const ev of _pendingCashEvents) {
