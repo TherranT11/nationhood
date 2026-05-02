@@ -100,13 +100,14 @@ const STAT_CATEGORIES = [
         { id: 'education', name: 'Education' },
         { id: 'standard_of_living', name: 'Standard of Living' },
     ]},
-    { id: 'productive', name: 'Productive Base', stats: [
+    { id: 'productive', name: 'Production', stats: [
         { id: 'infrastructure', name: 'Infrastructure' },
         { id: 'industry', name: 'Industry' },
         { id: 'farmland', name: 'Farmland' },
         { id: 'service_sector', name: 'Service Sector' },
         { id: 'workforce', name: 'Workforce' },
         { id: 'energy', name: 'Energy' },
+        { id: 'minerals', name: 'Minerals' },
     ]},
     { id: 'international', name: 'International', stats: [
         { id: 'power', name: 'Power' },
