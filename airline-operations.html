@@ -247,13 +247,6 @@ body.airline-operations {
 import { renderCorpTopBar } from './js/corp-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 
-function escHtml(s) {
-    if (!s) return '';
-    const d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
-}
-
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
@@ -317,7 +310,10 @@ async function init() {
     }
 }
 
-init();
+init().catch(err => {
+    console.error('[airline-ops] init failed:', err);
+    document.body.innerHTML = '<div style="padding:40px;font-family:monospace;color:#c85a3a;">Could not load airline operations. Reload to try again.</div>';
+});
 </script>
 </body>
 </html>

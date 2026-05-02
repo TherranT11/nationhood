@@ -471,14 +471,16 @@ function renderStep1() {
             </div>
             <div class="section-body">
                 ${SECTORS.map(s => {
-                    const locked = s.requiresCode && !state.unlockedCodes?.has(s.key);
-                    const clickable = s.available && !locked;
+                    // Sectors with requiresCode are selectable like any
+                    // other; the access-code prompt fires at proceed time
+                    // (goNext) so the player can browse all options first.
+                    const needsCode = !!s.requiresCode;
                     return `
-                    <div class="option-card${clickable ? '' : ' disabled'}${state.sector === s.name ? ' selected' : ''}"
+                    <div class="option-card${s.available ? '' : ' disabled'}${state.sector === s.name ? ' selected' : ''}"
                          data-sector="${s.key}" data-name="${s.name}"
-                         onclick="${clickable ? 'selectSector(this)' : (locked ? `promptAccessCode('${s.key}')` : '')}">
+                         onclick="${s.available ? 'selectSector(this)' : ''}">
                         ${!s.available ? '<span class="option-card__badge option-card__badge--soon">Coming Soon</span>' : ''}
-                        ${locked ? '<span class="option-card__badge" style="background:#3a2a4a;color:#c89adb;font-size:0.55rem;">Requires Access Code</span>' : ''}
+                        ${needsCode ? '<span class="option-card__badge" style="background:#3a2a4a;color:#c89adb;font-size:0.55rem;">Requires Access Code</span>' : ''}
                         ${s.coastalOnly ? '<span class="option-card__badge" style="background:#2a3a4a;color:#6aa3d9;font-size:0.55rem;">Coastal Nations Only</span>' : ''}
                         <div class="option-card__name">${s.name}</div>
                         <div class="option-card__desc">${s.desc}</div>
@@ -498,25 +500,6 @@ function selectSector(el) {
 
     updateSelectionBar();
     updateButtons();
-}
-
-// Alpha-gated sectors require an access code before the card unlocks.
-// On a correct entry the sector is added to state.unlockedCodes and the
-// step re-renders so the card flips from disabled to clickable. Code
-// matching is case-sensitive and intentionally lives client-side — this
-// is a soft gate for alpha testing, not a security boundary.
-function promptAccessCode(sectorKey) {
-    const sector = SECTORS.find(s => s.key === sectorKey);
-    if (!sector || !sector.requiresCode) return;
-    if (state.unlockedCodes.has(sectorKey)) return;
-    const entered = window.prompt(`Enter the access code to unlock ${sector.name}:`);
-    if (entered === null) return;  // cancelled
-    if (entered === sector.requiresCode) {
-        state.unlockedCodes.add(sectorKey);
-        renderStep(1);
-    } else {
-        window.alert('Incorrect access code.');
-    }
 }
 
 // ── Init ──
@@ -596,11 +579,23 @@ function updateButtons() {
 function goNext() {
     if (currentStep < TOTAL_STEPS) {
         renderStep(currentStep + 1);
-    } else {
-        // Store corp setup state and go to nation select
-        sessionStorage.setItem('corp_setup', JSON.stringify(state));
-        window.location.href = 'corp-nation-select.html';
+        return;
     }
+    // Last step: alpha-gated sectors prompt for their access code here
+    // (not at card-click) so players can pick the card normally and
+    // only encounter the gate when they try to proceed.
+    const sector = SECTORS.find(s => s.name === state.sector);
+    if (sector?.requiresCode && !state.unlockedCodes.has(sector.key)) {
+        const entered = window.prompt(`Enter the access code to continue with ${sector.name}:`);
+        if (entered === null) return;  // cancelled
+        if (entered !== sector.requiresCode) {
+            window.alert('Incorrect access code.');
+            return;
+        }
+        state.unlockedCodes.add(sector.key);
+    }
+    sessionStorage.setItem('corp_setup', JSON.stringify(state));
+    window.location.href = 'corp-nation-select.html';
 }
 
 function goBack() {
@@ -616,7 +611,6 @@ function goBack() {
 window.goNext = goNext;
 window.goBack = goBack;
 window.selectSector = selectSector;
-window.promptAccessCode = promptAccessCode;
 window.corpState = state;
 window.updateButtons = updateButtons;
 window.updateSelectionBar = updateSelectionBar;
