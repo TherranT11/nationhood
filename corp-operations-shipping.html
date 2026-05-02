@@ -1960,11 +1960,14 @@ async function loadAvailableContracts() {
     _availableContracts = data || [];
 
     // My pending bids — used to mark cards as "Bid Placed" instead of "Place Bid".
+    // Phase 3 columns (freighters_allocated / modifiers / markup_pct /
+    // energy_per_tick / route_risk_delta) are needed so the offer modal can
+    // preload the corp's prior selection when they re-open to edit.
     if (_availableContracts.length > 0) {
         const ids = _availableContracts.map(c => c.id);
         const { data: bids } = await _supabase
             .from('shipping_contract_bids')
-            .select('id, contract_id, offered_revenue_per_tick, offered_term_ticks, status')
+            .select('id, contract_id, offered_revenue_per_tick, offered_term_ticks, status, freighters_allocated, modifiers, markup_pct, energy_per_tick, route_risk_delta')
             .eq('bidder_faction_id', faction.id)
             .in('contract_id', ids);
         _myBids = new Map((bids || []).map(b => [b.contract_id, b]));
@@ -2037,16 +2040,34 @@ function renderAvailableContracts() {
 
         const myBid = _myBids.get(c.id);
         const bidStatus = myBid?.status;
+        const isOffer = !!c.trade_agreement_id;  // Phase 3 trade-agreement contract
         let cta;
         if (bidStatus === 'pending') {
-            cta = `<span class="so-contract-cta muted">BID PLACED ◊ ${escapeHtml(hfFmtBig(myBid.offered_revenue_per_tick))} / ${myBid.offered_term_ticks}T</span>`;
+            // Trade-agreement offers can be re-edited until window close,
+            // so the CTA stays actionable instead of muted. Display the
+            // offer's energy/tick + total $/tick rather than SOP's
+            // revenue/term pair (which doesn't apply to offer bids).
+            if (isOffer) {
+                const energy = Number(myBid.energy_per_tick) || 0;
+                const offerTotal = Number(myBid.offered_revenue_per_tick) || 0;
+                cta = `<span class="so-contract-cta">OFFER PLACED ◊ ${energy} ENERGY / ${escapeHtml(hfFmtBig(offerTotal))} ▸ EDIT</span>`;
+            } else {
+                cta = `<span class="so-contract-cta muted">BID PLACED ◊ ${escapeHtml(hfFmtBig(myBid.offered_revenue_per_tick))} / ${myBid.offered_term_ticks}T</span>`;
+            }
         } else if (!allMet) {
             cta = '<span class="so-contract-cta muted">REQUIREMENTS UNMET</span>';
         } else {
-            cta = '<span class="so-contract-cta">BID ▸</span>';
+            cta = isOffer
+                ? '<span class="so-contract-cta">OFFER ▸</span>'
+                : '<span class="so-contract-cta">BID ▸</span>';
         }
 
-        const clickable = (bidStatus !== 'pending') && allMet;
+        // Trade-agreement offers stay clickable while a bid is pending
+        // (re-submit overwrites the prior offer server-side). SOP bids
+        // are one-shot and lock the card after a bid lands.
+        const clickable = isOffer
+            ? allMet
+            : (bidStatus !== 'pending') && allMet;
         const cardClass = `so-contract-card${clickable ? '' : ' disabled'}`;
         const dataClickable = clickable ? '1' : '0';
 
