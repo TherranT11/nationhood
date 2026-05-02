@@ -569,6 +569,10 @@ function getGovLabel(nation) {
 // ── Render ──
 // Landlocked nations cannot host Shipping corporations
 const LANDLOCKED_NATIONS = ['Montequilla', 'Vostia'];
+// Airline corps are limited to these nations during the early rollout —
+// only Calveth and Avelia have the airline_cities seed + terminal data
+// the founding flow needs. Everything else is blocked at the card.
+const AIRLINE_ALLOWED_NATIONS = ['Calveth', 'Avelia'];
 
 function renderNations() {
     const grid = document.getElementById('nations-grid');
@@ -590,6 +594,11 @@ function renderNations() {
         const isSelected = selectedNationId === nation.id;
         const isLandlocked = LANDLOCKED_NATIONS.includes(nation.name);
         const isShippingBlocked = corpSetup && corpSetup.sector === 'Shipping' && isLandlocked;
+        const isAirlineBlocked = corpSetup && corpSetup.sector === 'Airline'
+            && !AIRLINE_ALLOWED_NATIONS.includes(nation.name);
+        const isBlocked = isShippingBlocked || isAirlineBlocked;
+        const blockedBadge = isShippingBlocked ? 'Landlocked'
+            : (isAirlineBlocked ? 'Unavailable' : '');
 
         const pop = nation.population ? nation.population.toLocaleString() : '—';
         const ctrl = nation.control != null ? Math.round(nation.control) : '—';
@@ -597,8 +606,8 @@ function renderNations() {
         const corpTax = nation.corporate_tax != null ? Math.round(nation.corporate_tax) + '%' : '—';
 
         return `
-            <div class="nation-card${isSelected ? ' selected' : ''}${isShippingBlocked ? ' disabled' : ''}" data-id="${nation.id}" onclick="${isShippingBlocked ? '' : "selectNation(\'" + nation.id + "\')"}">
-                ${isShippingBlocked ? '<span class="option-card__badge option-card__badge--soon" style="background:#d9534f;">Landlocked</span>' : ''}
+            <div class="nation-card${isSelected ? ' selected' : ''}${isBlocked ? ' disabled' : ''}" data-id="${nation.id}" onclick="${isBlocked ? '' : "selectNation(\'" + nation.id + "\')"}">
+                ${blockedBadge ? '<span class="option-card__badge option-card__badge--soon" style="background:#d9534f;">' + blockedBadge + '</span>' : ''}
                 <div class="nation-card__header">
                     ${flagUrl ? `<img class="nation-card__flag" src="${flagUrl}" alt="${escapeHtml(nation.name)}" onerror="this.style.display='none'">` : ''}
                     <span class="nation-card__name">${escapeHtml(nation.name)}</span>
@@ -751,6 +760,22 @@ async function confirmNation() {
 
     try {
         const nation = allNations.find(n => n.id === selectedNationId);
+
+        // Sector × nation gates. The cards already disable invalid combos,
+        // but a user could call selectNation() from the console — backstop
+        // here so nothing slips past the disabled UI.
+        if (corpSetup.sector === 'Shipping' && LANDLOCKED_NATIONS.includes(nation.name)) {
+            errEl.textContent = `${nation.name} is landlocked — Shipping corporations need coastal access.`;
+            btn.disabled = false;
+            btn.textContent = 'Confirm ▶';
+            return;
+        }
+        if (corpSetup.sector === 'Airline' && !AIRLINE_ALLOWED_NATIONS.includes(nation.name)) {
+            errEl.textContent = `Airline corporations are currently limited to ${AIRLINE_ALLOWED_NATIONS.join(' and ')}.`;
+            btn.disabled = false;
+            btn.textContent = 'Confirm ▶';
+            return;
+        }
 
         // Check ticker uniqueness across all corporations globally
         const { data: existingTicker } = await _supabase
