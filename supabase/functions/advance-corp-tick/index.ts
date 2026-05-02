@@ -64,13 +64,20 @@ const DEFAULT_MISSED_THRESHOLD = 4;
 //  working. Phase 4 deletes accruePnl, _tickPnl, and flushTickPnl once every
 //  read site has migrated to corp_cash_events.
 //
-//  KNOWN SCOPE GAP — cash events outside this function still bypass the
-//  accumulator (and the new event log):
+//  KNOWN SCOPE GAP — cash events that move corp_cash_reserves but bypass the
+//  accumulator + event log:
 //    - advance-tick/index.ts gov_bailout path (non-P&L equity infusion — correct to skip)
 //    - advance-tick/index.ts processAutoRatePolicies (subsidiary insurance
 //      premiums, loan payments, claim payouts — these SHOULD flow through)
 //    - js/corp-refurbish.js client-side refurbish cost (player-initiated expense)
-//  Follow-up: route these through logCashEvent in a later phase.
+//    - this file: shipping route awards (~L4630) and trade-agreement payments
+//      (~L5185) credit corp_cash_reserves + corp_revenue_current_tick directly
+//      and never reach accruePnl/monthly_profit — they're real revenue but
+//      live only in the per-tick column. Same intervention later: route
+//      through logCashEvent('revenue_shipping' / 'revenue_trade', ...).
+//  Follow-up: route these through logCashEvent in a later phase. Folding
+//  them in is a real behavior change (monthly_profit grows) so they don't
+//  belong in Phase 2 — Phase 2 only converts existing accruePnl sites.
 // ════════════════════════════════════════════════════════════════════════════════
 
 const _tickPnl = new Map();
@@ -6133,8 +6140,8 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // ── Construction Per-Tick Wages ──
             // wages = corp_work_crews × $300k × (0.5 + sol/100)
             // The RPC updates corp_cash_reserves and corp_wages_current_tick
-            // atomically per corp; we route the negative delta through
-            // accruePnl so monthly_profit picks it up at flush time.
+            // atomically per corp; we log each row's negative delta so it
+            // lands in corp_cash_events and dual-writes monthly_profit.
             try {
                 const { data: wageRows, error: wageErr } = await supabase
                     .rpc('apply_construction_wages_for_nation', { p_nation_id: nation.id });
@@ -7110,9 +7117,9 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // FUTURE: Arms contracts, military equipment production
 
             // Flush this nation's tick P&L accumulator to factions.monthly_profit.
-            // Every revenue-in / expense-out event in the tick called accruePnl;
+            // logCashEvent dual-writes accruePnl as it logs to corp_cash_events;
             // this is the single writer that materializes those deltas into the
-            // DB column the dashboard reads. Must run BEFORE corp_cash_history
+            // DB column the legacy dashboard reads. Must run BEFORE corp_cash_history
             // below, which reads monthly_profit for reconciliation.
             if (corps.length > 0) {
                 await flushTickPnl(supabase, corps.map(c => c.id));
@@ -7265,8 +7272,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
         await flushTickPnl(supabase, Array.from(_tickPnl.keys()));
     }
 
-    // Flush buffered cash events. No-op in Phase 1 — nothing calls
-    // logCashEvent yet — but wired so Phase 2 only changes call sites.
+    // Flush buffered cash events to corp_cash_events.
     await flushCashEvents(supabase);
 
     // 6. Mark this tick as processed (persisted to DB to survive cold starts)
