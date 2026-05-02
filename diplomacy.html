@@ -481,129 +481,66 @@ function _efficiencyBadge(eff) {
     return `<span style="font-family:var(--font-mono);font-size:9px;color:${color};white-space:nowrap;">[${pct}% \u2014 ${escapeHtml(note)}]</span>`;
 }
 
+// Stat-based commodity flows for any nation. Single source of truth
+// for the production/demand math used by the Trade economy table AND
+// the trade-negotiation modal's Your Economy / They Can Offer / They
+// Need panels. _tradeFlows was wiped in Phase 10A; these formulas
+// operate on raw nation stats so every surface stays in sync.
+//
+// Returns [{ key, name, icon, prod, dem }] in stat units (not dollars).
+function _computeStatCommodities(nation) {
+    if (!nation) return [];
+    const energyStat     = Number(nation.energy)             || 0;
+    const infraStat      = Number(nation.infrastructure)     || 0;
+    const industryStat   = Number(nation.industry)           || 0;
+    const solStat        = Number(nation.standard_of_living) || 0;
+    const popMillions    = (Number(nation.population) || 0) / 1_000_000;
+    const mineralsStat   = Number(nation.minerals)        || 0;
+    const workforceStat  = Number(nation.workforce)       || 0;
+    const farmlandStat   = Number(nation.farmland)        || 0;
+    const educationStat  = Number(nation.education)       || 0;
+    const serviceStat    = Number(nation.service_sector)  || 0;
+    return [
+        { key: 'energy',         name: 'Energy',         icon: '⚡',
+          prod: energyStat / 3,
+          dem:  ((infraStat + industryStat) * solStat * Math.sqrt(popMillions)) / 3500 },
+        { key: 'minerals',       name: 'Minerals',       icon: '⛏',
+          prod: (mineralsStat / 3) * ((workforceStat + industryStat) / 200),
+          dem:  (infraStat / 10) + (industryStat / 16) },
+        { key: 'food',           name: 'Food',           icon: '🌾',
+          prod: (farmlandStat / 2) * (workforceStat / 100),
+          dem:  popMillions / 3 },
+        { key: 'consumer_goods', name: 'Consumer Goods', icon: '📦',
+          prod: (industryStat / 3) * (workforceStat / 100),
+          dem:  (solStat / 100) * popMillions / 2 },
+        { key: 'luxury_goods',   name: 'Luxury Goods',   icon: '💎',
+          prod: (solStat / 6) * ((educationStat * serviceStat) / 10000),
+          dem:  Math.pow(solStat / 100, 2) * popMillions },
+    ];
+}
+
 function renderTradeEconomy() {
     const left = document.getElementById('trade-left');
     if (!left) return;
 
-    // Build commodity rows from trade flows
-    const commodities = [];
-
-    // ── Energy (stat-derived) ──
-    // ── Energy (stat-derived) ──
-    // Production = nations.energy / 3.
-    // Demand     = ((infrastructure + industry) × standard_of_living
-    //              × √(population_M)) / 3500
-    // Trading    = signed sum of Energy trade_flow volumes on active
-    //              agreements that have shipping in place
-    //              (+ = net imports, − = net exports).
-    // Net        = Production − Demand + Trading. Green if positive,
-    //              red if negative.
+    // Build commodity rows from the shared stat-based helper. Energy is
+    // the only commodity with live trade-agreement plumbing today
+    // (getEnergyTradingVolume); the rest carry trading=0 until that
+    // lands. statBased=true tells the formatter to render integers
+    // instead of dollar amounts.
     const _n = _worldState?.nation || {};
-    const energyStat   = Number(_n.energy)             || 0;
-    const infraStat    = Number(_n.infrastructure)     || 0;
-    const industryStat = Number(_n.industry)           || 0;
-    const solStat      = Number(_n.standard_of_living) || 0;
-    const popMillions  = (Number(_n.population) || 0) / 1_000_000;
-    const energyProd   = energyStat / 3;
-    const energyDemand = ((infraStat + industryStat) * solStat * Math.sqrt(popMillions)) / 3500;
-    const energyTrading = getEnergyTradingVolume();
-    commodities.push({
-        key: 'energy',
-        icon: '⚡',
-        name: 'Energy',
-        production: energyProd,
-        domesticDemand: energyDemand,
-        demand: 0,
-        trading: energyTrading,
-        netFlow: energyProd - energyDemand + energyTrading,
+    const commodities = _computeStatCommodities(_n).map(c => ({
+        key:    c.key,
+        icon:   c.icon,
+        name:   c.name,
+        production:     c.prod,
+        domesticDemand: c.dem,
+        demand:         0,
+        trading:        c.key === 'energy' ? getEnergyTradingVolume() : 0,
+        netFlow:        c.prod - c.dem + (c.key === 'energy' ? getEnergyTradingVolume() : 0),
         selfSufficiencyBalance: null,
         statBased: true,
-    });
-
-    // ── Minerals (stat-derived) ──
-    // Production = (minerals / 3) × ((workforce + industry) / 200)
-    // Demand     = (infrastructure / 10) + (industry / 16)
-    // No trade-agreement plumbing yet — Trading = 0 until the next pass.
-    // Net = Production − Demand.
-    const mineralsStat   = Number(_n.minerals)  || 0;
-    const workforceStat  = Number(_n.workforce) || 0;
-    const mineralsProd   = (mineralsStat / 3) * ((workforceStat + industryStat) / 200);
-    const mineralsDemand = (infraStat / 10) + (industryStat / 16);
-    commodities.push({
-        key: 'minerals',
-        icon: '⛏',
-        name: 'Minerals',
-        production: mineralsProd,
-        domesticDemand: mineralsDemand,
-        demand: 0,
-        trading: 0,
-        netFlow: mineralsProd - mineralsDemand,
-        selfSufficiencyBalance: null,
-        statBased: true,
-    });
-
-    // ── Food (stat-derived) ──
-    // Production = (farmland / 2) × (workforce / 100)
-    // Demand     = population_M / 3
-    // No trade-agreement plumbing yet — Trading = 0.
-    // Net = Production − Demand.
-    const farmlandStat = Number(_n.farmland) || 0;
-    const foodProd     = (farmlandStat / 2) * (workforceStat / 100);
-    const foodDemand   = popMillions / 3;
-    commodities.push({
-        key: 'food',
-        icon: '🌾',
-        name: 'Food',
-        production: foodProd,
-        domesticDemand: foodDemand,
-        demand: 0,
-        trading: 0,
-        netFlow: foodProd - foodDemand,
-        selfSufficiencyBalance: null,
-        statBased: true,
-    });
-
-    // ── Consumer Goods (stat-derived) ──
-    // Production = (industry / 3) × (workforce / 100)
-    // Demand     = (standard_of_living / 100) × population_M / 2
-    // No trade-agreement plumbing yet — Trading = 0.
-    // Net = Production − Demand.
-    const consumerProd   = (industryStat / 3) * (workforceStat / 100);
-    const consumerDemand = (solStat / 100) * popMillions / 2;
-    commodities.push({
-        key: 'consumer_goods',
-        icon: '📦',
-        name: 'Consumer Goods',
-        production: consumerProd,
-        domesticDemand: consumerDemand,
-        demand: 0,
-        trading: 0,
-        netFlow: consumerProd - consumerDemand,
-        selfSufficiencyBalance: null,
-        statBased: true,
-    });
-
-    // ── Luxury Goods (stat-derived) ──
-    // Production = (standard_of_living / 6) × ((education × service_sector) / 10000)
-    // Demand     = (standard_of_living / 100)² × population_M
-    // No trade-agreement plumbing yet — Trading = 0.
-    // Net = Production − Demand.
-    const educationStat = Number(_n.education)      || 0;
-    const serviceStat   = Number(_n.service_sector) || 0;
-    const luxuryProd    = (solStat / 6) * ((educationStat * serviceStat) / 10000);
-    const luxuryDemand  = Math.pow(solStat / 100, 2) * popMillions;
-    commodities.push({
-        key: 'luxury_goods',
-        icon: '💎',
-        name: 'Luxury Goods',
-        production: luxuryProd,
-        domesticDemand: luxuryDemand,
-        demand: 0,
-        trading: 0,
-        netFlow: luxuryProd - luxuryDemand,
-        selfSufficiencyBalance: null,
-        statBased: true,
-    });
+    }));
 
     for (const [sector, flow] of Object.entries(_tradeFlows)) {
         // Skip parent food_agriculture if subsectors exist
@@ -19648,45 +19585,23 @@ function negEconomyRender() {
 }
 
 function _negRenderMyEconomyHtml() {
-    // Iterate my nation's flows directly — same data source the Trade tab uses.
-    // Prod = gross domestic production (what the nation actually makes each
-    // tick). Using export_capacity here would show the export surplus — a
-    // petro-state that consumes all its own oil would read the $10M min
-    // floor even at 88 oil_and_gas. See trade_flows.domestic_production.
-    const flows = _tradeFlows || {};
-    const rows = [];
-    for (const [key, flow] of Object.entries(flows)) {
-        // Skip the food_agriculture parent when its sub-sectors are present.
-        if (key === 'food_agriculture' && (flows.grains_staples || flows.livestock_dairy)) continue;
-        const prod = Number(flow.domestic_production) || 0;
-        const dem  = Number(flow.import_demand)       || 0;
-        rows.push({
-            key,
-            name: TRADE_SECTOR_LABELS[key] || key,
-            icon: TRADE_SECTOR_ICONS[key]  || '\uD83D\uDCE6',
-            prod, dem,
-        });
-    }
-    // Keep a stable sort: biggest absolute imbalance first.
-    rows.sort((a, b) => Math.abs(b.prod - b.dem) - Math.abs(a.prod - a.dem));
+    // Same shared helper the Trade tab uses, so the modal's Your Economy
+    // panel matches the Trade page's commodity table exactly. Stat units
+    // (small integers), not dollars — render as plain Math.round.
+    const rows = _computeStatCommodities(_worldState?.nation)
+        .sort((a, b) => Math.abs(b.prod - b.dem) - Math.abs(a.prod - a.dem));
 
-    const formatShort = (v) => {
-        if (!v) return '$0';
-        if (v >= 1_000_000_000) return '$' + (v / 1_000_000_000).toFixed(1) + 'B';
-        if (v >= 1_000_000)     return '$' + Math.round(v / 1_000_000) + 'M';
-        return '$' + Math.round(v).toLocaleString();
-    };
-    const formatBal = (v) => {
-        if (Math.abs(v) < 1) return '\u2014';
-        const sign = v > 0 ? '+' : '-';
-        return sign + formatShort(Math.abs(v));
+    const fmt = (v) => Math.round(Number(v) || 0).toString();
+    const fmtBal = (v) => {
+        if (Math.abs(v) < 0.5) return '—';
+        return (v > 0 ? '+' : '-') + Math.abs(Math.round(v));
     };
 
     let html = `<div class="trade-neg-econ__head">
         <span class="trade-neg-econ__head-dot"></span>Your Economy
     </div>
     <div class="trade-neg-econ__cols">
-        <span>Commodity</span><span>Prod</span><span>Dem</span><span>Bal /mo</span>
+        <span>Commodity</span><span>Prod</span><span>Dem</span><span>Bal</span>
     </div>
     <div class="trade-neg-econ__list">`;
     if (rows.length === 0) {
@@ -19694,17 +19609,17 @@ function _negRenderMyEconomyHtml() {
     } else {
         for (const r of rows) {
             const bal = r.prod - r.dem;
-            const bclass = bal > 1 ? 'trade-neg-econ__bal--pos'
-                         : bal < -1 ? 'trade-neg-econ__bal--neg'
+            const bclass = bal > 0.5 ? 'trade-neg-econ__bal--pos'
+                         : bal < -0.5 ? 'trade-neg-econ__bal--neg'
                          : 'trade-neg-econ__bal--neu';
             html += `<div class="trade-neg-econ__row">
                 <div class="trade-neg-econ__name">
                     <span class="trade-neg-econ__glyph">${r.icon}</span>
                     <span>${escapeHtml(r.name)}</span>
                 </div>
-                <span class="trade-neg-econ__num">${formatShort(r.prod)}</span>
-                <span class="trade-neg-econ__num">${formatShort(r.dem)}</span>
-                <span class="trade-neg-econ__bal ${bclass}">${formatBal(bal)}</span>
+                <span class="trade-neg-econ__num">${fmt(r.prod)}</span>
+                <span class="trade-neg-econ__num">${fmt(r.dem)}</span>
+                <span class="trade-neg-econ__bal ${bclass}">${fmtBal(bal)}</span>
             </div>`;
         }
     }
@@ -19714,34 +19629,30 @@ function _negRenderMyEconomyHtml() {
 
 function _negRenderTheirEconomyHtml(partnerId) {
     // Partner's surpluses = they can offer. Deficits = they need.
-    const partnerFlows = (_allNationFlows && _allNationFlows[partnerId]) || {};
-    const myFlows = _tradeFlows || {};
-
-    const sectorIcon  = (k) => (typeof TRADE_SECTOR_ICONS !== 'undefined' && TRADE_SECTOR_ICONS[k]) || '\uD83D\uDCE6';
-    const sectorLabel = (k) => (typeof TRADE_SECTOR_LABELS !== 'undefined' && TRADE_SECTOR_LABELS[k]) || k;
-    const formatShort = (v) => {
-        if (!v) return '$0';
-        if (v >= 1_000_000_000) return '$' + (v / 1_000_000_000).toFixed(1) + 'B';
-        if (v >= 1_000_000)     return '$' + Math.round(v / 1_000_000) + 'M';
-        return '$' + Math.round(v).toLocaleString();
-    };
+    // Pulls partner's nation row from _worldAllNations (loaded with
+    // select('*'), so all stat columns are present) and runs the same
+    // stat-based commodity helper as the Trade tab + my-economy panel.
+    // Match flags highlight commodities where their surplus aligns with
+    // my deficit (or their deficit with my surplus) — quick visual cue
+    // for "useful trade pairs".
+    const partner = (_worldAllNations || []).find(n => n.id === partnerId);
+    const partnerRows = _computeStatCommodities(partner);
+    const myRows      = _computeStatCommodities(_worldState?.nation);
+    const myDeficits  = new Set(myRows.filter(r => (r.dem - r.prod) > 0.5).map(r => r.key));
+    const mySurpluses = new Set(myRows.filter(r => (r.prod - r.dem) > 0.5).map(r => r.key));
 
     const surpluses = [];
     const deficits  = [];
-    for (const [sector, flow] of Object.entries(partnerFlows)) {
-        if (sector === 'food_agriculture' && (partnerFlows.grains_staples || partnerFlows.livestock_dairy)) continue;
-        const bal = Number(flow.net_flow) || 0;
-        const entry = { sector, name: sectorLabel(sector), icon: sectorIcon(sector), amount: Math.abs(bal) };
-        if (bal > 0) surpluses.push(entry);
-        else if (bal < 0) deficits.push(entry);
+    for (const r of partnerRows) {
+        const bal = r.prod - r.dem;
+        const entry = { key: r.key, name: r.name, icon: r.icon, amount: Math.abs(bal) };
+        if (bal > 0.5) surpluses.push(entry);
+        else if (bal < -0.5) deficits.push(entry);
     }
     surpluses.sort((a, b) => b.amount - a.amount);
     deficits.sort((a, b) => b.amount - a.amount);
 
-    // Match sets — a partner "offer" matches when we have a deficit in that sector, vice versa.
-    const myDeficits  = new Set(Object.entries(myFlows).filter(([, f]) => (f.import_demand || 0) > (f.export_capacity || 0)).map(([k]) => k));
-    const mySurpluses = new Set(Object.entries(myFlows).filter(([, f]) => (f.export_capacity || 0) > (f.import_demand || 0)).map(([k]) => k));
-
+    const fmtStat = (v) => Math.round(Number(v) || 0).toString();
     const renderSection = (title, dotClass, items, matchSet) => {
         let h = `<div class="trade-neg-econ__section">
             <div class="trade-neg-econ__head ${dotClass}">
@@ -19751,14 +19662,14 @@ function _negRenderTheirEconomyHtml(partnerId) {
         if (items.length === 0) {
             h += `<div class="trade-neg-econ__empty">No data</div>`;
         } else {
-            for (const it of items.slice(0, 8)) {
-                const match = matchSet.has(it.sector);
+            for (const it of items) {
+                const match = matchSet.has(it.key);
                 h += `<div class="trade-neg-econ__row--simple ${match ? 'trade-neg-econ__row--match' : ''}">
                     <div class="trade-neg-econ__name">
                         <span class="trade-neg-econ__glyph">${it.icon}</span>
                         <span>${escapeHtml(it.name)}${match ? '<span class="trade-neg-econ__match">match</span>' : ''}</span>
                     </div>
-                    <span class="trade-neg-econ__val">${formatShort(it.amount)}<span style="font-weight:400;color:var(--text-dim);font-size:9px;"> /mo</span></span>
+                    <span class="trade-neg-econ__val">${fmtStat(it.amount)}</span>
                 </div>`;
             }
         }
