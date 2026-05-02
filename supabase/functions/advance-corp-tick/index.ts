@@ -3705,6 +3705,18 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
 
     for (const corp of corpFactions) {
         const currentCash = Number(corp.corp_cash_reserves || 0);
+
+        // SOFT INSOLVENCY HALT: when a corp hits $0 cash, monthly operations
+        // freeze — no revenue accrues, no wages/exec/overhead/internal-debt/tax
+        // are charged, no corp_*_current_tick writes. Cash stays at $0 until
+        // something recapitalizes the corp (loan, equity, manual grant), at
+        // which point the next tick resumes operations normally.
+        // External finance_active_loans run in their own processor and keep
+        // ticking — missed-payments accumulate there as designed.
+        if (currentCash <= 0) {
+            continue;
+        }
+
         const currentLoans = Number(corp.corp_loans || 0);
 
         // Per-corp wages from actual workforce counts
