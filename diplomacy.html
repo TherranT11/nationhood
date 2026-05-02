@@ -568,6 +568,26 @@ function renderTradeEconomy() {
         statBased: true,
     });
 
+    // ── Food (stat-derived) ──
+    // Production = (farmland / 2) × (workforce / 100)
+    // No demand or trade-agreement plumbing yet — Trading = 0 and
+    // Net = Production. Demand model lands alongside the stat-effects
+    // pass when speced.
+    const farmlandStat = Number(_n.farmland) || 0;
+    const foodProd     = (farmlandStat / 2) * (workforceStat / 100);
+    commodities.push({
+        key: 'food',
+        icon: '🌾',
+        name: 'Food',
+        production: foodProd,
+        domesticDemand: 0,
+        demand: 0,
+        trading: 0,
+        netFlow: foodProd,
+        selfSufficiencyBalance: null,
+        statBased: true,
+    });
+
     for (const [sector, flow] of Object.entries(_tradeFlows)) {
         // Skip parent food_agriculture if subsectors exist
         if (sector === 'food_agriculture' && (_tradeFlows.grains_staples || _tradeFlows.livestock_dairy)) continue;
@@ -2529,10 +2549,19 @@ function getNationMineralsBalance(nation) {
     return { production, demand, net: production - demand };
 }
 
-// Build a nation's surplus / deficit list. Energy + Minerals are the
-// only tradeable commodities right now, so we compute both from stats
-// rather than reading trade_flows (which is dollar-denominated and
-// doesn't track stat-based goods).
+// Same shape for Food \u2014 mirrors the YOUR ECONOMY panel:
+//   Production = (farmland / 2) \u00D7 (workforce / 100)
+//   Demand     = 0 (no demand model yet)
+function getNationFoodBalance(nation) {
+    const n = nation || {};
+    const farmlandStat  = Number(n.farmland)  || 0;
+    const workforceStat = Number(n.workforce) || 0;
+    const production    = (farmlandStat / 2) * (workforceStat / 100);
+    return { production, demand: 0, net: production };
+}
+
+// Build a nation's surplus / deficit list. Energy + Minerals + Food are
+// the tradeable commodities right now, all stat-derived.
 function getNationSurplusesAndDeficits(nationId) {
     const nation = (_worldAllNations || []).find(n => n.id === nationId);
     const surpluses = [];
@@ -2541,6 +2570,7 @@ function getNationSurplusesAndDeficits(nationId) {
     const goods = [
         { sector: 'energy',   icon: '\u26A1', name: 'Energy',   balance: getNationEnergyBalance(nation)   },
         { sector: 'minerals', icon: '\u26CF', name: 'Minerals', balance: getNationMineralsBalance(nation) },
+        { sector: 'food',     icon: '\uD83C\uDF3E', name: 'Food',     balance: getNationFoodBalance(nation)     },
     ];
     for (const g of goods) {
         const net = g.balance.net;
