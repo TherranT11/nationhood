@@ -518,21 +518,22 @@ function renderTradeEconomy() {
 
     // ── Minerals (stat-derived) ──
     // Production = (minerals / 3) × ((workforce + industry) / 200)
-    // No demand or trade-agreement plumbing yet — those land alongside
-    // the next sector pass. Net = Production for now (entire output
-    // reads as surplus, same shape Energy started with).
-    const mineralsStat  = Number(_n.minerals)  || 0;
-    const workforceStat = Number(_n.workforce) || 0;
-    const mineralsProd  = (mineralsStat / 3) * ((workforceStat + industryStat) / 200);
+    // Demand     = (infrastructure / 10) + (industry / 16)
+    // No trade-agreement plumbing yet — Trading = 0 until the next pass.
+    // Net = Production − Demand.
+    const mineralsStat   = Number(_n.minerals)  || 0;
+    const workforceStat  = Number(_n.workforce) || 0;
+    const mineralsProd   = (mineralsStat / 3) * ((workforceStat + industryStat) / 200);
+    const mineralsDemand = (infraStat / 10) + (industryStat / 16);
     commodities.push({
         key: 'minerals',
         icon: '⛏',
         name: 'Minerals',
         production: mineralsProd,
-        domesticDemand: 0,
+        domesticDemand: mineralsDemand,
         demand: 0,
         trading: 0,
-        netFlow: mineralsProd,
+        netFlow: mineralsProd - mineralsDemand,
         selfSufficiencyBalance: null,
         statBased: true,
     });
@@ -809,6 +810,56 @@ function renderTradeEconomy() {
     html += `</div>`;
 
     html += `</div>`; // close surpluses/deficits row
+
+    // ── Demand Effects (per-tick consequences by supply level) ──
+    // Informational panel — lists every commodity's stat impact for
+    // under-supplied / over-supplied buckets. Structured to expand
+    // as additional trade goods get demand-met effects wired up.
+    const DEMAND_EFFECTS = [
+        {
+            key: 'energy',
+            icon: '⚡',
+            name: 'Energy',
+            under: [
+                { label: 'Standard of Living', delta: -0.1 },
+                { label: 'Public Approval',    delta: -0.1 },
+                { label: 'Industry',           delta: -0.1 },
+            ],
+            over: [
+                { label: 'Standard of Living', delta:  0.05 },
+                { label: 'Cost of Living',     delta: -0.05 },
+                { label: 'Public Approval',    delta:  0.05 },
+                { label: 'Service Sector',     delta:  0.05 },
+            ],
+        },
+    ];
+    const fmtDelta = (d) => (d > 0 ? '+' : '') + d.toFixed(2).replace(/\.?0+$/, m => m.includes('.') ? m.replace(/0+$/, '') : '');
+    const tone = (d) => d > 0 ? 'var(--green)' : d < 0 ? 'var(--red)' : 'var(--text-dim)';
+    html += `<div class="tr-econ-effects-block">
+        <div class="tr-econ-effects-header">DEMAND EFFECTS · PER TICK</div>`;
+    for (const g of DEMAND_EFFECTS) {
+        html += `<div class="tr-econ-effects-good">
+            <div class="tr-econ-effects-good-name">${g.icon} ${escapeHtml(g.name)}</div>
+            <div class="tr-econ-effects-cols">
+                <div class="tr-econ-effects-col">
+                    <div class="tr-econ-effects-col-head under">If demand not met</div>
+                    ${g.under.map(e => `<div class="tr-econ-effects-row">
+                        <span class="label">${escapeHtml(e.label)}</span>
+                        <span class="value" style="color:${tone(e.delta)};">${fmtDelta(e.delta)}</span>
+                    </div>`).join('')}
+                </div>
+                <div class="tr-econ-effects-col">
+                    <div class="tr-econ-effects-col-head over">If supply ≥ 120%</div>
+                    ${g.over.map(e => `<div class="tr-econ-effects-row">
+                        <span class="label">${escapeHtml(e.label)}</span>
+                        <span class="value" style="color:${tone(e.delta)};">${fmtDelta(e.delta)}</span>
+                    </div>`).join('')}
+                </div>
+            </div>
+        </div>`;
+    }
+    html += `<div class="tr-econ-effects-placeholder">More commodity effects unlock as demand models land.</div>`;
+    html += `</div>`;
 
     left.innerHTML = html;
 
