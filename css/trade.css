@@ -172,14 +172,14 @@
 }
 .tr-econ-col-header {
     display: grid;
-    grid-template-columns: 1fr 110px 110px 110px 110px;
-    gap: 10px;
-    padding: 12px 20px;
+    grid-template-columns: 1fr 78px 78px 78px 78px;
+    gap: 6px;
+    padding: 8px 14px;
     background: var(--bg-panel, #1a1a17);
     border-bottom: 1px solid var(--border-main, rgba(255,255,255,0.06));
     font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 0.16em;
+    font-size: 9px;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--text-dim);
 }
@@ -189,9 +189,9 @@
 
 .tr-econ-row {
     display: grid;
-    grid-template-columns: 1fr 110px 110px 110px 110px;
-    gap: 10px;
-    padding: 16px 20px;
+    grid-template-columns: 1fr 78px 78px 78px 78px;
+    gap: 6px;
+    padding: 10px 14px;
     border-bottom: 1px solid var(--border-main, rgba(255,255,255,0.06));
     align-items: center;
 }
@@ -200,7 +200,7 @@
 .tr-econ-name-cell {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     min-width: 0;
 }
 .tr-econ-icon {
@@ -210,14 +210,14 @@
 .tr-econ-name {
     font-family: var(--font-serif);
     font-weight: 500;
-    font-size: 17px;
+    font-size: 15px;
     color: var(--text-bright, #e8e4d9);
     letter-spacing: -0.005em;
 }
 
 .tr-econ-value {
     font-family: var(--font-mono);
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 500;
     color: var(--text-secondary, #b9b6ab);
     text-align: right;
@@ -227,7 +227,7 @@
 
 .tr-econ-net {
     font-family: var(--font-mono);
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
     text-align: right;
     font-variant-numeric: tabular-nums;
