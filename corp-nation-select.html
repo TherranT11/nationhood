@@ -1040,6 +1040,33 @@ async function confirmNation() {
                         console.warn('[CorpCreate] free terminal claim failed:', claimErr.message);
                     } else if (!claimed || claimed.length === 0) {
                         console.warn('[CorpCreate] terminal', openTerm.terminal_number, 'at', capital.name, 'was claimed by someone else mid-flight; airline founded without a hub');
+                    } else {
+                        // Persist the founding terminal as a corp_properties
+                        // row so it shows up on Expansion / valuation /
+                        // bankruptcy / maintenance like every other property.
+                        // purchase_price = 0 + monthly_maintenance = 0:
+                        // founding terminals are freebies (the buy-RPC's $3M
+                        // floor only applies to player-purchased ones).
+                        // Backfill for pre-existing airlines lives in
+                        // sql/migrations/20260717_phase5_route_setup.sql.
+                        const { error: propErr } = await _supabase.from('corp_properties').insert({
+                            faction_id:          corpId,
+                            nation_id:           nation.id,
+                            name:                capital.name + ' Terminal #' + openTerm.terminal_number,
+                            type:                'airline_terminal',
+                            role:                'airline_terminal',
+                            style:               'Hub',
+                            capacity:            0,
+                            purchase_price:      0,
+                            monthly_maintenance: 0,
+                            condition:           100,
+                            city:                capital.name,
+                            purchased_at_tick:   currentTick,
+                            is_active:           true,
+                        });
+                        if (propErr) {
+                            console.warn('[CorpCreate] founding terminal corp_properties insert failed:', propErr.message);
+                        }
                     }
                 }
             }
