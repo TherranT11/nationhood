@@ -211,6 +211,11 @@ BEGIN
     -- Expansion display. role='airline_terminal' lets consumers
     -- filter for terminals specifically.
     v_label := v_city.name || ' Terminal #' || v_terminal.terminal_number;
+    -- style='Hub' is the building/asset style for terminals (matches the
+    -- 'Modern' / 'Brutalist' / etc. values regional HQs use). The city's
+    -- runway_type ('international' / 'standard' / 'short') is captured in
+    -- v_terminal/v_city — read directly from airline_terminals when we
+    -- need it, not duplicated onto the property row.
     INSERT INTO corp_properties (
         faction_id, nation_id, name, type, role, style,
         capacity, purchase_price, monthly_maintenance, condition,
@@ -221,7 +226,7 @@ BEGIN
         v_label,
         'airline_terminal',
         'airline_terminal',
-        v_city.runway_type,
+        'Hub',
         0,
         v_cost,
         v_maint,

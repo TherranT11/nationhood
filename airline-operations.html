@@ -679,6 +679,7 @@ function initBuyTerminalFlow(corpId, totalCityCount) {
         `;
         errorEl.textContent = '';
         confirmBtn.disabled = false;
+        cancelBtn.disabled  = false;  // reset after a prior successful buy locked it
         confirmBtn.textContent = 'Confirm Purchase';
         overlay.classList.add('active');
     });
@@ -692,7 +693,12 @@ function initBuyTerminalFlow(corpId, totalCityCount) {
 
     confirmBtn.addEventListener('click', async () => {
         if (!_pendingBuy) return;
+        // Lock both buttons so the user can't Cancel mid-RPC and then
+        // open a different terminal's modal — the in-flight RPC would
+        // otherwise return into a modal showing different content and
+        // overwrite its state.
         confirmBtn.disabled = true;
+        cancelBtn.disabled  = true;
         confirmBtn.textContent = 'Acquiring…';
         errorEl.textContent = '';
         const terminalId = _pendingBuy.nextTerminalId;
@@ -714,6 +720,7 @@ function initBuyTerminalFlow(corpId, totalCityCount) {
         } catch (err) {
             errorEl.textContent = err?.message || 'Purchase failed.';
             confirmBtn.disabled = false;
+            cancelBtn.disabled  = false;
             confirmBtn.textContent = 'Confirm Purchase';
         }
     });
