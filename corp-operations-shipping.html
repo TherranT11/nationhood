@@ -692,6 +692,63 @@ body.corp-operations-shipping.light-mode {
 .so-route-status .text { color: var(--so-text-secondary); }
 .so-route-status .text strong { color: var(--so-text-primary); font-weight: 500; }
 
+/* ── PHASE 7: Active Routes "Your Offer" detail block ── */
+.so-active-offer-block {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--so-bg-secondary, rgba(255,255,255,0.02));
+  border: 1px solid var(--so-line, rgba(255,255,255,0.08));
+}
+.so-active-offer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: var(--mono, monospace);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--so-text-tertiary);
+  margin-bottom: 8px;
+}
+.so-active-offer-priority {
+  color: var(--so-accent-gold);
+}
+.so-active-offer-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: var(--mono, monospace);
+  font-size: 11px;
+  padding: 3px 0;
+}
+.so-active-offer-row .label { color: var(--so-text-secondary); }
+.so-active-offer-row .value {
+  color: var(--so-text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.so-active-offer-row .value.gold { color: var(--so-accent-gold); }
+.so-active-offer-mods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+.so-active-mod-chip {
+  font-family: var(--mono, monospace);
+  font-size: 9px;
+  padding: 2px 6px;
+  border: 1px solid var(--so-line-bright);
+  color: var(--so-text-secondary);
+  background: var(--so-bg-card);
+  letter-spacing: 0.04em;
+}
+.so-active-mod-chip.baseline {
+  color: var(--so-text-tertiary);
+  font-style: italic;
+}
+
 /* ── STRATEGIC ACTIONS (Section V) ── */
 .so-actions-cooldown-pill {
   font-family: var(--mono);
@@ -1978,6 +2035,9 @@ async function loadAvailableContracts() {
 
 async function loadActiveContracts() {
     if (!faction?.id) { _activeContracts = []; return; }
+    // Phase 7: pull trade-agreement-spawned columns + the accepted bid
+    // so the Active Routes card can surface the corp's locked-in
+    // modifiers, route-risk delta, and delivered energy/tick.
     const { data, error } = await _supabase
         .from('shipping_contracts')
         .select(`
@@ -1985,8 +2045,13 @@ async function loadActiveContracts() {
             origin_port, destination_port, destination_nation_id,
             revenue_per_tick, term_ticks, freighters_required,
             awarded_at_tick, ends_at_tick, last_payment_tick, total_paid,
+            trade_agreement_id, commodity, volume_required, delivery_priority,
             origin_nation:nations!nation_id ( name ),
-            destination_nation:nations!destination_nation_id ( name )
+            destination_nation:nations!destination_nation_id ( name ),
+            shipping_contract_bids!contract_id (
+                status, freighters_allocated, modifiers, markup_pct,
+                energy_per_tick, route_risk_delta
+            )
         `)
         .eq('status', 'awarded')
         .eq('winner_faction_id', faction.id)
@@ -1996,7 +2061,20 @@ async function loadActiveContracts() {
         _activeContracts = [];
         return;
     }
-    _activeContracts = data || [];
+    // Flatten the accepted bid onto the contract row for easier render.
+    _activeContracts = (data || []).map(c => {
+        const accepted = (c.shipping_contract_bids || []).find(b => b.status === 'accepted');
+        return {
+            ...c,
+            accepted_bid: accepted ? {
+                freighters_allocated: Number(accepted.freighters_allocated) || 0,
+                modifiers:            Array.isArray(accepted.modifiers) ? accepted.modifiers : [],
+                markup_pct:           Number(accepted.markup_pct) || 0,
+                energy_per_tick:      Number(accepted.energy_per_tick) || 0,
+                route_risk_delta:     Number(accepted.route_risk_delta) || 0,
+            } : null,
+        };
+    });
 }
 
 function renderAvailableContracts() {
@@ -2140,6 +2218,51 @@ function renderActiveContracts() {
         const deadlineText = `Ends in ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}`;
         const totalPaid = Number(c.total_paid) || 0;
 
+        // Phase 7: render the corp's locked-in offer (modifiers / route
+        // risk delta / delivered energy) for trade-agreement contracts.
+        // Legacy SOP contracts have no accepted_bid → block stays empty.
+        const bid = c.accepted_bid;
+        let offerBlock = '';
+        if (bid && c.trade_agreement_id) {
+            const modKeys = (bid.modifiers || []).filter(k => k && k !== 'known');
+            const modLabels = {
+                dangerous_waters:  'Dangerous Waters',
+                naval_escort:      'Naval Escort',
+                premium_insurance: 'Premium Insurance',
+                bribe_port:        'Bribe Port Authorities',
+                rush_schedule:     'Rush Schedule',
+            };
+            const modChips = modKeys.length === 0
+                ? '<span class="so-active-mod-chip baseline">Known Route only</span>'
+                : modKeys.map(k => `<span class="so-active-mod-chip">${escapeHtml(modLabels[k] || k)}</span>`).join('');
+            const riskColor = bid.route_risk_delta > 0 ? 'var(--so-accent-red)'
+                            : bid.route_risk_delta < 0 ? 'var(--so-accent-green)' : 'var(--so-text-secondary)';
+            const riskSign = bid.route_risk_delta > 0 ? '+' : '';
+            offerBlock = `<div class="so-active-offer-block">
+                <div class="so-active-offer-header">
+                    <span>Your Offer</span>
+                    <span class="so-active-offer-priority">${escapeHtml((c.delivery_priority || '').toUpperCase())}</span>
+                </div>
+                <div class="so-active-offer-row">
+                    <span class="label">Energy/Tick</span>
+                    <span class="value gold">${bid.energy_per_tick}</span>
+                </div>
+                <div class="so-active-offer-row">
+                    <span class="label">Freighters Allocated</span>
+                    <span class="value">${bid.freighters_allocated}</span>
+                </div>
+                <div class="so-active-offer-row">
+                    <span class="label">Markup</span>
+                    <span class="value">${bid.markup_pct}%</span>
+                </div>
+                <div class="so-active-offer-row">
+                    <span class="label">Route Risk Δ</span>
+                    <span class="value" style="color:${riskColor};">${riskSign}${bid.route_risk_delta}</span>
+                </div>
+                <div class="so-active-offer-mods">${modChips}</div>
+            </div>`;
+        }
+
         return `<div class="so-contract-card" data-clickable="0">
             <div class="so-contract-meta-row">
                 <span class="so-contract-tag ${tag}">${escapeHtml(tag.toUpperCase())}</span>
@@ -2178,6 +2301,7 @@ function renderActiveContracts() {
                     <div class="value">${escapeHtml(hfFmtBig(totalPaid))}</div>
                 </div>
             </div>
+            ${offerBlock}
         </div>`;
     }).join('');
 }

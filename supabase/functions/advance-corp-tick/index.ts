@@ -4808,6 +4808,57 @@ async function processTradeAgreementShipping(supabase, currentTick) {
                 continue;
             }
             results.awarded++;
+
+            // Phase 7: notification events. Fire-and-forget so a flaky
+            // event_log write never blocks the contract award. Three
+            // surfaces:
+            //   - winning corp ('your offer was awarded')
+            //   - buyer nation ('shipping arranged for X')
+            //   - losing corps  ('your offer was rejected')
+            try {
+                const { data: winnerFaction } = await supabase.from('factions')
+                    .select('faction_name, nation_id').eq('id', winner.bidder_faction_id).maybeSingle();
+                const corpName = winnerFaction?.faction_name || 'Your corporation';
+                const events = [];
+                events.push({
+                    nation_id:          winnerFaction?.nation_id || null,
+                    faction_id:         winner.bidder_faction_id,
+                    event_name:         'Shipping offer awarded',
+                    category:           'corporate',
+                    description_chosen: `${corpName} won the shipping contract for ${contract.name || 'an Energy route'} (${Number(winner.energy_per_tick) || 0} Energy/tick).`,
+                    fired_at_tick:      currentTick,
+                });
+                if (contract.nation_id) {
+                    events.push({
+                        nation_id:          contract.nation_id,
+                        event_name:         'Shipping arranged',
+                        category:           'trade',
+                        description_chosen: `${corpName} will deliver ${Number(winner.energy_per_tick) || 0} Energy/tick to your nation under the active trade agreement.`,
+                        fired_at_tick:      currentTick,
+                    });
+                }
+                if (rejected && rejected.length > 0) {
+                    const rejectedIds = rejected.map(r => r.id);
+                    const { data: lostBids } = await supabase.from('shipping_contract_bids')
+                        .select('bidder_faction_id, factions:bidder_faction_id(faction_name, nation_id)')
+                        .in('id', rejectedIds);
+                    for (const lb of (lostBids || [])) {
+                        events.push({
+                            nation_id:          lb.factions?.nation_id || null,
+                            faction_id:         lb.bidder_faction_id,
+                            event_name:         'Shipping offer rejected',
+                            category:           'corporate',
+                            description_chosen: `Your offer on ${contract.name || 'an Energy route'} was not selected — ${corpName} won the contract.`,
+                            fired_at_tick:      currentTick,
+                        });
+                    }
+                }
+                if (events.length > 0) {
+                    await supabase.from('event_log').insert(events);
+                }
+            } catch (logErr) {
+                console.warn(`[TradeAgreementShipping] award event_log insert failed for ${contract.id}:`, logErr?.message || logErr);
+            }
         }
     }
 
@@ -4856,6 +4907,26 @@ async function processTradeAgreementShipping(supabase, currentTick) {
             }
             results.completed++;
 
+            // Phase 7: completion notification to the corp.
+            // Renewal/loss events fire below where the renewal logic
+            // decides whether to re-spawn or let the route end.
+            try {
+                if (contract.winner_faction_id) {
+                    const { data: wFaction } = await supabase.from('factions')
+                        .select('faction_name, nation_id').eq('id', contract.winner_faction_id).maybeSingle();
+                    await supabase.from('event_log').insert({
+                        nation_id:          wFaction?.nation_id || null,
+                        faction_id:         contract.winner_faction_id,
+                        event_name:         'Shipping contract completed',
+                        category:           'corporate',
+                        description_chosen: `${wFaction?.faction_name || 'Your corporation'} completed the shipping contract for ${contract.name || 'an Energy route'}.`,
+                        fired_at_tick:      currentTick,
+                    });
+                }
+            } catch (logErr) {
+                console.warn(`[TradeAgreementShipping] completion event_log insert failed for ${contract.id}:`, logErr?.message || logErr);
+            }
+
             // Phase 6 auto-renewal: if the parent agreement is still
             // 'active', spawn a fresh open contract with the same
             // parameters. Buyer keeps getting deliveries; corps re-bid.
@@ -4898,6 +4969,21 @@ async function processTradeAgreementShipping(supabase, currentTick) {
                         console.warn(`[TradeAgreementShipping] auto-renew spawn failed for ${contract.id}:`, spawnErr.message);
                     } else {
                         results.renewed = (results.renewed || 0) + 1;
+                        // Phase 7: notify the buyer nation that a fresh
+                        // bid window has opened. Corps will see the new
+                        // contract on Available Routes; no per-corp event
+                        // needed for that surface.
+                        try {
+                            await supabase.from('event_log').insert({
+                                nation_id:          contract.nation_id,
+                                event_name:         'Shipping contract renewed',
+                                category:           'trade',
+                                description_chosen: `Your trade agreement's shipping contract has completed and a fresh bid window is open for shipping corps.`,
+                                fired_at_tick:      currentTick,
+                            });
+                        } catch (logErr) {
+                            console.warn(`[TradeAgreementShipping] renewal event_log insert failed:`, logErr?.message || logErr);
+                        }
                     }
                 }
             }

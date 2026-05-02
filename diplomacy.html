@@ -1242,7 +1242,7 @@ async function loadTradeAgreements() {
     await loadAgreementShippingContracts();
 }
 
-let _shippingContractsByAgreement = {};  // agreementId → [{ id, energy_per_tick, delivery_priority }]
+let _shippingContractsByAgreement = {};  // agreementId → [{ id, energy_per_tick, delivery_priority, winner_faction_name, ... }]
 async function loadAgreementShippingContracts() {
     _shippingContractsByAgreement = {};
     const agreementIds = (_tradeAgreementsList || [])
@@ -1250,13 +1250,18 @@ async function loadAgreementShippingContracts() {
         .map(a => a.id);
     if (agreementIds.length === 0) return;
 
-    // Pull awarded contracts + their accepted bid in one round-trip via
-    // an embedded select. shipping_contract_bids → contract_id is the
-    // FK; PostgREST embeds the matching row.
+    // Pull every spawned contract for these agreements (open, awarded,
+    // completed, cancelled — all states matter for the agreement card
+    // status surfacing). Phase 7 also embeds the accepted bid for
+    // route_risk_delta + energy_per_tick + the winner faction name.
     const { data, error } = await _supabase.from('shipping_contracts')
-        .select('id, trade_agreement_id, status, winner_faction_id, revenue_per_tick, shipping_contract_bids!contract_id(energy_per_tick, route_risk_delta, status)')
-        .in('trade_agreement_id', agreementIds)
-        .eq('status', 'awarded');
+        .select(`
+            id, trade_agreement_id, status, winner_faction_id, revenue_per_tick,
+            volume_required, delivery_priority, expires_at_tick,
+            winner:factions!winner_faction_id(faction_name, abbreviation),
+            shipping_contract_bids!contract_id(energy_per_tick, route_risk_delta, status)
+        `)
+        .in('trade_agreement_id', agreementIds);
     if (error) {
         console.warn('[diplomacy] agreement shipping contracts fetch failed:', error.message);
         return;
@@ -1267,9 +1272,15 @@ async function loadAgreementShippingContracts() {
         const energyPerTick = Number(acceptedBid?.energy_per_tick) || 0;
         const list = _shippingContractsByAgreement[c.trade_agreement_id] || [];
         list.push({
-            id: c.id,
-            energy_per_tick: energyPerTick,
-            winner_faction_id: c.winner_faction_id,
+            id:                  c.id,
+            status:              c.status,
+            energy_per_tick:     energyPerTick,
+            volume_required:     Number(c.volume_required) || 0,
+            delivery_priority:   c.delivery_priority || null,
+            expires_at_tick:     Number(c.expires_at_tick) || null,
+            winner_faction_id:   c.winner_faction_id,
+            winner_faction_name: c.winner?.faction_name || null,
+            revenue_per_tick:    Number(c.revenue_per_tick) || 0,
         });
         _shippingContractsByAgreement[c.trade_agreement_id] = list;
     }
@@ -2093,6 +2104,24 @@ function renderTradeAgreements() {
                     ? `<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:5px;">LAND TRADE</span>`
                     : `<span class="tr-badge" style="color:var(--orange);background:rgba(200,136,68,0.06);border-color:rgba(200,136,68,0.15);font-size:5px;">\u26A0 NO LOGISTICS</span>`;
 
+        // Phase 7: Energy shipping badge for trade-agreement contracts.
+        // Surfaces "ENERGY \u25CA N/tick" when shipping is awarded, or
+        // "ENERGY \u25CA AWAITING" when contracts are open with no winner yet.
+        // Only renders for agreements with Energy trade_flow articles.
+        const hasEnergyArticle = (ag.articles || []).some(a =>
+            a.article_type === 'trade_flow' && a.data?.commodity === 'energy');
+        const phase4Contracts = _shippingContractsByAgreement[ag.id] || [];
+        const phase4Awarded   = phase4Contracts.filter(c => c.status === 'awarded');
+        let energyBadge = '';
+        if (hasEnergyArticle) {
+            const totalDelivered = phase4Awarded.reduce((s, c) => s + (Number(c.energy_per_tick) || 0), 0);
+            if (totalDelivered > 0) {
+                energyBadge = `<span class="tr-badge" style="color:var(--gold,#c8a832);background:rgba(200,168,50,0.08);border-color:rgba(200,168,50,0.25);font-size:5px;">\u26A1 ${totalDelivered}/TICK</span>`;
+            } else {
+                energyBadge = `<span class="tr-badge" style="color:var(--orange);background:rgba(200,136,68,0.06);border-color:rgba(200,136,68,0.15);font-size:5px;">\u26A1 AWAITING SHIPPING</span>`;
+            }
+        }
+
         html += `<div class="tr-agreement-row" data-ag-id="${ag.id}" style="border-left:3px solid ${statusColor};">
             <div class="tr-agreement-header" style="background:${isExp ? 'var(--bg-card)' : 'transparent'};padding:14px 18px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
@@ -2100,6 +2129,7 @@ function renderTradeAgreements() {
                         <span style="font-size:14px;font-weight:600;color:var(--text-bright);">${escapeHtml(ag.agreement_name || typeLabel)}</span>
                     </div>
                     <div style="display:flex;align-items:center;gap:6px;">
+                        ${energyBadge}
                         ${logisticsBadge}
                         <span class="tr-badge" style="font-size:11px;padding:3px 10px;color:${statusColor};background:${statusColor}0a;border-color:${statusColor}25;">${statusLabel}</span>
                     </div>
@@ -2214,6 +2244,44 @@ function renderTradeAgreements() {
                 }
             }
 
+            // Phase 7: Energy shipping detail block. Lists every
+            // shipping_contracts row spawned by this agreement (one
+            // per Energy trade_flow article), with status, winner
+            // corp, and live delivery rate. Only renders if the
+            // agreement has any spawned contracts.
+            if (hasEnergyArticle && phase4Contracts.length > 0) {
+                html += `<div style="margin-top:6px;background:var(--bg-card);border:1px solid var(--border-main);padding:8px 10px;">
+                    <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;">⚡ ENERGY SHIPPING</div>`;
+                for (const c of phase4Contracts) {
+                    let lineColor, lineLabel;
+                    if (c.status === 'awarded' && c.winner_faction_name) {
+                        lineColor = 'var(--green)';
+                        lineLabel = `${c.energy_per_tick} Energy/tick · ${c.winner_faction_name}`;
+                    } else if (c.status === 'open') {
+                        lineColor = 'var(--amber, #b8860b)';
+                        const ticksLeft = c.expires_at_tick != null ? Math.max(0, c.expires_at_tick - currentTk) : 0;
+                        lineLabel = `Awaiting offers · ${c.volume_required} Energy/tick · closes in ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}`;
+                    } else if (c.status === 'completed') {
+                        lineColor = 'var(--text-dim)';
+                        lineLabel = `Completed`;
+                    } else if (c.status === 'cancelled') {
+                        lineColor = 'var(--text-dim)';
+                        lineLabel = `Cancelled`;
+                    } else {
+                        lineColor = 'var(--text-dim)';
+                        lineLabel = c.status;
+                    }
+                    const priorityChip = c.delivery_priority
+                        ? `<span style="font-family:var(--font-mono);font-size:7px;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-dim);padding:1px 5px;border:1px solid var(--border-main);">${escapeHtml(c.delivery_priority)}</span>`
+                        : '';
+                    html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;font-family:var(--font-mono);font-size:10px;">
+                        <span style="color:${lineColor};">${escapeHtml(lineLabel)}</span>
+                        ${priorityChip}
+                    </div>`;
+                }
+                html += `</div>`;
+            }
+
             html += `</div>`;
         }
 
@@ -2299,8 +2367,13 @@ function getEnergyTradingVolume() {
         const shipNeed = _shippingNeedForPartner(partnerId) || { needsShipping: true };
         // Logistics-in-place: legacy shipping_routes (organic) OR a
         // Phase 4 awarded shipping_contracts row tied to this agreement.
+        // Phase 7: _shippingContractsByAgreement now carries all statuses
+        // (open / awarded / completed / cancelled) for the agreement card
+        // surfacing — filter to 'awarded' here so the Trading column
+        // only counts contracts that are actually delivering Energy.
         const hasLegacyLogistics = !!getAgreementShippingInfo(ag.id)?.hasLogistics;
-        const phase4Contracts    = _shippingContractsByAgreement[ag.id] || [];
+        const phase4Contracts    = (_shippingContractsByAgreement[ag.id] || [])
+            .filter(c => c.status === 'awarded');
         const hasPhase4Logistics = phase4Contracts.length > 0;
         const shippingOk = !shipNeed.needsShipping || hasLegacyLogistics || hasPhase4Logistics;
         if (!shippingOk) continue;
