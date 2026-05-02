@@ -2515,25 +2515,45 @@ function getNationEnergyBalance(nation) {
     return { production, demand, net: production - demand };
 }
 
-// Build a nation's surplus / deficit list. Energy is the only tradeable
-// commodity right now, so we compute it from stats rather than reading
-// trade_flows (which is dollar-denominated and doesn't track Energy).
+// Same shape for Minerals \u2014 mirrors the YOUR ECONOMY panel:
+//   Production = (minerals / 3) \u00D7 ((workforce + industry) / 200)
+//   Demand     = (infrastructure / 10) + (industry / 16)
+function getNationMineralsBalance(nation) {
+    const n = nation || {};
+    const mineralsStat  = Number(n.minerals)       || 0;
+    const workforceStat = Number(n.workforce)      || 0;
+    const industryStat  = Number(n.industry)       || 0;
+    const infraStat     = Number(n.infrastructure) || 0;
+    const production    = (mineralsStat / 3) * ((workforceStat + industryStat) / 200);
+    const demand        = (infraStat / 10) + (industryStat / 16);
+    return { production, demand, net: production - demand };
+}
+
+// Build a nation's surplus / deficit list. Energy + Minerals are the
+// only tradeable commodities right now, so we compute both from stats
+// rather than reading trade_flows (which is dollar-denominated and
+// doesn't track stat-based goods).
 function getNationSurplusesAndDeficits(nationId) {
     const nation = (_worldAllNations || []).find(n => n.id === nationId);
     const surpluses = [];
     const deficits = [];
 
-    const { net } = getNationEnergyBalance(nation);
-    if (net !== 0) {
+    const goods = [
+        { sector: 'energy',   icon: '\u26A1', name: 'Energy',   balance: getNationEnergyBalance(nation)   },
+        { sector: 'minerals', icon: '\u26CF', name: 'Minerals', balance: getNationMineralsBalance(nation) },
+    ];
+    for (const g of goods) {
+        const net = g.balance.net;
+        if (net === 0) continue;
         const entry = {
-            sector: 'energy',
-            icon: '\u26A1',
-            name: 'Energy',
-            amount: Math.abs(net),
+            sector:    g.sector,
+            icon:      g.icon,
+            name:      g.name,
+            amount:    Math.abs(net),
             statBased: true,
         };
         if (net > 0) surpluses.push(entry);
-        else deficits.push(entry);
+        else         deficits.push(entry);
     }
 
     return { surpluses, deficits };
