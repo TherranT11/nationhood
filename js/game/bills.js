@@ -3392,7 +3392,9 @@ export async function enactBill(supabase, bill, currentTick) {
     }
 
     // ── Apply effect_data articles (e.g. tax rate changes) ──
-    const VALID_TAX_KEYS = new Set(['income_tax', 'sales_tax', 'corporate_tax']);
+    // sales_tax was dropped from nations in 20260430_alpha_stats_phase9;
+    // bills with stale sales_tax payloads silently no-op via this filter.
+    const VALID_TAX_KEYS = new Set(['income_tax', 'corporate_tax']);
     const taxUpdates = {};
 
     for (const art of (bill.bill_articles || [])) {
