@@ -1169,17 +1169,15 @@ function renderMasthead(history) {
 }
 
 function renderFinancialRow(history) {
-    // Current-tick values from the corp row.
+    // Current-tick values from the corp row. corp_profit_current_tick is
+    // a GENERATED column on factions = revenue − costs − wages, so the
+    // Revenue card reads the database SSoT directly.
     const cash    = Number(faction.corp_cash_reserves) || 0;
-    const grossRevenue = Number(faction.corp_revenue_current_tick) || 0;
     const costs   = Number(faction.corp_costs_current_tick) || 0;
     const wages   = Number(faction.corp_wages_current_tick) || 0;
     const debt    = Number(faction.corp_debt) || 0;
     const opex    = costs + wages;
-    // Revenue card is the SSoT for cash delta this tick:
-    //   gross inflows − operating costs − wages.
-    // If this shows −$500k, cash drops by $500k on the next tick close.
-    const netRevenue = grossRevenue - opex;
+    const netRevenue = Number(faction.corp_profit_current_tick) || 0;
 
     // Most recent prior-tick row (history is oldest-first).
     const prev = history.length > 0 ? history[history.length - 1] : null;
