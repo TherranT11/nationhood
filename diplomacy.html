@@ -30,17 +30,28 @@
 <div id="subtab-world" class="diplo-subtab-content">
 <div class="world-page">
     <div class="world-top-row">
-        <!-- Map panel -->
-        <div class="world-map-panel" id="world-map-panel">
-            <img id="world-map-img" src="./assets/map/World Map Crucera 3.1.svg" alt="World Map" draggable="false"
-                 style="width:100%;height:auto;pointer-events:none;">
-            <div class="world-map-controls">
-                <div class="world-map-btn" id="map-zoom-in">+</div>
-                <div class="world-map-btn" id="map-zoom-out">&minus;</div>
-                <div class="world-map-btn" id="map-zoom-reset">&#8634;</div>
+        <!-- Left column: map stacked above the All Nations grid so the
+             grid sits directly under the map regardless of how tall the
+             nation-highlight side panel grows. -->
+        <div class="world-map-col">
+            <div class="world-map-panel" id="world-map-panel">
+                <img id="world-map-img" src="./assets/map/World Map Crucera 3.1.svg" alt="World Map" draggable="false"
+                     style="width:100%;height:auto;pointer-events:none;">
+                <div class="world-map-controls">
+                    <div class="world-map-btn" id="map-zoom-in">+</div>
+                    <div class="world-map-btn" id="map-zoom-out">&minus;</div>
+                    <div class="world-map-btn" id="map-zoom-reset">&#8634;</div>
+                </div>
+                <div class="world-map-zoom" id="map-zoom-label">100%</div>
+                <div class="world-map-hint">scroll to zoom &middot; drag to pan</div>
             </div>
-            <div class="world-map-zoom" id="map-zoom-label">100%</div>
-            <div class="world-map-hint">scroll to zoom &middot; drag to pan</div>
+
+            <!-- All Nations grid — populated by renderNationList(); search
+                 input in the side panel filters it. -->
+            <div class="world-nations-grid-wrap">
+                <div class="world-nations-grid-header">ALL NATIONS</div>
+                <div id="world-nations-grid" class="world-nations-grid"></div>
+            </div>
         </div>
 
         <!-- Nation highlight panel (search + selected nation card) -->
@@ -64,13 +75,6 @@
             </div>
         </div>
     </div><!-- /world-top-row -->
-
-    <!-- Full-width nations grid (renders below the map). renderNationList()
-         populates #world-nations-grid; the search input above filters it. -->
-    <div class="world-nations-grid-wrap">
-        <div class="world-nations-grid-header">ALL NATIONS</div>
-        <div id="world-nations-grid" class="world-nations-grid"></div>
-    </div>
 </div>
 </div><!-- /subtab-world -->
 
