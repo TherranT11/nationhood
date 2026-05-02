@@ -251,9 +251,11 @@ window._corpTopbarToggleDropdown = function() {
     if (dd) dd.classList.toggle('open');
 };
 
-// CASH-pill dropdown: per-tick P&L from corp_pnl_history.profit (the same
-// SSoT the dashboard's Revenue card reads) plus one-off finance_active_loans
-// originations for equity / loan cash transfers.
+// CASH-pill dropdown: per-tick P&L from corp_cash_history (the only
+// populated source today) plus one-off finance_active_loans originations
+// for equity / loan cash transfers. corp_pnl_history is the eventual
+// SSoT but has no writer yet — see follow-up to refactor accruePnl
+// into per-category writes so both surfaces can share one source.
 window._corpTopbarToggleCashDropdown = async function() {
     const dd = document.getElementById('corp-cash-dropdown');
     if (!dd) return;
@@ -270,9 +272,9 @@ async function _renderCashMovements() {
         const { tickToDate } = await import('./utils.js');
         const factionId = _topbarFaction.id;
 
-        const histQ = _supabase.from('corp_pnl_history')
-            .select('tick, profit')
-            .eq('corp_id', factionId)
+        const histQ = _supabase.from('corp_cash_history')
+            .select('tick, cash_delta, non_pnl_cash_movements')
+            .eq('faction_id', factionId)
             .order('tick', { ascending: false })
             .limit(10);
         // BORROWER side — one-off cash INFLOWS (equity sales, loans received).
@@ -289,7 +291,7 @@ async function _renderCashMovements() {
             .order('started_tick', { ascending: false })
             .limit(10);
         const [histRes, borrowerRes, lenderRes] = await Promise.all([histQ, borrowerQ, lenderQ]);
-        if (histRes.error)     console.warn('[CashDropdown] corp_pnl_history query error:', histRes.error.message);
+        if (histRes.error)     console.warn('[CashDropdown] corp_cash_history query error:', histRes.error.message);
         if (borrowerRes.error) console.warn('[CashDropdown] finance_active_loans (borrower) query error:', borrowerRes.error.message);
         if (lenderRes.error)   console.warn('[CashDropdown] finance_active_loans (lender) query error:', lenderRes.error.message);
         const hist = histRes.data;
@@ -298,7 +300,7 @@ async function _renderCashMovements() {
 
         const entries = [];
         for (const h of (hist || [])) {
-            const pnl = Number(h.profit || 0);
+            const pnl = Number(h.cash_delta || 0) - Number(h.non_pnl_cash_movements || 0);
             if (pnl === 0) continue;
             entries.push({
                 tick: h.tick,
