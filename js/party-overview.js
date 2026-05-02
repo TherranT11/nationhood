@@ -312,6 +312,11 @@ function renderSummaryBar(o, partyColor, seats, totalSeats, momentum) {
                 <div class="po-summary-sub">${o.ticksInPower} ticks in power</div>
             </div>
         </div>
+        <!-- KNOWN-STALE: factions.momentum no longer drives elections —
+             run_election was rewritten in 20260517 to compute vote share
+             from sector popularity. This cell stays for now to avoid a
+             scope creep on the bills-feed change; replace with a real
+             SECTORS / POPULARITY summary metric in a follow-up. -->
         <div class="po-summary-cell" style="text-align:center;">
             <div class="po-summary-label">MOMENTUM</div>
             <div style="display:flex;align-items:baseline;justify-content:center;gap:3px;">
@@ -475,7 +480,7 @@ function renderCaucuses(o) {
 function renderMechanicsCard() {
     return `<div class="po-card">
         <div class="po-card-header">
-            <span class="po-card-title">HOW POPULARITY WORKS</span>
+            <span class="po-card-title">SECTORS AND POPULARITY</span>
         </div>
         <div style="padding:10px 12px;display:flex;flex-direction:column;gap:10px;">
             <div>
