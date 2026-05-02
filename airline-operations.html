@@ -4,37 +4,90 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Operations | Nationhood</title>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=JetBrains+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/corp-topbar.css">
 <link rel="stylesheet" href="css/corp-light-theme.css">
 <style>
 /* ══════════════════════════════════════════════════════════════
    AIRLINE OPERATIONS — Phase 3 read-only surface.
    Class prefix: .ao-* (airline-operations).
+   Uses the site-standard corp-redesign palette + IBM Plex / JetBrains
+   Mono so the page reads as one product with corp-dashboard and the
+   other corp-operations-* pages. Bespoke --accent-* aliases below
+   keep the page-local CSS rules unchanged — they just point at the
+   shared --gold / --teal / --green / --orange swatch.
    ══════════════════════════════════════════════════════════════ */
 body.airline-operations {
-  --bg-0: #0d0e10;
-  --bg-card: #161820;
-  --bg-panel: #14161e;
-  --text-bright: #e8e6e3;
-  --text-primary: #c4c2bd;
-  --text-secondary: #9a978f;
-  --text-muted: #6b685e;
-  --text-dim: #4a473d;
-  --line-soft: rgba(255,255,255,0.05);
-  --line-bright: #2c2d35;
-  --accent-gold: #c9a449;
-  --accent-teal: #5aafa5;
-  --accent-green: #6aa86a;
-  --accent-rust: #c85a3a;
-  --serif: 'Fraunces', serif;
+  /* Site-standard tokens (mirrors body.corp-redesign on corp-dashboard).
+     The shared corp-topbar.css reads these — without them the topbar
+     falls back to root defaults and renders differently from the
+     dashboard. Page-local rules below use the bespoke --accent-* /
+     --line-* aliases. */
+  --bg-0: #0e0e0c;
+  --bg-1: #1a1a1a;
+  --bg-2: #1a1a17;
+  --bg-3: #252525;
+  --bg-4: #24241f;
+  --bg-5: #2c2c26;
+  --bg-hover: #282822;
+  --bg-card: #1a1a17;
+  --bg-panel: #252525;
+  --panel-main: #1f1f1a;
+  --panel-border: rgba(255,255,255,0.08);
+  --text-bright: #f0efe6;
+  --text-primary: #c4c2b8;
+  --text-secondary: #888;
+  --text-muted: #666;
+  --text-dim: #4a4940;
+  --text-ghost: #333229;
+  --border-hair: rgba(255,255,255,0.04);
+  --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08);
+  --border-2: rgba(255,255,255,0.12);
+  --green: #5cb85c;
+  --red: #d9534f;
+  --amber: #c8a832;
+  --gold: #c8a832;
+  --orange: #e8724a;
+  --blue: #5bc0de;
+  --teal: #5aafa5;
+
+  /* Page-local aliases preserved so .ao-* rules don't have to change. */
+  --line-soft: var(--border-hair);
+  --line-bright: var(--border-2);
+  --accent-gold: var(--gold);
+  --accent-teal: var(--teal);
+  --accent-green: var(--green);
+  --accent-rust: var(--orange);
+
+  --serif: 'IBM Plex Serif', Georgia, serif;
   --mono: 'JetBrains Mono', monospace;
-  --sans: 'IBM Plex Sans', sans-serif;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+
   background: var(--bg-0);
   color: var(--text-primary);
   font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.45;
   margin: 0;
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+body.airline-operations * { box-sizing: border-box; }
+
+/* Light-mode override so the corp-topbar theme toggle works here too,
+   matching the pattern in corp-operations.html. */
+body.airline-operations.light-mode {
+  --bg-0:        #faf9f5;
+  --bg-card:     #ffffff;
+  --bg-panel:    #faf9f5;
+  --text-bright: #1a1a17;
+  --text-primary:#2d2d28;
+  --text-muted:  #6a6660;
+  --line-soft:   #e8e7e0;
+  --line-bright: #e0dfd6;
+  --border-hair: #e8e7e0;
+  --border-2:    #e0dfd6;
 }
 
 .ao-page {
