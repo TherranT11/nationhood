@@ -29,7 +29,8 @@ export let _overview = {
     allParties: [],             // all party factions in this nation
     rivalParties: [],           // allParties minus mine
     strongholdsByParty: {},     // { factionId: [{ sector_key, name, contribution }, ...top 3] }
-    recentActivity: [],         // campaign_actions for my faction
+    passedBills: [],            // recently-passed bills in this nation, with sector_effects + voter stances
+    sectors: [],                // active sectors in this nation (sector_key → name lookup for the bills feed)
     caucuses: [],               // caucus_factions for my faction
     nextElection: null,         // next scheduled election
     nextElectionTicks: null,    // ticks until next election
@@ -141,7 +142,7 @@ export async function initPartyOverview(supabase, state, containerId) {
             governingResult,
             partiesResult,
             sectorsResult,
-            activityResult,
+            passedBillsResult,
             caucusResult,
             electionResult,
             ministriesResult,
@@ -156,7 +157,18 @@ export async function initPartyOverview(supabase, state, containerId) {
                 .eq('nation_id', nationId)
                 .eq('is_active', true)
                 .order('display_order'),
-            supabase.from('campaign_actions').select('*').eq('party_id', factionId).order('tick_performed', { ascending: false }).limit(20),
+            // Recently-passed bills feed. Mirrors the join shape used by
+            // processSectorShifts in advance-tick (selected_option's
+            // sector_effects preferred over the legacy policies column),
+            // plus bill_support stances so the renderer can split parties
+            // into "gained" (sponsor + yes) and "lost" (no) buckets.
+            supabase.from('bills')
+                .select('id, bill_name, bill_type, proposed_by, passed_tick, bill_articles(policies(sector_effects), selected_option:policy_options!selected_option_id(sector_effects)), bill_support(faction_id, stance)')
+                .eq('nation_id', nationId)
+                .eq('status', 'passed')
+                .not('passed_tick', 'is', null)
+                .order('passed_tick', { ascending: false })
+                .limit(15),
             // Phase 5b: caucus_factions table dropped. Empty result preserves
             // the renderCaucuses path (shows "None" when array is empty).
             Promise.resolve({ data: [], error: null }),
@@ -168,9 +180,9 @@ export async function initPartyOverview(supabase, state, containerId) {
         // Log errors but don't fail
         if (partiesResult.error) console.error('[PartyOverview] Parties fetch error:', partiesResult.error.message);
         if (sectorsResult.error) console.error('[PartyOverview] Sectors fetch error:', sectorsResult.error.message);
-        if (activityResult.error) console.error('[PartyOverview] Activity fetch error:', activityResult.error.message);
         if (caucusResult.error) console.error('[PartyOverview] Caucus fetch error:', caucusResult.error.message);
         if (electionResult.error) console.error('[PartyOverview] Election fetch error:', electionResult.error.message);
+        if (passedBillsResult.error) console.error('[PartyOverview] Passed-bills fetch error:', passedBillsResult.error.message);
 
         const allParties = partiesResult.data || [];
         const sectors = sectorsResult.data || [];
@@ -230,7 +242,8 @@ export async function initPartyOverview(supabase, state, containerId) {
             blocMap,
             strongholdsByParty,
             sectorRanking,
-            recentActivity: activityResult.data || [],
+            passedBills: passedBillsResult.data || [],
+            sectors,
             caucuses: caucusResult.data || [],
             nextElection: nextElection,
             nextElectionTicks: nextElectionTicks,
@@ -273,8 +286,8 @@ function renderPartyOverview(container) {
                 ${renderCaucuses(o)}
             </div>
             <div class="po-col-center" id="po-center-col">
-                ${renderMomentumCard(o, momentum)}
-                ${renderActivityFeed(o)}
+                ${renderMechanicsCard()}
+                ${renderPassedBillsFeed(o)}
             </div>
             <div class="po-col-right" id="po-right-col">
                 ${renderRivalParties(o, faction)}
@@ -456,111 +469,185 @@ function renderCaucuses(o) {
 // CENTER COLUMN
 // ═══════════════════════════════════════════════════
 
-function renderMomentumCard(o, momentum) {
-    const decayPct = 8;
-    const decayPerTick = Math.round(momentum * decayPct / 100 * 10) / 10;
-    const barPct = Math.min(100, Math.max(0, momentum));
-    const momColor = momentum >= 60 ? 'var(--green)' : momentum >= 30 ? 'var(--orange)' : 'var(--red)';
-
+// Static explainer for the three concepts that drive party performance.
+// Replaces the per-faction MOMENTUM card now that vote share is computed
+// from sector popularity (run_election; 20260517_run_election_sector_popularity).
+function renderMechanicsCard() {
     return `<div class="po-card">
         <div class="po-card-header">
-            <span class="po-card-title">MOMENTUM</span>
-            <span style="font-family:var(--font-mono);font-size:7px;color:var(--red);">losing ${decayPerTick}/tick</span>
+            <span class="po-card-title">HOW POPULARITY WORKS</span>
         </div>
-        <div style="padding:10px 12px;">
-            <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:6px;">
-                <span style="font-family:var(--font-mono);font-size:28px;font-weight:700;color:${momColor};">${momentum}</span>
-                <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">/ 100</span>
+        <div style="padding:10px 12px;display:flex;flex-direction:column;gap:10px;">
+            <div>
+                <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-bright);letter-spacing:0.05em;">SECTORS</div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);line-height:1.5;margin-top:3px;">
+                    Slices of the electorate (Construction, Finance, Manufacturing, etc.). Each carries a <span style="color:var(--text-bright);font-weight:700;">weight</span> — w1 minor, w2 average, w3 major — that scales how much its voters matter on election day.
+                </div>
             </div>
-            <div style="width:100%;height:4px;background:var(--border-main);">
-                <div style="height:100%;width:${barPct}%;background:${momColor};"></div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-bright);letter-spacing:0.05em;">POPULARITY</div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);line-height:1.5;margin-top:3px;">
+                    A party's standing inside a sector (0–10). Bills shift it: passing bills credit the sponsor and YES voters with the policy's effects, debit NO voters with the inverse. Failed bills hit the sponsor with the inverse alone.
+                </div>
             </div>
-            <div style="display:flex;justify-content:space-between;margin-top:4px;">
-                <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);">Decays ${decayPct}%/tick</span>
-                <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-secondary);">30% of election outcome</span>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-bright);letter-spacing:0.05em;">TURNOUT</div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);line-height:1.5;margin-top:3px;">
+                    Per-sector engagement multiplier (0.50–1.30). High-turnout sectors translate the same popularity into more votes; low-turnout sectors disproportionately reward the parties already entrenched there.
+                </div>
+            </div>
+            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);line-height:1.5;border-top:1px solid var(--border-hair);padding-top:6px;">
+                Vote share = Σ (popularity × weight × turnout) per party, normalized across the nation.
             </div>
         </div>
     </div>`;
 }
 
-function renderActivityFeed(o) {
-    const actions = o.recentActivity || [];
+// Aggregate every article's sector_effects into a single
+// sector_key → change_tenths map, preferring the chosen policy_option's
+// effects (Phase 4.2+) and falling back to the legacy policies.sector_effects
+// for orphaned data. Mirrors sumSectorEffects in advance-tick.
+function aggregateBillEffects(bill) {
+    const sums = new Map();
+    for (const art of (bill.bill_articles || [])) {
+        const effects = art?.selected_option?.sector_effects
+                     || art?.policies?.sector_effects
+                     || [];
+        for (const e of effects) {
+            if (!e || typeof e.sector_key !== 'string') continue;
+            const change = Number(e.change_tenths);
+            if (!Number.isFinite(change) || change === 0) continue;
+            sums.set(e.sector_key, (sums.get(e.sector_key) || 0) + change);
+        }
+    }
+    return Array.from(sums, ([sector_key, change_tenths]) => ({ sector_key, change_tenths }));
+}
+
+function billPartyChip(faction, isSponsor) {
+    if (!faction) return '';
+    const color = faction.party_color || faction.color || '#888';
+    const label = faction.abbreviation || (faction.faction_name || '?').slice(0, 3).toUpperCase();
+    const sponsorMark = isSponsor
+        ? `<span style="font-family:var(--font-mono);font-size:6px;color:${color};margin-left:3px;letter-spacing:0.05em;">SPONSOR</span>`
+        : '';
+    return `<span style="display:inline-flex;align-items:center;gap:2px;padding:1px 5px;border:1px solid ${color}55;background:${color}14;font-family:var(--font-mono);font-size:8px;font-weight:700;color:${color};">${esc(label)}${sponsorMark}</span>`;
+}
+
+// Render an inline list of sector deltas. `invert` flips every sign — used
+// for the NO bucket since NO voters get the inverse of the policy's effects.
+function billDeltasInline(effects, sectorNameByKey, invert) {
+    if (!effects.length) return `<span style="color:var(--text-dim);">no sector effects</span>`;
+    return effects.map(e => {
+        const tenths = invert ? -e.change_tenths : e.change_tenths;
+        const value = tenths / 10;
+        const sign = value > 0 ? '+' : (value < 0 ? '−' : '');
+        const mag = Math.abs(value).toFixed(1);
+        const color = value > 0 ? 'var(--green)' : value < 0 ? 'var(--red)' : 'var(--text-dim)';
+        const name = sectorNameByKey.get(e.sector_key) || e.sector_key;
+        return `<span style="white-space:nowrap;"><span style="color:${color};font-weight:700;">${sign}${mag}</span> <span style="color:var(--text-secondary);">${esc(name)}</span></span>`;
+    }).join(`<span style="color:var(--text-dim);margin:0 4px;">·</span>`);
+}
+
+// Passed-bills feed. Per bill, shows: title + sponsor + ticks-ago, the
+// sponsor + YES bucket with the literal sector deltas, and the NO bucket
+// with the inverse. Resolution rules taken from
+// supabase/functions/advance-tick/index.ts:4911 (computeSectorShifts):
+//   passed → sponsor + YES voters get +change_tenths; NO voters get
+//   −change_tenths. Sponsor is force-cast YES even without a bill_support
+//   row, which is why we merge it in below.
+function renderPassedBillsFeed(o) {
+    const bills = o.passedBills || [];
     const currentTick = _state.shard?.current_tick || 0;
 
-    if (actions.length === 0) {
+    // Skip the political-process bill types that carry no sector effects —
+    // matches the legislative filter inside processSectorShifts.
+    const legislative = bills.filter(b =>
+        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override']
+            .includes(b.bill_type)
+    );
+
+    if (legislative.length === 0) {
         return `<div class="po-card" style="flex:1;">
             <div class="po-card-header">
-                <span class="po-card-title">RECENT ACTIVITY</span>
+                <span class="po-card-title">RECENT BILLS</span>
+                <span class="po-card-subtitle">passed bills · sector outcomes</span>
             </div>
-            <div style="padding:24px 12px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">No recent actions.</div>
+            <div style="padding:24px 12px;text-align:center;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">No passed bills yet.</div>
         </div>`;
     }
 
-    const ACTION_LABELS = {
-        rally: 'Rally',
-        press_conference: 'Press Conference',
-        attack: 'Attack Ad',
-        issue_statement: 'Statement',
-        ideological_pivot: 'Ideology Shift',
-        take_stance: 'Took Stance',
-        poll_now: 'Polled',
-        endorse: 'Endorsement',
-        lobby: 'Lobby',
-    };
+    const factionById = new Map((o.allParties || []).map(p => [p.id, p]));
+    const sectorNameByKey = new Map((o.sectors || []).map(s => [s.sector_key, s.name]));
 
-    const rowsHtml = actions.map(a => {
-        const ticksAgo = currentTick - (a.tick_performed || 0);
-        const agoLabel = ticksAgo === 0 ? '0t' : ticksAgo + 't';
-        const result = a.result || {};
-        // Writers historically used different field names for the momentum
-        // change — rally wrote `momentum`, fundraise wrote `momCost` (the
-        // un-signed cost), press_conference wrote `momentumDelta`. New
-        // inserts always set `momentumDelta`; the rest of the chain covers
-        // legacy rows already on disk so they render correctly too.
-        const momDelta = result.momentumDelta
-            || result.momentum_delta
-            || result.momentum
-            || (result.momCost ? -result.momCost : 0)
-            || (result.effects || []).reduce((s, e) => s + (e.stat === 'Momentum' ? e.value : 0), 0)
-            || 0;
-        const momSign = momDelta > 0 ? '+' : '';
-        const momColor = momDelta > 0 ? 'var(--green)' : momDelta < 0 ? 'var(--red)' : 'var(--text-dim)';
-        const label = ACTION_LABELS[a.action_type] || a.action_type?.replace(/_/g, ' ') || '?';
+    const rowsHtml = legislative.map(b => {
+        const effects = aggregateBillEffects(b);
+        const ticksAgo = currentTick - (b.passed_tick || 0);
+        const agoLabel = ticksAgo === 0 ? 'just now' : ticksAgo + 't ago';
 
-        // Build description from result
-        let desc = label;
-        if (a.action_type === 'rally') {
-            desc = 'Rally: ' + (result.outcomeName || result.label || 'Unknown') + (momDelta ? ' (' + momSign + momDelta + ')' : '');
-        } else if (a.action_type === 'press_conference') {
-            desc = 'Press Conference (' + momSign + momDelta + ')';
-        } else if (a.action_type === 'attack') {
-            desc = 'Attack on ' + (result.targetName || 'rival');
-        } else if (a.action_type === 'issue_statement') {
-            desc = 'Issued statement' + (momDelta ? ' (' + momSign + momDelta + ')' : '');
-        } else if (a.action_type === 'take_stance') {
-            desc = 'Took stance on ' + (result.issueLabel || 'issue');
-        } else if (a.action_type === 'ideological_pivot') {
-            desc = 'Ideology shift: ' + (result.targetAxis || '');
-        } else if (a.action_type === 'poll_now') {
-            desc = 'Polled (margin: ' + (result.pollMargin || '?') + ')';
+        const stanceById = new Map();
+        for (const s of (b.bill_support || [])) {
+            const stance = s.stance === 'accept' ? 'yes'
+                         : s.stance === 'reject' ? 'no'
+                         : s.stance;
+            if (stance === 'yes' || stance === 'no') stanceById.set(s.faction_id, stance);
+        }
+        if (b.proposed_by) stanceById.set(b.proposed_by, 'yes');
+
+        const yesChips = [];
+        const noChips = [];
+        for (const [factionId, stance] of stanceById) {
+            const faction = factionById.get(factionId);
+            if (!faction) continue;
+            const chip = billPartyChip(faction, factionId === b.proposed_by);
+            if (stance === 'yes') yesChips.push(chip);
+            else if (stance === 'no') noChips.push(chip);
         }
 
-        return `<div style="padding:5px 12px;border-bottom:1px solid rgba(200,196,184,0.03);display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:9px;color:var(--text-secondary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px;">${esc(desc)}</span>
-            <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
-                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${momColor};">${momDelta !== 0 ? momSign + momDelta : '\u2014'}</span>
-                <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);width:20px;text-align:right;">${agoLabel}</span>
+        const sponsor = factionById.get(b.proposed_by);
+        const sponsorLabel = sponsor
+            ? `<span style="color:${sponsor.party_color || sponsor.color || '#888'};font-weight:700;">${esc(sponsor.abbreviation || sponsor.faction_name || '?')}</span>`
+            : '<span style="color:var(--text-dim);">unknown</span>';
+
+        const yesLine = yesChips.length
+            ? `<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+                    <span style="font-family:var(--font-mono);font-size:7px;color:var(--green);letter-spacing:0.05em;width:36px;flex-shrink:0;">GAINED</span>
+                    ${yesChips.join('')}
+               </div>
+               <div style="margin-left:40px;font-family:var(--font-mono);font-size:8px;line-height:1.6;margin-top:2px;">
+                    ${billDeltasInline(effects, sectorNameByKey, false)}
+               </div>`
+            : '';
+
+        const noLine = noChips.length
+            ? `<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+                    <span style="font-family:var(--font-mono);font-size:7px;color:var(--red);letter-spacing:0.05em;width:36px;flex-shrink:0;">LOST</span>
+                    ${noChips.join('')}
+               </div>
+               <div style="margin-left:40px;font-family:var(--font-mono);font-size:8px;line-height:1.6;margin-top:2px;">
+                    ${billDeltasInline(effects, sectorNameByKey, true)}
+               </div>`
+            : '';
+
+        return `<div style="padding:8px 12px;border-bottom:1px solid rgba(200,196,184,0.05);">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+                <span style="font-size:10px;font-weight:700;color:var(--text-bright);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(b.bill_name || 'Untitled bill')}</span>
+                <span style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);flex-shrink:0;">${agoLabel}</span>
             </div>
+            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);margin-top:1px;">sponsored by ${sponsorLabel}</div>
+            ${yesLine}
+            ${noLine}
         </div>`;
     }).join('');
 
     return `<div class="po-card" style="flex:1;">
         <div class="po-card-header">
-            <span class="po-card-title">RECENT ACTIVITY</span>
+            <span class="po-card-title">RECENT BILLS</span>
+            <span class="po-card-subtitle">passed bills · sector outcomes</span>
         </div>
-        <div style="max-height:380px;overflow-y:auto;">${rowsHtml}</div>
+        <div style="max-height:520px;overflow-y:auto;">${rowsHtml}</div>
     </div>`;
 }
+
 
 function renderQuickInfoCards() {
     return `<div style="display:flex;gap:6px;">
