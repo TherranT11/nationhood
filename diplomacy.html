@@ -1234,6 +1234,45 @@ async function loadTradeAgreements() {
     ]);
     _tradeAgreementsList = agResult.data || [];
     _tradeNegotiationsList = negResult.data || [];
+
+    // Phase 4: cache awarded trade-agreement-spawned shipping contracts
+    // and their winning bids so getEnergyTradingVolume can recognize
+    // shipping-in-place and read actual delivered_energy/tick instead
+    // of the agreement's stated volume.
+    await loadAgreementShippingContracts();
+}
+
+let _shippingContractsByAgreement = {};  // agreementId → [{ id, energy_per_tick, delivery_priority }]
+async function loadAgreementShippingContracts() {
+    _shippingContractsByAgreement = {};
+    const agreementIds = (_tradeAgreementsList || [])
+        .filter(a => a.status === 'active')
+        .map(a => a.id);
+    if (agreementIds.length === 0) return;
+
+    // Pull awarded contracts + their accepted bid in one round-trip via
+    // an embedded select. shipping_contract_bids → contract_id is the
+    // FK; PostgREST embeds the matching row.
+    const { data, error } = await _supabase.from('shipping_contracts')
+        .select('id, trade_agreement_id, status, winner_faction_id, revenue_per_tick, shipping_contract_bids!contract_id(energy_per_tick, route_risk_delta, status)')
+        .in('trade_agreement_id', agreementIds)
+        .eq('status', 'awarded');
+    if (error) {
+        console.warn('[diplomacy] agreement shipping contracts fetch failed:', error.message);
+        return;
+    }
+    for (const c of (data || [])) {
+        if (!c.trade_agreement_id) continue;
+        const acceptedBid = (c.shipping_contract_bids || []).find(b => b.status === 'accepted');
+        const energyPerTick = Number(acceptedBid?.energy_per_tick) || 0;
+        const list = _shippingContractsByAgreement[c.trade_agreement_id] || [];
+        list.push({
+            id: c.id,
+            energy_per_tick: energyPerTick,
+            winner_faction_id: c.winner_faction_id,
+        });
+        _shippingContractsByAgreement[c.trade_agreement_id] = list;
+    }
 }
 
 // ── Shipping Contracts block (pending applications + active claims) ──
@@ -2258,15 +2297,28 @@ function getEnergyTradingVolume() {
         const partnerId = ag.nation_a_id === myId ? ag.nation_b_id : ag.nation_a_id;
         if (!partnerId) continue;
         const shipNeed = _shippingNeedForPartner(partnerId) || { needsShipping: true };
-        const hasLogistics = !!getAgreementShippingInfo(ag.id)?.hasLogistics;
-        const shippingOk = !shipNeed.needsShipping || hasLogistics;
+        // Logistics-in-place: legacy shipping_routes (organic) OR a
+        // Phase 4 awarded shipping_contracts row tied to this agreement.
+        const hasLegacyLogistics = !!getAgreementShippingInfo(ag.id)?.hasLogistics;
+        const phase4Contracts    = _shippingContractsByAgreement[ag.id] || [];
+        const hasPhase4Logistics = phase4Contracts.length > 0;
+        const shippingOk = !shipNeed.needsShipping || hasLegacyLogistics || hasPhase4Logistics;
         if (!shippingOk) continue;
 
         for (const art of (ag.articles || [])) {
             if (art.article_type !== 'trade_flow') continue;
             const d = art.data || {};
             if (d.commodity !== 'energy') continue;
-            const volume = Number(d.volume) || 0;
+            const statedVolume = Number(d.volume) || 0;
+            if (statedVolume <= 0) continue;
+
+            // Phase 4: prefer the WINNING BID's actual delivered
+            // energy/tick over the agreement's stated volume. The bid
+            // can deliver less if the corp under-allocated freighters,
+            // or the same if fully covered. Falls back to stated volume
+            // when no Phase 4 contract exists yet (e.g., legacy routes).
+            const phase4Energy = phase4Contracts.reduce((s, c) => s + (Number(c.energy_per_tick) || 0), 0);
+            const volume = hasPhase4Logistics ? phase4Energy : statedVolume;
             if (volume <= 0) continue;
 
             // Resolve buyer/seller relative to MY nation. direction is
