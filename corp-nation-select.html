@@ -820,6 +820,13 @@ async function confirmNation() {
             // sides (more capex spent → bigger book, but more obligations
             // too). SoL 0 → $5M, 50 → $10M, 100 → $15M.
             startingDebt = Math.round(10_000_000 * (0.5 + sol / 100));
+        } else if (corpSetup.sector === 'Airline') {
+            // $30M baseline scaled by the host nation's standard of living.
+            // 30M × (1 + (sol − 50) / 100) ≡ 30M × (0.5 + sol/100) — same
+            // curve shape as Construction, half the capital. SoL 0 → $15M,
+            // 50 → $30M, 100 → $45M.
+            const sol = Number(nation.standard_of_living ?? 50);
+            startingCash = Math.round(30_000_000 * (0.5 + sol / 100));
         } else {
             const baseCash = corpSetup.sector === 'Finance'  ? 225_000_000
                            : corpSetup.sector === 'Shipping' ?  80_000_000
@@ -857,6 +864,15 @@ async function confirmNation() {
                 corp_lending_capital:      3,
                 corp_interest_rates:       3,
                 corp_overleverage:         0,
+            };
+        } else if (corpSetup.sector === 'Airline') {
+            // Airline hero stats. Fleet starts at 2 (2 Regional aircraft ×
+            // 1 slot each, per Q1: Regional=1 / Narrowbody=2 / Widebody=3).
+            // Routes 0; Op Safety 8.
+            sectorSeeds = {
+                corp_fleet:               2,
+                corp_routes:              0,
+                corp_op_safety:           8,
             };
         }
 
@@ -919,6 +935,22 @@ async function confirmNation() {
         // along with the orphan imports below; sector-specific starting
         // assets live on the corp row now (corp_assets / corp_work_crews
         // / etc., seeded above for Construction).
+
+        // Airline starting fleet + terminal seed.
+        if (corpSetup.sector === 'Airline') {
+            const aircraftRows = [
+                { corp_id: corpId, aircraft_class: 'regional' },
+                { corp_id: corpId, aircraft_class: 'regional' },
+            ];
+            const { error: aircraftErr } = await _supabase.from('corp_aircraft').insert(aircraftRows);
+            if (aircraftErr) console.warn('[CorpCreate] corp_aircraft seed failed:', aircraftErr.message);
+            const { error: terminalErr } = await _supabase.from('corp_airline_terminals').insert({
+                corp_id:   corpId,
+                nation_id: nation.id,
+                is_free:   true,
+            });
+            if (terminalErr) console.warn('[CorpCreate] corp_airline_terminals seed failed:', terminalErr.message);
+        }
 
         // Seed CEO executive record from faction leader data
         const corpFactionId = isLinkedCorp ? corpId : currentUser.id;

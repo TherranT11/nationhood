@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Operations | Nationhood</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=JetBrains+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/corp-topbar.css">
+<link rel="stylesheet" href="css/corp-light-theme.css">
+<style>
+/* ══════════════════════════════════════════════════════════════
+   AIRLINE OPERATIONS — Phase 1 shell.
+   Class prefix: .ao-* (airline-operations). Visual conventions
+   borrowed from corp-operations-shipping.html so the family of
+   ops pages reads as one design language.
+   ══════════════════════════════════════════════════════════════ */
+body.airline-operations {
+  --bg-0: #0d0e10;
+  --bg-card: #161820;
+  --bg-panel: #14161e;
+  --text-bright: #e8e6e3;
+  --text-primary: #c4c2bd;
+  --text-secondary: #9a978f;
+  --text-muted: #6b685e;
+  --text-dim: #4a473d;
+  --line-soft: rgba(255,255,255,0.05);
+  --line-bright: #2c2d35;
+  --accent-gold: #c9a449;
+  --accent-teal: #5aafa5;
+  --accent-green: #6aa86a;
+  --accent-rust: #c85a3a;
+  --serif: 'Fraunces', serif;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'IBM Plex Sans', sans-serif;
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font-family: var(--sans);
+  margin: 0;
+  min-height: 100vh;
+}
+
+.ao-page {
+  max-width: 1280px;
+  margin: 24px auto 64px;
+  padding: 0 32px;
+}
+
+.ao-section { margin-bottom: 32px; }
+.ao-section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  border-bottom: 1px solid var(--line-bright);
+  padding-bottom: 10px;
+  margin-bottom: 16px;
+}
+.ao-section-header h2 {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 500;
+  margin: 0;
+  color: var(--text-bright);
+  letter-spacing: -0.01em;
+}
+.ao-section-header h2 .num {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent-gold);
+  margin-right: 8px;
+  letter-spacing: 0.15em;
+}
+.ao-section-header .desc {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ── Hero stats ─────────────────────────────────────── */
+.ao-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--line-bright);
+  border: 1px solid var(--line-bright);
+}
+.ao-hero-stat {
+  background: var(--bg-card);
+  padding: 28px 28px 24px;
+  position: relative;
+  overflow: hidden;
+}
+.ao-hero-stat::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(to right, var(--accent-gold), transparent);
+}
+.ao-hero-stat[data-stat="fleet"]::before    { background: linear-gradient(to right, var(--accent-teal),  transparent); }
+.ao-hero-stat[data-stat="routes"]::before   { background: linear-gradient(to right, var(--accent-gold),  transparent); }
+.ao-hero-stat[data-stat="safety"]::before   { background: linear-gradient(to right, var(--accent-green), transparent); }
+.ao-hero-stat-eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent-gold);
+  margin-bottom: 8px;
+}
+.ao-hero-stat[data-stat="fleet"]  .ao-hero-stat-eyebrow { color: var(--accent-teal); }
+.ao-hero-stat[data-stat="safety"] .ao-hero-stat-eyebrow { color: var(--accent-green); }
+.ao-hero-stat-name {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 26px;
+  line-height: 1.05;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  letter-spacing: -0.015em;
+}
+.ao-hero-stat-value {
+  font-family: var(--serif);
+  font-size: 42px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text-bright);
+  font-variant-numeric: tabular-nums;
+}
+.ao-hero-stat-suffix {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.ao-hero-stat-detail {
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  letter-spacing: 0.06em;
+}
+
+/* ── Empty section state ────────────────────────────── */
+.ao-empty {
+  background: var(--bg-card);
+  border: 1px solid var(--line-bright);
+  padding: 36px 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.ao-empty strong {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  letter-spacing: 0.04em;
+}
+</style>
+</head>
+<body class="airline-operations">
+<div id="corp-topbar"></div>
+
+<div class="ao-page">
+
+  <!-- I. Hero Stats -->
+  <section class="ao-section">
+    <div class="ao-section-header">
+      <h2><span class="num">I.</span>Operating Snapshot</h2>
+      <span class="desc">Fleet · Routes · Safety</span>
+    </div>
+    <div class="ao-hero-stats">
+      <div class="ao-hero-stat" data-stat="fleet">
+        <div class="ao-hero-stat-eyebrow">Fleet</div>
+        <div class="ao-hero-stat-name">Aircraft <em>in service</em></div>
+        <div>
+          <span class="ao-hero-stat-value" id="ao-stat-fleet">—</span>
+          <span class="ao-hero-stat-suffix">slots</span>
+        </div>
+        <div class="ao-hero-stat-detail" id="ao-stat-fleet-detail"></div>
+      </div>
+      <div class="ao-hero-stat" data-stat="routes">
+        <div class="ao-hero-stat-eyebrow">Routes</div>
+        <div class="ao-hero-stat-name">Active <em>operations</em></div>
+        <div>
+          <span class="ao-hero-stat-value" id="ao-stat-routes">—</span>
+          <span class="ao-hero-stat-suffix">routes</span>
+        </div>
+      </div>
+      <div class="ao-hero-stat" data-stat="safety">
+        <div class="ao-hero-stat-eyebrow">Operational Safety</div>
+        <div class="ao-hero-stat-name">Clean <em>record</em></div>
+        <div>
+          <span class="ao-hero-stat-value" id="ao-stat-safety">—</span>
+          <span class="ao-hero-stat-suffix">/ 10</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- II. Pressing Issues -->
+  <section class="ao-section">
+    <div class="ao-section-header">
+      <h2><span class="num">II.</span>Pressing Issues</h2>
+      <span class="desc">Items requiring attention</span>
+    </div>
+    <div class="ao-empty" id="ao-issues">
+      <strong>No pressing issues</strong>
+      Operations are running cleanly. Issues will surface here as they arise.
+    </div>
+  </section>
+
+  <!-- III. Available Hubs -->
+  <section class="ao-section">
+    <div class="ao-section-header">
+      <h2><span class="num">III.</span>Available Hubs</h2>
+      <span class="desc">Terminals where this airline holds operating rights</span>
+    </div>
+    <div class="ao-empty" id="ao-hubs">
+      <strong>No hubs yet</strong>
+      Terminal acquisition lands in a later phase.
+    </div>
+  </section>
+
+  <!-- IV. Active Routes -->
+  <section class="ao-section">
+    <div class="ao-section-header">
+      <h2><span class="num">IV.</span>Active Routes</h2>
+      <span class="desc">Currently flying scheduled service</span>
+    </div>
+    <div class="ao-empty" id="ao-routes">
+      <strong>No active routes</strong>
+      Route planning lands in a later phase.
+    </div>
+  </section>
+
+</div>
+
+<script type="module">
+import { renderCorpTopBar } from './js/corp-topbar.js';
+import { _supabase } from './js/supabase-client.js';
+
+function escHtml(s) {
+    if (!s) return '';
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+async function init() {
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) { window.location.href = 'login.html'; return; }
+
+    // Resolve the active corp id (single-faction users) or the
+    // sessionStorage-pinned id (linked corp / multi-faction users).
+    const activeId = sessionStorage.getItem('active_faction_id') || user.id;
+
+    const [factionRes, shardRes] = await Promise.all([
+        _supabase.from('factions').select('*').eq('id', activeId).maybeSingle(),
+        _supabase.from('shard').select('current_tick, current_date, next_tick_at, tick_interval_hours').eq('name', 'Alpha Shard').single(),
+    ]);
+    if (factionRes.error || !factionRes.data) {
+        document.body.innerHTML = '<div style="padding:40px;font-family:var(--mono);color:#c85a3a;">Could not load corporation.</div>';
+        return;
+    }
+    const faction = factionRes.data;
+    const shard   = shardRes.data;
+
+    // Soft routing guard: this page is for Airline corps only. Other
+    // sectors land on their own ops page via SECTOR_OPS_PAGE.
+    if (faction.faction_type !== 'corporation' || faction.corp_sector !== 'Airline') {
+        window.location.href = 'corp-dashboard.html';
+        return;
+    }
+
+    // All user factions for the topbar's faction switcher.
+    const { data: allFactions } = await _supabase
+        .from('factions')
+        .select('id, faction_name, abbreviation, faction_type, linked_user_id')
+        .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+        .is('abandoned_at', null);
+
+    renderCorpTopBar(document.getElementById('corp-topbar'), {
+        activeTab: 'operations',
+        faction,
+        shard,
+        allUserFactions: allFactions || [],
+        supabase: _supabase,
+    });
+
+    // Hero stats from the corp row.
+    document.getElementById('ao-stat-fleet').textContent  = String(Number(faction.corp_fleet)  || 0);
+    document.getElementById('ao-stat-routes').textContent = String(Number(faction.corp_routes) || 0);
+    const opSafety = Number(faction.corp_op_safety) || 0;
+    document.getElementById('ao-stat-safety').textContent = opSafety.toFixed(opSafety % 1 === 0 ? 0 : 1);
+
+    // Fleet detail line: "2 Regional · 0 Narrowbody · 0 Widebody".
+    const { data: aircraft, error: aircraftErr } = await _supabase
+        .from('corp_aircraft')
+        .select('aircraft_class')
+        .eq('corp_id', faction.id);
+    if (aircraftErr) console.warn('[airline-ops] corp_aircraft fetch failed:', aircraftErr.message);
+    const counts = { regional: 0, narrowbody: 0, widebody: 0 };
+    for (const a of (aircraft || [])) {
+        if (counts[a.aircraft_class] !== undefined) counts[a.aircraft_class]++;
+    }
+    const detailEl = document.getElementById('ao-stat-fleet-detail');
+    if (detailEl) {
+        detailEl.textContent = `${counts.regional} Regional · ${counts.narrowbody} Narrowbody · ${counts.widebody} Widebody`;
+    }
+}
+
+init();
+</script>
+</body>
+</html>
