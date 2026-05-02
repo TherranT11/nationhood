@@ -935,17 +935,56 @@ async function confirmNation() {
         // assets live on the corp row now (corp_assets / corp_work_crews
         // / etc., seeded above for Construction).
 
-        // Airline starting terminal seed. New airlines launch with no
-        // aircraft and no routes — fleet/route counters start at 0 — but
-        // get one free terminal at the founder's home nation so they
-        // have a hub to anchor their first route purchase later.
+        // Airline starting terminal claim. New airlines launch with no
+        // aircraft and no routes; their one perk is a free terminal at
+        // the capital city of their home nation. If the home nation has
+        // no seeded cities yet (i.e. it's not Calveth or Avelia), or the
+        // capital is fully owned, the claim is skipped and the airline
+        // founds without a hub — they'll buy one in Phase 3.
         if (corpSetup.sector === 'Airline') {
-            const { error: terminalErr } = await _supabase.from('corp_airline_terminals').insert({
-                corp_id:   corpId,
-                nation_id: nation.id,
-                is_free:   true,
-            });
-            if (terminalErr) console.warn('[CorpCreate] corp_airline_terminals seed failed:', terminalErr.message);
+            const { data: capital, error: capitalErr } = await _supabase
+                .from('airline_cities')
+                .select('id, name')
+                .eq('nation_id', nation.id)
+                .eq('is_capital', true)
+                .maybeSingle();
+            if (capitalErr) {
+                console.warn('[CorpCreate] capital city lookup failed:', capitalErr.message);
+            } else if (!capital) {
+                console.warn('[CorpCreate] no airline_cities seeded for', nation.name, '— airline founded without a hub');
+            } else {
+                // Pick the lowest-numbered unowned terminal at the capital.
+                // Targeting #1 specifically would silently fail if a prior
+                // airline already claimed it (Phase 1 → 2 migrant, second
+                // founding in the same nation, etc.).
+                const { data: openTerm, error: termErr } = await _supabase
+                    .from('airline_terminals')
+                    .select('id, terminal_number')
+                    .eq('city_id', capital.id)
+                    .is('owner_airline_id', null)
+                    .order('terminal_number', { ascending: true })
+                    .limit(1)
+                    .maybeSingle();
+                if (termErr) {
+                    console.warn('[CorpCreate] terminal lookup failed at', capital.name, '—', termErr.message);
+                } else if (!openTerm) {
+                    console.warn('[CorpCreate] no unowned terminals at', capital.name, '— airline founded without a hub');
+                } else {
+                    // .is('owner_airline_id', null) on the UPDATE guards the
+                    // SELECT→UPDATE race; .select() lets us verify a row
+                    // actually flipped.
+                    const { data: claimed, error: claimErr } = await _supabase.from('airline_terminals')
+                        .update({ owner_airline_id: corpId, acquired_at_tick: currentTick })
+                        .eq('id', openTerm.id)
+                        .is('owner_airline_id', null)
+                        .select('id');
+                    if (claimErr) {
+                        console.warn('[CorpCreate] free terminal claim failed:', claimErr.message);
+                    } else if (!claimed || claimed.length === 0) {
+                        console.warn('[CorpCreate] terminal', openTerm.terminal_number, 'at', capital.name, 'was claimed by someone else mid-flight; airline founded without a hub');
+                    }
+                }
+            }
         }
 
         // Seed CEO executive record from faction leader data

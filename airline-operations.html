@@ -9,10 +9,8 @@
 <link rel="stylesheet" href="css/corp-light-theme.css">
 <style>
 /* ══════════════════════════════════════════════════════════════
-   AIRLINE OPERATIONS — Phase 1 shell.
-   Class prefix: .ao-* (airline-operations). Visual conventions
-   borrowed from corp-operations-shipping.html so the family of
-   ops pages reads as one design language.
+   AIRLINE OPERATIONS — Phase 3 read-only surface.
+   Class prefix: .ao-* (airline-operations).
    ══════════════════════════════════════════════════════════════ */
 body.airline-operations {
   --bg-0: #0d0e10;
@@ -144,6 +142,84 @@ body.airline-operations {
   letter-spacing: 0.06em;
 }
 
+/* ── Two-up panel row (My Hubs + Fleet Inventory) ───── */
+.ao-panels-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+.ao-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--line-bright);
+}
+.ao-panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line-bright);
+}
+.ao-panel-header h3 {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0;
+  color: var(--text-bright);
+  letter-spacing: -0.01em;
+}
+.ao-panel-header .desc {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ao-panel-body { padding: 12px 0; }
+.ao-panel-empty {
+  padding: 22px 18px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+/* ── List rows (used inside panels) ─────────────────── */
+.ao-list-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: baseline;
+  padding: 8px 18px;
+  border-bottom: 1px dashed var(--line-soft);
+}
+.ao-list-row:last-child { border-bottom: 0; }
+.ao-list-primary {
+  font-family: var(--serif);
+  font-size: 14px;
+  color: var(--text-bright);
+  font-weight: 500;
+}
+.ao-list-secondary {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+.ao-list-tag {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--accent-gold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ao-list-tag.muted { color: var(--text-muted); }
+.ao-list-tag.green { color: var(--accent-green); }
+.ao-list-tag.teal  { color: var(--accent-teal); }
+
 /* ── Empty section state ────────────────────────────── */
 .ao-empty {
   background: var(--bg-card);
@@ -163,6 +239,10 @@ body.airline-operations {
   margin-bottom: 6px;
   letter-spacing: 0.04em;
 }
+
+@media (max-width: 880px) {
+  .ao-panels-row { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body class="airline-operations">
@@ -170,10 +250,10 @@ body.airline-operations {
 
 <div class="ao-page">
 
-  <!-- I. Hero Stats -->
+  <!-- I. Strategic Position -->
   <section class="ao-section">
     <div class="ao-section-header">
-      <h2><span class="num">I.</span>Operating Snapshot</h2>
+      <h2><span class="num">I.</span>Strategic Position</h2>
       <span class="desc">Fleet · Routes · Safety</span>
     </div>
     <div class="ao-hero-stats">
@@ -205,6 +285,28 @@ body.airline-operations {
     </div>
   </section>
 
+  <!-- My Hubs + Fleet Inventory panels -->
+  <div class="ao-panels-row">
+    <div class="ao-panel">
+      <div class="ao-panel-header">
+        <h3>My Hubs</h3>
+        <span class="desc">Owned terminals</span>
+      </div>
+      <div class="ao-panel-body" id="ao-my-hubs">
+        <div class="ao-panel-empty">Loading…</div>
+      </div>
+    </div>
+    <div class="ao-panel">
+      <div class="ao-panel-header">
+        <h3>Fleet Inventory</h3>
+        <span class="desc">Aircraft owned</span>
+      </div>
+      <div class="ao-panel-body" id="ao-fleet-inventory">
+        <div class="ao-panel-empty">Loading…</div>
+      </div>
+    </div>
+  </div>
+
   <!-- II. Pressing Issues -->
   <section class="ao-section">
     <div class="ao-section-header">
@@ -217,15 +319,15 @@ body.airline-operations {
     </div>
   </section>
 
-  <!-- III. Available Hubs -->
+  <!-- III. Available Routes -->
   <section class="ao-section">
     <div class="ao-section-header">
-      <h2><span class="num">III.</span>Available Hubs</h2>
-      <span class="desc">Terminals where this airline holds operating rights</span>
+      <h2><span class="num">III.</span>Available Routes</h2>
+      <span class="desc">Unflown city pairs you could open</span>
     </div>
-    <div class="ao-empty" id="ao-hubs">
-      <strong>No hubs yet</strong>
-      Terminal acquisition lands in a later phase.
+    <div class="ao-empty" id="ao-available-routes">
+      <strong>No available routes yet</strong>
+      Route planning lands in a later phase.
     </div>
   </section>
 
@@ -241,18 +343,139 @@ body.airline-operations {
     </div>
   </section>
 
+  <!-- V. Strategic Actions -->
+  <section class="ao-section">
+    <div class="ao-section-header">
+      <h2><span class="num">V.</span>Strategic Actions</h2>
+      <span class="desc">Sector-wide plays for this corp</span>
+    </div>
+    <div class="ao-empty" id="ao-actions">
+      <strong>No actions yet</strong>
+      Strategic action grid lands in a later phase.
+    </div>
+  </section>
+
 </div>
 
 <script type="module">
 import { renderCorpTopBar } from './js/corp-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 
+function escHtml(s) {
+    if (s == null) return '';
+    const d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
+}
+
+const RUNWAY_LABEL = { short: 'Short', standard: 'Standard', international: 'International' };
+const CLASS_LABEL  = { regional: 'Regional', narrowbody: 'Narrowbody', widebody: 'Widebody' };
+const CLASS_SLOTS  = { regional: 1, narrowbody: 2, widebody: 3 };
+
+// 1 tick = 1 month per the existing convention; format service time as
+// "X months" or "Y years, X months". Returns "—" if either input is null.
+function formatServiceTime(currentTick, acquiredTick) {
+    if (currentTick == null || acquiredTick == null) return '—';
+    const months = Math.max(0, Number(currentTick) - Number(acquiredTick));
+    if (months === 0) return 'Just acquired';
+    if (months < 12)  return months + (months === 1 ? ' month' : ' months');
+    const years = Math.floor(months / 12);
+    const rem   = months % 12;
+    if (rem === 0) return years + (years === 1 ? ' year' : ' years');
+    return `${years} ${years === 1 ? 'year' : 'years'}, ${rem} ${rem === 1 ? 'month' : 'months'}`;
+}
+
+async function loadMyHubs(corpId, totalCityCount) {
+    const el = document.getElementById('ao-my-hubs');
+    if (!el) return;
+    const { data: terminals, error } = await _supabase
+        .from('airline_terminals')
+        .select('id, terminal_number, acquired_at_tick, airline_cities!inner(name, is_capital, runway_type, nation_id, nations(name))')
+        .eq('owner_airline_id', corpId)
+        .order('terminal_number', { ascending: true });
+    if (error) {
+        console.warn('[airline-ops] terminals fetch failed:', error.message);
+        el.innerHTML = '<div class="ao-panel-empty">Could not load hubs.</div>';
+        return;
+    }
+    if (!terminals || terminals.length === 0) {
+        el.innerHTML = '<div class="ao-panel-empty">No terminals owned.</div>';
+        return;
+    }
+    // Connections available = total cities in the world minus this hub's own city.
+    // Same number for every owned terminal (Phase 3: read-only world tally).
+    const connectionsPerHub = Math.max(0, totalCityCount - 1);
+    el.innerHTML = terminals.map(t => {
+        const city   = t.airline_cities;
+        const nation = city?.nations;
+        const cap    = city?.is_capital ? ' <span class="ao-list-tag teal">Capital</span>' : '';
+        const runway = city?.runway_type ? RUNWAY_LABEL[city.runway_type] || city.runway_type : '';
+        return `<div class="ao-list-row">
+            <div>
+                <div class="ao-list-primary">${escHtml(city?.name || 'Unknown city')}${cap}</div>
+                <div class="ao-list-secondary">${escHtml(nation?.name || '')} · Terminal #${t.terminal_number} · ${escHtml(runway)} runway</div>
+            </div>
+            <div style="text-align:right;">
+                <div class="ao-list-tag green">${connectionsPerHub} connection${connectionsPerHub === 1 ? '' : 's'}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function loadFleetInventory(corpId, currentTick) {
+    const el = document.getElementById('ao-fleet-inventory');
+    if (!el) return;
+    const { data: aircraft, error } = await _supabase
+        .from('corp_aircraft')
+        .select('id, aircraft_class, condition, acquired_at_tick, created_at')
+        .eq('corp_id', corpId)
+        .order('aircraft_class', { ascending: true })
+        .order('created_at', { ascending: true });
+    if (error) {
+        console.warn('[airline-ops] corp_aircraft fetch failed:', error.message);
+        el.innerHTML = '<div class="ao-panel-empty">Could not load fleet.</div>';
+        return;
+    }
+    if (!aircraft || aircraft.length === 0) {
+        el.innerHTML = '<div class="ao-panel-empty">No aircraft owned.</div>';
+        return;
+    }
+    // Header summary line: "2× Regional · 1× Narrowbody · X slots used".
+    const counts = { regional: 0, narrowbody: 0, widebody: 0 };
+    let usedSlots = 0;
+    for (const a of aircraft) {
+        if (counts[a.aircraft_class] !== undefined) counts[a.aircraft_class]++;
+        usedSlots += CLASS_SLOTS[a.aircraft_class] || 0;
+    }
+    const summaryParts = [];
+    for (const [cls, n] of Object.entries(counts)) {
+        if (n > 0) summaryParts.push(`${n}× ${CLASS_LABEL[cls]}`);
+    }
+    const summary = `<div class="ao-list-row" style="border-bottom:1px solid var(--line-bright);">
+        <div class="ao-list-primary" style="font-family:var(--mono);font-size:11px;letter-spacing:0.04em;color:var(--text-secondary);">${summaryParts.join(' · ')}</div>
+        <div class="ao-list-tag muted">${usedSlots} slot${usedSlots === 1 ? '' : 's'} used</div>
+    </div>`;
+
+    // Per-aircraft rows. Phase 3 has no routes, so all show "Unassigned".
+    const rows = aircraft.map(a => {
+        const cls       = CLASS_LABEL[a.aircraft_class] || a.aircraft_class;
+        const condition = Math.round(Number(a.condition) || 0);
+        const service   = formatServiceTime(currentTick, a.acquired_at_tick);
+        const slots     = CLASS_SLOTS[a.aircraft_class] || 0;
+        return `<div class="ao-list-row">
+            <div>
+                <div class="ao-list-primary">${escHtml(cls)} <span class="ao-list-tag muted" style="margin-left:6px;">${slots} slot${slots === 1 ? '' : 's'}</span></div>
+                <div class="ao-list-secondary">${condition}% condition · Unassigned · ${service}</div>
+            </div>
+        </div>`;
+    }).join('');
+    el.innerHTML = summary + rows;
+}
+
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
 
-    // Resolve the active corp id (single-faction users) or the
-    // sessionStorage-pinned id (linked corp / multi-faction users).
     const activeId = sessionStorage.getItem('active_faction_id') || user.id;
 
     const [factionRes, shardRes] = await Promise.all([
@@ -260,20 +483,17 @@ async function init() {
         _supabase.from('shard').select('current_tick, current_date, next_tick_at, tick_interval_hours').eq('name', 'Alpha Shard').single(),
     ]);
     if (factionRes.error || !factionRes.data) {
-        document.body.innerHTML = '<div style="padding:40px;font-family:var(--mono);color:#c85a3a;">Could not load corporation.</div>';
+        document.body.innerHTML = '<div style="padding:40px;font-family:monospace;color:#c85a3a;">Could not load corporation.</div>';
         return;
     }
     const faction = factionRes.data;
     const shard   = shardRes.data;
 
-    // Soft routing guard: this page is for Airline corps only. Other
-    // sectors land on their own ops page via SECTOR_OPS_PAGE.
     if (faction.faction_type !== 'corporation' || faction.corp_sector !== 'Airline') {
         window.location.href = 'corp-dashboard.html';
         return;
     }
 
-    // All user factions for the topbar's faction switcher.
     const { data: allFactions } = await _supabase
         .from('factions')
         .select('id, faction_name, abbreviation, faction_type, linked_user_id')
@@ -294,20 +514,34 @@ async function init() {
     const opSafety = Number(faction.corp_op_safety) || 0;
     document.getElementById('ao-stat-safety').textContent = opSafety.toFixed(opSafety % 1 === 0 ? 0 : 1);
 
-    // Fleet detail line: "2 Regional · 0 Narrowbody · 0 Widebody".
-    const { data: aircraft, error: aircraftErr } = await _supabase
+    // Per-class fleet detail line under the Fleet hero card.
+    const { data: aircraftClasses } = await _supabase
         .from('corp_aircraft')
         .select('aircraft_class')
         .eq('corp_id', faction.id);
-    if (aircraftErr) console.warn('[airline-ops] corp_aircraft fetch failed:', aircraftErr.message);
-    const counts = { regional: 0, narrowbody: 0, widebody: 0 };
-    for (const a of (aircraft || [])) {
-        if (counts[a.aircraft_class] !== undefined) counts[a.aircraft_class]++;
+    const classCounts = { regional: 0, narrowbody: 0, widebody: 0 };
+    for (const a of (aircraftClasses || [])) {
+        if (classCounts[a.aircraft_class] !== undefined) classCounts[a.aircraft_class]++;
     }
     const detailEl = document.getElementById('ao-stat-fleet-detail');
     if (detailEl) {
-        detailEl.textContent = `${counts.regional} Regional · ${counts.narrowbody} Narrowbody · ${counts.widebody} Widebody`;
+        detailEl.textContent = `${classCounts.regional} Regional · ${classCounts.narrowbody} Narrowbody · ${classCounts.widebody} Widebody`;
     }
+
+    // Total city count — feeds "connections available" on each hub.
+    const { count: cityCount, error: cityCountErr } = await _supabase
+        .from('airline_cities')
+        .select('id', { count: 'exact', head: true });
+    if (cityCountErr) console.warn('[airline-ops] city count failed:', cityCountErr.message);
+    const totalCities = cityCount || 0;
+
+    const currentTick = Number(shard?.current_tick) || 0;
+
+    // Side-by-side panels.
+    await Promise.all([
+        loadMyHubs(faction.id, totalCities),
+        loadFleetInventory(faction.id, currentTick),
+    ]);
 }
 
 init().catch(err => {

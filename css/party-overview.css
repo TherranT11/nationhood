@@ -115,19 +115,7 @@
     display: flex; justify-content: space-between; margin-top: 3px;
 }
 
-/* ── Legend ── */
-.po-legend { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-.po-legend-item {
-    display: flex; align-items: center; gap: 5px; padding: 3px 8px;
-    border: 1px solid var(--border-main); cursor: pointer;
-    transition: all 0.15s;
-}
-.po-legend-item.active { opacity: 1; }
-.po-legend-item.inactive { opacity: 0.35; }
-.po-legend-dot { width: 8px; height: 8px; border-radius: 50%; }
-.po-legend-name { font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary); }
-
-/* ── Sector strongholds ── */
+/* ── Sector ranking rows ── */
 .po-stronghold-row {
     display: flex; align-items: flex-start; gap: 12px;
     padding: 8px 4px; border-bottom: 1px solid var(--border-main);
@@ -146,29 +134,9 @@
     position: relative; padding: 3px 8px; border: 1px solid;
     overflow: hidden;
 }
-.po-stronghold-chip-bar {
-    position: absolute; left: 0; top: 0; bottom: 0; opacity: 0.25;
-}
 .po-stronghold-chip-label {
     position: relative; font-family: var(--font-mono); font-size: 10px;
     color: var(--text-secondary); white-space: nowrap;
-}
-/* Player's row: full grid of all active sectors with raw popularity. */
-.po-stronghold-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 4px; flex: 1;
-}
-.po-stronghold-cell {
-    display: flex; justify-content: space-between; align-items: center;
-    gap: 8px; padding: 4px 8px; border: 1px solid;
-}
-.po-stronghold-cell-label {
-    font-family: var(--font-mono); font-size: 10px;
-    color: var(--text-secondary); flex: 1;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.po-stronghold-cell-value {
-    font-family: var(--font-mono); font-size: 11px; font-weight: 700;
 }
 
 /* ── Caucus rows ── */
