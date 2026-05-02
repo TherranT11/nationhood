@@ -1347,6 +1347,27 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             } else {
                 action.lockReason = '';
             }
+        } else if (action.id === 'call_snap_election') {
+            // Snap parliamentary elections don't apply to nations without
+            // a parliament that elects governments — absolute monarchies
+            // (Monarch appoints PM) or pure presidential systems (fixed
+            // terms via impeachment). Server RPC at sql/migrations/
+            // 20260515 mirrors this gate; this is the client-side
+            // affordance so the player sees a clear explainer instead of
+            // a generic RPC error.
+            const nation = _state.nation;
+            const isMonarchy = isAbsoluteMonarchy(nation);
+            const govType = String(nation?.government_type || '').toLowerCase();
+            const isPresidential = govType === 'presidential';
+            if (isMonarchy) {
+                isDisabled = true;
+                action.lockReason = 'Snap elections are not held under absolute monarchy. The Monarch appoints the Prime Minister.';
+            } else if (isPresidential) {
+                isDisabled = true;
+                action.lockReason = 'Presidential systems run on fixed terms — there is no parliamentary election to call.';
+            } else {
+                action.lockReason = '';
+            }
         } else if (action.id === 'leave_coalition') {
             // Parliamentary-only gate + opposition gate + PM-party gate.
             // Server RPC mirrors these, so a client-side bypass still fails.
