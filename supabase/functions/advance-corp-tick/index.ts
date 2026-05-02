@@ -116,10 +116,19 @@ function logCashEvent(corpId, category, label, delta) {
 
 async function flushCashEvents(supabase) {
     if (_pendingCashEvents.length === 0) return;
+    // Splice first so a thrown insert can't double-write on retry.
     const batch = _pendingCashEvents.splice(0, _pendingCashEvents.length);
-    const { error } = await supabase.from('corp_cash_events').insert(batch);
-    if (error) {
-        console.warn(`[advance-corp-tick] corp_cash_events insert failed (${batch.length} events):`, error.message);
+    try {
+        const { error } = await supabase.from('corp_cash_events').insert(batch);
+        if (error) {
+            console.warn(`[advance-corp-tick] corp_cash_events insert failed (${batch.length} events):`, error.message);
+        }
+    } catch (err) {
+        // Catch thrown exceptions (network, schema-cache, etc.) so they
+        // don't abort tick completion — the tick already moved real cash
+        // via accruePnl + corp_cash_reserves writes; losing the event log
+        // for one tick is recoverable, re-running the whole tick is not.
+        console.error('[advance-corp-tick] corp_cash_events insert threw:', err?.message || err);
     }
 }
 
