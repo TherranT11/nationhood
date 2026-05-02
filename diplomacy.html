@@ -485,13 +485,15 @@ function renderTradeEconomy() {
     const commodities = [];
 
     // ── Energy (stat-derived) ──
+    // ── Energy (stat-derived) ──
     // Production = nations.energy / 3.
     // Demand     = ((infrastructure + industry) × standard_of_living
     //              × √(population_M)) / 3500
-    // Net        = Production − Demand (positive = surplus, green;
-    //              negative = shortfall, red).
-    // Distinct from fuel_energy (petroleum, barrels). Displayed unit-less
-    // since it's a stat number, not a dollar value.
+    // Trading    = signed sum of Energy trade_flow volumes on active
+    //              agreements that have shipping in place
+    //              (+ = net imports, − = net exports).
+    // Net        = Production − Demand + Trading. Green if positive,
+    //              red if negative.
     const _n = _worldState?.nation || {};
     const energyStat   = Number(_n.energy)             || 0;
     const infraStat    = Number(_n.infrastructure)     || 0;
@@ -500,6 +502,7 @@ function renderTradeEconomy() {
     const popMillions  = (Number(_n.population) || 0) / 1_000_000;
     const energyProd   = energyStat / 3;
     const energyDemand = ((infraStat + industryStat) * solStat * Math.sqrt(popMillions)) / 3500;
+    const energyTrading = getEnergyTradingVolume();
     commodities.push({
         key: 'energy',
         icon: '⚡',
@@ -507,7 +510,8 @@ function renderTradeEconomy() {
         production: energyProd,
         domesticDemand: energyDemand,
         demand: 0,
-        netFlow: energyProd - energyDemand,
+        trading: energyTrading,
+        netFlow: energyProd - energyDemand + energyTrading,
         selfSufficiencyBalance: null,
         statBased: true,
     });
@@ -571,6 +575,7 @@ function renderTradeEconomy() {
                 <span>Commodity</span>
                 <span>Production</span>
                 <span>Demand</span>
+                <span>Trading</span>
                 <span>Net</span>
             </div>`;
 
@@ -580,10 +585,15 @@ function renderTradeEconomy() {
     const fmtProd = (c, n) => c.statBased ? Number(n).toFixed(0) : fmtBudgetCurrency(n);
     for (const c of commodities) {
         // Total demand = own consumption + foreign demand on our exports.
-        // Net = production minus total demand (positive = surplus).
+        // Trading  = signed import/export delta from active agreements
+        //            (+ = imports, − = exports). Only Energy carries it
+        //            today; trade-flow commodities default to 0.
+        // Net      = production − totalDemand + trading.
         const totalDemand = (Number(c.domesticDemand) || 0) + (Number(c.demand) || 0);
-        const net = (Number(c.production) || 0) - totalDemand;
+        const trading = Number(c.trading) || 0;
+        const net = (Number(c.production) || 0) - totalDemand + trading;
         const netCls = net > 0 ? 'positive' : net < 0 ? 'negative' : 'zero';
+        const tradingCls = trading > 0 ? 'positive' : trading < 0 ? 'negative' : 'zero';
         const isExp = _expandedCommodity === c.key;
         const rowAttrs = c.statBased ? ' data-statbased="1"' : '';
         const rowStyle = c.statBased ? 'cursor:default;' : '';
@@ -594,6 +604,7 @@ function renderTradeEconomy() {
             </div>
             <span class="tr-econ-value">${fmtProd(c, c.production)}</span>
             <span class="tr-econ-value${totalDemand > 0 ? '' : ' tr-econ-muted'}">${totalDemand > 0 ? fmtProd(c, totalDemand) : '—'}</span>
+            <span class="tr-econ-net ${tradingCls}">${trading === 0 ? '0' : (trading > 0 ? '+' : '−') + fmtProd(c, Math.abs(trading))}</span>
             <span class="tr-econ-net ${netCls}">${net === 0 ? '—' : (net > 0 ? '+' : '−') + fmtProd(c, Math.abs(net))}</span>
         </div>`;
 
@@ -1197,6 +1208,58 @@ async function loadTradeAgreements() {
     ]);
     _tradeAgreementsList = agResult.data || [];
     _tradeNegotiationsList = negResult.data || [];
+
+    // Phase 4: cache awarded trade-agreement-spawned shipping contracts
+    // and their winning bids so getEnergyTradingVolume can recognize
+    // shipping-in-place and read actual delivered_energy/tick instead
+    // of the agreement's stated volume.
+    await loadAgreementShippingContracts();
+}
+
+let _shippingContractsByAgreement = {};  // agreementId → [{ id, energy_per_tick, delivery_priority, winner_faction_name, ... }]
+async function loadAgreementShippingContracts() {
+    _shippingContractsByAgreement = {};
+    const agreementIds = (_tradeAgreementsList || [])
+        .filter(a => a.status === 'active')
+        .map(a => a.id);
+    if (agreementIds.length === 0) return;
+
+    // Pull every spawned contract for these agreements (open, awarded,
+    // completed, cancelled — all states matter for the agreement card
+    // status surfacing). Phase 7 also embeds the accepted bid for
+    // route_risk_delta + energy_per_tick + the winner faction name.
+    const { data, error } = await _supabase.from('shipping_contracts')
+        .select(`
+            id, trade_agreement_id, status, winner_faction_id, revenue_per_tick,
+            volume_required, delivery_priority, expires_at_tick,
+            consecutive_missed_payments,
+            winner:factions!winner_faction_id(faction_name, abbreviation),
+            shipping_contract_bids!contract_id(energy_per_tick, route_risk_delta, status)
+        `)
+        .in('trade_agreement_id', agreementIds);
+    if (error) {
+        console.warn('[diplomacy] agreement shipping contracts fetch failed:', error.message);
+        return;
+    }
+    for (const c of (data || [])) {
+        if (!c.trade_agreement_id) continue;
+        const acceptedBid = (c.shipping_contract_bids || []).find(b => b.status === 'accepted');
+        const energyPerTick = Number(acceptedBid?.energy_per_tick) || 0;
+        const list = _shippingContractsByAgreement[c.trade_agreement_id] || [];
+        list.push({
+            id:                          c.id,
+            status:                      c.status,
+            energy_per_tick:             energyPerTick,
+            volume_required:             Number(c.volume_required) || 0,
+            delivery_priority:           c.delivery_priority || null,
+            expires_at_tick:             Number(c.expires_at_tick) || null,
+            winner_faction_id:           c.winner_faction_id,
+            winner_faction_name:         c.winner?.faction_name || null,
+            revenue_per_tick:            Number(c.revenue_per_tick) || 0,
+            consecutive_missed_payments: Number(c.consecutive_missed_payments) || 0,
+        });
+        _shippingContractsByAgreement[c.trade_agreement_id] = list;
+    }
 }
 
 // ── Shipping Contracts block (pending applications + active claims) ──
@@ -2017,6 +2080,30 @@ function renderTradeAgreements() {
                     ? `<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.06);border-color:rgba(92,204,92,0.15);font-size:5px;">LAND TRADE</span>`
                     : `<span class="tr-badge" style="color:var(--orange);background:rgba(200,136,68,0.06);border-color:rgba(200,136,68,0.15);font-size:5px;">\u26A0 NO LOGISTICS</span>`;
 
+        // Phase 7: Energy shipping badge for trade-agreement contracts.
+        // Surfaces "ENERGY \u25CA N/tick" when shipping is awarded, or
+        // "ENERGY \u25CA AWAITING" when contracts are open with no winner yet.
+        // Only renders for agreements with Energy trade_flow articles.
+        const hasEnergyArticle = (ag.articles || []).some(a =>
+            a.article_type === 'trade_flow' && a.data?.commodity === 'energy');
+        const phase4Contracts = _shippingContractsByAgreement[ag.id] || [];
+        const phase4Awarded   = phase4Contracts.filter(c => c.status === 'awarded');
+        let energyBadge = '';
+        if (hasEnergyArticle) {
+            const totalDelivered = phase4Awarded.reduce((s, c) => s + (Number(c.energy_per_tick) || 0), 0);
+            // Phase 8: missed-payment heads-up when any awarded contract
+            // has a non-zero counter. Overrides the regular delivery
+            // badge so the player notices the problem before the totals.
+            const anyMissed = phase4Awarded.some(c => (Number(c.consecutive_missed_payments) || 0) > 0);
+            if (anyMissed) {
+                energyBadge = `<span class="tr-badge" style="color:var(--red);background:rgba(200,90,58,0.08);border-color:rgba(200,90,58,0.25);font-size:5px;">\u26A0 PAYMENT DELAYED</span>`;
+            } else if (totalDelivered > 0) {
+                energyBadge = `<span class="tr-badge" style="color:var(--gold,#c8a832);background:rgba(200,168,50,0.08);border-color:rgba(200,168,50,0.25);font-size:5px;">\u26A1 ${totalDelivered}/TICK</span>`;
+            } else {
+                energyBadge = `<span class="tr-badge" style="color:var(--orange);background:rgba(200,136,68,0.06);border-color:rgba(200,136,68,0.15);font-size:5px;">\u26A1 AWAITING SHIPPING</span>`;
+            }
+        }
+
         html += `<div class="tr-agreement-row" data-ag-id="${ag.id}" style="border-left:3px solid ${statusColor};">
             <div class="tr-agreement-header" style="background:${isExp ? 'var(--bg-card)' : 'transparent'};padding:14px 18px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
@@ -2024,6 +2111,7 @@ function renderTradeAgreements() {
                         <span style="font-size:14px;font-weight:600;color:var(--text-bright);">${escapeHtml(ag.agreement_name || typeLabel)}</span>
                     </div>
                     <div style="display:flex;align-items:center;gap:6px;">
+                        ${energyBadge}
                         ${logisticsBadge}
                         <span class="tr-badge" style="font-size:11px;padding:3px 10px;color:${statusColor};background:${statusColor}0a;border-color:${statusColor}25;">${statusLabel}</span>
                     </div>
@@ -2138,6 +2226,50 @@ function renderTradeAgreements() {
                 }
             }
 
+            // Phase 7: Energy shipping detail block. Lists every
+            // shipping_contracts row spawned by this agreement (one
+            // per Energy trade_flow article), with status, winner
+            // corp, and live delivery rate. Only renders if the
+            // agreement has any spawned contracts.
+            if (hasEnergyArticle && phase4Contracts.length > 0) {
+                html += `<div style="margin-top:6px;background:var(--bg-card);border:1px solid var(--border-main);padding:8px 10px;">
+                    <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;">⚡ ENERGY SHIPPING</div>`;
+                for (const c of phase4Contracts) {
+                    let lineColor, lineLabel;
+                    const missed = Number(c.consecutive_missed_payments) || 0;
+                    if (c.status === 'awarded' && c.winner_faction_name) {
+                        if (missed > 0) {
+                            lineColor = 'var(--red)';
+                            lineLabel = `⚠ ${c.energy_per_tick} Energy/tick · ${c.winner_faction_name} · ${missed} missed payment${missed === 1 ? '' : 's'}`;
+                        } else {
+                            lineColor = 'var(--green)';
+                            lineLabel = `${c.energy_per_tick} Energy/tick · ${c.winner_faction_name}`;
+                        }
+                    } else if (c.status === 'open') {
+                        lineColor = 'var(--amber, #b8860b)';
+                        const ticksLeft = c.expires_at_tick != null ? Math.max(0, c.expires_at_tick - currentTk) : 0;
+                        lineLabel = `Awaiting offers · ${c.volume_required} Energy/tick · closes in ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}`;
+                    } else if (c.status === 'completed') {
+                        lineColor = 'var(--text-dim)';
+                        lineLabel = `Completed`;
+                    } else if (c.status === 'cancelled') {
+                        lineColor = 'var(--text-dim)';
+                        lineLabel = `Cancelled`;
+                    } else {
+                        lineColor = 'var(--text-dim)';
+                        lineLabel = c.status;
+                    }
+                    const priorityChip = c.delivery_priority
+                        ? `<span style="font-family:var(--font-mono);font-size:7px;letter-spacing:0.5px;text-transform:uppercase;color:var(--text-dim);padding:1px 5px;border:1px solid var(--border-main);">${escapeHtml(c.delivery_priority)}</span>`
+                        : '';
+                    html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;font-family:var(--font-mono);font-size:10px;">
+                        <span style="color:${lineColor};">${escapeHtml(lineLabel)}</span>
+                        ${priorityChip}
+                    </div>`;
+                }
+                html += `</div>`;
+            }
+
             html += `</div>`;
         }
 
@@ -2188,6 +2320,66 @@ function computeCompatibility(myNationId, theirNationId) {
     // Normalize to 0-100 scale based on total trade volume
     const totalVol = Object.values(myFlows).reduce((s, f) => s + (f.export_capacity || 0) + (f.import_demand || 0), 0) || 1;
     return Math.min(99, Math.round((matchScore / totalVol) * 200));
+}
+
+// Sum the signed Energy volume from this nation's active trade
+// agreements (positive = net importing, negative = net exporting).
+// Only counts trade_flow articles where:
+//   - article_type === 'trade_flow' and data.commodity === 'energy'
+//   - the agreement has shipping in place: either both parties share a
+//     land border / one is landlocked (no shipping needed), or a
+//     shipping corp is actively servicing the agreement's routes.
+// Returns 0 when there are no qualifying agreements.
+function getEnergyTradingVolume() {
+    const myId = _worldState?.nation?.id;
+    if (!myId) return 0;
+    const active = (_tradeAgreementsList || []).filter(a => a.status === 'active');
+    let total = 0;
+    for (const ag of active) {
+        const partnerId = ag.nation_a_id === myId ? ag.nation_b_id : ag.nation_a_id;
+        if (!partnerId) continue;
+        const shipNeed = _shippingNeedForPartner(partnerId) || { needsShipping: true };
+        // Logistics-in-place: legacy shipping_routes (organic) OR a
+        // Phase 4 awarded shipping_contracts row tied to this agreement.
+        // Phase 7: _shippingContractsByAgreement now carries all statuses
+        // (open / awarded / completed / cancelled) for the agreement card
+        // surfacing — filter to 'awarded' here so the Trading column
+        // only counts contracts that are actually delivering Energy.
+        const hasLegacyLogistics = !!getAgreementShippingInfo(ag.id)?.hasLogistics;
+        const phase4Contracts    = (_shippingContractsByAgreement[ag.id] || [])
+            .filter(c => c.status === 'awarded');
+        const hasPhase4Logistics = phase4Contracts.length > 0;
+        const shippingOk = !shipNeed.needsShipping || hasLegacyLogistics || hasPhase4Logistics;
+        if (!shippingOk) continue;
+
+        for (const art of (ag.articles || [])) {
+            if (art.article_type !== 'trade_flow') continue;
+            const d = art.data || {};
+            if (d.commodity !== 'energy') continue;
+            const statedVolume = Number(d.volume) || 0;
+            if (statedVolume <= 0) continue;
+
+            // Phase 4: prefer the WINNING BID's actual delivered
+            // energy/tick over the agreement's stated volume. The bid
+            // can deliver less if the corp under-allocated freighters,
+            // or the same if fully covered. Falls back to stated volume
+            // when no Phase 4 contract exists yet (e.g., legacy routes).
+            const phase4Energy = phase4Contracts.reduce((s, c) => s + (Number(c.energy_per_tick) || 0), 0);
+            const volume = hasPhase4Logistics ? phase4Energy : statedVolume;
+            if (volume <= 0) continue;
+
+            // Resolve buyer/seller relative to MY nation. direction is
+            // author-relative \u2014 author is partyA, the other party is partyB.
+            const authorIsMe = art.author_nation_id
+                ? art.author_nation_id === myId
+                : (ag.nation_a_id === myId);
+            const partyAId = authorIsMe ? myId : partnerId;
+            const buyerNationId = d.direction === 'a_buys_b' ? partyAId : (authorIsMe ? partnerId : myId);
+            if (buyerNationId === myId) total += volume;
+            else                        total -= volume;
+        }
+    }
+    return total;
 }
 
 // Compute a nation's Energy production / demand / net using the same
@@ -19516,7 +19708,10 @@ function negStructuredArticleSummary(art) {
             const dir = d.direction === 'a_buys_b' ? (nameA + ' buys from ' + nameB) : (nameB + ' buys from ' + nameA);
             const priceLabel = d.price_modifier === 0 ? 'Market rate' : (d.price_modifier > 0 ? 'Market +' + d.price_modifier + '%' : 'Market ' + d.price_modifier + '%');
             const durLabel = d.duration === 0 ? 'Continuous' : d.duration + ' ticks';
-            return `${sectorLabel(d.commodity)}: ${dir}, ${formatNegMoney(d.volume)}/tick at ${priceLabel}. Duration: ${durLabel}`;
+            const priorityLabel = d.delivery_priority
+                ? ` · Delivery: ${d.delivery_priority.charAt(0).toUpperCase() + d.delivery_priority.slice(1)}`
+                : '';
+            return `${sectorLabel(d.commodity)}: ${dir}, ${formatNegMoney(d.volume)}/tick at ${priceLabel}. Duration: ${durLabel}${priorityLabel}`;
         }
         case 'tariff_reduction': {
             const sec = sectorLabel(d.sector);
@@ -19692,6 +19887,15 @@ function negStructuredTradeFlowForm() {
                     <option value="48">48 ticks</option>
                 </select>
             </div>
+            <div>
+                <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-bottom:3px;">DELIVERY PREFERENCE <span style="color:var(--accent);">(BUYER)</span></div>
+                <div id="neg-flow-delivery-picker" style="display:flex;gap:0;border:1px solid var(--border-main);">
+                    <button type="button" data-priority="fastest"  onclick="negFlowSetPriority('fastest')"  style="flex:1;padding:8px 6px;background:transparent;border:none;border-right:1px solid var(--border-main);color:var(--text-dim);font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.4px;cursor:pointer;transition:all 0.1s;">⚡ FASTEST</button>
+                    <button type="button" data-priority="safest"   onclick="negFlowSetPriority('safest')"   style="flex:1;padding:8px 6px;background:transparent;border:none;border-right:1px solid var(--border-main);color:var(--text-dim);font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.4px;cursor:pointer;transition:all 0.1s;">🛡 SAFEST</button>
+                    <button type="button" data-priority="cheapest" onclick="negFlowSetPriority('cheapest')" style="flex:1;padding:8px 6px;background:transparent;border:none;color:var(--text-dim);font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.4px;cursor:pointer;transition:all 0.1s;">💰 CHEAPEST</button>
+                </div>
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:3px;">After ratification, every shipping corp can offer a route. The system auto-awards based on this preference (cheapest is also the universal tiebreaker).</div>
+            </div>
             <div id="neg-flow-warnings" style="display:none;font-family:var(--font-mono);font-size:9px;line-height:1.5;padding:6px 8px;background:rgba(200,150,50,0.08);border-left:2px solid var(--amber,#b8860b);color:var(--text-secondary);"></div>
         </div>
         <div class="trade-neg-add-form__actions">
@@ -19702,11 +19906,31 @@ function negStructuredTradeFlowForm() {
 
     // Initialize the price display for the default commodity
     setTimeout(() => negFlowUpdatePrice(), 0);
+    // Default the delivery preference to 'cheapest' (also the tiebreaker
+    // for the auto-award logic in Phase 4).
+    setTimeout(() => negFlowSetPriority('cheapest'), 0);
     // Fetch both nations' organic flows once per negotiation, cached on
     // _activeNegModal so subsequent article-form openings reuse it. Then
     // evaluate warnings against the form's initial state.
     negFlowFetchFlowsOnce().then(() => negFlowEvaluateWarnings());
 }
+
+// Track the currently-selected delivery preference for the in-flight
+// trade_flow article. Read by negStructuredArticleConfirm and persisted
+// onto art.data.delivery_priority so it survives ratification.
+let _negFlowDeliveryPriority = 'cheapest';
+function negFlowSetPriority(priority) {
+    if (!['fastest', 'safest', 'cheapest'].includes(priority)) return;
+    _negFlowDeliveryPriority = priority;
+    const picker = document.getElementById('neg-flow-delivery-picker');
+    if (!picker) return;
+    for (const btn of picker.querySelectorAll('button[data-priority]')) {
+        const isActive = btn.dataset.priority === priority;
+        btn.style.background = isActive ? 'var(--accent,#5aafa5)' : 'transparent';
+        btn.style.color      = isActive ? '#000'                  : 'var(--text-dim)';
+    }
+}
+window.negFlowSetPriority = negFlowSetPriority;
 
 // Fetch organic per-sector flows for the user and the partner. Cached on
 // _activeNegModal._capacityFlows so the network round-trip happens at
@@ -19977,12 +20201,19 @@ async function negStructuredArticleConfirm() {
     } else if (_negStructuredType === 'trade_flow') {
         const volume = Number(document.getElementById('neg-flow-volume')?.value || 0);
         if (volume <= 0) { alert('Enter a valid volume.'); return; }
+        const deliveryPriority = ['fastest', 'safest', 'cheapest'].includes(_negFlowDeliveryPriority)
+            ? _negFlowDeliveryPriority
+            : 'cheapest';
         data = {
             commodity: document.getElementById('neg-flow-commodity')?.value || 'fuel_energy',
             direction: document.getElementById('neg-flow-direction')?.value || 'a_buys_b',
             volume: volume,
             price_modifier: Number(document.getElementById('neg-flow-price')?.value || 0),
             duration: Number(document.getElementById('neg-flow-duration')?.value || 0),
+            // Phase 1: buyer-side preference that drives the Phase 4
+            // auto-award. Written into the article so it survives both
+            // sides' approval and lands on the spawned shipping_contract.
+            delivery_priority: deliveryPriority,
         };
     } else if (_negStructuredType === 'tariff_reduction') {
         const aFrom = Number(document.getElementById('neg-tariff-a-from')?.value);

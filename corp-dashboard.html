@@ -773,7 +773,7 @@ body.corp-redesign.light-mode .cr-footer-strip { border-top-color: var(--panel-b
       <div class="cr-ticker-block">
         <div class="cr-ticker-symbol" id="cr-ticker-symbol">—</div>
         <div class="cr-ticker-price" id="cr-ticker-price">—</div>
-        <div class="cr-ticker-change" id="cr-ticker-change">— · valuation (cash − debt)</div>
+        <div class="cr-ticker-change" id="cr-ticker-change">— · valuation (cash + assets − debt)</div>
       </div>
     </div>
 
@@ -847,9 +847,11 @@ body.corp-redesign.light-mode .cr-footer-strip { border-top-color: var(--panel-b
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, escapeAttr, tickToDate } from './js/utils.js';
+import { computeCorpValuation } from './js/game/corp-valuation.js';
 
 let faction = null;
 let nation = null;
+let _ownedProperties = [];
 let shard = null;
 let allUserFactions = [];
 
@@ -1042,6 +1044,21 @@ async function init() {
         }
     }
 
+    // Load active properties so the masthead valuation includes the
+    // HQ + any other holdings (matches actions.html / bills.js / the
+    // server-side computeCorpValuation in advance-tick).
+    try {
+        const { data: props } = await _supabase
+            .from('corp_properties')
+            .select('*')
+            .eq('faction_id', faction.id)
+            .eq('is_active', true);
+        _ownedProperties = props || [];
+    } catch (err) {
+        console.warn('[corp-dashboard] property fetch failed:', err?.message);
+        _ownedProperties = [];
+    }
+
     renderMasthead(pnlHistory);
     renderFinancialRow(pnlHistory);
     renderOperatingIndicators(ownership, user.id);
@@ -1082,31 +1099,49 @@ function renderMasthead(history) {
     const ticker = faction.corp_ticker || faction.abbreviation || '—';
     document.getElementById('cr-ticker-symbol').textContent = ticker;
 
+    // Full valuation = cash + property + vessels − loans (+ finance
+    // receivables for Finance corps). Same SSoT helper as actions.html
+    // and the server-side bankruptcy / bailout math.
     const cash = Number(faction.corp_cash_reserves) || 0;
     const debt = Number(faction.corp_debt) || 0;
-    const valuation = cash - debt;
+    const valuation = computeCorpValuation({
+        cash,
+        loans: debt,
+        properties: _ownedProperties,
+        vessels: [],            // dashboard skips per-vessel detail; equipmentValue falls back to 0
+        financeReceivables: [], // ditto for Finance receivables — Phase pickup if needed
+        currentTick: shard?.current_tick || 0,
+    });
     document.getElementById('cr-ticker-price').textContent = fmtMoney(valuation);
 
-    // Valuation delta vs the prior tick. corp_pnl_history doesn't track debt
-    // historically, so we approximate prior-tick valuation as
-    // prev.cash_end − current_debt (assumes debt unchanged in the last tick,
-    // which is true unless a debt-affecting RPC ran between snapshots).
+    // Valuation delta vs the prior tick. corp_pnl_history doesn't track
+    // debt or asset values historically, so we approximate prior-tick
+    // valuation by swapping cash for prev.cash_end and holding everything
+    // else constant.
     const prev = history?.length > 0 ? history[history.length - 1] : null;
     const changeEl = document.getElementById('cr-ticker-change');
+    const valuationLabel = 'valuation (cash + assets − debt)';
     if (prev && Number.isFinite(Number(prev.cash_end))) {
-        const prevValuation = Number(prev.cash_end) - debt;
+        const prevValuation = computeCorpValuation({
+            cash: Number(prev.cash_end),
+            loans: debt,
+            properties: _ownedProperties,
+            vessels: [],
+            financeReceivables: [],
+            currentTick: shard?.current_tick || 0,
+        });
         const delta = valuation - prevValuation;
         if (delta === 0) {
-            changeEl.textContent = '— unchanged · valuation (cash − debt)';
+            changeEl.textContent = `— unchanged · ${valuationLabel}`;
             changeEl.className = 'cr-ticker-change';
         } else {
             const arrow = delta > 0 ? '▲' : '▼';
             const sign  = delta > 0 ? '+' : '';
-            changeEl.textContent = `${arrow} ${sign}${fmtMoney(delta)} · valuation (cash − debt)`;
+            changeEl.textContent = `${arrow} ${sign}${fmtMoney(delta)} · ${valuationLabel}`;
             changeEl.className = 'cr-ticker-change ' + (delta > 0 ? 'positive' : 'negative');
         }
     } else {
-        changeEl.textContent = '— valuation (cash − debt)';
+        changeEl.textContent = `— ${valuationLabel}`;
         changeEl.className = 'cr-ticker-change';
     }
 }
@@ -1114,22 +1149,30 @@ function renderMasthead(history) {
 function renderFinancialRow(history) {
     // Current-tick values from the corp row.
     const cash    = Number(faction.corp_cash_reserves) || 0;
-    const revenue = Number(faction.corp_revenue_current_tick) || 0;
+    const grossRevenue = Number(faction.corp_revenue_current_tick) || 0;
     const costs   = Number(faction.corp_costs_current_tick) || 0;
     const wages   = Number(faction.corp_wages_current_tick) || 0;
     const debt    = Number(faction.corp_debt) || 0;
     const opex    = costs + wages;
+    // Revenue card is the SSoT for cash delta this tick:
+    //   gross inflows − operating costs − wages.
+    // If this shows −$500k, cash drops by $500k on the next tick close.
+    const netRevenue = grossRevenue - opex;
 
     // Most recent prior-tick row (history is oldest-first; last entry is the
     // most recent prior tick). Used for the per-card "vs last tick" delta.
     const prev = history.length > 0 ? history[history.length - 1] : null;
     const prevCash    = prev ? Number(prev.cash_end) : null;
-    const prevRevenue = prev ? Number(prev.revenue) : null;
+    const prevRevenue = prev
+        ? (Number(prev.revenue) - Number(prev.costs) - Number(prev.wages))
+        : null;
     const prevOpex    = prev ? (Number(prev.costs) + Number(prev.wages)) : null;
 
-    // Sparkline series (oldest-first across `history`).
+    // Sparkline series (oldest-first across `history`). Revenue series is
+    // net (rev − costs − wages) so the trend shows the same SSoT
+    // displayed in the card value.
     const cashSeries    = history.map(h => Number(h.cash_end));
-    const revenueSeries = history.map(h => Number(h.revenue));
+    const revenueSeries = history.map(h => Number(h.revenue) - Number(h.costs) - Number(h.wages));
     const opexSeries    = history.map(h => Number(h.costs) + Number(h.wages));
 
     const row = document.getElementById('cr-fin-row');
@@ -1146,7 +1189,7 @@ function renderFinancialRow(history) {
         }),
         renderFinCard({
             label: 'Revenue',
-            value: revenue,
+            value: netRevenue,
             prev: prevRevenue,
             series: revenueSeries,
             colorVar: 'var(--cr-accent-gold)',

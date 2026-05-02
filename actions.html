@@ -780,7 +780,33 @@ async function lrLoadCollateral() {
         .eq('is_active', true)
         .order('purchase_price', { ascending: false });
     if (error) { console.warn('[lrLoadCollateral] error:', error.message); lrCollateralProps = []; return; }
-    lrCollateralProps = data || [];
+
+    const realProps = data || [];
+
+    // National HQ is synthesized at render time (no corp_properties row
+    // backs it — see expansion.html#nationalHqValue). For collateral we
+    // inject a synthetic entry so the player can pledge it for better
+    // loan terms. Sentinel id flags it for the submit-time path: on
+    // default the bank can't actually seize the HQ (corp structurally
+    // requires it), but the pledge raises Coverage of Loan and unlocks
+    // stronger lender offers.
+    const synthetic = [];
+    if (faction && nationStats) {
+        const sol = Math.max(0, Math.min(100, Number(nationStats.standard_of_living) || 50));
+        const hqValue = Math.round(50_000_000 + 25_000_000 * (sol / 100));
+        synthetic.push({
+            id: '__national_hq__',
+            synthetic: true,
+            seizable: false,
+            name: (faction.faction_name || 'Corporation') + ' Headquarters',
+            purchase_price: hqValue,
+            nation_id: faction.nation_id,
+            role: 'national_hq',
+            nations: { name: nationStats.name || '' },
+        });
+    }
+
+    lrCollateralProps = [...synthetic, ...realProps];
 }
 
 // Build a 10-pip meter. tier='gold'|'green'|'rust'|'red'|'leverage'.
@@ -912,11 +938,19 @@ function renderLoanModal() {
             const valM = Math.round(Number(p.purchase_price || 0) / 1e6);
             const propName = p.name || (p.role || 'Property').replace(/_/g, ' ').toUpperCase();
             const nationName = p.nations?.name || '\u2014';
+            // Synthetic National HQ pledges count toward Coverage of Loan
+            // for stronger lender terms, but on default the bank can't
+            // actually seize the HQ (the corp structurally requires it).
+            // Surfaced via a STRUCTURAL badge so the player knows the
+            // pledge is a soft commitment, not a real lien.
+            const structuralBadge = p.synthetic
+                ? `<span style="font-family:var(--font-mono);font-size:7px;letter-spacing:0.12em;color:#8a722f;border:1px solid rgba(138,114,47,0.4);background:rgba(138,114,47,0.06);padding:1px 5px;margin-left:6px;text-transform:uppercase;">Structural</span>`
+                : '';
             html += `<div onclick="lrToggleCollateral('${escapeHtml(p.id)}')" style="background:${sel ? 'rgba(200,168,50,0.04)' : 'var(--bg-panel)'};border:1px solid ${sel ? 'var(--gold,#c8a832)' : 'var(--panel-border)'};padding:10px 12px;cursor:pointer;display:grid;grid-template-columns:14px 1fr auto;gap:10px;align-items:center;">
                 <div style="width:12px;height:12px;border:1px solid ${sel ? 'var(--gold,#c8a832)' : 'var(--panel-border)'};background:${sel ? 'var(--gold,#c8a832)' : 'var(--bg-panel)'};display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#0e0e0c;">${sel ? '\u2713' : ''}</div>
                 <div style="min-width:0;">
-                    <div style="font-family:var(--font-serif,'IBM Plex Serif',serif);font-weight:500;font-size:13px;color:var(--text-bright,#f0efe6);line-height:1.2;">${escapeHtml(propName)}</div>
-                    <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.1em;color:#6a6660;text-transform:uppercase;margin-top:2px;">${escapeHtml(nationName)} \u25ca ${escapeHtml((p.role || '').replace(/_/g, ' '))}</div>
+                    <div style="font-family:var(--font-serif,'IBM Plex Serif',serif);font-weight:500;font-size:13px;color:var(--text-bright,#f0efe6);line-height:1.2;">${escapeHtml(propName)}${structuralBadge}</div>
+                    <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:0.1em;color:#6a6660;text-transform:uppercase;margin-top:2px;">${escapeHtml(nationName)} \u25ca ${escapeHtml((p.role || '').replace(/_/g, ' '))}${p.synthetic ? ' \u00b7 Cannot be seized on default' : ''}</div>
                 </div>
                 <div style="font-family:var(--font-mono);font-size:12px;font-weight:500;color:var(--green,#5cb85c);font-variant-numeric:tabular-nums;">$${valM}M</div>
             </div>`;
