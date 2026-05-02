@@ -56,24 +56,21 @@ function collateralRecoveryRate(collateralType) {
 const DEFAULT_MISSED_THRESHOLD = 4;
 
 // ════════════════════════════════════════════════════════════════════════════════
-//  TICK-SCOPED P&L ACCUMULATOR — Single source of truth for monthly_profit.
+//  TICK-SCOPED P&L ACCUMULATOR — feeds factions.monthly_profit.
 //
-//  Every revenue-in / expense-out event that touches corp_cash_reserves calls
-//  accruePnl(corpId, delta) with the P&L delta (positive for revenue, negative
-//  for expense, 0 for non-P&L cash movements like loan principal transfers).
+//  accruePnl is no longer called directly from business code (Phase 2). It
+//  survives only as the inner side of logCashEvent's dual-write, populating
+//  _tickPnl → factions.monthly_profit so the legacy dashboard surfaces keep
+//  working. Phase 4 deletes accruePnl, _tickPnl, and flushTickPnl once every
+//  read site has migrated to corp_cash_events.
 //
-//  The accumulator is cleared at the top of advanceCorpTick and flushed to
-//  factions.monthly_profit at the end of each nation's block — just before the
-//  corp_cash_history write that reads monthly_profit for reconciliation.
-//
-//  KNOWN SCOPE GAP — cash events outside this function do NOT flow through the
-//  accumulator and are missing from monthly_profit:
+//  KNOWN SCOPE GAP — cash events outside this function still bypass the
+//  accumulator (and the new event log):
 //    - advance-tick/index.ts gov_bailout path (non-P&L equity infusion — correct to skip)
 //    - advance-tick/index.ts processAutoRatePolicies (subsidiary insurance
 //      premiums, loan payments, claim payouts — these SHOULD flow through)
 //    - js/corp-refurbish.js client-side refurbish cost (player-initiated expense)
-//  Follow-up: either route these through a shared pnl events table, or have
-//  those sites write monthly_profit directly with read-modify-write semantics.
+//  Follow-up: route these through logCashEvent in a later phase.
 // ════════════════════════════════════════════════════════════════════════════════
 
 const _tickPnl = new Map();
@@ -84,19 +81,24 @@ function accruePnl(corpId, delta) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
-//  Option 4 — corp_cash_events SSoT (Phase 1: helper + plumbing only).
+//  Option 4 — corp_cash_events SSoT (Phase 2: every accrual site now logs).
 //
-//  logCashEvent is the eventual single entry point for every per-corp cash
-//  movement. Phase 1 keeps it dual-write: it calls accruePnl so existing
-//  aggregates (monthly_profit, corp_cash_history) continue to populate
-//  unchanged. Phase 2 will swap each accruePnl call site over to
-//  logCashEvent with a category + label. Phase 4 drops the accruePnl
-//  side and accruePnl/_tickPnl/flushTickPnl get deleted.
+//  logCashEvent is the single entry point for per-corp cash movements that
+//  feed into P&L. It dual-writes: appends to _pendingCashEvents AND calls
+//  accruePnl so factions.monthly_profit + corp_cash_history keep populating
+//  unchanged for the legacy read paths. Phase 3 cuts UI reads over to
+//  corp_cash_events; Phase 4 drops the accruePnl side; Phase 5 drops the
+//  legacy aggregate columns and tables.
 //
 //  Events buffer in memory and flush in one batch at tick end so the
-//  insert doesn't fan out into ~30 round-trips per corp. _currentTick
-//  is captured at the top of advanceCorpTick so call sites don't have
-//  to thread it through.
+//  insert doesn't fan out into one round-trip per accrual. _currentTick is
+//  captured at the top of advanceCorpTick so call sites don't have to thread
+//  it through.
+//
+//  Non-P&L cash movements (loan principal transfers, equity sales, gov
+//  bailouts) still write corp_cash_reserves directly without going through
+//  this helper — they'll be added in a follow-up pass with capital_in /
+//  capital_out / debt_principal categories.
 // ════════════════════════════════════════════════════════════════════════════════
 
 let _currentTick = 0;
@@ -1187,7 +1189,7 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
                 .from('factions')
                 .update({ corp_cash_reserves: newCash })
                 .eq('id', corp.id);
-            if (!cashErr) accruePnl(corp.id, -totalMaintenance);
+            if (!cashErr) logCashEvent(corp.id, 'maintenance', 'Property maintenance', -totalMaintenance);
 
             if (cashErr) {
                 console.error(`[PropertyEffects] Cash deduction failed for ${corp.faction_name}:`, cashErr.message);
@@ -2354,7 +2356,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                 .single();
             if (corp) {
                 const newCash = Math.max(0, Number(corp.corp_cash_reserves || 0) - perTickCost);
-                accruePnl(bid.faction_id, -perTickCost);
+                logCashEvent(bid.faction_id, 'event_cost', 'Project per-tick cost', -perTickCost);
                 await supabase.from('factions')
                     .update({ corp_cash_reserves: newCash })
                     .eq('id', bid.faction_id);
@@ -2563,7 +2565,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                         const { data: bondLender } = await supabase.from('factions')
                             .select('corp_cash_reserves').eq('id', bond.lender_faction_id).single();
                         if (bondLender) {
-                            accruePnl(bond.lender_faction_id, Number(bond.principal));
+                            logCashEvent(bond.lender_faction_id, 'revenue_finance', 'Bond principal recovered', Number(bond.principal));
                             await supabase.from('factions').update({
                                 corp_cash_reserves: Number(bondLender.corp_cash_reserves || 0) + Number(bond.principal),
                             }).eq('id', bond.lender_faction_id);
@@ -2731,7 +2733,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                     .single();
                 if (corpPay) {
                     const newCash = Number(corpPay.corp_cash_reserves || 0) + actualPayment;
-                    accruePnl(bid.faction_id, actualPayment);
+                    logCashEvent(bid.faction_id, 'revenue_market', 'Contract bid payment', actualPayment);
                     await supabase.from('factions')
                         .update({ corp_cash_reserves: newCash })
                         .eq('id', bid.faction_id);
@@ -2800,7 +2802,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                 // Refund contract value back to nation (corp must pay) — reverses
                 // the payment the corp collected on delivery in the same tick.
                 const collapseRefund = payment;
-                accruePnl(bid.faction_id, -collapseRefund);
+                logCashEvent(bid.faction_id, 'event_cost', 'Project collapse refund', -collapseRefund);
                 await supabase.from('factions').update({
                     corp_cash_reserves: Math.max(0, Number((await supabase.from('factions').select('corp_cash_reserves').eq('id', bid.faction_id).single()).data?.corp_cash_reserves ?? 0) - collapseRefund),
                     corp_reputation: Math.max(0, Number((await supabase.from('factions').select('corp_reputation').eq('id', bid.faction_id).single()).data?.corp_reputation ?? 65) - 10)
@@ -3156,7 +3158,7 @@ async function resolveExpiredEvents(supabase, nationId, currentTick) {
                 const { data: insurer } = await supabase.from('factions')
                     .select('corp_cash_reserves').eq('id', policy.lender_faction_id).single();
                 if (insurer) {
-                    accruePnl(policy.lender_faction_id, -adjustedCost);
+                    logCashEvent(policy.lender_faction_id, 'event_cost', 'Subsidiary policy claim', -adjustedCost);
                     await supabase.from('factions').update({
                         corp_cash_reserves: Math.max(0, Number(insurer.corp_cash_reserves || 0) - adjustedCost)
                     }).eq('id', policy.lender_faction_id);
@@ -3172,7 +3174,7 @@ async function resolveExpiredEvents(supabase, nationId, currentTick) {
                     const { data: deductCorp } = await supabase.from('factions')
                         .select('corp_cash_reserves').eq('id', event.faction_id).single();
                     if (deductCorp) {
-                        accruePnl(event.faction_id, -deductibleAmt);
+                        logCashEvent(event.faction_id, 'event_cost', 'Insurance deductible', -deductibleAmt);
                         await supabase.from('factions').update({
                             corp_cash_reserves: Math.max(0, Number(deductCorp.corp_cash_reserves || 0) - deductibleAmt)
                         }).eq('id', event.faction_id);
@@ -3189,7 +3191,7 @@ async function resolveExpiredEvents(supabase, nationId, currentTick) {
             const { data: corp } = await supabase.from('factions')
                 .select('corp_cash_reserves').eq('id', event.faction_id).single();
             if (corp) {
-                accruePnl(event.faction_id, -costApplied);
+                logCashEvent(event.faction_id, 'event_cost', 'Contract event cost', -costApplied);
                 await supabase.from('factions')
                     .update({ corp_cash_reserves: Math.max(0, Number(corp.corp_cash_reserves || 0) - costApplied) })
                     .eq('id', event.faction_id);
@@ -3849,12 +3851,15 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
             // Accrue each P&L component to the tick accumulator only after the
             // cash write succeeded. monthly_profit is written once at tick-end
             // from _tickPnl — do NOT include it in updateFields above.
-            accruePnl(corp.id, corpMonthlyRev);
-            accruePnl(corp.id, -monthlyWages);
-            accruePnl(corp.id, -monthlyExecSalaries);
-            accruePnl(corp.id, -FIXED_OVERHEAD_MONTHLY);
-            accruePnl(corp.id, -debtPayment);
-            accruePnl(corp.id, -taxAmount);
+            logCashEvent(corp.id, 'revenue_market', 'Monthly market revenue', corpMonthlyRev);
+            logCashEvent(corp.id, 'wages',          'Workforce wages',        -monthlyWages);
+            logCashEvent(corp.id, 'exec_salary',    'Executive salaries',     -monthlyExecSalaries);
+            logCashEvent(corp.id, 'fixed_overhead', 'Fixed overhead',         -FIXED_OVERHEAD_MONTHLY);
+            // Debt service is currently lumped — interest + principal under
+            // debt_interest. Splitting requires the loan-amortization fields
+            // to be plumbed here; deferred to the cleanup phase.
+            logCashEvent(corp.id, 'debt_interest',  'Internal debt service',  -debtPayment);
+            logCashEvent(corp.id, 'tax',            'Corporate tax',          -taxAmount);
         }
 
         // Credit corporate tax to the nation's debt reduction
@@ -4018,7 +4023,7 @@ async function processVesselOrderDeliveries(supabase, currentTick) {
             continue;
         }
         if (result === 'delivered') {
-            accruePnl(order.faction_id, -Number(order.balance_due || 0));
+            logCashEvent(order.faction_id, 'event_cost', 'Vessel order delivery', -Number(order.balance_due || 0));
             console.log('[Vessel Orders] Delivered ' + order.vessel_name + ' (' + order.vessel_class + ') to ' + order.faction_id);
         } else if (result === 'cancelled') {
             console.log('[Vessel Orders] Order cancelled (insufficient funds) for ' + order.vessel_name);
@@ -5272,7 +5277,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                 if (holderErr) {
                     console.warn('[Insurance] Premium deduction failed:', holderErr.message);
                 } else {
-                    accruePnl(loan.borrower_faction_id, -premium);
+                    logCashEvent(loan.borrower_faction_id, 'event_cost', 'Insurance premium', -premium);
                 }
 
                 // Credit premium to insurer (lender)
@@ -5285,7 +5290,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                     if (insurerErr) {
                         console.warn('[Insurance] Premium credit failed:', insurerErr.message);
                     } else {
-                        accruePnl(loan.lender_faction_id, premium);
+                        logCashEvent(loan.lender_faction_id, 'revenue_finance', 'Insurance premium received', premium);
                     }
                 }
 
@@ -5341,7 +5346,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                 if (debitErr) {
                     console.warn('[Equity] Target debit failed:', debitErr.message);
                 } else {
-                    accruePnl(loan.borrower_faction_id, -actualPayout);
+                    logCashEvent(loan.borrower_faction_id, 'event_cost', 'Equity dividend paid', -actualPayout);
                 }
 
                 const { data: lender } = await supabase.from('factions')
@@ -5353,7 +5358,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                     if (creditErr) {
                         console.warn('[Equity] Investor credit failed:', creditErr.message);
                     } else {
-                        accruePnl(loan.lender_faction_id, actualPayout);
+                        logCashEvent(loan.lender_faction_id, 'revenue_finance', 'Equity dividend received', actualPayout);
                     }
                 }
             }
@@ -5403,7 +5408,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             const { data: lender } = await supabase.from('factions')
                 .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
             if (lender) {
-                accruePnl(loan.lender_faction_id, payment);
+                logCashEvent(loan.lender_faction_id, 'revenue_finance', 'Bond coupon received', payment);
                 await supabase.from('factions').update({
                     corp_cash_reserves: Number(lender.corp_cash_reserves || 0) + payment
                 }).eq('id', loan.lender_faction_id);
@@ -5503,7 +5508,7 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
                 // collateral offsets the write-off; the recovery cash itself is
                 // non-P&L (substitute for principal asset).
                 const writeOff = Math.max(0, remainingPrincipal - recoveredAmount);
-                if (writeOff > 0) accruePnl(loan.lender_faction_id, -writeOff);
+                if (writeOff > 0) logCashEvent(loan.lender_faction_id, 'event_cost', 'Loan write-off', -writeOff);
             }
         };
 
@@ -5549,8 +5554,8 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             }
 
             // P&L split: interest is income/expense, principal is non-P&L.
-            accruePnl(loan.borrower_faction_id, -interestPortion);
-            accruePnl(loan.lender_faction_id, interestPortion);
+            logCashEvent(loan.borrower_faction_id, 'debt_interest',   'Loan interest paid',     -interestPortion);
+            logCashEvent(loan.lender_faction_id,   'revenue_finance', 'Loan interest received', interestPortion);
 
             results.payments++;
         } else {
@@ -6114,7 +6119,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     for (const [fId, totalMaint] of Object.entries(factionMaint)) {
                         const { data: corp } = await supabase.from('factions').select('corp_cash_reserves').eq('id', fId).single();
                         if (corp) {
-                            accruePnl(fId, -totalMaint);
+                            logCashEvent(fId, 'maintenance', 'Permit-driven maintenance', -totalMaint);
                             await supabase.from('factions').update({
                                 corp_cash_reserves: Math.max(0, Number(corp.corp_cash_reserves || 0) - totalMaint)
                             }).eq('id', fId);
@@ -6138,7 +6143,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 } else if (Array.isArray(wageRows)) {
                     for (const row of wageRows) {
                         const w = Number(row.wages || 0);
-                        if (w > 0) accruePnl(row.corp_id, -w);
+                        if (w > 0) logCashEvent(row.corp_id, 'wages', 'Construction wages', -w);
                     }
                 }
             } catch (wageErr) {
@@ -6472,7 +6477,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 const { data: corp } = await supabase.from('factions')
                                     .select('corp_cash_reserves').eq('id', claim.faction_id).single();
                                 if (corp) {
-                                    accruePnl(claim.faction_id, revenue);
+                                    logCashEvent(claim.faction_id, 'revenue_shipping', 'Shipping claim revenue', revenue);
                                     await supabase.from('factions').update({
                                         corp_cash_reserves: Number(corp.corp_cash_reserves || 0) + revenue
                                     }).eq('id', claim.faction_id);
@@ -6544,7 +6549,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 const { data: depotOwner } = await supabase.from('factions')
                                     .select('corp_cash_reserves').eq('id', fuelDepot.faction_id).single();
                                 if (depotOwner) {
-                                    accruePnl(fuelDepot.faction_id, depotRevenue);
+                                    logCashEvent(fuelDepot.faction_id, 'revenue_shipping', 'Fuel depot revenue', depotRevenue);
                                     await supabase.from('factions').update({
                                         corp_cash_reserves: Number(depotOwner.corp_cash_reserves || 0) + depotRevenue,
                                     }).eq('id', fuelDepot.faction_id);
@@ -6556,7 +6561,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 const { data: shipCorp } = await supabase.from('factions')
                                     .select('corp_cash_reserves').eq('id', claim.faction_id).single();
                                 if (shipCorp) {
-                                    accruePnl(claim.faction_id, -fuelCost);
+                                    logCashEvent(claim.faction_id, 'event_cost', 'Fuel cost', -fuelCost);
                                     await supabase.from('factions').update({
                                         corp_cash_reserves: Math.max(0, Number(shipCorp.corp_cash_reserves || 0) - fuelCost),
                                     }).eq('id', claim.faction_id);
@@ -6766,7 +6771,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                     const { data: dockOwner } = await supabase.from('factions')
                                         .select('corp_cash_reserves').eq('id', otherDock.faction_id).single();
                                     if (dockOwner) {
-                                        accruePnl(otherDock.faction_id, dockRevenue);
+                                        logCashEvent(otherDock.faction_id, 'revenue_shipping', 'Dry dock revenue', dockRevenue);
                                         await supabase.from('factions').update({
                                             corp_cash_reserves: Number(dockOwner.corp_cash_reserves || 0) + dockRevenue,
                                         }).eq('id', otherDock.faction_id);
@@ -6782,7 +6787,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 const { error: repairCashErr } = await supabase.from('factions').update({
                                     corp_cash_reserves: afterRepairCash,
                                 }).eq('id', corp.id);
-                                if (!repairCashErr) accruePnl(corp.id, -repairCost);
+                                if (!repairCashErr) logCashEvent(corp.id, 'maintenance', 'Vessel repair', -repairCost);
                                 if (repairCashErr) {
                                     console.warn(`[advance-corp-tick] Forced dry dock repair deduction failed for ${corp.faction_name}:`, repairCashErr.message);
                                 } else {
@@ -7045,7 +7050,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                         const { error: maintErr } = await supabase.from('factions').update({
                             corp_cash_reserves: afterMaintenanceCash,
                         }).eq('id', corp.id);
-                        if (!maintErr) accruePnl(corp.id, -totalMaintenance);
+                        if (!maintErr) logCashEvent(corp.id, 'maintenance', 'Fleet maintenance', -totalMaintenance);
                         if (maintErr) console.warn(`[advance-corp-tick] Fleet maintenance deduction failed for ${corp.faction_name}:`, maintErr.message);
                         if (!maintErr) {
                             corpCashRunning = afterMaintenanceCash;
