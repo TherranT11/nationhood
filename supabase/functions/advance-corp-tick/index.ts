@@ -83,6 +83,46 @@ function accruePnl(corpId, delta) {
     _tickPnl.set(corpId, (_tickPnl.get(corpId) || 0) + delta);
 }
 
+// ════════════════════════════════════════════════════════════════════════════════
+//  Option 4 — corp_cash_events SSoT (Phase 1: helper + plumbing only).
+//
+//  logCashEvent is the eventual single entry point for every per-corp cash
+//  movement. Phase 1 keeps it dual-write: it calls accruePnl so existing
+//  aggregates (monthly_profit, corp_cash_history) continue to populate
+//  unchanged. Phase 2 will swap each accruePnl call site over to
+//  logCashEvent with a category + label. Phase 4 drops the accruePnl
+//  side and accruePnl/_tickPnl/flushTickPnl get deleted.
+//
+//  Events buffer in memory and flush in one batch at tick end so the
+//  insert doesn't fan out into ~30 round-trips per corp. _currentTick
+//  is captured at the top of advanceCorpTick so call sites don't have
+//  to thread it through.
+// ════════════════════════════════════════════════════════════════════════════════
+
+let _currentTick = 0;
+const _pendingCashEvents = [];
+
+function logCashEvent(corpId, category, label, delta) {
+    if (!corpId || !Number.isFinite(delta) || delta === 0) return;
+    accruePnl(corpId, delta);
+    _pendingCashEvents.push({
+        corp_id:  corpId,
+        tick:     _currentTick,
+        category,
+        label:    String(label || category),
+        delta,
+    });
+}
+
+async function flushCashEvents(supabase) {
+    if (_pendingCashEvents.length === 0) return;
+    const batch = _pendingCashEvents.splice(0, _pendingCashEvents.length);
+    const { error } = await supabase.from('corp_cash_events').insert(batch);
+    if (error) {
+        console.warn(`[advance-corp-tick] corp_cash_events insert failed (${batch.length} events):`, error.message);
+    }
+}
+
 // Stuck vessels / claims / orders come from state-transition writes failing
 // silently — the pre-transition state stays on disk, the next tick re-runs
 // with the same result, forever. Every state-transition write in this file
@@ -5848,6 +5888,10 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
     // writers; they overwrite with this tick's accumulated P&L.
     _tickPnl.clear();
 
+    // Capture the tick number for logCashEvent and reset its buffer.
+    _currentTick = currentTick;
+    _pendingCashEvents.length = 0;
+
     // 4. Load all nations
     const { data: nations, error: nationErr } = await supabase
         .from('nations')
@@ -7206,6 +7250,10 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
     if (_tickPnl.size > 0) {
         await flushTickPnl(supabase, Array.from(_tickPnl.keys()));
     }
+
+    // Flush buffered cash events. No-op in Phase 1 — nothing calls
+    // logCashEvent yet — but wired so Phase 2 only changes call sites.
+    await flushCashEvents(supabase);
 
     // 6. Mark this tick as processed (persisted to DB to survive cold starts)
     await supabase.from('shard').update({ corp_last_processed_tick: currentTick }).eq('name', 'Alpha Shard');
