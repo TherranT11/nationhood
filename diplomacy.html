@@ -611,20 +611,22 @@ function renderTradeEconomy() {
 
     // ── Luxury Goods (stat-derived) ──
     // Production = (standard_of_living / 6) × ((education × service_sector) / 10000)
-    // No demand or trade-agreement plumbing yet — Trading = 0,
-    // Net = Production. Demand model lands when speced.
-    const educationStat    = Number(_n.education)      || 0;
-    const serviceStat      = Number(_n.service_sector) || 0;
-    const luxuryProd       = (solStat / 6) * ((educationStat * serviceStat) / 10000);
+    // Demand     = (standard_of_living / 100)² × population_M
+    // No trade-agreement plumbing yet — Trading = 0.
+    // Net = Production − Demand.
+    const educationStat = Number(_n.education)      || 0;
+    const serviceStat   = Number(_n.service_sector) || 0;
+    const luxuryProd    = (solStat / 6) * ((educationStat * serviceStat) / 10000);
+    const luxuryDemand  = Math.pow(solStat / 100, 2) * popMillions;
     commodities.push({
         key: 'luxury_goods',
         icon: '💎',
         name: 'Luxury Goods',
         production: luxuryProd,
-        domesticDemand: 0,
+        domesticDemand: luxuryDemand,
         demand: 0,
         trading: 0,
-        netFlow: luxuryProd,
+        netFlow: luxuryProd - luxuryDemand,
         selfSufficiencyBalance: null,
         statBased: true,
     });
@@ -2662,14 +2664,16 @@ function getNationConsumerGoodsBalance(nation) {
 
 // Same shape for Luxury Goods \u2014 mirrors the YOUR ECONOMY panel:
 //   Production = (standard_of_living / 6) \u00D7 ((education \u00D7 service_sector) / 10000)
-//   Demand     = 0 (no demand model yet)
+//   Demand     = (standard_of_living / 100)\u00B2 \u00D7 population_M
 function getNationLuxuryGoodsBalance(nation) {
     const n = nation || {};
     const solStat       = Number(n.standard_of_living) || 0;
     const educationStat = Number(n.education)          || 0;
     const serviceStat   = Number(n.service_sector)     || 0;
+    const popMillions   = (Number(n.population) || 0) / 1_000_000;
     const production    = (solStat / 6) * ((educationStat * serviceStat) / 10000);
-    return { production, demand: 0, net: production };
+    const demand        = Math.pow(solStat / 100, 2) * popMillions;
+    return { production, demand, net: production - demand };
 }
 
 // Build a nation's surplus / deficit list. Energy + Minerals + Food are
