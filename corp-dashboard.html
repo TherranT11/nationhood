@@ -895,8 +895,8 @@ function renderMoneyHtml(n) {
 
 function renderSparklineSvg(series, colorVar) {
     // null series = "this card has no historical series at all" (e.g. debt
-    // is not tracked in corp_pnl_history). Render nothing so the card is
-    // not visually cluttered with a meaningless empty state.
+    // isn't tracked per tick). Render nothing so the card is not visually
+    // cluttered with a meaningless empty state.
     if (series === null) return '';
     if (!Array.isArray(series) || series.length < 2) {
         return '<div class="cr-sparkline-empty">— no history yet</div>';
@@ -992,8 +992,12 @@ async function init() {
         return;
     }
 
-    // Shard + nation + per-tick P&L history + ownership in parallel.
-    const [shardRes, nationRes, pnlRes, ownershipRes] = await Promise.all([
+    // Shard + nation + per-tick P&L (corp_cash_events) + cash_end history
+    // (corp_cash_history) + ownership in parallel. Phase 3 reads P&L from
+    // corp_cash_events (the SSoT). cash_end stays on corp_cash_history
+    // until Phase 4 retires the legacy aggregate tables.
+    const HISTORY_TICKS = 12;
+    const [shardRes, nationRes, eventsRes, cashHistRes, ownershipRes] = await Promise.all([
         _supabase.from('shard')
             .select('current_tick, current_date, name, next_tick_at, tick_interval_hours')
             .eq('name', 'Alpha Shard').single(),
@@ -1002,11 +1006,16 @@ async function init() {
                 .select('id, name, capital')
                 .eq('id', faction.nation_id).single()
             : Promise.resolve({ data: null, error: null }),
-        _supabase.from('corp_pnl_history')
-            .select('tick, profit, costs, wages, cash_end')
+        _supabase.from('corp_cash_events')
+            .select('tick, category, delta')
             .eq('corp_id', faction.id)
             .order('tick', { ascending: false })
-            .limit(12),
+            .limit(HISTORY_TICKS * 30),  // ~30 events / tick is the practical ceiling
+        _supabase.from('corp_cash_history')
+            .select('tick, cash_end')
+            .eq('faction_id', faction.id)
+            .order('tick', { ascending: false })
+            .limit(HISTORY_TICKS),
         _supabase.from('corp_ownership')
             .select('holder_type, holder_id, pct')
             .eq('corp_id', faction.id)
@@ -1021,15 +1030,45 @@ async function init() {
     if (nationRes?.error) {
         console.error('[corp-dashboard] nation fetch error:', nationRes.error.message);
     }
-    if (pnlRes?.error) {
-        console.error('[corp-dashboard] pnl_history fetch error:', pnlRes.error.message);
+    if (eventsRes?.error) {
+        console.error('[corp-dashboard] corp_cash_events fetch error:', eventsRes.error.message);
+    }
+    if (cashHistRes?.error) {
+        console.error('[corp-dashboard] corp_cash_history fetch error:', cashHistRes.error.message);
     }
     if (ownershipRes?.error) {
         console.error('[corp-dashboard] corp_ownership fetch error:', ownershipRes.error.message);
     }
-    // Reverse so oldest-first for sparkline left-to-right.
-    const pnlHistory = (pnlRes?.data || []).slice().reverse();
-    const ownership  = ownershipRes?.data || [];
+    // Aggregate cash events into per-tick {profit, costs, wages} buckets.
+    // wages is its own line in the dashboard; everything else negative is
+    // bundled as "costs" for the Costs & Wages card.
+    const byTick = new Map();
+    for (const e of (eventsRes?.data || [])) {
+        const t = Number(e.tick);
+        const d = Number(e.delta) || 0;
+        const bucket = byTick.get(t) || { profit: 0, costs: 0, wages: 0 };
+        bucket.profit += d;
+        if (d < 0) {
+            if (e.category === 'wages') bucket.wages += -d;
+            else bucket.costs += -d;
+        }
+        byTick.set(t, bucket);
+    }
+    const cashByTick = new Map((cashHistRes?.data || []).map(r => [Number(r.tick), Number(r.cash_end)]));
+
+    // Build oldest-first {tick, profit, costs, wages, cash_end} array. Use
+    // the union of ticks present in either source so quiet ticks (cash but
+    // no events, or events but no cash snapshot) still appear with the
+    // missing fields filled in as 0 / null.
+    const allTicks = new Set([...byTick.keys(), ...cashByTick.keys()]);
+    const pnlHistory = [...allTicks].sort((a, b) => a - b).map(t => ({
+        tick:     t,
+        profit:   byTick.get(t)?.profit ?? 0,
+        costs:    byTick.get(t)?.costs  ?? 0,
+        wages:    byTick.get(t)?.wages  ?? 0,
+        cash_end: cashByTick.get(t)     ?? null,
+    }));
+    const ownership = ownershipRes?.data || [];
 
     // Mount the shared corp topbar.
     const topbarContainer = document.getElementById('corp-topbar-container');
@@ -1136,8 +1175,8 @@ function renderMasthead(history) {
     });
     document.getElementById('cr-ticker-price').textContent = fmtMoney(valuation);
 
-    // Valuation delta vs the prior tick. corp_pnl_history doesn't track
-    // debt or asset values historically, so we approximate prior-tick
+    // Valuation delta vs the prior tick. We don't snapshot debt or asset
+    // values per tick, so we approximate prior-tick
     // valuation by swapping cash for prev.cash_end and holding everything
     // else constant.
     const prev = history?.length > 0 ? history[history.length - 1] : null;
@@ -1169,22 +1208,25 @@ function renderMasthead(history) {
 }
 
 function renderFinancialRow(history) {
-    // Current-tick values from the corp row. corp_profit_current_tick and
-    // corp_opex_current_tick are GENERATED columns on factions, so both
-    // Revenue and Costs & Wages cards read database SSoTs directly.
-    const cash       = Number(faction.corp_cash_reserves)       || 0;
-    const debt       = Number(faction.corp_debt)                || 0;
-    const opex       = Number(faction.corp_opex_current_tick)   || 0;
-    const netRevenue = Number(faction.corp_profit_current_tick) || 0;
+    // Current and prior-tick values come from history (aggregated from
+    // corp_cash_events in init()). Cash stays on the live faction row
+    // since corp_cash_reserves is the actual balance, not an aggregate.
+    const cash = Number(faction.corp_cash_reserves) || 0;
+    const debt = Number(faction.corp_debt)          || 0;
 
-    // Most recent prior-tick row (history is oldest-first).
-    const prev = history.length > 0 ? history[history.length - 1] : null;
+    const currentTick = Number(shard?.current_tick) || 0;
+    const currentEntry = history.find(h => Number(h.tick) === currentTick) || null;
+    const opex       = currentEntry ? Number(currentEntry.costs) + Number(currentEntry.wages) : 0;
+    const netRevenue = currentEntry ? Number(currentEntry.profit) : 0;
+
+    // Most recent settled tick = history entry with tick < currentTick. The
+    // history array is oldest-first, so scan backwards from the end.
+    const prev = [...history].reverse().find(h => Number(h.tick) < currentTick) || null;
     const prevCash    = prev ? Number(prev.cash_end) : null;
-    const prevRevenue = prev ? Number(prev.profit) : null;
+    const prevRevenue = prev ? Number(prev.profit)   : null;
     const prevOpex    = prev ? (Number(prev.costs) + Number(prev.wages)) : null;
 
-    // Sparkline series (oldest-first). Revenue reads the GENERATED profit
-    // column directly — single source of truth, no client-side re-derive.
+    // Sparkline series (oldest-first).
     const cashSeries    = history.map(h => Number(h.cash_end));
     const revenueSeries = history.map(h => Number(h.profit));
     const opexSeries    = history.map(h => Number(h.costs) + Number(h.wages));
@@ -1220,8 +1262,8 @@ function renderFinancialRow(history) {
         renderFinCard({
             label: 'Outstanding Debt',
             value: debt,
-            // No debt-history column in corp_pnl_history — pass null series so
-            // the sparkline area is suppressed entirely (not just empty).
+            // Debt isn't tracked historically — pass null so the sparkline
+            // area is suppressed entirely (not just empty).
             prev: null,
             series: null,
             colorVar: 'var(--cr-text-tertiary)',
