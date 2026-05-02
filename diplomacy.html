@@ -516,6 +516,27 @@ function renderTradeEconomy() {
         statBased: true,
     });
 
+    // ── Minerals (stat-derived) ──
+    // Production = (minerals / 3) × ((workforce + industry) / 200)
+    // No demand or trade-agreement plumbing yet — those land alongside
+    // the next sector pass. Net = Production for now (entire output
+    // reads as surplus, same shape Energy started with).
+    const mineralsStat  = Number(_n.minerals)  || 0;
+    const workforceStat = Number(_n.workforce) || 0;
+    const mineralsProd  = (mineralsStat / 3) * ((workforceStat + industryStat) / 200);
+    commodities.push({
+        key: 'minerals',
+        icon: '⛏',
+        name: 'Minerals',
+        production: mineralsProd,
+        domesticDemand: 0,
+        demand: 0,
+        trading: 0,
+        netFlow: mineralsProd,
+        selfSufficiencyBalance: null,
+        statBased: true,
+    });
+
     for (const [sector, flow] of Object.entries(_tradeFlows)) {
         // Skip parent food_agriculture if subsectors exist
         if (sector === 'food_agriculture' && (_tradeFlows.grains_staples || _tradeFlows.livestock_dairy)) continue;

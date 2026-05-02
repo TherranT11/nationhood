@@ -1046,7 +1046,12 @@ async function init() {
 
     // Load active properties so the masthead valuation includes the
     // HQ + any other holdings (matches actions.html / bills.js / the
-    // server-side computeCorpValuation in advance-tick).
+    // server-side computeCorpValuation in advance-tick). Phase 8: also
+    // synthesize the National HQ entry — same Option A pattern used
+    // by the loan collateral picker. expansion.html computes National
+    // HQ value from nation.standard_of_living rather than backing it
+    // with a corp_properties row, so the dashboard has to mirror the
+    // formula here to count it.
     try {
         const { data: props } = await _supabase
             .from('corp_properties')
@@ -1057,6 +1062,23 @@ async function init() {
     } catch (err) {
         console.warn('[corp-dashboard] property fetch failed:', err?.message);
         _ownedProperties = [];
+    }
+    if (faction && nation) {
+        const sol      = Math.max(0, Math.min(100, Number(nation.standard_of_living) || 0));
+        const control  = Math.max(0, Math.min(100, Number(nation.control) || 50));
+        const hqValue  = Math.round(50_000_000 + 25_000_000 * (sol / 100));
+        const hqQuality = Math.round(70 + control * 0.3);  // matches expansion.html
+        _ownedProperties = [
+            {
+                id:             '__national_hq__',
+                synthetic:      true,
+                purchase_price: hqValue,
+                condition:      hqQuality,
+                role:           'national_hq',
+                nation_id:      faction.nation_id,
+            },
+            ..._ownedProperties,
+        ];
     }
 
     renderMasthead(pnlHistory);
