@@ -19049,7 +19049,7 @@ async function buildPolicyDecayAdjustments(supabase, nationId) {
 // Commodity demand-met effects per tick.
 //
 // Runs alongside processStatDecay in the per-nation loop. For each
-// stat-derived commodity (Energy, Minerals), computes:
+// stat-derived commodity (Energy, Minerals, Food), computes:
 //   supply  = production + net_trading_imports (where applicable)
 //   met_pct = supply / demand
 //
@@ -19067,6 +19067,13 @@ async function buildPolicyDecayAdjustments(supabase, nationId) {
 //     met_pct ≥ 1.20 → SoL +0.05, infrastructure +0.05,
 //                      industry +0.05, gdp_growth +0.05
 //
+//   FOOD (production = (farmland / 2) × (workforce / 100),
+//         demand     = population_M / 3):
+//     met_pct < 1.00 → health -0.2, public_approval -0.2,
+//                      unrest +0.2, crime +0.1, workforce -0.1
+//     met_pct ≥ 1.20 → health +0.1, public_approval +0.1,
+//                      SoL +0.05, cost_of_living -0.05
+//
 //   demand = 0 → skip (no effects either way).
 //   100-119% inclusive → no effects.
 //
@@ -19074,8 +19081,8 @@ async function buildPolicyDecayAdjustments(supabase, nationId) {
 // under-supply −0.1 industry + Minerals under-supply −0.1 industry),
 // deltas sum (industry → −0.2 net) and apply in a SINGLE update so
 // neither overwrites the other. Trading volumes pre-computed once
-// per tick by computeEnergyTradingByNation since Minerals doesn't
-// have trade-agreement plumbing yet (Trading = 0 for Minerals).
+// per tick by computeEnergyTradingByNation; Minerals and Food
+// don't have trade-agreement plumbing yet (Trading = 0 for both).
 // ════════════════════════════════════════════════════════════════
 async function computeEnergyTradingByNation(supabase) {
     const map = new Map();
@@ -19182,12 +19189,58 @@ function buildMineralsBucketDeltas(nation) {
     return null;
 }
 
+// Build {bucket, met_pct, deltas} for FOOD on this nation. No
+// trade-agreement plumbing for Food yet, so supply = production.
+//   production = (farmland / 2) × (workforce / 100)
+//   demand     = population_M / 3
+function buildFoodBucketDeltas(nation) {
+    const farmlandStat  = Number(nation.farmland)  || 0;
+    const workforceStat = Number(nation.workforce) || 0;
+    const popMillions   = (Number(nation.population) || 0) / 1_000_000;
+
+    const production = (farmlandStat / 2) * (workforceStat / 100);
+    const demand     = popMillions / 3;
+    if (demand <= 0) return null;
+
+    const supply = production;
+    const metPct = supply / demand;
+
+    if (metPct < 1.0) {
+        return {
+            bucket:  'under',
+            met_pct: Math.round(metPct * 100),
+            deltas:  {
+                health:          -0.2,
+                public_approval: -0.2,
+                unrest:           0.2,
+                crime:            0.1,
+                workforce:       -0.1,
+            },
+        };
+    }
+    if (metPct >= 1.2) {
+        return {
+            bucket:  'over',
+            met_pct: Math.round(metPct * 100),
+            deltas:  {
+                health:              0.1,
+                public_approval:     0.1,
+                standard_of_living:  0.05,
+                cost_of_living:     -0.05,
+            },
+        };
+    }
+    return null;
+}
+
 async function processCommodityDemandEffects(supabase, nation, tradingByNation) {
     const sources = [];
     const energy = buildEnergyBucketDeltas(nation, tradingByNation);
     if (energy)   sources.push({ commodity: 'energy',   ...energy });
     const minerals = buildMineralsBucketDeltas(nation);
     if (minerals) sources.push({ commodity: 'minerals', ...minerals });
+    const food = buildFoodBucketDeltas(nation);
+    if (food)     sources.push({ commodity: 'food',     ...food });
 
     if (sources.length === 0) return null;
 
