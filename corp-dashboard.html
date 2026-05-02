@@ -380,6 +380,60 @@ body.corp-redesign.light-mode .cr-fin-card { border-color: var(--panel-border); 
 }
 .cr-fin-card-trend.positive { color: var(--green); }
 .cr-fin-card-trend.negative { color: var(--red); }
+
+/* Expandable fin cards: cursor + hover chrome on the four cards. */
+.cr-fin-card.is-expandable { cursor: pointer; }
+.cr-fin-card.is-expandable:hover { border-color: var(--border-2, var(--border-1)); }
+.cr-fin-card-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cr-fin-card-chevron {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  transition: transform 0.15s ease;
+}
+.cr-fin-card.is-expanded .cr-fin-card-chevron {
+  transform: rotate(180deg);
+}
+.cr-fin-card-expansion {
+  display: none;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-1);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+.cr-fin-card.is-expanded .cr-fin-card-expansion {
+  display: block;
+}
+.cr-fin-card-expansion-tick + .cr-fin-card-expansion-tick {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-hair, rgba(255,255,255,0.04));
+}
+.cr-fin-card-expansion-tick-label {
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.cr-fin-card-expansion-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+.cr-fin-card-expansion-empty {
+  font-style: italic;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 6px 0 2px;
+}
 .cr-sparkline {
   margin-top: 8px;
   height: 22px;
@@ -997,22 +1051,19 @@ async function init() {
     // corp_cash_events (the SSoT). cash_end stays on corp_cash_history
     // until Phase 4 retires the legacy aggregate tables.
     const HISTORY_TICKS = 12;
-    const [shardRes, nationRes, eventsRes, cashHistRes, ownershipRes] = await Promise.all([
+    const [shardRes, nationRes, eventsRes, cashHistRes, ownershipRes, debtRes] = await Promise.all([
         _supabase.from('shard')
             .select('current_tick, current_date, name, next_tick_at, tick_interval_hours')
             .eq('name', 'Alpha Shard').single(),
         faction.nation_id
             ? _supabase.from('nations')
-                // standard_of_living + control feed the synthetic National
-                // HQ value/quality below (matches expansion.html). Dropping
-                // them silently zeroes nation.standard_of_living, which
-                // collapses hqValue from $50M+25M×SoL to a flat $50M and
-                // throws the masthead valuation off by tens of millions.
                 .select('id, name, capital, standard_of_living, control')
                 .eq('id', faction.nation_id).single()
             : Promise.resolve({ data: null, error: null }),
+        // Pull category + label so the expandable Revenue / Costs cards can
+        // show per-event detail in addition to the per-tick aggregates.
         _supabase.from('corp_cash_events')
-            .select('tick, category, delta')
+            .select('tick, category, label, delta')
             .eq('corp_id', faction.id)
             .order('tick', { ascending: false })
             .limit(HISTORY_TICKS * 30),  // ~30 events / tick is the practical ceiling
@@ -1025,6 +1076,14 @@ async function init() {
             .select('holder_type, holder_id, pct')
             .eq('corp_id', faction.id)
             .order('pct', { ascending: false }),
+        // Active bank_loans drive the Outstanding Debt card's expanded
+        // detail. Only loans the corp BORROWED — paid-off loans are
+        // excluded by the status filter.
+        _supabase.from('bank_loans')
+            .select('id, principal, outstanding, apr, status, issued_at_tick, matures_at_tick, lender_faction_id, factions:lender_faction_id(faction_name, abbreviation)')
+            .eq('borrower_faction_id', faction.id)
+            .in('status', ['pending_payout', 'active'])
+            .order('issued_at_tick', { ascending: false }),
     ]);
     if (shardRes.error) {
         showFatal('Failed to load shard: ' + shardRes.error.message);
@@ -1044,33 +1103,40 @@ async function init() {
     if (ownershipRes?.error) {
         console.error('[corp-dashboard] corp_ownership fetch error:', ownershipRes.error.message);
     }
-    // Aggregate cash events into per-tick {profit, costs, wages} buckets.
-    // wages is its own line in the dashboard; everything else negative is
-    // bundled as "costs" for the Costs & Wages card.
+    if (debtRes?.error) {
+        console.error('[corp-dashboard] bank_loans fetch error:', debtRes.error.message);
+    }
+    const activeLoans = debtRes?.data || [];
+    // Aggregate cash events into per-tick {profit, costs, wages, events}
+    // buckets. wages is its own line in the dashboard; everything else
+    // negative is bundled as "costs" for the Costs & Wages card. The raw
+    // events array per tick feeds the card-expansion drawers below.
     const byTick = new Map();
     for (const e of (eventsRes?.data || [])) {
         const t = Number(e.tick);
         const d = Number(e.delta) || 0;
-        const bucket = byTick.get(t) || { profit: 0, costs: 0, wages: 0 };
+        const bucket = byTick.get(t) || { profit: 0, costs: 0, wages: 0, events: [] };
         bucket.profit += d;
         if (d < 0) {
             if (e.category === 'wages') bucket.wages += -d;
             else bucket.costs += -d;
         }
+        bucket.events.push({ category: e.category, label: e.label, delta: d });
         byTick.set(t, bucket);
     }
     const cashByTick = new Map((cashHistRes?.data || []).map(r => [Number(r.tick), Number(r.cash_end)]));
 
-    // Build oldest-first {tick, profit, costs, wages, cash_end} array. Use
-    // the union of ticks present in either source so quiet ticks (cash but
-    // no events, or events but no cash snapshot) still appear with the
-    // missing fields filled in as 0 / null.
+    // Build oldest-first {tick, profit, costs, wages, cash_end, events}
+    // array. Use the union of ticks present in either source so quiet
+    // ticks (cash but no events, or events but no cash snapshot) still
+    // appear with the missing fields filled in as 0 / null / [].
     const allTicks = new Set([...byTick.keys(), ...cashByTick.keys()]);
     const pnlHistory = [...allTicks].sort((a, b) => a - b).map(t => ({
         tick:     t,
         profit:   byTick.get(t)?.profit ?? 0,
         costs:    byTick.get(t)?.costs  ?? 0,
         wages:    byTick.get(t)?.wages  ?? 0,
+        events:   byTick.get(t)?.events ?? [],
         cash_end: cashByTick.get(t)     ?? null,
     }));
     const ownership = ownershipRes?.data || [];
@@ -1105,7 +1171,7 @@ async function init() {
     }
 
     renderMasthead(pnlHistory);
-    renderFinancialRow(pnlHistory);
+    renderFinancialRow(pnlHistory, activeLoans);
     renderOperatingIndicators(ownership, user.id);
     renderFooter();
     bindDispatchTabs();
@@ -1191,7 +1257,7 @@ function renderMasthead(history) {
     }
 }
 
-function renderFinancialRow(history) {
+function renderFinancialRow(history, activeLoans) {
     // Current and prior-tick values come from history (aggregated from
     // corp_cash_events in init()). Cash stays on the live faction row
     // since corp_cash_reserves is the actual balance, not an aggregate.
@@ -1215,6 +1281,14 @@ function renderFinancialRow(history) {
     const revenueSeries = history.map(h => Number(h.profit));
     const opexSeries    = history.map(h => Number(h.costs) + Number(h.wages));
 
+    // Pull the most recent two ticks that actually had any cash events for
+    // the per-card expansion drawer. Skip ticks where the corp had no
+    // movement at all so the player doesn't see "Tick 51 — nothing".
+    const recentTicks = [...history]
+        .filter(h => (h.events || []).length > 0)
+        .slice(-2)
+        .reverse();  // newest first for display
+
     const row = document.getElementById('cr-fin-row');
     if (!row) return;
 
@@ -1226,6 +1300,9 @@ function renderFinancialRow(history) {
             series: cashSeries,
             colorVar: 'var(--cr-accent-green)',
             invert: false,
+            cardId: 'cash',
+            // Cash card gets all event types (it IS the running balance).
+            expandedHtml: renderEventsExpansion(recentTicks, e => true),
         }),
         renderFinCard({
             label: 'Revenue',
@@ -1234,6 +1311,11 @@ function renderFinancialRow(history) {
             series: revenueSeries,
             colorVar: 'var(--cr-accent-gold)',
             invert: false,
+            cardId: 'revenue',
+            // Revenue card → positive deltas (cash in: market revenue,
+            // shipping, trade, finance, capital_in like loan disbursements
+            // and bailouts).
+            expandedHtml: renderEventsExpansion(recentTicks, e => Number(e.delta) > 0),
         }),
         renderFinCard({
             label: 'Costs & Wages',
@@ -1242,6 +1324,10 @@ function renderFinancialRow(history) {
             series: opexSeries,
             colorVar: 'var(--cr-accent-red)',
             invert: true,  // higher costs are bad
+            cardId: 'opex',
+            // Costs card → negative deltas (wages, exec_salary, overhead,
+            // maintenance, tax, debt_interest, event_cost, capital_out).
+            expandedHtml: renderEventsExpansion(recentTicks, e => Number(e.delta) < 0),
         }),
         renderFinCard({
             label: 'Outstanding Debt',
@@ -1253,11 +1339,81 @@ function renderFinancialRow(history) {
             colorVar: 'var(--cr-text-tertiary)',
             invert: true,
             staticTrend: debt > 0 ? '— outstanding' : '— debt-free',
+            cardId: 'debt',
+            // Debt card → list of active bank_loans (no per-tick events;
+            // debt only changes on disbursement / closure).
+            expandedHtml: renderActiveLoansExpansion(activeLoans),
         }),
     ].join('');
+
+    // One delegated click handler for all four cards. Cheaper than four
+    // inline handlers and survives the innerHTML re-render above.
+    row.onclick = (ev) => {
+        const card = ev.target.closest('.cr-fin-card');
+        if (!card) return;
+        // Clicking inside the expansion drawer shouldn't toggle. Drawer
+        // contains anchor/button-style children for future drill-downs.
+        if (ev.target.closest('.cr-fin-card-expansion')) return;
+        card.classList.toggle('is-expanded');
+    };
 }
 
-function renderFinCard({ label, value, prev, series, colorVar, invert, staticTrend }) {
+// Build the expanded-drawer HTML for a tick-events card. Filter callback
+// runs per event so each card type can pick its own subset (positive for
+// Revenue, negative for Costs & Wages, all for Cash).
+function renderEventsExpansion(recentTicks, filterFn) {
+    const sections = recentTicks.map(t => {
+        const filtered = (t.events || []).filter(filterFn);
+        if (filtered.length === 0) return '';
+        const rows = filtered.map(e => {
+            const d = Number(e.delta) || 0;
+            const sign = d > 0 ? '+' : (d < 0 ? '-' : '');
+            const color = d > 0 ? 'var(--green)' : d < 0 ? 'var(--red)' : 'var(--text-dim)';
+            const mag = fmtMoney(Math.abs(d));
+            return `<div class="cr-fin-card-expansion-row">
+                <span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(e.label || e.category || '?')}</span>
+                <span style="color:${color};font-weight:700;font-variant-numeric:tabular-nums;">${sign}${mag}</span>
+            </div>`;
+        }).join('');
+        return `<div class="cr-fin-card-expansion-tick">
+            <div class="cr-fin-card-expansion-tick-label">Tick ${t.tick}</div>
+            ${rows}
+        </div>`;
+    }).filter(Boolean).join('');
+    if (!sections) {
+        return `<div class="cr-fin-card-expansion-empty">No movements in the last 2 corp ticks.</div>`;
+    }
+    return sections;
+}
+
+// Outstanding Debt expansion: list active bank_loans the corp owes. No
+// per-tick filtering — debt only changes on disbursement / closure, and
+// the live ledger is the most useful detail.
+function renderActiveLoansExpansion(activeLoans) {
+    const loans = activeLoans || [];
+    if (loans.length === 0) {
+        return `<div class="cr-fin-card-expansion-empty">No active loans.</div>`;
+    }
+    return loans.map(l => {
+        const lender = l.factions?.faction_name || 'Unknown bank';
+        const ticker = l.factions?.abbreviation || '';
+        const apr = Number(l.apr || 0);
+        const outstanding = Number(l.outstanding || 0);
+        return `<div class="cr-fin-card-expansion-tick">
+            <div class="cr-fin-card-expansion-tick-label">${escapeHtml(lender)}${ticker ? ' [' + escapeHtml(ticker) + ']' : ''} · ${apr.toFixed(2)}% APR</div>
+            <div class="cr-fin-card-expansion-row">
+                <span style="color:var(--text-secondary);">Outstanding</span>
+                <span style="color:var(--text-bright);font-weight:700;font-variant-numeric:tabular-nums;">${fmtMoney(outstanding)}</span>
+            </div>
+            <div class="cr-fin-card-expansion-row">
+                <span style="color:var(--text-secondary);">Status</span>
+                <span style="color:${l.status === 'active' ? 'var(--green)' : 'var(--amber)'};font-family:var(--font-mono);font-size:9px;">${escapeHtml(l.status)}</span>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function renderFinCard({ label, value, prev, series, colorVar, invert, staticTrend, cardId, expandedHtml }) {
     let trendHtml;
     let trendClass = '';
     if (staticTrend) {
@@ -1277,11 +1433,19 @@ function renderFinCard({ label, value, prev, series, colorVar, invert, staticTre
         }
     }
 
-    return `<div class="cr-fin-card">
-        <div class="cr-fin-card-label">${escapeHtml(label)}</div>
+    const expansion = expandedHtml
+        ? `<div class="cr-fin-card-expansion">${expandedHtml}</div>`
+        : '';
+    const isExpandable = !!expandedHtml;
+    return `<div class="cr-fin-card${isExpandable ? ' is-expandable' : ''}" data-card-id="${escapeHtml(cardId || '')}">
+        <div class="cr-fin-card-label">
+            <span>${escapeHtml(label)}</span>
+            ${isExpandable ? '<span class="cr-fin-card-chevron">▾</span>' : ''}
+        </div>
         <div class="cr-fin-card-value">${renderMoneyHtml(value)}</div>
         <div class="cr-fin-card-trend ${trendClass}">${trendHtml}</div>
         ${renderSparklineSvg(series, colorVar)}
+        ${expansion}
     </div>`;
 }
 

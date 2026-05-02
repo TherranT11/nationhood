@@ -1,13 +1,8 @@
 // js/corp-topbar.js — Shared top bar for all corporation pages
-// Renders a unified top bar with logo, tick info, cash, faction switcher, nav tabs
+// Renders a unified top bar with logo, tick info, faction switcher, nav tabs.
 
 const CORP_VERSION = 'Alpha 2.4.2.0';
 const THEME_STORAGE_KEY = 'corpThemePref';
-
-// Stashed at render time so the CASH-pill dropdown can query cash history
-// for the active corp without re-threading faction through window handlers.
-let _topbarFaction = null;
-let _topbarShardTick = 0;    // cached for the 6-month cash-movement filter
 
 // Sync body.light-mode from localStorage. Called at render (and by a tiny inline
 // script at the top of each corp body) so saved preference survives page loads
@@ -81,16 +76,9 @@ function escHtml(str) {
 export function renderCorpTopBar(container, opts = {}) {
     applyStoredCorpTheme();
     const { faction, shard, activeTab, allUserFactions, badges } = opts;
-    _topbarFaction = faction;
-    _topbarShardTick = Number(shard?.current_tick) || 0;
     const tabBadges = badges || {}; // { tabId: { count, color } }
     const isLightMode = document.body.classList.contains('light-mode');
     const ticker = faction?.corp_ticker || faction?.abbreviation || '';
-    const cash = Number(faction?.corp_cash_reserves ?? 0);
-    const cashStr = cash >= 1e9 ? '$' + (cash / 1e9).toFixed(2) + 'B'
-        : cash >= 1e6 ? '$' + (cash / 1e6).toFixed(2) + 'M'
-        : cash >= 1e3 ? '$' + (cash / 1e3).toFixed(1) + 'k'
-        : '$' + cash;
 
     const logoHtml = faction?.custom_logo_url
         ? `<img src="${escHtml(faction.custom_logo_url)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:5px;">`
@@ -160,12 +148,6 @@ export function renderCorpTopBar(container, opts = {}) {
             </div>
             <div class="corp-topbar__version">${CORP_VERSION}</div>
             <div class="corp-topbar__right">
-                <div class="corp-topbar__cash-wrap" id="corp-cash-wrap">
-                    <span class="corp-topbar__cash" id="topbar-cash" onclick="window._corpTopbarToggleCashDropdown()">CASH: ${cashStr} ▾</span>
-                    <div class="corp-topbar__dropdown corp-topbar__cash-dd" id="corp-cash-dropdown">
-                        <div id="corp-cash-dd-list" style="padding:10px 14px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Loading recent movements…</div>
-                    </div>
-                </div>
                 <div class="corp-topbar__switcher" id="faction-switcher">
                     <span class="corp-topbar__badge-btn" id="corp-name-badge" onclick="window._corpTopbarToggleDropdown()">[${escHtml(ticker.toUpperCase() || '--')}] ▾</span>
                     <div class="corp-topbar__dropdown" id="corp-faction-dropdown">${dropdownHtml}</div>
@@ -252,170 +234,13 @@ window._corpTopbarToggleDropdown = function() {
     if (dd) dd.classList.toggle('open');
 };
 
-// CASH-pill dropdown: per-tick P&L from corp_cash_events (the SSoT) plus
-// one-off finance_active_loans originations for equity / loan cash
-// transfers (still bypassing corp_cash_events — Phase 4 will fold those
-// in via capital_in / capital_out / debt_principal categories).
-window._corpTopbarToggleCashDropdown = async function() {
-    const dd = document.getElementById('corp-cash-dropdown');
-    if (!dd) return;
-    const willOpen = !dd.classList.contains('open');
-    dd.classList.toggle('open');
-    if (willOpen) await _renderCashMovements();
-};
+// Cash-pill dropdown + per-tick movement helpers were removed. Per-tick
+// cash detail is now surfaced via the expandable Revenue / Costs & Wages /
+// Outstanding Debt cards on the dashboard (corp-dashboard.html
+// #renderFinCard).
 
-// Map a corp_cash_events.category to one of three presentation buckets
-// for the breakdown summary line on the per-tick row.
-function _cashEventBucket(category) {
-    if (category === 'wages') return 'wages';
-    if (typeof category === 'string' && category.startsWith('revenue_')) return 'revenue';
-    return 'costs';
-}
-
-function _fmtCashAmt(n) {
-    const abs = Math.abs(n);
-    const s = abs >= 1e9 ? (abs / 1e9).toFixed(2) + 'B'
-            : abs >= 1e6 ? (abs / 1e6).toFixed(2) + 'M'
-            : abs >= 1e3 ? (abs / 1e3).toFixed(1) + 'k'
-            : String(Math.round(abs));
-    return (n >= 0 ? '+$' : '-$') + s;
-}
-
-async function _renderCashMovements() {
-    const list = document.getElementById('corp-cash-dd-list');
-    if (!list || !_topbarFaction?.id) return;
-    try {
-        const { _supabase } = await import('./supabase-client.js');
-        const { tickToDate } = await import('./utils.js');
-        const factionId = _topbarFaction.id;
-        // 6-month window (1 tick = 1 month). Same window as the prior version.
-        const windowStart = _topbarShardTick - 5;
-
-        const eventsQ = _supabase.from('corp_cash_events')
-            .select('tick, category, label, delta, id')
-            .eq('corp_id', factionId)
-            .gte('tick', windowStart)
-            .order('tick', { ascending: false })
-            .order('id', { ascending: true });
-        // BORROWER side — one-off cash INFLOWS (equity sales, loans received).
-        const borrowerQ = _supabase.from('finance_active_loans')
-            .select('started_tick, principal, equity_pct, finance_loan_requests(request_type)')
-            .eq('borrower_faction_id', factionId)
-            .gte('started_tick', windowStart)
-            .order('started_tick', { ascending: false });
-        // LENDER side — one-off cash OUTFLOWS (equity bought, loan originated).
-        const lenderQ = _supabase.from('finance_active_loans')
-            .select('started_tick, principal, equity_pct, finance_loan_requests(request_type)')
-            .eq('lender_faction_id', factionId)
-            .gte('started_tick', windowStart)
-            .order('started_tick', { ascending: false });
-        const [eventsRes, borrowerRes, lenderRes] = await Promise.all([eventsQ, borrowerQ, lenderQ]);
-        if (eventsRes.error)   console.warn('[CashDropdown] corp_cash_events query error:', eventsRes.error.message);
-        if (borrowerRes.error) console.warn('[CashDropdown] finance_active_loans (borrower) query error:', borrowerRes.error.message);
-        if (lenderRes.error)   console.warn('[CashDropdown] finance_active_loans (lender) query error:', lenderRes.error.message);
-
-        // Aggregate corp_cash_events into per-tick buckets:
-        //   net    — signed sum of all deltas (for the row's headline)
-        //   wages  — sum of |delta| for category 'wages'
-        //   costs  — sum of |delta| for non-wage expense categories
-        //   revenue — sum of delta for revenue_* categories
-        //   items  — every individual event, in original order, for expand
-        const tickBuckets = new Map();
-        for (const e of (eventsRes.data || [])) {
-            const t = Number(e.tick);
-            const d = Number(e.delta) || 0;
-            if (d === 0) continue;
-            let bucket = tickBuckets.get(t);
-            if (!bucket) {
-                bucket = { tick: t, net: 0, wages: 0, costs: 0, revenue: 0, items: [] };
-                tickBuckets.set(t, bucket);
-            }
-            bucket.net += d;
-            const which = _cashEventBucket(e.category);
-            if (which === 'revenue') bucket.revenue += d;
-            else if (which === 'wages') bucket.wages   += -d;
-            else                       bucket.costs   += -d;
-            bucket.items.push({ category: e.category, label: e.label, delta: d });
-        }
-
-        // Loan / equity rows are individual non-P&L cash movements that
-        // don't yet flow through corp_cash_events (Phase 4 work). Render
-        // them as standalone rows alongside the per-tick aggregates.
-        const loanRows = [];
-        for (const l of (borrowerRes.data || [])) {
-            const type = l.finance_loan_requests?.request_type;
-            if (type === 'equity') {
-                const pct = Number(l.equity_pct || 0).toFixed(2).replace(/\.00$/, '');
-                loanRows.push({ tick: l.started_tick, amount: Number(l.principal || 0), label: `Sold ${pct}% Equity` });
-            } else if (type === 'loan') {
-                loanRows.push({ tick: l.started_tick, amount: Number(l.principal || 0), label: 'Received Loan' });
-            }
-        }
-        for (const l of (lenderRes.data || [])) {
-            const type = l.finance_loan_requests?.request_type;
-            if (type === 'equity') {
-                const pct = Number(l.equity_pct || 0).toFixed(2).replace(/\.00$/, '');
-                loanRows.push({ tick: l.started_tick, amount: -Number(l.principal || 0), label: `Bought ${pct}% Equity` });
-            } else if (type === 'loan') {
-                loanRows.push({ tick: l.started_tick, amount: -Number(l.principal || 0), label: 'Issued Loan' });
-            }
-        }
-
-        if (tickBuckets.size === 0 && loanRows.length === 0) {
-            list.innerHTML = '<div style="padding:10px 14px;color:var(--text-dim);">No cash movements in the last 6 months.</div>';
-            return;
-        }
-
-        // Merge tick aggregates + loan rows, then sort tick desc.
-        const merged = [];
-        for (const b of tickBuckets.values()) merged.push({ kind: 'pnl', ...b });
-        for (const r of loanRows)             merged.push({ kind: 'capital', ...r });
-        merged.sort((a, b) => b.tick - a.tick);
-
-        list.innerHTML = merged.map(row => {
-            if (row.kind === 'capital') {
-                const color = row.amount >= 0 ? 'var(--green, #5c5)' : 'var(--red, #c55)';
-                return `<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 14px;border-bottom:1px solid var(--border-0);font-family:var(--font-mono);font-size:10px;">
-                    <span style="color:${color};font-weight:700;min-width:70px;">${_fmtCashAmt(row.amount)}</span>
-                    <span style="color:var(--text-primary);flex:1;">${row.label}</span>
-                    <span style="color:var(--text-dim);">${tickToDate(row.tick)}</span>
-                </div>`;
-            }
-            // P&L aggregate row — collapsible breakdown.
-            const color = row.net >= 0 ? 'var(--green, #5c5)' : 'var(--red, #c55)';
-            const headline = row.net >= 0 ? 'Income' : 'Loss';
-            const breakdownChips = [];
-            if (row.revenue > 0) breakdownChips.push(`<span style="color:var(--green, #5c5);">Revenue ${_fmtCashAmt(row.revenue)}</span>`);
-            if (row.wages   > 0) breakdownChips.push(`<span style="color:var(--text-primary);">Wages ${_fmtCashAmt(-row.wages)}</span>`);
-            if (row.costs   > 0) breakdownChips.push(`<span style="color:var(--text-primary);">Costs ${_fmtCashAmt(-row.costs)}</span>`);
-            const breakdown = breakdownChips.join(' · ');
-            const itemsHtml = row.items.map(i => {
-                const ic = i.delta >= 0 ? 'var(--green, #5c5)' : 'var(--red, #c55)';
-                return `<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 14px 3px 26px;font-family:var(--font-mono);font-size:9px;">
-                    <span style="color:${ic};font-weight:700;min-width:70px;">${_fmtCashAmt(i.delta)}</span>
-                    <span style="color:var(--text-dim);flex:1;">${i.label}</span>
-                </div>`;
-            }).join('');
-            return `<details style="border-bottom:1px solid var(--border-0);">
-                <summary style="display:flex;justify-content:space-between;gap:10px;padding:6px 14px;cursor:pointer;font-family:var(--font-mono);font-size:10px;list-style:none;">
-                    <span style="color:${color};font-weight:700;min-width:70px;">${_fmtCashAmt(row.net)}</span>
-                    <span style="color:var(--text-primary);flex:1;">${headline}${breakdown ? ' &middot; ' + breakdown : ''}</span>
-                    <span style="color:var(--text-dim);">${tickToDate(row.tick)}</span>
-                </summary>
-                <div style="padding:4px 0 6px 0;">${itemsHtml}</div>
-            </details>`;
-        }).join('');
-    } catch (err) {
-        console.warn('[CashDropdown] Failed to render cash movements:', err?.message || err);
-        list.innerHTML = '<div style="padding:10px 14px;color:var(--red);">Could not load recent movements.</div>';
-    }
-}
-
-// Close both dropdowns on outside click so they don't stick open.
+// Close the faction-switcher dropdown on outside click.
 document.addEventListener('click', (e) => {
-    if (!e.target.closest('#corp-cash-wrap')) {
-        document.getElementById('corp-cash-dropdown')?.classList.remove('open');
-    }
     if (!e.target.closest('#faction-switcher')) {
         document.getElementById('corp-faction-dropdown')?.classList.remove('open');
     }
@@ -446,15 +271,3 @@ window._corpTopbarLogout = async function() {
     window.location.href = 'login.html';
 };
 
-/**
- * Update just the cash display without re-rendering the whole bar.
- */
-export function updateCorpTopBarCash(cash) {
-    const el = document.getElementById('topbar-cash');
-    if (!el) return;
-    const cashStr = cash >= 1e9 ? '$' + (cash / 1e9).toFixed(2) + 'B'
-        : cash >= 1e6 ? '$' + (cash / 1e6).toFixed(2) + 'M'
-        : cash >= 1e3 ? '$' + (cash / 1e3).toFixed(1) + 'k'
-        : '$' + cash;
-    el.textContent = 'CASH: ' + cashStr;
-}
