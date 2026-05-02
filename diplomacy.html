@@ -899,9 +899,36 @@ function renderTradeEconomy() {
                 { label: 'GDP Growth',         delta:  0.05 },
             ],
         },
+        {
+            key: 'food',
+            icon: '🌾',
+            name: 'Food',
+            under: [
+                { label: 'Health',          delta: -0.2 },
+                { label: 'Public Approval', delta: -0.2 },
+                { label: 'Unrest',          delta:  0.2 },
+                { label: 'Crime',           delta:  0.1 },
+                { label: 'Workforce',       delta: -0.1 },
+            ],
+            over: [
+                { label: 'Health',             delta:  0.1 },
+                { label: 'Public Approval',    delta:  0.1 },
+                { label: 'Standard of Living', delta:  0.05 },
+                { label: 'Cost of Living',     delta: -0.05 },
+            ],
+        },
     ];
+    // Lower-is-better stats — a negative delta on these is GOOD for
+    // the nation (cost going down, unrest dropping, crime falling).
+    // Color them green on negatives, red on positives.
+    const LOWER_IS_BETTER_LABELS = new Set(['Cost of Living', 'Unrest', 'Crime']);
     const fmtDelta = (d) => (d > 0 ? '+' : '') + d.toFixed(2).replace(/\.?0+$/, m => m.includes('.') ? m.replace(/0+$/, '') : '');
-    const tone = (d) => d > 0 ? 'var(--green)' : d < 0 ? 'var(--red)' : 'var(--text-dim)';
+    const tone = (label, d) => {
+        if (d === 0) return 'var(--text-dim)';
+        const lowerIsBetter = LOWER_IS_BETTER_LABELS.has(label);
+        const isGood = lowerIsBetter ? d < 0 : d > 0;
+        return isGood ? 'var(--green)' : 'var(--red)';
+    };
     html += `<div class="tr-econ-effects-block">
         <div class="tr-econ-effects-header">DEMAND EFFECTS · PER TICK</div>`;
     for (const g of DEMAND_EFFECTS) {
@@ -912,14 +939,14 @@ function renderTradeEconomy() {
                     <div class="tr-econ-effects-col-head under">If demand not met</div>
                     ${g.under.map(e => `<div class="tr-econ-effects-row">
                         <span class="label">${escapeHtml(e.label)}</span>
-                        <span class="value" style="color:${tone(e.delta)};">${fmtDelta(e.delta)}</span>
+                        <span class="value" style="color:${tone(e.label, e.delta)};">${fmtDelta(e.delta)}</span>
                     </div>`).join('')}
                 </div>
                 <div class="tr-econ-effects-col">
                     <div class="tr-econ-effects-col-head over">If supply ≥ 120%</div>
                     ${g.over.map(e => `<div class="tr-econ-effects-row">
                         <span class="label">${escapeHtml(e.label)}</span>
-                        <span class="value" style="color:${tone(e.delta)};">${fmtDelta(e.delta)}</span>
+                        <span class="value" style="color:${tone(e.label, e.delta)};">${fmtDelta(e.delta)}</span>
                     </div>`).join('')}
                 </div>
             </div>
