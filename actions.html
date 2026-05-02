@@ -135,7 +135,6 @@ import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, hfFmtBig } from './js/utils.js';
 import { renderCorpTopBar } from './js/corp-topbar.js';
 import { renderCorpActions } from './js/corp-actions.js';
-import { withNationalHq } from './js/game/corp-valuation.js';
 import { EXEC_ROLES, EXEC_ROLE_META, createInitialExecutiveRoster, generateExecutivePool } from './js/game/corp-executives.js';
 import { applyForEquity } from './js/equity-apply.js';
 import { declareBankruptcy } from './js/corp-bankruptcy.js';
@@ -156,8 +155,8 @@ let _execSearchSelected = -1;
 
 // Owned properties — loaded at init so renderCorpActions can compute a
 // correct valuation (cash + property + vessels − loans) for the stat pill.
-// withNationalHq folds in the synthetic National HQ row so the pill
-// matches the dashboard masthead and bankruptcy / bailout server math.
+// The National HQ is a real corp_properties row now
+// (20260711_persist_national_hq.sql) so a flat fetch is sufficient.
 let _ownedProperties = [];
 async function loadOwnedProperties() {
     if (!faction?.id) return;
@@ -166,7 +165,7 @@ async function loadOwnedProperties() {
         .select('*')
         .eq('faction_id', faction.id)
         .eq('is_active', true);
-    _ownedProperties = withNationalHq(data || [], nationStats);
+    _ownedProperties = data || [];
 }
 
 async function loadExecutives() {
@@ -784,33 +783,13 @@ async function lrLoadCollateral() {
         .order('purchase_price', { ascending: false });
     if (error) { console.warn('[lrLoadCollateral] error:', error.message); lrCollateralProps = []; return; }
 
-    const realProps = data || [];
-
-    // National HQ is synthesized at render time (no corp_properties row
-    // backs it — see js/game/corp-valuation.js#synthesizeNationalHq).
-    // For collateral we
-    // inject a synthetic entry so the player can pledge it for better
-    // loan terms. Sentinel id flags it for the submit-time path: on
-    // default the bank can't actually seize the HQ (corp structurally
-    // requires it), but the pledge raises Coverage of Loan and unlocks
-    // stronger lender offers.
-    const synthetic = [];
-    if (faction && nationStats) {
-        const sol = Math.max(0, Math.min(100, Number(nationStats.standard_of_living) || 50));
-        const hqValue = Math.round(50_000_000 + 25_000_000 * (sol / 100));
-        synthetic.push({
-            id: '__national_hq__',
-            synthetic: true,
-            seizable: false,
-            name: (faction.faction_name || 'Corporation') + ' Headquarters',
-            purchase_price: hqValue,
-            nation_id: faction.nation_id,
-            role: 'national_hq',
-            nations: { name: nationStats.name || '' },
-        });
-    }
-
-    lrCollateralProps = [...synthetic, ...realProps];
+    // National HQ is a real corp_properties row now
+    // (20260711_persist_national_hq.sql), so the fetch above already
+    // includes it alongside any regional HQs / subsidiaries the player
+    // can pledge as collateral. Submit-time path that prevents the bank
+    // from actually seizing the HQ on default keys off role='national_hq'
+    // — see lrSubmitLoanRequest below for the sentinel handling.
+    lrCollateralProps = data || [];
 }
 
 // Build a 10-pip meter. tier='gold'|'green'|'rust'|'red'|'leverage'.

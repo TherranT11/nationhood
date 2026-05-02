@@ -4442,16 +4442,13 @@ async function fireBilateralEvent(supabase, triggerKey, nationIdA, nationIdB, cu
 // share the browser module graph. Keep that copy in sync if the formula
 // changes here.
 
-// National HQ value/quality formulas. The HQ is not persisted as a
-// corp_properties row — it is synthesized from the home nation's stats
-// (see expansion.html#nationalHqValue and the comment on the NATIONAL HQ
-// card). Every valuation surface that wants a complete picture must mix
-// this synthetic row into the properties array; without it, valuation
-// undercounts by $50–$75M.
-//
-// Formulas mirror expansion.html exactly (single source of truth lives
-// here now; expansion.html's local copies are kept for the asset-card
-// display path but reduce to the same numbers).
+// National HQ value/quality formulas. The HQ is now persisted as a
+// real corp_properties row at corp founding (see corp-nation-select.html)
+// and backfilled for existing corps via
+// sql/migrations/20260711_persist_national_hq.sql. These formulas remain
+// exported so the founding flow + the backfill migration can share the
+// same numbers; valuation/maintenance/bankruptcy/etc. read the row
+// directly and don't need a synthetic helper anymore.
 function nationalHqValue(sol) {
     const s = Math.max(0, Math.min(100, Number(sol) || 0));
     return Math.round(50_000_000 + 25_000_000 * (s / 100));
@@ -4459,35 +4456,6 @@ function nationalHqValue(sol) {
 function nationalHqQuality(control) {
     const c = Math.max(0, Math.min(100, Number(control) || 50));
     return Math.round(70 + c * 0.3);
-}
-
-// Build the synthetic National HQ row that valuation math expects in the
-// properties array. Returns null when the nation row is missing or has
-// no nation_id binding the corp — callers should treat that as "no HQ
-// row to add" rather than failing the whole calc.
-//
-// The shape matches a real corp_properties row closely enough for
-// computePropertyValue: { purchase_price, condition, ...metadata }.
-function synthesizeNationalHq(nation) {
-    if (!nation || !nation.id) return null;
-    return {
-        id:             '__national_hq__',
-        synthetic:      true,
-        purchase_price: nationalHqValue(nation.standard_of_living),
-        condition:      nationalHqQuality(nation.control),
-        role:           'national_hq',
-        nation_id:      nation.id,
-    };
-}
-
-// Return a new array containing the synthetic National HQ + all real
-// properties. Convenience wrapper so callers don't repeat the spread.
-// Skips silently if the nation row isn't supplied (e.g. corp without
-// a home nation, or a transient render before the fetch resolves).
-function withNationalHq(properties, nation) {
-    const hq = synthesizeNationalHq(nation);
-    const real = Array.isArray(properties) ? properties : [];
-    return hq ? [hq, ...real] : real;
 }
 
 function computePropertyValue(properties) {
@@ -9010,21 +8978,19 @@ async function enactBill(supabase, bill, currentTick) {
                 if (!corp || corp.faction_type !== 'corporation' || corp.abandoned_at || corp.nation_id !== bill.nation_id) {
                     console.log(`[enactBill] gov_bailout voided: corp ${corpId} missing/moved/dissolved`);
                 } else {
+                    // National HQ is a real corp_properties row now
+                    // (20260711_persist_national_hq.sql) so the props
+                    // fetch already includes it.
                     const { data: props } = await supabase.from('corp_properties')
                         .select('purchase_price, condition').eq('faction_id', corpId);
                     const { data: vessels } = await supabase.from('corp_vessels')
                         .select('purchase_price, condition, built_at_tick, status').eq('faction_id', corpId);
-                    // Synthetic National HQ pulls from the corp's home
-                    // nation stats — same SSOT helper used by the masthead
-                    // and bankruptcy/bailout client paths.
-                    const { data: hqNation } = await supabase.from('nations')
-                        .select('id, standard_of_living, control').eq('id', corp.nation_id).single();
                     const corpCash = Number(corp.corp_cash_reserves || 0);
                     const corpLoans = Number(corp.corp_loans || 0);
                     const valuation = computeCorpValuation({
                         cash: corpCash,
                         loans: corpLoans,
-                        properties: withNationalHq(props, hqNation),
+                        properties: props,
                         vessels,
                         currentTick,
                     });
