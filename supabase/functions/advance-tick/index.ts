@@ -19046,28 +19046,36 @@ async function buildPolicyDecayAdjustments(supabase, nationId) {
 }
 
 // ════════════════════════════════════════════════════════════════
-// Energy demand-met effects per tick.
+// Commodity demand-met effects per tick.
 //
-// Runs alongside processStatDecay in the per-nation loop. Uses the
-// same production/demand formulas as the YOUR ECONOMY panel:
-//   production = energy / 3
-//   demand     = ((infra + industry) × sol × √pop_M) / 3500
-//   supply     = production + net_trading_imports
-//   met_pct    = supply / demand
+// Runs alongside processStatDecay in the per-nation loop. For each
+// stat-derived commodity (Energy, Minerals), computes:
+//   supply  = production + net_trading_imports (where applicable)
+//   met_pct = supply / demand
 //
-// Buckets:
-//   met_pct < 1.00 (under-supplied):
-//     standard_of_living -0.1, public_approval -0.1, industry -0.1
-//   met_pct ≥ 1.20 (over-supplied):
-//     standard_of_living +0.05, cost_of_living -0.05,
-//     public_approval +0.05, service_sector +0.05
-//   100-119% inclusive: no effects.
-//   demand = 0: skip (no effects either way).
+// Buckets per commodity:
 //
-// Trading volumes are pre-computed once per tick by
-// computeEnergyTradingByNation since it requires a join across
-// shipping_contracts + bids + agreements; iterating per-nation would
-// blow up query counts for no reason.
+//   ENERGY (production = energy / 3,
+//           demand     = ((infra + industry) × sol × √pop_M) / 3500):
+//     met_pct < 1.00 → SoL -0.1, public_approval -0.1, industry -0.1
+//     met_pct ≥ 1.20 → SoL +0.05, cost_of_living -0.05,
+//                      public_approval +0.05, service_sector +0.05
+//
+//   MINERALS (production = (minerals/3) × ((workforce + industry)/200),
+//             demand     = (infra/10) + (industry/16)):
+//     met_pct < 1.00 → infrastructure -0.1, industry -0.1, gdp_growth -0.1
+//     met_pct ≥ 1.20 → SoL +0.05, infrastructure +0.05,
+//                      industry +0.05, gdp_growth +0.05
+//
+//   demand = 0 → skip (no effects either way).
+//   100-119% inclusive → no effects.
+//
+// Merging: when two commodities nudge the same stat (e.g. Energy
+// under-supply −0.1 industry + Minerals under-supply −0.1 industry),
+// deltas sum (industry → −0.2 net) and apply in a SINGLE update so
+// neither overwrites the other. Trading volumes pre-computed once
+// per tick by computeEnergyTradingByNation since Minerals doesn't
+// have trade-agreement plumbing yet (Trading = 0 for Minerals).
 // ════════════════════════════════════════════════════════════════
 async function computeEnergyTradingByNation(supabase) {
     const map = new Map();
@@ -19108,7 +19116,9 @@ async function computeEnergyTradingByNation(supabase) {
     return map;
 }
 
-async function processEnergyDemandEffects(supabase, nation, tradingByNation) {
+// Build {bucket, met_pct, deltas} for ENERGY on this nation, or null
+// if no effects fire. Pure — no DB writes.
+function buildEnergyBucketDeltas(nation, tradingByNation) {
     const energyStat   = Number(nation.energy)             || 0;
     const infraStat    = Number(nation.infrastructure)     || 0;
     const industryStat = Number(nation.industry)           || 0;
@@ -19119,44 +19129,92 @@ async function processEnergyDemandEffects(supabase, nation, tradingByNation) {
     const demand     = ((infraStat + industryStat) * solStat * Math.sqrt(popMillions)) / 3500;
     if (demand <= 0) return null;
 
-    const trading = Number(tradingByNation.get(nation.id) || 0);
+    const trading = Number((tradingByNation && tradingByNation.get(nation.id)) || 0);
     const supply  = production + trading;
     const metPct  = supply / demand;
 
-    let deltas = null;
     if (metPct < 1.0) {
-        deltas = {
-            standard_of_living: -0.1,
-            public_approval:    -0.1,
-            industry:           -0.1,
-        };
-    } else if (metPct >= 1.2) {
-        deltas = {
-            standard_of_living:  0.05,
-            cost_of_living:     -0.05,
-            public_approval:     0.05,
-            service_sector:      0.05,
+        return {
+            bucket:  'under',
+            met_pct: Math.round(metPct * 100),
+            deltas:  { standard_of_living: -0.1, public_approval: -0.1, industry: -0.1 },
         };
     }
-    if (!deltas) return null;
+    if (metPct >= 1.2) {
+        return {
+            bucket:  'over',
+            met_pct: Math.round(metPct * 100),
+            deltas:  { standard_of_living: 0.05, cost_of_living: -0.05, public_approval: 0.05, service_sector: 0.05 },
+        };
+    }
+    return null;
+}
+
+// Build {bucket, met_pct, deltas} for MINERALS on this nation. No
+// trade-agreement plumbing for Minerals yet, so supply = production.
+function buildMineralsBucketDeltas(nation) {
+    const mineralsStat  = Number(nation.minerals)       || 0;
+    const workforceStat = Number(nation.workforce)      || 0;
+    const industryStat  = Number(nation.industry)       || 0;
+    const infraStat     = Number(nation.infrastructure) || 0;
+
+    const production = (mineralsStat / 3) * ((workforceStat + industryStat) / 200);
+    const demand     = (infraStat / 10) + (industryStat / 16);
+    if (demand <= 0) return null;
+
+    const supply = production;
+    const metPct = supply / demand;
+
+    if (metPct < 1.0) {
+        return {
+            bucket:  'under',
+            met_pct: Math.round(metPct * 100),
+            deltas:  { infrastructure: -0.1, industry: -0.1, gdp_growth: -0.1 },
+        };
+    }
+    if (metPct >= 1.2) {
+        return {
+            bucket:  'over',
+            met_pct: Math.round(metPct * 100),
+            deltas:  { standard_of_living: 0.05, infrastructure: 0.05, industry: 0.05, gdp_growth: 0.05 },
+        };
+    }
+    return null;
+}
+
+async function processCommodityDemandEffects(supabase, nation, tradingByNation) {
+    const sources = [];
+    const energy = buildEnergyBucketDeltas(nation, tradingByNation);
+    if (energy)   sources.push({ commodity: 'energy',   ...energy });
+    const minerals = buildMineralsBucketDeltas(nation);
+    if (minerals) sources.push({ commodity: 'minerals', ...minerals });
+
+    if (sources.length === 0) return null;
+
+    // Merge deltas additively across commodities so two stats nudging
+    // the same column (e.g. Energy + Minerals both touching industry)
+    // sum cleanly into one update.
+    const merged = {};
+    for (const s of sources) {
+        for (const [k, d] of Object.entries(s.deltas)) {
+            merged[k] = (merged[k] || 0) + d;
+        }
+    }
 
     const updates = {};
-    for (const [k, d] of Object.entries(deltas)) {
+    for (const [k, d] of Object.entries(merged)) {
         const cur  = Number(nation[k]) || 0;
         const next = Math.max(0, Math.min(100, cur + d));
         if (next !== cur) updates[k] = next;
     }
     if (Object.keys(updates).length === 0) return null;
+
     const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
     if (error) {
-        console.warn(`[EnergyDemand] update failed for ${nation.name}:`, error.message);
+        console.warn(`[CommodityDemand] update failed for ${nation.name}:`, error.message);
         return null;
     }
-    return {
-        bucket:  metPct < 1.0 ? 'under' : 'over',
-        met_pct: Math.round(metPct * 100),
-        deltas,
-    };
+    return { sources, applied: updates };
 }
 
 async function processStatDecay(supabase, nation, statInstitutionMap, policyDecayAdjustments = null, currentTick = 0) {
@@ -31418,16 +31476,19 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Stat decay failed for ${nation.name} (non-fatal):`, decayErr);
         }
 
-        // Energy demand-met effects (per-tick stat deltas based on
-        // supply / demand bucket).
+        // Commodity demand-met effects (per-tick stat deltas across
+        // every stat-derived commodity — Energy + Minerals today).
+        // Single merged update per nation so two commodities nudging
+        // the same column (e.g. industry under Energy + Minerals)
+        // sum cleanly rather than overwriting.
         try {
-            const energyDemandRes = await processEnergyDemandEffects(supabase, nation, _energyTradingByNation);
-            if (energyDemandRes) {
-                summary.energyDemand = summary.energyDemand || [];
-                summary.energyDemand.push({ nation: nation.name, ...energyDemandRes });
+            const commodityDemandRes = await processCommodityDemandEffects(supabase, nation, _energyTradingByNation);
+            if (commodityDemandRes) {
+                summary.commodityDemand = summary.commodityDemand || [];
+                summary.commodityDemand.push({ nation: nation.name, ...commodityDemandRes });
             }
-        } catch (edErr) {
-            console.error(`[advanceTick] Energy demand effects failed for ${nation.name} (non-fatal):`, edErr);
+        } catch (cdErr) {
+            console.error(`[advanceTick] Commodity demand effects failed for ${nation.name} (non-fatal):`, cdErr);
         }
 
         // Stat connections (threshold-triggered ripple effects)
