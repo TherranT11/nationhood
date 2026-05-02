@@ -1260,17 +1260,26 @@ function adm2RenderExecCard() {
         </div>`);
     }
 
-    // Prime Minister (parliamentary + semi-presidential)
+    // Prime Minister (parliamentary + semi-presidential + absolute monarchy).
+    // Absolute monarchies use the same hog row but the role is the Monarch's
+    // executive hat — relabel as "Head of Government" so it doesn't read as
+    // "Prime Minister" when the King is filling the slot themselves. After
+    // a separate PM is appointed via the royal action, hog.faction_id stops
+    // matching monarch_faction_id and the label flips back to Prime Minister.
     if (hog && !isPurePres) {
         const name = `${hog.first_name || ''} ${hog.last_name || ''}`.trim();
         const pmParty = parties.find(p => p.id === hog.faction_id);
         const party = pmParty?.faction_name || '';
         const color = pmParty?.party_color || 'var(--text-muted)';
         const initials = name.split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
+        const isMonarchAsHog = isAbsoluteMonarchy(nation)
+            && nation?.monarch_faction_id
+            && hog.faction_id === nation.monarch_faction_id;
+        const roleLabel = isMonarchAsHog ? 'Head of Government' : 'Prime Minister';
         rows.push(`<div class="adm2-exec-person">
             <div class="adm2-avatar" style="color:${color};border-color:${color}44;background:${color}15;">${escapeHtml(initials)}</div>
             <div class="adm2-exec-body">
-                <div class="role">Prime Minister</div>
+                <div class="role">${escapeHtml(roleLabel)}</div>
                 <div class="name">${escapeHtml(name)}</div>
                 ${party ? `<div class="party"><span class="dot" style="background:${color};"></span>${escapeHtml(party)}</div>` : ''}
             </div>
