@@ -195,10 +195,10 @@ body.airline-operations.light-mode {
   letter-spacing: 0.06em;
 }
 
-/* ── Two-up panel row (My Hubs + Fleet Inventory) ───── */
+/* ── Three-up panel row (Available Hubs + My Hubs + Fleet Inventory) ───── */
 .ao-panels-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 16px;
   margin-bottom: 32px;
 }
@@ -293,8 +293,111 @@ body.airline-operations.light-mode {
   letter-spacing: 0.04em;
 }
 
-@media (max-width: 880px) {
+@media (max-width: 1100px) {
+  .ao-panels-row { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 720px) {
   .ao-panels-row { grid-template-columns: 1fr; }
+}
+
+/* ── Buy-Terminal button + confirm modal ───────────────────────── */
+.ao-buy-btn {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border: 1px solid var(--accent-gold);
+  background: rgba(200,168,50,0.08);
+  color: var(--accent-gold);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.ao-buy-btn:hover  { background: rgba(200,168,50,0.18); }
+.ao-buy-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+  background: transparent;
+}
+.ao-hub-cost {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent-gold);
+  font-weight: 700;
+}
+.ao-hub-meta {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.ao-modal-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.65);
+  z-index: 1000;
+  align-items: center; justify-content: center;
+}
+.ao-modal-overlay.active { display: flex; }
+.ao-modal {
+  background: var(--bg-card);
+  border: 1px solid var(--line-bright);
+  width: 420px;
+  max-width: 90vw;
+  padding: 24px;
+}
+.ao-modal h3 {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0 0 12px;
+  color: var(--text-bright);
+}
+.ao-modal-body {
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+.ao-modal-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.ao-modal-row span:first-child { color: var(--text-muted); }
+.ao-modal-row span:last-child  { color: var(--text-bright); font-weight: 700; }
+.ao-modal-actions {
+  display: flex; gap: 8px; justify-content: flex-end;
+}
+.ao-modal-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  border: 1px solid var(--border-2);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.ao-modal-btn--primary {
+  border-color: var(--accent-gold);
+  background: rgba(200,168,50,0.10);
+  color: var(--accent-gold);
+}
+.ao-modal-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ao-modal-error {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent-rust);
+  margin-top: 10px;
+  min-height: 14px;
 }
 </style>
 </head>
@@ -338,8 +441,17 @@ body.airline-operations.light-mode {
     </div>
   </section>
 
-  <!-- My Hubs + Fleet Inventory panels -->
+  <!-- Available Hubs + My Hubs + Fleet Inventory panels -->
   <div class="ao-panels-row">
+    <div class="ao-panel">
+      <div class="ao-panel-header">
+        <h3>Available Hubs</h3>
+        <span class="desc">Open terminals to buy</span>
+      </div>
+      <div class="ao-panel-body" id="ao-available-hubs">
+        <div class="ao-panel-empty">Loading…</div>
+      </div>
+    </div>
     <div class="ao-panel">
       <div class="ao-panel-header">
         <h3>My Hubs</h3>
@@ -357,6 +469,19 @@ body.airline-operations.light-mode {
       <div class="ao-panel-body" id="ao-fleet-inventory">
         <div class="ao-panel-empty">Loading…</div>
       </div>
+    </div>
+  </div>
+
+  <!-- Buy Terminal confirm modal -->
+  <div class="ao-modal-overlay" id="ao-buy-modal">
+    <div class="ao-modal">
+      <h3>Buy Terminal Access</h3>
+      <div class="ao-modal-body" id="ao-buy-modal-body"></div>
+      <div class="ao-modal-actions">
+        <button type="button" class="ao-modal-btn" id="ao-buy-cancel">Cancel</button>
+        <button type="button" class="ao-modal-btn ao-modal-btn--primary" id="ao-buy-confirm">Confirm Purchase</button>
+      </div>
+      <div class="ao-modal-error" id="ao-buy-modal-error"></div>
     </div>
   </div>
 
@@ -436,6 +561,162 @@ function formatServiceTime(currentTick, acquiredTick) {
     const rem   = months % 12;
     if (rem === 0) return years + (years === 1 ? ' year' : ' years');
     return `${years} ${years === 1 ? 'year' : 'years'}, ${rem} ${rem === 1 ? 'month' : 'months'}`;
+}
+
+// Cost preview for the Available Hubs list. Server-authoritative cost
+// is recomputed inside buy_airline_terminal at the moment the buy
+// commits — what we render here is the cost the next buyer would pay
+// based on the current free/total ratio + the hub nation's SoL.
+function _computeTerminalCost(freeCount, totalCount, sol) {
+    const total = Math.max(1, Number(totalCount) || 1);
+    const free  = Math.max(0, Math.min(total, Number(freeCount) || 0));
+    const scarcity = 1 - (free / total);
+    const solClamped = Math.max(0, Math.min(100, Number(sol) || 50));
+    const solMult = 0.5 + (solClamped / 100);
+    const raw = 3_000_000 + 17_000_000 * scarcity * solMult;
+    return Math.max(3_000_000, Math.min(20_000_000, Math.round(raw)));
+}
+
+function _fmtMoneyShort(n) {
+    const v = Number(n) || 0;
+    if (v >= 1_000_000_000) return '$' + (v / 1_000_000_000).toFixed(2) + 'B';
+    if (v >= 1_000_000)     return '$' + (v / 1_000_000).toFixed(2) + 'M';
+    if (v >= 1_000)         return '$' + (v / 1_000).toFixed(1) + 'k';
+    return '$' + Math.round(v);
+}
+
+// Cache populated during loadAvailableHubs so the buy modal can read
+// the current cost + the next free terminal_id without re-querying.
+let _availableHubsCache = [];
+
+async function loadAvailableHubs(corpId) {
+    const el = document.getElementById('ao-available-hubs');
+    if (!el) return;
+
+    // One round-trip: cities + their nation SoL + every terminal at
+    // each city. We need the full terminal list to find the lowest
+    // free terminal_id (the one a buy will claim).
+    const { data: cities, error } = await _supabase
+        .from('airline_cities')
+        .select('id, name, runway_type, terminal_count, is_capital, nations:nation_id(name, standard_of_living), airline_terminals(id, terminal_number, owner_airline_id)')
+        .order('name', { ascending: true });
+    if (error) {
+        console.warn('[airline-ops] available hubs fetch failed:', error.message);
+        el.innerHTML = '<div class="ao-panel-empty">Could not load available hubs.</div>';
+        return;
+    }
+
+    const rows = (cities || []).map(c => {
+        const terminals = c.airline_terminals || [];
+        const total = terminals.length || c.terminal_count || 0;
+        const freeTerms = terminals
+            .filter(t => !t.owner_airline_id)
+            .sort((a, b) => Number(a.terminal_number) - Number(b.terminal_number));
+        const free = freeTerms.length;
+        const sol  = c.nations?.standard_of_living;
+        const cost = _computeTerminalCost(free, total, sol);
+        return {
+            cityId:      c.id,
+            cityName:    c.name,
+            nationName:  c.nations?.name || '',
+            runway:      c.runway_type,
+            isCapital:   !!c.is_capital,
+            free, total, cost,
+            nextTerminalId: freeTerms[0]?.id || null,
+            nextTerminalNumber: freeTerms[0]?.terminal_number ?? null,
+        };
+    });
+    _availableHubsCache = rows;
+
+    const hubs = rows.filter(r => r.free > 0 && r.nextTerminalId);
+    if (hubs.length === 0) {
+        el.innerHTML = '<div class="ao-panel-empty">No terminals available worldwide.</div>';
+        return;
+    }
+
+    el.innerHTML = hubs.map(h => {
+        const cap    = h.isCapital ? ' <span class="ao-list-tag teal">Capital</span>' : '';
+        const runway = h.runway ? RUNWAY_LABEL[h.runway] || h.runway : '';
+        return `<div class="ao-list-row">
+            <div>
+                <div class="ao-list-primary">${escHtml(h.cityName)}${cap}</div>
+                <div class="ao-list-secondary">${escHtml(h.nationName)} · ${escHtml(runway)} runway</div>
+                <div class="ao-hub-meta">${h.free} of ${h.total} open · <span class="ao-hub-cost">${_fmtMoneyShort(h.cost)}</span></div>
+            </div>
+            <div style="text-align:right;">
+                <button type="button" class="ao-buy-btn" data-city-id="${escHtml(h.cityId)}">Buy Terminal</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+let _pendingBuy = null;
+function initBuyTerminalFlow(corpId, totalCityCount) {
+    const panel       = document.getElementById('ao-available-hubs');
+    const overlay     = document.getElementById('ao-buy-modal');
+    const bodyEl      = document.getElementById('ao-buy-modal-body');
+    const errorEl     = document.getElementById('ao-buy-modal-error');
+    const cancelBtn   = document.getElementById('ao-buy-cancel');
+    const confirmBtn  = document.getElementById('ao-buy-confirm');
+    if (!panel || !overlay || !bodyEl || !confirmBtn || !cancelBtn) return;
+
+    // Delegated click on the panel — survives innerHTML re-renders by
+    // loadAvailableHubs. data-city-id on the button identifies the
+    // hub whose lowest-numbered free terminal we'll claim.
+    panel.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('.ao-buy-btn');
+        if (!btn) return;
+        const cityId = btn.dataset.cityId;
+        const hub = _availableHubsCache.find(r => r.cityId === cityId);
+        if (!hub || !hub.nextTerminalId) return;
+        _pendingBuy = hub;
+        bodyEl.innerHTML = `
+            <p>Acquire <strong>Terminal #${hub.nextTerminalNumber}</strong> at <strong>${escHtml(hub.cityName)}</strong> (${escHtml(hub.nationName)})?</p>
+            <div class="ao-modal-row"><span>Hub</span><span>${escHtml(hub.cityName)} · ${escHtml(RUNWAY_LABEL[hub.runway] || hub.runway || '')}</span></div>
+            <div class="ao-modal-row"><span>Availability</span><span>${hub.free} of ${hub.total} open</span></div>
+            <div class="ao-modal-row"><span>Purchase price</span><span>${_fmtMoneyShort(hub.cost)}</span></div>
+            <div class="ao-modal-row"><span>Maintenance</span><span>${_fmtMoneyShort(Math.round(hub.cost * 0.01))}/tick</span></div>
+        `;
+        errorEl.textContent = '';
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Confirm Purchase';
+        overlay.classList.add('active');
+    });
+
+    const closeModal = () => {
+        overlay.classList.remove('active');
+        _pendingBuy = null;
+    };
+    cancelBtn.addEventListener('click', closeModal);
+    overlay.addEventListener('click', (ev) => { if (ev.target === overlay) closeModal(); });
+
+    confirmBtn.addEventListener('click', async () => {
+        if (!_pendingBuy) return;
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Acquiring…';
+        errorEl.textContent = '';
+        const terminalId = _pendingBuy.nextTerminalId;
+        try {
+            const { data, error } = await _supabase.rpc('buy_airline_terminal', {
+                p_corp_id:     corpId,
+                p_terminal_id: terminalId,
+            });
+            if (error) throw new Error(error.message);
+            if (!data?.success) throw new Error(data?.error || 'Purchase failed.');
+            closeModal();
+            // Refresh both panels so the new terminal moves from
+            // Available → My Hubs and the cost on the next available
+            // terminal at this hub recomputes.
+            await Promise.all([
+                loadAvailableHubs(corpId),
+                loadMyHubs(corpId, totalCityCount),
+            ]);
+        } catch (err) {
+            errorEl.textContent = err?.message || 'Purchase failed.';
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Confirm Purchase';
+        }
+    });
 }
 
 async function loadMyHubs(corpId, totalCityCount) {
@@ -592,9 +873,15 @@ async function init() {
 
     // Side-by-side panels.
     await Promise.all([
+        loadAvailableHubs(faction.id),
         loadMyHubs(faction.id, totalCities),
         loadFleetInventory(faction.id, currentTick),
     ]);
+
+    // Wire the buy-confirm modal once. The Available Hubs renderer
+    // re-stamps innerHTML on every refresh, so we delegate the click
+    // off the panel body and identify the chosen city via data-city-id.
+    initBuyTerminalFlow(faction.id, totalCities);
 }
 
 init().catch(err => {
