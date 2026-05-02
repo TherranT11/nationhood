@@ -56,62 +56,44 @@ function collateralRecoveryRate(collateralType) {
 const DEFAULT_MISSED_THRESHOLD = 4;
 
 // ════════════════════════════════════════════════════════════════════════════════
-//  TICK-SCOPED P&L ACCUMULATOR — feeds factions.monthly_profit.
+//  Option 4 — corp_cash_events SSoT (Phase 4: dual-write retired).
 //
-//  accruePnl is no longer called directly from business code (Phase 2). It
-//  survives only as the inner side of logCashEvent's dual-write, populating
-//  _tickPnl → factions.monthly_profit so the legacy dashboard surfaces keep
-//  working. Phase 4 deletes accruePnl, _tickPnl, and flushTickPnl once every
-//  read site has migrated to corp_cash_events.
+//  logCashEvent is the single entry point for per-corp P&L cash movements.
+//  Events buffer in memory and flush in one batch at tick end so the
+//  insert doesn't fan out into one round-trip per accrual. _currentTick is
+//  captured at the top of advanceCorpTick so call sites don't have to thread
+//  it through. Two in-tick consumers (the equity dividend block and the
+//  corp_cash_history writer) read from _pendingCashEvents to derive the
+//  current corp's accrued profit before flush.
 //
-//  KNOWN SCOPE GAP — cash events that move corp_cash_reserves but bypass the
-//  accumulator + event log:
+//  KNOWN SCOPE GAP — cash events that still bypass the event log:
 //    - advance-tick/index.ts gov_bailout path (non-P&L equity infusion — correct to skip)
 //    - advance-tick/index.ts processAutoRatePolicies (subsidiary insurance
 //      premiums, loan payments, claim payouts — these SHOULD flow through)
 //    - js/corp-refurbish.js client-side refurbish cost (player-initiated expense)
 //    - non-P&L principal transfers (loan principal debit/credit at ~L4355 /
 //      ~L4378 / ~L5419, bond principal credit at ~L2713). These belong in
-//      capital_in / capital_out / debt_principal categories, which require
-//      logCashEvent to skip the accruePnl side-write so monthly_profit
-//      isn't double-counted. Deferred — needs the helper extended first.
+//      capital_in / capital_out / debt_principal categories, which need the
+//      helper extended to skip P&L semantics — deferred.
 //  Follow-up: route these through logCashEvent in a later phase.
-// ════════════════════════════════════════════════════════════════════════════════
-
-const _tickPnl = new Map();
-
-function accruePnl(corpId, delta) {
-    if (!corpId || !Number.isFinite(delta) || delta === 0) return;
-    _tickPnl.set(corpId, (_tickPnl.get(corpId) || 0) + delta);
-}
-
-// ════════════════════════════════════════════════════════════════════════════════
-//  Option 4 — corp_cash_events SSoT (Phase 2: every accrual site now logs).
-//
-//  logCashEvent is the single entry point for per-corp cash movements that
-//  feed into P&L. It dual-writes: appends to _pendingCashEvents AND calls
-//  accruePnl so factions.monthly_profit + corp_cash_history keep populating
-//  unchanged for the legacy read paths. Phase 3 cuts UI reads over to
-//  corp_cash_events; Phase 4 drops the accruePnl side; Phase 5 drops the
-//  legacy aggregate columns and tables.
-//
-//  Events buffer in memory and flush in one batch at tick end so the
-//  insert doesn't fan out into one round-trip per accrual. _currentTick is
-//  captured at the top of advanceCorpTick so call sites don't have to thread
-//  it through.
-//
-//  Non-P&L cash movements (loan principal transfers, equity sales, gov
-//  bailouts) still write corp_cash_reserves directly without going through
-//  this helper — they'll be added in a follow-up pass with capital_in /
-//  capital_out / debt_principal categories.
 // ════════════════════════════════════════════════════════════════════════════════
 
 let _currentTick = 0;
 const _pendingCashEvents = [];
 
+// Sum buffered P&L deltas for one corp at the current tick. Used by the
+// equity block and the corp_cash_history writer to read this tick's
+// accrued profit before flushCashEvents persists it.
+function _accruedProfitForCorp(corpId) {
+    let sum = 0;
+    for (const ev of _pendingCashEvents) {
+        if (ev.corp_id === corpId) sum += Number(ev.delta) || 0;
+    }
+    return sum;
+}
+
 function logCashEvent(corpId, category, label, delta) {
     if (!corpId || !Number.isFinite(delta) || delta === 0) return;
-    accruePnl(corpId, delta);
     _pendingCashEvents.push({
         corp_id:  corpId,
         tick:     _currentTick,
@@ -133,8 +115,8 @@ async function flushCashEvents(supabase) {
     } catch (err) {
         // Catch thrown exceptions (network, schema-cache, etc.) so they
         // don't abort tick completion — the tick already moved real cash
-        // via accruePnl + corp_cash_reserves writes; losing the event log
-        // for one tick is recoverable, re-running the whole tick is not.
+        // via corp_cash_reserves writes; losing the event log for one
+        // tick is recoverable, re-running the whole tick is not.
         console.error('[advance-corp-tick] corp_cash_events insert threw:', err?.message || err);
     }
 }
@@ -160,19 +142,6 @@ async function logShippingWriteFailure(supabase, ctx) {
         });
     } catch (logErr) {
         console.error('[advance-corp-tick] event_log insert for shipping failure threw:', logErr);
-    }
-}
-
-async function flushTickPnl(supabase, corpIds) {
-    for (const corpId of corpIds) {
-        if (!corpId) continue;
-        const pnl = _tickPnl.get(corpId) || 0;
-        const { error } = await supabase.from('factions')
-            .update({ monthly_profit: Math.round(pnl) })
-            .eq('id', corpId);
-        if (error) {
-            console.error(`[advance-corp-tick] flushTickPnl failed for ${corpId}:`, error.message);
-        }
     }
 }
 
@@ -3853,9 +3822,8 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
         if (updateErr) {
             console.error(`[advance-corp-tick] Income update failed for ${corp.faction_name}:`, updateErr.message);
         } else {
-            // Accrue each P&L component to the tick accumulator only after the
-            // cash write succeeded. monthly_profit is written once at tick-end
-            // from _tickPnl — do NOT include it in updateFields above.
+            // Log each P&L component to corp_cash_events, only after the
+            // cash write succeeded.
             logCashEvent(corp.id, 'revenue_market', 'Monthly market revenue', corpMonthlyRev);
             logCashEvent(corp.id, 'wages',          'Workforce wages',        -monthlyWages);
             logCashEvent(corp.id, 'exec_salary',    'Executive salaries',     -monthlyExecSalaries);
@@ -4273,8 +4241,8 @@ async function processBankLoanExpiry(supabase, currentTick) {
 // Successful payments don't decrement payments_missed — the counter
 // is monotonic so escalation is a one-way ratchet.
 //
-// Borrower-side accounting: payment is added to corp_costs_current_tick
-// (real-world: loan service is a cost line, revenue stays gross).
+// Borrower-side accounting: payment is logged via logCashEvent (debt
+// service category) so it shows in the dashboard's expense breakdown.
 // principal portion of the payment also decrements corp_debt so the
 // dashboard's Outstanding Debt card amortizes alongside.
 async function processBankLoanPayments(supabase, currentTick) {
@@ -4295,32 +4263,6 @@ async function processBankLoanPayments(supabase, currentTick) {
         return results;
     }
     if (!loans || loans.length === 0) return results;
-
-    // Reset corp_costs_current_tick for every borrower we're about to
-    // process. The per-tick fields on factions are documented as
-    // "Snapshot — historized in corp_pnl_history" but the per-tick
-    // reset+snapshot infrastructure was never built. corp_costs_current_tick
-    // sits at whatever value the prior tick wrote. Without this reset,
-    // each LRP2 run would accumulate (existing + payment) on top of the
-    // previous tick's total, producing an unbounded growing number on
-    // the dashboard instead of a per-tick figure.
-    //
-    // Carry-over: this assumes LRP2 is the only writer to
-    // corp_costs_current_tick within a tick. When other processors
-    // start contributing (wages, materials, etc.), they'll need their
-    // own coordinated reset — ideally at tick-start, not per-processor.
-    const borrowerIds = [...new Set(loans.map(l => l.borrower_faction_id).filter(Boolean))];
-    if (borrowerIds.length > 0) {
-        const { error: resetErr } = await supabase
-            .from('factions')
-            .update({ corp_costs_current_tick: 0 })
-            .in('id', borrowerIds);
-        if (resetErr) {
-            console.warn('[BankLoanPayments] tick-cost reset failed:', resetErr.message);
-            // Continue anyway — the per-loan UPDATEs will still write,
-            // just with stale-prior-tick costs sitting underneath.
-        }
-    }
 
     for (const loan of loans) {
         // Idempotency belt-and-suspenders.
@@ -4347,7 +4289,7 @@ async function processBankLoanPayments(supabase, currentTick) {
         const principalPortion = Math.max(0, payment - interestDue);
 
         const { data: borrower, error: bErr } = await supabase.from('factions')
-            .select('corp_cash_reserves, corp_debt, corp_costs_current_tick')
+            .select('corp_cash_reserves, corp_debt')
             .eq('id', loan.borrower_faction_id).single();
         if (bErr || !borrower) {
             console.warn(`[BankLoanPayments] borrower fetch failed for loan ${loan.id}:`, bErr?.message);
@@ -4358,13 +4300,10 @@ async function processBankLoanPayments(supabase, currentTick) {
         if (borrowerCash >= payment) {
             const newOutstanding = Math.max(0, outstanding - principalPortion);
 
-            // Borrower: deduct cash, decrement debt by principal portion,
-            // accumulate cost-of-debt-service into per-tick costs. One
-            // UPDATE so the dashboard never sees an inconsistent triple.
+            // Borrower: deduct cash, decrement debt by principal portion.
             const { error: bUpdErr } = await supabase.from('factions').update({
-                corp_cash_reserves:      borrowerCash - payment,
-                corp_debt:               Math.max(0, (Number(borrower.corp_debt) || 0) - principalPortion),
-                corp_costs_current_tick: (Number(borrower.corp_costs_current_tick) || 0) + payment,
+                corp_cash_reserves: borrowerCash - payment,
+                corp_debt:          Math.max(0, (Number(borrower.corp_debt) || 0) - principalPortion),
             }).eq('id', loan.borrower_faction_id);
             if (bUpdErr) {
                 console.warn(`[BankLoanPayments] borrower debit failed for loan ${loan.id}:`, bUpdErr.message);
@@ -4459,9 +4398,8 @@ async function processBankLoanPayments(supabase, currentTick) {
 // doesn't get one extra payment on its last tick.
 //
 // Pass C — Per-tick payment. Active routes credit revenue_per_tick
-// to the winner's cash + corp_revenue_current_tick. The per-tick
-// column gets reset to 0 once-per-affected-winner at the top of the
-// pass (mirrors LRP2's reset pattern). No issuer-side debit yet —
+// to the winner's cash and emit a revenue_shipping cash event.
+// No issuer-side debit yet —
 // payments are ambient (printed) for SOP2; private-issuer cash
 // deduction is a future concern.
 async function processShippingRoutes(supabase, currentTick) {
@@ -4605,28 +4543,13 @@ async function processShippingRoutes(supabase, currentTick) {
     }
     if (!activeContracts || activeContracts.length === 0) return results;
 
-    // Reset corp_revenue_current_tick for unique winners. Same
-    // tick-orchestration carry-over flagged in LRP2 — assumes this
-    // processor is the only writer to the per-tick revenue column
-    // within a tick. When other revenue sources land, the reset moves
-    // up to a tick-start orchestrator instead of per-processor.
-    const winnerIds = [...new Set(activeContracts.map(r => r.winner_faction_id).filter(Boolean))];
-    if (winnerIds.length > 0) {
-        const { error: resetErr } = await supabase.from('factions')
-            .update({ corp_revenue_current_tick: 0 })
-            .in('id', winnerIds);
-        if (resetErr) {
-            console.warn('[ShippingRoutes] tick-revenue reset failed:', resetErr.message);
-        }
-    }
-
     for (const contract of activeContracts) {
         if (!contract.winner_faction_id) continue;
         const revenue = Number(contract.revenue_per_tick) || 0;
         if (revenue <= 0) continue;
 
         const { data: winner, error: wErr } = await supabase.from('factions')
-            .select('corp_cash_reserves, corp_revenue_current_tick')
+            .select('corp_cash_reserves')
             .eq('id', contract.winner_faction_id).single();
         if (wErr || !winner) {
             console.warn(`[ShippingRoutes] winner fetch failed for contract ${contract.id}:`, wErr?.message);
@@ -4634,8 +4557,7 @@ async function processShippingRoutes(supabase, currentTick) {
         }
 
         const { error: credErr } = await supabase.from('factions').update({
-            corp_cash_reserves:        (Number(winner.corp_cash_reserves) || 0) + revenue,
-            corp_revenue_current_tick: (Number(winner.corp_revenue_current_tick) || 0) + revenue,
+            corp_cash_reserves: (Number(winner.corp_cash_reserves) || 0) + revenue,
         }).eq('id', contract.winner_faction_id);
         if (credErr) {
             console.warn(`[ShippingRoutes] credit failed for contract ${contract.id}:`, credErr.message);
@@ -4676,8 +4598,8 @@ async function processShippingRoutes(supabase, currentTick) {
 //     until at least 1 offer is made."
 //
 //   - Per-tick payment debits the buyer nation's budget_reserves and
-//     credits the corp's cash + corp_revenue_current_tick. (SOP path
-//     prints revenue ambiently — wrong model for trade agreements.)
+//     credits the corp's cash + emits a revenue_trade event. (SOP
+//     path prints revenue ambiently — wrong model for trade agreements.)
 //
 //   - Route risk delta from the winning offer's modifiers is applied
 //     to the corp's corp_route_risk on award (clamped 0..10) and
@@ -5063,8 +4985,8 @@ async function processTradeAgreementShipping(supabase, currentTick) {
     }
 
     // ── Pass C: Per-tick payment ──
-    // Buyer nation pays the corp; corp cash + corp_revenue_current_tick
-    // credited. Buyer's nation_id was set on the contract by Phase 2.
+    // Buyer nation pays the corp; corp cash credited. Buyer's nation_id
+    // was set on the contract by Phase 2.
     const { data: active, error: activeErr } = await supabase
         .from('shipping_contracts')
         .select('id, name, winner_faction_id, revenue_per_tick, total_paid, last_payment_tick, nation_id, consecutive_missed_payments')
@@ -5076,36 +4998,6 @@ async function processTradeAgreementShipping(supabase, currentTick) {
         return results;
     }
     if (!active || active.length === 0) return results;
-
-    // Reset corp_revenue_current_tick for trade-agreement winners that
-    // AREN'T also winners on a SOP contract this tick. The SOP processor
-    // (processShippingRoutes) ran first and already zeroed those corps;
-    // re-zeroing here would clobber the SOP revenue accumulated in its
-    // Pass C. The fix preserves dashboard correctness for corps with
-    // mixed portfolios (winning both SOP + trade-agreement contracts in
-    // the same tick).
-    //
-    // Known loose end: a corp whose only revenue source is trade-agreement
-    // contracts ALL just expired this tick won't be zeroed by either
-    // processor — last tick's revenue lingers on the dashboard until the
-    // next active payment. Same pre-existing wart on the SOP side; full
-    // fix is to lift the reset to a tick-start orchestrator across both
-    // processors. Phase 5+ cleanup.
-    const winnerIds = [...new Set(active.map(r => r.winner_faction_id).filter(Boolean))];
-    if (winnerIds.length > 0) {
-        const { data: sopWinners } = await supabase.from('shipping_contracts')
-            .select('winner_faction_id')
-            .eq('status', 'awarded')
-            .is('trade_agreement_id', null)
-            .in('winner_faction_id', winnerIds);
-        const sopWinnerSet = new Set((sopWinners || []).map(r => r.winner_faction_id));
-        const tradeAgOnlyWinners = winnerIds.filter(id => !sopWinnerSet.has(id));
-        if (tradeAgOnlyWinners.length > 0) {
-            const { error: resetErr } = await supabase.from('factions')
-                .update({ corp_revenue_current_tick: 0 }).in('id', tradeAgOnlyWinners);
-            if (resetErr) console.warn('[TradeAgreementShipping] revenue reset failed:', resetErr.message);
-        }
-    }
 
     for (const contract of active) {
         if (!contract.winner_faction_id || !contract.nation_id) continue;
@@ -5182,15 +5074,14 @@ async function processTradeAgreementShipping(supabase, currentTick) {
         }
 
         const { data: winner, error: wFetchErr } = await supabase.from('factions')
-            .select('corp_cash_reserves, corp_revenue_current_tick')
+            .select('corp_cash_reserves')
             .eq('id', contract.winner_faction_id).single();
         if (wFetchErr || !winner) {
             console.warn(`[TradeAgreementShipping] winner fetch failed for ${contract.id}:`, wFetchErr?.message);
             continue;
         }
         const { error: credErr } = await supabase.from('factions').update({
-            corp_cash_reserves:        (Number(winner.corp_cash_reserves)        || 0) + actualPayment,
-            corp_revenue_current_tick: (Number(winner.corp_revenue_current_tick) || 0) + actualPayment,
+            corp_cash_reserves: (Number(winner.corp_cash_reserves) || 0) + actualPayment,
         }).eq('id', contract.winner_faction_id);
         if (credErr) {
             console.warn(`[TradeAgreementShipping] corp credit failed for ${contract.id}:`, credErr.message);
@@ -5325,20 +5216,31 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             continue;
         }
 
-        // Equity: pay dividend = equity_pct × target.monthly_profit (if profit > 0).
-        // Losses don't flow to the investor — equity can't go negative, they just
-        // earn nothing that tick. monthly_profit was written above by
-        // processCorpMonthlyIncome for this same tick.
+        // Equity: pay dividend = equity_pct × target's prior-tick profit
+        // (if profit > 0). Losses don't flow to the investor — equity can't
+        // go negative, they just earn nothing that tick. Pre-Phase-4 this
+        // read factions.monthly_profit, which (since flushTickPnl ran AFTER
+        // processFinanceLoans within a nation block) was always the PRIOR
+        // tick's flushed value. Behavior preserved by summing prior-tick
+        // events from corp_cash_events directly.
         if (requestType === 'equity') {
             const { data: target } = await supabase.from('factions')
-                .select('corp_cash_reserves, monthly_profit')
+                .select('corp_cash_reserves')
                 .eq('id', loan.borrower_faction_id).single();
             if (!target) {
                 console.warn(`[Equity] Target ${loan.borrower_faction_id} not found; skipping`);
                 continue;
             }
 
-            const profit = Number(target.monthly_profit || 0);
+            const { data: priorEvents, error: priorErr } = await supabase
+                .from('corp_cash_events')
+                .select('delta')
+                .eq('corp_id', loan.borrower_faction_id)
+                .eq('tick', currentTick - 1);
+            if (priorErr) {
+                console.warn(`[Equity] prior-tick events lookup failed for ${loan.borrower_faction_id}:`, priorErr.message);
+            }
+            const profit = (priorEvents || []).reduce((s, e) => s + (Number(e.delta) || 0), 0);
             const stakePct = Number(loan.equity_pct || 0);
             const dividendDue = profit > 0 ? Math.floor(profit * stakePct / 100) : 0;
             const targetCash = Number(target.corp_cash_reserves || 0);
@@ -5901,15 +5803,9 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
     console.log(`[advance-corp-tick] Processing tick ${currentTick} (${shard.current_date})`);
 
-    // Clear the tick P&L accumulator. We intentionally do NOT bulk-reset
-    // factions.monthly_profit here — the equity dividend block reads the PRIOR
-    // tick's profit as the dividend base, which is the correct accounting
-    // semantic (dividends are declared on settled earnings, not a tick in flight).
-    // Per-nation flushTickPnl and the global flush at tick end are the only
-    // writers; they overwrite with this tick's accumulated P&L.
-    _tickPnl.clear();
-
     // Capture the tick number for logCashEvent and reset its buffer.
+    // The buffer holds every cash event accrued so far this tick; it
+    // flushes to corp_cash_events at tick end.
     _currentTick = currentTick;
     _pendingCashEvents.length = 0;
 
@@ -5976,11 +5872,12 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
             // Tick-entry cash snapshot. Reused at tick-exit (below) to write
             // one honest corp_cash_history row per corp with a real cash_delta
-            // and non_pnl_cash_movements = cash_delta − monthly_profit. Fixed
-            // the previous setup where the snapshot was captured inside the
-            // fleet-maintenance loop, which ran AFTER processCorpMonthlyIncome
-            // and processFinanceLoans — so every non-shipping corp wrote
-            // cash_delta = 0 and non_pnl_cash_movements = null, breaking the
+            // and non_pnl_cash_movements = cash_delta − accrued P&L (sourced
+            // from _pendingCashEvents). Fixed the previous setup where the
+            // snapshot was captured inside the fleet-maintenance loop, which
+            // ran AFTER processCorpMonthlyIncome and processFinanceLoans — so
+            // every non-shipping corp wrote cash_delta = 0 and
+            // non_pnl_cash_movements = null, breaking the
             // Finances card's "Actual Cash Change" reconciliation.
             const cashStartByCorp = new Map(
                 corps.map(c => [c.id, Number(c.corp_cash_reserves || 0)])
@@ -6139,9 +6036,10 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
             // ── Construction Per-Tick Wages ──
             // wages = corp_work_crews × $300k × (0.5 + sol/100)
-            // The RPC updates corp_cash_reserves and corp_wages_current_tick
-            // atomically per corp; we log each row's negative delta so it
-            // lands in corp_cash_events and dual-writes monthly_profit.
+            // The RPC updates corp_cash_reserves atomically per corp; we
+            // log each row's negative delta to corp_cash_events. The RPC
+            // also still writes corp_wages_current_tick — that column is
+            // orphaned post-Phase-4 and gets dropped in Phase 5.
             try {
                 const { data: wageRows, error: wageErr } = await supabase
                     .rpc('apply_construction_wages_for_nation', { p_nation_id: nation.id });
@@ -7116,26 +7014,18 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // ── Defense Sector ───────────────────────────────────────────
             // FUTURE: Arms contracts, military equipment production
 
-            // Flush this nation's tick P&L accumulator to factions.monthly_profit.
-            // logCashEvent dual-writes accruePnl as it logs to corp_cash_events;
-            // this is the single writer that materializes those deltas into the
-            // DB column the legacy dashboard reads. Must run BEFORE corp_cash_history
-            // below, which reads monthly_profit for reconciliation.
-            if (corps.length > 0) {
-                await flushTickPnl(supabase, corps.map(c => c.id));
-            }
-
             // Tick-exit cash snapshot → one corp_cash_history row per corp.
             // cash_delta is computed against cashStartByCorp captured at the
             // top of this per-nation block (before any processing). Feeds the
-            // Finances card's "Actual Cash Change" reconciliation. Reads
-            // factions.monthly_profit (flushed just above) so non_pnl_cash_movements
-            // stays in one source of truth.
+            // dashboard's cash sparkline (still keyed off cash_end). The P&L
+            // portion of cash_delta is sourced from _pendingCashEvents (the
+            // SSoT) — non_pnl_cash_movements = cash_delta − sum of this
+            // corp's accrued events this tick.
             if (corps.length > 0) {
                 try {
                     const { data: endFactions, error: endFactionsErr } = await supabase
                         .from('factions')
-                        .select('id, corp_cash_reserves, monthly_profit')
+                        .select('id, corp_cash_reserves')
                         .in('id', corps.map(c => c.id));
                     if (endFactionsErr) throw endFactionsErr;
                     // Only write rows for corps we captured a real start-of-tick
@@ -7148,7 +7038,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                         .map(f => {
                             const cashStart = cashStartByCorp.get(f.id);
                             const cashEnd = Number(f.corp_cash_reserves || 0);
-                            const monthlyProfit = Number(f.monthly_profit || 0);
+                            const tickProfit = _accruedProfitForCorp(f.id);
                             const cashDelta = cashEnd - cashStart;
                             return {
                                 faction_id: f.id,
@@ -7156,7 +7046,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                                 cash_start: cashStart,
                                 cash_end: cashEnd,
                                 cash_delta: cashDelta,
-                                non_pnl_cash_movements: cashDelta - monthlyProfit,
+                                non_pnl_cash_movements: cashDelta - tickProfit,
                             };
                         });
                     if (rows.length > 0) {
@@ -7262,17 +7152,9 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
         summary.errors.push({ scope: 'shipping_routes', error: String(shipErr) });
     }
 
-    // Global P&L flush. Per-nation flushes above cover the common case, but
-    // cross-nation events (bond coupon, insurance premium, loan interest paid
-    // to a lender in another nation) can credit a corp AFTER its own nation's
-    // flush. This final pass writes monthly_profit for every corp still in the
-    // accumulator so no late delta is dropped. Idempotent vs. the per-nation
-    // flush — same value gets written twice in the common case.
-    if (_tickPnl.size > 0) {
-        await flushTickPnl(supabase, Array.from(_tickPnl.keys()));
-    }
-
-    // Flush buffered cash events to corp_cash_events.
+    // Flush buffered cash events to corp_cash_events. Single writer for
+    // every per-corp P&L delta this tick, regardless of which nation
+    // triggered it.
     await flushCashEvents(supabase);
 
     // 6. Mark this tick as processed (persisted to DB to survive cold starts)
