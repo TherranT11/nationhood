@@ -4680,18 +4680,46 @@ async function processTradeAgreementShipping(supabase, currentTick) {
             // freighters (committed elsewhere on awarded contracts since
             // the bid was placed). place_shipping_offer validates at bid
             // time; this is the second-line check at award time.
+            //
+            // Implementation: pre-fetch bidders' fleet sizes + every
+            // 'accepted' bid + the contract status of each linked contract
+            // in two queries, then compute available per bidder locally.
+            // Avoids the brittle PostgREST 'embed.field=value' filter
+            // pattern (not used anywhere else in this codebase).
+            const bidderIds = [...new Set(bids.map(b => b.bidder_faction_id).filter(Boolean))];
+            const fleetByBidder    = new Map();
+            const committedByBidder = new Map();
+            if (bidderIds.length > 0) {
+                const { data: bidderFactions } = await supabase.from('factions')
+                    .select('id, corp_freighters').in('id', bidderIds);
+                for (const f of (bidderFactions || [])) {
+                    fleetByBidder.set(f.id, Math.floor(Number(f.corp_freighters) || 0));
+                }
+                const { data: acceptedBids } = await supabase.from('shipping_contract_bids')
+                    .select('bidder_faction_id, contract_id, freighters_allocated')
+                    .in('bidder_faction_id', bidderIds)
+                    .eq('status', 'accepted');
+                const acceptedRows = acceptedBids || [];
+                if (acceptedRows.length > 0) {
+                    const linkedContractIds = [...new Set(acceptedRows.map(r => r.contract_id))];
+                    const { data: linkedContracts } = await supabase.from('shipping_contracts')
+                        .select('id, status').in('id', linkedContractIds);
+                    const awardedSet = new Set(
+                        (linkedContracts || []).filter(c => c.status === 'awarded').map(c => c.id)
+                    );
+                    for (const r of acceptedRows) {
+                        if (!awardedSet.has(r.contract_id)) continue;
+                        const cur = committedByBidder.get(r.bidder_faction_id) || 0;
+                        committedByBidder.set(r.bidder_faction_id, cur + (Number(r.freighters_allocated) || 0));
+                    }
+                }
+            }
+
             let winner = null;
             for (const b of bids) {
-                const need = Number(b.freighters_allocated) || 0;
-                const { data: bidderRow } = await supabase.from('factions')
-                    .select('corp_freighters').eq('id', b.bidder_faction_id).single();
-                const total = Math.floor(Number(bidderRow?.corp_freighters) || 0);
-                const { data: committedRows } = await supabase.from('shipping_contract_bids')
-                    .select('freighters_allocated, shipping_contracts!inner(status)')
-                    .eq('bidder_faction_id', b.bidder_faction_id)
-                    .eq('status', 'accepted')
-                    .eq('shipping_contracts.status', 'awarded');
-                const committed = (committedRows || []).reduce((s, r) => s + (Number(r.freighters_allocated) || 0), 0);
+                const need      = Number(b.freighters_allocated) || 0;
+                const total     = fleetByBidder.get(b.bidder_faction_id) || 0;
+                const committed = committedByBidder.get(b.bidder_faction_id) || 0;
                 const available = Math.max(0, total - committed);
                 if (need <= available) {
                     winner = b;
@@ -4700,10 +4728,14 @@ async function processTradeAgreementShipping(supabase, currentTick) {
                 // Bidder over-committed since bid time → reject this bid
                 // and continue scoring. Mark the bid auto_rejected so it
                 // doesn't sit pending forever.
-                await supabase.from('shipping_contract_bids')
+                const { error: skipErr } = await supabase.from('shipping_contract_bids')
                     .update({ status: 'auto_rejected', resolved_at_tick: currentTick, updated_at: nowIso() })
                     .eq('id', b.id).eq('status', 'pending');
-                results.bidsAutoRejected++;
+                if (skipErr) {
+                    console.warn(`[TradeAgreementShipping] freighter-skip flip failed for bid ${b.id}:`, skipErr.message);
+                } else {
+                    results.bidsAutoRejected++;
+                }
             }
 
             // No bid had enough free capacity → contract polls again next
