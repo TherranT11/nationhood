@@ -866,13 +866,12 @@ async function confirmNation() {
                 corp_overleverage:         0,
             };
         } else if (corpSetup.sector === 'Airline') {
-            // Airline hero stats. Fleet starts at 2 (2 Regional aircraft ×
-            // 1 slot each, per Q1: Regional=1 / Narrowbody=2 / Widebody=3).
-            // Routes 0; Op Safety 8.
+            // Airline hero stats. New airlines start empty: no aircraft,
+            // no routes, no safety record yet.
             sectorSeeds = {
-                corp_fleet:               2,
+                corp_fleet:               0,
                 corp_routes:              0,
-                corp_op_safety:           8,
+                corp_op_safety:           0,
             };
         }
 
@@ -936,14 +935,11 @@ async function confirmNation() {
         // assets live on the corp row now (corp_assets / corp_work_crews
         // / etc., seeded above for Construction).
 
-        // Airline starting fleet + terminal seed.
+        // Airline starting terminal seed. New airlines launch with no
+        // aircraft and no routes — fleet/route counters start at 0 — but
+        // get one free terminal at the founder's home nation so they
+        // have a hub to anchor their first route purchase later.
         if (corpSetup.sector === 'Airline') {
-            const aircraftRows = [
-                { corp_id: corpId, aircraft_class: 'regional' },
-                { corp_id: corpId, aircraft_class: 'regional' },
-            ];
-            const { error: aircraftErr } = await _supabase.from('corp_aircraft').insert(aircraftRows);
-            if (aircraftErr) console.warn('[CorpCreate] corp_aircraft seed failed:', aircraftErr.message);
             const { error: terminalErr } = await _supabase.from('corp_airline_terminals').insert({
                 corp_id:   corpId,
                 nation_id: nation.id,
