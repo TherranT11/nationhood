@@ -8,6 +8,54 @@
 // share the browser module graph. Keep that copy in sync if the formula
 // changes here.
 
+// National HQ value/quality formulas. The HQ is not persisted as a
+// corp_properties row — it is synthesized from the home nation's stats
+// (see expansion.html#nationalHqValue and the comment on the NATIONAL HQ
+// card). Every valuation surface that wants a complete picture must mix
+// this synthetic row into the properties array; without it, valuation
+// undercounts by $50–$75M.
+//
+// Formulas mirror expansion.html exactly (single source of truth lives
+// here now; expansion.html's local copies are kept for the asset-card
+// display path but reduce to the same numbers).
+export function nationalHqValue(sol) {
+    const s = Math.max(0, Math.min(100, Number(sol) || 0));
+    return Math.round(50_000_000 + 25_000_000 * (s / 100));
+}
+export function nationalHqQuality(control) {
+    const c = Math.max(0, Math.min(100, Number(control) || 50));
+    return Math.round(70 + c * 0.3);
+}
+
+// Build the synthetic National HQ row that valuation math expects in the
+// properties array. Returns null when the nation row is missing or has
+// no nation_id binding the corp — callers should treat that as "no HQ
+// row to add" rather than failing the whole calc.
+//
+// The shape matches a real corp_properties row closely enough for
+// computePropertyValue: { purchase_price, condition, ...metadata }.
+export function synthesizeNationalHq(nation) {
+    if (!nation || !nation.id) return null;
+    return {
+        id:             '__national_hq__',
+        synthetic:      true,
+        purchase_price: nationalHqValue(nation.standard_of_living),
+        condition:      nationalHqQuality(nation.control),
+        role:           'national_hq',
+        nation_id:      nation.id,
+    };
+}
+
+// Return a new array containing the synthetic National HQ + all real
+// properties. Convenience wrapper so callers don't repeat the spread.
+// Skips silently if the nation row isn't supplied (e.g. corp without
+// a home nation, or a transient render before the fetch resolves).
+export function withNationalHq(properties, nation) {
+    const hq = synthesizeNationalHq(nation);
+    const real = Array.isArray(properties) ? properties : [];
+    return hq ? [hq, ...real] : real;
+}
+
 export function computePropertyValue(properties) {
     let total = 0;
     for (const p of (properties || [])) {

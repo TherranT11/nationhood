@@ -135,6 +135,7 @@ import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, hfFmtBig } from './js/utils.js';
 import { renderCorpTopBar } from './js/corp-topbar.js';
 import { renderCorpActions } from './js/corp-actions.js';
+import { withNationalHq } from './js/game/corp-valuation.js';
 import { EXEC_ROLES, EXEC_ROLE_META, createInitialExecutiveRoster, generateExecutivePool } from './js/game/corp-executives.js';
 import { applyForEquity } from './js/equity-apply.js';
 import { declareBankruptcy } from './js/corp-bankruptcy.js';
@@ -155,6 +156,8 @@ let _execSearchSelected = -1;
 
 // Owned properties — loaded at init so renderCorpActions can compute a
 // correct valuation (cash + property + vessels − loans) for the stat pill.
+// withNationalHq folds in the synthetic National HQ row so the pill
+// matches the dashboard masthead and bankruptcy / bailout server math.
 let _ownedProperties = [];
 async function loadOwnedProperties() {
     if (!faction?.id) return;
@@ -163,7 +166,7 @@ async function loadOwnedProperties() {
         .select('*')
         .eq('faction_id', faction.id)
         .eq('is_active', true);
-    _ownedProperties = data || [];
+    _ownedProperties = withNationalHq(data || [], nationStats);
 }
 
 async function loadExecutives() {
@@ -784,7 +787,8 @@ async function lrLoadCollateral() {
     const realProps = data || [];
 
     // National HQ is synthesized at render time (no corp_properties row
-    // backs it — see expansion.html#nationalHqValue). For collateral we
+    // backs it — see js/game/corp-valuation.js#synthesizeNationalHq).
+    // For collateral we
     // inject a synthetic entry so the player can pledge it for better
     // loan terms. Sentinel id flags it for the submit-time path: on
     // default the bank can't actually seize the HQ (corp structurally
