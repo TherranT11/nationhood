@@ -76,9 +76,10 @@ SELECT n.id, ck.key, ck.name, true, NULL
 --
 -- Pulls the person from the nations row's head_of_state_* fields
 -- (the Monarch's identity is already stored there for display).
--- ideology defaults to '' if the faction has no ideology_value_1.
+-- Column set matches installHOG (js/game/political-actions.js:3320);
+-- ideology was dropped in 20260427_sectors_phase5b_drop_ideology.sql.
 INSERT INTO head_of_government (
-    nation_id, faction_id, first_name, last_name, age, ideology,
+    nation_id, faction_id, first_name, last_name, age,
     appointed_tick, active
 )
 SELECT
@@ -87,11 +88,9 @@ SELECT
     COALESCE(n.head_of_state_first_name, 'Monarch'),
     COALESCE(n.head_of_state_last_name,  ''),
     COALESCE(n.head_of_state_age,        50),
-    COALESCE(f.ideology_value_1,         ''),
     COALESCE((SELECT current_tick FROM shard WHERE name = 'Alpha Shard'), 0),
     true
   FROM nations n
-  LEFT JOIN factions f ON f.id = n.monarch_faction_id
  WHERE LOWER(COALESCE(n.government_type, '')) IN ('absolute monarchy', 'absolute_monarchy', 'monarchy')
    AND n.monarch_faction_id IS NOT NULL
    AND NOT EXISTS (
