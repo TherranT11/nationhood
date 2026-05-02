@@ -818,7 +818,6 @@ body.corp-expansion.light-mode {
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, hfFmtBig } from './js/utils.js';
-import { nationalHqValue, nationalHqQuality } from './js/game/corp-valuation.js';
 
 // ── CONSTANTS ──
 // Build cost: $300M base × clamp(SoL/50, 0.5, 2.0). At SoL 50 the
@@ -827,13 +826,6 @@ import { nationalHqValue, nationalHqQuality } from './js/game/corp-valuation.js'
 const REGIONAL_HQ_BASE_COST = 300_000_000;
 const REGIONAL_HQ_CAPACITY  = 500;
 
-// nationalHqValue + nationalHqQuality moved to js/game/corp-valuation.js
-// (single source of truth — see synthesizeNationalHq there). Imported
-// at the top of this module. Maint stays here; it's only consumed by
-// the asset-card display, not the valuation math.
-function nationalHqMaint(value) {
-    return Math.round(Number(value) * 0.005);
-}
 function regionalHqMultiplier(sol) {
     const s = Math.max(0, Math.min(100, Number(sol) || 0));
     return Math.max(0.5, Math.min(2.0, s / 50));
@@ -848,6 +840,7 @@ let nation = null;             // home nation row
 let shard = null;
 let allUserFactions = [];
 let _ownedRegionalHqs = [];    // corp_properties type='regional_hq' is_active=true
+let _nationalHq = null;        // corp_properties role='national_hq' (one row per corp; null if backfill hasn't run)
 let _allNations = [];          // every nation (for Build tab)
 let _marketProperties = [];    // available_properties for home nation (for Buy tab)
 let _buildInflight = new Set(); // per-nation inflight lock
@@ -886,25 +879,27 @@ function styleTier(style) {
 }
 
 // ── LOADERS ──
-async function loadOwnedRegionalHqs() {
-    if (!faction?.id) { _ownedRegionalHqs = []; return; }
-    // sellProperty re-lists on available_properties using catalog_id +
-    // style, so both must be in the projection. faction_id / role /
-    // is_active / purchased_at_tick are filter / order-by columns that
-    // PostgREST applies regardless of select; no need to hydrate them.
+async function loadOwnedProperties() {
+    if (!faction?.id) { _ownedRegionalHqs = []; _nationalHq = null; return; }
+    // Pulls every active corp_properties row in one shot, then splits
+    // by role for the renderer. National HQ is a real row now (per
+    // 20260711_persist_national_hq.sql); regional HQs are user-built
+    // marketplace acquisitions.
     const { data, error } = await _supabase
         .from('corp_properties')
-        .select('id, nation_id, name, type, style, catalog_id, condition, purchase_price, monthly_maintenance, city, capacity, nations:nation_id(name)')
+        .select('id, nation_id, name, type, role, style, catalog_id, condition, purchase_price, monthly_maintenance, city, capacity, nations:nation_id(name)')
         .eq('faction_id', faction.id)
         .eq('is_active', true)
-        .eq('type', 'regional_hq')
         .order('purchased_at_tick', { ascending: false });
     if (error) {
-        console.warn('[Expansion] regional HQ fetch failed:', error.message);
+        console.warn('[Expansion] property fetch failed:', error.message);
         _ownedRegionalHqs = [];
+        _nationalHq = null;
         return;
     }
-    _ownedRegionalHqs = data || [];
+    const rows = data || [];
+    _nationalHq = rows.find(p => p.role === 'national_hq') || null;
+    _ownedRegionalHqs = rows.filter(p => p.type === 'regional_hq');
 }
 
 async function loadAllNations() {
@@ -941,14 +936,14 @@ function renderHeader() {
     document.getElementById('ex-page-eyebrow').textContent =
         '— ' + (faction?.corp_sector || 'Corporation') + ' —';
 
-    const ownedNationCount = 1 + new Set(
+    const hasNhq = !!_nationalHq;
+    const ownedNationCount = (hasNhq ? 1 : 0) + new Set(
         _ownedRegionalHqs.map(p => p.nation_id).filter(id => id && id !== faction?.nation_id)
     ).size;
-    const propertyCount = 1 + _ownedRegionalHqs.length;
+    const propertyCount = (hasNhq ? 1 : 0) + _ownedRegionalHqs.length;
 
-    const sol = Number(nation?.standard_of_living ?? 50);
-    const nhqValue = nationalHqValue(sol);
-    const nhqMaint = nationalHqMaint(nhqValue);
+    const nhqValue = hasNhq ? Number(_nationalHq.purchase_price) || 0 : 0;
+    const nhqMaint = hasNhq ? Number(_nationalHq.monthly_maintenance) || 0 : 0;
     const totalMaint = nhqMaint + _ownedRegionalHqs
         .reduce((sum, p) => sum + (Number(p.monthly_maintenance) || 0), 0);
     const totalValue = nhqValue + _ownedRegionalHqs
@@ -968,19 +963,19 @@ function renderAssets() {
 
     const cards = [];
 
-    // National HQ — synthesized from home nation stats. No Sell button
-    // since there's no corp_properties row backing it; the corp
-    // structurally requires an HQ in its home nation.
-    if (nation) {
-        const sol = Number(nation.standard_of_living ?? 50);
-        const value = nationalHqValue(sol);
-        const maint = nationalHqMaint(value);
-        const quality = nationalHqQuality(nation.control);
+    // National HQ — read from the persisted corp_properties row
+    // (20260711_persist_national_hq.sql). Card is hidden if the row
+    // hasn't been backfilled yet; that's a safe degraded state, not
+    // a crash.
+    if (_nationalHq && nation) {
+        const value = Number(_nationalHq.purchase_price) || 0;
+        const maint = Number(_nationalHq.monthly_maintenance) || 0;
+        const quality = Math.round(Number(_nationalHq.condition) || 0);
         cards.push(`<div class="ex-asset-card kind-hq">
             <div class="ex-asset-meta-row">
                 <span class="ex-asset-tag kind-hq">National HQ</span>
             </div>
-            <div class="ex-asset-name">${escapeHtml((faction.faction_name || 'Corporation') + ' Headquarters')}</div>
+            <div class="ex-asset-name">${escapeHtml(_nationalHq.name || ((faction.faction_name || 'Corporation') + ' Headquarters'))}</div>
             <div class="ex-asset-location"><span class="flag">◊</span> ${escapeHtml((nation.name || '').toUpperCase())}${nation.capital ? ' ◊ ' + escapeHtml(String(nation.capital).toUpperCase()) : ''}</div>
             <div class="ex-asset-stats">
                 <div>
@@ -1247,7 +1242,7 @@ async function buildRegionalHQ(nationId) {
         } catch (_) { /* non-blocking */ }
 
         showToast('Regional HQ built in ' + target.name + ' (' + condition + '% condition).', 'success');
-        await loadOwnedRegionalHqs();
+        await loadOwnedProperties();
         renderAll();
     } catch (err) {
         console.error('[Expansion] build failed:', err);
@@ -1316,7 +1311,7 @@ async function sellProperty(propId) {
         } catch (_) { /* non-blocking */ }
 
         showToast('Sold for ' + hfFmtBig(saleValue) + '.', 'success');
-        await Promise.all([loadOwnedRegionalHqs(), loadMarketProperties()]);
+        await Promise.all([loadOwnedProperties(), loadMarketProperties()]);
         renderAll();
     } catch (err) {
         console.error('[Expansion] sell failed:', err);
@@ -1401,7 +1396,7 @@ async function buyProperty(propId) {
         }
 
         showToast('Purchased ' + prop.name + '.', 'success');
-        await Promise.all([loadOwnedRegionalHqs(), loadMarketProperties()]);
+        await Promise.all([loadOwnedProperties(), loadMarketProperties()]);
         renderAll();
     } catch (err) {
         console.error('[Expansion] buy failed:', err);
@@ -1537,7 +1532,7 @@ async function init() {
     // cards never exist without a live click target — handlers are
     // delegated to the parent containers which are static.
     await Promise.all([
-        loadOwnedRegionalHqs(),
+        loadOwnedProperties(),
         loadAllNations(),
         loadMarketProperties(),
     ]);

@@ -392,7 +392,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { computeCorpValuation, withNationalHq } from './js/game/corp-valuation.js';
+import { computeCorpValuation } from './js/game/corp-valuation.js';
 import { GAME_CONFIG, initGameConfigForNation, deductAP } from './js/game/config.js';
 import { isGovernmentPresidential, hasElectedPresident, getCurrentConstitutionalSystem, getConstitutionalSystemLabel } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies } from './js/game/government-structure.js';
@@ -2186,12 +2186,12 @@ async function _loadBailoutCorps() {
         const { data: vessels, error: vesselsErr } = await _supabase.from('corp_vessels')
             .select('purchase_price, condition, built_at_tick, status').eq('faction_id', c.id);
         if (vesselsErr) throw vesselsErr;
-        // Every corp in this list is HQ'd in currentNation (the .eq filter
-        // above), so a single synthetic HQ row is correct for all of them.
+        // National HQ is a real corp_properties row now (20260711), so
+        // the props fetch above already includes it.
         const valuation = computeCorpValuation({
             cash: c.corp_cash_reserves,
             loans: c.corp_loans,
-            properties: withNationalHq(props, currentNation),
+            properties: props,
             vessels,
             currentTick: currentTickGlobal,
         });

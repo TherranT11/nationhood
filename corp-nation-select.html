@@ -453,6 +453,7 @@ import { escapeHtml } from './js/utils.js';
 import { getNationNames } from './js/game/political-actions.js';
 import { hasElectedPresident } from './js/game/government-types.js';
 import { generateExecutivePool, createCEORecord } from './js/game/corp-executives.js';
+import { nationalHqValue, nationalHqQuality } from './js/game/corp-valuation.js';
 
 const FLAG_URLS = {
     'Melizea': 'assets/flags/Melizea.png',
@@ -951,6 +952,38 @@ async function confirmNation() {
         } else {
             const { error: upsertError } = await _supabase.from('factions').upsert(corpRow);
             if (upsertError) throw upsertError;
+        }
+
+        // National HQ — persisted as a real corp_properties row so every
+        // downstream system (maintenance loop, valuation, bankruptcy,
+        // bailout, expansion display) reads it like any other property.
+        // Formulas mirror nationalHqValue / nationalHqQuality from the
+        // shared valuation module. Backfill of pre-existing corps lives
+        // in sql/migrations/20260711_persist_national_hq.sql.
+        try {
+            const hqValue = nationalHqValue(nation.standard_of_living);
+            const hqQuality = nationalHqQuality(nation.control);
+            const hqMaint = Math.round(hqValue * 0.005);
+            const { error: hqErr } = await _supabase.from('corp_properties').insert({
+                faction_id: corpId,
+                nation_id: nation.id,
+                name: corpName + ' Headquarters',
+                type: 'national_hq',
+                role: 'national_hq',
+                style: 'Modern',
+                capacity: 1000,
+                purchase_price: hqValue,
+                monthly_maintenance: hqMaint,
+                condition: hqQuality,
+                city: nation.capital,
+                purchased_at_tick: currentTick,
+                is_active: true,
+            });
+            if (hqErr) {
+                console.warn('[CorpCreate] National HQ insert failed:', hqErr.message);
+            }
+        } catch (hqEx) {
+            console.warn('[CorpCreate] National HQ insert threw:', hqEx?.message || hqEx);
         }
 
         // Legacy sector-specific seeding (Shipping vessels, Construction

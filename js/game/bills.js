@@ -7,7 +7,7 @@ import { GAME_CONFIG, initGameConfigForNation, getPresidentialTermTicks, getPres
 import { hasElectedPresident, getCurrentConstitutionalSystem, isAbsoluteMonarchy, MINISTRY_OFFICE_NAMES } from './government-types.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './diplomacy-constants.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility, round2 } from './momentum.js';
-import { computeCorpValuation, withNationalHq } from './corp-valuation.js';
+import { computeCorpValuation } from './corp-valuation.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
 import { fetchActiveCoalition } from './government-structure.js';
@@ -3459,21 +3459,19 @@ export async function enactBill(supabase, bill, currentTick) {
                 if (!corp || corp.faction_type !== 'corporation' || corp.abandoned_at || corp.nation_id !== bill.nation_id) {
                     console.log(`[enactBill] gov_bailout voided: corp ${corpId} missing/moved/dissolved`);
                 } else {
+                    // National HQ is a real corp_properties row now
+                    // (20260711_persist_national_hq.sql) so the props
+                    // fetch already includes it.
                     const { data: props } = await supabase.from('corp_properties')
                         .select('purchase_price, condition').eq('faction_id', corpId);
                     const { data: vessels } = await supabase.from('corp_vessels')
                         .select('purchase_price, condition, built_at_tick, status').eq('faction_id', corpId);
-                    // Synthetic National HQ pulls from the corp's home
-                    // nation stats — same SSOT helper used by the masthead
-                    // and bankruptcy/bailout client paths.
-                    const { data: hqNation } = await supabase.from('nations')
-                        .select('id, standard_of_living, control').eq('id', corp.nation_id).single();
                     const corpCash = Number(corp.corp_cash_reserves || 0);
                     const corpLoans = Number(corp.corp_loans || 0);
                     const valuation = computeCorpValuation({
                         cash: corpCash,
                         loans: corpLoans,
-                        properties: withNationalHq(props, hqNation),
+                        properties: props,
                         vessels,
                         currentTick,
                     });

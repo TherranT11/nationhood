@@ -847,7 +847,7 @@ body.corp-redesign.light-mode .cr-footer-strip { border-top-color: var(--panel-b
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, escapeAttr, tickToDate } from './js/utils.js';
-import { computeCorpValuation, withNationalHq } from './js/game/corp-valuation.js';
+import { computeCorpValuation } from './js/game/corp-valuation.js';
 
 let faction = null;
 let nation = null;
@@ -1089,20 +1089,19 @@ async function init() {
     }
 
     // Load active properties so the masthead valuation includes the
-    // HQ + any other holdings (matches actions.html / bills.js / the
-    // server-side computeCorpValuation in advance-tick). The synthetic
-    // National HQ comes from withNationalHq() in the shared valuation
-    // module — see js/game/corp-valuation.js#synthesizeNationalHq.
+    // National HQ + any other holdings. The HQ is a real corp_properties
+    // row now (20260711_persist_national_hq.sql) so a flat select is
+    // enough — no synthetic-row helper needed.
     try {
         const { data: props } = await _supabase
             .from('corp_properties')
             .select('*')
             .eq('faction_id', faction.id)
             .eq('is_active', true);
-        _ownedProperties = withNationalHq(props || [], nation);
+        _ownedProperties = props || [];
     } catch (err) {
         console.warn('[corp-dashboard] property fetch failed:', err?.message);
-        _ownedProperties = withNationalHq([], nation);
+        _ownedProperties = [];
     }
 
     renderMasthead(pnlHistory);
