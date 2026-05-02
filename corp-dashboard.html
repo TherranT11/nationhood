@@ -1003,7 +1003,7 @@ async function init() {
                 .eq('id', faction.nation_id).single()
             : Promise.resolve({ data: null, error: null }),
         _supabase.from('corp_pnl_history')
-            .select('tick, revenue, costs, wages, cash_start, cash_end')
+            .select('tick, profit, costs, wages, cash_end')
             .eq('corp_id', faction.id)
             .order('tick', { ascending: false })
             .limit(12),
@@ -1169,32 +1169,24 @@ function renderMasthead(history) {
 }
 
 function renderFinancialRow(history) {
-    // Current-tick values from the corp row.
-    const cash    = Number(faction.corp_cash_reserves) || 0;
-    const grossRevenue = Number(faction.corp_revenue_current_tick) || 0;
-    const costs   = Number(faction.corp_costs_current_tick) || 0;
-    const wages   = Number(faction.corp_wages_current_tick) || 0;
-    const debt    = Number(faction.corp_debt) || 0;
-    const opex    = costs + wages;
-    // Revenue card is the SSoT for cash delta this tick:
-    //   gross inflows − operating costs − wages.
-    // If this shows −$500k, cash drops by $500k on the next tick close.
-    const netRevenue = grossRevenue - opex;
+    // Current-tick values from the corp row. corp_profit_current_tick and
+    // corp_opex_current_tick are GENERATED columns on factions, so both
+    // Revenue and Costs & Wages cards read database SSoTs directly.
+    const cash       = Number(faction.corp_cash_reserves)       || 0;
+    const debt       = Number(faction.corp_debt)                || 0;
+    const opex       = Number(faction.corp_opex_current_tick)   || 0;
+    const netRevenue = Number(faction.corp_profit_current_tick) || 0;
 
-    // Most recent prior-tick row (history is oldest-first; last entry is the
-    // most recent prior tick). Used for the per-card "vs last tick" delta.
+    // Most recent prior-tick row (history is oldest-first).
     const prev = history.length > 0 ? history[history.length - 1] : null;
     const prevCash    = prev ? Number(prev.cash_end) : null;
-    const prevRevenue = prev
-        ? (Number(prev.revenue) - Number(prev.costs) - Number(prev.wages))
-        : null;
+    const prevRevenue = prev ? Number(prev.profit) : null;
     const prevOpex    = prev ? (Number(prev.costs) + Number(prev.wages)) : null;
 
-    // Sparkline series (oldest-first across `history`). Revenue series is
-    // net (rev − costs − wages) so the trend shows the same SSoT
-    // displayed in the card value.
+    // Sparkline series (oldest-first). Revenue reads the GENERATED profit
+    // column directly — single source of truth, no client-side re-derive.
     const cashSeries    = history.map(h => Number(h.cash_end));
-    const revenueSeries = history.map(h => Number(h.revenue) - Number(h.costs) - Number(h.wages));
+    const revenueSeries = history.map(h => Number(h.profit));
     const opexSeries    = history.map(h => Number(h.costs) + Number(h.wages));
 
     const row = document.getElementById('cr-fin-row');
