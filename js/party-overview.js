@@ -11,7 +11,7 @@
 //
 // Exports initPartyOverview(supabase, state, containerId)
 
-import { getStrongholdSectors, calculateSectorContributions } from './game/sectors.js';
+import { getStrongholdSectors } from './game/sectors.js';
 import { getGoverningStatus, getGoverningStatusFor } from './game/agitator.js';
 import { hasElectedPresident } from './game/government-types.js';
 import { blocTagHtml, loadBlocMap } from './common.js';
@@ -56,6 +56,50 @@ function processStrongholds(allParties, sectors, popularityRows) {
         out[p.id] = getStrongholdSectors(p.id, sectors, popularityRows, 3);
     }
     return out;
+}
+
+// Pivots faction_sector_popularity into sector-first rows: every active
+// sector in the nation, sorted by weight DESC then by name, with the top 3
+// parties by popularity attached as a `top3` array. Tie-break is total
+// seats DESC (per Q3 of the Sector Ranking design). Underfilled top-3
+// slots are dropped — sectors with fewer than 3 parties scoring above 0
+// just render fewer chips, no placeholders.
+function processSectorRanking(allParties, sectors, popularityRows) {
+    const partyMap = new Map(allParties.map(p => [p.id, p]));
+    const popBySector = new Map();  // sector_id → [{party_id, popularity}]
+    for (const row of popularityRows) {
+        const list = popBySector.get(row.sector_id) || [];
+        list.push({ party_id: row.faction_id, popularity: Number(row.popularity) || 0 });
+        popBySector.set(row.sector_id, list);
+    }
+
+    return sectors.map(s => {
+        const candidates = (popBySector.get(s.id) || [])
+            .filter(c => c.popularity > 0 && partyMap.has(c.party_id))
+            .map(c => {
+                const p = partyMap.get(c.party_id);
+                return {
+                    party_id:     p.id,
+                    abbreviation: p.abbreviation || (p.faction_name || '?').slice(0, 3).toUpperCase(),
+                    color:        p.party_color || '#888',
+                    seats:        Number(p.seats) || 0,
+                    popularity:   c.popularity,
+                };
+            });
+        candidates.sort((a, b) => {
+            if (b.popularity !== a.popularity) return b.popularity - a.popularity;
+            return b.seats - a.seats;
+        });
+        return {
+            sector_key: s.sector_key,
+            name:       s.name,
+            weight:     Number(s.weight) || 0,
+            top3:       candidates.slice(0, 3),
+        };
+    }).sort((a, b) => {
+        if (b.weight !== a.weight) return b.weight - a.weight;
+        return (a.name || '').localeCompare(b.name || '');
+    });
 }
 
 // ═══════════════════════════════════════════════════
@@ -150,11 +194,9 @@ export async function initPartyOverview(supabase, state, containerId) {
             popularityRows = pop || [];
         }
         const strongholdsByParty = processStrongholds(allParties, sectors, popularityRows);
-        // Player's full sector breakdown — all active sectors with raw
-        // popularity, sorted highest-first. Powers the "You" row's grid
-        // view in renderStrongholdsSection (rivals still show top-3 chips).
-        const mySectorContributions = calculateSectorContributions(factionId, sectors, popularityRows)
-            .sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+        // Sector-first pivot for the SECTOR RANKING card: every active
+        // sector in the nation with the top 3 parties by popularity.
+        const sectorRanking = processSectorRanking(allParties, sectors, popularityRows);
 
         const ticksInPower = admin?.started_at_tick != null
             ? Math.max(0, currentTick - admin.started_at_tick)
@@ -187,7 +229,7 @@ export async function initPartyOverview(supabase, state, containerId) {
             rivalParties: allParties.filter(p => p.id !== factionId),
             blocMap,
             strongholdsByParty,
-            mySectorContributions,
+            sectorRanking,
             recentActivity: activityResult.data || [],
             caucuses: caucusResult.data || [],
             nextElection: nextElection,
@@ -207,7 +249,6 @@ export async function initPartyOverview(supabase, state, containerId) {
 // RENDERING
 // ═══════════════════════════════════════════════════
 
-let _visibleParties = []; // toggled in legend
 
 function renderPartyOverview(container) {
     const o = _overview;
@@ -215,11 +256,6 @@ function renderPartyOverview(container) {
     const nation = _state.nation;
     const partyColor = faction?.party_color || faction?.color || '#c8a832';
     const currentTick = _state.shard?.current_tick || 0;
-
-    // Init visible parties for legend
-    if (_visibleParties.length === 0) {
-        _visibleParties = [faction?.id, ...o.rivalParties.map(p => p.id)];
-    }
 
     const adminName = o.administration?.admin_name || (o.isGoverning ? 'Government' : 'Opposition');
     const statusLabel = o.statusLabel;
@@ -246,20 +282,6 @@ function renderPartyOverview(container) {
             </div>
         </div>
     </div>`;
-
-    // Bind legend toggles
-    container.querySelectorAll('.po-legend-item').forEach(el => {
-        el.addEventListener('click', () => {
-            const pid = el.dataset.partyId;
-            if (pid === faction?.id) return; // can't hide yourself
-            if (_visibleParties.includes(pid)) {
-                _visibleParties = _visibleParties.filter(id => id !== pid);
-            } else {
-                _visibleParties.push(pid);
-            }
-            renderPartyOverview(container);
-        });
-    });
 }
 
 function renderSummaryBar(o, partyColor, seats, totalSeats, momentum) {
@@ -333,77 +355,56 @@ function renderIdentityCard(o, faction, partyColor, statusLabel, statusColor) {
     </div>`;
 }
 
-// Player's row renders every active sector as a grid with raw popularity
-// values; rival rows render their top-3 sectors by contribution as chips
-// with a relative-width bar. Legend toggles which rows are visible.
+// Sector-first ranking. Every active sector in the nation, sorted by
+// weight DESC then alphabetical. Each row shows the sector name + a
+// weight badge (1, 2, or 3), then up to three chips for the parties
+// with the highest popularity in that sector. Tie-break is total seats
+// DESC. The player's own party is highlighted in their party color
+// when it lands in the top 3.
 function renderStrongholdsSection(o, faction, partyColor) {
-    const allLegend = [
-        { id: faction?.id, name: 'You', color: partyColor },
-        ...o.rivalParties.map(p => ({ id: p.id, name: p.abbreviation || p.faction_name?.slice(0, 3) || '?', color: p.party_color || '#666' })),
-    ];
+    const myFactionId = faction?.id;
+    const ranking = o.sectorRanking || [];
 
-    const legendHtml = allLegend.map(p => {
-        const isOn = _visibleParties.includes(p.id);
-        return `<div class="po-legend-item ${isOn ? 'active' : 'inactive'}" data-party-id="${p.id}" style="${isOn ? `background:${p.color}12;border-color:${p.color}44;` : ''}">
-            <div class="po-legend-dot" style="background:${isOn ? p.color : 'var(--text-dim)'};"></div>
-            <span class="po-legend-name">${esc(p.name)}</span>
+    const rowsHtml = ranking.map(s => {
+        const chips = (s.top3 || []).map(p => {
+            const isMine = p.party_id === myFactionId;
+            const color  = isMine ? partyColor : (p.color || '#888');
+            // Storage is integer tenths (0-100); display 0-10 with one decimal.
+            const popDisplay = (Math.round(p.popularity) / 10).toFixed(1);
+            const labelHtml = isMine
+                ? `<span class="po-stronghold-chip-label" style="font-weight:700;">You</span>`
+                : `<span class="po-stronghold-chip-label">${esc(p.abbreviation)}</span>`;
+            return `<div class="po-stronghold-chip" style="border-color:${color}66;background:${color}14;">
+                ${labelHtml}
+                <span class="po-stronghold-chip-label" style="color:${color};font-weight:700;margin-left:4px;">${popDisplay}</span>
+            </div>`;
+        }).join('');
+        const bodyHtml = chips
+            ? `<div class="po-stronghold-chips">${chips}</div>`
+            : `<div style="font-size:9px;color:var(--text-dim);font-family:var(--font-mono);padding:4px 0;">No party popularity yet</div>`;
+
+        const weight = Number(s.weight) || 0;
+        const weightColor = weight >= 3 ? 'var(--gold, #c9a449)'
+                          : weight === 2 ? 'var(--amber, #c8a64e)'
+                          : 'var(--text-secondary)';
+        const weightBadge = `<span style="display:inline-block;min-width:18px;padding:1px 5px;font-family:var(--font-mono);font-size:9px;font-weight:700;color:${weightColor};border:1px solid ${weightColor}66;background:${weightColor}14;text-align:center;letter-spacing:0;">w${weight}</span>`;
+
+        return `<div class="po-stronghold-row">
+            <div class="po-stronghold-party" style="display:flex;align-items:center;gap:8px;">
+                ${weightBadge}
+                <span class="po-stronghold-party-name">${esc(s.name)}</span>
+            </div>
+            ${bodyHtml}
         </div>`;
     }).join('');
 
-    const visibleIds = new Set(_visibleParties);
-    const myFactionId = faction?.id;
-    const partyRows = allLegend
-        .filter(p => visibleIds.has(p.id))
-        .map(p => {
-            const chipColor = p.color || '#666';
-            // Player's own row: full grid of every active sector with raw
-            // popularity. Rivals: top-3 chips by contribution. Both use a
-            // flat chip style matching the Rival Parties card on the same
-            // page so the same data reads the same way wherever it shows up.
-            // Showing zero-popularity sectors for the player is intentional —
-            // the grid is meant to communicate the full landscape, not just
-            // where they're already strong.
-            let bodyHtml;
-            if (p.id === myFactionId) {
-                const cells = (o.mySectorContributions || []).map(s => {
-                    // Storage is integer tenths (0-100); display matches the
-                    // 0-10 scale used by the admin editor and diagnostics.
-                    const popTenths = Math.round(Number(s.popularity) || 0);
-                    const popDisplay = (popTenths / 10).toFixed(1);
-                    const popColor = popTenths >= 50 ? 'var(--green)' : popTenths >= 25 ? 'var(--amber)' : popTenths > 0 ? 'var(--text-secondary)' : 'var(--text-dim)';
-                    return `<div class="po-stronghold-cell" style="border-color:${chipColor}44;background:${chipColor}08;">
-                        <span class="po-stronghold-cell-label">${esc(s.name)}</span>
-                        <span class="po-stronghold-cell-value" style="color:${popColor};">${popDisplay}</span>
-                    </div>`;
-                }).join('');
-                bodyHtml = cells.length > 0
-                    ? `<div class="po-stronghold-grid">${cells}</div>`
-                    : `<div style="font-size:9px;color:var(--text-dim);font-family:var(--font-mono);padding:4px 0;">No active sectors in this nation.</div>`;
-            } else {
-                const sh = o.strongholdsByParty[p.id] || [];
-                bodyHtml = sh.length > 0
-                    ? `<div class="po-stronghold-chips">${sh.map(s => `<div class="po-stronghold-chip" style="border-color:${chipColor}44;background:${chipColor}10;">
-                        <span class="po-stronghold-chip-label">${esc(s.name)}</span>
-                    </div>`).join('')}</div>`
-                    : `<div style="font-size:9px;color:var(--text-dim);font-family:var(--font-mono);padding:4px 0;">Unaligned (no sector popularity yet)</div>`;
-            }
-            return `<div class="po-stronghold-row">
-                <div class="po-stronghold-party">
-                    <div class="po-legend-dot" style="background:${chipColor};"></div>
-                    <span class="po-stronghold-party-name">${esc(p.name)}</span>
-                </div>
-                ${bodyHtml}
-            </div>`;
-        }).join('');
-
     return `<div class="po-card">
         <div class="po-card-header">
-            <span class="po-card-title">SECTOR STRONGHOLDS</span>
-            <span class="po-card-subtitle">your popularity per sector · rivals show top 3</span>
+            <span class="po-card-title">SECTOR RANKING</span>
+            <span class="po-card-subtitle">all sectors · top 3 parties by popularity</span>
         </div>
         <div style="padding:8px 12px;">
-            <div class="po-legend">${legendHtml}</div>
-            ${partyRows || '<div style="padding:8px 0;font-size:9px;color:var(--text-dim);font-family:var(--font-mono);">No parties to display.</div>'}
+            ${rowsHtml || '<div style="padding:8px 0;font-size:9px;color:var(--text-dim);font-family:var(--font-mono);">No active sectors in this nation.</div>'}
         </div>
     </div>`;
 }
