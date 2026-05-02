@@ -35,8 +35,19 @@ let _currentTick = 0;
 let _proposalSelectedParties = [];
 let _submitting = false;
 let _expandedFormationId = null;  // which proposal card is expanded for ministry assignment
+let _editingFormationId = null;   // proposer is editing the party_ids on their proposal
 let _ministryAssignments = {};    // { ministryKey: partyId }
 let _formingGovernment = false;
+
+// Threshold for the [Inactive – N ticks] label on party names.
+const INACTIVITY_TICKS = 4;
+function inactivityLabel(party) {
+    const last = Number(party?.last_seen_tick) || 0;
+    if (!last) return '';
+    const lapse = _currentTick - last;
+    if (lapse < INACTIVITY_TICKS) return '';
+    return `<span class="cf-inactive">[Inactive – ${lapse} tick${lapse !== 1 ? 's' : ''}]</span>`;
+}
 
 function esc(str) {
     if (!str) return '';
@@ -76,7 +87,7 @@ export async function initCoalitionFormation(supabase, state) {
             // bloc_id is read by the proposal-checkbox handler so toggling
             // any bloc member auto-toggles the others (Phase 2c: blocs are
             // invited to coalitions in their entirety or not at all).
-            .select('id, faction_name, abbreviation, party_color, seats, bloc_id')
+            .select('id, faction_name, abbreviation, party_color, seats, bloc_id, last_seen_tick')
             .eq('nation_id', nation.id)
             .eq('faction_type', 'party')
             .is('abandoned_at', null)
@@ -390,18 +401,23 @@ export async function renderFormationTab(root) {
 
     const mySeats = _allParties.find(p => p.id === faction.id)?.seats || 0;
     const canPropose = mySeats > 0;
-    const alreadyProposed = _formations.some(f => f.proposed_by === faction.id);
+    const myFormation = _formations.find(f => f.proposed_by === faction.id) || null;
+    const alreadyProposed = !!myFormation;
+    const isEditing = !!myFormation && _editingFormationId === myFormation.id;
 
     // Proposal creation UI
     let proposeHtml = '';
     if (!canPropose) {
         proposeHtml = `<div class="cf-note">Your party has <strong>0 seats</strong>. You cannot propose a coalition, but you may be invited to one.</div>`;
-    } else if (alreadyProposed) {
-        proposeHtml = `<div class="cf-note">You have already submitted a proposal for this election.</div>`;
+    } else if (alreadyProposed && !isEditing) {
+        proposeHtml = `<div class="cf-note">You have already submitted a proposal for this election. Use <strong>Edit Proposal</strong> on your card below to change the membership.</div>`;
     } else {
+        // Edit mode pre-seeds _proposalSelectedParties from f.party_ids.
+        const selectedSet = new Set(_proposalSelectedParties);
         const formatStats = (keys) => (keys || []).map(k => k.replace(/_/g, ' ')).join(', ');
         const partyGrid = _allParties.map(p => {
             const isYou = p.id === faction.id;
+            const isChecked = isYou || selectedSet.has(p.id);
             const seats = p.seats || 0;
             const color = p.party_color || '#888';
             const platforms = (_platformsByFaction[p.id] || [])
@@ -417,27 +433,39 @@ export async function renderFormationTab(root) {
             const platformsBlock = platformRows
                 ? `<div class="cf-check-platforms">${platformRows}</div>`
                 : `<div class="cf-check-platforms cf-check-platforms--empty">No adopted platforms.</div>`;
-            return `<div class="cf-party-check ${isYou ? 'checked disabled' : ''}" data-party-id="${p.id}" style="border-left:3px solid ${color};">
+            const inactive = inactivityLabel(p);
+            return `<div class="cf-party-check ${isChecked ? 'checked' : ''} ${isYou ? 'disabled' : ''}" data-party-id="${p.id}" style="border-left:3px solid ${color};">
                 <div class="cf-party-info">
-                    <div class="cf-check-box">${isYou ? '✓' : ''}</div>
+                    <div class="cf-check-box">${isChecked ? '✓' : ''}</div>
                     <span class="cf-check-name">${esc(p.faction_name)}</span>
+                    ${inactive}
                     <span class="cf-check-seats">${seats} seats</span>
                 </div>
                 ${platformsBlock}
             </div>`;
         }).join('');
 
+        const previewSeats = _proposalSelectedParties.reduce((s, pid) => s + (_allParties.find(p => p.id === pid)?.seats || 0), 0) || mySeats;
+        const previewPct = _totalSeats ? Math.round((previewSeats / _totalSeats) * 100) : 0;
+        const editTitle = isEditing ? 'Edit Your Proposal' : 'Propose a Government';
+        const editDesc = isEditing
+            ? `Add or remove parties. Saving resets all support — every coalition member must re-vote, including you. You need ${_majoritySeats}+ seats for a majority.`
+            : `Select which parties will form the coalition. You need ${_majoritySeats}+ seats for a majority.`;
+        const submitBtn = isEditing
+            ? `<button class="cf-submit-btn" id="cf-save-edit-btn" data-formation-id="${myFormation.id}">Save Changes</button>
+               <button class="cf-submit-btn" id="cf-cancel-edit-btn" style="background:var(--bg-body);color:var(--text-dim);margin-left:8px;">Cancel</button>`
+            : `<button class="cf-submit-btn" id="cf-propose-btn">Submit Proposal</button>`;
         proposeHtml = `
             <div class="cf-propose-section">
-                <div class="cf-section-title">Propose a Government</div>
-                <div class="cf-section-desc">Select which parties will form the coalition. You need ${_majoritySeats}+ seats for a majority.</div>
+                <div class="cf-section-title">${editTitle}</div>
+                <div class="cf-section-desc">${editDesc}</div>
                 <div class="cf-party-grid" id="cf-party-grid">${partyGrid}</div>
                 <div class="cf-seat-preview" id="cf-seat-preview">
-                    Coalition seats: <span class="cf-preview-val" id="cf-preview-seats">${mySeats}</span> / ${_totalSeats}
-                    (<span id="cf-preview-pct">${_totalSeats ? Math.round((mySeats / _totalSeats) * 100) : 0}</span>%)
+                    Coalition seats: <span class="cf-preview-val" id="cf-preview-seats">${previewSeats}</span> / ${_totalSeats}
+                    (<span id="cf-preview-pct">${previewPct}</span>%)
                     <span id="cf-preview-threshold" style="margin-left:8px;color:var(--text-dim);">— needs ${_majoritySeats} seats</span>
                 </div>
-                <button class="cf-submit-btn" id="cf-propose-btn">Submit Proposal</button>
+                ${submitBtn}
             </div>`;
     }
 
@@ -453,7 +481,8 @@ export async function renderFormationTab(root) {
 
             const chips = partyIds.map(pid => {
                 const p = _allParties.find(x => x.id === pid);
-                return `<span class="cf-party-chip" style="border-left:2px solid ${p?.party_color || '#888'};">${esc(p?.faction_name || '?')} · ${p?.seats || 0}</span>`;
+                const inactive = inactivityLabel(p);
+                return `<span class="cf-party-chip" style="border-left:2px solid ${p?.party_color || '#888'};">${esc(p?.faction_name || '?')} · ${p?.seats || 0}${inactive ? ' ' + inactive : ''}</span>`;
             }).join('');
 
             let statusHtml = '';
@@ -467,14 +496,20 @@ export async function renderFormationTab(root) {
                 ? `<button class="cf-withdraw-btn" data-formation-id="${f.id}" data-action="withdraw">Withdraw Support</button>`
                 : '';
 
-            // Show ministry assignment when all coalition members have supported
+            // Proposer-only Edit; locked once unanimous (configure step is in motion).
             const allSupported = f.supportCount >= f.coalitionSize;
+            const iAmProposer = f.proposed_by === faction.id;
+            const editBtn = iAmProposer && !allSupported && _editingFormationId !== f.id
+                ? `<button class="cf-edit-btn" data-formation-id="${f.id}" data-action="edit" style="margin-left:8px;background:var(--bg-body);color:var(--accent);border:1px solid var(--accent);padding:4px 10px;font-family:var(--font-mono);font-size:9px;cursor:pointer;">Edit</button>`
+                : '';
+
+            // Show ministry assignment when all coalition members have supported
             const isExpanded = _expandedFormationId === f.id;
             const showConfigBtn = allSupported && f.iAmInvited && !isExpanded;
             const showConfig = allSupported && isExpanded;
 
             return `<div class="cf-proposal-card ${f.iAmSupporting ? 'supporting' : ''} ${!f.iAmInvited ? 'not-invited' : ''}">
-                <div class="cf-proposal-title">${esc(proposer?.faction_name || 'Unknown')} Coalition ${statusHtml}</div>
+                <div class="cf-proposal-title">${esc(proposer?.faction_name || 'Unknown')} Coalition ${statusHtml}${editBtn}</div>
                 <div class="cf-proposal-seats">Seats: <span style="color:${meetsThreshold ? 'var(--green)' : 'var(--red)'};">${coalitionSeats}</span> (${coalitionPct}%) ${meetsThreshold ? '✓' : '— below threshold'}</div>
                 <div class="cf-proposal-chips">${chips}</div>
                 <div class="cf-proposal-support">Support: ${f.supportCount} / ${f.coalitionSize} coalition members ${allSupported ? '<span style="color:var(--green);font-weight:700;"> — UNANIMOUS</span>' : ''}</div>
@@ -520,8 +555,8 @@ export async function renderFormationTab(root) {
         ${proposalsHtml}
     </div>`;
 
-    // Bind events
-    _proposalSelectedParties = [faction.id];
+    // Edit mode preserves _proposalSelectedParties across re-renders.
+    if (!isEditing) _proposalSelectedParties = [faction.id];
     bindFormationEvents(root);
 }
 
@@ -912,6 +947,30 @@ function bindFormationEvents(root) {
             return;
         }
 
+        // Edit-proposal entry / save / cancel.
+        const editBtn = e.target.closest('.cf-edit-btn');
+        if (editBtn && editBtn.dataset.action === 'edit') {
+            const formationId = editBtn.dataset.formationId;
+            const f = _formations.find(x => x.id === formationId);
+            if (f && f.proposed_by === _state.faction?.id) {
+                _editingFormationId = formationId;
+                _proposalSelectedParties = [...(f.party_ids || [])];
+                await renderFormationTab(root);
+            }
+            return;
+        }
+        if (e.target.closest('#cf-save-edit-btn')) {
+            const formationId = e.target.closest('#cf-save-edit-btn').dataset.formationId;
+            await updateProposal(formationId, root);
+            return;
+        }
+        if (e.target.closest('#cf-cancel-edit-btn')) {
+            _editingFormationId = null;
+            _proposalSelectedParties = [_state.faction?.id].filter(Boolean);
+            await renderFormationTab(root);
+            return;
+        }
+
         // Support/withdraw/configure
         const supportBtn = e.target.closest('.cf-support-btn, .cf-withdraw-btn');
         if (supportBtn) {
@@ -1025,6 +1084,40 @@ async function createProposal(root) {
     } catch (err) {
         console.error('[Coalition] Create proposal error:', err);
         alert('Failed to create proposal: ' + (err.message || err));
+    } finally {
+        _submitting = false;
+    }
+}
+
+// RPC resets every support row — all members must re-vote on the new membership.
+async function updateProposal(formationId, root) {
+    if (_submitting) return;
+    const faction = _state.faction;
+    if (!faction) return;
+
+    const partyIds = [...new Set(_proposalSelectedParties)];
+    const coalitionSeats = partyIds.reduce((s, pid) => s + (_allParties.find(p => p.id === pid)?.seats || 0), 0);
+    if (coalitionSeats < _majoritySeats) {
+        alert(`Coalition needs ${_majoritySeats} seats. Currently: ${coalitionSeats}.`);
+        return;
+    }
+
+    _submitting = true;
+    const btn = document.getElementById('cf-save-edit-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+
+    try {
+        const { data, error } = await _supabase.rpc('update_coalition_proposal', {
+            p_formation_id: formationId,
+            p_party_ids:    partyIds,
+        });
+        if (error) { alert('Failed to save changes: ' + error.message); return; }
+        if (data && data.success === false) { alert('Failed to save changes: ' + (data.error || 'unknown')); return; }
+        _editingFormationId = null;
+        await renderFormationTab(root);
+    } catch (err) {
+        console.error('[Coalition] Update proposal error:', err);
+        alert('Failed to save changes: ' + (err.message || err));
     } finally {
         _submitting = false;
     }
