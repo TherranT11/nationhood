@@ -5218,11 +5218,8 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
 
         // Equity: pay dividend = equity_pct × target's prior-tick profit
         // (if profit > 0). Losses don't flow to the investor — equity can't
-        // go negative, they just earn nothing that tick. Pre-Phase-4 this
-        // read factions.monthly_profit, which (since flushTickPnl ran AFTER
-        // processFinanceLoans within a nation block) was always the PRIOR
-        // tick's flushed value. Behavior preserved by summing prior-tick
-        // events from corp_cash_events directly.
+        // go negative, they just earn nothing that tick. Profit is summed
+        // from corp_cash_events for currentTick - 1.
         if (requestType === 'equity') {
             const { data: target } = await supabase.from('factions')
                 .select('corp_cash_reserves')
@@ -6036,10 +6033,9 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
             // ── Construction Per-Tick Wages ──
             // wages = corp_work_crews × $300k × (0.5 + sol/100)
-            // The RPC updates corp_cash_reserves atomically per corp; we
-            // log each row's negative delta to corp_cash_events. The RPC
-            // also still writes corp_wages_current_tick — that column is
-            // orphaned post-Phase-4 and gets dropped in Phase 5.
+            // The RPC updates corp_cash_reserves atomically per corp and
+            // returns the wages value; we log each row's negative delta
+            // to corp_cash_events.
             try {
                 const { data: wageRows, error: wageErr } = await supabase
                     .rpc('apply_construction_wages_for_nation', { p_nation_id: nation.id });

@@ -2669,12 +2669,20 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
         }
     } catch (_) { /* non-blocking */ }
     const totalExpenses = preExpenses + taxes;
-    // ONE SOURCE OF TRUTH: net profit is what the tick processor actually
-    // booked last tick (advance-corp-tick/index.ts writes faction.monthly_profit
-    // post-tax, post-debt). The Revenue/Expenses breakdowns above are a
-    // current-state composition view and may disagree by rounding or by
-    // contracts that completed mid-tick — the authoritative figure is the DB.
-    const netProfit = Number(faction?.monthly_profit || 0);
+    // SSoT: net profit is the sum of prior-tick events from corp_cash_events.
+    // The Revenue/Expenses breakdowns above are a current-state composition
+    // view and may disagree by rounding or contracts that completed mid-tick.
+    let netProfit = 0;
+    if (faction?.id && currentTick > 0) {
+        try {
+            const { data: priorEvents } = await _supabase
+                .from('corp_cash_events')
+                .select('delta')
+                .eq('corp_id', faction.id)
+                .eq('tick', currentTick - 1);
+            netProfit = (priorEvents || []).reduce((s, e) => s + (Number(e.delta) || 0), 0);
+        } catch (_) { /* netProfit stays 0 on lookup failure */ }
+    }
     const cash = Number(faction?.corp_cash_reserves ?? 0);
     const debt = outstandingDebt;
     let previousTickCash = null;

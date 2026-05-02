@@ -895,8 +895,8 @@ function renderMoneyHtml(n) {
 
 function renderSparklineSvg(series, colorVar) {
     // null series = "this card has no historical series at all" (e.g. debt
-    // is not tracked in corp_pnl_history). Render nothing so the card is
-    // not visually cluttered with a meaningless empty state.
+    // isn't tracked per tick). Render nothing so the card is not visually
+    // cluttered with a meaningless empty state.
     if (series === null) return '';
     if (!Array.isArray(series) || series.length < 2) {
         return '<div class="cr-sparkline-empty">— no history yet</div>';
@@ -1175,8 +1175,8 @@ function renderMasthead(history) {
     });
     document.getElementById('cr-ticker-price').textContent = fmtMoney(valuation);
 
-    // Valuation delta vs the prior tick. corp_pnl_history doesn't track
-    // debt or asset values historically, so we approximate prior-tick
+    // Valuation delta vs the prior tick. We don't snapshot debt or asset
+    // values per tick, so we approximate prior-tick
     // valuation by swapping cash for prev.cash_end and holding everything
     // else constant.
     const prev = history?.length > 0 ? history[history.length - 1] : null;
@@ -1262,8 +1262,8 @@ function renderFinancialRow(history) {
         renderFinCard({
             label: 'Outstanding Debt',
             value: debt,
-            // No debt-history column in corp_pnl_history — pass null series so
-            // the sparkline area is suppressed entirely (not just empty).
+            // Debt isn't tracked historically — pass null so the sparkline
+            // area is suppressed entirely (not just empty).
             prev: null,
             series: null,
             colorVar: 'var(--cr-text-tertiary)',
