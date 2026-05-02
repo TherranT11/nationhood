@@ -1003,7 +1003,12 @@ async function init() {
             .eq('name', 'Alpha Shard').single(),
         faction.nation_id
             ? _supabase.from('nations')
-                .select('id, name, capital')
+                // standard_of_living + control feed the synthetic National
+                // HQ value/quality below (matches expansion.html). Dropping
+                // them silently zeroes nation.standard_of_living, which
+                // collapses hqValue from $50M+25M×SoL to a flat $50M and
+                // throws the masthead valuation off by tens of millions.
+                .select('id, name, capital, standard_of_living, control')
                 .eq('id', faction.nation_id).single()
             : Promise.resolve({ data: null, error: null }),
         _supabase.from('corp_cash_events')
