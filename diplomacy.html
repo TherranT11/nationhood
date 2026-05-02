@@ -565,18 +565,20 @@ function renderTradeEconomy() {
 
     // ── Consumer Goods (stat-derived) ──
     // Production = (industry / 3) × (workforce / 100)
-    // No demand or trade-agreement plumbing yet — Trading = 0,
-    // Net = Production. Demand model lands when speced.
-    const consumerProd = (industryStat / 3) * (workforceStat / 100);
+    // Demand     = (standard_of_living / 100) × population_M / 2
+    // No trade-agreement plumbing yet — Trading = 0.
+    // Net = Production − Demand.
+    const consumerProd   = (industryStat / 3) * (workforceStat / 100);
+    const consumerDemand = (solStat / 100) * popMillions / 2;
     commodities.push({
         key: 'consumer_goods',
         icon: '📦',
         name: 'Consumer Goods',
         production: consumerProd,
-        domesticDemand: 0,
+        domesticDemand: consumerDemand,
         demand: 0,
         trading: 0,
-        netFlow: consumerProd,
+        netFlow: consumerProd - consumerDemand,
         selfSufficiencyBalance: null,
         statBased: true,
     });
@@ -2586,13 +2588,16 @@ function getNationFoodBalance(nation) {
 
 // Same shape for Consumer Goods \u2014 mirrors the YOUR ECONOMY panel:
 //   Production = (industry / 3) \u00D7 (workforce / 100)
-//   Demand     = 0 (no demand model yet)
+//   Demand     = (standard_of_living / 100) \u00D7 population_M / 2
 function getNationConsumerGoodsBalance(nation) {
     const n = nation || {};
-    const industryStat  = Number(n.industry)  || 0;
-    const workforceStat = Number(n.workforce) || 0;
+    const industryStat  = Number(n.industry)           || 0;
+    const workforceStat = Number(n.workforce)          || 0;
+    const solStat       = Number(n.standard_of_living) || 0;
+    const popMillions   = (Number(n.population) || 0) / 1_000_000;
     const production    = (industryStat / 3) * (workforceStat / 100);
-    return { production, demand: 0, net: production };
+    const demand        = (solStat / 100) * popMillions / 2;
+    return { production, demand, net: production - demand };
 }
 
 // Build a nation's surplus / deficit list. Energy + Minerals + Food are

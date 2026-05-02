@@ -2669,7 +2669,8 @@ function recalcOffer() {
     const cap = Number(contract.volume_required) || Infinity;
     const deliveredEnergy = Math.max(0, Math.min(cap, baseEnergy + energyDelta));
 
-    const operatingCost = (freighters * OFFER_FREIGHTER_COST_M + costAddM) * 1_000_000;
+    // Mirrors GREATEST(0, ...) clamp in place_shipping_offer.
+    const operatingCost = Math.max(0, (freighters * OFFER_FREIGHTER_COST_M + costAddM) * 1_000_000);
     const markupCost = Math.round(operatingCost * markup / 100);
     const totalOffer = operatingCost + markupCost;
 
