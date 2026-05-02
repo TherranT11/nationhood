@@ -70,14 +70,12 @@ const DEFAULT_MISSED_THRESHOLD = 4;
 //    - advance-tick/index.ts processAutoRatePolicies (subsidiary insurance
 //      premiums, loan payments, claim payouts — these SHOULD flow through)
 //    - js/corp-refurbish.js client-side refurbish cost (player-initiated expense)
-//    - this file: shipping route awards (~L4630) and trade-agreement payments
-//      (~L5185) credit corp_cash_reserves + corp_revenue_current_tick directly
-//      and never reach accruePnl/monthly_profit — they're real revenue but
-//      live only in the per-tick column. Same intervention later: route
-//      through logCashEvent('revenue_shipping' / 'revenue_trade', ...).
-//  Follow-up: route these through logCashEvent in a later phase. Folding
-//  them in is a real behavior change (monthly_profit grows) so they don't
-//  belong in Phase 2 — Phase 2 only converts existing accruePnl sites.
+//    - non-P&L principal transfers (loan principal debit/credit at ~L4355 /
+//      ~L4378 / ~L5419, bond principal credit at ~L2713). These belong in
+//      capital_in / capital_out / debt_principal categories, which require
+//      logCashEvent to skip the accruePnl side-write so monthly_profit
+//      isn't double-counted. Deferred — needs the helper extended first.
+//  Follow-up: route these through logCashEvent in a later phase.
 // ════════════════════════════════════════════════════════════════════════════════
 
 const _tickPnl = new Map();
@@ -4643,6 +4641,7 @@ async function processShippingRoutes(supabase, currentTick) {
             console.warn(`[ShippingRoutes] credit failed for contract ${contract.id}:`, credErr.message);
             continue;
         }
+        logCashEvent(contract.winner_faction_id, 'revenue_shipping', 'Shipping route revenue', revenue);
 
         const { error: contractErr } = await supabase.from('shipping_contracts').update({
             last_payment_tick: currentTick,
@@ -5197,6 +5196,7 @@ async function processTradeAgreementShipping(supabase, currentTick) {
             console.warn(`[TradeAgreementShipping] corp credit failed for ${contract.id}:`, credErr.message);
             continue;
         }
+        logCashEvent(contract.winner_faction_id, 'revenue_trade', 'Trade-agreement payment', actualPayment);
 
         // Phase 8: reset consecutive_missed_payments on any successful
         // payment so the UI's "delayed" indicator clears once the buyer
