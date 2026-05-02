@@ -21835,6 +21835,47 @@ function buildConsumerGoodsBucketDeltas(nation) {
     return null;
 }
 
+// Build {bucket, met_pct, deltas} for LUXURY GOODS on this nation.
+//   production = (standard_of_living / 6) × ((education × service_sector) / 10000)
+//   demand     = (standard_of_living / 100)² × population_M
+function buildLuxuryGoodsBucketDeltas(nation) {
+    const solStat       = Number(nation.standard_of_living) || 0;
+    const educationStat = Number(nation.education)          || 0;
+    const serviceStat   = Number(nation.service_sector)     || 0;
+    const popMillions   = (Number(nation.population) || 0) / 1_000_000;
+
+    const production = (solStat / 6) * ((educationStat * serviceStat) / 10000);
+    const demand     = Math.pow(solStat / 100, 2) * popMillions;
+    if (demand <= 0) return null;
+
+    const supply = production;
+    const metPct = supply / demand;
+
+    if (metPct < 1.0) {
+        return {
+            bucket:  'under',
+            met_pct: Math.round(metPct * 100),
+            deltas:  {
+                public_approval:    -0.05,
+                standard_of_living: -0.05,
+            },
+        };
+    }
+    if (metPct >= 1.2) {
+        return {
+            bucket:  'over',
+            met_pct: Math.round(metPct * 100),
+            deltas:  {
+                standard_of_living:  0.05,
+                cost_of_living:      0.05,
+                public_approval:     0.05,
+                gdp_growth:          0.05,
+            },
+        };
+    }
+    return null;
+}
+
 async function processCommodityDemandEffects(supabase, nation, tradingByNation) {
     const sources = [];
     const energy = buildEnergyBucketDeltas(nation, tradingByNation);
@@ -21845,6 +21886,8 @@ async function processCommodityDemandEffects(supabase, nation, tradingByNation) 
     if (food)     sources.push({ commodity: 'food',     ...food });
     const consumer = buildConsumerGoodsBucketDeltas(nation);
     if (consumer) sources.push({ commodity: 'consumer_goods', ...consumer });
+    const luxury = buildLuxuryGoodsBucketDeltas(nation);
+    if (luxury)   sources.push({ commodity: 'luxury_goods', ...luxury });
 
     if (sources.length === 0) return null;
 
