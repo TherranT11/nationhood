@@ -164,7 +164,7 @@ const LEADER_ACTIONS = [
     {
         id: 'call_snap_election',
         name: 'Call Snap Election',
-        desc: 'Schedule a snap parliamentary election for next tick. Any party leader can call. Cancels any existing scheduled parliamentary election. 3-tick per-party cooldown.',
+        desc: 'Schedule a snap parliamentary election for next tick. PM-only when a Prime Minister is seated; any party leader can call when the seat is vacant (deadlock breaker). Cancels any existing scheduled parliamentary election. 3-tick per-party cooldown.',
         cost: '$0',
         costColor: 'var(--text-dim)',
         moneyCost: 0,
@@ -1348,23 +1348,26 @@ function renderActionsPanel(leaderName, partyColor, faction) {
                 action.lockReason = '';
             }
         } else if (action.id === 'call_snap_election') {
-            // Snap parliamentary elections don't apply to nations without
-            // a parliament that elects governments — absolute monarchies
-            // (Monarch appoints PM) or pure presidential systems (fixed
-            // terms via impeachment). Server RPC at sql/migrations/
-            // 20260515 mirrors this gate; this is the client-side
-            // affordance so the player sees a clear explainer instead of
-            // a generic RPC error.
+            // Government-type gate first (no parliament → no snap), then a
+            // PM-only gate when a PM is seated. With a sitting PM the
+            // action belongs to the head of government; the any-party
+            // fallback only applies when the seat is vacant so it still
+            // works as a coalition-formation deadlock breaker.
             const nation = _state.nation;
             const isMonarchy = isAbsoluteMonarchy(nation);
             const govType = String(nation?.government_type || '').toLowerCase();
             const isPresidential = govType === 'presidential';
+            const pmPartyId = _administration?.pm_party_id || null;
+            const isPMParty = !!pmPartyId && pmPartyId === faction.id;
             if (isMonarchy) {
                 isDisabled = true;
                 action.lockReason = 'Snap elections are not held under absolute monarchy. The Monarch appoints the Prime Minister.';
             } else if (isPresidential) {
                 isDisabled = true;
                 action.lockReason = 'Presidential systems run on fixed terms — there is no parliamentary election to call.';
+            } else if (pmPartyId && !isPMParty) {
+                isDisabled = true;
+                action.lockReason = 'Only the Prime Minister’s party can call snap elections while a PM is seated.';
             } else {
                 action.lockReason = '';
             }
