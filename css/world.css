@@ -60,6 +60,13 @@
 .world-top-row {
     display: flex; gap: 12px;
     flex-shrink: 0;
+    align-items: flex-start;  /* keep both columns top-aligned so the side
+                                 panel grows downward without stretching
+                                 the map column. */
+}
+.world-map-col {
+    display: flex; flex-direction: column; gap: 12px;
+    flex: 1; min-width: 0;
 }
 .world-side {
     display: flex; flex-direction: column; gap: 12px;

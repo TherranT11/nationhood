@@ -30,17 +30,28 @@
 <div id="subtab-world" class="diplo-subtab-content">
 <div class="world-page">
     <div class="world-top-row">
-        <!-- Map panel -->
-        <div class="world-map-panel" id="world-map-panel">
-            <img id="world-map-img" src="./assets/map/World Map Crucera 3.1.svg" alt="World Map" draggable="false"
-                 style="width:100%;height:auto;pointer-events:none;">
-            <div class="world-map-controls">
-                <div class="world-map-btn" id="map-zoom-in">+</div>
-                <div class="world-map-btn" id="map-zoom-out">&minus;</div>
-                <div class="world-map-btn" id="map-zoom-reset">&#8634;</div>
+        <!-- Left column: map stacked above the All Nations grid so the
+             grid sits directly under the map regardless of how tall the
+             nation-highlight side panel grows. -->
+        <div class="world-map-col">
+            <div class="world-map-panel" id="world-map-panel">
+                <img id="world-map-img" src="./assets/map/World Map Crucera 3.1.svg" alt="World Map" draggable="false"
+                     style="width:100%;height:auto;pointer-events:none;">
+                <div class="world-map-controls">
+                    <div class="world-map-btn" id="map-zoom-in">+</div>
+                    <div class="world-map-btn" id="map-zoom-out">&minus;</div>
+                    <div class="world-map-btn" id="map-zoom-reset">&#8634;</div>
+                </div>
+                <div class="world-map-zoom" id="map-zoom-label">100%</div>
+                <div class="world-map-hint">scroll to zoom &middot; drag to pan</div>
             </div>
-            <div class="world-map-zoom" id="map-zoom-label">100%</div>
-            <div class="world-map-hint">scroll to zoom &middot; drag to pan</div>
+
+            <!-- All Nations grid — populated by renderNationList(); search
+                 input in the side panel filters it. -->
+            <div class="world-nations-grid-wrap">
+                <div class="world-nations-grid-header">ALL NATIONS</div>
+                <div id="world-nations-grid" class="world-nations-grid"></div>
+            </div>
         </div>
 
         <!-- Nation highlight panel (search + selected nation card) -->
@@ -64,13 +75,6 @@
             </div>
         </div>
     </div><!-- /world-top-row -->
-
-    <!-- Full-width nations grid (renders below the map). renderNationList()
-         populates #world-nations-grid; the search input above filters it. -->
-    <div class="world-nations-grid-wrap">
-        <div class="world-nations-grid-header">ALL NATIONS</div>
-        <div id="world-nations-grid" class="world-nations-grid"></div>
-    </div>
 </div>
 </div><!-- /subtab-world -->
 
@@ -2471,25 +2475,45 @@ function getNationEnergyBalance(nation) {
     return { production, demand, net: production - demand };
 }
 
-// Build a nation's surplus / deficit list. Energy is the only tradeable
-// commodity right now, so we compute it from stats rather than reading
-// trade_flows (which is dollar-denominated and doesn't track Energy).
+// Same shape for Minerals \u2014 mirrors the YOUR ECONOMY panel:
+//   Production = (minerals / 3) \u00D7 ((workforce + industry) / 200)
+//   Demand     = (infrastructure / 10) + (industry / 16)
+function getNationMineralsBalance(nation) {
+    const n = nation || {};
+    const mineralsStat  = Number(n.minerals)       || 0;
+    const workforceStat = Number(n.workforce)      || 0;
+    const industryStat  = Number(n.industry)       || 0;
+    const infraStat     = Number(n.infrastructure) || 0;
+    const production    = (mineralsStat / 3) * ((workforceStat + industryStat) / 200);
+    const demand        = (infraStat / 10) + (industryStat / 16);
+    return { production, demand, net: production - demand };
+}
+
+// Build a nation's surplus / deficit list. Energy + Minerals are the
+// only tradeable commodities right now, so we compute both from stats
+// rather than reading trade_flows (which is dollar-denominated and
+// doesn't track stat-based goods).
 function getNationSurplusesAndDeficits(nationId) {
     const nation = (_worldAllNations || []).find(n => n.id === nationId);
     const surpluses = [];
     const deficits = [];
 
-    const { net } = getNationEnergyBalance(nation);
-    if (net !== 0) {
+    const goods = [
+        { sector: 'energy',   icon: '\u26A1', name: 'Energy',   balance: getNationEnergyBalance(nation)   },
+        { sector: 'minerals', icon: '\u26CF', name: 'Minerals', balance: getNationMineralsBalance(nation) },
+    ];
+    for (const g of goods) {
+        const net = g.balance.net;
+        if (net === 0) continue;
         const entry = {
-            sector: 'energy',
-            icon: '\u26A1',
-            name: 'Energy',
-            amount: Math.abs(net),
+            sector:    g.sector,
+            icon:      g.icon,
+            name:      g.name,
+            amount:    Math.abs(net),
             statBased: true,
         };
         if (net > 0) surpluses.push(entry);
-        else deficits.push(entry);
+        else         deficits.push(entry);
     }
 
     return { surpluses, deficits };
