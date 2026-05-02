@@ -1260,7 +1260,11 @@ function adm2RenderExecCard() {
         </div>`);
     }
 
-    // Prime Minister (parliamentary + semi-presidential)
+    // Prime Minister (parliamentary + semi-presidential + absolute monarchy).
+    // Absolute monarchies route through the same hog row — when the Monarch
+    // hasn't appointed a separate party, the migration defaults the row to
+    // their own faction (sql/migrations/20260710_backfill_ministries_and_monarch_hog.sql).
+    // Role label stays "Prime Minister" in every case.
     if (hog && !isPurePres) {
         const name = `${hog.first_name || ''} ${hog.last_name || ''}`.trim();
         const pmParty = parties.find(p => p.id === hog.faction_id);

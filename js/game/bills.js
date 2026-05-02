@@ -7,7 +7,7 @@ import { GAME_CONFIG, initGameConfigForNation, getPresidentialTermTicks, getPres
 import { hasElectedPresident, getCurrentConstitutionalSystem, isAbsoluteMonarchy, MINISTRY_OFFICE_NAMES } from './government-types.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './diplomacy-constants.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility, round2 } from './momentum.js';
-import { computeCorpValuation } from './corp-valuation.js';
+import { computeCorpValuation, withNationalHq } from './corp-valuation.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
 import { fetchActiveCoalition } from './government-structure.js';
@@ -3463,9 +3463,20 @@ export async function enactBill(supabase, bill, currentTick) {
                         .select('purchase_price, condition').eq('faction_id', corpId);
                     const { data: vessels } = await supabase.from('corp_vessels')
                         .select('purchase_price, condition, built_at_tick, status').eq('faction_id', corpId);
+                    // Synthetic National HQ pulls from the corp's home
+                    // nation stats — same SSOT helper used by the masthead
+                    // and bankruptcy/bailout client paths.
+                    const { data: hqNation } = await supabase.from('nations')
+                        .select('id, standard_of_living, control').eq('id', corp.nation_id).single();
                     const corpCash = Number(corp.corp_cash_reserves || 0);
                     const corpLoans = Number(corp.corp_loans || 0);
-                    const valuation = computeCorpValuation({ cash: corpCash, loans: corpLoans, properties: props, vessels, currentTick });
+                    const valuation = computeCorpValuation({
+                        cash: corpCash,
+                        loans: corpLoans,
+                        properties: withNationalHq(props, hqNation),
+                        vessels,
+                        currentTick,
+                    });
                     const cap = Math.max(0, 3 * valuation);
                     const payout = Math.min(requested, cap);
                     if (payout > 0) {

@@ -818,6 +818,7 @@ body.corp-expansion.light-mode {
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, hfFmtBig } from './js/utils.js';
+import { nationalHqValue, nationalHqQuality } from './js/game/corp-valuation.js';
 
 // ── CONSTANTS ──
 // Build cost: $300M base × clamp(SoL/50, 0.5, 2.0). At SoL 50 the
@@ -826,22 +827,12 @@ import { escapeHtml, hfFmtBig } from './js/utils.js';
 const REGIONAL_HQ_BASE_COST = 300_000_000;
 const REGIONAL_HQ_CAPACITY  = 500;
 
-// National HQ value scales linearly with the home nation's SoL —
-// $50M at SoL 0 to $75M at SoL 100. Maint is a flat 0.5% of value
-// per tick, matching the existing property-maintenance ratio.
-function nationalHqValue(sol) {
-    const s = Math.max(0, Math.min(100, Number(sol) || 0));
-    return Math.round(50_000_000 + 25_000_000 * (s / 100));
-}
+// nationalHqValue + nationalHqQuality moved to js/game/corp-valuation.js
+// (single source of truth — see synthesizeNationalHq there). Imported
+// at the top of this module. Maint stays here; it's only consumed by
+// the asset-card display, not the valuation math.
 function nationalHqMaint(value) {
     return Math.round(Number(value) * 0.005);
-}
-// Quality blends a 70% baseline with the home nation's control —
-// well-maintained HQs in stable nations read 95-100%, unstable
-// nations drag toward 70%.
-function nationalHqQuality(control) {
-    const c = Math.max(0, Math.min(100, Number(control) || 50));
-    return Math.round(70 + c * 0.3);
 }
 function regionalHqMultiplier(sol) {
     const s = Math.max(0, Math.min(100, Number(sol) || 0));
