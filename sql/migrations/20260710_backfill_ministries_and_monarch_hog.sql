@@ -70,9 +70,17 @@ SELECT n.id, ck.key, ck.name, true, NULL
 
 -- ── 2. Default Monarch as Head of Government for absolute monarchies ──
 -- Only applies to nations whose government_type canonicalizes to
--- Absolute Monarchy. Skipped for any nation that already has an
--- active head_of_government row (avoids clobbering a Monarch's
--- prior appointment of a separate PM party).
+-- Absolute Monarchy. The ON CONFLICT clause is keyed on nation_id
+-- (head_of_government has UNIQUE(nation_id) — same constraint
+-- installHOG works around). The WHERE on DO UPDATE means:
+--   * No existing row    → INSERT a fresh Monarch-as-PM row.
+--   * Existing inactive  → reactivate + overwrite with Monarch info
+--                          (covers stale rows from prior failed
+--                          formation attempts).
+--   * Existing active    → conflict triggers but WHERE filter
+--                          rejects the update → row left untouched.
+--                          Avoids clobbering a Monarch's prior
+--                          appointment of a separate PM party.
 --
 -- Pulls the person from the nations row's head_of_state_* fields
 -- (the Monarch's identity is already stored there for display).
@@ -93,11 +101,14 @@ SELECT
   FROM nations n
  WHERE LOWER(COALESCE(n.government_type, '')) IN ('absolute monarchy', 'absolute_monarchy', 'monarchy')
    AND n.monarch_faction_id IS NOT NULL
-   AND NOT EXISTS (
-        SELECT 1 FROM head_of_government hog
-         WHERE hog.nation_id = n.id
-           AND hog.active = true
-   );
+ON CONFLICT (nation_id) DO UPDATE SET
+    faction_id     = EXCLUDED.faction_id,
+    first_name     = EXCLUDED.first_name,
+    last_name      = EXCLUDED.last_name,
+    age            = EXCLUDED.age,
+    appointed_tick = EXCLUDED.appointed_tick,
+    active         = true
+ WHERE head_of_government.active = false;
 
 
 -- ── Sanity counts ──
