@@ -609,6 +609,26 @@ function renderTradeEconomy() {
         statBased: true,
     });
 
+    // ── Luxury Goods (stat-derived) ──
+    // Production = (standard_of_living / 6) × ((education × service_sector) / 10000)
+    // No demand or trade-agreement plumbing yet — Trading = 0,
+    // Net = Production. Demand model lands when speced.
+    const educationStat    = Number(_n.education)      || 0;
+    const serviceStat      = Number(_n.service_sector) || 0;
+    const luxuryProd       = (solStat / 6) * ((educationStat * serviceStat) / 10000);
+    commodities.push({
+        key: 'luxury_goods',
+        icon: '💎',
+        name: 'Luxury Goods',
+        production: luxuryProd,
+        domesticDemand: 0,
+        demand: 0,
+        trading: 0,
+        netFlow: luxuryProd,
+        selfSufficiencyBalance: null,
+        statBased: true,
+    });
+
     for (const [sector, flow] of Object.entries(_tradeFlows)) {
         // Skip parent food_agriculture if subsectors exist
         if (sector === 'food_agriculture' && (_tradeFlows.grains_staples || _tradeFlows.livestock_dairy)) continue;
@@ -2640,6 +2660,18 @@ function getNationConsumerGoodsBalance(nation) {
     return { production, demand, net: production - demand };
 }
 
+// Same shape for Luxury Goods \u2014 mirrors the YOUR ECONOMY panel:
+//   Production = (standard_of_living / 6) \u00D7 ((education \u00D7 service_sector) / 10000)
+//   Demand     = 0 (no demand model yet)
+function getNationLuxuryGoodsBalance(nation) {
+    const n = nation || {};
+    const solStat       = Number(n.standard_of_living) || 0;
+    const educationStat = Number(n.education)          || 0;
+    const serviceStat   = Number(n.service_sector)     || 0;
+    const production    = (solStat / 6) * ((educationStat * serviceStat) / 10000);
+    return { production, demand: 0, net: production };
+}
+
 // Build a nation's surplus / deficit list. Energy + Minerals + Food are
 // the tradeable commodities right now, all stat-derived.
 function getNationSurplusesAndDeficits(nationId) {
@@ -2652,6 +2684,7 @@ function getNationSurplusesAndDeficits(nationId) {
         { sector: 'minerals', icon: '\u26CF', name: 'Minerals', balance: getNationMineralsBalance(nation) },
         { sector: 'food',           icon: '\uD83C\uDF3E', name: 'Food',           balance: getNationFoodBalance(nation)           },
         { sector: 'consumer_goods', icon: '\uD83D\uDCE6', name: 'Consumer Goods', balance: getNationConsumerGoodsBalance(nation) },
+        { sector: 'luxury_goods',   icon: '\uD83D\uDC8E', name: 'Luxury Goods',   balance: getNationLuxuryGoodsBalance(nation)   },
     ];
     for (const g of goods) {
         const net = g.balance.net;
