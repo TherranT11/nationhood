@@ -588,6 +588,14 @@ function renderMinistryAssignment(formation) {
     const coalitionParties = (formation.party_ids || [])
         .map(pid => _allParties.find(p => p.id === pid))
         .filter(Boolean);
+    // In an absolute monarchy the King appoints freely — the "coalition"
+    // is a single-party formality. Without this branch the dropdown only
+    // listed his own party (formation.party_ids), so the King could not
+    // appoint anyone else. Mirrors the openAppointModal behavior in
+    // government.html.
+    const candidateParties = isAbsoluteMonarchy(_state.nation)
+        ? _allParties
+        : coalitionParties;
     const isMember = (formation.party_ids || []).includes(_state.faction?.id);
     const assignments = formation.ministry_assignments || {};
 
@@ -614,7 +622,7 @@ function renderMinistryAssignment(formation) {
                 <span style="width:140px;font-family:var(--font-mono);font-size:10px;font-weight:${isPM ? '700' : '400'};color:${isPM ? 'var(--accent)' : 'var(--text-secondary)'};letter-spacing:0.5px;">${label}</span>
                 <select data-ministry="${key}" class="cf-ministry-select" style="flex:1;padding:4px 8px;font-family:var(--font-mono);font-size:10px;color:var(--text-bright);background:var(--bg-body);border:1px solid var(--border-main);outline:none;">
                     <option value="">— Select Party —</option>
-                    ${coalitionParties.map(p => `<option value="${p.id}" ${assignedId === p.id ? 'selected' : ''}>${esc(p.faction_name)} (${p.seats || 0} seats)</option>`).join('')}
+                    ${candidateParties.map(p => `<option value="${p.id}" ${assignedId === p.id ? 'selected' : ''}>${esc(p.faction_name)} (${p.seats || 0} seats)</option>`).join('')}
                 </select>
             </div>`;
         }
@@ -627,7 +635,7 @@ function renderMinistryAssignment(formation) {
             <button id="cf-form-gov-btn" style="padding:10px 28px;font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:1.5px;color:#000;background:var(--green);border:1px solid var(--green);cursor:pointer;">FORM GOVERNMENT</button>
         </div>`;
     } else if (pmAssigned && !iAmPM) {
-        const pmParty = coalitionParties.find(p => p.id === pmPartyId);
+        const pmParty = candidateParties.find(p => p.id === pmPartyId);
         html += `<div style="margin-top:14px;padding:8px 12px;background:rgba(92,204,92,0.04);border:1px solid rgba(92,204,92,0.12);font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">
             Waiting for <span style="color:var(--green);font-weight:700;">${esc(pmParty?.faction_name || 'PM party')}</span> to click Form Government.
         </div>`;
