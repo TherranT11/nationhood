@@ -22490,16 +22490,20 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
 
     const leaderAge = faction.leader_age || (35 + Math.floor(Math.random() * 16));
 
-    // Single source of truth — see installHOG above.
-    await installHOG(supabase, {
-        nationId,
-        factionId,
-        firstName: faction.leader_first_name,
-        lastName: faction.leader_last_name,
-        age: leaderAge,
-        currentTick,
-        traitKey,
-    });
+    // skipHogInstall is set by the coalition-formation flow because
+    // finalize_government_formation already installed HOG inside the RPC.
+    // Other callers (no opt) install HOG here.
+    if (!opts?.skipHogInstall) {
+        await installHOG(supabase, {
+            nationId,
+            factionId,
+            firstName: faction.leader_first_name,
+            lastName: faction.leader_last_name,
+            age: leaderAge,
+            currentTick,
+            traitKey,
+        });
+    }
 
     // Tier 2 Phase 3: removed the mid-life UPDATE that rewrote the open
     // admin row's `prime_minister` and `admin_name` on every PM swap.

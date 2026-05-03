@@ -4,7 +4,6 @@
 
 import { buildMinistryBaselines } from './game/stats.js';
 import { autoAppointPartyLeaderAsPM, getNationNames } from './game/political-actions.js';
-import { rolloverAdministration } from './game/elections.js';
 import { fetchActiveCoalition } from './game/government-structure.js';
 import { MINISTRY_OFFICE_NAMES, CABINET_MINISTRY_KEYS, hasElectedPresident, isSemiPresidential, isAbsoluteMonarchy } from './game/government-types.js';
 import { PLATFORMS } from './game/platforms.js';
@@ -573,17 +572,6 @@ const MINISTRY_NAMES = {
 // — the office-name and key-list maps are the shared exports from
 // government-types.js (MINISTRY_OFFICE_NAMES, CABINET_MINISTRY_KEYS).
 
-function getExpectedCabinetMinistryKeys(nation) {
-    const parliamentaryKeys = ['prime_minister', 'interior', 'foreign', 'defense', 'finance',
-        'education', 'healthcare', 'labor', 'justice', 'trade', 'energy', 'transportation'];
-    const presidentialKeys = ['interior', 'foreign', 'defense', 'finance',
-        'education', 'healthcare', 'labor', 'justice', 'trade', 'energy', 'transportation'];
-
-    // Semi-presidential has a PM seat (parliamentary shape); pure presidential omits it.
-    if (isSemiPresidential(nation)) return parliamentaryKeys;
-    return hasElectedPresident(nation) ? presidentialKeys : parliamentaryKeys;
-}
-
 function renderMinistryAssignment(formation) {
     const coalitionParties = (formation.party_ids || [])
         .map(pid => _allParties.find(p => p.id === pid))
@@ -665,11 +653,9 @@ async function handleFormGovernment(formation, root) {
         const nation = _state.nation;
         const nationId = nation.id;
 
-        // Generate minister names for each assigned slot. The RPC
-        // finalize_government_formation wipes all ministries and then
-        // repopulates from government_formations.minister_names — without
-        // this block, minister_names is null and the RPC leaves the cabinet
-        // blank after wiping it.
+        // Generate minister names for each assigned slot. minister_names
+        // is read by the cabinet-management UI in government.html
+        // (search 'minister_names'); the RPC itself doesn't consume it.
         const namePools = getNationNames(nation?.name) || {};
         const firstPool = namePools.firstNames || ['Alex', 'Maria', 'Carlos'];
         const lastPool = namePools.lastNames || ['Garcia', 'Torres', 'Silva'];
@@ -690,65 +676,37 @@ async function handleFormGovernment(formation, root) {
         }).eq('id', formation.id);
         if (assignErr) throw new Error('Failed to save assignments: ' + assignErr.message);
 
-        // Try the atomic RPC first (sets formation status, cancels rivals, etc.)
-        let rpcSucceeded = false;
-        try {
-            const baselines = buildMinistryBaselines ? buildMinistryBaselines(null, nation) : {};
-            const { data: rpcData, error: rpcErr } = await _supabase.rpc('finalize_government_formation', {
-                p_formation_id: formation.id,
-                p_caller_faction_id: _state.faction.id,
-                p_ministry_baselines: baselines || {},
-            });
-            if (rpcErr) throw rpcErr;
-            // The RPC returns { error: 'msg' } as structured data on
-            // validation failures (auth, status, missing nation, etc.).
-            // PostgREST doesn't surface those as rpcErr — without this
-            // check, structured errors silently appear as success.
-            if (rpcData?.error) throw new Error(rpcData.error);
-            rpcSucceeded = true;
-        } catch (rpcErr) {
-            console.warn('[Coalition] RPC failed, using fallback:', rpcErr.message);
-        }
+        // finalize_government_formation owns the canonical formation flow:
+        // closes old admin, inserts new admin, installs HOG, marks the
+        // formation 'formed', dissolves rivals, resets gov_approval. Errors
+        // throw to the outer catch and surface as a "Form Government" alert
+        // — no silent fallback path masking them.
+        const baselines = buildMinistryBaselines ? buildMinistryBaselines(null, nation) : {};
+        const { data: rpcData, error: rpcErr } = await _supabase.rpc('finalize_government_formation', {
+            p_formation_id: formation.id,
+            p_caller_faction_id: _state.faction.id,
+            p_ministry_baselines: baselines || {},
+        });
+        if (rpcErr) throw rpcErr;
+        // RPC validation failures return { error: 'msg' } as structured data;
+        // PostgREST doesn't surface those as rpcErr.
+        if (rpcData?.error) throw new Error(rpcData.error);
 
-        // Always run the fallback to ensure formation is marked 'formed' + ministries created
-        if (!rpcSucceeded) {
-            await formGovernmentFallback(formation);
-        }
+        // Populate ministry rows from _ministryAssignments. The RPC
+        // leaves non-PM ministries to the client by design (only restores
+        // the PM ministry's discretionary_balance). Always runs — the
+        // previous admin's stale ministry rows would otherwise carry over
+        // to the new coalition.
+        await createMinistriesFromAssignments(nationId);
 
-        // Even if RPC "succeeded", ensure status is 'formed' (RPC may have partially failed)
-        await _supabase.from('government_formations').update({
-            status: 'formed',
-            formed_at: new Date().toISOString(),
-        }).eq('id', formation.id);
-
-        // Enforce single-source government row: dissolve every other
-        // active/caretaker/formed formation for this nation.
-        await _supabase.from('government_formations').update({ status: 'dissolved' })
-            .eq('nation_id', nationId)
-            .neq('id', formation.id)
-            .in('status', ['active', 'caretaker', 'formed']);
-
-        // Ensure ministries are populated regardless of RPC path
-        // Validate both active row count and vacant row count.
-        const expectedCabinetKeys = getExpectedCabinetMinistryKeys(nation);
-        const expectedCabinetSize = expectedCabinetKeys.length;
-        const { count: totalActiveCount } = await _supabase.from('ministries')
-            .select('id', { count: 'exact', head: true })
-            .eq('nation_id', nationId).eq('is_active', true);
-        const { count: vacantCount } = await _supabase.from('ministries')
-            .select('id', { count: 'exact', head: true })
-            .eq('nation_id', nationId).eq('is_active', true).is('party_id', null);
-
-        if (!totalActiveCount || totalActiveCount < expectedCabinetSize || (vacantCount && vacantCount > 0)) {
-            console.warn(
-                `[Coalition] Ministry invariant check failed (expected=${expectedCabinetSize}, active=${totalActiveCount || 0}, vacant=${vacantCount || 0}) — populating from assignments`
-            );
-            await createMinistriesFromAssignments(nationId);
-        }
-
-        // Admin lifecycle is handled inside the RPC (or by formGovernmentFallback
-        // → rolloverAdministration on the failure path).
-        await autoAppointPartyLeaderAsPM(_supabase, nationId, pmPartyId, _currentTick, { skipCoalitionCheck: true });
+        // PM ministry row gets the leader's actual name (createMinistriesFromAssignments
+        // only knows the random-pool name) + fires pm_appointed event_log.
+        // skipHogInstall: the RPC already installed HOG; this call is only here
+        // for the JS-side ministry write + event.
+        await autoAppointPartyLeaderAsPM(_supabase, nationId, pmPartyId, _currentTick, {
+            skipCoalitionCheck: true,
+            skipHogInstall: true,
+        });
 
         _formationNeeded = false;
         alert('Government formed successfully!');
@@ -762,71 +720,16 @@ async function handleFormGovernment(formation, root) {
     }
 }
 
-async function formGovernmentFallback(formation) {
-    const nationId = _state.nation.id;
-
-    // Cancel rival formations
-    const { error: cancelErr } = await _supabase.from('government_formations').update({ status: 'cancelled' })
-        .eq('nation_id', nationId).eq('status', 'active').neq('id', formation.id);
-    if (cancelErr) console.warn('[Coalition] Failed to cancel rival formations:', cancelErr.message);
-
-    // Mark this formation as formed
-    const { error: formErr } = await _supabase.from('government_formations').update({
-        status: 'formed',
-        formed_at: new Date().toISOString(),
-    }).eq('id', formation.id);
-    if (formErr) throw formErr;
-
-    // Reset failed formation attempts
-    const { error: resetErr } = await _supabase.from('nations').update({ failed_formation_attempts: 0 }).eq('id', nationId);
-    if (resetErr) console.warn('[Coalition] Failed to reset formation attempts:', resetErr.message);
-
-    await createMinistriesFromAssignments(nationId);
-
-    // Create new administration record
-    const coalition = {
-        id: formation.id,
-        party_ids: formation.party_ids || [],
-        lead_party_id: _ministryAssignments.prime_minister,
-    };
-    await rolloverAdministration(
-        _supabase, nationId, _state.nation,
-        'election', coalition, _allParties,
-        _currentTick, _state.shard?.current_date || '',
-        Number(_state.nation?.gov_approval ?? 50)
-    );
-
-    // Log to event_log so it appears in the Executive Timeline
-    try {
-        const pmPartyId = _ministryAssignments.prime_minister;
-        const pmParty = _allParties.find(p => p.id === pmPartyId);
-        const partyDetails = (formation.party_ids || []).map(pid => {
-            const p = _allParties.find(x => x.id === pid);
-            return p ? `${p.faction_name} (${p.seats || 0})` : null;
-        }).filter(Boolean).join(', ');
-        await _supabase.from('event_log').insert({
-            nation_id: nationId,
-            event_name: 'Coalition Government Formed',
-            category: 'government',
-            fired_at_tick: _currentTick,
-            description_used: `${pmParty?.faction_name || 'PM party'} formed a coalition government with: ${partyDetails}`,
-            description_chosen: `${pmParty?.faction_name || 'PM party'} formed a coalition government with: ${partyDetails}`,
-        });
-    } catch (logErr) {
-        console.warn('[Coalition] event_log insert failed (non-fatal):', logErr.message);
-    }
-}
-
 async function createMinistriesFromAssignments(nationId) {
     // Upsert ministry rows — update if they exist, insert if they don't.
     // ministry_name uses the shared MINISTRY_OFFICE_NAMES map so this stays
     // aligned with bills.js, executive-orders.js, presidential.js, etc.
+    const names = getNationNames(_state.nation?.name) || {};
+    const firstPool = names.firstNames || ['Alex', 'Maria', 'Carlos'];
+    const lastPool  = names.lastNames  || ['Garcia', 'Torres', 'Silva'];
     let updated = 0;
     for (const [key, partyId] of Object.entries(_ministryAssignments)) {
         if (!partyId) continue;
-        const names = getNationNames(_state.nation?.name) || {};
-        const firstPool = names.firstNames || ['Alex', 'Maria', 'Carlos'];
-        const lastPool = names.lastNames || ['Garcia', 'Torres', 'Silva'];
         const firstName = firstPool[Math.floor(Math.random() * firstPool.length)];
         const lastName = lastPool[Math.floor(Math.random() * lastPool.length)];
         const age = 35 + Math.floor(Math.random() * 25);
