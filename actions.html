@@ -148,6 +148,7 @@ import { renderCorpActions } from './js/corp-actions.js';
 import { EXEC_ROLES, EXEC_ROLE_META, createInitialExecutiveRoster, generateExecutivePool } from './js/game/corp-executives.js';
 import { applyForEquity } from './js/equity-apply.js';
 import { declareBankruptcy } from './js/corp-bankruptcy.js';
+import { openSueCorpModal } from './js/sue-corp.js';
 
 // ── Core corp-page state (mirrors corp-operations.html) ──
 let allUserFactions = [];
@@ -269,7 +270,7 @@ const EXEC_ACTIONS = {
         { id: 'branding', name: 'Branding', desc: 'Upload a custom corporate logo. Replaces the default monogram on the dashboard, nation roster, and shipping vessels.', cost: '$1M', costColor: '#ca5', tags: ['IDENTITY'], cooldownTicks: 12 },
     ],
     CLO: [
-        { id: 'sue_corp', name: 'Sue Corporation', desc: 'File a lawsuit against another corporation for patent infringement, contract breach, or predatory practices.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['LEGAL'], locked: true, lockReason: 'Coming soon' },
+        { id: 'sue_corp', name: 'Sue Corporation', desc: 'File a lawsuit against another corporation you have a business relationship with. The Ministry of Justice in your nation reviews and rules on the case.', cost: '$2M', costColor: '#c55', tags: ['LEGAL'] },
     ],
     Lobbyist: [
         { id: 'donate', name: 'Political Donation', desc: 'Donate $1M to a political party in the nation where your National HQ is located. The target party receives $100k in party funds. You cannot donate to your own party.', cost: '$1M', costColor: '#ca5', tags: ['POLITICAL'], cooldown: 'once/tick' },
@@ -525,6 +526,7 @@ function actExecute(actionId, role) {
         case 'rebrand': return actOpenRebrand();
         case 'branding': return actOpenBranding();
         case 'donate': return actOpenDonation();
+        case 'sue_corp': return openSueCorpModal(faction);
         case 'bankruptcy': return declareBankruptcy();
         default: break;
     }
