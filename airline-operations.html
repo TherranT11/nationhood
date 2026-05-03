@@ -1044,6 +1044,11 @@ async function loadFleetInventory(corpId, currentTick) {
 }
 
 // ── Phase 5: route setup ──────────────────────────────────────
+// KNOWN-DUPLICATION: these constants live in JS only because Phase 5
+// is display-projection only — no per-tick passenger flow runs yet.
+// When the Phase 6 tick processor lands, mirror them in advance-corp-tick
+// (probably as a SQL function aircraft_ops_cost(class)/etc.) and treat
+// the JS copies as cache for the modal's live recompute.
 const AIRCRAFT_SEATS    = { regional: 10,    narrowbody: 25,    widebody: 60 };
 const AIRCRAFT_OPS_COST = { regional: 5000,  narrowbody: 12000, widebody: 25000 };
 const MAINT_TIER_COST   = { basic: 10000, standard: 25000, premium: 40000 };
@@ -1200,7 +1205,7 @@ async function _hydrateRouteModalCtx(corpId, pair) {
             .eq('corp_id', corpId)
             .is('route_id', null),
         _supabase.from('factions')
-            .select('corp_op_safety, corp_cash_reserves')
+            .select('corp_op_safety')
             .eq('id', corpId).single(),
     ]);
     if (citiesRes.error) throw new Error(citiesRes.error.message);
@@ -1255,7 +1260,6 @@ async function _hydrateRouteModalCtx(corpId, pair) {
         competitorSeats,
         idle,
         opSafety: Number(corpRes.data?.corp_op_safety) || 0,
-        cash:     Number(corpRes.data?.corp_cash_reserves) || 0,
     };
 }
 
