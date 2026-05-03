@@ -1199,12 +1199,14 @@ body.corp-operations-construction.light-mode {
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, escapeAttr, tickToDate } from './js/utils.js';
 
-// Operations pages are sector-gated. Construction stays here; Finance and
-// Shipping each have their own ops page; anything else falls back to the
-// dashboard since no sector-specific Operations page exists yet.
+// Operations pages are sector-gated. Construction stays here; every other
+// sector has its own page. Keep this map in sync with corp-topbar.js's
+// canonical SECTOR_OPS_PAGE — drift here is what causes Airline corps to
+// silently bounce to the dashboard.
 const SECTOR_OPS_PAGE = {
     Finance:  'corp-operations-finance.html',
     Shipping: 'corp-operations-shipping.html',
+    Airline:  'airline-operations.html',
 };
 
 // ── HERO STATS (Section I) ──

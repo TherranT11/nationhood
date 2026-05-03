@@ -3099,9 +3099,11 @@ async function submitShippingAction(card, opt) {
 }
 
 // ── INIT ──
+// Keep this map in sync with corp-topbar.js's canonical SECTOR_OPS_PAGE.
 const SECTOR_OPS_PAGE = {
     Construction: 'corp-operations.html',
     Finance:      'corp-operations-finance.html',
+    Airline:      'airline-operations.html',
 };
 
 async function init() {
