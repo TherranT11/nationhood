@@ -28658,11 +28658,7 @@ const PROMISE_DEADLINE_TICKS = 24;
 // Failure now reverts the platform's popularity boosts (full magnitude)
 // via _apply_platform_sector_effects(... 'fail') instead of docking
 // momentum. Penalties applied at adoption stay — alienated voters
-// don't reconcile because the party failed to deliver. Constants
-// retained as no-ops for any external reader still importing them;
-// the values aren't applied any more.
-const FAILURE_MOMENTUM_PENALTY = 0;
-const FAILURE_GOVERNANCE_PENALTY = 0;
+// don't reconcile because the party failed to deliver.
 
 /**
  * Recalculate promise targets when a party enters government.
@@ -28808,12 +28804,23 @@ async function evaluatePromises(supabase, nation, currentTick, governingFactionI
             // Replaces the previous −20 momentum / −10 governance hits.
             await supabase.from('faction_platforms').update({ status: 'failed' }).eq('id', fp.id);
 
-            await supabase.rpc('_apply_platform_sector_effects', {
-                p_faction_id:   fp.faction_id,
-                p_nation_id:    fp.nation_id,
-                p_platform_key: fp.platform_key,
-                p_mode:         'fail',
-            });
+            // popularity_applied gates the revert: only platforms whose
+            // adoption actually fired the popularity bumps can have them
+            // reverted. Pre-migration in-flight platforms (adopted
+            // before 20260727) have popularity_applied=false and skip
+            // the revert — the boost was never granted, so docking it
+            // would unfairly reduce blocs the player never courted.
+            if (fp.popularity_applied) {
+                const { error: revertErr } = await supabase.rpc('_apply_platform_sector_effects', {
+                    p_faction_id:   fp.faction_id,
+                    p_nation_id:    fp.nation_id,
+                    p_platform_key: fp.platform_key,
+                    p_mode:         'fail',
+                });
+                if (revertErr) {
+                    console.warn('[platform-promises] popularity-revert RPC failed for', fp.platform_key, ':', revertErr.message);
+                }
+            }
 
             results.push({ factionId: fp.faction_id, platformKey: fp.platform_key, status: 'failed' });
         }

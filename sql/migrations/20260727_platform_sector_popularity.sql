@@ -22,6 +22,19 @@
 
 BEGIN;
 
+-- ── 0. faction_platforms.popularity_applied ─────────────────────
+-- Tracks whether _apply_platform_sector_effects fired at adoption.
+-- Defaults FALSE for all existing in-flight platforms so the
+-- failure path can safely skip them — those rows were adopted
+-- before this migration and never received a popularity bump,
+-- so reverting one would dock blocs that were never boosted.
+ALTER TABLE public.faction_platforms
+    ADD COLUMN IF NOT EXISTS popularity_applied BOOLEAN NOT NULL DEFAULT false;
+
+COMMENT ON COLUMN public.faction_platforms.popularity_applied IS
+    'TRUE iff _apply_platform_sector_effects(... mode=adopt) ran at adoption time. The failure path checks this before reverting boosts so pre-migration platforms (adopted before sector popularity was wired in) do not get popularity docked that was never granted.';
+
+
 -- ── 1. platform_sector_effects catalog ──────────────────────────
 CREATE TABLE IF NOT EXISTS public.platform_sector_effects (
     platform_key  TEXT     NOT NULL,
@@ -308,12 +321,14 @@ BEGIN
         p_tick
     );
 
-    INSERT INTO faction_platforms (faction_id, nation_id, platform_key, slot, adopted_at_tick, baseline_stats, target_stats)
-    VALUES (p_faction_id, p_nation_id, p_platform_key, v_next_slot, p_tick, p_baseline_stats, p_target_stats);
+    INSERT INTO faction_platforms (faction_id, nation_id, platform_key, slot, adopted_at_tick, baseline_stats, target_stats, popularity_applied)
+    VALUES (p_faction_id, p_nation_id, p_platform_key, v_next_slot, p_tick, p_baseline_stats, p_target_stats, true);
 
     -- ── NEW: sector-popularity bumps (one-shot). ──
     -- Boosts + penalties both fire here. Failure path (in
-    -- platform-promises.js) reverts only the boosts.
+    -- platform-promises.js) reverts only the boosts, gated on
+    -- popularity_applied=true so pre-migration in-flight platforms
+    -- can't dock blocs that never got the original boost.
     v_pop_result := _apply_platform_sector_effects(
         p_faction_id, p_nation_id, p_platform_key, 'adopt'
     );
