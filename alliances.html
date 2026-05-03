@@ -275,25 +275,41 @@ const FOUND_PER_INVITEE = 7_000_000;
 const MIN_INVITEES = 2;
 const MAX_INVITEES = 10;
 
-// Per-sector hero stats. Maps display label → faction column. Columns
-// missing on `factions` today render as "—"; we still surface the slot
-// so the layout stays uniform across sectors.
+// Maps keyed by the DB-canonical corp_sector value (Finance, Construction,
+// Shipping, Airline) — NOT the user-facing label. SECTOR_LABEL handles
+// the display translation ("Finance" → "Banking", "Airline" → "Airlines").
+// Wiring against the mockup-only labels silently broke for any real corp
+// row whose sector wasn't a literal "Banking"/"Airlines".
+
+// Per-sector hero stats. Each tuple is [display label, faction column or
+// null]. Null columns render "—" so the slot is visible even before the
+// underlying stat ships.
 const HERO_STATS = {
-    Banking:      [['Lending', null], ['Liquidity', null], ['Credit', 'corp_credit_rating']],
+    Finance:      [['Lending', null], ['Liquidity', null], ['Credit', 'corp_credit_rating']],
     Construction: [['Crews', 'corp_work_crews'], ['Reg. Standing', 'corp_regulatory_standing'], ['Supply Chain', 'corp_supply_chain']],
     Shipping:     [['Fleets', null], ['Route Risk', null], ['Fleet Health', null]],
-    Airlines:     [['Fleet', null], ['Op. Safety', 'corp_operational_efficiency'], ['Routes', null]],
+    Airline:      [['Fleet', null], ['Op. Safety', 'corp_operational_efficiency'], ['Routes', null]],
 };
 
 // Naming-pattern hints by sector. Matches the mockup phrasing.
 const NAMING_HINTS = {
-    Banking:      ['Consortium', 'Pact', 'Conglomerate', 'Bloc', 'League', 'Compact', 'Network', 'Coalition'],
+    Finance:      ['Consortium', 'Pact', 'Conglomerate', 'Bloc', 'League', 'Compact', 'Network', 'Coalition'],
     Construction: ['Consortium', 'Bloc', 'Pact', 'Network', 'Compact', 'Guild', 'Federation', 'Coalition'],
     Shipping:     ['Compact', 'Pact', 'Coalition', 'League', 'Combine', 'Pool', 'Conference', 'Network'],
-    Airlines:     ['Alliance', 'Network', 'Pact', 'Coalition', 'League', 'Compact', 'Star', 'Sky'],
+    Airline:      ['Alliance', 'Network', 'Pact', 'Coalition', 'League', 'Compact', 'Star', 'Sky'],
 };
 
-const SECTORS = ['Banking', 'Construction', 'Shipping', 'Airlines'];
+// User-facing sector label. The DB names a few sectors differently from
+// their colloquial names (Finance → Banking, Airline → Airlines); this
+// map is the only place we reconcile.
+const SECTOR_LABEL = {
+    Finance: 'Banking',
+    Construction: 'Construction',
+    Shipping: 'Shipping',
+    Airline: 'Airlines',
+};
+
+const SECTORS = ['Finance', 'Construction', 'Shipping', 'Airline'];
 
 // ── State ──
 let faction = null;
@@ -311,7 +327,6 @@ let _form = {
     mission: '',
 };
 let _candidates = [];   // candidate corps (same sector, not me, not abandoned)
-let _candidatesById = new Map();
 
 // ── Helpers ──
 function escHtml(s) {
@@ -414,7 +429,7 @@ function renderFoundView() {
         return `
             <div class="${cls}">
                 ${tag}
-                <div class="fnd-pick__name">${escHtml(s)}</div>
+                <div class="fnd-pick__name">${escHtml(SECTOR_LABEL[s] || s)}</div>
                 <div class="fnd-pick__sub">${escHtml(sub)}</div>
             </div>
         `;
@@ -423,16 +438,15 @@ function renderFoundView() {
     const inviteeMin = `Min ${MIN_INVITEES}, max ${MAX_INVITEES} invitees.`;
     const inviteeStatus = `${inviteeCount} selected`;
 
+    const sectorLabel = SECTOR_LABEL[sector] || sector;
     const inviteesHtml = _candidates.length === 0
-        ? `<div class="fnd-empty-roster">No other ${escHtml(sector)} corporations available to invite.</div>`
+        ? `<div class="fnd-empty-roster">No other ${escHtml(sectorLabel)} corporations available to invite.</div>`
         : `<div class="fnd-invitees-grid">${_candidates.map(renderInviteeCard).join('')}</div>`;
 
-    // Submit is greyed by design — RPC isn't wired yet. Validation is
-    // still computed so we can flip the disable to a real gate later.
-    const validName = _form.name.trim().length > 0;
+    // Submit is greyed by design — RPC isn't wired yet. validInvitees
+    // is still consumed below for the count-color toggle; the rest of
+    // the validation will live next to the disable flip when it ships.
     const validInvitees = inviteeCount >= MIN_INVITEES && inviteeCount <= MAX_INVITEES;
-    const _wouldBeReady = validName && validInvitees;
-    void _wouldBeReady; // referenced for future enable; suppress unused warning
 
     return `
         <div class="fnd-crumb">
@@ -608,7 +622,7 @@ async function loadCandidates() {
 
     const corpRows = corps || [];
     const ids = corpRows.map(c => c.id);
-    if (ids.length === 0) { _candidates = []; _candidatesById = new Map(); return; }
+    if (ids.length === 0) { _candidates = []; return; }
 
     // Batch the asset / liability lookups so each card can render a
     // real "(cash + assets − debt)" valuation. Same formula as the corp
@@ -621,9 +635,12 @@ async function loadCandidates() {
         _supabase.from('corp_vessels')
             .select('faction_id, purchase_price, condition, status, built_at_tick')
             .in('faction_id', ids),
+        // Filter to candidate corps on either side. Without this we'd
+        // pull every active loan in the game just to scan for matches.
         _supabase.from('finance_active_loans')
             .select('borrower_faction_id, lender_faction_id, principal, remaining_principal, status, finance_loan_requests(request_type)')
-            .in('status', ['current', 'late', 'delinquent']),
+            .in('status', ['current', 'late', 'delinquent'])
+            .or(`borrower_faction_id.in.(${ids.join(',')}),lender_faction_id.in.(${ids.join(',')})`),
     ]);
     if (propsRes.error)   console.warn('[alliances] props fetch failed:', propsRes.error.message);
     if (vesselsRes.error) console.warn('[alliances] vessels fetch failed:', vesselsRes.error.message);
@@ -665,7 +682,6 @@ async function loadCandidates() {
     // Sort: highest-valuation first so the strongest candidates surface up top.
     corpRows.sort((a, b) => (b.__valuation || 0) - (a.__valuation || 0));
     _candidates = corpRows;
-    _candidatesById = new Map(corpRows.map(c => [c.id, c]));
 }
 
 init();
