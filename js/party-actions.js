@@ -7,6 +7,7 @@
 // modals, event handlers, and data loaders.
 
 import { renderRoleActionsShell } from './role-actions.js';
+import { hfFmtBig } from './utils.js';
 import { PLATFORMS, STAT_NAMES, BAD_STATS, statDirection, platformMomentumInfo } from './game/platforms.js';
 import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, getGoverningStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
@@ -4139,15 +4140,13 @@ function renderFundraiseDetail(body, sectorStates, root) {
     const hostBlocked = !host;
     const oppMissing = !opp;
 
-    // Yield mirrors the SQL: $25k × (pop_tenths / 10) × weight = $2,500 × pop_tenths × weight.
-    // Corporate Gala is the one positioning-only event (corps already donate via lobbyist actions).
+    // Projection only — the SQL is canonical (sql/migrations/20260805).
+    // If the yield equation changes there, mirror it here too.
+    // Corporate Gala is positioning-only (corps already donate via lobbyist actions).
     const yieldsCash = ev.event_key !== 'corporate_gala';
     const projectedYield = (yieldsCash && host)
         ? 2500 * (host.popularity_tenths || 0) * Math.max(1, host.weight || 1)
         : 0;
-    const yieldDisplay = projectedYield >= 1000000
-        ? '$' + (projectedYield / 1000000).toFixed(2) + 'M'
-        : '$' + Math.round(projectedYield / 1000) + 'k';
 
     detail.innerHTML = `
         <div style="display:flex;align-items:baseline;gap:8px;">
@@ -4185,7 +4184,7 @@ function renderFundraiseDetail(body, sectorStates, root) {
             <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:11px;color:var(--text-bright);padding:2px 0;">
                 <span>↑ Party funds</span>
                 ${yieldsCash
-                    ? `<span style="color:#5cb85c;font-weight:700;">+${yieldDisplay}</span>`
+                    ? `<span style="color:#5cb85c;font-weight:700;">+${hfFmtBig(projectedYield)}</span>`
                     : '<span style="color:var(--text-dim);font-style:italic;">positioning only — no yield</span>'}
             </div>
         </div>
@@ -4231,10 +4230,7 @@ async function submitFundraise(root) {
         _fundraiseUseCount++;
         const yieldAmt = Number(data?.yield) || 0;
         if (yieldAmt > 0) {
-            const yieldStr = yieldAmt >= 1000000
-                ? '$' + (yieldAmt / 1000000).toFixed(2) + 'M'
-                : '$' + Math.round(yieldAmt / 1000) + 'k';
-            alert('Fundraiser hosted. +' + yieldStr + ' to party funds.');
+            alert('Fundraiser hosted. +' + hfFmtBig(yieldAmt) + ' to party funds.');
         }
         renderPage(root);
     } catch (err) {
