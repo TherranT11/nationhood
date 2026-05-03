@@ -5821,6 +5821,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
         nations: nationList.length,
         corpsProcessed: 0,
         construction: [],
+        airline: [],
         // Future sector summaries:
         // energy: [],
         // finance: [],
@@ -5845,6 +5846,23 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
     } catch (tierGenErr) {
         console.error('[advance-corp-tick] corp_contracts tier generator failed (non-fatal):', tierGenErr);
         summary.errors.push({ scope: 'corp_contracts_tier_gen', error: String(tierGenErr) });
+    }
+
+    // 4b. Loan-negotiation stale sweep (once per tick, global). Abandons
+    // any negotiation idle > 24 hours, refunds held escrow, system-
+    // messages the row. Cheap: typically 0 sweeps per tick.
+    try {
+        const { data: sweepRes, error: sweepErr } = await supabase
+            .rpc('auto_abandon_stale_negotiations', { p_tick: currentTick });
+        if (sweepErr) {
+            console.error('[advance-corp-tick] loan-negotiation sweep failed:', sweepErr.message);
+            summary.errors.push({ scope: 'loan_negotiation_sweep', error: sweepErr.message });
+        } else if (sweepRes?.swept > 0) {
+            console.log(`[advance-corp-tick] Auto-abandoned ${sweepRes.swept} stale loan negotiation(s)`);
+        }
+    } catch (sweepEx) {
+        console.error('[advance-corp-tick] loan-negotiation sweep threw (non-fatal):', sweepEx);
+        summary.errors.push({ scope: 'loan_negotiation_sweep', error: String(sweepEx) });
     }
 
     // 5. Process each nation
@@ -6075,6 +6093,40 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             } catch (constructionErr) {
                 console.error(`[advance-corp-tick] Construction failed for ${nation.name} (non-fatal):`, constructionErr);
                 summary.errors.push({ nation: nation.name, sector: 'construction', error: String(constructionErr) });
+            }
+
+            // ── Airline Sector (Phase 6 tick resolution) ─────────────────
+            // Per-corp wrapper handles each active route: pax → revenue →
+            // ops → maint (anniversary only) → incident roll → aggregate
+            // update. Cash flows go through emit_corp_cash_event so the
+            // ledger and corp_cash_reserves stay in sync. Airline corps
+            // headquartered in this nation only — subsidiary HQs aren't
+            // a thing for airlines yet.
+            try {
+                const airlineCorps = corps.filter(c => c.corp_sector === 'Airline');
+                for (const ac of airlineCorps) {
+                    const { data: airlineResult, error: airlineErr } = await supabase
+                        .rpc('process_airline_corp_tick', { p_corp_id: ac.id, p_tick: currentTick });
+                    if (airlineErr) {
+                        console.error(`[advance-corp-tick] Airline tick failed for ${ac.faction_name} (non-fatal):`, airlineErr.message);
+                        summary.errors.push({ nation: nation.name, sector: 'airline', corp: ac.faction_name, error: airlineErr.message });
+                        continue;
+                    }
+                    if (airlineResult && Number(airlineResult.routes) > 0) {
+                        summary.airline.push({
+                            nation: nation.name,
+                            corp:   ac.faction_name,
+                            routes: airlineResult.routes,
+                            pax:    airlineResult.pax,
+                            revenue: airlineResult.revenue,
+                            spend:  airlineResult.spend,
+                            incidents: airlineResult.incidents,
+                        });
+                    }
+                }
+            } catch (airlineErr) {
+                console.error(`[advance-corp-tick] Airline pass failed for ${nation.name} (non-fatal):`, airlineErr);
+                summary.errors.push({ nation: nation.name, sector: 'airline', error: String(airlineErr) });
             }
 
             // ── Subsidiary Revenue (GDP-based growth/loss per subsidiary) ──

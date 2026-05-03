@@ -320,6 +320,24 @@ body.airline-operations.light-mode {
   opacity: 0.4;
   background: transparent;
 }
+/* Mirrors .ao-buy-btn footprint so the Active-routes Cancel button sits
+   in the same row position as Set Up Route on Available routes — just
+   in rust instead of gold. */
+.ao-cancel-btn {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border: 1px solid var(--accent-rust);
+  background: rgba(212,138,60,0.08);
+  color: var(--accent-rust);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.ao-cancel-btn:hover  { background: rgba(212,138,60,0.22); }
+.ao-cancel-btn:disabled { cursor: not-allowed; opacity: 0.4; background: transparent; }
 .ao-hub-cost {
   font-family: var(--mono);
   font-size: 10px;
@@ -551,8 +569,8 @@ body.airline-operations.light-mode {
 .ao-route-card:last-child { border-bottom: 0; }
 .ao-route-card-head {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 12px;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
   align-items: center;
   padding: 8px 18px;
   cursor: pointer;
@@ -640,8 +658,6 @@ body.airline-operations.light-mode {
 }
 .ao-route-mini-btn:hover { background: var(--bg-hover); color: var(--text-bright); }
 .ao-route-mini-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.ao-route-mini-btn.danger { color: var(--accent-rust); border-color: var(--accent-rust); }
-.ao-route-mini-btn.danger:hover { background: var(--accent-rust); color: var(--bg-0); }
 .ao-route-stub {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -1282,6 +1298,8 @@ async function loadActiveRoutes(corpId) {
             id, ticket_price, maintenance_tier,
             aircraft_regional, aircraft_narrowbody, aircraft_widebody,
             opened_at_tick,
+            lifetime_pax, lifetime_revenue, lifetime_spend,
+            last_tick_pax, last_tick_revenue, last_tick_spend, last_processed_tick,
             origin:origin_city_id(name),
             dest:dest_city_id(name),
             aircraft:corp_aircraft!route_id(id, aircraft_class, condition, tail_number)
@@ -1414,6 +1432,11 @@ function _renderRouteCard(r) {
           <div class="ao-route-list-pair">${escHtml(pair)}</div>
           <div class="ao-route-list-meta">$${r.ticket_price} ticket · ${escHtml(r.maintenance_tier)} maintenance · ${acParts.join(', ') || 'no aircraft'}</div>
         </div>
+        <button type="button"
+                class="ao-cancel-btn"
+                data-act="cancel-route"
+                data-route-id="${escHtml(r.id)}"
+                data-pair="${escHtml(pair)}">Cancel Route</button>
         <div class="ao-route-card-chev"></div>
       </div>
       <div class="ao-route-card-body">
@@ -1459,30 +1482,35 @@ function _renderRouteCard(r) {
         </div>
 
         <div class="ao-route-section-mini">
-          <div class="ao-route-section-mini-h">Performance</div>
+          <div class="ao-route-section-mini-h">Performance ${r.last_processed_tick != null ? '<span class="ao-route-ac-meta">(as of tick ' + r.last_processed_tick + ')</span>' : '<span class="ao-route-ac-meta">(awaiting first corp tick)</span>'}</div>
           <div class="ao-route-ac-row">
             <div>Daily flights <span class="ao-route-ac-meta">(${totalPlanes} plane${totalPlanes === 1 ? '' : 's'} × 1/day)</span></div>
             <div><strong>${dailyFlights.toLocaleString()}</strong></div>
           </div>
           <div class="ao-route-ac-row">
-            <div>Avg pax / tick</div>
-            <div class="ao-route-stub">— pending Phase 6</div>
+            <div>Pax last tick</div>
+            <div><strong>${(Number(r.last_tick_pax) || 0).toLocaleString()}</strong></div>
+          </div>
+          <div class="ao-route-ac-row">
+            <div>Revenue last tick</div>
+            <div><strong>$${(Number(r.last_tick_revenue) || 0).toLocaleString()}</strong></div>
+          </div>
+          <div class="ao-route-ac-row">
+            <div>Spend last tick</div>
+            <div><strong>$${(Number(r.last_tick_spend) || 0).toLocaleString()}</strong></div>
+          </div>
+          <div class="ao-route-ac-row">
+            <div>Lifetime pax</div>
+            <div><strong>${(Number(r.lifetime_pax) || 0).toLocaleString()}</strong></div>
           </div>
           <div class="ao-route-ac-row">
             <div>Lifetime revenue</div>
-            <div class="ao-route-stub">— pending Phase 6</div>
+            <div><strong>$${(Number(r.lifetime_revenue) || 0).toLocaleString()}</strong></div>
           </div>
           <div class="ao-route-ac-row">
             <div>Lifetime spend</div>
-            <div class="ao-route-stub">— pending Phase 6</div>
+            <div><strong>$${(Number(r.lifetime_spend) || 0).toLocaleString()}</strong></div>
           </div>
-        </div>
-
-        <div class="ao-route-section-mini" style="text-align:right;">
-          <button class="ao-route-mini-btn danger"
-                  data-act="cancel-route"
-                  data-route-id="${escHtml(r.id)}"
-                  data-pair="${escHtml(pair)}">× Cancel Route</button>
         </div>
 
       </div>

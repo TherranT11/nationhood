@@ -1279,6 +1279,15 @@ body.corp-operations-finance.light-mode {
       </div>
     </div>
 
+    <!-- SECTION IV.5 — OPEN NEGOTIATIONS (Phase 5 of loan negotiations) -->
+    <div class="fo-section">
+      <div class="fo-section-header">
+        <h2><span class="num">IV.5</span>Open Negotiations</h2>
+        <span class="desc">Bilateral loan deals borrowers have opened with this bank · click to negotiate</span>
+      </div>
+      <div id="fo-loan-negotiations-inbox" class="fo-contract-list" style="padding:0;"></div>
+    </div>
+
     <!-- SECTION V — STRATEGIC ACTIONS -->
     <div class="fo-section">
       <div class="fo-section-header">
@@ -2536,6 +2545,27 @@ async function init() {
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = '';
+
+    // Loan negotiations: render lender inbox + auto-mount modal if a
+    // ?negotiation=<uuid> URL param is present (deep-link from chat /
+    // shared link / inbox click on another tab).
+    try {
+        const lnm = await import('./js/loan-negotiation-modal.js');
+        const inboxHost = document.getElementById('fo-loan-negotiations-inbox');
+        if (inboxHost) {
+            await lnm.renderLenderInbox({
+                supabase: _supabase,
+                container: inboxHost,
+                lenderFactionId: faction?.id,
+            });
+        }
+        const urlNeg = new URL(location.href).searchParams.get('negotiation');
+        if (urlNeg) {
+            await lnm.mountLoanNegotiationModal({ supabase: _supabase, negotiationId: urlNeg });
+        }
+    } catch (e) {
+        console.warn('[corp-operations-finance] loan-negotiation init failed:', e?.message || e);
+    }
 }
 
 init().catch(err => {

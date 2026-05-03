@@ -1189,6 +1189,28 @@ async function init() {
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = '';
+
+    // Loan negotiations: delegated handler for [data-act="negotiate-loan"]
+    // (the "+ Negotiate New Loan" button in the Outstanding Debt expansion)
+    // and auto-mount the modal if the URL carries ?negotiation=<uuid>.
+    try {
+        const lnm = await import('./js/loan-negotiation-modal.js');
+        document.body.addEventListener('click', (ev) => {
+            const btn = ev.target.closest('[data-act="negotiate-loan"]');
+            if (!btn) return;
+            ev.preventDefault();
+            lnm.mountLoanRequestPicker({
+                supabase: _supabase,
+                borrowerFactionId: faction?.id,
+            });
+        });
+        const urlNeg = new URL(location.href).searchParams.get('negotiation');
+        if (urlNeg) {
+            await lnm.mountLoanNegotiationModal({ supabase: _supabase, negotiationId: urlNeg });
+        }
+    } catch (e) {
+        console.warn('[corp-dashboard] loan-negotiation init failed:', e?.message || e);
+    }
 }
 
 function renderMasthead(history) {
@@ -1401,10 +1423,21 @@ function renderEventsExpansion(recentTicks, filterFn) {
 // the live ledger is the most useful detail.
 function renderActiveLoansExpansion(activeLoans) {
     const loans = activeLoans || [];
+    // Negotiate-Loan entry button always visible — borrower-side Phase 5
+    // entry into mountLoanRequestPicker. Wired by a delegated click
+    // handler in init() against the data-act="negotiate-loan" attribute.
+    const negotiateBtn = `
+        <div style="padding:8px 12px;border-bottom:1px dashed var(--border-0);">
+            <button type="button"
+                    data-act="negotiate-loan"
+                    style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:5px 12px;background:rgba(200,168,50,0.08);border:1px solid var(--amber, #c8a832);color:var(--amber, #c8a832);cursor:pointer;">
+                + Negotiate New Loan
+            </button>
+        </div>`;
     if (loans.length === 0) {
-        return `<div class="cr-fin-card-expansion-empty">No active loans.</div>`;
+        return negotiateBtn + `<div class="cr-fin-card-expansion-empty">No active loans.</div>`;
     }
-    return loans.map(l => {
+    return negotiateBtn + loans.map(l => {
         const lender = l.factions?.faction_name || 'Unknown bank';
         const ticker = l.factions?.abbreviation || '';
         const apr = Number(l.apr || 0);
