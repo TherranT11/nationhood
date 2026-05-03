@@ -3697,14 +3697,17 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
 
     const ns = (key) => Number(nation[key] ?? 50);
 
-    // Wages: matches corp-dashboard.html renderWorkforce formula exactly
+    // ── INLINE MIRROR of js/game/wages.js ─────────────────────────────
+    // This file is hand-maintained (sync-edge-function.js only targets
+    // advance-tick, not advance-corp-tick), so it can't import the
+    // canonical module. Keep these two blocks in sync — js/game/wages.js
+    // is the source; this is the mirror.
+    const WAGE_MULTIPLIERS = { general: 2, skilled: 3, innovative: 6 };
     const baseAnnualWage = (ns('minimum_wage') / 100) * 48000;
-    const inflation = ns('inflation');
-    const sol = ns('standard_of_living');
-    const inflMod = 1 + ((inflation - 50) / 100 * 0.5);
-    const solMod = 1 + ((sol - 50) / 100 * 0.5);
-    const GENERAL_MULT = 2, SKILLED_MULT = 3, INNOVATIVE_MULT = 6;
+    const inflMod = 1 + ((ns('inflation')           - 50) / 100 * 0.5);
+    const solMod  = 1 + ((ns('standard_of_living')  - 50) / 100 * 0.5);
     const calcWage = (mult) => Math.round(baseAnnualWage * mult * inflMod * solMod);
+    // ── end mirror ───────────────────────────────────────────────────
 
     // Loan servicing constants (5% annual rate, 10-year amortization).
     // LOAN_ANNUAL_RATE_PCT is in percent form (5 = 5%) so the shared
@@ -3735,9 +3738,9 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
         const generalCount = Number(corp.corp_general_workforce ?? 0);
         const skilledCount = Number(corp.corp_skilled_workforce ?? 0);
         const innovativeCount = Number(corp.corp_innovative_workforce ?? 0);
-        const annualWages = (generalCount * calcWage(GENERAL_MULT))
-                          + (skilledCount * calcWage(SKILLED_MULT))
-                          + (innovativeCount * calcWage(INNOVATIVE_MULT));
+        const annualWages = (generalCount    * calcWage(WAGE_MULTIPLIERS.general))
+                          + (skilledCount    * calcWage(WAGE_MULTIPLIERS.skilled))
+                          + (innovativeCount * calcWage(WAGE_MULTIPLIERS.innovative));
         const monthlyWages = Math.round(annualWages / 12);
 
         // Executive salaries (C-suite: CEO, CFO, COO, CTO, CMO, CLO, Lobbyist)

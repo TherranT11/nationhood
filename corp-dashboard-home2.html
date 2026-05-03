@@ -1905,6 +1905,7 @@ import { calculateTotalMaintenance } from './js/game/equipment.js';
 import { computeEquipmentValue } from './js/game/corp-valuation.js';
 import { computeRefurbishCost, startRefurbish } from './js/corp-refurbish.js';
 import { monthlyInterest, loanFlatInterestBase } from './js/game/loan-math.js';
+import { WAGE_MULTIPLIERS, computeWageScalars, annualWageForTier } from './js/game/wages.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -2296,28 +2297,14 @@ function renderWorkforce(nation, nationName, factionData) {
     const innovativeCount = Number(factionData?.corp_innovative_workforce ?? 150);
     const TOTAL_WORKFORCE = generalCount + skilledCount + innovativeCount;
 
-    // Wage multipliers per tier (matches Hire/Fire card on Expansion page)
-    const GENERAL_MULT = 2;
-    const SKILLED_MULT = 3;
-    const INNOVATIVE_MULT = 6;
-
-    // Base annual wage: (minimum_wage / 100) × $48,000
-    // PHASE 7 TODO: minimum_wage drops in Phase 9
+    // Canonical wage formula lives in js/game/wages.js. Display reads scalars
+    // for the "Wage Inputs" panel; per-tier annual values come from
+    // annualWageForTier so the dashboard and the server always agree.
     const minWageStat = s('minimum_wage');
-    const baseAnnualWage = (minWageStat / 100) * 48000;
-
-    // Modifiers: inflation + standard of living
-    // PHASE 7 TODO: inflation drops in Phase 9
-    const inflation = s('inflation');
-    const sol = s('standard_of_living');
-    const inflMod = 1 + ((inflation - 50) / 100 * 0.5);
-    const solMod = 1 + ((sol - 50) / 100 * 0.5);
-
-    // Per-tier annual wages
-    const calcWage = (mult) => Math.round(baseAnnualWage * mult * inflMod * solMod);
-    const generalWage = calcWage(GENERAL_MULT);
-    const skilledWage = calcWage(SKILLED_MULT);
-    const innovativeWage = calcWage(INNOVATIVE_MULT);
+    const { baseAnnualWage, inflMod, solMod } = computeWageScalars(nation);
+    const generalWage    = annualWageForTier(nation, 'general');
+    const skilledWage    = annualWageForTier(nation, 'skilled');
+    const innovativeWage = annualWageForTier(nation, 'innovative');
 
     const generalTotal = generalCount * generalWage;
     const skilledTotal = skilledCount * skilledWage;
@@ -2342,7 +2329,7 @@ function renderWorkforce(nation, nationName, factionData) {
                 <span class="wf-tier__count" style="color:var(--text-primary);">${generalCount.toLocaleString()}</span>
             </div>
             <div class="wf-tier__detail">
-                <span class="wf-tier__label">Wage (min &times; ${GENERAL_MULT}.0 &times; ${modStr})</span>
+                <span class="wf-tier__label">Wage (min &times; ${WAGE_MULTIPLIERS.general}.0 &times; ${modStr})</span>
                 <span class="wf-tier__value">${fmtWage(generalWage)}</span>
             </div>
             <div class="wf-tier__detail">
@@ -2360,7 +2347,7 @@ function renderWorkforce(nation, nationName, factionData) {
                 <span class="wf-tier__count" style="color:var(--blue);">${skilledCount.toLocaleString()}</span>
             </div>
             <div class="wf-tier__detail">
-                <span class="wf-tier__label">Wage (min &times; ${SKILLED_MULT}.0 &times; ${modStr})</span>
+                <span class="wf-tier__label">Wage (min &times; ${WAGE_MULTIPLIERS.skilled}.0 &times; ${modStr})</span>
                 <span class="wf-tier__value">${fmtWage(skilledWage)}</span>
             </div>
             <div class="wf-tier__detail">
@@ -2378,7 +2365,7 @@ function renderWorkforce(nation, nationName, factionData) {
                 <span class="wf-tier__count" style="color:var(--amber);">${innovativeCount.toLocaleString()}</span>
             </div>
             <div class="wf-tier__detail">
-                <span class="wf-tier__label">Wage (min &times; ${INNOVATIVE_MULT}.0 &times; ${modStr})</span>
+                <span class="wf-tier__label">Wage (min &times; ${WAGE_MULTIPLIERS.innovative}.0 &times; ${modStr})</span>
                 <span class="wf-tier__value">${fmtWage(innovativeWage)}</span>
             </div>
             <div class="wf-tier__detail">
