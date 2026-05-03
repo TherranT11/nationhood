@@ -13,7 +13,7 @@ import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, getGoverningStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
 import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsuit, fetchActiveLawsuits } from './game/lawsuits.js';
 import { getNationNames, resignPM, installHOG } from './game/political-actions.js';
-import { isAbsoluteMonarchy, isSemiPresidential, hasParliamentaryPM } from './game/government-types.js';
+import { isAbsoluteMonarchy, isSemiPresidential, hasParliamentaryPM, hasElectedPresident } from './game/government-types.js';
 import { fetchActiveCoalition } from './game/government-structure.js';
 import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './game/config.js';
 import { fileNoConfidenceMotion } from './game/no-confidence.js';
@@ -363,15 +363,21 @@ export async function initPartyActions(supabase, state) {
     // Ministries this faction holds — feeds the new Cabinet Ministries
     // summary + Ministry Actions panels. Filtered server-side by
     // is_active so the side panel only ever shows live seats.
+    _heldMinistries = [];
     if (faction?.id && state.nation?.id) {
-        const { data: minRows } = await _supabase.from('ministries')
-            .select('ministry_key, party_id, is_active')
+        const { data: minRows, error: minErr } = await _supabase.from('ministries')
+            .select('ministry_key, party_id, is_active, minister_first_name, minister_last_name, minister_age')
             .eq('nation_id', state.nation.id)
             .eq('party_id', faction.id)
             .eq('is_active', true);
-        _heldMinistries = minRows || [];
-    } else {
-        _heldMinistries = [];
+        if (minErr) {
+            console.warn('[PartyActions] ministries fetch failed:', minErr.message);
+        } else {
+            // Skip rows where the minister person isn't filled in yet
+            // (active seat awaiting confirmation). Per the design spec
+            // we only surface seats with a real minister assigned.
+            _heldMinistries = (minRows || []).filter(m => m.minister_first_name);
+        }
     }
 
     // Fetch lawsuits if agitator is hired
@@ -971,19 +977,10 @@ function renderPage(root) {
     document.getElementById('pa-leaders').innerHTML = renderLeaderCards(leaderName, partyColor, faction);
     document.getElementById('pa-actions-panel').innerHTML = renderActionsPanel(leaderName, partyColor, faction);
 
-    // Bind leader card clicks + ministry-action clicks. Both panels live
-    // inside #pa-leaders (renderLeaderCards appends the cabinet summary
-    // and ministry-action sections), so one delegated listener handles
-    // both — `data-ministry-action` wins over `.pa-leader-card`.
+    // Bind card clicks. Cabinet ministry / PM / President cards reuse
+    // the same `.pa-leader-card` shell + `data-role` mechanism as the
+    // existing roles (Leader, Deputy, etc), so one selector catches all.
     document.getElementById('pa-leaders')?.addEventListener('click', (e) => {
-        const action = e.target.closest('[data-ministry-action]');
-        if (action) {
-            if (action.classList.contains('disabled')) return;
-            const id = action.dataset.ministryAction;
-            if (id === 'call_early_elections') triggerCallEarlyElections();
-            else if (id === 'resign_as_pm')    triggerResignAsPM();
-            return;
-        }
         const card = e.target.closest('.pa-leader-card');
         if (!card || card.classList.contains('vacant')) return;
         const role = card.dataset.role;
@@ -1020,6 +1017,10 @@ function renderPage(root) {
             openRebrandModal(root);
         } else if (actionId === 'no_confidence') {
             triggerNoConfidence();
+        } else if (actionId === 'call_early_elections') {
+            triggerCallEarlyElections();
+        } else if (actionId === 'resign_as_pm') {
+            triggerResignAsPM();
         } else if (actionId === 'leave_coalition') {
             triggerLeaveCoalition();
         } else if (actionId === 'disband_party') {
@@ -1149,38 +1150,37 @@ function renderLeaderCards(leaderName, partyColor, faction) {
         `;
         return html;
     }).join('')
-        + renderCabinetMinistriesPanel(faction)
-        + renderMinistryActionsPanel(faction);
+        + renderCabinetMinistriesPanel(faction);
 }
 
-// ── Cabinet ministries summary + Ministry actions ───────────────────
-// Two stacked side-panel boxes that appear under the role cards.
-//   1. CABINET MINISTRIES  — read-only list of cabinet posts the player
-//      holds, with an "N held" badge in the header.
-//   2. MINISTRY ACTIONS    — auto-generated action sections per held
-//      seat. Includes Prime Minister and President if applicable.
-//      Empty if the player holds nothing.
+// ── Cabinet ministries (selectable cards) ───────────────────────────
+// Each held seat (cabinet ministry, plus Prime Minister and President
+// when applicable) renders as a `.pa-leader-card` clone with a synthetic
+// `data-role="ministry:<key>"`. The existing pa-leaders click handler
+// picks them up and sets _selectedRole, so the right-hand action panel
+// flows through renderActionsPanel → renderMinistryDetail.
 
 const _MINISTRY_LABELS = {
-    interior:       { short: 'MI', name: 'Minister of the Interior',          domain: 'HOME AFFAIRS' },
-    foreign:        { short: 'MFA', name: 'Minister of Foreign Affairs',      domain: 'DIPLOMACY' },
-    finance:        { short: 'MoF', name: 'Minister of Finance',              domain: 'TREASURY' },
-    defense:        { short: 'MoD', name: 'Minister of Defense',              domain: 'MILITARY' },
-    justice:        { short: 'MoJ', name: 'Minister of Justice',              domain: 'JUSTICE' },
-    education:      { short: 'MoE', name: 'Minister of Education',            domain: 'EDUCATION' },
-    healthcare:     { short: 'MoH', name: 'Minister of Health',               domain: 'HEALTH' },
-    labor:          { short: 'MoL', name: 'Minister of Labor',                domain: 'LABOR' },
-    energy:         { short: 'MoEn', name: 'Minister of Energy',              domain: 'ENERGY' },
-    agriculture:    { short: 'MoAg', name: 'Minister of Agriculture',         domain: 'AGRICULTURE' },
-    transport:      { short: 'MoT', name: 'Minister of Transport',            domain: 'INFRASTRUCTURE' },
-    trade:          { short: 'MoTr', name: 'Minister of Trade',               domain: 'TRADE' },
-    environment:    { short: 'MoEv', name: 'Minister of Environment',         domain: 'ENVIRONMENT' },
+    interior:    { short: 'MI',   name: 'Ministry of the Interior',     short_role: 'Interior',     domain: 'HOME AFFAIRS' },
+    foreign:     { short: 'MFA',  name: 'Ministry of Foreign Affairs',  short_role: 'Foreign',      domain: 'DIPLOMACY' },
+    finance:     { short: 'MoF',  name: 'Ministry of Finance',          short_role: 'Finance',      domain: 'TREASURY' },
+    defense:     { short: 'MoD',  name: 'Ministry of Defense',          short_role: 'Defense',      domain: 'MILITARY' },
+    justice:     { short: 'MoJ',  name: 'Ministry of Justice',          short_role: 'Justice',      domain: 'JUSTICE' },
+    education:   { short: 'MoE',  name: 'Ministry of Education',        short_role: 'Education',    domain: 'EDUCATION' },
+    healthcare:  { short: 'MoH',  name: 'Ministry of Health',           short_role: 'Health',       domain: 'HEALTH' },
+    labor:       { short: 'MoL',  name: 'Ministry of Labor',            short_role: 'Labor',        domain: 'LABOR' },
+    energy:      { short: 'MoEn', name: 'Ministry of Energy',           short_role: 'Energy',       domain: 'ENERGY' },
+    agriculture: { short: 'MoAg', name: 'Ministry of Agriculture',      short_role: 'Agriculture',  domain: 'AGRICULTURE' },
+    transport:   { short: 'MoT',  name: 'Ministry of Transport',        short_role: 'Transport',    domain: 'INFRASTRUCTURE' },
+    trade:       { short: 'MoTr', name: 'Ministry of Trade',            short_role: 'Trade',        domain: 'TRADE' },
+    environment: { short: 'MoEv', name: 'Ministry of Environment',      short_role: 'Environment',  domain: 'ENVIRONMENT' },
 };
 
 function ministryDisplay(key) {
     return _MINISTRY_LABELS[key] || {
         short: (key || '?').slice(0, 3).toUpperCase(),
-        name: 'Minister',
+        name: 'Ministry',
+        short_role: key || 'Minister',
         domain: (key || '').toUpperCase(),
     };
 }
@@ -1192,189 +1192,212 @@ function getHeldCabinetMinistries(faction) {
     );
 }
 
-function isPlayerPM(faction) {
-    return !!_administration && _administration.pm_party_id === faction?.id;
+// Synthetic-role descriptor for a card. Used by the cabinet panel to
+// build cards and by renderMinistryDetail to look up the same data when
+// rendering the right-hand panel — single source of truth for what a
+// ministry card "is".
+function ministryRoleDescriptor(key, faction) {
+    const nation = _state?.nation;
+    const fallbackName = `${faction?.leader_first_name || ''} ${faction?.leader_last_name || ''}`.trim();
+    const fallbackAge = faction?.leader_age ?? null;
+
+    if (key === 'prime_minister') {
+        return {
+            roleId: 'ministry:prime_minister',
+            chip: 'PM',
+            roleLabel: 'PRIME MINISTER',
+            fullTitle: nation?.head_of_government_title || 'Prime Minister',
+            shortRole: 'Prime Minister',
+            domain: (nation?.head_of_government_title || 'Prime Minister').toUpperCase(),
+            personFirst: faction?.leader_first_name || '',
+            personLast:  faction?.leader_last_name || '',
+            personName:  fallbackName || 'Prime Minister',
+            personAge:   fallbackAge,
+            actions: _MINISTRY_ACTION_REGISTRY.prime_minister || [],
+        };
+    }
+    if (key === 'president') {
+        return {
+            roleId: 'ministry:president',
+            chip: 'PR',
+            roleLabel: 'PRESIDENT',
+            fullTitle: nation?.head_of_state_title || 'President',
+            shortRole: 'President',
+            domain: (nation?.head_of_state_title || 'President').toUpperCase(),
+            personFirst: faction?.leader_first_name || '',
+            personLast:  faction?.leader_last_name || '',
+            personName:  fallbackName || 'President',
+            personAge:   fallbackAge,
+            actions: _MINISTRY_ACTION_REGISTRY.president || [],
+        };
+    }
+    const m = (_heldMinistries || []).find(x => x.ministry_key === key);
+    const d = ministryDisplay(key);
+    return {
+        roleId: `ministry:${key}`,
+        chip: d.short,
+        roleLabel: 'MINISTER',
+        fullTitle: d.name,
+        shortRole: d.short_role,
+        domain: d.domain,
+        personFirst: m?.minister_first_name || '',
+        personLast:  m?.minister_last_name || '',
+        personName:  `${m?.minister_first_name || ''} ${m?.minister_last_name || ''}`.trim() || 'Vacant',
+        personAge:   m?.minister_age ?? null,
+        actions: _MINISTRY_ACTION_REGISTRY[key] || [],
+    };
 }
 
-function isPlayerPresident(faction) {
-    return _state?.nation?.hos_election_method === 'elected'
-        && _administration?.president_party_id === faction?.id;
-}
-
-function nationHasPresidentRole(nation) {
-    if (!nation) return false;
-    if (nation.hos_election_method === 'elected') return true;
-    const govType = String(nation.government_type || '').toLowerCase();
-    return govType === 'presidential' || govType === 'semi_presidential';
-}
-
-function renderCabinetMinistriesPanel(faction) {
-    const held = getHeldCabinetMinistries(faction);
-    return `
-        <div class="pa-cabinet-summary">
-            <div class="pa-cabinet-summary__head">
-                <span class="pa-cabinet-summary__title">Cabinet Ministries</span>
-                <span class="pa-cabinet-summary__count">${held.length} held</span>
-            </div>
-            ${held.length === 0
-                ? `<div class="pa-cabinet-summary__empty">No cabinet seats held.</div>`
-                : held.map(m => {
-                    const d = ministryDisplay(m.ministry_key);
-                    const actionCount = ministryActionCount(m.ministry_key);
-                    return `
-                        <div class="pa-cabinet-summary__row">
-                            <div class="pa-cabinet-summary__chip">${esc(d.short)}</div>
-                            <div class="pa-cabinet-summary__meta">
-                                <div class="pa-cabinet-summary__role">
-                                    <span>MINISTER</span>
-                                    ${actionCount > 0
-                                        ? `<span class="pa-cabinet-summary__actions">${actionCount} action${actionCount === 1 ? '' : 's'}</span>`
-                                        : ''}
-                                </div>
-                                <div class="pa-cabinet-summary__name">${esc(d.name.replace(/^Minister(\s+of\s+|\s+for\s+)?/i, '') || d.name)}</div>
-                                <div class="pa-cabinet-summary__domain">${esc(d.domain)}</div>
-                            </div>
-                        </div>
-                    `;
-                }).join('')
-            }
-        </div>
-    `;
-}
-
-function ministryActionCount(ministryKey) {
-    return (_MINISTRY_ACTION_REGISTRY[ministryKey] || []).length;
-}
-
-// Action registry: per-ministry actions surfaced in the new panel.
-// PM and President have their own ids so the section header can match.
-// Everything else is empty for now — cabinet ministries get sections
-// with a "no actions yet" placeholder until per-ministry actions land.
+// Per-role action registry. PM gets the moved Call Early Elections and
+// Resign actions; everyone else is empty for now (placeholders until
+// per-ministry actions ship).
 const _MINISTRY_ACTION_REGISTRY = {
     prime_minister: [
         {
             id: 'call_early_elections',
             name: 'Call Early Elections',
             desc: 'Dissolve the legislature. Government enters caretaker status; election fires after a short formation window. Momentum effect tiered by Gov. Approval.',
+            cost: '$0',
+            costColor: 'var(--text-dim)',
             tags: ['LEGISLATIVE', 'PM ONLY'],
         },
         {
             id: 'resign_as_pm',
             name: 'Resign as Prime Minister',
             desc: 'Step down. Coalition enters caretaker status with a window to nominate a successor; otherwise a snap election fires. -3 Momentum, -0.05 Credibility, -3 Stability, 12-tick PM ban.',
+            cost: '$0',
+            costColor: 'var(--text-dim)',
             tags: ['GOVERNMENT', 'PM ONLY'],
         },
     ],
-    president: [
-        // Placeholder: presidential actions will land here in a follow-up.
-    ],
+    president: [],
 };
 
-function renderMinistryActionsPanel(faction) {
-    const sections = [];
-    const nation = _state?.nation;
-
-    if (isPlayerPM(faction)) {
-        sections.push(renderMinistrySection({
-            key: 'prime_minister',
-            label: 'PRIME MINISTER',
-            sublabel: nation?.head_of_government_title || 'Head of Government',
-            actions: _MINISTRY_ACTION_REGISTRY.prime_minister,
-            faction,
-        }));
-    }
-
-    if (isPlayerPresident(faction) && nationHasPresidentRole(nation)) {
-        sections.push(renderMinistrySection({
-            key: 'president',
-            label: 'PRESIDENT',
-            sublabel: nation?.head_of_state_title || 'Head of State',
-            actions: _MINISTRY_ACTION_REGISTRY.president,
-            faction,
-        }));
-    }
-
-    for (const m of getHeldCabinetMinistries(faction)) {
-        const d = ministryDisplay(m.ministry_key);
-        sections.push(renderMinistrySection({
-            key: m.ministry_key,
-            label: d.name.toUpperCase(),
-            sublabel: d.domain,
-            actions: _MINISTRY_ACTION_REGISTRY[m.ministry_key] || [],
-            faction,
-        }));
-    }
-
-    if (sections.length === 0) {
-        // Empty state per the spec — render nothing rather than a "no
-        // ministries" placeholder, so the side panel stays compact for
-        // opposition / unaligned factions.
-        return '';
-    }
-
-    return `
-        <div class="pa-ministry-actions">
-            <div class="pa-ministry-actions__head">
-                <span class="pa-ministry-actions__title">Ministry Actions</span>
-            </div>
-            ${sections.join('')}
-        </div>
-    `;
+function listHeldMinistryKeys(faction) {
+    const keys = [];
+    const hog = classifyHeadOfGovernment(faction);
+    if (hog.isPM) keys.push('prime_minister');
+    if (hog.isPresident && hasElectedPresident(_state?.nation)) keys.push('president');
+    for (const m of getHeldCabinetMinistries(faction)) keys.push(m.ministry_key);
+    return keys;
 }
 
-function renderMinistrySection({ key, label, sublabel, actions, faction }) {
-    const lines = (actions || []).map(a => {
-        const lockReason = ministryActionLockReason(a.id, faction);
-        const disabled = !!lockReason;
-        const tagsHtml = (a.tags || []).map(t =>
-            `<span class="pa-action-tag" style="color:${TAG_COLORS[t] || 'var(--text-dim)'};">${esc(t)}</span>`
-        ).join('');
+function renderCabinetMinistriesPanel(faction) {
+    const keys = listHeldMinistryKeys(faction);
+    // Spec: "If you have none, it'll stay empty."
+    if (keys.length === 0) return '';
+    const cards = keys.map(k => {
+        const r = ministryRoleDescriptor(k, faction);
+        const isActive = _selectedRole === r.roleId;
+        const actionCount = (r.actions || []).length;
         return `
-            <div class="pa-ministry-action ${disabled ? 'disabled' : ''}"
-                 data-ministry-action="${esc(a.id)}"
-                 ${disabled ? `title="${esc(lockReason)}"` : ''}>
-                <div class="pa-ministry-action__head">
-                    <span class="pa-ministry-action__name">${esc(a.name)}</span>
-                    <span class="pa-ministry-action__tags">${tagsHtml}</span>
+            <div class="pa-leader-card pa-leader-card--ministry ${isActive ? 'active' : ''}"
+                 data-role="${esc(r.roleId)}"
+                 style="${isActive ? `border-left-color:#c8a832;` : ''}">
+                <div class="pa-leader-top">
+                    <div class="pa-leader-avatar" style="color:#c8a832;background:#c8a83215;border-color:#c8a83233;">${esc(r.chip)}</div>
+                    <div class="pa-leader-info">
+                        <div class="pa-leader-role">
+                            <span class="pa-leader-role-label" style="color:#c8a832;">${esc(r.shortRole.toUpperCase())}</span>
+                            ${actionCount > 0 ? `<span class="pa-leader-role-count">${actionCount} action${actionCount === 1 ? '' : 's'}</span>` : ''}
+                        </div>
+                        <div class="pa-leader-name">${esc(r.personName)}</div>
+                    </div>
                 </div>
-                <div class="pa-ministry-action__desc">${esc(a.desc)}</div>
-                ${disabled ? `<div class="pa-ministry-action__lock">${esc(lockReason)}</div>` : ''}
             </div>
         `;
     }).join('');
-
     return `
-        <div class="pa-ministry-section" data-ministry-key="${esc(key)}">
-            <div class="pa-ministry-section__head">
-                <span class="pa-ministry-section__label">${esc(label)}</span>
-                <span class="pa-ministry-section__sub">${esc(sublabel)}</span>
-            </div>
-            ${actions && actions.length > 0
-                ? `<div class="pa-ministry-section__actions">${lines}</div>`
-                : `<div class="pa-ministry-section__empty">No actions yet.</div>`
-            }
+        <div class="pa-cabinet-header">
+            <span class="pa-cabinet-header__title">Cabinet Ministries</span>
+            <span class="pa-cabinet-header__count">${keys.length} held</span>
         </div>
+        ${cards}
     `;
 }
 
 function ministryActionLockReason(actionId, faction) {
     const nation = _state?.nation;
     if (actionId === 'call_early_elections' || actionId === 'resign_as_pm') {
+        // Reachable only inside the PM detail panel (renderMinistryDetail
+        // is gated on classifyHeadOfGovernment.isPM), so the PM-only /
+        // parliamentary checks are implicit. The two states that still
+        // require a lock are absolute monarchy and a caretaker coalition.
         if (isAbsoluteMonarchy(nation)) {
             return actionId === 'call_early_elections'
                 ? 'Elections are not held under absolute monarchy.'
                 : 'PM serves at the Monarch’s pleasure; only the Monarch can replace them.';
         }
-        if (!hasParliamentaryPM(nation)) {
-            return 'Only parliamentary and semi-presidential systems have a PM seat.';
+        if (nation?.__coalition_status === 'caretaker') {
+            return 'Government already in caretaker mode.';
         }
-        if (!isPlayerPM(faction)) return 'Prime Minister only.';
-        if (nation.__coalition_status === 'caretaker') return 'Government already in caretaker mode.';
     }
     return '';
 }
 
+function renderMinistryDetail(faction, partyColor) {
+    const key = _selectedRole.startsWith('ministry:') ? _selectedRole.slice('ministry:'.length) : null;
+    if (!key) return '';
+    const r = ministryRoleDescriptor(key, faction);
+    const ageStr = r.personAge != null ? `, Age ${r.personAge}` : '';
+
+    // Matches the structure in renderActionsPanel's leader action loop
+    // so the existing pa-action-item / pa-action-top / pa-action-right
+    // styles apply without new CSS.
+    const actionsHtml = (r.actions || []).map(a => {
+        const lockReason = ministryActionLockReason(a.id, faction);
+        const isDisabled = !!lockReason;
+        const tagsHtml = (a.tags || []).map(t =>
+            `<span class="pa-action-tag" style="color:${TAG_COLORS[t] || 'var(--text-dim)'};">${esc(t)}</span>`
+        ).join('');
+        return `
+            <div class="pa-action-item ${isDisabled ? 'locked' : ''}" data-action-id="${esc(a.id)}">
+                <div class="pa-action-top">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="pa-action-name">${esc(a.name)}</span>
+                        <div class="pa-action-tags">${tagsHtml}</div>
+                    </div>
+                    <div class="pa-action-right">
+                        <span class="pa-action-cost" style="color:${a.costColor || 'var(--text-dim)'};">${esc(a.cost || '')}</span>
+                    </div>
+                </div>
+                <div class="pa-action-desc">${esc(a.desc)}</div>
+                ${isDisabled && lockReason ? `<div style="margin-top:4px;font-family:var(--font-mono);font-size:7px;color:var(--orange);display:flex;align-items:center;gap:4px;"><span>&#8856;</span><span>${esc(lockReason)}</span></div>` : ''}
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <div class="pa-detail-header">
+            <div class="pa-detail-left">
+                <div class="pa-detail-avatar" style="color:#c8a832;background:#c8a83215;border-color:#c8a83233;">${esc(r.chip)}</div>
+                <div>
+                    <div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;">
+                        <span style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:#c8a832;">${esc(r.fullTitle.toUpperCase())}</span>
+                        <span class="pa-detail-name">${esc(r.personName)}</span>
+                    </div>
+                    <div class="pa-detail-meta">
+                        ${esc(r.shortRole)} &middot; ${esc(faction.faction_name)}${esc(ageStr)}
+                        <span style="color:#c8a832;font-weight:700;"> &middot; ${esc(r.domain)}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="pa-actions-list">
+            ${(r.actions && r.actions.length > 0)
+                ? actionsHtml
+                : `<div class="pa-vacant-msg"><div><div class="pa-vacant-title">${esc(r.fullTitle)} — No actions yet</div><div class="pa-vacant-sub">Per-ministry actions land here as they ship.</div></div></div>`
+            }
+        </div>
+    `;
+}
+
 function renderActionsPanel(leaderName, partyColor, faction) {
+    // Cabinet / PM / President cards use synthetic roles
+    // ("ministry:<key>"); branch out to their own detail renderer.
+    if (typeof _selectedRole === 'string' && _selectedRole.startsWith('ministry:')) {
+        return renderMinistryDetail(faction, partyColor);
+    }
     const _isMonarchy = isAbsoluteMonarchy(_state.nation);
     const _isMonarch = _isMonarchy && _state.nation?.monarch_faction_id === faction?.id;
     const role = ROLES.find(r => r.id === _selectedRole);
