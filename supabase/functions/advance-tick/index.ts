@@ -12247,9 +12247,9 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
 
     // Top 2 parties by seats lose -2 approval each tick during vacancy —
     // ongoing pressure to form a government. The auto-snap that used to
-    // fire after FORMATION_DEADLINE_TICKS has been removed; if the nation
-    // stays deadlocked, any party leader can break it via the
-    // call_snap_election Party Leader action.
+    // fire after FORMATION_DEADLINE_TICKS has been removed. There is no
+    // manual deadlock breaker; the standing momentum penalty applies
+    // until a coalition forms.
     if (allParties && allParties.length > 0) {
         await supabase.rpc('adjust_momentum', { p_faction_id: allParties[0].id, p_delta: -2, p_label: 'Formation timeout (-2)', p_tick: currentTick });
         if (allParties.length > 1) {
