@@ -134,6 +134,11 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 }
 .al-row__name {
     font-family: var(--font-serif); font-size: 16px; font-weight: 600; color: var(--text-bright);
+    /* Cap the name so a long charter title can't push the right-rail
+       metrics off the row. flex-min-width:0 lets the cell actually
+       shrink instead of holding the natural text width. */
+    flex: 0 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .al-row__tags { display: flex; gap: 4px; flex-wrap: wrap; }
 .al-row__tag {
