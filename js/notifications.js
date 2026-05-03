@@ -457,6 +457,13 @@ function renderRows(rows) {
     // Dot lights only when there are rows AND the set has changed
     // since the user last opened the dropdown.
     _lastRenderedFingerprint = rowsFingerprint(rows);
+    // If the dropdown is currently open, the user is actively looking
+    // at these rows — fold them into the acknowledged set so the dot
+    // stays off (a) when the very first render lands after an early
+    // bell-click and (b) when fresh rows arrive while the panel is
+    // already open. Either way, the user has seen them.
+    const drop = document.getElementById('notif-dropdown');
+    if (drop && !drop.hidden) _acknowledgedFingerprint = _lastRenderedFingerprint;
     const hasUnseen = rows.length > 0 && _lastRenderedFingerprint !== _acknowledgedFingerprint;
     if (dot) dot.hidden = !hasUnseen;
 
