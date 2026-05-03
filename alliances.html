@@ -8,15 +8,42 @@
 <link rel="stylesheet" href="css/corp-topbar.css">
 <link rel="stylesheet" href="css/corp-light-theme.css">
 <style>
+/* Full var palette — must match every other corp page so the shared
+   topbar (corp-topbar.css) renders identically. The pill in particular
+   uses `color: var(--teal)` with no fallback; missing `--teal` here
+   was making [HHC] render gray instead of teal. */
 :root {
   --bg-0: #0e0e0c;
+  --bg-1: #1a1a1a;
   --bg-2: #1a1a17;
   --bg-3: #252525;
+  --bg-4: #24241f;
+  --bg-5: #2c2c26;
+  --bg-hover: #282822;
   --text-bright: #f0efe6;
   --text-primary: #c4c2b8;
+  --text-secondary: #888;
+  --text-muted: #666;
   --text-dim: #4a4940;
+  --text-ghost: #333229;
+  --border-hair: rgba(255,255,255,0.04);
   --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08);
+  --border-2: rgba(255,255,255,0.12);
+  --green: #5cb85c;
+  --green-faint: rgba(92,184,92,0.08);
+  --green-border: rgba(92,184,92,0.18);
+  --red: #d9534f;
   --amber: #c8a64e;
+  --amber-faint: rgba(200,166,78,0.08);
+  --amber-border: rgba(200,166,78,0.18);
+  --blue: #5b9bd5;
+  --blue-faint: rgba(91,155,213,0.08);
+  --blue-border: rgba(91,155,213,0.18);
+  --teal: #5aafa5;
+  --teal-faint: rgba(90,175,165,0.08);
+  --teal-border: rgba(90,175,165,0.18);
+  --gold: #c8a832;
   --font-mono: 'JetBrains Mono', monospace;
   --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
   --font-serif: 'IBM Plex Serif', Georgia, serif;

@@ -50,9 +50,12 @@
 .corp-topbar__cash:hover { background: rgba(200,168,50,0.14); }
 .corp-topbar__cash-dd { min-width: 340px; }
 .corp-topbar__switcher { position: relative; }
+/* Fallbacks on every var keep the pill teal even if a page's inline
+   :root forgets to declare --teal/--teal-faint/--teal-border (this
+   bit alliances.html on first commit). */
 .corp-topbar__badge-btn {
     font-family: var(--font-mono); font-size: 12px; font-weight: 700;
-    color: var(--teal); padding: 4px 10px; cursor: pointer;
+    color: var(--teal, #5aafa5); padding: 4px 10px; cursor: pointer;
     background: var(--teal-faint, rgba(90,175,165,0.06));
     border: 1px solid var(--teal-border, rgba(90,175,165,0.2));
 }
@@ -81,6 +84,19 @@
 }
 .corp-topbar__btn:hover { color: var(--text-bright); border-color: var(--text-dim); }
 .corp-topbar__btn--logout:hover { color: var(--red); border-color: var(--red); }
+
+/* Static cash readout in the right rail. No dropdown — just a label + value. */
+.corp-topbar__cash {
+    display: inline-flex; align-items: baseline; gap: 4px;
+    font-family: var(--font-mono); font-size: 11px;
+    margin-right: 4px;
+}
+.corp-topbar__cash-label {
+    color: var(--text-dim); letter-spacing: 0.06em; text-transform: uppercase;
+}
+.corp-topbar__cash-value {
+    color: var(--amber); font-weight: 700;
+}
 
 /* Nav tabs */
 .corp-topbar__nav {

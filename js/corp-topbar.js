@@ -93,6 +93,14 @@ export function renderCorpTopBar(container, opts = {}) {
     const gameDate = shard?.current_date || '--';
     const tickNum = shard?.current_tick ?? '--';
 
+    // Static cash label (corp_cash_reserves). Same compact $/$k/$M
+    // formatting as the party-side topbar — no dropdown, just a read-out.
+    const cashRaw = Number(faction?.corp_cash_reserves ?? 0);
+    const cashStr = !Number.isFinite(cashRaw) ? '$0'
+        : cashRaw >= 1_000_000 ? '$' + (cashRaw / 1_000_000).toFixed(1) + 'M'
+        : cashRaw >= 1_000     ? '$' + Math.round(cashRaw / 1_000) + 'k'
+        : '$' + cashRaw;
+
     // Nav tabs — same-page tabs use onclick, cross-page tabs use href
     const corpSector = faction?.corp_sector || 'Construction';
 
@@ -154,6 +162,10 @@ export function renderCorpTopBar(container, opts = {}) {
             </div>
             <div class="corp-topbar__version">${CORP_VERSION}</div>
             <div class="corp-topbar__right">
+                <span class="corp-topbar__cash" id="corp-topbar-cash">
+                    <span class="corp-topbar__cash-label">CASH:</span>
+                    <span class="corp-topbar__cash-value" id="corp-topbar-cash-value">${escHtml(cashStr)}</span>
+                </span>
                 <div class="corp-topbar__switcher" id="faction-switcher">
                     <span class="corp-topbar__badge-btn" id="corp-name-badge" onclick="window._corpTopbarToggleDropdown()">[${escHtml(ticker.toUpperCase() || '--')}] ▾</span>
                     <div class="corp-topbar__dropdown" id="corp-faction-dropdown">${dropdownHtml}</div>
