@@ -96,12 +96,10 @@ function processSectorRanking(allParties, sectors, popularityRows) {
             name:        s.name,
             description: s.description || '',
             weight:      Number(s.weight) || 0,
-            // candidates is the full popularity-sorted list; the renderer
-            // splits out the viewer's row separately so we keep the full
-            // array around (top-3 chips need to exclude the viewer; the
-            // viewer-pill needs their actual popularity even at rank 7).
+            // Full popularity-sorted list. The renderer splits the
+            // viewer's row out separately so it always shows on the
+            // right; the top-3 chips slice excludes the viewer.
             candidates,
-            top3:        candidates.slice(0, 3),
         };
     }).sort((a, b) => {
         if (b.weight !== a.weight) return b.weight - a.weight;
@@ -407,7 +405,7 @@ function renderStrongholdsSection(o, faction, partyColor) {
         // Viewer's row split out from the rest so it always renders on the
         // far right, separated. Top-3 area excludes the viewer; if they're
         // genuinely top-3 they show up only on the right.
-        const candidates = s.candidates || s.top3 || [];
+        const candidates = s.candidates || [];
         const otherChips = candidates
             .filter(p => p.party_id !== myFactionId)
             .slice(0, 3)
