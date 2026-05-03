@@ -4137,7 +4137,7 @@ function renderFundraiseDetail(body, sectorStates, root) {
     const oppPop = opp ? (opp.popularity_tenths / 10).toFixed(1) : '—';
 
     const hostBlocked = !host;
-    const noPop = host && host.popularity_tenths <= 0;
+    const oppMissing = !opp;
 
     detail.innerHTML = `
         <div style="display:flex;align-items:baseline;gap:8px;">
@@ -4163,7 +4163,10 @@ function renderFundraiseDetail(body, sectorStates, root) {
                 <span>↓ ${esc(host?.name || ev.host_sector_key)}</span><span style="color:#d44a4a;font-weight:700;">−0.3 (donor fatigue)</span>
             </div>
             <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:11px;color:var(--text-bright);padding:2px 0;">
-                <span>↓ ${esc(opp?.name || ev.opposition_sector_key)}</span><span style="color:#d44a4a;font-weight:700;">−0.5 (optics)</span>
+                <span>↓ ${esc(opp?.name || ev.opposition_sector_key)}</span>
+                ${oppMissing
+                    ? '<span style="color:var(--text-dim);font-style:italic;">not in this nation — no cost</span>'
+                    : '<span style="color:#d44a4a;font-weight:700;">−0.5 (optics)</span>'}
             </div>
         </div>
 
