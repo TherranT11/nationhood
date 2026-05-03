@@ -1189,6 +1189,19 @@ async function init() {
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = '';
+
+    // Phase 2 dev entry — auto-open the loan-negotiation modal if the
+    // page URL has ?negotiation=<uuid>. Phase 5 will add proper entry
+    // points; this is the testing seam for now.
+    const urlNeg = new URL(location.href).searchParams.get('negotiation');
+    if (urlNeg) {
+        try {
+            const { mountLoanNegotiationModal } = await import('./js/loan-negotiation-modal.js');
+            await mountLoanNegotiationModal({ supabase: _supabase, negotiationId: urlNeg });
+        } catch (e) {
+            console.warn('[corp-dashboard] negotiation modal failed:', e?.message || e);
+        }
+    }
 }
 
 function renderMasthead(history) {
