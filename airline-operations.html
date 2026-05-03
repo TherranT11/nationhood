@@ -1420,7 +1420,16 @@ async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
 
-    const activeId = sessionStorage.getItem('active_faction_id') || user.id;
+    // Inspect-mode override: ?faction_id= from the admin Nation Inspector
+    // wins over sessionStorage. Mirrors the pattern in corp-operations.html.
+    // Without this, the inspector loads the URL's faction_id but this page
+    // falls back to the operator's own corp, fails the sector gate, and
+    // bounces back to corp-dashboard.html.
+    const url = new URL(location.href);
+    const inspectFactionId = url.searchParams.get('faction_id');
+    const activeId = inspectFactionId
+        || sessionStorage.getItem('active_faction_id')
+        || user.id;
 
     const [factionRes, shardRes] = await Promise.all([
         _supabase.from('factions').select('*').eq('id', activeId).maybeSingle(),
@@ -1434,7 +1443,11 @@ async function init() {
     const shard   = shardRes.data;
 
     if (faction.faction_type !== 'corporation' || faction.corp_sector !== 'Airline') {
-        window.location.href = 'corp-dashboard.html';
+        // Preserve the inspect query string when bouncing — otherwise an
+        // inspector viewing a non-Airline corp lands on the operator's own
+        // dashboard instead of the inspected corp's dashboard.
+        const qs = inspectFactionId ? `?faction_id=${encodeURIComponent(inspectFactionId)}` : '';
+        window.location.href = 'corp-dashboard.html' + qs;
         return;
     }
 
