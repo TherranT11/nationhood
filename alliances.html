@@ -8,10 +8,6 @@
 <link rel="stylesheet" href="css/corp-topbar.css">
 <link rel="stylesheet" href="css/corp-light-theme.css">
 <style>
-/* Full var palette — must match every other corp page so the shared
-   topbar (corp-topbar.css) renders identically. The pill in particular
-   uses `color: var(--teal)` with no fallback; missing `--teal` here
-   was making [HHC] render gray instead of teal. */
 :root {
   --bg-0: #0e0e0c;
   --bg-1: #1a1a1a;
@@ -52,14 +48,23 @@
 body { background: var(--bg-0); color: var(--text-primary); font-family: var(--font-ui); min-height: 100vh; }
 .loading-msg { padding: 40px; text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
 
-.alliances-shell {
-    max-width: 1200px; margin: 0 auto; padding: 48px 32px;
+.alliances-shell { max-width: 1200px; margin: 0 auto; padding: 48px 32px; }
+.alliances-shell__head {
+    display: flex; justify-content: space-between; align-items: flex-end; gap: 16px;
 }
 .alliances-title {
     font-family: var(--font-serif); font-size: 32px; font-weight: 600;
     color: var(--text-bright); letter-spacing: -0.01em;
 }
 .alliances-title__dot { color: var(--amber); }
+.alliances-found-btn {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+    padding: 10px 18px; cursor: pointer;
+    background: var(--amber-faint); color: var(--amber);
+    border: 1px solid var(--amber-border);
+    transition: all 0.12s;
+}
+.alliances-found-btn:hover { background: var(--amber); color: #000; }
 .alliances-empty {
     margin-top: 24px; padding: 48px 24px;
     border: 1px solid var(--border-0); background: var(--bg-2);
@@ -67,37 +72,284 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
     font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.06em;
     color: var(--text-dim); text-transform: uppercase;
 }
+
+/* ── Found-alliance form ── */
+.fnd-crumb {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--text-dim);
+}
+.fnd-crumb__link {
+    color: var(--text-dim); text-decoration: none; cursor: pointer;
+}
+.fnd-crumb__link:hover { color: var(--text-primary); }
+.fnd-crumb__sep { margin: 0 8px; color: var(--text-ghost); }
+.fnd-crumb__current { color: var(--amber); }
+
+.fnd-h1 {
+    margin-top: 16px;
+    font-family: var(--font-serif); font-size: 28px; font-weight: 600;
+    color: var(--text-bright); letter-spacing: -0.01em;
+}
+.fnd-lede {
+    margin-top: 8px; max-width: 720px;
+    font-size: 14px; line-height: 1.5; color: var(--text-secondary);
+}
+.fnd-lede__highlight { color: var(--amber); }
+.fnd-rule { margin-top: 28px; height: 1px; background: var(--border-0); }
+
+.fnd-step { margin-top: 32px; }
+.fnd-step__head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+.fnd-step__num {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
+    color: var(--text-dim); text-transform: uppercase;
+}
+.fnd-step__title {
+    font-family: var(--font-serif); font-size: 18px; font-weight: 600;
+    color: var(--text-bright);
+}
+.fnd-step__sub {
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--text-dim); margin-left: auto;
+}
+
+.fnd-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+}
+.fnd-pick {
+    padding: 16px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-0);
+    cursor: not-allowed;
+    transition: border-color 0.1s, background 0.1s;
+}
+.fnd-pick.selected {
+    background: rgba(200,166,78,0.06);
+    border-color: var(--amber);
+}
+.fnd-pick__tag {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--text-dim);
+    display: flex; align-items: center; gap: 6px;
+}
+.fnd-pick.selected .fnd-pick__tag { color: var(--amber); }
+.fnd-pick__dot {
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--amber);
+}
+.fnd-pick__name {
+    margin-top: 6px; font-size: 17px; font-weight: 700; color: var(--text-bright);
+}
+.fnd-pick__sub { margin-top: 2px; font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
+.fnd-pick.locked .fnd-pick__name { color: var(--text-dim); }
+
+.fnd-input, .fnd-textarea {
+    width: 100%; padding: 12px 14px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-0);
+    color: var(--text-bright);
+    font-family: var(--font-ui); font-size: 14px;
+}
+.fnd-input:focus, .fnd-textarea:focus { outline: none; border-color: var(--amber); }
+.fnd-textarea { min-height: 76px; font-family: var(--font-ui); resize: vertical; }
+.fnd-naming-help {
+    margin-top: 8px;
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-dim);
+}
+.fnd-naming-help b { color: var(--amber); font-weight: 700; }
+
+.fnd-invitees-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+}
+.fnd-invitee {
+    display: flex; gap: 12px; padding: 14px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-0);
+    cursor: pointer;
+    transition: border-color 0.1s, background 0.1s;
+}
+.fnd-invitee:hover { border-color: var(--text-dim); }
+.fnd-invitee.selected {
+    background: rgba(200,166,78,0.06);
+    border-color: var(--amber);
+}
+.fnd-invitee__check {
+    flex: 0 0 auto; width: 18px; height: 18px;
+    border: 1px solid var(--border-2);
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--amber); font-size: 12px; font-weight: 700;
+}
+.fnd-invitee.selected .fnd-invitee__check { border-color: var(--amber); }
+.fnd-invitee__chip {
+    flex: 0 0 auto; width: 36px; height: 36px;
+    border: 1px solid var(--text-dim); border-radius: 4px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    color: var(--text-bright); letter-spacing: 0.04em; padding: 0 4px;
+}
+.fnd-invitee__body { flex: 1 1 auto; min-width: 0; }
+.fnd-invitee__name {
+    font-size: 14px; font-weight: 700; color: var(--text-bright);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fnd-invitee__meta {
+    margin-top: 2px;
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-dim);
+    letter-spacing: 0.04em;
+}
+.fnd-invitee__stats {
+    margin-top: 4px;
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary);
+    letter-spacing: 0.04em;
+}
+.fnd-invitee__stats b { color: var(--text-primary); font-weight: 700; }
+.fnd-shared-rep {
+    margin-top: 12px; padding: 10px 12px;
+    background: var(--blue-faint); border: 1px solid var(--blue-border);
+    font-family: var(--font-mono); font-size: 11px; color: var(--blue);
+    letter-spacing: 0.04em;
+}
+.fnd-empty-roster {
+    padding: 32px; text-align: center;
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--text-dim); letter-spacing: 0.06em; text-transform: uppercase;
+    border: 1px dashed var(--border-1);
+}
+
+/* Cost panel + submit row */
+.fnd-cost {
+    margin-top: 32px; display: flex; align-items: stretch; gap: 12px;
+    padding: 16px; background: var(--bg-2); border: 1px solid var(--border-0);
+}
+.fnd-cost__block {
+    flex: 0 0 auto; padding-right: 16px; border-right: 1px solid var(--border-0);
+}
+.fnd-cost__label {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.14em;
+    color: var(--text-dim); text-transform: uppercase;
+}
+.fnd-cost__value {
+    margin-top: 2px;
+    font-family: var(--font-mono); font-size: 18px; font-weight: 700; color: var(--amber);
+}
+.fnd-cost__formula {
+    flex: 1 1 auto; align-self: center;
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);
+    letter-spacing: 0.04em;
+}
+.fnd-actions {
+    margin-top: 12px; display: flex; gap: 12px; justify-content: flex-end;
+}
+.fnd-btn {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; padding: 12px 22px; cursor: pointer;
+    background: transparent; border: 1px solid var(--border-1); color: var(--text-primary);
+    transition: all 0.1s;
+}
+.fnd-btn:hover { border-color: var(--text-bright); color: var(--text-bright); }
+.fnd-btn--primary {
+    background: var(--amber); color: #000; border-color: var(--amber);
+}
+.fnd-btn--primary:hover:not(:disabled) { background: #e0bd60; border-color: #e0bd60; }
+.fnd-btn:disabled {
+    cursor: not-allowed; opacity: 0.45;
+}
+.fnd-btn--primary:disabled { background: var(--amber); color: #000; }
 </style>
 </head>
 <body>
 <div id="loading" class="loading-msg">LOADING…</div>
 <div id="page-content" style="display:none;">
     <div id="corp-topbar-container"></div>
-    <div class="alliances-shell">
-        <div class="alliances-title">Strategic Alliances<span class="alliances-title__dot">.</span></div>
-        <div class="alliances-empty">No alliances yet.</div>
+    <div class="alliances-shell" id="alliances-shell">
+        <!-- view rendered in JS: list view or found-form -->
     </div>
 </div>
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
+import { computeCorpValuationBreakdown } from './js/game/corp-valuation.js';
 
+// ── Constants ──
+const FOUND_BASE_COST  = 20_000_000;
+const FOUND_PER_INVITEE = 7_000_000;
+const MIN_INVITEES = 2;
+const MAX_INVITEES = 10;
+
+// Per-sector hero stats. Maps display label → faction column. Columns
+// missing on `factions` today render as "—"; we still surface the slot
+// so the layout stays uniform across sectors.
+const HERO_STATS = {
+    Banking:      [['Lending', null], ['Liquidity', null], ['Credit', 'corp_credit_rating']],
+    Construction: [['Crews', 'corp_work_crews'], ['Reg. Standing', 'corp_regulatory_standing'], ['Supply Chain', 'corp_supply_chain']],
+    Shipping:     [['Fleets', null], ['Route Risk', null], ['Fleet Health', null]],
+    Airlines:     [['Fleet', null], ['Op. Safety', 'corp_operational_efficiency'], ['Routes', null]],
+};
+
+// Naming-pattern hints by sector. Matches the mockup phrasing.
+const NAMING_HINTS = {
+    Banking:      ['Consortium', 'Pact', 'Conglomerate', 'Bloc', 'League', 'Compact', 'Network', 'Coalition'],
+    Construction: ['Consortium', 'Bloc', 'Pact', 'Network', 'Compact', 'Guild', 'Federation', 'Coalition'],
+    Shipping:     ['Compact', 'Pact', 'Coalition', 'League', 'Combine', 'Pool', 'Conference', 'Network'],
+    Airlines:     ['Alliance', 'Network', 'Pact', 'Coalition', 'League', 'Compact', 'Star', 'Sky'],
+};
+
+const SECTORS = ['Banking', 'Construction', 'Shipping', 'Airlines'];
+
+// ── State ──
 let faction = null;
 let shard = null;
 let allUserFactions = [];
+// View state. 'list' = empty/active alliances, 'found' = the multi-step
+// charter form. Ephemeral — survives only while the page is mounted.
+let _view = 'list';
+// Form state. Held in JS so re-renders preserve user input. Per the
+// design call-out: "build with state for later" so when the RPC ships
+// the form values plug straight in.
+let _form = {
+    name: '',
+    selectedInviteeIds: new Set(),
+    mission: '',
+};
+let _candidates = [];   // candidate corps (same sector, not me, not abandoned)
+let _candidatesById = new Map();
 
+// ── Helpers ──
+function escHtml(s) {
+    if (s == null) return '';
+    const d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
+}
+function fmtMoney(n) {
+    if (n == null || !Number.isFinite(n)) return '—';
+    const abs = Math.abs(n);
+    const sign = n < 0 ? '-' : '';
+    if (abs >= 1e9) return sign + '$' + (abs / 1e9).toFixed(2) + 'B';
+    if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(1) + 'M';
+    if (abs >= 1e3) return sign + '$' + Math.round(abs / 1e3) + 'k';
+    return sign + '$' + abs;
+}
+function fmtStat(v) {
+    if (v == null) return '—';
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '—';
+    return n.toFixed(n < 10 ? 1 : 0);
+}
+function corpInitials(c) {
+    const t = (c.corp_ticker || c.abbreviation || c.faction_name || '').toString();
+    return t.replace(/[^A-Z0-9]/gi, '').slice(0, 3).toUpperCase() || '—';
+}
+
+// ── Init ──
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
 
-    // Inspector mode parity with other corp pages — admin override via
-    // ?faction_id= URL param skips sessionStorage / faction-type redirects.
     const urlFactionId = new URLSearchParams(location.search).get('faction_id');
     if (urlFactionId) {
         const { data: inspected } = await _supabase.from('factions').select('*').eq('id', urlFactionId).single();
         if (inspected?.faction_type === 'corporation') faction = inspected;
     }
-
     if (!faction) {
         const { data: allFactions } = await _supabase.from('factions')
             .select('*').or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
@@ -123,6 +375,297 @@ async function init() {
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = 'block';
+
+    renderShell();
+}
+
+// ── Top-level render dispatch ──
+function renderShell() {
+    const shell = document.getElementById('alliances-shell');
+    if (!shell) return;
+    if (_view === 'found') shell.innerHTML = renderFoundView();
+    else shell.innerHTML = renderListView();
+    bindShellEvents();
+}
+
+function renderListView() {
+    return `
+        <div class="alliances-shell__head">
+            <div class="alliances-title">Strategic Alliances<span class="alliances-title__dot">.</span></div>
+            <button class="alliances-found-btn" id="open-found-btn">FOUND ALLIANCE</button>
+        </div>
+        <div class="alliances-empty">No alliances yet.</div>
+    `;
+}
+
+function renderFoundView() {
+    const sector = faction?.corp_sector || 'Construction';
+    const namingHints = NAMING_HINTS[sector] || NAMING_HINTS.Construction;
+    const inviteeCount = _form.selectedInviteeIds.size;
+    const totalCost = FOUND_BASE_COST + (FOUND_PER_INVITEE * inviteeCount);
+
+    const sectorPicks = SECTORS.map(s => {
+        const isMine = s === sector;
+        const cls = isMine ? 'fnd-pick selected' : 'fnd-pick locked';
+        const tag = isMine
+            ? `<span class="fnd-pick__tag"><span class="fnd-pick__dot"></span>SELECTED</span>`
+            : `<span class="fnd-pick__tag">LOCKED</span>`;
+        const sub = isMine ? 'Your industry' : 'Wrong industry';
+        return `
+            <div class="${cls}">
+                ${tag}
+                <div class="fnd-pick__name">${escHtml(s)}</div>
+                <div class="fnd-pick__sub">${escHtml(sub)}</div>
+            </div>
+        `;
+    }).join('');
+
+    const inviteeMin = `Min ${MIN_INVITEES}, max ${MAX_INVITEES} invitees.`;
+    const inviteeStatus = `${inviteeCount} selected`;
+
+    const inviteesHtml = _candidates.length === 0
+        ? `<div class="fnd-empty-roster">No other ${escHtml(sector)} corporations available to invite.</div>`
+        : `<div class="fnd-invitees-grid">${_candidates.map(renderInviteeCard).join('')}</div>`;
+
+    // Submit is greyed by design — RPC isn't wired yet. Validation is
+    // still computed so we can flip the disable to a real gate later.
+    const validName = _form.name.trim().length > 0;
+    const validInvitees = inviteeCount >= MIN_INVITEES && inviteeCount <= MAX_INVITEES;
+    const _wouldBeReady = validName && validInvitees;
+    void _wouldBeReady; // referenced for future enable; suppress unused warning
+
+    return `
+        <div class="fnd-crumb">
+            <a class="fnd-crumb__link" id="fnd-back">Strategic Alliances</a>
+            <span class="fnd-crumb__sep">/</span>
+            <span class="fnd-crumb__current">Found New Alliance</span>
+        </div>
+
+        <h1 class="fnd-h1">Charter a new strategic alliance</h1>
+        <p class="fnd-lede">
+            Found a coalition of like-minded institutions. New alliances begin with one
+            ratified charter article. Additional articles unlock as the alliance gains
+            <span class="fnd-lede__highlight">Cohesion</span> through cooperation, shared
+            crises, and unanimous votes.
+        </p>
+        <div class="fnd-rule"></div>
+
+        <div class="fnd-step">
+            <div class="fnd-step__head">
+                <span class="fnd-step__num">Step 1</span>
+                <span class="fnd-step__title">Industry</span>
+                <span class="fnd-step__sub">Locked to your own industry</span>
+            </div>
+            <div class="fnd-grid">${sectorPicks}</div>
+        </div>
+
+        <div class="fnd-step">
+            <div class="fnd-step__head">
+                <span class="fnd-step__num">Step 2</span>
+                <span class="fnd-step__title">Name</span>
+                <span class="fnd-step__sub">Choose carefully — renaming costs Cohesion</span>
+            </div>
+            <input type="text" id="fnd-name" class="fnd-input" maxlength="80"
+                   placeholder="Enter alliance name…"
+                   value="${escHtml(_form.name)}" />
+            <div class="fnd-naming-help">
+                Recommended naming patterns: ${namingHints.map(h => `<b>${escHtml(h)}</b>`).join(', ')}
+            </div>
+        </div>
+
+        <div class="fnd-step">
+            <div class="fnd-step__head">
+                <span class="fnd-step__num">Step 3</span>
+                <span class="fnd-step__title">Invitees</span>
+                <span class="fnd-step__sub">Founding members must accept and agree on the first article. ${escHtml(inviteeMin)}</span>
+                <span class="fnd-step__sub" style="color:${validInvitees ? 'var(--amber)' : 'var(--text-dim)'};margin-left:12px;">${escHtml(inviteeStatus)}</span>
+            </div>
+            ${inviteesHtml}
+            <div class="fnd-shared-rep">All corporations will share Reputation once in a Strategic Alliance.</div>
+        </div>
+
+        <div class="fnd-step">
+            <div class="fnd-step__head">
+                <span class="fnd-step__num">Step 5</span>
+                <span class="fnd-step__title">Mission statement</span>
+                <span class="fnd-step__sub">Optional. Shapes how the public perceives your alliance.</span>
+            </div>
+            <textarea id="fnd-mission" class="fnd-textarea" maxlength="500"
+                      placeholder="Optional mission statement…">${escHtml(_form.mission)}</textarea>
+        </div>
+
+        <div class="fnd-cost">
+            <div class="fnd-cost__block">
+                <div class="fnd-cost__label">Total Cost</div>
+                <div class="fnd-cost__value">${fmtMoney(totalCost)}</div>
+            </div>
+            <div class="fnd-cost__formula">
+                ${fmtMoney(FOUND_BASE_COST)} base + ${fmtMoney(FOUND_PER_INVITEE)} per invitee × ${inviteeCount}
+                = ${fmtMoney(totalCost)}. Paid on charter ratification, refunded if vote fails.
+            </div>
+        </div>
+        <div class="fnd-actions">
+            <button class="fnd-btn" id="fnd-cancel">Cancel</button>
+            <button class="fnd-btn fnd-btn--primary" id="fnd-submit" disabled
+                    title="Negotiation backend not yet implemented.">
+                Send Invitations &amp; Open Negotiation ↗
+            </button>
+        </div>
+    `;
+}
+
+function renderInviteeCard(c) {
+    const sector = c.corp_sector || 'Construction';
+    const heroDefs = HERO_STATS[sector] || [];
+    const isSelected = _form.selectedInviteeIds.has(c.id);
+    const valuation = c.__valuation;
+    const heroLine = heroDefs.map(([label, col]) => {
+        const v = col ? c[col] : null;
+        return `${escHtml(label)} <b>${fmtStat(v)}</b>`;
+    }).join(' &middot; ');
+    return `
+        <div class="fnd-invitee ${isSelected ? 'selected' : ''}" data-corp-id="${escHtml(c.id)}">
+            <div class="fnd-invitee__check">${isSelected ? '✓' : ''}</div>
+            <div class="fnd-invitee__chip">${escHtml(corpInitials(c))}</div>
+            <div class="fnd-invitee__body">
+                <div class="fnd-invitee__name">${escHtml(c.faction_name || 'Unnamed Corp')}</div>
+                <div class="fnd-invitee__meta">
+                    Valuation <b style="color:var(--text-primary)">${fmtMoney(valuation)}</b>
+                    &middot; Reputation <b style="color:var(--text-primary)">${fmtStat(c.corp_reputation)}</b>
+                </div>
+                <div class="fnd-invitee__stats">${heroLine || '&nbsp;'}</div>
+            </div>
+        </div>
+    `;
+}
+
+function bindShellEvents() {
+    if (_view === 'list') {
+        document.getElementById('open-found-btn')?.addEventListener('click', openFoundView);
+        return;
+    }
+    // Found view bindings
+    document.getElementById('fnd-back')?.addEventListener('click', closeFoundView);
+    document.getElementById('fnd-cancel')?.addEventListener('click', closeFoundView);
+    const nameInput = document.getElementById('fnd-name');
+    if (nameInput) {
+        nameInput.addEventListener('input', (e) => { _form.name = e.target.value; });
+    }
+    const missionInput = document.getElementById('fnd-mission');
+    if (missionInput) {
+        missionInput.addEventListener('input', (e) => { _form.mission = e.target.value; });
+    }
+    document.querySelectorAll('.fnd-invitee').forEach(card => {
+        card.addEventListener('click', () => toggleInvitee(card.dataset.corpId));
+    });
+}
+
+function toggleInvitee(id) {
+    if (!id) return;
+    if (_form.selectedInviteeIds.has(id)) {
+        _form.selectedInviteeIds.delete(id);
+    } else {
+        if (_form.selectedInviteeIds.size >= MAX_INVITEES) return;
+        _form.selectedInviteeIds.add(id);
+    }
+    renderShell();
+}
+
+async function openFoundView() {
+    _view = 'found';
+    renderShell();
+    // Load candidates lazily — first paint shows the form skeleton with
+    // the empty roster, then we fill it in.
+    await loadCandidates();
+    renderShell();
+}
+
+function closeFoundView() {
+    _view = 'list';
+    // Clear form so re-opening is a fresh charter; per design B we
+    // wouldn't lose progress mid-form, but cancel is an explicit reset.
+    _form = { name: '', selectedInviteeIds: new Set(), mission: '' };
+    renderShell();
+}
+
+// ── Candidate roster + valuation batch ──
+async function loadCandidates() {
+    const sector = faction?.corp_sector;
+    if (!sector || !faction?.id) { _candidates = []; return; }
+
+    const { data: corps, error } = await _supabase
+        .from('factions')
+        .select('id, faction_name, abbreviation, corp_ticker, corp_sector, corp_cash_reserves, corp_reputation, corp_credit_rating, corp_work_crews, corp_regulatory_standing, corp_supply_chain, corp_operational_efficiency, nation_id, nations(name)')
+        .eq('faction_type', 'corporation')
+        .eq('corp_sector', sector)
+        .is('abandoned_at', null)
+        .neq('id', faction.id);
+    if (error) {
+        console.warn('[alliances] candidate fetch failed:', error.message);
+        _candidates = [];
+        return;
+    }
+
+    const corpRows = corps || [];
+    const ids = corpRows.map(c => c.id);
+    if (ids.length === 0) { _candidates = []; _candidatesById = new Map(); return; }
+
+    // Batch the asset / liability lookups so each card can render a
+    // real "(cash + assets − debt)" valuation. Same formula as the corp
+    // dashboard masthead via the shared computeCorpValuationBreakdown.
+    const tick = Number(shard?.current_tick) || 0;
+    const [propsRes, vesselsRes, loansRes] = await Promise.all([
+        _supabase.from('corp_properties')
+            .select('faction_id, purchase_price, condition')
+            .in('faction_id', ids).eq('is_active', true),
+        _supabase.from('corp_vessels')
+            .select('faction_id, purchase_price, condition, status, built_at_tick')
+            .in('faction_id', ids),
+        _supabase.from('finance_active_loans')
+            .select('borrower_faction_id, lender_faction_id, principal, remaining_principal, status, finance_loan_requests(request_type)')
+            .in('status', ['current', 'late', 'delinquent']),
+    ]);
+    if (propsRes.error)   console.warn('[alliances] props fetch failed:', propsRes.error.message);
+    if (vesselsRes.error) console.warn('[alliances] vessels fetch failed:', vesselsRes.error.message);
+    if (loansRes.error)   console.warn('[alliances] loans fetch failed:', loansRes.error.message);
+
+    // Bucket by corp.
+    const byCorp = new Map();
+    for (const id of ids) byCorp.set(id, { properties: [], vessels: [], debt: 0, receivables: 0 });
+    for (const p of (propsRes.data || []))  byCorp.get(p.faction_id)?.properties.push(p);
+    for (const v of (vesselsRes.data || [])) byCorp.get(v.faction_id)?.vessels.push(v);
+    for (const ln of (loansRes.data || [])) {
+        const reqType = (ln.finance_loan_requests?.request_type || 'loan').toLowerCase();
+        const principal = Math.max(0, Number(ln.principal || 0));
+        const remaining = Math.max(0, Number(ln.remaining_principal || 0));
+        // Borrower side adds to debt (uses outstanding principal).
+        const b = byCorp.get(ln.borrower_faction_id);
+        if (b) b.debt += remaining;
+        // Lender side adds to receivables (loans + bonds counted; insurance excluded).
+        const l = byCorp.get(ln.lender_faction_id);
+        if (l && reqType !== 'insurance') {
+            l.receivables += reqType === 'bond' ? (remaining > 0 ? remaining : principal) : remaining;
+        }
+    }
+
+    // Stamp valuation onto each corp for render.
+    for (const c of corpRows) {
+        const bag = byCorp.get(c.id);
+        const breakdown = computeCorpValuationBreakdown({
+            cash: c.corp_cash_reserves,
+            loans: bag?.debt || 0,
+            properties: bag?.properties,
+            vessels: bag?.vessels,
+            financeReceivables: bag?.receivables || 0,
+            currentTick: tick,
+        });
+        c.__valuation = breakdown.valuation;
+    }
+
+    // Sort: highest-valuation first so the strongest candidates surface up top.
+    corpRows.sort((a, b) => (b.__valuation || 0) - (a.__valuation || 0));
+    _candidates = corpRows;
+    _candidatesById = new Map(corpRows.map(c => [c.id, c]));
 }
 
 init();
