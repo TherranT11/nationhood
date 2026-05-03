@@ -50,15 +50,3 @@ export function annualWageForTier(nation, tier) {
     const { baseAnnualWage, inflMod, solMod } = computeWageScalars(nation);
     return Math.round(baseAnnualWage * mult * inflMod * solMod);
 }
-
-export function computeMonthlyWages(nation, counts) {
-    const { baseAnnualWage, inflMod, solMod } = computeWageScalars(nation);
-    const calc = (mult) => Math.round(baseAnnualWage * mult * inflMod * solMod);
-    const general    = Number(counts?.general    ?? 0);
-    const skilled    = Number(counts?.skilled    ?? 0);
-    const innovative = Number(counts?.innovative ?? 0);
-    const annual = general    * calc(WAGE_MULTIPLIERS.general)
-                 + skilled    * calc(WAGE_MULTIPLIERS.skilled)
-                 + innovative * calc(WAGE_MULTIPLIERS.innovative);
-    return Math.round(annual / 12);
-}
