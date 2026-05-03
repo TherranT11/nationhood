@@ -1062,6 +1062,21 @@ async function lrSubmit() {
     // will counter-offer terms in C3+. Default 60-tick (5-year) term,
     // 0% requested APR (bank prices it), grade B (mid-tier).
     const targetBankIds = Array.from(lrSelectedBankIds);
+
+    // Phase 6 unification: persist the selected collateral on the
+    // request so each bank's response inherits it into the spawned
+    // loan_negotiation. Same JSONB shape as loan_negotiations.collateral:
+    // [{kind, id, name, value}]. Skip the synthetic National HQ
+    // sentinel — those are structural commitments, not seizable.
+    const collateralSelected = (lrCollateralProps || [])
+        .filter(p => lrSelectedCollateralIds.has(p.id) && !p.synthetic)
+        .map(p => ({
+            kind:  'property',
+            id:    p.id,
+            name:  p.name || (p.role || 'Property').replace(/_/g, ' '),
+            value: Math.round(Number(p.purchase_price || 0)),
+        }));
+
     let data, error;
     try {
         const result = await _supabase.rpc('submit_loan_request', {
@@ -1073,6 +1088,7 @@ async function lrSubmit() {
             p_risk_grade:            'B',
             p_purpose:               null,
             p_expiry_ticks:          6,
+            p_collateral:            collateralSelected,
         });
         data = result.data;
         error = result.error;

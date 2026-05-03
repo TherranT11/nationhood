@@ -1878,25 +1878,39 @@ async function submitLoanOffer(requestId) {
     if (submitBtn) submitBtn.disabled = true;
 
     try {
-        const { data, error } = await _supabase.rpc('submit_loan_offer', {
-            p_request_id:        requestId,
-            p_bank_faction_id:   faction.id,
-            p_offered_apr:       offeredApr,
-            p_offered_term_ticks: offeredTerm,
+        // Phase 6 unification: respond to a loan request → creates a
+        // bilateral negotiation tied to the request. Borrower picks it
+        // up via Pressing Issues. Both refine + chat in the modal.
+        const { data, error } = await _supabase.rpc('bank_respond_to_loan_request', {
+            p_request_id:          requestId,
+            p_proposed_apr:        offeredApr,
+            p_proposed_term_ticks: offeredTerm,
+            p_notes:               null,
         });
         if (error) {
-            showToast(error.message || 'Submission failed.', 'error');
+            showToast(error.message || 'Response failed.', 'error');
             return;
         }
         if (!data?.success) {
-            showToast(data?.error || 'Submission failed.', 'error');
+            showToast(data?.error || 'Response failed.', 'error');
             return;
         }
-        showToast(`Offer submitted at ${offeredApr.toFixed(1)}% for ${offeredTerm} ticks.`, 'success');
+        showToast(`Negotiation opened at ${offeredApr.toFixed(1)}% for ${offeredTerm} ticks.`, 'success');
         closeLoanReviewModal();
-        // Refresh the list — the request drops out (one-shot per bank).
+        // Refresh available requests — this one drops out (per-bank UNIQUE).
         await loadAvailableLoanRequests();
         renderAvailableLoanRequests();
+        // Drop straight into the new negotiation so the bank can start
+        // chatting / refining immediately.
+        try {
+            const lnm = await import('./js/loan-negotiation-modal.js');
+            await lnm.mountLoanNegotiationModal({
+                supabase: _supabase,
+                negotiationId: data.negotiation_id,
+            });
+        } catch (mountErr) {
+            console.warn('[fo] negotiation modal mount failed:', mountErr?.message || mountErr);
+        }
     } catch (err) {
         console.error('[fo] submit_loan_offer failed:', err);
         showToast('Submission failed: ' + (err?.message || 'unknown'), 'error');
