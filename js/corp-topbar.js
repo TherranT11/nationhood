@@ -201,7 +201,23 @@ export function renderCorpTopBar(container, opts = {}) {
 
     // Start countdown timer
     startCorpCountdown(shard);
+
+    // Lazy-load the messaging bubble. Mirrors the party-side init in
+    // common.js so corp pages get the same floating chat affordance via
+    // the one shared topbar call. Module-level _msgInjected flag keeps
+    // it one-shot per page load even if renderCorpTopBar re-renders.
+    if (faction?.id && !_msgInjected) {
+        _msgInjected = true;
+        const schedule = typeof requestIdleCallback === 'function' ? requestIdleCallback : setTimeout;
+        schedule(() => {
+            import('./messaging.js')
+                .then(m => m.initMessaging(faction, opts.nation || null, shard))
+                .catch(err => console.warn('[corp-topbar] messaging init failed:', err));
+        });
+    }
 }
+
+let _msgInjected = false;
 
 // Countdown timer for next corp tick
 function startCorpCountdown(shard) {
