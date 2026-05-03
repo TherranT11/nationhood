@@ -10342,14 +10342,18 @@ function openAssignModal(ministryKey) {
         age: 35 + Math.floor(Math.random() * 31)
     }));
 
-    document.getElementById('assign-candidates').innerHTML = generatedCandidates.map((c, i) => {
-        const isRuling = c.partyId === rulingFactionId;
-        const candColor = getPartyColorById(c.partyId);
-        const candLogo = getPartyLogoById(c.partyId);
-        const candCustomLogo = getPartyCustomLogoById(c.partyId);
-        const candLogoHtml = candLogo || candCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: candCustomLogo, iconKey: candLogo, size: 14, color: candColor })}</span>` : '';
-        return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};"><div><div class="candidate-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div><div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag ${isRuling ? 'ruling' : 'other'}">${candLogoHtml}${escapeHtml(c.partyName)}</span></div></div>${isRuling ? '<span class="ruling-label">RULING</span>' : ''}</div>`;
-    }).join('');
+    // Empty-state fallback matches openAppointModal. Should only trip
+    // in degenerate states (no parties exist in the nation).
+    document.getElementById('assign-candidates').innerHTML = generatedCandidates.length
+        ? generatedCandidates.map((c, i) => {
+            const isRuling = c.partyId === rulingFactionId;
+            const candColor = getPartyColorById(c.partyId);
+            const candLogo = getPartyLogoById(c.partyId);
+            const candCustomLogo = getPartyCustomLogoById(c.partyId);
+            const candLogoHtml = candLogo || candCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: candCustomLogo, iconKey: candLogo, size: 14, color: candColor })}</span>` : '';
+            return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};"><div><div class="candidate-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div><div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag ${isRuling ? 'ruling' : 'other'}">${candLogoHtml}${escapeHtml(c.partyName)}</span></div></div>${isRuling ? '<span class="ruling-label">RULING</span>' : ''}</div>`;
+        }).join('')
+        : `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;padding:8px 0;">No eligible parties found.</div>`;
 
     document.getElementById('assign-modal').classList.add('active');
 }
