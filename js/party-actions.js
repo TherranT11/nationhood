@@ -28,6 +28,7 @@ let _agitator = null;        // hired agitator or null
 let _deputy = null;          // hired deputy leader or null
 let _isOpposition = false;   // is this faction in opposition?
 let _administration = null;  // active administration data
+let _heldMinistries = [];    // ministries held by my faction (active rows from `ministries`)
 let _lawsuits = [];          // faction's lawsuits (active + resolved)
 let _standing = null;        // faction_electoral_standing row (pillar scores)
 let _seatTxInProgress = false; // module-level lock for Grant/Revoke Seats actions
@@ -152,36 +153,10 @@ const LEADER_ACTIONS = [
         tags: ['STRATEGIC'],
         locked: false,
     },
-    {
-        id: 'call_snap_election',
-        name: 'Call Snap Election',
-        desc: 'Schedule a snap parliamentary election for next tick. PM-only when a Prime Minister is seated; any party leader can call when the seat is vacant (deadlock breaker). Cancels any existing scheduled parliamentary election. 3-tick per-party cooldown.',
-        cost: '$0',
-        costColor: 'var(--text-dim)',
-        moneyCost: 0,
-        tags: ['LEGISLATIVE'],
-        locked: false,
-    },
-    {
-        id: 'call_early_elections',
-        name: 'Call Early Elections',
-        desc: 'Dissolve the legislature and call snap elections. PM-only. Government enters caretaker status; election fires after a short formation window. Momentum impact is tiered by Gov. Approval: >50 boosts PM party (+3), <35 boosts opposition (+5 each) and +3 stability, 35\u201350 is neutral.',
-        cost: '$0',
-        costColor: 'var(--text-dim)',
-        moneyCost: 0,
-        tags: ['LEGISLATIVE', 'PM ONLY'],
-        locked: false,
-    },
-    {
-        id: 'resign_as_pm',
-        name: 'Resign as Prime Minister',
-        desc: 'Step down from the Prime Minister seat. PM-only. Coalition enters caretaker status and has a 3-tick window to nominate a successor via the cabinet panel. If a new PM is installed the administration continues under new leadership; otherwise a snap election fires. Cost: \u22123 Momentum, \u22120.05 Credibility, \u22123 Stability, 12-tick bar from PM on your party.',
-        cost: '$0',
-        costColor: 'var(--text-dim)',
-        moneyCost: 0,
-        tags: ['GOVERNMENT', 'PM ONLY'],
-        locked: false,
-    },
+    // call_early_elections + resign_as_pm moved to the new Ministry
+    // Actions panel under the Prime Minister section (renderMinistryActionsPanel
+    // below). call_snap_election was removed entirely \u2014 call_early_elections
+    // covers the same workflow and the auto-snap deadlock breaker is gone.
     {
         id: 'no_confidence',
         name: 'Vote of No Confidence',
@@ -384,6 +359,20 @@ export async function initPartyActions(supabase, state) {
     const { data: deputyData } = await _supabase.from('faction_deputies')
         .select('*').eq('faction_id', faction.id).eq('status', 'active').maybeSingle();
     _deputy = deputyData || null;
+
+    // Ministries this faction holds — feeds the new Cabinet Ministries
+    // summary + Ministry Actions panels. Filtered server-side by
+    // is_active so the side panel only ever shows live seats.
+    if (faction?.id && state.nation?.id) {
+        const { data: minRows } = await _supabase.from('ministries')
+            .select('ministry_key, party_id, is_active')
+            .eq('nation_id', state.nation.id)
+            .eq('party_id', faction.id)
+            .eq('is_active', true);
+        _heldMinistries = minRows || [];
+    } else {
+        _heldMinistries = [];
+    }
 
     // Fetch lawsuits if agitator is hired
     if (_agitator) {
@@ -982,8 +971,19 @@ function renderPage(root) {
     document.getElementById('pa-leaders').innerHTML = renderLeaderCards(leaderName, partyColor, faction);
     document.getElementById('pa-actions-panel').innerHTML = renderActionsPanel(leaderName, partyColor, faction);
 
-    // Bind leader card clicks
+    // Bind leader card clicks + ministry-action clicks. Both panels live
+    // inside #pa-leaders (renderLeaderCards appends the cabinet summary
+    // and ministry-action sections), so one delegated listener handles
+    // both — `data-ministry-action` wins over `.pa-leader-card`.
     document.getElementById('pa-leaders')?.addEventListener('click', (e) => {
+        const action = e.target.closest('[data-ministry-action]');
+        if (action) {
+            if (action.classList.contains('disabled')) return;
+            const id = action.dataset.ministryAction;
+            if (id === 'call_early_elections') triggerCallEarlyElections();
+            else if (id === 'resign_as_pm')    triggerResignAsPM();
+            return;
+        }
         const card = e.target.closest('.pa-leader-card');
         if (!card || card.classList.contains('vacant')) return;
         const role = card.dataset.role;
@@ -1020,12 +1020,6 @@ function renderPage(root) {
             openRebrandModal(root);
         } else if (actionId === 'no_confidence') {
             triggerNoConfidence();
-        } else if (actionId === 'call_snap_election') {
-            triggerCallSnapElection();
-        } else if (actionId === 'call_early_elections') {
-            triggerCallEarlyElections();
-        } else if (actionId === 'resign_as_pm') {
-            triggerResignAsPM();
         } else if (actionId === 'leave_coalition') {
             triggerLeaveCoalition();
         } else if (actionId === 'disband_party') {
@@ -1154,23 +1148,230 @@ function renderLeaderCards(leaderName, partyColor, faction) {
             </div>
         `;
         return html;
-    }).join('') + `
-        <div class="pa-threats">
-            <div class="pa-threats-title">Threats</div>
-            <div class="pa-threats-row">
-                <span class="pa-threats-label">Active scandals</span>
-                <span class="pa-threats-value">0</span>
+    }).join('')
+        + renderCabinetMinistriesPanel(faction)
+        + renderMinistryActionsPanel(faction);
+}
+
+// ── Cabinet ministries summary + Ministry actions ───────────────────
+// Two stacked side-panel boxes that appear under the role cards.
+//   1. CABINET MINISTRIES  — read-only list of cabinet posts the player
+//      holds, with an "N held" badge in the header.
+//   2. MINISTRY ACTIONS    — auto-generated action sections per held
+//      seat. Includes Prime Minister and President if applicable.
+//      Empty if the player holds nothing.
+
+const _MINISTRY_LABELS = {
+    interior:       { short: 'MI', name: 'Minister of the Interior',          domain: 'HOME AFFAIRS' },
+    foreign:        { short: 'MFA', name: 'Minister of Foreign Affairs',      domain: 'DIPLOMACY' },
+    finance:        { short: 'MoF', name: 'Minister of Finance',              domain: 'TREASURY' },
+    defense:        { short: 'MoD', name: 'Minister of Defense',              domain: 'MILITARY' },
+    justice:        { short: 'MoJ', name: 'Minister of Justice',              domain: 'JUSTICE' },
+    education:      { short: 'MoE', name: 'Minister of Education',            domain: 'EDUCATION' },
+    healthcare:     { short: 'MoH', name: 'Minister of Health',               domain: 'HEALTH' },
+    labor:          { short: 'MoL', name: 'Minister of Labor',                domain: 'LABOR' },
+    energy:         { short: 'MoEn', name: 'Minister of Energy',              domain: 'ENERGY' },
+    agriculture:    { short: 'MoAg', name: 'Minister of Agriculture',         domain: 'AGRICULTURE' },
+    transport:      { short: 'MoT', name: 'Minister of Transport',            domain: 'INFRASTRUCTURE' },
+    trade:          { short: 'MoTr', name: 'Minister of Trade',               domain: 'TRADE' },
+    environment:    { short: 'MoEv', name: 'Minister of Environment',         domain: 'ENVIRONMENT' },
+};
+
+function ministryDisplay(key) {
+    return _MINISTRY_LABELS[key] || {
+        short: (key || '?').slice(0, 3).toUpperCase(),
+        name: 'Minister',
+        domain: (key || '').toUpperCase(),
+    };
+}
+
+function getHeldCabinetMinistries(faction) {
+    if (!faction?.id) return [];
+    return (_heldMinistries || []).filter(m =>
+        m.party_id === faction.id && m.ministry_key !== 'prime_minister'
+    );
+}
+
+function isPlayerPM(faction) {
+    return !!_administration && _administration.pm_party_id === faction?.id;
+}
+
+function isPlayerPresident(faction) {
+    return _state?.nation?.hos_election_method === 'elected'
+        && _administration?.president_party_id === faction?.id;
+}
+
+function nationHasPresidentRole(nation) {
+    if (!nation) return false;
+    if (nation.hos_election_method === 'elected') return true;
+    const govType = String(nation.government_type || '').toLowerCase();
+    return govType === 'presidential' || govType === 'semi_presidential';
+}
+
+function renderCabinetMinistriesPanel(faction) {
+    const held = getHeldCabinetMinistries(faction);
+    return `
+        <div class="pa-cabinet-summary">
+            <div class="pa-cabinet-summary__head">
+                <span class="pa-cabinet-summary__title">Cabinet Ministries</span>
+                <span class="pa-cabinet-summary__count">${held.length} held</span>
             </div>
-            <div class="pa-threats-row">
-                <span class="pa-threats-label">Media investigations</span>
-                <span class="pa-threats-value">0</span>
-            </div>
-            <div class="pa-threats-row">
-                <span class="pa-threats-label">Oppo research against us</span>
-                <span class="pa-threats-value">?</span>
-            </div>
+            ${held.length === 0
+                ? `<div class="pa-cabinet-summary__empty">No cabinet seats held.</div>`
+                : held.map(m => {
+                    const d = ministryDisplay(m.ministry_key);
+                    const actionCount = ministryActionCount(m.ministry_key);
+                    return `
+                        <div class="pa-cabinet-summary__row">
+                            <div class="pa-cabinet-summary__chip">${esc(d.short)}</div>
+                            <div class="pa-cabinet-summary__meta">
+                                <div class="pa-cabinet-summary__role">
+                                    <span>MINISTER</span>
+                                    ${actionCount > 0
+                                        ? `<span class="pa-cabinet-summary__actions">${actionCount} action${actionCount === 1 ? '' : 's'}</span>`
+                                        : ''}
+                                </div>
+                                <div class="pa-cabinet-summary__name">${esc(d.name.replace(/^Minister(\s+of\s+|\s+for\s+)?/i, '') || d.name)}</div>
+                                <div class="pa-cabinet-summary__domain">${esc(d.domain)}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')
+            }
         </div>
     `;
+}
+
+function ministryActionCount(ministryKey) {
+    return (_MINISTRY_ACTION_REGISTRY[ministryKey] || []).length;
+}
+
+// Action registry: per-ministry actions surfaced in the new panel.
+// PM and President have their own ids so the section header can match.
+// Everything else is empty for now — cabinet ministries get sections
+// with a "no actions yet" placeholder until per-ministry actions land.
+const _MINISTRY_ACTION_REGISTRY = {
+    prime_minister: [
+        {
+            id: 'call_early_elections',
+            name: 'Call Early Elections',
+            desc: 'Dissolve the legislature. Government enters caretaker status; election fires after a short formation window. Momentum effect tiered by Gov. Approval.',
+            tags: ['LEGISLATIVE', 'PM ONLY'],
+        },
+        {
+            id: 'resign_as_pm',
+            name: 'Resign as Prime Minister',
+            desc: 'Step down. Coalition enters caretaker status with a window to nominate a successor; otherwise a snap election fires. -3 Momentum, -0.05 Credibility, -3 Stability, 12-tick PM ban.',
+            tags: ['GOVERNMENT', 'PM ONLY'],
+        },
+    ],
+    president: [
+        // Placeholder: presidential actions will land here in a follow-up.
+    ],
+};
+
+function renderMinistryActionsPanel(faction) {
+    const sections = [];
+    const nation = _state?.nation;
+
+    if (isPlayerPM(faction)) {
+        sections.push(renderMinistrySection({
+            key: 'prime_minister',
+            label: 'PRIME MINISTER',
+            sublabel: nation?.head_of_government_title || 'Head of Government',
+            actions: _MINISTRY_ACTION_REGISTRY.prime_minister,
+            faction,
+        }));
+    }
+
+    if (isPlayerPresident(faction) && nationHasPresidentRole(nation)) {
+        sections.push(renderMinistrySection({
+            key: 'president',
+            label: 'PRESIDENT',
+            sublabel: nation?.head_of_state_title || 'Head of State',
+            actions: _MINISTRY_ACTION_REGISTRY.president,
+            faction,
+        }));
+    }
+
+    for (const m of getHeldCabinetMinistries(faction)) {
+        const d = ministryDisplay(m.ministry_key);
+        sections.push(renderMinistrySection({
+            key: m.ministry_key,
+            label: d.name.toUpperCase(),
+            sublabel: d.domain,
+            actions: _MINISTRY_ACTION_REGISTRY[m.ministry_key] || [],
+            faction,
+        }));
+    }
+
+    if (sections.length === 0) {
+        // Empty state per the spec — render nothing rather than a "no
+        // ministries" placeholder, so the side panel stays compact for
+        // opposition / unaligned factions.
+        return '';
+    }
+
+    return `
+        <div class="pa-ministry-actions">
+            <div class="pa-ministry-actions__head">
+                <span class="pa-ministry-actions__title">Ministry Actions</span>
+            </div>
+            ${sections.join('')}
+        </div>
+    `;
+}
+
+function renderMinistrySection({ key, label, sublabel, actions, faction }) {
+    const lines = (actions || []).map(a => {
+        const lockReason = ministryActionLockReason(a.id, faction);
+        const disabled = !!lockReason;
+        const tagsHtml = (a.tags || []).map(t =>
+            `<span class="pa-action-tag" style="color:${TAG_COLORS[t] || 'var(--text-dim)'};">${esc(t)}</span>`
+        ).join('');
+        return `
+            <div class="pa-ministry-action ${disabled ? 'disabled' : ''}"
+                 data-ministry-action="${esc(a.id)}"
+                 ${disabled ? `title="${esc(lockReason)}"` : ''}>
+                <div class="pa-ministry-action__head">
+                    <span class="pa-ministry-action__name">${esc(a.name)}</span>
+                    <span class="pa-ministry-action__tags">${tagsHtml}</span>
+                </div>
+                <div class="pa-ministry-action__desc">${esc(a.desc)}</div>
+                ${disabled ? `<div class="pa-ministry-action__lock">${esc(lockReason)}</div>` : ''}
+            </div>
+        `;
+    }).join('');
+
+    return `
+        <div class="pa-ministry-section" data-ministry-key="${esc(key)}">
+            <div class="pa-ministry-section__head">
+                <span class="pa-ministry-section__label">${esc(label)}</span>
+                <span class="pa-ministry-section__sub">${esc(sublabel)}</span>
+            </div>
+            ${actions && actions.length > 0
+                ? `<div class="pa-ministry-section__actions">${lines}</div>`
+                : `<div class="pa-ministry-section__empty">No actions yet.</div>`
+            }
+        </div>
+    `;
+}
+
+function ministryActionLockReason(actionId, faction) {
+    const nation = _state?.nation;
+    if (actionId === 'call_early_elections' || actionId === 'resign_as_pm') {
+        if (isAbsoluteMonarchy(nation)) {
+            return actionId === 'call_early_elections'
+                ? 'Elections are not held under absolute monarchy.'
+                : 'PM serves at the Monarch’s pleasure; only the Monarch can replace them.';
+        }
+        if (!hasParliamentaryPM(nation)) {
+            return 'Only parliamentary and semi-presidential systems have a PM seat.';
+        }
+        if (!isPlayerPM(faction)) return 'Prime Minister only.';
+        if (nation.__coalition_status === 'caretaker') return 'Government already in caretaker mode.';
+    }
+    return '';
 }
 
 function renderActionsPanel(leaderName, partyColor, faction) {
@@ -1305,63 +1506,6 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             } else if (!_administration || !_administration.pm_party_id) {
                 isDisabled = true;
                 action.lockReason = 'No active Prime Minister to file against.';
-            } else {
-                action.lockReason = '';
-            }
-        } else if (action.id === 'call_early_elections' || action.id === 'resign_as_pm') {
-            // Both are PM-only tools for a parliamentary PM. Presidential systems
-            // don't have a PM-dissolution mechanic (they run on fixed terms via
-            // impeachment), so hide the actions there too by keeping them locked.
-            const nation = _state.nation;
-            const isParliamentaryPM = hasParliamentaryPM(nation);
-            const isMonarchy = isAbsoluteMonarchy(nation);
-            const isPMParty = !!_administration && _administration.pm_party_id === faction.id;
-            if (isMonarchy) {
-                // Absolute monarchy: no parliamentary elections, no PM-led
-                // dissolution. Both call_early_elections and resign_as_pm
-                // would trigger the parliamentary caretaker + snap-election
-                // cascade in resignPM / callEarlyElectionsAction, which is
-                // incoherent in monarchy. The Monarch changes the government
-                // via the Appoint PM royal action.
-                isDisabled = true;
-                action.lockReason = action.id === 'call_early_elections'
-                    ? 'Elections are not held under absolute monarchy. The Monarch appoints the Prime Minister.'
-                    : 'Prime Ministers serve at the Monarch’s pleasure. The Monarch must replace the PM via the Appoint Prime Minister royal action.';
-            } else if (!isParliamentaryPM) {
-                isDisabled = true;
-                action.lockReason = 'Only parliamentary and semi-presidential systems have a PM seat.';
-            } else if (!isPMParty) {
-                isDisabled = true;
-                action.lockReason = 'Prime Minister\u2019s party only.';
-            } else if (_state.nation && _state.nation.__coalition_status === 'caretaker') {
-                // Optional guard: if the coalition already flipped to caretaker
-                // (e.g. another action just fired) the buttons should be inert.
-                isDisabled = true;
-                action.lockReason = 'Government is already in caretaker mode.';
-            } else {
-                action.lockReason = '';
-            }
-        } else if (action.id === 'call_snap_election') {
-            // Government-type gate first (no parliament → no snap), then a
-            // PM-only gate when a PM is seated. With a sitting PM the
-            // action belongs to the head of government; the any-party
-            // fallback only applies when the seat is vacant so it still
-            // works as a coalition-formation deadlock breaker.
-            const nation = _state.nation;
-            const isMonarchy = isAbsoluteMonarchy(nation);
-            const govType = String(nation?.government_type || '').toLowerCase();
-            const isPresidential = govType === 'presidential';
-            const pmPartyId = _administration?.pm_party_id || null;
-            const isPMParty = !!pmPartyId && pmPartyId === faction.id;
-            if (isMonarchy) {
-                isDisabled = true;
-                action.lockReason = 'Snap elections are not held under absolute monarchy. The Monarch appoints the Prime Minister.';
-            } else if (isPresidential) {
-                isDisabled = true;
-                action.lockReason = 'Presidential systems run on fixed terms — there is no parliamentary election to call.';
-            } else if (pmPartyId && !isPMParty) {
-                isDisabled = true;
-                action.lockReason = 'Only the Prime Minister’s party can call snap elections while a PM is seated.';
             } else {
                 action.lockReason = '';
             }
@@ -3621,50 +3765,6 @@ async function openRevokeSeatsModal(root) {
 // gov_approval. All we add here is a PM-party + confirm + lock guard.
 
 let _callEarlyElectionsSubmitting = false;
-
-// ════════════════════════ CALL SNAP ELECTION (ANY PARTY LEADER) ════════════════════════
-// Lightweight snap-election action available to every party leader, not just
-// the PM. 3-tick per-party cooldown is enforced server-side. Replaces the
-// auto-snap that previously fired from processGovernmentVacancy when
-// coalitions failed to form — any party can now break a deadlock manually.
-
-let _callSnapElectionSubmitting = false;
-
-async function triggerCallSnapElection() {
-    if (_callSnapElectionSubmitting) return;
-    if (!_state?.faction?.id || !_state?.nation?.id) return;
-
-    if (!confirm(
-        '⚡ CALL SNAP ELECTION?\n\n' +
-        'Schedules a parliamentary election for next tick. Cancels any other ' +
-        'scheduled parliamentary election in this nation.\n\n' +
-        '3-tick cooldown per party after the call.\n\n' +
-        'Proceed?'
-    )) return;
-
-    _callSnapElectionSubmitting = true;
-    try {
-        const { data, error } = await _supabase.rpc('call_snap_election', {
-            p_nation_id:         _state.nation.id,
-            p_caller_faction_id: _state.faction.id,
-        });
-        if (error) {
-            alert('Failed to call snap election: ' + error.message);
-            return;
-        }
-        if (data && data.success === false) {
-            alert(data.error || 'Snap election call rejected.');
-            return;
-        }
-        alert('⚡ Snap election scheduled for next tick.');
-        window.location.reload();
-    } catch (err) {
-        console.error('[PartyActions] Call snap election failed:', err);
-        alert('Failed to call snap election: ' + (err?.message || 'unknown error'));
-    } finally {
-        _callSnapElectionSubmitting = false;
-    }
-}
 
 async function triggerCallEarlyElections() {
     if (_callEarlyElectionsSubmitting) return;

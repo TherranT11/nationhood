@@ -111,20 +111,117 @@
 }
 .pa-leader-card.active .pa-leader-name { color: var(--text-bright); }
 
-/* Threats box */
-.pa-threats {
-    padding: 8px 10px; margin-top: 4px;
+/* ── Cabinet ministries summary (held seats) ── */
+.pa-cabinet-summary {
+    padding: 8px 10px; margin-top: 6px;
     background: var(--bg-panel); border: 1px solid var(--border-main);
 }
-.pa-threats-title {
-    font-family: var(--font-mono); font-size: 8px; letter-spacing: 0.1em;
-    color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px;
+.pa-cabinet-summary__head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 6px;
 }
-.pa-threats-row {
-    display: flex; justify-content: space-between; align-items: center; margin-top: 2px;
+.pa-cabinet-summary__title {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.12em;
+    color: var(--text-dim); text-transform: uppercase;
 }
-.pa-threats-label { font-family: var(--font-mono); font-size: 8px; color: var(--text-secondary); }
-.pa-threats-value { font-family: var(--font-mono); font-size: 10px; font-weight: 700; color: var(--text-dim); }
+.pa-cabinet-summary__count {
+    font-family: var(--font-mono); font-size: 9px; color: var(--amber);
+    letter-spacing: 0.08em;
+}
+.pa-cabinet-summary__empty {
+    font-family: var(--font-mono); font-size: 9px;
+    color: var(--text-dim); font-style: italic; padding: 6px 0;
+}
+.pa-cabinet-summary__row {
+    display: flex; gap: 8px; padding: 6px 4px;
+    border-top: 1px solid var(--border-mid);
+}
+.pa-cabinet-summary__row:first-of-type { border-top: 0; }
+.pa-cabinet-summary__chip {
+    flex: 0 0 auto; min-width: 28px; height: 28px;
+    border: 1px solid var(--amber); border-radius: 3px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    letter-spacing: 0.04em; color: var(--amber);
+    padding: 0 4px;
+}
+.pa-cabinet-summary__meta { flex: 1 1 auto; min-width: 0; }
+.pa-cabinet-summary__role {
+    display: flex; align-items: baseline; gap: 6px;
+    font-family: var(--font-mono); font-size: 8px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--amber);
+}
+.pa-cabinet-summary__actions {
+    color: var(--text-dim); letter-spacing: 0.06em;
+}
+.pa-cabinet-summary__name {
+    font-size: 11px; font-weight: 700; color: var(--text-bright);
+    line-height: 1.25; margin-top: 1px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pa-cabinet-summary__domain {
+    font-family: var(--font-mono); font-size: 7px; letter-spacing: 0.14em;
+    color: var(--text-dim); text-transform: uppercase; margin-top: 1px;
+}
+
+/* ── Ministry actions (per held seat) ── */
+.pa-ministry-actions {
+    padding: 8px 10px; margin-top: 6px;
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+}
+.pa-ministry-actions__head { margin-bottom: 6px; }
+.pa-ministry-actions__title {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.12em;
+    color: var(--text-dim); text-transform: uppercase;
+}
+.pa-ministry-section {
+    border-top: 1px solid var(--border-mid);
+    padding: 6px 0;
+}
+.pa-ministry-section:first-of-type { border-top: 0; padding-top: 2px; }
+.pa-ministry-section__head {
+    display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px;
+}
+.pa-ministry-section__label {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.14em;
+    color: var(--amber); font-weight: 700; text-transform: uppercase;
+}
+.pa-ministry-section__sub {
+    font-family: var(--font-mono); font-size: 7px; letter-spacing: 0.1em;
+    color: var(--text-dim); text-transform: uppercase;
+}
+.pa-ministry-section__empty {
+    font-family: var(--font-mono); font-size: 9px;
+    color: var(--text-dim); font-style: italic; padding: 4px 0;
+}
+.pa-ministry-action {
+    border: 1px solid var(--border-mid); border-radius: 3px;
+    padding: 6px 8px; margin-top: 4px;
+    cursor: pointer; transition: border-color 0.1s, background 0.1s;
+}
+.pa-ministry-action:hover:not(.disabled) {
+    border-color: var(--amber);
+    background: rgba(200,166,78,0.06);
+}
+.pa-ministry-action.disabled {
+    opacity: 0.45; cursor: not-allowed;
+}
+.pa-ministry-action__head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 8px;
+}
+.pa-ministry-action__name {
+    font-size: 11px; font-weight: 700; color: var(--text-bright);
+}
+.pa-ministry-action__tags { display: flex; gap: 4px; }
+.pa-ministry-action__desc {
+    font-size: 10px; color: var(--text-secondary); line-height: 1.35;
+    margin-top: 3px;
+}
+.pa-ministry-action__lock {
+    font-family: var(--font-mono); font-size: 8px; letter-spacing: 0.08em;
+    color: #c84; text-transform: uppercase; margin-top: 4px;
+}
 
 /* ── Actions panel (right) ── */
 .pa-actions-panel { flex: 1; display: flex; flex-direction: column; gap: 0; min-width: 0; }
