@@ -238,7 +238,7 @@ const MONARCH_ACTIONS = [
     {
         id: 'grant_seats',
         name: 'Grant Seats',
-        desc: 'Grant parliamentary seats to a noble house. Sharing power increases legitimacy (+0.5 per seat). Hoarding >70% of seats causes tyranny decay.',
+        desc: 'Grant parliamentary seats to a noble house. Sharing power increases crown authority (+0.5 per seat). Hoarding >70% of seats causes tyranny decay.',
         cost: 'FREE',
         costColor: '#5cc55c',
         moneyCost: 0,
@@ -248,7 +248,7 @@ const MONARCH_ACTIONS = [
     {
         id: 'revoke_seats',
         name: 'Revoke Seats',
-        desc: 'Revoke seats from a noble house. Costs $100k and -1 Legitimacy per seat revoked. Use sparingly — the people do not forget.',
+        desc: 'Revoke seats from a noble house. Costs $100k and -1 Crown Authority per seat revoked. Use sparingly — the nobles do not forget.',
         cost: '$100k/seat',
         costColor: '#d44a4a',
         moneyCost: 100000,
@@ -951,8 +951,11 @@ function renderPage(root) {
     const fundsFmt = '$' + (partyFunds >= 1000000
         ? (partyFunds / 1000000).toFixed(1) + 'M'
         : partyFunds >= 1000 ? Math.round(partyFunds / 1000) + 'k' : partyFunds);
+    // Monarchy headline stat is now Crown Authority (consolidated from
+    // public_approval as part of the Phase 8 monarchy-stat unification).
+    // Non-monarchy keeps the existing Nat. Approval (gov_approval) read.
     const approvalValue = _isMonarchy
-        ? Math.round(Number(_state.nation?.public_approval ?? _state.nation?.gov_approval ?? 50))
+        ? Math.round(Number(_state.nation?.crown_authority ?? 50))
         : Math.round(Number(_state.nation?.gov_approval ?? 0));
 
     renderRoleActionsShell(root, {
@@ -962,7 +965,7 @@ function renderPage(root) {
         stats: [
             { label: 'Party Funds', value: fundsFmt, color: 'var(--accent)' },
             { label: 'Momentum', value: Number(momentum).toFixed(1), color: momentum > 0 ? 'var(--text-bright)' : 'var(--red)' },
-            { label: _isMonarchy ? 'Legitimacy' : 'Nat. Approval', value: String(approvalValue), color: 'var(--green)' },
+            { label: _isMonarchy ? 'Crown Authority' : 'Nat. Approval', value: String(approvalValue), color: 'var(--green)' },
         ],
         statusBarItems: [
             { type: 'count', label: 'Seats', big: String(seats), bigColor: partyColor, dim1: `/ ${totalSeats}`, dim2: `(${seatPct}%)` },
@@ -3178,22 +3181,24 @@ async function openAppointPMModal(root) {
                     console.warn('[AppointPM] government_formations write failed (non-blocking — synthetic fallback still works):', gfErr?.message || gfErr);
                 }
 
-                // Public-approval effects (monarchy only).
-                // Dismissing a non-monarch PM costs -4. Appointing a non-monarch
-                // PM grants +3. Phase 7H/8.5.1 collapsed legitimacy → public_approval.
-                let legitimacyDelta = 0;
+                // Crown-authority effects (monarchy only). Dismissing a
+                // non-monarch PM costs -4. Appointing a non-monarch PM
+                // grants +3. (Was previously routed to public_approval as
+                // a Phase 7H legacy; consolidated onto crown_authority
+                // alongside grant/revoke/veto.)
+                let crownAuthorityDelta = 0;
                 const monarchPartyId = nation.monarch_faction_id;
                 const prevPmPartyId = currentHog?.faction_id || null;
                 const dismissingNonMonarchPm = prevPmPartyId && prevPmPartyId !== monarchPartyId && prevPmPartyId !== selectedPartyId;
                 const appointingNonMonarchPm = selectedPartyId !== monarchPartyId && selectedPartyId !== prevPmPartyId;
-                if (dismissingNonMonarchPm) legitimacyDelta -= 4;
-                if (appointingNonMonarchPm) legitimacyDelta += 3;
-                if (legitimacyDelta !== 0) {
-                    const currentLeg = Number(nation.public_approval ?? 50);
-                    const newLeg = Math.max(0, Math.min(100, currentLeg + legitimacyDelta));
+                if (dismissingNonMonarchPm) crownAuthorityDelta -= 4;
+                if (appointingNonMonarchPm) crownAuthorityDelta += 3;
+                if (crownAuthorityDelta !== 0) {
+                    const currentCA = Number(nation.crown_authority ?? 50);
+                    const newCA = Math.max(0, Math.min(100, currentCA + crownAuthorityDelta));
                     try {
-                        await _supabase.from('nations').update({ public_approval: newLeg }).eq('id', nation.id);
-                        nation.public_approval = newLeg;
+                        await _supabase.from('nations').update({ crown_authority: newCA }).eq('id', nation.id);
+                        nation.crown_authority = newCA;
                     } catch (_) { /* non-blocking */ }
                 }
 
@@ -3209,12 +3214,12 @@ async function openAppointPMModal(root) {
                 } catch (_) { /* non-blocking */ }
 
                 close();
-                const legSuffix = legitimacyDelta > 0
-                    ? `\n\nLegitimacy +${legitimacyDelta}.`
-                    : legitimacyDelta < 0
-                        ? `\n\nLegitimacy ${legitimacyDelta}.`
+                const caSuffix = crownAuthorityDelta > 0
+                    ? `\n\nCrown Authority +${crownAuthorityDelta}.`
+                    : crownAuthorityDelta < 0
+                        ? `\n\nCrown Authority ${crownAuthorityDelta}.`
                         : '';
-                alert(`${party.leader_first_name} ${party.leader_last_name} of ${party.faction_name} has been appointed Prime Minister.${legSuffix}`);
+                alert(`${party.leader_first_name} ${party.leader_last_name} of ${party.faction_name} has been appointed Prime Minister.${caSuffix}`);
                 renderPage(root);
             } catch (err) {
                 alert('Failed to appoint PM: ' + (err.message || 'Error'));
@@ -3262,9 +3267,9 @@ async function openGrantSeatsModal(root) {
                     <button class="pa-modal-close" id="royal-close">&times;</button>
                 </div>
                 <div style="padding:8px 20px;border-bottom:1px solid var(--border-main);font-size:12px;color:var(--text-secondary);line-height:1.5;">
-                    Grant parliamentary seats to a noble house. Each seat granted earns <span style="color:#5cc55c;font-weight:700;">+0.5 Legitimacy</span>.
+                    Grant parliamentary seats to a noble house. Each seat granted earns <span style="color:#5cc55c;font-weight:700;">+0.5 Crown Authority</span>.
                     You currently hold <strong>${monarchSeats}</strong> of ${totalSeats} seats.
-                    ${monarchSeats / totalSeats > 0.7 ? '<div style="color:#d44a4a;font-weight:700;margin-top:4px;">⚠ You hold >70% of seats — tyranny legitimacy decay active!</div>' : ''}
+                    ${monarchSeats / totalSeats > 0.7 ? '<div style="color:#d44a4a;font-weight:700;margin-top:4px;">⚠ You hold >70% of seats — tyranny crown authority decay active!</div>' : ''}
                 </div>
                 <div class="pa-modal-body">
                     <div class="pa-modal-step-label">Select Noble House</div>
@@ -3290,7 +3295,7 @@ async function openGrantSeatsModal(root) {
                                 <span style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--accent);width:40px;text-align:center;" id="grant-count">${grantAmount}</span>
                             </div>
                             <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:4px;">
-                                Legitimacy gain: <span style="color:#5cc55c;font-weight:700;">+${(grantAmount * 0.5).toFixed(1)}</span>
+                                Crown Authority gain: <span style="color:#5cc55c;font-weight:700;">+${(grantAmount * 0.5).toFixed(1)}</span>
                                 &middot; Your seats after: ${monarchSeats - grantAmount} &middot; Their seats after: ${(selected.seats || 0) + grantAmount}
                             </div>
                         </div>
@@ -3410,13 +3415,13 @@ async function openGrantSeatsModal(root) {
                     if (error) { alert('Failed to grant seats: ' + error.message); return; }
                 }
 
-                const legGain = actualGrant * 0.5;
-                const newLeg = Math.min(100, (Number(nation.public_approval) || 50) + legGain);
-                const { error: e3 } = await _supabase.from('nations').update({ public_approval: newLeg }).eq('id', nation.id);
-                if (e3) { alert('Failed to update public approval.'); return; }
+                const caGain = actualGrant * 0.5;
+                const newCA = Math.min(100, (Number(nation.crown_authority) || 50) + caGain);
+                const { error: e3 } = await _supabase.from('nations').update({ crown_authority: newCA }).eq('id', nation.id);
+                if (e3) { alert('Failed to update crown authority.'); return; }
 
                 faction.seats = seatMap.get(faction.id) || 0;
-                nation.public_approval = newLeg;
+                nation.crown_authority = newCA;
 
                 // Log event (non-blocking)
                 try {
@@ -3425,7 +3430,7 @@ async function openGrantSeatsModal(root) {
                         nation_id: nation.id,
                         event_name: `${nation.monarch_title || 'King'} grants ${actualGrant} seats to ${target?.faction_name || 'unknown'}`,
                         category: 'government',
-                        description_chosen: `The ${nation.monarch_title || 'King'} has granted ${actualGrant} parliamentary seat${actualGrant !== 1 ? 's' : ''} to ${target?.faction_name}. Legitimacy +${legGain.toFixed(1)}.`,
+                        description_chosen: `The ${nation.monarch_title || 'King'} has granted ${actualGrant} parliamentary seat${actualGrant !== 1 ? 's' : ''} to ${target?.faction_name}. Crown Authority +${caGain.toFixed(1)}.`,
                         fired_at_tick: _state.shard?.current_tick || 0,
                     });
                 } catch (_) { /* non-blocking */ }
@@ -3480,7 +3485,7 @@ async function openRevokeSeatsModal(root) {
                 </div>
                 <div style="padding:8px 20px;border-bottom:1px solid var(--border-main);font-size:12px;color:var(--text-secondary);line-height:1.5;">
                     Revoke seats from a noble house. Costs <span style="color:#d44a4a;font-weight:700;">$100k per seat</span> and
-                    <span style="color:#d44a4a;font-weight:700;">-1 Legitimacy per seat</span>. Revoked seats return to the crown.
+                    <span style="color:#d44a4a;font-weight:700;">-1 Crown Authority per seat</span>. Revoked seats return to the crown.
                 </div>
                 <div class="pa-modal-body">
                     <div class="pa-modal-step-label">Select Noble House</div>
@@ -3507,7 +3512,7 @@ async function openRevokeSeatsModal(root) {
                             </div>
                             <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:4px;">
                                 Cost: <span style="color:#d44a4a;font-weight:700;">$${Math.round(totalCost / 1000)}k</span>
-                                &middot; Legitimacy: <span style="color:#d44a4a;font-weight:700;">-${revokeAmount}</span>
+                                &middot; Crown Authority: <span style="color:#d44a4a;font-weight:700;">-${revokeAmount}</span>
                                 ${currentFunds < totalCost ? '<span style="color:#d44a4a;margin-left:8px;">⚠ Not enough funds</span>' : ''}
                             </div>
                         </div>
@@ -3566,8 +3571,8 @@ async function openRevokeSeatsModal(root) {
                 const newFunds = curFunds - cost;
                 const newMonarchSeats = (freshMonarch.seats || 0) + take;
                 const newTargetSeats = (freshTarget.seats || 0) - take;
-                const legCost = take;
-                const newLeg = Math.max(0, (Number(nation.public_approval) || 50) - legCost);
+                const caCost = take;
+                const newCA = Math.max(0, (Number(nation.crown_authority) || 50) - caCost);
 
                 // Conservation invariant: monarch gains exactly what target loses.
                 const sumAfter = sumBefore - (freshMonarch.seats || 0) - (freshTarget.seats || 0)
@@ -3582,12 +3587,12 @@ async function openRevokeSeatsModal(root) {
                 if (e1) { alert('Failed to revoke seats: ' + e1.message); return; }
                 const { error: e2 } = await _supabase.from('factions').update({ seats: newTargetSeats }).eq('id', selectedFactionId);
                 if (e2) { alert('Failed to revoke seats: ' + e2.message); return; }
-                const { error: e3 } = await _supabase.from('nations').update({ public_approval: newLeg }).eq('id', nation.id);
-                if (e3) { alert('Failed to update public approval.'); return; }
+                const { error: e3 } = await _supabase.from('nations').update({ crown_authority: newCA }).eq('id', nation.id);
+                if (e3) { alert('Failed to update crown authority.'); return; }
 
                 faction.seats = newMonarchSeats;
                 faction.party_funds = newFunds;
-                nation.public_approval = newLeg;
+                nation.crown_authority = newCA;
                 sessionStorage.removeItem('nationhood_state');
 
                 try {
@@ -3595,7 +3600,7 @@ async function openRevokeSeatsModal(root) {
                         nation_id: nation.id,
                         event_name: `${nation.monarch_title || 'King'} revokes ${take} seats from ${freshTarget.faction_name || 'unknown'}`,
                         category: 'political',
-                        description_chosen: `The ${nation.monarch_title || 'King'} has revoked ${take} seat${take !== 1 ? 's' : ''} from ${freshTarget.faction_name}. Legitimacy -${legCost}.`,
+                        description_chosen: `The ${nation.monarch_title || 'King'} has revoked ${take} seat${take !== 1 ? 's' : ''} from ${freshTarget.faction_name}. Crown Authority -${caCost}.`,
                         fired_at_tick: _state.shard?.current_tick || 0,
                     });
                 } catch (_) { /* non-blocking */ }
