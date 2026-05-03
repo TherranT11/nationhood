@@ -544,7 +544,7 @@ function renderInviteeCard(c) {
             <div class="fnd-invitee__body">
                 <div class="fnd-invitee__name">${escHtml(c.faction_name || 'Unnamed Corp')}</div>
                 <div class="fnd-invitee__meta">
-                    Valuation <b style="color:var(--text-primary)">${fmtMoney(valuation)}</b>
+                    ${c.__hq_nation ? `<b style="color:var(--text-primary)">${escHtml(c.__hq_nation)}</b> &middot; ` : ''}Valuation <b style="color:var(--text-primary)">${fmtMoney(valuation)}</b>
                     &middot; Reputation <b style="color:var(--text-primary)">${fmtStat(c.corp_reputation)}</b>
                 </div>
                 <div class="fnd-invitee__stats">${heroLine || '&nbsp;'}</div>
@@ -609,7 +609,7 @@ async function loadCandidates() {
 
     const { data: corps, error } = await _supabase
         .from('factions')
-        .select('id, faction_name, abbreviation, corp_ticker, corp_sector, corp_cash_reserves, corp_reputation, corp_credit_rating, corp_work_crews, corp_regulatory_standing, corp_supply_chain, corp_operational_efficiency, nation_id, nations(name)')
+        .select('id, faction_name, abbreviation, corp_ticker, corp_sector, corp_cash_reserves, corp_reputation, corp_credit_rating, corp_work_crews, corp_regulatory_standing, corp_supply_chain, corp_operational_efficiency, nation_id')
         .eq('faction_type', 'corporation')
         .eq('corp_sector', sector)
         .is('abandoned_at', null)
@@ -623,6 +623,18 @@ async function loadCandidates() {
     const corpRows = corps || [];
     const ids = corpRows.map(c => c.id);
     if (ids.length === 0) { _candidates = []; return; }
+
+    // Fetch HQ nation names in a separate query — the factions →
+    // nations embed isn't part of the PostgREST schema cache and was
+    // silently failing the whole select.
+    const nationIds = Array.from(new Set(corpRows.map(c => c.nation_id).filter(Boolean)));
+    const nationName = new Map();
+    if (nationIds.length > 0) {
+        const { data: nationRows } = await _supabase
+            .from('nations').select('id, name').in('id', nationIds);
+        for (const n of (nationRows || [])) nationName.set(n.id, n.name);
+    }
+    for (const c of corpRows) c.__hq_nation = nationName.get(c.nation_id) || null;
 
     // Batch the asset / liability lookups so each card can render a
     // real "(cash + assets − debt)" valuation. Same formula as the corp
