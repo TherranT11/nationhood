@@ -4,37 +4,90 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Operations | Nationhood</title>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=JetBrains+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/corp-topbar.css">
 <link rel="stylesheet" href="css/corp-light-theme.css">
 <style>
 /* ══════════════════════════════════════════════════════════════
    AIRLINE OPERATIONS — Phase 3 read-only surface.
    Class prefix: .ao-* (airline-operations).
+   Uses the site-standard corp-redesign palette + IBM Plex / JetBrains
+   Mono so the page reads as one product with corp-dashboard and the
+   other corp-operations-* pages. Bespoke --accent-* aliases below
+   keep the page-local CSS rules unchanged — they just point at the
+   shared --gold / --teal / --green / --orange swatch.
    ══════════════════════════════════════════════════════════════ */
 body.airline-operations {
-  --bg-0: #0d0e10;
-  --bg-card: #161820;
-  --bg-panel: #14161e;
-  --text-bright: #e8e6e3;
-  --text-primary: #c4c2bd;
-  --text-secondary: #9a978f;
-  --text-muted: #6b685e;
-  --text-dim: #4a473d;
-  --line-soft: rgba(255,255,255,0.05);
-  --line-bright: #2c2d35;
-  --accent-gold: #c9a449;
-  --accent-teal: #5aafa5;
-  --accent-green: #6aa86a;
-  --accent-rust: #c85a3a;
-  --serif: 'Fraunces', serif;
+  /* Site-standard tokens (mirrors body.corp-redesign on corp-dashboard).
+     The shared corp-topbar.css reads these — without them the topbar
+     falls back to root defaults and renders differently from the
+     dashboard. Page-local rules below use the bespoke --accent-* /
+     --line-* aliases. */
+  --bg-0: #0e0e0c;
+  --bg-1: #1a1a1a;
+  --bg-2: #1a1a17;
+  --bg-3: #252525;
+  --bg-4: #24241f;
+  --bg-5: #2c2c26;
+  --bg-hover: #282822;
+  --bg-card: #1a1a17;
+  --bg-panel: #252525;
+  --panel-main: #1f1f1a;
+  --panel-border: rgba(255,255,255,0.08);
+  --text-bright: #f0efe6;
+  --text-primary: #c4c2b8;
+  --text-secondary: #888;
+  --text-muted: #666;
+  --text-dim: #4a4940;
+  --text-ghost: #333229;
+  --border-hair: rgba(255,255,255,0.04);
+  --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08);
+  --border-2: rgba(255,255,255,0.12);
+  --green: #5cb85c;
+  --red: #d9534f;
+  --amber: #c8a832;
+  --gold: #c8a832;
+  --orange: #e8724a;
+  --blue: #5bc0de;
+  --teal: #5aafa5;
+
+  /* Page-local aliases preserved so .ao-* rules don't have to change. */
+  --line-soft: var(--border-hair);
+  --line-bright: var(--border-2);
+  --accent-gold: var(--gold);
+  --accent-teal: var(--teal);
+  --accent-green: var(--green);
+  --accent-rust: var(--orange);
+
+  --serif: 'IBM Plex Serif', Georgia, serif;
   --mono: 'JetBrains Mono', monospace;
-  --sans: 'IBM Plex Sans', sans-serif;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+
   background: var(--bg-0);
   color: var(--text-primary);
   font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.45;
   margin: 0;
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+body.airline-operations * { box-sizing: border-box; }
+
+/* Light-mode override so the corp-topbar theme toggle works here too,
+   matching the pattern in corp-operations.html. */
+body.airline-operations.light-mode {
+  --bg-0:        #faf9f5;
+  --bg-card:     #ffffff;
+  --bg-panel:    #faf9f5;
+  --text-bright: #1a1a17;
+  --text-primary:#2d2d28;
+  --text-muted:  #6a6660;
+  --line-soft:   #e8e7e0;
+  --line-bright: #e0dfd6;
+  --border-hair: #e8e7e0;
+  --border-2:    #e0dfd6;
 }
 
 .ao-page {
@@ -142,10 +195,10 @@ body.airline-operations {
   letter-spacing: 0.06em;
 }
 
-/* ── Two-up panel row (My Hubs + Fleet Inventory) ───── */
+/* ── Three-up panel row (Available Hubs + My Hubs + Fleet Inventory) ───── */
 .ao-panels-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 16px;
   margin-bottom: 32px;
 }
@@ -240,8 +293,270 @@ body.airline-operations {
   letter-spacing: 0.04em;
 }
 
-@media (max-width: 880px) {
+@media (max-width: 1100px) {
+  .ao-panels-row { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 720px) {
   .ao-panels-row { grid-template-columns: 1fr; }
+}
+
+/* ── Buy-Terminal button + confirm modal ───────────────────────── */
+.ao-buy-btn {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border: 1px solid var(--accent-gold);
+  background: rgba(200,168,50,0.08);
+  color: var(--accent-gold);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.ao-buy-btn:hover  { background: rgba(200,168,50,0.18); }
+.ao-buy-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+  background: transparent;
+}
+.ao-hub-cost {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent-gold);
+  font-weight: 700;
+}
+.ao-hub-meta {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.ao-modal-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.65);
+  z-index: 1000;
+  align-items: center; justify-content: center;
+}
+.ao-modal-overlay.active { display: flex; }
+.ao-modal {
+  background: var(--bg-card);
+  border: 1px solid var(--line-bright);
+  width: 420px;
+  max-width: 90vw;
+  padding: 24px;
+}
+.ao-modal h3 {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0 0 12px;
+  color: var(--text-bright);
+}
+.ao-modal-body {
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+.ao-modal-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.ao-modal-row span:first-child { color: var(--text-muted); }
+.ao-modal-row span:last-child  { color: var(--text-bright); font-weight: 700; }
+.ao-modal-actions {
+  display: flex; gap: 8px; justify-content: flex-end;
+}
+.ao-modal-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  border: 1px solid var(--border-2);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.ao-modal-btn--primary {
+  border-color: var(--accent-gold);
+  background: rgba(200,168,50,0.10);
+  color: var(--accent-gold);
+}
+.ao-modal-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ao-modal-error {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent-rust);
+  margin-top: 10px;
+  min-height: 14px;
+}
+
+/* ── Set Up Route modal — wide variant ──────────────────────── */
+.ao-modal--wide {
+  width: 640px;
+  max-width: 92vw;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+.ao-route-pair-line {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent-gold);
+  letter-spacing: 0.06em;
+  margin: -4px 0 14px;
+}
+.ao-route-section {
+  border-top: 1px solid var(--line-bright);
+  padding: 12px 0 10px;
+}
+.ao-route-section:first-of-type { border-top: 0; padding-top: 0; }
+.ao-route-section-h {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-gold);
+  margin-bottom: 8px;
+}
+.ao-route-section-foot {
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.ao-route-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+.ao-route-grid-4 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 12px;
+}
+.ao-route-grid-3 > div, .ao-route-grid-4 > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ao-route-grid-3 label, .ao-route-grid-4 label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.ao-route-grid-3 span, .ao-route-grid-4 span {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-bright);
+  font-variant-numeric: tabular-nums;
+}
+.ao-route-meta {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-muted);
+}
+.ao-route-aircraft-row {
+  display: grid;
+  grid-template-columns: 1fr 80px auto;
+  gap: 12px;
+  align-items: center;
+  padding: 4px 0;
+}
+.ao-route-aircraft-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+.ao-route-aircraft-row input[type=number] {
+  width: 80px;
+  padding: 4px 6px;
+  background: var(--bg-panel);
+  border: 1px solid var(--line-bright);
+  color: var(--text-bright);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: right;
+}
+.ao-route-aircraft-row input[type=number]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ao-route-avail {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+.ao-route-price-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 80px;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.ao-route-price-row label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.ao-route-price-val {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-gold);
+  text-align: right;
+}
+.ao-route-tier-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ao-route-tier-row label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+/* Available Routes / Active Routes list rows */
+.ao-route-list-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 18px;
+  border-bottom: 1px dashed var(--line-soft);
+}
+.ao-route-list-row:last-child { border-bottom: 0; }
+.ao-route-list-pair {
+  font-family: var(--serif);
+  font-size: 14px;
+  color: var(--text-bright);
+}
+.ao-route-list-meta {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  margin-top: 2px;
 }
 </style>
 </head>
@@ -285,8 +600,17 @@ body.airline-operations {
     </div>
   </section>
 
-  <!-- My Hubs + Fleet Inventory panels -->
+  <!-- Available Hubs + My Hubs + Fleet Inventory panels -->
   <div class="ao-panels-row">
+    <div class="ao-panel">
+      <div class="ao-panel-header">
+        <h3>Available Hubs</h3>
+        <span class="desc">Open terminals to buy</span>
+      </div>
+      <div class="ao-panel-body" id="ao-available-hubs">
+        <div class="ao-panel-empty">Loading…</div>
+      </div>
+    </div>
     <div class="ao-panel">
       <div class="ao-panel-header">
         <h3>My Hubs</h3>
@@ -304,6 +628,19 @@ body.airline-operations {
       <div class="ao-panel-body" id="ao-fleet-inventory">
         <div class="ao-panel-empty">Loading…</div>
       </div>
+    </div>
+  </div>
+
+  <!-- Buy Terminal confirm modal -->
+  <div class="ao-modal-overlay" id="ao-buy-modal">
+    <div class="ao-modal">
+      <h3>Buy Terminal Access</h3>
+      <div class="ao-modal-body" id="ao-buy-modal-body"></div>
+      <div class="ao-modal-actions">
+        <button type="button" class="ao-modal-btn" id="ao-buy-cancel">Cancel</button>
+        <button type="button" class="ao-modal-btn ao-modal-btn--primary" id="ao-buy-confirm">Confirm Purchase</button>
+      </div>
+      <div class="ao-modal-error" id="ao-buy-modal-error"></div>
     </div>
   </div>
 
@@ -325,9 +662,8 @@ body.airline-operations {
       <h2><span class="num">III.</span>Available Routes</h2>
       <span class="desc">Unflown city pairs you could open</span>
     </div>
-    <div class="ao-empty" id="ao-available-routes">
-      <strong>No available routes yet</strong>
-      Route planning lands in a later phase.
+    <div class="ao-panel-body" id="ao-available-routes">
+      <div class="ao-panel-empty">Loading…</div>
     </div>
   </section>
 
@@ -337,11 +673,83 @@ body.airline-operations {
       <h2><span class="num">IV.</span>Active Routes</h2>
       <span class="desc">Currently flying scheduled service</span>
     </div>
-    <div class="ao-empty" id="ao-routes">
-      <strong>No active routes</strong>
-      Route planning lands in a later phase.
+    <div class="ao-panel-body" id="ao-routes">
+      <div class="ao-panel-empty">Loading…</div>
     </div>
   </section>
+
+  <!-- Set Up Route modal -->
+  <div class="ao-modal-overlay" id="ao-route-modal">
+    <div class="ao-modal ao-modal--wide">
+      <h3 id="ao-route-modal-title">Set Up Route</h3>
+      <div class="ao-route-pair-line" id="ao-route-modal-pair"></div>
+
+      <div class="ao-route-section">
+        <div class="ao-route-section-h">I. Market Conditions</div>
+        <div class="ao-route-grid-3">
+          <div><label>Lane demand</label><span id="ao-rs-demand">—</span></div>
+          <div><label>Competitors filled</label><span id="ao-rs-comp">—</span></div>
+          <div><label>Unmet demand</label><span id="ao-rs-unmet">—</span></div>
+        </div>
+      </div>
+
+      <div class="ao-route-section">
+        <div class="ao-route-section-h">II. Assign Aircraft</div>
+        <div class="ao-route-aircraft-row">
+          <div class="ao-route-aircraft-label">Regional <span class="ao-route-meta">10 seats</span></div>
+          <input type="number" min="0" step="1" id="ao-ac-regional" value="0">
+          <span class="ao-route-avail" id="ao-ac-regional-avail">0 idle</span>
+        </div>
+        <div class="ao-route-aircraft-row">
+          <div class="ao-route-aircraft-label">Narrowbody <span class="ao-route-meta">25 seats</span></div>
+          <input type="number" min="0" step="1" id="ao-ac-narrowbody" value="0">
+          <span class="ao-route-avail" id="ao-ac-narrowbody-avail">0 idle</span>
+        </div>
+        <div class="ao-route-aircraft-row">
+          <div class="ao-route-aircraft-label">Widebody <span class="ao-route-meta">60 seats</span></div>
+          <input type="number" min="0" step="1" id="ao-ac-widebody" value="0">
+          <span class="ao-route-avail" id="ao-ac-widebody-avail">0 idle</span>
+        </div>
+        <div class="ao-route-section-foot">Total seats assigned: <strong id="ao-rs-seats">0</strong></div>
+      </div>
+
+      <div class="ao-route-section">
+        <div class="ao-route-section-h">III. Pricing &amp; Maintenance</div>
+        <div class="ao-route-price-row">
+          <label>Ticket price</label>
+          <input type="range" id="ao-rs-price" min="0" max="500" step="5" value="250">
+          <span class="ao-route-price-val">$<span id="ao-rs-price-val">250</span></span>
+        </div>
+        <div class="ao-route-tier-row">
+          <label><input type="radio" name="ao-rs-tier" value="basic"> Basic <span class="ao-route-meta">$10k/tick</span></label>
+          <label><input type="radio" name="ao-rs-tier" value="standard" checked> Standard <span class="ao-route-meta">$25k/tick</span></label>
+          <label><input type="radio" name="ao-rs-tier" value="premium"> Premium <span class="ao-route-meta">$40k/tick</span></label>
+        </div>
+      </div>
+
+      <div class="ao-route-section">
+        <div class="ao-route-section-h">IV. Aviation Incident Risk</div>
+        <div>Risk per tick: <strong id="ao-rs-risk">0.0%</strong></div>
+        <div class="ao-route-meta">(aircraft × 0.008) ÷ (op_safety ÷ 10)</div>
+      </div>
+
+      <div class="ao-route-section">
+        <div class="ao-route-section-h">V. Projection (per tick)</div>
+        <div class="ao-route-grid-4">
+          <div><label>Pax carried</label><span id="ao-rs-pax">—</span></div>
+          <div><label>Revenue</label><span id="ao-rs-rev">—</span></div>
+          <div><label>Costs</label><span id="ao-rs-cost">—</span></div>
+          <div><label>Profit</label><span id="ao-rs-profit">—</span></div>
+        </div>
+      </div>
+
+      <div class="ao-modal-actions">
+        <button type="button" class="ao-modal-btn" id="ao-route-cancel">Cancel</button>
+        <button type="button" class="ao-modal-btn ao-modal-btn--primary" id="ao-route-confirm">Set Up Route</button>
+      </div>
+      <div class="ao-modal-error" id="ao-route-modal-error"></div>
+    </div>
+  </div>
 
   <!-- V. Strategic Actions -->
   <section class="ao-section">
@@ -383,6 +791,169 @@ function formatServiceTime(currentTick, acquiredTick) {
     const rem   = months % 12;
     if (rem === 0) return years + (years === 1 ? ' year' : ' years');
     return `${years} ${years === 1 ? 'year' : 'years'}, ${rem} ${rem === 1 ? 'month' : 'months'}`;
+}
+
+// Cost preview for the Available Hubs list. Server-authoritative cost
+// is recomputed inside buy_airline_terminal at the moment the buy
+// commits — what we render here is the cost the next buyer would pay
+// based on the current free/total ratio + the hub nation's SoL.
+function _computeTerminalCost(freeCount, totalCount, sol) {
+    const total = Math.max(1, Number(totalCount) || 1);
+    const free  = Math.max(0, Math.min(total, Number(freeCount) || 0));
+    const scarcity = 1 - (free / total);
+    const solClamped = Math.max(0, Math.min(100, Number(sol) || 50));
+    const solMult = 0.5 + (solClamped / 100);
+    const raw = 3_000_000 + 17_000_000 * scarcity * solMult;
+    return Math.max(3_000_000, Math.min(20_000_000, Math.round(raw)));
+}
+
+function _fmtMoneyShort(n) {
+    const v = Number(n) || 0;
+    if (v >= 1_000_000_000) return '$' + (v / 1_000_000_000).toFixed(2) + 'B';
+    if (v >= 1_000_000)     return '$' + (v / 1_000_000).toFixed(2) + 'M';
+    if (v >= 1_000)         return '$' + (v / 1_000).toFixed(1) + 'k';
+    return '$' + Math.round(v);
+}
+
+// Cache populated during loadAvailableHubs so the buy modal can read
+// the current cost + the next free terminal_id without re-querying.
+let _availableHubsCache = [];
+
+async function loadAvailableHubs(corpId) {
+    const el = document.getElementById('ao-available-hubs');
+    if (!el) return;
+
+    // One round-trip: cities + their nation SoL + every terminal at
+    // each city. We need the full terminal list to find the lowest
+    // free terminal_id (the one a buy will claim).
+    const { data: cities, error } = await _supabase
+        .from('airline_cities')
+        .select('id, name, runway_type, terminal_count, is_capital, nations:nation_id(name, standard_of_living), airline_terminals(id, terminal_number, owner_airline_id)')
+        .order('name', { ascending: true });
+    if (error) {
+        console.warn('[airline-ops] available hubs fetch failed:', error.message);
+        el.innerHTML = '<div class="ao-panel-empty">Could not load available hubs.</div>';
+        return;
+    }
+
+    const rows = (cities || []).map(c => {
+        const terminals = c.airline_terminals || [];
+        const total = terminals.length || c.terminal_count || 0;
+        const freeTerms = terminals
+            .filter(t => !t.owner_airline_id)
+            .sort((a, b) => Number(a.terminal_number) - Number(b.terminal_number));
+        const free = freeTerms.length;
+        const sol  = c.nations?.standard_of_living;
+        const cost = _computeTerminalCost(free, total, sol);
+        return {
+            cityId:      c.id,
+            cityName:    c.name,
+            nationName:  c.nations?.name || '',
+            runway:      c.runway_type,
+            isCapital:   !!c.is_capital,
+            free, total, cost,
+            nextTerminalId: freeTerms[0]?.id || null,
+            nextTerminalNumber: freeTerms[0]?.terminal_number ?? null,
+        };
+    });
+    _availableHubsCache = rows;
+
+    const hubs = rows.filter(r => r.free > 0 && r.nextTerminalId);
+    if (hubs.length === 0) {
+        el.innerHTML = '<div class="ao-panel-empty">No terminals available worldwide.</div>';
+        return;
+    }
+
+    el.innerHTML = hubs.map(h => {
+        const cap    = h.isCapital ? ' <span class="ao-list-tag teal">Capital</span>' : '';
+        const runway = h.runway ? RUNWAY_LABEL[h.runway] || h.runway : '';
+        return `<div class="ao-list-row">
+            <div>
+                <div class="ao-list-primary">${escHtml(h.cityName)}${cap}</div>
+                <div class="ao-list-secondary">${escHtml(h.nationName)} · ${escHtml(runway)} runway</div>
+                <div class="ao-hub-meta">${h.free} of ${h.total} open · <span class="ao-hub-cost">${_fmtMoneyShort(h.cost)}</span></div>
+            </div>
+            <div style="text-align:right;">
+                <button type="button" class="ao-buy-btn" data-city-id="${escHtml(h.cityId)}">Buy Terminal</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+let _pendingBuy = null;
+function initBuyTerminalFlow(corpId, totalCityCount) {
+    const panel       = document.getElementById('ao-available-hubs');
+    const overlay     = document.getElementById('ao-buy-modal');
+    const bodyEl      = document.getElementById('ao-buy-modal-body');
+    const errorEl     = document.getElementById('ao-buy-modal-error');
+    const cancelBtn   = document.getElementById('ao-buy-cancel');
+    const confirmBtn  = document.getElementById('ao-buy-confirm');
+    if (!panel || !overlay || !bodyEl || !confirmBtn || !cancelBtn) return;
+
+    // Delegated click on the panel — survives innerHTML re-renders by
+    // loadAvailableHubs. data-city-id on the button identifies the
+    // hub whose lowest-numbered free terminal we'll claim.
+    panel.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('.ao-buy-btn');
+        if (!btn) return;
+        const cityId = btn.dataset.cityId;
+        const hub = _availableHubsCache.find(r => r.cityId === cityId);
+        if (!hub || !hub.nextTerminalId) return;
+        _pendingBuy = hub;
+        bodyEl.innerHTML = `
+            <p>Acquire <strong>Terminal #${hub.nextTerminalNumber}</strong> at <strong>${escHtml(hub.cityName)}</strong> (${escHtml(hub.nationName)})?</p>
+            <div class="ao-modal-row"><span>Hub</span><span>${escHtml(hub.cityName)} · ${escHtml(RUNWAY_LABEL[hub.runway] || hub.runway || '')}</span></div>
+            <div class="ao-modal-row"><span>Availability</span><span>${hub.free} of ${hub.total} open</span></div>
+            <div class="ao-modal-row"><span>Purchase price</span><span>${_fmtMoneyShort(hub.cost)}</span></div>
+            <div class="ao-modal-row"><span>Maintenance</span><span>${_fmtMoneyShort(Math.round(hub.cost * 0.01))}/tick</span></div>
+        `;
+        errorEl.textContent = '';
+        confirmBtn.disabled = false;
+        cancelBtn.disabled  = false;  // reset after a prior successful buy locked it
+        confirmBtn.textContent = 'Confirm Purchase';
+        overlay.classList.add('active');
+    });
+
+    const closeModal = () => {
+        overlay.classList.remove('active');
+        _pendingBuy = null;
+    };
+    cancelBtn.addEventListener('click', closeModal);
+    overlay.addEventListener('click', (ev) => { if (ev.target === overlay) closeModal(); });
+
+    confirmBtn.addEventListener('click', async () => {
+        if (!_pendingBuy) return;
+        // Lock both buttons so the user can't Cancel mid-RPC and then
+        // open a different terminal's modal — the in-flight RPC would
+        // otherwise return into a modal showing different content and
+        // overwrite its state.
+        confirmBtn.disabled = true;
+        cancelBtn.disabled  = true;
+        confirmBtn.textContent = 'Acquiring…';
+        errorEl.textContent = '';
+        const terminalId = _pendingBuy.nextTerminalId;
+        try {
+            const { data, error } = await _supabase.rpc('buy_airline_terminal', {
+                p_corp_id:     corpId,
+                p_terminal_id: terminalId,
+            });
+            if (error) throw new Error(error.message);
+            if (!data?.success) throw new Error(data?.error || 'Purchase failed.');
+            closeModal();
+            // Refresh both panels so the new terminal moves from
+            // Available → My Hubs and the cost on the next available
+            // terminal at this hub recomputes.
+            await Promise.all([
+                loadAvailableHubs(corpId),
+                loadMyHubs(corpId, totalCityCount),
+            ]);
+        } catch (err) {
+            errorEl.textContent = err?.message || 'Purchase failed.';
+            confirmBtn.disabled = false;
+            cancelBtn.disabled  = false;
+            confirmBtn.textContent = 'Confirm Purchase';
+        }
+    });
 }
 
 async function loadMyHubs(corpId, totalCityCount) {
@@ -472,6 +1043,375 @@ async function loadFleetInventory(corpId, currentTick) {
     el.innerHTML = summary + rows;
 }
 
+// ── Phase 5: route setup ──────────────────────────────────────
+const AIRCRAFT_SEATS    = { regional: 10,    narrowbody: 25,    widebody: 60 };
+const AIRCRAFT_OPS_COST = { regional: 5000,  narrowbody: 12000, widebody: 25000 };
+const MAINT_TIER_COST   = { basic: 10000, standard: 25000, premium: 40000 };
+const CAPITAL_BONUS     = 2;
+
+let _availableRoutesCache = [];   // [{cityA, cityB, nation, range}]
+let _routeModalCtx        = null; // hydrated when the modal opens
+
+async function loadAvailableRoutes(corpId) {
+    const el = document.getElementById('ao-available-routes');
+    if (!el) return;
+
+    // Owned terminals → distinct cities (a corp may own multiple
+    // terminals in one city; we only need the city set for pair
+    // construction).
+    const { data: termRows, error: termErr } = await _supabase
+        .from('airline_terminals')
+        .select('city_id, airline_cities(id, name, nation_id, is_capital, population_pct, runway_type, nations(id, name))')
+        .eq('owner_airline_id', corpId);
+    if (termErr) {
+        console.warn('[airline-ops] available routes terminals fetch failed:', termErr.message);
+        el.innerHTML = '<div class="ao-panel-empty">Could not load available routes.</div>';
+        return;
+    }
+
+    const cityMap = new Map();
+    for (const t of (termRows || [])) {
+        const c = t.airline_cities;
+        if (c?.id) cityMap.set(c.id, c);
+    }
+    const cities = [...cityMap.values()];
+
+    if (cities.length < 2) {
+        el.innerHTML = '<div class="ao-panel-empty">Buy terminals at two or more hubs in the same nation to open a route.</div>';
+        _availableRoutesCache = [];
+        return;
+    }
+
+    // Existing active routes for this corp — exclude those lanes.
+    const { data: existing } = await _supabase
+        .from('airline_routes')
+        .select('origin_city_id, dest_city_id')
+        .eq('airline_faction_id', corpId)
+        .eq('status', 'active');
+    const taken = new Set((existing || []).map(r => [r.origin_city_id, r.dest_city_id].sort().join('|')));
+
+    // Build domestic-only pairs.
+    const pairs = [];
+    for (let i = 0; i < cities.length; i++) {
+        for (let j = i + 1; j < cities.length; j++) {
+            const a = cities[i], b = cities[j];
+            if (a.nation_id !== b.nation_id) continue;  // Phase 5 domestic only
+            const sorted = [a, b].sort((x, y) => x.id < y.id ? -1 : 1);
+            const key = sorted.map(c => c.id).join('|');
+            if (taken.has(key)) continue;
+            pairs.push({ cityA: sorted[0], cityB: sorted[1] });
+        }
+    }
+
+    if (pairs.length === 0) {
+        el.innerHTML = '<div class="ao-panel-empty">No available routes — all your domestic pairs are already operating.</div>';
+        _availableRoutesCache = [];
+        return;
+    }
+
+    // One ranges fetch for the IDs we need; lookup by min/max id pair.
+    const idSet = new Set();
+    for (const p of pairs) { idSet.add(p.cityA.id); idSet.add(p.cityB.id); }
+    const { data: ranges } = await _supabase
+        .from('airline_city_ranges')
+        .select('city_a_id, city_b_id, range_units')
+        .in('city_a_id', [...idSet])
+        .in('city_b_id', [...idSet]);
+    const rangeMap = new Map();
+    for (const r of (ranges || [])) {
+        rangeMap.set(r.city_a_id + '|' + r.city_b_id, r.range_units);
+    }
+
+    _availableRoutesCache = pairs.map(p => {
+        const a = p.cityA.id < p.cityB.id ? p.cityA : p.cityB;
+        const b = p.cityA.id < p.cityB.id ? p.cityB : p.cityA;
+        const range = rangeMap.get(a.id + '|' + b.id) ?? null;
+        return { cityA: a, cityB: b, range };
+    });
+
+    el.innerHTML = _availableRoutesCache.map((p, idx) => {
+        const nationName = p.cityA.nations?.name || '';
+        return `<div class="ao-route-list-row">
+            <div>
+                <div class="ao-route-list-pair">${escHtml(p.cityA.name)} ↔ ${escHtml(p.cityB.name)}</div>
+                <div class="ao-route-list-meta">${escHtml(nationName)}${p.range != null ? ' · Range ' + p.range : ''}</div>
+            </div>
+            <button type="button" class="ao-buy-btn" data-pair-idx="${idx}">Set Up Route</button>
+        </div>`;
+    }).join('');
+}
+
+async function loadActiveRoutes(corpId) {
+    const el = document.getElementById('ao-routes');
+    if (!el) return;
+    const { data: routes, error } = await _supabase
+        .from('airline_routes')
+        .select('id, ticket_price, maintenance_tier, aircraft_regional, aircraft_narrowbody, aircraft_widebody, opened_at_tick, origin:origin_city_id(name), dest:dest_city_id(name)')
+        .eq('airline_faction_id', corpId)
+        .eq('status', 'active')
+        .order('opened_at_tick', { ascending: false });
+    if (error) {
+        console.warn('[airline-ops] active routes fetch failed:', error.message);
+        el.innerHTML = '<div class="ao-panel-empty">Could not load active routes.</div>';
+        return;
+    }
+    if (!routes || routes.length === 0) {
+        el.innerHTML = '<div class="ao-panel-empty">No active routes. Open one from Available Routes above.</div>';
+        return;
+    }
+    el.innerHTML = routes.map(r => {
+        const acParts = [];
+        if (r.aircraft_regional   > 0) acParts.push(r.aircraft_regional   + '× Regional');
+        if (r.aircraft_narrowbody > 0) acParts.push(r.aircraft_narrowbody + '× Narrowbody');
+        if (r.aircraft_widebody   > 0) acParts.push(r.aircraft_widebody   + '× Widebody');
+        return `<div class="ao-route-list-row">
+            <div>
+                <div class="ao-route-list-pair">${escHtml(r.origin?.name || '?')} ↔ ${escHtml(r.dest?.name || '?')}</div>
+                <div class="ao-route-list-meta">$${r.ticket_price} ticket · ${escHtml(r.maintenance_tier)} maintenance · ${acParts.join(', ') || 'no aircraft'}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// Lane-share weight: capital-paired lanes get CAPITAL_BONUS× weight,
+// scaled by the sum of the two city populations (population_pct).
+function _laneWeight(cityA, cityB) {
+    const popSum = (Number(cityA.population_pct) || 0) + (Number(cityB.population_pct) || 0);
+    const isCapPair = !!cityA.is_capital || !!cityB.is_capital;
+    return popSum * (isCapPair ? CAPITAL_BONUS : 1);
+}
+
+async function _hydrateRouteModalCtx(corpId, pair) {
+    // Pull every city in the nation (for lane-share normalization),
+    // every active route on this lane (for competitor seats), the
+    // corp's idle aircraft per class, and the corp's op_safety + cash.
+    const nationId = pair.cityA.nation_id;
+    const [citiesRes, lanesRes, idleRes, corpRes] = await Promise.all([
+        _supabase.from('airline_cities')
+            .select('id, name, is_capital, population_pct, nations:nation_id(name, standard_of_living, service_sector, population)')
+            .eq('nation_id', nationId),
+        _supabase.from('airline_routes')
+            .select('aircraft_regional, aircraft_narrowbody, aircraft_widebody, airline_faction_id')
+            .eq('origin_city_id', pair.cityA.id)
+            .eq('dest_city_id',   pair.cityB.id)
+            .eq('status', 'active'),
+        _supabase.from('corp_aircraft')
+            .select('aircraft_class')
+            .eq('corp_id', corpId)
+            .is('route_id', null),
+        _supabase.from('factions')
+            .select('corp_op_safety, corp_cash_reserves')
+            .eq('id', corpId).single(),
+    ]);
+    if (citiesRes.error) throw new Error(citiesRes.error.message);
+    if (lanesRes.error)  throw new Error(lanesRes.error.message);
+    if (idleRes.error)   throw new Error(idleRes.error.message);
+    if (corpRes.error)   throw new Error(corpRes.error.message);
+
+    const allCities = citiesRes.data || [];
+    const nation    = allCities[0]?.nations || {};
+
+    // Domestic pool + lane-share fraction.
+    const pop_M = (Number(nation.population) || 0) / 1_000_000;
+    const pool  = (Number(nation.standard_of_living) / 100)
+                * (Number(nation.service_sector)     / 100)
+                * pop_M
+                * 20;
+
+    let totalWeight = 0;
+    let myWeight    = 0;
+    for (let i = 0; i < allCities.length; i++) {
+        for (let j = i + 1; j < allCities.length; j++) {
+            const w = _laneWeight(allCities[i], allCities[j]);
+            totalWeight += w;
+            if ((allCities[i].id === pair.cityA.id && allCities[j].id === pair.cityB.id)
+             || (allCities[i].id === pair.cityB.id && allCities[j].id === pair.cityA.id)) {
+                myWeight = w;
+            }
+        }
+    }
+    const laneShare = totalWeight > 0 ? pool * (myWeight / totalWeight) : 0;
+
+    // Competitor seats on this lane (sum of OTHER airlines' assigned
+    // seats; my own won't show because I have no active route here yet).
+    let competitorSeats = 0;
+    for (const r of (lanesRes.data || [])) {
+        if (r.airline_faction_id === corpId) continue;
+        competitorSeats += (r.aircraft_regional   || 0) * AIRCRAFT_SEATS.regional
+                         + (r.aircraft_narrowbody || 0) * AIRCRAFT_SEATS.narrowbody
+                         + (r.aircraft_widebody   || 0) * AIRCRAFT_SEATS.widebody;
+    }
+
+    // Idle aircraft per class.
+    const idle = { regional: 0, narrowbody: 0, widebody: 0 };
+    for (const a of (idleRes.data || [])) {
+        if (idle[a.aircraft_class] != null) idle[a.aircraft_class]++;
+    }
+
+    return {
+        pair,
+        nationName: nation.name || '',
+        laneShare,
+        competitorSeats,
+        idle,
+        opSafety: Number(corpRes.data?.corp_op_safety) || 0,
+        cash:     Number(corpRes.data?.corp_cash_reserves) || 0,
+    };
+}
+
+function _routeModalRecompute() {
+    if (!_routeModalCtx) return;
+    const ctx   = _routeModalCtx;
+    const r     = parseInt(document.getElementById('ao-ac-regional').value,   10) || 0;
+    const n     = parseInt(document.getElementById('ao-ac-narrowbody').value, 10) || 0;
+    const w     = parseInt(document.getElementById('ao-ac-widebody').value,   10) || 0;
+    const price = parseInt(document.getElementById('ao-rs-price').value, 10) || 0;
+    const tier  = (document.querySelector('input[name="ao-rs-tier"]:checked') || {}).value || 'standard';
+
+    // Clamp inputs to idle counts so a player can't overcommit.
+    const rC = Math.max(0, Math.min(r, ctx.idle.regional));
+    const nC = Math.max(0, Math.min(n, ctx.idle.narrowbody));
+    const wC = Math.max(0, Math.min(w, ctx.idle.widebody));
+    if (r !== rC) document.getElementById('ao-ac-regional').value   = rC;
+    if (n !== nC) document.getElementById('ao-ac-narrowbody').value = nC;
+    if (w !== wC) document.getElementById('ao-ac-widebody').value   = wC;
+
+    const totalSeats = rC * AIRCRAFT_SEATS.regional + nC * AIRCRAFT_SEATS.narrowbody + wC * AIRCRAFT_SEATS.widebody;
+    const totalCount = rC + nC + wC;
+
+    // Demand → pax → revenue → costs → profit.
+    const priceMult   = Math.max(0, 2 * (1 - price / 500));
+    const unmet       = Math.max(0, ctx.laneShare - ctx.competitorSeats);
+    const myDemand    = unmet * priceMult;
+    const paxCarried  = Math.max(0, Math.min(myDemand, totalSeats));
+    const revenue     = Math.round(paxCarried * price);
+    const opsCost     = rC * AIRCRAFT_OPS_COST.regional + nC * AIRCRAFT_OPS_COST.narrowbody + wC * AIRCRAFT_OPS_COST.widebody;
+    const maintCost   = totalCount * MAINT_TIER_COST[tier];
+    const totalCost   = opsCost + maintCost;
+    const profit      = revenue - totalCost;
+
+    // Incident risk: (aircraft × 0.008) ÷ (op_safety ÷ 10). At op_safety=0
+    // the formula divides by 0 — clamp the denominator at 0.1 so we
+    // surface a number instead of NaN.
+    const risk = totalCount > 0
+        ? (totalCount * 0.008) / Math.max(0.1, (ctx.opSafety / 10))
+        : 0;
+
+    document.getElementById('ao-rs-demand').textContent = Math.round(ctx.laneShare).toLocaleString();
+    document.getElementById('ao-rs-comp').textContent   = ctx.competitorSeats.toLocaleString();
+    document.getElementById('ao-rs-unmet').textContent  = Math.round(unmet).toLocaleString();
+    document.getElementById('ao-rs-seats').textContent  = totalSeats.toLocaleString();
+    document.getElementById('ao-rs-price-val').textContent = price;
+    document.getElementById('ao-rs-risk').textContent   = (risk * 100).toFixed(2) + '%';
+    document.getElementById('ao-rs-pax').textContent    = Math.round(paxCarried).toLocaleString();
+    document.getElementById('ao-rs-rev').textContent    = '$' + revenue.toLocaleString();
+    document.getElementById('ao-rs-cost').textContent   = '$' + totalCost.toLocaleString();
+    const profitEl = document.getElementById('ao-rs-profit');
+    profitEl.textContent = (profit >= 0 ? '+$' : '-$') + Math.abs(profit).toLocaleString();
+    profitEl.style.color = profit >= 0 ? 'var(--accent-green)' : 'var(--accent-rust)';
+
+    // Submit gate: at least one aircraft assigned, at least within idle.
+    document.getElementById('ao-route-confirm').disabled = (totalCount === 0);
+}
+
+function initSetUpRouteFlow(corpId, totalCityCount) {
+    const panel      = document.getElementById('ao-available-routes');
+    const overlay    = document.getElementById('ao-route-modal');
+    const cancelBtn  = document.getElementById('ao-route-cancel');
+    const confirmBtn = document.getElementById('ao-route-confirm');
+    const errorEl    = document.getElementById('ao-route-modal-error');
+    if (!panel || !overlay || !confirmBtn || !cancelBtn) return;
+
+    // Delegate clicks on the available-routes list — survives innerHTML
+    // re-renders. data-pair-idx points into _availableRoutesCache.
+    panel.addEventListener('click', async (ev) => {
+        const btn = ev.target.closest('.ao-buy-btn');
+        if (!btn) return;
+        const idx = Number(btn.dataset.pairIdx);
+        const pair = _availableRoutesCache[idx];
+        if (!pair) return;
+        try {
+            _routeModalCtx = await _hydrateRouteModalCtx(corpId, pair);
+        } catch (e) {
+            console.warn('[airline-ops] route modal hydrate failed:', e?.message || e);
+            return;
+        }
+        // Reset inputs to safe defaults.
+        document.getElementById('ao-ac-regional').value   = 0;
+        document.getElementById('ao-ac-narrowbody').value = 0;
+        document.getElementById('ao-ac-widebody').value   = 0;
+        document.getElementById('ao-rs-price').value      = 250;
+        const stdTier = document.querySelector('input[name="ao-rs-tier"][value="standard"]');
+        if (stdTier) stdTier.checked = true;
+        // Show idle counts.
+        document.getElementById('ao-ac-regional-avail').textContent   = _routeModalCtx.idle.regional   + ' idle';
+        document.getElementById('ao-ac-narrowbody-avail').textContent = _routeModalCtx.idle.narrowbody + ' idle';
+        document.getElementById('ao-ac-widebody-avail').textContent   = _routeModalCtx.idle.widebody   + ' idle';
+        // Disable inputs that have zero idle, so the player can't try.
+        document.getElementById('ao-ac-regional').disabled   = (_routeModalCtx.idle.regional   === 0);
+        document.getElementById('ao-ac-narrowbody').disabled = (_routeModalCtx.idle.narrowbody === 0);
+        document.getElementById('ao-ac-widebody').disabled   = (_routeModalCtx.idle.widebody   === 0);
+        document.getElementById('ao-route-modal-pair').textContent =
+            pair.cityA.name + ' ↔ ' + pair.cityB.name + ' · ' + (_routeModalCtx.nationName || '');
+        errorEl.textContent = '';
+        confirmBtn.disabled = true;
+        cancelBtn.disabled  = false;
+        confirmBtn.textContent = 'Set Up Route';
+        _routeModalRecompute();
+        overlay.classList.add('active');
+    });
+
+    // Live recompute on any input change inside the modal body.
+    overlay.addEventListener('input', _routeModalRecompute);
+    overlay.addEventListener('change', _routeModalRecompute);
+
+    const closeModal = () => {
+        overlay.classList.remove('active');
+        _routeModalCtx = null;
+    };
+    cancelBtn.addEventListener('click', closeModal);
+    overlay.addEventListener('click', (ev) => { if (ev.target === overlay) closeModal(); });
+
+    confirmBtn.addEventListener('click', async () => {
+        if (!_routeModalCtx) return;
+        const pair = _routeModalCtx.pair;
+        const r = parseInt(document.getElementById('ao-ac-regional').value,   10) || 0;
+        const n = parseInt(document.getElementById('ao-ac-narrowbody').value, 10) || 0;
+        const w = parseInt(document.getElementById('ao-ac-widebody').value,   10) || 0;
+        const price = parseInt(document.getElementById('ao-rs-price').value, 10) || 0;
+        const tier  = (document.querySelector('input[name="ao-rs-tier"]:checked') || {}).value || 'standard';
+        confirmBtn.disabled = true;
+        cancelBtn.disabled  = true;
+        confirmBtn.textContent = 'Opening route…';
+        errorEl.textContent = '';
+        try {
+            const { data, error } = await _supabase.rpc('set_up_route', {
+                p_corp_id:              corpId,
+                p_origin_city_id:       pair.cityA.id,
+                p_dest_city_id:         pair.cityB.id,
+                p_ticket_price:         price,
+                p_maintenance_tier:     tier,
+                p_aircraft_regional:    r,
+                p_aircraft_narrowbody:  n,
+                p_aircraft_widebody:    w,
+            });
+            if (error) throw new Error(error.message);
+            if (!data?.success) throw new Error(data?.error || 'Route setup failed.');
+            closeModal();
+            await Promise.all([
+                loadAvailableRoutes(corpId),
+                loadActiveRoutes(corpId),
+                loadFleetInventory(corpId, Number(shard?.current_tick) || 0),
+            ]);
+        } catch (err) {
+            errorEl.textContent = err?.message || 'Route setup failed.';
+            confirmBtn.disabled = false;
+            cancelBtn.disabled  = false;
+            confirmBtn.textContent = 'Set Up Route';
+        }
+    });
+}
+
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
@@ -539,9 +1479,18 @@ async function init() {
 
     // Side-by-side panels.
     await Promise.all([
+        loadAvailableHubs(faction.id),
         loadMyHubs(faction.id, totalCities),
         loadFleetInventory(faction.id, currentTick),
+        loadAvailableRoutes(faction.id),
+        loadActiveRoutes(faction.id),
     ]);
+
+    // Wire the buy-confirm modal once. The Available Hubs renderer
+    // re-stamps innerHTML on every refresh, so we delegate the click
+    // off the panel body and identify the chosen city via data-city-id.
+    initBuyTerminalFlow(faction.id, totalCities);
+    initSetUpRouteFlow(faction.id, totalCities);
 }
 
 init().catch(err => {

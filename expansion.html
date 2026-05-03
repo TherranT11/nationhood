@@ -225,6 +225,7 @@ body.corp-expansion.light-mode {
 }
 .ex-asset-tag.kind-hq       { color: var(--ex-accent-gold); border-color: rgba(201,164,73,0.4); background: rgba(201,164,73,0.08); }
 .ex-asset-tag.kind-regional { color: var(--ex-accent-blue); border-color: rgba(90,120,150,0.4); background: rgba(90,120,150,0.08); }
+.ex-asset-tag.kind-terminal { color: var(--ex-accent-green); border-color: rgba(138,166,83,0.4); background: rgba(138,166,83,0.08); }
 
 .ex-asset-name {
   font-family: var(--serif);
@@ -840,6 +841,7 @@ let nation = null;             // home nation row
 let shard = null;
 let allUserFactions = [];
 let _ownedRegionalHqs = [];    // corp_properties type='regional_hq' is_active=true
+let _ownedTerminals  = [];     // corp_properties type='airline_terminal' is_active=true (Phase 4)
 let _nationalHq = null;        // corp_properties role='national_hq' (one row per corp; null if backfill hasn't run)
 let _allNations = [];          // every nation (for Build tab)
 let _marketProperties = [];    // available_properties for home nation (for Buy tab)
@@ -880,11 +882,17 @@ function styleTier(style) {
 
 // ── LOADERS ──
 async function loadOwnedProperties() {
-    if (!faction?.id) { _ownedRegionalHqs = []; _nationalHq = null; return; }
+    if (!faction?.id) {
+        _ownedRegionalHqs = [];
+        _ownedTerminals  = [];
+        _nationalHq      = null;
+        return;
+    }
     // Pulls every active corp_properties row in one shot, then splits
     // by role for the renderer. National HQ is a real row now (per
     // 20260711_persist_national_hq.sql); regional HQs are user-built
-    // marketplace acquisitions.
+    // marketplace acquisitions; airline_terminal rows land via
+    // buy_airline_terminal in 20260716_airline_terminal_marketplace.
     const { data, error } = await _supabase
         .from('corp_properties')
         .select('id, nation_id, name, type, role, style, catalog_id, condition, purchase_price, monthly_maintenance, city, capacity, nations:nation_id(name)')
@@ -894,12 +902,14 @@ async function loadOwnedProperties() {
     if (error) {
         console.warn('[Expansion] property fetch failed:', error.message);
         _ownedRegionalHqs = [];
-        _nationalHq = null;
+        _ownedTerminals  = [];
+        _nationalHq      = null;
         return;
     }
     const rows = data || [];
-    _nationalHq = rows.find(p => p.role === 'national_hq') || null;
+    _nationalHq      = rows.find(p => p.role === 'national_hq') || null;
     _ownedRegionalHqs = rows.filter(p => p.type === 'regional_hq');
+    _ownedTerminals   = rows.filter(p => p.type === 'airline_terminal');
 }
 
 async function loadAllNations() {
@@ -937,17 +947,25 @@ function renderHeader() {
         '— ' + (faction?.corp_sector || 'Corporation') + ' —';
 
     const hasNhq = !!_nationalHq;
-    const ownedNationCount = (hasNhq ? 1 : 0) + new Set(
-        _ownedRegionalHqs.map(p => p.nation_id).filter(id => id && id !== faction?.nation_id)
-    ).size;
-    const propertyCount = (hasNhq ? 1 : 0) + _ownedRegionalHqs.length;
+    const foreignNationIds = new Set(
+        [..._ownedRegionalHqs, ..._ownedTerminals]
+            .map(p => p.nation_id)
+            .filter(id => id && id !== faction?.nation_id)
+    );
+    const ownedNationCount = (hasNhq ? 1 : 0) + foreignNationIds.size;
+    const propertyCount    = (hasNhq ? 1 : 0) + _ownedRegionalHqs.length + _ownedTerminals.length;
 
-    const nhqValue = hasNhq ? Number(_nationalHq.purchase_price) || 0 : 0;
-    const nhqMaint = hasNhq ? Number(_nationalHq.monthly_maintenance) || 0 : 0;
-    const totalMaint = nhqMaint + _ownedRegionalHqs
-        .reduce((sum, p) => sum + (Number(p.monthly_maintenance) || 0), 0);
-    const totalValue = nhqValue + _ownedRegionalHqs
-        .reduce((sum, p) => sum + (Number(p.purchase_price) || 0), 0);
+    const sumValueMaint = (acc, p) => ({
+        value: acc.value + (Number(p.purchase_price)      || 0),
+        maint: acc.maint + (Number(p.monthly_maintenance) || 0),
+    });
+    const seed = {
+        value: hasNhq ? Number(_nationalHq.purchase_price)      || 0 : 0,
+        maint: hasNhq ? Number(_nationalHq.monthly_maintenance) || 0 : 0,
+    };
+    const totals = [..._ownedRegionalHqs, ..._ownedTerminals].reduce(sumValueMaint, seed);
+    const totalValue = totals.value;
+    const totalMaint = totals.maint;
 
     document.getElementById('ex-stat-nations').textContent    = String(ownedNationCount);
     document.getElementById('ex-stat-properties').textContent = String(propertyCount);
@@ -1028,6 +1046,41 @@ function renderAssets() {
                     ${inflight ? 'Selling…' : 'Sell'}
                 </button>
             </div>
+        </div>`);
+    }
+
+    // Airline terminals — one card each. Bought via the Available
+    // Hubs marketplace on airline-operations.html (Phase 4); each
+    // terminal is a real corp_properties row so the maintenance loop
+    // and bankruptcy cascade pick it up automatically. No Sell button
+    // for now — the marketplace is buy-only in Phase 4.
+    for (const p of _ownedTerminals) {
+        const quality = Math.round(Number(p.condition) || 0);
+        const value   = Number(p.purchase_price)        || 0;
+        const maint   = Number(p.monthly_maintenance)   || 0;
+        const natName = p.nations?.name || '—';
+        const city    = p.city || '';
+        cards.push(`<div class="ex-asset-card">
+            <div class="ex-asset-meta-row">
+                <span class="ex-asset-tag kind-terminal">Terminal</span>
+            </div>
+            <div class="ex-asset-name">${escapeHtml(p.name || 'Terminal')}</div>
+            <div class="ex-asset-location"><span class="flag">◊</span> ${escapeHtml(natName.toUpperCase())}${city ? ' ◊ ' + escapeHtml(String(city).toUpperCase()) : ''}</div>
+            <div class="ex-asset-stats">
+                <div>
+                    <div class="label">Quality</div>
+                    <div class="value ${qualityToneClass(quality)}">${quality}<span class="unit">%</span></div>
+                </div>
+                <div>
+                    <div class="label">Value</div>
+                    <div class="value">${hfFmtBig(value)}</div>
+                </div>
+                <div>
+                    <div class="label">Maint/Tick</div>
+                    <div class="value">${hfFmtBig(maint)}</div>
+                </div>
+            </div>
+            <div class="ex-asset-note">Hub Operation ◊ Cannot Be Sold</div>
         </div>`);
     }
 
