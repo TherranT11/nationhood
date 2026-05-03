@@ -16,7 +16,6 @@ let _msgListFilter = 'all';  // 'all' | 'global' | 'nation' | 'dm' — Phase 3 t
 let _msgActiveChat = null;   // { type: 'dm'|'group', id, name, ... }
 let _realtimeChannel = null;
 let _groupRealtimeChannel = null;
-let _totalUnread = 0;
 // Phase 5: self-protection + pagination state.
 let _blockedFactionIds = new Set();    // faction ids this player has blocked
 let _oldestLoadedTs = null;            // ISO timestamp of oldest message rendered in current thread
@@ -77,15 +76,6 @@ function injectStyles() {
     font-size: 20px; color: #000; user-select: none;
 }
 .msg-bubble:hover { transform: scale(1.08); box-shadow: 0 6px 24px rgba(0,0,0,0.5); }
-.msg-bubble__badge {
-    position: absolute; top: -4px; right: -4px;
-    min-width: 18px; height: 18px; border-radius: 9px;
-    background: var(--amber, #c8a64e); color: #000;
-    font-family: var(--font-mono, monospace); font-size: 10px; font-weight: 700;
-    display: none; align-items: center; justify-content: center;
-    padding: 0 4px; line-height: 1;
-}
-.msg-bubble__badge.visible { display: flex; }
 
 /* ── Panel ── */
 .msg-panel {
@@ -624,7 +614,7 @@ function injectHTML() {
     const bubble = document.createElement('div');
     bubble.id = 'msg-bubble';
     bubble.className = 'msg-bubble';
-    bubble.innerHTML = `💬<div class="msg-bubble__badge" id="msg-badge">0</div>`;
+    bubble.innerHTML = `💬`;
     bubble.addEventListener('click', togglePanel);
     document.body.appendChild(bubble);
 
@@ -2864,11 +2854,8 @@ function onNewDM(msg) {
         return;
     }
 
-    // Otherwise increment unread and update badge
-    _totalUnread++;
-    updateUnreadBadge();
-
-    // If chat list is visible, refresh it
+    // Refresh the chat list if it's visible so the new message bubbles
+    // up to the top.
     if (_msgPanelOpen && _msgView === 'list') {
         renderChatList();
     }
@@ -2916,53 +2903,9 @@ function onNewGroupMessage(msg) {
         return;
     }
 
-    // Otherwise increment unread
-    _totalUnread++;
-    updateUnreadBadge();
-
     if (_msgPanelOpen && _msgView === 'list') {
         renderChatList();
     }
-}
-
-// ── Unread count ──
-async function calculateUnread() {
-    if (!_msgFaction?.id) return;
-
-    try {
-        // Count DMs where we are the receiver and read_at is null (actually unread)
-        const { data: unreadDMs } = await _supabase
-            .from('direct_messages')
-            .select('sender_id')
-            .eq('receiver_id', _msgFaction.id)
-            .is('read_at', null)
-            .limit(200);
-
-        // Count distinct unread DM partners
-        const unreadDmPartners = new Set();
-        for (const dm of (unreadDMs || [])) {
-            unreadDmPartners.add(dm.sender_id);
-        }
-
-        // Count group chats with unread messages (from cached _groupChats)
-        const unreadGroupCount = _groupChats.filter(g => g.unreadCount > 0).length;
-
-        // Total = unread DM conversations + unread group chats
-        _totalUnread = unreadDmPartners.size + unreadGroupCount;
-    } catch (_) {
-        // Non-critical
-    }
-
-    updateUnreadBadge();
-}
-
-function updateUnreadBadge() {
-    // Unread alerts now live in the navbar notification dropdown
-    // (js/notifications.js). The bubble stays a pure chat launcher; we
-    // still maintain _totalUnread above for tab-bar counts inside the
-    // panel, but the floating badge itself is hidden.
-    const badge = document.getElementById('msg-badge');
-    if (badge) badge.classList.remove('visible');
 }
 
 // ── Public init ──
@@ -2981,13 +2924,11 @@ export function initMessaging(faction, nation, shard) {
     // first render already filters out blocked senders.
     loadBlockList();
 
-    // Sync auto-chats then calculate unread (non-blocking)
-    syncAutoChats().then(() => {
-        // Load group chats first so calculateUnread can count group unreads
-        loadGroupChats().then(() => {
-            calculateUnread();
-        });
-    });
+    // Sync auto-chats and prime the group chat list (per-chat unread
+    // counts populate from realtime + the membership last_read_at, so
+    // we only need to load the membership; navbar notifications track
+    // total unread separately).
+    syncAutoChats().then(() => loadGroupChats());
 
     // Start realtime subscriptions
     setupRealtime();

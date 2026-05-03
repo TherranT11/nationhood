@@ -16,7 +16,6 @@ const REFRESH_MS = 60_000;
 const ELECTION_RECENCY_TICKS = 30;
 
 let _ctx = null;          // { faction, nation, shard }
-let _roles = null;        // { isPM, isTradeMin, isJusticeMin }
 let _refreshTimer = null;
 let _styleInjected = false;
 let _wired = false;
@@ -62,7 +61,7 @@ function injectStyles() {
 }
 .notif-dropdown {
     position: absolute; top: calc(100% + 8px); right: 0;
-    width: 360px; max-height: 480px;
+    width: 360px; max-width: calc(100vw - 24px); max-height: 480px;
     background: var(--bg-panel, #1a1a17);
     border: 1px solid var(--border-main, rgba(0,0,0,0.6));
     box-shadow: 0 12px 32px rgba(0,0,0,0.5);
@@ -131,6 +130,13 @@ function injectStyles() {
 //  Open/close + outside-click dismissal
 // ──────────────────────────────────────────────────────────────────────
 
+function closeDropdown() {
+    const bell = document.getElementById('notif-bell');
+    const drop = document.getElementById('notif-dropdown');
+    if (drop) drop.hidden = true;
+    if (bell) bell.setAttribute('aria-expanded', 'false');
+}
+
 function wireBellInteractions() {
     if (_wired) return;
     const bell = document.getElementById('notif-bell');
@@ -139,28 +145,21 @@ function wireBellInteractions() {
 
     bell.addEventListener('click', (e) => {
         e.stopPropagation();
-        const isOpen = !drop.hidden;
-        if (isOpen) {
-            drop.hidden = true;
-            bell.setAttribute('aria-expanded', 'false');
+        if (!drop.hidden) {
+            closeDropdown();
         } else {
             drop.hidden = false;
             bell.setAttribute('aria-expanded', 'true');
-            // Refresh on open so the user sees fresh data.
             refreshNotifications();
         }
     });
     document.addEventListener('click', (e) => {
         if (drop.hidden) return;
         if (drop.contains(e.target) || bell.contains(e.target)) return;
-        drop.hidden = true;
-        bell.setAttribute('aria-expanded', 'false');
+        closeDropdown();
     });
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !drop.hidden) {
-            drop.hidden = true;
-            bell.setAttribute('aria-expanded', 'false');
-        }
+        if (e.key === 'Escape' && !drop.hidden) closeDropdown();
     });
     _wired = true;
 }
@@ -182,7 +181,7 @@ async function detectRoles(faction, nation) {
 
     // Government formation — extract PM via ministry_assignments.prime_minister
     const govP = _supabase.from('government_formations')
-        .select('ministry_assignments, party_ids, status, formed_at')
+        .select('ministry_assignments')
         .eq('nation_id', nation.id)
         .in('status', ['formed', 'caretaker'])
         .order('formed_at', { ascending: false })
@@ -212,7 +211,7 @@ async function detectRoles(faction, nation) {
 async function checkBills(faction, nation) {
     const { data, error } = await _supabase
         .from('bills')
-        .select('id, status, bill_name, bill_support(faction_id)')
+        .select('id, status, bill_support(faction_id)')
         .eq('nation_id', nation.id)
         .in('status', ['committee', 'floor']);
     if (error || !data) return [];
@@ -244,9 +243,12 @@ async function checkBills(faction, nation) {
 
 async function checkRecentElection(nation, shard) {
     const tick = Number(shard?.current_tick) || 0;
+    // Without a current tick we can't reason about recency. Bail rather
+    // than risk showing a stale completed election as "Just now".
+    if (tick <= 0) return [];
     const { data } = await _supabase
         .from('elections')
-        .select('id, election_tick, status')
+        .select('election_tick')
         .eq('nation_id', nation.id)
         .eq('status', 'completed')
         .order('election_tick', { ascending: false })
@@ -254,8 +256,8 @@ async function checkRecentElection(nation, shard) {
     const el = (data || [])[0];
     if (!el) return [];
     const completed = Number(el.election_tick) || 0;
-    if (!completed || tick - completed > ELECTION_RECENCY_TICKS) return [];
-    const ticksAgo = Math.max(0, tick - completed);
+    if (!completed || completed > tick || tick - completed > ELECTION_RECENCY_TICKS) return [];
+    const ticksAgo = tick - completed;
     return [{
         title: 'Election completed',
         sub: ticksAgo === 0 ? 'Just now' : `${ticksAgo} tick${ticksAgo === 1 ? '' : 's'} ago`,
@@ -296,7 +298,7 @@ async function checkCoalitionInvites(faction, nation) {
     }];
 }
 
-async function checkChatUnread(faction, nation) {
+async function checkChatUnread(faction) {
     if (!faction?.id) return [];
 
     // Direct messages: any unread row where I'm the receiver.
@@ -309,7 +311,7 @@ async function checkChatUnread(faction, nation) {
     // Group chats I'm a member of: compare last_read_at vs latest message.
     const memP = _supabase
         .from('group_chat_members')
-        .select('chat_id, last_read_at, group_chats!inner(id, chat_type, name, nation_id)')
+        .select('chat_id, last_read_at, group_chats!inner(id, chat_type)')
         .eq('faction_id', faction.id);
 
     const [{ count: dmCount }, { data: members }] = await Promise.all([dmP, memP]);
@@ -323,27 +325,29 @@ async function checkChatUnread(faction, nation) {
         });
     }
 
-    // For each group chat, check if there's any message newer than last_read_at.
-    // Fan-out is small (a handful of group memberships) so individual
-    // count queries are fine. Aggregate global vs nation chat unread.
+    // Fan out a count query per global/nation chat membership. Use
+    // allSettled so one failed count doesn't drop the rest.
     let globalUnread = 0, nationUnread = 0;
-    await Promise.all((members || []).map(async (m) => {
+    const perChat = await Promise.allSettled((members || []).map(async (m) => {
         const ch = Array.isArray(m.group_chats) ? m.group_chats[0] : m.group_chats;
-        if (!ch) return;
+        if (!ch) return null;
         const type = ch.chat_type;
-        // We only surface global + nation chats in notifications. Custom
-        // group chats / IPO chats stay scoped to the messaging panel.
-        if (type !== 'global' && type !== 'nation') return;
+        // Only surface global + nation chats in notifications; custom /
+        // IPO chats stay scoped to the messaging panel.
+        if (type !== 'global' && type !== 'nation') return null;
         let q = _supabase.from('group_chat_messages')
             .select('id', { count: 'exact', head: true })
             .eq('chat_id', ch.id)
             .neq('sender_id', faction.id);
         if (m.last_read_at) q = q.gt('created_at', m.last_read_at);
         const { count } = await q;
-        if (!count) return;
-        if (type === 'global') globalUnread += count;
-        else if (type === 'nation') nationUnread += count;
+        return { type, count: count || 0 };
     }));
+    for (const r of perChat) {
+        if (r.status !== 'fulfilled' || !r.value || !r.value.count) continue;
+        if (r.value.type === 'global') globalUnread += r.value.count;
+        else if (r.value.type === 'nation') nationUnread += r.value.count;
+    }
 
     if (globalUnread > 0) {
         out.push({
@@ -373,7 +377,7 @@ async function checkTradeNegotiationMessages(faction, nation, isPM, isTradeMin) 
     // matches the pattern the diplomacy badge already uses.
     const { data: negs } = await _supabase
         .from('trade_negotiations')
-        .select('id, nation_a_id, nation_b_id, status, opened_at_tick')
+        .select('id')
         .eq('status', 'open')
         .or(`nation_a_id.eq.${nation.id},nation_b_id.eq.${nation.id}`);
     if (!negs || negs.length === 0) return [];
@@ -411,7 +415,7 @@ async function checkLawsuits(nation, isJusticeMin) {
     // Justice Minister so it doesn't spam every player.
     const { data, error } = await _supabase
         .from('commercial_lawsuits')
-        .select('id, status, filed_at_tick')
+        .select('id')
         .eq('nation_id', nation.id)
         .in('status', ['pending', 'reviewing']);
     if (error || !data || data.length === 0) return [];
@@ -461,15 +465,11 @@ function renderRows(rows) {
     });
 }
 
-function handleInAppAction(href) {
-    const drop = document.getElementById('notif-dropdown');
-    const bell = document.getElementById('notif-bell');
-    if (drop) drop.hidden = true;
-    if (bell) bell.setAttribute('aria-expanded', 'false');
-
-    // Pop the chat bubble. Specific deep-links (global vs nation) are
-    // best-effort: if messaging.js exposes a hook we use it, otherwise
-    // we click the floating bubble.
+function handleInAppAction(_href) {
+    closeDropdown();
+    // Pop the chat panel. Per-tab deep-linking (global vs nation) is
+    // best-effort — without a public messaging.js hook we just open the
+    // panel and let the user pick the tab.
     const bubble = document.getElementById('msg-bubble');
     if (bubble) bubble.click();
 }
@@ -483,19 +483,24 @@ async function refreshNotifications() {
     _inflight = true;
     try {
         const { faction, nation, shard } = _ctx;
-        if (!_roles) _roles = await detectRoles(faction, nation);
-        const { isPM, isTradeMin, isJusticeMin } = _roles;
+        // Recompute roles every refresh. Mid-session ministry shuffles
+        // (cabinet reshuffle, snap election) need to flip gating in real
+        // time; caching roles indefinitely would silently miss that.
+        const { isPM, isTradeMin, isJusticeMin } = await detectRoles(faction, nation);
 
-        const results = await Promise.all([
+        // allSettled so a single failing query doesn't drop every other
+        // notification on the floor.
+        const settled = await Promise.allSettled([
             checkBills(faction, nation),
             checkRecentElection(nation, shard),
             checkCoalitionInvites(faction, nation),
-            checkChatUnread(faction, nation),
+            checkChatUnread(faction),
             checkTradeNegotiationMessages(faction, nation, isPM, isTradeMin),
             checkLawsuits(nation, isJusticeMin),
         ]);
-
-        const rows = results.flat().filter(Boolean);
+        const rows = settled
+            .filter(r => r.status === 'fulfilled' && Array.isArray(r.value))
+            .flatMap(r => r.value);
         renderRows(rows);
     } catch (e) {
         console.warn('[notifications] refresh failed:', e?.message || e);
@@ -509,9 +514,19 @@ async function refreshNotifications() {
 // ──────────────────────────────────────────────────────────────────────
 
 export async function initNotifications(ctx) {
-    if (!ctx?.faction || !ctx?.nation) return;
+    const wrap = document.querySelector('.notif-wrap');
+    if (!ctx?.faction || !ctx?.nation) {
+        if (wrap) wrap.style.display = 'none';
+        return;
+    }
+    // Notifications are scoped to political play. Corporations land on
+    // shared pages (news, wiki) without redirecting, so guard here so
+    // the bell never shows political alerts to a corp account.
+    if (ctx.faction.faction_type && ctx.faction.faction_type !== 'party') {
+        if (wrap) wrap.style.display = 'none';
+        return;
+    }
     _ctx = ctx;
-    _roles = null;
 
     injectStyles();
     wireBellInteractions();
