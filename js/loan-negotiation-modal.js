@@ -591,11 +591,24 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
         }, async () => {
             if (closed) return;
             const focusSnap = captureFocus(modalEl);
+            // Preserve any in-flight chat draft so a counterparty term-
+            // change re-render doesn't wipe what you were typing.
+            const chatDraft = modalEl.querySelector('[data-lnm-field="chat-input"]')?.value || '';
             const { data, error } = await fetchNegotiation(supabase, negotiationId);
-            if (error || !data || closed) return;
+            if (closed) return;
+            if (error) {
+                console.warn('[loan-negotiation-modal] realtime re-fetch failed:', error.message);
+                return;
+            }
+            if (!data) return;
             neg = data;
             renderModal(modalEl, neg, messages);
             wireActionHandlers(modalEl, supabase, negotiationId, () => neg);
+            // Restore chat draft only if the re-rendered input is empty —
+            // avoids clobbering a value the user managed to type during
+            // the brief re-render window.
+            const chatIn = modalEl.querySelector('[data-lnm-field="chat-input"]');
+            if (chatIn && chatDraft && !chatIn.value) chatIn.value = chatDraft;
             restoreFocus(modalEl, focusSnap);
         })
         .on('postgres_changes', {
