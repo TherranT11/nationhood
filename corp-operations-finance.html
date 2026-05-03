@@ -2556,6 +2556,7 @@ async function init() {
             await lnm.renderLenderInbox({
                 supabase: _supabase,
                 container: inboxHost,
+                lenderFactionId: faction?.id,
             });
         }
         const urlNeg = new URL(location.href).searchParams.get('negotiation');

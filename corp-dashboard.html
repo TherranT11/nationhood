@@ -1199,7 +1199,10 @@ async function init() {
             const btn = ev.target.closest('[data-act="negotiate-loan"]');
             if (!btn) return;
             ev.preventDefault();
-            lnm.mountLoanRequestPicker({ supabase: _supabase });
+            lnm.mountLoanRequestPicker({
+                supabase: _supabase,
+                borrowerFactionId: faction?.id,
+            });
         });
         const urlNeg = new URL(location.href).searchParams.get('negotiation');
         if (urlNeg) {

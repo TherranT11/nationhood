@@ -332,6 +332,36 @@ function formatRelative(ts) {
     return Math.floor(dSec / 86400) + 'd ago';
 }
 
+// Resolve the caller's owned corporation id from auth.uid(). Used by
+// the picker + inbox when the host page didn't pass an explicit id.
+// Returns null on any failure (unauth, no corp, etc.). Pages that
+// already know their active faction should pass it explicitly to
+// avoid the auth round-trip + the "limit 1" non-determinism for
+// users who own multiple corps.
+async function _resolveOwnCorpId(supabase, ctxLabel) {
+    try {
+        const { data: { user } = {} } = await supabase.auth.getUser();
+        const uid = user?.id;
+        if (!uid) return null;
+        const { data: own, error } = await supabase
+            .from('factions')
+            .select('id')
+            .eq('faction_type', 'corporation')
+            .is('abandoned_at', null)
+            .or(`id.eq.${uid},linked_user_id.eq.${uid}`)
+            .limit(1)
+            .maybeSingle();
+        if (error) {
+            console.warn('[' + ctxLabel + '] own-corp lookup failed:', error.message);
+            return null;
+        }
+        return own?.id || null;
+    } catch (e) {
+        console.warn('[' + ctxLabel + '] auth resolve failed:', e?.message || e);
+        return null;
+    }
+}
+
 // ── Fetch helpers (DRY for initial + realtime re-fetch) ──────────
 function fetchNegotiation(supabase, negotiationId) {
     return supabase
@@ -568,10 +598,22 @@ function appendChatMessageDom(modalEl, msg, neg) {
     }
 }
 
+// Module-level double-mount guard. Repeated clicks on the same inbox
+// row (during the data-load window) used to stack two overlays on
+// the same negotiation; second close left the first floating. Set
+// tracks live mounts by id; second call short-circuits with a no-op
+// close handle.
+const _activeNegotiationModals = new Set();
+
 // ── Mount ────────────────────────────────────────────────────────
 export async function mountLoanNegotiationModal({ supabase, negotiationId, onClose, onFired } = {}) {
     if (!supabase)      throw new Error('mountLoanNegotiationModal: supabase client required');
     if (!negotiationId) throw new Error('mountLoanNegotiationModal: negotiationId required');
+
+    if (_activeNegotiationModals.has(negotiationId)) {
+        return { close: () => {} };
+    }
+    _activeNegotiationModals.add(negotiationId);
 
     injectStylesOnce();
     const overlay = renderShell();
@@ -595,6 +637,7 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
     const close = () => {
         if (closed) return;
         closed = true;
+        _activeNegotiationModals.delete(negotiationId);
         cleanupChannel();
         window.removeEventListener('beforeunload', onPageUnload);
         overlay.remove();
@@ -927,27 +970,11 @@ export async function mountLoanRequestPicker({ supabase, borrowerFactionId, onOp
     });
 
     // Resolve borrower faction. If caller passed an id, trust it; else
-    // resolve from auth.
-    let borrowerId = borrowerFactionId;
-    if (!borrowerId) {
-        try {
-            const { data: { user } = {} } = await supabase.auth.getUser();
-            const uid = user?.id;
-            if (uid) {
-                const { data: own } = await supabase
-                    .from('factions')
-                    .select('id')
-                    .eq('faction_type', 'corporation')
-                    .is('abandoned_at', null)
-                    .or(`id.eq.${uid},linked_user_id.eq.${uid}`)
-                    .limit(1)
-                    .maybeSingle();
-                borrowerId = own?.id || null;
-            }
-        } catch (e) {
-            console.warn('[loan-request-picker] borrower auth resolve failed:', e?.message || e);
-        }
-    }
+    // resolve from auth (host page should pass explicitly when it knows
+    // the active corp — picker has no way to disambiguate multi-corp
+    // users otherwise).
+    const borrowerId = borrowerFactionId
+        || (await _resolveOwnCorpId(supabase, 'loan-request-picker'));
     if (!borrowerId) {
         modalEl.innerHTML = `
             <div class="lnm-head">
@@ -1108,26 +1135,8 @@ export async function renderLenderInbox({ supabase, container, lenderFactionId, 
     container.classList.add('lnm-inbox-host');
     container.innerHTML = '<div class="lnm-loading" style="padding:14px;">Loading inbox…</div>';
 
-    let resolvedLenderId = lenderFactionId;
-    if (!resolvedLenderId) {
-        try {
-            const { data: { user } = {} } = await supabase.auth.getUser();
-            const uid = user?.id;
-            if (uid) {
-                const { data: own } = await supabase
-                    .from('factions')
-                    .select('id')
-                    .eq('faction_type', 'corporation')
-                    .is('abandoned_at', null)
-                    .or(`id.eq.${uid},linked_user_id.eq.${uid}`)
-                    .limit(1)
-                    .maybeSingle();
-                resolvedLenderId = own?.id || null;
-            }
-        } catch (e) {
-            console.warn('[lender-inbox] auth resolve failed:', e?.message || e);
-        }
-    }
+    const resolvedLenderId = lenderFactionId
+        || (await _resolveOwnCorpId(supabase, 'lender-inbox'));
     if (!resolvedLenderId) {
         container.innerHTML = '<div class="lnm-empty-chat" style="padding:14px;">Sign in to see negotiations.</div>';
         return;
