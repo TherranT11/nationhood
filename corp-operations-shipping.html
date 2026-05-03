@@ -1523,6 +1523,10 @@ body.corp-operations-shipping.light-mode {
         <h2><span class="num">II.</span>Pressing Issues</h2>
         <span class="desc" id="pi-count">— Open</span>
       </div>
+      <!-- Lawsuit cards (defendant + plaintiff settle-review) render
+           into a dedicated host owned by js/lawsuit-pressing-issues.js
+           — same module the other sector ops pages mount. -->
+      <div id="so-lawsuit-pressing"></div>
       <div class="pi-list" id="pi-list">
         <div class="pi-empty"><div class="pi-empty__text">Loading pressing issues…</div></div>
       </div>
@@ -1577,6 +1581,7 @@ body.corp-operations-shipping.light-mode {
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, hfFmtBig } from './js/utils.js';
+import { mountLawsuitPressingIssues } from './js/lawsuit-pressing-issues.js';
 
 // ── HERO STATS (Section I) ──
 // Score-band lookup powers per-card blurbs and impact metrics.
@@ -1739,6 +1744,9 @@ let _pressingIssues = [];
 let _receivedOffers = [];
 let _ackInflight = new Set();
 let _loanOfferInflight = new Set();
+// Lawsuit cards (defendant + plaintiff settle-review) are owned by
+// js/lawsuit-pressing-issues.js — mounted to its own host below.
+let _lawsuitCtl = null;
 
 // Routes state.
 let _availableContracts = [];   // status='open', includes my-bid annotation
@@ -1836,11 +1844,17 @@ function renderPressingIssues() {
     const count = document.getElementById('pi-count');
     if (!list) return;
 
-    const total = _pressingIssues.length + _receivedOffers.length;
+    const lawsuitCount = _lawsuitCtl?.getCount?.() ?? 0;
+    const total = _pressingIssues.length + _receivedOffers.length + lawsuitCount;
     if (count) count.textContent = `${total} OPEN`;
 
-    if (total === 0) {
-        list.innerHTML = '<div class="pi-empty"><div class="pi-empty__text">No pressing issues right now.<br>Time-sensitive decisions<br>will appear here.</div></div>';
+    if (_pressingIssues.length === 0 && _receivedOffers.length === 0) {
+        // Lawsuit cards (if any) render into their own host above
+        // #pi-list — so the empty copy here only applies to the
+        // event/offer stack, not the section as a whole.
+        list.innerHTML = lawsuitCount === 0
+            ? '<div class="pi-empty"><div class="pi-empty__text">No pressing issues right now.<br>Time-sensitive decisions<br>will appear here.</div></div>'
+            : '';
         return;
     }
 
@@ -3184,6 +3198,15 @@ async function init() {
     attachContractsHandlers();
     attachStrategicActionsHandlers();
     attachModalDismissHandlers();
+
+    _lawsuitCtl = mountLawsuitPressingIssues({
+        supabase: _supabase,
+        faction,
+        host: document.getElementById('so-lawsuit-pressing'),
+        currentTick: () => Number(shard?.current_tick) || 0,
+        showEmpty: false,
+        onChange: () => renderPressingIssues(),
+    });
 
     await Promise.all([
         loadPressingIssues(),

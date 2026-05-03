@@ -1137,6 +1137,10 @@ body.corp-operations-construction.light-mode {
         <h2><span class="num">II.</span>Pressing Issues</h2>
         <span class="desc" id="co-issues-meta">Time-Sensitive ◊ Decide Before Tick Resolves</span>
       </div>
+      <!-- Lawsuit cards (defendant + plaintiff settle-review) render
+           into a dedicated host owned by js/lawsuit-pressing-issues.js
+           — same module the other sector ops pages mount. -->
+      <div id="co-lawsuit-pressing"></div>
       <div id="co-issues-list">
         <div class="co-contract-empty">Loading…</div>
       </div>
@@ -1198,7 +1202,7 @@ body.corp-operations-construction.light-mode {
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, escapeAttr, tickToDate } from './js/utils.js';
-import { GRIEVANCE_LABEL } from './js/game/lawsuit-types.js';
+import { mountLawsuitPressingIssues } from './js/lawsuit-pressing-issues.js';
 
 // Operations pages are sector-gated. Construction stays here; every other
 // sector has its own page. Keep this map in sync with corp-topbar.js's
@@ -1368,15 +1372,13 @@ let _pressingIssues = [];
 // opened. Surfaced as Pressing Issues so the borrower can accept the
 // best offer or reject individuals — siblings auto-reject on accept.
 let _receivedOffers = [];
-// Phase 2 lawsuits: defendant entries (status='pending') need a Refute/
-// Settle/Concede response; plaintiff entries (status='settle_offered')
-// need an accept/reject decision on the defendant's offer.
-let _lawsuitsToAnswer = [];     // defendant view (you were sued)
-let _lawsuitsSettleOffered = []; // plaintiff view (you offered, awaiting reply)
+// Lawsuit cards (defendant + plaintiff settle-review) are owned by
+// js/lawsuit-pressing-issues.js — mounted to its own host below.
+let _lawsuitCtl = null;
 
 async function loadPressingIssues() {
     if (!faction?.id) return;
-    const [eventsRes, offersRes, defendantSuitsRes, plaintiffSuitsRes] = await Promise.all([
+    const [eventsRes, offersRes] = await Promise.all([
         _supabase
             .from('corp_contract_events')
             .select('id, contract_id, type, severity, title, description, impact, responses, expires_at_tick, corp_contracts:contract_id(name)')
@@ -1398,27 +1400,6 @@ async function loadPressingIssues() {
             .eq('borrower_faction_id', faction.id)
             .eq('status', 'open')
             .order('last_activity_at', { ascending: false }),
-        _supabase
-            .from('commercial_lawsuits')
-            .select(`
-                id, plaintiff_faction_id, defendant_faction_id, grievance_type,
-                relief_sought, status, filed_at_tick, response_deadline_tick,
-                settle_offer_amount, chat_id,
-                plaintiff:plaintiff_faction_id(faction_name, abbreviation, corp_ticker)
-            `)
-            .eq('defendant_faction_id', faction.id)
-            .eq('status', 'pending')
-            .order('filed_at_tick', { ascending: false }),
-        _supabase
-            .from('commercial_lawsuits')
-            .select(`
-                id, plaintiff_faction_id, defendant_faction_id, grievance_type,
-                relief_sought, status, settle_offer_amount, chat_id,
-                defendant:defendant_faction_id(faction_name, abbreviation, corp_ticker)
-            `)
-            .eq('plaintiff_faction_id', faction.id)
-            .eq('status', 'settle_offered')
-            .order('updated_at', { ascending: false }),
     ]);
     if (eventsRes.error) {
         console.warn('[corp-operations] Pressing Issues fetch failed:', eventsRes.error.message);
@@ -1431,18 +1412,6 @@ async function loadPressingIssues() {
         _receivedOffers = [];
     } else {
         _receivedOffers = offersRes.data || [];
-    }
-    if (defendantSuitsRes.error) {
-        console.warn('[corp-operations] Defendant suits fetch failed:', defendantSuitsRes.error.message);
-        _lawsuitsToAnswer = [];
-    } else {
-        _lawsuitsToAnswer = defendantSuitsRes.data || [];
-    }
-    if (plaintiffSuitsRes.error) {
-        console.warn('[corp-operations] Plaintiff settle suits fetch failed:', plaintiffSuitsRes.error.message);
-        _lawsuitsSettleOffered = [];
-    } else {
-        _lawsuitsSettleOffered = plaintiffSuitsRes.data || [];
     }
     renderPressingIssues();
 }
@@ -1469,14 +1438,19 @@ function renderPressingIssues() {
     const meta = document.getElementById('co-issues-meta');
     if (!list || !meta) return;
 
-    const total = _pressingIssues.length + _receivedOffers.length
-                + _lawsuitsToAnswer.length + _lawsuitsSettleOffered.length;
+    const lawsuitCount = _lawsuitCtl?.getCount?.() ?? 0;
+    const total = _pressingIssues.length + _receivedOffers.length + lawsuitCount;
     meta.textContent = total === 0
         ? 'Time-Sensitive ◊ Decide Before Tick Resolves'
         : `${total} OPEN ◊ DECIDE BEFORE TICK RESOLVES`;
 
-    if (total === 0) {
-        list.innerHTML = '<div class="co-contract-empty">No pressing issues right now. Time-sensitive decisions will appear here when triggered.</div>';
+    if (_pressingIssues.length === 0 && _receivedOffers.length === 0) {
+        // Lawsuit cards (if any) render into their own host above
+        // #co-issues-list — so the empty copy here only applies to the
+        // event/offer stack, not the section as a whole.
+        list.innerHTML = lawsuitCount === 0
+            ? '<div class="co-contract-empty">No pressing issues right now. Time-sensitive decisions will appear here when triggered.</div>'
+            : '';
         return;
     }
 
@@ -1559,46 +1533,7 @@ function renderPressingIssues() {
         </div>`;
     });
 
-    // Lawsuit cards — defendant view (response required) and
-    // plaintiff view (review settle offer). They share the same
-    // Pressing Issue chrome; the modal mounts decide what flow to run.
-    const lawsuitDefendantCards = _lawsuitsToAnswer.map(l => {
-        const ticksLeft = Math.max(0, Number(l.response_deadline_tick || 0) - currentTick);
-        const plName = l.plaintiff?.faction_name || 'Plaintiff';
-        const plTick = l.plaintiff?.corp_ticker || l.plaintiff?.abbreviation || '';
-        const grievance = GRIEVANCE_LABEL[l.grievance_type] || l.grievance_type;
-        return `<div class="co-issue-card sev-critical">
-            <div class="co-contract-meta-row">
-                <span class="co-issue-tag sev-critical">LAWSUIT ◊ RESPONSE REQUIRED</span>
-                <span class="co-contract-deadline">${ticksLeft} ticks remaining</span>
-            </div>
-            <div class="co-contract-name">Sued by ${escapeHtml(plName)}</div>
-            <div class="co-contract-client">— ${escapeHtml(grievance)} ${plTick ? '· ' + escapeHtml(plTick) : ''}</div>
-            <div class="co-issue-desc">A civil lawsuit has been filed against you. Choose Refute, Settle, or Concede before the deadline or the case auto-concedes.</div>
-            <div class="co-contract-actions">
-                <button class="co-contract-btn primary" data-action="lawsuit-respond" data-id="${escapeHtml(l.id)}">Respond ▸</button>
-            </div>
-        </div>`;
-    });
-    const lawsuitPlaintiffCards = _lawsuitsSettleOffered.map(l => {
-        const defName = l.defendant?.faction_name || 'Defendant';
-        const offer = Number(l.settle_offer_amount || 0);
-        return `<div class="co-issue-card kind-loan-offer">
-            <div class="co-contract-meta-row">
-                <span class="co-issue-tag kind-loan-offer">SETTLEMENT ◊ AWAITING YOU</span>
-                <span class="co-contract-deadline">Decide</span>
-            </div>
-            <div class="co-contract-name">${escapeHtml(defName)} offered ${escapeHtml(fmtMoney(offer))}</div>
-            <div class="co-contract-client">— Accept to close, reject to proceed to trial</div>
-            <div class="co-contract-actions">
-                <button class="co-contract-btn primary" data-action="lawsuit-settle-review" data-id="${escapeHtml(l.id)}">Review Offer ▸</button>
-            </div>
-        </div>`;
-    });
-
-    list.innerHTML = lawsuitDefendantCards
-        .concat(lawsuitPlaintiffCards)
-        .concat(offerCards)
+    list.innerHTML = offerCards
         .concat(eventCards)
         .join('');
 }
@@ -1947,11 +1882,8 @@ function bindContractActions() {
     // Pressing Issues delegation. Routes by data-action: ack-issue
     // for project events, open-negotiation for inbound bilateral
     // loan negotiations (Phase 6 unification — replaces accept/reject
-    // on bank_loan_offers).
-    // Refresh Pressing Issues when a lawsuit response/settlement fires.
-    window.addEventListener('lawsuit:responded', () => loadPressingIssues());
-    window.addEventListener('lawsuit:settled',   () => loadPressingIssues());
-
+    // on bank_loan_offers). Lawsuit cards live in their own host and
+    // are wired by js/lawsuit-pressing-issues.js.
     document.getElementById('co-issues-list')?.addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-action]');
         if (!btn || btn.disabled) return;
@@ -1959,19 +1891,6 @@ function bindContractActions() {
         const id = btn.getAttribute('data-id');
         if (!id) return;
         if (action === 'ack-issue')     return acknowledgeIssue(id);
-        if (action === 'lawsuit-respond' || action === 'lawsuit-settle-review') {
-            try {
-                const lr = await import('./js/lawsuit-respond.js');
-                const list = action === 'lawsuit-respond' ? _lawsuitsToAnswer : _lawsuitsSettleOffered;
-                const lawsuit = list.find(x => x.id === id);
-                if (!lawsuit) return;
-                if (action === 'lawsuit-respond') lr.openLawsuitResponseModal(lawsuit, faction);
-                else                              lr.openSettleReviewModal(lawsuit, faction);
-            } catch (err) {
-                console.warn('[corp-operations] lawsuit modal mount failed:', err?.message || err);
-            }
-            return;
-        }
         if (action === 'open-negotiation') {
             try {
                 const lnm = await import('./js/loan-negotiation-modal.js');
@@ -2711,6 +2630,14 @@ async function init() {
     // Contracts + Pressing Issues render after the page is visible —
     // each section's empty/loading state covers the gap.
     loadContracts();
+    _lawsuitCtl = mountLawsuitPressingIssues({
+        supabase: _supabase,
+        faction,
+        host: document.getElementById('co-lawsuit-pressing'),
+        currentTick: () => Number(shard?.current_tick) || 0,
+        showEmpty: false,
+        onChange: () => renderPressingIssues(),
+    });
     loadPressingIssues();
 }
 

@@ -769,6 +769,10 @@ body.airline-operations.light-mode {
       <h2><span class="num">II.</span>Pressing Issues</h2>
       <span class="desc">Items requiring attention</span>
     </div>
+    <!-- Lawsuit cards (defendant + plaintiff settle-review) render
+         into a dedicated host owned by js/lawsuit-pressing-issues.js
+         — same module the other sector ops pages mount. -->
+    <div id="ao-lawsuit-pressing"></div>
     <div class="ao-empty" id="ao-issues">
       <strong>No pressing issues</strong>
       Operations are running cleanly. Issues will surface here as they arise.
@@ -892,6 +896,7 @@ body.airline-operations.light-mode {
 <script type="module">
 import { renderCorpTopBar } from './js/corp-topbar.js';
 import { _supabase } from './js/supabase-client.js';
+import { mountLawsuitPressingIssues } from './js/lawsuit-pressing-issues.js';
 
 function escHtml(s) {
     if (s == null) return '';
@@ -1999,6 +2004,14 @@ async function init() {
     const totalCities = cityCount || 0;
 
     const currentTick = Number(shard?.current_tick) || 0;
+
+    mountLawsuitPressingIssues({
+        supabase: _supabase,
+        faction,
+        host: document.getElementById('ao-lawsuit-pressing'),
+        currentTick: () => Number(shard?.current_tick) || 0,
+        showEmpty: false,
+    });
 
     // Side-by-side panels.
     await Promise.all([
