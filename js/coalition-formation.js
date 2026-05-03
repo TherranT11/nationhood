@@ -724,12 +724,12 @@ async function createMinistriesFromAssignments(nationId) {
     // Upsert ministry rows — update if they exist, insert if they don't.
     // ministry_name uses the shared MINISTRY_OFFICE_NAMES map so this stays
     // aligned with bills.js, executive-orders.js, presidential.js, etc.
+    const names = getNationNames(_state.nation?.name) || {};
+    const firstPool = names.firstNames || ['Alex', 'Maria', 'Carlos'];
+    const lastPool  = names.lastNames  || ['Garcia', 'Torres', 'Silva'];
     let updated = 0;
     for (const [key, partyId] of Object.entries(_ministryAssignments)) {
         if (!partyId) continue;
-        const names = getNationNames(_state.nation?.name) || {};
-        const firstPool = names.firstNames || ['Alex', 'Maria', 'Carlos'];
-        const lastPool = names.lastNames || ['Garcia', 'Torres', 'Silva'];
         const firstName = firstPool[Math.floor(Math.random() * firstPool.length)];
         const lastName = lastPool[Math.floor(Math.random() * lastPool.length)];
         const age = 35 + Math.floor(Math.random() * 25);
