@@ -2619,8 +2619,11 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
             if (error) throw error;
             ministryConfigData = data || [];
 
-            // Load all nations for dropdown
-            const { data: nations } = await _supabase.from('nations').select('id, name, population, gdp, inflation').order('name');
+            // Load all nations for the dropdown. Only id + name are read
+            // off mcAllNations entries — the previous select pulled
+            // population/gdp/inflation but never referenced them, and one of
+            // those columns 400'd against the live schema.
+            const { data: nations } = await _supabase.from('nations').select('id, name').order('name');
             mcAllNations = nations || [];
 
             // Populate dropdown
