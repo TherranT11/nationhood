@@ -426,8 +426,21 @@ export function renderTopBar(activeTab) {
             </div>
             <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.4.2.1</div>
             <div class="top-bar-right">
-                <button class="guide-btn" id="guide-btn" title="Page Guide" style="display:none;"></button>
-                ${activeTab === 'home' ? '<a href="how-to.html" class="guide-btn" style="text-decoration:none;">HOW TO</a>' : ''}
+                <div class="notif-wrap">
+                    <button class="notif-bell" id="notif-bell" type="button" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
+                        <span class="notif-bell__icon" aria-hidden="true">&#x1F514;</span>
+                        <span class="notif-bell__dot" id="notif-dot" hidden></span>
+                    </button>
+                    <div class="notif-dropdown" id="notif-dropdown" role="menu" hidden>
+                        <div class="notif-dropdown__header">
+                            <span class="notif-dropdown__title">Notifications</span>
+                            <span class="notif-dropdown__count" id="notif-count">0</span>
+                        </div>
+                        <div class="notif-dropdown__list" id="notif-list">
+                            <div class="notif-empty">Loading…</div>
+                        </div>
+                    </div>
+                </div>
                 <span class="topbar-ap" id="topbar-ap"></span>
                 <div class="faction-switcher" id="faction-switcher">
                     <span class="party-badge" id="party-badge" onclick="toggleFactionDropdown()" style="cursor:pointer;">--</span>
@@ -1327,32 +1340,9 @@ export function updateThemeButton() {
 
 // ===== PAGE INITIALIZATION =====
 
-// Guide button label map + hidden tabs (lightweight — avoids loading guide.js eagerly)
-const _GUIDE_TAB_LABELS = {
-    dashboard: 'Home', nation: 'Nation', government: 'Government',
-    politics: 'Politics', laws: 'Bills', diplomacy: 'Diplomacy',
-    economy: 'Economy', events: 'Events', elections: 'Elections'
-};
-const _GUIDE_HIDDEN_TABS = ['dashboard', 'home'];
-
-let _guideModule = null;
-function setupGuideButton(tab) {
-    const btn = document.getElementById('guide-btn');
-    if (!btn) return;
-    if (_GUIDE_HIDDEN_TABS.includes(tab)) { btn.style.display = 'none'; return; }
-    const label = _GUIDE_TAB_LABELS[tab] || tab.charAt(0).toUpperCase() + tab.slice(1);
-    btn.textContent = label + ' Guide';
-    btn.style.display = '';
-    btn.addEventListener('click', async () => {
-        if (!_guideModule) _guideModule = await import('./guide.js');
-        _guideModule.openGuide();
-    });
-}
-
 export async function initPage(activeTab, onReady, requireFaction = true) {
     renderTopBar(activeTab);
     window.__currentTab = activeTab;
-    setupGuideButton(activeTab);
     updateThemeButton();
 
     // Ban enforcement — check before loading any game state
@@ -1406,6 +1396,13 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     const _msgState = state;
     (typeof requestIdleCallback === 'function' ? requestIdleCallback : setTimeout)(() => {
         import('./messaging.js').then(m => m.initMessaging(_msgState.faction, _msgState.nation, _msgState.shard));
+    });
+
+    // Lazy-load the navbar notification dropdown.
+    (typeof requestIdleCallback === 'function' ? requestIdleCallback : setTimeout)(() => {
+        import('./notifications.js')
+            .then(m => m.initNotifications({ faction: _msgState.faction, nation: _msgState.nation, shard: _msgState.shard }))
+            .catch(err => console.warn('[notifications] init failed:', err?.message || err));
     });
 
     if (onReady) {

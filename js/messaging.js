@@ -2957,15 +2957,12 @@ async function calculateUnread() {
 }
 
 function updateUnreadBadge() {
+    // Unread alerts now live in the navbar notification dropdown
+    // (js/notifications.js). The bubble stays a pure chat launcher; we
+    // still maintain _totalUnread above for tab-bar counts inside the
+    // panel, but the floating badge itself is hidden.
     const badge = document.getElementById('msg-badge');
-    if (!badge) return;
-
-    if (_totalUnread > 0) {
-        badge.textContent = _totalUnread > 99 ? '99+' : String(_totalUnread);
-        badge.classList.add('visible');
-    } else {
-        badge.classList.remove('visible');
-    }
+    if (badge) badge.classList.remove('visible');
 }
 
 // ── Public init ──
