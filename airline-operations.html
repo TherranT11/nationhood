@@ -545,6 +545,109 @@ body.airline-operations.light-mode {
   padding: 8px 18px;
   border-bottom: 1px dashed var(--line-soft);
 }
+.ao-route-card {
+  border-bottom: 1px dashed var(--line-soft);
+}
+.ao-route-card:last-child { border-bottom: 0; }
+.ao-route-card-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 18px;
+  cursor: pointer;
+  user-select: none;
+}
+.ao-route-card-head:hover { background: var(--bg-hover); }
+.ao-route-card-chev {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  width: 14px;
+  text-align: center;
+}
+.ao-route-card-body {
+  display: none;
+  padding: 6px 18px 14px 32px;
+  border-top: 1px dashed var(--line-soft);
+  background: rgba(255,255,255,0.015);
+}
+.ao-route-card.expanded .ao-route-card-body { display: block; }
+.ao-route-card.expanded .ao-route-card-chev::before { content: '▾'; }
+.ao-route-card:not(.expanded) .ao-route-card-chev::before { content: '▸'; }
+.ao-route-section-mini {
+  margin-top: 10px;
+}
+.ao-route-section-mini-h {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.ao-route-ac-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+.ao-route-ac-meta {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.ao-route-ac-tail {
+  background: var(--bg-3);
+  border: 1px solid var(--line-soft);
+  color: var(--text-bright);
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  width: 110px;
+}
+.ao-route-ac-tail:focus {
+  outline: 1px solid var(--amber);
+}
+.ao-route-price-line {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.ao-route-price-line input {
+  background: var(--bg-3);
+  border: 1px solid var(--line-soft);
+  color: var(--text-bright);
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  width: 80px;
+}
+.ao-route-mini-btn {
+  background: var(--bg-3);
+  border: 1px solid var(--line-soft);
+  color: var(--text-primary);
+  padding: 3px 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+.ao-route-mini-btn:hover { background: var(--bg-hover); color: var(--text-bright); }
+.ao-route-mini-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ao-route-mini-btn.danger { color: var(--accent-rust); border-color: var(--accent-rust); }
+.ao-route-mini-btn.danger:hover { background: var(--accent-rust); color: var(--bg-0); }
+.ao-route-stub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  font-style: italic;
+}
 .ao-route-list-row:last-child { border-bottom: 0; }
 .ao-route-list-pair {
   font-family: var(--serif);
@@ -1063,8 +1166,11 @@ async function loadFleetInventory(corpId, currentTick) {
 //     BREAKEVEN line = ticks needed to recover one annual maint bill.
 const AIRCRAFT_SEATS         = { regional: 10,    narrowbody: 25,    widebody: 60   };
 const AIRCRAFT_OPS_COST      = { regional: 500,   narrowbody: 1200,  widebody: 2500 };
+const AIRCRAFT_RANGE_KM      = { regional: 800,   narrowbody: 4000,  widebody: 12000 };
+const AIRCRAFT_LABEL         = { regional: 'Regional', narrowbody: 'Narrowbody', widebody: 'Widebody' };
 const MAINT_TIER_ANNUAL      = { basic: 12000, standard: 30000, premium: 48000 };
 const TICKS_PER_YEAR         = 12;
+const FLIGHTS_PER_TICK       = 30; // 1 round-trip per day, fluff narrative on per-tick (per-month) data
 const CAPITAL_BONUS          = 2;
 
 let _availableRoutesCache = [];   // [{cityA, cityB, nation, range}]
@@ -1159,12 +1265,27 @@ async function loadAvailableRoutes(corpId) {
     }).join('');
 }
 
+// Expanded-card state lives in this module-level set so re-render after
+// any mutation (price change, tail edit, cancel) preserves which cards
+// were open. Cleared on full page reload — fine for a player tool.
+const _expandedRouteIds = new Set();
+
 async function loadActiveRoutes(corpId) {
     const el = document.getElementById('ao-routes');
     if (!el) return;
+    // PostgREST embed: aircraft assigned to each route via the route_id FK
+    // added in 20260717. The aircraft list per route powers the FLEET
+    // sub-section + the per-route flight-count fluff.
     const { data: routes, error } = await _supabase
         .from('airline_routes')
-        .select('id, ticket_price, maintenance_tier, aircraft_regional, aircraft_narrowbody, aircraft_widebody, opened_at_tick, origin:origin_city_id(name), dest:dest_city_id(name)')
+        .select(`
+            id, ticket_price, maintenance_tier,
+            aircraft_regional, aircraft_narrowbody, aircraft_widebody,
+            opened_at_tick,
+            origin:origin_city_id(name),
+            dest:dest_city_id(name),
+            aircraft:corp_aircraft!route_id(id, aircraft_class, condition, tail_number)
+        `)
         .eq('airline_faction_id', corpId)
         .eq('status', 'active')
         .order('opened_at_tick', { ascending: false });
@@ -1177,18 +1298,209 @@ async function loadActiveRoutes(corpId) {
         el.innerHTML = '<div class="ao-panel-empty">No active routes. Open one from Available Routes above.</div>';
         return;
     }
-    el.innerHTML = routes.map(r => {
-        const acParts = [];
-        if (r.aircraft_regional   > 0) acParts.push(r.aircraft_regional   + '× Regional');
-        if (r.aircraft_narrowbody > 0) acParts.push(r.aircraft_narrowbody + '× Narrowbody');
-        if (r.aircraft_widebody   > 0) acParts.push(r.aircraft_widebody   + '× Widebody');
-        return `<div class="ao-route-list-row">
-            <div>
-                <div class="ao-route-list-pair">${escHtml(r.origin?.name || '?')} ↔ ${escHtml(r.dest?.name || '?')}</div>
-                <div class="ao-route-list-meta">$${r.ticket_price} ticket · ${escHtml(r.maintenance_tier)} maintenance · ${acParts.join(', ') || 'no aircraft'}</div>
-            </div>
-        </div>`;
-    }).join('');
+
+    el.innerHTML = routes.map(r => _renderRouteCard(r)).join('');
+
+    // Wire interaction handlers once per render. Click on header toggles;
+    // tail-number / price / cancel buttons fire RPCs and refresh.
+    el.querySelectorAll('.ao-route-card-head').forEach(head => {
+        head.addEventListener('click', (e) => {
+            // Don't toggle if the player clicked an interactive control
+            // inside the head (none today, but keeps future inputs safe).
+            if (e.target.closest('input, button')) return;
+            const card = head.closest('.ao-route-card');
+            const id   = card?.dataset.routeId;
+            if (!id) return;
+            if (_expandedRouteIds.has(id)) {
+                _expandedRouteIds.delete(id);
+                card.classList.remove('expanded');
+            } else {
+                _expandedRouteIds.add(id);
+                card.classList.add('expanded');
+            }
+        });
+    });
+
+    el.querySelectorAll('[data-act="tail-save"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const acId  = btn.dataset.acId;
+            const input = el.querySelector(`input[data-tail-input="${acId}"]`);
+            if (!input) return;
+            btn.disabled = true;
+            const { data, error } = await _supabase.rpc('set_aircraft_tail_number', {
+                p_aircraft_id: acId,
+                p_tail_number: input.value || '',
+            });
+            btn.disabled = false;
+            if (error || !data?.success) {
+                alert('Could not save tail number: ' + (error?.message || data?.error || 'unknown error'));
+                return;
+            }
+            input.value = data.tail_number || '';
+        });
+    });
+
+    el.querySelectorAll('[data-act="price-save"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const routeId = btn.dataset.routeId;
+            const input   = el.querySelector(`input[data-price-input="${routeId}"]`);
+            if (!input) return;
+            const newPrice = parseInt(input.value, 10);
+            if (isNaN(newPrice) || newPrice < 0 || newPrice > 500) {
+                alert('Price must be between $0 and $500.');
+                return;
+            }
+            btn.disabled = true;
+            const { data, error } = await _supabase.rpc('change_route_ticket_price', {
+                p_route_id:  routeId,
+                p_new_price: newPrice,
+            });
+            btn.disabled = false;
+            if (error || !data?.success) {
+                alert('Could not change ticket price: ' + (error?.message || data?.error || 'unknown error'));
+                return;
+            }
+            await loadActiveRoutes(corpId);
+        });
+    });
+
+    el.querySelectorAll('[data-act="cancel-route"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const routeId = btn.dataset.routeId;
+            const pair    = btn.dataset.pair || 'this route';
+            if (!confirm(`Cancel ${pair}? Aircraft return to idle. No refund — you forfeit any future revenue.`)) return;
+            btn.disabled = true;
+            const { data, error } = await _supabase.rpc('close_airline_route', { p_route_id: routeId });
+            btn.disabled = false;
+            if (error || !data?.success) {
+                alert('Could not cancel route: ' + (error?.message || data?.error || 'unknown error'));
+                return;
+            }
+            _expandedRouteIds.delete(routeId);
+            // Refresh routes list, available routes (lane is open again), and
+            // the hero stats card so corp_routes counter reflects the close.
+            await Promise.all([
+                loadActiveRoutes(corpId),
+                loadAvailableRoutes(corpId),
+                _refreshHeroRoutesStat(corpId),
+            ]);
+        });
+    });
+}
+
+function _renderRouteCard(r) {
+    const expanded = _expandedRouteIds.has(r.id);
+    const acParts = [];
+    if (r.aircraft_regional   > 0) acParts.push(r.aircraft_regional   + '× Regional');
+    if (r.aircraft_narrowbody > 0) acParts.push(r.aircraft_narrowbody + '× Narrowbody');
+    if (r.aircraft_widebody   > 0) acParts.push(r.aircraft_widebody   + '× Widebody');
+
+    const pair = (r.origin?.name || '?') + ' ↔ ' + (r.dest?.name || '?');
+    const aircraftList = (r.aircraft || []).slice().sort((a, b) => {
+        // Stable sort: class first, then tail number, then id
+        const cls = (a.aircraft_class || '').localeCompare(b.aircraft_class || '');
+        if (cls !== 0) return cls;
+        const tn  = (a.tail_number || '').localeCompare(b.tail_number || '');
+        if (tn !== 0) return tn;
+        return (a.id || '').localeCompare(b.id || '');
+    });
+    const totalPlanes  = aircraftList.length;
+    const dailyFlights = totalPlanes * FLIGHTS_PER_TICK;
+
+    return `
+    <div class="ao-route-card${expanded ? ' expanded' : ''}" data-route-id="${escHtml(r.id)}">
+      <div class="ao-route-card-head">
+        <div>
+          <div class="ao-route-list-pair">${escHtml(pair)}</div>
+          <div class="ao-route-list-meta">$${r.ticket_price} ticket · ${escHtml(r.maintenance_tier)} maintenance · ${acParts.join(', ') || 'no aircraft'}</div>
+        </div>
+        <div class="ao-route-card-chev"></div>
+      </div>
+      <div class="ao-route-card-body">
+
+        <div class="ao-route-section-mini">
+          <div class="ao-route-section-mini-h">Fleet on this route</div>
+          ${aircraftList.length === 0
+            ? '<div class="ao-route-stub">No aircraft assigned.</div>'
+            : aircraftList.map(ac => `
+              <div class="ao-route-ac-row">
+                <div>
+                  <strong>${escHtml(AIRCRAFT_LABEL[ac.aircraft_class] || ac.aircraft_class)}</strong>
+                  <span class="ao-route-ac-meta">
+                    · ${Math.round(ac.condition || 0)}% condition
+                    · ${(AIRCRAFT_RANGE_KM[ac.aircraft_class] || 0).toLocaleString()} km range
+                  </span>
+                </div>
+                <div>
+                  <input class="ao-route-ac-tail"
+                         type="text"
+                         maxlength="12"
+                         placeholder="Tail #"
+                         data-tail-input="${escHtml(ac.id)}"
+                         value="${escHtml(ac.tail_number || '')}">
+                  <button class="ao-route-mini-btn" data-act="tail-save" data-ac-id="${escHtml(ac.id)}">Save</button>
+                </div>
+              </div>
+            `).join('')}
+        </div>
+
+        <div class="ao-route-section-mini">
+          <div class="ao-route-section-mini-h">Ticket Price</div>
+          <div class="ao-route-price-line">
+            <span>Current: $${r.ticket_price}</span>
+            <span class="ao-route-ac-meta">·</span>
+            <span>Change to</span>
+            <input type="number"
+                   min="0" max="500" step="5"
+                   data-price-input="${escHtml(r.id)}"
+                   value="${r.ticket_price}">
+            <button class="ao-route-mini-btn" data-act="price-save" data-route-id="${escHtml(r.id)}">Apply next tick</button>
+          </div>
+        </div>
+
+        <div class="ao-route-section-mini">
+          <div class="ao-route-section-mini-h">Performance</div>
+          <div class="ao-route-ac-row">
+            <div>Daily flights <span class="ao-route-ac-meta">(${totalPlanes} plane${totalPlanes === 1 ? '' : 's'} × 1/day)</span></div>
+            <div><strong>${dailyFlights.toLocaleString()}</strong></div>
+          </div>
+          <div class="ao-route-ac-row">
+            <div>Avg pax / tick</div>
+            <div class="ao-route-stub">— pending Phase 6</div>
+          </div>
+          <div class="ao-route-ac-row">
+            <div>Lifetime revenue</div>
+            <div class="ao-route-stub">— pending Phase 6</div>
+          </div>
+          <div class="ao-route-ac-row">
+            <div>Lifetime spend</div>
+            <div class="ao-route-stub">— pending Phase 6</div>
+          </div>
+        </div>
+
+        <div class="ao-route-section-mini" style="text-align:right;">
+          <button class="ao-route-mini-btn danger"
+                  data-act="cancel-route"
+                  data-route-id="${escHtml(r.id)}"
+                  data-pair="${escHtml(pair)}">× Cancel Route</button>
+        </div>
+
+      </div>
+    </div>`;
+}
+
+// Re-fetch the corp row's corp_routes after a mutation so the hero stat
+// reflects the trigger's update without a full page reload. Mirrors the
+// pattern used by the hero-stat init in the main init() function.
+async function _refreshHeroRoutesStat(corpId) {
+    const { data, error } = await _supabase
+        .from('factions')
+        .select('corp_routes')
+        .eq('id', corpId)
+        .maybeSingle();
+    if (error || !data) return;
+    const el = document.getElementById('ao-stat-routes');
+    if (el) el.textContent = String(Number(data.corp_routes) || 0);
 }
 
 // Lane-share weight: capital-paired lanes get CAPITAL_BONUS× weight,
@@ -1449,10 +1761,14 @@ function initSetUpRouteFlow(corpId, totalCityCount) {
             if (error) throw new Error(error.message);
             if (!data?.success) throw new Error(data?.error || 'Route setup failed.');
             closeModal();
+            // _refreshHeroRoutesStat picks up the trigger's corp_routes
+            // bump so the "Active operations" card increments without a
+            // full page reload.
             await Promise.all([
                 loadAvailableRoutes(corpId),
                 loadActiveRoutes(corpId),
                 loadFleetInventory(corpId, Number(shard?.current_tick) || 0),
+                _refreshHeroRoutesStat(corpId),
             ]);
         } catch (err) {
             errorEl.textContent = err?.message || 'Route setup failed.';
