@@ -1286,6 +1286,116 @@ async function loadAvailableRoutes(corpId) {
 // were open. Cleared on full page reload — fine for a player tool.
 const _expandedRouteIds = new Set();
 
+// ── Aviation Incidents (Phase 7) ──
+// Loads pending incidents for this corp, renders cards in #ao-issues
+// with three response buttons. Compensate-Families gates client-side
+// on cash availability (cash < 10% of incident cost → button shows
+// the bankruptcy warning + extra confirm). Lender escrow / loan flow
+// is a separate lever the player must use first if they want to
+// compensate without folding.
+async function loadAviationIncidents(corpId, currentTick) {
+    const el = document.getElementById('ao-issues');
+    if (!el) return;
+    const { data: incidents, error } = await _supabase
+        .from('aviation_incidents')
+        .select('id, incident_key, severity, cost, op_safety_delta, description, expires_at_tick, route:route_id(origin:origin_city_id(name), dest:dest_city_id(name))')
+        .eq('corp_id', corpId)
+        .eq('status', 'pending')
+        .order('created_at_tick', { ascending: false });
+    if (error) {
+        console.warn('[airline-ops] incidents fetch failed:', error.message);
+        el.innerHTML = '<div class="ao-panel-empty">Could not load incidents.</div>';
+        return;
+    }
+    if (!incidents || incidents.length === 0) {
+        el.outerHTML = '<div class="ao-empty" id="ao-issues"><strong>No pressing issues</strong>Operations are running cleanly. Issues will surface here as they arise.</div>';
+        return;
+    }
+
+    // Need current cash for the Compensate-Families gate.
+    const { data: corpRow } = await _supabase
+        .from('factions')
+        .select('corp_cash_reserves')
+        .eq('id', corpId)
+        .maybeSingle();
+    const cash = Number(corpRow?.corp_cash_reserves) || 0;
+
+    el.outerHTML = '<div id="ao-issues" class="ao-panel-body"></div>';
+    const host = document.getElementById('ao-issues');
+    host.innerHTML = incidents.map(inc => {
+        const compensation = Math.round(Number(inc.cost) * 0.10);
+        const compInsufficient = cash < compensation;
+        const ttl = (inc.expires_at_tick || 0) - currentTick;
+        const sevColor = inc.severity === 'major' ? 'var(--accent-rust, #d48a3c)'
+                       : inc.severity === 'moderate' ? 'var(--amber, #c8a832)'
+                       : 'var(--text-muted, #888)';
+        return `
+        <div class="ao-incident-card" data-incident-id="${escHtml(inc.id)}" data-cost="${inc.cost}"
+             style="padding:12px 16px;border-bottom:1px dashed var(--line-soft);">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${sevColor};border:1px solid ${sevColor};padding:2px 8px;">${escHtml(inc.severity)}</span>
+            <span style="font-family:var(--font-mono);font-size:9.5px;color:var(--text-dim);">Auto-acknowledged in ${Math.max(0, ttl)} tick${ttl === 1 ? '' : 's'}</span>
+          </div>
+          <div style="font-family:var(--font-ui);font-size:13px;color:var(--text-bright);line-height:1.4;margin-bottom:6px;">${escHtml(inc.description)}</div>
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);margin-bottom:10px;">
+            Cost incurred: $${Number(inc.cost).toLocaleString()} · Op Safety ${inc.op_safety_delta}
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            <button type="button" class="ao-incident-btn"
+                    data-act="incident-respond" data-incident-id="${escHtml(inc.id)}" data-response="press_statement"
+                    style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:6px 12px;background:var(--bg-3);border:1px solid var(--line-soft);color:var(--text-bright);cursor:pointer;">
+              Issue Press Statement (-$500k)
+            </button>
+            <button type="button" class="ao-incident-btn"
+                    data-act="incident-respond" data-incident-id="${escHtml(inc.id)}" data-response="compensated"
+                    data-comp-cost="${compensation}" data-comp-insufficient="${compInsufficient ? '1' : '0'}"
+                    style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:6px 12px;background:rgba(92,184,92,0.08);border:1px solid var(--green, #5cb85c);color:var(--green, #5cb85c);cursor:pointer;">
+              Compensate Families (-$${compensation.toLocaleString()})${compInsufficient ? ' ⚠' : ''}
+            </button>
+            <button type="button" class="ao-incident-btn"
+                    data-act="incident-respond" data-incident-id="${escHtml(inc.id)}" data-response="refused"
+                    style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:6px 12px;background:rgba(212,138,60,0.08);border:1px solid var(--accent-rust, #d48a3c);color:var(--accent-rust, #d48a3c);cursor:pointer;">
+              Refuse Comment
+            </button>
+          </div>
+          ${compInsufficient ? '<div style="margin-top:8px;font-family:var(--font-mono);font-size:9.5px;color:var(--accent-rust);font-style:italic;">⚠ Insufficient cash for compensation. Take out a loan first via Request Loan, or this option will fail at submit.</div>' : ''}
+        </div>`;
+    }).join('');
+
+    host.querySelectorAll('[data-act="incident-respond"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const incidentId = btn.dataset.incidentId;
+            const response   = btn.dataset.response;
+            if (!incidentId || !response) return;
+
+            // Bankruptcy warning gate for the Compensate-Families path
+            // when client-side cash is short. Server enforces too — this
+            // is just the friendly heads-up.
+            if (response === 'compensated' && btn.dataset.compInsufficient === '1') {
+                const ok = confirm('You do not have enough cash to compensate families. The settlement will fail at submit. Take out a loan first?\n\nProceed anyway?');
+                if (!ok) return;
+            }
+
+            // Lock all buttons on this card while the RPC is in flight.
+            const card = btn.closest('.ao-incident-card');
+            if (card) card.querySelectorAll('button').forEach(b => b.disabled = true);
+
+            const { data, error } = await _supabase.rpc('respond_to_aviation_incident', {
+                p_incident_id: incidentId,
+                p_response:    response,
+            });
+            if (error || !data?.success) {
+                alert(error?.message || data?.error || 'Could not submit response.');
+                if (card) card.querySelectorAll('button').forEach(b => b.disabled = false);
+                return;
+            }
+            // Refresh — also pulls latest cash for re-rendering the
+            // Compensate gate on any remaining incidents.
+            await loadAviationIncidents(corpId, currentTick);
+        });
+    });
+}
+
 async function loadActiveRoutes(corpId) {
     const el = document.getElementById('ao-routes');
     if (!el) return;
@@ -1892,6 +2002,7 @@ async function init() {
         loadFleetInventory(faction.id, currentTick),
         loadAvailableRoutes(faction.id),
         loadActiveRoutes(faction.id),
+        loadAviationIncidents(faction.id, currentTick),
     ]);
 
     // Wire the buy-confirm modal once. The Available Hubs renderer
