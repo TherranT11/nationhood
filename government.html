@@ -10321,8 +10321,16 @@ function openAssignModal(ministryKey) {
     document.getElementById('assign-confirm-btn').textContent = 'Appoint Minister';
     document.getElementById('assign-modal-title').textContent = 'Assign — ' + (MINISTRY_NAMES[ministryKey] || ministryKey);
 
-    // For parliamentary democracies, only show coalition parties
-    const eligibleParties = (!isPresidential && coalitionData?.party_ids)
+    // Eligibility:
+    //   * Parliamentary democracies: limited to coalition parties.
+    //   * Presidential / semi-presidential: any party (cohabitation +
+    //     cross-aisle nominations are valid).
+    //   * Absolute monarchy: any party — the monarch can appoint
+    //     ministers from outside their own party (this was previously
+    //     mis-treated as parliamentary, so the modal showed only the
+    //     monarch's own party).
+    const isMonarchy = isAbsoluteMonarchy(currentNation);
+    const eligibleParties = (!isPresidential && !isMonarchy && coalitionData?.party_ids)
         ? allParties.filter(p => coalitionData.party_ids.includes(p.id))
         : allParties;
 
