@@ -681,6 +681,16 @@ async function init() {
 function renderShell() {
     const shell = document.getElementById('alliances-shell');
     if (!shell) return;
+    // If a negotiation drill-in is requested but the row is gone (mock
+    // cleared, future "withdraw" path) snap back to the list before
+    // we render — otherwise bindShellEvents would bind the negotiation
+    // branch against list-view DOM and click handlers would no-op.
+    if (_view === 'negotiation'
+        && !(_pendingNegotiations || []).some(n => n.id === _negotiationId)) {
+        _view = 'list';
+        _negotiationId = null;
+        _negotiationDraftVote = null;
+    }
     if (_view === 'negotiation') shell.innerHTML = renderNegotiationView();
     else if (_view === 'found')  shell.innerHTML = renderFoundView();
     else                          shell.innerHTML = renderListView();
@@ -773,23 +783,31 @@ function renderPendingNegotiationsSection() {
 
 // Consensus per the founding rules: every member must vote on the same
 // article. Returns the labels driving header + ratify-button gating.
+// Tolerates empty member rosters so a transient zero-member fetch can't
+// crash the renderer.
 function computeConsensusState(n) {
-    const total = n.members.length;
-    const voted = n.members.filter(m => m.vote);
+    const members = (n && n.members) || [];
+    const total = members.length;
+    const voted = members.filter(m => m.vote);
     const submitted = voted.length;
+    if (total === 0) {
+        return { submitted: 0, total: 0, reached: false, article_id: null,
+                 label: 'No members invited.' };
+    }
     if (submitted < total) {
+        const remaining = total - submitted;
         return { submitted, total, reached: false, article_id: null,
-                 label: `Awaiting ${total - submitted} more vote${total - submitted === 1 ? '' : 's'}` };
+                 label: `Awaiting ${remaining} more vote${remaining === 1 ? '' : 's'} before ratification.` };
     }
     const first = voted[0].vote;
     const unanimous = voted.every(m => m.vote === first);
     if (unanimous) {
-        const art = n.articles.find(a => a.id === first);
+        const art = (n.articles || []).find(a => a.id === first);
         return { submitted, total, reached: true, article_id: first,
-                 label: `Consensus reached on ${art ? art.name : first}` };
+                 label: `All members agreed on ${art ? art.name : first}. Ready to ratify.` };
     }
     return { submitted, total, reached: false, article_id: null,
-             label: 'No consensus — members split on candidate articles' };
+             label: 'Members are split — alliance can only be founded once all vote for the same article.' };
 }
 
 function filterAlliancesBySector(rows) {
@@ -1076,27 +1094,27 @@ function renderInviteeCard(c) {
 // chat-input typing are local-only so the layout is reviewable.
 
 function renderNegotiationView() {
+    // Dispatcher (renderShell) already bounces missing negotiations to
+    // the list view before we get here, so a falsy `n` would only mean
+    // the dispatcher guard regressed — render an empty shell rather
+    // than blowing up.
     const n = (_pendingNegotiations || []).find(x => x.id === _negotiationId);
-    if (!n) {
-        // Negotiation went away (mock cleared, etc) — bounce back to list.
-        return renderListView();
-    }
+    if (!n) return '';
     const sectorLabel = SECTOR_LABEL[n.sector] || n.sector;
     const consensus = computeConsensusState(n);
-    const me = n.members.find(m => m.is_you) || null;
+    const me = (n.members || []).find(m => m.is_you) || null;
     const myCurrentVote = _negotiationDraftVote || me?.vote || null;
     const canRatify = consensus.reached && me && me.id === n.founder_faction_id;
-    const ratifyHint = !consensus.reached
-        ? (consensus.submitted < consensus.total
-            ? `Awaiting ${consensus.total - consensus.submitted} more vote${consensus.total - consensus.submitted === 1 ? '' : 's'} before ratification.`
-            : 'Members are split — alliance can only be founded once all vote for the same article.')
-        : 'All members agreed. Ready to ratify.';
 
-    // Per-article tally: how many members chose each one.
-    const tally = new Map(n.articles.map(a => [a.id, 0]));
-    for (const m of n.members) if (m.vote && tally.has(m.vote)) tally.set(m.vote, tally.get(m.vote) + 1);
-    const pendingCount = n.members.filter(m => !m.vote).length;
-    const totalWeight = n.members.length;
+    // Per-article tally: how many members chose each one. Guard the
+    // bar-width math so a zero-member negotiation can't render NaN%.
+    const tally = new Map((n.articles || []).map(a => [a.id, 0]));
+    for (const m of (n.members || [])) {
+        if (m.vote && tally.has(m.vote)) tally.set(m.vote, tally.get(m.vote) + 1);
+    }
+    const pendingCount = (n.members || []).filter(m => !m.vote).length;
+    const totalWeight  = (n.members || []).length;
+    const pctOf = (count) => totalWeight > 0 ? Math.round((count / totalWeight) * 100) : 0;
 
     return `
         <div class="fnd-crumb">
@@ -1138,9 +1156,9 @@ function renderNegotiationView() {
 
                 <div class="ng-tally">
                     <div class="al-section__title">Vote Tally &middot; Per Article</div>
-                    ${n.articles.map(a => {
+                    ${(n.articles || []).map(a => {
                         const v = tally.get(a.id) || 0;
-                        const pct = totalWeight > 0 ? Math.round((v / totalWeight) * 100) : 0;
+                        const pct = pctOf(v);
                         return `
                             <div class="ng-tally__row">
                                 <div class="ng-tally__label">${escHtml(a.name)}</div>
@@ -1151,7 +1169,7 @@ function renderNegotiationView() {
                     }).join('')}
                     <div class="ng-tally__row">
                         <div class="ng-tally__label" style="color:var(--text-dim);">— Pending —</div>
-                        <div class="ng-tally__bar"><div class="ng-tally__fill" style="width:${(pendingCount/totalWeight)*100}%;background:var(--text-ghost);"></div></div>
+                        <div class="ng-tally__bar"><div class="ng-tally__fill" style="width:${pctOf(pendingCount)}%;background:var(--text-ghost);"></div></div>
                         <div class="ng-tally__count">${pendingCount}</div>
                     </div>
                     <div class="ng-tally__footer">
@@ -1160,9 +1178,9 @@ function renderNegotiationView() {
                 </div>
 
                 <button class="al-btn al-btn--primary" style="width:100%;margin-top:16px;" id="ng-ratify"
-                        ${canRatify ? '' : 'disabled'} title="${escHtml(ratifyHint)}">FOUND ALLIANCE</button>
+                        ${canRatify ? '' : 'disabled'} title="${escHtml(consensus.label)}">FOUND ALLIANCE</button>
                 <div style="margin-top:6px;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);text-align:center;letter-spacing:0.06em;">
-                    ${escHtml(ratifyHint)}
+                    ${escHtml(consensus.label)}
                 </div>
                 ${me && me.id === n.founder_faction_id
                     ? `<button class="al-btn al-btn--leave" style="width:100%;margin-top:12px;" id="ng-withdraw" disabled
