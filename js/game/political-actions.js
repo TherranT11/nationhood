@@ -3308,29 +3308,57 @@ export async function installHOG(supabase, opts) {
         .eq('active', true)
         .maybeSingle();
 
-    // head_of_government has UNIQUE(nation_id), so a stale inactive row from
-    // a previous PM would block a plain insert. Deactivate first, then upsert
-    // — the upsert overwrites the just-deactivated row in the same tx.
-    await supabase.from('head_of_government')
-        .update({ active: false })
-        .eq('nation_id', nationId)
-        .eq('active', true);
+    // Primary path: SECURITY DEFINER RPC install_hog (20260803). The
+    // RPC bypasses the head_of_government RLS that 20260302 stripped
+    // for client writes, with an internal ownership check on the
+    // incoming PM's faction. If the RPC isn't deployed yet, fall back
+    // to the legacy client writes (which only work for service_role
+    // callers — i.e. the tick processor).
+    const { data: rpcRes, error: rpcErr } = await supabase.rpc('install_hog', {
+        p_nation_id:    nationId,
+        p_faction_id:   factionId,
+        p_first_name:   firstName,
+        p_last_name:    lastName,
+        p_age:          age || 50,
+        p_current_tick: currentTick,
+        p_trait_key:    traitKey,
+        p_candidate_id: candidateId,
+        p_reason:       reason,
+    });
 
-    const { error: hogErr } = await supabase
-        .from('head_of_government')
-        .upsert({
-            nation_id: nationId,
-            faction_id: factionId,
-            candidate_id: candidateId,
-            first_name: firstName,
-            last_name: lastName,
-            age: age || 50,
-            trait_key: traitKey,
-            appointed_tick: currentTick,
-            active: true,
-        }, { onConflict: 'nation_id' });
+    if (rpcErr && rpcErr.code !== 'PGRST202') {
+        // PGRST202 = function not found (RPC undeployed); any other
+        // error is a real failure (auth, validation, etc.).
+        throw rpcErr;
+    }
 
-    if (hogErr) throw hogErr;
+    if (rpcErr || !rpcRes?.success) {
+        if (rpcRes?.error) throw new Error(rpcRes.error);
+
+        // Legacy fallback path. RLS will block this for non-service-role
+        // callers; the throw will surface as a "Form Government" alert
+        // until the 20260803 migration is applied.
+        await supabase.from('head_of_government')
+            .update({ active: false })
+            .eq('nation_id', nationId)
+            .eq('active', true);
+
+        const { error: hogErr } = await supabase
+            .from('head_of_government')
+            .upsert({
+                nation_id: nationId,
+                faction_id: factionId,
+                candidate_id: candidateId,
+                first_name: firstName,
+                last_name: lastName,
+                age: age || 50,
+                trait_key: traitKey,
+                appointed_tick: currentTick,
+                active: true,
+            }, { onConflict: 'nation_id' });
+
+        if (hogErr) throw hogErr;
+    }
 
     // Tier 2 Phase 3: in semi-presidential nations the administration row
     // is bound to the PRESIDENT'S tenure, not the PM's. PM changes within

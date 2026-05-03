@@ -1997,6 +1997,12 @@ async function init() {
     if (shardRes.error) console.warn('Shard load failed:', shardRes.error.message);
     shard = shardRes.data;
 
+    // Inject the messaging bubble as soon as faction + nation + shard are
+    // known. Previously called near the end of init, so any throw in the
+    // intervening dashboard data loads (renderFinances, computeEquipmentValue,
+    // etc.) silently swallowed the bubble injection.
+    initMessaging(faction, nationStats, shard);
+
     // Check for pending bids on commissioned construction projects
     let pendingBidCount = 0;
     if (faction?.id) {
@@ -2270,9 +2276,6 @@ async function init() {
 
     await renderFinances(nationStats, shard, wfData, faction, propData.propertyMaintenance || 0, equipMaint, execCompensation, propData, fleetMaint);
     await renderValuation(nationStats, nationName, faction, wfData, propData, equipmentValue);
-
-    // Messaging bubble
-    initMessaging(faction, nationStats, shard);
 
     // Events feed
     _corpEventsCtx = { nationId: faction.nation_id };

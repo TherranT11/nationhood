@@ -2329,7 +2329,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                 .single();
             if (corp) {
                 const newCash = Math.max(0, Number(corp.corp_cash_reserves || 0) - perTickCost);
-                logCashEvent(bid.faction_id, 'event_cost', 'Project per-tick cost', -perTickCost);
+                logCashEvent(bid.faction_id, 'event_cost', `Project: ${contract.name || 'Unnamed'}`, -perTickCost);
                 await supabase.from('factions')
                     .update({ corp_cash_reserves: newCash })
                     .eq('id', bid.faction_id);
@@ -4329,6 +4329,16 @@ async function processBankLoanPayments(supabase, currentTick) {
                     console.warn(`[BankLoanPayments] lender credit failed for loan ${loan.id}:`, lenderUpdErr.message);
                 }
             }
+
+            // Ledger entries — split interest from principal so each side's
+            // dashboard shows them as distinct categories. logCashEvent is a
+            // no-op for delta=0, so zero-interest or interest-only edges
+            // safely skip the irrelevant line.
+            const interestPortion = payment - principalPortion;
+            logCashEvent(loan.borrower_faction_id, 'debt_interest',  'Loan interest paid',      -interestPortion);
+            logCashEvent(loan.borrower_faction_id, 'capital_out',    'Loan principal payment',  -principalPortion);
+            logCashEvent(loan.lender_faction_id,   'revenue_finance', 'Loan interest received',  interestPortion);
+            logCashEvent(loan.lender_faction_id,   'capital_in',     'Loan principal received',  principalPortion);
 
             if (newOutstanding <= 0) {
                 // Final payment — close as 'paid'. close_bank_loan also
@@ -7215,6 +7225,22 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
     } catch (shipErr) {
         console.error('[advance-corp-tick] FAILED shipping route processor:', shipErr);
         summary.errors.push({ scope: 'shipping_routes', error: String(shipErr) });
+    }
+
+    // Lawsuit deadline sweeper: any commercial_lawsuits row past its
+    // 3-tick response_deadline_tick auto-concedes. SQL handles the
+    // updates + event_log inserts atomically.
+    try {
+        const { data: lawsuitSwept, error: lawsuitErr } = await supabase.rpc('process_lawsuit_deadlines');
+        if (lawsuitErr) {
+            console.warn('[advance-corp-tick] lawsuit deadline sweep failed:', lawsuitErr.message);
+        } else if (lawsuitSwept && lawsuitSwept > 0) {
+            summary.lawsuitsAutoConceded = lawsuitSwept;
+            console.log(`[Lawsuits] tick ${currentTick}: ${lawsuitSwept} auto-conceded past deadline`);
+        }
+    } catch (lawsuitCatchErr) {
+        console.error('[advance-corp-tick] FAILED lawsuit sweeper:', lawsuitCatchErr);
+        summary.errors.push({ scope: 'lawsuit_deadlines', error: String(lawsuitCatchErr) });
     }
 
     // Flush buffered cash events to corp_cash_events. Single writer for

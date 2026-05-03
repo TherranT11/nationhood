@@ -65,6 +65,7 @@ import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, isPr
 import { loadSeats, detectHeadFaction, fetchActiveCoalition } from './js/game/government-structure.js';
 import { getCreditRating } from './js/game/debt.js';
 import { isMilitaryLoyaltyActive } from './js/game/military-loyalty.js';
+import { GRIEVANCE_LABEL, RELIEF_LABEL } from './js/game/lawsuit-types.js';
 import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, buildMinistryBaselines } from './js/game/stats.js';
 import { formatStatName, autoAppointPartyLeaderAsPM, getNationNames, resignPM } from './js/game/political-actions.js';
 import { adjustGovernmentApprovalEvent } from './js/game/momentum.js';
@@ -1056,6 +1057,8 @@ function renderGovContent() {
         renderBudgetTab(content);
     } else if (_govActiveSubtab === 'past') {
         renderPastAdministrationsTab(content);
+    } else if (_govActiveSubtab === 'judicial') {
+        renderJudicialTab(content);
     } else {
         const label = GOV_SUBTABS.find(t => t.id === _govActiveSubtab)?.label || _govActiveSubtab;
         content.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;text-align:center;color:var(--text-dim);">
@@ -10318,8 +10321,16 @@ function openAssignModal(ministryKey) {
     document.getElementById('assign-confirm-btn').textContent = 'Appoint Minister';
     document.getElementById('assign-modal-title').textContent = 'Assign — ' + (MINISTRY_NAMES[ministryKey] || ministryKey);
 
-    // For parliamentary democracies, only show coalition parties
-    const eligibleParties = (!isPresidential && coalitionData?.party_ids)
+    // Eligibility:
+    //   * Parliamentary democracies: limited to coalition parties.
+    //   * Presidential / semi-presidential: any party (cohabitation +
+    //     cross-aisle nominations are valid).
+    //   * Absolute monarchy: any party — the monarch can appoint
+    //     ministers from outside their own party (this was previously
+    //     mis-treated as parliamentary, so the modal showed only the
+    //     monarch's own party).
+    const isMonarchy = isAbsoluteMonarchy(currentNation);
+    const eligibleParties = (!isPresidential && !isMonarchy && coalitionData?.party_ids)
         ? allParties.filter(p => coalitionData.party_ids.includes(p.id))
         : allParties;
 
@@ -10331,14 +10342,18 @@ function openAssignModal(ministryKey) {
         age: 35 + Math.floor(Math.random() * 31)
     }));
 
-    document.getElementById('assign-candidates').innerHTML = generatedCandidates.map((c, i) => {
-        const isRuling = c.partyId === rulingFactionId;
-        const candColor = getPartyColorById(c.partyId);
-        const candLogo = getPartyLogoById(c.partyId);
-        const candCustomLogo = getPartyCustomLogoById(c.partyId);
-        const candLogoHtml = candLogo || candCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: candCustomLogo, iconKey: candLogo, size: 14, color: candColor })}</span>` : '';
-        return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};"><div><div class="candidate-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div><div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag ${isRuling ? 'ruling' : 'other'}">${candLogoHtml}${escapeHtml(c.partyName)}</span></div></div>${isRuling ? '<span class="ruling-label">RULING</span>' : ''}</div>`;
-    }).join('');
+    // Empty-state fallback matches openAppointModal. Should only trip
+    // in degenerate states (no parties exist in the nation).
+    document.getElementById('assign-candidates').innerHTML = generatedCandidates.length
+        ? generatedCandidates.map((c, i) => {
+            const isRuling = c.partyId === rulingFactionId;
+            const candColor = getPartyColorById(c.partyId);
+            const candLogo = getPartyLogoById(c.partyId);
+            const candCustomLogo = getPartyCustomLogoById(c.partyId);
+            const candLogoHtml = candLogo || candCustomLogo ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: candCustomLogo, iconKey: candLogo, size: 14, color: candColor })}</span>` : '';
+            return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};"><div><div class="candidate-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div><div class="candidate-details">Age ${c.age} • <span class="candidate-party-tag ${isRuling ? 'ruling' : 'other'}">${candLogoHtml}${escapeHtml(c.partyName)}</span></div></div>${isRuling ? '<span class="ruling-label">RULING</span>' : ''}</div>`;
+        }).join('')
+        : `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;padding:8px 0;">No eligible parties found.</div>`;
 
     document.getElementById('assign-modal').classList.add('active');
 }
@@ -12591,6 +12606,188 @@ function generateAdminSummary(admin) {
  * histories. Defaults to the player's own nation. If the selected
  * nation's rows are RLS-restricted, the empty-state renders cleanly.
  */
+// ──────────────────────────────────────────────────────────────────
+// JUDICIAL subtab — Phase 1: lawsuit list + Pending Cases queue
+//
+// Public record per migration 20260730 (RLS = read-all). Renders all
+// commercial_lawsuits for the current nation grouped by lifecycle:
+//   • Pending Cases   — status='pending' (awaiting MoJ review)
+//   • Closed Cases    — status in upheld/dismissed/settled/withdrawn
+//
+// "REVIEW" affordance is gated to the party holding the Justice
+// ministry (read from active government_formations.ministry_assignments)
+// MoJ ruling button enabled for awaiting_trial cases (Phase 3).
+// ──────────────────────────────────────────────────────────────────
+async function renderJudicialTab(container) {
+    if (!container) return;
+    if (!currentNation?.id) {
+        container.innerHTML = `<div style="padding:16px;color:var(--text-dim);font-family:var(--font-mono);font-size:12px;">No nation selected.</div>`;
+        return;
+    }
+
+    container.innerHTML = `<div style="padding:16px;color:var(--text-dim);font-family:var(--font-mono);font-size:12px;">Loading lawsuits…</div>`;
+
+    // Pull lawsuits + the active Justice holder in parallel.
+    const [suitsRes, formRes] = await Promise.all([
+        _supabase.from('commercial_lawsuits')
+            .select(`
+                id, status, grievance_type, relief_sought,
+                filed_at_tick, responded_at_tick,
+                response_deadline_tick, ruling_deadline_tick, closed_at_tick,
+                defense_text, relationship_ref, chat_id,
+                plaintiff:plaintiff_faction_id(faction_name, abbreviation, corp_ticker),
+                defendant:defendant_faction_id(faction_name, abbreviation, corp_ticker)
+            `)
+            .eq('nation_id', currentNation.id)
+            .order('filed_at_tick', { ascending: false }),
+        activeFormationId
+            ? _supabase.from('government_formations').select('ministry_assignments').eq('id', activeFormationId).single()
+            : Promise.resolve({ data: null }),
+    ]);
+
+    if (suitsRes.error) {
+        console.warn('[judicial] lawsuit fetch failed:', suitsRes.error.message);
+        container.innerHTML = `<div style="padding:16px;color:#c55;font-family:var(--font-mono);font-size:12px;">Failed to load lawsuits: ${escapeHtml(suitsRes.error.message)}</div>`;
+        return;
+    }
+
+    const lawsuits = suitsRes.data || [];
+    const justiceHolderId = formRes?.data?.ministry_assignments?.justice || null;
+    const viewerHoldsJustice = !!currentFaction && justiceHolderId && currentFaction.id === justiceHolderId;
+    const justiceVacant = !justiceHolderId;
+
+    const pending = lawsuits.filter(l => ['pending','reviewing','awaiting_trial','settle_offered'].includes(l.status));
+    const closed  = lawsuits.filter(l => ['upheld','dismissed','settled','withdrawn'].includes(l.status));
+
+    const statusColor = {
+        pending:        '#c8a832',
+        reviewing:      '#5a8aaa',
+        awaiting_trial: '#c55',
+        settle_offered: '#a0633a',
+        upheld:         '#5cb85c',
+        dismissed:      '#9e9a92',
+        settled:        '#a0633a',
+        withdrawn:      '#6a6660',
+    };
+
+    function lawsuitRow(l) {
+        const plName  = l.plaintiff?.faction_name || 'Unknown';
+        const plTick  = l.plaintiff?.corp_ticker || l.plaintiff?.abbreviation || '';
+        const defName = l.defendant?.faction_name || 'Unknown';
+        const defTick = l.defendant?.corp_ticker || l.defendant?.abbreviation || '';
+        const sc      = statusColor[l.status] || '#9e9a92';
+        const ticksLeft = Math.max(0, Number(l.response_deadline_tick || 0) - Number(currentTick || 0));
+
+        // Phase-stage hint reflects where the case actually is in its
+        // lifecycle. The Rule on Case button (further down) is the
+        // MoJ-holder's active control on awaiting_trial cases.
+        let hintText = '';
+        if (l.status === 'pending') {
+            hintText = `Waiting for Defendant to Respond · ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}`;
+        } else if (l.status === 'awaiting_trial') {
+            hintText = justiceVacant ? 'Justice Vacant · Awaiting Appointment' : 'Awaiting MoJ Ruling';
+        } else if (l.status === 'settle_offered') {
+            hintText = 'Settlement Offered · Awaiting Plaintiff';
+        } else if (l.status === 'reviewing') {
+            hintText = 'Under MoJ Review';
+        }
+        const hintColor = l.status === 'pending' ? '#c8a832'
+                        : l.status === 'awaiting_trial' && justiceVacant ? '#c84'
+                        : '#6a6660';
+        const hint = hintText
+            ? `<span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:${hintColor};">${escapeHtml(hintText)}</span>`
+            : '';
+
+        // MoJ ruling button — shown only when case is awaiting_trial
+        // AND viewer's party holds Justice in this nation. data-lawsuit-id
+        // wires to the click handler that mounts the rule modal.
+        const ruleBtn = (l.status === 'awaiting_trial' && viewerHoldsJustice)
+            ? `<button class="judicial-rule-btn" data-lawsuit-id="${escapeHtml(l.id)}" style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;padding:6px 12px;color:#000;background:#c8a832;border:1px solid #c8a832;cursor:pointer;">Rule on Case ▸</button>`
+            : '';
+
+        return `<div style="padding:12px 16px;border-bottom:1px solid var(--border-main);background:var(--bg-panel);display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;">
+            <div style="min-width:0;">
+                <div style="font-size:14px;font-weight:600;color:var(--text-bright);">
+                    <span style="font-family:var(--font-mono);font-size:10px;color:#c8a832;letter-spacing:0.1em;margin-right:6px;">${escapeHtml(plTick)}</span>${escapeHtml(plName)}
+                    <span style="color:#6a6660;font-weight:400;margin:0 8px;">vs</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;color:#c8a832;letter-spacing:0.1em;margin-right:6px;">${escapeHtml(defTick)}</span>${escapeHtml(defName)}
+                </div>
+                <div style="font-family:var(--font-mono);font-size:10px;color:#9e9a92;margin-top:4px;letter-spacing:0.06em;">
+                    ${escapeHtml(GRIEVANCE_LABEL[l.grievance_type] || l.grievance_type)} ·
+                    Relief: ${escapeHtml(RELIEF_LABEL[l.relief_sought] || l.relief_sought)} ·
+                    Filed tick ${l.filed_at_tick}${l.closed_at_tick ? ' · Closed tick ' + l.closed_at_tick : ''}
+                </div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;padding:3px 9px;color:${sc};border:1px solid ${sc}66;background:${sc}14;">${escapeHtml(l.status.replace('_',' '))}</span>
+                ${hint}
+                ${ruleBtn}
+            </div>
+        </div>`;
+    }
+
+    let html = '';
+
+    // Header strip — count + viewer role hint.
+    const banner = justiceVacant
+        ? `<div style="font-family:var(--font-mono);font-size:11px;color:#c84;letter-spacing:0.06em;">Justice ministry vacant — pending cases remain on the docket until a Minister of Justice is appointed.</div>`
+        : viewerHoldsJustice
+            ? `<div style="font-family:var(--font-mono);font-size:11px;color:#5cb85c;letter-spacing:0.06em;">Your party holds the Ministry of Justice. Cases awaiting trial show a Rule on Case control.</div>`
+            : `<div style="font-family:var(--font-mono);font-size:11px;color:#9e9a92;letter-spacing:0.06em;">Cases are reviewed by the Ministry of Justice.</div>`;
+
+    html += `<div style="padding:16px 20px;border-bottom:1px solid var(--border-main);background:var(--bg-2,#1a1a17);">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+            <div style="font-size:18px;font-weight:600;color:var(--text-bright);letter-spacing:-0.01em;">Judicial Docket</div>
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.16em;text-transform:uppercase;color:#9e9a92;">${pending.length} pending · ${closed.length} closed</div>
+        </div>
+        ${banner}
+    </div>`;
+
+    // Pending section
+    html += `<div style="padding:14px 20px 6px;font-family:var(--font-mono);font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#c8a832;font-weight:700;">Pending Cases (${pending.length})</div>`;
+    if (pending.length === 0) {
+        html += `<div style="padding:18px 20px;font-family:var(--font-mono);font-size:11px;color:#6a6660;">No pending cases.</div>`;
+    } else {
+        for (const l of pending) html += lawsuitRow(l);
+    }
+
+    // Closed section
+    html += `<div style="padding:14px 20px 6px;margin-top:8px;font-family:var(--font-mono);font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#9e9a92;font-weight:700;">Closed Cases (${closed.length})</div>`;
+    if (closed.length === 0) {
+        html += `<div style="padding:18px 20px;font-family:var(--font-mono);font-size:11px;color:#6a6660;">No closed cases.</div>`;
+    } else {
+        for (const l of closed) html += lawsuitRow(l);
+    }
+
+    container.innerHTML = html;
+
+    // Wire the Rule on Case buttons (delegated). Clicking mounts the
+    // Phase 3 rule modal with the lawsuit row from the rendered list.
+    container.querySelectorAll('.judicial-rule-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const id = btn.getAttribute('data-lawsuit-id');
+            const lawsuit = (suitsRes.data || []).find(x => x.id === id);
+            if (!lawsuit) return;
+            try {
+                const m = await import('./js/lawsuit-rule.js');
+                m.openLawsuitRuleModal(lawsuit, currentFaction);
+            } catch (err) {
+                console.warn('[judicial] rule modal mount failed:', err?.message || err);
+            }
+        });
+    });
+}
+
+// Refresh the Judicial subtab when a ruling is issued elsewhere on
+// this client (modal closes via lawsuit:ruled event).
+window.addEventListener('lawsuit:ruled', () => {
+    if (_govActiveSubtab === 'judicial') {
+        const container = document.getElementById('gov-content');
+        if (container) renderJudicialTab(container);
+    }
+});
+
 async function renderPastAdministrationsTab(container, nationIdOverride) {
     if (!container) return;
 
