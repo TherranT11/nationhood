@@ -741,24 +741,15 @@ async function handleFormGovernment(formation, root) {
             await createMinistriesFromAssignments(nationId);
         }
 
-        // Always call rolloverAdministration — its internal continuity rule
-        // decides whether to update the open admin row in place (same PM) or
-        // close it and insert a new one (different PM). Skipping when an open
-        // admin exists left that row with stale coalition/pm_party data after
-        // a reshuffle.
-        const coalition = {
-            id: formation.id,
-            party_ids: formation.party_ids || [],
-            lead_party_id: _ministryAssignments.prime_minister,
-        };
-        await rolloverAdministration(
-            _supabase, nationId, _state.nation,
-            'election', coalition, _allParties,
-            _currentTick, _state.shard?.current_date || '',
-            Number(_state.nation?.gov_approval ?? 50)
-        );
-
-        // Auto-appoint PM's party leader (skip coalition check — we just formed it)
+        // Auto-appoint PM's party leader (skip coalition check — we just formed it).
+        // The finalize_government_formation RPC has already closed the previous
+        // administration, inserted the new admin row, and installed HOG (semi-pres
+        // detection inside the RPC handles the parliamentary-vs-presidential
+        // split). The previous code re-ran rolloverAdministration here, which —
+        // with the RPC now succeeding (20260804) — closed the just-inserted admin
+        // and inserted another one, leaving a 0-tick ghost admin per formation.
+        // The fallback path (formGovernmentFallback) still calls rolloverAdministration
+        // because that path runs only when the RPC failed.
         await autoAppointPartyLeaderAsPM(_supabase, nationId, pmPartyId, _currentTick, { skipCoalitionCheck: true });
 
         _formationNeeded = false;
