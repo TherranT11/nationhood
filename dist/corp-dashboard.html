@@ -378,6 +378,60 @@ body.corp-redesign.light-mode .cr-fin-card { border-color: var(--panel-border); 
 }
 .cr-fin-card-trend.positive { color: var(--green); }
 .cr-fin-card-trend.negative { color: var(--red); }
+
+/* Expandable fin cards: cursor + hover chrome on the four cards. */
+.cr-fin-card.is-expandable { cursor: pointer; }
+.cr-fin-card.is-expandable:hover { border-color: var(--border-2, var(--border-1)); }
+.cr-fin-card-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cr-fin-card-chevron {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  transition: transform 0.15s ease;
+}
+.cr-fin-card.is-expanded .cr-fin-card-chevron {
+  transform: rotate(180deg);
+}
+.cr-fin-card-expansion {
+  display: none;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-1);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+.cr-fin-card.is-expanded .cr-fin-card-expansion {
+  display: block;
+}
+.cr-fin-card-expansion-tick + .cr-fin-card-expansion-tick {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-hair, rgba(255,255,255,0.04));
+}
+.cr-fin-card-expansion-tick-label {
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+.cr-fin-card-expansion-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+.cr-fin-card-expansion-empty {
+  font-style: italic;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 6px 0 2px;
+}
 .cr-sparkline {
   margin-top: 8px;
   height: 22px;
@@ -741,11 +795,11 @@ body.corp-redesign.light-mode .cr-footer-strip { border-top-color: var(--panel-b
   .cr-perf-grid { grid-template-columns: 1fr; }
 }
 </style>
-  <script type="module" crossorigin src="/assets/corp-dashboard-3090BY6S.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/supabase-client-qEAQbBjE.js">
+  <script type="module" crossorigin src="/assets/corp-dashboard-CjUHlXSk.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
-  <link rel="modulepreload" crossorigin href="/assets/utils-A98FEun4.js">
-  <link rel="modulepreload" crossorigin href="/assets/corp-valuation-DvpMrhZz.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-DGqmZD5X.js">
+  <link rel="modulepreload" crossorigin href="/assets/corp-valuation-DRgj4yjT.js">
   <link rel="stylesheet" crossorigin href="/assets/corp-topbar-DaKVFqp6.css">
   <link rel="stylesheet" crossorigin href="/assets/corp-light-theme-l9hU6ojy.css">
 </head>

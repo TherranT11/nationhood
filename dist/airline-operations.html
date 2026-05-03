@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Operations | Nationhood</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════════════════════
+   AIRLINE OPERATIONS — Phase 3 read-only surface.
+   Class prefix: .ao-* (airline-operations).
+   Uses the site-standard corp-redesign palette + IBM Plex / JetBrains
+   Mono so the page reads as one product with corp-dashboard and the
+   other corp-operations-* pages. Bespoke --accent-* aliases below
+   keep the page-local CSS rules unchanged — they just point at the
+   shared --gold / --teal / --green / --orange swatch.
+   ══════════════════════════════════════════════════════════════ */
+body.airline-operations {
+  /* Site-standard tokens (mirrors body.corp-redesign on corp-dashboard).
+     The shared corp-topbar.css reads these — without them the topbar
+     falls back to root defaults and renders differently from the
+     dashboard. Page-local rules below use the bespoke --accent-* /
+     --line-* aliases. */
+  --bg-0: #0e0e0c;
+  --bg-1: #1a1a1a;
+  --bg-2: #1a1a17;
+  --bg-3: #252525;
+  --bg-4: #24241f;
+  --bg-5: #2c2c26;
+  --bg-hover: #282822;
+  --bg-card: #1a1a17;
+  --bg-panel: #252525;
+  --panel-main: #1f1f1a;
+  --panel-border: rgba(255,255,255,0.08);
+  --text-bright: #f0efe6;
+  --text-primary: #c4c2b8;
+  --text-secondary: #888;
+  --text-muted: #666;
+  --text-dim: #4a4940;
+  --text-ghost: #333229;
+  --border-hair: rgba(255,255,255,0.04);
+  --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08);
+  --border-2: rgba(255,255,255,0.12);
+  --green: #5cb85c;
+  --red: #d9534f;
+  --amber: #c8a832;
+  --gold: #c8a832;
+  --orange: #e8724a;
+  --blue: #5bc0de;
+  --teal: #5aafa5;
+
+  /* Page-local aliases preserved so .ao-* rules don't have to change. */
+  --line-soft: var(--border-hair);
+  --line-bright: var(--border-2);
+  --accent-gold: var(--gold);
+  --accent-teal: var(--teal);
+  --accent-green: var(--green);
+  --accent-rust: var(--orange);
+
+  --serif: 'IBM Plex Serif', Georgia, serif;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.45;
+  margin: 0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+body.airline-operations * { box-sizing: border-box; }
+
+/* Light-mode override so the corp-topbar theme toggle works here too,
+   matching the pattern in corp-operations.html. */
+body.airline-operations.light-mode {
+  --bg-0:        #faf9f5;
+  --bg-card:     #ffffff;
+  --bg-panel:    #faf9f5;
+  --text-bright: #1a1a17;
+  --text-primary:#2d2d28;
+  --text-muted:  #6a6660;
+  --line-soft:   #e8e7e0;
+  --line-bright: #e0dfd6;
+  --border-hair: #e8e7e0;
+  --border-2:    #e0dfd6;
+}
+
+.ao-page {
+  max-width: 1280px;
+  margin: 24px auto 64px;
+  padding: 0 32px;
+}
+
+.ao-section { margin-bottom: 32px; }
+.ao-section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  border-bottom: 1px solid var(--line-bright);
+  padding-bottom: 10px;
+  margin-bottom: 16px;
+}
+.ao-section-header h2 {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 500;
+  margin: 0;
+  color: var(--text-bright);
+  letter-spacing: -0.01em;
+}
+.ao-section-header h2 .num {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent-gold);
+  margin-right: 8px;
+  letter-spacing: 0.15em;
+}
+.ao-section-header .desc {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ── Hero stats ─────────────────────────────────────── */
+.ao-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--line-bright);
+  border: 1px solid var(--line-bright);
+}
+.ao-hero-stat {
+  background: var(--bg-card);
+  padding: 28px 28px 24px;
+  position: relative;
+  overflow: hidden;
+}
+.ao-hero-stat::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(to right, var(--accent-gold), transparent);
+}
+.ao-hero-stat[data-stat="fleet"]::before    { background: linear-gradient(to right, var(--accent-teal),  transparent); }
+.ao-hero-stat[data-stat="routes"]::before   { background: linear-gradient(to right, var(--accent-gold),  transparent); }
+.ao-hero-stat[data-stat="safety"]::before   { background: linear-gradient(to right, var(--accent-green), transparent); }
+.ao-hero-stat-eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent-gold);
+  margin-bottom: 8px;
+}
+.ao-hero-stat[data-stat="fleet"]  .ao-hero-stat-eyebrow { color: var(--accent-teal); }
+.ao-hero-stat[data-stat="safety"] .ao-hero-stat-eyebrow { color: var(--accent-green); }
+.ao-hero-stat-name {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 26px;
+  line-height: 1.05;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  letter-spacing: -0.015em;
+}
+.ao-hero-stat-value {
+  font-family: var(--serif);
+  font-size: 42px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text-bright);
+  font-variant-numeric: tabular-nums;
+}
+.ao-hero-stat-suffix {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.ao-hero-stat-detail {
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  letter-spacing: 0.06em;
+}
+
+/* ── Three-up panel row (Available Hubs + My Hubs + Fleet Inventory) ───── */
+.ao-panels-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+.ao-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--line-bright);
+}
+.ao-panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line-bright);
+}
+.ao-panel-header h3 {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0;
+  color: var(--text-bright);
+  letter-spacing: -0.01em;
+}
+.ao-panel-header .desc {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ao-panel-body { padding: 12px 0; }
+.ao-panel-empty {
+  padding: 22px 18px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+/* ── List rows (used inside panels) ─────────────────── */
+.ao-list-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: baseline;
+  padding: 8px 18px;
+  border-bottom: 1px dashed var(--line-soft);
+}
+.ao-list-row:last-child { border-bottom: 0; }
+.ao-list-primary {
+  font-family: var(--serif);
+  font-size: 14px;
+  color: var(--text-bright);
+  font-weight: 500;
+}
+.ao-list-secondary {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+.ao-list-tag {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--accent-gold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ao-list-tag.muted { color: var(--text-muted); }
+.ao-list-tag.green { color: var(--accent-green); }
+.ao-list-tag.teal  { color: var(--accent-teal); }
+
+/* ── Empty section state ────────────────────────────── */
+.ao-empty {
+  background: var(--bg-card);
+  border: 1px solid var(--line-bright);
+  padding: 36px 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.ao-empty strong {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 1100px) {
+  .ao-panels-row { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 720px) {
+  .ao-panels-row { grid-template-columns: 1fr; }
+}
+
+/* ── Buy-Terminal button + confirm modal ───────────────────────── */
+.ao-buy-btn {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border: 1px solid var(--accent-gold);
+  background: rgba(200,168,50,0.08);
+  color: var(--accent-gold);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.ao-buy-btn:hover  { background: rgba(200,168,50,0.18); }
+.ao-buy-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+  background: transparent;
+}
+.ao-hub-cost {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent-gold);
+  font-weight: 700;
+}
+.ao-hub-meta {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.ao-modal-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.65);
+  z-index: 1000;
+  align-items: center; justify-content: center;
+}
+.ao-modal-overlay.active { display: flex; }
+.ao-modal {
+  background: var(--bg-card);
+  border: 1px solid var(--line-bright);
+  width: 420px;
+  max-width: 90vw;
+  padding: 24px;
+}
+.ao-modal h3 {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0 0 12px;
+  color: var(--text-bright);
+}
+.ao-modal-body {
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+.ao-modal-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.ao-modal-row span:first-child { color: var(--text-muted); }
+.ao-modal-row span:last-child  { color: var(--text-bright); font-weight: 700; }
+.ao-modal-actions {
+  display: flex; gap: 8px; justify-content: flex-end;
+}
+.ao-modal-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  border: 1px solid var(--border-2);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.ao-modal-btn--primary {
+  border-color: var(--accent-gold);
+  background: rgba(200,168,50,0.10);
+  color: var(--accent-gold);
+}
+.ao-modal-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ao-modal-error {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent-rust);
+  margin-top: 10px;
+  min-height: 14px;
+}
+
+/* ── Set Up Route modal — wide variant ──────────────────────── */
+.ao-modal--wide {
+  width: 640px;
+  max-width: 92vw;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+.ao-route-pair-line {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent-gold);
+  letter-spacing: 0.06em;
+  margin: -4px 0 14px;
+}
+.ao-route-section {
+  border-top: 1px solid var(--line-bright);
+  padding: 12px 0 10px;
+}
+.ao-route-section:first-of-type { border-top: 0; padding-top: 0; }
+.ao-route-section-h {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-gold);
+  margin-bottom: 8px;
+}
+.ao-route-section-foot {
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.ao-route-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+.ao-route-grid-4 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 12px;
+}
+.ao-route-grid-3 > div, .ao-route-grid-4 > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ao-route-grid-3 label, .ao-route-grid-4 label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.ao-route-grid-3 span, .ao-route-grid-4 span {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-bright);
+  font-variant-numeric: tabular-nums;
+}
+.ao-route-meta {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-muted);
+}
+.ao-route-aircraft-row {
+  display: grid;
+  grid-template-columns: 1fr 80px auto;
+  gap: 12px;
+  align-items: center;
+  padding: 4px 0;
+}
+.ao-route-aircraft-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+.ao-route-aircraft-row input[type=number] {
+  width: 80px;
+  padding: 4px 6px;
+  background: var(--bg-panel);
+  border: 1px solid var(--line-bright);
+  color: var(--text-bright);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: right;
+}
+.ao-route-aircraft-row input[type=number]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ao-route-avail {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+.ao-route-price-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 80px;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.ao-route-price-row label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.ao-route-price-val {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-gold);
+  text-align: right;
+}
+.ao-route-tier-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.ao-route-tier-row label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+/* Available Routes / Active Routes list rows */
+.ao-route-list-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 18px;
+  border-bottom: 1px dashed var(--line-soft);
+}
+.ao-route-list-row:last-child { border-bottom: 0; }
+.ao-route-list-pair {
+  font-family: var(--serif);
+  font-size: 14px;
+  color: var(--text-bright);
+}
+.ao-route-list-meta {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+</style>
+  <script type="module" crossorigin src="/assets/airline-operations-BcMkG2ek.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
+  <link rel="modulepreload" crossorigin href="/assets/corp-topbar-B9cSZncf.js">
+  <link rel="stylesheet" crossorigin href="/assets/corp-topbar-DaKVFqp6.css">
+  <link rel="stylesheet" crossorigin href="/assets/corp-light-theme-l9hU6ojy.css">
+</head>
+<body class="airline-operations">
+<div id="corp-topbar"></div>
+
+<div class="ao-page">
+
+  <!-- I. Strategic Position -->
+  <section class="ao-section">
+    <div class="ao-section-header">
+      <h2><span class="num">I.</span>Strategic Position</h2>
+      <span class="desc">Fleet · Routes · Safety</span>
+    </div>
+    <div class="ao-hero-stats">
+      <div class="ao-hero-stat" data-stat="fleet">
+        <div class="ao-hero-stat-eyebrow">Fleet</div>
+        <div class="ao-hero-stat-name">Aircraft <em>in service</em></div>
+        <div>
+          <span class="ao-hero-stat-value" id="ao-stat-fleet">—</span>
+          <span class="ao-hero-stat-suffix">slots</span>
+        </div>
+        <div class="ao-hero-stat-detail" id="ao-stat-fleet-detail"></div>
+      </div>
+      <div class="ao-hero-stat" data-stat="routes">
+        <div class="ao-hero-stat-eyebrow">Routes</div>
+        <div class="ao-hero-stat-name">Active <em>operations</em></div>
+        <div>
+          <span class="ao-hero-stat-value" id="ao-stat-routes">—</span>
+          <span class="ao-hero-stat-suffix">routes</span>
+        </div>
+      </div>
+      <div class="ao-hero-stat" data-stat="safety">
+        <div class="ao-hero-stat-eyebrow">Operational Safety</div>
+        <div class="ao-hero-stat-name">Clean <em>record</em></div>
+        <div>
+          <span class="ao-hero-stat-value" id="ao-stat-safety">—</span>
+          <span class="ao-hero-stat-suffix">/ 10</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Available Hubs + My Hubs + Fleet Inventory panels -->
+  <div class="ao-panels-row">
+    <div class="ao-panel">
+      <div class="ao-panel-header">
+        <h3>Available Hubs</h3>
+        <span class="desc">Open terminals to buy</span>
+      </div>
+      <div class="ao-panel-body" id="ao-available-hubs">
+        <div class="ao-panel-empty">Loading…</div>
+      </div>
+    </div>
+    <div class="ao-panel">
+      <div class="ao-panel-header">
+        <h3>My Hubs</h3>
+        <span class="desc">Owned terminals</span>
+      </div>
+      <div class="ao-panel-body" id="ao-my-hubs">
+        <div class="ao-panel-empty">Loading…</div>
+      </div>
+    </div>
+    <div class="ao-panel">
+      <div class="ao-panel-header">
+        <h3>Fleet Inventory</h3>
+        <span class="desc">Aircraft owned</span>
+      </div>
+      <div class="ao-panel-body" id="ao-fleet-inventory">
+        <div class="ao-panel-empty">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Buy Terminal confirm modal -->
+  <div class="ao-modal-overlay" id="ao-buy-modal">
+    <div class="ao-modal">
+      <h3>Buy Terminal Access</h3>
+      <div class="ao-modal-body" id="ao-buy-modal-body"></div>
+      <div class="ao-modal-actions">
+        <button type="button" class="ao-modal-btn" id="ao-buy-cancel">Cancel</button>
+        <button type="button" class="ao-modal-btn ao-modal-btn--primary" id="ao-buy-confirm">Confirm Purchase</button>
+      </div>
+      <div class="ao-modal-error" id="ao-buy-modal-error"></div>
+    </div>
+  </div>
+
+  <!-- II. Pressing Issues -->
+  <section class="ao-section">
+    <div class="ao-section-header">
+      <h2><span class="num">II.</span>Pressing Issues</h2>
+      <span class="desc">Items requiring attention</span>
+    </div>
+    <div class="ao-empty" id="ao-issues">
+      <strong>No pressing issues</strong>
+      Operations are running cleanly. Issues will surface here as they arise.
+    </div>
+  </section>
+
+  <!-- III. Available Routes -->
+  <section class="ao-section">
+    <div class="ao-section-header">
+      <h2><span class="num">III.</span>Available Routes</h2>
+      <span class="desc">Unflown city pairs you could open</span>
+    </div>
+    <div class="ao-panel-body" id="ao-available-routes">
+      <div class="ao-panel-empty">Loading…</div>
+    </div>
+  </section>
+
+  <!-- IV. Active Routes -->
+  <section class="ao-section">
+    <div class="ao-section-header">
+      <h2><span class="num">IV.</span>Active Routes</h2>
+      <span class="desc">Currently flying scheduled service</span>
+    </div>
+    <div class="ao-panel-body" id="ao-routes">
+      <div class="ao-panel-empty">Loading…</div>
+    </div>
+  </section>
+
+  <!-- Set Up Route modal -->
+  <div class="ao-modal-overlay" id="ao-route-modal">
+    <div class="ao-modal ao-modal--wide">
+      <h3 id="ao-route-modal-title">Set Up Route</h3>
+      <div class="ao-route-pair-line" id="ao-route-modal-pair"></div>
+
+      <div class="ao-route-section">
+        <div class="ao-route-section-h">I. Market Conditions</div>
+        <div class="ao-route-grid-3">
+          <div><label>Lane demand</label><span id="ao-rs-demand">—</span></div>
+          <div><label>Competitors filled</label><span id="ao-rs-comp">—</span></div>
+          <div><label>Unmet demand</label><span id="ao-rs-unmet">—</span></div>
+        </div>
+      </div>
+
+      <div class="ao-route-section">
+        <div class="ao-route-section-h">II. Assign Aircraft</div>
+        <div class="ao-route-aircraft-row">
+          <div class="ao-route-aircraft-label">Regional <span class="ao-route-meta">10 seats</span></div>
+          <input type="number" min="0" step="1" id="ao-ac-regional" value="0">
+          <span class="ao-route-avail" id="ao-ac-regional-avail">0 idle</span>
+        </div>
+        <div class="ao-route-aircraft-row">
+          <div class="ao-route-aircraft-label">Narrowbody <span class="ao-route-meta">25 seats</span></div>
+          <input type="number" min="0" step="1" id="ao-ac-narrowbody" value="0">
+          <span class="ao-route-avail" id="ao-ac-narrowbody-avail">0 idle</span>
+        </div>
+        <div class="ao-route-aircraft-row">
+          <div class="ao-route-aircraft-label">Widebody <span class="ao-route-meta">60 seats</span></div>
+          <input type="number" min="0" step="1" id="ao-ac-widebody" value="0">
+          <span class="ao-route-avail" id="ao-ac-widebody-avail">0 idle</span>
+        </div>
+        <div class="ao-route-section-foot">Total seats assigned: <strong id="ao-rs-seats">0</strong></div>
+      </div>
+
+      <div class="ao-route-section">
+        <div class="ao-route-section-h">III. Pricing &amp; Maintenance</div>
+        <div class="ao-route-price-row">
+          <label>Ticket price</label>
+          <input type="range" id="ao-rs-price" min="0" max="500" step="5" value="250">
+          <span class="ao-route-price-val">$<span id="ao-rs-price-val">250</span></span>
+        </div>
+        <div class="ao-route-tier-row">
+          <label><input type="radio" name="ao-rs-tier" value="basic"> Basic <span class="ao-route-meta">$10k/tick</span></label>
+          <label><input type="radio" name="ao-rs-tier" value="standard" checked> Standard <span class="ao-route-meta">$25k/tick</span></label>
+          <label><input type="radio" name="ao-rs-tier" value="premium"> Premium <span class="ao-route-meta">$40k/tick</span></label>
+        </div>
+      </div>
+
+      <div class="ao-route-section">
+        <div class="ao-route-section-h">IV. Aviation Incident Risk</div>
+        <div>Risk per tick: <strong id="ao-rs-risk">0.0%</strong></div>
+        <div class="ao-route-meta">(aircraft × 0.008) ÷ (op_safety ÷ 10)</div>
+      </div>
+
+      <div class="ao-route-section">
+        <div class="ao-route-section-h">V. Projection (per tick)</div>
+        <div class="ao-route-grid-4">
+          <div><label>Pax carried</label><span id="ao-rs-pax">—</span></div>
+          <div><label>Revenue</label><span id="ao-rs-rev">—</span></div>
+          <div><label>Costs</label><span id="ao-rs-cost">—</span></div>
+          <div><label>Profit</label><span id="ao-rs-profit">—</span></div>
+        </div>
+      </div>
+
+      <div class="ao-modal-actions">
+        <button type="button" class="ao-modal-btn" id="ao-route-cancel">Cancel</button>
+        <button type="button" class="ao-modal-btn ao-modal-btn--primary" id="ao-route-confirm">Set Up Route</button>
+      </div>
+      <div class="ao-modal-error" id="ao-route-modal-error"></div>
+    </div>
+  </div>
+
+  <!-- V. Strategic Actions -->
+  <section class="ao-section">
+    <div class="ao-section-header">
+      <h2><span class="num">V.</span>Strategic Actions</h2>
+      <span class="desc">Sector-wide plays for this corp</span>
+    </div>
+    <div class="ao-empty" id="ao-actions">
+      <strong>No actions yet</strong>
+      Strategic action grid lands in a later phase.
+    </div>
+  </section>
+
+</div>
+
+</body>
+</html>
