@@ -1523,63 +1523,6 @@ function renderPressingIssues() {
 }
 
 let _ackInflight = new Set();
-let _loanOfferInflight = new Set();
-
-// Accept reloads Pressing Issues regardless of outcome — on success
-// the request flips to 'approved' and every sibling offer auto-rejects
-// (they all need to disappear); on a server-side failure (offer or
-// request changed state in a race) the reload syncs the visible cards
-// to canonical state so the user isn't stuck retrying a stale row.
-// Cash doesn't move until the bank disburses, so no faction refetch.
-async function acceptLoanOffer(offerId) {
-    if (!offerId || _loanOfferInflight.has(offerId)) return;
-    _loanOfferInflight.add(offerId);
-    renderPressingIssues();
-    try {
-        const { data, error } = await _supabase.rpc('accept_loan_offer', {
-            p_offer_id: offerId,
-        });
-        if (error) {
-            showToast('Failed: ' + error.message, 'error');
-        } else if (!data?.success) {
-            showToast(data?.error || 'Failed to accept', 'error');
-        } else {
-            showToast('Offer accepted. Awaiting bank disbursement.', 'success');
-        }
-        await loadPressingIssues();
-    } catch (err) {
-        console.error('[corp-operations] accept_loan_offer failed:', err);
-        showToast('Accept failed: ' + (err?.message || 'unknown'), 'error');
-    } finally {
-        _loanOfferInflight.delete(offerId);
-        renderPressingIssues();
-    }
-}
-
-async function rejectLoanOffer(offerId) {
-    if (!offerId || _loanOfferInflight.has(offerId)) return;
-    _loanOfferInflight.add(offerId);
-    renderPressingIssues();
-    try {
-        const { data, error } = await _supabase.rpc('reject_loan_offer', {
-            p_offer_id: offerId,
-        });
-        if (error) {
-            showToast('Failed: ' + error.message, 'error');
-        } else if (!data?.success) {
-            showToast(data?.error || 'Failed to reject', 'error');
-        } else {
-            showToast('Offer rejected.', 'success');
-        }
-        await loadPressingIssues();
-    } catch (err) {
-        console.error('[corp-operations] reject_loan_offer failed:', err);
-        showToast('Reject failed: ' + (err?.message || 'unknown'), 'error');
-    } finally {
-        _loanOfferInflight.delete(offerId);
-        renderPressingIssues();
-    }
-}
 
 async function acknowledgeIssue(eventId) {
     if (_ackInflight.has(eventId)) return;

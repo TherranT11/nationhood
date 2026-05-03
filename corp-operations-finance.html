@@ -1883,6 +1883,7 @@ async function submitLoanOffer(requestId) {
         // up via Pressing Issues. Both refine + chat in the modal.
         const { data, error } = await _supabase.rpc('bank_respond_to_loan_request', {
             p_request_id:          requestId,
+            p_bank_faction_id:     faction.id,
             p_proposed_apr:        offeredApr,
             p_proposed_term_ticks: offeredTerm,
             p_notes:               null,

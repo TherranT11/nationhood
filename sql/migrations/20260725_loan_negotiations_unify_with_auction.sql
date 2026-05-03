@@ -67,7 +67,7 @@ DECLARE
     v_user       UUID := auth.uid();
     v_borrower   factions%ROWTYPE;
     v_tick       INT;
-    v_bank_id    UUID;
+    v_loop_bank_id UUID;
     v_bank       factions%ROWTYPE;
     v_request_id UUID;
 BEGIN
@@ -97,11 +97,11 @@ BEGIN
     END IF;
 
     -- Sanity-check each target bank exists + is Finance.
-    FOREACH v_bank_id IN ARRAY p_target_bank_ids LOOP
-        SELECT * INTO v_bank FROM factions WHERE id = v_bank_id;
+    FOREACH v_loop_bank_id IN ARRAY p_target_bank_ids LOOP
+        SELECT * INTO v_bank FROM factions WHERE id = v_loop_bank_id;
         IF v_bank.id IS NULL OR v_bank.faction_type <> 'corporation' OR v_bank.corp_sector <> 'Finance' THEN
             RETURN jsonb_build_object('success', false,
-                'error', 'Target bank invalid: ' || COALESCE(v_bank.faction_name, v_bank_id::TEXT));
+                'error', 'Target bank invalid: ' || COALESCE(v_bank.faction_name, v_loop_bank_id::TEXT));
         END IF;
     END LOOP;
 
@@ -134,10 +134,11 @@ GRANT EXECUTE ON FUNCTION submit_loan_request(UUID, UUID[], BIGINT, INT, NUMERIC
 -- Borrower's Pressing Issues feed picks it up via the request_id
 -- linkage.
 CREATE OR REPLACE FUNCTION bank_respond_to_loan_request(
-    p_request_id        UUID,
-    p_proposed_apr      NUMERIC,
+    p_request_id          UUID,
+    p_bank_faction_id     UUID,
+    p_proposed_apr        NUMERIC,
     p_proposed_term_ticks INT,
-    p_notes             TEXT DEFAULT NULL
+    p_notes               TEXT DEFAULT NULL
 ) RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -147,8 +148,6 @@ DECLARE
     v_user      UUID := auth.uid();
     v_request   bank_loan_requests%ROWTYPE;
     v_bank      factions%ROWTYPE;
-    v_bank_id   UUID := NULL;
-    v_target_id UUID;
     v_tick      INT  := _current_tick();
     v_neg_id    UUID;
 BEGIN
@@ -161,6 +160,9 @@ BEGIN
     IF p_proposed_term_ticks IS NULL OR p_proposed_term_ticks <= 0 THEN
         RETURN jsonb_build_object('success', false, 'error', 'Term must be greater than 0 ticks');
     END IF;
+    IF p_bank_faction_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Bank faction id required');
+    END IF;
 
     SELECT * INTO v_request FROM bank_loan_requests
      WHERE id = p_request_id
@@ -172,23 +174,20 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Request is no longer pending');
     END IF;
 
-    -- Resolve the responding bank. Caller must own a Finance corp that
-    -- is in target_bank_ids. Multi-corp owners with multiple eligible
-    -- banks: take the first match.
-    FOREACH v_target_id IN ARRAY COALESCE(v_request.target_bank_ids, ARRAY[]::UUID[]) LOOP
-        SELECT * INTO v_bank FROM factions
-         WHERE id = v_target_id
-           AND (id = v_user OR linked_user_id = v_user)
-           AND faction_type = 'corporation'
-           AND corp_sector  = 'Finance'
-           AND abandoned_at IS NULL;
-        IF v_bank.id IS NOT NULL THEN
-            v_bank_id := v_bank.id;
-            EXIT;
-        END IF;
-    END LOOP;
-    IF v_bank_id IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'error', 'You are not a target bank for this request');
+    -- Caller must own the specified bank, it must be a Finance corp, and
+    -- it must be in target_bank_ids of the request. Multi-corp owners
+    -- pass their active corp explicitly to disambiguate.
+    SELECT * INTO v_bank FROM factions
+     WHERE id = p_bank_faction_id
+       AND (id = v_user OR linked_user_id = v_user)
+       AND faction_type = 'corporation'
+       AND corp_sector  = 'Finance'
+       AND abandoned_at IS NULL;
+    IF v_bank.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'You do not own this bank');
+    END IF;
+    IF NOT (p_bank_faction_id = ANY(COALESCE(v_request.target_bank_ids, ARRAY[]::UUID[]))) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'This bank is not a target of the request');
     END IF;
 
     -- One-open-per-pair: existing UNIQUE INDEX would error noisily.
@@ -196,7 +195,7 @@ BEGIN
     IF EXISTS (
         SELECT 1 FROM loan_negotiations
          WHERE borrower_faction_id = v_request.requesting_faction_id
-           AND lender_faction_id   = v_bank_id
+           AND lender_faction_id   = p_bank_faction_id
            AND status              = 'open'
     ) THEN
         RETURN jsonb_build_object('success', false,
@@ -210,11 +209,11 @@ BEGIN
         last_modified_by_faction_id, last_modified_at_tick,
         created_at_tick, request_id
     ) VALUES (
-        v_request.requesting_faction_id, v_bank_id, v_request.requesting_nation_id,
+        v_request.requesting_faction_id, p_bank_faction_id, v_request.requesting_nation_id,
         v_request.principal, p_proposed_apr, p_proposed_term_ticks,
         v_request.purpose, NULLIF(trim(COALESCE(p_notes, '')), ''),
         v_request.collateral,
-        v_bank_id, v_tick,
+        p_bank_faction_id, v_tick,
         v_tick, v_request.id
     ) RETURNING id INTO v_neg_id;
 
@@ -231,7 +230,7 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION bank_respond_to_loan_request(UUID, NUMERIC, INT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION bank_respond_to_loan_request(UUID, UUID, NUMERIC, INT, TEXT) TO authenticated;
 
 
 -- ── 5. _fire_negotiation: sibling-abandon on fire ────────────────
