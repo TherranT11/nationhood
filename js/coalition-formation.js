@@ -572,17 +572,6 @@ const MINISTRY_NAMES = {
 // — the office-name and key-list maps are the shared exports from
 // government-types.js (MINISTRY_OFFICE_NAMES, CABINET_MINISTRY_KEYS).
 
-function getExpectedCabinetMinistryKeys(nation) {
-    const parliamentaryKeys = ['prime_minister', 'interior', 'foreign', 'defense', 'finance',
-        'education', 'healthcare', 'labor', 'justice', 'trade', 'energy', 'transportation'];
-    const presidentialKeys = ['interior', 'foreign', 'defense', 'finance',
-        'education', 'healthcare', 'labor', 'justice', 'trade', 'energy', 'transportation'];
-
-    // Semi-presidential has a PM seat (parliamentary shape); pure presidential omits it.
-    if (isSemiPresidential(nation)) return parliamentaryKeys;
-    return hasElectedPresident(nation) ? presidentialKeys : parliamentaryKeys;
-}
-
 function renderMinistryAssignment(formation) {
     const coalitionParties = (formation.party_ids || [])
         .map(pid => _allParties.find(p => p.id === pid))
@@ -664,11 +653,9 @@ async function handleFormGovernment(formation, root) {
         const nation = _state.nation;
         const nationId = nation.id;
 
-        // Generate minister names for each assigned slot. The RPC
-        // finalize_government_formation wipes all ministries and then
-        // repopulates from government_formations.minister_names — without
-        // this block, minister_names is null and the RPC leaves the cabinet
-        // blank after wiping it.
+        // Generate minister names for each assigned slot. minister_names
+        // is read by the cabinet-management UI in government.html
+        // (search 'minister_names'); the RPC itself doesn't consume it.
         const namePools = getNationNames(nation?.name) || {};
         const firstPool = namePools.firstNames || ['Alex', 'Maria', 'Carlos'];
         const lastPool = namePools.lastNames || ['Garcia', 'Torres', 'Silva'];
@@ -705,24 +692,12 @@ async function handleFormGovernment(formation, root) {
         // PostgREST doesn't surface those as rpcErr.
         if (rpcData?.error) throw new Error(rpcData.error);
 
-        // Populate non-PM ministries from _ministryAssignments. The RPC
-        // leaves these to the client by design — only the PM ministry's
-        // discretionary balance is restored server-side.
-        const expectedCabinetKeys = getExpectedCabinetMinistryKeys(nation);
-        const expectedCabinetSize = expectedCabinetKeys.length;
-        const { count: totalActiveCount } = await _supabase.from('ministries')
-            .select('id', { count: 'exact', head: true })
-            .eq('nation_id', nationId).eq('is_active', true);
-        const { count: vacantCount } = await _supabase.from('ministries')
-            .select('id', { count: 'exact', head: true })
-            .eq('nation_id', nationId).eq('is_active', true).is('party_id', null);
-
-        if (!totalActiveCount || totalActiveCount < expectedCabinetSize || (vacantCount && vacantCount > 0)) {
-            console.warn(
-                `[Coalition] Ministry invariant check failed (expected=${expectedCabinetSize}, active=${totalActiveCount || 0}, vacant=${vacantCount || 0}) — populating from assignments`
-            );
-            await createMinistriesFromAssignments(nationId);
-        }
+        // Populate ministry rows from _ministryAssignments. The RPC
+        // leaves non-PM ministries to the client by design (only restores
+        // the PM ministry's discretionary_balance). Always runs — the
+        // previous admin's stale ministry rows would otherwise carry over
+        // to the new coalition.
+        await createMinistriesFromAssignments(nationId);
 
         // PM ministry row gets the leader's actual name (createMinistriesFromAssignments
         // only knows the random-pool name) + fires pm_appointed event_log.
