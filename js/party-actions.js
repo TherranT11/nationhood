@@ -60,14 +60,11 @@ const ROLES = [
     { id: 'agitator', title: 'AGITATOR', fullTitle: 'Opposition Coordinator', color: '#d44a4a', oppositionOnly: true },
 ];
 
-// Fundraise escalation: each use yields less money and costs more momentum
-const FUNDRAISE_TIERS = [
-    { perSeat: 5000, momDivisor: 10 }, // Use 1: $5k/seat, -1 mom per 10 seats
-    { perSeat: 4000, momDivisor: 8 },  // Use 2: $4k/seat, -1 mom per 8 seats
-    { perSeat: 3000, momDivisor: 6 },  // Use 3: $3k/seat, -1 mom per 6 seats
-    { perSeat: 2000, momDivisor: 5 },  // Use 4: $2k/seat, -1 mom per 5 seats
-    { perSeat: 1000, momDivisor: 5 },  // Use 5+: $1k/seat, -1 mom per 5 seats
-];
+// Fundraise was momentum-cost + seat-based cash yield (5 escalating
+// tiers per tick). Replaced in 20260728 with a sector-popularity
+// positioning system (1 use per tick, no cash, themed events from
+// the fundraiser_events catalog). Use-count is still tracked via
+// campaign_actions so the per-tick gate survives reload.
 let _fundraiseUseCount = 0; // loaded from DB on init, not just session state
 let _noConfidenceCooldownTicks = 0; // ticks remaining before another vonc can be filed against the current PM party
 let _noConfidencePending = false;   // there's already a pending no_confidence bill in this nation
@@ -123,22 +120,15 @@ async function loadNoConfidenceState() {
     }
 }
 
-function getFundraiseInfo(seats, useCount) {
-    const tier = FUNDRAISE_TIERS[Math.min(useCount, FUNDRAISE_TIERS.length - 1)];
-    const raised = seats * tier.perSeat;
-    const momCost = Math.max(1, Math.floor(seats / tier.momDivisor)); // minimum 1
-    return { raised, momCost, perSeat: tier.perSeat, tierIdx: Math.min(useCount, FUNDRAISE_TIERS.length - 1) };
-}
-
 const LEADER_ACTIONS = [
     {
         id: 'fundraise',
         name: 'Fundraise',
-        desc: 'Raise party funds proportional to your seat count. Each use yields less money and costs more momentum. Momentum cannot drop below 1.',
-        cost: 'MOMENTUM',
-        costColor: '#c84',
+        desc: 'Host a themed event for one voter bloc. Once per tick. Costs −0.3 popularity with the host bloc (donor fatigue) and −0.5 with a paired opposition bloc (optics). No cash yield — fundraising builds positioning, not bank balance.',
+        cost: 'ACTION',
+        costColor: '#c8a832',
         moneyCost: 0,
-        tags: ['FINANCIAL', 'CAMPAIGN'],
+        tags: ['CAMPAIGN', 'POSITIONING'],
         locked: false,
     },
     {
@@ -238,7 +228,7 @@ const MONARCH_ACTIONS = [
     {
         id: 'grant_seats',
         name: 'Grant Seats',
-        desc: 'Grant parliamentary seats to a noble house. Sharing power increases legitimacy (+0.5 per seat). Hoarding >70% of seats causes tyranny decay.',
+        desc: 'Grant parliamentary seats to a noble house. Sharing power increases crown authority (+0.5 per seat). Hoarding >70% of seats causes tyranny decay.',
         cost: 'FREE',
         costColor: '#5cc55c',
         moneyCost: 0,
@@ -248,7 +238,7 @@ const MONARCH_ACTIONS = [
     {
         id: 'revoke_seats',
         name: 'Revoke Seats',
-        desc: 'Revoke seats from a noble house. Costs $100k and -1 Legitimacy per seat revoked. Use sparingly — the people do not forget.',
+        desc: 'Revoke seats from a noble house. Costs $100k and -1 Crown Authority per seat revoked. Use sparingly — the nobles do not forget.',
         cost: '$100k/seat',
         costColor: '#d44a4a',
         moneyCost: 100000,
@@ -951,8 +941,11 @@ function renderPage(root) {
     const fundsFmt = '$' + (partyFunds >= 1000000
         ? (partyFunds / 1000000).toFixed(1) + 'M'
         : partyFunds >= 1000 ? Math.round(partyFunds / 1000) + 'k' : partyFunds);
+    // Monarchy headline stat is now Crown Authority (consolidated from
+    // public_approval as part of the Phase 8 monarchy-stat unification).
+    // Non-monarchy keeps the existing Nat. Approval (gov_approval) read.
     const approvalValue = _isMonarchy
-        ? Math.round(Number(_state.nation?.public_approval ?? _state.nation?.gov_approval ?? 50))
+        ? Math.round(Number(_state.nation?.crown_authority ?? 50))
         : Math.round(Number(_state.nation?.gov_approval ?? 0));
 
     renderRoleActionsShell(root, {
@@ -962,7 +955,7 @@ function renderPage(root) {
         stats: [
             { label: 'Party Funds', value: fundsFmt, color: 'var(--accent)' },
             { label: 'Momentum', value: Number(momentum).toFixed(1), color: momentum > 0 ? 'var(--text-bright)' : 'var(--red)' },
-            { label: _isMonarchy ? 'Legitimacy' : 'Nat. Approval', value: String(approvalValue), color: 'var(--green)' },
+            { label: _isMonarchy ? 'Crown Authority' : 'Nat. Approval', value: String(approvalValue), color: 'var(--green)' },
         ],
         statusBarItems: [
             { type: 'count', label: 'Seats', big: String(seats), bigColor: partyColor, dim1: `/ ${totalSeats}`, dim2: `(${seatPct}%)` },
@@ -1407,18 +1400,15 @@ function renderActionsPanel(leaderName, partyColor, faction) {
                 action.lockReason = '';
             }
         } else if (action.id === 'fundraise') {
-            const fi = getFundraiseInfo(seats, _fundraiseUseCount);
-            costDisplay = `-${fi.momCost} MOM`;
-            costColor = '#c84';
+            costDisplay = 'ACTION';
+            costColor = '#c8a832';
             extraInfo = `<div style="margin-top:4px;font-family:var(--font-mono);font-size:8px;color:var(--text-dim);display:flex;gap:12px;">
-                <span>Raises: <span style="color:var(--accent);font-weight:700;">$${(fi.raised / 1000).toFixed(0)}k</span></span>
-                <span>$${(fi.perSeat / 1000).toFixed(0)}k/seat × ${seats}</span>
-                ${_fundraiseUseCount > 0 ? `<span style="color:var(--orange);">Use #${_fundraiseUseCount + 1}</span>` : ''}
+                <span>Themed event · positions you with a voter bloc</span>
+                ${_fundraiseUseCount > 0 ? `<span style="color:var(--orange);">Used this tick</span>` : ''}
             </div>`;
-            // Check if player can afford the momentum cost (must stay above floor of 1)
-            if (momentum - fi.momCost < 1) {
+            if (_fundraiseUseCount >= 1) {
                 isDisabled = true;
-                extraInfo += `<div style="margin-top:3px;font-family:var(--font-mono);font-size:9px;color:var(--red);">Not enough momentum (need ${fi.momCost}, have ${Number(momentum).toFixed(1)})</div>`;
+                extraInfo += `<div style="margin-top:3px;font-family:var(--font-mono);font-size:9px;color:var(--red);">Already hosted a fundraiser this tick.</div>`;
             }
         }
 
@@ -3178,22 +3168,24 @@ async function openAppointPMModal(root) {
                     console.warn('[AppointPM] government_formations write failed (non-blocking — synthetic fallback still works):', gfErr?.message || gfErr);
                 }
 
-                // Public-approval effects (monarchy only).
-                // Dismissing a non-monarch PM costs -4. Appointing a non-monarch
-                // PM grants +3. Phase 7H/8.5.1 collapsed legitimacy → public_approval.
-                let legitimacyDelta = 0;
+                // Crown-authority effects (monarchy only). Dismissing a
+                // non-monarch PM costs -4. Appointing a non-monarch PM
+                // grants +3. (Was previously routed to public_approval as
+                // a Phase 7H legacy; consolidated onto crown_authority
+                // alongside grant/revoke/veto.)
+                let crownAuthorityDelta = 0;
                 const monarchPartyId = nation.monarch_faction_id;
                 const prevPmPartyId = currentHog?.faction_id || null;
                 const dismissingNonMonarchPm = prevPmPartyId && prevPmPartyId !== monarchPartyId && prevPmPartyId !== selectedPartyId;
                 const appointingNonMonarchPm = selectedPartyId !== monarchPartyId && selectedPartyId !== prevPmPartyId;
-                if (dismissingNonMonarchPm) legitimacyDelta -= 4;
-                if (appointingNonMonarchPm) legitimacyDelta += 3;
-                if (legitimacyDelta !== 0) {
-                    const currentLeg = Number(nation.public_approval ?? 50);
-                    const newLeg = Math.max(0, Math.min(100, currentLeg + legitimacyDelta));
+                if (dismissingNonMonarchPm) crownAuthorityDelta -= 4;
+                if (appointingNonMonarchPm) crownAuthorityDelta += 3;
+                if (crownAuthorityDelta !== 0) {
+                    const currentCA = Number(nation.crown_authority ?? 50);
+                    const newCA = Math.max(0, Math.min(100, currentCA + crownAuthorityDelta));
                     try {
-                        await _supabase.from('nations').update({ public_approval: newLeg }).eq('id', nation.id);
-                        nation.public_approval = newLeg;
+                        await _supabase.from('nations').update({ crown_authority: newCA }).eq('id', nation.id);
+                        nation.crown_authority = newCA;
                     } catch (_) { /* non-blocking */ }
                 }
 
@@ -3209,12 +3201,12 @@ async function openAppointPMModal(root) {
                 } catch (_) { /* non-blocking */ }
 
                 close();
-                const legSuffix = legitimacyDelta > 0
-                    ? `\n\nLegitimacy +${legitimacyDelta}.`
-                    : legitimacyDelta < 0
-                        ? `\n\nLegitimacy ${legitimacyDelta}.`
+                const caSuffix = crownAuthorityDelta > 0
+                    ? `\n\nCrown Authority +${crownAuthorityDelta}.`
+                    : crownAuthorityDelta < 0
+                        ? `\n\nCrown Authority ${crownAuthorityDelta}.`
                         : '';
-                alert(`${party.leader_first_name} ${party.leader_last_name} of ${party.faction_name} has been appointed Prime Minister.${legSuffix}`);
+                alert(`${party.leader_first_name} ${party.leader_last_name} of ${party.faction_name} has been appointed Prime Minister.${caSuffix}`);
                 renderPage(root);
             } catch (err) {
                 alert('Failed to appoint PM: ' + (err.message || 'Error'));
@@ -3262,9 +3254,9 @@ async function openGrantSeatsModal(root) {
                     <button class="pa-modal-close" id="royal-close">&times;</button>
                 </div>
                 <div style="padding:8px 20px;border-bottom:1px solid var(--border-main);font-size:12px;color:var(--text-secondary);line-height:1.5;">
-                    Grant parliamentary seats to a noble house. Each seat granted earns <span style="color:#5cc55c;font-weight:700;">+0.5 Legitimacy</span>.
+                    Grant parliamentary seats to a noble house. Each seat granted earns <span style="color:#5cc55c;font-weight:700;">+0.5 Crown Authority</span>.
                     You currently hold <strong>${monarchSeats}</strong> of ${totalSeats} seats.
-                    ${monarchSeats / totalSeats > 0.7 ? '<div style="color:#d44a4a;font-weight:700;margin-top:4px;">⚠ You hold >70% of seats — tyranny legitimacy decay active!</div>' : ''}
+                    ${monarchSeats / totalSeats > 0.7 ? '<div style="color:#d44a4a;font-weight:700;margin-top:4px;">⚠ You hold >70% of seats — tyranny crown authority decay active!</div>' : ''}
                 </div>
                 <div class="pa-modal-body">
                     <div class="pa-modal-step-label">Select Noble House</div>
@@ -3290,7 +3282,7 @@ async function openGrantSeatsModal(root) {
                                 <span style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--accent);width:40px;text-align:center;" id="grant-count">${grantAmount}</span>
                             </div>
                             <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:4px;">
-                                Legitimacy gain: <span style="color:#5cc55c;font-weight:700;">+${(grantAmount * 0.5).toFixed(1)}</span>
+                                Crown Authority gain: <span style="color:#5cc55c;font-weight:700;">+${(grantAmount * 0.5).toFixed(1)}</span>
                                 &middot; Your seats after: ${monarchSeats - grantAmount} &middot; Their seats after: ${(selected.seats || 0) + grantAmount}
                             </div>
                         </div>
@@ -3410,13 +3402,13 @@ async function openGrantSeatsModal(root) {
                     if (error) { alert('Failed to grant seats: ' + error.message); return; }
                 }
 
-                const legGain = actualGrant * 0.5;
-                const newLeg = Math.min(100, (Number(nation.public_approval) || 50) + legGain);
-                const { error: e3 } = await _supabase.from('nations').update({ public_approval: newLeg }).eq('id', nation.id);
-                if (e3) { alert('Failed to update public approval.'); return; }
+                const caGain = actualGrant * 0.5;
+                const newCA = Math.min(100, (Number(nation.crown_authority) || 50) + caGain);
+                const { error: e3 } = await _supabase.from('nations').update({ crown_authority: newCA }).eq('id', nation.id);
+                if (e3) { alert('Failed to update crown authority.'); return; }
 
                 faction.seats = seatMap.get(faction.id) || 0;
-                nation.public_approval = newLeg;
+                nation.crown_authority = newCA;
 
                 // Log event (non-blocking)
                 try {
@@ -3425,7 +3417,7 @@ async function openGrantSeatsModal(root) {
                         nation_id: nation.id,
                         event_name: `${nation.monarch_title || 'King'} grants ${actualGrant} seats to ${target?.faction_name || 'unknown'}`,
                         category: 'government',
-                        description_chosen: `The ${nation.monarch_title || 'King'} has granted ${actualGrant} parliamentary seat${actualGrant !== 1 ? 's' : ''} to ${target?.faction_name}. Legitimacy +${legGain.toFixed(1)}.`,
+                        description_chosen: `The ${nation.monarch_title || 'King'} has granted ${actualGrant} parliamentary seat${actualGrant !== 1 ? 's' : ''} to ${target?.faction_name}. Crown Authority +${caGain.toFixed(1)}.`,
                         fired_at_tick: _state.shard?.current_tick || 0,
                     });
                 } catch (_) { /* non-blocking */ }
@@ -3480,7 +3472,7 @@ async function openRevokeSeatsModal(root) {
                 </div>
                 <div style="padding:8px 20px;border-bottom:1px solid var(--border-main);font-size:12px;color:var(--text-secondary);line-height:1.5;">
                     Revoke seats from a noble house. Costs <span style="color:#d44a4a;font-weight:700;">$100k per seat</span> and
-                    <span style="color:#d44a4a;font-weight:700;">-1 Legitimacy per seat</span>. Revoked seats return to the crown.
+                    <span style="color:#d44a4a;font-weight:700;">-1 Crown Authority per seat</span>. Revoked seats return to the crown.
                 </div>
                 <div class="pa-modal-body">
                     <div class="pa-modal-step-label">Select Noble House</div>
@@ -3507,7 +3499,7 @@ async function openRevokeSeatsModal(root) {
                             </div>
                             <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:4px;">
                                 Cost: <span style="color:#d44a4a;font-weight:700;">$${Math.round(totalCost / 1000)}k</span>
-                                &middot; Legitimacy: <span style="color:#d44a4a;font-weight:700;">-${revokeAmount}</span>
+                                &middot; Crown Authority: <span style="color:#d44a4a;font-weight:700;">-${revokeAmount}</span>
                                 ${currentFunds < totalCost ? '<span style="color:#d44a4a;margin-left:8px;">⚠ Not enough funds</span>' : ''}
                             </div>
                         </div>
@@ -3566,8 +3558,8 @@ async function openRevokeSeatsModal(root) {
                 const newFunds = curFunds - cost;
                 const newMonarchSeats = (freshMonarch.seats || 0) + take;
                 const newTargetSeats = (freshTarget.seats || 0) - take;
-                const legCost = take;
-                const newLeg = Math.max(0, (Number(nation.public_approval) || 50) - legCost);
+                const caCost = take;
+                const newCA = Math.max(0, (Number(nation.crown_authority) || 50) - caCost);
 
                 // Conservation invariant: monarch gains exactly what target loses.
                 const sumAfter = sumBefore - (freshMonarch.seats || 0) - (freshTarget.seats || 0)
@@ -3582,12 +3574,12 @@ async function openRevokeSeatsModal(root) {
                 if (e1) { alert('Failed to revoke seats: ' + e1.message); return; }
                 const { error: e2 } = await _supabase.from('factions').update({ seats: newTargetSeats }).eq('id', selectedFactionId);
                 if (e2) { alert('Failed to revoke seats: ' + e2.message); return; }
-                const { error: e3 } = await _supabase.from('nations').update({ public_approval: newLeg }).eq('id', nation.id);
-                if (e3) { alert('Failed to update public approval.'); return; }
+                const { error: e3 } = await _supabase.from('nations').update({ crown_authority: newCA }).eq('id', nation.id);
+                if (e3) { alert('Failed to update crown authority.'); return; }
 
                 faction.seats = newMonarchSeats;
                 faction.party_funds = newFunds;
-                nation.public_approval = newLeg;
+                nation.crown_authority = newCA;
                 sessionStorage.removeItem('nationhood_state');
 
                 try {
@@ -3595,7 +3587,7 @@ async function openRevokeSeatsModal(root) {
                         nation_id: nation.id,
                         event_name: `${nation.monarch_title || 'King'} revokes ${take} seats from ${freshTarget.faction_name || 'unknown'}`,
                         category: 'political',
-                        description_chosen: `The ${nation.monarch_title || 'King'} has revoked ${take} seat${take !== 1 ? 's' : ''} from ${freshTarget.faction_name}. Legitimacy -${legCost}.`,
+                        description_chosen: `The ${nation.monarch_title || 'King'} has revoked ${take} seat${take !== 1 ? 's' : ''} from ${freshTarget.faction_name}. Crown Authority -${caCost}.`,
                         fired_at_tick: _state.shard?.current_tick || 0,
                     });
                 } catch (_) { /* non-blocking */ }
@@ -3997,80 +3989,226 @@ async function triggerNoConfidence() {
 // ════════════════════════ FUNDRAISE ════════════════════════
 
 let _fundraiseSubmitting = false;
+let _fundraiserEvents = []; // 12 themed events from fundraiser_events table
+let _fundraiserSelected = null;
+
+async function loadFundraiserEvents() {
+    if (_fundraiserEvents.length > 0) return;
+    const { data, error } = await _supabase
+        .from('fundraiser_events')
+        .select('event_key, name, icon, host_sector_key, opposition_sector_key, display_order')
+        .order('display_order');
+    if (error) {
+        console.warn('[PartyActions] fundraiser_events load failed:', error.message);
+        _fundraiserEvents = [];
+        return;
+    }
+    _fundraiserEvents = data || [];
+}
+
+// Resolve sector_key → { id, name, weight, popularity_tenths } for the
+// current nation + faction. Returns null when the bloc isn't seeded.
+async function _resolveSectorState(sectorKey) {
+    if (!sectorKey || !_state?.nation?.id || !_state?.faction?.id) return null;
+    const { data: sec } = await _supabase
+        .from('sectors')
+        .select('id, name, weight')
+        .eq('nation_id', _state.nation.id)
+        .eq('sector_key', sectorKey)
+        .eq('is_active', true)
+        .maybeSingle();
+    if (!sec?.id) return null;
+    const { data: pop } = await _supabase
+        .from('faction_sector_popularity')
+        .select('popularity')
+        .eq('faction_id', _state.faction.id)
+        .eq('sector_id', sec.id)
+        .maybeSingle();
+    return {
+        id: sec.id,
+        name: sec.name,
+        weight: Number(sec.weight) || 1,
+        popularity_tenths: Number(pop?.popularity) || 0,
+    };
+}
 
 async function executeFundraise(root) {
     if (_fundraiseSubmitting) return;
-    const faction = _state.faction;
-    const seats = faction.seats || 0;
-    const momentum = Math.max(1, faction.momentum ?? 0);
 
-    if (seats <= 0) {
-        alert('Your party has no seats — nothing to fundraise from.');
+    if (_fundraiseUseCount >= 1) {
+        alert('You have already hosted a fundraiser this tick. Try again next tick.');
         return;
     }
 
-    const fi = getFundraiseInfo(seats, _fundraiseUseCount);
-
-    // Check if player has enough momentum to pay the cost (must stay above floor of 1)
-    if (momentum - fi.momCost < 1) {
-        alert(`Not enough momentum. You need ${fi.momCost} momentum (current: ${Math.round(momentum)}, floor: 1). Try again next tick when momentum recovers.`);
+    await loadFundraiserEvents();
+    if (_fundraiserEvents.length === 0) {
+        alert('No fundraiser events configured. Run migration 20260728.');
         return;
     }
 
+    _fundraiserSelected = null;
+    await renderFundraiseModal(root);
+}
+
+async function renderFundraiseModal(root) {
+    // Mount overlay (built lazily so we don't add unused HTML to every page).
+    let overlay = document.getElementById('pa-fundraise-modal');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'pa-fundraise-modal';
+        overlay.className = 'pa-modal-overlay';
+        overlay.innerHTML = `
+            <div class="pa-modal" style="width:min(880px, 96vw);max-height:90vh;display:flex;flex-direction:column;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-title">FUNDRAISE — Pick a Host</div>
+                    <button type="button" class="pa-modal-close" data-act="fr-close">&times;</button>
+                </div>
+                <div class="pa-modal-subtitle" style="padding:0 20px 8px 20px;font-size:11px;color:var(--text-secondary);">
+                    Once per tick · No cash yield · Each event positions you with a voter bloc and alienates a paired opposition.
+                </div>
+                <div id="pa-fundraise-body" style="flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0;border-top:1px solid var(--border-main);">
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', (e) => {
+            if (e.target.matches('[data-act="fr-close"]') || e.target === overlay) {
+                overlay.style.display = 'none';
+            }
+        });
+    }
+    overlay.style.display = 'flex';
+
+    const body = overlay.querySelector('#pa-fundraise-body');
+    body.innerHTML = '<div style="padding:14px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Loading sectors…</div>';
+
+    // Resolve all hosts + oppositions in parallel.
+    const sectorStates = {};
+    const allKeys = new Set();
+    for (const ev of _fundraiserEvents) {
+        allKeys.add(ev.host_sector_key);
+        allKeys.add(ev.opposition_sector_key);
+    }
+    await Promise.all(Array.from(allKeys).map(async (k) => {
+        sectorStates[k] = await _resolveSectorState(k);
+    }));
+
+    const cardsHtml = _fundraiserEvents.map(ev => {
+        const host = sectorStates[ev.host_sector_key];
+        const popDisplay = host ? (host.popularity_tenths / 10).toFixed(1) : '—';
+        const weight = host?.weight || 1;
+        return `
+            <div class="pa-fr-card" data-event-key="${esc(ev.event_key)}" style="padding:10px 14px;border-bottom:1px dashed var(--border-main);cursor:pointer;">
+                <div style="display:flex;align-items:baseline;gap:8px;">
+                    <span style="font-size:14px;">${ev.icon}</span>
+                    <span style="font-family:var(--font-serif, 'IBM Plex Serif', serif);font-size:14px;font-weight:600;color:var(--text-bright);">${esc(ev.name)}</span>
+                </div>
+                <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.06em;color:var(--text-dim);text-transform:uppercase;margin-top:2px;">
+                    ${esc(host?.name || ev.host_sector_key)} · w${weight} · pop ${popDisplay}
+                </div>
+            </div>`;
+    }).join('');
+
+    body.innerHTML = `
+        <div id="pa-fr-list" style="overflow-y:auto;border-right:1px solid var(--border-main);">
+            ${cardsHtml}
+        </div>
+        <div id="pa-fr-detail" style="padding:14px 18px;overflow-y:auto;">
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;">Pick an event on the left to see details.</div>
+        </div>`;
+
+    body.querySelectorAll('.pa-fr-card').forEach(card => {
+        card.addEventListener('click', () => {
+            _fundraiserSelected = card.dataset.eventKey;
+            body.querySelectorAll('.pa-fr-card').forEach(c => c.style.background = '');
+            card.style.background = 'rgba(200,168,50,0.08)';
+            renderFundraiseDetail(body, sectorStates, root);
+        });
+    });
+}
+
+function renderFundraiseDetail(body, sectorStates, root) {
+    const detail = body.querySelector('#pa-fr-detail');
+    const ev = _fundraiserEvents.find(e => e.event_key === _fundraiserSelected);
+    if (!ev) return;
+    const host = sectorStates[ev.host_sector_key];
+    const opp  = sectorStates[ev.opposition_sector_key];
+    const hostPop = host ? (host.popularity_tenths / 10).toFixed(1) : '—';
+    const hostWeight = host?.weight || 1;
+    const oppPop = opp ? (opp.popularity_tenths / 10).toFixed(1) : '—';
+
+    const hostBlocked = !host;
+    const oppMissing = !opp;
+
+    detail.innerHTML = `
+        <div style="display:flex;align-items:baseline;gap:8px;">
+            <span style="font-size:18px;">${ev.icon}</span>
+            <span style="font-family:var(--font-serif);font-size:18px;font-weight:600;color:var(--text-bright);">${esc(ev.name)}</span>
+        </div>
+
+        <div style="margin-top:14px;">
+            <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;">Host bloc</div>
+            <div style="font-family:var(--font-serif);font-size:14px;color:var(--text-bright);margin-top:2px;">${esc(host?.name || ev.host_sector_key)}</div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);margin-top:2px;">Your popularity: <strong style="color:var(--text-bright);">${hostPop}</strong> · National weight: <strong style="color:var(--text-bright);">w${hostWeight}</strong></div>
+        </div>
+
+        <div style="margin-top:14px;">
+            <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;">Paired opposition</div>
+            <div style="font-family:var(--font-serif);font-size:14px;color:var(--text-bright);margin-top:2px;">${esc(opp?.name || ev.opposition_sector_key)}</div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);margin-top:2px;">Your popularity: <strong style="color:var(--text-bright);">${oppPop}</strong></div>
+        </div>
+
+        <div style="margin-top:18px;padding:10px 12px;background:var(--bg-card);border:1px solid var(--border-main);">
+            <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px;">Costs (popularity)</div>
+            <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:11px;color:var(--text-bright);padding:2px 0;">
+                <span>↓ ${esc(host?.name || ev.host_sector_key)}</span><span style="color:#d44a4a;font-weight:700;">−0.3 (donor fatigue)</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:11px;color:var(--text-bright);padding:2px 0;">
+                <span>↓ ${esc(opp?.name || ev.opposition_sector_key)}</span>
+                ${oppMissing
+                    ? '<span style="color:var(--text-dim);font-style:italic;">not in this nation — no cost</span>'
+                    : '<span style="color:#d44a4a;font-weight:700;">−0.5 (optics)</span>'}
+            </div>
+        </div>
+
+        ${hostBlocked
+            ? '<div style="margin-top:14px;font-family:var(--font-mono);font-size:10px;color:var(--red);">This nation does not have the host bloc seeded — pick a different event.</div>'
+            : ''}
+
+        <div style="margin-top:18px;text-align:right;">
+            <button type="button" class="pa-modal-btn pa-modal-btn--primary"
+                    id="pa-fr-confirm"
+                    ${hostBlocked ? 'disabled' : ''}
+                    style="padding:8px 18px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;background:rgba(200,168,50,0.08);border:1px solid var(--gold, #c8a832);color:var(--gold, #c8a832);cursor:pointer;${hostBlocked ? 'opacity:0.4;cursor:not-allowed;' : ''}">
+                Host this fundraiser
+            </button>
+        </div>
+    `;
+
+    const confirmBtn = detail.querySelector('#pa-fr-confirm');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', () => submitFundraise(root));
+    }
+}
+
+async function submitFundraise(root) {
+    if (_fundraiseSubmitting || !_fundraiserSelected) return;
     _fundraiseSubmitting = true;
-
     try {
-        // Fetch fresh values from DB to avoid stale cache
-        const { data: freshFunds } = await _supabase.from('factions').select('party_funds, momentum').eq('id', faction.id).single();
-        if (freshFunds) {
-            faction.party_funds = freshFunds.party_funds ?? 0;
-            faction.momentum = freshFunds.momentum ?? 0;
-        }
-        const freshMomentum = Math.max(1, faction.momentum ?? 0);
-
         const tick = _state.shard?.current_tick || 0;
-        const newMomentum = Math.max(1, freshMomentum - fi.momCost);
-        const newFunds = (faction.party_funds || 0) + fi.raised;
-
-        // Update faction: deduct momentum, add funds
-        const { error } = await _supabase.from('factions').update({
-            momentum: newMomentum,
-            party_funds: newFunds,
-        }).eq('id', faction.id);
-
-        if (error) {
-            alert('Fundraise failed: ' + error.message);
+        const { data, error } = await _supabase.rpc('fundraise_themed', {
+            p_faction_id: _state.faction.id,
+            p_nation_id:  _state.nation.id,
+            p_event_key:  _fundraiserSelected,
+            p_tick:       tick,
+        });
+        if (error || !data?.success) {
+            alert('Fundraise failed: ' + (error?.message || data?.error || 'unknown'));
             return;
         }
-
-        // Log action
-        await _supabase.from('campaign_actions').insert({
-            party_id: faction.id,
-            nation_id: _state.nation?.id,
-            action_type: 'fundraise',
-            ap_cost: 0,
-            money_cost: 0,
-            tick_performed: tick,
-            result: {
-                // momentumDelta is the normalized signed change read by the
-                // Recent Activity renderer. momCost is kept for backwards-
-                // compat with older rows and for any other consumer that
-                // wants the un-signed cost.
-                momentumDelta: -fi.momCost,
-                raised: fi.raised,
-                perSeat: fi.perSeat,
-                momCost: fi.momCost,
-                useNumber: _fundraiseUseCount + 1,
-                seats: seats,
-            },
-        });
-
-        // Update local state + bust cache so refreshAP reads correct value
-        faction.momentum = newMomentum;
-        faction.party_funds = newFunds;
+        const overlay = document.getElementById('pa-fundraise-modal');
+        if (overlay) overlay.style.display = 'none';
         sessionStorage.removeItem('nationhood_state');
         _fundraiseUseCount++;
-
         renderPage(root);
     } catch (err) {
         console.error('[PartyActions] Fundraise error:', err);
@@ -4288,7 +4426,11 @@ function openStatementModal(root) {
 
 // ════════════════════════ SET PARTY PLATFORM MODAL ════════════════════════
 
-const PROMISE_DELTA = 20; // stats must move +/- 20 from baseline to fulfill promise
+// Halved from the original 20 in 20260727 — Phase X moved the
+// headline reward from the stat-promise grind to one-shot sector-
+// popularity bumps (boost natural constituencies, alienate the
+// opposition). Stat targets are now a lighter secondary commitment.
+const PROMISE_DELTA = 10;
 
 function openPlatformModal(root) {
     const overlay = document.getElementById('pa-platform-modal');
@@ -4428,7 +4570,7 @@ function openPlatformModal(root) {
                     <div style="margin-top:12px;padding:8px 12px;background:var(--bg-card);border:1px solid var(--border-main);">
                         <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:4px;">PROMISE RULES</div>
                         <div style="font-size:9px;color:var(--text-dim);line-height:1.5;">
-                            Stats are locked at current values when adopted. If your party enters government, you have <strong style="color:var(--text-bright);">24 ticks</strong> to move each promised stat by <strong style="color:var(--text-bright);">+${PROMISE_DELTA}</strong>. Failure: <strong style="color:var(--red);">-20 Momentum</strong>. If you don't enter government, the promise abates.
+                            Stats are locked at current values when adopted. If your party enters government, you have <strong style="color:var(--text-bright);">24 ticks</strong> to move each promised stat by <strong style="color:var(--text-bright);">+${PROMISE_DELTA}</strong>. Failure: <strong style="color:var(--red);">popularity boosts revert</strong> with the constituencies you wooed (the alienated stay alienated). If you don't enter government, the promise abates.
                         </div>
                     </div>
                 </div>

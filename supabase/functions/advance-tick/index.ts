@@ -28651,10 +28651,14 @@ function platformMomentumInfo(existingCount) {
  *   - getPromiseProgress() — UI helper for displaying progress bars
  */
 
-const PROMISE_DELTA = 20;
+// Halved from 20 in 20260727 — sector-popularity bumps are now the
+// headline reward; the stat-promise grind is a lighter secondary.
+const PROMISE_DELTA = 10;
 const PROMISE_DEADLINE_TICKS = 24;
-const FAILURE_MOMENTUM_PENALTY = -20;
-const FAILURE_GOVERNANCE_PENALTY = -10;
+// Failure now reverts the platform's popularity boosts (full magnitude)
+// via _apply_platform_sector_effects(... 'fail') instead of docking
+// momentum. Penalties applied at adoption stay — alienated voters
+// don't reconcile because the party failed to deliver.
 
 /**
  * Recalculate promise targets when a party enters government.
@@ -28794,21 +28798,29 @@ async function evaluatePromises(supabase, nation, currentTick, governingFactionI
             await supabase.from('faction_platforms').update({ status: 'fulfilled' }).eq('id', fp.id);
             results.push({ factionId: fp.faction_id, platformKey: fp.platform_key, status: 'fulfilled' });
         } else if (deadlineReached) {
-            // Deadline passed, targets not met — failed
+            // Deadline passed, targets not met — failed.
+            // Per 20260727 design change: revert the platform's sector-
+            // popularity boosts at full magnitude; penalties stay.
+            // Replaces the previous −20 momentum / −10 governance hits.
             await supabase.from('faction_platforms').update({ status: 'failed' }).eq('id', fp.id);
 
-            // Apply momentum penalty via RPC (adjustMomentum from momentum.js is a no-op stub;
-            // use the DB function directly for reliable atomic adjustment)
-            await supabase.rpc('adjust_momentum', {
-                p_faction_id: fp.faction_id,
-                p_delta: FAILURE_MOMENTUM_PENALTY,
-                p_label: 'Platform failed: ' + fp.platform_key,
-                p_tick: currentTick,
-            });
-
-            // Governance penalty (adjust gov_approval or similar)
-            // This depends on how governance is tracked — for now, log it
-            console.log(`[platform-promises] Platform failed for faction ${fp.faction_id}: ${fp.platform_key}. -20 momentum, -10 governance.`);
+            // popularity_applied gates the revert: only platforms whose
+            // adoption actually fired the popularity bumps can have them
+            // reverted. Pre-migration in-flight platforms (adopted
+            // before 20260727) have popularity_applied=false and skip
+            // the revert — the boost was never granted, so docking it
+            // would unfairly reduce blocs the player never courted.
+            if (fp.popularity_applied) {
+                const { error: revertErr } = await supabase.rpc('_apply_platform_sector_effects', {
+                    p_faction_id:   fp.faction_id,
+                    p_nation_id:    fp.nation_id,
+                    p_platform_key: fp.platform_key,
+                    p_mode:         'fail',
+                });
+                if (revertErr) {
+                    console.warn('[platform-promises] popularity-revert RPC failed for', fp.platform_key, ':', revertErr.message);
+                }
+            }
 
             results.push({ factionId: fp.faction_id, platformKey: fp.platform_key, status: 'failed' });
         }

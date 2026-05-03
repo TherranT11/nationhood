@@ -5865,6 +5865,24 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
         summary.errors.push({ scope: 'loan_negotiation_sweep', error: String(sweepEx) });
     }
 
+    // 4c. Aviation-incident auto-refuse sweep (Phase 7). Pending
+    // incidents past expires_at_tick get the 'auto_refused' penalty
+    // (op_safety -0.5, reputation -1.5) — same effects as the
+    // 'refused' response a player would have picked.
+    try {
+        const { data: incRes, error: incErr } = await supabase
+            .rpc('auto_resolve_stale_incidents', { p_tick: currentTick });
+        if (incErr) {
+            console.error('[advance-corp-tick] aviation-incident sweep failed:', incErr.message);
+            summary.errors.push({ scope: 'aviation_incident_sweep', error: incErr.message });
+        } else if (incRes?.swept > 0) {
+            console.log(`[advance-corp-tick] Auto-refused ${incRes.swept} stale aviation incident(s)`);
+        }
+    } catch (incEx) {
+        console.error('[advance-corp-tick] aviation-incident sweep threw (non-fatal):', incEx);
+        summary.errors.push({ scope: 'aviation_incident_sweep', error: String(incEx) });
+    }
+
     // 5. Process each nation
     for (const nation of nationList) {
         try {

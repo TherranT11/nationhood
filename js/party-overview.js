@@ -92,10 +92,14 @@ function processSectorRanking(allParties, sectors, popularityRows) {
             return b.seats - a.seats;
         });
         return {
-            sector_key: s.sector_key,
-            name:       s.name,
-            weight:     Number(s.weight) || 0,
-            top3:       candidates.slice(0, 3),
+            sector_key:  s.sector_key,
+            name:        s.name,
+            description: s.description || '',
+            weight:      Number(s.weight) || 0,
+            // Full popularity-sorted list. The renderer splits the
+            // viewer's row out separately so it always shows on the
+            // right; the top-3 chips slice excludes the viewer.
+            candidates,
         };
     }).sort((a, b) => {
         if (b.weight !== a.weight) return b.weight - a.weight;
@@ -153,7 +157,7 @@ export async function initPartyOverview(supabase, state, containerId) {
             // Phase 4: replaced faction_ideology fetch with sectors. Strongholds
             // come from joining sectors + faction_sector_popularity below.
             supabase.from('sectors')
-                .select('id, sector_key, name, weight, base_turnout, is_active')
+                .select('id, sector_key, name, description, weight, base_turnout, is_active')
                 .eq('nation_id', nationId)
                 .eq('is_active', true)
                 .order('display_order'),
@@ -383,23 +387,40 @@ function renderStrongholdsSection(o, faction, partyColor) {
     const myFactionId = faction?.id;
     const ranking = o.sectorRanking || [];
 
+    const renderChip = (p, mineColorOverride) => {
+        const isMine = p.party_id === myFactionId;
+        const color  = isMine ? (mineColorOverride || partyColor) : (p.color || '#888');
+        // Storage is integer tenths (0-100); display 0-10 with one decimal.
+        const popDisplay = (Math.round(p.popularity) / 10).toFixed(1);
+        const labelHtml = isMine
+            ? `<span class="po-stronghold-chip-label" style="font-weight:700;">You</span>`
+            : `<span class="po-stronghold-chip-label">${esc(p.abbreviation)}</span>`;
+        return `<div class="po-stronghold-chip" style="border-color:${color}66;background:${color}14;">
+            ${labelHtml}
+            <span class="po-stronghold-chip-label" style="color:${color};font-weight:700;margin-left:4px;">${popDisplay}</span>
+        </div>`;
+    };
+
     const rowsHtml = ranking.map(s => {
-        const chips = (s.top3 || []).map(p => {
-            const isMine = p.party_id === myFactionId;
-            const color  = isMine ? partyColor : (p.color || '#888');
-            // Storage is integer tenths (0-100); display 0-10 with one decimal.
-            const popDisplay = (Math.round(p.popularity) / 10).toFixed(1);
-            const labelHtml = isMine
-                ? `<span class="po-stronghold-chip-label" style="font-weight:700;">You</span>`
-                : `<span class="po-stronghold-chip-label">${esc(p.abbreviation)}</span>`;
-            return `<div class="po-stronghold-chip" style="border-color:${color}66;background:${color}14;">
-                ${labelHtml}
-                <span class="po-stronghold-chip-label" style="color:${color};font-weight:700;margin-left:4px;">${popDisplay}</span>
-            </div>`;
-        }).join('');
-        const bodyHtml = chips
-            ? `<div class="po-stronghold-chips">${chips}</div>`
-            : `<div style="font-size:9px;color:var(--text-dim);font-family:var(--font-mono);padding:4px 0;">No party popularity yet</div>`;
+        // Viewer's row split out from the rest so it always renders on the
+        // far right, separated. Top-3 area excludes the viewer; if they're
+        // genuinely top-3 they show up only on the right.
+        const candidates = s.candidates || [];
+        const otherChips = candidates
+            .filter(p => p.party_id !== myFactionId)
+            .slice(0, 3)
+            .map(p => renderChip(p))
+            .join('');
+        const myCandidate = candidates.find(p => p.party_id === myFactionId) || null;
+        const myChip = myCandidate
+            ? renderChip(myCandidate)
+            // Synthesize a zero-popularity chip so the "You" pill always
+            // renders even when the player has no recorded standing yet.
+            : renderChip({ party_id: myFactionId, popularity: 0, color: partyColor });
+
+        const othersHtml = otherChips
+            ? `<div class="po-stronghold-chips">${otherChips}</div>`
+            : `<div style="font-size:9px;color:var(--text-dim);font-family:var(--font-mono);padding:4px 0;">No other party popularity yet</div>`;
 
         const weight = Number(s.weight) || 0;
         const weightColor = weight >= 3 ? 'var(--gold, #c9a449)'
@@ -407,19 +428,30 @@ function renderStrongholdsSection(o, faction, partyColor) {
                           : 'var(--text-secondary)';
         const weightBadge = `<span style="display:inline-block;min-width:18px;padding:1px 5px;font-family:var(--font-mono);font-size:9px;font-weight:700;color:${weightColor};border:1px solid ${weightColor}66;background:${weightColor}14;text-align:center;letter-spacing:0;">w${weight}</span>`;
 
-        return `<div class="po-stronghold-row">
-            <div class="po-stronghold-party" style="display:flex;align-items:center;gap:8px;">
-                ${weightBadge}
-                <span class="po-stronghold-party-name">${esc(s.name)}</span>
+        const desc = (s.description || '').trim();
+        const descHtml = desc
+            ? `<div style="font-family:var(--font-mono);font-size:9.5px;color:var(--text-dim);line-height:1.4;margin-top:2px;">${esc(desc)}</div>`
+            : '';
+
+        return `<div class="po-stronghold-row" style="align-items:flex-start;">
+            <div class="po-stronghold-party" style="min-width:0;flex:1;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    ${weightBadge}
+                    <span class="po-stronghold-party-name">${esc(s.name)}</span>
+                </div>
+                ${descHtml}
             </div>
-            ${bodyHtml}
+            ${othersHtml}
+            <div style="margin-left:14px;padding-left:14px;border-left:1px dashed var(--border-main, rgba(255,255,255,0.1));display:flex;align-items:center;">
+                ${myChip}
+            </div>
         </div>`;
     }).join('');
 
     return `<div class="po-card">
         <div class="po-card-header">
             <span class="po-card-title">SECTOR RANKING</span>
-            <span class="po-card-subtitle">all sectors · top 3 parties by popularity</span>
+            <span class="po-card-subtitle">all sectors · top 3 other parties · you on the right</span>
         </div>
         <div style="padding:8px 12px;">
             ${rowsHtml || '<div style="padding:8px 0;font-size:9px;color:var(--text-dim);font-family:var(--font-mono);">No active sectors in this nation.</div>'}
