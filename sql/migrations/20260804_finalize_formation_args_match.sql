@@ -57,7 +57,6 @@ DECLARE
   v_total_seats INT := 0;
   v_gov_approval NUMERIC;
   v_stats_snapshot JSONB;
-  v_party_id UUID;
   v_saved_balances JSONB := '{}'::JSONB;
   v_restored_balance NUMERIC;
   v_hos_name TEXT;
@@ -290,13 +289,7 @@ BEGIN
     );
   END IF;
 
-  -- 10. Restore discretionary balances for other ministries
-  --     (placeholder; ministry assignment happens client-side)
-  FOR v_party_id IN SELECT UNNEST(v_formation.party_ids) LOOP
-    NULL;
-  END LOOP;
-
-  -- 11. Reset failed formation attempts
+  -- Reset failed formation attempts
   UPDATE nations SET failed_formation_attempts = 0 WHERE id = v_nation.id;
 
   v_result := v_result || jsonb_build_object(
