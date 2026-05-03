@@ -49,28 +49,155 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 .loading-msg { padding: 40px; text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
 
 .alliances-shell { max-width: 1200px; margin: 0 auto; padding: 48px 32px; }
-.alliances-shell__head {
-    display: flex; justify-content: space-between; align-items: flex-end; gap: 16px;
+
+/* ── List view (landing) ── */
+.al-page-head {
+    display: flex; justify-content: space-between; align-items: flex-end; gap: 32px;
 }
-.alliances-title {
-    font-family: var(--font-serif); font-size: 32px; font-weight: 600;
-    color: var(--text-bright); letter-spacing: -0.01em;
+.al-page-eyebrow {
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.18em;
+    color: var(--amber); text-transform: uppercase;
 }
-.alliances-title__dot { color: var(--amber); }
-.alliances-found-btn {
+.al-page-context {
+    margin-top: 6px;
+    font-family: var(--font-serif); font-size: 22px; color: var(--text-bright);
+}
+.al-page-stats { display: flex; gap: 36px; align-items: flex-end; }
+.al-stat__label {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.14em;
+    color: var(--text-dim); text-transform: uppercase;
+}
+.al-stat__value {
+    margin-top: 2px;
+    font-family: var(--font-mono); font-size: 22px; font-weight: 700;
+    color: var(--amber); letter-spacing: 0.02em;
+}
+.al-rule { margin-top: 20px; height: 1px; background: var(--border-0); }
+
+.al-controls {
+    margin-top: 20px;
+    display: flex; justify-content: space-between; align-items: center; gap: 16px;
+}
+.al-filter-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.al-filter-label {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em;
+    color: var(--text-dim); text-transform: uppercase; margin-right: 8px;
+}
+.al-filter-pill {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+    padding: 6px 12px; cursor: pointer;
+    background: transparent; color: var(--text-dim);
+    border: 1px solid var(--border-1);
+    transition: all 0.1s;
+}
+.al-filter-pill:hover { color: var(--text-primary); border-color: var(--text-dim); }
+.al-filter-pill.active {
+    color: var(--amber); border-color: var(--amber); background: var(--amber-faint);
+}
+
+.al-found-btn {
     font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
-    padding: 10px 18px; cursor: pointer;
+    padding: 9px 18px; cursor: pointer;
     background: var(--amber-faint); color: var(--amber);
     border: 1px solid var(--amber-border);
     transition: all 0.12s;
 }
-.alliances-found-btn:hover { background: var(--amber); color: #000; }
-.alliances-empty {
-    margin-top: 24px; padding: 48px 24px;
-    border: 1px solid var(--border-0); background: var(--bg-2);
+.al-found-btn:hover { background: var(--amber); color: #000; }
+
+.al-section { margin-top: 32px; }
+.al-section__title {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
+    color: var(--text-dim); text-transform: uppercase; margin-bottom: 12px;
+}
+.al-empty {
+    padding: 28px 24px;
+    border: 1px dashed var(--border-1); background: transparent;
     text-align: center;
-    font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.06em;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em;
     color: var(--text-dim); text-transform: uppercase;
+}
+
+/* Alliance row (collapsed + expanded shells — kept ready for when
+   real alliance rows arrive; today the arrays are empty so these
+   classes don't render but stay in CSS so the renderer is plug-in). */
+.al-row {
+    background: var(--bg-2); border: 1px solid var(--border-0);
+    border-left: 3px solid var(--amber);
+    margin-bottom: 12px;
+}
+.al-row__head {
+    padding: 14px 16px; display: flex; align-items: center; gap: 12px;
+    cursor: pointer;
+}
+.al-row__chevron {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); width: 12px;
+}
+.al-row__name {
+    font-family: var(--font-serif); font-size: 16px; font-weight: 600; color: var(--text-bright);
+}
+.al-row__tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.al-row__tag {
+    font-family: var(--font-mono); font-size: 8px; font-weight: 700; letter-spacing: 0.08em;
+    padding: 3px 7px; text-transform: uppercase;
+    border: 1px solid var(--border-2); color: var(--text-dim);
+}
+.al-row__tag--cooperative  { color: var(--green); border-color: var(--green-border); background: var(--green-faint); }
+.al-row__tag--coordinating { color: var(--blue);  border-color: var(--blue-border);  background: var(--blue-faint); }
+.al-row__tag--cartel       { color: var(--red);   border-color: rgba(217,83,79,0.3); background: rgba(217,83,79,0.08); }
+.al-row__metrics {
+    margin-left: auto; display: flex; gap: 24px; align-items: baseline;
+}
+.al-row__metric { text-align: right; }
+.al-row__metric-label {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.12em;
+    color: var(--text-dim); text-transform: uppercase;
+}
+.al-row__metric-value {
+    margin-top: 2px;
+    font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--text-primary);
+}
+.al-row__sub {
+    padding: 0 16px 12px 40px;
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); letter-spacing: 0.04em;
+}
+.al-row__expanded { padding: 0 16px 16px 40px; }
+
+.al-actions {
+    margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap;
+    padding-top: 14px; border-top: 1px solid var(--border-0);
+}
+.al-actions .spacer { flex: 1 1 auto; }
+.al-btn {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; padding: 9px 16px; cursor: pointer;
+    background: transparent; border: 1px solid var(--border-1); color: var(--text-primary);
+    transition: all 0.1s;
+}
+.al-btn:hover:not(:disabled) { border-color: var(--text-bright); color: var(--text-bright); }
+.al-btn:disabled { cursor: not-allowed; opacity: 0.45; }
+.al-btn--primary { color: var(--amber); border-color: var(--amber-border); background: var(--amber-faint); }
+.al-btn--leave   { color: var(--red);   border-color: rgba(217,83,79,0.3); background: rgba(217,83,79,0.04); }
+
+/* Confirm modal (apply to open alliance) */
+.al-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: none; align-items: center; justify-content: center;
+    z-index: 9700;
+}
+.al-modal-overlay.open { display: flex; }
+.al-modal {
+    width: 460px; max-width: calc(100vw - 32px);
+    background: var(--bg-2); border: 1px solid var(--border-2);
+    padding: 24px;
+}
+.al-modal__title {
+    font-family: var(--font-serif); font-size: 20px; color: var(--text-bright); font-weight: 600;
+}
+.al-modal__body {
+    margin-top: 12px; font-size: 13px; color: var(--text-secondary); line-height: 1.5;
+}
+.al-modal__actions {
+    margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;
 }
 
 /* ── Found-alliance form ── */
@@ -263,6 +390,11 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
     <div class="alliances-shell" id="alliances-shell">
         <!-- view rendered in JS: list view or found-form -->
     </div>
+    <div class="al-modal-overlay" id="al-confirm-overlay" role="dialog" aria-hidden="true">
+        <div class="al-modal" id="al-confirm">
+            <!-- confirm body rendered in JS -->
+        </div>
+    </div>
 </div>
 
 <script type="module">
@@ -311,6 +443,27 @@ const SECTOR_LABEL = {
 
 const SECTORS = ['Finance', 'Construction', 'Shipping', 'Airline'];
 
+// Filter pill order for the landing view. 'all' is the default. Once
+// real cross-industry alliances exist, the filter will narrow the lists
+// to that sector — today both lists are empty so the filter is a no-op
+// but stays interactive so the chrome matches the spec.
+const FILTER_ORDER = ['all', ...SECTORS];
+const FILTER_LABEL = {
+    all: 'ALL INDUSTRIES',
+    Finance: 'BANKING',
+    Construction: 'CONSTRUCTION',
+    Shipping: 'SHIPPING',
+    Airline: 'AIRLINES',
+};
+
+// Charter article relationship taxonomy. Each tag color-codes the
+// article in the expanded membership card per the design.
+const ARTICLE_TAG_CLASS = {
+    cooperative:  'al-row__tag--cooperative',
+    coordinating: 'al-row__tag--coordinating',
+    cartel:       'al-row__tag--cartel',
+};
+
 // ── State ──
 let faction = null;
 let shard = null;
@@ -327,6 +480,14 @@ let _form = {
     mission: '',
 };
 let _candidates = [];   // candidate corps (same sector, not me, not abandoned)
+// Landing-view state. Empty until the alliance backend lands; the
+// renderers below already handle the populated case so plugging real
+// data in later is a one-line swap.
+let _myAlliances = [];      // alliances this corp is a member of
+let _openAlliances = [];    // alliances accepting applications
+let _sectorFilter = 'all';  // 'all' | 'Finance' | 'Construction' | 'Shipping' | 'Airline'
+let _expandedAllianceIds = new Set();
+let _confirmContext = null; // { allianceName, onConfirm } for the apply dialog
 
 // ── Helpers ──
 function escHtml(s) {
@@ -404,13 +565,173 @@ function renderShell() {
 }
 
 function renderListView() {
+    const sectorLabel = SECTOR_LABEL[faction?.corp_sector] || faction?.corp_sector || '—';
+    const filterPills = FILTER_ORDER.map(f => {
+        const cls = `al-filter-pill${f === _sectorFilter ? ' active' : ''}`;
+        return `<button class="${cls}" data-filter="${escHtml(f)}">${escHtml(FILTER_LABEL[f] || f.toUpperCase())}</button>`;
+    }).join('');
+
     return `
-        <div class="alliances-shell__head">
-            <div class="alliances-title">Strategic Alliances<span class="alliances-title__dot">.</span></div>
-            <button class="alliances-found-btn" id="open-found-btn">FOUND ALLIANCE</button>
+        <div class="al-page-head">
+            <div>
+                <div class="al-page-eyebrow">Strategic Alliances</div>
+                <div class="al-page-context">${escHtml(faction?.faction_name || '—')} · ${escHtml(sectorLabel)}</div>
+            </div>
+            <div class="al-page-stats">
+                <div><div class="al-stat__label">Your Alliances</div><div class="al-stat__value">${_myAlliances.length || 0}</div></div>
+                <div><div class="al-stat__label">Influence</div><div class="al-stat__value">—</div></div>
+                <div><div class="al-stat__label">Antitrust Heat</div><div class="al-stat__value">—</div></div>
+            </div>
         </div>
-        <div class="alliances-empty">No alliances yet.</div>
+        <div class="al-rule"></div>
+        <div class="al-controls">
+            <div class="al-filter-row">
+                <span class="al-filter-label">Filter</span>
+                ${filterPills}
+            </div>
+            <button class="al-found-btn" id="open-found-btn">+ FOUND NEW ALLIANCE</button>
+        </div>
+        ${renderMembershipsSection()}
+        ${renderOpenSection()}
     `;
+}
+
+function filterAlliancesBySector(rows) {
+    if (_sectorFilter === 'all') return rows;
+    return (rows || []).filter(a => a.sector === _sectorFilter);
+}
+
+function renderMembershipsSection() {
+    const rows = filterAlliancesBySector(_myAlliances);
+    return `
+        <div class="al-section">
+            <div class="al-section__title">Your Memberships</div>
+            ${rows.length === 0
+                ? `<div class="al-empty">You're not in any.</div>`
+                : rows.map(a => renderAllianceRow(a, /*isMember*/true)).join('')
+            }
+        </div>
+    `;
+}
+
+function renderOpenSection() {
+    const rows = filterAlliancesBySector(_openAlliances);
+    return `
+        <div class="al-section">
+            <div class="al-section__title">Open to Join</div>
+            ${rows.length === 0
+                ? `<div class="al-empty">No alliances open to join yet.</div>`
+                : rows.map(a => renderAllianceRow(a, /*isMember*/false)).join('')
+            }
+        </div>
+    `;
+}
+
+// Row renderer reused by both sections. Today both lists are empty so
+// none of this paints, but the function is wired so the moment alliance
+// rows arrive (with the documented shape — see renderAllianceExpanded
+// for fields used) the page populates without a second pass.
+function renderAllianceRow(a, isMember) {
+    const expanded = _expandedAllianceIds.has(a.id);
+    const tags = (a.tags || []).map(t => {
+        const cls = ARTICLE_TAG_CLASS[String(t).toLowerCase()] || '';
+        return `<span class="al-row__tag ${cls}">${escHtml(t)}</span>`;
+    }).join('');
+    return `
+        <div class="al-row" data-alliance-id="${escHtml(a.id)}">
+            <div class="al-row__head" data-toggle-id="${escHtml(a.id)}">
+                <span class="al-row__chevron">${expanded ? '▾' : '▸'}</span>
+                <span class="al-row__name">${escHtml(a.name || 'Unnamed Alliance')}</span>
+                <div class="al-row__tags">${tags}</div>
+                <div class="al-row__metrics">
+                    <div class="al-row__metric">
+                        <div class="al-row__metric-label">${isMember ? 'Dues' : 'Est. Dues'}</div>
+                        <div class="al-row__metric-value">${escHtml(a.dues || '—')}</div>
+                    </div>
+                    <div class="al-row__metric">
+                        <div class="al-row__metric-label">Rate Floor</div>
+                        <div class="al-row__metric-value">${escHtml(a.rate_floor || '—')}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="al-row__sub">
+                ${a.member_count ?? '—'} members · ${a.nation_count ?? '—'} nations · Founded ${a.founded_year ?? '—'} · Cartel score ${a.cartel_score ?? '—'}${a.heat != null ? ` · Heat ${a.heat}` : ''}
+            </div>
+            ${expanded ? renderAllianceExpanded(a, isMember) : ''}
+        </div>
+    `;
+}
+
+function renderAllianceExpanded(a, isMember) {
+    const heroDefs = HERO_STATS[a.sector] || [];
+    const memberCardsHtml = (a.members || []).map(m => {
+        const heroLine = heroDefs.length > 0
+            ? `${escHtml(heroDefs[0][0])} <b>${fmtStat(m[heroDefs[0][1]])}</b>`
+            : '';
+        const labelTag = m.is_you ? '<span class="al-row__tag" style="color:var(--amber);border-color:var(--amber);">YOU</span>'
+                       : m.is_founder ? '<span class="al-row__tag" style="color:var(--text-bright);border-color:var(--text-dim);">FOUNDER</span>'
+                       : '';
+        return `
+            <div class="fnd-invitee">
+                <div class="fnd-invitee__chip">${escHtml(corpInitials(m))}</div>
+                <div class="fnd-invitee__body">
+                    <div class="fnd-invitee__name">${escHtml(m.faction_name || '')} ${labelTag}</div>
+                    <div class="fnd-invitee__meta">${escHtml(m.nation_name || '—')} · ${heroLine} · Joined ${escHtml(String(m.joined_year || '—'))}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const articlesHtml = (a.articles || []).map((art, i) => {
+        const cls = ARTICLE_TAG_CLASS[String(art.kind || '').toLowerCase()] || '';
+        return `
+            <div class="al-article">
+                <div class="al-article__head">
+                    <span class="al-article__num">Article ${roman(i + 1)}</span>
+                    <span class="al-article__name">${escHtml(art.name || '')}</span>
+                    <span class="al-row__tag ${cls}">${escHtml(art.kind || '')}</span>
+                </div>
+                <div class="al-article__body">${escHtml(art.body || '')}</div>
+            </div>
+        `;
+    }).join('');
+
+    const nationPills = (a.represented_nations || []).map(n =>
+        `<span class="al-row__tag" style="color:var(--text-primary);">${escHtml(n.name)} ${n.count != null ? n.count : ''}</span>`
+    ).join(' ');
+
+    return `
+        <div class="al-row__expanded">
+            <div class="fnd-invitees-grid" style="margin-top:14px;">
+                <div><div class="al-stat__label">Founded</div><div style="margin-top:2px;color:var(--text-bright);">${escHtml(a.founded_date || '—')}</div></div>
+                <div><div class="al-stat__label">Headquarters</div><div style="margin-top:2px;color:var(--text-bright);">${escHtml(a.hq || '—')}</div></div>
+                <div><div class="al-stat__label">Presiding Chair</div><div style="margin-top:2px;color:var(--text-bright);">${escHtml(a.chair || '—')}</div></div>
+                <div><div class="al-stat__label">Antitrust Heat</div><div style="margin-top:2px;color:var(--red);">${escHtml((a.heat ?? '—') + ' / 10.0')}</div></div>
+            </div>
+            ${a.mission ? `<div style="margin-top:16px;padding:12px 14px;border-left:2px solid var(--amber);font-style:italic;color:var(--text-secondary);">"${escHtml(a.mission)}"</div>` : ''}
+            <div style="margin-top:16px;">
+                <div class="al-stat__label">Members · ${a.member_count ?? '—'} ${a.sector || ''} corps across ${a.nation_count ?? '—'} nations</div>
+                <div class="fnd-invitees-grid" style="margin-top:8px;">${memberCardsHtml}</div>
+            </div>
+            ${nationPills ? `<div style="margin-top:16px;"><div class="al-stat__label">Represented Nations</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">${nationPills}</div></div>` : ''}
+            ${articlesHtml ? `<div style="margin-top:16px;"><div class="al-stat__label">Charter · ${(a.articles || []).length} articles ratified${a.last_amended ? ` · Last amended ${escHtml(a.last_amended)}` : ''}</div><div style="margin-top:8px;">${articlesHtml}</div></div>` : ''}
+            <div class="al-actions">
+                ${isMember
+                    ? `<button class="al-btn al-btn--primary" disabled title="Backend not yet implemented.">GOVERNANCE ↗</button>
+                       <button class="al-btn" disabled title="Backend not yet implemented.">TREASURY</button>
+                       <button class="al-btn" disabled title="Backend not yet implemented.">MESSAGE</button>
+                       <span class="spacer"></span>
+                       <button class="al-btn al-btn--leave" disabled title="Backend not yet implemented.">LEAVE ALLIANCE</button>`
+                    : `<button class="al-btn al-btn--primary" data-apply-id="${escHtml(a.id)}">APPLY TO JOIN</button>`
+                }
+            </div>
+        </div>
+    `;
+}
+
+function roman(n) {
+    const map = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+    return map[n] || String(n);
 }
 
 function renderFoundView() {
@@ -556,6 +877,36 @@ function renderInviteeCard(c) {
 function bindShellEvents() {
     if (_view === 'list') {
         document.getElementById('open-found-btn')?.addEventListener('click', openFoundView);
+        document.querySelectorAll('.al-filter-pill').forEach(pill => {
+            pill.addEventListener('click', () => {
+                const f = pill.dataset.filter;
+                if (!f || f === _sectorFilter) return;
+                _sectorFilter = f;
+                renderShell();
+            });
+        });
+        document.querySelectorAll('[data-toggle-id]').forEach(head => {
+            head.addEventListener('click', () => {
+                const id = head.dataset.toggleId;
+                if (_expandedAllianceIds.has(id)) _expandedAllianceIds.delete(id);
+                else _expandedAllianceIds.add(id);
+                renderShell();
+            });
+        });
+        document.querySelectorAll('[data-apply-id]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.applyId;
+                const a = (_openAlliances || []).find(x => x.id === id);
+                if (!a) return;
+                openConfirm({
+                    title: `Apply to join ${a.name}?`,
+                    body: `Submitting an application sends a request to the alliance's presiding chair. Acceptance is at the alliance's discretion.`,
+                    confirmLabel: 'Send Application',
+                    onConfirm: () => { /* no-op until backend lands */ },
+                });
+            });
+        });
         return;
     }
     // Found view bindings
@@ -572,6 +923,35 @@ function bindShellEvents() {
     document.querySelectorAll('.fnd-invitee').forEach(card => {
         card.addEventListener('click', () => toggleInvitee(card.dataset.corpId));
     });
+}
+
+// ── Confirm modal (apply to join, future leave/etc) ──
+function openConfirm({ title, body, confirmLabel, onConfirm }) {
+    _confirmContext = { onConfirm: onConfirm || (() => {}) };
+    const overlay = document.getElementById('al-confirm-overlay');
+    const panel = document.getElementById('al-confirm');
+    if (!overlay || !panel) return;
+    panel.innerHTML = `
+        <div class="al-modal__title">${escHtml(title || 'Confirm')}</div>
+        <div class="al-modal__body">${escHtml(body || '')}</div>
+        <div class="al-modal__actions">
+            <button class="al-btn" id="al-confirm-cancel">Cancel</button>
+            <button class="al-btn al-btn--primary" id="al-confirm-yes">${escHtml(confirmLabel || 'Confirm')}</button>
+        </div>
+    `;
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
+    document.getElementById('al-confirm-cancel')?.addEventListener('click', closeConfirm);
+    document.getElementById('al-confirm-yes')?.addEventListener('click', () => {
+        try { _confirmContext?.onConfirm?.(); } finally { closeConfirm(); }
+    });
+}
+function closeConfirm() {
+    _confirmContext = null;
+    const overlay = document.getElementById('al-confirm-overlay');
+    if (!overlay) return;
+    overlay.classList.remove('open');
+    overlay.setAttribute('aria-hidden', 'true');
 }
 
 function toggleInvitee(id) {
