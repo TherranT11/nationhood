@@ -4,6 +4,12 @@
 const CORP_VERSION = 'Alpha 2.4.2.1';
 const THEME_STORAGE_KEY = 'corpThemePref';
 
+// One-shot flag: messaging.js initMessaging is called at most once per
+// page load. Idempotent on the messaging side too (injectHTML guards on
+// existing #msg-bubble), but skipping re-imports keeps the network tab
+// quiet on tab/topbar re-renders.
+let _msgInjected = false;
+
 // Sync body.light-mode from localStorage. Called at render (and by a tiny inline
 // script at the top of each corp body) so saved preference survives page loads
 // and the first paint matches the final theme.
@@ -216,8 +222,6 @@ export function renderCorpTopBar(container, opts = {}) {
         });
     }
 }
-
-let _msgInjected = false;
 
 // Countdown timer for next corp tick
 function startCorpCountdown(shard) {
