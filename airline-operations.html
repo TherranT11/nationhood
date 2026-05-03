@@ -1328,8 +1328,8 @@ function _routeModalRecompute() {
         breakevenColor = 'var(--accent-rust)';
     } else {
         const ticks  = Math.ceil(maintAnnual / opMargin);
-        const months = (ticks / TICKS_PER_YEAR).toFixed(1);
-        breakevenLabel = ticks.toLocaleString() + ' ticks (≈' + months + ' yr)';
+        const years  = (ticks / TICKS_PER_YEAR).toFixed(1);
+        breakevenLabel = ticks.toLocaleString() + ' ticks (≈' + years + ' yr)';
         breakevenColor = ticks <= TICKS_PER_YEAR ? 'var(--accent-green)' : 'var(--accent-rust)';
     }
 
