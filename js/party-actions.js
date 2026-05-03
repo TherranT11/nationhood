@@ -4293,7 +4293,11 @@ function openStatementModal(root) {
 
 // ════════════════════════ SET PARTY PLATFORM MODAL ════════════════════════
 
-const PROMISE_DELTA = 20; // stats must move +/- 20 from baseline to fulfill promise
+// Halved from the original 20 in 20260727 — Phase X moved the
+// headline reward from the stat-promise grind to one-shot sector-
+// popularity bumps (boost natural constituencies, alienate the
+// opposition). Stat targets are now a lighter secondary commitment.
+const PROMISE_DELTA = 10;
 
 function openPlatformModal(root) {
     const overlay = document.getElementById('pa-platform-modal');
@@ -4433,7 +4437,7 @@ function openPlatformModal(root) {
                     <div style="margin-top:12px;padding:8px 12px;background:var(--bg-card);border:1px solid var(--border-main);">
                         <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:4px;">PROMISE RULES</div>
                         <div style="font-size:9px;color:var(--text-dim);line-height:1.5;">
-                            Stats are locked at current values when adopted. If your party enters government, you have <strong style="color:var(--text-bright);">24 ticks</strong> to move each promised stat by <strong style="color:var(--text-bright);">+${PROMISE_DELTA}</strong>. Failure: <strong style="color:var(--red);">-20 Momentum</strong>. If you don't enter government, the promise abates.
+                            Stats are locked at current values when adopted. If your party enters government, you have <strong style="color:var(--text-bright);">24 ticks</strong> to move each promised stat by <strong style="color:var(--text-bright);">+${PROMISE_DELTA}</strong>. Failure: <strong style="color:var(--red);">popularity boosts revert</strong> with the constituencies you wooed (the alienated stay alienated). If you don't enter government, the promise abates.
                         </div>
                     </div>
                 </div>
