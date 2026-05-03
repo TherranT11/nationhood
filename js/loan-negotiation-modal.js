@@ -264,6 +264,52 @@ function injectStylesOnce() {
     border-left: 2px solid var(--border-0);
     background: rgba(255,255,255,0.015);
 }
+
+/* ── Lender inbox panel (Phase 5) ── */
+.lnm-inbox-host {
+    display: block;
+}
+.lnm-inbox-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1px dashed var(--border-0);
+    cursor: pointer;
+    transition: background 0.12s;
+}
+.lnm-inbox-row:last-child { border-bottom: 0; }
+.lnm-inbox-row:hover { background: var(--bg-hover, rgba(255,255,255,0.03)); }
+.lnm-inbox-row__pair {
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-bright);
+    margin-bottom: 2px;
+}
+.lnm-inbox-row__meta {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+}
+.lnm-inbox-row__time {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+.lnm-inbox-pill {
+    display: inline-block;
+    padding: 1px 6px;
+    margin-right: 6px;
+    font-family: var(--font-mono); font-size: 8.5px;
+    font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--amber, #c8a832);
+    background: rgba(200,168,50,0.1);
+    border: 1px solid rgba(200,168,50,0.4);
+    vertical-align: middle;
+}
 `;
     document.head.appendChild(style);
 }
@@ -595,6 +641,18 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
     renderModal(modalEl, neg, messages, viewerRole);
     wireActionHandlers(modalEl, supabase, negotiationId, () => neg, viewerRole);
 
+    // Mark seen on initial mount. Re-bumped on every realtime push so a
+    // viewer with the modal open never appears unread to themselves.
+    // Fire-and-forget; non-fatal if it fails.
+    const markSeen = () => {
+        if (!viewerRole) return;
+        supabase.rpc('mark_negotiation_seen', { p_neg_id: negotiationId })
+            .then(({ error }) => {
+                if (error) console.warn('[loan-negotiation-modal] mark_seen failed:', error.message);
+            });
+    };
+    markSeen();
+
     // ── Realtime subscriptions ───────────────────────────────────
     // One channel, two listeners. UPDATE on the negotiation row
     // triggers a re-fetch (because realtime payloads don't carry the
@@ -643,6 +701,10 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
                 }
                 setTimeout(() => { if (!closed) close(); }, 3000);
             }
+
+            // Modal is open and just absorbed an update — bump seen so
+            // the inbox doesn't show this row as unread to the viewer.
+            markSeen();
         })
         .on('postgres_changes', {
             event: 'INSERT',
@@ -655,6 +717,7 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
             if (messages.some(x => x.id === m.id)) return;
             messages.push(m);
             appendChatMessageDom(modalEl, m, neg);
+            markSeen();
         })
         .subscribe();
 
@@ -828,4 +891,303 @@ function showInline(el, msg) {
     if (!el) return;
     el.textContent = msg;
     el.style.display = '';
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+//  Borrower-side bank picker — Phase 5 entry point.
+//
+//  Opens a small modal listing every Finance corporation the borrower
+//  could negotiate with. Pick one + fill initial terms → calls
+//  create_loan_negotiation, then auto-mounts the negotiation modal on
+//  the new id. Refuses gracefully if borrower already has an open
+//  negotiation with the picked bank (server enforces UNIQUE; we surface
+//  the error in the picker).
+// ════════════════════════════════════════════════════════════════════════
+export async function mountLoanRequestPicker({ supabase, borrowerFactionId, onOpened, onClose } = {}) {
+    if (!supabase) throw new Error('mountLoanRequestPicker: supabase client required');
+
+    injectStylesOnce();
+    const overlay = document.createElement('div');
+    overlay.className = 'lnm-overlay';
+    overlay.innerHTML = '<div class="lnm-modal" style="width:min(540px, 94vw);"><div class="lnm-loading">Loading banks…</div></div>';
+    const modalEl = overlay.querySelector('.lnm-modal');
+    document.body.appendChild(overlay);
+
+    let closed = false;
+    const close = () => {
+        if (closed) return;
+        closed = true;
+        overlay.remove();
+        if (typeof onClose === 'function') onClose();
+    };
+    overlay.addEventListener('click', (e) => {
+        if (e.target.closest('[data-act="close"]')) { close(); return; }
+        if (e.target === overlay)                   { close(); return; }
+    });
+
+    // Resolve borrower faction. If caller passed an id, trust it; else
+    // resolve from auth.
+    let borrowerId = borrowerFactionId;
+    if (!borrowerId) {
+        try {
+            const { data: { user } = {} } = await supabase.auth.getUser();
+            const uid = user?.id;
+            if (uid) {
+                const { data: own } = await supabase
+                    .from('factions')
+                    .select('id')
+                    .eq('faction_type', 'corporation')
+                    .is('abandoned_at', null)
+                    .or(`id.eq.${uid},linked_user_id.eq.${uid}`)
+                    .limit(1)
+                    .maybeSingle();
+                borrowerId = own?.id || null;
+            }
+        } catch (e) {
+            console.warn('[loan-request-picker] borrower auth resolve failed:', e?.message || e);
+        }
+    }
+    if (!borrowerId) {
+        modalEl.innerHTML = `
+            <div class="lnm-head">
+              <div><div class="lnm-head__title">Negotiate Loan</div></div>
+              <button type="button" class="lnm-close" data-act="close">Close</button>
+            </div>
+            <div class="lnm-error">Could not resolve your corporation. Please reload and try again.</div>`;
+        return { close };
+    }
+
+    // Load Finance corps (excluding self). RLS allows reading any faction
+    // row's id + name (factions table is broadly readable in this codebase).
+    const { data: banks, error: banksErr } = await supabase
+        .from('factions')
+        .select('id, faction_name, abbreviation, nation:nation_id(name)')
+        .eq('faction_type', 'corporation')
+        .eq('corp_sector', 'Finance')
+        .is('abandoned_at', null)
+        .neq('id', borrowerId)
+        .order('faction_name', { ascending: true });
+
+    if (banksErr) {
+        modalEl.innerHTML = `
+            <div class="lnm-head">
+              <div><div class="lnm-head__title">Negotiate Loan</div></div>
+              <button type="button" class="lnm-close" data-act="close">Close</button>
+            </div>
+            <div class="lnm-error">Failed to load banks: ${escHtml(banksErr.message)}</div>`;
+        return { close };
+    }
+    const bankList = banks || [];
+
+    // Render picker form
+    modalEl.innerHTML = `
+        <div class="lnm-head">
+          <div>
+            <div class="lnm-head__title">Negotiate Loan</div>
+            <div class="lnm-head__pair">Open a bilateral negotiation with one bank</div>
+            <div class="lnm-head__activity">Targeted alternative to the auction request flow</div>
+          </div>
+          <button type="button" class="lnm-close" data-act="close">Close</button>
+        </div>
+
+        <div class="lnm-col" style="border-left:0;">
+          <div class="lnm-section-h">Lender</div>
+          <div class="lnm-field">
+            <label>Bank</label>
+            ${bankList.length === 0
+              ? '<div class="lnm-empty-chat" style="text-align:left;padding:10px 0;">No Finance corporations available to negotiate with.</div>'
+              : `<select data-lnm-field="lender" style="width:100%;background:var(--bg-3);border:1px solid var(--border-1);color:var(--text-bright);padding:6px 9px;font-family:var(--font-mono);font-size:12px;">
+                  <option value="">— Select a bank —</option>
+                  ${bankList.map(b => `<option value="${escHtml(b.id)}">${escHtml(b.faction_name)}${b.nation?.name ? ' · ' + escHtml(b.nation.name) : ''}</option>`).join('')}
+                </select>`}
+          </div>
+
+          <div class="lnm-section-h" style="margin-top:14px;">Initial Terms (you can change these in the negotiation)</div>
+          <div class="lnm-field">
+            <label>Principal ($)</label>
+            <input type="number" min="1" step="1000" data-lnm-field="principal" value="50000">
+          </div>
+          <div class="lnm-field">
+            <label>APR (%)</label>
+            <input type="number" min="0" max="100" step="0.1" data-lnm-field="apr" value="7.5">
+          </div>
+          <div class="lnm-field">
+            <label>Term (ticks)</label>
+            <input type="number" min="1" step="1" data-lnm-field="term_ticks" value="24">
+          </div>
+          <div class="lnm-field">
+            <label>Purpose (optional)</label>
+            <input type="text" maxlength="120" data-lnm-field="purpose" placeholder="e.g. Fleet expansion">
+          </div>
+
+          <div class="lnm-action-row">
+            <button type="button" class="lnm-btn lnm-btn--primary" data-act="open-negotiation"
+              ${bankList.length === 0 ? 'disabled' : ''}>Open Negotiation</button>
+            <span class="lnm-loading" id="lnm-picker-status" style="padding:0;font-size:10px;display:none;">Opening…</span>
+          </div>
+          <div class="lnm-inline-error" id="lnm-picker-error" style="display:none;"></div>
+        </div>
+    `;
+
+    const submitBtn = modalEl.querySelector('[data-act="open-negotiation"]');
+    const errEl     = modalEl.querySelector('#lnm-picker-error');
+    const statusEl  = modalEl.querySelector('#lnm-picker-status');
+    if (submitBtn) {
+        submitBtn.addEventListener('click', async () => {
+            if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+            const lenderId  = modalEl.querySelector('[data-lnm-field="lender"]')?.value || '';
+            const principal = parseInt(modalEl.querySelector('[data-lnm-field="principal"]')?.value, 10);
+            const apr       = parseFloat(modalEl.querySelector('[data-lnm-field="apr"]')?.value);
+            const termTicks = parseInt(modalEl.querySelector('[data-lnm-field="term_ticks"]')?.value, 10);
+            const purpose   = modalEl.querySelector('[data-lnm-field="purpose"]')?.value || '';
+
+            if (!lenderId)                                      { showInline(errEl, 'Pick a bank first.'); return; }
+            if (!Number.isFinite(principal) || principal <= 0)  { showInline(errEl, 'Principal must be a positive number.'); return; }
+            if (!Number.isFinite(apr) || apr < 0 || apr > 100)  { showInline(errEl, 'APR must be between 0 and 100.'); return; }
+            if (!Number.isInteger(termTicks) || termTicks <= 0) { showInline(errEl, 'Term must be a positive integer.'); return; }
+
+            submitBtn.disabled = true;
+            if (statusEl) statusEl.style.display = '';
+            try {
+                const { data, error } = await supabase.rpc('create_loan_negotiation', {
+                    p_lender_id:  lenderId,
+                    p_principal:  principal,
+                    p_apr:        apr,
+                    p_term_ticks: termTicks,
+                    p_purpose:    purpose,
+                });
+                if (error)          { showInline(errEl, error.message); return; }
+                if (!data?.success) { showInline(errEl, data?.error || 'Could not open negotiation.'); return; }
+
+                const newId = data.negotiation_id;
+                close();
+                if (typeof onOpened === 'function') {
+                    try { await onOpened(newId); } catch (e) {
+                        console.warn('[loan-request-picker] onOpened callback threw:', e?.message || e);
+                    }
+                } else {
+                    // Default: chain into the negotiation modal so the
+                    // borrower lands directly in their new conversation.
+                    await mountLoanNegotiationModal({ supabase, negotiationId: newId });
+                }
+            } catch (e) {
+                showInline(errEl, e?.message || 'Network error.');
+            } finally {
+                submitBtn.disabled = false;
+                if (statusEl) statusEl.style.display = 'none';
+            }
+        });
+    }
+
+    return { close };
+}
+
+
+// ════════════════════════════════════════════════════════════════════════
+//  Lender-side inbox panel — Phase 5.
+//
+//  Renders into a host element. Lists every loan_negotiations row where
+//  this corp is the lender AND status='open'. Click a row → opens the
+//  negotiation modal. Auto-refreshes on modal close. Unread pill when
+//  last_activity_at > last_seen_at_lender.
+//
+//  Caller pattern:
+//    await renderLenderInbox({
+//      supabase, container, lenderFactionId,
+//      onOpenNegotiation: (negId) => mountLoanNegotiationModal({...}),
+//    });
+//
+//  Inbox styles are part of the shared injected stylesheet so a host
+//  page doesn't need to ship anything extra.
+// ════════════════════════════════════════════════════════════════════════
+export async function renderLenderInbox({ supabase, container, lenderFactionId, onOpenNegotiation } = {}) {
+    if (!supabase || !container) return;
+    injectStylesOnce();
+
+    container.classList.add('lnm-inbox-host');
+    container.innerHTML = '<div class="lnm-loading" style="padding:14px;">Loading inbox…</div>';
+
+    let resolvedLenderId = lenderFactionId;
+    if (!resolvedLenderId) {
+        try {
+            const { data: { user } = {} } = await supabase.auth.getUser();
+            const uid = user?.id;
+            if (uid) {
+                const { data: own } = await supabase
+                    .from('factions')
+                    .select('id')
+                    .eq('faction_type', 'corporation')
+                    .is('abandoned_at', null)
+                    .or(`id.eq.${uid},linked_user_id.eq.${uid}`)
+                    .limit(1)
+                    .maybeSingle();
+                resolvedLenderId = own?.id || null;
+            }
+        } catch (e) {
+            console.warn('[lender-inbox] auth resolve failed:', e?.message || e);
+        }
+    }
+    if (!resolvedLenderId) {
+        container.innerHTML = '<div class="lnm-empty-chat" style="padding:14px;">Sign in to see negotiations.</div>';
+        return;
+    }
+
+    const refresh = async () => {
+        const { data: rows, error } = await supabase
+            .from('loan_negotiations')
+            .select(`
+                id, principal, apr, term_ticks, status,
+                borrower_agreed, lender_agreed,
+                last_activity_at, last_seen_at_lender,
+                borrower:borrower_faction_id(id, faction_name)
+            `)
+            .eq('lender_faction_id', resolvedLenderId)
+            .eq('status', 'open')
+            .order('last_activity_at', { ascending: false });
+
+        if (error) {
+            container.innerHTML = '<div class="lnm-error" style="padding:14px;">Failed to load inbox: ' + escHtml(error.message) + '</div>';
+            return;
+        }
+        if (!rows || rows.length === 0) {
+            container.innerHTML = '<div class="lnm-empty-chat" style="padding:14px;">No open negotiations.</div>';
+            return;
+        }
+
+        container.innerHTML = rows.map(r => {
+            const tally  = (r.borrower_agreed ? 1 : 0) + (r.lender_agreed ? 1 : 0);
+            const unread = !r.last_seen_at_lender ||
+                           new Date(r.last_activity_at).getTime() > new Date(r.last_seen_at_lender).getTime();
+            return `
+              <div class="lnm-inbox-row" data-neg-id="${escHtml(r.id)}">
+                <div class="lnm-inbox-row__main">
+                  <div class="lnm-inbox-row__pair">
+                    ${unread ? '<span class="lnm-inbox-pill">unread</span>' : ''}
+                    ${escHtml(r.borrower?.faction_name || 'Borrower')}
+                  </div>
+                  <div class="lnm-inbox-row__meta">
+                    $${Number(r.principal).toLocaleString()} @ ${escHtml(r.apr)}% · ${escHtml(r.term_ticks)} ticks · Agreement ${tally}/2
+                  </div>
+                </div>
+                <div class="lnm-inbox-row__time">${formatRelative(r.last_activity_at)}</div>
+              </div>
+            `;
+        }).join('');
+
+        container.querySelectorAll('.lnm-inbox-row').forEach(row => {
+            row.addEventListener('click', async () => {
+                const negId = row.dataset.negId;
+                if (!negId) return;
+                if (typeof onOpenNegotiation === 'function') {
+                    await onOpenNegotiation(negId, refresh);
+                } else {
+                    await mountLoanNegotiationModal({ supabase, negotiationId: negId, onClose: refresh });
+                }
+            });
+        });
+    };
+
+    await refresh();
+    return { refresh };
 }

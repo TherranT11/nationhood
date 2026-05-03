@@ -5848,6 +5848,23 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
         summary.errors.push({ scope: 'corp_contracts_tier_gen', error: String(tierGenErr) });
     }
 
+    // 4b. Loan-negotiation stale sweep (once per tick, global). Abandons
+    // any negotiation idle > 24 hours, refunds held escrow, system-
+    // messages the row. Cheap: typically 0 sweeps per tick.
+    try {
+        const { data: sweepRes, error: sweepErr } = await supabase
+            .rpc('auto_abandon_stale_negotiations', { p_tick: currentTick });
+        if (sweepErr) {
+            console.error('[advance-corp-tick] loan-negotiation sweep failed:', sweepErr.message);
+            summary.errors.push({ scope: 'loan_negotiation_sweep', error: sweepErr.message });
+        } else if (sweepRes?.swept > 0) {
+            console.log(`[advance-corp-tick] Auto-abandoned ${sweepRes.swept} stale loan negotiation(s)`);
+        }
+    } catch (sweepEx) {
+        console.error('[advance-corp-tick] loan-negotiation sweep threw (non-fatal):', sweepEx);
+        summary.errors.push({ scope: 'loan_negotiation_sweep', error: String(sweepEx) });
+    }
+
     // 5. Process each nation
     for (const nation of nationList) {
         try {
