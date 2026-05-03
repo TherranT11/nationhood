@@ -2199,15 +2199,23 @@ function showCrewsModal(c) {
     if (!modal) return;
     const myCrews = Number(faction.corp_work_crews) || 0;
     const current = Number(c.crews_assigned) || 0;
+    // Crews already deployed on every OTHER active contract — cap on
+    // this contract is total stat minus that. Without this the modal
+    // let the player exceed their Work Crews stat by assigning the
+    // full stat to each parallel contract.
+    const othersCrews = (_activeContracts || [])
+        .filter(x => x.id !== c.id)
+        .reduce((s, x) => s + (Number(x.crews_assigned) || 0), 0);
+    const available = Math.max(0, myCrews - othersCrews);
 
     modal.innerHTML = `
         <div class="co-modal-title">Manage Crews — ${escapeHtml(c.name || '')}</div>
         <div class="co-modal-body">
-            Allocate work crews to this contract. Maximum is your corporation's
-            <strong>Work Crews</strong> stat (<strong>${myCrews}</strong>). More crews accelerate progress but
-            reduce capacity for parallel contracts.
+            Allocate work crews to this contract. You have <strong>${myCrews}</strong>
+            Work Crews; <strong>${othersCrews}</strong> are deployed on other active contracts,
+            leaving <strong>${available}</strong> available for this one.
         </div>
-        <input type="number" min="0" max="${myCrews}" step="0.5" value="${current}"
+        <input type="number" min="0" max="${available}" step="0.5" value="${Math.min(current, available)}"
                class="co-modal-input" id="co-crews-input"
                aria-label="Crews assigned" />
         <div class="co-modal-actions">
@@ -2223,6 +2231,13 @@ function showCrewsModal(c) {
         const crews = Number(input?.value);
         if (!Number.isFinite(crews)) {
             showToast('Crews must be a number', 'error');
+            return;
+        }
+        // Browser doesn't enforce max= on programmatically-set values;
+        // re-check the available pool here so a manual edit can't
+        // over-allocate either.
+        if (crews > available) {
+            showToast(`Only ${available} crew${available === 1 ? '' : 's'} available — others are deployed.`, 'error');
             return;
         }
         const btn = document.getElementById('co-crews-confirm');
