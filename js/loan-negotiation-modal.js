@@ -173,7 +173,8 @@ function injectStylesOnce() {
     padding: 4px 0;
     font-family: var(--font-mono); font-size: 11px;
 }
-.lnm-agree-row input[type=checkbox] { cursor: not-allowed; }
+.lnm-agree-row input[type=checkbox]:disabled { cursor: not-allowed; }
+.lnm-agree-row input[type=checkbox]:not(:disabled) { cursor: pointer; }
 .lnm-agreement-tally {
     margin-top: 8px;
     font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
@@ -292,7 +293,7 @@ function fetchNegotiation(supabase, negotiationId) {
         .select(`
             id, status, principal, apr, term_ticks, purpose, notes,
             borrower_agreed, lender_agreed, escrowed_lender_cash,
-            last_activity_at, fired_to_loan_id,
+            last_activity_at,
             borrower:borrower_faction_id(id, faction_name, linked_user_id),
             lender:lender_faction_id(id, faction_name, linked_user_id)
         `)
