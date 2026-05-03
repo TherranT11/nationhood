@@ -12604,7 +12604,7 @@ function generateAdminSummary(admin) {
 //
 // "REVIEW" affordance is gated to the party holding the Justice
 // ministry (read from active government_formations.ministry_assignments)
-// but shows a "Phase 2" disabled state — ruling mechanic isn't built yet.
+// (Phase 2 ships defendant response; MoJ ruling lands in Phase 3.)
 // ──────────────────────────────────────────────────────────────────
 async function renderJudicialTab(container) {
     if (!container) return;
@@ -12619,12 +12619,10 @@ async function renderJudicialTab(container) {
     const [suitsRes, formRes] = await Promise.all([
         _supabase.from('commercial_lawsuits')
             .select(`
-                id, plaintiff_faction_id, defendant_faction_id, grievance_type,
-                grievance_sector, relief_sought, status, filing_fee, filed_at_tick,
-                response_deadline_tick, defendant_response, settle_offer_amount,
-                closed_at_tick, ruling, relationship_ref,
-                plaintiff:plaintiff_faction_id(faction_name, abbreviation, corp_ticker, corp_sector),
-                defendant:defendant_faction_id(faction_name, abbreviation, corp_ticker, corp_sector)
+                id, status, grievance_type, relief_sought,
+                filed_at_tick, response_deadline_tick, closed_at_tick,
+                plaintiff:plaintiff_faction_id(faction_name, abbreviation, corp_ticker),
+                defendant:defendant_faction_id(faction_name, abbreviation, corp_ticker)
             `)
             .eq('nation_id', currentNation.id)
             .order('filed_at_tick', { ascending: false }),
@@ -12712,7 +12710,7 @@ async function renderJudicialTab(container) {
     const banner = justiceVacant
         ? `<div style="font-family:var(--font-mono);font-size:11px;color:#c84;letter-spacing:0.06em;">Justice ministry vacant — pending cases remain on the docket until a Minister of Justice is appointed.</div>`
         : viewerHoldsJustice
-            ? `<div style="font-family:var(--font-mono);font-size:11px;color:#5cb85c;letter-spacing:0.06em;">Your party holds the Ministry of Justice. Ruling controls arrive in Phase 2.</div>`
+            ? `<div style="font-family:var(--font-mono);font-size:11px;color:#5cb85c;letter-spacing:0.06em;">Your party holds the Ministry of Justice. Ruling controls arrive in Phase 3.</div>`
             : `<div style="font-family:var(--font-mono);font-size:11px;color:#9e9a92;letter-spacing:0.06em;">Cases are reviewed by the Ministry of Justice.</div>`;
 
     html += `<div style="padding:16px 20px;border-bottom:1px solid var(--border-main);background:var(--bg-2,#1a1a17);">

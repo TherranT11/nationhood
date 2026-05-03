@@ -1198,6 +1198,7 @@ body.corp-operations-construction.light-mode {
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, escapeAttr, tickToDate } from './js/utils.js';
+import { GRIEVANCE_LABEL } from './js/game/lawsuit-types.js';
 
 // Operations pages are sector-gated. Construction stays here; every other
 // sector has its own page. Keep this map in sync with corp-topbar.js's
@@ -1561,20 +1562,11 @@ function renderPressingIssues() {
     // Lawsuit cards — defendant view (response required) and
     // plaintiff view (review settle offer). They share the same
     // Pressing Issue chrome; the modal mounts decide what flow to run.
-    const grievanceLabels = {
-        breach_of_contract: 'Breach of Contract',
-        fraud:              'Fraud',
-        defamation:         'Defamation',
-        predatory_terms:    'Predatory Terms',
-        non_payout:         'Non-Payout',
-        defective_work:     'Defective Work',
-        cargo_loss:         'Cargo Loss',
-    };
     const lawsuitDefendantCards = _lawsuitsToAnswer.map(l => {
         const ticksLeft = Math.max(0, Number(l.response_deadline_tick || 0) - currentTick);
         const plName = l.plaintiff?.faction_name || 'Plaintiff';
         const plTick = l.plaintiff?.corp_ticker || l.plaintiff?.abbreviation || '';
-        const grievance = grievanceLabels[l.grievance_type] || l.grievance_type;
+        const grievance = GRIEVANCE_LABEL[l.grievance_type] || l.grievance_type;
         return `<div class="co-issue-card sev-critical">
             <div class="co-contract-meta-row">
                 <span class="co-issue-tag sev-critical">LAWSUIT ◊ RESPONSE REQUIRED</span>
