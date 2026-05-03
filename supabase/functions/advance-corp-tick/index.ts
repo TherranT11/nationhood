@@ -4330,6 +4330,16 @@ async function processBankLoanPayments(supabase, currentTick) {
                 }
             }
 
+            // Ledger entries — split interest from principal so each side's
+            // dashboard shows them as distinct categories. logCashEvent is a
+            // no-op for delta=0, so zero-interest or interest-only edges
+            // safely skip the irrelevant line.
+            const interestPortion = payment - principalPortion;
+            logCashEvent(loan.borrower_faction_id, 'debt_interest',  'Loan interest paid',      -interestPortion);
+            logCashEvent(loan.borrower_faction_id, 'capital_out',    'Loan principal payment',  -principalPortion);
+            logCashEvent(loan.lender_faction_id,   'revenue_finance', 'Loan interest received',  interestPortion);
+            logCashEvent(loan.lender_faction_id,   'capital_in',     'Loan principal received',  principalPortion);
+
             if (newOutstanding <= 0) {
                 // Final payment — close as 'paid'. close_bank_loan also
                 // zeroes the (already-zero) outstanding, decrements the
