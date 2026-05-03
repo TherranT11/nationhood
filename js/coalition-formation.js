@@ -694,12 +694,17 @@ async function handleFormGovernment(formation, root) {
         let rpcSucceeded = false;
         try {
             const baselines = buildMinistryBaselines ? buildMinistryBaselines(null, nation) : {};
-            const { error: rpcErr } = await _supabase.rpc('finalize_government_formation', {
+            const { data: rpcData, error: rpcErr } = await _supabase.rpc('finalize_government_formation', {
                 p_formation_id: formation.id,
                 p_caller_faction_id: _state.faction.id,
                 p_ministry_baselines: baselines || {},
             });
             if (rpcErr) throw rpcErr;
+            // The RPC returns { error: 'msg' } as structured data on
+            // validation failures (auth, status, missing nation, etc.).
+            // PostgREST doesn't surface those as rpcErr — without this
+            // check, structured errors silently appear as success.
+            if (rpcData?.error) throw new Error(rpcData.error);
             rpcSucceeded = true;
         } catch (rpcErr) {
             console.warn('[Coalition] RPC failed, using fallback:', rpcErr.message);
@@ -741,24 +746,8 @@ async function handleFormGovernment(formation, root) {
             await createMinistriesFromAssignments(nationId);
         }
 
-        // Always call rolloverAdministration — its internal continuity rule
-        // decides whether to update the open admin row in place (same PM) or
-        // close it and insert a new one (different PM). Skipping when an open
-        // admin exists left that row with stale coalition/pm_party data after
-        // a reshuffle.
-        const coalition = {
-            id: formation.id,
-            party_ids: formation.party_ids || [],
-            lead_party_id: _ministryAssignments.prime_minister,
-        };
-        await rolloverAdministration(
-            _supabase, nationId, _state.nation,
-            'election', coalition, _allParties,
-            _currentTick, _state.shard?.current_date || '',
-            Number(_state.nation?.gov_approval ?? 50)
-        );
-
-        // Auto-appoint PM's party leader (skip coalition check — we just formed it)
+        // Admin lifecycle is handled inside the RPC (or by formGovernmentFallback
+        // → rolloverAdministration on the failure path).
         await autoAppointPartyLeaderAsPM(_supabase, nationId, pmPartyId, _currentTick, { skipCoalitionCheck: true });
 
         _formationNeeded = false;
