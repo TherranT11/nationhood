@@ -214,7 +214,7 @@ DECLARE
     v_relief_payee    UUID;
     v_contract_disp   TEXT;
     v_new_apr         NUMERIC;
-    v_def_legal_fee   CONSTANT BIGINT := 5000000;
+    v_def_legal_fee   BIGINT := 5000000;
     v_new_status      TEXT;
     v_ruling          JSONB;
     v_executed        JSONB := '{}'::jsonb;
