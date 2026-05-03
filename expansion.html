@@ -1297,7 +1297,7 @@ async function buildRegionalHQ(nationId) {
         try {
             await _supabase.from('event_log').insert({
                 nation_id: target.id,
-                event_name: 'New Regional HQ Established',
+                event_name: `${faction.faction_name} — New Regional HQ Established`,
                 category: 'corporate',
                 description_chosen: `${faction.faction_name} has invested ${hfFmtBig(cost)} to build a Regional HQ in ${target.name}.`,
                 fired_at_tick: currentTick,
