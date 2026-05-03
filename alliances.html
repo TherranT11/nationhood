@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Strategic Alliances | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/corp-topbar.css">
+<link rel="stylesheet" href="css/corp-light-theme.css">
+<style>
+:root {
+  --bg-0: #0e0e0c;
+  --bg-2: #1a1a17;
+  --bg-3: #252525;
+  --text-bright: #f0efe6;
+  --text-primary: #c4c2b8;
+  --text-dim: #4a4940;
+  --border-0: rgba(255,255,255,0.06);
+  --amber: #c8a64e;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+  --font-serif: 'IBM Plex Serif', Georgia, serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg-0); color: var(--text-primary); font-family: var(--font-ui); min-height: 100vh; }
+.loading-msg { padding: 40px; text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
+
+.alliances-shell {
+    max-width: 1200px; margin: 0 auto; padding: 48px 32px;
+}
+.alliances-title {
+    font-family: var(--font-serif); font-size: 32px; font-weight: 600;
+    color: var(--text-bright); letter-spacing: -0.01em;
+}
+.alliances-title__dot { color: var(--amber); }
+.alliances-empty {
+    margin-top: 24px; padding: 48px 24px;
+    border: 1px solid var(--border-0); background: var(--bg-2);
+    text-align: center;
+    font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.06em;
+    color: var(--text-dim); text-transform: uppercase;
+}
+</style>
+</head>
+<body>
+<div id="loading" class="loading-msg">LOADING…</div>
+<div id="page-content" style="display:none;">
+    <div id="corp-topbar-container"></div>
+    <div class="alliances-shell">
+        <div class="alliances-title">Strategic Alliances<span class="alliances-title__dot">.</span></div>
+        <div class="alliances-empty">No alliances yet.</div>
+    </div>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+
+let faction = null;
+let shard = null;
+let allUserFactions = [];
+
+async function init() {
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) { window.location.href = 'login.html'; return; }
+
+    // Inspector mode parity with other corp pages — admin override via
+    // ?faction_id= URL param skips sessionStorage / faction-type redirects.
+    const urlFactionId = new URLSearchParams(location.search).get('faction_id');
+    if (urlFactionId) {
+        const { data: inspected } = await _supabase.from('factions').select('*').eq('id', urlFactionId).single();
+        if (inspected?.faction_type === 'corporation') faction = inspected;
+    }
+
+    if (!faction) {
+        const { data: allFactions } = await _supabase.from('factions')
+            .select('*').or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
+        allUserFactions = (allFactions || []).filter(f => f.nation_id);
+        const activeFactionId = sessionStorage.getItem('active_faction_id');
+        faction = allUserFactions.find(f => f.id === activeFactionId)
+            || allUserFactions.find(f => f.faction_type === 'corporation')
+            || allUserFactions[0];
+        if (!faction) { await _supabase.auth.signOut(); window.location.href = 'login.html'; return; }
+        if (faction.faction_type !== 'corporation') { window.location.href = 'dashboard.html'; return; }
+    }
+
+    const { data: shardData } = await _supabase.from('shard')
+        .select('current_tick, current_date, next_tick_at, tick_interval_hours')
+        .eq('name', 'Alpha Shard').single();
+    shard = shardData;
+
+    const topBar = document.getElementById('corp-topbar-container');
+    if (topBar) {
+        const { renderCorpTopBar } = await import('./js/corp-topbar.js');
+        renderCorpTopBar(topBar, { faction, shard, activeTab: 'alliances', allUserFactions });
+    }
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('page-content').style.display = 'block';
+}
+
+init();
+</script>
+</body>
+</html>

@@ -53,7 +53,7 @@ function buildNavTabs(corpSector, factionId) {
         // URL, works for every sector.
         { id: 'expansion', label: 'EXPANSION', href: 'expansion.html' },
         { id: 'actions', label: 'ACTIONS', href: 'actions.html' },
-        { id: 'innovation', label: 'INNOVATION', disabled: true },
+        { id: 'alliances', label: 'STRATEGIC ALLIANCES', href: 'alliances.html' },
         { id: 'nations', label: 'NATIONS', href: 'corp-nations.html' },
         { id: 'news', label: 'NEWS', href: 'news.html' },
         { id: 'wiki', label: 'WIKI', href: 'wiki.html' },
