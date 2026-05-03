@@ -124,7 +124,7 @@ const LEADER_ACTIONS = [
     {
         id: 'fundraise',
         name: 'Fundraise',
-        desc: 'Host a themed event for one voter bloc. Once per tick. Costs −0.3 popularity with the host bloc (donor fatigue) and −0.5 with a paired opposition bloc (optics). No cash yield — fundraising builds positioning, not bank balance.',
+        desc: 'Host a themed event for one voter bloc. Once per tick. Costs −0.3 popularity with the host bloc (donor fatigue) and −0.5 with a paired opposition bloc (optics). Yields cash to party funds based on your rapport with the host bloc and its national weight. Corporate Gala is positioning-only.',
         cost: 'ACTION',
         costColor: '#c8a832',
         moneyCost: 0,
@@ -4064,7 +4064,7 @@ async function renderFundraiseModal(root) {
                     <button type="button" class="pa-modal-close" data-act="fr-close">&times;</button>
                 </div>
                 <div class="pa-modal-subtitle" style="padding:0 20px 8px 20px;font-size:11px;color:var(--text-secondary);">
-                    Once per tick · No cash yield · Each event positions you with a voter bloc and alienates a paired opposition.
+                    Once per tick · Yield = $25k × your popularity × bloc weight (Corporate Gala excluded). Costs popularity with both blocs.
                 </div>
                 <div id="pa-fundraise-body" style="flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0;border-top:1px solid var(--border-main);">
                 </div>
@@ -4139,6 +4139,16 @@ function renderFundraiseDetail(body, sectorStates, root) {
     const hostBlocked = !host;
     const oppMissing = !opp;
 
+    // Yield mirrors the SQL: $25k × (pop_tenths / 10) × weight = $2,500 × pop_tenths × weight.
+    // Corporate Gala is the one positioning-only event (corps already donate via lobbyist actions).
+    const yieldsCash = ev.event_key !== 'corporate_gala';
+    const projectedYield = (yieldsCash && host)
+        ? 2500 * (host.popularity_tenths || 0) * Math.max(1, host.weight || 1)
+        : 0;
+    const yieldDisplay = projectedYield >= 1000000
+        ? '$' + (projectedYield / 1000000).toFixed(2) + 'M'
+        : '$' + Math.round(projectedYield / 1000) + 'k';
+
     detail.innerHTML = `
         <div style="display:flex;align-items:baseline;gap:8px;">
             <span style="font-size:18px;">${ev.icon}</span>
@@ -4167,6 +4177,16 @@ function renderFundraiseDetail(body, sectorStates, root) {
                 ${oppMissing
                     ? '<span style="color:var(--text-dim);font-style:italic;">not in this nation — no cost</span>'
                     : '<span style="color:#d44a4a;font-weight:700;">−0.5 (optics)</span>'}
+            </div>
+        </div>
+
+        <div style="margin-top:10px;padding:10px 12px;background:var(--bg-card);border:1px solid var(--border-main);">
+            <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px;">Projected yield</div>
+            <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:11px;color:var(--text-bright);padding:2px 0;">
+                <span>↑ Party funds</span>
+                ${yieldsCash
+                    ? `<span style="color:#5cb85c;font-weight:700;">+${yieldDisplay}</span>`
+                    : '<span style="color:var(--text-dim);font-style:italic;">positioning only — no yield</span>'}
             </div>
         </div>
 
@@ -4209,6 +4229,13 @@ async function submitFundraise(root) {
         if (overlay) overlay.style.display = 'none';
         sessionStorage.removeItem('nationhood_state');
         _fundraiseUseCount++;
+        const yieldAmt = Number(data?.yield) || 0;
+        if (yieldAmt > 0) {
+            const yieldStr = yieldAmt >= 1000000
+                ? '$' + (yieldAmt / 1000000).toFixed(2) + 'M'
+                : '$' + Math.round(yieldAmt / 1000) + 'k';
+            alert('Fundraiser hosted. +' + yieldStr + ' to party funds.');
+        }
         renderPage(root);
     } catch (err) {
         console.error('[PartyActions] Fundraise error:', err);
