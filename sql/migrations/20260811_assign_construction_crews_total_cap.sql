@@ -40,7 +40,13 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Contract has no winner');
     END IF;
 
-    SELECT * INTO v_corp FROM factions WHERE id = v_contract.winner_faction_id;
+    -- Lock the corp row for the duration of the txn so two concurrent
+    -- assign_construction_crews calls for the same corp can't both
+    -- pass the cap check on stale reads. Cross-corp calls don't
+    -- contend on this lock.
+    SELECT * INTO v_corp FROM factions
+    WHERE id = v_contract.winner_faction_id
+    FOR UPDATE;
     IF v_corp.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Winning corp missing');
     END IF;
