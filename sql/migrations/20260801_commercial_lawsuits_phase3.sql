@@ -347,20 +347,18 @@ BEGIN
                 RETURN jsonb_build_object('success', false, 'error', 'Relief amount cannot be negative');
             END IF;
             IF v_relief_amount > 0 THEN
+                -- Resolve payer/payee + cap at payer's cash in one branch.
+                -- Any shortfall is recorded in the executed JSON via the
+                -- post-cap v_relief_amount.
                 IF v_relief_recipient = 'plaintiff' THEN
                     v_relief_payer := v_defendant.id;
                     v_relief_payee := v_plaintiff.id;
-                ELSE
-                    v_relief_payer := v_plaintiff.id;
-                    v_relief_payee := v_defendant.id;
-                END IF;
-                -- Cap at payer's cash so we don't overdraw. Any shortfall
-                -- is recorded in the executed JSON for transparency.
-                IF v_relief_recipient = 'plaintiff' THEN
                     IF COALESCE(v_defendant.corp_cash_reserves, 0) < v_relief_amount THEN
                         v_relief_amount := COALESCE(v_defendant.corp_cash_reserves, 0);
                     END IF;
                 ELSE
+                    v_relief_payer := v_plaintiff.id;
+                    v_relief_payee := v_defendant.id;
                     IF COALESCE(v_plaintiff.corp_cash_reserves, 0) < v_relief_amount THEN
                         v_relief_amount := COALESCE(v_plaintiff.corp_cash_reserves, 0);
                     END IF;

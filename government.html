@@ -12604,7 +12604,7 @@ function generateAdminSummary(admin) {
 //
 // "REVIEW" affordance is gated to the party holding the Justice
 // ministry (read from active government_formations.ministry_assignments)
-// (Phase 2 ships defendant response; MoJ ruling lands in Phase 3.)
+// MoJ ruling button enabled for awaiting_trial cases (Phase 3).
 // ──────────────────────────────────────────────────────────────────
 async function renderJudicialTab(container) {
     if (!container) return;
@@ -12666,9 +12666,9 @@ async function renderJudicialTab(container) {
         const sc      = statusColor[l.status] || '#9e9a92';
         const ticksLeft = Math.max(0, Number(l.response_deadline_tick || 0) - Number(currentTick || 0));
 
-        // Phase-stage hint replaces the static "Awaiting MoJ" label
-        // with text reflecting where the case actually is in its
-        // lifecycle. MoJ ruling controls land in Phase 3.
+        // Phase-stage hint reflects where the case actually is in its
+        // lifecycle. The Rule on Case button (further down) is the
+        // MoJ-holder's active control on awaiting_trial cases.
         let hintText = '';
         if (l.status === 'pending') {
             hintText = `Waiting for Defendant to Respond · ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}`;
@@ -12720,7 +12720,7 @@ async function renderJudicialTab(container) {
     const banner = justiceVacant
         ? `<div style="font-family:var(--font-mono);font-size:11px;color:#c84;letter-spacing:0.06em;">Justice ministry vacant — pending cases remain on the docket until a Minister of Justice is appointed.</div>`
         : viewerHoldsJustice
-            ? `<div style="font-family:var(--font-mono);font-size:11px;color:#5cb85c;letter-spacing:0.06em;">Your party holds the Ministry of Justice. Ruling controls arrive in Phase 3.</div>`
+            ? `<div style="font-family:var(--font-mono);font-size:11px;color:#5cb85c;letter-spacing:0.06em;">Your party holds the Ministry of Justice. Cases awaiting trial show a Rule on Case control.</div>`
             : `<div style="font-family:var(--font-mono);font-size:11px;color:#9e9a92;letter-spacing:0.06em;">Cases are reviewed by the Ministry of Justice.</div>`;
 
     html += `<div style="padding:16px 20px;border-bottom:1px solid var(--border-main);background:var(--bg-2,#1a1a17);">
