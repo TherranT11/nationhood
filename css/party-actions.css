@@ -128,10 +128,6 @@
     font-family: var(--font-mono); font-size: 9px; color: var(--amber);
     letter-spacing: 0.08em;
 }
-.pa-cabinet-summary__empty {
-    font-family: var(--font-mono); font-size: 9px;
-    color: var(--text-dim); font-style: italic; padding: 6px 0;
-}
 .pa-cabinet-summary__row {
     display: flex; gap: 8px; padding: 6px 4px;
     border-top: 1px solid var(--border-mid);

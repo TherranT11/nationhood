@@ -13,7 +13,7 @@ import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, getGoverningStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
 import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsuit, fetchActiveLawsuits } from './game/lawsuits.js';
 import { getNationNames, resignPM, installHOG } from './game/political-actions.js';
-import { isAbsoluteMonarchy, isSemiPresidential, hasParliamentaryPM } from './game/government-types.js';
+import { isAbsoluteMonarchy, isSemiPresidential, hasParliamentaryPM, hasElectedPresident } from './game/government-types.js';
 import { fetchActiveCoalition } from './game/government-structure.js';
 import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './game/config.js';
 import { fileNoConfidenceMotion } from './game/no-confidence.js';
@@ -363,15 +363,15 @@ export async function initPartyActions(supabase, state) {
     // Ministries this faction holds — feeds the new Cabinet Ministries
     // summary + Ministry Actions panels. Filtered server-side by
     // is_active so the side panel only ever shows live seats.
+    _heldMinistries = [];
     if (faction?.id && state.nation?.id) {
-        const { data: minRows } = await _supabase.from('ministries')
+        const { data: minRows, error: minErr } = await _supabase.from('ministries')
             .select('ministry_key, party_id, is_active')
             .eq('nation_id', state.nation.id)
             .eq('party_id', faction.id)
             .eq('is_active', true);
-        _heldMinistries = minRows || [];
-    } else {
-        _heldMinistries = [];
+        if (minErr) console.warn('[PartyActions] ministries fetch failed:', minErr.message);
+        else _heldMinistries = minRows || [];
     }
 
     // Fetch lawsuits if agitator is hired
@@ -1192,52 +1192,37 @@ function getHeldCabinetMinistries(faction) {
     );
 }
 
-function isPlayerPM(faction) {
-    return !!_administration && _administration.pm_party_id === faction?.id;
-}
-
-function isPlayerPresident(faction) {
-    return _state?.nation?.hos_election_method === 'elected'
-        && _administration?.president_party_id === faction?.id;
-}
-
-function nationHasPresidentRole(nation) {
-    if (!nation) return false;
-    if (nation.hos_election_method === 'elected') return true;
-    const govType = String(nation.government_type || '').toLowerCase();
-    return govType === 'presidential' || govType === 'semi_presidential';
-}
-
 function renderCabinetMinistriesPanel(faction) {
     const held = getHeldCabinetMinistries(faction);
+    // Spec: "If you have none, it'll stay empty." Skip the whole panel
+    // when nothing is held so opposition / unaligned factions don't see
+    // a stub.
+    if (held.length === 0) return '';
     return `
         <div class="pa-cabinet-summary">
             <div class="pa-cabinet-summary__head">
                 <span class="pa-cabinet-summary__title">Cabinet Ministries</span>
                 <span class="pa-cabinet-summary__count">${held.length} held</span>
             </div>
-            ${held.length === 0
-                ? `<div class="pa-cabinet-summary__empty">No cabinet seats held.</div>`
-                : held.map(m => {
-                    const d = ministryDisplay(m.ministry_key);
-                    const actionCount = ministryActionCount(m.ministry_key);
-                    return `
-                        <div class="pa-cabinet-summary__row">
-                            <div class="pa-cabinet-summary__chip">${esc(d.short)}</div>
-                            <div class="pa-cabinet-summary__meta">
-                                <div class="pa-cabinet-summary__role">
-                                    <span>MINISTER</span>
-                                    ${actionCount > 0
-                                        ? `<span class="pa-cabinet-summary__actions">${actionCount} action${actionCount === 1 ? '' : 's'}</span>`
-                                        : ''}
-                                </div>
-                                <div class="pa-cabinet-summary__name">${esc(d.name.replace(/^Minister(\s+of\s+|\s+for\s+)?/i, '') || d.name)}</div>
-                                <div class="pa-cabinet-summary__domain">${esc(d.domain)}</div>
+            ${held.map(m => {
+                const d = ministryDisplay(m.ministry_key);
+                const actionCount = ministryActionCount(m.ministry_key);
+                return `
+                    <div class="pa-cabinet-summary__row">
+                        <div class="pa-cabinet-summary__chip">${esc(d.short)}</div>
+                        <div class="pa-cabinet-summary__meta">
+                            <div class="pa-cabinet-summary__role">
+                                <span>MINISTER</span>
+                                ${actionCount > 0
+                                    ? `<span class="pa-cabinet-summary__actions">${actionCount} action${actionCount === 1 ? '' : 's'}</span>`
+                                    : ''}
                             </div>
+                            <div class="pa-cabinet-summary__name">${esc(d.name.replace(/^Minister(\s+of\s+|\s+for\s+)?/i, '') || d.name)}</div>
+                            <div class="pa-cabinet-summary__domain">${esc(d.domain)}</div>
                         </div>
-                    `;
-                }).join('')
-            }
+                    </div>
+                `;
+            }).join('')}
         </div>
     `;
 }
@@ -1273,8 +1258,9 @@ const _MINISTRY_ACTION_REGISTRY = {
 function renderMinistryActionsPanel(faction) {
     const sections = [];
     const nation = _state?.nation;
+    const hog = classifyHeadOfGovernment(faction);
 
-    if (isPlayerPM(faction)) {
+    if (hog.isPM) {
         sections.push(renderMinistrySection({
             key: 'prime_minister',
             label: 'PRIME MINISTER',
@@ -1284,7 +1270,7 @@ function renderMinistryActionsPanel(faction) {
         }));
     }
 
-    if (isPlayerPresident(faction) && nationHasPresidentRole(nation)) {
+    if (hog.isPresident && hasElectedPresident(nation)) {
         sections.push(renderMinistrySection({
             key: 'president',
             label: 'PRESIDENT',
@@ -1360,16 +1346,20 @@ function renderMinistrySection({ key, label, sublabel, actions, faction }) {
 function ministryActionLockReason(actionId, faction) {
     const nation = _state?.nation;
     if (actionId === 'call_early_elections' || actionId === 'resign_as_pm') {
+        // Reachable only inside the PM section (renderMinistryActionsPanel
+        // already gates on classifyHeadOfGovernment.isPM), so the
+        // PM-only / parliamentary checks are implicit. The two states
+        // that still require a lock are absolute monarchy (PM exists
+        // but is the Monarch's appointee) and an already-caretaker
+        // coalition.
         if (isAbsoluteMonarchy(nation)) {
             return actionId === 'call_early_elections'
                 ? 'Elections are not held under absolute monarchy.'
                 : 'PM serves at the Monarch’s pleasure; only the Monarch can replace them.';
         }
-        if (!hasParliamentaryPM(nation)) {
-            return 'Only parliamentary and semi-presidential systems have a PM seat.';
+        if (nation?.__coalition_status === 'caretaker') {
+            return 'Government already in caretaker mode.';
         }
-        if (!isPlayerPM(faction)) return 'Prime Minister only.';
-        if (nation.__coalition_status === 'caretaker') return 'Government already in caretaker mode.';
     }
     return '';
 }
