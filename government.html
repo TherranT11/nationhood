@@ -12620,7 +12620,9 @@ async function renderJudicialTab(container) {
         _supabase.from('commercial_lawsuits')
             .select(`
                 id, status, grievance_type, relief_sought,
-                filed_at_tick, response_deadline_tick, closed_at_tick,
+                filed_at_tick, responded_at_tick,
+                response_deadline_tick, ruling_deadline_tick, closed_at_tick,
+                defense_text, relationship_ref, chat_id,
                 plaintiff:plaintiff_faction_id(faction_name, abbreviation, corp_ticker),
                 defendant:defendant_faction_id(faction_name, abbreviation, corp_ticker)
             `)
@@ -12684,6 +12686,13 @@ async function renderJudicialTab(container) {
             ? `<span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:${hintColor};">${escapeHtml(hintText)}</span>`
             : '';
 
+        // MoJ ruling button — shown only when case is awaiting_trial
+        // AND viewer's party holds Justice in this nation. data-lawsuit-id
+        // wires to the click handler that mounts the rule modal.
+        const ruleBtn = (l.status === 'awaiting_trial' && viewerHoldsJustice)
+            ? `<button class="judicial-rule-btn" data-lawsuit-id="${escapeHtml(l.id)}" style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;padding:6px 12px;color:#000;background:#c8a832;border:1px solid #c8a832;cursor:pointer;">Rule on Case ▸</button>`
+            : '';
+
         return `<div style="padding:12px 16px;border-bottom:1px solid var(--border-main);background:var(--bg-panel);display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;">
             <div style="min-width:0;">
                 <div style="font-size:14px;font-weight:600;color:var(--text-bright);">
@@ -12700,6 +12709,7 @@ async function renderJudicialTab(container) {
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
                 <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;padding:3px 9px;color:${sc};border:1px solid ${sc}66;background:${sc}14;">${escapeHtml(l.status.replace('_',' '))}</span>
                 ${hint}
+                ${ruleBtn}
             </div>
         </div>`;
     }
@@ -12738,7 +12748,33 @@ async function renderJudicialTab(container) {
     }
 
     container.innerHTML = html;
+
+    // Wire the Rule on Case buttons (delegated). Clicking mounts the
+    // Phase 3 rule modal with the lawsuit row from the rendered list.
+    container.querySelectorAll('.judicial-rule-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const id = btn.getAttribute('data-lawsuit-id');
+            const lawsuit = (suitsRes.data || []).find(x => x.id === id);
+            if (!lawsuit) return;
+            try {
+                const m = await import('./js/lawsuit-rule.js');
+                m.openLawsuitRuleModal(lawsuit, currentFaction);
+            } catch (err) {
+                console.warn('[judicial] rule modal mount failed:', err?.message || err);
+            }
+        });
+    });
 }
+
+// Refresh the Judicial subtab when a ruling is issued elsewhere on
+// this client (modal closes via lawsuit:ruled event).
+window.addEventListener('lawsuit:ruled', () => {
+    if (_govActiveSubtab === 'judicial') {
+        const container = document.getElementById('gov-content');
+        if (container) renderJudicialTab(container);
+    }
+});
 
 async function renderPastAdministrationsTab(container, nationIdOverride) {
     if (!container) return;
