@@ -1,32 +1,31 @@
 // js/loan-negotiation-modal.js
 //
-// Loan-negotiation modal (Phase 3 — realtime + edits + chat).
+// Loan-negotiation modal (Phase 4 — Agree wiring + fire-on-double-agree).
 //
 // Public surface:
-//   mountLoanNegotiationModal({ supabase, negotiationId, onClose })
+//   mountLoanNegotiationModal({ supabase, negotiationId, onClose, onFired })
 //     → returns { close } once the modal mounts (data loaded)
 //     → mount target: document.body (overlay)
+//     → onFired(neg) optional — fires when status flips open → fired,
+//       BEFORE the celebratory 3s auto-close. Parent pages can
+//       refresh dashboards / hero stats here.
 //
-// Phase 3 scope:
-//   • Two Realtime subscriptions on a single channel — picks up
-//     loan_negotiations row updates + new loan_negotiation_messages
-//     rows within ~1s. Channel + beforeunload listener cleaned up
-//     on close.
-//   • Term inputs editable (when status='open'). Apply Changes calls
-//     update_negotiation_terms — server resets both Agree flags +
-//     refunds escrow, realtime push re-renders.
-//   • Chat input + Send wired to post_negotiation_message. Realtime
-//     echo appends the message; we de-dupe by id.
-//   • Walk Away button calls abandon_negotiation. Status flips to
-//     'abandoned'; realtime push re-renders the modal to terminal
-//     state with all inputs disabled.
-//   • Focus + cursor preserved across row-update re-renders so a
-//     player typing into Principal doesn't get clobbered when
-//     counterparty makes an unrelated edit.
+// Phase 3 features still present: realtime subscriptions, editable
+// terms, chat send + receive, walk-away, focus + chat-draft
+// preservation across re-renders.
 //
-// Out of scope (Phase 4): Agree checkboxes still disabled with
-// "Phase 4" note. set_negotiation_agreement wiring + the fire-on-
-// double-agree path lands next.
+// Phase 4 additions:
+//   • Viewer's role (borrower vs lender) computed from auth.uid() vs.
+//     joined linked_user_id. Only the viewer's own Agree checkbox is
+//     toggleable; counterparty's is read-only display.
+//   • Agree toggle wired to set_negotiation_agreement(neg_id, bool).
+//     Server handles escrow debit (lender) / refund / fire-on-both.
+//     On error (e.g. lender insufficient cash), checkbox reverts and
+//     #lnm-agree-error surfaces the message.
+//   • Fire detection: realtime UPDATE handler watches for status
+//     transition open → fired, calls onFired callback, schedules a
+//     3s auto-close. Manually closing during the window cancels the
+//     auto-close (closed flag short-circuits the setTimeout).
 
 const STYLE_ID = 'lnm-style';
 
@@ -293,9 +292,9 @@ function fetchNegotiation(supabase, negotiationId) {
         .select(`
             id, status, principal, apr, term_ticks, purpose, notes,
             borrower_agreed, lender_agreed, escrowed_lender_cash,
-            last_activity_at,
-            borrower:borrower_faction_id(id, faction_name),
-            lender:lender_faction_id(id, faction_name)
+            last_activity_at, fired_to_loan_id,
+            borrower:borrower_faction_id(id, faction_name, linked_user_id),
+            lender:lender_faction_id(id, faction_name, linked_user_id)
         `)
         .eq('id', negotiationId)
         .maybeSingle();
@@ -352,17 +351,19 @@ function renderError(modalEl, message) {
         <div class="lnm-error">${escHtml(message)}</div>`;
 }
 
-function renderModal(modalEl, neg, messages) {
+function renderModal(modalEl, neg, messages, viewerRole) {
     const tally    = (neg.borrower_agreed ? 1 : 0) + (neg.lender_agreed ? 1 : 0);
     const statusCls = 'lnm-status--' + neg.status;
     const tallyCls  = 'lnm-agreement-tally--' + tally;
     const isOpen   = neg.status === 'open';
     const disAttr  = isOpen ? '' : 'disabled';
+    const borrowerCanToggle = isOpen && viewerRole === 'borrower';
+    const lenderCanToggle   = isOpen && viewerRole === 'lender';
 
     let terminalBanner = '';
     if (neg.status === 'fired') {
         terminalBanner = `<div class="lnm-terminal-banner lnm-terminal-banner--fired">
-            ✓ Loan disbursed. This negotiation is closed.
+            ✓ Loan disbursed: $${Number(neg.principal).toLocaleString()} at ${escHtml(neg.apr)}% for ${escHtml(neg.term_ticks)} ticks. This window closes shortly.
         </div>`;
     } else if (neg.status === 'abandoned') {
         terminalBanner = `<div class="lnm-terminal-banner lnm-terminal-banner--abandoned">
@@ -434,23 +435,25 @@ function renderModal(modalEl, neg, messages) {
 
             <div class="lnm-agreement">
               <div class="lnm-agree-row">
-                <input type="checkbox" ${neg.borrower_agreed ? 'checked' : ''} disabled>
-                <span>Borrower agreed</span>
+                <input type="checkbox"
+                       data-act="agree-borrower"
+                       ${neg.borrower_agreed ? 'checked' : ''}
+                       ${borrowerCanToggle ? '' : 'disabled'}>
+                <span>Borrower agreed${viewerRole === 'borrower' && isOpen ? ' <small style="color:var(--text-muted);margin-left:4px;">(you)</small>' : ''}</span>
               </div>
               <div class="lnm-agree-row">
-                <input type="checkbox" ${neg.lender_agreed ? 'checked' : ''} disabled>
-                <span>Lender agreed
+                <input type="checkbox"
+                       data-act="agree-lender"
+                       ${neg.lender_agreed ? 'checked' : ''}
+                       ${lenderCanToggle ? '' : 'disabled'}>
+                <span>Lender agreed${viewerRole === 'lender' && isOpen ? ' <small style="color:var(--text-muted);margin-left:4px;">(you)</small>' : ''}
                 ${neg.escrowed_lender_cash > 0
                     ? '<small style="color:var(--text-muted);margin-left:6px;">(escrowed $' + Number(neg.escrowed_lender_cash).toLocaleString() + ')</small>'
                     : ''}
                 </span>
               </div>
               <div class="lnm-agreement-tally ${tallyCls}">Agreement: ${tally}/2</div>
-            </div>
-
-            <div class="lnm-phase-note">
-              Phase 3 — terms editing, chat, walk-away wired. Agree
-              checkboxes activate in Phase 4 (fire-on-double-agree).
+              <div class="lnm-inline-error" id="lnm-agree-error" style="display:none;margin-top:6px;"></div>
             </div>
           </div>
 
@@ -519,7 +522,7 @@ function appendChatMessageDom(modalEl, msg, neg) {
 }
 
 // ── Mount ────────────────────────────────────────────────────────
-export async function mountLoanNegotiationModal({ supabase, negotiationId, onClose } = {}) {
+export async function mountLoanNegotiationModal({ supabase, negotiationId, onClose, onFired } = {}) {
     if (!supabase)      throw new Error('mountLoanNegotiationModal: supabase client required');
     if (!negotiationId) throw new Error('mountLoanNegotiationModal: negotiationId required');
 
@@ -573,8 +576,23 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
     neg      = negRes.data;
     messages = msgsRes.data || [];
 
-    renderModal(modalEl, neg, messages);
-    wireActionHandlers(modalEl, supabase, negotiationId, () => neg);
+    // Determine viewer's role from auth.uid() vs. joined linked_user_id.
+    // Stable across the modal lifecycle — only depends on the user, not
+    // negotiation state. Computed once here, reused across re-renders.
+    let viewerRole = null;
+    try {
+        const { data: { user } = {} } = await supabase.auth.getUser();
+        const uid = user?.id;
+        if (uid) {
+            if (uid === neg.borrower?.id || uid === neg.borrower?.linked_user_id) viewerRole = 'borrower';
+            else if (uid === neg.lender?.id || uid === neg.lender?.linked_user_id) viewerRole = 'lender';
+        }
+    } catch (e) {
+        console.warn('[loan-negotiation-modal] auth.getUser failed:', e?.message || e);
+    }
+
+    renderModal(modalEl, neg, messages, viewerRole);
+    wireActionHandlers(modalEl, supabase, negotiationId, () => neg, viewerRole);
 
     // ── Realtime subscriptions ───────────────────────────────────
     // One channel, two listeners. UPDATE on the negotiation row
@@ -594,6 +612,7 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
             // Preserve any in-flight chat draft so a counterparty term-
             // change re-render doesn't wipe what you were typing.
             const chatDraft = modalEl.querySelector('[data-lnm-field="chat-input"]')?.value || '';
+            const previousStatus = neg?.status;
             const { data, error } = await fetchNegotiation(supabase, negotiationId);
             if (closed) return;
             if (error) {
@@ -602,14 +621,27 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
             }
             if (!data) return;
             neg = data;
-            renderModal(modalEl, neg, messages);
-            wireActionHandlers(modalEl, supabase, negotiationId, () => neg);
+            renderModal(modalEl, neg, messages, viewerRole);
+            wireActionHandlers(modalEl, supabase, negotiationId, () => neg, viewerRole);
             // Restore chat draft only if the re-rendered input is empty —
             // avoids clobbering a value the user managed to type during
             // the brief re-render window.
             const chatIn = modalEl.querySelector('[data-lnm-field="chat-input"]');
             if (chatIn && chatDraft && !chatIn.value) chatIn.value = chatDraft;
             restoreFocus(modalEl, focusSnap);
+
+            // Fire transition: open → fired. Notify the parent (so
+            // dashboards can refresh hero stats / cash cards), then
+            // schedule a celebratory auto-close. Manual close during
+            // the window short-circuits via the closed flag.
+            if (previousStatus === 'open' && neg.status === 'fired') {
+                if (typeof onFired === 'function') {
+                    try { await onFired(neg); } catch (e) {
+                        console.warn('[loan-negotiation-modal] onFired callback threw:', e?.message || e);
+                    }
+                }
+                setTimeout(() => { if (!closed) close(); }, 3000);
+            }
         })
         .on('postgres_changes', {
             event: 'INSERT',
@@ -630,7 +662,7 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
 
 // ── Action wiring (re-bound on every full re-render since innerHTML
 //    discards old listeners) ──────────────────────────────────────
-function wireActionHandlers(modalEl, supabase, negotiationId, getNeg) {
+function wireActionHandlers(modalEl, supabase, negotiationId, getNeg, viewerRole) {
     // Apply Changes
     const applyBtn = modalEl.querySelector('[data-act="apply-terms"]');
     if (applyBtn) {
@@ -747,6 +779,48 @@ function wireActionHandlers(modalEl, supabase, negotiationId, getNeg) {
             sendChat();
         }
     });
+
+    // ── Agree toggle (Phase 4) ──
+    // Only the viewer's own checkbox is enabled. Click → set_negotiation_agreement.
+    // On error (lender insufficient cash, etc.) revert and surface message.
+    const myAgreeSelector = viewerRole === 'borrower' ? '[data-act="agree-borrower"]'
+                          : viewerRole === 'lender'   ? '[data-act="agree-lender"]'
+                          : null;
+    const agreeErr = modalEl.querySelector('#lnm-agree-error');
+    const myBox    = myAgreeSelector ? modalEl.querySelector(myAgreeSelector) : null;
+    if (myBox && !myBox.disabled) {
+        myBox.addEventListener('change', async (e) => {
+            if (agreeErr) { agreeErr.style.display = 'none'; agreeErr.textContent = ''; }
+            const newValue = !!e.target.checked;
+            e.target.disabled = true;
+            try {
+                const { data, error } = await supabase.rpc('set_negotiation_agreement', {
+                    p_neg_id: negotiationId,
+                    p_agreed: newValue,
+                });
+                if (error) {
+                    e.target.checked = !newValue;
+                    showInline(agreeErr, error.message);
+                    return;
+                }
+                if (!data?.success) {
+                    e.target.checked = !newValue;
+                    showInline(agreeErr, data?.error || 'Could not change agreement.');
+                    return;
+                }
+                // Success: realtime UPDATE will reconcile the row + flip
+                // status if both parties are now agreed (fire path).
+            } catch (err) {
+                e.target.checked = !newValue;
+                showInline(agreeErr, err?.message || 'Network error.');
+            } finally {
+                // Re-enable only if the modal hasn't transitioned to a
+                // terminal state (in which case re-render disables it).
+                const stillOpen = getNeg()?.status === 'open';
+                e.target.disabled = !stillOpen;
+            }
+        });
+    }
 }
 
 function showInline(el, msg) {
