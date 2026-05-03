@@ -694,12 +694,17 @@ async function handleFormGovernment(formation, root) {
         let rpcSucceeded = false;
         try {
             const baselines = buildMinistryBaselines ? buildMinistryBaselines(null, nation) : {};
-            const { error: rpcErr } = await _supabase.rpc('finalize_government_formation', {
+            const { data: rpcData, error: rpcErr } = await _supabase.rpc('finalize_government_formation', {
                 p_formation_id: formation.id,
                 p_caller_faction_id: _state.faction.id,
                 p_ministry_baselines: baselines || {},
             });
             if (rpcErr) throw rpcErr;
+            // The RPC returns { error: 'msg' } as structured data on
+            // validation failures (auth, status, missing nation, etc.).
+            // PostgREST doesn't surface those as rpcErr — without this
+            // check, structured errors silently appear as success.
+            if (rpcData?.error) throw new Error(rpcData.error);
             rpcSucceeded = true;
         } catch (rpcErr) {
             console.warn('[Coalition] RPC failed, using fallback:', rpcErr.message);
@@ -741,15 +746,8 @@ async function handleFormGovernment(formation, root) {
             await createMinistriesFromAssignments(nationId);
         }
 
-        // Auto-appoint PM's party leader (skip coalition check — we just formed it).
-        // The finalize_government_formation RPC has already closed the previous
-        // administration, inserted the new admin row, and installed HOG (semi-pres
-        // detection inside the RPC handles the parliamentary-vs-presidential
-        // split). The previous code re-ran rolloverAdministration here, which —
-        // with the RPC now succeeding (20260804) — closed the just-inserted admin
-        // and inserted another one, leaving a 0-tick ghost admin per formation.
-        // The fallback path (formGovernmentFallback) still calls rolloverAdministration
-        // because that path runs only when the RPC failed.
+        // Admin lifecycle is handled inside the RPC (or by formGovernmentFallback
+        // → rolloverAdministration on the failure path).
         await autoAppointPartyLeaderAsPM(_supabase, nationId, pmPartyId, _currentTick, { skipCoalitionCheck: true });
 
         _formationNeeded = false;
