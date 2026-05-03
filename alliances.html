@@ -183,6 +183,82 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 .al-btn--primary { color: var(--amber); border-color: var(--amber-border); background: var(--amber-faint); }
 .al-btn--leave   { color: var(--red);   border-color: rgba(217,83,79,0.3); background: rgba(217,83,79,0.04); }
 
+/* ── Negotiation view ── */
+.ng-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 32px; margin-top: 16px; }
+.ng-head__title { font-family: var(--font-serif); font-size: 28px; font-weight: 600; color: var(--text-bright); letter-spacing: -0.01em; }
+.ng-head__sub { margin-top: 8px; display: flex; align-items: center; gap: 10px; font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+.ng-head__metrics { display: flex; gap: 36px; align-items: flex-end; }
+.ng-head__metric { text-align: right; }
+
+.ng-grid { margin-top: 24px; display: grid; grid-template-columns: 320px 1fr; gap: 24px; align-items: start; }
+@media (max-width: 1000px) { .ng-grid { grid-template-columns: 1fr; } }
+.ng-left { display: flex; flex-direction: column; gap: 0; }
+
+.ng-member {
+    background: var(--bg-2); border: 1px solid var(--border-0);
+    border-left: 3px solid var(--border-1);
+    margin-bottom: 8px;
+}
+.ng-member__top { display: flex; gap: 10px; padding: 10px 12px; align-items: center; }
+.ng-member__body { flex: 1 1 auto; min-width: 0; }
+.ng-member__footer {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 12px; border-top: 1px solid var(--border-0);
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.ng-member__status { color: var(--text-dim); }
+.ng-member__vote   { color: var(--text-primary); }
+
+.ng-tally { margin-top: 18px; padding: 14px; background: var(--bg-2); border: 1px solid var(--border-0); }
+.ng-tally__row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.ng-tally__label { flex: 0 0 130px; font-family: var(--font-mono); font-size: 10px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ng-tally__bar   { flex: 1 1 auto; height: 4px; background: var(--bg-4); }
+.ng-tally__fill  { height: 100%; transition: width 0.15s; }
+.ng-tally__count { flex: 0 0 28px; text-align: right; font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--text-bright); }
+.ng-tally__footer { margin-top: 12px; font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); letter-spacing: 0.04em; }
+
+.ng-right { display: flex; flex-direction: column; gap: 0; }
+.ng-articles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+@media (max-width: 720px) { .ng-articles { grid-template-columns: 1fr; } }
+.ng-article {
+    background: var(--bg-2); border: 1px solid var(--border-0);
+    padding: 14px; cursor: pointer; transition: border-color 0.1s, background 0.1s;
+}
+.ng-article:hover { border-color: var(--text-dim); }
+.ng-article.selected { border-color: var(--amber); background: rgba(200,166,78,0.06); }
+.ng-article__head { display: flex; align-items: baseline; gap: 8px; }
+.ng-article__radio { color: var(--amber); font-size: 14px; line-height: 1; flex: 0 0 auto; }
+.ng-article__name  { flex: 1 1 auto; font-size: 14px; font-weight: 700; color: var(--text-bright); }
+.ng-article__weight { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); letter-spacing: 0.06em; text-transform: uppercase; }
+.ng-article__body  { margin-top: 8px; font-size: 12px; color: var(--text-secondary); line-height: 1.45; }
+.ng-article__meta  {
+    margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-0);
+    display: flex; gap: 16px;
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); letter-spacing: 0.06em;
+}
+.ng-article__meta b { color: var(--text-primary); font-weight: 700; }
+.ng-article__voters {
+    margin-top: 8px; display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); letter-spacing: 0.06em;
+}
+
+.ng-your-vote {
+    margin-top: 12px; padding: 12px 14px;
+    background: var(--bg-2); border: 1px solid var(--border-0);
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+}
+.ng-your-vote__value { margin-top: 2px; font-size: 14px; font-weight: 700; color: var(--green); }
+
+.ng-chat { margin-top: 18px; background: var(--bg-2); border: 1px solid var(--border-0); display: flex; flex-direction: column; }
+.ng-chat__head { padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-0); }
+.ng-chat__scroll { padding: 12px 14px; max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.ng-chat__msg-head { display: flex; align-items: baseline; gap: 8px; }
+.ng-chat__msg-author { font-size: 12px; font-weight: 700; color: var(--amber); }
+.ng-chat__msg-ago    { margin-left: auto; font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); }
+.ng-chat__msg-body   { margin-top: 4px; font-size: 13px; color: var(--text-primary); line-height: 1.5; }
+.ng-chat__compose { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--border-0); }
+.ng-chat__compose .fnd-input { flex: 1 1 auto; }
+
 /* Confirm modal (apply to open alliance) */
 .al-modal-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,0.6);
@@ -469,13 +545,54 @@ const ARTICLE_TAG_CLASS = {
     cartel:       'al-row__tag--cartel',
 };
 
+// Founding-negotiation rules.
+const NEGOTIATION_DURATION_TICKS = 6;            // alliance dissolves after this many ticks without consensus
+const FAILED_NEGOTIATION_REPUTATION_HIT = -1;    // applied to every member if dissolution fires
+
+// One in-memory mock founding-negotiation so the negotiation view is
+// reviewable end-to-end without the backend. Replace with a real
+// `alliance_negotiations` table read once that ships. Kept tagged with
+// `__mock: true` so any upstream surface filter can excise it cleanly.
+const _MOCK_NEGOTIATIONS = [
+    {
+        id: 'mock-negotiation-1',
+        __mock: true,
+        name: "Hajjaran Builders' Pact",
+        sector: 'Construction',
+        opened_ticks_ago: 1,
+        ticks_remaining: 5,
+        founder_faction_id: 'fn',
+        members: [
+            { id: 'fn', faction_name: 'First National',         nation_name: 'Hajjara',     stat_label: 'Crews', stat_value: 7, vote: 'buyer_first', is_founder: true,  is_you: true,  rapport: 'founder' },
+            { id: 'tc', faction_name: 'Tellisar Construction',  nation_name: 'Melizea',     stat_label: 'Crews', stat_value: 7, vote: 'buyer_first', is_founder: false, is_you: false, rapport: 'friendly' },
+            { id: 'kb', faction_name: 'Korven Builders',        nation_name: 'Vorrenstadt', stat_label: 'Crews', stat_value: 5, vote: 'joint_crews', is_founder: false, is_you: false, rapport: 'friendly' },
+            { id: 'mc', faction_name: 'Marrek & Cole',          nation_name: 'Hajjara',     stat_label: 'Crews', stat_value: 4, vote: null,          is_founder: false, is_you: false, rapport: 'neutral' },
+        ],
+        articles: [
+            { id: 'buyer_first',  name: 'Buyer First Supply Chain', body: 'First refusal on member surplus at preferred prices. +1.5 Supply Chain when sourcing from members.', cartel: 0.1, chs: 0.5 },
+            { id: 'joint_crews',  name: 'Joint Crews',              body: 'Use partner crews on cross-border projects at ~30% lower cost. Bid on foreign projects.',           cartel: 0.0, chs: 0.4 },
+            { id: 'safety',       name: 'Safety & Standards Firm',  body: '+1 Regulatory Standing in shared nations. Joint liability for safety failures.',                   cartel: 0.2, chs: 0.4 },
+            { id: 'megaproject',  name: 'Megaproject Syndicate',    body: 'Pool crews on megaprojects. Lock crews for project duration; failures hit all members.',           cartel: 0.0, chs: 0.6 },
+        ],
+        chat: [
+            { author: 'First National',        is_founder: true,  ago: '6h ago', body: "Welcome to the Hajjaran Builders' Pact. I've put four candidate articles on the table — pick whichever serves you best. My vote is on Buyer First Supply Chain." },
+            { author: 'Tellisar Construction', is_founder: false, ago: '5h ago', body: "Buyer First makes sense. We've been burned twice on imported steel this year. Voting with you, First National." },
+            { author: 'Korven Builders',       is_founder: false, ago: '3h ago', body: "Respectfully — Buyer First would mean obligating Vorrenstadt suppliers to favor Hajjaran members during shortages. We can't do that. Joint Crews makes more sense for us. We have surplus crew capacity and could earn from cross-border deployment." },
+        ],
+    },
+];
+
 // ── State ──
 let faction = null;
 let shard = null;
 let allUserFactions = [];
-// View state. 'list' = empty/active alliances, 'found' = the multi-step
-// charter form. Ephemeral — survives only while the page is mounted.
+// View state. 'list' = landing, 'found' = multi-step charter form,
+// 'negotiation' = live founding negotiation drill-in. Ephemeral —
+// survives only while the page is mounted.
 let _view = 'list';
+let _negotiationId = null;             // active negotiation when _view === 'negotiation'
+let _negotiationDraftVote = null;      // local-only override; cleared on view change
+let _pendingNegotiations = [..._MOCK_NEGOTIATIONS]; // swap to a backend fetch when the table ships
 // Form state. Held in JS so re-renders preserve user input. Per the
 // design call-out: "build with state for later" so when the RPC ships
 // the form values plug straight in.
@@ -564,9 +681,25 @@ async function init() {
 function renderShell() {
     const shell = document.getElementById('alliances-shell');
     if (!shell) return;
-    if (_view === 'found') shell.innerHTML = renderFoundView();
-    else shell.innerHTML = renderListView();
+    if (_view === 'negotiation') shell.innerHTML = renderNegotiationView();
+    else if (_view === 'found')  shell.innerHTML = renderFoundView();
+    else                          shell.innerHTML = renderListView();
     bindShellEvents();
+}
+
+function openNegotiation(id) {
+    const n = (_pendingNegotiations || []).find(x => x.id === id);
+    if (!n) return;
+    _view = 'negotiation';
+    _negotiationId = id;
+    _negotiationDraftVote = null;
+    renderShell();
+}
+function closeNegotiation() {
+    _view = 'list';
+    _negotiationId = null;
+    _negotiationDraftVote = null;
+    renderShell();
 }
 
 function renderListView() {
@@ -597,8 +730,66 @@ function renderListView() {
             <button class="al-found-btn" id="open-found-btn">+ FOUND NEW ALLIANCE</button>
         </div>
         ${renderMembershipsSection()}
+        ${renderPendingNegotiationsSection()}
         ${renderOpenSection()}
     `;
+}
+
+function renderPendingNegotiationsSection() {
+    const rows = _pendingNegotiations || [];
+    if (rows.length === 0) return ''; // hidden when empty
+    return `
+        <div class="al-section">
+            <div class="al-section__title">Pending Negotiations &middot; ${rows.length}</div>
+            ${rows.map(n => {
+                const consensus = computeConsensusState(n);
+                return `
+                    <div class="al-row" data-pending-id="${escHtml(n.id)}" style="border-left-color:var(--blue);cursor:pointer;">
+                        <div class="al-row__head">
+                            <span class="al-row__chevron">&rsaquo;</span>
+                            <span class="al-row__name">${escHtml(n.name)}</span>
+                            <span class="al-row__tag" style="color:var(--blue);border-color:var(--blue-border);background:var(--blue-faint);">${escHtml(SECTOR_LABEL[n.sector] || n.sector)}</span>
+                            <span class="al-row__tag">FOUNDING</span>
+                            <div class="al-row__metrics">
+                                <div class="al-row__metric">
+                                    <div class="al-row__metric-label">Votes</div>
+                                    <div class="al-row__metric-value">${consensus.submitted} of ${consensus.total}</div>
+                                </div>
+                                <div class="al-row__metric">
+                                    <div class="al-row__metric-label">Closes In</div>
+                                    <div class="al-row__metric-value">${n.ticks_remaining ?? '—'} ticks</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="al-row__sub">
+                            ${n.members.length} invited · ${consensus.label}
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+// Consensus per the founding rules: every member must vote on the same
+// article. Returns the labels driving header + ratify-button gating.
+function computeConsensusState(n) {
+    const total = n.members.length;
+    const voted = n.members.filter(m => m.vote);
+    const submitted = voted.length;
+    if (submitted < total) {
+        return { submitted, total, reached: false, article_id: null,
+                 label: `Awaiting ${total - submitted} more vote${total - submitted === 1 ? '' : 's'}` };
+    }
+    const first = voted[0].vote;
+    const unanimous = voted.every(m => m.vote === first);
+    if (unanimous) {
+        const art = n.articles.find(a => a.id === first);
+        return { submitted, total, reached: true, article_id: first,
+                 label: `Consensus reached on ${art ? art.name : first}` };
+    }
+    return { submitted, total, reached: false, article_id: null,
+             label: 'No consensus — members split on candidate articles' };
 }
 
 function filterAlliancesBySector(rows) {
@@ -879,6 +1070,218 @@ function renderInviteeCard(c) {
     `;
 }
 
+// ── Negotiation view ───────────────────────────────────────────────
+// Live state for an in-progress founding proposal. All buttons are
+// disabled today (backend not wired); the article-radio selection +
+// chat-input typing are local-only so the layout is reviewable.
+
+function renderNegotiationView() {
+    const n = (_pendingNegotiations || []).find(x => x.id === _negotiationId);
+    if (!n) {
+        // Negotiation went away (mock cleared, etc) — bounce back to list.
+        return renderListView();
+    }
+    const sectorLabel = SECTOR_LABEL[n.sector] || n.sector;
+    const consensus = computeConsensusState(n);
+    const me = n.members.find(m => m.is_you) || null;
+    const myCurrentVote = _negotiationDraftVote || me?.vote || null;
+    const canRatify = consensus.reached && me && me.id === n.founder_faction_id;
+    const ratifyHint = !consensus.reached
+        ? (consensus.submitted < consensus.total
+            ? `Awaiting ${consensus.total - consensus.submitted} more vote${consensus.total - consensus.submitted === 1 ? '' : 's'} before ratification.`
+            : 'Members are split — alliance can only be founded once all vote for the same article.')
+        : 'All members agreed. Ready to ratify.';
+
+    // Per-article tally: how many members chose each one.
+    const tally = new Map(n.articles.map(a => [a.id, 0]));
+    for (const m of n.members) if (m.vote && tally.has(m.vote)) tally.set(m.vote, tally.get(m.vote) + 1);
+    const pendingCount = n.members.filter(m => !m.vote).length;
+    const totalWeight = n.members.length;
+
+    return `
+        <div class="fnd-crumb">
+            <a class="fnd-crumb__link" data-nav="list">Strategic Alliances</a>
+            <span class="fnd-crumb__sep">/</span>
+            <a class="fnd-crumb__link" data-nav="found">Found New Alliance</a>
+            <span class="fnd-crumb__sep">/</span>
+            <span class="fnd-crumb__current">Founding Negotiation</span>
+        </div>
+
+        <div class="ng-head">
+            <div class="ng-head__title-block">
+                <div class="ng-head__title">${escHtml(n.name)}</div>
+                <div class="ng-head__sub">
+                    <span class="al-row__tag" style="color:var(--blue);border-color:var(--blue-border);background:var(--blue-faint);">${escHtml(sectorLabel)}</span>
+                    Founding negotiation in progress &middot; Closes in ${n.ticks_remaining ?? '—'} ticks
+                </div>
+            </div>
+            <div class="ng-head__metrics">
+                <div class="ng-head__metric">
+                    <div class="al-stat__label">Votes Submitted</div>
+                    <div class="al-stat__value">${consensus.submitted} of ${consensus.total}</div>
+                </div>
+                <div class="ng-head__metric">
+                    <div class="al-stat__label">Consensus</div>
+                    <div class="al-stat__value" style="color:${consensus.reached ? 'var(--green)' : 'var(--text-dim)'};">
+                        ${consensus.reached ? 'Reached' : 'Pending'}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="al-rule"></div>
+
+        <div class="ng-grid">
+            <!-- LEFT: members + tally + actions -->
+            <div class="ng-left">
+                <div class="al-section__title">Founding Members</div>
+                ${n.members.map(m => renderNegotiationMemberCard(m, n.articles)).join('')}
+
+                <div class="ng-tally">
+                    <div class="al-section__title">Vote Tally &middot; Per Article</div>
+                    ${n.articles.map(a => {
+                        const v = tally.get(a.id) || 0;
+                        const pct = totalWeight > 0 ? Math.round((v / totalWeight) * 100) : 0;
+                        return `
+                            <div class="ng-tally__row">
+                                <div class="ng-tally__label">${escHtml(a.name)}</div>
+                                <div class="ng-tally__bar"><div class="ng-tally__fill" style="width:${pct}%;background:${v > 0 ? 'var(--green)' : 'var(--text-ghost)'};"></div></div>
+                                <div class="ng-tally__count">${v}</div>
+                            </div>
+                        `;
+                    }).join('')}
+                    <div class="ng-tally__row">
+                        <div class="ng-tally__label" style="color:var(--text-dim);">— Pending —</div>
+                        <div class="ng-tally__bar"><div class="ng-tally__fill" style="width:${(pendingCount/totalWeight)*100}%;background:var(--text-ghost);"></div></div>
+                        <div class="ng-tally__count">${pendingCount}</div>
+                    </div>
+                    <div class="ng-tally__footer">
+                        Total members: ${totalWeight} &middot; All members must vote on the same article to ratify.
+                    </div>
+                </div>
+
+                <button class="al-btn al-btn--primary" style="width:100%;margin-top:16px;" id="ng-ratify"
+                        ${canRatify ? '' : 'disabled'} title="${escHtml(ratifyHint)}">FOUND ALLIANCE</button>
+                <div style="margin-top:6px;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);text-align:center;letter-spacing:0.06em;">
+                    ${escHtml(ratifyHint)}
+                </div>
+                ${me && me.id === n.founder_faction_id
+                    ? `<button class="al-btn al-btn--leave" style="width:100%;margin-top:12px;" id="ng-withdraw" disabled
+                              title="Backend not yet implemented.">Withdraw Proposal</button>`
+                    : ''}
+                <div style="margin-top:14px;font-family:var(--font-mono);font-size:9px;color:var(--red);text-align:center;letter-spacing:0.06em;">
+                    If consensus is not reached within ${NEGOTIATION_DURATION_TICKS} ticks, the alliance dissolves and every invited corporation suffers ${FAILED_NEGOTIATION_REPUTATION_HIT} Reputation.
+                </div>
+            </div>
+
+            <!-- RIGHT: articles + your vote + chat -->
+            <div class="ng-right">
+                <div class="al-section__title">Proposed Founding Articles &middot; Select One</div>
+                <div class="ng-articles">
+                    ${n.articles.map(a => renderNegotiationArticleCard(a, n, myCurrentVote, tally.get(a.id) || 0)).join('')}
+                </div>
+
+                <div class="ng-your-vote">
+                    <div>
+                        <div class="al-stat__label">Your Vote</div>
+                        <div class="ng-your-vote__value">
+                            ${myCurrentVote
+                                ? escHtml(n.articles.find(a => a.id === myCurrentVote)?.name || myCurrentVote)
+                                : 'Not yet submitted'}
+                        </div>
+                    </div>
+                    <button class="al-btn" disabled title="Backend not yet implemented.">
+                        ${myCurrentVote ? 'Unsubmit Vote' : 'Submit Vote'}
+                    </button>
+                </div>
+
+                <div class="ng-chat">
+                    <div class="ng-chat__head">
+                        <span class="al-section__title" style="margin:0;">Negotiation Room</span>
+                        <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.04em;">
+                            ${(n.chat || []).length} message${(n.chat || []).length === 1 ? '' : 's'}
+                        </span>
+                    </div>
+                    <div class="ng-chat__scroll">
+                        ${(n.chat || []).map(renderNegotiationChatMessage).join('')}
+                    </div>
+                    <div class="ng-chat__compose">
+                        <input type="text" class="fnd-input" id="ng-chat-input" placeholder="Reply to the negotiation room…" disabled />
+                        <button class="al-btn al-btn--primary" id="ng-chat-send" disabled title="Backend not yet implemented.">Send ↗</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderNegotiationMemberCard(m, articles) {
+    const voted = m.vote ? articles.find(a => a.id === m.vote) : null;
+    const accent = m.is_you ? 'var(--amber)'
+                 : m.rapport === 'friendly' ? 'var(--green)'
+                 : m.rapport === 'hostile'  ? 'var(--red)'
+                 : 'var(--border-1)';
+    const statusLabel = m.is_founder
+        ? '<span style="color:var(--amber);font-weight:700;">FOUNDER</span>' + (m.is_you ? ' &middot; <span style="color:var(--amber);">YOU</span>' : '')
+        : (m.rapport || '').toUpperCase();
+    const voteLabel = voted
+        ? `<span style="color:var(--green);">&check; ${escHtml(voted.name)}</span>`
+        : `<span style="color:var(--text-dim);">— PENDING</span>`;
+    return `
+        <div class="ng-member" style="border-left-color:${accent};">
+            <div class="ng-member__top">
+                <div class="fnd-invitee__chip">${escHtml(corpInitials(m))}</div>
+                <div class="ng-member__body">
+                    <div class="fnd-invitee__name">${escHtml(m.faction_name)}</div>
+                    <div class="fnd-invitee__meta">${escHtml(m.nation_name)} &middot; ${escHtml(m.stat_label)} ${fmtStat(m.stat_value)}</div>
+                </div>
+            </div>
+            <div class="ng-member__footer">
+                <span class="ng-member__status">${statusLabel}</span>
+                <span class="ng-member__vote">${voteLabel}</span>
+            </div>
+        </div>
+    `;
+}
+
+function renderNegotiationArticleCard(a, n, myCurrentVote, voteCount) {
+    const isMine = myCurrentVote === a.id;
+    const voters = n.members.filter(m => m.vote === a.id);
+    const votersHtml = voters.length === 0
+        ? '<span style="color:var(--text-dim);">No votes yet</span>'
+        : voters.map(m => `<span class="fnd-invitee__chip" style="width:auto;height:20px;font-size:9px;padding:0 6px;">${escHtml(corpInitials(m))}</span>`).join(' ');
+    return `
+        <div class="ng-article ${isMine ? 'selected' : ''}" data-article-id="${escHtml(a.id)}">
+            <div class="ng-article__head">
+                <span class="ng-article__radio">${isMine ? '&#x25C9;' : '&#x25CB;'}</span>
+                <span class="ng-article__name">${escHtml(a.name)}</span>
+                <span class="ng-article__weight">${voteCount} vote${voteCount === 1 ? '' : 's'}</span>
+            </div>
+            <div class="ng-article__body">${escHtml(a.body)}</div>
+            <div class="ng-article__meta">
+                <span>CARTEL <b>${a.cartel.toFixed(1)}</b></span>
+                <span>CHS <b>+${a.chs.toFixed(1)}</b></span>
+            </div>
+            <div class="ng-article__voters">VOTED: ${votersHtml}</div>
+        </div>
+    `;
+}
+
+function renderNegotiationChatMessage(msg) {
+    const tag = msg.is_founder
+        ? '<span class="al-row__tag" style="color:var(--amber);border-color:var(--amber);background:var(--amber-faint);margin-left:6px;">FOUNDER</span>'
+        : '';
+    return `
+        <div class="ng-chat__msg">
+            <div class="ng-chat__msg-head">
+                <span class="ng-chat__msg-author">${escHtml(msg.author || '—')}</span>
+                ${tag}
+                <span class="ng-chat__msg-ago">${escHtml(msg.ago || '')}</span>
+            </div>
+            <div class="ng-chat__msg-body">${escHtml(msg.body || '')}</div>
+        </div>
+    `;
+}
+
 function bindShellEvents() {
     if (_view === 'list') {
         document.getElementById('open-found-btn')?.addEventListener('click', openFoundView);
@@ -912,6 +1315,26 @@ function bindShellEvents() {
                 });
             });
         });
+        document.querySelectorAll('[data-pending-id]').forEach(row => {
+            row.addEventListener('click', () => openNegotiation(row.dataset.pendingId));
+        });
+        return;
+    }
+    if (_view === 'negotiation') {
+        document.querySelectorAll('.fnd-crumb__link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (link.dataset.nav === 'list')  closeNegotiation();
+                if (link.dataset.nav === 'found') { _view = 'found'; _negotiationId = null; renderShell(); }
+            });
+        });
+        document.querySelectorAll('.ng-article').forEach(card => {
+            card.addEventListener('click', () => {
+                _negotiationDraftVote = card.dataset.articleId;
+                renderShell();
+            });
+        });
+        // Ratify / Withdraw / Send all start disabled — no need to bind.
         return;
     }
     // Found view bindings
