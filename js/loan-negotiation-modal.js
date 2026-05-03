@@ -265,6 +265,73 @@ function injectStylesOnce() {
     background: rgba(255,255,255,0.015);
 }
 
+/* ── Collateral picker (Phase 5b) ── */
+.lnm-collat-summary {
+    display: flex; gap: 16px; align-items: center;
+    font-family: var(--font-mono); font-size: 10.5px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+.lnm-collat-empty {
+    padding: 12px;
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--text-dim); font-style: italic;
+    border: 1px dashed var(--border-0);
+    text-align: center;
+}
+.lnm-collat-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr);
+    gap: 4px;
+}
+@media (max-width: 720px) {
+    .lnm-collat-grid { grid-template-columns: 1fr; }
+}
+.lnm-collat-item {
+    display: grid; grid-template-columns: 14px 1fr auto;
+    gap: 8px; align-items: center;
+    padding: 6px 8px;
+    background: var(--bg-3, #252525);
+    border: 1px solid var(--border-1);
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+}
+.lnm-collat-item:hover:not(.lnm-collat-item--readonly) {
+    border-color: var(--amber, #c8a832);
+}
+.lnm-collat-item.selected {
+    background: rgba(200,168,50,0.06);
+    border-color: var(--amber, #c8a832);
+}
+.lnm-collat-item--readonly { cursor: default; }
+.lnm-collat-check {
+    width: 12px; height: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    color: var(--amber, #c8a832);
+    border: 1px solid var(--border-2, rgba(255,255,255,0.12));
+}
+.lnm-collat-item.selected .lnm-collat-check {
+    background: var(--amber, #c8a832);
+    color: var(--bg-0, #0e0e0c);
+    border-color: var(--amber, #c8a832);
+}
+.lnm-collat-name {
+    font-family: var(--font-ui); font-size: 11.5px; font-weight: 600;
+    color: var(--text-bright);
+    line-height: 1.2;
+}
+.lnm-collat-kind {
+    font-family: var(--font-mono); font-size: 8.5px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-dim);
+    margin-top: 1px;
+}
+.lnm-collat-value {
+    font-family: var(--font-mono); font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--green, #5cb85c);
+}
+
 /* ── Lender inbox panel (Phase 5) ── */
 .lnm-inbox-host {
     display: block;
@@ -363,18 +430,80 @@ async function _resolveOwnCorpId(supabase, ctxLabel) {
 }
 
 // ── Fetch helpers (DRY for initial + realtime re-fetch) ──────────
+// Per-class aircraft purchase-equivalent value for collateral pledging.
+// Mirror of airline_aircraft_value() in 20260724. KNOWN-DUPLICATION
+// pattern same as the ops/seats/maint constants in airline-operations.html.
+const AIRCRAFT_VALUE = { regional: 5000000, narrowbody: 25000000, widebody: 100000000 };
+const AIRCRAFT_LABEL = { regional: 'Regional', narrowbody: 'Narrowbody', widebody: 'Widebody' };
+
 function fetchNegotiation(supabase, negotiationId) {
     return supabase
         .from('loan_negotiations')
         .select(`
             id, status, principal, apr, term_ticks, purpose, notes,
             borrower_agreed, lender_agreed, escrowed_lender_cash,
-            last_activity_at,
-            borrower:borrower_faction_id(id, faction_name, linked_user_id),
+            last_activity_at, collateral,
+            borrower:borrower_faction_id(id, faction_name, linked_user_id, corp_sector),
             lender:lender_faction_id(id, faction_name, linked_user_id)
         `)
         .eq('id', negotiationId)
         .maybeSingle();
+}
+
+// Fetch every borrower-owned asset that can be pledged: properties +
+// (if Airline) aircraft + (if Shipping) vessels. Returns flat array
+// of {kind, id, name, value} ready to drop into the collateral JSONB.
+async function fetchAvailableCollateral(supabase, borrower) {
+    if (!borrower?.id) return [];
+    const out = [];
+
+    const propsP = supabase.from('corp_properties')
+        .select('id, name, role, purchase_price, condition')
+        .eq('faction_id', borrower.id)
+        .eq('is_active', true);
+
+    const acP = (borrower.corp_sector === 'Airline')
+        ? supabase.from('corp_aircraft')
+            .select('id, aircraft_class, condition, tail_number')
+            .eq('corp_id', borrower.id)
+        : Promise.resolve({ data: [], error: null });
+
+    const vesP = (borrower.corp_sector === 'Shipping')
+        ? supabase.from('corp_vessels')
+            .select('id, name, purchase_price')
+            .eq('faction_id', borrower.id)
+        : Promise.resolve({ data: [], error: null });
+
+    const [propsRes, acRes, vesRes] = await Promise.all([propsP, acP, vesP]);
+
+    if (propsRes.error) {
+        console.warn('[lnm collateral] properties fetch failed:', propsRes.error.message);
+    } else {
+        for (const p of (propsRes.data || [])) {
+            const rawVal  = Math.round(Number(p.purchase_price || 0) * (Number(p.condition || 0) / 100));
+            const display = p.name || (p.role || 'Property').replace(/_/g, ' ');
+            out.push({ kind: 'property', id: p.id, name: display, value: rawVal });
+        }
+    }
+    if (acRes.error) {
+        console.warn('[lnm collateral] aircraft fetch failed:', acRes.error.message);
+    } else {
+        for (const a of (acRes.data || [])) {
+            const cls   = a.aircraft_class || 'regional';
+            const base  = AIRCRAFT_VALUE[cls] || 0;
+            const val   = Math.round(base * (Number(a.condition || 0) / 100));
+            const tail  = a.tail_number ? ' · ' + a.tail_number : '';
+            out.push({ kind: 'aircraft', id: a.id, name: (AIRCRAFT_LABEL[cls] || cls) + tail, value: val });
+        }
+    }
+    if (vesRes.error) {
+        console.warn('[lnm collateral] vessels fetch failed:', vesRes.error.message);
+    } else {
+        for (const v of (vesRes.data || [])) {
+            out.push({ kind: 'vessel', id: v.id, name: v.name || 'Vessel', value: Math.round(Number(v.purchase_price || 0)) });
+        }
+    }
+    return out;
 }
 
 function fetchMessages(supabase, negotiationId) {
@@ -428,7 +557,76 @@ function renderError(modalEl, message) {
         <div class="lnm-error">${escHtml(message)}</div>`;
 }
 
-function renderModal(modalEl, neg, messages, viewerRole) {
+// Collateral section. Borrower viewer + status='open' → editable
+// picker with all owned assets. Lender or terminal status → read-only
+// summary of currently-pledged items from neg.collateral.
+function renderCollateralSection(neg, viewerRole, pendingCollateral, collateralOptions) {
+    const isOpen   = neg.status === 'open';
+    const isBorrower = viewerRole === 'borrower';
+    const editable = isOpen && isBorrower;
+    const pledged  = Array.isArray(pendingCollateral) ? pendingCollateral : (Array.isArray(neg.collateral) ? neg.collateral : []);
+    const totalPledged = pledged.reduce((s, x) => s + (Number(x.value) || 0), 0);
+    const principal    = Number(neg.principal) || 0;
+    const coverage     = principal > 0 ? Math.round((totalPledged / principal) * 100) : 0;
+
+    let pickerHtml = '';
+    if (editable) {
+        const opts    = Array.isArray(collateralOptions) ? collateralOptions : [];
+        const pickedIds = new Set(pledged.map(p => p.id));
+        if (opts.length === 0) {
+            pickerHtml = '<div class="lnm-collat-empty">No assets available to pledge.</div>';
+        } else {
+            pickerHtml = '<div class="lnm-collat-grid">' + opts.map(o => {
+                const sel = pickedIds.has(o.id);
+                const valM = Math.round((Number(o.value) || 0) / 1000) / 1000;
+                return `
+                  <div class="lnm-collat-item${sel ? ' selected' : ''}"
+                       data-act="collat-toggle"
+                       data-collat-kind="${escHtml(o.kind)}"
+                       data-collat-id="${escHtml(o.id)}"
+                       data-collat-name="${escHtml(o.name)}"
+                       data-collat-value="${escHtml(o.value)}">
+                    <div class="lnm-collat-check">${sel ? '✓' : ''}</div>
+                    <div class="lnm-collat-meta">
+                      <div class="lnm-collat-name">${escHtml(o.name)}</div>
+                      <div class="lnm-collat-kind">${escHtml(o.kind)}</div>
+                    </div>
+                    <div class="lnm-collat-value">$${valM.toFixed(valM >= 10 ? 1 : 2)}M</div>
+                  </div>
+                `;
+            }).join('') + '</div>';
+        }
+    } else if (pledged.length === 0) {
+        pickerHtml = '<div class="lnm-collat-empty">No collateral pledged.</div>';
+    } else {
+        pickerHtml = '<div class="lnm-collat-grid">' + pledged.map(p => {
+            const valM = Math.round((Number(p.value) || 0) / 1000) / 1000;
+            return `
+              <div class="lnm-collat-item selected lnm-collat-item--readonly">
+                <div class="lnm-collat-check">●</div>
+                <div class="lnm-collat-meta">
+                  <div class="lnm-collat-name">${escHtml(p.name || '?')}</div>
+                  <div class="lnm-collat-kind">${escHtml(p.kind || '?')}</div>
+                </div>
+                <div class="lnm-collat-value">$${valM.toFixed(valM >= 10 ? 1 : 2)}M</div>
+              </div>
+            `;
+        }).join('') + '</div>';
+    }
+
+    const totalM = Math.round(totalPledged / 1000) / 1000;
+    return `
+      <div class="lnm-field">
+        <label>Collateral${editable ? '' : ' (read-only)'}</label>
+        <div class="lnm-collat-summary">
+          <span>Total pledged: <strong>$${totalM.toFixed(totalM >= 10 ? 1 : 2)}M</strong></span>
+          <span>Coverage: <strong style="color:${coverage >= 100 ? 'var(--green, #5cb85c)' : coverage >= 50 ? 'var(--amber, #c8a832)' : 'var(--accent-rust, #d48a3c)'};">${principal > 0 ? coverage + '%' : '—'}</strong></span>
+        </div>
+        ${pickerHtml}
+      </div>`;
+}
+
+function renderModal(modalEl, neg, messages, viewerRole, pendingCollateral, collateralOptions) {
     const tally    = (neg.borrower_agreed ? 1 : 0) + (neg.lender_agreed ? 1 : 0);
     const statusCls = 'lnm-status--' + neg.status;
     const tallyCls  = 'lnm-agreement-tally--' + tally;
@@ -500,6 +698,8 @@ function renderModal(modalEl, neg, messages, viewerRole) {
               <textarea rows="3" maxlength="2000"
                         data-lnm-field="notes" placeholder="—" ${disAttr}>${escHtml(neg.notes || '')}</textarea>
             </div>
+
+            ${renderCollateralSection(neg, viewerRole, pendingCollateral, collateralOptions)}
 
             ${isOpen ? `
             <div class="lnm-action-row">
@@ -681,8 +881,21 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
         console.warn('[loan-negotiation-modal] auth.getUser failed:', e?.message || e);
     }
 
-    renderModal(modalEl, neg, messages, viewerRole);
-    wireActionHandlers(modalEl, supabase, negotiationId, () => neg, viewerRole);
+    // Working-draft collateral state: initialized from server, mutated
+    // by borrower checkbox toggles, sent on Apply Changes. Realtime
+    // updates re-sync from neg.collateral (server wins).
+    let pendingCollateral = Array.isArray(neg.collateral) ? neg.collateral.slice() : [];
+
+    // Borrower-side collateral options: their owned properties +
+    // (sector-conditional) aircraft / vessels. Lenders don't load this
+    // (they only see pledged items via neg.collateral).
+    let collateralOptions = [];
+    if (viewerRole === 'borrower') {
+        collateralOptions = await fetchAvailableCollateral(supabase, neg.borrower);
+    }
+
+    renderModal(modalEl, neg, messages, viewerRole, pendingCollateral, collateralOptions);
+    wireActionHandlers(modalEl, supabase, negotiationId, () => neg, viewerRole, pendingCollateral, () => collateralOptions);
 
     // Mark seen on initial mount. Re-bumped on every realtime push so a
     // viewer with the modal open never appears unread to themselves.
@@ -723,8 +936,12 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
             }
             if (!data) return;
             neg = data;
-            renderModal(modalEl, neg, messages, viewerRole);
-            wireActionHandlers(modalEl, supabase, negotiationId, () => neg, viewerRole);
+            // Re-sync pending collateral to the new server state — any
+            // working-draft toggles the user hadn't applied are lost
+            // (consistent with how term inputs reset on remote update).
+            pendingCollateral = Array.isArray(neg.collateral) ? neg.collateral.slice() : [];
+            renderModal(modalEl, neg, messages, viewerRole, pendingCollateral, collateralOptions);
+            wireActionHandlers(modalEl, supabase, negotiationId, () => neg, viewerRole, pendingCollateral, () => collateralOptions);
             // Restore chat draft only if the re-rendered input is empty —
             // avoids clobbering a value the user managed to type during
             // the brief re-render window.
@@ -769,7 +986,7 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
 
 // ── Action wiring (re-bound on every full re-render since innerHTML
 //    discards old listeners) ──────────────────────────────────────
-function wireActionHandlers(modalEl, supabase, negotiationId, getNeg, viewerRole) {
+function wireActionHandlers(modalEl, supabase, negotiationId, getNeg, viewerRole, pendingCollateral, getCollateralOptions) {
     // Apply Changes
     const applyBtn = modalEl.querySelector('[data-act="apply-terms"]');
     if (applyBtn) {
@@ -809,6 +1026,7 @@ function wireActionHandlers(modalEl, supabase, negotiationId, getNeg, viewerRole
                     p_term_ticks: termTicks,
                     p_purpose:    purpose,
                     p_notes:      notes,
+                    p_collateral: pendingCollateral,
                 });
                 if (error)            { showInline(errEl, error.message); return; }
                 if (!data?.success)   { showInline(errEl, data?.error || 'Update failed.'); return; }
@@ -886,6 +1104,46 @@ function wireActionHandlers(modalEl, supabase, negotiationId, getNeg, viewerRole
             sendChat();
         }
     });
+
+    // ── Collateral picker toggle (Phase 5b) ──
+    // Borrower-only: clicking a collateral item flips it in/out of the
+    // pendingCollateral working draft. Apply Changes commits the diff
+    // server-side. Lender's UI is read-only (no items have data-act).
+    if (viewerRole === 'borrower' && getNeg()?.status === 'open') {
+        modalEl.querySelectorAll('[data-act="collat-toggle"]').forEach(el => {
+            el.addEventListener('click', () => {
+                const id    = el.dataset.collatId;
+                const kind  = el.dataset.collatKind;
+                const name  = el.dataset.collatName;
+                const value = Number(el.dataset.collatValue) || 0;
+                if (!id) return;
+                const idx = pendingCollateral.findIndex(c => c.id === id);
+                if (idx >= 0) {
+                    pendingCollateral.splice(idx, 1);
+                    el.classList.remove('selected');
+                    el.querySelector('.lnm-collat-check').textContent = '';
+                } else {
+                    pendingCollateral.push({ kind, id, name, value });
+                    el.classList.add('selected');
+                    el.querySelector('.lnm-collat-check').textContent = '✓';
+                }
+                // Update the summary line in place — total + coverage.
+                const summary = modalEl.querySelector('.lnm-collat-summary');
+                if (summary) {
+                    const total = pendingCollateral.reduce((s, x) => s + (Number(x.value) || 0), 0);
+                    const totalM = Math.round(total / 1000) / 1000;
+                    const principal = Number(getNeg()?.principal) || 0;
+                    const coverage = principal > 0 ? Math.round((total / principal) * 100) : 0;
+                    const color = coverage >= 100 ? 'var(--green, #5cb85c)'
+                                : coverage >= 50  ? 'var(--amber, #c8a832)'
+                                :                   'var(--accent-rust, #d48a3c)';
+                    summary.innerHTML = `
+                        <span>Total pledged: <strong>$${totalM.toFixed(totalM >= 10 ? 1 : 2)}M</strong></span>
+                        <span>Coverage: <strong style="color:${color};">${principal > 0 ? coverage + '%' : '—'}</strong></span>`;
+                }
+            });
+        });
+    }
 
     // ── Agree toggle (Phase 4) ──
     // Only the viewer's own checkbox is enabled. Click → set_negotiation_agreement.
