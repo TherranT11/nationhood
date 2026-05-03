@@ -721,9 +721,9 @@ body.airline-operations.light-mode {
           <span class="ao-route-price-val">$<span id="ao-rs-price-val">250</span></span>
         </div>
         <div class="ao-route-tier-row">
-          <label><input type="radio" name="ao-rs-tier" value="basic"> Basic <span class="ao-route-meta">$10k/tick</span></label>
-          <label><input type="radio" name="ao-rs-tier" value="standard" checked> Standard <span class="ao-route-meta">$25k/tick</span></label>
-          <label><input type="radio" name="ao-rs-tier" value="premium"> Premium <span class="ao-route-meta">$40k/tick</span></label>
+          <label><input type="radio" name="ao-rs-tier" value="basic"> Basic <span class="ao-route-meta">$12k/yr · per aircraft</span></label>
+          <label><input type="radio" name="ao-rs-tier" value="standard" checked> Standard <span class="ao-route-meta">$30k/yr · per aircraft</span></label>
+          <label><input type="radio" name="ao-rs-tier" value="premium"> Premium <span class="ao-route-meta">$48k/yr · per aircraft</span></label>
         </div>
       </div>
 
@@ -734,12 +734,17 @@ body.airline-operations.light-mode {
       </div>
 
       <div class="ao-route-section">
-        <div class="ao-route-section-h">V. Projection (per tick)</div>
+        <div class="ao-route-section-h">V. Projection</div>
         <div class="ao-route-grid-4">
-          <div><label>Pax carried</label><span id="ao-rs-pax">—</span></div>
-          <div><label>Revenue</label><span id="ao-rs-rev">—</span></div>
-          <div><label>Costs</label><span id="ao-rs-cost">—</span></div>
-          <div><label>Profit</label><span id="ao-rs-profit">—</span></div>
+          <div><label>Pax / tick</label><span id="ao-rs-pax">—</span></div>
+          <div><label>Revenue / tick</label><span id="ao-rs-rev">—</span></div>
+          <div><label>Ops / tick</label><span id="ao-rs-cost">—</span></div>
+          <div><label>Profit / tick</label><span id="ao-rs-profit">—</span></div>
+        </div>
+        <div class="ao-route-grid-4" style="margin-top:6px;">
+          <div><label>Maint / year</label><span id="ao-rs-maint-yr">—</span></div>
+          <div><label>Annual profit</label><span id="ao-rs-annual">—</span></div>
+          <div style="grid-column:span 2;"><label>Breakeven (covers next maint bill)</label><span id="ao-rs-breakeven">—</span></div>
         </div>
       </div>
 
@@ -1049,10 +1054,18 @@ async function loadFleetInventory(corpId, currentTick) {
 // When the Phase 6 tick processor lands, mirror them in advance-corp-tick
 // (probably as a SQL function aircraft_ops_cost(class)/etc.) and treat
 // the JS copies as cache for the modal's live recompute.
-const AIRCRAFT_SEATS    = { regional: 10,    narrowbody: 25,    widebody: 60 };
-const AIRCRAFT_OPS_COST = { regional: 5000,  narrowbody: 12000, widebody: 25000 };
-const MAINT_TIER_COST   = { basic: 10000, standard: 25000, premium: 40000 };
-const CAPITAL_BONUS     = 2;
+//
+// Phase 5 rebalance (no upfront fee, lumpy annual maint):
+//   - Aircraft ops are per-tick, per aircraft.
+//   - Maintenance is annual (12 ticks), per aircraft, charged as a single
+//     lump on the route's open-tick anniversary. The modal projection
+//     shows the per-tick equivalent for readability and computes a
+//     BREAKEVEN line = ticks needed to recover one annual maint bill.
+const AIRCRAFT_SEATS         = { regional: 10,    narrowbody: 25,    widebody: 60   };
+const AIRCRAFT_OPS_COST      = { regional: 500,   narrowbody: 1200,  widebody: 2500 };
+const MAINT_TIER_ANNUAL      = { basic: 12000, standard: 30000, premium: 48000 };
+const TICKS_PER_YEAR         = 12;
+const CAPITAL_BONUS          = 2;
 
 let _availableRoutesCache = [];   // [{cityA, cityB, nation, range}]
 let _routeModalCtx        = null; // hydrated when the modal opens
@@ -1284,15 +1297,41 @@ function _routeModalRecompute() {
     const totalCount = rC + nC + wC;
 
     // Demand → pax → revenue → costs → profit.
-    const priceMult   = Math.max(0, 2 * (1 - price / 500));
-    const unmet       = Math.max(0, ctx.laneShare - ctx.competitorSeats);
-    const myDemand    = unmet * priceMult;
-    const paxCarried  = Math.max(0, Math.min(myDemand, totalSeats));
-    const revenue     = Math.round(paxCarried * price);
-    const opsCost     = rC * AIRCRAFT_OPS_COST.regional + nC * AIRCRAFT_OPS_COST.narrowbody + wC * AIRCRAFT_OPS_COST.widebody;
-    const maintCost   = totalCount * MAINT_TIER_COST[tier];
-    const totalCost   = opsCost + maintCost;
-    const profit      = revenue - totalCost;
+    //
+    // Cost model under the Phase 5 rebalance:
+    //   ops      — per tick, per aircraft (always charged)
+    //   maint    — per year, per aircraft (lump on every-12-tick anniversary)
+    // Display amortizes maint to a per-tick equivalent so PROFIT / TICK is a
+    // long-run average; ANNUAL PROFIT shows the year total; BREAKEVEN shows
+    // ticks needed for (revenue − ops) to cover one maint bill.
+    const priceMult       = Math.max(0, 2 * (1 - price / 500));
+    const unmet           = Math.max(0, ctx.laneShare - ctx.competitorSeats);
+    const myDemand        = unmet * priceMult;
+    const paxCarried      = Math.max(0, Math.min(myDemand, totalSeats));
+    const revenue         = Math.round(paxCarried * price);
+    const opsCost         = rC * AIRCRAFT_OPS_COST.regional + nC * AIRCRAFT_OPS_COST.narrowbody + wC * AIRCRAFT_OPS_COST.widebody;
+    const maintAnnual     = totalCount * MAINT_TIER_ANNUAL[tier];
+    const maintPerTick    = maintAnnual / TICKS_PER_YEAR;
+    const profit          = Math.round(revenue - opsCost - maintPerTick);
+    const annualProfit    = Math.round((revenue - opsCost) * TICKS_PER_YEAR - maintAnnual);
+
+    // Breakeven: ticks needed for (revenue − ops) to recover one annual
+    // maint bill. ≤ 12 = sustainable; > 12 = bleeds money long-term.
+    const opMargin        = revenue - opsCost;
+    let breakevenLabel;
+    let breakevenColor;
+    if (totalCount === 0 || maintAnnual === 0) {
+        breakevenLabel = '—';
+        breakevenColor = 'inherit';
+    } else if (opMargin <= 0) {
+        breakevenLabel = 'Never (revenue < ops)';
+        breakevenColor = 'var(--accent-rust)';
+    } else {
+        const ticks  = Math.ceil(maintAnnual / opMargin);
+        const months = (ticks / TICKS_PER_YEAR).toFixed(1);
+        breakevenLabel = ticks.toLocaleString() + ' ticks (≈' + months + ' yr)';
+        breakevenColor = ticks <= TICKS_PER_YEAR ? 'var(--accent-green)' : 'var(--accent-rust)';
+    }
 
     // Incident risk: (aircraft × 0.008) ÷ (op_safety ÷ 10). At op_safety=0
     // the formula divides by 0 — clamp the denominator at 0.1 so we
@@ -1309,10 +1348,18 @@ function _routeModalRecompute() {
     document.getElementById('ao-rs-risk').textContent   = (risk * 100).toFixed(2) + '%';
     document.getElementById('ao-rs-pax').textContent    = Math.round(paxCarried).toLocaleString();
     document.getElementById('ao-rs-rev').textContent    = '$' + revenue.toLocaleString();
-    document.getElementById('ao-rs-cost').textContent   = '$' + totalCost.toLocaleString();
+    document.getElementById('ao-rs-cost').textContent   = '$' + opsCost.toLocaleString();
     const profitEl = document.getElementById('ao-rs-profit');
     profitEl.textContent = (profit >= 0 ? '+$' : '-$') + Math.abs(profit).toLocaleString();
     profitEl.style.color = profit >= 0 ? 'var(--accent-green)' : 'var(--accent-rust)';
+
+    document.getElementById('ao-rs-maint-yr').textContent = '$' + maintAnnual.toLocaleString();
+    const annualEl = document.getElementById('ao-rs-annual');
+    annualEl.textContent = (annualProfit >= 0 ? '+$' : '-$') + Math.abs(annualProfit).toLocaleString();
+    annualEl.style.color = annualProfit >= 0 ? 'var(--accent-green)' : 'var(--accent-rust)';
+    const beEl = document.getElementById('ao-rs-breakeven');
+    beEl.textContent  = breakevenLabel;
+    beEl.style.color  = breakevenColor;
 
     // Submit gate: at least one aircraft assigned, at least within idle.
     document.getElementById('ao-route-confirm').disabled = (totalCount === 0);
