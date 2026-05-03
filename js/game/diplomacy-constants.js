@@ -603,20 +603,26 @@ export const WAR_JUSTIFICATIONS = {
     alliance_obligation:  { label: 'Alliance Obligation',   description: 'An allied nation was attacked, triggering mutual defense obligations.' }
 };
 
+// Keep keys + labels in sync with policyadmin.html's #b-sector dropdown.
+// The bill modal's sector picker filters this list by which keys have at
+// least one policy, so any sector the policy admin can save under has to
+// be listed here or its policies are invisible to bill drafters.
 export const MAJOR_SECTORS = [
-    { key: 'FOUNDATIONAL',  label: 'Foundational',        icon: '📜' },
-    { key: 'ECONOMICS',     label: 'Economics',           icon: '💰' },
-    { key: 'LABOR',         label: 'Labor',               icon: '👷' },
-    { key: 'EDUCATION',     label: 'Education',           icon: '📚' },
-    { key: 'ENERGY',        label: 'Energy',              icon: '⚡' },
-    { key: 'WELFARE',       label: 'Welfare',             icon: '🏥' },
-    { key: 'SOCIAL',        label: 'Social',              icon: '🤝' },
-    { key: 'MILITARY',      label: 'Military & Security', icon: '🛡️' },
-    { key: 'GOVERNANCE',    label: 'Governance',          icon: '🏛️' },
-    { key: 'IMMIGRATION',   label: 'Immigration',         icon: '🌍' },
-    { key: 'INTERNATIONAL', label: 'International',       icon: '🌐' },
-    { key: 'TRADE',         label: 'Trade',               icon: '📦' },
-    { key: 'PERMITS',       label: 'Construction Permits', icon: '🔨' }
+    { key: 'FOUNDATIONAL',   label: 'Foundational',         icon: '📜'  },
+    { key: 'ECONOMICS',      label: 'Economics',            icon: '💰' },
+    { key: 'LABOR',          label: 'Labor',                icon: '👷' },
+    { key: 'EDUCATION',      label: 'Education',            icon: '📚' },
+    { key: 'ENERGY',         label: 'Energy',               icon: '⚡' },
+    { key: 'HEALTHCARE',     label: 'Healthcare',           icon: '🏥' },
+    { key: 'SOCIAL',         label: 'Social',               icon: '🤝' },
+    { key: 'DEFENSE',        label: 'Defense',              icon: '🛡️' },
+    { key: 'MILITARY',       label: 'Military & Security',  icon: '⚔️' },
+    { key: 'TRANSPORTATION', label: 'Transportation',       icon: '🚄' },
+    { key: 'GOVERNANCE',     label: 'Governance',           icon: '🏛️' },
+    { key: 'IMMIGRATION',    label: 'Immigration',          icon: '🌍' },
+    { key: 'INTERNATIONAL',  label: 'International',        icon: '🌐' },
+    { key: 'TRADE',          label: 'Trade',                icon: '📦' },
+    { key: 'PERMITS',        label: 'Construction Permits', icon: '🔨' }
 ];
 
 // Policy Platform stances — each sector has 4 stances, each leaning toward 2 ideology poles.
@@ -646,11 +652,11 @@ export const POLICY_STANCES = {
         { key: 'green_transition',     name: 'Green Transition',     desc: 'Rapidly shift to renewable energy sources.',                poles: ['PROGRESS', 'COLLECTIVISM'] },
         { key: 'energy_independence',  name: 'Energy Independence',  desc: 'Develop domestic energy to reduce foreign dependence.',     poles: ['SECURITY', 'INDIVIDUALISM'] }
     ],
-    WELFARE: [
-        { key: 'universal_benefits', name: 'Universal Benefits', desc: 'Provide welfare programs for all citizens.',                     poles: ['EQUALITY', 'COLLECTIVISM'] },
-        { key: 'targeted_aid',       name: 'Targeted Aid',       desc: 'Focus welfare on those who need it most.',                       poles: ['EQUALITY', 'INDIVIDUALISM'] },
-        { key: 'self_reliance',      name: 'Self-Reliance',      desc: 'Reduce welfare dependency and promote personal responsibility.', poles: ['INDIVIDUALISM', 'LIBERTY'] },
-        { key: 'community_care',     name: 'Community Care',     desc: 'Channel welfare through community and religious organizations.', poles: ['TRADITION', 'COLLECTIVISM'] }
+    HEALTHCARE: [
+        { key: 'universal_benefits', name: 'Universal Benefits', desc: 'Provide healthcare and welfare programs for all citizens.',      poles: ['EQUALITY', 'COLLECTIVISM'] },
+        { key: 'targeted_aid',       name: 'Targeted Aid',       desc: 'Focus healthcare and welfare on those who need it most.',        poles: ['EQUALITY', 'INDIVIDUALISM'] },
+        { key: 'self_reliance',      name: 'Self-Reliance',      desc: 'Reduce program dependency and promote personal responsibility.', poles: ['INDIVIDUALISM', 'LIBERTY'] },
+        { key: 'community_care',     name: 'Community Care',     desc: 'Channel care through community and religious organizations.',    poles: ['TRADITION', 'COLLECTIVISM'] }
     ],
     SOCIAL: [
         { key: 'traditional_values',  name: 'Traditional Values',  desc: 'Uphold cultural heritage and social norms.',            poles: ['TRADITION', 'INDIVIDUALISM'] },
