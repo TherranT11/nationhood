@@ -2426,30 +2426,10 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     const currentTick = shard?.current_tick || 0;
     document.getElementById('fin-tick').textContent = 'TICK ' + currentTick;
 
-    // Market revenue calculation (annual)
-    const BASE_RATE = 87_000_000;
-    const s = (key) => getNationStat(nation, key);
-
-    // PHASE 7 TODO: urbanization, population_growth, physical_infrastructure,
-    // inflation, interest_rates all drop in Phase 9 — rebuild the market-rev
-    // multiplier against the new 19-stat schema (workforce, infrastructure, etc.).
-    const gdpFactor     = 1 + (s('gdp_growth') - 50) / 100 * 0.4;
-    const urbanFactor   = 1 + (s('urbanization') - 50) / 100 * 0.3;
-    const popFactor     = 1 + (s('population_growth') - 50) / 100 * 0.2;
-    const solFactor     = 1 + (s('standard_of_living') - 50) / 100 * 0.15;
-    const infraFactor   = 1 + (50 - s('physical_infrastructure')) / 100 * 0.1;
-    const inflFactor    = 1 - Math.max(0, s('inflation') - 50) / 100 * 0.1;
-    const intFactor     = 1 - Math.max(0, s('interest_rates') - 50) / 100 * 0.1;
-
-    const multiplier = gdpFactor * urbanFactor * popFactor * solFactor * infraFactor * inflFactor * intFactor;
-    const annualMarketRev = Math.round(BASE_RATE * multiplier);
-
-    // Scale revenue by workforce utilization — property capacity determines target (matches tick processor)
-    const totalEmployees = (faction.corp_general_workforce || 0) + (faction.corp_skilled_workforce || 0) + (faction.corp_innovative_workforce || 0);
-    const workforceTarget = Math.max(500, propData?.totalCapacity || 500);
-    const workforceUtil = Math.min(1, totalEmployees / workforceTarget);
-    const propertyRevBonus = propData?.propertyRevBonus || 0;
-    const marketRev = Math.round(Math.round(annualMarketRev / 12) * workforceUtil) + propertyRevBonus;
+    // Passive market/property revenue removed (server-side mirror in
+    // advance-corp-tick processCorpMonthlyIncome). Corps are
+    // active-revenue-only: contracts, shipping routes, finance interest,
+    // fuel-depot fees.
 
     // Private Contracts: sector-specific revenue from active deals
     let govContracts = 0;
@@ -2593,7 +2573,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
         console.warn('Fuel depot revenue estimate failed (non-fatal):', depotRevErr?.message || depotRevErr);
     }
 
-    const totalRevenue = govContracts + pvtContracts + marketRev + depotRevenueTotal;
+    const totalRevenue = govContracts + pvtContracts + depotRevenueTotal;
 
     // Expenses — workforce wages from wfData, divided by 12 (monthly)
     const annualWages = wfData?.totalWages || 0;
@@ -2761,9 +2741,8 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     const govPct = (govContracts / revTotal * 100).toFixed(1);
     // Depot revenue rolls into the Private segment on the segmented bar — it's
     // revenue collected from other corporations, semantically private, and the
-    // three segments need to sum to 100% of totalRevenue.
+    // two segments need to sum to 100% of totalRevenue.
     const pvtPct = ((pvtContracts + depotRevenueTotal) / revTotal * 100).toFixed(1);
-    const mktPct = (marketRev / revTotal * 100).toFixed(1);
 
     document.getElementById('fin-body').innerHTML = `
         <!-- Revenue -->
@@ -2772,17 +2751,13 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
             <div class="seg-bar">
                 <div class="seg-bar__seg" style="width:${govPct}%;background:var(--teal);"></div>
                 <div class="seg-bar__seg" style="width:${pvtPct}%;background:var(--amber);"></div>
-                <div class="seg-bar__seg" style="width:${mktPct}%;background:var(--text-dim);"></div>
             </div>
             <div class="seg-legend">
                 <div class="seg-legend__item"><div class="seg-legend__dot" style="background:var(--teal)"></div><span class="seg-legend__label">Gov</span></div>
                 <div class="seg-legend__item"><div class="seg-legend__dot" style="background:var(--amber)"></div><span class="seg-legend__label">Private</span></div>
-                <div class="seg-legend__item"><div class="seg-legend__dot" style="background:var(--text-dim)"></div><span class="seg-legend__label">Market</span></div>
             </div>
             <div class="fin-row"><span class="fin-row__label">Government Contracts</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(govContracts)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Private Contracts</span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(pvtContracts)}</span></div>
-            <div class="fin-row"><span class="fin-row__label">Market Revenue<span class="fin-row__badge">DERIVED</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(marketRev - propertyRevBonus)}</span></div>
-            ${propertyRevBonus > 0 ? `<div class="fin-row"><span class="fin-row__label">Property Revenue<span class="fin-row__badge">BUILDINGS</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(propertyRevBonus)}</span></div>` : ''}
             ${depotRevenueRows.map(d => `<div class="fin-row"><span class="fin-row__label">Fuel Depot (${d.nation})<span class="fin-row__badge">${d.visitors} visitor${d.visitors !== 1 ? 's' : ''}</span></span><span class="fin-row__value" style="color:var(--green)">${fmtMoney(d.revenue)}</span></div>`).join('')}
             <div class="fin-total">
                 <span class="fin-total__label">Total Revenue</span>
@@ -3583,18 +3558,7 @@ async function renderProperty(nation, nationName, factionData, shard) {
         </div>
     `;
 
-    // Calculate property revenue bonus: $50/seat/month at good condition
-    let propertyRevBonus = 0;
-    // HQ contributes at full condition
-    propertyRevBonus += Math.round(hqCapacity * 50);
-    for (const p of ownedProps) {
-        if (p.refurbish_until_tick && (shard?.current_tick || 0) < p.refurbish_until_tick) continue;
-        const cond = Number(p.condition || 0) / 100;
-        if (cond >= 0.6) {
-            propertyRevBonus += Math.round(Number(p.capacity || 0) * cond * 50);
-        }
-    }
-    return { propertyValue: totalValue, propertyMaintenance: totalMaint, totalCapacity, propertyRevBonus };
+    return { propertyValue: totalValue, propertyMaintenance: totalMaint, totalCapacity };
 }
 
 async function renderValuation(nation, nationName, faction, wfData, propData, equipmentValue = 0) {

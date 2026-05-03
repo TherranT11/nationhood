@@ -3697,18 +3697,6 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
 
     const ns = (key) => Number(nation[key] ?? 50);
 
-    // Revenue: same formula as corp-dashboard.html renderFinances
-    const BASE_RATE = 87_000_000;
-    const gdpFactor     = 1 + (ns('gdp_growth') - 50) / 100 * 0.4;
-    const urbanFactor   = 1 + (ns('urbanization') - 50) / 100 * 0.3;
-    const popFactor     = 1 + (ns('population_growth') - 50) / 100 * 0.2;
-    const solFactor     = 1 + (ns('standard_of_living') - 50) / 100 * 0.15;
-    const infraFactor   = 1 + (50 - ns('physical_infrastructure')) / 100 * 0.1;
-    const inflFactor    = 1 - Math.max(0, ns('inflation') - 50) / 100 * 0.1;
-    const intFactor     = 1 - Math.max(0, ns('interest_rates') - 50) / 100 * 0.1;
-    const multiplier = gdpFactor * urbanFactor * popFactor * solFactor * infraFactor * inflFactor * intFactor;
-    const monthlyMarketRev = Math.round(Math.round(BASE_RATE * multiplier) / 12);
-
     // Wages: matches corp-dashboard.html renderWorkforce formula exactly
     const baseAnnualWage = (ns('minimum_wage') / 100) * 48000;
     const inflation = ns('inflation');
@@ -3747,7 +3735,6 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
         const generalCount = Number(corp.corp_general_workforce ?? 0);
         const skilledCount = Number(corp.corp_skilled_workforce ?? 0);
         const innovativeCount = Number(corp.corp_innovative_workforce ?? 0);
-        const totalEmployees = generalCount + skilledCount + innovativeCount;
         const annualWages = (generalCount * calcWage(GENERAL_MULT))
                           + (skilledCount * calcWage(SKILLED_MULT))
                           + (innovativeCount * calcWage(INNOVATIVE_MULT));
@@ -3761,36 +3748,15 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
         const totalExecAnnual = (executives || []).reduce((sum, ex) => sum + (Number(ex.salary_per_year) || 0), 0);
         const monthlyExecSalaries = Math.round(totalExecAnnual / 12);
 
-        // Scale market revenue by workforce utilization.
-        // Properties provide capacity (condition-scaled). Base HQ = 500.
-        const { data: corpProps } = await supabase.from('corp_properties')
-            .select('capacity, condition, refurbish_until_tick')
-            .eq('faction_id', corp.id).eq('is_active', true);
-        const BASE_HQ_CAPACITY = 500;
-        let propertyCapacity = BASE_HQ_CAPACITY;
-        let propertyRevenueBonus = 0;
-        if (corpProps) {
-            for (const p of corpProps) {
-                if (p.refurbish_until_tick && currentTick < p.refurbish_until_tick) continue; // offline
-                const cap = Number(p.capacity || 0);
-                const cond = Number(p.condition || 0) / 100;
-                propertyCapacity += Math.floor(cap * cond);
-                // Good-condition buildings generate bonus revenue: $50k/month per 1000 cap at 100% condition
-                // Break-even ~60-80%, losing money below 60% (maintenance exceeds contribution)
-                if (cond >= 0.6) {
-                    propertyRevenueBonus += Math.round(cap * cond * 50); // $50 per seat per month
-                }
-            }
-        }
-        const workforceTarget = Math.max(500, propertyCapacity);
-        const workforceUtil = Math.min(1, totalEmployees / workforceTarget);
-        const corpMonthlyRev = Math.round(monthlyMarketRev * workforceUtil) + propertyRevenueBonus;
-
         // Fixed overhead: minimum operating costs even with 0 employees
         // Property maintenance, admin, insurance, utilities
         const FIXED_OVERHEAD_MONTHLY = 75_000;
 
-        const monthlyIncome = corpMonthlyRev - monthlyWages - monthlyExecSalaries - FIXED_OVERHEAD_MONTHLY;
+        // Passive income removed: corps must actively earn (contracts, routes,
+        // loans, etc.). monthlyIncome is the per-tick burn rate before debt
+        // service and corporate tax (which is now always 0 here since the
+        // burn rate is always negative — taxableIncome = max(0, ...) clamps it).
+        const monthlyIncome = -monthlyWages - monthlyExecSalaries - FIXED_OVERHEAD_MONTHLY;
 
         // Compute monthly loan payment (amortized) and split into interest + principal
         let debtPayment = 0;
@@ -3823,7 +3789,6 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
         } else {
             // Log each P&L component to corp_cash_events, only after the
             // cash write succeeded.
-            logCashEvent(corp.id, 'revenue_market', 'Monthly market revenue', corpMonthlyRev);
             logCashEvent(corp.id, 'wages',          'Workforce wages',        -monthlyWages);
             logCashEvent(corp.id, 'exec_salary',    'Executive salaries',     -monthlyExecSalaries);
             logCashEvent(corp.id, 'fixed_overhead', 'Fixed overhead',         -FIXED_OVERHEAD_MONTHLY);
@@ -3843,7 +3808,7 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
             }
         }
     }
-    console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, monthly rev=${monthlyMarketRev}, tax rate=${ns('corporate_tax')}%`);
+    console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, tax rate=${ns('corporate_tax')}%`);
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
