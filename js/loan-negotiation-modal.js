@@ -1,24 +1,35 @@
 // js/loan-negotiation-modal.js
 //
-// Read-only modal for the loan-negotiation feature (Phase 2).
+// Loan-negotiation modal (Phase 3 — realtime + edits + chat).
 //
 // Public surface:
 //   mountLoanNegotiationModal({ supabase, negotiationId, onClose })
-//     → returns a Promise that resolves when the modal mounts (data loaded)
+//     → returns { close } once the modal mounts (data loaded)
 //     → mount target: document.body (overlay)
 //
-// Phase 2 scope: fetch + render. Every input is disabled, Agree
-// checkboxes are inert, no realtime, no chat input, no Walk Away.
-// Phase 3 wires edits + chat + realtime; Phase 4 wires Agree + fire.
+// Phase 3 scope:
+//   • Two Realtime subscriptions on a single channel — picks up
+//     loan_negotiations row updates + new loan_negotiation_messages
+//     rows within ~1s. Channel + beforeunload listener cleaned up
+//     on close.
+//   • Term inputs editable (when status='open'). Apply Changes calls
+//     update_negotiation_terms — server resets both Agree flags +
+//     refunds escrow, realtime push re-renders.
+//   • Chat input + Send wired to post_negotiation_message. Realtime
+//     echo appends the message; we de-dupe by id.
+//   • Walk Away button calls abandon_negotiation. Status flips to
+//     'abandoned'; realtime push re-renders the modal to terminal
+//     state with all inputs disabled.
+//   • Focus + cursor preserved across row-update re-renders so a
+//     player typing into Principal doesn't get clobbered when
+//     counterparty makes an unrelated edit.
 //
-// Self-contained: injects its own CSS on first mount, owns its own
-// DOM, removes everything cleanly when closed.
+// Out of scope (Phase 4): Agree checkboxes still disabled with
+// "Phase 4" note. set_negotiation_agreement wiring + the fire-on-
+// double-agree path lands next.
 
 const STYLE_ID = 'lnm-style';
 
-// One-time CSS injection. Variables (--bg-2, --text-bright, etc.)
-// inherit from whatever page mounts the modal — corp pages share the
-// same palette via corp-topbar.css and inline :root blocks.
 function injectStylesOnce() {
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement('style');
@@ -108,12 +119,51 @@ function injectStylesOnce() {
     font-family: var(--font-mono); font-size: 12px;
     box-sizing: border-box;
 }
+.lnm-field input:focus, .lnm-field textarea:focus {
+    outline: 1px solid var(--amber, #c8a832);
+    border-color: var(--amber, #c8a832);
+}
 .lnm-field input:disabled, .lnm-field textarea:disabled {
     color: var(--text-primary);
     cursor: default;
-    opacity: 0.95;
+    opacity: 0.85;
 }
 .lnm-field textarea { resize: vertical; min-height: 56px; }
+
+.lnm-action-row {
+    display: flex; gap: 8px; align-items: center;
+    margin-top: 10px;
+}
+.lnm-btn {
+    padding: 6px 14px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    background: var(--bg-3); border: 1px solid var(--border-1);
+    color: var(--text-bright); cursor: pointer;
+}
+.lnm-btn:hover { border-color: var(--amber, #c8a832); color: var(--amber, #c8a832); }
+.lnm-btn:disabled { opacity: 0.5; cursor: not-allowed; border-color: var(--border-1); color: var(--text-muted); }
+.lnm-btn--primary {
+    border-color: var(--amber, #c8a832);
+    color: var(--amber, #c8a832);
+    background: rgba(200,168,50,0.08);
+}
+.lnm-btn--primary:hover { background: rgba(200,168,50,0.18); }
+.lnm-btn--danger {
+    border-color: var(--accent-rust, #d48a3c);
+    color: var(--accent-rust, #d48a3c);
+    background: rgba(212,138,60,0.08);
+}
+.lnm-btn--danger:hover { background: rgba(212,138,60,0.22); }
+
+.lnm-inline-error {
+    margin-top: 6px;
+    padding: 4px 8px;
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--accent-rust, #d48a3c);
+    background: rgba(212,138,60,0.05);
+    border: 1px solid rgba(212,138,60,0.2);
+}
 
 .lnm-agreement {
     margin-top: 14px; padding-top: 12px;
@@ -146,6 +196,15 @@ function injectStylesOnce() {
 .lnm-status--fired     { color: var(--blue, #5b9bd5); border-color: rgba(91,155,213,0.4); background: rgba(91,155,213,0.08); }
 .lnm-status--abandoned { color: var(--text-muted); border-color: var(--border-1); background: transparent; }
 
+.lnm-terminal-banner {
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    font-family: var(--font-mono); font-size: 11px;
+    border: 1px solid;
+}
+.lnm-terminal-banner--fired     { color: var(--blue, #5b9bd5); border-color: rgba(91,155,213,0.4); background: rgba(91,155,213,0.05); }
+.lnm-terminal-banner--abandoned { color: var(--text-muted); border-color: var(--border-1); background: rgba(255,255,255,0.02); }
+
 .lnm-chat {
     flex: 1;
     overflow-y: auto;
@@ -170,6 +229,12 @@ function injectStylesOnce() {
 .lnm-msg--system .lnm-msg__body { color: var(--text-muted); font-style: italic; }
 .lnm-msg__body { color: var(--text-primary); white-space: pre-wrap; word-wrap: break-word; }
 
+.lnm-empty-chat {
+    padding: 20px; text-align: center;
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--text-dim);
+}
+
 .lnm-chat-input {
     display: grid; grid-template-columns: 1fr auto;
     gap: 6px;
@@ -181,14 +246,8 @@ function injectStylesOnce() {
     color: var(--text-bright); padding: 6px 9px;
     font-family: var(--font-ui); font-size: 12px;
 }
+.lnm-chat-input input:focus { outline: 1px solid var(--amber); border-color: var(--amber); }
 .lnm-chat-input input:disabled { opacity: 0.5; cursor: not-allowed; }
-.lnm-chat-input button {
-    padding: 6px 14px;
-    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
-    letter-spacing: 0.06em; text-transform: uppercase;
-    background: var(--bg-3); border: 1px solid var(--border-1);
-    color: var(--text-secondary); cursor: not-allowed;
-}
 
 .lnm-loading, .lnm-error {
     padding: 60px 20px; text-align: center;
@@ -216,7 +275,6 @@ function escHtml(str) {
     return d.innerHTML;
 }
 
-// Format a timestamp as "Xm ago" / "Xh ago" / "Xd ago" relative to now.
 function formatRelative(ts) {
     if (!ts) return '—';
     const then = new Date(ts).getTime();
@@ -228,6 +286,53 @@ function formatRelative(ts) {
     return Math.floor(dSec / 86400) + 'd ago';
 }
 
+// ── Fetch helpers (DRY for initial + realtime re-fetch) ──────────
+function fetchNegotiation(supabase, negotiationId) {
+    return supabase
+        .from('loan_negotiations')
+        .select(`
+            id, status, principal, apr, term_ticks, purpose, notes,
+            borrower_agreed, lender_agreed, escrowed_lender_cash,
+            last_activity_at,
+            borrower:borrower_faction_id(id, faction_name),
+            lender:lender_faction_id(id, faction_name)
+        `)
+        .eq('id', negotiationId)
+        .maybeSingle();
+}
+
+function fetchMessages(supabase, negotiationId) {
+    return supabase
+        .from('loan_negotiation_messages')
+        .select(`
+            id, body, system_msg, posted_at, posted_at_tick, author_faction_id,
+            author:author_faction_id(id, faction_name)
+        `)
+        .eq('negotiation_id', negotiationId)
+        .order('posted_at', { ascending: true })
+        .limit(50);
+}
+
+// ── Focus preservation across re-renders ─────────────────────────
+function captureFocus(modalEl) {
+    const focused = modalEl.contains(document.activeElement) ? document.activeElement : null;
+    if (!focused) return null;
+    const fieldKey = focused.dataset?.lnmField;
+    if (!fieldKey) return null;
+    const sel = (typeof focused.selectionStart === 'number') ? focused.selectionStart : null;
+    return { fieldKey, sel };
+}
+function restoreFocus(modalEl, snap) {
+    if (!snap || !snap.fieldKey) return;
+    const el = modalEl.querySelector('[data-lnm-field="' + snap.fieldKey + '"]');
+    if (!el) return;
+    el.focus();
+    if (snap.sel != null && el.setSelectionRange) {
+        try { el.setSelectionRange(snap.sel, snap.sel); } catch (_) { /* ignore */ }
+    }
+}
+
+// ── Renderers ────────────────────────────────────────────────────
 function renderShell() {
     const overlay = document.createElement('div');
     overlay.className = 'lnm-overlay';
@@ -251,6 +356,19 @@ function renderModal(modalEl, neg, messages) {
     const tally    = (neg.borrower_agreed ? 1 : 0) + (neg.lender_agreed ? 1 : 0);
     const statusCls = 'lnm-status--' + neg.status;
     const tallyCls  = 'lnm-agreement-tally--' + tally;
+    const isOpen   = neg.status === 'open';
+    const disAttr  = isOpen ? '' : 'disabled';
+
+    let terminalBanner = '';
+    if (neg.status === 'fired') {
+        terminalBanner = `<div class="lnm-terminal-banner lnm-terminal-banner--fired">
+            ✓ Loan disbursed. This negotiation is closed.
+        </div>`;
+    } else if (neg.status === 'abandoned') {
+        terminalBanner = `<div class="lnm-terminal-banner lnm-terminal-banner--abandoned">
+            ✕ Negotiation was abandoned.
+        </div>`;
+    }
 
     modalEl.innerHTML = `
         <div class="lnm-head">
@@ -270,30 +388,49 @@ function renderModal(modalEl, neg, messages) {
         </div>
 
         <div class="lnm-body">
-          <!-- TERMS (read-only) -->
+          <!-- TERMS -->
           <div class="lnm-col">
+            ${terminalBanner}
             <div class="lnm-section-h">Terms</div>
 
             <div class="lnm-field">
               <label>Principal ($)</label>
-              <input type="text" value="${escHtml(Number(neg.principal).toLocaleString())}" disabled>
+              <input type="number" min="1" step="1000"
+                     data-lnm-field="principal"
+                     value="${escHtml(neg.principal)}" ${disAttr}>
             </div>
             <div class="lnm-field">
               <label>APR (%)</label>
-              <input type="text" value="${escHtml(neg.apr)}" disabled>
+              <input type="number" min="0" max="100" step="0.1"
+                     data-lnm-field="apr"
+                     value="${escHtml(neg.apr)}" ${disAttr}>
             </div>
             <div class="lnm-field">
               <label>Term (ticks)</label>
-              <input type="text" value="${escHtml(neg.term_ticks)}" disabled>
+              <input type="number" min="1" step="1"
+                     data-lnm-field="term_ticks"
+                     value="${escHtml(neg.term_ticks)}" ${disAttr}>
             </div>
             <div class="lnm-field">
               <label>Purpose</label>
-              <input type="text" value="${escHtml(neg.purpose || '')}" placeholder="—" disabled>
+              <input type="text" maxlength="120"
+                     data-lnm-field="purpose"
+                     value="${escHtml(neg.purpose || '')}" placeholder="—" ${disAttr}>
             </div>
             <div class="lnm-field">
               <label>Notes</label>
-              <textarea rows="3" placeholder="—" disabled>${escHtml(neg.notes || '')}</textarea>
+              <textarea rows="3" maxlength="2000"
+                        data-lnm-field="notes" placeholder="—" ${disAttr}>${escHtml(neg.notes || '')}</textarea>
             </div>
+
+            ${isOpen ? `
+            <div class="lnm-action-row">
+              <button type="button" class="lnm-btn lnm-btn--primary" data-act="apply-terms">Apply Changes</button>
+              <button type="button" class="lnm-btn lnm-btn--danger"  data-act="walk-away">Walk Away</button>
+              <span class="lnm-loading" id="lnm-terms-status" style="padding:0;font-size:10px;display:none;">Saving…</span>
+            </div>
+            <div class="lnm-inline-error" id="lnm-terms-error" style="display:none;"></div>
+            ` : ''}
 
             <div class="lnm-agreement">
               <div class="lnm-agree-row">
@@ -312,7 +449,8 @@ function renderModal(modalEl, neg, messages) {
             </div>
 
             <div class="lnm-phase-note">
-              Phase 2 — read-only. Edits, chat, Agree toggling, and Walk Away land in Phase 3 / Phase 4.
+              Phase 3 — terms editing, chat, walk-away wired. Agree
+              checkboxes activate in Phase 4 (fire-on-double-agree).
             </div>
           </div>
 
@@ -320,96 +458,286 @@ function renderModal(modalEl, neg, messages) {
           <div class="lnm-col" style="display:flex;flex-direction:column;">
             <div class="lnm-section-h">Chat</div>
             <div class="lnm-chat" id="lnm-chat-scroll">
-              ${(messages || []).length === 0
-                ? '<div class="lnm-loading" style="padding:20px;">No messages yet.</div>'
-                : messages.map(m => `
-                  <div class="lnm-msg ${m.system_msg ? 'lnm-msg--system' : ''}">
-                    <div class="lnm-msg__head">
-                      ${m.system_msg
-                        ? 'System'
-                        : escHtml(m.author?.faction_name || 'Unknown')}
-                      · ${formatRelative(m.posted_at)}
-                    </div>
-                    <div class="lnm-msg__body">${escHtml(m.body)}</div>
-                  </div>
-                `).join('')}
+              ${messages.length === 0
+                ? '<div class="lnm-empty-chat">No messages yet.</div>'
+                : messages.map(m => renderMessageHtml(m, neg)).join('')}
             </div>
             <div class="lnm-chat-input">
-              <input type="text" placeholder="Phase 3 — chat input not yet wired" disabled>
-              <button type="button" disabled>Send</button>
+              <input type="text" maxlength="500"
+                     data-lnm-field="chat-input"
+                     placeholder="${isOpen ? 'Type a message…' : 'Negotiation closed — chat disabled'}"
+                     ${disAttr}>
+              <button type="button" class="lnm-btn" data-act="send-chat" ${disAttr}>Send</button>
             </div>
+            <div class="lnm-inline-error" id="lnm-chat-error" style="display:none;"></div>
           </div>
         </div>
     `;
 
-    // Auto-scroll chat to bottom
     const chatScroll = modalEl.querySelector('#lnm-chat-scroll');
     if (chatScroll) chatScroll.scrollTop = chatScroll.scrollHeight;
 }
 
+// Resolve author from cached parties; falls back to the embedded
+// author object (initial fetch path) or 'Unknown' (realtime payload
+// where only author_faction_id is present).
+function resolveAuthor(msg, neg) {
+    if (msg.system_msg) return null;
+    if (msg.author?.faction_name) return msg.author;
+    const id = msg.author_faction_id;
+    if (id == null) return null;
+    if (neg?.borrower?.id === id) return neg.borrower;
+    if (neg?.lender?.id   === id) return neg.lender;
+    return null;
+}
+
+function renderMessageHtml(msg, neg) {
+    const author = resolveAuthor(msg, neg);
+    return `
+      <div class="lnm-msg ${msg.system_msg ? 'lnm-msg--system' : ''}">
+        <div class="lnm-msg__head">
+          ${msg.system_msg ? 'System' : escHtml(author?.faction_name || 'Unknown')}
+          · ${formatRelative(msg.posted_at)}
+        </div>
+        <div class="lnm-msg__body">${escHtml(msg.body)}</div>
+      </div>`;
+}
+
+function appendChatMessageDom(modalEl, msg, neg) {
+    const chatScroll = modalEl.querySelector('#lnm-chat-scroll');
+    if (!chatScroll) return;
+    const empty = chatScroll.querySelector('.lnm-empty-chat');
+    if (empty) empty.remove();
+
+    const wrap = document.createElement('div');
+    wrap.innerHTML = renderMessageHtml(msg, neg);
+    const node = wrap.firstElementChild;
+    if (node) {
+        chatScroll.appendChild(node);
+        chatScroll.scrollTop = chatScroll.scrollHeight;
+    }
+}
+
+// ── Mount ────────────────────────────────────────────────────────
 export async function mountLoanNegotiationModal({ supabase, negotiationId, onClose } = {}) {
-    if (!supabase) throw new Error('mountLoanNegotiationModal: supabase client required');
+    if (!supabase)      throw new Error('mountLoanNegotiationModal: supabase client required');
     if (!negotiationId) throw new Error('mountLoanNegotiationModal: negotiationId required');
 
     injectStylesOnce();
-
     const overlay = renderShell();
     const modalEl = overlay.querySelector('.lnm-modal');
     document.body.appendChild(overlay);
 
+    // Mutable closure state — re-fetched on realtime updates.
+    let neg = null;
+    let messages = [];
+    let channel = null;
+    let closed = false;
+
+    const cleanupChannel = () => {
+        if (!channel) return;
+        try { supabase.removeChannel(channel); } catch (_) { /* ignore */ }
+        channel = null;
+    };
+    const onPageUnload = () => cleanupChannel();
+    window.addEventListener('beforeunload', onPageUnload);
+
     const close = () => {
+        if (closed) return;
+        closed = true;
+        cleanupChannel();
+        window.removeEventListener('beforeunload', onPageUnload);
         overlay.remove();
         if (typeof onClose === 'function') onClose();
     };
 
-    // Click X / outside-click closes. Inside-modal clicks don't propagate.
+    // Outside-click + close-button. Action buttons handled by a
+    // delegated handler bound after first render.
     overlay.addEventListener('click', (e) => {
         if (e.target.closest('[data-act="close"]')) { close(); return; }
         if (e.target === overlay)                   { close(); return; }
     });
 
-    // Fetch the negotiation row + parties + the most recent 50 messages.
-    // RLS handles the access check — non-parties get an empty result and
-    // we surface "not found" rather than leaking existence.
-    const negPromise = supabase
-        .from('loan_negotiations')
-        .select(`
-            id, status, principal, apr, term_ticks, purpose, notes,
-            borrower_agreed, lender_agreed, escrowed_lender_cash,
-            last_activity_at,
-            borrower:borrower_faction_id(id, faction_name),
-            lender:lender_faction_id(id, faction_name),
-            fired_to_loan_id
-        `)
-        .eq('id', negotiationId)
-        .maybeSingle();
+    // Initial fetch
+    const [negRes, msgsRes] = await Promise.all([
+        fetchNegotiation(supabase, negotiationId),
+        fetchMessages(supabase, negotiationId),
+    ]);
 
-    const msgsPromise = supabase
-        .from('loan_negotiation_messages')
-        .select(`
-            id, body, system_msg, posted_at, posted_at_tick,
-            author:author_faction_id(id, faction_name)
-        `)
-        .eq('negotiation_id', negotiationId)
-        .order('posted_at', { ascending: true })
-        .limit(50);
-
-    const [negRes, msgsRes] = await Promise.all([negPromise, msgsPromise]);
-
-    if (negRes.error) {
-        renderError(modalEl, 'Failed to load negotiation: ' + negRes.error.message);
-        return { close };
-    }
-    if (!negRes.data) {
-        renderError(modalEl, 'Negotiation not found, or you are not a party to it.');
-        return { close };
-    }
+    if (negRes.error) { renderError(modalEl, 'Failed to load negotiation: ' + negRes.error.message); return { close }; }
+    if (!negRes.data) { renderError(modalEl, 'Negotiation not found, or you are not a party to it.'); return { close }; }
     if (msgsRes.error) {
-        // Non-fatal: render terms with an empty chat plus a soft warning.
         console.warn('[loan-negotiation-modal] messages fetch failed:', msgsRes.error.message);
     }
 
-    renderModal(modalEl, negRes.data, msgsRes.data || []);
+    neg      = negRes.data;
+    messages = msgsRes.data || [];
+
+    renderModal(modalEl, neg, messages);
+    wireActionHandlers(modalEl, supabase, negotiationId, () => neg);
+
+    // ── Realtime subscriptions ───────────────────────────────────
+    // One channel, two listeners. UPDATE on the negotiation row
+    // triggers a re-fetch (because realtime payloads don't carry the
+    // joined faction_name); INSERT on messages appends in-place.
+    // De-dupe by id so the optimistic-or-not paths stay consistent.
+    channel = supabase.channel('lnm:' + negotiationId);
+    channel
+        .on('postgres_changes', {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'loan_negotiations',
+            filter: 'id=eq.' + negotiationId,
+        }, async () => {
+            if (closed) return;
+            const focusSnap = captureFocus(modalEl);
+            const { data, error } = await fetchNegotiation(supabase, negotiationId);
+            if (error || !data || closed) return;
+            neg = data;
+            renderModal(modalEl, neg, messages);
+            wireActionHandlers(modalEl, supabase, negotiationId, () => neg);
+            restoreFocus(modalEl, focusSnap);
+        })
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'loan_negotiation_messages',
+            filter: 'negotiation_id=eq.' + negotiationId,
+        }, (payload) => {
+            if (closed) return;
+            const m = payload.new;
+            if (messages.some(x => x.id === m.id)) return;
+            messages.push(m);
+            appendChatMessageDom(modalEl, m, neg);
+        })
+        .subscribe();
 
     return { close };
+}
+
+// ── Action wiring (re-bound on every full re-render since innerHTML
+//    discards old listeners) ──────────────────────────────────────
+function wireActionHandlers(modalEl, supabase, negotiationId, getNeg) {
+    // Apply Changes
+    const applyBtn = modalEl.querySelector('[data-act="apply-terms"]');
+    if (applyBtn) {
+        applyBtn.addEventListener('click', async () => {
+            const errEl    = modalEl.querySelector('#lnm-terms-error');
+            const statusEl = modalEl.querySelector('#lnm-terms-status');
+            const walkBtn  = modalEl.querySelector('[data-act="walk-away"]');
+            if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+
+            const principal  = parseInt(modalEl.querySelector('[data-lnm-field="principal"]')?.value, 10);
+            const apr        = parseFloat(modalEl.querySelector('[data-lnm-field="apr"]')?.value);
+            const termTicks  = parseInt(modalEl.querySelector('[data-lnm-field="term_ticks"]')?.value, 10);
+            const purpose    = modalEl.querySelector('[data-lnm-field="purpose"]')?.value || '';
+            const notes      = modalEl.querySelector('[data-lnm-field="notes"]')?.value || '';
+
+            if (!Number.isFinite(principal) || principal <= 0) {
+                showInline(errEl, 'Principal must be a positive number.');
+                return;
+            }
+            if (!Number.isFinite(apr) || apr < 0 || apr > 100) {
+                showInline(errEl, 'APR must be between 0 and 100.');
+                return;
+            }
+            if (!Number.isInteger(termTicks) || termTicks <= 0) {
+                showInline(errEl, 'Term must be a positive whole number of ticks.');
+                return;
+            }
+
+            applyBtn.disabled = true;
+            if (walkBtn) walkBtn.disabled = true;
+            if (statusEl) statusEl.style.display = '';
+            try {
+                const { data, error } = await supabase.rpc('update_negotiation_terms', {
+                    p_neg_id:     negotiationId,
+                    p_principal:  principal,
+                    p_apr:        apr,
+                    p_term_ticks: termTicks,
+                    p_purpose:    purpose,
+                    p_notes:      notes,
+                });
+                if (error)            { showInline(errEl, error.message); return; }
+                if (!data?.success)   { showInline(errEl, data?.error || 'Update failed.'); return; }
+                // Realtime push will re-render. Nothing else to do.
+            } catch (e) {
+                showInline(errEl, e?.message || 'Network error.');
+            } finally {
+                applyBtn.disabled = false;
+                if (walkBtn) walkBtn.disabled = false;
+                if (statusEl) statusEl.style.display = 'none';
+            }
+        });
+    }
+
+    // Walk Away
+    const walkBtn = modalEl.querySelector('[data-act="walk-away"]');
+    if (walkBtn) {
+        walkBtn.addEventListener('click', async () => {
+            const errEl = modalEl.querySelector('#lnm-terms-error');
+            if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+            if (!confirm('Walk away from this negotiation? Any escrowed funds are refunded.')) return;
+            walkBtn.disabled = true;
+            if (applyBtn) applyBtn.disabled = true;
+            try {
+                const { data, error } = await supabase.rpc('abandon_negotiation', {
+                    p_neg_id: negotiationId,
+                    p_reason: null,
+                });
+                if (error)          { showInline(errEl, error.message); }
+                else if (!data?.success) { showInline(errEl, data?.error || 'Could not abandon.'); }
+                // Realtime UPDATE → status='abandoned' → re-render to
+                // terminal state. No need to manually close.
+            } catch (e) {
+                showInline(errEl, e?.message || 'Network error.');
+            } finally {
+                walkBtn.disabled = false;
+                if (applyBtn) applyBtn.disabled = false;
+            }
+        });
+    }
+
+    // Send chat
+    const sendBtn  = modalEl.querySelector('[data-act="send-chat"]');
+    const chatIn   = modalEl.querySelector('[data-lnm-field="chat-input"]');
+    const chatErr  = modalEl.querySelector('#lnm-chat-error');
+    const sendChat = async () => {
+        if (chatErr) { chatErr.style.display = 'none'; chatErr.textContent = ''; }
+        const body = (chatIn?.value || '').trim();
+        if (!body) return;
+        sendBtn.disabled = true;
+        if (chatIn) chatIn.disabled = true;
+        try {
+            const { data, error } = await supabase.rpc('post_negotiation_message', {
+                p_neg_id: negotiationId,
+                p_body:   body,
+            });
+            if (error)          { showInline(chatErr, error.message); return; }
+            if (!data?.success) { showInline(chatErr, data?.error || 'Could not send.'); return; }
+            chatIn.value = '';
+            // Realtime echo will append the message.
+        } catch (e) {
+            showInline(chatErr, e?.message || 'Network error.');
+        } finally {
+            sendBtn.disabled = false;
+            if (chatIn) {
+                chatIn.disabled = false;
+                chatIn.focus();
+            }
+        }
+    };
+    if (sendBtn) sendBtn.addEventListener('click', sendChat);
+    if (chatIn)  chatIn.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendChat();
+        }
+    });
+}
+
+function showInline(el, msg) {
+    if (!el) return;
+    el.textContent = msg;
+    el.style.display = '';
 }
