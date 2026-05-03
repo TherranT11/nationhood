@@ -1377,17 +1377,21 @@ async function loadPressingIssues() {
             .eq('faction_id', faction.id)
             .eq('status', 'ACTIVE')
             .order('expires_at_tick', { ascending: true }),
+        // Phase 6 unification: borrowers see active negotiations
+        // (auction-spawned + any orphan ones) instead of bank_loan_offers.
+        // Each negotiation appears as a Pressing Issue with an
+        // "Open Negotiation" CTA that mounts the bilateral modal.
         _supabase
-            .from('bank_loan_offers')
+            .from('loan_negotiations')
             .select(`
-                id, offered_apr, offered_term_ticks, expires_at_tick,
-                bank:factions!bank_faction_id ( faction_name, corp_ticker ),
-                request:bank_loan_requests!inner ( principal, purpose )
+                id, principal, apr, term_ticks, purpose,
+                borrower_agreed, lender_agreed,
+                last_activity_at, last_seen_at_borrower,
+                lender:lender_faction_id ( faction_name, corp_ticker )
             `)
-            .eq('status', 'pending')
-            .eq('request.requesting_faction_id', faction.id)
-            .eq('request.status', 'pending')
-            .order('expires_at_tick', { ascending: true }),
+            .eq('borrower_faction_id', faction.id)
+            .eq('status', 'open')
+            .order('last_activity_at', { ascending: false }),
     ]);
     if (eventsRes.error) {
         console.warn('[corp-operations] Pressing Issues fetch failed:', eventsRes.error.message);
@@ -1441,22 +1445,29 @@ function renderPressingIssues() {
     // Loan offers render first — direct money implications and the
     // borrower's accept-one-auto-rejects-rest semantics make them the
     // most consequential decisions in the stack.
-    const offerCards = _receivedOffers.map(of => {
-        const expiresText = formatExpiresIn(of.expires_at_tick, currentTick);
-        const bank = of.bank || {};
-        const req = of.request || {};
-        const bankTicker = bank.corp_ticker || '—';
-        const bankName = bank.faction_name || 'Lender';
-        const apr = Number(of.offered_apr) || 0;
-        const term = Number(of.offered_term_ticks) || 0;
-        const principal = Number(req.principal) || 0;
-        const purpose = req.purpose ? String(req.purpose).trim() : '';
-        const inflight = _loanOfferInflight.has(of.id);
+    const offerCards = _receivedOffers.map(neg => {
+        const lender     = neg.lender || {};
+        const bankTicker = lender.corp_ticker || '—';
+        const bankName   = lender.faction_name || 'Lender';
+        const apr        = Number(neg.apr) || 0;
+        const term       = Number(neg.term_ticks) || 0;
+        const principal  = Number(neg.principal) || 0;
+        const purpose    = neg.purpose ? String(neg.purpose).trim() : '';
+        const tally      = (neg.borrower_agreed ? 1 : 0) + (neg.lender_agreed ? 1 : 0);
+        const lastActivity = neg.last_activity_at ? new Date(neg.last_activity_at) : null;
+        const dSec  = lastActivity ? Math.max(0, Math.floor((Date.now() - lastActivity.getTime()) / 1000)) : 0;
+        const activityText = !lastActivity ? '—'
+            : dSec < 60   ? dSec + 's ago'
+            : dSec < 3600 ? Math.floor(dSec / 60) + 'm ago'
+            : dSec < 86400 ? Math.floor(dSec / 3600) + 'h ago'
+            : Math.floor(dSec / 86400) + 'd ago';
+        const unread = !neg.last_seen_at_borrower
+            || (lastActivity && new Date(neg.last_seen_at_borrower).getTime() < lastActivity.getTime());
 
         return `<div class="co-issue-card kind-loan-offer">
             <div class="co-contract-meta-row">
-                <span class="co-issue-tag kind-loan-offer">LOAN OFFER ◊ FINANCE</span>
-                <span class="co-contract-deadline">${escapeHtml(expiresText)}</span>
+                <span class="co-issue-tag kind-loan-offer">${unread ? 'NEGOTIATION ◊ UNREAD' : 'NEGOTIATION'}</span>
+                <span class="co-contract-deadline">${escapeHtml(activityText)}</span>
             </div>
             <div class="co-contract-name">${escapeHtml(bankTicker)} — ${escapeHtml(bankName)}</div>
             ${purpose ? `<div class="co-contract-client">— ${escapeHtml(purpose)}</div>` : ''}
@@ -1464,13 +1475,11 @@ function renderPressingIssues() {
                 <span><span class="label">PRINCIPAL</span><span class="value">${escapeHtml(fmtMoney(principal))}</span></span>
                 <span><span class="label">APR</span><span class="value">${apr.toFixed(1)}%</span></span>
                 <span><span class="label">TERM</span><span class="value">${term} TICKS</span></span>
+                <span><span class="label">AGREEMENT</span><span class="value">${tally}/2</span></span>
             </div>
             <div class="co-contract-actions">
-                <button class="co-contract-btn primary" data-action="accept-offer" data-id="${escapeHtml(of.id)}" ${inflight ? 'disabled' : ''}>
-                    ${inflight ? 'Working…' : 'Accept ▸'}
-                </button>
-                <button class="co-contract-btn" data-action="reject-offer" data-id="${escapeHtml(of.id)}" ${inflight ? 'disabled' : ''}>
-                    Reject
+                <button class="co-contract-btn primary" data-action="open-negotiation" data-id="${escapeHtml(neg.id)}">
+                    Open Negotiation ▸
                 </button>
             </div>
         </div>`;
@@ -1514,63 +1523,6 @@ function renderPressingIssues() {
 }
 
 let _ackInflight = new Set();
-let _loanOfferInflight = new Set();
-
-// Accept reloads Pressing Issues regardless of outcome — on success
-// the request flips to 'approved' and every sibling offer auto-rejects
-// (they all need to disappear); on a server-side failure (offer or
-// request changed state in a race) the reload syncs the visible cards
-// to canonical state so the user isn't stuck retrying a stale row.
-// Cash doesn't move until the bank disburses, so no faction refetch.
-async function acceptLoanOffer(offerId) {
-    if (!offerId || _loanOfferInflight.has(offerId)) return;
-    _loanOfferInflight.add(offerId);
-    renderPressingIssues();
-    try {
-        const { data, error } = await _supabase.rpc('accept_loan_offer', {
-            p_offer_id: offerId,
-        });
-        if (error) {
-            showToast('Failed: ' + error.message, 'error');
-        } else if (!data?.success) {
-            showToast(data?.error || 'Failed to accept', 'error');
-        } else {
-            showToast('Offer accepted. Awaiting bank disbursement.', 'success');
-        }
-        await loadPressingIssues();
-    } catch (err) {
-        console.error('[corp-operations] accept_loan_offer failed:', err);
-        showToast('Accept failed: ' + (err?.message || 'unknown'), 'error');
-    } finally {
-        _loanOfferInflight.delete(offerId);
-        renderPressingIssues();
-    }
-}
-
-async function rejectLoanOffer(offerId) {
-    if (!offerId || _loanOfferInflight.has(offerId)) return;
-    _loanOfferInflight.add(offerId);
-    renderPressingIssues();
-    try {
-        const { data, error } = await _supabase.rpc('reject_loan_offer', {
-            p_offer_id: offerId,
-        });
-        if (error) {
-            showToast('Failed: ' + error.message, 'error');
-        } else if (!data?.success) {
-            showToast(data?.error || 'Failed to reject', 'error');
-        } else {
-            showToast('Offer rejected.', 'success');
-        }
-        await loadPressingIssues();
-    } catch (err) {
-        console.error('[corp-operations] reject_loan_offer failed:', err);
-        showToast('Reject failed: ' + (err?.message || 'unknown'), 'error');
-    } finally {
-        _loanOfferInflight.delete(offerId);
-        renderPressingIssues();
-    }
-}
 
 async function acknowledgeIssue(eventId) {
     if (_ackInflight.has(eventId)) return;
@@ -1912,17 +1864,30 @@ function bindContractActions() {
     document.getElementById('co-active-list')?.addEventListener('click', handleContractClick);
 
     // Pressing Issues delegation. Routes by data-action: ack-issue
-    // for project events, accept-offer / reject-offer for inbound
-    // loan offers.
-    document.getElementById('co-issues-list')?.addEventListener('click', (e) => {
+    // for project events, open-negotiation for inbound bilateral
+    // loan negotiations (Phase 6 unification — replaces accept/reject
+    // on bank_loan_offers).
+    document.getElementById('co-issues-list')?.addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-action]');
         if (!btn || btn.disabled) return;
         const action = btn.getAttribute('data-action');
         const id = btn.getAttribute('data-id');
         if (!id) return;
         if (action === 'ack-issue')     return acknowledgeIssue(id);
-        if (action === 'accept-offer')  return acceptLoanOffer(id);
-        if (action === 'reject-offer')  return rejectLoanOffer(id);
+        if (action === 'open-negotiation') {
+            try {
+                const lnm = await import('./js/loan-negotiation-modal.js');
+                await lnm.mountLoanNegotiationModal({
+                    supabase: _supabase,
+                    negotiationId: id,
+                    onClose: () => loadPressingIssues(),
+                    onFired: () => loadPressingIssues(),
+                });
+            } catch (err) {
+                console.warn('[corp-operations] negotiation modal mount failed:', err?.message || err);
+            }
+            return;
+        }
     });
 
     // Modal background / close-button click → dismiss.
