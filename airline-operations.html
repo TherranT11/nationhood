@@ -1380,18 +1380,23 @@ async function loadAviationIncidents(corpId, currentTick) {
             const card = btn.closest('.ao-incident-card');
             if (card) card.querySelectorAll('button').forEach(b => b.disabled = true);
 
-            const { data, error } = await _supabase.rpc('respond_to_aviation_incident', {
-                p_incident_id: incidentId,
-                p_response:    response,
-            });
-            if (error || !data?.success) {
-                alert(error?.message || data?.error || 'Could not submit response.');
+            try {
+                const { data, error } = await _supabase.rpc('respond_to_aviation_incident', {
+                    p_incident_id: incidentId,
+                    p_response:    response,
+                });
+                if (error || !data?.success) {
+                    alert(error?.message || data?.error || 'Could not submit response.');
+                    if (card) card.querySelectorAll('button').forEach(b => b.disabled = false);
+                    return;
+                }
+                // Refresh — also pulls latest cash for re-rendering
+                // the Compensate gate on any remaining incidents.
+                await loadAviationIncidents(corpId, currentTick);
+            } catch (err) {
+                alert('Network error: ' + (err?.message || 'unknown'));
                 if (card) card.querySelectorAll('button').forEach(b => b.disabled = false);
-                return;
             }
-            // Refresh — also pulls latest cash for re-rendering the
-            // Compensate gate on any remaining incidents.
-            await loadAviationIncidents(corpId, currentTick);
         });
     });
 }

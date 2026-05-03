@@ -750,19 +750,76 @@ BEGIN
      WHERE id = p_route_id;
 
     RETURN jsonb_build_object(
-        'route_id',         p_route_id,
-        'tick',             p_tick,
-        'pax',              v_pax,
-        'revenue',          v_revenue,
-        'ops_cost',         v_ops_cost,
-        'maint_charge',     v_maint_charge,
-        'is_anniversary',   v_is_anniversary,
-        'incidents',        v_incident_log
+        'route_id',        p_route_id,
+        'tick',            p_tick,
+        'pax',             v_pax,
+        'revenue',         v_revenue,
+        'ops_cost',        v_ops_cost,
+        'maint_charge',    v_maint_charge,
+        'is_anniversary',  v_is_anniversary,
+        'incidents',       v_incident_log,
+        -- Read by process_airline_corp_tick to populate the per-corp
+        -- summary. Replaces the boolean 'incident' field the Phase 6
+        -- single-roll version returned.
+        'incident_count',  jsonb_array_length(v_incident_log)
     );
 END;
 $$;
 
 REVOKE EXECUTE ON FUNCTION process_airline_route_tick(UUID, INTEGER) FROM PUBLIC;
+
+
+-- ── 8. process_airline_corp_tick: read new incident_count field ─
+-- Phase 6 wrapper read the boolean 'incident' field. The Phase 7
+-- route processor returns 'incident_count' instead. Re-issuing the
+-- wrapper so the per-corp incidents count keeps working.
+CREATE OR REPLACE FUNCTION process_airline_corp_tick(p_corp_id UUID, p_tick INTEGER)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_route        RECORD;
+    v_route_result JSONB;
+    v_total_pax    BIGINT  := 0;
+    v_total_rev    BIGINT  := 0;
+    v_total_spend  BIGINT  := 0;
+    v_incidents    INTEGER := 0;
+    v_routes       INTEGER := 0;
+BEGIN
+    FOR v_route IN
+        SELECT id FROM airline_routes
+         WHERE airline_faction_id = p_corp_id
+           AND status = 'active'
+           AND (last_processed_tick IS NULL OR last_processed_tick < p_tick)
+         ORDER BY opened_at_tick
+    LOOP
+        v_route_result := process_airline_route_tick(v_route.id, p_tick);
+        IF NOT COALESCE((v_route_result->>'skipped')::BOOLEAN, false) THEN
+            v_routes      := v_routes      + 1;
+            v_total_pax   := v_total_pax   + COALESCE((v_route_result->>'pax')::BIGINT, 0);
+            v_total_rev   := v_total_rev   + COALESCE((v_route_result->>'revenue')::BIGINT, 0);
+            v_total_spend := v_total_spend
+                           + COALESCE((v_route_result->>'ops_cost')::BIGINT, 0)
+                           + COALESCE((v_route_result->>'maint_charge')::BIGINT, 0);
+            v_incidents := v_incidents + COALESCE((v_route_result->>'incident_count')::INTEGER, 0);
+        END IF;
+    END LOOP;
+
+    RETURN jsonb_build_object(
+        'corp_id',   p_corp_id,
+        'tick',      p_tick,
+        'routes',    v_routes,
+        'pax',       v_total_pax,
+        'revenue',   v_total_rev,
+        'spend',     v_total_spend,
+        'incidents', v_incidents
+    );
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION process_airline_corp_tick(UUID, INTEGER) FROM PUBLIC;
 
 
 COMMIT;
