@@ -1313,11 +1313,13 @@ body.corp-operations-finance.light-mode {
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 
-// Operations pages are sector-gated. Finance stays here; Construction has
-// its own page; anything else falls back to the dashboard.
+// Operations pages are sector-gated. Finance stays here; every other
+// sector has its own page. Keep this map in sync with corp-topbar.js's
+// canonical SECTOR_OPS_PAGE.
 const SECTOR_OPS_PAGE = {
     Construction: 'corp-operations.html',
     Shipping:     'corp-operations-shipping.html',
+    Airline:      'airline-operations.html',
 };
 
 // ── HERO STATS (Section I) ──
