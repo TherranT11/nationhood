@@ -2329,7 +2329,7 @@ async function processActiveProjects(supabase, nationId, currentTick) {
                 .single();
             if (corp) {
                 const newCash = Math.max(0, Number(corp.corp_cash_reserves || 0) - perTickCost);
-                logCashEvent(bid.faction_id, 'event_cost', 'Project per-tick cost', -perTickCost);
+                logCashEvent(bid.faction_id, 'event_cost', `Project: ${contract.name || 'Unnamed'}`, -perTickCost);
                 await supabase.from('factions')
                     .update({ corp_cash_reserves: newCash })
                     .eq('id', bid.faction_id);
