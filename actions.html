@@ -256,6 +256,7 @@ const EXEC_ACTIONS = {
     CFO: [
         { id: 'loan', name: 'Request Loan', desc: 'Submit a loan application to all finance corporations. Set amount, purpose, term, and collateral. Receive competing offers.', cost: 'FREE', costColor: '#5cb85c', tags: ['FINANCIAL'] },
         { id: 'equity', name: 'Apply for Equity', desc: 'Raise capital by offering Investment corps a stake in your monthly profits. Series (A/B/C…) is auto-assigned by your prior funded raise count. No repayment — investors get a percentage of profit each tick going forward.', cost: 'FREE', costColor: '#c89a4a', tags: ['FINANCIAL', 'STRUCTURAL'], hideForSector: 'Finance' },
+        { id: 'paydown', name: 'Pay Down Debt', desc: 'Use cash to retire outstanding loan principal early. Reduces debt and improves your credit standing. Paying off a loan in full grants +1 Reputation. Costs $100k admin fee.', cost: '$100k', costColor: '#5a8aaa', tags: ['FINANCIAL'] },
     ],
     COO: [
         { id: 'restructure', name: 'Restructure Operations', desc: 'Lay off 10-20% of workforce, cut ~7% of debt. Reputation hit scales with COO skill — high skill minimizes damage.', cost: 'FREE', costColor: '#5cb85c', tags: ['OPERATIONAL'], cooldown: 'once/tick' },
@@ -519,6 +520,7 @@ function actExecute(actionId, role) {
         case 'statement': return actOpenStatement();
         case 'loan': return lrOpen();
         case 'equity': return applyForEquity(faction, shard, _supabase);
+        case 'paydown': return actOpenPayDown();
         case 'restructure': return actOpenRestructure();
         case 'rebrand': return actOpenRebrand();
         case 'branding': return actOpenBranding();
@@ -1894,6 +1896,241 @@ async function actSubmitDonation() {
     actCloseDonation();
 }
 
+// ═══════════════════════════════════════════════════
+// CFO: Pay Down Debt
+// ═══════════════════════════════════════════════════
+
+const PAYDOWN_ADMIN_FEE = 100000;
+let _paydownLoans = [];
+let _paydownSelectedId = null;
+let _paydownAmount = 0;
+let _paydownSubmitting = false;
+
+async function actOpenPayDown() {
+    _paydownLoans = [];
+    _paydownSelectedId = null;
+    _paydownAmount = 0;
+    _paydownSubmitting = false;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'paydown-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:600;display:flex;align-items:center;justify-content:center;';
+    overlay.onclick = function(e) { if (e.target === overlay) actClosePayDown(); };
+    document.body.appendChild(overlay);
+
+    renderPayDownModal();
+
+    if (!faction?.id) return;
+    const { data, error } = await _supabase.from('bank_loans')
+        .select('id, lender_faction_id, principal, outstanding, apr, term_ticks, issued_at_tick, matures_at_tick, status, lender:lender_faction_id(faction_name, abbreviation)')
+        .eq('borrower_faction_id', faction.id)
+        .in('status', ['active', 'called'])
+        .gt('outstanding', 0)
+        .order('issued_at_tick', { ascending: true });
+    if (error) {
+        console.warn('[PayDown] failed to load loans:', error.message);
+        _paydownLoans = [];
+    } else {
+        _paydownLoans = data || [];
+    }
+    renderPayDownModal();
+}
+
+function actClosePayDown() {
+    const o = document.getElementById('paydown-overlay');
+    if (o) o.remove();
+    _paydownLoans = [];
+    _paydownSelectedId = null;
+    _paydownAmount = 0;
+    _paydownSubmitting = false;
+}
+
+function paydownSelectLoan(loanId) {
+    _paydownSelectedId = loanId;
+    const loan = _paydownLoans.find(l => l.id === loanId);
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    const cashAvailable = Math.max(0, cash - PAYDOWN_ADMIN_FEE);
+    if (loan) {
+        _paydownAmount = Math.min(Number(loan.outstanding) || 0, cashAvailable);
+    } else {
+        _paydownAmount = 0;
+    }
+    renderPayDownModal();
+}
+
+function paydownSetAmount(v) {
+    const loan = _paydownLoans.find(l => l.id === _paydownSelectedId);
+    if (!loan) { _paydownAmount = 0; renderPayDownModal(); return; }
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    const cashAvailable = Math.max(0, cash - PAYDOWN_ADMIN_FEE);
+    const max = Math.min(Number(loan.outstanding) || 0, cashAvailable);
+    let n = Number(String(v).replace(/[^0-9.]/g, '')) || 0;
+    n = Math.max(0, Math.min(max, Math.floor(n)));
+    _paydownAmount = n;
+    renderPayDownModal();
+}
+
+function paydownMaxAmount() {
+    const loan = _paydownLoans.find(l => l.id === _paydownSelectedId);
+    if (!loan) return;
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    const cashAvailable = Math.max(0, cash - PAYDOWN_ADMIN_FEE);
+    _paydownAmount = Math.min(Number(loan.outstanding) || 0, cashAvailable);
+    renderPayDownModal();
+}
+
+function renderPayDownModal() {
+    const overlay = document.getElementById('paydown-overlay');
+    if (!overlay) return;
+
+    const cash = Number(faction?.corp_cash_reserves ?? 0);
+    const sel = _paydownLoans.find(l => l.id === _paydownSelectedId) || null;
+    const totalCharge = sel ? (_paydownAmount + PAYDOWN_ADMIN_FEE) : 0;
+    const canAfford = sel && totalCharge > 0 && cash >= totalCharge && _paydownAmount > 0;
+    const willPayOff = sel && _paydownAmount > 0 && _paydownAmount >= Number(sel.outstanding || 0);
+
+    let html = `<div onclick="event.stopPropagation()" style="width:620px;max-height:84vh;background:var(--panel-main);border:1px solid var(--panel-border);display:flex;flex-direction:column;overflow:hidden;">`;
+
+    // Header
+    html += `<div style="padding:14px 20px;border-bottom:1px solid var(--panel-border);background:var(--bg-panel);flex-shrink:0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:10px;color:#5a8aaa;">&#9679;</span>
+                <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;letter-spacing:2px;color:#9e9a92;text-transform:uppercase;">Pay Down Debt</span>
+            </div>
+            <span onclick="actClosePayDown()" style="font-family:var(--font-mono);font-size:18px;color:#6a6660;cursor:pointer;">&#215;</span>
+        </div>
+        <div style="font-family:var(--font-mono);font-size:10px;color:#6a6660;margin-top:6px;">Retire outstanding loan principal early. Pays down a single loan; the lender is credited the same amount. <span style="color:#ca5;">$100k admin fee</span> is charged on top of the payment. Paying a loan off in full grants <span style="color:#5cb85c;">+1 Reputation</span>.</div>
+    </div>`;
+
+    // Loan list
+    html += '<div style="flex:1;overflow-y:auto;padding:10px 0;">';
+    html += '<div style="padding:0 20px 8px;font-family:var(--font-mono);font-size:10px;letter-spacing:1.5px;color:#6a6660;text-transform:uppercase;">Select a Loan</div>';
+
+    if (_paydownLoans.length === 0) {
+        html += '<div style="padding:24px 20px;text-align:center;font-family:var(--font-mono);font-size:12px;color:#6a6660;">No active loans to pay down.</div>';
+    } else {
+        for (const loan of _paydownLoans) {
+            const isSel = loan.id === _paydownSelectedId;
+            const lenderName = loan.lender?.faction_name || 'Unknown Lender';
+            const lenderAbbr = loan.lender?.abbreviation || '';
+            const apr = Number(loan.apr || 0).toFixed(2);
+            const ticksLeft = Math.max(0, Number(loan.matures_at_tick || 0) - Number(shard?.current_tick || 0));
+            const statusColor = loan.status === 'called' ? '#c55' : '#5cb85c';
+            html += `<div onclick="paydownSelectLoan('${loan.id}')" style="
+                padding:10px 20px;
+                border-bottom:1px solid var(--panel-border);
+                border-left:3px solid ${isSel ? '#5a8aaa' : 'transparent'};
+                background:${isSel ? 'rgba(90,138,170,0.06)' : 'transparent'};
+                cursor:pointer;
+            ">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span style="font-size:14px;font-weight:600;color:${isSel ? 'var(--panel-text)' : '#9e9a92'};">${escapeHtml(lenderName)}</span>
+                            ${lenderAbbr ? `<span style="font-family:var(--font-mono);font-size:10px;color:#6a6660;">${escapeHtml(lenderAbbr)}</span>` : ''}
+                            <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.5px;color:${statusColor};text-transform:uppercase;">${escapeHtml(loan.status)}</span>
+                        </div>
+                        <div style="display:flex;gap:14px;margin-top:4px;">
+                            <span style="font-family:var(--font-mono);font-size:10px;color:#6a6660;">Outstanding: <span style="color:var(--panel-text);font-weight:700;">${hfFmtBig(loan.outstanding)}</span></span>
+                            <span style="font-family:var(--font-mono);font-size:10px;color:#6a6660;">Principal: <span style="color:#9e9a92;">${hfFmtBig(loan.principal)}</span></span>
+                            <span style="font-family:var(--font-mono);font-size:10px;color:#6a6660;">APR: <span style="color:#ca5;">${apr}%</span></span>
+                            <span style="font-family:var(--font-mono);font-size:10px;color:#6a6660;">Matures in: <span style="color:#9e9a92;">${ticksLeft}t</span></span>
+                        </div>
+                    </div>
+                    ${isSel ? '<span style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:#5cb85c;">SELECTED</span>' : ''}
+                </div>
+            </div>`;
+        }
+    }
+    html += '</div>';
+
+    // Amount input + summary
+    if (sel) {
+        const cashAvailable = Math.max(0, cash - PAYDOWN_ADMIN_FEE);
+        const maxAmount = Math.min(Number(sel.outstanding || 0), cashAvailable);
+        html += `<div style="padding:14px 20px;border-top:1px solid var(--panel-border);background:var(--bg-panel);">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+                <span style="font-family:var(--font-mono);font-size:10px;color:#6a6660;letter-spacing:0.8px;text-transform:uppercase;flex-shrink:0;">Amount</span>
+                <input type="text" value="${_paydownAmount}" oninput="paydownSetAmount(this.value)" style="flex:1;padding:6px 10px;font-family:var(--font-mono);font-size:13px;background:var(--bg-2,#1a1a17);border:1px solid var(--panel-border);color:var(--panel-text);outline:none;" />
+                <span onclick="paydownMaxAmount()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;color:#5a8aaa;border:1px solid rgba(90,138,170,0.4);background:rgba(90,138,170,0.06);cursor:pointer;">MAX</span>
+            </div>
+            <div style="display:flex;gap:16px;font-family:var(--font-mono);font-size:10px;color:#6a6660;">
+                <span>Max: <span style="color:#9e9a92;font-weight:700;">${hfFmtBig(maxAmount)}</span></span>
+                <span>+ Admin: <span style="color:#ca5;font-weight:700;">${hfFmtBig(PAYDOWN_ADMIN_FEE)}</span></span>
+                <span>= Total: <span style="color:${canAfford ? 'var(--panel-text)' : '#c55'};font-weight:700;">${hfFmtBig(totalCharge)}</span></span>
+                ${willPayOff ? '<span style="color:#5cb85c;font-weight:700;">PAYS OFF IN FULL · +1 REP</span>' : ''}
+            </div>
+        </div>`;
+    }
+
+    // Footer
+    html += `<div style="padding:12px 20px;border-top:1px solid var(--panel-border);background:var(--bg-panel);flex-shrink:0;display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;gap:16px;">
+            <div><div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">CASH</div><div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${cash >= totalCharge ? 'var(--panel-text)' : '#c55'};">${hfFmtBig(cash)}</div></div>
+            ${sel ? `<div><div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">CHARGE</div><div style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:#ca5;">${hfFmtBig(totalCharge)}</div></div>` : ''}
+        </div>
+        <div style="display:flex;gap:8px;">
+            <div onclick="actClosePayDown()" style="padding:8px 20px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:#6a6660;border:1px solid var(--panel-border);cursor:pointer;">CANCEL</div>
+            <div id="paydown-btn" onclick="${canAfford ? 'actSubmitPayDown()' : ''}" style="padding:8px 24px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;color:${canAfford ? '#000' : '#6a6660'};background:${canAfford ? '#5a8aaa' : 'var(--panel-border)'};cursor:${canAfford ? 'pointer' : 'not-allowed'};${canAfford ? '' : 'opacity:0.4;pointer-events:none;'}">CONFIRM</div>
+        </div>
+    </div>
+    <div id="paydown-error" style="padding:6px 20px;font-family:var(--font-mono);font-size:10px;color:#c55;display:none;"></div>`;
+
+    html += '</div>';
+    overlay.innerHTML = html;
+}
+
+async function actSubmitPayDown() {
+    if (_paydownSubmitting) return;
+    const sel = _paydownLoans.find(l => l.id === _paydownSelectedId);
+    if (!sel || !faction || _paydownAmount <= 0) return;
+
+    const errEl = () => document.getElementById('paydown-error');
+    const showErr = (msg) => { const e = errEl(); if (e) { e.textContent = msg; e.style.display = 'block'; } };
+
+    _paydownSubmitting = true;
+    const btn = document.getElementById('paydown-btn');
+    if (btn) { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; }
+
+    const { data, error } = await _supabase.rpc('pay_down_debt', {
+        p_borrower_id: faction.id,
+        p_loan_id:     sel.id,
+        p_amount:      _paydownAmount,
+    });
+
+    if (error) {
+        _paydownSubmitting = false;
+        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+        showErr('RPC failed: ' + error.message);
+        return;
+    }
+    if (!data?.success) {
+        _paydownSubmitting = false;
+        if (btn) { btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+        showErr(data?.error || 'Payment failed.');
+        return;
+    }
+
+    // Refresh local cash + reputation so the topbar reflects the new state.
+    const { data: fresh } = await _supabase.from('factions')
+        .select('corp_cash_reserves, corp_reputation, corp_debt')
+        .eq('id', faction.id)
+        .single();
+    if (fresh) {
+        faction.corp_cash_reserves = fresh.corp_cash_reserves;
+        faction.corp_reputation    = fresh.corp_reputation;
+        faction.corp_debt          = fresh.corp_debt;
+    }
+
+    actClosePayDown();
+    renderActionsTab();
+    const topBarContainer = document.getElementById('corp-topbar-container');
+    if (topBarContainer) {
+        renderCorpTopBar(topBarContainer, { faction, shard, activeTab: 'actions', allUserFactions });
+    }
+}
+
 function actSelectExec(idx) {
     _selectedExecIdx = idx;
     renderActionsTab();
@@ -2258,6 +2495,11 @@ window.actSubmitRebrand = actSubmitRebrand;
 window.actCloseDonation = actCloseDonation;
 window.actSubmitDonation = actSubmitDonation;
 window.donateSelectParty = donateSelectParty;
+window.actClosePayDown = actClosePayDown;
+window.actSubmitPayDown = actSubmitPayDown;
+window.paydownSelectLoan = paydownSelectLoan;
+window.paydownSetAmount = paydownSetAmount;
+window.paydownMaxAmount = paydownMaxAmount;
 window.lrClose = lrClose;
 window.lrSetAmount = lrSetAmount;
 window.lrToggleBank = lrToggleBank;
