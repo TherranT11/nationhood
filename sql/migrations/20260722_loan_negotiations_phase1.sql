@@ -497,6 +497,14 @@ BEGIN
         v_changes := v_changes || CASE WHEN v_changes = '' THEN '' ELSE '; ' END || 'Notes updated';
     END IF;
 
+    -- No-op guard: if nothing actually changed, don't touch escrow or
+    -- agreement flags. Without this, a UI that submits Apply Changes
+    -- on an unchanged form would silently refund the lender's escrow
+    -- and reset both Agree flags — destroying state on a phantom edit.
+    IF v_changes = '' THEN
+        RETURN jsonb_build_object('success', true, 'noop', true);
+    END IF;
+
     -- Refund escrow before writing the new terms (escrow rides the
     -- prior agreement which we're about to clear).
     IF v_neg.escrowed_lender_cash > 0 THEN
