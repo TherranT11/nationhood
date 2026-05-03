@@ -7227,6 +7227,22 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
         summary.errors.push({ scope: 'shipping_routes', error: String(shipErr) });
     }
 
+    // Lawsuit deadline sweeper: any commercial_lawsuits row past its
+    // 3-tick response_deadline_tick auto-concedes. SQL handles the
+    // updates + event_log inserts atomically.
+    try {
+        const { data: lawsuitSwept, error: lawsuitErr } = await supabase.rpc('process_lawsuit_deadlines');
+        if (lawsuitErr) {
+            console.warn('[advance-corp-tick] lawsuit deadline sweep failed:', lawsuitErr.message);
+        } else if (lawsuitSwept && lawsuitSwept > 0) {
+            summary.lawsuitsAutoConceded = lawsuitSwept;
+            console.log(`[Lawsuits] tick ${currentTick}: ${lawsuitSwept} auto-conceded past deadline`);
+        }
+    } catch (lawsuitCatchErr) {
+        console.error('[advance-corp-tick] FAILED lawsuit sweeper:', lawsuitCatchErr);
+        summary.errors.push({ scope: 'lawsuit_deadlines', error: String(lawsuitCatchErr) });
+    }
+
     // Flush buffered cash events to corp_cash_events. Single writer for
     // every per-corp P&L delta this tick, regardless of which nation
     // triggered it.

@@ -12621,6 +12621,7 @@ async function renderJudicialTab(container) {
             .select(`
                 id, plaintiff_faction_id, defendant_faction_id, grievance_type,
                 grievance_sector, relief_sought, status, filing_fee, filed_at_tick,
+                response_deadline_tick, defendant_response, settle_offer_amount,
                 closed_at_tick, ruling, relationship_ref,
                 plaintiff:plaintiff_faction_id(faction_name, abbreviation, corp_ticker, corp_sector),
                 defendant:defendant_faction_id(faction_name, abbreviation, corp_ticker, corp_sector)
@@ -12643,16 +12644,18 @@ async function renderJudicialTab(container) {
     const viewerHoldsJustice = !!currentFaction && justiceHolderId && currentFaction.id === justiceHolderId;
     const justiceVacant = !justiceHolderId;
 
-    const pending = lawsuits.filter(l => l.status === 'pending' || l.status === 'reviewing');
+    const pending = lawsuits.filter(l => ['pending','reviewing','awaiting_trial','settle_offered'].includes(l.status));
     const closed  = lawsuits.filter(l => ['upheld','dismissed','settled','withdrawn'].includes(l.status));
 
     const statusColor = {
-        pending:    '#c8a832',
-        reviewing:  '#5a8aaa',
-        upheld:     '#5cb85c',
-        dismissed:  '#9e9a92',
-        settled:    '#a0633a',
-        withdrawn:  '#6a6660',
+        pending:        '#c8a832',
+        reviewing:      '#5a8aaa',
+        awaiting_trial: '#c55',
+        settle_offered: '#a0633a',
+        upheld:         '#5cb85c',
+        dismissed:      '#9e9a92',
+        settled:        '#a0633a',
+        withdrawn:      '#6a6660',
     };
 
     function lawsuitRow(l) {
@@ -12661,13 +12664,26 @@ async function renderJudicialTab(container) {
         const defName = l.defendant?.faction_name || 'Unknown';
         const defTick = l.defendant?.corp_ticker || l.defendant?.abbreviation || '';
         const sc      = statusColor[l.status] || '#9e9a92';
+        const ticksLeft = Math.max(0, Number(l.response_deadline_tick || 0) - Number(currentTick || 0));
 
-        const reviewBtn = l.status === 'pending' || l.status === 'reviewing'
-            ? (viewerHoldsJustice
-                ? `<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;padding:5px 10px;color:#6a6660;border:1px solid var(--border-main);background:var(--bg-panel);cursor:not-allowed;opacity:0.5;" title="Ruling system arrives in Phase 2.">Review · Phase 2</span>`
-                : justiceVacant
-                    ? `<span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:#c84;">Justice Vacant</span>`
-                    : `<span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:#6a6660;">Awaiting MoJ</span>`)
+        // Phase-stage hint replaces the static "Awaiting MoJ" label
+        // with text reflecting where the case actually is in its
+        // lifecycle. MoJ ruling controls land in Phase 3.
+        let hintText = '';
+        if (l.status === 'pending') {
+            hintText = `Waiting for Defendant to Respond · ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}`;
+        } else if (l.status === 'awaiting_trial') {
+            hintText = justiceVacant ? 'Justice Vacant · Awaiting Appointment' : 'Awaiting MoJ Ruling';
+        } else if (l.status === 'settle_offered') {
+            hintText = 'Settlement Offered · Awaiting Plaintiff';
+        } else if (l.status === 'reviewing') {
+            hintText = 'Under MoJ Review';
+        }
+        const hintColor = l.status === 'pending' ? '#c8a832'
+                        : l.status === 'awaiting_trial' && justiceVacant ? '#c84'
+                        : '#6a6660';
+        const hint = hintText
+            ? `<span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.14em;text-transform:uppercase;color:${hintColor};">${escapeHtml(hintText)}</span>`
             : '';
 
         return `<div style="padding:12px 16px;border-bottom:1px solid var(--border-main);background:var(--bg-panel);display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;">
@@ -12684,8 +12700,8 @@ async function renderJudicialTab(container) {
                 </div>
             </div>
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
-                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;padding:3px 9px;color:${sc};border:1px solid ${sc}66;background:${sc}14;">${escapeHtml(l.status)}</span>
-                ${reviewBtn}
+                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;padding:3px 9px;color:${sc};border:1px solid ${sc}66;background:${sc}14;">${escapeHtml(l.status.replace('_',' '))}</span>
+                ${hint}
             </div>
         </div>`;
     }
