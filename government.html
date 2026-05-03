@@ -65,6 +65,7 @@ import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, isPr
 import { loadSeats, detectHeadFaction, fetchActiveCoalition } from './js/game/government-structure.js';
 import { getCreditRating } from './js/game/debt.js';
 import { isMilitaryLoyaltyActive } from './js/game/military-loyalty.js';
+import { GRIEVANCE_LABEL, RELIEF_LABEL } from './js/game/lawsuit-types.js';
 import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, buildMinistryBaselines } from './js/game/stats.js';
 import { formatStatName, autoAppointPartyLeaderAsPM, getNationNames, resignPM } from './js/game/political-actions.js';
 import { adjustGovernmentApprovalEvent } from './js/game/momentum.js';
@@ -12645,21 +12646,6 @@ async function renderJudicialTab(container) {
     const pending = lawsuits.filter(l => l.status === 'pending' || l.status === 'reviewing');
     const closed  = lawsuits.filter(l => ['upheld','dismissed','settled','withdrawn'].includes(l.status));
 
-    const grievanceLabel = {
-        breach_of_contract: 'Breach of Contract',
-        fraud:              'Fraud',
-        defamation:         'Defamation',
-        predatory_terms:    'Predatory Terms',
-        non_payout:         'Non-Payout',
-        defective_work:     'Defective Work',
-        cargo_loss:         'Cargo Loss',
-    };
-    const reliefLabel = {
-        payment:              'Payment',
-        specific_performance: 'Specific Performance',
-        contract_voidance:    'Contract Voidance',
-        asset_seizure:        'Asset Seizure',
-    };
     const statusColor = {
         pending:    '#c8a832',
         reviewing:  '#5a8aaa',
@@ -12692,8 +12678,8 @@ async function renderJudicialTab(container) {
                     <span style="font-family:var(--font-mono);font-size:10px;color:#c8a832;letter-spacing:0.1em;margin-right:6px;">${escapeHtml(defTick)}</span>${escapeHtml(defName)}
                 </div>
                 <div style="font-family:var(--font-mono);font-size:10px;color:#9e9a92;margin-top:4px;letter-spacing:0.06em;">
-                    ${escapeHtml(grievanceLabel[l.grievance_type] || l.grievance_type)} ·
-                    Relief: ${escapeHtml(reliefLabel[l.relief_sought] || l.relief_sought)} ·
+                    ${escapeHtml(GRIEVANCE_LABEL[l.grievance_type] || l.grievance_type)} ·
+                    Relief: ${escapeHtml(RELIEF_LABEL[l.relief_sought] || l.relief_sought)} ·
                     Filed tick ${l.filed_at_tick}${l.closed_at_tick ? ' · Closed tick ' + l.closed_at_tick : ''}
                 </div>
             </div>

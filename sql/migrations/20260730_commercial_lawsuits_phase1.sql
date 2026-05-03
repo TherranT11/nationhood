@@ -80,7 +80,7 @@ CREATE OR REPLACE FUNCTION file_commercial_lawsuit(
     p_plaintiff_id     UUID,
     p_defendant_id     UUID,
     p_grievance_type   TEXT,
-    p_grievance_sector TEXT,
+    p_grievance_sector TEXT,                -- accepted but not trusted; sector is derived server-side
     p_relief_sought    TEXT,
     p_relationship_ref JSONB
 ) RETURNS JSONB
@@ -89,17 +89,18 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-    v_user        UUID := auth.uid();
-    v_plaintiff   factions%ROWTYPE;
-    v_defendant   factions%ROWTYPE;
-    v_filing_fee  CONSTANT BIGINT := 2000000;
-    v_tick        INT;
-    v_lawsuit_id  UUID;
-    v_rel_kind    TEXT;
-    v_rel_id      UUID;
-    v_rel_ok      BOOLEAN := false;
-    v_grievance_label TEXT;
-    v_description TEXT;
+    v_user             UUID := auth.uid();
+    v_plaintiff        factions%ROWTYPE;
+    v_defendant        factions%ROWTYPE;
+    v_filing_fee       CONSTANT BIGINT := 2000000;
+    v_tick             INT;
+    v_lawsuit_id       UUID;
+    v_rel_kind         TEXT;
+    v_rel_id           UUID;
+    v_rel_ok           BOOLEAN := false;
+    v_canonical_sector TEXT;          -- derived from grievance_type, not the client value
+    v_grievance_label  TEXT;
+    v_description      TEXT;
 BEGIN
     IF v_user IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
@@ -129,22 +130,40 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Defendant must be a corporation');
     END IF;
 
-    -- Sector × grievance compatibility. Universal grievances apply
-    -- everywhere; sector-specific ones require a matching defendant.
-    IF p_grievance_sector = 'banking'      AND v_defendant.corp_sector <> 'Finance'      THEN
+    -- Derive the canonical sector from grievance_type. Server-side
+    -- mapping prevents a client from spoofing 'universal' on a
+    -- sector-locked grievance to bypass the defendant-sector check.
+    v_canonical_sector := CASE p_grievance_type
+        WHEN 'breach_of_contract' THEN 'universal'
+        WHEN 'fraud'              THEN 'universal'
+        WHEN 'defamation'         THEN 'universal'
+        WHEN 'predatory_terms'    THEN 'banking'
+        WHEN 'non_payout'         THEN 'banking'
+        WHEN 'defective_work'     THEN 'construction'
+        WHEN 'cargo_loss'         THEN 'shipping'
+        ELSE NULL
+    END;
+    IF v_canonical_sector IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', format('Unknown grievance: %s', p_grievance_type));
+    END IF;
+
+    -- Sector × defendant compatibility, using the derived sector.
+    IF v_canonical_sector = 'banking'      AND v_defendant.corp_sector <> 'Finance'      THEN
         RETURN jsonb_build_object('success', false, 'error', 'Banking grievances require a Finance defendant');
     END IF;
-    IF p_grievance_sector = 'construction' AND v_defendant.corp_sector <> 'Construction' THEN
+    IF v_canonical_sector = 'construction' AND v_defendant.corp_sector <> 'Construction' THEN
         RETURN jsonb_build_object('success', false, 'error', 'Construction grievances require a Construction defendant');
     END IF;
-    IF p_grievance_sector = 'shipping'     AND v_defendant.corp_sector <> 'Shipping'     THEN
+    IF v_canonical_sector = 'shipping'     AND v_defendant.corp_sector <> 'Shipping'     THEN
         RETURN jsonb_build_object('success', false, 'error', 'Shipping grievances require a Shipping defendant');
     END IF;
 
-    -- Relationship existence check. Phase 1 looks up the referenced row
-    -- and verifies it involves both parties. Snapshot fields aren't
-    -- re-validated — the modal pinned them at filing time and the case
-    -- detail UI displays them as-is.
+    -- Relationship existence check. Phase 1 only accepts loan-based
+    -- suits — trade agreements in this codebase are nation-to-nation
+    -- (no corp partners), and corp_contracts awarded-bidder linkage
+    -- is still in flux. Snapshot fields in the JSONB ref aren't
+    -- re-validated; the modal pinned them at filing time and the
+    -- case detail UI displays them as-is.
     v_rel_kind := p_relationship_ref->>'kind';
     BEGIN
         v_rel_id := (p_relationship_ref->>'id')::uuid;
@@ -161,15 +180,9 @@ BEGIN
          WHERE id = v_rel_id
            AND ((borrower_faction_id = p_plaintiff_id AND lender_faction_id   = p_defendant_id)
              OR (lender_faction_id   = p_plaintiff_id AND borrower_faction_id = p_defendant_id));
-    ELSIF v_rel_kind = 'construction' THEN
-        SELECT TRUE INTO v_rel_ok FROM corp_contracts
-         WHERE id = v_rel_id
-           AND ((issuer_faction_id = p_plaintiff_id) OR (issuer_faction_id = p_defendant_id));
-    ELSIF v_rel_kind = 'trade' THEN
-        SELECT TRUE INTO v_rel_ok FROM trade_agreements
-         WHERE id = v_rel_id;
     ELSE
-        RETURN jsonb_build_object('success', false, 'error', format('Unknown relationship kind: %s', v_rel_kind));
+        RETURN jsonb_build_object('success', false,
+            'error', format('Phase 1 only supports loan-based suits (got: %s)', v_rel_kind));
     END IF;
 
     IF NOT COALESCE(v_rel_ok, false) THEN
@@ -196,7 +209,7 @@ BEGIN
         relationship_ref, filing_fee, filed_at_tick
     ) VALUES (
         p_plaintiff_id, p_defendant_id, v_plaintiff.nation_id,
-        p_grievance_type, p_grievance_sector, p_relief_sought,
+        p_grievance_type, v_canonical_sector, p_relief_sought,
         p_relationship_ref, v_filing_fee, v_tick
     ) RETURNING id INTO v_lawsuit_id;
 

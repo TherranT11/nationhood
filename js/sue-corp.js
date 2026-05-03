@@ -11,34 +11,9 @@
 
 import { _supabase } from './supabase-client.js';
 import { escapeHtml, hfFmtBig } from './utils.js';
+import { GRIEVANCES, RELIEFS, allowedGrievanceSectors } from './game/lawsuit-types.js';
 
 const FILING_FEE = 2000000;
-
-const GRIEVANCES = [
-    { key: 'breach_of_contract', name: 'Breach of Contract', desc: 'Defendant failed to honor agreed terms after the contract was signed.', sector: 'universal' },
-    { key: 'fraud',              name: 'Fraud',              desc: 'Defendant misrepresented material facts before the contract was signed.', sector: 'universal' },
-    { key: 'defamation',         name: 'Defamation',         desc: 'Defendant made false public statements that damaged your reputation.',    sector: 'universal' },
-    { key: 'predatory_terms',    name: 'Predatory Terms',    desc: 'Bank imposed exploitative interest rates or covenants outside market norms.', sector: 'banking' },
-    { key: 'non_payout',         name: 'Non-Payout',         desc: 'Bank refused to fund an approved loan or honor a credit commitment.',     sector: 'banking' },
-    { key: 'defective_work',     name: 'Defective Work',     desc: 'Construction failed to meet specified quality standards.',                 sector: 'construction' },
-    { key: 'cargo_loss',         name: 'Cargo Loss',         desc: 'Goods lost or damaged in transit due to negligence.',                      sector: 'shipping' },
-];
-
-const RELIEFS = [
-    { key: 'payment',              name: 'Payment',              desc: 'Cash damages awarded to compensate for losses.' },
-    { key: 'specific_performance', name: 'Specific Performance', desc: 'Force the defendant to honor the original contract.' },
-    { key: 'contract_voidance',    name: 'Contract Voidance',    desc: 'Cancel the agreement entirely. Both parties walk away.' },
-    { key: 'asset_seizure',        name: 'Asset Seizure',        desc: "Court orders defendant's collateral or property forfeited." },
-];
-
-// Defendant-sector → allowed grievance sectors (universal always allowed).
-function allowedSectorsFor(corpSector) {
-    const s = (corpSector || '').toLowerCase();
-    if (s === 'finance')      return new Set(['universal', 'banking']);
-    if (s === 'construction') return new Set(['universal', 'construction']);
-    if (s === 'shipping')     return new Set(['universal', 'shipping']);
-    return new Set(['universal']);
-}
 
 let _state = null;
 
@@ -80,47 +55,29 @@ function closeSueCorpModal() {
     _state = null;
 }
 
-// Pulls the three relationship kinds in parallel, normalizing each to
-// a uniform shape: { id, kind, defendantId, defendantName, defendantTicker,
-// defendantNation, defendantSector, defendantOwnership, label }.
+// Phase 1 surfaces only loan-based relationships. Trade agreements
+// are nation-to-nation in this codebase (trade_agreements has
+// nation_a_id / nation_b_id, not corp partners), so they aren't a
+// valid corp-vs-corp suit basis. Construction-contract suits hinge
+// on a canonical awarded-bidder column that's still in flux — Phase
+// 2 wires those once that schema settles.
 async function loadActiveRelationships(plaintiff) {
-    const [loanRes, contractRes, tradeRes] = await Promise.all([
-        _supabase.from('bank_loans')
-            .select('id, lender_faction_id, borrower_faction_id, principal, outstanding, status')
-            .or(`borrower_faction_id.eq.${plaintiff.id},lender_faction_id.eq.${plaintiff.id}`)
-            .in('status', ['active', 'called', 'late', 'delinquent']),
-        _supabase.from('corp_contracts')
-            .select('id, issuer_faction_id, status, budget, name')
-            .eq('issuer_faction_id', plaintiff.id)
-            .in('status', ['active', 'open', 'bidding', 'awarded']),
-        _supabase.from('trade_agreements')
-            .select('id, partner_a_faction_id, partner_b_faction_id, status, term_ticks')
-            .or(`partner_a_faction_id.eq.${plaintiff.id},partner_b_faction_id.eq.${plaintiff.id}`)
-            .eq('status', 'active'),
-    ]);
-
-    const loans = loanRes.error ? [] : (loanRes.data || []);
-    const contracts = contractRes.error ? [] : (contractRes.data || []);
-    const trades = tradeRes.error ? [] : (tradeRes.data || []);
+    const { data, error } = await _supabase.from('bank_loans')
+        .select('id, lender_faction_id, borrower_faction_id, principal, outstanding, status')
+        .or(`borrower_faction_id.eq.${plaintiff.id},lender_faction_id.eq.${plaintiff.id}`)
+        .in('status', ['active', 'called', 'late', 'delinquent']);
+    if (error) {
+        console.warn('[sue-corp] loan fetch failed:', error.message);
+        return [];
+    }
+    const loans = data || [];
+    if (loans.length === 0) return [];
 
     const counterpartyIds = new Set();
     for (const l of loans) {
         const id = l.borrower_faction_id === plaintiff.id ? l.lender_faction_id : l.borrower_faction_id;
         if (id) counterpartyIds.add(id);
     }
-    for (const t of trades) {
-        const id = t.partner_a_faction_id === plaintiff.id ? t.partner_b_faction_id : t.partner_a_faction_id;
-        if (id) counterpartyIds.add(id);
-    }
-    // Construction contracts surface bidder corps too — the plaintiff
-    // (issuer) can sue any corp that bid; for Phase 1 we only enable
-    // suing the AWARDED bidder. Awarded bidder lookup deferred to keep
-    // Phase 1 lean — for now construction relationships are surfaced
-    // only when issuer == plaintiff and the row carries an
-    // awarded_bidder_faction_id we can read.
-    // (Skipped here because corp_contracts schema varies; Phase 2 will
-    // tighten this once the awarded-bidder column is canonical.)
-
     if (counterpartyIds.size === 0) return [];
 
     const { data: corps, error: corpErr } = await _supabase.from('factions')
@@ -132,50 +89,27 @@ async function loadActiveRelationships(plaintiff) {
     }
     const corpById = new Map((corps || []).map(c => [c.id, c]));
 
-    const out = [];
-    for (const l of loans) {
+    return loans.flatMap(l => {
         const cpId = l.borrower_faction_id === plaintiff.id ? l.lender_faction_id : l.borrower_faction_id;
         const cp = corpById.get(cpId);
-        if (!cp) continue;
-        out.push({
-            id:                l.id,
-            kind:              'loan',
-            defendantId:       cp.id,
-            defendantName:     cp.faction_name,
-            defendantTicker:   cp.corp_ticker || cp.abbreviation || '',
-            defendantNation:   cp.nations?.name || '',
-            defendantSector:   cp.corp_sector || '',
-            label:             `Active Loan ${hfFmtBig(l.outstanding ?? l.principal)}`,
-            relationshipKind:  'loan',
+        if (!cp) return [];
+        return [{
+            id:               l.id,
+            kind:             'loan',
+            defendantId:      cp.id,
+            defendantName:    cp.faction_name,
+            defendantTicker:  cp.corp_ticker || cp.abbreviation || '',
+            defendantNation:  cp.nations?.name || '',
+            defendantSector:  cp.corp_sector || '',
+            label:            `Active Loan ${hfFmtBig(l.outstanding ?? l.principal)}`,
+            relationshipKind: 'loan',
             snapshot: {
                 principal:   l.principal,
                 outstanding: l.outstanding,
                 status:      l.status,
             },
-        });
-    }
-    for (const t of trades) {
-        const cpId = t.partner_a_faction_id === plaintiff.id ? t.partner_b_faction_id : t.partner_a_faction_id;
-        const cp = corpById.get(cpId);
-        if (!cp) continue;
-        const yrs = Math.max(1, Math.round((Number(t.term_ticks) || 12) / 12));
-        out.push({
-            id:                t.id,
-            kind:              'trade',
-            defendantId:       cp.id,
-            defendantName:     cp.faction_name,
-            defendantTicker:   cp.corp_ticker || cp.abbreviation || '',
-            defendantNation:   cp.nations?.name || '',
-            defendantSector:   cp.corp_sector || '',
-            label:             `Trade Agreement · ${yrs}y`,
-            relationshipKind:  'trade',
-            snapshot: {
-                term_ticks: t.term_ticks,
-                status:     t.status,
-            },
-        });
-    }
-    return out;
+        }];
+    });
 }
 
 function selectRelationship(idx) {
@@ -185,7 +119,7 @@ function selectRelationship(idx) {
     _state.selectedRelationshipIdx = idx;
     // If the previously chosen grievance is no longer compatible with
     // the new defendant's sector, drop it.
-    const allowed = allowedSectorsFor(rel.defendantSector);
+    const allowed = allowedGrievanceSectors(rel.defendantSector);
     if (_state.selectedGrievance) {
         const g = GRIEVANCES.find(x => x.key === _state.selectedGrievance);
         if (!g || !allowed.has(g.sector)) _state.selectedGrievance = null;
@@ -221,7 +155,7 @@ function render() {
 
     const selectedRel = _state.selectedRelationshipIdx != null
         ? _state.relationships[_state.selectedRelationshipIdx] : null;
-    const allowedSectors = selectedRel ? allowedSectorsFor(selectedRel.defendantSector) : new Set(['universal']);
+    const allowedSectors = selectedRel ? allowedGrievanceSectors(selectedRel.defendantSector) : new Set(['universal']);
 
     let html = `<div onclick="event.stopPropagation()" style="width:760px;max-width:94vw;background:var(--panel-main);border:1px solid var(--panel-border);display:flex;flex-direction:column;overflow:hidden;">`;
 
@@ -365,14 +299,22 @@ async function submit() {
     const rel = _state.relationships[_state.selectedRelationshipIdx];
     const grievance = GRIEVANCES.find(g => g.key === _state.selectedGrievance);
 
-    const { data, error } = await _supabase.rpc('file_commercial_lawsuit', {
-        p_plaintiff_id:     _state.plaintiff.id,
-        p_defendant_id:     rel.defendantId,
-        p_grievance_type:   _state.selectedGrievance,
-        p_grievance_sector: grievance?.sector || 'universal',
-        p_relief_sought:    _state.selectedRelief,
-        p_relationship_ref: { kind: rel.relationshipKind, id: rel.id, snapshot: rel.snapshot },
-    });
+    let data, error;
+    try {
+        ({ data, error } = await _supabase.rpc('file_commercial_lawsuit', {
+            p_plaintiff_id:     _state.plaintiff.id,
+            p_defendant_id:     rel.defendantId,
+            p_grievance_type:   _state.selectedGrievance,
+            p_grievance_sector: grievance?.sector || 'universal',
+            p_relief_sought:    _state.selectedRelief,
+            p_relationship_ref: { kind: rel.relationshipKind, id: rel.id, snapshot: rel.snapshot },
+        }));
+    } catch (err) {
+        _state.submitting = false;
+        _state.error = 'Network error: ' + (err?.message || String(err));
+        render();
+        return;
+    }
 
     if (error) {
         _state.submitting = false;
