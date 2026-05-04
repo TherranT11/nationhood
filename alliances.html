@@ -588,10 +588,23 @@ const SECTOR_ARTICLES = {
           body: 'Members agree minimum ticket prices on overlapping routes. Protected margins; no race to the bottom. High antitrust risk — +0.3 Cartel score per active member, member nations may launch investigations, loss-of-license risk if exposed.',
           cartel: 0.3, chs: 0.6 },
     ],
-    // TODO: Banking (Finance) and Shipping article sets pending the
-    // same design pass that produced Construction + Airline above.
+    // TODO: Banking (Finance) article set pending the same design pass
+    // that produced Construction / Airline / Shipping above.
     Finance:  [],
-    Shipping: [],
+    Shipping: [
+        { id: 'cargo_pool', name: 'Cargo Pooling Pact', kind: 'cooperative',
+          body: 'Members fill each other’s empty hold capacity. +1 effective Fleets per allied partner (cap +3, never above your real fleet count). Empty-leg voyages auto-match to a partner’s open shipping contract on the same route and pay you 40% of that contract’s per-voyage value as a slot fee. While carrying partner cargo your vessel sails their priority routing — can’t reposition until the slot discharges; cargo claims fall on the carrying member if loss occurs.',
+          cartel: 0.0, chs: 0.5 },
+        { id: 'convoy', name: 'Convoy Doctrine', kind: 'coordinating',
+          body: 'Members sail high-risk lanes in escorted convoys. −1 Route Risk on any lane with ≥2 alliance vessels active. Insurance premiums on alliance-flagged hulls −20%. Piracy or storm incidents on convoyed routes split damage 25/25/25/25 across the four nearest alliance vessels instead of falling 100% on the victim. Convoys depart on the alliance schedule, not yours — −1 voyage per cycle on convoyed routes; whole convoy moves at the slowest hull’s speed.',
+          cartel: 0.0, chs: 0.5 },
+        { id: 'drydock', name: 'Drydock Cooperative', kind: 'coordinating',
+          body: 'Members share drydocks, maintenance crews, and standardized parts inventory. −25% per-tick vessel maintenance cost. Vessel depreciation slowed from 5%/yr → 3.5%/yr while in the cooperative. Refit cycles complete in 1 tick instead of 2. Vessels must conform to alliance-approved class types — exotic hulls are excluded; drydock queue is shared, so urgent repairs wait when a partner is mid-refit.',
+          cartel: 0.1, chs: 0.4 },
+        { id: 'tonnage_cartel', name: 'Tonnage Cartel', kind: 'cartel',
+          body: 'Members fix minimum freight rates on routes any two members operate. Freight rates on contested routes (≥2 alliance members on the same lane) lock at +20% over market base rate. +0.3 Cartel score per active member and +0.05 Cartel/tick per contested route. At alliance Antitrust Heat ≥ 7.0 / 10, every member rolls a 5%/tick chance to have their port-call licenses suspended in any participating nation — suspension grounds operations there until the alliance dissolves the article.',
+          cartel: 0.3, chs: 0.6 },
+    ],
 };
 
 function articlesForSector(sector) {
