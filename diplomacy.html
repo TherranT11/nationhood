@@ -19952,7 +19952,12 @@ function negStructuredArticleSummary(art) {
             const priorityLabel = d.delivery_priority
                 ? ` · Delivery: ${d.delivery_priority.charAt(0).toUpperCase() + d.delivery_priority.slice(1)}`
                 : '';
-            return `${sectorLabel(d.commodity)}: ${dir}, ${formatNegMoney(d.volume)}/tick. Duration: ${durLabel}${priorityLabel}`;
+            // Volume is integer commodity units/tick (the spawn trigger
+            // casts it to INT and renders it as "X units/tick" on the
+            // shipping contract). Render it the same way here so the
+            // article summary matches the engine's interpretation.
+            const vol = Math.round(Number(d.volume) || 0).toLocaleString();
+            return `${sectorLabel(d.commodity)}: ${dir}, ${vol} units/tick. Duration: ${durLabel}${priorityLabel}`;
         }
         case 'tariff_reduction': {
             const sec = sectorLabel(d.sector);
