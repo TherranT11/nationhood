@@ -2095,7 +2095,13 @@ export async function calculateGovernmentApprovalTick(supabase, nation, currentT
 /**
  * Check for government collapse when approval is critically low.
  * At ≤5%: coalition parties lose -5 party approval/tick, opposition gains +2.
- * At 0%: government dissolves and snap election is called.
+ * At 0%: government dissolves into caretaker status and bills freeze.
+ * NO auto-snap election is scheduled — the existing natural-term
+ * parliamentary election (or a player-triggered call_early_elections,
+ * or PM resignation) is the only path back to a vote. Auto-snap was
+ * retired because for AI nations it spiralled into a 1-2-tick election
+ * grinder when approval kept ratcheting back to 0; the player-driven
+ * paths keep snap elections available without the runaway loop.
  * Returns { collapsed, penalized } or null if no government or not in danger zone.
  */
 export async function processGovernmentCollapseCheck(supabase, nation, currentTick) {
@@ -2127,9 +2133,12 @@ export async function processGovernmentCollapseCheck(supabase, nation, currentTi
 
     const coalitionIds = new Set(coalition.party_ids);
 
-    // At 0%: auto-dissolve and trigger snap election
+    // At 0%: dissolve to caretaker. The natural-term parliamentary
+    // election (or a player-triggered call_early_elections, or PM
+    // resignation) is the only path back to a vote — no auto-snap is
+    // scheduled.
     if (govApproval <= 0) {
-        console.log(`[GovCollapse] ${nation.name}: approval at ${govApproval}% — dissolving government and calling snap election`);
+        console.log(`[GovCollapse] ${nation.name}: approval at ${govApproval}% — dissolving government to caretaker (no auto-snap)`);
 
         // Close administration
         try {
@@ -2145,29 +2154,12 @@ export async function processGovernmentCollapseCheck(supabase, nation, currentTi
             .eq('nation_id', nation.id)
             .in('status', ['committee', 'floor']);
 
-        // Cancel any far-future scheduled parliamentary elections before scheduling snap
-        // (preserve presidential elections — president stays in office through collapse)
-        await supabase.from('elections')
-            .delete()
-            .eq('nation_id', nation.id)
-            .eq('status', 'scheduled')
-            .or('election_type.is.null,election_type.eq.parliamentary');
-
-        // Schedule snap election
-        const snapTick = currentTick + FORMATION_DEADLINE_TICKS;
-        await supabase.from('elections').insert({
-            nation_id: nation.id,
-            election_tick: snapTick,
-            election_type: 'parliamentary',
-            status: 'scheduled'
-        });
-
         // Fire world-visible event
         await supabase.from('event_log').insert({
             nation_id: nation.id,
             event_name: 'Government Collapses',
             trigger_key: 'government_collapsed',
-            description_chosen: `The government of ${nation.name} has collapsed after approval hit 0%. Snap elections have been called.`,
+            description_chosen: `The government of ${nation.name} has collapsed after approval hit 0%. The cabinet enters caretaker status until the next scheduled election or a snap election is called.`,
             category: 'government',
             fired_at_tick: currentTick
         });

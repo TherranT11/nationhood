@@ -83,7 +83,20 @@ export async function openSettleReviewModal(lawsuit, plaintiffFaction) {
 }
 
 function mountOverlay() {
-    closeModal();
+    // Tear down any stale overlay DOM + chat channel inline. We don't
+    // call closeModal() here because closeModal() resets _state = null,
+    // and mountOverlay() is invoked AFTER the open*Modal helper has
+    // just set _state to the new modal's data. Calling closeModal()
+    // clobbered that fresh state, so render() saw _state === null and
+    // returned early — the overlay div appeared in the DOM but stayed
+    // empty, looking like "no modal popped up" to the player.
+    if (_chatChannel) {
+        try { _supabase.removeChannel(_chatChannel); } catch (_) { /* noop */ }
+        _chatChannel = null;
+    }
+    const stale = document.getElementById('lawsuit-overlay');
+    if (stale) stale.remove();
+
     const overlay = document.createElement('div');
     overlay.id = 'lawsuit-overlay';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:600;display:flex;align-items:flex-start;justify-content:center;padding:30px 24px;overflow-y:auto;';
