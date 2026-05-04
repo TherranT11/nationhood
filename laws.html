@@ -4684,15 +4684,23 @@ async function submitDefaultResolution() {
         });
         if (resError) throw resError;
 
-        // Apply filing market reactions (immediate). Alpha refactor:
-        // power absorbs the legacy currency_strength flavor (international
-        // standing degrades on filing); industry absorbs the
-        // foreign_investment flavor (investment in production dries up).
+        // Apply filing market reactions (immediate). Canonical-stats:
+        // global_image absorbs the legacy currency_strength flavor
+        // (international standing degrades on filing); industry absorbs
+        // the foreign_investment flavor (investment in production dries
+        // up). Pre-fix this UPDATE silently rejected: the `power` field
+        // it wrote to has never been a real column on `nations`, so
+        // PostgREST returned a schema-cache error and the entire UPDATE
+        // (including the valid industry hit) failed. Now writes the
+        // canonical column added in canonical-stats Phase 1.
         const clamp = (val, delta) => Math.max(0, Math.min(100, Math.round((val + delta) * 10) / 10));
-        await _supabase.from('nations').update({
-            power:    clamp(Number(currentNation.power    ?? 50), cfg.FILING_POWER_HIT),
-            industry: clamp(Number(currentNation.industry ?? 50), cfg.FILING_INDUSTRY_HIT)
+        const { error: marketReactErr } = await _supabase.from('nations').update({
+            global_image: clamp(Number(currentNation.global_image ?? 50), cfg.FILING_POWER_HIT),
+            industry:     clamp(Number(currentNation.industry     ?? 50), cfg.FILING_INDUSTRY_HIT)
         }).eq('id', currentNation.id);
+        if (marketReactErr) {
+            console.error('[laws] filing market reaction update failed:', marketReactErr.message);
+        }
 
         // Trigger party voting
         // Event log
