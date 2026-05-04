@@ -381,14 +381,23 @@ export async function processPresidentDesk(supabase, nation, currentTick) {
         const enactment = await enactBill(supabase, bill, currentTick);
         if (!enactment?.success) {
             console.error(`[processPresidentDesk] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
-            results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: enactment?.error });
+            // result: 'failed_enactment' so the resolutions consumer
+            // (processSectorShifts) skips the row via normalizeResult.
+            results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', result: 'failed_enactment', enactFailed: true, error: enactment?.error });
             continue;
         }
 
         const floorVotes = tallyFloorVotes(bill);
         await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationId: nation.id, nationName: nation.name, votesFor: floorVotes.votesFor, votesAgainst: floorVotes.votesAgainst, votesAbstain: floorVotes.votesAbstain, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (auto-signed by President)' });
 
-        results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed' });
+        // result: 'passed' so the orchestrator can fold this into the
+        // resolutions array fed to processSectorShifts. Without it, the
+        // sponsor + voter sector-popularity shifts that should fire on
+        // every passed bill never fire for auto-signed presidential
+        // bills (they go from voting → president_desk → passed across
+        // multiple ticks, and only resolveExpiredVotes' resolutions
+        // reach the sector-shift pipeline today).
+        results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', result: 'passed' });
     }
     return results;
 }
