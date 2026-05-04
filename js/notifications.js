@@ -20,6 +20,13 @@ let _refreshTimer = null;
 let _styleInjected = false;
 let _wired = false;
 let _inflight = false;
+// Dot suppression: when the user opens the dropdown we mark whatever
+// rows are currently shown as "seen" by capturing their fingerprint.
+// renderRows hides the dot whenever the live fingerprint matches the
+// acknowledged one — so opening turns the dot off immediately, and a
+// new notification arriving on the next refresh re-lights it.
+let _lastRenderedFingerprint = '';
+let _acknowledgedFingerprint = null;
 
 // ──────────────────────────────────────────────────────────────────────
 //  Styles
@@ -150,6 +157,12 @@ function wireBellInteractions() {
         } else {
             drop.hidden = false;
             bell.setAttribute('aria-expanded', 'true');
+            // Mark the currently-displayed notification set as seen so
+            // the amber dot turns off immediately. The next refresh
+            // will re-light it only if a new row arrives.
+            _acknowledgedFingerprint = _lastRenderedFingerprint;
+            const dot = document.getElementById('notif-dot');
+            if (dot) dot.hidden = true;
             refreshNotifications();
         }
     });
@@ -430,6 +443,10 @@ async function checkLawsuits(nation, isJusticeMin) {
 //  Render
 // ──────────────────────────────────────────────────────────────────────
 
+function rowsFingerprint(rows) {
+    return (rows || []).map(r => `${r.title || ''}|${r.sub || ''}`).join('||');
+}
+
 function renderRows(rows) {
     const list = document.getElementById('notif-list');
     const count = document.getElementById('notif-count');
@@ -437,7 +454,18 @@ function renderRows(rows) {
     if (!list) return;
 
     if (count) count.textContent = String(rows.length);
-    if (dot) dot.hidden = rows.length === 0;
+    // Dot lights only when there are rows AND the set has changed
+    // since the user last opened the dropdown.
+    _lastRenderedFingerprint = rowsFingerprint(rows);
+    // If the dropdown is currently open, the user is actively looking
+    // at these rows — fold them into the acknowledged set so the dot
+    // stays off (a) when the very first render lands after an early
+    // bell-click and (b) when fresh rows arrive while the panel is
+    // already open. Either way, the user has seen them.
+    const drop = document.getElementById('notif-dropdown');
+    if (drop && !drop.hidden) _acknowledgedFingerprint = _lastRenderedFingerprint;
+    const hasUnseen = rows.length > 0 && _lastRenderedFingerprint !== _acknowledgedFingerprint;
+    if (dot) dot.hidden = !hasUnseen;
 
     if (rows.length === 0) {
         list.innerHTML = '<div class="notif-empty">No notifications</div>';

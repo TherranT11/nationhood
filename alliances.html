@@ -49,28 +49,248 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 .loading-msg { padding: 40px; text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
 
 .alliances-shell { max-width: 1200px; margin: 0 auto; padding: 48px 32px; }
-.alliances-shell__head {
-    display: flex; justify-content: space-between; align-items: flex-end; gap: 16px;
+
+/* ── List view (landing) ── */
+.al-page-head {
+    display: flex; justify-content: space-between; align-items: flex-end; gap: 32px;
 }
-.alliances-title {
-    font-family: var(--font-serif); font-size: 32px; font-weight: 600;
-    color: var(--text-bright); letter-spacing: -0.01em;
+.al-page-eyebrow {
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.18em;
+    color: var(--amber); text-transform: uppercase;
 }
-.alliances-title__dot { color: var(--amber); }
-.alliances-found-btn {
+.al-page-context {
+    margin-top: 6px;
+    font-family: var(--font-serif); font-size: 22px; color: var(--text-bright);
+}
+.al-page-stats { display: flex; gap: 36px; align-items: flex-end; }
+.al-stat__label {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.14em;
+    color: var(--text-dim); text-transform: uppercase;
+}
+.al-stat__value {
+    margin-top: 2px;
+    font-family: var(--font-mono); font-size: 22px; font-weight: 700;
+    color: var(--amber); letter-spacing: 0.02em;
+}
+.al-rule { margin-top: 20px; height: 1px; background: var(--border-0); }
+
+/* 3-column stat grid for the expanded alliance card. Wraps cleanly
+   with 5 stats (3 on top, 2 on bottom). */
+.al-stat-grid {
+    margin-top: 14px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+@media (max-width: 720px) {
+    .al-stat-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.al-controls {
+    margin-top: 20px;
+    display: flex; justify-content: space-between; align-items: center; gap: 16px;
+}
+.al-filter-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.al-filter-label {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em;
+    color: var(--text-dim); text-transform: uppercase; margin-right: 8px;
+}
+.al-filter-pill {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+    padding: 6px 12px; cursor: pointer;
+    background: transparent; color: var(--text-dim);
+    border: 1px solid var(--border-1);
+    transition: all 0.1s;
+}
+.al-filter-pill:hover { color: var(--text-primary); border-color: var(--text-dim); }
+.al-filter-pill.active {
+    color: var(--amber); border-color: var(--amber); background: var(--amber-faint);
+}
+
+.al-found-btn {
     font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
-    padding: 10px 18px; cursor: pointer;
+    padding: 9px 18px; cursor: pointer;
     background: var(--amber-faint); color: var(--amber);
     border: 1px solid var(--amber-border);
     transition: all 0.12s;
 }
-.alliances-found-btn:hover { background: var(--amber); color: #000; }
-.alliances-empty {
-    margin-top: 24px; padding: 48px 24px;
-    border: 1px solid var(--border-0); background: var(--bg-2);
+.al-found-btn:hover { background: var(--amber); color: #000; }
+
+.al-section { margin-top: 32px; }
+.al-section__title {
+    font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
+    color: var(--text-dim); text-transform: uppercase; margin-bottom: 12px;
+}
+.al-empty {
+    padding: 28px 24px;
+    border: 1px dashed var(--border-1); background: transparent;
     text-align: center;
-    font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.06em;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em;
     color: var(--text-dim); text-transform: uppercase;
+}
+
+/* Alliance row (collapsed + expanded shells — kept ready for when
+   real alliance rows arrive; today the arrays are empty so these
+   classes don't render but stay in CSS so the renderer is plug-in). */
+.al-row {
+    background: var(--bg-2); border: 1px solid var(--border-0);
+    border-left: 3px solid var(--amber);
+    margin-bottom: 12px;
+}
+.al-row__head {
+    padding: 14px 16px; display: flex; align-items: center; gap: 12px;
+    cursor: pointer;
+}
+.al-row__chevron {
+    font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); width: 12px;
+}
+.al-row__name {
+    font-family: var(--font-serif); font-size: 16px; font-weight: 600; color: var(--text-bright);
+    /* Cap the name so a long charter title can't push the right-rail
+       metrics off the row. flex-min-width:0 lets the cell actually
+       shrink instead of holding the natural text width. */
+    flex: 0 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.al-row__tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.al-row__tag {
+    font-family: var(--font-mono); font-size: 8px; font-weight: 700; letter-spacing: 0.08em;
+    padding: 3px 7px; text-transform: uppercase;
+    border: 1px solid var(--border-2); color: var(--text-dim);
+}
+.al-row__tag--cooperative  { color: var(--green); border-color: var(--green-border); background: var(--green-faint); }
+.al-row__tag--coordinating { color: var(--blue);  border-color: var(--blue-border);  background: var(--blue-faint); }
+.al-row__tag--cartel       { color: var(--red);   border-color: rgba(217,83,79,0.3); background: rgba(217,83,79,0.08); }
+.al-row__metrics {
+    margin-left: auto; display: flex; gap: 24px; align-items: baseline;
+}
+.al-row__metric { text-align: right; }
+.al-row__metric-label {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.12em;
+    color: var(--text-dim); text-transform: uppercase;
+}
+.al-row__metric-value {
+    margin-top: 2px;
+    font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--text-primary);
+}
+.al-row__sub {
+    padding: 0 16px 12px 40px;
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); letter-spacing: 0.04em;
+}
+.al-row__expanded { padding: 0 16px 16px 40px; }
+
+.al-actions {
+    margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap;
+    padding-top: 14px; border-top: 1px solid var(--border-0);
+}
+.al-actions .spacer { flex: 1 1 auto; }
+.al-btn {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; padding: 9px 16px; cursor: pointer;
+    background: transparent; border: 1px solid var(--border-1); color: var(--text-primary);
+    transition: all 0.1s;
+}
+.al-btn:hover:not(:disabled) { border-color: var(--text-bright); color: var(--text-bright); }
+.al-btn:disabled { cursor: not-allowed; opacity: 0.45; }
+.al-btn--primary { color: var(--amber); border-color: var(--amber-border); background: var(--amber-faint); }
+.al-btn--leave   { color: var(--red);   border-color: rgba(217,83,79,0.3); background: rgba(217,83,79,0.04); }
+
+/* ── Negotiation view ── */
+.ng-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 32px; margin-top: 16px; }
+.ng-head__title { font-family: var(--font-serif); font-size: 28px; font-weight: 600; color: var(--text-bright); letter-spacing: -0.01em; }
+.ng-head__sub { margin-top: 8px; display: flex; align-items: center; gap: 10px; font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+.ng-head__metrics { display: flex; gap: 36px; align-items: flex-end; }
+.ng-head__metric { text-align: right; }
+
+.ng-grid { margin-top: 24px; display: grid; grid-template-columns: 320px 1fr; gap: 24px; align-items: start; }
+@media (max-width: 1000px) { .ng-grid { grid-template-columns: 1fr; } }
+.ng-left { display: flex; flex-direction: column; gap: 0; }
+
+.ng-member {
+    background: var(--bg-2); border: 1px solid var(--border-0);
+    border-left: 3px solid var(--border-1);
+    margin-bottom: 8px;
+}
+.ng-member__top { display: flex; gap: 10px; padding: 10px 12px; align-items: center; }
+.ng-member__body { flex: 1 1 auto; min-width: 0; }
+.ng-member__footer {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 12px; border-top: 1px solid var(--border-0);
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.ng-member__status { color: var(--text-dim); }
+.ng-member__vote   { color: var(--text-primary); }
+
+.ng-tally { margin-top: 18px; padding: 14px; background: var(--bg-2); border: 1px solid var(--border-0); }
+.ng-tally__row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.ng-tally__label { flex: 0 0 130px; font-family: var(--font-mono); font-size: 10px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ng-tally__bar   { flex: 1 1 auto; height: 4px; background: var(--bg-4); }
+.ng-tally__fill  { height: 100%; transition: width 0.15s; }
+.ng-tally__count { flex: 0 0 28px; text-align: right; font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--text-bright); }
+.ng-tally__footer { margin-top: 12px; font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); letter-spacing: 0.04em; }
+
+.ng-right { display: flex; flex-direction: column; gap: 0; }
+.ng-articles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+@media (max-width: 720px) { .ng-articles { grid-template-columns: 1fr; } }
+.ng-article {
+    background: var(--bg-2); border: 1px solid var(--border-0);
+    padding: 14px; cursor: pointer; transition: border-color 0.1s, background 0.1s;
+}
+.ng-article:hover { border-color: var(--text-dim); }
+.ng-article.selected { border-color: var(--amber); background: rgba(200,166,78,0.06); }
+.ng-article__head { display: flex; align-items: baseline; gap: 8px; }
+.ng-article__radio { color: var(--amber); font-size: 14px; line-height: 1; flex: 0 0 auto; }
+.ng-article__name  { flex: 1 1 auto; font-size: 14px; font-weight: 700; color: var(--text-bright); }
+.ng-article__weight { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); letter-spacing: 0.06em; text-transform: uppercase; }
+.ng-article__body  { margin-top: 8px; font-size: 12px; color: var(--text-secondary); line-height: 1.45; }
+.ng-article__meta  {
+    margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-0);
+    display: flex; gap: 16px;
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); letter-spacing: 0.06em;
+}
+.ng-article__meta b { color: var(--text-primary); font-weight: 700; }
+.ng-article__voters {
+    margin-top: 8px; display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); letter-spacing: 0.06em;
+}
+
+.ng-your-vote {
+    margin-top: 12px; padding: 12px 14px;
+    background: var(--bg-2); border: 1px solid var(--border-0);
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+}
+.ng-your-vote__value { margin-top: 2px; font-size: 14px; font-weight: 700; color: var(--green); }
+
+.ng-chat { margin-top: 18px; background: var(--bg-2); border: 1px solid var(--border-0); display: flex; flex-direction: column; }
+.ng-chat__head { padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-0); }
+.ng-chat__scroll { padding: 12px 14px; max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.ng-chat__msg-head { display: flex; align-items: baseline; gap: 8px; }
+.ng-chat__msg-author { font-size: 12px; font-weight: 700; color: var(--amber); }
+.ng-chat__msg-ago    { margin-left: auto; font-family: var(--font-mono); font-size: 9px; color: var(--text-dim); }
+.ng-chat__msg-body   { margin-top: 4px; font-size: 13px; color: var(--text-primary); line-height: 1.5; }
+.ng-chat__compose { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--border-0); }
+.ng-chat__compose .fnd-input { flex: 1 1 auto; }
+
+/* Confirm modal (apply to open alliance) */
+.al-modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    display: none; align-items: center; justify-content: center;
+    z-index: 9700;
+}
+.al-modal-overlay.open { display: flex; }
+.al-modal {
+    width: 460px; max-width: calc(100vw - 32px);
+    background: var(--bg-2); border: 1px solid var(--border-2);
+    padding: 24px;
+}
+.al-modal__title {
+    font-family: var(--font-serif); font-size: 20px; color: var(--text-bright); font-weight: 600;
+}
+.al-modal__body {
+    margin-top: 12px; font-size: 13px; color: var(--text-secondary); line-height: 1.5;
+}
+.al-modal__actions {
+    margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;
 }
 
 /* ── Found-alliance form ── */
@@ -263,6 +483,11 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
     <div class="alliances-shell" id="alliances-shell">
         <!-- view rendered in JS: list view or found-form -->
     </div>
+    <div class="al-modal-overlay" id="al-confirm-overlay" role="dialog" aria-hidden="true">
+        <div class="al-modal" id="al-confirm">
+            <!-- confirm body rendered in JS -->
+        </div>
+    </div>
 </div>
 
 <script type="module">
@@ -311,13 +536,125 @@ const SECTOR_LABEL = {
 
 const SECTORS = ['Finance', 'Construction', 'Shipping', 'Airline'];
 
+// Filter pill order for the landing view. 'all' is the default. Once
+// real cross-industry alliances exist, the filter will narrow the lists
+// to that sector — today both lists are empty so the filter is a no-op
+// but stays interactive so the chrome matches the spec.
+const FILTER_ORDER = ['all', ...SECTORS];
+const FILTER_LABEL = {
+    all: 'ALL INDUSTRIES',
+    Finance: 'BANKING',
+    Construction: 'CONSTRUCTION',
+    Shipping: 'SHIPPING',
+    Airline: 'AIRLINES',
+};
+
+// Charter article relationship taxonomy. Each tag color-codes the
+// article in the expanded membership card per the design.
+const ARTICLE_TAG_CLASS = {
+    cooperative:  'al-row__tag--cooperative',
+    coordinating: 'al-row__tag--coordinating',
+    cartel:       'al-row__tag--cartel',
+};
+
+// Founding-negotiation rules.
+const NEGOTIATION_DURATION_TICKS = 6;            // alliance dissolves after this many ticks without consensus
+const FAILED_NEGOTIATION_REPUTATION_HIT = -1;    // applied to every member if dissolution fires
+
+// ─── Per-sector charter articles ──────────────────────────────────
+// Single source of truth for the four candidate articles a founding
+// negotiation surfaces. Keyed by canonical DB sector value (Finance,
+// Construction, Shipping, Airline) — the negotiation view pulls
+// SECTOR_ARTICLES[n.sector] to render the candidate cards.
+//
+// Banking + Shipping article sets are placeholders until the design
+// pass for those sectors lands. Empty arrays render the "no candidate
+// articles defined" state cleanly so a Banking founding negotiation
+// doesn't accidentally fall through to Construction copy.
+const SECTOR_ARTICLES = {
+    Construction: [
+        { id: 'buyer_first', name: 'Buyer First Supply Chain', kind: 'coordinating',
+          body: 'First refusal on member surplus at preferred prices. +1.5 Supply Chain when sourcing from members.',
+          cartel: 0.1, chs: 0.5 },
+        { id: 'joint_crews', name: 'Joint Crews', kind: 'cooperative',
+          body: 'Use partner crews on cross-border projects at ~30% lower cost. Bid on foreign projects.',
+          cartel: 0.0, chs: 0.4 },
+        { id: 'safety', name: 'Safety & Standards Firm', kind: 'coordinating',
+          body: '+1 Regulatory Standing in shared nations. Joint liability for safety failures.',
+          cartel: 0.2, chs: 0.4 },
+        { id: 'megaproject', name: 'Megaproject Syndicate', kind: 'coordinating',
+          body: 'Pool crews on megaprojects. Lock crews for project duration; failures hit all members.',
+          cartel: 0.0, chs: 0.6 },
+    ],
+    Airline: [
+        { id: 'codeshare', name: 'Codeshare Compact', kind: 'cooperative',
+          body: 'Members sell seats on each other’s flights as their own. +1 effective Routes per partner served. Revenue split (60/40 in favor of the operating carrier); no control over partner service quality.',
+          cartel: 0.0, chs: 0.5 },
+        { id: 'hub_share', name: 'Hub Sharing Accord', kind: 'coordinating',
+          body: 'Members lease gates, ground crews, and lounge access at each other’s hubs. −20% hub maintenance when a partner is co-located. +0.1 Operational Safety from coordinated turnarounds. Lock-in to alliance hubs; joint reputation hit on hub-side incidents.',
+          cartel: 0.1, chs: 0.5 },
+        { id: 'fleet_proc', name: 'Fleet Procurement Bloc', kind: 'coordinating',
+          body: 'Pool aircraft orders for volume discounts. −15% on aircraft purchase price; standardized fleet types let members swap crews and parts in emergencies. Must order from the alliance-approved manufacturer list; a grounded type grounds everyone.',
+          cartel: 0.1, chs: 0.4 },
+        { id: 'tariff_floor', name: 'Tariff Floor Pact', kind: 'cartel',
+          body: 'Members agree minimum ticket prices on overlapping routes. Protected margins; no race to the bottom. High antitrust risk — +0.3 Cartel score per active member, member nations may launch investigations, loss-of-license risk if exposed.',
+          cartel: 0.3, chs: 0.6 },
+    ],
+    Finance: [
+        { id: 'aligned_interest', name: 'Aligned Interest', kind: 'cartel',
+          body: 'Members agree on a band of acceptable interest rates for commercial lending — a ceiling and a floor. Loans extended at rates outside the agreed band trigger −2 Cohesion for the alliance and −1 Reputation for the corporation that violated. Inside the band: protected margins and no race to the bottom on rates. Antitrust regulators in member nations notice if the band is set too tight.',
+          cartel: 0.2, chs: 0.5 },
+        { id: 'joint_equity', name: 'Joint Equity Ventures', kind: 'cooperative',
+          body: 'Any equity stake purchased by a member corp is automatically split across every alliance member for proportional ownership and lending capital. Member corps may resell their equity slices only to other alliance members. Builds collective book size without solo capital outlay; restricts your liquidity — no exits to non-member buyers.',
+          cartel: 0.1, chs: 0.6 },
+        { id: 'syndicated_portfolio', name: 'Syndicated Lending Portfolio', kind: 'coordinating',
+          body: 'If any member corp’s Overleverage hits 8+ (and has not yet hit 10), every other member corp automatically absorbs −0.5 Lending Capital and the over-leveraged member’s leverage drops back to 7. One-shot per member per alliance term — and if Overleverage already hit 10, no rescue. Distributes leverage shocks before they cascade into a full bankruptcy.',
+          cartel: 0.0, chs: 0.5 },
+        { id: 'bad_debt_mutual', name: 'Bad Debt Mutual Aid', kind: 'cooperative',
+          body: 'Any single loan default ≥ $20M against a member corp: every other member absorbs 15% of the written-off principal as a one-time Lending Capital reduction. The defaulted-on bank gets first claim on any recovered collateral, ahead of secondary creditors. Spreads the impact of single-borrower wipeouts across the alliance; aggressive underwriting by one member taxes the others.',
+          cartel: 0.0, chs: 0.5 },
+    ],
+    Shipping: [
+        { id: 'cargo_pool', name: 'Cargo Pooling Pact', kind: 'cooperative',
+          body: 'Members fill each other’s empty hold capacity. +1 effective Fleets per allied partner (cap +3, never above your real fleet count). Empty-leg voyages auto-match to a partner’s open shipping contract on the same route and pay you 40% of that contract’s per-voyage value as a slot fee. While carrying partner cargo your vessel sails their priority routing — can’t reposition until the slot discharges; cargo claims fall on the carrying member if loss occurs.',
+          cartel: 0.0, chs: 0.5 },
+        { id: 'convoy', name: 'Convoy Doctrine', kind: 'coordinating',
+          body: 'Members sail high-risk lanes in escorted convoys. −1 Route Risk on any lane with ≥2 alliance vessels active. Insurance premiums on alliance-flagged hulls −20%. Piracy or storm incidents on convoyed routes split damage 25/25/25/25 across the four nearest alliance vessels instead of falling 100% on the victim. Convoys depart on the alliance schedule, not yours — −1 voyage per cycle on convoyed routes; whole convoy moves at the slowest hull’s speed.',
+          cartel: 0.0, chs: 0.5 },
+        { id: 'drydock', name: 'Drydock Cooperative', kind: 'coordinating',
+          body: 'Members share drydocks, maintenance crews, and standardized parts inventory. −25% per-tick vessel maintenance cost. Vessel depreciation slowed from 5%/yr → 3.5%/yr while in the cooperative. Refit cycles complete in 1 tick instead of 2. Vessels must conform to alliance-approved class types — exotic hulls are excluded; drydock queue is shared, so urgent repairs wait when a partner is mid-refit.',
+          cartel: 0.1, chs: 0.4 },
+        { id: 'tonnage_cartel', name: 'Tonnage Cartel', kind: 'cartel',
+          body: 'Members fix minimum freight rates on routes any two members operate. Freight rates on contested routes (≥2 alliance members on the same lane) lock at +20% over market base rate. +0.3 Cartel score per active member and +0.05 Cartel/tick per contested route. At alliance Antitrust Heat ≥ 7.0 / 10, every member rolls a 5%/tick chance to have their port-call licenses suspended in any participating nation — suspension grounds operations there until the alliance dissolves the article.',
+          cartel: 0.3, chs: 0.6 },
+    ],
+};
+
+function articlesForSector(sector) {
+    return SECTOR_ARTICLES[sector] || [];
+}
+
+// Per-sector hero-stat column lookup. The first stat tuple in
+// HERO_STATS doubles as the "primary" one shown on member cards in
+// the negotiation view (Banking → Lending, Construction → Crews, etc).
+function primaryHeroStat(sector) {
+    const def = (HERO_STATS[sector] || [])[0];
+    return def ? { label: def[0], col: def[1] } : { label: '—', col: null };
+}
+
 // ── State ──
 let faction = null;
 let shard = null;
 let allUserFactions = [];
-// View state. 'list' = empty/active alliances, 'found' = the multi-step
-// charter form. Ephemeral — survives only while the page is mounted.
+// View state. 'list' = landing, 'found' = multi-step charter form,
+// 'negotiation' = live founding negotiation drill-in. Ephemeral —
+// survives only while the page is mounted.
 let _view = 'list';
+let _negotiationId = null;             // active negotiation when _view === 'negotiation'
+let _negotiationDraftVote = null;      // local-only override; cleared on view change
+let _pendingNegotiations = [];   // hydrated by loadAlliancesData
+let _alliancesLoading = false;   // guards parallel re-fetches
+let _allianceActionInflight = false; // single-shot lock across vote / ratify / withdraw
 // Form state. Held in JS so re-renders preserve user input. Per the
 // design call-out: "build with state for later" so when the RPC ships
 // the form values plug straight in.
@@ -327,6 +664,14 @@ let _form = {
     mission: '',
 };
 let _candidates = [];   // candidate corps (same sector, not me, not abandoned)
+// Landing-view state. Empty until the alliance backend lands; the
+// renderers below already handle the populated case so plugging real
+// data in later is a one-line swap.
+let _myAlliances = [];      // alliances this corp is a member of
+let _openAlliances = [];    // alliances accepting applications
+let _sectorFilter = 'all';  // 'all' | 'Finance' | 'Construction' | 'Shipping' | 'Airline'
+let _expandedAllianceIds = new Set();
+let _confirmContext = null; // { allianceName, onConfirm } for the apply dialog
 
 // ── Helpers ──
 function escHtml(s) {
@@ -392,25 +737,550 @@ async function init() {
     document.getElementById('page-content').style.display = 'block';
 
     renderShell();
+    // Hydrate from the alliance backend in the background. The first
+    // paint shows empty-state copy ("You're not in any."), then the
+    // landing re-renders once data arrives.
+    loadAlliancesData().then(() => renderShell());
+}
+
+// ── Backend hydrator ─────────────────────────────────────────────
+// Pulls every alliance the current corp is a member of (negotiating
+// or active), reshapes it into the data model the existing renderers
+// expect, and flips the empty-state copy off. Called on init and
+// after every mutating RPC.
+async function loadAlliancesData() {
+    if (!faction?.id) { _myAlliances = []; _pendingNegotiations = []; return; }
+    if (_alliancesLoading) return;
+    _alliancesLoading = true;
+    try {
+        // 1. Alliances I'm an active member of.
+        const { data: memberships, error: memErr } = await _supabase
+            .from('alliance_members')
+            .select('alliance_id, role, joined_at_tick, strategic_alliances(*)')
+            .eq('faction_id', faction.id)
+            .is('left_at_tick', null);
+        if (memErr) {
+            console.warn('[alliances] memberships fetch failed:', memErr.message);
+            _myAlliances = []; _pendingNegotiations = [];
+            return;
+        }
+        const myRows = (memberships || [])
+            .map(m => m.strategic_alliances)
+            .filter(a => a && a.status !== 'dissolved');
+        if (myRows.length === 0) {
+            _myAlliances = []; _pendingNegotiations = [];
+            return;
+        }
+        const ids = myRows.map(a => a.id);
+
+        // 2. Members + their factions + nations + votes + chat + articles.
+        const [membersRes, votesRes, chatRes, articlesRes] = await Promise.all([
+            _supabase.from('alliance_members')
+                .select('alliance_id, faction_id, role, joined_at_tick, left_at_tick')
+                .in('alliance_id', ids).is('left_at_tick', null),
+            _supabase.from('alliance_negotiation_votes')
+                .select('alliance_id, faction_id, article_id, voted_at_tick')
+                .in('alliance_id', ids),
+            _supabase.from('alliance_chat_messages')
+                .select('alliance_id, faction_id, body, sent_at_tick, created_at')
+                .in('alliance_id', ids).order('created_at', { ascending: true }),
+            _supabase.from('alliance_articles')
+                .select('alliance_id, article_id, article_name, article_kind, article_body, cartel_score, chs_bonus, ratified_at_tick')
+                .in('alliance_id', ids).eq('status', 'active'),
+        ]);
+        if (membersRes.error) console.warn('[alliances] members:', membersRes.error.message);
+        if (votesRes.error)   console.warn('[alliances] votes:',   votesRes.error.message);
+        if (chatRes.error)    console.warn('[alliances] chat:',    chatRes.error.message);
+        if (articlesRes.error) console.warn('[alliances] articles:', articlesRes.error.message);
+
+        const memberRows  = membersRes.data  || [];
+        const voteRows    = votesRes.data    || [];
+        const chatRows    = chatRes.data     || [];
+        const articleRows = articlesRes.data || [];
+
+        // 3. Hydrate factions + nations referenced by members + chat.
+        const factionIds = Array.from(new Set([
+            ...memberRows.map(r => r.faction_id),
+            ...chatRows.map(r => r.faction_id),
+        ]));
+        // Pull every per-sector hero column we know about; the renderer
+        // picks the right one per alliance.sector.
+        const heroCols = Object.values(HERO_STATS).flat()
+            .map(([, col]) => col).filter(Boolean);
+        const baseCols = ['id', 'faction_name', 'corp_ticker', 'abbreviation',
+                          'corp_sector', 'corp_reputation', 'leader_first_name',
+                          'leader_last_name', 'nation_id'];
+        const factionSelect = Array.from(new Set([...baseCols, ...heroCols])).join(', ');
+        const factionsRes = factionIds.length === 0
+            ? { data: [] }
+            : await _supabase.from('factions').select(factionSelect).in('id', factionIds);
+        if (factionsRes.error) console.warn('[alliances] factions:', factionsRes.error.message);
+        const factionMap = new Map((factionsRes.data || []).map(f => [f.id, f]));
+
+        const nationIds = Array.from(new Set(
+            (factionsRes.data || []).map(f => f.nation_id).filter(Boolean)
+        ));
+        const nationsRes = nationIds.length === 0
+            ? { data: [] }
+            : await _supabase.from('nations').select('id, name').in('id', nationIds);
+        if (nationsRes.error) console.warn('[alliances] nations:', nationsRes.error.message);
+        const nationMap = new Map((nationsRes.data || []).map(n => [n.id, n.name]));
+
+        // 4. Bucket per-alliance.
+        const tick = Number(shard?.current_tick) || 0;
+        const myFactionId = faction.id;
+        const myLinkedUserId = await _supabase.auth.getUser().then(r => r.data?.user?.id || null);
+        const isMineFn = (fid) => {
+            const f = factionMap.get(fid);
+            if (!f) return false;
+            return fid === myFactionId
+                || (myLinkedUserId && (fid === myLinkedUserId));
+        };
+
+        const membersByAlliance = new Map();
+        for (const m of memberRows) {
+            if (!membersByAlliance.has(m.alliance_id)) membersByAlliance.set(m.alliance_id, []);
+            membersByAlliance.get(m.alliance_id).push(m);
+        }
+        const votesByAlliance = new Map();
+        for (const v of voteRows) {
+            if (!votesByAlliance.has(v.alliance_id)) votesByAlliance.set(v.alliance_id, new Map());
+            votesByAlliance.get(v.alliance_id).set(v.faction_id, v.article_id);
+        }
+        const chatByAlliance = new Map();
+        for (const c of chatRows) {
+            if (!chatByAlliance.has(c.alliance_id)) chatByAlliance.set(c.alliance_id, []);
+            chatByAlliance.get(c.alliance_id).push(c);
+        }
+        const articlesByAlliance = new Map();
+        for (const a of articleRows) {
+            if (!articlesByAlliance.has(a.alliance_id)) articlesByAlliance.set(a.alliance_id, []);
+            articlesByAlliance.get(a.alliance_id).push(a);
+        }
+
+        // 5. Build the negotiation + membership shapes the renderers expect.
+        const buildMembers = (alliance) => {
+            const hero = primaryHeroStat(alliance.sector);
+            const voteMap = votesByAlliance.get(alliance.id) || new Map();
+            const rows = membersByAlliance.get(alliance.id) || [];
+            return rows.map(m => {
+                const f = factionMap.get(m.faction_id) || {};
+                const nation = f.nation_id ? nationMap.get(f.nation_id) : null;
+                return {
+                    id: m.faction_id,
+                    faction_name: f.faction_name || 'Unnamed Corp',
+                    corp_ticker: f.corp_ticker || f.abbreviation || '—',
+                    abbreviation: f.abbreviation || '',
+                    nation_name: nation || '—',
+                    stat_label: hero.label,
+                    stat_value: hero.col ? f[hero.col] : null,
+                    vote: voteMap.get(m.faction_id) || null,
+                    is_founder: m.role === 'founder',
+                    is_you: isMineFn(m.faction_id),
+                    rapport: m.role === 'founder' ? 'founder' : 'friendly',
+                };
+            });
+        };
+
+        const buildChat = (alliance) => {
+            const rows = chatByAlliance.get(alliance.id) || [];
+            return rows.map(c => {
+                const f = factionMap.get(c.faction_id) || {};
+                const isFounder = c.faction_id === alliance.founder_faction_id;
+                const ago = Math.max(0, tick - (Number(c.sent_at_tick) || 0));
+                return {
+                    author: f.faction_name || 'Unnamed',
+                    is_founder: isFounder,
+                    ago: ago === 0 ? 'just now' : (ago + ' tick' + (ago === 1 ? '' : 's') + ' ago'),
+                    body: c.body,
+                };
+            });
+        };
+
+        const negotiations = [];
+        const actives = [];
+        for (const a of myRows) {
+            const sectorArticles = articlesForSector(a.sector);
+            const ratifiedArticles = articlesByAlliance.get(a.id) || [];
+            const members = buildMembers(a);
+
+            if (a.status === 'negotiating') {
+                negotiations.push({
+                    id: a.id,
+                    name: a.name,
+                    sector: a.sector,
+                    founder_faction_id: a.founder_faction_id,
+                    ticks_remaining: NEGOTIATION_DURATION_TICKS - (tick - (Number(a.proposed_at_tick) || 0)),
+                    members,
+                    articles: sectorArticles,
+                    chat: buildChat(a),
+                });
+            } else if (a.status === 'active') {
+                const founderMember = members.find(m => m.is_founder);
+                const founderFaction = founderMember ? factionMap.get(founderMember.id) : null;
+                const founderName = founderFaction
+                    ? `${founderFaction.leader_first_name || ''} ${founderFaction.leader_last_name || ''}`.trim()
+                    : '—';
+                const founderNation = founderFaction
+                    ? (founderFaction.nation_id ? nationMap.get(founderFaction.nation_id) : null)
+                    : null;
+                const nationCount = new Set(
+                    members.map(m => factionMap.get(m.id)?.nation_id).filter(Boolean)
+                ).size;
+                const cartelTotal = ratifiedArticles.reduce((s, ar) => s + (Number(ar.cartel_score) || 0), 0);
+                // Aligned Interest band — populated server-side when the
+                // article ratifies. Surfaced on the row head's RATE FLOOR
+                // metric and explicitly in the expanded card.
+                const hasAlignedInterest = ratifiedArticles.some(ar => ar.article_id === 'aligned_interest');
+                const aiFloor   = hasAlignedInterest ? a.aligned_interest_floor_apr   : null;
+                const aiCeiling = hasAlignedInterest ? a.aligned_interest_ceiling_apr : null;
+                const hasBadDebtAid = ratifiedArticles.some(ar => ar.article_id === 'bad_debt_mutual');
+                const hasSyndicatedLending = ratifiedArticles.some(ar => ar.article_id === 'syndicated_portfolio');
+                const hasJointEquity       = ratifiedArticles.some(ar => ar.article_id === 'joint_equity');
+                actives.push({
+                    id: a.id,
+                    name: a.name,
+                    sector: a.sector,
+                    tags: [SECTOR_LABEL[a.sector] || a.sector, 'MEMBER'],
+                    dues: '—',
+                    rate_floor: (aiFloor != null) ? `${Number(aiFloor).toFixed(1)}%` : '—',
+                    aligned_interest_band: (aiFloor != null && aiCeiling != null)
+                        ? `${Number(aiFloor).toFixed(1)}% – ${Number(aiCeiling).toFixed(1)}%`
+                        : null,
+                    bad_debt_aid_active: hasBadDebtAid,
+                    syndicated_lending_active: hasSyndicatedLending,
+                    joint_equity_active: hasJointEquity,
+                    member_count: members.length,
+                    nation_count: nationCount,
+                    founded_year: a.founded_at_tick ?? '—',
+                    cartel_score: Number(cartelTotal.toFixed(1)),
+                    heat: Number((Number(a.antitrust_heat) || 0).toFixed(1)),
+                    cohesion: Number((Number(a.cohesion) || 0).toFixed(1)),
+                    founded_date: a.founded_at_tick != null ? `Tick ${a.founded_at_tick}` : '—',
+                    hq: founderNation || '—',
+                    chair: founderName || '—',
+                    mission: a.mission || '',
+                    members,
+                    articles: ratifiedArticles.map(ar => ({
+                        name: ar.article_name, kind: ar.article_kind, body: ar.article_body || '',
+                    })),
+                    represented_nations: Array.from(new Set(
+                        members.map(m => factionMap.get(m.id)?.nation_id).filter(Boolean)
+                    )).map(nid => ({ name: nationMap.get(nid) || '—', count: members.filter(m => factionMap.get(m.id)?.nation_id === nid).length })),
+                    last_amended: ratifiedArticles.length > 0
+                        ? `Tick ${Math.max(...ratifiedArticles.map(ar => Number(ar.ratified_at_tick) || 0))}`
+                        : null,
+                });
+            }
+        }
+
+        _pendingNegotiations = negotiations;
+        _myAlliances = actives;
+    } catch (e) {
+        console.warn('[alliances] hydrate failed:', e?.message || e);
+    } finally {
+        _alliancesLoading = false;
+    }
 }
 
 // ── Top-level render dispatch ──
 function renderShell() {
     const shell = document.getElementById('alliances-shell');
     if (!shell) return;
-    if (_view === 'found') shell.innerHTML = renderFoundView();
-    else shell.innerHTML = renderListView();
+    // If a negotiation drill-in is requested but the row is gone (mock
+    // cleared, future "withdraw" path) snap back to the list before
+    // we render — otherwise bindShellEvents would bind the negotiation
+    // branch against list-view DOM and click handlers would no-op.
+    if (_view === 'negotiation'
+        && !(_pendingNegotiations || []).some(n => n.id === _negotiationId)) {
+        _view = 'list';
+        _negotiationId = null;
+        _negotiationDraftVote = null;
+    }
+    if (_view === 'negotiation') shell.innerHTML = renderNegotiationView();
+    else if (_view === 'found')  shell.innerHTML = renderFoundView();
+    else                          shell.innerHTML = renderListView();
     bindShellEvents();
 }
 
+function openNegotiation(id) {
+    const n = (_pendingNegotiations || []).find(x => x.id === id);
+    if (!n) return;
+    _view = 'negotiation';
+    _negotiationId = id;
+    _negotiationDraftVote = null;
+    renderShell();
+}
+function closeNegotiation() {
+    _view = 'list';
+    _negotiationId = null;
+    _negotiationDraftVote = null;
+    renderShell();
+}
+
 function renderListView() {
+    const sectorLabel = SECTOR_LABEL[faction?.corp_sector] || faction?.corp_sector || '—';
+    const filterPills = FILTER_ORDER.map(f => {
+        const cls = `al-filter-pill${f === _sectorFilter ? ' active' : ''}`;
+        return `<button class="${cls}" data-filter="${escHtml(f)}">${escHtml(FILTER_LABEL[f] || f.toUpperCase())}</button>`;
+    }).join('');
+
     return `
-        <div class="alliances-shell__head">
-            <div class="alliances-title">Strategic Alliances<span class="alliances-title__dot">.</span></div>
-            <button class="alliances-found-btn" id="open-found-btn">FOUND ALLIANCE</button>
+        <div class="al-page-head">
+            <div>
+                <div class="al-page-eyebrow">Strategic Alliances</div>
+                <div class="al-page-context">${escHtml(faction?.faction_name || '—')} · ${escHtml(sectorLabel)}</div>
+            </div>
+            <div class="al-page-stats">
+                <div><div class="al-stat__label">Your Alliances</div><div class="al-stat__value">${_myAlliances.length || 0}</div></div>
+                <div><div class="al-stat__label">Influence</div><div class="al-stat__value">—</div></div>
+                <div><div class="al-stat__label">Antitrust Heat</div><div class="al-stat__value">—</div></div>
+            </div>
         </div>
-        <div class="alliances-empty">No alliances yet.</div>
+        <div class="al-rule"></div>
+        <div class="al-controls">
+            <div class="al-filter-row">
+                <span class="al-filter-label">Filter</span>
+                ${filterPills}
+            </div>
+            <button class="al-found-btn" id="open-found-btn">+ FOUND NEW ALLIANCE</button>
+        </div>
+        ${renderMembershipsSection()}
+        ${renderPendingNegotiationsSection()}
+        ${renderOpenSection()}
     `;
+}
+
+function renderPendingNegotiationsSection() {
+    const rows = _pendingNegotiations || [];
+    if (rows.length === 0) return ''; // hidden when empty
+    return `
+        <div class="al-section">
+            <div class="al-section__title">Pending Negotiations &middot; ${rows.length}</div>
+            ${rows.map(n => {
+                const consensus = computeConsensusState(n);
+                return `
+                    <div class="al-row" data-pending-id="${escHtml(n.id)}" style="border-left-color:var(--blue);cursor:pointer;">
+                        <div class="al-row__head">
+                            <span class="al-row__chevron">&rsaquo;</span>
+                            <span class="al-row__name">${escHtml(n.name)}</span>
+                            <span class="al-row__tag" style="color:var(--blue);border-color:var(--blue-border);background:var(--blue-faint);">${escHtml(SECTOR_LABEL[n.sector] || n.sector)}</span>
+                            <span class="al-row__tag">FOUNDING</span>
+                            <div class="al-row__metrics">
+                                <div class="al-row__metric">
+                                    <div class="al-row__metric-label">Votes</div>
+                                    <div class="al-row__metric-value">${consensus.submitted} of ${consensus.total}</div>
+                                </div>
+                                <div class="al-row__metric">
+                                    <div class="al-row__metric-label">Closes In</div>
+                                    <div class="al-row__metric-value">${n.ticks_remaining ?? '—'} ticks</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="al-row__sub">
+                            ${n.members.length} invited · ${consensus.label}
+                        </div>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+// Consensus per the founding rules: every member must vote on the same
+// article. Returns the labels driving header + ratify-button gating.
+// Tolerates empty member rosters so a transient zero-member fetch can't
+// crash the renderer.
+function computeConsensusState(n) {
+    const members = (n && n.members) || [];
+    const total = members.length;
+    const voted = members.filter(m => m.vote);
+    const submitted = voted.length;
+    if (total === 0) {
+        return { submitted: 0, total: 0, reached: false, article_id: null,
+                 label: 'No members invited.' };
+    }
+    if (submitted < total) {
+        const remaining = total - submitted;
+        return { submitted, total, reached: false, article_id: null,
+                 label: `Awaiting ${remaining} more vote${remaining === 1 ? '' : 's'} before ratification.` };
+    }
+    const first = voted[0].vote;
+    const unanimous = voted.every(m => m.vote === first);
+    if (unanimous) {
+        const art = (n.articles || []).find(a => a.id === first);
+        return { submitted, total, reached: true, article_id: first,
+                 label: `All members agreed on ${art ? art.name : first}. Ready to ratify.` };
+    }
+    return { submitted, total, reached: false, article_id: null,
+             label: 'Members are split — alliance can only be founded once all vote for the same article.' };
+}
+
+function filterAlliancesBySector(rows) {
+    if (_sectorFilter === 'all') return rows;
+    return (rows || []).filter(a => a.sector === _sectorFilter);
+}
+
+function renderMembershipsSection() {
+    const rows = filterAlliancesBySector(_myAlliances);
+    return `
+        <div class="al-section">
+            <div class="al-section__title">Your Memberships</div>
+            ${rows.length === 0
+                ? `<div class="al-empty">You're not in any.</div>`
+                : rows.map(a => renderAllianceRow(a, /*isMember*/true)).join('')
+            }
+        </div>
+    `;
+}
+
+function renderOpenSection() {
+    const rows = filterAlliancesBySector(_openAlliances);
+    return `
+        <div class="al-section">
+            <div class="al-section__title">Open to Join</div>
+            ${rows.length === 0
+                ? `<div class="al-empty">No alliances open to join yet.</div>`
+                : rows.map(a => renderAllianceRow(a, /*isMember*/false)).join('')
+            }
+        </div>
+    `;
+}
+
+// Row renderer reused by both sections. Today both lists are empty so
+// none of this paints, but the function is wired so the moment alliance
+// rows arrive (with the documented shape — see renderAllianceExpanded
+// for fields used) the page populates without a second pass.
+function renderAllianceRow(a, isMember) {
+    const expanded = _expandedAllianceIds.has(a.id);
+    const tags = (a.tags || []).map(t => {
+        const cls = ARTICLE_TAG_CLASS[String(t).toLowerCase()] || '';
+        return `<span class="al-row__tag ${cls}">${escHtml(t)}</span>`;
+    }).join('');
+    return `
+        <div class="al-row" data-alliance-id="${escHtml(a.id)}">
+            <div class="al-row__head" data-toggle-id="${escHtml(a.id)}">
+                <span class="al-row__chevron">${expanded ? '▾' : '▸'}</span>
+                <span class="al-row__name">${escHtml(a.name || 'Unnamed Alliance')}</span>
+                <div class="al-row__tags">${tags}</div>
+                <div class="al-row__metrics">
+                    <div class="al-row__metric">
+                        <div class="al-row__metric-label">${isMember ? 'Dues' : 'Est. Dues'}</div>
+                        <div class="al-row__metric-value">${escHtml(a.dues || '—')}</div>
+                    </div>
+                    <div class="al-row__metric">
+                        <div class="al-row__metric-label">Rate Floor</div>
+                        <div class="al-row__metric-value">${escHtml(a.rate_floor || '—')}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="al-row__sub">
+                ${a.member_count ?? '—'} members · ${a.nation_count ?? '—'} nations · Founded ${a.founded_year ?? '—'} · Cartel score ${a.cartel_score ?? '—'}${a.heat != null ? ` · Heat ${a.heat}` : ''}
+            </div>
+            ${expanded ? renderAllianceExpanded(a, isMember) : ''}
+        </div>
+    `;
+}
+
+function renderAllianceExpanded(a, isMember) {
+    const heroDefs = HERO_STATS[a.sector] || [];
+    const memberCardsHtml = (a.members || []).map(m => {
+        const heroLine = heroDefs.length > 0
+            ? `${escHtml(heroDefs[0][0])} <b>${fmtStat(m[heroDefs[0][1]])}</b>`
+            : '';
+        const labelTag = m.is_you ? '<span class="al-row__tag" style="color:var(--amber);border-color:var(--amber);">YOU</span>'
+                       : m.is_founder ? '<span class="al-row__tag" style="color:var(--text-bright);border-color:var(--text-dim);">FOUNDER</span>'
+                       : '';
+        return `
+            <div class="fnd-invitee">
+                <div class="fnd-invitee__chip">${escHtml(corpInitials(m))}</div>
+                <div class="fnd-invitee__body">
+                    <div class="fnd-invitee__name">${escHtml(m.faction_name || '')} ${labelTag}</div>
+                    <div class="fnd-invitee__meta">${escHtml(m.nation_name || '—')} · ${heroLine} · Joined ${escHtml(String(m.joined_year || '—'))}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const articlesHtml = (a.articles || []).map((art, i) => {
+        const cls = ARTICLE_TAG_CLASS[String(art.kind || '').toLowerCase()] || '';
+        return `
+            <div class="al-article">
+                <div class="al-article__head">
+                    <span class="al-article__num">Article ${roman(i + 1)}</span>
+                    <span class="al-article__name">${escHtml(art.name || '')}</span>
+                    <span class="al-row__tag ${cls}">${escHtml(art.kind || '')}</span>
+                </div>
+                <div class="al-article__body">${escHtml(art.body || '')}</div>
+            </div>
+        `;
+    }).join('');
+
+    const nationPills = (a.represented_nations || []).map(n =>
+        `<span class="al-row__tag" style="color:var(--text-primary);">${escHtml(n.name)} ${n.count != null ? n.count : ''}</span>`
+    ).join(' ');
+
+    return `
+        <div class="al-row__expanded">
+            <div class="al-stat-grid">
+                <div><div class="al-stat__label">Founded</div><div style="margin-top:2px;color:var(--text-bright);">${escHtml(a.founded_date || '—')}</div></div>
+                <div><div class="al-stat__label">Headquarters</div><div style="margin-top:2px;color:var(--text-bright);">${escHtml(a.hq || '—')}</div></div>
+                <div><div class="al-stat__label">Presiding Chair</div><div style="margin-top:2px;color:var(--text-bright);">${escHtml(a.chair || '—')}</div></div>
+                <div><div class="al-stat__label">Cohesion</div><div style="margin-top:2px;color:var(--green);">${escHtml((a.cohesion ?? '—') + ' / 10.0')}</div></div>
+                <div><div class="al-stat__label">Antitrust Heat</div><div style="margin-top:2px;color:${(a.heat || 0) >= 7 ? 'var(--red)' : 'var(--amber)'};">${escHtml((a.heat ?? '—') + ' / 10.0')}</div></div>
+            </div>
+            ${a.aligned_interest_band ? `
+                <div style="margin-top:14px;padding:10px 14px;background:var(--amber-faint);border:1px solid var(--amber-border);font-family:var(--font-mono);font-size:11px;letter-spacing:0.04em;">
+                    <span style="color:var(--text-dim);text-transform:uppercase;">Aligned Interest Band</span>
+                    <span style="color:var(--amber);margin-left:10px;font-weight:700;">${escHtml(a.aligned_interest_band)}</span>
+                    <span style="color:var(--text-secondary);margin-left:10px;">Loans outside this band trigger −2 Cohesion alliance, −1 Reputation lender.</span>
+                </div>
+            ` : ''}
+            ${a.bad_debt_aid_active ? `
+                <div style="margin-top:8px;padding:10px 14px;background:var(--blue-faint);border:1px solid var(--blue-border);font-family:var(--font-mono);font-size:11px;letter-spacing:0.04em;">
+                    <span style="color:var(--text-dim);text-transform:uppercase;">Bad Debt Mutual Aid</span>
+                    <span style="color:var(--blue);margin-left:10px;font-weight:700;">Active</span>
+                    <span style="color:var(--text-secondary);margin-left:10px;">A loan default ≥ $20M against any member triggers 15% Lending Capital absorption (in LC units, $50M = 1 LC) from every other member.</span>
+                </div>
+            ` : ''}
+            ${a.syndicated_lending_active ? `
+                <div style="margin-top:8px;padding:10px 14px;background:var(--green-faint);border:1px solid var(--green-border);font-family:var(--font-mono);font-size:11px;letter-spacing:0.04em;">
+                    <span style="color:var(--text-dim);text-transform:uppercase;">Syndicated Lending Portfolio</span>
+                    <span style="color:var(--green);margin-left:10px;font-weight:700;">Active</span>
+                    <span style="color:var(--text-secondary);margin-left:10px;">Each tick, any member whose Overleverage hits 8 (and not yet 10) is auto-rescued: their leverage drops to 7, every other member loses 0.5 Lending Capital. One-shot per member per alliance term.</span>
+                </div>
+            ` : ''}
+            ${a.joint_equity_active ? `
+                <div style="margin-top:8px;padding:10px 14px;background:var(--teal-faint);border:1px solid var(--teal-border);font-family:var(--font-mono);font-size:11px;letter-spacing:0.04em;">
+                    <span style="color:var(--text-dim);text-transform:uppercase;">Joint Equity Ventures</span>
+                    <span style="color:var(--teal);margin-left:10px;font-weight:700;">Active</span>
+                    <span style="color:var(--text-secondary);margin-left:10px;">Equity stakes accepted by any member auto-split equally across every alliance member; each peer absorbs 0.5 Lending Capital. Future resales restricted to alliance members.</span>
+                </div>
+            ` : ''}
+            ${a.mission ? `<div style="margin-top:16px;padding:12px 14px;border-left:2px solid var(--amber);font-style:italic;color:var(--text-secondary);">"${escHtml(a.mission)}"</div>` : ''}
+            <div style="margin-top:16px;">
+                <div class="al-stat__label">Members · ${a.member_count ?? '—'} ${a.sector || ''} corps across ${a.nation_count ?? '—'} nations</div>
+                <div class="fnd-invitees-grid" style="margin-top:8px;">${memberCardsHtml}</div>
+            </div>
+            ${nationPills ? `<div style="margin-top:16px;"><div class="al-stat__label">Represented Nations</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">${nationPills}</div></div>` : ''}
+            ${articlesHtml ? `<div style="margin-top:16px;"><div class="al-stat__label">Charter · ${(a.articles || []).length} articles ratified${a.last_amended ? ` · Last amended ${escHtml(a.last_amended)}` : ''}</div><div style="margin-top:8px;">${articlesHtml}</div></div>` : ''}
+            <div class="al-actions">
+                ${isMember
+                    ? `<button class="al-btn al-btn--primary" disabled title="Backend not yet implemented.">GOVERNANCE ↗</button>
+                       <button class="al-btn" disabled title="Backend not yet implemented.">TREASURY</button>
+                       <button class="al-btn" disabled title="Backend not yet implemented.">MESSAGE</button>
+                       <span class="spacer"></span>
+                       <button class="al-btn al-btn--leave" data-leave-id="${escHtml(a.id)}">LEAVE ALLIANCE</button>`
+                    : `<button class="al-btn al-btn--primary" data-apply-id="${escHtml(a.id)}">APPLY TO JOIN</button>`
+                }
+            </div>
+        </div>
+    `;
+}
+
+function roman(n) {
+    const map = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+    return map[n] || String(n);
 }
 
 function renderFoundView() {
@@ -443,10 +1313,11 @@ function renderFoundView() {
         ? `<div class="fnd-empty-roster">No other ${escHtml(sectorLabel)} corporations available to invite.</div>`
         : `<div class="fnd-invitees-grid">${_candidates.map(renderInviteeCard).join('')}</div>`;
 
-    // Submit is greyed by design — RPC isn't wired yet. validInvitees
-    // is still consumed below for the count-color toggle; the rest of
-    // the validation will live next to the disable flip when it ships.
+    // Founding-form gates. validName is required server-side; validInvitees
+    // gates the [Send Invitations] button on the client + count-color toggle.
+    const validName = _form.name.trim().length > 0;
     const validInvitees = inviteeCount >= MIN_INVITEES && inviteeCount <= MAX_INVITEES;
+    const canSubmit = validName && validInvitees && !_allianceActionInflight;
 
     return `
         <div class="fnd-crumb">
@@ -520,8 +1391,9 @@ function renderFoundView() {
         </div>
         <div class="fnd-actions">
             <button class="fnd-btn" id="fnd-cancel">Cancel</button>
-            <button class="fnd-btn fnd-btn--primary" id="fnd-submit" disabled
-                    title="Negotiation backend not yet implemented.">
+            <button class="fnd-btn fnd-btn--primary" id="fnd-submit"
+                    ${canSubmit ? '' : 'disabled'}
+                    title="${canSubmit ? '' : (validName ? 'Pick at least 2 invitees' : 'Name your alliance')}">
                 Send Invitations &amp; Open Negotiation ↗
             </button>
         </div>
@@ -553,9 +1425,307 @@ function renderInviteeCard(c) {
     `;
 }
 
+// ── Negotiation view ───────────────────────────────────────────────
+// Live state for an in-progress founding proposal. All buttons are
+// disabled today (backend not wired); the article-radio selection +
+// chat-input typing are local-only so the layout is reviewable.
+
+function renderNegotiationView() {
+    // Dispatcher (renderShell) already bounces missing negotiations to
+    // the list view before we get here, so a falsy `n` would only mean
+    // the dispatcher guard regressed — render an empty shell rather
+    // than blowing up.
+    const n = (_pendingNegotiations || []).find(x => x.id === _negotiationId);
+    if (!n) return '';
+    const sectorLabel = SECTOR_LABEL[n.sector] || n.sector;
+    const consensus = computeConsensusState(n);
+    const me = (n.members || []).find(m => m.is_you) || null;
+    const myCurrentVote = _negotiationDraftVote || me?.vote || null;
+    const canRatify = consensus.reached && me && me.id === n.founder_faction_id;
+
+    // Per-article tally: how many members chose each one. Guard the
+    // bar-width math so a zero-member negotiation can't render NaN%.
+    const tally = new Map((n.articles || []).map(a => [a.id, 0]));
+    for (const m of (n.members || [])) {
+        if (m.vote && tally.has(m.vote)) tally.set(m.vote, tally.get(m.vote) + 1);
+    }
+    const pendingCount = (n.members || []).filter(m => !m.vote).length;
+    const totalWeight  = (n.members || []).length;
+    const pctOf = (count) => totalWeight > 0 ? Math.round((count / totalWeight) * 100) : 0;
+
+    return `
+        <div class="fnd-crumb">
+            <a class="fnd-crumb__link" data-nav="list">Strategic Alliances</a>
+            <span class="fnd-crumb__sep">/</span>
+            <a class="fnd-crumb__link" data-nav="found">Found New Alliance</a>
+            <span class="fnd-crumb__sep">/</span>
+            <span class="fnd-crumb__current">Founding Negotiation</span>
+        </div>
+
+        <div class="ng-head">
+            <div class="ng-head__title-block">
+                <div class="ng-head__title">${escHtml(n.name)}</div>
+                <div class="ng-head__sub">
+                    <span class="al-row__tag" style="color:var(--blue);border-color:var(--blue-border);background:var(--blue-faint);">${escHtml(sectorLabel)}</span>
+                    Founding negotiation in progress &middot; Closes in ${n.ticks_remaining ?? '—'} ticks
+                </div>
+            </div>
+            <div class="ng-head__metrics">
+                <div class="ng-head__metric">
+                    <div class="al-stat__label">Votes Submitted</div>
+                    <div class="al-stat__value">${consensus.submitted} of ${consensus.total}</div>
+                </div>
+                <div class="ng-head__metric">
+                    <div class="al-stat__label">Consensus</div>
+                    <div class="al-stat__value" style="color:${consensus.reached ? 'var(--green)' : 'var(--text-dim)'};">
+                        ${consensus.reached ? 'Reached' : 'Pending'}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="al-rule"></div>
+
+        <div class="ng-grid">
+            <!-- LEFT: members + tally + actions -->
+            <div class="ng-left">
+                <div class="al-section__title">Founding Members</div>
+                ${n.members.map(m => renderNegotiationMemberCard(m, n.articles)).join('')}
+
+                <div class="ng-tally">
+                    <div class="al-section__title">Vote Tally &middot; Per Article</div>
+                    ${(n.articles || []).map(a => {
+                        const v = tally.get(a.id) || 0;
+                        const pct = pctOf(v);
+                        return `
+                            <div class="ng-tally__row">
+                                <div class="ng-tally__label">${escHtml(a.name)}</div>
+                                <div class="ng-tally__bar"><div class="ng-tally__fill" style="width:${pct}%;background:${v > 0 ? 'var(--green)' : 'var(--text-ghost)'};"></div></div>
+                                <div class="ng-tally__count">${v}</div>
+                            </div>
+                        `;
+                    }).join('')}
+                    <div class="ng-tally__row">
+                        <div class="ng-tally__label" style="color:var(--text-dim);">— Pending —</div>
+                        <div class="ng-tally__bar"><div class="ng-tally__fill" style="width:${pctOf(pendingCount)}%;background:var(--text-ghost);"></div></div>
+                        <div class="ng-tally__count">${pendingCount}</div>
+                    </div>
+                    <div class="ng-tally__footer">
+                        Total members: ${totalWeight} &middot; All members must vote on the same article to ratify.
+                    </div>
+                </div>
+
+                <button class="al-btn al-btn--primary" style="width:100%;margin-top:16px;" id="ng-ratify"
+                        ${canRatify ? '' : 'disabled'} title="${escHtml(consensus.label)}">FOUND ALLIANCE</button>
+                <div style="margin-top:6px;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);text-align:center;letter-spacing:0.06em;">
+                    ${escHtml(consensus.label)}
+                </div>
+                ${me && me.id === n.founder_faction_id
+                    ? `<button class="al-btn al-btn--leave" style="width:100%;margin-top:12px;" id="ng-withdraw">Withdraw Proposal</button>`
+                    : ''}
+                <div style="margin-top:14px;font-family:var(--font-mono);font-size:9px;color:var(--red);text-align:center;letter-spacing:0.06em;">
+                    If consensus is not reached within ${NEGOTIATION_DURATION_TICKS} ticks, the alliance dissolves and every invited corporation suffers ${FAILED_NEGOTIATION_REPUTATION_HIT} Reputation.
+                </div>
+            </div>
+
+            <!-- RIGHT: articles + your vote + chat -->
+            <div class="ng-right">
+                <div class="al-section__title">Proposed Founding Articles &middot; Select One</div>
+                ${(n.articles || []).length === 0
+                    ? `<div class="al-empty">No candidate articles defined for this sector yet.</div>`
+                    : `<div class="ng-articles">
+                        ${(n.articles || []).map(a => renderNegotiationArticleCard(a, n, myCurrentVote, tally.get(a.id) || 0)).join('')}
+                    </div>`
+                }
+
+                ${(() => {
+                    const submitted = me?.vote || null;
+                    const draft = _negotiationDraftVote;
+                    const submittedName = submitted ? (n.articles.find(a => a.id === submitted)?.name || submitted) : null;
+                    const draftName = draft ? (n.articles.find(a => a.id === draft)?.name || draft) : null;
+                    const canSubmit = draft && draft !== submitted;
+                    const canUnsubmit = submitted !== null && !canSubmit;
+                    const btnLabel = canSubmit ? 'Submit Vote' : (canUnsubmit ? 'Unsubmit Vote' : 'Submit Vote');
+                    const btnDisabled = !canSubmit && !canUnsubmit;
+                    return `
+                        <div class="ng-your-vote">
+                            <div>
+                                <div class="al-stat__label">Your Vote</div>
+                                <div class="ng-your-vote__value">
+                                    ${submitted
+                                        ? escHtml(submittedName)
+                                        : '<span style="color:var(--text-dim);">Not yet submitted</span>'}
+                                    ${canSubmit ? `<span style="color:var(--text-dim);font-weight:400;font-size:11px;margin-left:8px;">→ pending: <b style="color:var(--amber);">${escHtml(draftName)}</b></span>` : ''}
+                                </div>
+                            </div>
+                            <button class="al-btn al-btn--primary" id="ng-submit-vote" ${btnDisabled ? 'disabled' : ''}>${btnLabel}</button>
+                        </div>
+                    `;
+                })()}
+
+                <div class="ng-chat">
+                    <div class="ng-chat__head">
+                        <span class="al-section__title" style="margin:0;">Negotiation Room</span>
+                        <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.04em;">
+                            ${(n.chat || []).length} message${(n.chat || []).length === 1 ? '' : 's'}
+                        </span>
+                    </div>
+                    <div class="ng-chat__scroll">
+                        ${(n.chat || []).map(renderNegotiationChatMessage).join('')}
+                    </div>
+                    <div class="ng-chat__compose">
+                        <input type="text" class="fnd-input" id="ng-chat-input" maxlength="2000" placeholder="Reply to the negotiation room…" />
+                        <button class="al-btn al-btn--primary" id="ng-chat-send">Send ↗</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderNegotiationMemberCard(m, articles) {
+    const voted = m.vote ? articles.find(a => a.id === m.vote) : null;
+    const accent = m.is_you ? 'var(--amber)'
+                 : m.rapport === 'friendly' ? 'var(--green)'
+                 : m.rapport === 'hostile'  ? 'var(--red)'
+                 : 'var(--border-1)';
+    const statusLabel = m.is_founder
+        ? '<span style="color:var(--amber);font-weight:700;">FOUNDER</span>' + (m.is_you ? ' &middot; <span style="color:var(--amber);">YOU</span>' : '')
+        : (m.rapport || '').toUpperCase();
+    const voteLabel = voted
+        ? `<span style="color:var(--green);">&check; ${escHtml(voted.name)}</span>`
+        : `<span style="color:var(--text-dim);">— PENDING</span>`;
+    return `
+        <div class="ng-member" style="border-left-color:${accent};">
+            <div class="ng-member__top">
+                <div class="fnd-invitee__chip">${escHtml(corpInitials(m))}</div>
+                <div class="ng-member__body">
+                    <div class="fnd-invitee__name">${escHtml(m.faction_name)}</div>
+                    <div class="fnd-invitee__meta">${escHtml(m.nation_name)} &middot; ${escHtml(m.stat_label)} ${fmtStat(m.stat_value)}</div>
+                </div>
+            </div>
+            <div class="ng-member__footer">
+                <span class="ng-member__status">${statusLabel}</span>
+                <span class="ng-member__vote">${voteLabel}</span>
+            </div>
+        </div>
+    `;
+}
+
+function renderNegotiationArticleCard(a, n, myCurrentVote, voteCount) {
+    const isMine = myCurrentVote === a.id;
+    const voters = n.members.filter(m => m.vote === a.id);
+    const votersHtml = voters.length === 0
+        ? '<span style="color:var(--text-dim);">No votes yet</span>'
+        : voters.map(m => `<span class="fnd-invitee__chip" style="width:auto;height:20px;font-size:9px;padding:0 6px;">${escHtml(corpInitials(m))}</span>`).join(' ');
+    return `
+        <div class="ng-article ${isMine ? 'selected' : ''}" data-article-id="${escHtml(a.id)}">
+            <div class="ng-article__head">
+                <span class="ng-article__radio">${isMine ? '&#x25C9;' : '&#x25CB;'}</span>
+                <span class="ng-article__name">${escHtml(a.name)}</span>
+                <span class="ng-article__weight">${voteCount} vote${voteCount === 1 ? '' : 's'}</span>
+            </div>
+            <div class="ng-article__body">${escHtml(a.body)}</div>
+            <div class="ng-article__meta">
+                <span>CARTEL <b>${a.cartel.toFixed(1)}</b></span>
+                <span>CHS <b>+${a.chs.toFixed(1)}</b></span>
+            </div>
+            <div class="ng-article__voters">VOTED: ${votersHtml}</div>
+        </div>
+    `;
+}
+
+function renderNegotiationChatMessage(msg) {
+    const tag = msg.is_founder
+        ? '<span class="al-row__tag" style="color:var(--amber);border-color:var(--amber);background:var(--amber-faint);margin-left:6px;">FOUNDER</span>'
+        : '';
+    return `
+        <div class="ng-chat__msg">
+            <div class="ng-chat__msg-head">
+                <span class="ng-chat__msg-author">${escHtml(msg.author || '—')}</span>
+                ${tag}
+                <span class="ng-chat__msg-ago">${escHtml(msg.ago || '')}</span>
+            </div>
+            <div class="ng-chat__msg-body">${escHtml(msg.body || '')}</div>
+        </div>
+    `;
+}
+
 function bindShellEvents() {
     if (_view === 'list') {
         document.getElementById('open-found-btn')?.addEventListener('click', openFoundView);
+        document.querySelectorAll('.al-filter-pill').forEach(pill => {
+            pill.addEventListener('click', () => {
+                const f = pill.dataset.filter;
+                if (!f || f === _sectorFilter) return;
+                _sectorFilter = f;
+                renderShell();
+            });
+        });
+        document.querySelectorAll('[data-toggle-id]').forEach(head => {
+            head.addEventListener('click', () => {
+                const id = head.dataset.toggleId;
+                if (_expandedAllianceIds.has(id)) _expandedAllianceIds.delete(id);
+                else _expandedAllianceIds.add(id);
+                renderShell();
+            });
+        });
+        document.querySelectorAll('[data-apply-id]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.applyId;
+                const a = (_openAlliances || []).find(x => x.id === id);
+                if (!a) return;
+                openConfirm({
+                    title: `Apply to join ${a.name}?`,
+                    body: `Submitting an application sends a request to the alliance's presiding chair. Acceptance is at the alliance's discretion.`,
+                    confirmLabel: 'Send Application',
+                    onConfirm: () => { /* no-op until backend lands */ },
+                });
+            });
+        });
+        document.querySelectorAll('[data-pending-id]').forEach(row => {
+            row.addEventListener('click', () => openNegotiation(row.dataset.pendingId));
+        });
+        document.querySelectorAll('[data-leave-id]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.leaveId;
+                const a = (_myAlliances || []).find(x => x.id === id);
+                if (!a) return;
+                openConfirm({
+                    title: `Leave ${a.name}?`,
+                    body: 'You will lose access to alliance benefits and chat. If you are the last member, the alliance will dissolve.',
+                    confirmLabel: 'Leave Alliance',
+                    onConfirm: () => { leaveAlliance(id); },
+                });
+            });
+        });
+        return;
+    }
+    if (_view === 'negotiation') {
+        document.querySelectorAll('.fnd-crumb__link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (link.dataset.nav === 'list')  closeNegotiation();
+                if (link.dataset.nav === 'found') { _view = 'found'; _negotiationId = null; renderShell(); }
+            });
+        });
+        document.querySelectorAll('.ng-article').forEach(card => {
+            card.addEventListener('click', () => {
+                _negotiationDraftVote = card.dataset.articleId;
+                renderShell();
+            });
+        });
+        document.getElementById('ng-submit-vote')?.addEventListener('click', submitDraftVote);
+        document.getElementById('ng-ratify')?.addEventListener('click', ratifyAlliance);
+        document.getElementById('ng-withdraw')?.addEventListener('click', withdrawAlliance);
+        document.getElementById('ng-chat-send')?.addEventListener('click', sendChatMessage);
+        const chatInput = document.getElementById('ng-chat-input');
+        if (chatInput) {
+            chatInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
+            });
+        }
         return;
     }
     // Found view bindings
@@ -572,6 +1742,172 @@ function bindShellEvents() {
     document.querySelectorAll('.fnd-invitee').forEach(card => {
         card.addEventListener('click', () => toggleInvitee(card.dataset.corpId));
     });
+    document.getElementById('fnd-submit')?.addEventListener('click', submitFoundingProposal);
+}
+
+// ── Action handlers (RPC callers) ────────────────────────────────
+// Single _allianceActionInflight lock across every mutating action so
+// rapid double-clicks anywhere in the UI can't stack writes. Each
+// handler refreshes the local cache via loadAlliancesData on success.
+async function withAllianceLock(fn) {
+    if (_allianceActionInflight) return;
+    _allianceActionInflight = true;
+    try { await fn(); } finally { _allianceActionInflight = false; }
+}
+function reportRpcError(prefix, err, data) {
+    const msg = (err && err.message) || (data && data.error) || 'Unknown error';
+    alert(`${prefix}: ${msg}`);
+}
+
+async function submitFoundingProposal() {
+    await withAllianceLock(async () => {
+        const ids = Array.from(_form.selectedInviteeIds);
+        const { data, error } = await _supabase.rpc('propose_strategic_alliance', {
+            p_founder_faction_id: faction.id,
+            p_name: _form.name.trim(),
+            p_mission: _form.mission.trim() || null,
+            p_invitee_ids: ids,
+        });
+        if (error || !data?.success) { reportRpcError('Failed to send invitations', error, data); return; }
+        _form = { name: '', selectedInviteeIds: new Set(), mission: '' };
+        await loadAlliancesData();
+        // Drop the user into the new negotiation so they can start
+        // chatting / voting immediately.
+        if (data.alliance_id) openNegotiation(data.alliance_id);
+        else { _view = 'list'; renderShell(); }
+    });
+}
+
+async function submitDraftVote() {
+    await withAllianceLock(async () => {
+        const me = currentNegotiationMyself();
+        if (!me) return;
+        const submitted = me.vote || null;
+        const draft = _negotiationDraftVote;
+        // Click intent: submit draft if it differs from submitted; otherwise
+        // unsubmit. Matches the canSubmit / canUnsubmit gate in the render.
+        const canSubmit   = draft && draft !== submitted;
+        const canUnsubmit = submitted !== null && !canSubmit;
+        if (!canSubmit && !canUnsubmit) return;
+        const rpc = canSubmit ? 'submit_alliance_vote' : 'unsubmit_alliance_vote';
+        const args = canSubmit
+            ? { p_voter_faction_id: faction.id, p_alliance_id: _negotiationId, p_article_id: draft }
+            : { p_voter_faction_id: faction.id, p_alliance_id: _negotiationId };
+        const { data, error } = await _supabase.rpc(rpc, args);
+        if (error || !data?.success) { reportRpcError('Vote failed', error, data); return; }
+        _negotiationDraftVote = null;
+        await loadAlliancesData();
+        renderShell();
+    });
+}
+
+async function ratifyAlliance() {
+    await withAllianceLock(async () => {
+        const n = (_pendingNegotiations || []).find(x => x.id === _negotiationId);
+        if (!n) return;
+        const consensus = computeConsensusState(n);
+        if (!consensus.reached) { alert(consensus.label); return; }
+        const article = (n.articles || []).find(a => a.id === consensus.article_id);
+        if (!article) { alert('Article catalog mismatch — refresh and retry.'); return; }
+        const { data, error } = await _supabase.rpc('ratify_strategic_alliance', {
+            p_founder_faction_id: faction.id,
+            p_alliance_id: _negotiationId,
+            p_article_name: article.name,
+            p_article_kind: article.kind,
+            p_article_body: article.body,
+            p_cartel_score: article.cartel,
+            p_chs_bonus: article.chs,
+        });
+        if (error || !data?.success) { reportRpcError('Ratification failed', error, data); return; }
+        await loadAlliancesData();
+        // Negotiation is now an active alliance — bounce to landing list.
+        closeNegotiation();
+    });
+}
+
+function withdrawAlliance() {
+    // Use the styled openConfirm modal (consistent with leaveAlliance)
+    // instead of native browser confirm().
+    const id = _negotiationId;
+    openConfirm({
+        title: 'Withdraw this proposal?',
+        body: 'The negotiation will be dissolved and the founding fee refunded to your corporation.',
+        confirmLabel: 'Withdraw Proposal',
+        onConfirm: () => {
+            withAllianceLock(async () => {
+                const { data, error } = await _supabase.rpc('withdraw_strategic_alliance', {
+                    p_founder_faction_id: faction.id,
+                    p_alliance_id: id,
+                });
+                if (error || !data?.success) { reportRpcError('Withdraw failed', error, data); return; }
+                await loadAlliancesData();
+                closeNegotiation();
+            });
+        },
+    });
+}
+
+async function leaveAlliance(allianceId) {
+    await withAllianceLock(async () => {
+        const { data, error } = await _supabase.rpc('leave_strategic_alliance', {
+            p_faction_id: faction.id,
+            p_alliance_id: allianceId,
+        });
+        if (error || !data?.success) { reportRpcError('Leave failed', error, data); return; }
+        await loadAlliancesData();
+        renderShell();
+    });
+}
+
+async function sendChatMessage() {
+    const input = document.getElementById('ng-chat-input');
+    const body = (input?.value || '').trim();
+    if (!body) return;
+    await withAllianceLock(async () => {
+        const { data, error } = await _supabase.rpc('send_alliance_message', {
+            p_faction_id: faction.id,
+            p_alliance_id: _negotiationId,
+            p_body: body,
+        });
+        if (error || !data?.success) { reportRpcError('Message failed', error, data); return; }
+        if (input) input.value = '';
+        await loadAlliancesData();
+        renderShell();
+    });
+}
+
+function currentNegotiationMyself() {
+    const n = (_pendingNegotiations || []).find(x => x.id === _negotiationId);
+    return n ? (n.members || []).find(m => m.is_you) : null;
+}
+
+// ── Confirm modal (apply to join, future leave/etc) ──
+function openConfirm({ title, body, confirmLabel, onConfirm }) {
+    _confirmContext = { onConfirm: onConfirm || (() => {}) };
+    const overlay = document.getElementById('al-confirm-overlay');
+    const panel = document.getElementById('al-confirm');
+    if (!overlay || !panel) return;
+    panel.innerHTML = `
+        <div class="al-modal__title">${escHtml(title || 'Confirm')}</div>
+        <div class="al-modal__body">${escHtml(body || '')}</div>
+        <div class="al-modal__actions">
+            <button class="al-btn" id="al-confirm-cancel">Cancel</button>
+            <button class="al-btn al-btn--primary" id="al-confirm-yes">${escHtml(confirmLabel || 'Confirm')}</button>
+        </div>
+    `;
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
+    document.getElementById('al-confirm-cancel')?.addEventListener('click', closeConfirm);
+    document.getElementById('al-confirm-yes')?.addEventListener('click', () => {
+        try { _confirmContext?.onConfirm?.(); } finally { closeConfirm(); }
+    });
+}
+function closeConfirm() {
+    _confirmContext = null;
+    const overlay = document.getElementById('al-confirm-overlay');
+    if (!overlay) return;
+    overlay.classList.remove('open');
+    overlay.setAttribute('aria-hidden', 'true');
 }
 
 function toggleInvitee(id) {

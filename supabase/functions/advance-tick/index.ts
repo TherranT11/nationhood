@@ -33324,6 +33324,44 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Incident processing failed (non-fatal):', incidentErr);
     }
 
+    // ══════════════════════════════════════════════════════════════════
+    // 4e. STRATEGIC ALLIANCES — auto-dissolve negotiations stuck >6 ticks
+    // ══════════════════════════════════════════════════════════════════
+    // RPC handles the whole sweep transactionally: refunds founding fees,
+    // applies −1 Reputation (floored at 0) to every invited member, and
+    // marks the alliance dissolved with reason='consensus_failed'.
+    try {
+        const { data: alliancePurge, error: allianceErr } = await supabase
+            .rpc('dissolve_failed_alliance_negotiations', { p_current_tick: newTick });
+        if (allianceErr) {
+            console.error('[advanceTick] Alliance dissolve RPC failed (non-fatal):', allianceErr.message);
+        } else if ((alliancePurge?.dissolved_count || 0) > 0) {
+            console.log(`[advanceTick] Strategic Alliances: dissolved ${alliancePurge.dissolved_count} stale negotiation(s), refunded $${alliancePurge.total_refunded}`);
+        }
+    } catch (allianceErr) {
+        console.error('[advanceTick] Alliance dissolve failed (non-fatal):', allianceErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4f. STRATEGIC ALLIANCES — Syndicated Lending Portfolio rescues
+    // ══════════════════════════════════════════════════════════════════
+    // RPC scans Finance corps in a Syndicated-Lending alliance whose
+    // overleverage sits in [8, 10) and the one-shot rescue hasn't fired
+    // yet. Drops the at-risk corp's visible overleverage to 7 (via
+    // corp_overleverage_offset) and deducts 0.5 corp_lending_capital_max
+    // from each peer.
+    try {
+        const { data: rescueResult, error: rescueErr } = await supabase
+            .rpc('process_syndicated_lending_rescues', { p_current_tick: newTick });
+        if (rescueErr) {
+            console.error('[advanceTick] Syndicated-lending RPC failed (non-fatal):', rescueErr.message);
+        } else if ((rescueResult?.rescued_count || 0) > 0) {
+            console.log(`[advanceTick] Strategic Alliances: ${rescueResult.rescued_count} syndicated-lending rescue(s) fired`);
+        }
+    } catch (rescueErr) {
+        console.error('[advanceTick] Syndicated-lending sweep failed (non-fatal):', rescueErr);
+    }
+
     // 5. Commit shard tick/date AFTER all nation processing completes.
     // This is the last step — if the function timed out earlier, the tick
     // number stays unchanged and the cron will re-process on the next run.

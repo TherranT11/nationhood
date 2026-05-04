@@ -1982,6 +1982,13 @@ function showBidModal(contract) {
         ? contract.requirements : {};
     const regReq = Number(reqs.regulatory_standing) || 0;
 
+    // Supply Chain bid cost — mirrors place_construction_bid (server is
+    // the source of truth; this is just the disclosure shown next to
+    // the Submit button so players see what they're paying).
+    const isCrossNation = !contract.issuer_nation_id
+        || contract.issuer_nation_id !== faction.nation_id;
+    const supplyChainCost = isCrossNation ? 1.5 : 1.0;
+
     // Per-crew availability — disable if your stat doesn't reach it.
     const crewAvail = { 1: myCrews >= 1, 2: myCrews >= 2, 3: myCrews >= 3 };
     // Default crew = highest crew the player can pick.
@@ -2076,6 +2083,10 @@ function showBidModal(contract) {
                 <div class="co-bid-summary-row">
                     <span class="label">Bid Fee</span>
                     <span class="value ${cashShort ? 'warn' : ''}">${fmtMoney(BID_FEE)}<span class="muted"> · cash ${fmtMoney(Number(faction.corp_cash_reserves) || 0)}</span></span>
+                </div>
+                <div class="co-bid-summary-row">
+                    <span class="label">Supply Chain Cost</span>
+                    <span class="value ${mySupply < supplyChainCost ? 'warn' : ''}">−${supplyChainCost.toFixed(1)}<span class="muted"> · ${isCrossNation ? 'cross-nation contract' : 'home-nation contract'}</span></span>
                 </div>
             </div>
 
