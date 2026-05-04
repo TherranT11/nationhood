@@ -92,12 +92,13 @@
 /* Per-section colored outlines. GDP gets a muted-purple accent
    distinct from the 4 fiscal-cycle colors since it's the economic
    base the cycle rides on, not a cycle line itself. */
-.gb-stat.is-gdp  { border: 2px solid #9a8fb0; }
-.gb-stat.is-rev  { border: 2px solid #6fa472; }
-.gb-stat.is-exp  { border: 2px solid #c26b5e; }
-.gb-stat.is-bal  { border: 2px solid #6f94b4; }
-.gb-stat.is-sur  { border: 2px solid #c79a5c; }
-.gb-stat.is-debt { border: 2px solid #c26b5e; }
+.gb-stat.is-gdp    { border: 2px solid #9a8fb0; }
+.gb-stat.is-budget { border: 2px solid #c79a5c; }
+.gb-stat.is-rev    { border: 2px solid #6fa472; }
+.gb-stat.is-exp    { border: 2px solid #c26b5e; }
+.gb-stat.is-bal    { border: 2px solid #6f94b4; }
+.gb-stat.is-sur    { border: 2px solid #c79a5c; }
+.gb-stat.is-debt   { border: 2px solid #c26b5e; }
 .gb-stat.is-credit { border: 2px solid #6fb4a4; }
 .gb-stat::before {
     content: "";
@@ -108,12 +109,13 @@
     width: 2px;
     background: var(--border-2);
 }
-.gb-stat.is-gdp::before  { background: #9a8fb0; }
-.gb-stat.is-rev::before  { background: var(--green); }
-.gb-stat.is-exp::before  { background: var(--red); }
-.gb-stat.is-bal::before  { background: var(--blue); }
-.gb-stat.is-sur::before  { background: var(--amber); }
-.gb-stat.is-debt::before { background: var(--red); }
+.gb-stat.is-gdp::before    { background: #9a8fb0; }
+.gb-stat.is-budget::before { background: var(--amber); }
+.gb-stat.is-rev::before    { background: var(--green); }
+.gb-stat.is-exp::before    { background: var(--red); }
+.gb-stat.is-bal::before    { background: var(--blue); }
+.gb-stat.is-sur::before    { background: var(--amber); }
+.gb-stat.is-debt::before   { background: var(--red); }
 .gb-stat.is-credit::before { background: #6fb4a4; }
 
 .gb-stat__label {

@@ -388,6 +388,9 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
     transition: border-color 0.1s, background 0.1s;
 }
 .fnd-invitee:hover { border-color: var(--text-dim); }
+/* Locked invitees (already in another alliance) stay greyed on hover
+   — no border highlight, no pointer feedback, since the click is gated. */
+.fnd-invitee--locked:hover { border-color: var(--border-main); }
 .fnd-invitee.selected {
     background: rgba(200,166,78,0.06);
     border-color: var(--amber);
@@ -1403,21 +1406,78 @@ function renderFoundView() {
     `;
 }
 
+// Threshold for the red "INACTIVE (N ticks)" badge on candidate cards.
+// Matches the admin.html inactive filter (>= 6 ticks since last_seen_tick).
+const INACTIVITY_THRESHOLD_TICKS = 6;
+
+// Logo chip: prefers custom_logo_url when uploaded, falls back to the
+// abbreviation initials (the existing chip style). Same 36×36 footprint
+// either way so the row layout doesn't shift when corps mix logos and
+// initials.
+function renderCorpChip(c) {
+    const url = c.custom_logo_url;
+    if (url) {
+        return `<div class="fnd-invitee__chip" style="padding:0;overflow:hidden;background:var(--bg-1);border:1px solid var(--text-dim);">
+            <img src="${escHtml(url)}" alt="${escHtml(corpInitials(c))}" style="width:100%;height:100%;object-fit:cover;display:block;"
+                 onerror="this.parentElement.innerHTML='${escHtml(corpInitials(c))}';this.parentElement.style.padding='';this.parentElement.style.background='';">
+        </div>`;
+    }
+    return `<div class="fnd-invitee__chip">${escHtml(corpInitials(c))}</div>`;
+}
+
+// Red inactivity badge below the corp name when the corp's player has
+// been silent for INACTIVITY_THRESHOLD_TICKS+ ticks. Returns '' when
+// active (or last_seen_tick is null — treat unknown as active until
+// they actually idle out).
+function renderInactivityLabel(c, currentTick) {
+    const lastSeen = Number(c.last_seen_tick);
+    if (!Number.isFinite(lastSeen) || lastSeen <= 0) return '';
+    const ticksInactive = Number(currentTick) - lastSeen;
+    if (ticksInactive < INACTIVITY_THRESHOLD_TICKS) return '';
+    return `<div style="font-family:var(--font-mono);font-size:9px;color:var(--red);letter-spacing:0.04em;text-transform:uppercase;margin-top:2px;">Inactive (${ticksInactive} tick${ticksInactive === 1 ? '' : 's'})</div>`;
+}
+
 function renderInviteeCard(c) {
     const sector = c.corp_sector || 'Construction';
     const heroDefs = HERO_STATS[sector] || [];
     const isSelected = _form.selectedInviteeIds.has(c.id);
     const valuation = c.__valuation;
+    const currentTick = Number(shard?.current_tick) || 0;
+    const lockedAlliance = c.__currentAlliance;  // { name, status } or null
     const heroLine = heroDefs.map(([label, col]) => {
         const v = col ? c[col] : null;
         return `${escHtml(label)} <b>${fmtStat(v)}</b>`;
     }).join(' &middot; ');
+
+    // Locked: corp is already in another strategic alliance. Greyed
+    // card, no checkbox tick, click-handler bails (toggleInvitee
+    // checks __currentAlliance). Bold one-line "already a member of X"
+    // replaces the meta/stats so the row stays visually compact and
+    // the reason is the only signal.
+    if (lockedAlliance) {
+        return `
+            <div class="fnd-invitee fnd-invitee--locked" data-corp-id="${escHtml(c.id)}"
+                 style="opacity:0.45;cursor:not-allowed;"
+                 title="Already in ${escHtml(lockedAlliance.name)}">
+                <div class="fnd-invitee__check" style="visibility:hidden;"></div>
+                ${renderCorpChip(c)}
+                <div class="fnd-invitee__body">
+                    <div class="fnd-invitee__name">${escHtml(c.faction_name || 'Unnamed Corp')}</div>
+                    <div style="font-family:var(--font-ui);font-size:11px;font-weight:700;color:var(--text-primary);margin-top:4px;">
+                        ${escHtml(c.faction_name || 'This corp')} is already a member of ${escHtml(lockedAlliance.name)}.
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
     return `
         <div class="fnd-invitee ${isSelected ? 'selected' : ''}" data-corp-id="${escHtml(c.id)}">
             <div class="fnd-invitee__check">${isSelected ? '✓' : ''}</div>
-            <div class="fnd-invitee__chip">${escHtml(corpInitials(c))}</div>
+            ${renderCorpChip(c)}
             <div class="fnd-invitee__body">
                 <div class="fnd-invitee__name">${escHtml(c.faction_name || 'Unnamed Corp')}</div>
+                ${renderInactivityLabel(c, currentTick)}
                 <div class="fnd-invitee__meta">
                     ${c.__hq_nation ? `<b style="color:var(--text-primary)">${escHtml(c.__hq_nation)}</b> &middot; ` : ''}Valuation <b style="color:var(--text-primary)">${fmtMoney(valuation)}</b>
                     &middot; Reputation <b style="color:var(--text-primary)">${fmtStat(c.corp_reputation)}</b>
@@ -1915,6 +1975,11 @@ function closeConfirm() {
 
 function toggleInvitee(id) {
     if (!id) return;
+    // Block selection for corps already in an alliance — the card is
+    // rendered as locked/greyed and the click handler bails here as a
+    // belt-and-suspenders guard against double-binding or stale DOM.
+    const candidate = _candidates.find(c => c.id === id);
+    if (candidate?.__currentAlliance) return;
     if (_form.selectedInviteeIds.has(id)) {
         _form.selectedInviteeIds.delete(id);
     } else {
@@ -1952,9 +2017,11 @@ async function loadCandidates() {
     // both used to be in this select, both 400'd the request and made
     // the candidate roster look empty. corp_op_safety replaces the
     // Airline hero stat that used to read corp_operational_efficiency.
+    // last_seen_tick + custom_logo_url drive the inactivity label
+    // and the logo chip in renderInviteeCard.
     const { data: corps, error } = await _supabase
         .from('factions')
-        .select('id, faction_name, abbreviation, corp_ticker, corp_sector, corp_cash_reserves, corp_reputation, corp_work_crews, corp_regulatory_standing, corp_supply_chain, corp_op_safety, nation_id')
+        .select('id, faction_name, abbreviation, corp_ticker, corp_sector, corp_cash_reserves, corp_reputation, corp_work_crews, corp_regulatory_standing, corp_supply_chain, corp_op_safety, last_seen_tick, custom_logo_url, nation_id')
         .eq('faction_type', 'corporation')
         .eq('corp_sector', sector)
         .is('abandoned_at', null)
@@ -1984,8 +2051,11 @@ async function loadCandidates() {
     // Batch the asset / liability lookups so each card can render a
     // real "(cash + assets − debt)" valuation. Same formula as the corp
     // dashboard masthead via the shared computeCorpValuationBreakdown.
+    // alliance_members is fetched in the same wave so cards can lock
+    // out corps already in a strategic alliance ("already a member of
+    // X" message; greyed + non-clickable).
     const tick = Number(shard?.current_tick) || 0;
-    const [propsRes, vesselsRes, loansRes] = await Promise.all([
+    const [propsRes, vesselsRes, loansRes, alliancesRes] = await Promise.all([
         _supabase.from('corp_properties')
             .select('faction_id, purchase_price, condition')
             .in('faction_id', ids).eq('is_active', true),
@@ -1998,10 +2068,46 @@ async function loadCandidates() {
             .select('borrower_faction_id, lender_faction_id, principal, remaining_principal, status, finance_loan_requests(request_type)')
             .in('status', ['current', 'late', 'delinquent'])
             .or(`borrower_faction_id.in.(${ids.join(',')}),lender_faction_id.in.(${ids.join(',')})`),
+        // Active alliance memberships per candidate. left_at_tick null
+        // = still a member; status filter excludes 'dissolved' (those
+        // alliances are historical and shouldn't gate new joins).
+        _supabase.from('alliance_members')
+            .select('faction_id, strategic_alliances!inner(id, name, status)')
+            .in('faction_id', ids)
+            .is('left_at_tick', null)
+            .in('strategic_alliances.status', ['negotiating', 'active']),
     ]);
-    if (propsRes.error)   console.warn('[alliances] props fetch failed:', propsRes.error.message);
-    if (vesselsRes.error) console.warn('[alliances] vessels fetch failed:', vesselsRes.error.message);
-    if (loansRes.error)   console.warn('[alliances] loans fetch failed:', loansRes.error.message);
+    if (propsRes.error)     console.warn('[alliances] props fetch failed:', propsRes.error.message);
+    if (vesselsRes.error)   console.warn('[alliances] vessels fetch failed:', vesselsRes.error.message);
+    if (loansRes.error)     console.warn('[alliances] loans fetch failed:', loansRes.error.message);
+    if (alliancesRes.error) console.warn('[alliances] membership fetch failed:', alliancesRes.error.message);
+
+    // Stamp each candidate with its current alliance (if any). One
+    // membership per candidate by design — the unique-active index on
+    // alliance_members enforces a corp can't be in two alliances at
+    // once, so first match per corp is the correct one.
+    const allianceByCorp = {};
+    for (const row of (alliancesRes.data || [])) {
+        const sa = row.strategic_alliances;
+        if (sa && !allianceByCorp[row.faction_id]) {
+            allianceByCorp[row.faction_id] = { name: sa.name, status: sa.status };
+        }
+    }
+    for (const c of corpRows) {
+        c.__currentAlliance = allianceByCorp[c.id] || null;
+    }
+
+    // Prune any selections that were made before a refresh stamped a
+    // candidate as locked (e.g. they joined another alliance between
+    // page load and this load). Without this, a now-locked corp stays
+    // in _form.selectedInviteeIds and would be submitted; the server
+    // would reject the proposal mid-flight after the founding fee was
+    // already deducted.
+    if (_form?.selectedInviteeIds?.size) {
+        for (const id of [..._form.selectedInviteeIds]) {
+            if (allianceByCorp[id]) _form.selectedInviteeIds.delete(id);
+        }
+    }
 
     // Bucket by corp.
     const byCorp = new Map();
