@@ -34,6 +34,26 @@ export function principalPortion(monthlyPayment, monthlyInterestAmount) {
     return Math.max(0, safePayment - safeInterest);
 }
 
+// Amortized per-tick payment for a bank_loans row. Uses the standard
+// fixed-payment formula P × (r × (1+r)^n) / ((1+r)^n − 1) with r = the
+// per-tick rate (apr / 100 / 12 since 12 ticks = 1 year). Returns the
+// per-tick installment that retires the loan over termTicks. apr=0 falls
+// back to flat principal/term so r=0 doesn't divide by zero.
+//
+// Server mirror: supabase/functions/advance-corp-tick/index.ts inlines
+// a verbatim copy of this function alongside monthlyInterest /
+// principalPortion. processBankLoanPayments calls it for every active
+// bank_loans row.
+export function amortizedMonthlyPayment(principal, apr, termTicks) {
+    const safePrincipal = Math.max(0, Number(principal) || 0);
+    const safeApr = Math.max(0, Number(apr) || 0);
+    const safeTerm = Math.max(1, Number(termTicks) || 1);
+    const r = (safeApr / 100) / 12;
+    if (r === 0) return Math.round(safePrincipal / safeTerm);
+    const factor = Math.pow(1 + r, safeTerm);
+    return Math.round(safePrincipal * (r * factor) / (factor - 1));
+}
+
 // Flat-interest base for a finance_active_loans row. Returns the principal
 // the engine uses to compute per-tick interest in advance-corp-tick. Reads
 // `original_principal` first (set at origination + reset on restructure)

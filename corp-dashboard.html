@@ -322,7 +322,7 @@ body.corp-redesign.light-mode .cr-event-panel-header {
 /* ── FINANCIAL ROW ── */
 .cr-financial-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
 .cr-fin-card {
@@ -427,6 +427,21 @@ body.corp-redesign.light-mode .cr-fin-card { border-color: var(--panel-border); 
   justify-content: space-between;
   gap: 8px;
   padding: 2px 0;
+}
+.cr-fin-card-expansion-group + .cr-fin-card-expansion-group {
+  margin-top: 6px;
+}
+.cr-fin-card-expansion-group-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0 2px;
+  border-bottom: 1px solid var(--border-hair, rgba(255,255,255,0.04));
+  margin-bottom: 2px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
 }
 .cr-fin-card-expansion-empty {
   font-style: italic;
@@ -912,6 +927,7 @@ body.corp-redesign.light-mode .cr-footer-strip { border-top-color: var(--panel-b
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, escapeAttr, tickToDate } from './js/utils.js';
 import { computeCorpValuation } from './js/game/corp-valuation.js';
+import { amortizedMonthlyPayment } from './js/game/loan-math.js';
 
 let faction = null;
 let nation = null;
@@ -1090,7 +1106,7 @@ async function init() {
         // detail. Only loans the corp BORROWED — paid-off loans are
         // excluded by the status filter.
         _supabase.from('bank_loans')
-            .select('id, principal, outstanding, apr, status, issued_at_tick, matures_at_tick, lender_faction_id, factions:lender_faction_id(faction_name, abbreviation)')
+            .select('id, principal, outstanding, apr, term_ticks, status, issued_at_tick, matures_at_tick, lender_faction_id, factions:lender_faction_id(faction_name, abbreviation)')
             .eq('borrower_faction_id', faction.id)
             .in('status', ['pending_payout', 'active'])
             .order('issued_at_tick', { ascending: false }),
@@ -1117,35 +1133,29 @@ async function init() {
         console.error('[corp-dashboard] bank_loans fetch error:', debtRes.error.message);
     }
     const activeLoans = debtRes?.data || [];
-    // Aggregate cash events into per-tick {profit, costs, wages, events}
-    // buckets. wages is its own line in the dashboard; everything else
-    // negative is bundled as "costs" for the Costs & Wages card. The raw
-    // events array per tick feeds the card-expansion drawers below.
+    // Aggregate cash events into per-tick {profit, events} buckets. profit
+    // is the signed sum of every delta (positive revenue + negative costs)
+    // — the same number shown on the Net Profit card and used for that
+    // card's grouped Revenue/Costs drill-down.
     const byTick = new Map();
     for (const e of (eventsRes?.data || [])) {
         const t = Number(e.tick);
         const d = Number(e.delta) || 0;
-        const bucket = byTick.get(t) || { profit: 0, costs: 0, wages: 0, events: [] };
+        const bucket = byTick.get(t) || { profit: 0, events: [] };
         bucket.profit += d;
-        if (d < 0) {
-            if (e.category === 'wages') bucket.wages += -d;
-            else bucket.costs += -d;
-        }
         bucket.events.push({ category: e.category, label: e.label, delta: d });
         byTick.set(t, bucket);
     }
     const cashByTick = new Map((cashHistRes?.data || []).map(r => [Number(r.tick), Number(r.cash_end)]));
 
-    // Build oldest-first {tick, profit, costs, wages, cash_end, events}
-    // array. Use the union of ticks present in either source so quiet
-    // ticks (cash but no events, or events but no cash snapshot) still
-    // appear with the missing fields filled in as 0 / null / [].
+    // Build oldest-first {tick, profit, events, cash_end} array. Use the
+    // union of ticks present in either source so quiet ticks (cash but no
+    // events, or events but no cash snapshot) still appear with the
+    // missing fields filled in as 0 / null / [].
     const allTicks = new Set([...byTick.keys(), ...cashByTick.keys()]);
     const pnlHistory = [...allTicks].sort((a, b) => a - b).map(t => ({
         tick:     t,
         profit:   byTick.get(t)?.profit ?? 0,
-        costs:    byTick.get(t)?.costs  ?? 0,
-        wages:    byTick.get(t)?.wages  ?? 0,
         events:   byTick.get(t)?.events ?? [],
         cash_end: cashByTick.get(t)     ?? null,
     }));
@@ -1283,36 +1293,43 @@ function renderMasthead(history) {
 }
 
 function renderFinancialRow(history, activeLoans) {
-    // Current and prior-tick values come from history (aggregated from
-    // corp_cash_events in init()). Cash stays on the live faction row
-    // since corp_cash_reserves is the actual balance, not an aggregate.
+    // SSoT: cash + debt come from the live factions row; profit comes
+    // from corp_cash_events aggregated per tick (history, built in init).
+    // No card recomputes either set — they share these inputs.
     const cash = Number(faction.corp_cash_reserves) || 0;
     const debt = Number(faction.corp_debt)          || 0;
-
     const currentTick = Number(shard?.current_tick) || 0;
-    const currentEntry = history.find(h => Number(h.tick) === currentTick) || null;
-    const opex       = currentEntry ? Number(currentEntry.costs) + Number(currentEntry.wages) : 0;
-    const netRevenue = currentEntry ? Number(currentEntry.profit) : 0;
 
-    // Most recent settled tick = history entry with tick < currentTick. The
-    // history array is oldest-first, so scan backwards from the end.
-    const prev = [...history].reverse().find(h => Number(h.tick) < currentTick) || null;
-    const prevCash    = prev ? Number(prev.cash_end) : null;
-    const prevRevenue = prev ? Number(prev.profit)   : null;
-    const prevOpex    = prev ? (Number(prev.costs) + Number(prev.wages)) : null;
+    // The Net Profit card shows the most recent SETTLED tick (tick <
+    // currentTick) that actually moved cash. Quiet ticks are skipped so
+    // the player doesn't get a stale "$0 — unchanged" card just because
+    // nothing happened the moment before they opened the page.
+    const settledWithEvents = [...history]
+        .filter(h => Number(h.tick) < currentTick && (h.events || []).length > 0)
+        .sort((a, b) => Number(b.tick) - Number(a.tick));
+    const lastSettled  = settledWithEvents[0] || null;
+    const priorSettled = settledWithEvents[1] || null;
+
+    // Cash trend: delta vs the most recent prior cash_end snapshot.
+    const prevCashEntry = [...history].reverse()
+        .find(h => Number(h.tick) < currentTick && Number.isFinite(Number(h.cash_end)));
+    const prevCash = prevCashEntry ? Number(prevCashEntry.cash_end) : null;
 
     // Sparkline series (oldest-first).
-    const cashSeries    = history.map(h => Number(h.cash_end));
-    const revenueSeries = history.map(h => Number(h.profit));
-    const opexSeries    = history.map(h => Number(h.costs) + Number(h.wages));
+    const cashSeries   = history.map(h => Number(h.cash_end));
+    const profitSeries = history.map(h => Number(h.profit));
 
-    // Pull the most recent two ticks that actually had any cash events for
-    // the per-card expansion drawer. Skip ticks where the corp had no
-    // movement at all so the player doesn't see "Tick 51 — nothing".
-    const recentTicks = [...history]
-        .filter(h => (h.events || []).length > 0)
-        .slice(-2)
-        .reverse();  // newest first for display
+    // Outstanding-debt trend: surface the next tick's aggregate payment
+    // when there are active loans, so the player sees what's about to
+    // hit their cash. SSoT amortization formula in js/game/loan-math.js.
+    const nextLoanPayment = (activeLoans || [])
+        .filter(l => l.status === 'active')
+        .reduce((sum, l) => sum + amortizedMonthlyPayment(l.principal, l.apr, l.term_ticks), 0);
+    const debtTrend = debt <= 0
+        ? '— debt-free'
+        : (nextLoanPayment > 0
+            ? `Next payment ${fmtMoney(nextLoanPayment)} · next tick`
+            : '— outstanding');
 
     const row = document.getElementById('cr-fin-row');
     if (!row) return;
@@ -1326,89 +1343,81 @@ function renderFinancialRow(history, activeLoans) {
             colorVar: 'var(--cr-accent-green)',
             invert: false,
             cardId: 'cash',
-            // Cash card gets all event types (it IS the running balance).
-            expandedHtml: renderEventsExpansion(recentTicks, e => true),
+            // Cash is a balance, not an aggregate. The events that move
+            // it live in Net Profit's drill-down — sparkline-only here.
         }),
         renderFinCard({
-            label: 'Revenue',
-            value: netRevenue,
-            prev: prevRevenue,
-            series: revenueSeries,
+            label: 'Net Profit (last tick)',
+            value: lastSettled  ? Number(lastSettled.profit)  : 0,
+            prev:  priorSettled ? Number(priorSettled.profit) : null,
+            series: profitSeries,
             colorVar: 'var(--cr-accent-gold)',
             invert: false,
-            cardId: 'revenue',
-            // Revenue card → positive deltas (cash in: market revenue,
-            // shipping, trade, finance, capital_in like loan disbursements
-            // and bailouts).
-            expandedHtml: renderEventsExpansion(recentTicks, e => Number(e.delta) > 0),
-        }),
-        renderFinCard({
-            label: 'Costs & Wages',
-            value: opex,
-            prev: prevOpex,
-            series: opexSeries,
-            colorVar: 'var(--cr-accent-red)',
-            invert: true,  // higher costs are bad
-            cardId: 'opex',
-            // Costs card → negative deltas (wages, exec_salary, overhead,
-            // maintenance, tax, debt_interest, event_cost, capital_out).
-            expandedHtml: renderEventsExpansion(recentTicks, e => Number(e.delta) < 0),
+            cardId: 'profit',
+            expandedHtml: renderProfitExpansion(lastSettled),
         }),
         renderFinCard({
             label: 'Outstanding Debt',
             value: debt,
-            // Debt isn't tracked historically — pass null so the sparkline
-            // area is suppressed entirely (not just empty).
             prev: null,
             series: null,
             colorVar: 'var(--cr-text-tertiary)',
             invert: true,
-            staticTrend: debt > 0 ? '— outstanding' : '— debt-free',
+            staticTrend: debtTrend,
             cardId: 'debt',
-            // Debt card → list of active bank_loans (no per-tick events;
-            // debt only changes on disbursement / closure).
             expandedHtml: renderActiveLoansExpansion(activeLoans),
         }),
     ].join('');
 
-    // One delegated click handler for all four cards. Cheaper than four
-    // inline handlers and survives the innerHTML re-render above.
+    // One delegated click handler for all three cards. Drawer-internal
+    // clicks don't toggle (reserved for future drill-down controls).
     row.onclick = (ev) => {
         const card = ev.target.closest('.cr-fin-card');
         if (!card) return;
-        // Clicking inside the expansion drawer shouldn't toggle. Drawer
-        // contains anchor/button-style children for future drill-downs.
         if (ev.target.closest('.cr-fin-card-expansion')) return;
         card.classList.toggle('is-expanded');
     };
 }
 
-// Build the expanded-drawer HTML for a tick-events card. Filter callback
-// runs per event so each card type can pick its own subset (positive for
-// Revenue, negative for Costs & Wages, all for Cash).
-function renderEventsExpansion(recentTicks, filterFn) {
-    const sections = recentTicks.map(t => {
-        const filtered = (t.events || []).filter(filterFn);
-        if (filtered.length === 0) return '';
-        const rows = filtered.map(e => {
-            const d = Number(e.delta) || 0;
-            const sign = d > 0 ? '+' : (d < 0 ? '-' : '');
-            const color = d > 0 ? 'var(--green)' : d < 0 ? 'var(--red)' : 'var(--text-dim)';
-            const mag = fmtMoney(Math.abs(d));
-            return `<div class="cr-fin-card-expansion-row">
-                <span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(e.label || e.category || '?')}</span>
-                <span style="color:${color};font-weight:700;font-variant-numeric:tabular-nums;">${sign}${mag}</span>
-            </div>`;
-        }).join('');
-        return `<div class="cr-fin-card-expansion-tick">
-            <div class="cr-fin-card-expansion-tick-label">Tick ${t.tick}</div>
-            ${rows}
-        </div>`;
-    }).filter(Boolean).join('');
-    if (!sections) {
-        return `<div class="cr-fin-card-expansion-empty">No movements in the last 2 corp ticks.</div>`;
+// Net Profit drill-down: one tick, two groups (Revenue / Costs), each
+// with its own subtotal header and sorted-by-magnitude rows.
+function renderProfitExpansion(settled) {
+    if (!settled || (settled.events || []).length === 0) {
+        return `<div class="cr-fin-card-expansion-empty">No movements last tick.</div>`;
     }
-    return sections;
+    const revenue = settled.events.filter(e => Number(e.delta) > 0);
+    const costs   = settled.events.filter(e => Number(e.delta) < 0);
+    const revenueTotal = revenue.reduce((s, e) => s + Number(e.delta), 0);
+    const costsTotal   = costs.reduce((s, e) => s + Number(e.delta), 0);
+
+    const groupHtml = (title, items, total, color) => {
+        if (items.length === 0) return '';
+        const sortedRows = items
+            .slice()
+            .sort((a, b) => Math.abs(Number(b.delta)) - Math.abs(Number(a.delta)))
+            .map(e => {
+                const d = Number(e.delta);
+                const sign = d > 0 ? '+' : '-';
+                return `<div class="cr-fin-card-expansion-row">
+                    <span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(e.label || e.category || '?')}</span>
+                    <span style="color:${color};font-weight:700;font-variant-numeric:tabular-nums;">${sign}${fmtMoney(Math.abs(d))}</span>
+                </div>`;
+            }).join('');
+        const sign = total >= 0 ? '+' : '-';
+        return `<div class="cr-fin-card-expansion-group">
+            <div class="cr-fin-card-expansion-group-head">
+                <span>${title}</span>
+                <span style="color:${color};font-weight:700;font-variant-numeric:tabular-nums;">${sign}${fmtMoney(Math.abs(total))}</span>
+            </div>
+            ${sortedRows}
+        </div>`;
+    };
+
+    return `<div class="cr-fin-card-expansion-tick">
+        <div class="cr-fin-card-expansion-tick-label">Tick ${settled.tick}</div>
+        ${groupHtml('Revenue', revenue, revenueTotal, 'var(--green)')}
+        ${groupHtml('Costs',   costs,   costsTotal,   'var(--red)')}
+    </div>`;
 }
 
 // Outstanding Debt expansion: list active bank_loans the corp owes. No
@@ -1424,12 +1433,19 @@ function renderActiveLoansExpansion(activeLoans) {
         const ticker = l.factions?.abbreviation || '';
         const apr = Number(l.apr || 0);
         const outstanding = Number(l.outstanding || 0);
+        const payment = l.status === 'active'
+            ? amortizedMonthlyPayment(l.principal, l.apr, l.term_ticks)
+            : 0;
         return `<div class="cr-fin-card-expansion-tick">
             <div class="cr-fin-card-expansion-tick-label">${escapeHtml(lender)}${ticker ? ' [' + escapeHtml(ticker) + ']' : ''} · ${apr.toFixed(2)}% APR</div>
             <div class="cr-fin-card-expansion-row">
                 <span style="color:var(--text-secondary);">Outstanding</span>
                 <span style="color:var(--text-bright);font-weight:700;font-variant-numeric:tabular-nums;">${fmtMoney(outstanding)}</span>
             </div>
+            ${payment > 0 ? `<div class="cr-fin-card-expansion-row">
+                <span style="color:var(--text-secondary);">Per-tick payment</span>
+                <span style="color:var(--text-bright);font-weight:700;font-variant-numeric:tabular-nums;">${fmtMoney(payment)}</span>
+            </div>` : ''}
             <div class="cr-fin-card-expansion-row">
                 <span style="color:var(--text-secondary);">Status</span>
                 <span style="color:${l.status === 'active' ? 'var(--green)' : 'var(--amber)'};font-family:var(--font-mono);font-size:9px;">${escapeHtml(l.status)}</span>

@@ -41,6 +41,16 @@ function principalPortion(monthlyPayment, monthlyInterestAmount) {
     return Math.max(0, safePayment - safeInterest);
 }
 
+function amortizedMonthlyPayment(principal, apr, termTicks) {
+    const safePrincipal = Math.max(0, Number(principal) || 0);
+    const safeApr = Math.max(0, Number(apr) || 0);
+    const safeTerm = Math.max(1, Number(termTicks) || 1);
+    const r = (safeApr / 100) / 12;
+    if (r === 0) return Math.round(safePrincipal / safeTerm);
+    const factor = Math.pow(1 + r, safeTerm);
+    return Math.round(safePrincipal * (r * factor) / (factor - 1));
+}
+
 const COLLATERAL_RECOVERY_RATES = {
     equipment: 0.6,
     property: 0.75,
@@ -3697,26 +3707,16 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
 
     const ns = (key) => Number(nation[key] ?? 50);
 
-    // ── INLINE MIRROR of js/game/wages.js ─────────────────────────────
-    // This file is hand-maintained (sync-edge-function.js only targets
-    // advance-tick, not advance-corp-tick), so it can't import the
-    // canonical module. Keep these two blocks in sync — js/game/wages.js
-    // is the source; this is the mirror.
-    const WAGE_MULTIPLIERS = { general: 2, skilled: 3, innovative: 6 };
-    const baseAnnualWage = (ns('minimum_wage') / 100) * 48000;
-    const inflMod = 1 + ((ns('inflation')           - 50) / 100 * 0.5);
-    const solMod  = 1 + ((ns('standard_of_living')  - 50) / 100 * 0.5);
-    const calcWage = (mult) => Math.round(baseAnnualWage * mult * inflMod * solMod);
-    // ── end mirror ───────────────────────────────────────────────────
-
-    // Loan servicing constants (5% annual rate, 10-year amortization).
-    // LOAN_ANNUAL_RATE_PCT is in percent form (5 = 5%) so the shared
-    // monthlyInterest() helper can be used. monthlyRate is kept in
-    // fraction form because the amortization formula on the next
-    // step needs (1 + r) compounding.
-    const LOAN_ANNUAL_RATE_PCT = 5;
-    const LOAN_TERM_MONTHS = 120;
-    const monthlyRate = (LOAN_ANNUAL_RATE_PCT / 100) / 12;
+    // Workforce-wages baseline removed (per design). Construction corps
+    // still pay per-crew wages via apply_construction_wages_for_nation
+    // ('wages' event, "Construction wages" label); other sectors no
+    // longer carry a generic monthly headcount payroll.
+    //
+    // Internal-debt-service baseline also removed: it was amortizing a
+    // legacy `corp_loans` ghost balance that nothing in the current
+    // codebase increments. Real loans go through bank_loans /
+    // finance_active_loans and are serviced in processBankLoanPayments
+    // (debt_interest / "Loan interest paid", decrements corp_debt).
 
     for (const corp of corpFactions) {
         const currentCash = Number(corp.corp_cash_reserves || 0);
@@ -3732,17 +3732,6 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
             continue;
         }
 
-        const currentLoans = Number(corp.corp_loans || 0);
-
-        // Per-corp wages from actual workforce counts
-        const generalCount = Number(corp.corp_general_workforce ?? 0);
-        const skilledCount = Number(corp.corp_skilled_workforce ?? 0);
-        const innovativeCount = Number(corp.corp_innovative_workforce ?? 0);
-        const annualWages = (generalCount    * calcWage(WAGE_MULTIPLIERS.general))
-                          + (skilledCount    * calcWage(WAGE_MULTIPLIERS.skilled))
-                          + (innovativeCount * calcWage(WAGE_MULTIPLIERS.innovative));
-        const monthlyWages = Math.round(annualWages / 12);
-
         // Executive salaries (C-suite: CEO, CFO, COO, CTO, CMO, CLO, Lobbyist)
         const { data: executives } = await supabase.from('corp_executives')
             .select('salary_per_year')
@@ -3751,22 +3740,11 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
         const totalExecAnnual = (executives || []).reduce((sum, ex) => sum + (Number(ex.salary_per_year) || 0), 0);
         const monthlyExecSalaries = Math.round(totalExecAnnual / 12);
 
-        // Fixed-overhead baseline removed (per design). Property maintenance
-        // is already billed per-property elsewhere; admin/insurance/utilities
-        // were folded into the $75k floor and are gone with it. Corps now
-        // burn only on real workforce + executive salaries plus debt service
-        // and per-property maintenance billed elsewhere.
-        const monthlyIncome = -monthlyWages - monthlyExecSalaries;
-
-        // Compute monthly loan payment (amortized) and split into interest + principal
-        let debtPayment = 0;
-        let principalPaid = 0;
-        if (currentLoans > 0) {
-            const monthlyPayment = Math.round((currentLoans * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -LOAN_TERM_MONTHS)));
-            const interestPortion = monthlyInterest(currentLoans, LOAN_ANNUAL_RATE_PCT);
-            principalPaid = Math.min(currentLoans, principalPortion(monthlyPayment, interestPortion));
-            debtPayment = monthlyPayment;
-        }
+        // Generic monthly costs collapsed to executive salaries only.
+        // Workforce wages and Fixed Overhead were both removed; sector-
+        // specific costs (Construction crew wages, per-property
+        // maintenance, aircraft ops, etc.) are billed in their own paths.
+        const monthlyIncome = -monthlyExecSalaries;
 
         // Corporate tax: applied to positive monthly income (profit only)
         // corporate_tax is 0-100 scale on the nation, treated as percentage
@@ -3774,28 +3752,19 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
         const taxableIncome = Math.max(0, monthlyIncome);
         const taxAmount = Math.round(taxableIncome * corpTaxRate);
 
-        const netChange = monthlyIncome - debtPayment - taxAmount;
+        const netChange = monthlyIncome - taxAmount;
         const newCash = Math.max(0, currentCash + netChange);
-        const newLoans = Math.max(0, currentLoans - principalPaid);
-
-        const updateFields = { corp_cash_reserves: newCash };
-        if (principalPaid > 0) updateFields.corp_loans = newLoans;
 
         const { error: updateErr } = await supabase.from('factions')
-            .update(updateFields)
+            .update({ corp_cash_reserves: newCash })
             .eq('id', corp.id);
         if (updateErr) {
             console.error(`[advance-corp-tick] Income update failed for ${corp.faction_name}:`, updateErr.message);
         } else {
             // Log each P&L component to corp_cash_events, only after the
             // cash write succeeded.
-            logCashEvent(corp.id, 'wages',          'Workforce wages',        -monthlyWages);
-            logCashEvent(corp.id, 'exec_salary',    'Executive salaries',     -monthlyExecSalaries);
-            // Debt service is currently lumped — interest + principal under
-            // debt_interest. Splitting requires the loan-amortization fields
-            // to be plumbed here; deferred to the cleanup phase.
-            logCashEvent(corp.id, 'debt_interest',  'Internal debt service',  -debtPayment);
-            logCashEvent(corp.id, 'tax',            'Corporate tax',          -taxAmount);
+            logCashEvent(corp.id, 'exec_salary', 'Executive salaries', -monthlyExecSalaries);
+            logCashEvent(corp.id, 'tax',         'Corporate tax',      -taxAmount);
         }
 
         // Credit corporate tax to the nation's debt reduction
@@ -4238,13 +4207,7 @@ async function processBankLoanPayments(supabase, currentTick) {
         let paymentsMissed = Number(loan.payments_missed) || 0;
         const r = (apr / 100) / TICKS_PER_YEAR;
 
-        let payment;
-        if (r > 0) {
-            const factor = Math.pow(1 + r, termTicks);
-            payment = Math.round(principal * (r * factor) / (factor - 1));
-        } else {
-            payment = Math.round(principal / Math.max(1, termTicks));
-        }
+        let payment = amortizedMonthlyPayment(principal, apr, termTicks);
         // Cap final payment at outstanding + interest due so a rounding
         // remainder closes the loan cleanly instead of leaving cents.
         const interestDue = Math.round(outstanding * r);
@@ -5863,7 +5826,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // Load corporation factions for this nation (exclude dissolved corps)
             const { data: corpFactions, error: corpErr } = await supabase
                 .from('factions')
-                .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_loans, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce, corp_reputation')
+                .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce, corp_reputation')
                 .eq('nation_id', nation.id)
                 .eq('faction_type', 'corporation')
                 .is('abandoned_at', null);
@@ -6322,7 +6285,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 if (missingFactionIds.length > 0) {
                     const { data: extraCorps, error: extraErr } = await supabase
                         .from('factions')
-                        .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_loans, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce, corp_reputation')
+                        .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce, corp_reputation')
                         .in('id', missingFactionIds);
                     if (extraErr) console.warn('[advance-corp-tick] Failed to fetch cross-nation claim-holders:', extraErr.message);
                     for (const c of (extraCorps || [])) corpById[c.id] = c;

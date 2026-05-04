@@ -400,35 +400,17 @@ body.light-mode .corp-nav__tab.active { color: #1a1a17; border-bottom-color: #1a
   display: flex; flex-direction: column; overflow: hidden;
 }
 .wf-card__scroll { flex: 1; overflow-y: auto; }
-.wf-section {
-  padding: 8px 14px; border-bottom: 1px solid var(--border-0);
-}
-.wf-section__title {
-  font-family: var(--font-mono); font-size: 9px; font-weight: 700;
-  letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 6px;
-}
 .wf-tier {
   padding: 10px 14px; border-bottom: 1px solid var(--border-0);
 }
 .wf-tier__top {
-  display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;
+  display: flex; justify-content: space-between; align-items: center;
 }
 .wf-tier__name {
   font-family: var(--font-ui); font-size: 12px; font-weight: 600; color: var(--text-bright);
 }
 .wf-tier__count {
   font-family: var(--font-mono); font-size: 14px; font-weight: 700;
-}
-.wf-tier__detail {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 2px 0;
-}
-.wf-tier__label {
-  font-family: var(--font-mono); font-size: 8.5px; color: var(--text-dim);
-  letter-spacing: 0.04em; text-transform: uppercase;
-}
-.wf-tier__value {
-  font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
 }
 .wf-tier__nation {
   font-family: var(--font-mono); font-size: 7px; letter-spacing: 0.5px;
@@ -1835,7 +1817,7 @@ body.h2-page .val-card { display: none !important; }
           <span style="font-size:8px;color:var(--green);">●</span>
           <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:2px;color:var(--text-muted);text-transform:uppercase;">Workforce</span>
         </div>
-        <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);" id="wf-total-header">3,000</span>
+        <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);" id="wf-total-header">—</span>
       </div>
       <div class="wf-card__scroll" id="wf-body"></div>
     </div>
@@ -1905,7 +1887,6 @@ import { calculateTotalMaintenance } from './js/game/equipment.js';
 import { computeEquipmentValue } from './js/game/corp-valuation.js';
 import { computeRefurbishCost, startRefurbish } from './js/corp-refurbish.js';
 import { monthlyInterest, loanFlatInterestBase } from './js/game/loan-math.js';
-import { WAGE_MULTIPLIERS, computeWageScalars, annualWageForTier } from './js/game/wages.js';
 
 let allUserFactions = [];
 let faction = null;
@@ -2237,7 +2218,7 @@ async function init() {
     window._factionData = faction;
 
     // ── Render all dashboard cards ──
-    const wfData = renderWorkforce(nationStats, nationName, faction);
+    renderWorkforce(nationStats, nationName, faction);
     renderStats(nationName, faction);
     const propData = await renderProperty(nationStats, nationName, faction, shard);
 
@@ -2275,8 +2256,8 @@ async function init() {
         equipmentValue = computeEquipmentValue(vessels, currentTick);
     }
 
-    await renderFinances(nationStats, shard, wfData, faction, propData.propertyMaintenance || 0, equipMaint, execCompensation, propData, fleetMaint);
-    await renderValuation(nationStats, nationName, faction, wfData, propData, equipmentValue);
+    await renderFinances(nationStats, shard, faction, propData.propertyMaintenance || 0, equipMaint, execCompensation, propData, fleetMaint);
+    await renderValuation(nationStats, nationName, faction, propData, equipmentValue);
 
     // Events feed
     _corpEventsCtx = { nationId: faction.nation_id };
@@ -2288,128 +2269,45 @@ async function init() {
 }
 
 function renderWorkforce(nation, nationName, factionData) {
-    const s = (key) => getNationStat(nation, key);
     const natUp = (nationName || 'UNKNOWN').toUpperCase();
 
-    // Read workforce from DB columns (fall back to legacy defaults)
-    const generalCount = Number(factionData?.corp_general_workforce ?? 2250);
-    const skilledCount = Number(factionData?.corp_skilled_workforce ?? 600);
-    const innovativeCount = Number(factionData?.corp_innovative_workforce ?? 150);
+    // Headcount-only panel. Generic Workforce Wages were removed from
+    // the per-tick payroll (see advance-corp-tick processCorpMonthlyIncome);
+    // sector-specific labor costs (Construction crew wages, etc.) are
+    // billed elsewhere and don't surface here.
+    const generalCount = Number(factionData?.corp_general_workforce ?? 0);
+    const skilledCount = Number(factionData?.corp_skilled_workforce ?? 0);
+    const innovativeCount = Number(factionData?.corp_innovative_workforce ?? 0);
     const TOTAL_WORKFORCE = generalCount + skilledCount + innovativeCount;
-
-    // Canonical wage formula lives in js/game/wages.js. Display reads scalars
-    // for the "Wage Inputs" panel; per-tier annual values come from
-    // annualWageForTier so the dashboard and the server always agree.
-    const minWageStat = s('minimum_wage');
-    const { baseAnnualWage, inflMod, solMod } = computeWageScalars(nation);
-    const generalWage    = annualWageForTier(nation, 'general');
-    const skilledWage    = annualWageForTier(nation, 'skilled');
-    const innovativeWage = annualWageForTier(nation, 'innovative');
-
-    const generalTotal = generalCount * generalWage;
-    const skilledTotal = skilledCount * skilledWage;
-    const innovativeTotal = innovativeCount * innovativeWage;
-    const totalWages = generalTotal + skilledTotal + innovativeTotal;
-
-    function fmtWage(n) {
-        return '$' + Math.round(n).toLocaleString() + '/yr';
-    }
-
-    const modStr = `${inflMod.toFixed(2)} &times; ${solMod.toFixed(2)}`;
 
     document.getElementById('wf-total-header').textContent = TOTAL_WORKFORCE.toLocaleString();
 
+    const tierRow = (label, count, color) => `
+        <div class="wf-tier">
+            <div class="wf-tier__top">
+                <div>
+                    <span class="wf-tier__name">${label}</span>
+                    <span class="wf-tier__nation">${escapeHtml(natUp)}</span>
+                </div>
+                <span class="wf-tier__count" style="color:${color};">${count.toLocaleString()}</span>
+            </div>
+        </div>
+    `;
+
     document.getElementById('wf-body').innerHTML = `
-        <div class="wf-tier">
-            <div class="wf-tier__top">
-                <div>
-                    <span class="wf-tier__name">General Workforce</span>
-                    <span class="wf-tier__nation">${escapeHtml(natUp)}</span>
-                </div>
-                <span class="wf-tier__count" style="color:var(--text-primary);">${generalCount.toLocaleString()}</span>
-            </div>
-            <div class="wf-tier__detail">
-                <span class="wf-tier__label">Wage (min &times; ${WAGE_MULTIPLIERS.general}.0 &times; ${modStr})</span>
-                <span class="wf-tier__value">${fmtWage(generalWage)}</span>
-            </div>
-            <div class="wf-tier__detail">
-                <span class="wf-tier__label">Total Annual Cost</span>
-                <span class="wf-tier__value" style="color:var(--text-primary)">${fmtMoney(generalTotal)}</span>
-            </div>
-        </div>
-
-        <div class="wf-tier">
-            <div class="wf-tier__top">
-                <div>
-                    <span class="wf-tier__name">Skilled Workforce</span>
-                    <span class="wf-tier__nation">${escapeHtml(natUp)}</span>
-                </div>
-                <span class="wf-tier__count" style="color:var(--blue);">${skilledCount.toLocaleString()}</span>
-            </div>
-            <div class="wf-tier__detail">
-                <span class="wf-tier__label">Wage (min &times; ${WAGE_MULTIPLIERS.skilled}.0 &times; ${modStr})</span>
-                <span class="wf-tier__value">${fmtWage(skilledWage)}</span>
-            </div>
-            <div class="wf-tier__detail">
-                <span class="wf-tier__label">Total Annual Cost</span>
-                <span class="wf-tier__value" style="color:var(--text-primary)">${fmtMoney(skilledTotal)}</span>
-            </div>
-        </div>
-
-        <div class="wf-tier">
-            <div class="wf-tier__top">
-                <div>
-                    <span class="wf-tier__name">Innovative Workforce</span>
-                    <span class="wf-tier__nation">${escapeHtml(natUp)}</span>
-                </div>
-                <span class="wf-tier__count" style="color:var(--amber);">${innovativeCount.toLocaleString()}</span>
-            </div>
-            <div class="wf-tier__detail">
-                <span class="wf-tier__label">Wage (min &times; ${WAGE_MULTIPLIERS.innovative}.0 &times; ${modStr})</span>
-                <span class="wf-tier__value">${fmtWage(innovativeWage)}</span>
-            </div>
-            <div class="wf-tier__detail">
-                <span class="wf-tier__label">Total Annual Cost</span>
-                <span class="wf-tier__value" style="color:var(--text-primary)">${fmtMoney(innovativeTotal)}</span>
-            </div>
-        </div>
-
-        <div class="wf-section" style="background:var(--bg-3);">
-            <div class="wf-section__title" style="color:var(--text-dim);margin-bottom:2px;">Wage Inputs</div>
-            <div class="wf-tier__detail">
-                <span class="wf-tier__label">Minimum Wage (${escapeHtml(natUp)})</span>
-                <span class="wf-tier__value">${minWageStat}/100 → ${fmtWage(baseAnnualWage)}</span>
-            </div>
-            <div class="wf-tier__detail">
-                <span class="wf-tier__label">Inflation Modifier</span>
-                <span class="wf-tier__value">&times;${inflMod.toFixed(2)}</span>
-            </div>
-            <div class="wf-tier__detail">
-                <span class="wf-tier__label">Std of Living Modifier</span>
-                <span class="wf-tier__value">&times;${solMod.toFixed(2)}</span>
-            </div>
-        </div>
-
+        ${tierRow('General Workforce',    generalCount,    'var(--text-primary)')}
+        ${tierRow('Skilled Workforce',    skilledCount,    'var(--blue)')}
+        ${tierRow('Innovative Workforce', innovativeCount, 'var(--amber)')}
         <div class="wf-total">
             <div class="wf-total__row">
                 <span class="wf-total__label">Total Workforce</span>
                 <span class="wf-total__value" style="color:var(--text-bright);">${TOTAL_WORKFORCE.toLocaleString()}</span>
             </div>
-            <div class="wf-total__row">
-                <span class="wf-total__label">Total Annual Wages</span>
-                <span class="wf-total__value" style="color:var(--red);">${fmtMoney(totalWages)}</span>
-            </div>
-            <div class="wf-total__row">
-                <span class="wf-total__label">Per Tick (÷12)</span>
-                <span class="wf-total__value" style="color:var(--red);">${fmtMoney(totalWages / 12)}</span>
-            </div>
         </div>
     `;
-
-    return { totalWages, generalTotal, skilledTotal, innovativeTotal, monthlyWages: Math.round(totalWages / 12) };
 }
 
-async function renderFinances(nation, shard, wfData, faction, propertyMaint, equipmentMaint, execCompensation, propData, fleetMaint) {
+async function renderFinances(nation, shard, faction, propertyMaint, equipmentMaint, execCompensation, propData, fleetMaint) {
     const currentTick = shard?.current_tick || 0;
     document.getElementById('fin-tick').textContent = 'TICK ' + currentTick;
 
@@ -2562,29 +2460,23 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
 
     const totalRevenue = govContracts + pvtContracts + depotRevenueTotal;
 
-    // Expenses — workforce wages from wfData, divided by 12 (monthly)
-    const annualWages = wfData?.totalWages || 0;
-    const wages = Math.round(annualWages / 12);
+    // Workforce-wages baseline removed; sector-specific labor (e.g.
+    // Construction crew wages) is logged via corp_cash_events and
+    // shown in the prior-tick events list, not pre-summed here.
     const materials = 0;
     const properties = propertyMaint || 0;
     const equipment = equipmentMaint || 0;
-    // Debt service: monthly payment on outstanding loans (5% annual rate, 10-year amortization)
-    const outstandingDebt = Number(faction?.corp_loans) || 0;
-    const LOAN_ANNUAL_RATE = 0.05;
-    const LOAN_TERM_MONTHS = 120;
-    const debtService = outstandingDebt > 0
-        ? Math.round((outstandingDebt * (LOAN_ANNUAL_RATE / 12)) / (1 - Math.pow(1 + LOAN_ANNUAL_RATE / 12, -LOAN_TERM_MONTHS)))
-        : 0;
+    // Outstanding debt = real bank_loans amortizing through corp_debt.
+    // Real loan payment outflow is captured below via finance_active_loans
+    // (corpLoanService).
+    const outstandingDebt = Number(faction?.corp_debt) || 0;
 
     // Borrower-side obligations on finance_active_loans. The server
-    // (advance-corp-tick:2881-3005) iterates these rows every tick and
-    // deducts either the full monthly loan payment OR the insurance
-    // premium from the borrower/policyholder's cash — completely separate
-    // from the `corp_loans` debt service above. Without these two lines
-    // the Net Profit card was missing a significant monthly outflow for
-    // any corp that had taken a corp-to-corp loan or held insurance
-    // policies, which is why Montequilla Contructions saw +$1.2M/tick
-    // profit while cash actually grew only ~$300-400k/tick.
+    // iterates these rows every tick and deducts either the full
+    // monthly loan payment OR the insurance premium from the
+    // borrower/policyholder's cash. Without these two lines the Net
+    // Profit card under-reports a significant monthly outflow for any
+    // corp holding a corp-to-corp loan or insurance policy.
     let corpLoanService = 0;
     let insurancePremiums = 0;
     if (faction?.id) {
@@ -2622,7 +2514,7 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
     // Corporate tax: applied to positive income (matches tick processor formula)
     // PHASE 7 TODO: corporate_tax drops in Phase 9
     const corpTaxRate = Math.max(0, Math.min(1, (Number(nation?.corporate_tax ?? 0) / 100) || 0));
-    const preExpenses = wages + execSalaries + materials + properties + equipment + fleet + debtService + corpLoanService + insurancePremiums + projectCosts;
+    const preExpenses = execSalaries + materials + properties + equipment + fleet + corpLoanService + insurancePremiums + projectCosts;
     const taxableIncome = Math.max(0, totalRevenue - preExpenses);
     const taxes = Math.round(taxableIncome * corpTaxRate);
 
@@ -2755,14 +2647,12 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
         <!-- Expenses -->
         <div class="fin-section">
             <div class="fin-section__title" style="color:var(--red);">Expenses</div>
-            <div class="fin-row"><span class="fin-row__label">Workforce Wages</span><span class="fin-row__value" style="color:#a44">${fmtMoney(wages)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Executive Compensation</span><span class="fin-row__value" style="color:#a44">${fmtMoney(execSalaries)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Materials & Supplies</span><span class="fin-row__value" style="color:#a44">${fmtMoney(materials)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Properties</span><span class="fin-row__value" style="color:#a44">${fmtMoney(properties)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Equipment</span><span class="fin-row__value" style="color:#a44">${fmtMoney(equipment)}</span></div>
             ${fleet > 0 ? `<div class="fin-row"><span class="fin-row__label">Fleet Maintenance</span><span class="fin-row__value" style="color:#a44">${fmtMoney(fleet)}</span></div>` : ''}
             ${projectCosts > 0 ? `<div class="fin-row"><span class="fin-row__label">Project Build Costs</span><span class="fin-row__value" style="color:#a44">${fmtMoney(projectCosts)}</span></div>` : ''}
-            <div class="fin-row"><span class="fin-row__label">Debt Service</span><span class="fin-row__value" style="color:#a44">${fmtMoney(debtService)}</span></div>
             ${corpLoanService > 0 ? `<div class="fin-row"><span class="fin-row__label">Loan Repayments</span><span class="fin-row__value" style="color:#a44">${fmtMoney(corpLoanService)}</span></div>` : ''}
             ${insurancePremiums > 0 ? `<div class="fin-row"><span class="fin-row__label">Insurance Premiums</span><span class="fin-row__value" style="color:#a44">${fmtMoney(insurancePremiums)}</span></div>` : ''}
             <div class="fin-row"><span class="fin-row__label">Taxes</span><span class="fin-row__value" style="color:#a44">${fmtMoney(taxes)}</span></div>
@@ -3549,7 +3439,7 @@ async function renderProperty(nation, nationName, factionData, shard) {
     return { propertyValue: totalValue, propertyMaintenance: totalMaint, totalCapacity };
 }
 
-async function renderValuation(nation, nationName, faction, wfData, propData, equipmentValue = 0) {
+async function renderValuation(nation, nationName, faction, propData, equipmentValue = 0) {
     const s = (key) => getNationStat(nation, key);
     const natUp = (nationName || 'UNKNOWN').toUpperCase();
     const companyType = faction.corp_company_type || 'Private';
@@ -3585,10 +3475,12 @@ async function renderValuation(nation, nationName, faction, wfData, propData, eq
     }
     const totalAssets = cashReserves + propertyValue + equipmentValue + activeContracts;
 
-    // Liabilities
-    const outstandingLoans = Number(faction.corp_loans) || 0;
-    const monthlyExpenses = wfData?.monthlyWages || 0;
-    const accountsPayable = monthlyExpenses; // 1 month of expenses
+    // Liabilities. Accounts Payable was a 1-month workforce-wages
+    // proxy; with that line gone there's no clean monthly-expense
+    // estimate to plug in here, so payables drop to 0 until a real
+    // accruals model is built.
+    const outstandingLoans = Number(faction.corp_debt) || 0;
+    const accountsPayable = 0;
     const pendingProjectCosts = 0;
     const totalLiabilities = outstandingLoans + accountsPayable + pendingProjectCosts;
 
