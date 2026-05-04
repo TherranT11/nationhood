@@ -149,7 +149,7 @@ export const MODIFIERS = {
         category: 'competitive',
         applies_to: 'disfavored',
         stat_effects: [
-            { stat_key: 'unemployment', delta: 0.1 },
+            { stat_key: 'unskilled_workers', delta: -0.1 },
             { stat_key: 'poverty_rate', delta: 0.1 },
             { stat_key: 'emigration', delta: 0.1 },
         ],
@@ -187,7 +187,7 @@ export const MODIFIERS = {
         name: 'International Attention on Dispute',
         category: 'competitive',
         applies_to: null, // applies to the more aggressive nation (most threatening actions)
-        stat_effects: [{ stat_key: 'international_reputation', delta: -0.1 }],
+        stat_effects: [{ stat_key: 'global_image', delta: -0.1 }],
         duration: 20,
         removed_by: [], // removed when tension drops to Low or Moderate
         auto_trigger: { type: 'tension_level', threshold: 'HIGH' },
@@ -418,7 +418,7 @@ export const MODIFIERS = {
         name: 'International Legal Precedent Forming',
         category: 'competitive',
         applies_to: null, // set dynamically — applies to legally weaker nation
-        stat_effects: [{ stat_key: 'international_reputation', delta: -0.1 }],
+        stat_effects: [{ stat_key: 'global_image', delta: -0.1 }],
         duration: 15,
         removed_by: [], // expires or court ruling
     },
@@ -429,7 +429,7 @@ export const MODIFIERS = {
         category: 'competitive',
         applies_to: 'administering',
         stat_effects: [
-            { stat_key: 'international_reputation', delta: -0.15 },
+            { stat_key: 'global_image', delta: -0.15 },
             { stat_key: 'freedom_index', delta: -0.1 },
         ],
         duration: 20,
@@ -596,7 +596,7 @@ export const MODIFIERS = {
         applies_to: 'non_administering',
         stat_effects: [
             { stat_key: 'manufacturing_output', delta: -0.1 },
-            { stat_key: 'unemployment', delta: 0.1 },
+            { stat_key: 'unskilled_workers', delta: -0.1 },
         ],
         duration: null,
         removed_by: ['negotiate_voluntary_export_restraints', 'domestic_industry_subsidy'],
@@ -636,7 +636,7 @@ export const MODIFIERS = {
         category: 'competitive',
         applies_to: 'non_administering',
         stat_effects: [
-            { stat_key: 'unemployment', delta: 0.2 },
+            { stat_key: 'unskilled_workers', delta: -0.2 },
             { stat_key: 'poverty_rate', delta: 0.1 },
             { stat_key: 'emigration', delta: 0.1 },
             { stat_key: 'civil_unrest', delta: 0.1 },
@@ -674,7 +674,7 @@ export const MODIFIERS = {
         name: 'Dumping Accusations',
         category: 'competitive',
         applies_to: 'administering',
-        stat_effects: [{ stat_key: 'international_reputation', delta: -0.1 }],
+        stat_effects: [{ stat_key: 'global_image', delta: -0.1 }],
         relations_delta: -0.1,
         duration: 20,
         removed_by: ['negotiate_voluntary_export_restraints'],
@@ -928,8 +928,8 @@ export async function initializeDeck(supabase, issue, nationA, nationB, currentT
     shuffleArray(allCardNumbers);
 
     // Determine draw counts from Foreign Affairs (international_reputation)
-    const drawA = getDrawCount(nationA.international_reputation);
-    const drawB = getDrawCount(nationB.international_reputation);
+    const drawA = getDrawCount(nationA.global_image);
+    const drawB = getDrawCount(nationB.global_image);
 
     // Deal hands from the top of the shuffled deck
     const handA = allCardNumbers.splice(0, drawA);
@@ -955,7 +955,7 @@ export async function initializeDeck(supabase, issue, nationA, nationB, currentT
         return false;
     }
 
-    console.log(`[Issues] Deck initialized for ${issue.issue_type} (${issue.id}): ${allCardNumbers.length + handA.length + handB.length} cards total. Nation A drew ${drawA} (FA: ${Math.round(nationA.international_reputation || 0)}), Nation B drew ${drawB} (FA: ${Math.round(nationB.international_reputation || 0)}). Deck remaining: ${deckRemaining.length}.`);
+    console.log(`[Issues] Deck initialized for ${issue.issue_type} (${issue.id}): ${allCardNumbers.length + handA.length + handB.length} cards total. Nation A drew ${drawA} (FA: ${Math.round(nationA.global_image || 0)}), Nation B drew ${drawB} (FA: ${Math.round(nationB.global_image || 0)}). Deck remaining: ${deckRemaining.length}.`);
     return true;
 }
 
@@ -1502,7 +1502,7 @@ async function resolveDeckExhaustion(supabase, issue, nationA, nationB, currentM
 
         await applyIssueStatEffects(supabase, winner.id, winner, [
             { stat_key: 'gov_approval', delta: 2 },
-            { stat_key: 'international_reputation', delta: 0.5 },
+            { stat_key: 'global_image', delta: 0.5 },
         ]);
         await applyIssueStatEffects(supabase, loser.id, loser, [
             { stat_key: 'gov_approval', delta: -2 },
@@ -1557,8 +1557,8 @@ async function reshuffleDeck(supabase, issue, cardCount, nationA, nationB, curre
     const deckCards = allNumbers.slice(0, Math.min(cardCount, allNumbers.length));
 
     // Redeal based on current FA stats
-    const drawA = getDrawCount(nationA?.international_reputation);
-    const drawB = getDrawCount(nationB?.international_reputation);
+    const drawA = getDrawCount(nationA?.global_image);
+    const drawB = getDrawCount(nationB?.global_image);
     const handA = deckCards.splice(0, Math.min(drawA, deckCards.length));
     const handB = deckCards.splice(0, Math.min(drawB, deckCards.length));
 
@@ -2292,7 +2292,7 @@ async function spawnIncidentFromIssue(supabase, issue, nationA, nationB, leverag
     // Apply immediate stat effects on escalation
     await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, -5);
     await applyIssueStatEffects(supabase, nationA.id, nationA, [{ stat_key: 'civil_unrest', delta: 1 }]);
-    await applyIssueStatEffects(supabase, nationB.id, nationB, [{ stat_key: 'international_reputation', delta: -0.5 }]);
+    await applyIssueStatEffects(supabase, nationB.id, nationB, [{ stat_key: 'global_image', delta: -0.5 }]);
 
     // Insert system chat messages
     const crisisName = `${nationA.name}-${nationB.name} Fishing Dispute`;

@@ -1235,11 +1235,17 @@ async function processIncidentBlowback(supabase, incident, nationMap, currentTic
     const loserRepBonus = 0.5 * excess;
     const loserRelBonus = 1 * excess;
 
-    // Apply Int'l_Reputation
-    const winnerRep = Math.max(0, Number(winner.intl_reputation ?? 50) + winnerRepPenalty);
-    const loserRep = Math.min(100, Number(loser.intl_reputation ?? 50) + loserRepBonus);
-    await supabase.from('nations').update({ intl_reputation: winnerRep }).eq('id', winner.id);
-    await supabase.from('nations').update({ intl_reputation: loserRep }).eq('id', loser.id);
+    // Apply Global Image (canonical-stats Phase 5; was intl_reputation,
+    // which has never been a real column — these UPDATEs were silently
+    // rejected by PostgREST schema-cache pre-fix).
+    const winnerRep = Math.max(0, Number(winner.global_image ?? 50) + winnerRepPenalty);
+    const loserRep = Math.min(100, Number(loser.global_image ?? 50) + loserRepBonus);
+    const { error: winnerRepErr } = await supabase.from('nations')
+        .update({ global_image: winnerRep }).eq('id', winner.id);
+    if (winnerRepErr) console.error('[incidents] winner global_image update failed:', winnerRepErr.message);
+    const { error: loserRepErr } = await supabase.from('nations')
+        .update({ global_image: loserRep }).eq('id', loser.id);
+    if (loserRepErr) console.error('[incidents] loser global_image update failed:', loserRepErr.message);
 
     // Apply Relations penalties/bonuses with non-involved nations
     const nonInvolved = Object.values(nationMap).filter(

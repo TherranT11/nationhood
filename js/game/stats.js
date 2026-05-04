@@ -138,6 +138,15 @@ export const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
 // Direction-inverting aliases are tracked separately in
 // INVERTED_ALIAS_KEYS — for those, the apply path also flips
 // up↔down / negates delta so the semantics survive the rename.
+//
+// Canonical-stats Phase 5: source code (js/game/, *.html) has been
+// converted to use canonical names directly. The aliases below are
+// RETAINED to keep legacy stat_effects JSON working — events table
+// rows, policy_options.stat_effects, bill_articles, executive_orders
+// payloads, etc. all carry historical stat_key strings like
+// 'international_reputation' / 'unemployment' / 'minimum_wage'. The
+// aliases route them to the canonical columns at apply time so
+// pre-Phase-5 saves keep behaving identically.
 export const STAT_KEY_ALIASES = {
     // ── Direct renames into the alpha-25 schema ──
     civil_unrest:               'unrest',
