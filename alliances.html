@@ -935,6 +935,7 @@ async function loadAlliancesData() {
                 const aiFloor   = hasAlignedInterest ? a.aligned_interest_floor_apr   : null;
                 const aiCeiling = hasAlignedInterest ? a.aligned_interest_ceiling_apr : null;
                 const hasBadDebtAid = ratifiedArticles.some(ar => ar.article_id === 'bad_debt_mutual');
+                const hasSyndicatedLending = ratifiedArticles.some(ar => ar.article_id === 'syndicated_portfolio');
                 actives.push({
                     id: a.id,
                     name: a.name,
@@ -946,6 +947,7 @@ async function loadAlliancesData() {
                         ? `${Number(aiFloor).toFixed(1)}% – ${Number(aiCeiling).toFixed(1)}%`
                         : null,
                     bad_debt_aid_active: hasBadDebtAid,
+                    syndicated_lending_active: hasSyndicatedLending,
                     member_count: members.length,
                     nation_count: nationCount,
                     founded_year: a.founded_at_tick ?? '—',
@@ -1237,6 +1239,13 @@ function renderAllianceExpanded(a, isMember) {
                     <span style="color:var(--text-dim);text-transform:uppercase;">Bad Debt Mutual Aid</span>
                     <span style="color:var(--blue);margin-left:10px;font-weight:700;">Active</span>
                     <span style="color:var(--text-secondary);margin-left:10px;">A loan default ≥ $20M against any member triggers 15% Lending Capital absorption (in LC units, $50M = 1 LC) from every other member.</span>
+                </div>
+            ` : ''}
+            ${a.syndicated_lending_active ? `
+                <div style="margin-top:8px;padding:10px 14px;background:var(--green-faint);border:1px solid var(--green-border);font-family:var(--font-mono);font-size:11px;letter-spacing:0.04em;">
+                    <span style="color:var(--text-dim);text-transform:uppercase;">Syndicated Lending Portfolio</span>
+                    <span style="color:var(--green);margin-left:10px;font-weight:700;">Active</span>
+                    <span style="color:var(--text-secondary);margin-left:10px;">Each tick, any member whose Overleverage hits 8 (and not yet 10) is auto-rescued: their leverage drops to 7, every other member loses 0.5 Lending Capital. One-shot per member per alliance term.</span>
                 </div>
             ` : ''}
             ${a.mission ? `<div style="margin-top:16px;padding:12px 14px;border-left:2px solid var(--amber);font-style:italic;color:var(--text-secondary);">"${escHtml(a.mission)}"</div>` : ''}
