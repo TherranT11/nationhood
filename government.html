@@ -1393,16 +1393,21 @@ function adm2RenderHogCard() {
         </div>`;
     } else {
         // Vacant seat. Only the active President's faction can nominate.
+        // When there's no active President at all (e.g., between
+        // presidential elections), nobody can nominate — surface that
+        // explicitly so the empty state isn't a misleading dead-end.
         const isPresFaction = president && currentFaction && president.faction_id === currentFaction.id;
-        const button = isPresFaction
-            ? `<button class="ministry-card__mgmt-btn ministry-card__mgmt-btn--appoint" onclick="openPMNominateModal()" style="margin-top:8px;">Nominate</button>`
-            : `<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;margin-top:6px;">Only the President's party can nominate.</div>`;
+        const hint = !president
+            ? `<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;margin-top:6px;">Awaiting a President — the PM seat stays vacant until one is in office.</div>`
+            : isPresFaction
+                ? `<button class="ministry-card__mgmt-btn ministry-card__mgmt-btn--appoint" onclick="openPMNominateModal()" style="margin-top:8px;">Nominate</button>`
+                : `<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;margin-top:6px;">Only the President's party can nominate.</div>`;
         body = `<div class="adm2-exec-person">
             <div class="adm2-avatar" style="color:var(--text-muted);border-color:rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);">—</div>
             <div class="adm2-exec-body">
                 <div class="role">Prime Minister</div>
                 <div class="name" style="color:var(--text-dim);font-style:italic;">Vacant</div>
-                ${button}
+                ${hint}
             </div>
         </div>`;
     }
@@ -10397,13 +10402,17 @@ function closeAssignModal() {
 }
 
 // Semi-presidential PM nomination. Reuses the assign-modal DOM but
-// supplies real party-leader candidates (the generic openAssignModal
-// fills random names — fine for cabinet roles but rejected by
-// nominateMinister's deputy-leader validation for PM seats). Excludes
-// the President's own party from the choice list because cohabitation
-// requires a deputy nominee and there's no deputy-picker UI here yet
-// — pick a different party for now.
-function openPMNominateModal() {
+// supplies real candidates (the generic openAssignModal fills random
+// names — fine for cabinet roles but rejected by nominateMinister's
+// deputy-leader validation for PM seats).
+//
+// Each non-presidential party contributes its leader as one candidate.
+// The President's own party contributes ONE CANDIDATE PER ACTIVE DEPUTY
+// — cohabitation rule (presidential.js:113) forbids the leader (= the
+// President themselves) so a deputy must be the nominee. If the
+// President's party has no active deputy, the modal surfaces the gap
+// with a "Hire a Deputy" hint instead of silently dropping the option.
+async function openPMNominateModal() {
     if (!isSemiPresidential(currentNation)) return;
     const presFactionId = _govData?.president?.faction_id || null;
     if (!presFactionId || currentFaction?.id !== presFactionId) return;
@@ -10414,22 +10423,54 @@ function openPMNominateModal() {
     document.getElementById('assign-confirm-btn').textContent = 'Nominate Prime Minister';
     document.getElementById('assign-modal-title').textContent = 'Nominate Prime Minister';
 
-    // Eligible parties = every party except the President's own. PM must
-    // come from a different party (cohabitation) until a deputy-picker
-    // UI exists for same-party nominations.
-    const eligibleParties = (allParties || [])
-        .filter(p => p.id !== presFactionId)
+    // Fetch active deputies for the President's party so we can offer
+    // them as same-party PM candidates. Empty result is fine — handled
+    // below as a "Hire a Deputy first" hint.
+    const { data: presDeputies, error: depErr } = await _supabase
+        .from('faction_deputies')
+        .select('first_name, last_name, age')
+        .eq('faction_id', presFactionId)
+        .eq('status', 'active');
+    if (depErr) console.warn('[PM nomination] deputy fetch failed:', depErr.message);
+
+    const partiesWithLeaders = (allParties || [])
         .filter(p => p.leader_first_name && p.leader_last_name);
 
-    generatedCandidates = eligibleParties.map(party => ({
-        partyId: party.id,
-        partyName: party.faction_name,
-        firstName: party.leader_first_name,
-        lastName: party.leader_last_name,
-        age: party.leader_age || 50,
+    // Build candidate list: one row per other-party leader, plus one
+    // row per active deputy of the President's party. Order keeps the
+    // President's-party block last so the cohabitation case isn't the
+    // first thing the eye lands on.
+    const leaderCandidates = partiesWithLeaders
+        .filter(p => p.id !== presFactionId)
+        .map(party => ({
+            partyId: party.id,
+            partyName: party.faction_name,
+            firstName: party.leader_first_name,
+            lastName: party.leader_last_name,
+            age: party.leader_age || 50,
+            sameParty: false,
+        }));
+
+    const presParty = (allParties || []).find(p => p.id === presFactionId);
+    const deputyCandidates = (presDeputies || []).map(d => ({
+        partyId: presFactionId,
+        partyName: presParty?.faction_name || '',
+        firstName: d.first_name,
+        lastName: d.last_name,
+        age: d.age || 50,
+        sameParty: true,
     }));
 
-    document.getElementById('assign-candidates').innerHTML = generatedCandidates.length
+    generatedCandidates = [...leaderCandidates, ...deputyCandidates];
+
+    // If the President's party has no active deputy, surface that
+    // explicitly so the player understands why same-party PM isn't an
+    // option until they hire one.
+    const noDeputiesNote = presParty && deputyCandidates.length === 0
+        ? `<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;padding:6px 8px;border:1px dashed rgba(255,255,255,0.12);margin-top:8px;">${escapeHtml(presParty.faction_name || 'Your party')} has no active Deputy. Same-party PM nominations require a Deputy (cohabitation rule) — hire one to enable this option.</div>`
+        : '';
+
+    document.getElementById('assign-candidates').innerHTML = (generatedCandidates.length
         ? generatedCandidates.map((c, i) => {
             const candColor = getPartyColorById(c.partyId);
             const candLogo = getPartyLogoById(c.partyId);
@@ -10437,14 +10478,18 @@ function openPMNominateModal() {
             const candLogoHtml = candLogo || candCustomLogo
                 ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: candCustomLogo, iconKey: candLogo, size: 14, color: candColor })}</span>`
                 : '';
+            const deputyTag = c.sameParty
+                ? `<span class="candidate-party-tag" style="background:rgba(176,154,91,0.15);color:var(--amber);margin-left:4px;">DEPUTY</span>`
+                : '';
             return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};">
                 <div>
-                    <div class="candidate-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div>
+                    <div class="candidate-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}${deputyTag}</div>
                     <div class="candidate-details">Age ${c.age} · <span class="candidate-party-tag other">${candLogoHtml}${escapeHtml(c.partyName)}</span></div>
                 </div>
             </div>`;
         }).join('')
-        : `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;padding:8px 0;">No eligible parties (need a non-presidential party with a registered leader).</div>`;
+        : `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;padding:8px 0;">No eligible candidates yet.</div>`
+    ) + noDeputiesNote;
 
     document.getElementById('assign-modal').classList.add('active');
 }
