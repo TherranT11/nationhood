@@ -1997,20 +1997,28 @@ async function getPermitComplianceSnapshot(supabase, { nationId, sector, faction
 //
 //  One per-nation pass per corp tick. Loads every active corp_contract,
 //  joins to the winning corp_contract_bids row (status='accepted'), and:
-//    1. Skips if corp_contracts.crews_assigned < bid.crews_committed
+//    1. Idempotency gate: skip if c.progress_pct already matches the
+//       current-tick value (cron re-fire / replay → no double-charge).
+//    2. Crew gate: skip if crews_assigned < bid.crews_committed
 //       (understaffed → contract stalls, no cost, no progress).
-//    2. Deducts perTickCost = bid.bid_amount / timeline_months from the
-//       winning corp's cash, emits a 'event_cost' cash event labelled
+//    3. Deduct perTickCost = bid.bid_amount / timeline_months from the
+//       winning corp's cash, emit 'event_cost' cash event labelled
 //       "{contract.name} Construction Costs".
-//    3. Computes progress_pct = (currentTick − started_at_tick) / timeline_months
-//       × 100 (clamped 0..100), updates progress_pct + amount_spent.
-//    4. On 100%, marks status='completed', stamps completed_at_tick,
-//       schedules payout_tick = currentTick + 3 (3-tick settlement window
-//       so the payout doesn't land in the same tick as the final cost).
-//  A second sweep at the bottom of the function pays out completed
-//  contracts whose payout_tick has arrived: credits the corp the full
-//  bid.bid_amount via 'capital_in' "{name} · final payment", then nulls
-//  payout_tick so the row isn't paid again.
+//    4. Compute progress_pct = (currentTick − started_at_tick) / timeline_months
+//       × 100 (clamped 0..100), update progress_pct + amount_spent.
+//    5. On 100%, set status='completed', stamp completed_at_tick, and
+//       pay out bid.bid_amount immediately via 'capital_in'
+//       "{name} · final payment". Synchronous payout keeps the
+//       contract on the dashboard until the status flips, so there's no
+//       "completed-but-invisible" window.
+//
+//  Behavioural simplification vs. legacy: stalled ticks don't extend
+//  the project (no stalled_ticks bookkeeping). Progress is purely
+//  wall-clock from started_at_tick; if the corp under-staffs for N
+//  ticks then re-assigns crews, progress jumps to (currentTick - start)
+//  but cost is only charged for the resume tick. Net effect: the corp
+//  gets a discount for stalling. Acceptable for v1; revisit if it
+//  becomes exploitable.
 //
 //  Replaces the legacy processActiveProjects loop (deleted) which
 //  targeted the now-retired construction_contracts table and never
@@ -2018,7 +2026,6 @@ async function getPermitComplianceSnapshot(supabase, { nationId, sector, faction
 async function processCorpContracts(supabase, nationId, currentTick) {
     const results = [];
 
-    // ── Active contracts: progress + cost + completion ──
     const { data: contracts, error: contractsErr } = await supabase
         .from('corp_contracts')
         .select('id, name, started_at_tick, timeline_months, progress_pct, amount_spent, crews_assigned')
@@ -2026,165 +2033,126 @@ async function processCorpContracts(supabase, nationId, currentTick) {
         .eq('status', 'active');
     if (contractsErr) {
         console.warn(`[CorpContracts] Active fetch failed for nation ${nationId}:`, contractsErr.message);
-    } else if (contracts && contracts.length > 0) {
-        const contractIds = contracts.map(c => c.id);
-        const bidQuery = contractIds.length === 1
-            ? supabase.from('corp_contract_bids')
-                .select('contract_id, faction_id, bid_amount, crews_committed')
-                .eq('contract_id', contractIds[0]).eq('status', 'accepted')
-            : supabase.from('corp_contract_bids')
-                .select('contract_id, faction_id, bid_amount, crews_committed')
-                .in('contract_id', contractIds).eq('status', 'accepted');
-        const { data: bids, error: bidsErr } = await bidQuery;
-        if (bidsErr) {
-            console.warn(`[CorpContracts] Bid fetch failed for nation ${nationId}:`, bidsErr.message);
-            return results;
-        }
-        const bidByContract = {};
-        for (const b of (bids || [])) bidByContract[b.contract_id] = b;
-
-        for (const c of contracts) {
-            const bid = bidByContract[c.id];
-            if (!bid) {
-                console.warn(`[CorpContracts] ${c.name}: no accepted bid, skipping`);
-                continue;
-            }
-
-            const startedAt = Number(c.started_at_tick);
-            if (!Number.isFinite(startedAt)) continue;
-            const totalTicks = Math.max(1, Number(c.timeline_months) || 1);
-            const ticksElapsed = currentTick - startedAt;
-            // Defer the award tick (off-by-one) so cost + progress kick
-            // in starting one tick after award, matching the legacy
-            // behaviour the dashboard's projection assumed.
-            if (ticksElapsed <= 0) continue;
-
-            // Crew gate: stalls until the corp brings crews_assigned up
-            // to crews_committed via assign_construction_crews.
-            const crewsAssigned  = Number(c.crews_assigned || 0);
-            const crewsCommitted = Number(bid.crews_committed || 0);
-            if (crewsCommitted > 0 && crewsAssigned < crewsCommitted) {
-                console.log(`[CorpContracts] ${c.name}: STALLED — crews_assigned ${crewsAssigned} < crews_committed ${crewsCommitted}`);
-                continue;
-            }
-
-            // Per-tick cost.
-            const totalBid = Number(bid.bid_amount || 0);
-            const perTickCost = Math.round(totalBid / totalTicks);
-            if (perTickCost > 0) {
-                const { data: corp, error: corpErr } = await supabase
-                    .from('factions')
-                    .select('corp_cash_reserves')
-                    .eq('id', bid.faction_id)
-                    .single();
-                if (corpErr) {
-                    console.warn(`[CorpContracts] ${c.name}: corp cash fetch failed:`, corpErr.message);
-                } else if (corp) {
-                    const newCash = Math.max(0, Number(corp.corp_cash_reserves || 0) - perTickCost);
-                    const { error: updCashErr } = await supabase.from('factions')
-                        .update({ corp_cash_reserves: newCash })
-                        .eq('id', bid.faction_id);
-                    if (updCashErr) {
-                        console.warn(`[CorpContracts] ${c.name}: cash deduct failed:`, updCashErr.message);
-                    } else {
-                        logCashEvent(bid.faction_id, 'event_cost',
-                            `${c.name || 'Project'} Construction Costs`, -perTickCost);
-                    }
-                }
-            }
-
-            // Progress + amount_spent + completion.
-            const newProgressPct = Math.min(100, Math.round((ticksElapsed / totalTicks) * 10000) / 100);
-            const newAmountSpent = Number(c.amount_spent || 0) + perTickCost;
-            const updates = {
-                progress_pct: newProgressPct,
-                amount_spent: newAmountSpent,
-            };
-            if (newProgressPct >= 100) {
-                updates.status = 'completed';
-                updates.completed_at_tick = currentTick;
-                // 3-tick settlement window before payout fires (gives a
-                // visible "completed, payment pending" beat on the UI).
-                updates.payout_tick = currentTick + 3;
-                results.push({ contract: c.name, completed: true, payout_in_ticks: 3 });
-            }
-            const { error: updErr } = await supabase.from('corp_contracts')
-                .update(updates)
-                .eq('id', c.id);
-            if (updErr) {
-                console.warn(`[CorpContracts] ${c.name}: progress update failed:`, updErr.message);
-            }
-        }
-    }
-
-    // ── Due payouts on completed contracts ──
-    // Pays the winning corp the full bid amount and nulls payout_tick so
-    // the row isn't paid twice. Runs every nation tick; quiet when no
-    // contracts are due.
-    const { data: due, error: dueErr } = await supabase
-        .from('corp_contracts')
-        .select('id, name')
-        .eq('issuer_nation_id', nationId)
-        .eq('status', 'completed')
-        .not('payout_tick', 'is', null)
-        .lte('payout_tick', currentTick);
-    if (dueErr) {
-        console.warn(`[CorpContracts] Payout sweep failed for nation ${nationId}:`, dueErr.message);
         return results;
     }
-    if (!due || due.length === 0) return results;
+    if (!contracts || contracts.length === 0) return results;
 
-    const dueIds = due.map(c => c.id);
-    const dueBidQuery = dueIds.length === 1
-        ? supabase.from('corp_contract_bids')
-            .select('contract_id, faction_id, bid_amount')
-            .eq('contract_id', dueIds[0]).eq('status', 'accepted')
-        : supabase.from('corp_contract_bids')
-            .select('contract_id, faction_id, bid_amount')
-            .in('contract_id', dueIds).eq('status', 'accepted');
-    const { data: dueBids, error: dueBidsErr } = await dueBidQuery;
-    if (dueBidsErr) {
-        console.warn(`[CorpContracts] Payout bid fetch failed:`, dueBidsErr.message);
+    const contractIds = contracts.map(c => c.id);
+    const { data: bids, error: bidsErr } = await supabase
+        .from('corp_contract_bids')
+        .select('contract_id, faction_id, bid_amount, crews_committed')
+        .in('contract_id', contractIds)
+        .eq('status', 'accepted');
+    if (bidsErr) {
+        console.warn(`[CorpContracts] Bid fetch failed for nation ${nationId}:`, bidsErr.message);
         return results;
     }
-    const dueBidByContract = {};
-    for (const b of (dueBids || [])) dueBidByContract[b.contract_id] = b;
+    const bidByContract = {};
+    for (const b of (bids || [])) bidByContract[b.contract_id] = b;
 
-    for (const c of due) {
-        const bid = dueBidByContract[c.id];
+    for (const c of contracts) {
+        const bid = bidByContract[c.id];
         if (!bid) {
-            // Bid row missing — close the payout window so it doesn't
-            // re-fire next tick. Counterfactual rare; logging is enough.
-            console.warn(`[CorpContracts] ${c.name}: payout due but no accepted bid — closing window`);
-            await supabase.from('corp_contracts').update({ payout_tick: null }).eq('id', c.id);
+            console.warn(`[CorpContracts] ${c.name}: no accepted bid, skipping`);
             continue;
         }
+
+        const startedAt = Number(c.started_at_tick);
+        if (!Number.isFinite(startedAt)) continue;
+        const totalTicks = Math.max(1, Number(c.timeline_months) || 1);
+        const ticksElapsed = currentTick - startedAt;
+        // Defer the award tick (off-by-one) so cost + progress kick
+        // in starting one tick after award.
+        if (ticksElapsed <= 0) continue;
+
+        // Idempotency gate: progress_pct is deterministic from elapsed
+        // ticks, so if it already matches the new value this tick has
+        // already been processed (e.g. cron re-fire). Skipping prevents
+        // double-deducting the per-tick cost.
+        const newProgressPct = Math.min(100, Math.round((ticksElapsed / totalTicks) * 10000) / 100);
+        if (Number(c.progress_pct || 0) >= newProgressPct) continue;
+
+        // Crew gate: stalls until the corp brings crews_assigned up
+        // to crews_committed via assign_construction_crews.
+        const crewsAssigned  = Number(c.crews_assigned || 0);
+        const crewsCommitted = Number(bid.crews_committed || 0);
+        if (crewsCommitted > 0 && crewsAssigned < crewsCommitted) {
+            console.log(`[CorpContracts] ${c.name}: STALLED — crews_assigned ${crewsAssigned} < crews_committed ${crewsCommitted}`);
+            continue;
+        }
+
         const totalBid = Number(bid.bid_amount || 0);
-        if (totalBid > 0) {
+        const perTickCost = Math.round(totalBid / totalTicks);
+
+        // Per-tick cost deduction.
+        if (perTickCost > 0) {
             const { data: corp, error: corpErr } = await supabase
                 .from('factions')
                 .select('corp_cash_reserves')
                 .eq('id', bid.faction_id)
                 .single();
             if (corpErr) {
-                console.warn(`[CorpContracts] ${c.name}: payout corp fetch failed:`, corpErr.message);
-                continue;
-            }
-            if (corp) {
-                const newCash = Number(corp.corp_cash_reserves || 0) + totalBid;
-                const { error: payErr } = await supabase.from('factions')
+                console.warn(`[CorpContracts] ${c.name}: corp cash fetch failed:`, corpErr.message);
+            } else if (corp) {
+                const newCash = Math.max(0, Number(corp.corp_cash_reserves || 0) - perTickCost);
+                const { error: updCashErr } = await supabase.from('factions')
                     .update({ corp_cash_reserves: newCash })
                     .eq('id', bid.faction_id);
-                if (payErr) {
-                    console.warn(`[CorpContracts] ${c.name}: payout deposit failed:`, payErr.message);
-                    continue;
+                if (updCashErr) {
+                    console.warn(`[CorpContracts] ${c.name}: cash deduct failed:`, updCashErr.message);
+                } else {
+                    logCashEvent(bid.faction_id, 'event_cost',
+                        `${c.name || 'Project'} Construction Costs`, -perTickCost);
                 }
-                logCashEvent(bid.faction_id, 'capital_in',
-                    `${c.name || 'Project'} · final payment`, totalBid);
             }
         }
-        await supabase.from('corp_contracts').update({ payout_tick: null }).eq('id', c.id);
-        results.push({ contract: c.name, paid: true, amount: totalBid });
+
+        // Progress + amount_spent + completion + immediate payout.
+        const newAmountSpent = Number(c.amount_spent || 0) + perTickCost;
+        const updates = {
+            progress_pct: newProgressPct,
+            amount_spent: newAmountSpent,
+        };
+
+        if (newProgressPct >= 100) {
+            updates.status = 'completed';
+            updates.completed_at_tick = currentTick;
+
+            // Pay out the bid amount immediately. Doing it synchronously
+            // (no payout_tick scheduling) keeps the contract visible in
+            // the dashboard's active panel until it leaves with the
+            // status flip, so there's no "completed, awaiting payment"
+            // gap window where the contract is invisible to the player.
+            if (totalBid > 0) {
+                const { data: corp, error: corpErr } = await supabase
+                    .from('factions')
+                    .select('corp_cash_reserves')
+                    .eq('id', bid.faction_id)
+                    .single();
+                if (corpErr) {
+                    console.warn(`[CorpContracts] ${c.name}: payout corp fetch failed:`, corpErr.message);
+                } else if (corp) {
+                    const newCash = Number(corp.corp_cash_reserves || 0) + totalBid;
+                    const { error: payErr } = await supabase.from('factions')
+                        .update({ corp_cash_reserves: newCash })
+                        .eq('id', bid.faction_id);
+                    if (payErr) {
+                        console.warn(`[CorpContracts] ${c.name}: payout deposit failed:`, payErr.message);
+                    } else {
+                        logCashEvent(bid.faction_id, 'capital_in',
+                            `${c.name || 'Project'} · final payment`, totalBid);
+                    }
+                }
+            }
+            results.push({ contract: c.name, completed: true, paid: totalBid });
+        }
+
+        const { error: updErr } = await supabase.from('corp_contracts')
+            .update(updates)
+            .eq('id', c.id);
+        if (updErr) {
+            console.warn(`[CorpContracts] ${c.name}: progress update failed:`, updErr.message);
+        }
     }
 
     return results;
