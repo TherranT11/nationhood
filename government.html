@@ -131,6 +131,45 @@ function isImplementedMinistryAction(action) {
     return hasApConfig || hasCustomHandlerMarker;
 }
 
+// State Owned Enterprise — placeholder action mounted under multiple
+// ministries. Greyed out / non-clickable for now (comingSoon=true);
+// `costLabel` overrides the default "COMING SOON" pill so players see
+// the eventual $100K price tag while the action is inert.
+const SOE_ACTION = {
+    id: 'stateOwnedEnterprise',
+    name: 'State Owned Enterprise',
+    desc: 'Advocate for the creation of a State Owned Enterprise in this ministry.',
+    comingSoon: true,
+    costLabel: '$100K'
+};
+
+// Single source of truth for "disabled placeholder action" card HTML.
+// Used by the generic comingSoon branch in buildMinistryActionRows AND
+// by the custom-builder ministries (defense / healthcare / education /
+// energy) that bypass MINISTRY_ACTIONS entirely. `label` defaults to
+// "COMING SOON" when omitted.
+function renderDisabledActionCard(name, desc, label) {
+    const lbl = escapeHtml(label || 'COMING SOON');
+    return `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">${escapeHtml(name)}</span>
+            <span class="ministry-action__ap-cost" style="color:#3a3a2e;">${lbl}</span>
+        </div>
+        <div class="ministry-action__desc">${escapeHtml(desc)}</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags"></div>
+            <div><div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">${lbl}</div></div>
+        </div>
+    </div>`;
+}
+
+// SOE card — used from each custom-builder ministry that needs it.
+// finance / justice / transportation get it via MINISTRY_ACTIONS +
+// the generic renderer; this helper covers the four custom ones.
+function renderSoeActionCard() {
+    return renderDisabledActionCard(SOE_ACTION.name, SOE_ACTION.desc, SOE_ACTION.costLabel);
+}
+
 const MINISTRY_ACTIONS = {
     interior: {
         actions: [
@@ -291,7 +330,8 @@ const MINISTRY_ACTIONS = {
                     { label: 'NO TICK COST', cls: 'neutral' }
                 ],
                 baseEffects: [] // effects applied on resolution, not per-tick
-            }
+            },
+            SOE_ACTION
         ]
     },
     healthcare: {
@@ -513,6 +553,9 @@ const MINISTRY_ACTIONS = {
             }
         ]
     },
+    justice: {
+        actions: [SOE_ACTION]
+    },
     transportation: {
         actions: [
             {
@@ -582,7 +625,8 @@ const MINISTRY_ACTIONS = {
                     { stat_key: 'gdp_growth',             direction: 'up',   rate: 0.1, scalable: true },
                     { stat_key: 'standard_of_living',     direction: 'up',   rate: 0.1, scalable: true }
                 ]
-            }
+            },
+            SOE_ACTION
         ]
     }
 };
@@ -6801,19 +6845,12 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
         <span style="font-size:8px;font-weight:600;${balCls};letter-spacing:0.03em;">Discretionary Funds: ${balFmt}</span>
     </div>`;
     config.actions.forEach(action => {
-        // Coming Soon actions render as disabled placeholder
+        // Coming Soon actions render as disabled placeholder via the
+        // shared helper. `costLabel` (optional) overrides the default
+        // "COMING SOON" pill so a pre-priced placeholder can show its
+        // eventual cost while still being inert (e.g. SOE · $100K).
         if (action.comingSoon) {
-            html += `<div class="ministry-action disabled" style="opacity:0.6;cursor:not-allowed;">
-                <div class="ministry-action__top">
-                    <span class="ministry-action__name">${escapeHtml(action.name)}</span>
-                    <span class="ministry-action__ap-cost" style="color:#3a3a2e;">COMING SOON</span>
-                </div>
-                <div class="ministry-action__desc">${escapeHtml(action.desc)}</div>
-                <div class="ministry-action__bottom">
-                    <div class="ministry-action__tags"></div>
-                    <div><div style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:#1e1e1a;border:1px solid rgba(255,255,255,0.07);color:#3a3a2e;padding:4px 9px;cursor:not-allowed;white-space:nowrap;">COMING SOON</div></div>
-                </div>
-            </div>`;
+            html += renderDisabledActionCard(action.name, action.desc, action.costLabel);
             return;
         }
 
@@ -6960,6 +6997,9 @@ function buildDefenseActionRows(isMyMinistry) {
             <div>${comingSoonBtn}</div>
         </div>
     </div>`;
+
+    // SOE placeholder — shared with the other 6 SOE-eligible ministries.
+    html += renderSoeActionCard();
 
     return html;
 }
@@ -7175,6 +7215,9 @@ function buildEducationActionRows(isMyMinistry) {
         </div>
     </div>`;
 
+    // SOE placeholder — shared with the other 6 SOE-eligible ministries.
+    html += renderSoeActionCard();
+
     return html;
 }
 
@@ -7305,6 +7348,9 @@ function buildHealthcareActionRows(isMyMinistry) {
         </div>
         <div id="pharma-direction-selector"></div>
     </div>`;
+
+    // SOE placeholder — shared with the other 6 SOE-eligible ministries.
+    html += renderSoeActionCard();
 
     return html;
 }
@@ -8323,6 +8369,9 @@ function buildEnergyActionRows(isMyMinistry) {
 
     // Release confirm panel (hidden by default, shown when player clicks release)
     html += `<div id="energy-release-confirm" style="display:none;"></div>`;
+
+    // SOE placeholder — shared with the other 6 SOE-eligible ministries.
+    html += renderSoeActionCard();
 
     return html;
 }
