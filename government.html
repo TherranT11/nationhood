@@ -4005,9 +4005,19 @@ initPage('government', async (state) => {
 
     isPresidential = isGovernmentPresidential(nation);
 
-    // Backfill head of state if missing
+    // Backfill head of state if missing — but ONLY for nations that
+    // have never held a presidential election. Once a nation has any
+    // row in `presidents`, the head_of_state_* columns are owned by
+    // sync_nation_head_of_state (Fix B): NULL there means "vacant"
+    // (post-impeachment, between elections), not "needs a random
+    // placeholder". Without this gate we'd fabricate a fake president
+    // every page load after an impeachment.
+    const { count: presCount } = await _supabase.from('presidents')
+        .select('id', { count: 'exact', head: true })
+        .eq('nation_id', nation.id);
+    const hasPresHistory = (presCount || 0) > 0;
     const hasValidHosAge = Number.isFinite(Number(nation.head_of_state_age)) && Number(nation.head_of_state_age) > 0;
-    if (!nation.head_of_state_first_name || !nation.head_of_state_last_name || !hasValidHosAge) {
+    if (!hasPresHistory && (!nation.head_of_state_first_name || !nation.head_of_state_last_name || !hasValidHosAge)) {
         const { firstNames: hosFirstPool, lastNames: hosLastPool } = getNationNames(nation.name);
         const hosFirst = nation.head_of_state_first_name || hosFirstPool[Math.floor(Math.random() * hosFirstPool.length)];
         const hosLast = nation.head_of_state_last_name || hosLastPool[Math.floor(Math.random() * hosLastPool.length)];
@@ -10448,11 +10458,12 @@ async function confirmAssign() {
                 .eq('nation_id', currentNation.id)
                 .eq('active', true);
 
-            // Upsert new PM record — use faction's leader_ideology as single source of truth.
-            // appointed_tick is required so the Administration card's term display
-            // resets to "now" instead of inheriting the previous PM's start tick.
+            // History-preserving INSERT (Fix C, 20260827). The previous
+            // upsert clobbered the prior PM row in place; with the
+            // partial unique on (nation_id) WHERE active, inactive rows
+            // accumulate as history.
             const assignPartyData = allParties.find(p => p.id === selectedCandidate.partyId);
-            await _supabase.from('head_of_government').upsert({
+            await _supabase.from('head_of_government').insert({
                 nation_id: currentNation.id,
                 faction_id: selectedCandidate.partyId,
                 first_name: selectedCandidate.firstName,

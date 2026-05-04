@@ -675,6 +675,7 @@ let _candidates = [];   // candidate corps (same sector, not me, not abandoned)
 // data in later is a one-line swap.
 let _myAlliances = [];      // alliances this corp is a member of
 let _openAlliances = [];    // alliances accepting applications
+let _otherAlliances = [];   // all other active alliances (read-only visibility)
 let _sectorFilter = 'all';  // 'all' | 'Finance' | 'Construction' | 'Shipping' | 'Airline'
 let _expandedAllianceIds = new Set();
 let _confirmContext = null; // { allianceName, onConfirm } for the apply dialog
@@ -755,7 +756,7 @@ async function init() {
 // expect, and flips the empty-state copy off. Called on init and
 // after every mutating RPC.
 async function loadAlliancesData() {
-    if (!faction?.id) { _myAlliances = []; _pendingNegotiations = []; return; }
+    if (!faction?.id) { _myAlliances = []; _pendingNegotiations = []; _otherAlliances = []; return; }
     if (_alliancesLoading) return;
     _alliancesLoading = true;
     try {
@@ -767,29 +768,54 @@ async function loadAlliancesData() {
             .is('left_at_tick', null);
         if (memErr) {
             console.warn('[alliances] memberships fetch failed:', memErr.message);
-            _myAlliances = []; _pendingNegotiations = [];
+            _myAlliances = []; _pendingNegotiations = []; _otherAlliances = [];
             return;
         }
         const myRows = (memberships || [])
             .map(m => m.strategic_alliances)
             .filter(a => a && a.status !== 'dissolved');
-        if (myRows.length === 0) {
-            _myAlliances = []; _pendingNegotiations = [];
+        const myIds = myRows.map(a => a.id);
+
+        // 2. All OTHER active alliances — read-only visibility section.
+        // Excludes the user's own (already in myRows). Negotiating ones
+        // are private until ratified; only 'active' alliances surface
+        // here.
+        let othersQuery = _supabase.from('strategic_alliances')
+            .select('*').eq('status', 'active');
+        if (myIds.length > 0) {
+            othersQuery = othersQuery.not('id', 'in', `(${myIds.join(',')})`);
+        }
+        const { data: otherRowsRaw, error: othersErr } = await othersQuery;
+        if (othersErr) console.warn('[alliances] others fetch failed:', othersErr.message);
+        const otherRows = otherRowsRaw || [];
+
+        const allRows = [...myRows, ...otherRows];
+        if (allRows.length === 0) {
+            _myAlliances = []; _pendingNegotiations = []; _otherAlliances = [];
             return;
         }
-        const ids = myRows.map(a => a.id);
+        const ids = allRows.map(a => a.id);
 
         // 2. Members + their factions + nations + votes + chat + articles.
+        // Members + articles use the full id list (public surfaces — the
+        // "All Strategic Alliances" section displays both for non-member
+        // alliances). Votes + chat are member-only displays — scope them
+        // to myIds so we don't fetch (and so RLS can't be a surprise on)
+        // data we never render.
         const [membersRes, votesRes, chatRes, articlesRes] = await Promise.all([
             _supabase.from('alliance_members')
                 .select('alliance_id, faction_id, role, joined_at_tick, left_at_tick')
                 .in('alliance_id', ids).is('left_at_tick', null),
-            _supabase.from('alliance_negotiation_votes')
-                .select('alliance_id, faction_id, article_id, voted_at_tick')
-                .in('alliance_id', ids),
-            _supabase.from('alliance_chat_messages')
-                .select('alliance_id, faction_id, body, sent_at_tick, created_at')
-                .in('alliance_id', ids).order('created_at', { ascending: true }),
+            myIds.length === 0
+                ? Promise.resolve({ data: [], error: null })
+                : _supabase.from('alliance_negotiation_votes')
+                    .select('alliance_id, faction_id, article_id, voted_at_tick')
+                    .in('alliance_id', myIds),
+            myIds.length === 0
+                ? Promise.resolve({ data: [], error: null })
+                : _supabase.from('alliance_chat_messages')
+                    .select('alliance_id, faction_id, body, sent_at_tick, created_at')
+                    .in('alliance_id', myIds).order('created_at', { ascending: true }),
             _supabase.from('alliance_articles')
                 .select('alliance_id, article_id, article_name, article_kind, article_body, cartel_score, chs_bonus, ratified_at_tick')
                 .in('alliance_id', ids).eq('status', 'active'),
@@ -815,13 +841,33 @@ async function loadAlliancesData() {
             .map(([, col]) => col).filter(Boolean);
         const baseCols = ['id', 'faction_name', 'corp_ticker', 'abbreviation',
                           'corp_sector', 'corp_reputation', 'leader_first_name',
-                          'leader_last_name', 'nation_id'];
+                          'leader_last_name', 'nation_id',
+                          'corp_cash_reserves', 'corp_debt'];
         const factionSelect = Array.from(new Set([...baseCols, ...heroCols])).join(', ');
         const factionsRes = factionIds.length === 0
             ? { data: [] }
             : await _supabase.from('factions').select(factionSelect).in('id', factionIds);
         if (factionsRes.error) console.warn('[alliances] factions:', factionsRes.error.message);
         const factionMap = new Map((factionsRes.data || []).map(f => [f.id, f]));
+
+        // Batched corp_properties fetch for valuation. Single query
+        // covers every member faction across every alliance — same
+        // formula the corp dashboard uses for the masthead price
+        // (cash + property − debt × 1.30 multiplier inside
+        // computeCorpValuationBreakdown).
+        const memberFactionIds = Array.from(new Set(memberRows.map(r => r.faction_id)));
+        const propsRes = memberFactionIds.length === 0
+            ? { data: [] }
+            : await _supabase.from('corp_properties')
+                .select('faction_id, purchase_price, condition, is_active')
+                .in('faction_id', memberFactionIds)
+                .eq('is_active', true);
+        if (propsRes.error) console.warn('[alliances] properties:', propsRes.error.message);
+        const propsByFaction = new Map();
+        for (const p of (propsRes.data || [])) {
+            if (!propsByFaction.has(p.faction_id)) propsByFaction.set(p.faction_id, []);
+            propsByFaction.get(p.faction_id).push(p);
+        }
 
         const nationIds = Array.from(new Set(
             (factionsRes.data || []).map(f => f.nation_id).filter(Boolean)
@@ -980,8 +1026,53 @@ async function loadAlliancesData() {
             }
         }
 
+        // Build _otherAlliances shapes (read-only visibility section).
+        // Valuation is the sum of each member corp's masthead valuation,
+        // computed from the same primitive (computeCorpValuationBreakdown)
+        // the corp dashboard's ticker price uses.
+        const others = [];
+        for (const a of otherRows) {
+            const ratifiedArticles = articlesByAlliance.get(a.id) || [];
+            const members = buildMembers(a);
+            const totalValuation = members.reduce((sum, m) => {
+                const f = factionMap.get(m.id);
+                if (!f) return sum;
+                const breakdown = computeCorpValuationBreakdown({
+                    cash: f.corp_cash_reserves,
+                    loans: f.corp_debt,
+                    properties: propsByFaction.get(f.id) || [],
+                    vessels: [],
+                    financeReceivables: [],
+                    currentTick: tick,
+                });
+                return sum + breakdown.valuation;
+            }, 0);
+            const founderMember = members.find(m => m.is_founder);
+            const founderFaction = founderMember ? factionMap.get(founderMember.id) : null;
+            const founderNation = founderFaction
+                ? (founderFaction.nation_id ? nationMap.get(founderFaction.nation_id) : null)
+                : null;
+            others.push({
+                id: a.id,
+                name: a.name,
+                sector: a.sector,
+                member_count: members.length,
+                members,
+                total_valuation: totalValuation,
+                articles: ratifiedArticles
+                    .slice()
+                    .sort((p, q) => (Number(p.ratified_at_tick) || 0) - (Number(q.ratified_at_tick) || 0))
+                    .map(ar => ({
+                        name: ar.article_name, kind: ar.article_kind, body: ar.article_body || '',
+                    })),
+                founded_at_tick: a.founded_at_tick ?? null,
+                hq: founderNation || '—',
+            });
+        }
+
         _pendingNegotiations = negotiations;
         _myAlliances = actives;
+        _otherAlliances = others;
     } catch (e) {
         console.warn('[alliances] hydrate failed:', e?.message || e);
     } finally {
@@ -1054,6 +1145,7 @@ function renderListView() {
         ${renderMembershipsSection()}
         ${renderPendingNegotiationsSection()}
         ${renderOpenSection()}
+        ${renderAllAlliancesSection()}
     `;
 }
 
@@ -1149,6 +1241,68 @@ function renderOpenSection() {
                 ? `<div class="al-empty">No alliances open to join yet.</div>`
                 : rows.map(a => renderAllianceRow(a, /*isMember*/false)).join('')
             }
+        </div>
+    `;
+}
+
+// Read-only "All Strategic Alliances" listing — every active alliance
+// the player is not a member of, surfaced for visibility (member roster,
+// total valuation summed from each member corp's masthead price, and
+// charter articles in ratification order).
+function renderAllAlliancesSection() {
+    const rows = filterAlliancesBySector(_otherAlliances);
+    return `
+        <div class="al-section">
+            <div class="al-section__title">All Strategic Alliances${rows.length ? ' &middot; ' + rows.length : ''}</div>
+            ${rows.length === 0
+                ? `<div class="al-empty">No other active alliances yet.</div>`
+                : rows.map(renderAllAllianceRow).join('')
+            }
+        </div>
+    `;
+}
+
+// One read-only row per outside alliance. Mirrors the visual style of
+// renderAllianceRow but strips action affordances (no expand/collapse,
+// no buttons) since the player can't act on these alliances.
+function renderAllAllianceRow(a) {
+    const ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX'];
+    const memberChips = (a.members || []).map(m => {
+        const ticker = escHtml(m.corp_ticker || m.abbreviation || '—');
+        const nation = escHtml(m.nation_name || '—');
+        return `<span class="al-row__tag" title="${escHtml(m.faction_name || '')}">${ticker} &middot; ${nation}</span>`;
+    }).join('');
+    const articlesHtml = (a.articles || []).length === 0
+        ? `<div class="al-empty" style="padding:8px 0;">No ratified articles.</div>`
+        : (a.articles || []).map((ar, i) => `
+            <div style="padding:6px 0;border-top:1px solid var(--al-line, rgba(255,255,255,0.06));">
+                <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.18em;color:var(--text-dim);">ARTICLE ${ROMAN[i] || (i + 1)}</div>
+                <div style="font-weight:600;margin-top:2px;">${escHtml(ar.name || '—')}</div>
+                ${ar.body ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:2px;line-height:1.4;">${escHtml(ar.body)}</div>` : ''}
+            </div>
+        `).join('');
+    return `
+        <div class="al-row" style="opacity:0.92;">
+            <div class="al-row__head">
+                <span class="al-row__name">${escHtml(a.name)}</span>
+                <span class="al-row__tag">${escHtml(SECTOR_LABEL[a.sector] || a.sector)}</span>
+                <div class="al-row__metrics">
+                    <div class="al-row__metric">
+                        <div class="al-row__metric-label">Members</div>
+                        <div class="al-row__metric-value">${a.member_count}</div>
+                    </div>
+                    <div class="al-row__metric">
+                        <div class="al-row__metric-label">Total Valuation</div>
+                        <div class="al-row__metric-value">${fmtMoney(a.total_valuation || 0)}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="al-row__sub" style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 0;">
+                ${memberChips || `<span style="color:var(--text-dim);font-style:italic;">No active members.</span>`}
+            </div>
+            <div style="padding:8px 0 4px;">
+                ${articlesHtml}
+            </div>
         </div>
     `;
 }

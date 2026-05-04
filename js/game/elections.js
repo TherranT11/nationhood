@@ -3132,6 +3132,12 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         throw new Error(`[inauguratePresident] post-condition violation: nation ${nationId} has ${activeCount} active president rows (expected exactly 1)`);
     }
 
+    // Mirror the active president onto nations.head_of_state_* so the UI
+    // (which reads the nation row, not the presidents table) stays
+    // current. Single source of mirror logic in the SQL RPC.
+    const { error: syncErr } = await supabase.rpc('sync_nation_head_of_state', { p_nation_id: nationId });
+    if (syncErr) console.error(`[inauguratePresident] HOS sync failed for ${nationId}:`, syncErr.message);
+
     // Phase 5a: presidential ideology shift removed. The legacy mechanic
     // wrote a +15 shift on the winning candidate's ideology axis to faction_
     // ideology. With sectors as the live political dimension, ideology data
@@ -3282,10 +3288,12 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
  * Always schedules parliamentary. Presidential systems also get presidential elections.
  */
 export async function ensureElectionsScheduled(supabase, nation, currentTick) {
-    // Always ensure a parliamentary election is scheduled
+    // Parliamentary cycle (every parliamentaryTermTicks). Read first so
+    // the presidential branch below can align onto it for first-ever
+    // presidential elections.
     const { data: futureParl } = await supabase
         .from('elections')
-        .select('id')
+        .select('id, election_tick')
         .eq('nation_id', nation.id)
         .eq('status', 'scheduled')
         .eq('election_type', 'parliamentary')
@@ -3293,18 +3301,24 @@ export async function ensureElectionsScheduled(supabase, nation, currentTick) {
         .limit(1)
         .maybeSingle();
 
+    let parlTick = futureParl?.election_tick ?? null;
     if (!futureParl) {
+        parlTick = currentTick + getParliamentaryTermTicks(nation);
         const { error: parlErr } = await supabase.from('elections').insert({
             nation_id: nation.id,
-            election_tick: currentTick + getParliamentaryTermTicks(nation),
+            election_tick: parlTick,
             election_type: 'parliamentary',
             status: 'scheduled'
         });
         if (parlErr) console.error(`Failed to schedule parliamentary election for ${nation.name}:`, parlErr.message);
-        else console.log(`Scheduled next parliamentary election for ${nation.name}`);
+        else console.log(`Scheduled next parliamentary election for ${nation.name} at tick ${parlTick}`);
     }
 
-    // Presidential systems also need presidential elections
+    // Presidential cycle (every presidentialTermTicks, must coincide
+    // with a parliamentary tick — every other parliamentary election
+    // is a "General" with both fired together; the off ones are
+    // midterms). Cycles stay aligned naturally after the first General
+    // because presidentialTerm = 2 × parliamentaryTerm by design.
     if (hasElectedPresident(nation)) {
         const { data: futurePres } = await supabase
             .from('elections')
@@ -3317,14 +3331,30 @@ export async function ensureElectionsScheduled(supabase, nation, currentTick) {
             .maybeSingle();
 
         if (!futurePres) {
+            // First-ever presidential election: align with the next
+            // parliamentary tick so the FIRST election fires as a
+            // General (P+P together) instead of leaving the nation
+            // president-less for a full presidential cycle.
+            const { data: pastPres } = await supabase
+                .from('elections')
+                .select('id')
+                .eq('nation_id', nation.id)
+                .eq('election_type', 'presidential')
+                .limit(1)
+                .maybeSingle();
+
+            const presTick = pastPres
+                ? currentTick + getPresidentialTermTicks(nation)
+                : (parlTick ?? currentTick + getParliamentaryTermTicks(nation));
+
             const { error: presErr } = await supabase.from('elections').insert({
                 nation_id: nation.id,
-                election_tick: currentTick + getPresidentialTermTicks(nation),
+                election_tick: presTick,
                 election_type: 'presidential',
                 status: 'scheduled'
             });
             if (presErr) console.error(`Failed to schedule presidential election for ${nation.name}:`, presErr.message);
-            else console.log(`Scheduled next presidential election for ${nation.name}`);
+            else console.log(`Scheduled next presidential election for ${nation.name} at tick ${presTick}${pastPres ? '' : ' (first-ever — paired with parliamentary)'}`);
         }
     }
 }

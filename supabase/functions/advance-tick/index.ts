@@ -9861,6 +9861,9 @@ async function enactConstitutionalReform(supabase, bill, currentTick) {
             .eq('nation_id', bill.nation_id)
             .eq('is_active', true);
         if (presErr) console.error('[enactFoundationalBill] Failed to deactivate president:', presErr.message);
+        // Mirror the now-vacant president seat onto the nation row.
+        const { error: syncErr } = await supabase.rpc('sync_nation_head_of_state', { p_nation_id: bill.nation_id });
+        if (syncErr) console.error('[enactFoundationalBill] HOS sync failed:', syncErr.message);
 
         const { error: delPresElErr } = await supabase.from('elections').delete()
             .eq('nation_id', bill.nation_id)
@@ -10218,6 +10221,9 @@ async function enactHosElectionMethod(supabase, bill, currentTick) {
                 .eq('nation_id', bill.nation_id)
                 .eq('is_active', true);
             if (presErr) console.error('[enactFoundationalBill] Failed to deactivate president:', presErr.message);
+            // Mirror the now-vacant president seat onto the nation row.
+            const { error: syncErr } = await supabase.rpc('sync_nation_head_of_state', { p_nation_id: bill.nation_id });
+            if (syncErr) console.error('[enactFoundationalBill] HOS sync failed:', syncErr.message);
 
             // Change government type
             const { error: govErr } = await supabase.from('nations').update({
@@ -14019,6 +14025,12 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         throw new Error(`[inauguratePresident] post-condition violation: nation ${nationId} has ${activeCount} active president rows (expected exactly 1)`);
     }
 
+    // Mirror the active president onto nations.head_of_state_* so the UI
+    // (which reads the nation row, not the presidents table) stays
+    // current. Single source of mirror logic in the SQL RPC.
+    const { error: syncErr } = await supabase.rpc('sync_nation_head_of_state', { p_nation_id: nationId });
+    if (syncErr) console.error(`[inauguratePresident] HOS sync failed for ${nationId}:`, syncErr.message);
+
     // Phase 5a: presidential ideology shift removed. The legacy mechanic
     // wrote a +15 shift on the winning candidate's ideology axis to faction_
     // ideology. With sectors as the live political dimension, ideology data
@@ -14169,10 +14181,12 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
  * Always schedules parliamentary. Presidential systems also get presidential elections.
  */
 async function ensureElectionsScheduled(supabase, nation, currentTick) {
-    // Always ensure a parliamentary election is scheduled
+    // Parliamentary cycle (every parliamentaryTermTicks). Read first so
+    // the presidential branch below can align onto it for first-ever
+    // presidential elections.
     const { data: futureParl } = await supabase
         .from('elections')
-        .select('id')
+        .select('id, election_tick')
         .eq('nation_id', nation.id)
         .eq('status', 'scheduled')
         .eq('election_type', 'parliamentary')
@@ -14180,18 +14194,24 @@ async function ensureElectionsScheduled(supabase, nation, currentTick) {
         .limit(1)
         .maybeSingle();
 
+    let parlTick = futureParl?.election_tick ?? null;
     if (!futureParl) {
+        parlTick = currentTick + getParliamentaryTermTicks(nation);
         const { error: parlErr } = await supabase.from('elections').insert({
             nation_id: nation.id,
-            election_tick: currentTick + getParliamentaryTermTicks(nation),
+            election_tick: parlTick,
             election_type: 'parliamentary',
             status: 'scheduled'
         });
         if (parlErr) console.error(`Failed to schedule parliamentary election for ${nation.name}:`, parlErr.message);
-        else console.log(`Scheduled next parliamentary election for ${nation.name}`);
+        else console.log(`Scheduled next parliamentary election for ${nation.name} at tick ${parlTick}`);
     }
 
-    // Presidential systems also need presidential elections
+    // Presidential cycle (every presidentialTermTicks, must coincide
+    // with a parliamentary tick — every other parliamentary election
+    // is a "General" with both fired together; the off ones are
+    // midterms). Cycles stay aligned naturally after the first General
+    // because presidentialTerm = 2 × parliamentaryTerm by design.
     if (hasElectedPresident(nation)) {
         const { data: futurePres } = await supabase
             .from('elections')
@@ -14204,14 +14224,30 @@ async function ensureElectionsScheduled(supabase, nation, currentTick) {
             .maybeSingle();
 
         if (!futurePres) {
+            // First-ever presidential election: align with the next
+            // parliamentary tick so the FIRST election fires as a
+            // General (P+P together) instead of leaving the nation
+            // president-less for a full presidential cycle.
+            const { data: pastPres } = await supabase
+                .from('elections')
+                .select('id')
+                .eq('nation_id', nation.id)
+                .eq('election_type', 'presidential')
+                .limit(1)
+                .maybeSingle();
+
+            const presTick = pastPres
+                ? currentTick + getPresidentialTermTicks(nation)
+                : (parlTick ?? currentTick + getParliamentaryTermTicks(nation));
+
             const { error: presErr } = await supabase.from('elections').insert({
                 nation_id: nation.id,
-                election_tick: currentTick + getPresidentialTermTicks(nation),
+                election_tick: presTick,
                 election_type: 'presidential',
                 status: 'scheduled'
             });
             if (presErr) console.error(`Failed to schedule presidential election for ${nation.name}:`, presErr.message);
-            else console.log(`Scheduled next presidential election for ${nation.name}`);
+            else console.log(`Scheduled next presidential election for ${nation.name} at tick ${presTick}${pastPres ? '' : ' (first-ever — paired with parliamentary)'}`);
         }
     }
 }
@@ -22407,9 +22443,14 @@ async function installHOG(supabase, opts) {
             .eq('nation_id', nationId)
             .eq('active', true);
 
+        // History-preserving INSERT (Fix C, 20260827). The previous
+        // upsert with onConflict: 'nation_id' clobbered prior rows in
+        // place; after the partial unique on (nation_id) WHERE active,
+        // inactive history rows are kept and the new active row is
+        // simply inserted.
         const { error: hogErr } = await supabase
             .from('head_of_government')
-            .upsert({
+            .insert({
                 nation_id: nationId,
                 faction_id: factionId,
                 candidate_id: candidateId,
@@ -22419,7 +22460,7 @@ async function installHOG(supabase, opts) {
                 trait_key: traitKey,
                 appointed_tick: currentTick,
                 active: true,
-            }, { onConflict: 'nation_id' });
+            });
 
         if (hogErr) throw hogErr;
     }
@@ -32210,6 +32251,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         is_active: false,
                         removal_reason: 'impeached'
                     }).eq('id', proc.president_id);
+
+                    // Mirror the now-vacant seat onto the nation row.
+                    const { error: hosSyncErr } = await supabase.rpc('sync_nation_head_of_state', { p_nation_id: nation.id });
+                    if (hosSyncErr) console.error(`[Impeachment] HOS sync failed for ${nation.name}:`, hosSyncErr.message);
 
                     // President's party takes massive momentum hit
                     await adjustFactionMomentum(supabase, president.faction_id, nation.id, -5, { source: 'impeachment:convicted', tick: newTick });
