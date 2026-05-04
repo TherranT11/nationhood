@@ -3697,17 +3697,10 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
 
     const ns = (key) => Number(nation[key] ?? 50);
 
-    // ── INLINE MIRROR of js/game/wages.js ─────────────────────────────
-    // This file is hand-maintained (sync-edge-function.js only targets
-    // advance-tick, not advance-corp-tick), so it can't import the
-    // canonical module. Keep these two blocks in sync — js/game/wages.js
-    // is the source; this is the mirror.
-    const WAGE_MULTIPLIERS = { general: 2, skilled: 3, innovative: 6 };
-    const baseAnnualWage = (ns('minimum_wage') / 100) * 48000;
-    const inflMod = 1 + ((ns('inflation')           - 50) / 100 * 0.5);
-    const solMod  = 1 + ((ns('standard_of_living')  - 50) / 100 * 0.5);
-    const calcWage = (mult) => Math.round(baseAnnualWage * mult * inflMod * solMod);
-    // ── end mirror ───────────────────────────────────────────────────
+    // Workforce-wages baseline removed (per design). Construction corps
+    // still pay per-crew wages via apply_construction_wages_for_nation
+    // ('wages' event, "Construction wages" label); other sectors no
+    // longer carry a generic monthly headcount payroll.
 
     // Loan servicing constants (5% annual rate, 10-year amortization).
     // LOAN_ANNUAL_RATE_PCT is in percent form (5 = 5%) so the shared
@@ -3734,15 +3727,6 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
 
         const currentLoans = Number(corp.corp_loans || 0);
 
-        // Per-corp wages from actual workforce counts
-        const generalCount = Number(corp.corp_general_workforce ?? 0);
-        const skilledCount = Number(corp.corp_skilled_workforce ?? 0);
-        const innovativeCount = Number(corp.corp_innovative_workforce ?? 0);
-        const annualWages = (generalCount    * calcWage(WAGE_MULTIPLIERS.general))
-                          + (skilledCount    * calcWage(WAGE_MULTIPLIERS.skilled))
-                          + (innovativeCount * calcWage(WAGE_MULTIPLIERS.innovative));
-        const monthlyWages = Math.round(annualWages / 12);
-
         // Executive salaries (C-suite: CEO, CFO, COO, CTO, CMO, CLO, Lobbyist)
         const { data: executives } = await supabase.from('corp_executives')
             .select('salary_per_year')
@@ -3751,12 +3735,11 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
         const totalExecAnnual = (executives || []).reduce((sum, ex) => sum + (Number(ex.salary_per_year) || 0), 0);
         const monthlyExecSalaries = Math.round(totalExecAnnual / 12);
 
-        // Fixed-overhead baseline removed (per design). Property maintenance
-        // is already billed per-property elsewhere; admin/insurance/utilities
-        // were folded into the $75k floor and are gone with it. Corps now
-        // burn only on real workforce + executive salaries plus debt service
-        // and per-property maintenance billed elsewhere.
-        const monthlyIncome = -monthlyWages - monthlyExecSalaries;
+        // Generic monthly costs collapsed to executive salaries only.
+        // Workforce wages and Fixed Overhead were both removed; sector-
+        // specific costs (Construction crew wages, per-property
+        // maintenance, aircraft ops, etc.) are billed in their own paths.
+        const monthlyIncome = -monthlyExecSalaries;
 
         // Compute monthly loan payment (amortized) and split into interest + principal
         let debtPayment = 0;
@@ -3789,7 +3772,6 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
         } else {
             // Log each P&L component to corp_cash_events, only after the
             // cash write succeeded.
-            logCashEvent(corp.id, 'wages',          'Workforce wages',        -monthlyWages);
             logCashEvent(corp.id, 'exec_salary',    'Executive salaries',     -monthlyExecSalaries);
             // Debt service is currently lumped — interest + principal under
             // debt_interest. Splitting requires the loan-amortization fields
