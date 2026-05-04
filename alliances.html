@@ -549,6 +549,55 @@ const ARTICLE_TAG_CLASS = {
 const NEGOTIATION_DURATION_TICKS = 6;            // alliance dissolves after this many ticks without consensus
 const FAILED_NEGOTIATION_REPUTATION_HIT = -1;    // applied to every member if dissolution fires
 
+// ─── Per-sector charter articles ──────────────────────────────────
+// Single source of truth for the four candidate articles a founding
+// negotiation surfaces. Keyed by canonical DB sector value (Finance,
+// Construction, Shipping, Airline) — the negotiation view pulls
+// SECTOR_ARTICLES[n.sector] to render the candidate cards.
+//
+// Banking + Shipping article sets are placeholders until the design
+// pass for those sectors lands. Empty arrays render the "no candidate
+// articles defined" state cleanly so a Banking founding negotiation
+// doesn't accidentally fall through to Construction copy.
+const SECTOR_ARTICLES = {
+    Construction: [
+        { id: 'buyer_first', name: 'Buyer First Supply Chain', kind: 'coordinating',
+          body: 'First refusal on member surplus at preferred prices. +1.5 Supply Chain when sourcing from members.',
+          cartel: 0.1, chs: 0.5 },
+        { id: 'joint_crews', name: 'Joint Crews', kind: 'cooperative',
+          body: 'Use partner crews on cross-border projects at ~30% lower cost. Bid on foreign projects.',
+          cartel: 0.0, chs: 0.4 },
+        { id: 'safety', name: 'Safety & Standards Firm', kind: 'coordinating',
+          body: '+1 Regulatory Standing in shared nations. Joint liability for safety failures.',
+          cartel: 0.2, chs: 0.4 },
+        { id: 'megaproject', name: 'Megaproject Syndicate', kind: 'coordinating',
+          body: 'Pool crews on megaprojects. Lock crews for project duration; failures hit all members.',
+          cartel: 0.0, chs: 0.6 },
+    ],
+    Airline: [
+        { id: 'codeshare', name: 'Codeshare Compact', kind: 'cooperative',
+          body: 'Members sell seats on each other’s flights as their own. +1 effective Routes per partner served. Revenue split (60/40 in favor of the operating carrier); no control over partner service quality.',
+          cartel: 0.0, chs: 0.5 },
+        { id: 'hub_share', name: 'Hub Sharing Accord', kind: 'coordinating',
+          body: 'Members lease gates, ground crews, and lounge access at each other’s hubs. −20% hub maintenance when a partner is co-located. +0.1 Operational Safety from coordinated turnarounds. Lock-in to alliance hubs; joint reputation hit on hub-side incidents.',
+          cartel: 0.1, chs: 0.5 },
+        { id: 'fleet_proc', name: 'Fleet Procurement Bloc', kind: 'coordinating',
+          body: 'Pool aircraft orders for volume discounts. −15% on aircraft purchase price; standardized fleet types let members swap crews and parts in emergencies. Must order from the alliance-approved manufacturer list; a grounded type grounds everyone.',
+          cartel: 0.1, chs: 0.4 },
+        { id: 'tariff_floor', name: 'Tariff Floor Pact', kind: 'cartel',
+          body: 'Members agree minimum ticket prices on overlapping routes. Protected margins; no race to the bottom. High antitrust risk — +0.3 Cartel score per active member, member nations may launch investigations, loss-of-license risk if exposed.',
+          cartel: 0.3, chs: 0.6 },
+    ],
+    // TODO: Banking (Finance) and Shipping article sets pending the
+    // same design pass that produced Construction + Airline above.
+    Finance:  [],
+    Shipping: [],
+};
+
+function articlesForSector(sector) {
+    return SECTOR_ARTICLES[sector] || [];
+}
+
 // One in-memory mock founding-negotiation so the negotiation view is
 // reviewable end-to-end without the backend. Replace with a real
 // `alliance_negotiations` table read once that ships. Kept tagged with
@@ -568,12 +617,7 @@ const _MOCK_NEGOTIATIONS = [
             { id: 'kb', faction_name: 'Korven Builders',        nation_name: 'Vorrenstadt', stat_label: 'Crews', stat_value: 5, vote: 'joint_crews', is_founder: false, is_you: false, rapport: 'friendly' },
             { id: 'mc', faction_name: 'Marrek & Cole',          nation_name: 'Hajjara',     stat_label: 'Crews', stat_value: 4, vote: null,          is_founder: false, is_you: false, rapport: 'neutral' },
         ],
-        articles: [
-            { id: 'buyer_first',  name: 'Buyer First Supply Chain', body: 'First refusal on member surplus at preferred prices. +1.5 Supply Chain when sourcing from members.', cartel: 0.1, chs: 0.5 },
-            { id: 'joint_crews',  name: 'Joint Crews',              body: 'Use partner crews on cross-border projects at ~30% lower cost. Bid on foreign projects.',           cartel: 0.0, chs: 0.4 },
-            { id: 'safety',       name: 'Safety & Standards Firm',  body: '+1 Regulatory Standing in shared nations. Joint liability for safety failures.',                   cartel: 0.2, chs: 0.4 },
-            { id: 'megaproject',  name: 'Megaproject Syndicate',    body: 'Pool crews on megaprojects. Lock crews for project duration; failures hit all members.',           cartel: 0.0, chs: 0.6 },
-        ],
+        articles: SECTOR_ARTICLES.Construction,
         chat: [
             { author: 'First National',        is_founder: true,  ago: '6h ago', body: "Welcome to the Hajjaran Builders' Pact. I've put four candidate articles on the table — pick whichever serves you best. My vote is on Buyer First Supply Chain." },
             { author: 'Tellisar Construction', is_founder: false, ago: '5h ago', body: "Buyer First makes sense. We've been burned twice on imported steel this year. Voting with you, First National." },
@@ -1194,9 +1238,12 @@ function renderNegotiationView() {
             <!-- RIGHT: articles + your vote + chat -->
             <div class="ng-right">
                 <div class="al-section__title">Proposed Founding Articles &middot; Select One</div>
-                <div class="ng-articles">
-                    ${n.articles.map(a => renderNegotiationArticleCard(a, n, myCurrentVote, tally.get(a.id) || 0)).join('')}
-                </div>
+                ${(n.articles || []).length === 0
+                    ? `<div class="al-empty">No candidate articles defined for this sector yet.</div>`
+                    : `<div class="ng-articles">
+                        ${(n.articles || []).map(a => renderNegotiationArticleCard(a, n, myCurrentVote, tally.get(a.id) || 0)).join('')}
+                    </div>`
+                }
 
                 <div class="ng-your-vote">
                     <div>
