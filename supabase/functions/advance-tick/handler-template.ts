@@ -2149,8 +2149,20 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Phase 5: sector popularity shifts from resolved bills (vote-aligned).
         // The ideology shift / decay pipelines were removed in Phase 5b along
         // with the rest of the ideology system.
+        //
+        // Merge auto-sign / auto-enact resolutions in. Bills that pass voting
+        // in presidential systems first go to president_desk (resolveExpiredVotes
+        // emits result: 'president_desk', filtered out by normalizeResult) and
+        // are auto-signed N ticks later by processPresidentDesk. Same flow for
+        // monarchies via processRoyalAssent. Without folding those results
+        // back in, every auto-passed bill silently skipped its sector shifts.
+        const mergedResolutions = [
+            ...resolutions,
+            ...(deskResults || []).filter(r => r && r.billId && r.result),
+            ...(royalResults || []).filter(r => r && r.billId && r.result),
+        ];
         try {
-            await processSectorShifts(supabase, nation.id, resolutions);
+            await processSectorShifts(supabase, nation.id, mergedResolutions);
         } catch (sectorErr) {
             console.error(`[advanceTick] Sector shifts failed for ${nation.name} (non-fatal):`, sectorErr);
         }

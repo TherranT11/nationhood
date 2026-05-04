@@ -2457,6 +2457,15 @@ const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
 // Direction-inverting aliases are tracked separately in
 // INVERTED_ALIAS_KEYS — for those, the apply path also flips
 // up↔down / negates delta so the semantics survive the rename.
+//
+// Canonical-stats Phase 5: source code (js/game/, *.html) has been
+// converted to use canonical names directly. The aliases below are
+// RETAINED to keep legacy stat_effects JSON working — events table
+// rows, policy_options.stat_effects, bill_articles, executive_orders
+// payloads, etc. all carry historical stat_key strings like
+// 'international_reputation' / 'unemployment' / 'minimum_wage'. The
+// aliases route them to the canonical columns at apply time so
+// pre-Phase-5 saves keep behaving identically.
 const STAT_KEY_ALIASES = {
     // ── Direct renames into the alpha-25 schema ──
     civil_unrest:               'unrest',
@@ -9384,7 +9393,9 @@ async function processRoyalAssent(supabase, nation, currentTick) {
         const enactment = await enactBill(supabase, bill, currentTick);
         if (!enactment?.success) {
             console.error(`[processRoyalAssent] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
-            results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_enacted', enactFailed: true, error: enactment?.error });
+            // result: 'failed_enactment' so processSectorShifts skips
+            // (normalizeResult only acts on 'passed' / 'failed').
+            results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_enacted', result: 'failed_enactment', enactFailed: true, error: enactment?.error });
             continue;
         }
 
@@ -9403,7 +9414,12 @@ async function processRoyalAssent(supabase, nation, currentTick) {
             console.warn(`[processRoyalAssent] fireBillEvent failed (non-fatal):`, evErr?.message || evErr);
         }
 
-        results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_enacted' });
+        // result: 'passed' so the orchestrator can merge this entry
+        // into the resolutions array passed to processSectorShifts.
+        // Without it, royal-assent auto-enactments skip sector shifts
+        // (the legacy resolveExpiredVotes path emits 'awaiting_royal_assent'
+        // not 'passed' on the floor-resolution tick).
+        results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_enacted', result: 'passed' });
     }
     return results;
 }
@@ -14575,14 +14591,23 @@ async function processPresidentDesk(supabase, nation, currentTick) {
         const enactment = await enactBill(supabase, bill, currentTick);
         if (!enactment?.success) {
             console.error(`[processPresidentDesk] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
-            results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', enactFailed: true, error: enactment?.error });
+            // result: 'failed_enactment' so the resolutions consumer
+            // (processSectorShifts) skips the row via normalizeResult.
+            results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', result: 'failed_enactment', enactFailed: true, error: enactment?.error });
             continue;
         }
 
         const floorVotes = tallyFloorVotes(bill);
         await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationId: nation.id, nationName: nation.name, votesFor: floorVotes.votesFor, votesAgainst: floorVotes.votesAgainst, votesAbstain: floorVotes.votesAbstain, articleCount: (bill.bill_articles || []).length, billNameOverride: bill.bill_name + ' (auto-signed by President)' });
 
-        results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed' });
+        // result: 'passed' so the orchestrator can fold this into the
+        // resolutions array fed to processSectorShifts. Without it, the
+        // sponsor + voter sector-popularity shifts that should fire on
+        // every passed bill never fire for auto-signed presidential
+        // bills (they go from voting → president_desk → passed across
+        // multiple ticks, and only resolveExpiredVotes' resolutions
+        // reach the sector-shift pipeline today).
+        results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_signed', result: 'passed' });
     }
     return results;
 }
@@ -24713,7 +24738,7 @@ const MODIFIERS = {
         category: 'competitive',
         applies_to: 'disfavored',
         stat_effects: [
-            { stat_key: 'unemployment', delta: 0.1 },
+            { stat_key: 'unskilled_workers', delta: -0.1 },
             { stat_key: 'poverty_rate', delta: 0.1 },
             { stat_key: 'emigration', delta: 0.1 },
         ],
@@ -24751,7 +24776,7 @@ const MODIFIERS = {
         name: 'International Attention on Dispute',
         category: 'competitive',
         applies_to: null, // applies to the more aggressive nation (most threatening actions)
-        stat_effects: [{ stat_key: 'international_reputation', delta: -0.1 }],
+        stat_effects: [{ stat_key: 'global_image', delta: -0.1 }],
         duration: 20,
         removed_by: [], // removed when tension drops to Low or Moderate
         auto_trigger: { type: 'tension_level', threshold: 'HIGH' },
@@ -24982,7 +25007,7 @@ const MODIFIERS = {
         name: 'International Legal Precedent Forming',
         category: 'competitive',
         applies_to: null, // set dynamically — applies to legally weaker nation
-        stat_effects: [{ stat_key: 'international_reputation', delta: -0.1 }],
+        stat_effects: [{ stat_key: 'global_image', delta: -0.1 }],
         duration: 15,
         removed_by: [], // expires or court ruling
     },
@@ -24993,7 +25018,7 @@ const MODIFIERS = {
         category: 'competitive',
         applies_to: 'administering',
         stat_effects: [
-            { stat_key: 'international_reputation', delta: -0.15 },
+            { stat_key: 'global_image', delta: -0.15 },
             { stat_key: 'freedom_index', delta: -0.1 },
         ],
         duration: 20,
@@ -25160,7 +25185,7 @@ const MODIFIERS = {
         applies_to: 'non_administering',
         stat_effects: [
             { stat_key: 'manufacturing_output', delta: -0.1 },
-            { stat_key: 'unemployment', delta: 0.1 },
+            { stat_key: 'unskilled_workers', delta: -0.1 },
         ],
         duration: null,
         removed_by: ['negotiate_voluntary_export_restraints', 'domestic_industry_subsidy'],
@@ -25200,7 +25225,7 @@ const MODIFIERS = {
         category: 'competitive',
         applies_to: 'non_administering',
         stat_effects: [
-            { stat_key: 'unemployment', delta: 0.2 },
+            { stat_key: 'unskilled_workers', delta: -0.2 },
             { stat_key: 'poverty_rate', delta: 0.1 },
             { stat_key: 'emigration', delta: 0.1 },
             { stat_key: 'civil_unrest', delta: 0.1 },
@@ -25238,7 +25263,7 @@ const MODIFIERS = {
         name: 'Dumping Accusations',
         category: 'competitive',
         applies_to: 'administering',
-        stat_effects: [{ stat_key: 'international_reputation', delta: -0.1 }],
+        stat_effects: [{ stat_key: 'global_image', delta: -0.1 }],
         relations_delta: -0.1,
         duration: 20,
         removed_by: ['negotiate_voluntary_export_restraints'],
@@ -25492,8 +25517,8 @@ async function initializeDeck(supabase, issue, nationA, nationB, currentTick) {
     shuffleArray(allCardNumbers);
 
     // Determine draw counts from Foreign Affairs (international_reputation)
-    const drawA = getDrawCount(nationA.international_reputation);
-    const drawB = getDrawCount(nationB.international_reputation);
+    const drawA = getDrawCount(nationA.global_image);
+    const drawB = getDrawCount(nationB.global_image);
 
     // Deal hands from the top of the shuffled deck
     const handA = allCardNumbers.splice(0, drawA);
@@ -25519,7 +25544,7 @@ async function initializeDeck(supabase, issue, nationA, nationB, currentTick) {
         return false;
     }
 
-    console.log(`[Issues] Deck initialized for ${issue.issue_type} (${issue.id}): ${allCardNumbers.length + handA.length + handB.length} cards total. Nation A drew ${drawA} (FA: ${Math.round(nationA.international_reputation || 0)}), Nation B drew ${drawB} (FA: ${Math.round(nationB.international_reputation || 0)}). Deck remaining: ${deckRemaining.length}.`);
+    console.log(`[Issues] Deck initialized for ${issue.issue_type} (${issue.id}): ${allCardNumbers.length + handA.length + handB.length} cards total. Nation A drew ${drawA} (FA: ${Math.round(nationA.global_image || 0)}), Nation B drew ${drawB} (FA: ${Math.round(nationB.global_image || 0)}). Deck remaining: ${deckRemaining.length}.`);
     return true;
 }
 
@@ -26066,7 +26091,7 @@ async function resolveDeckExhaustion(supabase, issue, nationA, nationB, currentM
 
         await applyIssueStatEffects(supabase, winner.id, winner, [
             { stat_key: 'gov_approval', delta: 2 },
-            { stat_key: 'international_reputation', delta: 0.5 },
+            { stat_key: 'global_image', delta: 0.5 },
         ]);
         await applyIssueStatEffects(supabase, loser.id, loser, [
             { stat_key: 'gov_approval', delta: -2 },
@@ -26121,8 +26146,8 @@ async function reshuffleDeck(supabase, issue, cardCount, nationA, nationB, curre
     const deckCards = allNumbers.slice(0, Math.min(cardCount, allNumbers.length));
 
     // Redeal based on current FA stats
-    const drawA = getDrawCount(nationA?.international_reputation);
-    const drawB = getDrawCount(nationB?.international_reputation);
+    const drawA = getDrawCount(nationA?.global_image);
+    const drawB = getDrawCount(nationB?.global_image);
     const handA = deckCards.splice(0, Math.min(drawA, deckCards.length));
     const handB = deckCards.splice(0, Math.min(drawB, deckCards.length));
 
@@ -26856,7 +26881,7 @@ async function spawnIncidentFromIssue(supabase, issue, nationA, nationB, leverag
     // Apply immediate stat effects on escalation
     await nudgeIssueRelations(supabase, issue.nation_a_id, issue.nation_b_id, -5);
     await applyIssueStatEffects(supabase, nationA.id, nationA, [{ stat_key: 'civil_unrest', delta: 1 }]);
-    await applyIssueStatEffects(supabase, nationB.id, nationB, [{ stat_key: 'international_reputation', delta: -0.5 }]);
+    await applyIssueStatEffects(supabase, nationB.id, nationB, [{ stat_key: 'global_image', delta: -0.5 }]);
 
     // Insert system chat messages
     const crisisName = `${nationA.name}-${nationB.name} Fishing Dispute`;
@@ -28255,11 +28280,17 @@ async function processIncidentBlowback(supabase, incident, nationMap, currentTic
     const loserRepBonus = 0.5 * excess;
     const loserRelBonus = 1 * excess;
 
-    // Apply Int'l_Reputation
-    const winnerRep = Math.max(0, Number(winner.intl_reputation ?? 50) + winnerRepPenalty);
-    const loserRep = Math.min(100, Number(loser.intl_reputation ?? 50) + loserRepBonus);
-    await supabase.from('nations').update({ intl_reputation: winnerRep }).eq('id', winner.id);
-    await supabase.from('nations').update({ intl_reputation: loserRep }).eq('id', loser.id);
+    // Apply Global Image (canonical-stats Phase 5; was intl_reputation,
+    // which has never been a real column — these UPDATEs were silently
+    // rejected by PostgREST schema-cache pre-fix).
+    const winnerRep = Math.max(0, Number(winner.global_image ?? 50) + winnerRepPenalty);
+    const loserRep = Math.min(100, Number(loser.global_image ?? 50) + loserRepBonus);
+    const { error: winnerRepErr } = await supabase.from('nations')
+        .update({ global_image: winnerRep }).eq('id', winner.id);
+    if (winnerRepErr) console.error('[incidents] winner global_image update failed:', winnerRepErr.message);
+    const { error: loserRepErr } = await supabase.from('nations')
+        .update({ global_image: loserRep }).eq('id', loser.id);
+    if (loserRepErr) console.error('[incidents] loser global_image update failed:', loserRepErr.message);
 
     // Apply Relations penalties/bonuses with non-involved nations
     const nonInvolved = Object.values(nationMap).filter(
@@ -32319,8 +32350,20 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Phase 5: sector popularity shifts from resolved bills (vote-aligned).
         // The ideology shift / decay pipelines were removed in Phase 5b along
         // with the rest of the ideology system.
+        //
+        // Merge auto-sign / auto-enact resolutions in. Bills that pass voting
+        // in presidential systems first go to president_desk (resolveExpiredVotes
+        // emits result: 'president_desk', filtered out by normalizeResult) and
+        // are auto-signed N ticks later by processPresidentDesk. Same flow for
+        // monarchies via processRoyalAssent. Without folding those results
+        // back in, every auto-passed bill silently skipped its sector shifts.
+        const mergedResolutions = [
+            ...resolutions,
+            ...(deskResults || []).filter(r => r && r.billId && r.result),
+            ...(royalResults || []).filter(r => r && r.billId && r.result),
+        ];
         try {
-            await processSectorShifts(supabase, nation.id, resolutions);
+            await processSectorShifts(supabase, nation.id, mergedResolutions);
         } catch (sectorErr) {
             console.error(`[advanceTick] Sector shifts failed for ${nation.name} (non-fatal):`, sectorErr);
         }

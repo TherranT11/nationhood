@@ -13,7 +13,7 @@
  */
 
 import { GAME_CONFIG, deductAP } from './config.js';
-import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
+import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines, NATION_STAT_COLUMN_SET } from './stats.js';
 import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, EO_DOMAIN, getMinistryDomain, MINISTRY_OFFICE_NAMES } from './government-types.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility } from './momentum.js';
 import { getNationNames } from './political-actions.js';
@@ -71,8 +71,8 @@ export const STIMULATE_ECONOMY_ORDERS = {
         ideology: 'COLLECTIVISM',
         name: 'Federal Jobs Program Order',
         description: 'Direct agencies to hire for infrastructure repair, conservation, and public services.',
-        stat_increases: { gdp_growth: 1, physical_infrastructure: 2, social_mobility: 1 },
-        stat_decreases: { unemployment: 3, poverty_rate: 2, debt_growth: 3, efficiency: 1 },
+        stat_increases: { gdp_growth: 1, physical_infrastructure: 2, social_mobility: 1, unskilled_workers: 3 },
+        stat_decreases: { poverty_rate: 2, debt_growth: 3, efficiency: 1 },
     },
     collectivism_wage_floor: {
         key: 'collectivism_wage_floor',
@@ -98,7 +98,7 @@ export const STIMULATE_ECONOMY_ORDERS = {
         name: 'Export Control on Strategic Resources',
         description: 'Restrict export of rare minerals, semiconductors, and energy tech to protect domestic industry.',
         stat_increases: { rare_minerals: 2, manufacturing_output: 2, energy_generation: 1, stability: 1 },
-        stat_decreases: { trade_balance: 2, foreign_investment: 2, international_reputation: 2, gdp_growth: 1 },
+        stat_decreases: { trade_balance: 2, foreign_investment: 2, global_image: 2, gdp_growth: 1 },
     },
     globalism_investment_zones: {
         key: 'globalism_investment_zones',
@@ -147,8 +147,8 @@ export const STIMULATE_ECONOMY_ORDERS = {
         ideology: 'LIBERTY',
         name: 'Federal Licensing Reform Order',
         description: 'Direct agencies to eliminate or reciprocate occupational licenses — let people work freely across regions.',
-        stat_increases: { labor_force_participation: 2, service_output: 2, social_mobility: 2, crime_rate: 1 },
-        stat_decreases: { unemployment: 2, healthcare_quality: 1, efficiency: 1, union_strength: 1 },
+        stat_increases: { unskilled_workers: 4, service_output: 2, social_mobility: 2, crime_rate: 1 },
+        stat_decreases: { healthcare_quality: 1, efficiency: 1, union_strength: 1 },
     },
 
     // === Axis: Progress vs Tradition ===
@@ -165,8 +165,8 @@ export const STIMULATE_ECONOMY_ORDERS = {
         ideology: 'PROGRESS',
         name: 'AI & Automation Workforce Initiative',
         description: 'Redirect federal training funds to tech reskilling, open federal data for startups.',
-        stat_increases: { digital_infrastructure: 3, gdp_growth: 2, higher_education: 1, service_output: 2, unemployment: 2, income_inequality: 1 },
-        stat_decreases: { manufacturing_output: 1, religiosity: 1 },
+        stat_increases: { digital_infrastructure: 3, gdp_growth: 2, higher_education: 1, service_output: 2, income_inequality: 1 },
+        stat_decreases: { manufacturing_output: 1, religiosity: 1, unskilled_workers: 2 },
     },
     tradition_energy_unleashing: {
         key: 'tradition_energy_unleashing',
@@ -174,15 +174,15 @@ export const STIMULATE_ECONOMY_ORDERS = {
         name: 'Domestic Energy Unleashing Order',
         description: 'Open federal lands for oil, gas, and coal extraction — fast-track drilling permits.',
         stat_increases: { oil_and_gas: 3, manufacturing_output: 2, gdp_growth: 2, pollution: 3, carbon_emissions: 3 },
-        stat_decreases: { fuel_prices: 2, renewable_energy_percentage: 1, international_reputation: 1 },
+        stat_decreases: { fuel_prices: 2, renewable_energy_percentage: 1, global_image: 1 },
     },
     tradition_manufacturing_revival: {
         key: 'tradition_manufacturing_revival',
         ideology: 'TRADITION',
         name: 'Manufacturing Revival Order',
         description: 'Tax incentives via executive directive for companies reshoring factories — focus on heavy industry, steel, auto.',
-        stat_increases: { manufacturing_output: 3, gdp_growth: 1, physical_infrastructure: 1, cost_of_living: 1, carbon_emissions: 1 },
-        stat_decreases: { unemployment: 2, service_output: 1, trade_balance: 1 },
+        stat_increases: { manufacturing_output: 3, gdp_growth: 1, physical_infrastructure: 1, cost_of_living: 1, carbon_emissions: 1, unskilled_workers: 2 },
+        stat_decreases: { service_output: 1, trade_balance: 1 },
     },
 
     // === Axis: Security vs Freedom ===
@@ -215,8 +215,8 @@ export const STIMULATE_ECONOMY_ORDERS = {
         ideology: 'FREEDOM',
         name: 'Permit-Free Enterprise Zones',
         description: 'Designate urban zones where federal permits, inspections, and zoning restrictions are lifted for 2 years.',
-        stat_increases: { gdp_growth: 3, housing_affordability: 2, urbanization: 1, pollution: 2, crime_rate: 1 },
-        stat_decreases: { unemployment: 2, healthcare_quality: 1, stability: 1 },
+        stat_increases: { gdp_growth: 3, housing_affordability: 2, urbanization: 1, pollution: 2, crime_rate: 1, unskilled_workers: 2 },
+        stat_decreases: { healthcare_quality: 1, stability: 1 },
     },
 };
 
@@ -1155,9 +1155,22 @@ export async function issueStimulusOrder(supabase, nationId, factionId, stimulus
         effectsSummary.decreases[stat] = magnitude;
     }
 
-    // Write stat updates
+    // Write stat updates. Defensive filter against the canonical column
+    // set: any EO definition referencing a deleted-stat key (older EOs
+    // still target poverty_rate / efficiency / etc.) gets silently
+    // dropped here instead of rejecting the whole UPDATE batch with a
+    // PostgREST schema-cache error. Pre-filter logged so future debug
+    // surfaces deprecation drift.
     if (Object.keys(statUpdates).length > 0) {
-        await supabase.from('nations').update(statUpdates).eq('id', nationId);
+        const filteredUpdates = {};
+        for (const [k, v] of Object.entries(statUpdates)) {
+            if (NATION_STAT_COLUMN_SET.has(k)) filteredUpdates[k] = v;
+        }
+        if (Object.keys(filteredUpdates).length > 0) {
+            const { error: updErr } = await supabase.from('nations')
+                .update(filteredUpdates).eq('id', nationId);
+            if (updErr) console.error('[executive-orders] stat update failed:', updErr.message);
+        }
     }
 
     // Insert executive order record

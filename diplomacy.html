@@ -496,7 +496,8 @@ function _computeStatCommodities(nation) {
     const solStat        = Number(nation.standard_of_living) || 0;
     const popMillions    = (Number(nation.population) || 0) / 1_000_000;
     const mineralsStat   = Number(nation.minerals)        || 0;
-    const workforceStat  = Number(nation.workforce)       || 0;
+    // Canonical-stats Phase 4: workforce split → average of the two new tiers.
+    const workforceStat  = ((Number(nation.unskilled_workers) || 0) + (Number(nation.skilled_workers) || 0)) / 2;
     const farmlandStat   = Number(nation.farmland)        || 0;
     const educationStat  = Number(nation.education)       || 0;
     const serviceStat    = Number(nation.service_sector)  || 0;
@@ -892,8 +893,8 @@ function renderTradeEconomy() {
                 { label: 'Health',          delta: -0.2 },
                 { label: 'Public Approval', delta: -0.2 },
                 { label: 'Unrest',          delta:  0.2 },
-                { label: 'Crime',           delta:  0.1 },
-                { label: 'Workforce',       delta: -0.1 },
+                { label: 'Crime',                delta:  0.1 },
+                { label: 'Unskilled Workers',    delta: -0.1 },
             ],
             over: [
                 { label: 'Health',             delta:  0.1 },
@@ -2600,7 +2601,7 @@ function getNationEnergyBalance(nation) {
 function getNationMineralsBalance(nation) {
     const n = nation || {};
     const mineralsStat  = Number(n.minerals)       || 0;
-    const workforceStat = Number(n.workforce)      || 0;
+    const workforceStat = ((Number(n.unskilled_workers) || 0) + (Number(n.skilled_workers) || 0)) / 2;
     const industryStat  = Number(n.industry)       || 0;
     const infraStat     = Number(n.infrastructure) || 0;
     const production    = (mineralsStat / 3) * ((workforceStat + industryStat) / 200);
@@ -2614,7 +2615,7 @@ function getNationMineralsBalance(nation) {
 function getNationFoodBalance(nation) {
     const n = nation || {};
     const farmlandStat  = Number(n.farmland)  || 0;
-    const workforceStat = Number(n.workforce) || 0;
+    const workforceStat = ((Number(n.unskilled_workers) || 0) + (Number(n.skilled_workers) || 0)) / 2;
     const popMillions   = (Number(n.population) || 0) / 1_000_000;
     const production    = (farmlandStat / 2) * (workforceStat / 100);
     const demand        = popMillions / 3;
@@ -2627,7 +2628,7 @@ function getNationFoodBalance(nation) {
 function getNationConsumerGoodsBalance(nation) {
     const n = nation || {};
     const industryStat  = Number(n.industry)           || 0;
-    const workforceStat = Number(n.workforce)          || 0;
+    const workforceStat = ((Number(n.unskilled_workers) || 0) + (Number(n.skilled_workers) || 0)) / 2;
     const solStat       = Number(n.standard_of_living) || 0;
     const popMillions   = (Number(n.population) || 0) / 1_000_000;
     const production    = (industryStat / 3) * (workforceStat / 100);

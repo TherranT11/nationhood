@@ -3837,7 +3837,9 @@ export async function processRoyalAssent(supabase, nation, currentTick) {
         const enactment = await enactBill(supabase, bill, currentTick);
         if (!enactment?.success) {
             console.error(`[processRoyalAssent] Enactment failed for bill ${bill.id}: ${enactment?.error}`);
-            results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_enacted', enactFailed: true, error: enactment?.error });
+            // result: 'failed_enactment' so processSectorShifts skips
+            // (normalizeResult only acts on 'passed' / 'failed').
+            results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_enacted', result: 'failed_enactment', enactFailed: true, error: enactment?.error });
             continue;
         }
 
@@ -3856,7 +3858,12 @@ export async function processRoyalAssent(supabase, nation, currentTick) {
             console.warn(`[processRoyalAssent] fireBillEvent failed (non-fatal):`, evErr?.message || evErr);
         }
 
-        results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_enacted' });
+        // result: 'passed' so the orchestrator can merge this entry
+        // into the resolutions array passed to processSectorShifts.
+        // Without it, royal-assent auto-enactments skip sector shifts
+        // (the legacy resolveExpiredVotes path emits 'awaiting_royal_assent'
+        // not 'passed' on the floor-resolution tick).
+        results.push({ billId: bill.id, billName: bill.bill_name, action: 'auto_enacted', result: 'passed' });
     }
     return results;
 }

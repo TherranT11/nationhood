@@ -676,8 +676,10 @@ function renderOverviewTab(nation) {
     gdpGrowthSub += '<br><span style="font-size:11px;opacity:0.85">Predicted Yearly Growth: ' + yearlyDisplay + '</span>';
     h += renderOverviewCard('GDP Growth', growthDisplay, growthPct >= 0 ? 'surplus' : 'deficit', gdpGrowthSub);
 
-    var workforce = Number(nation.workforce) || 50;
-    h += renderOverviewCard('Workforce', Math.round(workforce), workforce >= 70 ? 'surplus' : workforce >= 40 ? 'neutral' : 'deficit', getTrendArrow('workforce', workforce, false));
+    var unskilled = Number(nation.unskilled_workers) || 0;
+    var skilled   = Number(nation.skilled_workers)   || 0;
+    h += renderOverviewCard('Unskilled Workers', Math.round(unskilled), unskilled >= 70 ? 'surplus' : unskilled >= 40 ? 'neutral' : 'deficit', getTrendArrow('unskilled_workers', unskilled, false));
+    h += renderOverviewCard('Skilled Workers',   Math.round(skilled),   skilled   >= 70 ? 'surplus' : skilled   >= 40 ? 'neutral' : 'deficit', getTrendArrow('skilled_workers',   skilled,   false));
 
     var sol = Number(nation.standard_of_living) || 50;
     h += renderOverviewCard('Std of Living', Math.round(sol), sol >= 70 ? 'surplus' : sol >= 40 ? 'neutral' : 'deficit', getTrendArrow('standard_of_living', sol, false));
@@ -722,7 +724,9 @@ function renderRankings(nation) {
         { key: 'budget', label: 'Budget', higher: true, fmt: fmtMonetary('budget') },
         { key: 'gdp_growth', label: 'GDP Growth', higher: true, fmt: function(v) { var p = ((v - 50) / 50) * 1; return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; } },
         { key: 'standard_of_living', label: 'Std of Living', higher: true, fmt: function(v) { return Math.round(v); } },
-        { key: 'workforce', label: 'Workforce', higher: true, fmt: function(v) { return Math.round(v); } },
+        { key: 'unskilled_workers', label: 'Unskilled Workers', higher: true, fmt: function(v) { return Math.round(v); } },
+        { key: 'skilled_workers', label: 'Skilled Workers', higher: true, fmt: function(v) { return Math.round(v); } },
+        { key: 'wages', label: 'Wages', higher: true, fmt: function(v) { return Math.round(v); } },
         { key: 'debt', label: 'National Debt', higher: false, fmt: fmtMonetary('debt') }
     ];
 
@@ -1327,8 +1331,8 @@ function bv2ExpenditureRow(label, subtitle, value, fundingPct) {
 var TRADE_IMPORT_DRIVERS = {
     fuel_energy: [
         { key: 'energy', inverted: true },
-        { key: 'power', inverted: true },
-        { key: 'workforce', inverted: false },
+        { key: 'global_image', inverted: true },
+        { key: 'unskilled_workers', inverted: false },
         { key: 'industry', inverted: false },
         { key: 'standard_of_living', inverted: false }
     ],
@@ -1351,14 +1355,14 @@ var TRADE_IMPORT_DRIVERS = {
         { key: 'farmland', inverted: true },
         { key: 'infrastructure', inverted: true },
         { key: 'energy', inverted: true },
-        { key: 'workforce', inverted: false }
+        { key: 'unskilled_workers', inverted: false }
     ],
     cash_crops: [
         { key: 'standard_of_living', inverted: false }
     ],
     manufactured_goods: [
         { key: 'industry', inverted: true },
-        { key: 'workforce', inverted: false },
+        { key: 'unskilled_workers', inverted: false },
         { key: 'standard_of_living', inverted: false },
         { key: 'education', inverted: false }
     ],
@@ -1769,13 +1773,13 @@ function renderIndustriesTab(nation) {
         { key: 'gdp_growth', label: 'GDP Growth' },
         { key: 'population', label: 'Population' },
         { key: 'standard_of_living', label: 'Std. of Living' },
-        { key: 'workforce', label: 'Workforce' },
+        { key: 'unskilled_workers', label: 'Unskilled Workers' },
         { key: 'infrastructure', label: 'Infrastructure' },
         { key: 'industry', label: 'Industry' }
     ];
     var matDrivers = [
         { key: 'industry', label: 'Industry' },
-        { key: 'workforce', label: 'Workforce' },
+        { key: 'unskilled_workers', label: 'Unskilled Workers' },
         { key: 'energy', label: 'Energy' },
         { key: 'service_sector', label: 'Service Sector' },
         { key: 'gdp_growth', label: 'GDP Growth' },
@@ -1784,16 +1788,16 @@ function renderIndustriesTab(nation) {
     var vehDrivers = [
         { key: 'industry', label: 'Industry' },
         { key: 'infrastructure', label: 'Infrastructure' },
-        { key: 'workforce', label: 'Workforce' },
+        { key: 'unskilled_workers', label: 'Unskilled Workers' },
         { key: 'service_sector', label: 'Service Sector' },
         { key: 'energy', label: 'Energy' },
-        { key: 'power', label: 'Power' }
+        { key: 'global_image', label: 'Global Image' }
     ];
     var finDrivers = [
         { key: 'budget', label: 'Budget' },
         { key: 'gdp_growth', label: 'GDP Growth' },
         { key: 'standard_of_living', label: 'Std. of Living' },
-        { key: 'workforce', label: 'Workforce' },
+        { key: 'skilled_workers', label: 'Skilled Workers' },
         { key: 'control', label: 'Control' },
         { key: 'public_approval', label: 'Public Approval' }
     ];
@@ -1809,7 +1813,7 @@ function renderIndustriesTab(nation) {
         { key: 'control', label: 'Control' },
         { key: 'infrastructure', label: 'Infrastructure' },
         { key: 'public_approval', label: 'Public Approval' },
-        { key: 'workforce', label: 'Workforce' },
+        { key: 'skilled_workers', label: 'Skilled Workers' },
         { key: 'unrest', label: 'Unrest' },
         { key: 'health', label: 'Health' }
     ];
@@ -2147,7 +2151,7 @@ function renderIndustriesTab(nation) {
 
     var shipDrivers = [
         { key: 'infrastructure', label: 'Infrastructure' },
-        { key: 'workforce', label: 'Workforce' },
+        { key: 'unskilled_workers', label: 'Unskilled Workers' },
         { key: 'industry', label: 'Industry' },
         { key: 'service_sector', label: 'Service Sector' },
         { key: 'energy', label: 'Energy' },

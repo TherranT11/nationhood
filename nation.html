@@ -46,24 +46,29 @@ let sparklineHistory = {}; // statKey → array of last 10 values
 
 // Collapsed state for sections (persisted in sessionStorage)
 var sectionState = JSON.parse(sessionStorage.getItem('nationSectionState') || '{}');
-var defaultOpen = { economic: true, taxation: true, labor: true, infrastructure: true, social: true, governance: true, security: true, immigration: true };
+var defaultOpen = { economic: true, labor: true, infrastructure: true, social: true, governance: true, security: true, international: true, immigration: true };
 
 // ===== CATEGORY DEFINITIONS =====
 var STAT_CATEGORIES = [
     { id: 'economic', label: 'Economic', icon: '\u{1F4B0}', blocs: ['Business Owners', 'Urban Workers'],
       stats: [
-        { name: 'Budget', key: 'budget', desc: 'Government budget', format: 'currency', noHealth: true },
+        { name: 'GDP', key: 'gdp', desc: 'Total economic output' },
         { name: 'GDP Growth', key: 'gdp_growth', desc: 'Monthly economic growth rate', format: 'gdpgrowth' },
+        { name: 'Budget', key: 'budget', desc: 'Government budget', format: 'currency', noHealth: true },
         { name: 'National Debt', key: 'debt', desc: 'Government debt obligations', format: 'currency', inverted: true, noHealth: true },
         { name: 'Cost of Living', key: 'cost_of_living', desc: 'Consumer cost burden', inverted: true },
         { name: 'Service Sector', key: 'service_sector', desc: 'Domestic service sector activity' },
         { name: 'Industry', key: 'industry', desc: 'Industrial production' },
         { name: 'Energy', key: 'energy', desc: 'Energy supply' },
-        { name: 'Power', key: 'power', desc: 'Power generation capacity' }
+        { name: 'Minerals', key: 'minerals', desc: 'Mineral and resource endowment' },
+        { name: 'Income Tax', key: 'income_tax', desc: 'Personal income tax rate (0-10)' },
+        { name: 'Corporate Tax', key: 'corporate_tax', desc: 'Business income tax rate (0-10)' }
     ]},
     { id: 'labor', label: 'Labor & Employment', icon: '\u{1F464}', blocs: ['Urban Workers', 'Business Owners'],
       stats: [
-        { name: 'Workforce', key: 'workforce', desc: 'Labor force capacity' }
+        { name: 'Unskilled Workers', key: 'unskilled_workers', desc: 'Entry-level service, agricultural, and manual labor capacity' },
+        { name: 'Skilled Workers', key: 'skilled_workers', desc: 'Trained, certified, and professional labor capacity' },
+        { name: 'Wages', key: 'wages', desc: 'Aggregate wage level across the labor market' }
     ]},
     { id: 'demographics', label: 'Demographics', icon: '\u{1F465}', blocs: [],
       stats: [
@@ -94,11 +99,17 @@ var STAT_CATEGORIES = [
       stats: [
         { name: 'Control', key: 'control', desc: 'Government control of territory' },
         { name: 'Public Approval', key: 'public_approval', desc: 'Public approval of the government' },
-        { name: 'Crown Authority', key: 'crown_authority', desc: 'Authority of the crown', conditional: function(nation){ return nation.crown_authority != null; } }
+        { name: 'Crown Authority', key: 'crown_authority', desc: 'Authority of the crown', conditional: function(nation){ return nation.crown_authority != null; } },
+        { name: 'Corruption', key: 'corruption', desc: 'Bribery, graft, and abuse of office', inverted: true }
     ]},
     { id: 'security', label: 'Security', icon: '\u{1F6E1}', blocs: ['Military & Security', 'Nationalist Bloc'],
       stats: [
-        { name: 'Unrest', key: 'unrest', desc: 'Protests, riots & political violence', inverted: true }
+        { name: 'Unrest', key: 'unrest', desc: 'Protests, riots & political violence', inverted: true },
+        { name: 'Crime', key: 'crime', desc: 'Domestic crime rate', inverted: true }
+    ]},
+    { id: 'international', label: 'International', icon: '\u{1F310}', blocs: ['Nationalist Bloc', 'Academics & Professionals'],
+      stats: [
+        { name: 'Global Image', key: 'global_image', desc: 'International standing — diplomatic, cultural, and trade leverage abroad' }
     ]},
     { id: 'immigration', label: 'Immigration', icon: '\u{2708}', blocs: ['Nationalist Bloc', 'Rural Traditionalists', 'Ethnic Minorities'],
       stats: [
@@ -1297,8 +1308,9 @@ function renderImmigrationTab(nation) {
     var netMigration = totalInflow - totalOutflow;
 
     // Capacity: how much room for growth (based on infrastructure, workforce, health)
+    // Canonical-stats Phase 4: workforce split → average of the two new tiers.
     var infra = Number(nation.infrastructure ?? 50);
-    var workforce = Number(nation.workforce ?? 50);
+    var workforce = ((Number(nation.unskilled_workers) || 0) + (Number(nation.skilled_workers) || 0)) / 2;
     var health = Number(nation.health ?? 50);
     var capacity = Math.round((infra + workforce + health) / 3);
 
@@ -1654,7 +1666,8 @@ var PULL_FACTORS = [
     { label: 'GDP Growth', key: 'gdp_growth', weight: 0.20 },
     { label: 'Health', key: 'health', weight: 0.15 },
     { label: 'Education', key: 'education', weight: 0.10 },
-    { label: 'Workforce', key: 'workforce', weight: 0.10 },
+    { label: 'Unskilled Workers', key: 'unskilled_workers', weight: 0.05 },
+    { label: 'Skilled Workers', key: 'skilled_workers', weight: 0.05 },
     { label: 'Infrastructure', key: 'infrastructure', weight: 0.15 }
 ];
 
