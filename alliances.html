@@ -928,13 +928,22 @@ async function loadAlliancesData() {
                     members.map(m => factionMap.get(m.id)?.nation_id).filter(Boolean)
                 ).size;
                 const cartelTotal = ratifiedArticles.reduce((s, ar) => s + (Number(ar.cartel_score) || 0), 0);
+                // Aligned Interest band — populated server-side when the
+                // article ratifies. Surfaced on the row head's RATE FLOOR
+                // metric and explicitly in the expanded card.
+                const hasAlignedInterest = ratifiedArticles.some(ar => ar.article_id === 'aligned_interest');
+                const aiFloor   = hasAlignedInterest ? a.aligned_interest_floor_apr   : null;
+                const aiCeiling = hasAlignedInterest ? a.aligned_interest_ceiling_apr : null;
                 actives.push({
                     id: a.id,
                     name: a.name,
                     sector: a.sector,
                     tags: [SECTOR_LABEL[a.sector] || a.sector, 'MEMBER'],
                     dues: '—',
-                    rate_floor: '—',
+                    rate_floor: (aiFloor != null) ? `${Number(aiFloor).toFixed(1)}%` : '—',
+                    aligned_interest_band: (aiFloor != null && aiCeiling != null)
+                        ? `${Number(aiFloor).toFixed(1)}% – ${Number(aiCeiling).toFixed(1)}%`
+                        : null,
                     member_count: members.length,
                     nation_count: nationCount,
                     founded_year: a.founded_at_tick ?? '—',
@@ -1214,6 +1223,13 @@ function renderAllianceExpanded(a, isMember) {
                 <div><div class="al-stat__label">Cohesion</div><div style="margin-top:2px;color:var(--green);">${escHtml((a.cohesion ?? '—') + ' / 10.0')}</div></div>
                 <div><div class="al-stat__label">Antitrust Heat</div><div style="margin-top:2px;color:${(a.heat || 0) >= 7 ? 'var(--red)' : 'var(--amber)'};">${escHtml((a.heat ?? '—') + ' / 10.0')}</div></div>
             </div>
+            ${a.aligned_interest_band ? `
+                <div style="margin-top:14px;padding:10px 14px;background:var(--amber-faint);border:1px solid var(--amber-border);font-family:var(--font-mono);font-size:11px;letter-spacing:0.04em;">
+                    <span style="color:var(--text-dim);text-transform:uppercase;">Aligned Interest Band</span>
+                    <span style="color:var(--amber);margin-left:10px;font-weight:700;">${escHtml(a.aligned_interest_band)}</span>
+                    <span style="color:var(--text-secondary);margin-left:10px;">Loans outside this band trigger −2 Cohesion alliance, −1 Reputation lender.</span>
+                </div>
+            ` : ''}
             ${a.mission ? `<div style="margin-top:16px;padding:12px 14px;border-left:2px solid var(--amber);font-style:italic;color:var(--text-secondary);">"${escHtml(a.mission)}"</div>` : ''}
             <div style="margin-top:16px;">
                 <div class="al-stat__label">Members · ${a.member_count ?? '—'} ${a.sector || ''} corps across ${a.nation_count ?? '—'} nations</div>
