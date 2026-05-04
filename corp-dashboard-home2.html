@@ -2319,12 +2319,6 @@ async function renderFinances(nation, shard, faction, propertyMaint, equipmentMa
     // Private Contracts: sector-specific revenue from active deals
     let govContracts = 0;
     let pvtContracts = 0;
-    // Construction corps only: per-tick build cost the server deducts for
-    // each in-progress contract. Mirrors advance-corp-tick/index.ts:1714
-    // (perTickCost = bid.estimated_cost / timeline_ticks). Without this line,
-    // Net Profit over-reported by the full estimated_cost spread across
-    // ticks — contracts looked profitable while cash was actually draining.
-    let projectCosts = 0;
     if (faction?.id) {
         const sector = faction.corp_sector || '';
         if (sector === 'Finance') {
@@ -2346,40 +2340,10 @@ async function renderFinances(nation, shard, faction, propertyMaint, equipmentMa
                 }
             }
         } else if (sector === 'Construction') {
-            // Per-tick build costs: server deducts estimated_cost / timeline_ticks
-            // from corp_cash_reserves every tick a contract is in_progress
-            // (advance-corp-tick/index.ts:1812). Mirror that here so the expense
-            // side of the card matches real cash flow.
-            const { data: activeContracts } = await _supabase.from('construction_contracts')
-                .select('id, timeline_ticks')
-                .eq('awarded_to_faction', faction.id)
-                .eq('status', 'in_progress');
-            const contractIdList = (activeContracts || []).map(c => c.id).filter(Boolean);
-            if (contractIdList.length > 0) {
-                const { data: wonBids } = await _supabase.from('contract_bids')
-                    .select('contract_id, estimated_cost')
-                    .in('contract_id', contractIdList)
-                    .eq('status', 'won');
-                const bidCostByContract = {};
-                for (const b of (wonBids || [])) bidCostByContract[b.contract_id] = Number(b.estimated_cost || 0);
-                for (const c of (activeContracts || [])) {
-                    const estCost = bidCostByContract[c.id] || 0;
-                    projectCosts += Math.round(estCost / Math.max(1, c.timeline_ticks || 1));
-                }
-            }
-            // Contract revenue: the corp is only paid on completion
-            // (advance-corp-tick/index.ts:2153-2165 writes payment_received on
-            // delivery). Spreading budget_ceiling / timeline_ticks as phantom
-            // per-tick revenue produced a ~breakeven Net Profit while cash
-            // drained by the real per-tick build cost — now fixed by showing
-            // the payment only on the tick it actually lands.
-            const { data: deliveriesThisTick } = await _supabase.from('construction_deliveries')
-                .select('payment_received')
-                .eq('faction_id', faction.id)
-                .eq('delivered_at_tick', currentTick);
-            for (const d of (deliveriesThisTick || [])) {
-                pvtContracts += Number(d.payment_received || 0);
-            }
+            // Per-tick contract cost + final payment fire as cash events
+            // from the server (processCorpContracts: 'event_cost' /
+            // 'capital_in'); they surface in the events drawer + Net
+            // Profit aggregation directly. No client-side mirror needed.
         } else if (sector === 'Shipping') {
             // Shipping: revenue from active shipping claims
             const { data: activeClaims } = await _supabase.from('shipping_claims')
@@ -2514,7 +2478,7 @@ async function renderFinances(nation, shard, faction, propertyMaint, equipmentMa
     // Corporate tax: applied to positive income (matches tick processor formula)
     // PHASE 7 TODO: corporate_tax drops in Phase 9
     const corpTaxRate = Math.max(0, Math.min(1, (Number(nation?.corporate_tax ?? 0) / 100) || 0));
-    const preExpenses = execSalaries + materials + properties + equipment + fleet + corpLoanService + insurancePremiums + projectCosts;
+    const preExpenses = execSalaries + materials + properties + equipment + fleet + corpLoanService + insurancePremiums;
     const taxableIncome = Math.max(0, totalRevenue - preExpenses);
     const taxes = Math.round(taxableIncome * corpTaxRate);
 
@@ -2652,7 +2616,6 @@ async function renderFinances(nation, shard, faction, propertyMaint, equipmentMa
             <div class="fin-row"><span class="fin-row__label">Properties</span><span class="fin-row__value" style="color:#a44">${fmtMoney(properties)}</span></div>
             <div class="fin-row"><span class="fin-row__label">Equipment</span><span class="fin-row__value" style="color:#a44">${fmtMoney(equipment)}</span></div>
             ${fleet > 0 ? `<div class="fin-row"><span class="fin-row__label">Fleet Maintenance</span><span class="fin-row__value" style="color:#a44">${fmtMoney(fleet)}</span></div>` : ''}
-            ${projectCosts > 0 ? `<div class="fin-row"><span class="fin-row__label">Project Build Costs</span><span class="fin-row__value" style="color:#a44">${fmtMoney(projectCosts)}</span></div>` : ''}
             ${corpLoanService > 0 ? `<div class="fin-row"><span class="fin-row__label">Loan Repayments</span><span class="fin-row__value" style="color:#a44">${fmtMoney(corpLoanService)}</span></div>` : ''}
             ${insurancePremiums > 0 ? `<div class="fin-row"><span class="fin-row__label">Insurance Premiums</span><span class="fin-row__value" style="color:#a44">${fmtMoney(insurancePremiums)}</span></div>` : ''}
             <div class="fin-row"><span class="fin-row__label">Taxes</span><span class="fin-row__value" style="color:#a44">${fmtMoney(taxes)}</span></div>
