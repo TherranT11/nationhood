@@ -934,6 +934,7 @@ async function loadAlliancesData() {
                 const hasAlignedInterest = ratifiedArticles.some(ar => ar.article_id === 'aligned_interest');
                 const aiFloor   = hasAlignedInterest ? a.aligned_interest_floor_apr   : null;
                 const aiCeiling = hasAlignedInterest ? a.aligned_interest_ceiling_apr : null;
+                const hasBadDebtAid = ratifiedArticles.some(ar => ar.article_id === 'bad_debt_mutual');
                 actives.push({
                     id: a.id,
                     name: a.name,
@@ -944,6 +945,7 @@ async function loadAlliancesData() {
                     aligned_interest_band: (aiFloor != null && aiCeiling != null)
                         ? `${Number(aiFloor).toFixed(1)}% – ${Number(aiCeiling).toFixed(1)}%`
                         : null,
+                    bad_debt_aid_active: hasBadDebtAid,
                     member_count: members.length,
                     nation_count: nationCount,
                     founded_year: a.founded_at_tick ?? '—',
@@ -1228,6 +1230,13 @@ function renderAllianceExpanded(a, isMember) {
                     <span style="color:var(--text-dim);text-transform:uppercase;">Aligned Interest Band</span>
                     <span style="color:var(--amber);margin-left:10px;font-weight:700;">${escHtml(a.aligned_interest_band)}</span>
                     <span style="color:var(--text-secondary);margin-left:10px;">Loans outside this band trigger −2 Cohesion alliance, −1 Reputation lender.</span>
+                </div>
+            ` : ''}
+            ${a.bad_debt_aid_active ? `
+                <div style="margin-top:8px;padding:10px 14px;background:var(--blue-faint);border:1px solid var(--blue-border);font-family:var(--font-mono);font-size:11px;letter-spacing:0.04em;">
+                    <span style="color:var(--text-dim);text-transform:uppercase;">Bad Debt Mutual Aid</span>
+                    <span style="color:var(--blue);margin-left:10px;font-weight:700;">Active</span>
+                    <span style="color:var(--text-secondary);margin-left:10px;">A loan default ≥ $20M against any member triggers 15% Lending Capital absorption (in LC units, $50M = 1 LC) from every other member.</span>
                 </div>
             ` : ''}
             ${a.mission ? `<div style="margin-top:16px;padding:12px 14px;border-left:2px solid var(--amber);font-style:italic;color:var(--text-secondary);">"${escHtml(a.mission)}"</div>` : ''}
