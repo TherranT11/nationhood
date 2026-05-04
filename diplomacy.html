@@ -609,6 +609,18 @@ function renderTradeEconomy() {
     // Stat-based rows render as unit-less integers; dollar rows use the
     // standard currency formatter. fmtProd routes both through one call.
     const fmtProd = (c, n) => c.statBased ? Number(n).toFixed(0) : fmtBudgetCurrency(n);
+    // Per-commodity production-formula disclosure. Mirrors the math in
+    // _computeStatCommodities() — keep the strings here in sync if the
+    // formulas change. Only stat-based rows show a formula; trade-flow
+    // sub-sectors (grains, livestock, manufactured, etc.) come from the
+    // tick-time trade_flows pipeline rather than a closed-form stat eq.
+    const PRODUCTION_FORMULAS = {
+        energy:         '(Energy / 3)',
+        minerals:       '(Minerals / 3) × ((Workforce + Industry) / 200)',
+        food:           '(Farmland / 2) × (Workforce / 100)',
+        consumer_goods: '(Industry / 3) × (Workforce / 100)',
+        luxury_goods:   '(SoL / 6) × ((Education × Services) / 10000)',
+    };
     for (const c of commodities) {
         // Total demand = own consumption + foreign demand on our exports.
         // Trading  = signed import/export delta from active agreements
@@ -623,10 +635,16 @@ function renderTradeEconomy() {
         const isExp = _expandedCommodity === c.key;
         const rowAttrs = c.statBased ? ' data-statbased="1"' : '';
         const rowStyle = c.statBased ? 'cursor:default;' : '';
+        const prodFormula = c.statBased ? PRODUCTION_FORMULAS[c.key] : null;
         html += `<div class="tr-econ-row tr-commodity-row" data-sector="${c.key}"${rowAttrs} style="${rowStyle}">
             <div class="tr-econ-name-cell">
                 <span class="tr-econ-icon">${c.icon}</span>
-                <span class="tr-econ-name">${escapeHtml(c.name)}</span>
+                <div style="display:flex;flex-direction:column;gap:2px;min-width:0;">
+                    <span class="tr-econ-name">${escapeHtml(c.name)}</span>
+                    ${prodFormula
+                        ? `<span class="tr-econ-formula" title="Production formula: ${escapeHtml(prodFormula)}">${escapeHtml(prodFormula)}</span>`
+                        : ''}
+                </div>
             </div>
             <span class="tr-econ-value">${fmtProd(c, c.production)}</span>
             <span class="tr-econ-value${totalDemand > 0 ? '' : ' tr-econ-muted'}">${totalDemand > 0 ? fmtProd(c, totalDemand) : '—'}</span>

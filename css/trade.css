@@ -214,6 +214,19 @@
     color: var(--text-bright, #e8e4d9);
     letter-spacing: -0.005em;
 }
+/* Production-formula sub-line under the commodity name. Players see
+   how the number is derived without needing to dig through the code.
+   Truncates with ellipsis on narrow viewports; tooltip carries the
+   full expression. */
+.tr-econ-formula {
+    font-family: var(--font-mono, monospace);
+    font-size: 9px;
+    letter-spacing: 0.02em;
+    color: var(--text-dim, rgba(232,228,217,0.45));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 
 .tr-econ-value {
     font-family: var(--font-mono);
