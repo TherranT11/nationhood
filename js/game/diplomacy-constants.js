@@ -170,7 +170,9 @@ export const AID_CONDITION_STATS = [
     { key: 'authority', label: 'Authority', default_operator: 'gte', category: 'Governance' },
     // Economic
     { key: 'cost_of_living', label: 'Cost of Living', default_operator: 'lte', category: 'Economic' },
-    { key: 'workforce', label: 'Workforce Participation', default_operator: 'gte', category: 'Economic' },
+    { key: 'unskilled_workers', label: 'Unskilled Workers', default_operator: 'gte', category: 'Economic' },
+    { key: 'skilled_workers', label: 'Skilled Workers', default_operator: 'gte', category: 'Economic' },
+    { key: 'wages', label: 'Wages', default_operator: 'gte', category: 'Economic' },
     // Social
     { key: 'education', label: 'Education', default_operator: 'gte', category: 'Social' },
     { key: 'health', label: 'Healthcare', default_operator: 'gte', category: 'Social' },
@@ -179,7 +181,7 @@ export const AID_CONDITION_STATS = [
     { key: 'control', label: 'Control', default_operator: 'gte', category: 'Security' },
     { key: 'unrest', label: 'Unrest', default_operator: 'lte', category: 'Security' },
     // International
-    { key: 'power', label: 'Power', default_operator: 'gte', category: 'International' }
+    { key: 'global_image', label: 'Global Image', default_operator: 'gte', category: 'International' }
 ];
 
 /**
@@ -504,7 +506,7 @@ export const PROPOSAL_TYPES = {
         description: 'Establish cultural exchange programs between nations.',
         stat_effects: [
             // alpha-19: international_reputation → power.
-            { stat_key: 'power', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+            { stat_key: 'global_image', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
     visa_agreement: {
@@ -513,7 +515,7 @@ export const PROPOSAL_TYPES = {
         description: 'Simplify visa requirements for travel between nations.',
         stat_effects: [
             // alpha-19: international_reputation → power.
-            { stat_key: 'power', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
+            { stat_key: 'global_image', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
             { stat_key: 'immigration', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
@@ -541,7 +543,7 @@ export const PROPOSAL_TYPES = {
         stat_effects: [
             // alpha-19: stability → control; international_reputation → power.
             { stat_key: 'control', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
-            { stat_key: 'power', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+            { stat_key: 'global_image', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
     military_alliance: {
@@ -551,7 +553,7 @@ export const PROPOSAL_TYPES = {
         stat_effects: [
             // alpha-19: stability → control; international_reputation → power.
             { stat_key: 'control', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 },
-            { stat_key: 'power', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+            { stat_key: 'global_image', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
     embargo: {
@@ -560,7 +562,7 @@ export const PROPOSAL_TYPES = {
         description: 'Economic warfare — tanks target trade stats, also hurts your own.',
         stat_effects: [
             // alpha-19: trade_balance dropped (no replacement); international_reputation → power.
-            { stat_key: 'power', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 }
+            { stat_key: 'global_image', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
     ceasefire: {
@@ -589,7 +591,7 @@ export const PROPOSAL_TYPES = {
         description: 'Shut down diplomatic presence in the target nation.',
         stat_effects: [
             // alpha-19: international_reputation → power.
-            { stat_key: 'power', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
+            { stat_key: 'global_image', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
         ]
     }
 };
@@ -776,10 +778,12 @@ export const VISA_EXCLUDES = [
 export const VISA_BASE_EFFECTS = {
     relations: 6,
     revenue: 12_000_000,
-    // alpha-19: intl_reputation → power (international_reputation → power).
-    // polarization + terrorism_risk dropped — no alpha-column replacements;
-    // calculateVisaEffects no longer surfaces them in its return structs.
-    power: 1,
+    // Canonical-stats Phase 3: power → global_image (the rename rolled
+    // up the legacy intl_reputation / diplomatic_standing / tourism /
+    // sanctions sources). polarization + terrorism_risk had been dropped
+    // earlier with no alpha-column replacements; calculateVisaEffects
+    // no longer surfaces them in its return structs.
+    global_image: 1,
     immigration: 1
 };
 
@@ -817,8 +821,8 @@ export const CULTURAL_FUNDING_OPTIONS = [
  */
 export const CULTURAL_BASE_EFFECTS = {
     relations: 4,
-    // alpha-19: intl_reputation → power
-    power: 1,
+    // Canonical-stats Phase 3: power → global_image
+    global_image: 1,
     soft_power: 3
 };
 
@@ -908,8 +912,7 @@ export function calculateVisaEffects(config) {
 
     let relations = Math.round(VISA_BASE_EFFECTS.relations * dMod * sMod);
     let revenue = Math.round(VISA_BASE_EFFECTS.revenue * dMod * sMod);
-    // alpha-19: intl_reputation → power.
-    let power = VISA_BASE_EFFECTS.power;
+    let global_image = VISA_BASE_EFFECTS.global_image;
     let immigration = workIncluded ? 2 : 1;
 
     // One-way: halve relations for the non-receiving nation, revenue only to receiver
@@ -937,20 +940,20 @@ export function calculateVisaEffects(config) {
         proposer: {
             relations: proposer_relations,
             revenue: proposer_revenue,
-            power,
+            global_image,
             immigration: isReciprocal || !isOneWayProposer ? immigration : 0
         },
         target: {
             relations: target_relations,
             revenue: target_revenue,
-            power,
+            global_image,
             immigration: isReciprocal || isOneWayProposer ? immigration : 0
         },
         // Summary (for display in proposer's UI — shows total combined)
         summary: {
             relations,
             revenue,
-            power,
+            global_image,
             immigration
         }
     };
@@ -966,8 +969,7 @@ export function calculateCulturalEffects(config) {
 
     return {
         relations: CULTURAL_BASE_EFFECTS.relations,
-        // alpha-19: intl_reputation → power
-        power: CULTURAL_BASE_EFFECTS.power,
+        global_image: CULTURAL_BASE_EFFECTS.global_image,
         soft_power: CULTURAL_BASE_EFFECTS.soft_power,
         soft_power_duration: durationOpt.permanent ? null : durationOpt.key,
         cost_proposer: Math.round(totalCost * fundingOpt.proposer_share),
@@ -1203,9 +1205,11 @@ const OPEN_BORDERS_BASE_EFFECTS = {
     relations: 8,
     immigration: 4,
     gdp_growth: 1,
-    // alpha-19: labor_force_participation → workforce; civil_unrest → unrest.
-    // polarization, terrorism, housing_affordability dropped — no alpha replacements.
-    workforce: 2,
+    // Canonical-stats Phase 3: workforce → unskilled_workers (open
+    // borders predominantly grow the unskilled tier — entry-level
+    // service jobs, agricultural labor, etc.). Skilled tier moves
+    // separately via student / professional-visa pathways.
+    unskilled_workers: 2,
     unrest: 3,
     cost_of_living: 0.5,
     cost_proposer: 15000000,
@@ -1228,13 +1232,12 @@ export function calculateOpenBordersEffects(config) {
     const sMod = scopeOpt.modifier;
     const base = OPEN_BORDERS_BASE_EFFECTS;
 
-    // alpha-19: labor_force_participation → workforce (kept positive — open borders
-    // grow the workforce); civil_unrest → unrest. polarization / terrorism /
-    // housing_affordability dropped (no alpha replacements).
+    // Canonical-stats Phase 3: workforce → unskilled_workers (kept
+    // positive — open borders grow the unskilled tier).
     const relations = Math.round(base.relations * sMod);
     const immigration = Math.round(base.immigration * sMod);
     const gdp_growth = +(base.gdp_growth * sMod).toFixed(2);
-    const workforce = Math.round(base.workforce * sMod);
+    const unskilled_workers = Math.round(base.unskilled_workers * sMod);
     const unrest = Math.round(transOpt.unrest_spike * sMod);
     const col = +(base.cost_of_living * sMod).toFixed(2);
 
@@ -1247,7 +1250,7 @@ export function calculateOpenBordersEffects(config) {
 
     if (isReciprocal) {
         proposer = {
-            relations, immigration, gdp_growth, workforce,
+            relations, immigration, gdp_growth, unskilled_workers,
             unrest, cost_of_living: col
         };
         target = { ...proposer };
@@ -1255,21 +1258,21 @@ export function calculateOpenBordersEffects(config) {
         // Our citizens go to them — target receives migrants
         proposer = {
             relations: Math.round(relations * 0.6), immigration: 0, gdp_growth: 0,
-            workforce: 0, unrest: 0, cost_of_living: 0
+            unskilled_workers: 0, unrest: 0, cost_of_living: 0
         };
         target = {
-            relations, immigration, gdp_growth, workforce,
+            relations, immigration, gdp_growth, unskilled_workers,
             unrest, cost_of_living: col
         };
     } else {
         // Their citizens come to us — proposer receives migrants
         proposer = {
-            relations, immigration, gdp_growth, workforce,
+            relations, immigration, gdp_growth, unskilled_workers,
             unrest, cost_of_living: col
         };
         target = {
             relations: Math.round(relations * 0.6), immigration: 0, gdp_growth: 0,
-            workforce: 0, unrest: 0, cost_of_living: 0
+            unskilled_workers: 0, unrest: 0, cost_of_living: 0
         };
     }
 
@@ -1277,7 +1280,7 @@ export function calculateOpenBordersEffects(config) {
         proposer,
         target,
         summary: {
-            relations, immigration, gdp_growth, workforce,
+            relations, immigration, gdp_growth, unskilled_workers,
             unrest, cost_of_living: col
         },
         costs: {
@@ -1319,12 +1322,11 @@ export const EXTRADITION_EXCEPTION_OPTIONS = [
 
 const EXTRADITION_BASE_EFFECTS = {
     relations: 5,
-    // alpha-19: terrorism dropped (collapsed into unrest); international_reputation
-    // → power; judicial_independence → authority → public_approval (alpha-23).
-    // alpha-23: corruption + crime restored to live menu (Phase 8.5.2);
-    // a future balance pass can re-add small effects on those columns
-    // here if extradition pacts should nudge corruption / crime trends.
-    power: 1,
+    // Canonical-stats Phase 3: power → global_image (rolled up from
+    // the legacy international_reputation source). public_approval
+    // already lives on the canonical menu. corruption + crime can be
+    // added later if extradition pacts should nudge those trends.
+    global_image: 1,
     public_approval: 0.5,
     cost_proposer: 8000000,
     cost_target: 8000000,
@@ -1349,27 +1351,24 @@ export function calculateExtraditionEffects(config) {
     // political-offense / dual-criminality warnings + sovereignty constraints.
     void exceptions;
     const relations = base.relations;
-    // alpha-19: international_reputation → power.
-    const power_base = base.power;
-    // alpha-19/23: judicial_independence → authority → public_approval.
+    const global_image_base = base.global_image;
+    // judicial_independence collapsed into public_approval in Phase 8.5.
     // appealOpt.judicial_penalty (negative for executive-style processes)
     // still pulls public_approval down.
     const public_approval = +(base.public_approval + appealOpt.judicial_penalty).toFixed(1);
 
-    // Political offenses penalties — alpha-19: freedom_index / press_freedom /
-    // polarization dropped. Reputation/power penalty for political-offense
-    // scopes is preserved.
+    // Political offenses: reputation penalty for political-offense scopes.
     const hasPoliticalOffenses = scopes.includes('political_offenses');
     const reputation_penalty = hasPoliticalOffenses ? -2 : 0;
 
-    // alpha-19: dual-criminality waiver previously dinged freedom_index — that
-    // column is dropped; no remaining alpha-column hook for this lever.
+    // dual-criminality waiver had a freedom_index hook that was dropped
+    // when that column went away; no canonical-stats replacement.
     const dualWaived = config.dual_criminality === 'waived';
     void dualWaived;
 
     const effects = {
         relations,
-        power: power_base + reputation_penalty,
+        global_image: global_image_base + reputation_penalty,
         public_approval
     };
 
@@ -1432,9 +1431,9 @@ export const ENVIRONMENT_PENALTY_OPTIONS = [
 
 const ENVIRONMENT_BASE_EFFECTS = {
     relations: 6,
-    // alpha-19: international_reputation → power; pollution dropped (no
-    // alpha-column replacement).
-    power: 2,
+    // Canonical-stats Phase 3: power → global_image. pollution had been
+    // dropped earlier with no canonical replacement.
+    global_image: 2,
     cost_proposer: 12000000,
     cost_target: 12000000,
     ongoing_cost: 4000000
@@ -1453,25 +1452,23 @@ export function calculateEnvironmentalEffects(config) {
     const base = ENVIRONMENT_BASE_EFFECTS;
 
     const relations = base.relations;
-    // alpha-19: international_reputation → power.
-    const power = base.power + emissionOpt.reputation_bonus
+    const global_image = base.global_image + emissionOpt.reputation_bonus
         + conservation.reduce((sum, c) => {
             const opt = ENVIRONMENT_CONSERVATION_OPTIONS.find(o => o.key === c);
             return sum + (opt ? opt.bonus_reputation : 0);
         }, 0);
 
-    // alpha-19: pollution dropped (no alpha-column replacement). pollutionOpt
-    // / conservation bonus_pollution data is still consumed by the compliance
-    // block below (cap_offset) but no longer surfaces as a stat delta.
-
-    // alpha-19: manufacturing_output → industry. pollutionOpt.manufacturing_penalty
-    // is negative under strict standards and still drags industrial capacity.
+    // pollution had been dropped (no canonical replacement). pollutionOpt
+    // / conservation bonus_pollution data is still consumed by the
+    // compliance block below (cap_offset) but no longer surfaces as a
+    // stat delta. pollutionOpt.manufacturing_penalty is negative under
+    // strict standards and still drags industrial capacity.
     const industry = pollutionOpt.manufacturing_penalty;
     const gdp_growth = emissionOpt.gdp_penalty;
 
     const effects = {
         relations,
-        power,
+        global_image,
         industry,
         gdp_growth
     };

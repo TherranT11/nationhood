@@ -348,27 +348,26 @@ export function previewDefaultConsequences(nation, defaultType, repaymentRate, a
     const currentDebt = Number(nation.debt ?? 0);
     const debtAfter = defaultType === 'full' ? 0 : Math.round(currentDebt * (repaymentRate || 0.5));
 
-    // Apply discount to eligible penalties (power + industry — the
+    // Apply discount to eligible penalties (global_image + industry — the
     // international-standing flavors). Other penalties take the full
     // multiplier without discount.
     const discountedMultiplier = multiplier * (1 - discount);
 
     const clamp = (current, delta) => Math.max(0, Math.min(100, Math.round((current + delta) * 10) / 10));
-    // Read a current alpha-19 stat with a 50 fallback for nations whose
-    // Phase 2 backfill hasn't run yet. Repeated read avoided by hoisting
-    // each stat into a local before the statChanges literal.
-    const power_         = Number(nation.power           ?? 50);
-    const industry_      = Number(nation.industry        ?? 50);
+    // Read each canonical stat once with a sensible fallback. Hoisted
+    // out of the statChanges literal to avoid duplicate reads.
+    const globalImage_    = Number(nation.global_image    ?? 50);
+    const industry_       = Number(nation.industry        ?? 50);
     const cost_of_living_ = Number(nation.cost_of_living ?? 50);
-    const sol_           = Number(nation.standard_of_living ?? 50);
-    const unrest_        = Number(nation.unrest          ?? 20);
+    const sol_            = Number(nation.standard_of_living ?? 50);
+    const unrest_         = Number(nation.unrest          ?? 20);
 
     const statChanges = {
         debt: { before: currentDebt, after: debtAfter, change: debtAfter - currentDebt },
-        power: {
-            before: power_,
+        global_image: {
+            before: globalImage_,
             change: Math.round(cfg.FULL_DEFAULT_POWER_HIT * discountedMultiplier),
-            after: clamp(power_, cfg.FULL_DEFAULT_POWER_HIT * discountedMultiplier)
+            after: clamp(globalImage_, cfg.FULL_DEFAULT_POWER_HIT * discountedMultiplier)
         },
         industry: {
             before: industry_,

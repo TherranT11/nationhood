@@ -246,7 +246,8 @@ function buildEnergyBucketDeltas(nation, tradingByNation) {
 // Build {bucket, met_pct, deltas} for MINERALS on this nation.
 function buildMineralsBucketDeltas(nation, tradingByNation) {
     const mineralsStat  = Number(nation.minerals)       || 0;
-    const workforceStat = Number(nation.workforce)      || 0;
+    // Canonical Phase 3: workforce split → average of the two tiers.
+    const workforceStat = ((Number(nation.unskilled_workers) || 0) + (Number(nation.skilled_workers) || 0)) / 2;
     const industryStat  = Number(nation.industry)       || 0;
     const infraStat     = Number(nation.infrastructure) || 0;
 
@@ -280,7 +281,7 @@ function buildMineralsBucketDeltas(nation, tradingByNation) {
 //   demand     = population_M / 3
 function buildFoodBucketDeltas(nation, tradingByNation) {
     const farmlandStat  = Number(nation.farmland)  || 0;
-    const workforceStat = Number(nation.workforce) || 0;
+    const workforceStat = ((Number(nation.unskilled_workers) || 0) + (Number(nation.skilled_workers) || 0)) / 2;
     const popMillions   = (Number(nation.population) || 0) / 1_000_000;
 
     const production = (farmlandStat / 2) * (workforceStat / 100);
@@ -324,7 +325,7 @@ function buildFoodBucketDeltas(nation, tradingByNation) {
 //   demand     = (standard_of_living / 100) × population_M / 2
 function buildConsumerGoodsBucketDeltas(nation, tradingByNation) {
     const industryStat  = Number(nation.industry)           || 0;
-    const workforceStat = Number(nation.workforce)          || 0;
+    const workforceStat = ((Number(nation.unskilled_workers) || 0) + (Number(nation.skilled_workers) || 0)) / 2;
     const solStat       = Number(nation.standard_of_living) || 0;
     const popMillions   = (Number(nation.population) || 0) / 1_000_000;
 

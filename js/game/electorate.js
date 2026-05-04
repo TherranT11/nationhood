@@ -54,10 +54,11 @@ export const ISSUE_DEFS = {
     },
     unemployment: {
         label: 'Unemployment',
-        // Alpha refactor: unemployment/labor_force_participation → workforce
-        // (inversion handled via statDirectionSign); minimum_wage dropped;
-        // poverty_rate → standard_of_living (inverted).
-        stats: ['workforce', 'standard_of_living'],
+        // Canonical-stats Phase 3: unemployment/labor_force_participation
+        // map to unskilled_workers (inversion handled via statDirectionSign).
+        // minimum_wage replaced by `wages`. poverty_rate →
+        // standard_of_living (inverted).
+        stats: ['unskilled_workers', 'standard_of_living', 'wages'],
         axes: ['liberty_equality', 'individualism_collectivism'],
     },
     corruption: {
@@ -120,7 +121,7 @@ const DEMOGRAPHIC_STAT_MAP = {
     age: {
         age_18_29:  [],
         age_30_44:  [{ stat: 'education', weight: 0.3, direction: 1 }],
-        age_45_64:  [{ stat: 'workforce', weight: 0.2, direction: 1 }],
+        age_45_64:  [{ stat: 'skilled_workers', weight: 0.2, direction: 1 }],
         age_65plus: [{ stat: 'health', weight: 0.5, direction: 1 }],
     },
     income: {
@@ -135,10 +136,10 @@ const DEMOGRAPHIC_STAT_MAP = {
         edu_postgrad:  [{ stat: 'education', weight: 0.5, direction: 1 }],
     },
     urbanization: {
-        urban_rural:     [{ stat: 'workforce', weight: 0.6, direction: -1 }, { stat: 'farmland', weight: 0.3, direction: 1 }],
-        urban_smalltown: [{ stat: 'workforce', weight: 0.2, direction: -1 }],
-        urban_suburban:  [{ stat: 'workforce', weight: 0.3, direction: 1 }],
-        urban_urban:     [{ stat: 'workforce', weight: 0.6, direction: 1 }],
+        urban_rural:     [{ stat: 'skilled_workers', weight: 0.6, direction: -1 }, { stat: 'farmland', weight: 0.3, direction: 1 }],
+        urban_smalltown: [{ stat: 'skilled_workers', weight: 0.2, direction: -1 }],
+        urban_suburban:  [{ stat: 'skilled_workers', weight: 0.3, direction: 1 }],
+        urban_urban:     [{ stat: 'skilled_workers', weight: 0.6, direction: 1 }],
     },
     religion: {
         religion_secular:  [{ stat: 'education', weight: 0.2, direction: 1 }],
