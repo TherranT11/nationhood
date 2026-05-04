@@ -1531,15 +1531,16 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Diplomatic relations decay failed (non-fatal):', relDecayErr);
     }
 
-    // Energy demand-met trading volumes — computed once per tick so
-    // the per-nation processEnergyDemandEffects call doesn't refetch
-    // shipping_contracts + bids + agreements 13 times. Map<nation_id,
-    // signed_energy_per_tick> where + = net imports, − = net exports.
-    let _energyTradingByNation = new Map();
+    // Per-commodity trading volumes — computed once per tick so the
+    // per-nation processCommodityDemandEffects call doesn't refetch
+    // shipping_contracts + bids + agreements per nation. Map<nation_id,
+    // {energy, minerals, food, consumer_goods, luxury_goods}> where each
+    // value is signed units/tick (+ = net imports, − = net exports).
+    let _commodityTradingByNation = new Map();
     try {
-        _energyTradingByNation = await computeEnergyTradingByNation(supabase);
+        _commodityTradingByNation = await computeCommodityTradingByNation(supabase);
     } catch (etErr) {
-        console.error('[advanceTick] Energy trading prefetch failed (non-fatal):', etErr);
+        console.error('[advanceTick] Commodity trading prefetch failed (non-fatal):', etErr);
     }
 
     // 4. Process each nation
@@ -1613,7 +1614,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // the same column (e.g. industry under Energy + Minerals)
         // sum cleanly rather than overwriting.
         try {
-            const commodityDemandRes = await processCommodityDemandEffects(supabase, nation, _energyTradingByNation);
+            const commodityDemandRes = await processCommodityDemandEffects(supabase, nation, _commodityTradingByNation);
             if (commodityDemandRes) {
                 summary.commodityDemand = summary.commodityDemand || [];
                 summary.commodityDemand.push({ nation: nation.name, ...commodityDemandRes });
