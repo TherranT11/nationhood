@@ -27,8 +27,12 @@ COMMENT ON COLUMN public.trade_negotiations.last_seen_at_b IS
 
 -- ── 2. mark_trade_negotiation_seen RPC ──────────────────────────
 -- Called by openTradeNegModal on the client. Determines the
--- caller's nation via their faction, then stamps NOW() on the
--- corresponding last_seen column.
+-- caller's nation by checking faction membership against the
+-- negotiation's two sides directly (rather than a LIMIT 1 lookup,
+-- which is wrong for players holding factions in multiple nations
+-- — the LIMIT could pick an unrelated nation and the RPC would
+-- return "Not a party" even though the player has another faction
+-- in one of the negotiation's nations).
 CREATE OR REPLACE FUNCTION mark_trade_negotiation_seen(p_neg_id UUID)
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -36,9 +40,10 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-    v_user      UUID := auth.uid();
-    v_neg       trade_negotiations%ROWTYPE;
-    v_my_nation UUID;
+    v_user         UUID := auth.uid();
+    v_neg          trade_negotiations%ROWTYPE;
+    v_caller_in_a  BOOLEAN;
+    v_caller_in_b  BOOLEAN;
 BEGIN
     IF v_user IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
@@ -49,20 +54,26 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Negotiation not found');
     END IF;
 
-    -- Resolve caller's nation. Any of the player's factions (own or
-    -- linked) is fine — they all live under the same nation_id.
-    SELECT nation_id INTO v_my_nation FROM factions
-    WHERE (id = v_user OR linked_user_id = v_user)
-      AND nation_id IS NOT NULL
-    LIMIT 1;
+    -- Direct membership check against each side. Handles multi-nation
+    -- players cleanly: EXISTS picks any matching faction without
+    -- LIMIT-arbitrarily collapsing to one. If the player happens to
+    -- hold factions on BOTH sides (rare double-agent case), nation_a
+    -- wins by convention.
+    SELECT EXISTS (
+        SELECT 1 FROM factions
+        WHERE (id = v_user OR linked_user_id = v_user)
+          AND nation_id = v_neg.nation_a_id
+    ) INTO v_caller_in_a;
 
-    IF v_my_nation IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'error', 'No faction linked to user');
-    END IF;
+    SELECT EXISTS (
+        SELECT 1 FROM factions
+        WHERE (id = v_user OR linked_user_id = v_user)
+          AND nation_id = v_neg.nation_b_id
+    ) INTO v_caller_in_b;
 
-    IF v_my_nation = v_neg.nation_a_id THEN
+    IF v_caller_in_a THEN
         UPDATE trade_negotiations SET last_seen_at_a = NOW() WHERE id = p_neg_id;
-    ELSIF v_my_nation = v_neg.nation_b_id THEN
+    ELSIF v_caller_in_b THEN
         UPDATE trade_negotiations SET last_seen_at_b = NOW() WHERE id = p_neg_id;
     ELSE
         RETURN jsonb_build_object('success', false, 'error', 'Not a party to this negotiation');

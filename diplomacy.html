@@ -1357,12 +1357,15 @@ async function loadTradeAgreements() {
     const negIds = _tradeNegotiationsList.map(n => n.id);
     const unread = {};
     if (negIds.length > 0) {
-        const { data: latestMsgs } = await _supabase.from('negotiation_messages')
+        const { data: latestMsgs, error: msgsErr } = await _supabase.from('negotiation_messages')
             .select('negotiation_id, sender_nation_id, created_at')
             .in('negotiation_id', negIds)
             .neq('sender_nation_id', nationId)
             .eq('is_system', false)
             .order('created_at', { ascending: false });
+        if (msgsErr) {
+            console.warn('[loadTradeAgreements] unread-state fetch failed:', msgsErr.message);
+        }
         const latestByNeg = {};
         for (const m of (latestMsgs || [])) {
             if (!latestByNeg[m.negotiation_id]) latestByNeg[m.negotiation_id] = m.created_at;
@@ -20876,6 +20879,11 @@ function closeTradeNegModal() {
     _negStructuredAdding = false;
     _negStructuredType = null;
     _negNaming = false;
+
+    // Re-paint the agreements panel so the unread dot openTradeNegModal
+    // optimistically removed from _tradeNegUnreadById actually leaves the
+    // DOM. Cheap — uses the cached list, no refetch.
+    renderTradeAgreements();
 
     // Refresh trade notification badge (user may have read messages or agreed)
     checkTradeNotifications().then(() => renderDiploSubtabs()).catch(() => {});
