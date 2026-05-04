@@ -159,6 +159,7 @@ AS $$
 DECLARE
     v_candidate UUID;
     v_rescued   INT := 0;
+    v_failed    INT := 0;
 BEGIN
     -- Single query finds every Finance corp that's a candidate for
     -- a rescue this tick. The helper re-validates each candidate
@@ -179,10 +180,24 @@ BEGIN
           AND COALESCE(f.corp_overleverage, 0) <  10
           AND m.lending_rescue_used_at_tick IS NULL
     LOOP
-        v_rescued := v_rescued + _apply_syndicated_lending_rescue(v_candidate, p_current_tick);
+        -- Per-candidate exception block: an unexpected error in one
+        -- rescue must not roll back every other rescue this tick.
+        -- The plpgsql EXCEPTION clause rolls back to the implicit
+        -- savepoint at BEGIN and resumes the loop.
+        BEGIN
+            v_rescued := v_rescued + _apply_syndicated_lending_rescue(v_candidate, p_current_tick);
+        EXCEPTION WHEN OTHERS THEN
+            v_failed := v_failed + 1;
+            RAISE WARNING 'Syndicated lending rescue failed for faction % (%): %',
+                v_candidate, SQLSTATE, SQLERRM;
+        END;
     END LOOP;
 
-    RETURN jsonb_build_object('success', true, 'rescued_count', v_rescued);
+    RETURN jsonb_build_object(
+        'success',       true,
+        'rescued_count', v_rescued,
+        'failed_count',  v_failed
+    );
 END;
 $$;
 
