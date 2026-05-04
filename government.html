@@ -2086,32 +2086,35 @@ async function loadLawsData() {
 // the Budget tab doesn't need per-policy detail — the Deep Dive
 // surfaces the same institution-level breakdowns live.
 
-let _budgetData = null;         // { budget, expenditures, aidReceived, aidGiven, debtService, debt }
+let _budgetData = null;         // { budget, aidReceived, recurringReceivedAnnual, debtService, debt }
 let _budgetLoading = false;
 let _budgetSelectedKey = null;  // selected income/cost row key
 let _budgetSelectGen = 0;       // monotonic counter — prevents an earlier
                                 // deep-dive fetch from clobbering a later
                                 // selection if the user clicks quickly.
 
-function _gbScaleCost(baseCost, scalingStat, nation) {
-    if (!scalingStat || !baseCost) return baseCost || 0;
-    const statVal = Number(nation[scalingStat]) || 1;
-    const divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
-    return baseCost * (statVal / divisor);
-}
-
-// Format a raw-dollar annual value. Matches economy.html's formatBudgetCurrency
-// output shape so this page reads consistently with the Economy page.
+// Abstract budget formatter — no K/M/B/T suffix soup. The page renders
+// every figure on the same small-digit scale so a player doesn't have
+// to mentally translate between $254 (treasury) and $145.1B (raw
+// expenditure dollars). All raw-dollar values are pre-divided by 1e9
+// at their call sites before reaching this formatter, so the
+// formatter itself is unit-agnostic — just rounded integer with
+// thousands-comma. "Is it billions? Who knows" was the explicit
+// design directive.
 function _gbFmtCurrency(val) {
     if (val == null || !isFinite(val)) return '$0';
-    const v = Number(val);
-    const sign = v < 0 ? '-' : '';
-    const abs = Math.abs(v);
-    if (abs >= 1e12) return sign + '$' + (abs / 1e12).toFixed(2) + 'T';
-    if (abs >= 1e9)  return sign + '$' + (abs / 1e9).toFixed(1)  + 'B';
-    if (abs >= 1e6)  return sign + '$' + (abs / 1e6).toFixed(0)  + 'M';
-    if (abs >= 1e3)  return sign + '$' + (abs / 1e3).toFixed(1)  + 'K';
-    return sign + '$' + Math.round(abs);
+    const v = Math.round(Number(val));
+    if (v < 0) return '-$' + (-v).toLocaleString();
+    return '$' + v.toLocaleString();
+}
+
+// Raw dollars (e.g. nation.debt, debtService from calculateNationalBudget)
+// → abstract scale (divided by 1e9). Identity for already-abstract values
+// would be wrong; the caller is responsible for choosing which path each
+// figure goes through. Centralising here so the divisor is one place.
+const _GB_RAW_TO_ABSTRACT = 1e9;
+function _gbToAbstract(rawDollars) {
+    return (Number(rawDollars) || 0) / _GB_RAW_TO_ABSTRACT;
 }
 
 async function loadBudgetData() {
@@ -2126,36 +2129,27 @@ async function loadBudgetData() {
     // Phase 10A: trade_summary table dropped with the goods-trade
     // engine. Tariff revenue feed stays at 0 until the rebuild lands.
 
-    // 2. Aid flows — Economy page uses the same aid_agreement_state view,
-    //    joined to trade_agreements to filter on the economic_aid type and
-    //    suspension flag. Recipient rows add to income, donor rows to
-    //    expenditures. current_annual_amount is already the annualized flow.
+    // 2. Aid flows — recipient-side only. The Costs panel is being
+    //    rebuilt from scratch (see _gbBuildCostRows), so the donor
+    //    accumulator that used to feed a "Foreign Aid (Given)" row
+    //    is gone. current_annual_amount is already annualized.
     let aidReceived = 0;
-    let aidGiven = 0;
     try {
         const { data: aidStates } = await _supabase.from('aid_agreement_state')
-            .select('donor_nation_id, recipient_nation_id, current_annual_amount, trade_agreements!inner(status, agreement_type)')
-            .or(`donor_nation_id.eq.${nation.id},recipient_nation_id.eq.${nation.id}`)
+            .select('recipient_nation_id, current_annual_amount, trade_agreements!inner(status, agreement_type)')
+            .eq('recipient_nation_id', nation.id)
             .eq('trade_agreements.status', 'active')
             .eq('trade_agreements.agreement_type', 'economic_aid')
             .eq('is_suspended', false);
         for (const row of (aidStates || [])) {
-            const amt = Number(row.current_annual_amount) || 0;
-            if (!amt) continue;
-            if (row.recipient_nation_id === nation.id) aidReceived += amt;
-            if (row.donor_nation_id === nation.id)     aidGiven    += amt;
+            aidReceived += Number(row.current_annual_amount) || 0;
         }
     } catch (_) { /* aid stays 0 */ }
 
-    // 2b. Recurring transfer flows from active GTAs (any agreement_type).
-    //     Annualized by multiplying per-tick amount × TICKS_PER_YEAR.
-    //     One-time transfers excluded — they hit budget_reserves once and
-    //     don't represent ongoing income/expense. See the per-tick processor
-    //     at advance-tick handler-template.ts step 3.5f for what actually
-    //     pays these out at runtime; this block just shows the contracted
-    //     annual flow on the budget UI.
+    // 2b. Recurring transfer flows — recipient side only, same reason
+    //     as above. Annualized by multiplying per-tick amount ×
+    //     TICKS_PER_YEAR. One-time transfers excluded.
     let recurringReceivedAnnual = 0;
-    let recurringGivenAnnual = 0;
     try {
         const { data: gtas } = await _supabase.from('trade_agreements')
             .select('nation_a_id, nation_b_id, articles')
@@ -2163,92 +2157,26 @@ async function loadBudgetData() {
             .or(`nation_a_id.eq.${nation.id},nation_b_id.eq.${nation.id}`);
         for (const a of (gtas || [])) {
             for (const art of (a.articles || [])) {
-                // Caller-side filter: only recurring (one-time hits reserves once).
                 if (art?.data?.transfer_type !== 'recurring') continue;
-                // Endpoint resolution is shared across callsites
-                // (see js/game/diplomacy-constants.js → resolveTransferEndpoints).
                 const endpoints = resolveTransferEndpoints(art, a);
                 if (!endpoints) continue;
-                const { fromNation, toNation, amount } = endpoints;
-                const annual = amount * GAME_CONFIG.TICKS_PER_YEAR;
-                if (toNation === nation.id)   recurringReceivedAnnual += annual;
-                if (fromNation === nation.id) recurringGivenAnnual    += annual;
+                if (endpoints.toNation !== nation.id) continue;
+                recurringReceivedAnnual += endpoints.amount * GAME_CONFIG.TICKS_PER_YEAR;
             }
         }
     } catch (_) { /* recurring stays 0 */ }
 
-    // 3. Expenditures by fiscal category — replicates economy.html's
-    //    loadExpenditureData, totals only. We need annualized dollars.
-    const yearStartTick = Math.floor(currentTick / GAME_CONFIG.TICKS_PER_YEAR) * GAME_CONFIG.TICKS_PER_YEAR;
-    const inflationMult = 1;
-    const expenditures = {};
-
-    try {
-        // Phase 5.2: embed the active option so fiscal_category / cost
-        // fields come from the chosen option. Phase 2.5 onward stops
-        // writing those columns on the policies row, so a multi-option
-        // policy without this fallback would fall through the
-        // fiscal_category check and contribute nothing to expenditures.
-        const lawsRes = await _supabase.from('active_laws')
-            .select('passed_tick, is_reversal, policies(policy_name, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat, policy_type), selected_option:policy_options!selected_option_id(fiscal_category, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_scaling_stat)')
-            .eq('nation_id', nation.id)
-            .eq('is_reversal', false);
-        for (const law of (lawsRes.data || [])) {
-            if (law.is_reversal) continue;
-            const p = law.policies;
-            if (!p || p.policy_type === 'lever') continue;
-            const opt = law.selected_option || null;
-            const fiscalCat = opt?.fiscal_category ?? p.fiscal_category;
-            if (!fiscalCat) continue;
-            const ongoingBase = (opt?.ongoing_base_cost ?? p.ongoing_base_cost ?? p.ongoing_cost_per_tick) || 0;
-            const ongoingScaling = opt?.ongoing_scaling_stat || p.ongoing_scaling_stat;
-            const upfront = (opt?.upfront_cost ?? p.upfront_cost) || 0;
-            const upfrontScaling = opt?.upfront_scaling_stat || p.upfront_scaling_stat;
-            let cost = 0;
-            if (ongoingBase > 0) {
-                cost += _gbScaleCost(ongoingBase, ongoingScaling, nation) * GAME_CONFIG.TICKS_PER_YEAR * 1_000_000;
-            }
-            if (law.passed_tick >= yearStartTick && upfront > 0) {
-                cost += _gbScaleCost(upfront, upfrontScaling, nation) * 1_000_000;
-            }
-            cost *= inflationMult;
-            expenditures[fiscalCat] = (expenditures[fiscalCat] || 0) + cost;
-        }
-    } catch (_) { /* policy costs stay 0 for failed fetch */ }
-
-    try {
-        const [cfgRes, allocRes] = await Promise.all([
-            _supabase.from('ministry_institution_config').select('*'),
-            _supabase.from('budget_item_allocations')
-                .select('item_id, item_type, allocation_amount, needed_amount')
-                .eq('nation_id', nation.id)
-                .eq('item_type', 'institution'),
-        ]);
-        const allocMap = buildFundingPctMap(allocRes.data);
-        const population = Number(nation.population || 0);
-        const gdp = Number(nation.gdp || 0);
-        for (const cfg of (cfgRes.data || [])) {
-            let fCat = null;
-            for (const fc in FISCAL_TO_MINISTRY_KEY) {
-                if (FISCAL_TO_MINISTRY_KEY[fc] === cfg.ministry_key) { fCat = fc; break; }
-            }
-            if (!fCat) continue;
-            const baseVal = Number(cfg.base_cost_per_capita || 0);
-            let needed = cfg.scaling_type === 'gdp' ? (baseVal / 100) * gdp : baseVal * population;
-            needed *= inflationMult;
-            const fundPct = getInstFundingPct(allocMap, cfg.id);
-            const cost = needed * (fundPct / 100);
-            expenditures[fCat] = (expenditures[fCat] || 0) + cost;
-        }
-    } catch (_) { /* institution costs stay 0 for failed fetch */ }
+    // 3. Expenditures: per-ministry institution costs and policy
+    //    fiscal-category costs were both wiped when the Costs panel
+    //    collapsed to "Interest on Debt" only. See _gbBuildCostRows —
+    //    when the budget rebuild lands these will be re-derived from
+    //    a different source, not the legacy ministry_institution_config /
+    //    active_laws fiscal_category fan-out.
 
     _budgetData = {
         budget,
-        expenditures,
         aidReceived,
-        aidGiven,
         recurringReceivedAnnual,
-        recurringGivenAnnual,
         debtService: Number(budget.debtService || 0),
         debt: Number(nation.debt || 0),
     };
@@ -2269,44 +2197,18 @@ function _gbBuildIncomeRows(d) {
     return rows;
 }
 
-// Cost line items: Interest on Debt (from calculateNationalBudget's
-// debtService), optional Foreign Aid (Given) when there are outbound
-// economic-aid flows, then one row per fiscal-category ministry.
-// The game doesn't separately model bond principal payments or
-// government-admin overhead, so those stay out of the list — the
-// design's placeholder lines for them are omitted rather than faked.
+// Cost line items. Reduced to a single row — Interest on Debt — while
+// the budget system is rebuilt from the ground up. Per-ministry
+// institution costs, foreign aid, and recurring-transfer outflows are
+// all culled at the source so neither the Costs panel nor the
+// Expenditures headline card surface placeholder data. debtService
+// arrives in raw dollars from calculateNationalBudget; convert to
+// abstract scale here so the row matches the Income panel's units
+// (revenue is already abstract via nation.budget).
 function _gbBuildCostRows(d) {
-    const ministryMeta = [
-        { key: 'Interior',        label: 'Ministry of the Interior' },
-        { key: 'Foreign Ministry',label: 'Ministry of Foreign Affairs' },
-        { key: 'Defense',         label: 'Ministry of Defense' },
-        { key: 'Finance',         label: 'Ministry of Finance' },
-        { key: 'Healthcare',      label: 'Ministry of Healthcare' },
-        { key: 'Education',       label: 'Ministry of Education' },
-        { key: 'Labor',           label: 'Ministry of Labor' },
-        { key: 'Transportation',  label: 'Ministry of Transportation' },
-        { key: 'Trade',           label: 'Ministry of Trade' },
-        { key: 'Justice',         label: 'Ministry of Justice' },
-        { key: 'Energy',          label: 'Ministry of Energy' },
+    return [
+        { key: 'debt_interest', name: 'Interest on Debt', yr: _gbToAbstract(d.debtService), descKey: 'debtInterest' },
     ];
-    const rows = [
-        { key: 'debt_interest', name: 'Interest on Debt', yr: Number(d.debtService || 0), descKey: 'debtInterest' },
-    ];
-    if (d.aidGiven > 0) {
-        rows.push({ key: 'aid_given', name: 'Foreign Aid (Given)', yr: Number(d.aidGiven), descKey: 'aidGiven' });
-    }
-    if (d.recurringGivenAnnual > 0) {
-        rows.push({ key: 'trade_transfers_given', name: 'Trade Transfers (Given)', yr: Number(d.recurringGivenAnnual), descKey: 'tradeTransfersGiven' });
-    }
-    for (const m of ministryMeta) {
-        rows.push({
-            key: 'min_' + FISCAL_TO_MINISTRY_KEY[m.key],
-            name: m.label,
-            yr: Number(d.expenditures[m.key] || 0),
-            descKey: 'ministry_' + FISCAL_TO_MINISTRY_KEY[m.key],
-        });
-    }
-    return rows;
 }
 
 function renderBudgetTab(container) {
@@ -2362,18 +2264,25 @@ function renderBudgetTab(container) {
 
     // Credit / bond-print split was removed when the credit stat was dropped from the 19-col schema.
 
-    // Budget card values. nation.gdp_growth is a 0-100 stat that maps
+    // GDP card values. nation.gdp_growth is a 0-100 stat that maps
     // linearly to ±1% per month at the extremes (stat 50 = 0%, stat
     // 100 = +1%/mo, stat 0 = −1%/mo) — same formula budget.js uses to
     // drift each tick. Expected yearly growth compounds monthly
     // so 12 months at +0.5%/mo ≈ +6.17%/yr.
-    const gdpNow = Number(currentNation?.budget) || 0;
+    const gdpNow = Number(currentNation?.gdp) || 0;
+    const budgetCash = Number(currentNation?.budget) || 0;
     const gdpGrowthStat = Number(currentNation?.gdp_growth ?? 50);
     const gdpMonthlyPct = ((gdpGrowthStat - 50) / 50) * 1.0;   // signed %
     const gdpYearlyPct  = (Math.pow(1 + gdpMonthlyPct / 100, 12) - 1) * 100;
     const gdpMonthlySign = gdpMonthlyPct >= 0 ? '+' : '';
     const gdpYearlySign  = gdpYearlyPct  >= 0 ? '+' : '';
     const gdpGrowthColor = gdpMonthlyPct >= 0 ? '#9ac89e' : '#d88d82';
+
+    // Debt card pre-converted to abstract scale so the formatter call
+    // doesn't need to know about the unit. Same divisor used by every
+    // raw→abstract path on this page (1e9, see _gbToAbstract).
+    const debtAbstract = _gbToAbstract(debtAmount);
+    const surplusAbstract = _gbToAbstract(surplusReserves);
 
     container.innerHTML = `
         <div class="gb-page">
@@ -2384,7 +2293,7 @@ function renderBudgetTab(container) {
             </div>
             <div class="gb-stats">
                 <div class="gb-stat is-gdp">
-                    <div class="gb-stat__label"><span class="gb-stat__dot"></span>Budget</div>
+                    <div class="gb-stat__label"><span class="gb-stat__dot"></span>GDP</div>
                     <div class="gb-stat__primary">${_gbFmtCurrency(gdpNow)}</div>
                     <div class="gb-stat__secondary">
                         <span class="gb-stat__secondary-k">Monthly</span>
@@ -2394,6 +2303,11 @@ function renderBudgetTab(container) {
                         <span class="gb-stat__secondary-k">Yearly (est.)</span>
                         <span style="color:${gdpGrowthColor};">${gdpYearlySign}${gdpYearlyPct.toFixed(1)}%</span>
                     </div>
+                </div>
+                <div class="gb-stat is-budget">
+                    <div class="gb-stat__label"><span class="gb-stat__dot"></span>Budget</div>
+                    <div class="gb-stat__primary">${_gbFmtCurrency(budgetCash)}</div>
+                    <div class="gb-stat__secondary"><span class="gb-stat__secondary-hint">Treasury Cash Balance</span></div>
                 </div>
                 <div class="gb-stat is-rev">
                     <div class="gb-stat__label"><span class="gb-stat__dot"></span>Revenue</div>
@@ -2412,7 +2326,7 @@ function renderBudgetTab(container) {
                 </div>
                 <div class="gb-stat ${isDebt ? 'is-debt' : 'is-sur'}">
                     <div class="gb-stat__label"><span class="gb-stat__dot"></span>${isDebt ? 'Debt' : 'Surplus'}</div>
-                    <div class="gb-stat__primary">${_gbFmtCurrency(isDebt ? debtAmount : surplusReserves)}</div>
+                    <div class="gb-stat__primary">${_gbFmtCurrency(isDebt ? debtAbstract : surplusAbstract)}</div>
                     ${isDebt
                         ? ''
                         : `<div class="gb-stat__secondary"><span class="gb-stat__secondary-hint">Accumulated Reserves</span></div>`
