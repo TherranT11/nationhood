@@ -588,9 +588,20 @@ const SECTOR_ARTICLES = {
           body: 'Members agree minimum ticket prices on overlapping routes. Protected margins; no race to the bottom. High antitrust risk — +0.3 Cartel score per active member, member nations may launch investigations, loss-of-license risk if exposed.',
           cartel: 0.3, chs: 0.6 },
     ],
-    // TODO: Banking (Finance) article set pending the same design pass
-    // that produced Construction / Airline / Shipping above.
-    Finance:  [],
+    Finance: [
+        { id: 'aligned_interest', name: 'Aligned Interest', kind: 'cartel',
+          body: 'Members agree on a band of acceptable interest rates for commercial lending — a ceiling and a floor. Loans extended at rates outside the agreed band trigger −2 Cohesion for the alliance and −1 Reputation for the corporation that violated. Inside the band: protected margins and no race to the bottom on rates. Antitrust regulators in member nations notice if the band is set too tight.',
+          cartel: 0.2, chs: 0.5 },
+        { id: 'joint_equity', name: 'Joint Equity Ventures', kind: 'cooperative',
+          body: 'Any equity stake purchased by a member corp is automatically split across every alliance member for proportional ownership and lending capital. Member corps may resell their equity slices only to other alliance members. Builds collective book size without solo capital outlay; restricts your liquidity — no exits to non-member buyers.',
+          cartel: 0.1, chs: 0.6 },
+        { id: 'syndicated_portfolio', name: 'Syndicated Lending Portfolio', kind: 'coordinating',
+          body: 'If any member corp’s Overleverage hits 8+ (and has not yet hit 10), every other member corp automatically absorbs −0.5 Lending Capital and the over-leveraged member’s leverage drops back to 7. One-shot per member per alliance term — and if Overleverage already hit 10, no rescue. Distributes leverage shocks before they cascade into a full bankruptcy.',
+          cartel: 0.0, chs: 0.5 },
+        { id: 'bad_debt_mutual', name: 'Bad Debt Mutual Aid', kind: 'cooperative',
+          body: 'Any single loan default ≥ $20M against a member corp: every other member absorbs 15% of the written-off principal as a one-time Lending Capital reduction. The defaulted-on bank gets first claim on any recovered collateral, ahead of secondary creditors. Spreads the impact of single-borrower wipeouts across the alliance; aggressive underwriting by one member taxes the others.',
+          cartel: 0.0, chs: 0.5 },
+    ],
     Shipping: [
         { id: 'cargo_pool', name: 'Cargo Pooling Pact', kind: 'cooperative',
           body: 'Members fill each other’s empty hold capacity. +1 effective Fleets per allied partner (cap +3, never above your real fleet count). Empty-leg voyages auto-match to a partner’s open shipping contract on the same route and pay you 40% of that contract’s per-voyage value as a slot fee. While carrying partner cargo your vessel sails their priority routing — can’t reposition until the slot discharges; cargo claims fall on the carrying member if loss occurs.',
