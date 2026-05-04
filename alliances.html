@@ -74,6 +74,18 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 }
 .al-rule { margin-top: 20px; height: 1px; background: var(--border-0); }
 
+/* 3-column stat grid for the expanded alliance card. Wraps cleanly
+   with 5 stats (3 on top, 2 on bottom). */
+.al-stat-grid {
+    margin-top: 14px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+@media (max-width: 720px) {
+    .al-stat-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
 .al-controls {
     margin-top: 20px;
     display: flex; justify-content: space-between; align-items: center; gap: 16px;
@@ -928,6 +940,7 @@ async function loadAlliancesData() {
                     founded_year: a.founded_at_tick ?? '—',
                     cartel_score: Number(cartelTotal.toFixed(1)),
                     heat: Number((Number(a.antitrust_heat) || 0).toFixed(1)),
+                    cohesion: Number((Number(a.cohesion) || 0).toFixed(1)),
                     founded_date: a.founded_at_tick != null ? `Tick ${a.founded_at_tick}` : '—',
                     hq: founderNation || '—',
                     chair: founderName || '—',
@@ -1194,11 +1207,12 @@ function renderAllianceExpanded(a, isMember) {
 
     return `
         <div class="al-row__expanded">
-            <div class="fnd-invitees-grid" style="margin-top:14px;">
+            <div class="al-stat-grid">
                 <div><div class="al-stat__label">Founded</div><div style="margin-top:2px;color:var(--text-bright);">${escHtml(a.founded_date || '—')}</div></div>
                 <div><div class="al-stat__label">Headquarters</div><div style="margin-top:2px;color:var(--text-bright);">${escHtml(a.hq || '—')}</div></div>
                 <div><div class="al-stat__label">Presiding Chair</div><div style="margin-top:2px;color:var(--text-bright);">${escHtml(a.chair || '—')}</div></div>
-                <div><div class="al-stat__label">Antitrust Heat</div><div style="margin-top:2px;color:var(--red);">${escHtml((a.heat ?? '—') + ' / 10.0')}</div></div>
+                <div><div class="al-stat__label">Cohesion</div><div style="margin-top:2px;color:var(--green);">${escHtml((a.cohesion ?? '—') + ' / 10.0')}</div></div>
+                <div><div class="al-stat__label">Antitrust Heat</div><div style="margin-top:2px;color:${(a.heat || 0) >= 7 ? 'var(--red)' : 'var(--amber)'};">${escHtml((a.heat ?? '—') + ' / 10.0')}</div></div>
             </div>
             ${a.mission ? `<div style="margin-top:16px;padding:12px 14px;border-left:2px solid var(--amber);font-style:italic;color:var(--text-secondary);">"${escHtml(a.mission)}"</div>` : ''}
             <div style="margin-top:16px;">

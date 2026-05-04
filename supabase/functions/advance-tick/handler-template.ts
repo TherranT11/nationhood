@@ -3230,6 +3230,24 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Incident processing failed (non-fatal):', incidentErr);
     }
 
+    // ══════════════════════════════════════════════════════════════════
+    // 4e. STRATEGIC ALLIANCES — auto-dissolve negotiations stuck >6 ticks
+    // ══════════════════════════════════════════════════════════════════
+    // RPC handles the whole sweep transactionally: refunds founding fees,
+    // applies −1 Reputation (floored at 0) to every invited member, and
+    // marks the alliance dissolved with reason='consensus_failed'.
+    try {
+        const { data: alliancePurge, error: allianceErr } = await supabase
+            .rpc('dissolve_failed_alliance_negotiations', { p_current_tick: newTick });
+        if (allianceErr) {
+            console.error('[advanceTick] Alliance dissolve RPC failed (non-fatal):', allianceErr.message);
+        } else if ((alliancePurge?.dissolved_count || 0) > 0) {
+            console.log(`[advanceTick] Strategic Alliances: dissolved ${alliancePurge.dissolved_count} stale negotiation(s), refunded $${alliancePurge.total_refunded}`);
+        }
+    } catch (allianceErr) {
+        console.error('[advanceTick] Alliance dissolve failed (non-fatal):', allianceErr);
+    }
+
     // 5. Commit shard tick/date AFTER all nation processing completes.
     // This is the last step — if the function timed out earlier, the tick
     // number stays unchanged and the cron will re-process on the next run.
