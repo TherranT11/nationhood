@@ -41,6 +41,16 @@ function principalPortion(monthlyPayment, monthlyInterestAmount) {
     return Math.max(0, safePayment - safeInterest);
 }
 
+function amortizedMonthlyPayment(principal, apr, termTicks) {
+    const safePrincipal = Math.max(0, Number(principal) || 0);
+    const safeApr = Math.max(0, Number(apr) || 0);
+    const safeTerm = Math.max(1, Number(termTicks) || 1);
+    const r = (safeApr / 100) / 12;
+    if (r === 0) return Math.round(safePrincipal / safeTerm);
+    const factor = Math.pow(1 + r, safeTerm);
+    return Math.round(safePrincipal * (r * factor) / (factor - 1));
+}
+
 const COLLATERAL_RECOVERY_RATES = {
     equipment: 0.6,
     property: 0.75,
@@ -4197,13 +4207,7 @@ async function processBankLoanPayments(supabase, currentTick) {
         let paymentsMissed = Number(loan.payments_missed) || 0;
         const r = (apr / 100) / TICKS_PER_YEAR;
 
-        let payment;
-        if (r > 0) {
-            const factor = Math.pow(1 + r, termTicks);
-            payment = Math.round(principal * (r * factor) / (factor - 1));
-        } else {
-            payment = Math.round(principal / Math.max(1, termTicks));
-        }
+        let payment = amortizedMonthlyPayment(principal, apr, termTicks);
         // Cap final payment at outstanding + interest due so a rounding
         // remainder closes the loan cleanly instead of leaving cents.
         const interestDue = Math.round(outstanding * r);
