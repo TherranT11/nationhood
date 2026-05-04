@@ -500,21 +500,30 @@ function _computeStatCommodities(nation) {
     const farmlandStat   = Number(nation.farmland)        || 0;
     const educationStat  = Number(nation.education)       || 0;
     const serviceStat    = Number(nation.service_sector)  || 0;
+    // potential = production with all multiplier stats (the / 100 or / 200
+    // terms) clamped to 1.0. Surfaces "what could you make if your operational
+    // stats were maxed out" against the natural endowment / industrial base.
+    // Energy has no multiplier so potential === prod.
     return [
         { key: 'energy',         name: 'Energy',         icon: '⚡',
           prod: energyStat / 3,
+          potential: energyStat / 3,
           dem:  ((infraStat + industryStat) * solStat * Math.sqrt(popMillions)) / 3500 },
         { key: 'minerals',       name: 'Minerals',       icon: '⛏',
           prod: (mineralsStat / 3) * ((workforceStat + industryStat) / 200),
+          potential: mineralsStat / 3,
           dem:  (infraStat / 10) + (industryStat / 16) },
         { key: 'food',           name: 'Food',           icon: '🌾',
           prod: (farmlandStat / 2) * (workforceStat / 100),
+          potential: farmlandStat / 2,
           dem:  popMillions / 3 },
         { key: 'consumer_goods', name: 'Consumer Goods', icon: '📦',
           prod: (industryStat / 3) * (workforceStat / 100),
+          potential: industryStat / 3,
           dem:  (solStat / 100) * popMillions / 2 },
         { key: 'luxury_goods',   name: 'Luxury Goods',   icon: '💎',
           prod: (solStat / 6) * ((educationStat * serviceStat) / 10000),
+          potential: solStat / 6,
           dem:  Math.pow(solStat / 100, 2) * popMillions },
     ];
 }
@@ -534,6 +543,7 @@ function renderTradeEconomy() {
         icon:   c.icon,
         name:   c.name,
         production:     c.prod,
+        potential:      c.potential,
         domesticDemand: c.dem,
         demand:         0,
         trading:        c.key === 'energy' ? getEnergyTradingVolume() : 0,
@@ -599,7 +609,7 @@ function renderTradeEconomy() {
         <div class="tr-econ-card">
             <div class="tr-econ-col-header">
                 <span>Commodity</span>
-                <span>Production</span>
+                <span>Production/Potential Prod.</span>
                 <span>Demand</span>
                 <span>Trading</span>
                 <span>Net</span>
@@ -646,7 +656,11 @@ function renderTradeEconomy() {
                         : ''}
                 </div>
             </div>
-            <span class="tr-econ-value">${fmtProd(c, c.production)}</span>
+            <span class="tr-econ-value">${fmtProd(c, c.production)}${
+                (c.statBased && c.key !== 'energy' && Number.isFinite(Number(c.potential)))
+                    ? ` <span class="tr-econ-potential" title="Production if multiplier stats were maxed at 100">(${fmtProd(c, c.potential)})</span>`
+                    : ''
+            }</span>
             <span class="tr-econ-value${totalDemand > 0 ? '' : ' tr-econ-muted'}">${totalDemand > 0 ? fmtProd(c, totalDemand) : '—'}</span>
             <span class="tr-econ-net ${tradingCls}">${trading === 0 ? '0' : (trading > 0 ? '+' : '−') + fmtProd(c, Math.abs(trading))}</span>
             <span class="tr-econ-net ${netCls}">${net === 0 ? '—' : (net > 0 ? '+' : '−') + fmtProd(c, Math.abs(net))}</span>

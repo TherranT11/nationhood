@@ -238,6 +238,16 @@
 }
 .tr-econ-value.tr-econ-muted { color: var(--text-dim); }
 
+/* Potential-production suffix shown in parens after the current
+   production value. Dimmer + smaller so the actual current number
+   stays the visual anchor; the parenthetical reads as the ceiling. */
+.tr-econ-potential {
+    font-size: 11px;
+    color: var(--text-dim, rgba(232,228,217,0.55));
+    font-weight: 400;
+    margin-left: 2px;
+}
+
 .tr-econ-net {
     font-family: var(--font-mono);
     font-size: 14px;
