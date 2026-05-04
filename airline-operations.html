@@ -1428,8 +1428,8 @@ async function loadActiveRoutes(corpId) {
         .eq('status', 'active')
         .order('opened_at_tick', { ascending: false });
     if (error) {
-        console.warn('[airline-ops] active routes fetch failed:', error.message);
-        el.innerHTML = '<div class="ao-panel-empty">Could not load active routes.</div>';
+        console.warn('[airline-ops] active routes fetch failed:', error);
+        el.innerHTML = `<div class="ao-panel-empty">Could not load active routes.<br><span style="font-family:var(--mono);font-size:10px;opacity:0.7;">${escHtml(error.message || 'unknown error')}</span></div>`;
         return;
     }
     if (!routes || routes.length === 0) {
