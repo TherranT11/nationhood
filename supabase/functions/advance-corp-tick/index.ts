@@ -4661,6 +4661,50 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
         }
     }
 
+    // 3a. Atomic tick claim. The read-side check above (corpLastTick)
+    //     prevents serial re-runs in the common case, but it can't stop
+    //     concurrent cron fires from both passing the read and both
+    //     beginning to run. It also doesn't help when the function
+    //     completes its work but times out before the end-of-tick guard
+    //     write — the next cron fire would re-run the whole tick,
+    //     re-emitting every cash event. Both modes were observed at
+    //     tick 56 (3× duplicate rows for Workforce wages / Fixed
+    //     overhead / Monthly market revenue).
+    //
+    //     The fix: UPDATE shard.corp_last_processed_tick at the START
+    //     of the tick, gated by a WHERE clause that only matches if the
+    //     tick hasn't been claimed yet. Postgres serializes concurrent
+    //     UPDATEs on the same row, so exactly one instance gets a non-
+    //     empty result; every other instance sees 0 rows and exits.
+    //
+    //     Tradeoff: if the tick fails partway through, the events
+    //     ledger may miss rows for that tick. But corp_cash_reserves
+    //     is always written authoritatively during the tick (direct
+    //     UPDATEs + emit_corp_cash_event SQL helper), so the cash
+    //     trajectory stays correct. Losing one tick's events ledger
+    //     is recoverable; re-running the whole tick is not.
+    // Always write the guard, so a forced rerun also persists the
+    // mark and the next cron fire skips correctly. In normal mode the
+    // .or() filter makes the UPDATE conditional — first instance wins,
+    // others see 0 affected rows and exit. With force=true the filter
+    // is omitted so the rerun unconditionally re-stamps the guard.
+    let claimQuery = supabase
+        .from('shard')
+        .update({ corp_last_processed_tick: currentTick })
+        .eq('name', 'Alpha Shard');
+    if (!force) {
+        claimQuery = claimQuery.or(`corp_last_processed_tick.lt.${currentTick},corp_last_processed_tick.is.null`);
+    }
+    const { data: claimed, error: claimErr } = await claimQuery.select('id');
+    if (claimErr) {
+        console.error('[advance-corp-tick] Tick claim failed:', claimErr.message);
+        return { status: 'claim_error', tick: currentTick, error: claimErr.message };
+    }
+    if (!force && (!claimed || claimed.length === 0)) {
+        console.log(`[advance-corp-tick] Tick ${currentTick} already claimed by a concurrent run — exiting.`);
+        return { status: 'already_claimed', tick: currentTick };
+    }
+
     console.log(`[advance-corp-tick] Processing tick ${currentTick} (${shard.current_date})`);
 
     // Capture the tick number for logCashEvent and reset its buffer.
@@ -6072,11 +6116,12 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
     // Flush buffered cash events to corp_cash_events. Single writer for
     // every per-corp P&L delta this tick, regardless of which nation
-    // triggered it.
+    // triggered it. The corp_last_processed_tick guard was already
+    // written atomically at the start of the tick (see 3a above), so
+    // a failure or timeout here loses at most this tick's events
+    // ledger — corp_cash_reserves stays consistent and the next cron
+    // fire is correctly skipped instead of re-running the whole tick.
     await flushCashEvents(supabase);
-
-    // 6. Mark this tick as processed (persisted to DB to survive cold starts)
-    await supabase.from('shard').update({ corp_last_processed_tick: currentTick }).eq('name', 'Alpha Shard');
 
     console.log(`[advance-corp-tick] Tick ${currentTick} complete. ${summary.corpsProcessed} corps across ${nationList.length} nations.`);
     return summary;
