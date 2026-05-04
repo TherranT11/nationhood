@@ -1326,6 +1326,10 @@ window.endShippingContract = async function(claimId, factionId, routeId) {
 
 let _tradeAgreementsList = [];
 let _tradeNegotiationsList = [];
+// negotiation_id → boolean, true when the OTHER nation has posted a
+// non-system message since this side's last_seen_at_<a|b> was stamped.
+// Drives the red unread dot in the AGREEMENTS panel.
+let _tradeNegUnreadById = {};
 let _tradeExpandedAgreement = null;
 
 async function loadTradeAgreements() {
@@ -1338,13 +1342,41 @@ async function loadTradeAgreements() {
             .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
             .order('enacted_at_tick', { ascending: false }),
         _supabase.from('trade_negotiations')
-            .select('id, nation_a_id, nation_b_id, status, agreement_type, opened_at_tick, approved_by_a, approved_by_b')
+            .select('id, nation_a_id, nation_b_id, status, agreement_type, opened_at_tick, approved_by_a, approved_by_b, last_seen_at_a, last_seen_at_b')
             .or(`nation_a_id.eq.${nationId},nation_b_id.eq.${nationId}`)
             .in('status', ['open', 'active', 'ratification'])
             .order('opened_at_tick', { ascending: false }),
     ]);
     _tradeAgreementsList = agResult.data || [];
     _tradeNegotiationsList = negResult.data || [];
+
+    // Compute per-negotiation unread state for the red dot. Pulls the
+    // most recent non-system message from the OTHER nation per neg,
+    // compares its created_at to last_seen_at_<my-side>. One batched
+    // query keeps this O(1) for the panel render.
+    const negIds = _tradeNegotiationsList.map(n => n.id);
+    const unread = {};
+    if (negIds.length > 0) {
+        const { data: latestMsgs } = await _supabase.from('negotiation_messages')
+            .select('negotiation_id, sender_nation_id, created_at')
+            .in('negotiation_id', negIds)
+            .neq('sender_nation_id', nationId)
+            .eq('is_system', false)
+            .order('created_at', { ascending: false });
+        const latestByNeg = {};
+        for (const m of (latestMsgs || [])) {
+            if (!latestByNeg[m.negotiation_id]) latestByNeg[m.negotiation_id] = m.created_at;
+        }
+        for (const neg of _tradeNegotiationsList) {
+            const weAreA = neg.nation_a_id === nationId;
+            const lastSeen = weAreA ? neg.last_seen_at_a : neg.last_seen_at_b;
+            const latest   = latestByNeg[neg.id];
+            if (latest && (!lastSeen || new Date(latest) > new Date(lastSeen))) {
+                unread[neg.id] = true;
+            }
+        }
+    }
+    _tradeNegUnreadById = unread;
 
     // Phase 4: cache awarded trade-agreement-spawned shipping contracts
     // and their winning bids so getEnergyTradingVolume can recognize
@@ -2146,6 +2178,7 @@ function renderTradeAgreements() {
         //   ONGOING         — negotiation in progress (default)
         const isRatifying = neg.status === 'ratification';
         const bothApproved = !isRatifying && !!neg.approved_by_a && !!neg.approved_by_b;
+        const hasUnread    = !!_tradeNegUnreadById[neg.id];
         let negBadgeColor, negBadgeLabel, negBadgeBg, negBadgeBorder, negBorderColor;
         if (isRatifying) {
             negBadgeLabel  = 'RATIFICATION';
@@ -2167,10 +2200,18 @@ function renderTradeAgreements() {
             negBorderColor = 'var(--amber)';
         }
 
+        // Red unread dot when the other nation has posted a non-system
+        // message since this side last opened the modal. Cleared by
+        // mark_trade_negotiation_seen on next open.
+        const unreadDot = hasUnread
+            ? '<span title="New message from the other nation" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);margin-right:4px;flex-shrink:0;"></span>'
+            : '';
+
         html += `<div style="padding:12px 18px;border-bottom:1px solid var(--border-main);cursor:pointer;border-left:3px solid ${negBorderColor};"
             onclick="openTradeNegModal('${partnerId}')">
             <div style="display:flex;justify-content:space-between;align-items:center;">
                 <div style="display:flex;align-items:center;gap:8px;">
+                    ${unreadDot}
                     <img src="${escapeHtml(myFlag)}" alt="" style="width:24px;height:16px;object-fit:cover;border:1px solid var(--border-main);" onerror="this.style.display='none'">
                     <span style="font-size:13px;font-weight:600;color:var(--text-bright);">${escapeHtml(myName)}</span>
                     <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">${isRatifying ? 'Ratification' : 'Trade Discussions'}</span>
@@ -19346,6 +19387,17 @@ async function openTradeNegModal(partnerNationId) {
     const partnerFlag = partner.flag_url || `assets/flags/${partner.name}.png`;
 
     const weAreA = neg.nation_a_id === myNation.id;
+
+    // Mark the negotiation as seen by this nation so the AGREEMENTS
+    // panel's red unread dot clears. Optimistic local clear first; the
+    // RPC persists the timestamp so the dot stays cleared on next load.
+    if (_tradeNegUnreadById[neg.id]) {
+        delete _tradeNegUnreadById[neg.id];
+    }
+    _supabase.rpc('mark_trade_negotiation_seen', { p_neg_id: neg.id })
+        .then(({ error }) => {
+            if (error) console.warn('[trade-neg] mark_seen failed:', error.message);
+        });
 
     _activeNegModal = {
         negotiationId: neg.id,
