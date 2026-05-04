@@ -134,23 +134,40 @@ export async function buildPolicyDecayAdjustments(supabase, nationId) {
 // under-supply −0.1 industry + Minerals under-supply −0.1 industry),
 // deltas sum (industry → −0.2 net) and apply in a SINGLE update so
 // neither overwrites the other. Trading volumes pre-computed once
-// per tick by computeEnergyTradingByNation; Minerals and Food
-// don't have trade-agreement plumbing yet (Trading = 0 for both).
+// per tick by computeCommodityTradingByNation — every awarded
+// shipping contract whose parent trade_agreement is active feeds
+// into the right commodity bucket on both buyer (positive) and
+// seller (negative) nations.
 // ════════════════════════════════════════════════════════════════
-export async function computeEnergyTradingByNation(supabase) {
+
+// Five canonical commodities the trade-flow form spawns shipping
+// contracts for. Kept in a constant so empty-flow defaults stay in
+// sync with the migration-side allow-list.
+const COMMODITY_KEYS = ['energy', 'minerals', 'food', 'consumer_goods', 'luxury_goods'];
+
+function _emptyCommodityFlows() {
+    const o = {};
+    for (const k of COMMODITY_KEYS) o[k] = 0;
+    return o;
+}
+
+export async function computeCommodityTradingByNation(supabase) {
     const map = new Map();
     const { data: contracts } = await supabase.from('shipping_contracts')
-        .select('id, nation_id, trade_agreement_id')
+        .select('id, nation_id, trade_agreement_id, commodity')
         .eq('status', 'awarded')
         .not('trade_agreement_id', 'is', null);
     if (!contracts || contracts.length === 0) return map;
 
     const contractIds = contracts.map(c => c.id);
+    // shipping_contract_bids.energy_per_tick is the units-per-tick
+    // column; the historical name is energy-flavoured but the value
+    // is generic (each bid is for the parent contract's commodity).
     const { data: bids } = await supabase.from('shipping_contract_bids')
         .select('contract_id, energy_per_tick')
         .in('contract_id', contractIds)
         .eq('status', 'accepted');
-    const energyByContract = new Map(
+    const volumeByContract = new Map(
         (bids || []).map(b => [b.contract_id, Number(b.energy_per_tick) || 0])
     );
 
@@ -163,17 +180,33 @@ export async function computeEnergyTradingByNation(supabase) {
         (agreements || []).filter(a => a.status === 'active').map(a => [a.id, a])
     );
 
+    function bucket(nationId) {
+        if (!map.has(nationId)) map.set(nationId, _emptyCommodityFlows());
+        return map.get(nationId);
+    }
+
     for (const c of contracts) {
-        const energyPerTick = energyByContract.get(c.id) || 0;
-        if (energyPerTick === 0) continue;
+        const volumePerTick = volumeByContract.get(c.id) || 0;
+        if (volumePerTick === 0) continue;
+        const commodity = c.commodity;
+        if (!COMMODITY_KEYS.includes(commodity)) continue;
         const ag = agByAgId.get(c.trade_agreement_id);
         if (!ag) continue;
         const buyerId  = c.nation_id;
         const sellerId = ag.nation_a_id === buyerId ? ag.nation_b_id : ag.nation_a_id;
-        if (buyerId)  map.set(buyerId,  (map.get(buyerId)  || 0) + energyPerTick);
-        if (sellerId) map.set(sellerId, (map.get(sellerId) || 0) - energyPerTick);
+        if (buyerId)  bucket(buyerId)[commodity]  += volumePerTick;
+        if (sellerId) bucket(sellerId)[commodity] -= volumePerTick;
     }
     return map;
+}
+
+// Lookup helper: trading volume for a single commodity on a single
+// nation. Used by the build*BucketDeltas builders below.
+function _commodityTradingFor(nation, tradingByNation, commodity) {
+    if (!tradingByNation || !nation?.id) return 0;
+    const flows = tradingByNation.get(nation.id);
+    if (!flows) return 0;
+    return Number(flows[commodity]) || 0;
 }
 
 // Build {bucket, met_pct, deltas} for ENERGY on this nation, or null
@@ -189,7 +222,7 @@ function buildEnergyBucketDeltas(nation, tradingByNation) {
     const demand     = ((infraStat + industryStat) * solStat * Math.sqrt(popMillions)) / 3500;
     if (demand <= 0) return null;
 
-    const trading = Number((tradingByNation && tradingByNation.get(nation.id)) || 0);
+    const trading = _commodityTradingFor(nation, tradingByNation, 'energy');
     const supply  = production + trading;
     const metPct  = supply / demand;
 
@@ -210,9 +243,8 @@ function buildEnergyBucketDeltas(nation, tradingByNation) {
     return null;
 }
 
-// Build {bucket, met_pct, deltas} for MINERALS on this nation. No
-// trade-agreement plumbing for Minerals yet, so supply = production.
-function buildMineralsBucketDeltas(nation) {
+// Build {bucket, met_pct, deltas} for MINERALS on this nation.
+function buildMineralsBucketDeltas(nation, tradingByNation) {
     const mineralsStat  = Number(nation.minerals)       || 0;
     const workforceStat = Number(nation.workforce)      || 0;
     const industryStat  = Number(nation.industry)       || 0;
@@ -222,8 +254,9 @@ function buildMineralsBucketDeltas(nation) {
     const demand     = (infraStat / 10) + (industryStat / 16);
     if (demand <= 0) return null;
 
-    const supply = production;
-    const metPct = supply / demand;
+    const trading = _commodityTradingFor(nation, tradingByNation, 'minerals');
+    const supply  = production + trading;
+    const metPct  = supply / demand;
 
     if (metPct < 1.0) {
         return {
@@ -242,11 +275,10 @@ function buildMineralsBucketDeltas(nation) {
     return null;
 }
 
-// Build {bucket, met_pct, deltas} for FOOD on this nation. No
-// trade-agreement plumbing for Food yet, so supply = production.
+// Build {bucket, met_pct, deltas} for FOOD on this nation.
 //   production = (farmland / 2) × (workforce / 100)
 //   demand     = population_M / 3
-function buildFoodBucketDeltas(nation) {
+function buildFoodBucketDeltas(nation, tradingByNation) {
     const farmlandStat  = Number(nation.farmland)  || 0;
     const workforceStat = Number(nation.workforce) || 0;
     const popMillions   = (Number(nation.population) || 0) / 1_000_000;
@@ -255,8 +287,9 @@ function buildFoodBucketDeltas(nation) {
     const demand     = popMillions / 3;
     if (demand <= 0) return null;
 
-    const supply = production;
-    const metPct = supply / demand;
+    const trading = _commodityTradingFor(nation, tradingByNation, 'food');
+    const supply  = production + trading;
+    const metPct  = supply / demand;
 
     if (metPct < 1.0) {
         return {
@@ -289,7 +322,7 @@ function buildFoodBucketDeltas(nation) {
 // Build {bucket, met_pct, deltas} for CONSUMER GOODS on this nation.
 //   production = (industry / 3) × (workforce / 100)
 //   demand     = (standard_of_living / 100) × population_M / 2
-function buildConsumerGoodsBucketDeltas(nation) {
+function buildConsumerGoodsBucketDeltas(nation, tradingByNation) {
     const industryStat  = Number(nation.industry)           || 0;
     const workforceStat = Number(nation.workforce)          || 0;
     const solStat       = Number(nation.standard_of_living) || 0;
@@ -299,8 +332,9 @@ function buildConsumerGoodsBucketDeltas(nation) {
     const demand     = (solStat / 100) * popMillions / 2;
     if (demand <= 0) return null;
 
-    const supply = production;
-    const metPct = supply / demand;
+    const trading = _commodityTradingFor(nation, tradingByNation, 'consumer_goods');
+    const supply  = production + trading;
+    const metPct  = supply / demand;
 
     if (metPct < 1.0) {
         return {
@@ -332,7 +366,7 @@ function buildConsumerGoodsBucketDeltas(nation) {
 // Build {bucket, met_pct, deltas} for LUXURY GOODS on this nation.
 //   production = (standard_of_living / 6) × ((education × service_sector) / 10000)
 //   demand     = (standard_of_living / 100)² × population_M
-function buildLuxuryGoodsBucketDeltas(nation) {
+function buildLuxuryGoodsBucketDeltas(nation, tradingByNation) {
     const solStat       = Number(nation.standard_of_living) || 0;
     const educationStat = Number(nation.education)          || 0;
     const serviceStat   = Number(nation.service_sector)     || 0;
@@ -342,8 +376,9 @@ function buildLuxuryGoodsBucketDeltas(nation) {
     const demand     = Math.pow(solStat / 100, 2) * popMillions;
     if (demand <= 0) return null;
 
-    const supply = production;
-    const metPct = supply / demand;
+    const trading = _commodityTradingFor(nation, tradingByNation, 'luxury_goods');
+    const supply  = production + trading;
+    const metPct  = supply / demand;
 
     if (metPct < 1.0) {
         return {
@@ -374,13 +409,13 @@ export async function processCommodityDemandEffects(supabase, nation, tradingByN
     const sources = [];
     const energy = buildEnergyBucketDeltas(nation, tradingByNation);
     if (energy)   sources.push({ commodity: 'energy',   ...energy });
-    const minerals = buildMineralsBucketDeltas(nation);
+    const minerals = buildMineralsBucketDeltas(nation, tradingByNation);
     if (minerals) sources.push({ commodity: 'minerals', ...minerals });
-    const food = buildFoodBucketDeltas(nation);
+    const food = buildFoodBucketDeltas(nation, tradingByNation);
     if (food)     sources.push({ commodity: 'food',     ...food });
-    const consumer = buildConsumerGoodsBucketDeltas(nation);
+    const consumer = buildConsumerGoodsBucketDeltas(nation, tradingByNation);
     if (consumer) sources.push({ commodity: 'consumer_goods', ...consumer });
-    const luxury = buildLuxuryGoodsBucketDeltas(nation);
+    const luxury = buildLuxuryGoodsBucketDeltas(nation, tradingByNation);
     if (luxury)   sources.push({ commodity: 'luxury_goods', ...luxury });
 
     if (sources.length === 0) return null;
