@@ -1144,6 +1144,7 @@ function renderAdministrationTab(container) {
         <div class="adm2-left">
             <div id="adm2-admin-card"></div>
             <div id="adm2-exec-card"></div>
+            <div id="adm2-hog-card"></div>
             <div id="adm2-nation-card"></div>
         </div>
         <section class="adm2-timeline">
@@ -1163,6 +1164,7 @@ function renderAdministrationTab(container) {
 
     adm2RenderAdminCard();
     adm2RenderExecCard();
+    adm2RenderHogCard();
     adm2RenderNationCard();
     adm2RenderTimeline();
     adm2RenderCabinet();
@@ -1307,12 +1309,15 @@ function adm2RenderExecCard() {
         </div>`);
     }
 
-    // Prime Minister (parliamentary + semi-presidential + absolute monarchy).
+    // Prime Minister (parliamentary + absolute monarchy only).
+    // Semi-presidential nations render PM in the dedicated Head of
+    // Government panel (adm2RenderHogCard) — the President-nominates-PM
+    // dynamic deserves its own surface so the Vacant + [Nominate] flow
+    // has somewhere to live.
     // Absolute monarchies route through the same hog row — when the Monarch
     // hasn't appointed a separate party, the migration defaults the row to
     // their own faction (sql/migrations/20260710_backfill_ministries_and_monarch_hog.sql).
-    // Role label stays "Prime Minister" in every case.
-    if (hog && !isPurePres) {
+    if (hog && !isPurePres && !isSemiPresidential(nation)) {
         const name = `${hog.first_name || ''} ${hog.last_name || ''}`.trim();
         const pmParty = parties.find(p => p.id === hog.faction_id);
         const party = pmParty?.faction_name || '';
@@ -1350,6 +1355,61 @@ function adm2RenderExecCard() {
     el.innerHTML = `<div class="adm2-panel">
         <div class="adm2-panel-head"><span class="sq" style="background:var(--green);"></span>Executive</div>
         ${rows.join('') || '<div style="padding:16px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">No executive data.</div>'}
+    </div>`;
+}
+
+// ── Head of Government card — semi-presidential PM seat ──────────────
+// Semi-presidential nations only. The President nominates the PM and
+// parliament confirms via simple-majority vote (existing
+// minister_confirmation bill flow). When the seat is vacant, the
+// President's faction sees a [Nominate] button that opens the same
+// assign-modal used for cabinet ministers. Cohabitation rules + the
+// "appoint your own party's deputy, not the leader" check live in
+// nominateMinister (presidential.js:90) — this UI just routes there.
+function adm2RenderHogCard() {
+    const el = document.getElementById('adm2-hog-card');
+    if (!el || !_govData) return;
+    const nation = currentNation;
+    if (!isSemiPresidential(nation)) {
+        el.innerHTML = '';
+        return;
+    }
+    const { hog, president, parties } = _govData;
+
+    let body;
+    if (hog) {
+        const name = `${hog.first_name || ''} ${hog.last_name || ''}`.trim();
+        const pmParty = parties.find(p => p.id === hog.faction_id);
+        const partyName = pmParty?.faction_name || '';
+        const color = pmParty?.party_color || 'var(--text-muted)';
+        const initials = name.split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
+        body = `<div class="adm2-exec-person">
+            <div class="adm2-avatar" style="color:${color};border-color:${color}44;background:${color}15;">${escapeHtml(initials)}</div>
+            <div class="adm2-exec-body">
+                <div class="role">Prime Minister</div>
+                <div class="name">${escapeHtml(name)}</div>
+                ${partyName ? `<div class="party"><span class="dot" style="background:${color};"></span>${escapeHtml(partyName)}</div>` : ''}
+            </div>
+        </div>`;
+    } else {
+        // Vacant seat. Only the active President's faction can nominate.
+        const isPresFaction = president && currentFaction && president.faction_id === currentFaction.id;
+        const button = isPresFaction
+            ? `<button class="ministry-card__mgmt-btn ministry-card__mgmt-btn--appoint" onclick="openPMNominateModal()" style="margin-top:8px;">Nominate</button>`
+            : `<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;margin-top:6px;">Only the President's party can nominate.</div>`;
+        body = `<div class="adm2-exec-person">
+            <div class="adm2-avatar" style="color:var(--text-muted);border-color:rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);">—</div>
+            <div class="adm2-exec-body">
+                <div class="role">Prime Minister</div>
+                <div class="name" style="color:var(--text-dim);font-style:italic;">Vacant</div>
+                ${button}
+            </div>
+        </div>`;
+    }
+
+    el.innerHTML = `<div class="adm2-panel">
+        <div class="adm2-panel-head"><span class="sq" style="background:var(--blue, #5b8dc4);"></span>Head of Government</div>
+        ${body}
     </div>`;
 }
 
@@ -10335,6 +10395,60 @@ function closeAssignModal() {
     _coalitionAppointMode = false;
     document.getElementById('assign-modal').classList.remove('active');
 }
+
+// Semi-presidential PM nomination. Reuses the assign-modal DOM but
+// supplies real party-leader candidates (the generic openAssignModal
+// fills random names — fine for cabinet roles but rejected by
+// nominateMinister's deputy-leader validation for PM seats). Excludes
+// the President's own party from the choice list because cohabitation
+// requires a deputy nominee and there's no deputy-picker UI here yet
+// — pick a different party for now.
+function openPMNominateModal() {
+    if (!isSemiPresidential(currentNation)) return;
+    const presFactionId = _govData?.president?.faction_id || null;
+    if (!presFactionId || currentFaction?.id !== presFactionId) return;
+
+    assignMinistryKey = 'prime_minister';
+    selectedCandidate = null;
+    document.getElementById('assign-confirm-btn').disabled = true;
+    document.getElementById('assign-confirm-btn').textContent = 'Nominate Prime Minister';
+    document.getElementById('assign-modal-title').textContent = 'Nominate Prime Minister';
+
+    // Eligible parties = every party except the President's own. PM must
+    // come from a different party (cohabitation) until a deputy-picker
+    // UI exists for same-party nominations.
+    const eligibleParties = (allParties || [])
+        .filter(p => p.id !== presFactionId)
+        .filter(p => p.leader_first_name && p.leader_last_name);
+
+    generatedCandidates = eligibleParties.map(party => ({
+        partyId: party.id,
+        partyName: party.faction_name,
+        firstName: party.leader_first_name,
+        lastName: party.leader_last_name,
+        age: party.leader_age || 50,
+    }));
+
+    document.getElementById('assign-candidates').innerHTML = generatedCandidates.length
+        ? generatedCandidates.map((c, i) => {
+            const candColor = getPartyColorById(c.partyId);
+            const candLogo = getPartyLogoById(c.partyId);
+            const candCustomLogo = getPartyCustomLogoById(c.partyId);
+            const candLogoHtml = candLogo || candCustomLogo
+                ? `<span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${getPartyLogoHTML({ customLogoUrl: candCustomLogo, iconKey: candLogo, size: 14, color: candColor })}</span>`
+                : '';
+            return `<div class="candidate-card" id="cand-${i}" onclick="selectCandidate(${i})" style="border-left:3px solid ${candColor};">
+                <div>
+                    <div class="candidate-name">${escapeHtml(c.firstName)} ${escapeHtml(c.lastName)}</div>
+                    <div class="candidate-details">Age ${c.age} · <span class="candidate-party-tag other">${candLogoHtml}${escapeHtml(c.partyName)}</span></div>
+                </div>
+            </div>`;
+        }).join('')
+        : `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;padding:8px 0;">No eligible parties (need a non-presidential party with a registered leader).</div>`;
+
+    document.getElementById('assign-modal').classList.add('active');
+}
+window.openPMNominateModal = openPMNominateModal;
 
 function openAppointModal(ministryKey) {
     _coalitionAppointMode = true;
