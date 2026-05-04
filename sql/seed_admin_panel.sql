@@ -19,7 +19,6 @@ INSERT INTO system_config (key, value) VALUES ('admin_panel_html', $$
             <button class="tab active" onclick="showTab('shard')">Shard</button>
             <button class="tab" onclick="showTab('elections')">Elections</button>
             <button class="tab" onclick="showTab('players')">Players</button>
-            <button class="tab" onclick="showTab('voters')">Voters</button>
             <button class="tab" onclick="showTab('sectors')">Sectors</button>
             <button class="tab" onclick="showTab('danger')">Danger Zone</button>
             <button class="tab" onclick="showTab('inspector')">Inspector</button>
@@ -161,94 +160,6 @@ INSERT INTO system_config (key, value) VALUES ('admin_panel_html', $$
             <div id="player-count" style="color:#888; font-size:0.85rem; margin-bottom:15px;"></div>
             <div id="players-list"></div>
         </div>
-
-        <!-- ==================== VOTERS TAB ==================== -->
-        <div class="tab-content" id="tab-voters">
-            <h2>🗳️ Voter Bloc Management</h2>
-            <p style="color:#888; font-size:0.9rem; margin-bottom:20px;">
-                Create and manage named voter blocs per nation. Each bloc has ideology scores, population weight, and priority issues.
-            </p>
-
-            <!-- Nation Selector -->
-            <div class="input-group">
-                <label>Select Nation</label>
-                <select id="voter-nation-select" onchange="onVoterNationSelect()">
-                    <option value="">-- Choose a nation --</option>
-                </select>
-            </div>
-
-            <!-- Everything below hidden until nation selected -->
-            <div id="voter-nation-info" class="hidden">
-
-                <!-- Population & Eligible Voters -->
-                <div class="shard-info">
-                    <div class="info-row">
-                        <span class="info-label">Total Population:</span>
-                        <span class="info-value" id="voter-pop-display">—</span>
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">Eligible Voters:</span>
-                        <span style="display:flex; align-items:center; gap:10px;">
-                            <input type="number" id="voter-eligible-input" class="eligible-input" min="0">
-                            <span id="voter-eligible-pct" style="color:#888; font-size:0.85rem;"></span>
-                        </span>
-                    </div>
-                </div>
-
-                <!-- Ideology Axis Sliders -->
-                <div style="margin:24px 0;">
-                    <h3 style="color:#ffcc00; font-size:1rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:16px;">
-                        Nation Ideology Axes
-                    </h3>
-                    <p style="color:#888; font-size:0.85rem; margin-bottom:16px;">
-                        Each slider sets the national population split for this ideology axis. These values define the electorate's ideological landscape.
-                    </p>
-                    <div id="ideology-sliders-container"></div>
-                </div>
-
-                <!-- Save Axes -->
-                <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:30px;">
-                    <button class="btn btn-primary" onclick="saveAxes()">Save All</button>
-                    <button class="btn btn-secondary" onclick="autoFillAllVars()">Auto-fill Variance from Polarization</button>
-                    <button class="btn btn-secondary" onclick="resetAxesToSaved()">Reset</button>
-                    <span id="axes-save-status" style="font-weight:bold;"></span>
-                </div>
-
-                <!-- Divider -->
-                <div style="border-top:2px solid #333; margin:30px 0;"></div>
-
-                <h3 style="color:#CE93D8; font-size:1rem; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">
-                    Voter Blocs
-                </h3>
-                <p style="color:#888; font-size:0.85rem; margin-bottom:16px;">
-                    Named demographic groups with ideology scores and population weights. Parties have separate approval ratings with each bloc.
-                </p>
-
-                <!-- Weight Validator -->
-                <div class="weight-validator" id="weight-validator">
-                    <span class="weight-validator-label">Total Population Weight:</span>
-                    <span class="weight-validator-value" id="weight-total">0%</span>
-                    <span class="weight-validator-status" id="weight-status"></span>
-                </div>
-
-                <!-- Action Buttons -->
-                <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:24px;">
-                    <button class="btn btn-primary" onclick="showAddBlocForm()">+ Add Bloc</button>
-                </div>
-
-                <div id="bloc-action-status" style="margin-bottom:16px;"></div>
-
-                <!-- Add/Edit Bloc Form (hidden by default) -->
-                <div id="bloc-form-container" class="hidden"></div>
-
-                <!-- Existing Blocs List -->
-                <div id="existing-blocs-display">
-                    <div class="no-players">Select a nation to view voter blocs.</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- ==================== SECTORS TAB ==================== -->
         <div class="tab-content" id="tab-sectors">
             <h2>Sectors Management</h2>
             <p style="color:#888; font-size:0.9rem; margin-bottom:20px;">
