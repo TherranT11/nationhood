@@ -10458,11 +10458,12 @@ async function confirmAssign() {
                 .eq('nation_id', currentNation.id)
                 .eq('active', true);
 
-            // Upsert new PM record — use faction's leader_ideology as single source of truth.
-            // appointed_tick is required so the Administration card's term display
-            // resets to "now" instead of inheriting the previous PM's start tick.
+            // History-preserving INSERT (Fix C, 20260827). The previous
+            // upsert clobbered the prior PM row in place; with the
+            // partial unique on (nation_id) WHERE active, inactive rows
+            // accumulate as history.
             const assignPartyData = allParties.find(p => p.id === selectedCandidate.partyId);
-            await _supabase.from('head_of_government').upsert({
+            await _supabase.from('head_of_government').insert({
                 nation_id: currentNation.id,
                 faction_id: selectedCandidate.partyId,
                 first_name: selectedCandidate.firstName,

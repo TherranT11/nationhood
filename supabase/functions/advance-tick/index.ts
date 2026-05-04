@@ -22443,9 +22443,14 @@ async function installHOG(supabase, opts) {
             .eq('nation_id', nationId)
             .eq('active', true);
 
+        // History-preserving INSERT (Fix C, 20260827). The previous
+        // upsert with onConflict: 'nation_id' clobbered prior rows in
+        // place; after the partial unique on (nation_id) WHERE active,
+        // inactive history rows are kept and the new active row is
+        // simply inserted.
         const { error: hogErr } = await supabase
             .from('head_of_government')
-            .upsert({
+            .insert({
                 nation_id: nationId,
                 faction_id: factionId,
                 candidate_id: candidateId,
@@ -22455,7 +22460,7 @@ async function installHOG(supabase, opts) {
                 trait_key: traitKey,
                 appointed_tick: currentTick,
                 active: true,
-            }, { onConflict: 'nation_id' });
+            });
 
         if (hogErr) throw hogErr;
     }
