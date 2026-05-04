@@ -227,6 +227,14 @@ BEGIN
     IF v_founder.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'You do not own this corporation');
     END IF;
+    -- Re-load with FOR UPDATE so the cash check + deduction can't race
+    -- against a concurrent propose call from the same founder. Two
+    -- rapid clicks (or a direct RPC bypass) would otherwise both pass
+    -- the balance check and double-charge the founding fee.
+    SELECT * INTO v_founder FROM factions WHERE id = p_founder_faction_id FOR UPDATE;
+    IF v_founder.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Founder corporation not found');
+    END IF;
     IF p_name IS NULL OR length(trim(p_name)) = 0 THEN
         RETURN jsonb_build_object('success', false, 'error', 'Alliance name is required');
     END IF;
@@ -428,6 +436,13 @@ BEGIN
     IF p_article_kind IS NULL OR p_article_kind NOT IN ('cooperative','coordinating','cartel') THEN
         RETURN jsonb_build_object('success', false, 'error', 'Invalid article kind');
     END IF;
+    -- Snapshot scores come from the client (the catalog lives in JS today).
+    -- Clamp to a sane band [0, 10] so a tampered call can't ratify with
+    -- extreme values that would game-break once article runtime effects
+    -- ship. When the catalog moves to a server-side table this clamp
+    -- becomes redundant — keep it until then.
+    p_cartel_score := LEAST(10::numeric, GREATEST(0::numeric, COALESCE(p_cartel_score, 0)));
+    p_chs_bonus    := LEAST(10::numeric, GREATEST(0::numeric, COALESCE(p_chs_bonus,   0)));
 
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
     v_tick := COALESCE(v_tick, 0);
@@ -435,7 +450,7 @@ BEGIN
     UPDATE strategic_alliances
     SET status = 'active',
         founded_at_tick = v_tick,
-        cohesion = LEAST(10::numeric, COALESCE(cohesion, 0) + COALESCE(p_chs_bonus, 0))
+        cohesion = LEAST(10::numeric, COALESCE(cohesion, 0) + p_chs_bonus)
     WHERE id = p_alliance_id;
 
     INSERT INTO alliance_articles (
@@ -443,7 +458,7 @@ BEGIN
         cartel_score, chs_bonus, ratified_at_tick
     ) VALUES (
         p_alliance_id, v_consensus, p_article_name, p_article_kind, p_article_body,
-        COALESCE(p_cartel_score, 0), COALESCE(p_chs_bonus, 0), v_tick
+        p_cartel_score, p_chs_bonus, v_tick
     );
 
     -- Negotiation votes are no longer needed once ratified — clear them
@@ -536,6 +551,15 @@ BEGIN
     END IF;
     IF v_alliance.status = 'dissolved' THEN
         RETURN jsonb_build_object('success', false, 'error', 'Alliance is already dissolved');
+    END IF;
+
+    -- Founders of a still-negotiating alliance must use withdraw_strategic_alliance
+    -- — leave silently strands the founding fee and orphans the proposal
+    -- (no other member can ratify or withdraw). Reject explicitly.
+    IF v_alliance.status = 'negotiating'
+       AND v_alliance.founder_faction_id = p_faction_id THEN
+        RETURN jsonb_build_object('success', false,
+            'error', 'Founders must use Withdraw Proposal to dissolve a negotiation');
     END IF;
 
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;

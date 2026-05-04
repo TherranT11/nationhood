@@ -1768,16 +1768,25 @@ async function ratifyAlliance() {
     });
 }
 
-async function withdrawAlliance() {
-    if (!confirm('Withdraw this proposal? Founding fee will be refunded.')) return;
-    await withAllianceLock(async () => {
-        const { data, error } = await _supabase.rpc('withdraw_strategic_alliance', {
-            p_founder_faction_id: faction.id,
-            p_alliance_id: _negotiationId,
-        });
-        if (error || !data?.success) { reportRpcError('Withdraw failed', error, data); return; }
-        await loadAlliancesData();
-        closeNegotiation();
+function withdrawAlliance() {
+    // Use the styled openConfirm modal (consistent with leaveAlliance)
+    // instead of native browser confirm().
+    const id = _negotiationId;
+    openConfirm({
+        title: 'Withdraw this proposal?',
+        body: 'The negotiation will be dissolved and the founding fee refunded to your corporation.',
+        confirmLabel: 'Withdraw Proposal',
+        onConfirm: () => {
+            withAllianceLock(async () => {
+                const { data, error } = await _supabase.rpc('withdraw_strategic_alliance', {
+                    p_founder_faction_id: faction.id,
+                    p_alliance_id: id,
+                });
+                if (error || !data?.success) { reportRpcError('Withdraw failed', error, data); return; }
+                await loadAlliancesData();
+                closeNegotiation();
+            });
+        },
     });
 }
 
