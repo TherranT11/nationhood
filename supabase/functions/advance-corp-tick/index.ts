@@ -4661,33 +4661,29 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
         }
     }
 
-    // 3a. Atomic tick claim. The read-side check above (corpLastTick)
-    //     prevents serial re-runs in the common case, but it can't stop
-    //     concurrent cron fires from both passing the read and both
-    //     beginning to run. It also doesn't help when the function
-    //     completes its work but times out before the end-of-tick guard
-    //     write — the next cron fire would re-run the whole tick,
-    //     re-emitting every cash event. Both modes were observed at
-    //     tick 56 (3× duplicate rows for Workforce wages / Fixed
-    //     overhead / Monthly market revenue).
+    // 3a. Atomic tick claim. The read-side check above is a fast path
+    //     for the common case but can't stop concurrent cron fires
+    //     (both pass the read, both begin to run) or recover from a
+    //     timeout between flushCashEvents and the end-of-tick guard
+    //     write (events insert commits, guard never updates, next cron
+    //     fire re-runs and double-emits). Both modes were observed at
+    //     tick 56 with 3× duplicate rows.
     //
-    //     The fix: UPDATE shard.corp_last_processed_tick at the START
-    //     of the tick, gated by a WHERE clause that only matches if the
-    //     tick hasn't been claimed yet. Postgres serializes concurrent
-    //     UPDATEs on the same row, so exactly one instance gets a non-
-    //     empty result; every other instance sees 0 rows and exits.
+    //     The fix is to UPDATE corp_last_processed_tick at the START
+    //     of the tick. In normal mode the .or() filter makes the write
+    //     conditional — Postgres serializes concurrent UPDATEs on the
+    //     same row, so exactly one instance's WHERE matches and every
+    //     other instance sees 0 affected rows and exits. With
+    //     force=true the filter is omitted, so a manual debug rerun
+    //     unconditionally re-stamps the guard (otherwise the next cron
+    //     fire would think the forced run never happened).
     //
     //     Tradeoff: if the tick fails partway through, the events
-    //     ledger may miss rows for that tick. But corp_cash_reserves
-    //     is always written authoritatively during the tick (direct
-    //     UPDATEs + emit_corp_cash_event SQL helper), so the cash
-    //     trajectory stays correct. Losing one tick's events ledger
-    //     is recoverable; re-running the whole tick is not.
-    // Always write the guard, so a forced rerun also persists the
-    // mark and the next cron fire skips correctly. In normal mode the
-    // .or() filter makes the UPDATE conditional — first instance wins,
-    // others see 0 affected rows and exit. With force=true the filter
-    // is omitted so the rerun unconditionally re-stamps the guard.
+    //     ledger may miss this tick's rows. corp_cash_reserves is
+    //     written authoritatively during the tick (direct UPDATEs +
+    //     emit_corp_cash_event SQL helper), so the cash trajectory
+    //     stays correct. Losing one tick's events ledger is
+    //     recoverable; re-running the whole tick is not.
     let claimQuery = supabase
         .from('shard')
         .update({ corp_last_processed_tick: currentTick })
