@@ -98,7 +98,8 @@ export const SOVEREIGN_DEFAULT_CONFIG = {
 // the ~9-stat legacy list collapses into the 6 alpha columns that
 // actually represent state-funded categories.
 export const AUSTERITY_ELIGIBLE_STATS = [
-    'health', 'education', 'infrastructure', 'energy', 'industry', 'workforce'
+    'health', 'education', 'infrastructure', 'energy', 'industry',
+    'unskilled_workers', 'skilled_workers'
 ];
 
 // Stats whose policy effects are reduced by debt service burden
@@ -107,7 +108,8 @@ export const AUSTERITY_ELIGIBLE_STATS = [
 // that suffer first.
 export const SPENDING_AFFECTED_STATS = new Set([
     'health', 'education', 'infrastructure',
-    'standard_of_living', 'energy', 'industry', 'workforce'
+    'standard_of_living', 'energy', 'industry',
+    'unskilled_workers', 'skilled_workers'
 ]);
 
 

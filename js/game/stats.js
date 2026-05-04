@@ -107,26 +107,29 @@
  *   service_output             Services & finance sector output (0-100)
  *   housing_affordability      Housing accessibility (0-100, higher is better)
  */
-// Alpha stats refactor — Phase 9 dropped the legacy stat columns from
-// the schema. The whitelist is now exactly the 23 alpha stats:
-//   * 5 pass-throughs from the legacy schema:
-//     gdp_growth, debt, immigration, standard_of_living, cost_of_living
-//   * 18 alpha-only columns added in Phase 2 / 8.5.1
-// Legacy stat keys still appear in event/policy stat_effects JSON;
-// STAT_KEY_ALIASES routes or null-filters them at apply time.
+// Alpha stats refactor — Phase 9 dropped the legacy stat columns; the
+// canonical-stats Phase 2 (this commit) renamed `power` → `global_image`
+// and split `workforce` → `unskilled_workers` + `skilled_workers`, plus
+// added `wages` as a first-class stat (replacing the dropped legacy
+// `minimum_wage`). Net: 23 + 4 − 2 = 25 alpha stats.
+//
+// Legacy stat keys (`power`, `workforce`, `minimum_wage`, etc.) still
+// appear in event/policy stat_effects JSON across the codebase;
+// STAT_KEY_ALIASES routes or null-filters them at apply time so the
+// effect pipeline keeps working until Phase 3 rewrites every call site.
 export const NATION_STAT_COLUMNS = [
     'gdp_growth', 'debt', 'immigration', 'standard_of_living', 'cost_of_living',
     'budget',
     'control', 'unrest', 'public_approval', 'crown_authority',
-    'energy', 'health', 'education', 'power',
+    'energy', 'health', 'education', 'global_image',
     'infrastructure', 'industry', 'farmland',
-    'service_sector', 'workforce',
+    'service_sector', 'unskilled_workers', 'skilled_workers', 'wages',
     'income_tax', 'corporate_tax', 'crime', 'corruption',
 ];
 
 export const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
 
-// Phase 4 translation shim — maps old stat keys to the new 19-column
+// Phase 4 translation shim — maps old stat keys to the canonical 25-stat
 // schema at apply time. Two value types:
 //   * String: rename only (passes through to a live column)
 //   * null:   stat is deleted in the alpha refactor with no replacement;
@@ -136,7 +139,7 @@ export const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
 // INVERTED_ALIAS_KEYS — for those, the apply path also flips
 // up↔down / negates delta so the semantics survive the rename.
 export const STAT_KEY_ALIASES = {
-    // ── Direct renames into the alpha-23 schema ──
+    // ── Direct renames into the alpha-25 schema ──
     civil_unrest:               'unrest',
     terrorism:                  'unrest',
     political_violence:         'unrest',
@@ -147,21 +150,37 @@ export const STAT_KEY_ALIASES = {
     physical_infrastructure:    'infrastructure',
     digital_infrastructure:     'infrastructure',
     rail_network:               'infrastructure',
-    urbanization:               'workforce',
-    labor_force_participation:  'workforce',
     higher_education:           'education',
     education_quality:          'education',
     arable_land:                'farmland',
     manufacturing_output:       'industry',
-    international_reputation:   'power',
-    intl_reputation:            'power',
-    diplomatic_standing:        'power',
-    tourism:                    'power',
-    trade_agreements:           'power',
-    sanctions:                  'power',
     stability:                  'control',
     military_strength:          'control',
     hospital_beds:              'health',
+
+    // ── Canonical-stats Phase 2: power → global_image ──
+    // The six legacy underlying columns + the canonical `power` alias
+    // all collapse into the new `global_image` column.
+    power:                      'global_image',
+    international_reputation:   'global_image',
+    intl_reputation:            'global_image',
+    diplomatic_standing:        'global_image',
+    tourism:                    'global_image',
+    trade_agreements:           'global_image',
+    sanctions:                  'global_image',
+
+    // ── Canonical-stats Phase 2: workforce split ──
+    // Single workforce concept is split into two tiers. The mapping
+    // policy (per design): urban legacy stat → skilled tier;
+    // labor-force participation / unemployment → unskilled tier;
+    // bare `workforce` legacy alias → unskilled (matches lfp/unemp
+    // routing so historical bills don't change which tier they hit).
+    workforce:                  'unskilled_workers',
+    labor_force_participation:  'unskilled_workers',
+    urbanization:               'skilled_workers',
+
+    // ── Canonical-stats Phase 2: minimum_wage → wages ──
+    minimum_wage:               'wages',
 
     // ── Phase 8.5.1 renames ──
     authority:                  'public_approval',
@@ -171,7 +190,9 @@ export const STAT_KEY_ALIASES = {
     crime_rate:                 'crime',
 
     // ── Inverted (rename + flip direction; also see INVERTED_ALIAS_KEYS) ──
-    unemployment:               'workforce',
+    // unemployment is the only direction-flipped alias today: bills that
+    // pushed unemployment UP are pushing the unskilled_workers tier DOWN.
+    unemployment:               'unskilled_workers',
 
     // ── DELETED stats — Phase 9 drops the column. Apply path skips. ──
     // Phase 8.5.2 restored income_tax / corporate_tax / corruption /
@@ -202,7 +223,6 @@ export const STAT_KEY_ALIASES = {
     benefits:                   null,
     population_growth:          null,
     debt_growth:                null,
-    minimum_wage:               null,
     union_strength:             null,
     illegal_immigration:        null,
     emigration:                 null,
@@ -250,13 +270,13 @@ export function normalizeNationStatKey(statKey) {
 
 /**
  * Phase 4 translation shim — re-maps a stat-effect entry from the legacy
- * key set onto the alpha 19-column schema at apply time.
+ * key set onto the canonical 25-stat schema at apply time.
  *
  *   in:  { stat_key: 'civil_unrest', direction: 'up', rate: 0.5, ... }
  *   out: { stat_key: 'unrest',       direction: 'up', rate: 0.5, ... }
  *
- *   in:  { stat_key: 'unemployment', direction: 'up', delta: 5 }
- *   out: { stat_key: 'workforce',    direction: 'down', delta: -5 }
+ *   in:  { stat_key: 'unemployment',       direction: 'up', delta: 5 }
+ *   out: { stat_key: 'unskilled_workers',  direction: 'down', delta: -5 }
  *
  *   in:  { stat_key: 'happiness', ... }   (DELETED)
  *   out: null
@@ -286,7 +306,7 @@ export function translateStatEffect(eff) {
 
 /**
  * Stats where HIGHER values are better (increase = achievement).
- * Alpha 23-column schema. Excludes budget (flow, not 0-100), debt
+ * Canonical 25-stat schema. Excludes budget (flow, not 0-100), debt
  * (LOWER_IS_BETTER), and the two tax stats (income_tax, corporate_tax)
  * which are neutral player-controlled levers (high = revenue but
  * dampens growth — UI/momentum logic shouldn't auto-flag either
@@ -295,8 +315,9 @@ export function translateStatEffect(eff) {
 export const STATS_HIGHER_IS_BETTER = [
     'gdp_growth', 'immigration', 'standard_of_living',
     'control', 'public_approval', 'crown_authority',
-    'energy', 'health', 'education', 'power',
-    'infrastructure', 'industry', 'farmland', 'service_sector', 'workforce',
+    'energy', 'health', 'education', 'global_image',
+    'infrastructure', 'industry', 'farmland', 'service_sector',
+    'unskilled_workers', 'skilled_workers', 'wages',
 ];
 
 /**
@@ -316,10 +337,17 @@ const DECAY_SPEED = { CRAWL: 0.15, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 }
  *   - 'erosion': degrades toward a bad floor (punishes neglect)
  * Stats not listed are persistent — they hold value indefinitely.
  *
- * Alpha 19-column schema. budget + debt are flow-based and not in here
+ * Canonical 25-stat schema. budget + debt are flow-based and not in here
  * (managed by budget.js / debt.js). crown_authority decays only when
  * the column is non-NULL — processStatDecay's null-guard at
  * political-actions.js:110 skips non-monarchies cleanly.
+ *
+ * Canonical-stats Phase 2: power and workforce removed (replaced by
+ * global_image and unskilled_workers + skilled_workers). The four new
+ * canonical stats (global_image, unskilled_workers, skilled_workers,
+ * wages) intentionally have NO decay entries per design direction —
+ * they hold the value policies / events set them to until decay rules
+ * are introduced in a later phase.
  */
 export const STAT_DECAY_CONFIG = {
     // ── Equilibrium (drift back to midpoint) ──
@@ -329,8 +357,6 @@ export const STAT_DECAY_CONFIG = {
     unrest:            { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
     public_approval:   { type: 'equilibrium', target: 40, speed: DECAY_SPEED.CRAWL },
     crown_authority:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    power:             { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    workforce:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     service_sector:    { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
 
     // ── Erosion (degrade toward bad floor if neglected) ──
