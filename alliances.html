@@ -508,12 +508,15 @@ const MAX_INVITEES = 10;
 
 // Per-sector hero stats. Each tuple is [display label, faction column or
 // null]. Null columns render "—" so the slot is visible even before the
-// underlying stat ships.
+// underlying stat ships. corp_credit_rating was removed from the column
+// list — it never made it into a migration and is "UI-only legacy" per
+// PLAN-corp-simplification.md, so requesting it 400'd the candidate
+// query and made the whole roster appear empty.
 const HERO_STATS = {
-    Finance:      [['Lending', null], ['Liquidity', null], ['Credit', 'corp_credit_rating']],
+    Finance:      [['Lending', null], ['Liquidity', null], ['Credit', null]],
     Construction: [['Crews', 'corp_work_crews'], ['Reg. Standing', 'corp_regulatory_standing'], ['Supply Chain', 'corp_supply_chain']],
     Shipping:     [['Fleets', null], ['Route Risk', null], ['Fleet Health', null]],
-    Airline:      [['Fleet', null], ['Op. Safety', 'corp_operational_efficiency'], ['Routes', null]],
+    Airline:      [['Fleet', null], ['Op. Safety', 'corp_op_safety'], ['Routes', null]],
 };
 
 // Naming-pattern hints by sector. Matches the mockup phrasing.
@@ -1943,9 +1946,15 @@ async function loadCandidates() {
     const sector = faction?.corp_sector;
     if (!sector || !faction?.id) { _candidates = []; return; }
 
+    // SELECT only columns that exist on the schema. corp_credit_rating
+    // was a phantom (never created in any migration) and
+    // corp_operational_efficiency was retired by 20260430_corp_simplify_v2 —
+    // both used to be in this select, both 400'd the request and made
+    // the candidate roster look empty. corp_op_safety replaces the
+    // Airline hero stat that used to read corp_operational_efficiency.
     const { data: corps, error } = await _supabase
         .from('factions')
-        .select('id, faction_name, abbreviation, corp_ticker, corp_sector, corp_cash_reserves, corp_reputation, corp_credit_rating, corp_work_crews, corp_regulatory_standing, corp_supply_chain, corp_operational_efficiency, nation_id')
+        .select('id, faction_name, abbreviation, corp_ticker, corp_sector, corp_cash_reserves, corp_reputation, corp_work_crews, corp_regulatory_standing, corp_supply_chain, corp_op_safety, nation_id')
         .eq('faction_type', 'corporation')
         .eq('corp_sector', sector)
         .is('abandoned_at', null)
