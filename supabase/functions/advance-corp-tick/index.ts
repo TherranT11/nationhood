@@ -816,15 +816,6 @@ const REGULATORY_EVENTS = {
 // Combined list for generation
 const ALL_EVENT_TEMPLATES = [...NOTIFICATION_EVENTS, ...CHOICE_EVENTS];
 
-// ── Phase progression: 7 phases mapped to progress percentage ──
-const CONSTRUCTION_PHASES = ['Permits', 'Planning', 'Foundation', 'Structural', 'Systems', 'Finishing', 'Delivery'];
-
-function getPhaseForProgress(progressPct) {
-    // Each phase gets an equal slice of the timeline
-    const phaseIndex = Math.min(CONSTRUCTION_PHASES.length - 1, Math.floor(progressPct * CONSTRUCTION_PHASES.length));
-    return CONSTRUCTION_PHASES[phaseIndex];
-}
-
 // ════════════════════════════════════════════════════════════════════════════════
 //  CONSTRUCTION SECTOR — Contract Generation & Bid Resolution
 // ════════════════════════════════════════════════════════════════════════════════
@@ -966,15 +957,6 @@ async function insertCorpContract(supabase, nation, sector, currentTick, gameYea
     }
     return true;
 }
-
-// Legacy stubs — see Path 1 Phase 1A cull (2026-05). No new
-// construction_contracts rows. The new pipeline writes to
-// corp_contracts via generateCorpContractsByGdpTier (called once
-// per shard tick). Both stubs stay only because they're still
-// referenced from the per-nation construction try-block; they go
-// away in Phase 1E along with the legacy table.
-async function generateConstructionContracts() { return []; }
-async function generateInfraRenewalContracts() { return; }
 
 // ==================== PROPERTY MARKETPLACE GENERATOR ====================
 
@@ -1955,22 +1937,6 @@ function parseRequiredForSectors(rawRequiredFor) {
     return [];
 }
 
-// Idempotent stall increment. Each gate (start permit, workforce, materials)
-// previously did its own update — under the per-minute cron + background-tasks
-// pattern, processActiveProjects can run multiple times against the same shard
-// tick, double-counting stalls. Routing every increment through this helper
-// guarantees one bump per (contract, currentTick) pair.
-async function bumpStalledTickOnce(supabase, contract, currentTick) {
-    if (contract.last_stalled_tick === currentTick) return;
-    await supabase.from('construction_contracts')
-        .update({
-            stalled_ticks: Number(contract.stalled_ticks || 0) + 1,
-            last_stalled_tick: currentTick,
-        })
-        .eq('id', contract.id);
-    contract.last_stalled_tick = currentTick;
-}
-
 function permitAppliesToSector(requiredFor, sector) {
     if (!sector) return true;
     const allowed = parseRequiredForSectors(requiredFor);
@@ -2025,1231 +1991,192 @@ async function getPermitComplianceSnapshot(supabase, { nationId, sector, faction
     return { requiredPermitKeys, heldPermitKeys, missingPermitKeys };
 }
 
-async function resolveExpiredBids(supabase, nationId, currentTick) {
-    // Find contracts ready to resolve:
-    // 1. Bidding timer expired (3 ticks), OR
-    // 2. Already have 3+ bids (auto-resolve immediately)
-    const { data: openContracts } = await supabase
-        .from('construction_contracts')
-        .select('id, name, budget_ceiling, bidding_ends_tick, sector')
-        .eq('nation_id', nationId)
-        .in('status', ['open', 'bidding']);
-
-    if (!openContracts || openContracts.length === 0) return [];
-
-    const results = [];
-    const permitScopeCache = {};
-    for (const contract of openContracts) {
-        // Load all pending bids
-        const { data: bids } = await supabase
-            .from('contract_bids')
-            .select('id, faction_id, bid_price, estimated_quality')
-            .eq('contract_id', contract.id)
-            .eq('status', 'pending')
-            .order('bid_price', { ascending: true });
-
-        const bidCount = bids?.length || 0;
-        const timerExpired = currentTick >= (contract.bidding_ends_tick || 0);
-
-        // Auto-resolve if: timer expired OR 3+ bids received
-        if (!timerExpired && bidCount < 3) continue;
-
-        if (bidCount === 0) {
-            // No bids and timer expired — contract expires
-            if (timerExpired) {
-                await supabase.from('construction_contracts')
-                    .update({ status: 'expired' })
-                    .eq('id', contract.id);
-                results.push({ contract: contract.name, result: 'expired', reason: 'no_bids' });
-            }
-            continue;
-        }
-
-        // Filter bids by permit qualification: only bidders holding all
-        // required permits in the host nation can win. This pre-empts the
-        // post-award start gate, so a contract either finds a qualifying
-        // bidder or expires — it can't get stuck in 'awarded' with missing
-        // permits.
-        const requiredPermitKeys = await getRequiredPermitKeysForProject(supabase, nationId, contract.sector, permitScopeCache);
-        let qualifiedBids = bids!;
-        if (requiredPermitKeys.length > 0) {
-            const bidderIds = [...new Set(bids!.map(b => b.faction_id))];
-            const heldQuery = supabase.from('corp_permits')
-                .select('faction_id, permit_key')
-                .eq('nation_id', nationId)
-                .eq('status', 'active');
-            const { data: heldRows, error: heldErr } = bidderIds.length === 1
-                ? await heldQuery.eq('faction_id', bidderIds[0])
-                : await heldQuery.in('faction_id', bidderIds);
-            if (heldErr) {
-                // SELECT failure means we can't verify any bidder qualifies.
-                // Skip resolution this tick rather than silently expiring a
-                // contract or awarding to an unverified bidder; let the next
-                // tick retry once whatever caused the error has cleared.
-                console.warn(`[ResolveBids] corp_permits select failed for contract ${contract.id}: ${heldErr.message}; deferring resolution.`);
-                continue;
-            }
-            const heldByFaction = new Map();
-            for (const row of (heldRows || [])) {
-                if (!heldByFaction.has(row.faction_id)) heldByFaction.set(row.faction_id, new Set());
-                heldByFaction.get(row.faction_id).add(row.permit_key);
-            }
-            qualifiedBids = bids!.filter(b => {
-                const held = heldByFaction.get(b.faction_id) || new Set();
-                return requiredPermitKeys.every(k => held.has(k));
-            });
-        }
-
-        if (qualifiedBids.length === 0) {
-            // No bid holds the required permits. Wait for more qualifying
-            // bids while the bidding window is open; expire the contract
-            // once it closes.
-            if (timerExpired) {
-                await supabase.from('construction_contracts')
-                    .update({ status: 'expired' })
-                    .eq('id', contract.id);
-                await supabase.from('contract_bids')
-                    .update({ status: 'lost' })
-                    .eq('contract_id', contract.id);
-                results.push({ contract: contract.name, result: 'expired', reason: 'no_qualified_bids' });
-            }
-            continue;
-        }
-
-        // Select winner from qualified bids: 50% lowest price, 50% highest
-        // quality. Rewards player strategy — undercut on cost or invest
-        // in quality.
-        const sortedQualified = qualifiedBids.slice().sort((a, b) => (a.bid_price || 0) - (b.bid_price || 0));
-        const roll = Math.random();
-        let winner;
-        let method: string;
-        if (roll < 0.50) {
-            winner = sortedQualified[0];
-            method = 'lowest_price';
-        } else {
-            winner = sortedQualified.reduce((best, b) => (b.estimated_quality || 0) > (best.estimated_quality || 0) ? b : best, sortedQualified[0]);
-            method = 'highest_quality';
-        }
-
-        await supabase.from('construction_contracts')
-            .update({ status: 'awarded', awarded_to_faction: winner.faction_id, awarded_at_tick: currentTick })
-            .eq('id', contract.id);
-        await supabase.from('contract_bids')
-            .update({ status: 'won' })
-            .eq('id', winner.id);
-
-        // Mark all other bids as lost
-        if (bids!.length > 1) {
-            await supabase.from('contract_bids')
-                .update({ status: 'lost' })
-                .eq('contract_id', contract.id)
-                .neq('id', winner.id);
-        }
-
-        results.push({ contract: contract.name, result: 'awarded', winner: winner.faction_id, price: winner.bid_price, method });
-
-        // Log corporate event for news ticker
-        try {
-            const { data: winnerFaction } = await supabase.from('factions').select('faction_name').eq('id', winner.faction_id).single();
-            const { data: contractNation } = await supabase.from('nations').select('name').eq('id', nationId).single();
-            await supabase.from('event_log').insert({
-                nation_id: nationId,
-                event_name: 'Construction Contract Awarded',
-                category: 'corporate',
-                description_chosen: `${winnerFaction?.faction_name || 'A corporation'} has just won a contract to build ${contract.name} in the nation of ${contractNation?.name || 'Unknown'}.`,
-                fired_at_tick: currentTick,
-            });
-        } catch (_) { /* non-blocking */ }
-
-        // GDP growth nudge: +0.01 per $100M contracted (fire-and-forget)
-        try {
-            const gdpNudge = (winner.bid_price / 100_000_000) * 0.01;
-            if (gdpNudge > 0.001) {
-                const { data: curNation } = await supabase.from('nations')
-                    .select('gdp_growth').eq('id', nationId).single();
-                if (curNation) {
-                    await supabase.from('nations').update({
-                        gdp_growth: Math.min(100, Number(curNation.gdp_growth || 50) + gdpNudge)
-                    }).eq('id', nationId);
-                }
-            }
-        } catch (_gdpErr) { /* non-blocking */ }
-    }
-
-    return results;
-}
 
 // ════════════════════════════════════════════════════════════════════════════════
-//  CONSTRUCTION SECTOR — Project Execution
-// ════════════════════════════════════════════════════════════════════════════════
-
-async function processActiveProjects(supabase, nationId, currentTick) {
-    // 1. Move newly awarded contracts to in_progress
-    const { data: newlyAwarded } = await supabase
-        .from('construction_contracts')
-        .select('id, name, awarded_to_faction, awarded_at_tick, stalled_ticks, last_stalled_tick, sector')
-        .eq('nation_id', nationId)
-        .eq('status', 'awarded');
-
-    const permitScopeCache = {};
-    for (const contract of (newlyAwarded || [])) {
-        const startPermitSnapshot = await getPermitComplianceSnapshot(supabase, {
-            nationId,
-            sector: contract.sector,
-            factionId: contract.awarded_to_faction,
-            contractId: contract.id,
-            checkpoint: 'start',
-            cache: permitScopeCache,
-        });
-        if (startPermitSnapshot.missingPermitKeys.length > 0) {
-            await bumpStalledTickOnce(supabase, contract, currentTick);
-            console.log(`[Projects] ${contract.name}: START BLOCKED — missing required permits ${startPermitSnapshot.missingPermitKeys.join(', ')}`);
-            continue;
-        }
-
-        await supabase.from('construction_contracts')
-            .update({ status: 'in_progress' })
-            .eq('id', contract.id);
-        console.log(`[Projects] ${contract.name}: awarded → in_progress`);
-    }
-
-    // 2. Process in_progress contracts
-    const { data: activeContracts } = await supabase
-        .from('construction_contracts')
-        .select('id, name, awarded_to_faction, awarded_at_tick, timeline_ticks, budget_ceiling, completed_at_tick, stalled_ticks, last_stalled_tick, current_phase, sector, required_materials, required_equipment, required_workforce, materials_consumed, equipment_condition, workers_assigned, modifiers, template_key, project_subtype, issuer_faction_id')
-        .eq('nation_id', nationId)
-        .eq('status', 'in_progress');
-
-    if (!activeContracts || activeContracts.length === 0) return [];
-
-    // Load building modifier definitions for reputation/permit enforcement
-    let _modifierDefs = {};
-    try {
-        const { data: modRows } = await supabase.from('building_modifiers').select('modifier_key, name, reputation_bonus, required_permits, cost_multiplier');
-        for (const m of (modRows || [])) _modifierDefs[m.modifier_key] = m;
-    } catch (_) { /* table may not exist */ }
-
-    // 3. Load ALL winning bids for active contracts to check workforce
-    const contractIds = activeContracts.map(c => c.id);
-    let allBids = [];
-    if (contractIds.length === 1) {
-        const { data } = await supabase.from('contract_bids')
-            .select('contract_id, faction_id, labor_count, estimated_cost, bid_price, estimated_quality, material_grades')
-            .eq('contract_id', contractIds[0]).eq('status', 'won');
-        allBids = data || [];
-    } else {
-        const { data } = await supabase.from('contract_bids')
-            .select('contract_id, faction_id, labor_count, estimated_cost, bid_price, estimated_quality, material_grades')
-            .in('contract_id', contractIds).eq('status', 'won');
-        allBids = data || [];
-    }
-
-    const bidMap = {};
-    for (const b of allBids) bidMap[b.contract_id] = b;
-
-    // 4. Per-project worker staffing check (uses workers_assigned JSONB on each contract)
-    //    Old system checked pooled faction workforce — new system requires manual assignment.
-
-    // 6. Load material allocations for all active contracts (one batch query)
-    let allAllocations = [];
-    if (contractIds.length > 0) {
-        const allocQuery = contractIds.length === 1
-            ? supabase.from('project_material_allocations').select('contract_id, material_key, quality_tier, quantity, consumed').eq('contract_id', contractIds[0])
-            : supabase.from('project_material_allocations').select('contract_id, material_key, quality_tier, quantity, consumed').in('contract_id', contractIds);
-        const { data: allocData } = await allocQuery;
-        allAllocations = allocData || [];
-    }
-    // Build allocation map: contractId → { materialKey → { totalAllocated, totalConsumed } }
-    const allocMap = {};
-    for (const a of allAllocations) {
-        if (!allocMap[a.contract_id]) allocMap[a.contract_id] = {};
-        if (!allocMap[a.contract_id][a.material_key]) allocMap[a.contract_id][a.material_key] = { allocated: 0, consumed: 0 };
-        allocMap[a.contract_id][a.material_key].allocated += a.quantity;
-        allocMap[a.contract_id][a.material_key].consumed += a.consumed;
-    }
-
-    // 7. Process each contract
+//  CORP CONTRACT PROGRESSION
+//
+//  One per-nation pass per corp tick. Loads every active corp_contract,
+//  joins to the winning corp_contract_bids row (status='accepted'), and:
+//    1. Idempotency gate: skip if c.progress_pct already matches the
+//       current-tick value (cron re-fire / replay → no double-charge).
+//    2. Crew gate: skip if crews_assigned < bid.crews_committed
+//       (understaffed → contract stalls, no cost, no progress).
+//    3. Deduct perTickCost = bid.bid_amount / timeline_months from the
+//       winning corp's cash, emit 'event_cost' cash event labelled
+//       "{contract.name} Construction Costs".
+//    4. Compute progress_pct = (currentTick − started_at_tick) / timeline_months
+//       × 100 (clamped 0..100), update progress_pct + amount_spent.
+//    5. On 100%, set status='completed', stamp completed_at_tick, and
+//       pay out bid.bid_amount immediately via 'capital_in'
+//       "{name} · final payment". Synchronous payout keeps the
+//       contract on the dashboard until the status flips, so there's no
+//       "completed-but-invisible" window.
+//
+//  Behavioural simplification vs. legacy: stalled ticks don't extend
+//  the project (no stalled_ticks bookkeeping). Progress is purely
+//  wall-clock from started_at_tick; if the corp under-staffs for N
+//  ticks then re-assigns crews, progress jumps to (currentTick - start)
+//  but cost is only charged for the resume tick. Net effect: the corp
+//  gets a discount for stalling. Acceptable for v1; revisit if it
+//  becomes exploitable.
+//
+//  Replaces the legacy processActiveProjects loop (deleted) which
+//  targeted the now-retired construction_contracts table and never
+//  fired against the live corp_contracts where progress_pct sits.
+async function processCorpContracts(supabase, nationId, currentTick) {
     const results = [];
 
-    for (const contract of activeContracts) {
-        const bid = bidMap[contract.id];
-        if (!bid) continue;
+    const { data: contracts, error: contractsErr } = await supabase
+        .from('corp_contracts')
+        .select('id, name, started_at_tick, timeline_months, progress_pct, amount_spent, crews_assigned')
+        .eq('issuer_nation_id', nationId)
+        .eq('status', 'active');
+    if (contractsErr) {
+        console.warn(`[CorpContracts] Active fetch failed for nation ${nationId}:`, contractsErr.message);
+        return results;
+    }
+    if (!contracts || contracts.length === 0) return results;
 
-        const awardedTick = contract.awarded_at_tick || currentTick;
-        const ticksElapsed = currentTick - awardedTick;
-        const totalTicks = contract.timeline_ticks || 8;
-        const stalledTicks = contract.stalled_ticks || 0;
-        const effectiveProgress = ticksElapsed - stalledTicks;
+    const contractIds = contracts.map(c => c.id);
+    const { data: bids, error: bidsErr } = await supabase
+        .from('corp_contract_bids')
+        .select('contract_id, faction_id, bid_amount, crews_committed')
+        .in('contract_id', contractIds)
+        .eq('status', 'accepted');
+    if (bidsErr) {
+        console.warn(`[CorpContracts] Bid fetch failed for nation ${nationId}:`, bidsErr.message);
+        return results;
+    }
+    const bidByContract = {};
+    for (const b of (bids || [])) bidByContract[b.contract_id] = b;
 
-        // Workforce gate: check per-project workers_assigned vs required_workforce
-        const reqWf = contract.required_workforce || {};
-        const assignedWf = contract.workers_assigned || {};
-        const wfReqGeneral = Number(reqWf.general || 0);
-        const wfReqSkilled = Number(reqWf.skilled || 0);
-        const wfReqInnovative = Number(reqWf.innovative || 0);
-        const wfHasGeneral = Number(assignedWf.general || 0);
-        const wfHasSkilled = Number(assignedWf.skilled || 0);
-        const wfHasInnovative = Number(assignedWf.innovative || 0);
-        const workersStaffed = wfHasGeneral >= wfReqGeneral && wfHasSkilled >= wfReqSkilled && wfHasInnovative >= wfReqInnovative;
-        if (!workersStaffed) {
-            await bumpStalledTickOnce(supabase, contract, currentTick);
-            console.log(`[Projects] ${contract.name}: STALLED — understaffed (need G${wfReqGeneral}/S${wfReqSkilled}/I${wfReqInnovative}, assigned G${wfHasGeneral}/S${wfHasSkilled}/I${wfHasInnovative})`);
+    for (const c of contracts) {
+        const bid = bidByContract[c.id];
+        if (!bid) {
+            console.warn(`[CorpContracts] ${c.name}: no accepted bid, skipping`);
             continue;
         }
 
-        // Material gate: check if allocated materials meet requirements for next tick of progress.
-        //
-        // Materials are only physically consumed once construction begins.
-        // Permits and Planning are administrative phases — no concrete poured,
-        // no steel erected — so the material allocation requirement is
-        // suppressed until the project enters the Foundation phase.
-        const _projectPhase = contract.current_phase || getPhaseForProgress(effectiveProgress / Math.max(1, totalTicks));
-        const _phaseNeedsMaterials = _projectPhase !== 'Permits' && _projectPhase !== 'Planning';
-        const reqMaterials = contract.required_materials || {};
-        const contractAllocs = allocMap[contract.id] || {};
-        const matKeys = Object.keys(reqMaterials);
-        let materialsReady = true;
-        if (_phaseNeedsMaterials && matKeys.length > 0) {
-            // Calculate how many units should be consumed by next tick
-            const nextProgressPct = Math.min(1, (effectiveProgress + 1) / totalTicks);
-            for (const mat of matKeys) {
-                const required = Number(reqMaterials[mat]) || 0;
-                const neededByNextTick = Math.min(required, Math.floor(required * nextProgressPct));
-                const alloc = contractAllocs[mat];
-                const totalAllocated = alloc ? alloc.allocated : 0;
-                if (totalAllocated < neededByNextTick) {
-                    materialsReady = false;
-                    break;
-                }
-            }
-        }
-        if (!materialsReady) {
-            await bumpStalledTickOnce(supabase, contract, currentTick);
-            console.log(`[Projects] ${contract.name}: STALLED — insufficient materials allocated (tick ${currentTick}, stalled ${stalledTicks + 1} total)`);
+        const startedAt = Number(c.started_at_tick);
+        if (!Number.isFinite(startedAt)) continue;
+        const totalTicks = Math.max(1, Number(c.timeline_months) || 1);
+        const ticksElapsed = currentTick - startedAt;
+        // Defer the award tick (off-by-one) so cost + progress kick
+        // in starting one tick after award.
+        if (ticksElapsed <= 0) continue;
+
+        // Idempotency gate: progress_pct is deterministic from elapsed
+        // ticks, so if it already matches the new value this tick has
+        // already been processed (e.g. cron re-fire). Skipping prevents
+        // double-deducting the per-tick cost.
+        const newProgressPct = Math.min(100, Math.round((ticksElapsed / totalTicks) * 10000) / 100);
+        if (Number(c.progress_pct || 0) >= newProgressPct) continue;
+
+        // Crew gate: stalls until the corp brings crews_assigned up
+        // to crews_committed via assign_construction_crews.
+        const crewsAssigned  = Number(c.crews_assigned || 0);
+        const crewsCommitted = Number(bid.crews_committed || 0);
+        if (crewsCommitted > 0 && crewsAssigned < crewsCommitted) {
+            console.log(`[CorpContracts] ${c.name}: STALLED — crews_assigned ${crewsAssigned} < crews_committed ${crewsCommitted}`);
             continue;
         }
 
-        // Per-tick cost deduction from corp cash (skip award tick to avoid off-by-one)
-        const perTickCost = Math.round((bid.estimated_cost || 0) / totalTicks);
-        if (perTickCost > 0 && ticksElapsed > 0) {
-            const { data: corp } = await supabase
+        const totalBid = Number(bid.bid_amount || 0);
+        const perTickCost = Math.round(totalBid / totalTicks);
+
+        // Per-tick cost deduction.
+        if (perTickCost > 0) {
+            const { data: corp, error: corpErr } = await supabase
                 .from('factions')
                 .select('corp_cash_reserves')
                 .eq('id', bid.faction_id)
                 .single();
-            if (corp) {
+            if (corpErr) {
+                console.warn(`[CorpContracts] ${c.name}: corp cash fetch failed:`, corpErr.message);
+            } else if (corp) {
                 const newCash = Math.max(0, Number(corp.corp_cash_reserves || 0) - perTickCost);
-                logCashEvent(bid.faction_id, 'event_cost', `Project: ${contract.name || 'Unnamed'}`, -perTickCost);
-                await supabase.from('factions')
+                const { error: updCashErr } = await supabase.from('factions')
                     .update({ corp_cash_reserves: newCash })
                     .eq('id', bid.faction_id);
-            }
-        }
-
-        // ── Phase progression, material consumption, equipment wear ──
-        const progressPct = Math.min(1, effectiveProgress / totalTicks);
-        const newPhase = getPhaseForProgress(progressPct);
-        const tickUpdates = {};
-
-        // Phase progression
-        if (newPhase !== contract.current_phase) {
-            tickUpdates.current_phase = newPhase;
-            console.log(`[Projects] ${contract.name}: phase → ${newPhase} (${Math.round(progressPct * 100)}%)`);
-        }
-
-        // Material consumption: consume from allocations proportional to progress.
-        // Each tick, calculate how many units SHOULD be consumed by this point,
-        // then mark the delta as newly consumed in project_material_allocations.
-        const prevConsumed = contract.materials_consumed || {};
-        const newConsumed = {};
-        for (const [mat, total] of Object.entries(reqMaterials)) {
-            const targetConsumed = Math.min(Number(total), Math.floor(Number(total) * progressPct));
-            const prevMatConsumed = Number(prevConsumed[mat] || 0);
-            const delta = targetConsumed - prevMatConsumed;
-            newConsumed[mat] = targetConsumed;
-
-            // Update allocation consumed counts if delta > 0
-            if (delta > 0) {
-                // Distribute consumption across quality tiers (consume STD first, then LOW, then HIGH)
-                const tierOrder = ['STD', 'LOW', 'HIGH'];
-                let remaining = delta;
-                for (const tier of tierOrder) {
-                    if (remaining <= 0) break;
-                    const allocRows = allAllocations.filter(a =>
-                        a.contract_id === contract.id && a.material_key === mat && a.quality_tier === tier);
-                    for (const row of allocRows) {
-                        if (remaining <= 0) break;
-                        const available = row.quantity - row.consumed;
-                        if (available <= 0) continue;
-                        const consume = Math.min(remaining, available);
-                        await supabase.from('project_material_allocations')
-                            .update({ consumed: row.consumed + consume })
-                            .eq('contract_id', contract.id)
-                            .eq('material_key', mat)
-                            .eq('quality_tier', tier);
-                        row.consumed += consume; // update in-memory too
-                        remaining -= consume;
-                    }
+                if (updCashErr) {
+                    console.warn(`[CorpContracts] ${c.name}: cash deduct failed:`, updCashErr.message);
+                } else {
+                    logCashEvent(bid.faction_id, 'event_cost',
+                        `${c.name || 'Project'} Construction Costs`, -perTickCost);
                 }
             }
         }
-        if (JSON.stringify(newConsumed) !== JSON.stringify(prevConsumed)) {
-            tickUpdates.materials_consumed = newConsumed;
-        }
 
-        // Equipment condition: degrade 0.5-2.0 per tick, starting from 100
-        // required_equipment is { key: qty } object (or legacy array)
-        const reqEquipment = contract.required_equipment || {};
-        const equipKeys = Array.isArray(reqEquipment) ? reqEquipment : Object.keys(reqEquipment);
-        const prevEquipCond = contract.equipment_condition || {};
-        if (equipKeys.length > 0) {
-            const newEquipCond = { ...prevEquipCond };
-            for (const equip of equipKeys) {
-                const current = newEquipCond[equip] ?? 100;
-                const degradation = 0.5 + Math.random() * 1.5;
-                newEquipCond[equip] = Math.max(5, Math.round((current - degradation) * 10) / 10);
-            }
-            tickUpdates.equipment_condition = newEquipCond;
-        }
+        // Progress + amount_spent + completion + immediate payout.
+        const newAmountSpent = Number(c.amount_spent || 0) + perTickCost;
+        const updates = {
+            progress_pct: newProgressPct,
+            amount_spent: newAmountSpent,
+        };
 
-        if (Object.keys(tickUpdates).length > 0) {
-            const { error: trackErr } = await supabase.from('construction_contracts')
-                .update(tickUpdates).eq('id', contract.id);
-            if (trackErr) console.warn(`[Projects] ${contract.name}: tracking update failed:`, trackErr.message);
-        }
+        if (newProgressPct >= 100) {
+            updates.status = 'completed';
+            updates.completed_at_tick = currentTick;
 
-        // Check if project is complete (effective progress, not wall clock)
-        if (effectiveProgress >= totalTicks) {
-            const payment = bid.bid_price || 0;
-
-            // Generate inspection report & delivery record
-            const baseQuality = bid.estimated_quality || 65;
-            const qualityVariance = Math.floor(Math.random() * 21) - 10;
-
-            // Apply permit quality bonuses from active permits held by this corp
-            let permitQualityBonus = 0;
-            try {
-                const { data: corpActivePermits } = await supabase
-                    .from('corp_permits')
-                    .select('permit_key')
-                    .eq('faction_id', bid.faction_id)
-                    .eq('status', 'active');
-                if (corpActivePermits) {
-                    const { data: permitDefs } = await supabase.from('construction_permits')
-                        .select('permit_key, quality_bonus')
-                        .in('permit_key', corpActivePermits.map(p => p.permit_key));
-                    for (const d of (permitDefs || [])) {
-                        permitQualityBonus += d.quality_bonus || 0;
-                    }
-                }
-            } catch (_pqErr) { /* non-fatal */ }
-
-            // Apply material quality penalties based on LOW grade usage
-            let materialQualityPenalty = 0;
-            const bidGradesForQuality = bid.material_grades || {};
-            const gradeVals = Object.values(bidGradesForQuality);
-            const totalGrades = gradeVals.length;
-            const lowGradeCount = gradeVals.filter(g => g === 'LOW').length;
-            const lowGradePct = totalGrades > 0 ? lowGradeCount / totalGrades : 0;
-            if (lowGradePct >= 1.0) materialQualityPenalty = -25;       // 100% LOW
-            else if (lowGradePct >= 0.75) materialQualityPenalty = -20; // 75%+ LOW
-            else if (lowGradePct >= 0.5) materialQualityPenalty = -10;  // 50%+ LOW
-
-            // Missing required permits: additional inspection penalties
-            let missingPermitPenalty = 0;
-            let heldKeysDelivery = new Set();
-            try {
-                const deliveryPermitSnapshot = await getPermitComplianceSnapshot(supabase, {
-                    nationId,
-                    sector: contract.sector,
-                    factionId: bid.faction_id,
-                    contractId: contract.id,
-                    checkpoint: 'completion',
-                    cache: permitScopeCache,
-                });
-                heldKeysDelivery = new Set(deliveryPermitSnapshot.heldPermitKeys);
-
-                for (const reqKey of deliveryPermitSnapshot.missingPermitKeys) {
-                    if (!heldKeysDelivery.has(reqKey)) {
-                        if (reqKey === 'municipal_zoning') missingPermitPenalty -= 100; // auto-FAIL
-                        else if (reqKey === 'structural_engineering') missingPermitPenalty -= 10;
-                        else if (reqKey === 'fire_safety') missingPermitPenalty -= 5;
-                        else missingPermitPenalty -= 2; // generic missing permit
-                    }
-                }
-            } catch (_mppErr) { /* non-fatal */ }
-
-            // Modifier-required permits: check permits demanded by this contract's modifiers
-            let modifierPermitPenalty = 0;
-            const contractModifiers = contract.modifiers || [];
-            for (const mk of contractModifiers) {
-                const mdef = _modifierDefs[mk];
-                if (!mdef) continue;
-                for (const pk of (mdef.required_permits || [])) {
-                    if (!heldKeysDelivery.has(pk)) {
-                        modifierPermitPenalty -= 5; // missing modifier-required permit
-                    }
-                }
-            }
-
-            const qualityScore = Math.max(0, Math.min(100, baseQuality + qualityVariance + permitQualityBonus + materialQualityPenalty + missingPermitPenalty + modifierPermitPenalty));
-
-            let deliveryResult = 'PASS';
-            // Reputation: +3 per $100M spent, rounded up
-            let repChange = Math.ceil((payment / 100_000_000) * 3);
-            let qualityBonus = 0;
-            let penalties = 0;
-            if (qualityScore >= 85) { deliveryResult = 'DISTINCTION'; qualityBonus = Math.round(payment * 0.15); }
-            else if (qualityScore >= 60) { deliveryResult = 'PASS'; }
-            else if (qualityScore >= 40) { deliveryResult = 'CONDITIONAL'; repChange = 0; penalties = Math.round(payment * 0.20); }
-            else { deliveryResult = 'FAIL'; repChange = -repChange; penalties = Math.round(payment * 0.40); }
-
-            // Apply building modifier reputation bonuses/penalties at delivery
-            let modifierRepBonus = 0;
-            for (const mk of contractModifiers) {
-                const mdef = _modifierDefs[mk];
-                if (mdef) modifierRepBonus += mdef.reputation_bonus || 0;
-            }
-            repChange += modifierRepBonus;
-
-            const actualPayment = payment + qualityBonus - penalties;
-            const estCost = bid.estimated_cost || 0;
-            const netProfit = actualPayment - estCost;
-            const actualTicks = ticksElapsed; // wall clock ticks (includes stalled)
-            const onTime = effectiveProgress <= totalTicks; // on-time based on actual work ticks
-
-            const inspCat = (base) => {
-                const score = Math.max(0, Math.min(100, base + Math.floor(Math.random() * 15) - 7));
-                const issues = [];
-                if (score < 50) issues.push('Below acceptable standards — remediation required');
-                else if (score < 65) issues.push('Minor deficiency noted — within tolerance');
-                return { score, issues };
-            };
-            const inspection = {
-                materials: inspCat(baseQuality),
-                structural: inspCat(baseQuality - 3),
-                systems: inspCat(baseQuality - 5),
-                permits: { passed: true, issues: [] },
-            };
-
-            const bidGrades = bid.material_grades || {};
-            const materialsUsed = Object.entries(bidGrades).map(([key, grade]) => {
-                const impactMap = { HIGH: 'positive', STANDARD: 'neutral', LOW: 'negative' };
-                return { name: key.replace(/_/g, ' '), grade, impact: impactMap[grade] || 'neutral' };
-            });
-
-            // Bond forfeiture on FAIL — bond amount goes to the lender (bond issuer), not refunded
-            if (deliveryResult === 'FAIL' && contract.bond_id) {
-                try {
-                    const { data: bond } = await supabase.from('finance_active_loans')
-                        .select('id, principal, lender_faction_id')
-                        .eq('id', contract.bond_id).eq('status', 'current').maybeSingle();
-                    if (bond) {
-                        const { data: bondLender } = await supabase.from('factions')
-                            .select('corp_cash_reserves').eq('id', bond.lender_faction_id).single();
-                        if (bondLender) {
-                            logCashEvent(bond.lender_faction_id, 'revenue_finance', 'Bond principal recovered', Number(bond.principal));
-                            await supabase.from('factions').update({
-                                corp_cash_reserves: Number(bondLender.corp_cash_reserves || 0) + Number(bond.principal),
-                            }).eq('id', bond.lender_faction_id);
-                        }
-                        await supabase.from('finance_active_loans').update({
-                            status: 'defaulted', completed_tick: currentTick,
-                        }).eq('id', bond.id);
-                        console.log(`[Projects] Performance bond $${Math.round(bond.principal / 1000)}k FORFEITED — project FAILED: ${contract.name}`);
-                    }
-                } catch (bondErr) {
-                    console.warn(`[Projects] Bond forfeiture failed for ${contract.name}:`, bondErr.message);
-                }
-            }
-
-            // Insert delivery record FIRST — if this fails, project stays in_progress and retries next tick
-            const { error: delErr } = await supabase.from('construction_deliveries').insert({
-                contract_id: contract.id,
-                faction_id: bid.faction_id,
-                nation_id: nationId,
-                result: deliveryResult,
-                quality_score: qualityScore,
-                rep_change: repChange,
-                inspection,
-                materials_used: materialsUsed,
-                contract_value: payment,
-                quality_bonus: qualityBonus,
-                penalties,
-                payment_received: actualPayment,
-                total_cost: estCost,
-                net_profit: netProfit,
-                timeline_expected: totalTicks,
-                timeline_actual: actualTicks,
-                on_time: onTime,
-                delivered_at_tick: currentTick,
-            });
-
-            if (delErr) {
-                // Delivery record failed — do NOT mark completed, will retry next tick
-                console.error(`[Projects] Failed to create delivery record for ${contract.name} — project stays in_progress:`, delErr.message);
-                continue;
-            }
-
-            // Delivery succeeded — now mark contract completed and pay corporation
-            const { error: completeErr } = await supabase.from('construction_contracts')
-                .update({ status: 'completed', completed_at_tick: currentTick })
-                .eq('id', contract.id);
-            if (completeErr) {
-                console.error(`[Projects] Failed to mark ${contract.name} completed — delivery record exists but contract stays in_progress. Manual fix needed:`, completeErr.message);
-                continue;
-            }
-
-            // Release equipment that was deployed to this contract. Without
-            // this block, corp_equipment rows kept stale assigned_projects
-            // entries pointing at completed contracts — making those units
-            // permanently "deployed" on something that no longer needs them
-            // and preventing redeployment to the next project.
-            try {
-                if (contract.awarded_to_faction) {
-                    const { data: eqRows } = await supabase
-                        .from('corp_equipment')
-                        .select('id, equipment_key, deployed, assigned_projects')
-                        .eq('faction_id', contract.awarded_to_faction);
-
-                    for (const eq of (eqRows || [])) {
-                        const assignments = Array.isArray(eq.assigned_projects) ? eq.assigned_projects : [];
-                        const thisContractAssignment = assignments.find(a => a?.contract_id === contract.id);
-                        if (!thisContractAssignment) continue;
-
-                        const unitsToRelease = Number(thisContractAssignment.units) || 0;
-                        const newAssignments = assignments.filter(a => a?.contract_id !== contract.id);
-                        const newDeployed = Math.max(0, Number(eq.deployed || 0) - unitsToRelease);
-
-                        const { error: relErr } = await supabase.from('corp_equipment')
-                            .update({ deployed: newDeployed, assigned_projects: newAssignments })
-                            .eq('id', eq.id);
-                        if (relErr) {
-                            console.warn(`[Projects] Equipment release failed for ${eq.equipment_key} on ${contract.name}:`, relErr.message);
-                        } else {
-                            console.log(`[Projects] Released ${unitsToRelease} ${eq.equipment_key} from completed ${contract.name}`);
-                        }
-                    }
-                }
-            } catch (eqErr) {
-                console.warn(`[Projects] Equipment release block threw for ${contract.name} (non-fatal):`, eqErr?.message || eqErr);
-            }
-
-            // Close any active insurance policies for this completed project
-            try {
-                // Find all insurance requests linked to this contract. The live
-                // loan row (finance_active_loans) already carries the real policy
-                // status — gating here on request.status hid every policy from
-                // closure because nothing in production ever set request.status
-                // to 'funded'. Rely on the loan-side status filter at line 2101.
-                const { data: insReqs, error: insReqErr } = await supabase
-                    .from('finance_loan_requests')
-                    .select('id')
-                    .eq('request_type', 'insurance')
-                    .eq('insured_contract_id', contract.id);
-                if (insReqErr) throw insReqErr;
-
-                const linkedRequestIds = (insReqs || []).map((r) => r.id).filter(Boolean);
-                let linkedPoliciesFound = 0;
-                let linkedPoliciesClosed = 0;
-
-                if (linkedRequestIds.length > 0) {
-                    const closableStatuses = ['current', 'late', 'delinquent'];
-                    const { data: linkedPolicies, error: linkedPoliciesErr } = await supabase
-                        .from('finance_active_loans')
-                        .select('id, status')
-                        .in('request_id', linkedRequestIds)
-                        .in('status', closableStatuses);
-                    if (linkedPoliciesErr) throw linkedPoliciesErr;
-
-                    linkedPoliciesFound = (linkedPolicies || []).length;
-
-                    if (linkedPoliciesFound > 0) {
-                        const { data: updatedPolicies, error: closeErr } = await supabase
-                            .from('finance_active_loans')
-                            .update({
-                                status: 'repaid',
-                                completed_tick: currentTick,
-                            })
-                            .in('request_id', linkedRequestIds)
-                            .in('status', closableStatuses)
-                            .select('id');
-                        if (closeErr) throw closeErr;
-                        linkedPoliciesClosed = (updatedPolicies || []).length;
-                    }
-                }
-
-                console.log(
-                    `[Projects] Insurance cleanup for completed project ${contract.name} (${contract.id}): ` +
-                    `${linkedRequestIds.length} insurance request(s), ${linkedPoliciesFound} closable policy/policies found, ${linkedPoliciesClosed} closed`
-                );
-
-                // Refund performance bond if one exists
-                if (contract.bond_id) {
-                    const { data: bond } = await supabase.from('finance_active_loans')
-                        .select('id, principal, lender_faction_id, borrower_faction_id')
-                        .eq('id', contract.bond_id).eq('status', 'current').maybeSingle();
-                    if (bond) {
-                        // Refund bond amount to the construction corp
-                        const { data: bondBorrower } = await supabase.from('factions')
-                            .select('corp_cash_reserves').eq('id', bond.borrower_faction_id).single();
-                        if (bondBorrower) {
-                            await supabase.from('factions').update({
-                                corp_cash_reserves: Number(bondBorrower.corp_cash_reserves || 0) + Number(bond.principal),
-                            }).eq('id', bond.borrower_faction_id);
-                        }
-                        await supabase.from('finance_active_loans').update({
-                            status: 'repaid', completed_tick: currentTick,
-                        }).eq('id', bond.id);
-                        console.log(`[Projects] Performance bond $${Math.round(bond.principal / 1000)}k refunded for completed project: ${contract.name}`);
-                    }
-                }
-            } catch (insCleanupErr) {
-                console.warn(`[Projects] Insurance/bond cleanup failed for ${contract.name}:`, insCleanupErr.message);
-            }
-
-            if (actualPayment > 0) {
-                const { data: corpPay } = await supabase
+            // Pay out the bid amount immediately. Doing it synchronously
+            // (no payout_tick scheduling) keeps the contract visible in
+            // the dashboard's active panel until it leaves with the
+            // status flip, so there's no "completed, awaiting payment"
+            // gap window where the contract is invisible to the player.
+            if (totalBid > 0) {
+                const { data: corp, error: corpErr } = await supabase
                     .from('factions')
                     .select('corp_cash_reserves')
                     .eq('id', bid.faction_id)
                     .single();
-                if (corpPay) {
-                    const newCash = Number(corpPay.corp_cash_reserves || 0) + actualPayment;
-                    logCashEvent(bid.faction_id, 'revenue_market', 'Contract bid payment', actualPayment);
-                    await supabase.from('factions')
+                if (corpErr) {
+                    console.warn(`[CorpContracts] ${c.name}: payout corp fetch failed:`, corpErr.message);
+                } else if (corp) {
+                    const newCash = Number(corp.corp_cash_reserves || 0) + totalBid;
+                    const { error: payErr } = await supabase.from('factions')
                         .update({ corp_cash_reserves: newCash })
                         .eq('id', bid.faction_id);
-                }
-            }
-
-            // Hand over the finished asset to the issuer — corp-commissioned projects
-            // (issuer_faction_id set) become a property on the issuer's PROPERTY card.
-            // National infrastructure with no corp issuer is skipped.
-            if (contract.issuer_faction_id) {
-                try {
-                    const propMeta = getDeliveredPropertyMeta(contract, payment);
-                    if (propMeta) {
-                        const { error: propErr } = await supabase.from('corp_properties').insert({
-                            faction_id: contract.issuer_faction_id,
-                            nation_id: nationId,
-                            name: contract.name,
-                            type: propMeta.type,
-                            style: propMeta.style,
-                            capacity: propMeta.capacity,
-                            purchase_price: actualPayment,
-                            monthly_maintenance: propMeta.maintenance,
-                            condition: Math.max(25, Math.min(100, qualityScore)),
-                            purchased_at_tick: currentTick,
-                            built_via_contract_id: contract.id,
-                            is_active: true,
-                        });
-                        if (propErr) console.warn(`[Projects] Failed to register property for issuer on ${contract.name}:`, propErr.message);
+                    if (payErr) {
+                        console.warn(`[CorpContracts] ${c.name}: payout deposit failed:`, payErr.message);
+                    } else {
+                        logCashEvent(bid.faction_id, 'capital_in',
+                            `${c.name || 'Project'} · final payment`, totalBid);
                     }
-                } catch (propErr) {
-                    console.warn(`[Projects] Property handoff failed for ${contract.name}:`, propErr.message);
                 }
             }
+            results.push({ contract: c.name, completed: true, paid: totalBid });
+        }
 
-            // Check if this was a mega project — set cooldown
-            const { data: contractFull } = await supabase
-                .from('construction_contracts')
-                .select('sector')
-                .eq('id', contract.id)
-                .single();
-            if (contractFull?.sector === 'mega_project') {
-                await supabase.from('mega_project_cooldowns')
-                    .upsert({
-                        nation_id: nationId,
-                        last_completed_tick: currentTick,
-                        cooldown_until_tick: currentTick + 360
-                    }, { onConflict: 'nation_id' });
-            }
-
-            results.push({
-                contract: contract.name,
-                result: deliveryResult,
-                payment: actualPayment,
-                quality: qualityScore,
-                repChange,
-                netProfit,
-            });
-
-            console.log(`[Projects] ${contract.name}: ${deliveryResult} (quality=${qualityScore}, mat_penalty=${materialQualityPenalty}, permit_penalty=${missingPermitPenalty}, net=${netProfit > 0 ? '+' : ''}$${(netProfit / 1e6).toFixed(1)}M, rep=${repChange > 0 ? '+' : ''}${repChange})`);
-
-            // ── Post-Delivery: Catastrophic Building Collapse ──
-            // 100% LOW materials + quality < 40 = 10% chance the building collapses
-            // 75%+ LOW materials + quality < 30 = 5% chance
-            if (lowGradePct >= 1.0 && qualityScore < 40 && Math.random() < 0.10) {
-                console.log(`[Projects] *** BUILDING COLLAPSE *** ${contract.name} — 100% LOW materials, quality ${qualityScore}`);
-                // Refund contract value back to nation (corp must pay) — reverses
-                // the payment the corp collected on delivery in the same tick.
-                const collapseRefund = payment;
-                logCashEvent(bid.faction_id, 'event_cost', 'Project collapse refund', -collapseRefund);
-                await supabase.from('factions').update({
-                    corp_cash_reserves: Math.max(0, Number((await supabase.from('factions').select('corp_cash_reserves').eq('id', bid.faction_id).single()).data?.corp_cash_reserves ?? 0) - collapseRefund),
-                    corp_reputation: Math.max(0, Number((await supabase.from('factions').select('corp_reputation').eq('id', bid.faction_id).single()).data?.corp_reputation ?? 65) - 10)
-                }).eq('id', bid.faction_id);
-
-                // Nation stat impact
-                await supabase.from('nations').update({
-                    stability: Math.max(2, Number(nation?.stability ?? 50) - 2),
-                    happiness: Math.max(2, Number(nation?.happiness ?? 50) - 3),
-                }).eq('id', nationId);
-
-                // Log the collapse as a construction event
-                await supabase.from('construction_events').insert({
-                    contract_id: contract.id,
-                    faction_id: bid.faction_id,
-                    nation_id: nationId,
-                    event_key: 'building_collapse',
-                    type: 'CATASTROPHIC',
-                    severity: 'CRITICAL',
-                    title: 'Catastrophic Building Collapse',
-                    description: `${contract.name} has collapsed due to widespread use of substandard materials. The contractor must refund the full contract value. Criminal investigation pending.`,
-                    impact: 'Building destroyed. Full refund required. Reputation devastated. Nation stability and happiness impacted.',
-                    responses: [{ key: 'acknowledge', label: 'Acknowledged', tag: 'CRITICAL', detail: 'Building collapsed', cost: collapseRefund, delay: 0, qualityImpact: -100 }],
-                    status: 'RESOLVED',
-                    fired_at_tick: currentTick,
-                    expires_at_tick: currentTick,
-                });
-
-                results[results.length - 1].collapsed = true;
-                results[results.length - 1].result = 'COLLAPSED';
-            } else if (lowGradePct >= 0.75 && qualityScore < 30 && Math.random() < 0.05) {
-                console.log(`[Projects] *** BUILDING COLLAPSE *** ${contract.name} — 75%+ LOW materials, quality ${qualityScore}`);
-                await supabase.from('factions').update({
-                    corp_reputation: Math.max(0, Number((await supabase.from('factions').select('corp_reputation').eq('id', bid.faction_id).single()).data?.corp_reputation ?? 65) - 8)
-                }).eq('id', bid.faction_id);
-
-                await supabase.from('construction_events').insert({
-                    contract_id: contract.id, faction_id: bid.faction_id, nation_id: nationId,
-                    event_key: 'building_collapse', type: 'CATASTROPHIC', severity: 'CRITICAL',
-                    title: 'Post-Delivery Structural Failure',
-                    description: `${contract.name} has experienced critical structural failure due to extensive use of low-grade materials.`,
-                    impact: 'Major structural damage. Reputation devastated.',
-                    responses: [{ key: 'acknowledge', label: 'Acknowledged', tag: 'CRITICAL', detail: 'Structural failure', cost: 0, delay: 0, qualityImpact: -50 }],
-                    status: 'RESOLVED', fired_at_tick: currentTick, expires_at_tick: currentTick,
-                });
-                results[results.length - 1].collapsed = true;
-            }
+        const { error: updErr } = await supabase.from('corp_contracts')
+            .update(updates)
+            .eq('id', c.id);
+        if (updErr) {
+            console.warn(`[CorpContracts] ${c.name}: progress update failed:`, updErr.message);
         }
     }
 
     return results;
 }
 
-// ════════════════════════════════════════════════════════════════════════════════
-//  CONSTRUCTION EVENTS — Generation & Expiry
-// ════════════════════════════════════════════════════════════════════════════════
-
-/**
- * Generate random construction events on in_progress projects.
- * Each project rolls against each eligible event template once per tick.
- * Events respect phase windows, sector filters, and stat-based probability modifiers.
- * Max 1 event per project per tick to avoid event spam.
- */
-async function generateProjectEvents(supabase, nationId, currentTick) {
-    const results = [];
-    const permitScopeCache = {};
-
-    // Load in_progress contracts with phase and sector
-    const { data: contracts } = await supabase
-        .from('construction_contracts')
-        .select('id, name, current_phase, sector, awarded_to_faction')
-        .eq('nation_id', nationId)
-        .eq('status', 'in_progress');
-
-    if (!contracts || contracts.length === 0) return results;
-
-    // Load nation stats for stat modifiers
-    const { data: nation } = await supabase
-        .from('nations')
-        .select('stability, inflation, corruption, civil_unrest, pollution, happiness, physical_infrastructure')
-        .eq('id', nationId)
-        .single();
-    const ns = (key) => Number(nation?.[key] ?? 50);
-
-    // Load permit event modifiers for all corps with active projects
-    // Build: { factionId: { event_key: probability_multiplier } }
-    const _permitEventMods = {};
-    try {
-        const factionIds = [...new Set(contracts.map(c => c.awarded_to_faction).filter(Boolean))];
-        if (factionIds.length > 0) {
-            const { data: activePermits } = await supabase
-                .from('corp_permits')
-                .select('faction_id, permit_key')
-                .in('faction_id', factionIds)
-                .eq('status', 'active');
-            if (activePermits && activePermits.length > 0) {
-                const permitKeys = [...new Set(activePermits.map(p => p.permit_key))];
-                const { data: defs } = await supabase.from('construction_permits')
-                    .select('permit_key, event_modifiers')
-                    .in('permit_key', permitKeys);
-                const defModMap = {};
-                for (const d of (defs || [])) defModMap[d.permit_key] = d.event_modifiers || {};
-                for (const p of activePermits) {
-                    if (!_permitEventMods[p.faction_id]) _permitEventMods[p.faction_id] = {};
-                    const mods = defModMap[p.permit_key] || {};
-                    for (const [eventKey, multiplier] of Object.entries(mods)) {
-                        // Use lowest multiplier if multiple permits affect same event
-                        const current = _permitEventMods[p.faction_id][eventKey];
-                        _permitEventMods[p.faction_id][eventKey] = current !== undefined ? Math.min(current, multiplier) : multiplier;
-                    }
-                }
-            }
-        }
-    } catch (_pemErr) { /* non-fatal */ }
-
-    // Check existing active events to avoid duplicates (max 1 active per project)
-    const contractIds = contracts.map(c => c.id);
-    const { data: activeEvents } = await supabase
-        .from('construction_events')
-        .select('contract_id')
-        .in('contract_id', contractIds)
-        .eq('status', 'ACTIVE');
-    const hasActiveEvent = new Set((activeEvents || []).map(e => e.contract_id));
-
-    for (const contract of contracts) {
-        // Skip if project already has an active event
-        if (hasActiveEvent.has(contract.id)) continue;
-
-        const phase = contract.current_phase || 'Permits';
-
-        // Roll against each template
-        for (const template of ALL_EVENT_TEMPLATES) {
-            // Sector filter
-            if (!template.appliesTo.includes('all') && !template.appliesTo.includes(contract.sector)) continue;
-
-            // Phase window filter
-            const allowedPhases = PHASE_WINDOW_LOOKUP[template.phaseWindow] || PHASE_WINDOWS.ANY;
-            if (!allowedPhases.includes(phase)) continue;
-
-            // Base probability + stat modifiers
-            let prob = template.probability;
-            for (const mod of (template.statModifiers || [])) {
-                const statVal = ns(mod.stat);
-                if (mod.direction === 'above' && statVal > mod.baseline) {
-                    prob += (statVal - mod.baseline) * mod.perPoint;
-                } else if (mod.direction === 'below' && statVal < mod.baseline) {
-                    prob += (mod.baseline - statVal) * Math.abs(mod.perPoint);
-                }
-            }
-            prob = Math.max(0, Math.min(0.5, prob)); // Cap at 50%
-
-            // Apply permit event modifiers — active permits reduce event probability
-            if (_permitEventMods && _permitEventMods[contract.awarded_to_faction]) {
-                const mods = _permitEventMods[contract.awarded_to_faction];
-                if (mods[template.key] !== undefined) {
-                    prob *= mods[template.key]; // e.g. 0.5 = halve probability
-                }
-            }
-
-            if (Math.random() > prob) continue;
-
-            // Event fires! Build responses for notification events (auto-resolved)
-            const responses = [{
-                key: 'acknowledge',
-                label: 'Acknowledged',
-                tag: template.severity,
-                detail: template.impact,
-                cost: template.effects.cost || 0,
-                delay: template.effects.delay || 0,
-                qualityImpact: template.effects.quality || 0,
-            }];
-
-            const { error: insertErr } = await supabase.from('construction_events').insert({
-                contract_id: contract.id,
-                faction_id: contract.awarded_to_faction,
-                nation_id: nationId,
-                event_key: template.key,
-                type: template.type,
-                severity: template.severity,
-                title: template.title,
-                description: template.desc,
-                impact: template.impact,
-                responses,
-                status: 'ACTIVE',
-                fired_at_tick: currentTick,
-                expires_at_tick: currentTick + 3, // Auto-resolve after 3 ticks if ignored
-            });
-
-            if (insertErr) {
-                console.warn(`[Events] Failed to create event ${template.key} for ${contract.name}:`, insertErr.message);
-            } else {
-                results.push({ contract: contract.name, event: template.title, severity: template.severity });
-                console.log(`[Events] ${contract.name}: ${template.title} (${template.severity})`);
-            }
-
-            // Max 1 event per project per tick
-            break;
-        }
-
-        // ── Regulatory & Material Quality Events (only if no event fired above) ──
-        if (!results.some(r => r.contract === contract.name)) {
-            try {
-                const permitSnapshot = await getPermitComplianceSnapshot(supabase, {
-                    nationId,
-                    sector: contract.sector,
-                    factionId: contract.awarded_to_faction,
-                    contractId: contract.id,
-                    checkpoint: 'events',
-                    cache: permitScopeCache,
-                });
-                const heldPermits = new Set(permitSnapshot.heldPermitKeys);
-                const missingPermits = permitSnapshot.missingPermitKeys;
-                const missingCount = missingPermits.length;
-
-                // Regulatory events based on missing permits
-                let regEvent = null;
-                if (missingCount >= 3 && Math.random() < 0.25) {
-                    regEvent = REGULATORY_EVENTS.stop_work_order;
-                } else if (missingPermits.includes('ohs_compliance') || missingPermits.includes('working_hours')) {
-                    if (Math.random() < 0.15) regEvent = REGULATORY_EVENTS.worker_whistleblower;
-                } else if (missingCount >= 1 && Math.random() < 0.12) {
-                    regEvent = REGULATORY_EVENTS.regulatory_inspection;
-                }
-
-                // Material quality events (check bid material grades)
-                if (!regEvent) {
-                    const { data: bidData } = await supabase.from('contract_bids')
-                        .select('material_grades').eq('contract_id', contract.id).eq('status', 'won').limit(1).maybeSingle();
-                    const grades = bidData?.material_grades || {};
-                    const gradeValues = Object.values(grades);
-                    const totalMats = gradeValues.length;
-                    const lowCount = gradeValues.filter(g => g === 'LOW').length;
-                    const lowPct = totalMats > 0 ? lowCount / totalMats : 0;
-
-                    if (lowPct >= 0.6 && !heldPermits.has('structural_engineering') && Math.random() < 0.12) {
-                        regEvent = REGULATORY_EVENTS.structural_integrity_failure;
-                    } else if (grades.concrete === 'LOW' && !heldPermits.has('environmental_impact') && Math.random() < 0.10) {
-                        regEvent = REGULATORY_EVENTS.foundation_subsidence;
-                    } else if (lowCount > 0 && Math.random() < 0.08) {
-                        regEvent = REGULATORY_EVENTS.material_defect_recall;
-                    }
-                }
-
-                if (regEvent) {
-                    const responses = [{
-                        key: 'acknowledge', label: 'Acknowledged', tag: regEvent.severity,
-                        detail: regEvent.description,
-                        cost: regEvent.cost, delay: regEvent.delay, qualityImpact: regEvent.quality,
-                    }];
-                    await supabase.from('construction_events').insert({
-                        contract_id: contract.id,
-                        faction_id: contract.awarded_to_faction,
-                        nation_id: nationId,
-                        event_key: regEvent.key,
-                        type: 'REGULATORY',
-                        severity: regEvent.severity,
-                        title: regEvent.name,
-                        description: regEvent.description,
-                        impact: regEvent.description,
-                        responses,
-                        status: 'ACTIVE',
-                        fired_at_tick: currentTick,
-                        expires_at_tick: currentTick + 3,
-                    });
-                    results.push({ contract: contract.name, event: regEvent.name, severity: regEvent.severity });
-                    console.log(`[Events] ${contract.name}: ${regEvent.name} (${regEvent.severity}) — regulatory/material`);
-
-                    // Apply reputation penalty immediately
-                    if (regEvent.reputation && regEvent.reputation < 0) {
-                        await supabase.from('factions').update({
-                            corp_reputation: Math.max(0, Number((await supabase.from('factions').select('corp_reputation').eq('id', contract.awarded_to_faction).single()).data?.corp_reputation ?? 65) + regEvent.reputation)
-                        }).eq('id', contract.awarded_to_faction);
-                    }
-                }
-            } catch (_regErr) { /* non-fatal */ }
-        }
-    }
-
-    return results;
-}
-
-/**
- * Auto-resolve expired construction events that the player ignored.
- * Notification events apply their effects automatically.
- * Choice events apply the worst outcome.
- */
-async function resolveExpiredEvents(supabase, nationId, currentTick) {
-    const results = [];
-
-    const { data: expired } = await supabase
-        .from('construction_events')
-        .select('id, contract_id, faction_id, event_key, title, responses, severity')
-        .eq('nation_id', nationId)
-        .eq('status', 'ACTIVE')
-        .lte('expires_at_tick', currentTick);
-
-    if (!expired || expired.length === 0) return results;
-
-    for (const event of expired) {
-        // Use the first (or worst) response as the auto-resolution
-        const response = event.responses?.[0] || { key: 'auto', cost: 0, delay: 0, qualityImpact: 0 };
-
-        // Apply effects
-        const costApplied = response.cost || 0;
-        const delayApplied = response.delay || 0;
-        const qualityApplied = response.qualityImpact || 0;
-
-        // Check if contract has active insurance
-        let insurancePaidClaim = false;
-        if (costApplied > 0) {
-            // Look up insurance by contract_id → funded request → active loan
-            let policy = null;
-            const { data: insReq } = await supabase
-                .from('finance_loan_requests')
-                .select('id')
-                .eq('request_type', 'insurance')
-                .eq('insured_contract_id', event.contract_id)
-                .eq('status', 'funded')
-                .maybeSingle();
-            if (insReq) {
-                const { data: activePol } = await supabase
-                    .from('finance_active_loans')
-                    .select('id, lender_faction_id, principal, interest_rate, claims_paid, claims_count, deductible_pct')
-                    .eq('request_id', insReq.id)
-                    .eq('status', 'current')
-                    .maybeSingle();
-                policy = activePol;
-            }
-
-            if (policy) {
-                // Apply deductible: construction corp pays the deductible portion
-                const deductiblePct = Number(policy.deductible_pct) || 0;
-                const deductibleAmt = Math.round(costApplied * (deductiblePct / 100));
-                // Insurance covers cost minus deductible
-                let adjustedCost = costApplied - deductibleAmt;
-                // Cap at coverage amount (principal)
-                adjustedCost = Math.min(adjustedCost, Math.max(0, (policy.principal || 0) - (policy.claims_paid || 0)));
-
-                // Claims Office effect: 15% chance to reduce payout by 25%
-                const { data: claimsOffices } = await supabase
-                    .from('corp_properties')
-                    .select('id')
-                    .eq('faction_id', policy.lender_faction_id)
-                    .eq('type', 'claims_office')
-                    .eq('is_active', true)
-                    .limit(1);
-                if (claimsOffices && claimsOffices.length > 0 && Math.random() < 0.15) {
-                    adjustedCost = Math.round(costApplied * 0.75);
-                    console.log(`[Events] Claims Office investigation: payout reduced from $${costApplied} to $${adjustedCost}`);
-                }
-
-                // Insurance covers the cost — deduct from insurer instead
-                const { data: insurer } = await supabase.from('factions')
-                    .select('corp_cash_reserves').eq('id', policy.lender_faction_id).single();
-                if (insurer) {
-                    logCashEvent(policy.lender_faction_id, 'event_cost', 'Subsidiary policy claim', -adjustedCost);
-                    await supabase.from('factions').update({
-                        corp_cash_reserves: Math.max(0, Number(insurer.corp_cash_reserves || 0) - adjustedCost)
-                    }).eq('id', policy.lender_faction_id);
-                }
-                // Track claim on the policy
-                await supabase.from('finance_active_loans').update({
-                    claims_paid: (policy.claims_paid || 0) + adjustedCost,
-                    claims_count: (policy.claims_count || 0) + 1,
-                }).eq('id', policy.id);
-
-                // Construction corp still pays the deductible portion
-                if (deductibleAmt > 0) {
-                    const { data: deductCorp } = await supabase.from('factions')
-                        .select('corp_cash_reserves').eq('id', event.faction_id).single();
-                    if (deductCorp) {
-                        logCashEvent(event.faction_id, 'event_cost', 'Insurance deductible', -deductibleAmt);
-                        await supabase.from('factions').update({
-                            corp_cash_reserves: Math.max(0, Number(deductCorp.corp_cash_reserves || 0) - deductibleAmt)
-                        }).eq('id', event.faction_id);
-                    }
-                }
-
-                insurancePaidClaim = true;
-                console.log(`[Events] Insurance claim: ${event.title} — insurer pays $${adjustedCost}, deductible $${deductibleAmt}`);
-            }
-        }
-
-        // Deduct cost from construction corp (only if no insurance covered it)
-        if (costApplied > 0 && !insurancePaidClaim) {
-            const { data: corp } = await supabase.from('factions')
-                .select('corp_cash_reserves').eq('id', event.faction_id).single();
-            if (corp) {
-                logCashEvent(event.faction_id, 'event_cost', 'Contract event cost', -costApplied);
-                await supabase.from('factions')
-                    .update({ corp_cash_reserves: Math.max(0, Number(corp.corp_cash_reserves || 0) - costApplied) })
-                    .eq('id', event.faction_id);
-            }
-        }
-
-        // Extend timeline
-        if (delayApplied > 0) {
-            const { data: contract } = await supabase.from('construction_contracts')
-                .select('timeline_ticks').eq('id', event.contract_id).single();
-            if (contract) {
-                await supabase.from('construction_contracts')
-                    .update({ timeline_ticks: (contract.timeline_ticks || 0) + delayApplied })
-                    .eq('id', event.contract_id);
-            }
-        }
-
-        // Modify quality
-        if (qualityApplied !== 0) {
-            const { data: bid } = await supabase.from('contract_bids')
-                .select('id, estimated_quality').eq('contract_id', event.contract_id).eq('status', 'won').single();
-            if (bid) {
-                const newQuality = Math.max(0, Math.min(100, (bid.estimated_quality || 65) + qualityApplied));
-                await supabase.from('contract_bids')
-                    .update({ estimated_quality: newQuality }).eq('id', bid.id);
-            }
-        }
-
-        // Mark event as resolved
-        await supabase.from('construction_events').update({
-            status: 'RESOLVED',
-            chosen_response: response.key,
-            resolution: `Auto-resolved: ${response.label || 'expired'}`,
-            resolved_at_tick: currentTick,
-            cost_applied: costApplied,
-            delay_applied: delayApplied,
-            quality_applied: qualityApplied,
-        }).eq('id', event.id);
-
-        results.push({ event: event.title, autoResolved: true, cost: costApplied, delay: delayApplied, quality: qualityApplied });
-        console.log(`[Events] Auto-resolved: ${event.title} (cost=$${costApplied}, delay=${delayApplied}, quality=${qualityApplied > 0 ? '+' : ''}${qualityApplied})`);
-    }
-
-    return results;
-}
 
 // ════════════════════════════════════════════════════════════════════════════════
-//  NEW PIPELINE: corp_contract_events
+//  CORP CONTRACT EVENTS PIPELINE
 //
-//  Path 1 Phase 1B retarget. Mirrors the legacy generateProjectEvents +
-//  resolveExpiredEvents pair but reads from corp_contracts and writes to
-//  corp_contract_events. Both old + new run concurrently during the drain;
-//  the legacy pair dies with construction_contracts in Phase 1E.
+//  Two functions read corp_contracts and write corp_contract_events:
+//  generateCorpContractProjectEvents fires random per-tick events on
+//  active contracts; resolveExpiredCorpContractEvents auto-resolves
+//  events the player ignored past their deadline.
 //
-//  Differences from the legacy version:
-//    - Status filter: corp_contracts uses 'active', not 'in_progress'.
-//    - Faction column: winner_faction_id, not awarded_to_faction.
+//  Notes on shape:
+//    - Status filter: corp_contracts uses 'active'.
+//    - Faction column: winner_faction_id (the awarded corp).
 //    - Sector match: corp_contracts.project_type is "Civil Engineering" /
 //      "Industrial" / "Megaproject" (display form). The event catalog's
 //      appliesTo uses 'civil_engineering' / 'industrial' / 'mega_project'
 //      (snake_case keys). projectTypeToSectorKey() bridges them.
-//    - The legacy material-grade regulatory branch is dropped — the new
-//      bid pipeline (corp_contract_bids) doesn't track material_grades
-//      yet. Permit-compliance regulatory branch is kept since corp_permits
-//      is shared by both pipelines.
-//    - resolveExpiredCorpContractEvents is simpler than its legacy
-//      counterpart: no insurance integration, no claims-office reductions
-//      (those rely on the dead finance_active_loans table). Just apply
-//      response effect, flip to EXPIRED. Insurance will be re-added when
-//      the new bank_loans pipeline grows insurance products.
-//
-//  Intentional duplication: ~90% of the template-iteration / probability /
-//  permit-modifier logic mirrors the legacy generator. Refactoring into a
-//  shared helper now would be undone in Phase 1E when the legacy version
-//  is deleted, so the duplication is parked here on purpose.
+//    - resolveExpiredCorpContractEvents has no insurance integration
+//      (dead finance_active_loans pipeline). Insurance will be re-added
+//      when the new bank_loans pipeline grows insurance products.
 //
 //  Within this function, the "build response array + insert event row"
 //  pattern repeats across three branches (main template / permit-compliance
@@ -5853,44 +4780,23 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             );
 
             // ── Construction Sector (runs for ALL nations) ───────────────
-            // Contract generation, bid resolution, and project advancement
-            // are not gated behind local corp presence — corps from any
-            // nation can bid on contracts.
+            // Generation runs once per shard tick via
+            // generateCorpContractsByGdpTier; awards run via the
+            // award_construction_contract RPC + auto-award cron. Per-nation
+            // work here is just per-tick progression + events on active
+            // corp_contracts. Legacy construction_contracts pipeline
+            // (resolveExpiredBids, processActiveProjects, generateProjectEvents,
+            // resolveExpiredEvents, generateConstructionContracts and
+            // generateInfraRenewalContracts no-op stubs) was retired.
             try {
-                // Bid resolution FIRST: expired bidding windows → award winners
-                const bidResults = await resolveExpiredBids(supabase, nation.id, currentTick);
-                if (bidResults.length > 0) {
-                    summary.construction.push({ nation: nation.name, type: 'bids', data: bidResults });
-                }
-
-                // Project execution: advance awarded → in_progress, deduct costs, complete
-                const projectResults = await processActiveProjects(supabase, nation.id, currentTick);
+                // Per-tick contract progression: deduct cost, advance
+                // progress_pct, mark completed at 100%, schedule payout.
+                const projectResults = await processCorpContracts(supabase, nation.id, currentTick);
                 if (projectResults.length > 0) {
                     summary.construction.push({ nation: nation.name, type: 'completions', data: projectResults });
                 }
 
-                // Contract generation: every 3 ticks, GDP-scaled
-                const genResults = await generateConstructionContracts(supabase, nation, currentTick);
-                if (genResults.length > 0) {
-                    summary.construction.push({ nation: nation.name, type: 'generated', data: genResults });
-                }
-
-                // Policy-driven contract generation: Infrastructure Renewal Act
-                try {
-                    await generateInfraRenewalContracts(supabase, nation, currentTick);
-                } catch (irErr) {
-                    console.warn(`[advance-corp-tick] Infra Renewal contract gen failed for ${nation.name}:`, irErr.message);
-                }
-
-                // Project events: generate random events on in_progress projects.
-                // Legacy table (drains with the 41 in-flight contracts; goes
-                // away in Phase 1E):
-                const eventResults = await generateProjectEvents(supabase, nation.id, currentTick);
-                if (eventResults.length > 0) {
-                    summary.construction.push({ nation: nation.name, type: 'events', data: eventResults });
-                }
-                // New pipeline (corp_contracts → corp_contract_events). Runs in
-                // parallel with the legacy generator during the drain.
+                // Per-tick random events on active corp_contracts.
                 try {
                     const corpEventResults = await generateCorpContractProjectEvents(supabase, nation.id, currentTick);
                     if (corpEventResults.length > 0) {
@@ -5907,13 +4813,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                     console.warn(`[advance-corp-tick] Property marketplace failed for ${nation.name}:`, propErr.message);
                 }
 
-                // Expired events: auto-resolve events the player ignored
-                // Legacy:
-                const expiredResults = await resolveExpiredEvents(supabase, nation.id, currentTick);
-                if (expiredResults.length > 0) {
-                    summary.construction.push({ nation: nation.name, type: 'expired_events', data: expiredResults });
-                }
-                // New pipeline:
+                // Auto-resolve corp_contract_events the player ignored.
                 try {
                     const expiredCorpResults = await resolveExpiredCorpContractEvents(supabase, nation.id, currentTick);
                     if (expiredCorpResults.length > 0) {
@@ -6024,18 +4924,18 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             }
 
             // ── Construction GDP Boost ──
-                // Per-project: (budget / $100M) × 0.1 / timeline_ticks
+                // Per-project: (budget / $100M) × 0.1 / timeline_months
                 // Spreads the 0.1-per-$100M impact evenly across the project lifetime.
                 // Multiple projects stack additively.
                 const { data: activeForGdp } = await supabase
-                    .from('construction_contracts')
-                    .select('budget_ceiling, timeline_ticks')
-                    .eq('nation_id', nation.id)
-                    .eq('status', 'in_progress');
+                    .from('corp_contracts')
+                    .select('budget, timeline_months')
+                    .eq('issuer_nation_id', nation.id)
+                    .eq('status', 'active');
                 let gdpBoost = 0;
                 for (const c of (activeForGdp || [])) {
-                    const budget = Number(c.budget_ceiling || 0);
-                    const ticks = Number(c.timeline_ticks || 1);
+                    const budget = Number(c.budget || 0);
+                    const ticks = Number(c.timeline_months || 1);
                     gdpBoost += (budget / 100_000_000) * 0.1 / ticks;
                 }
                 gdpBoost = Math.round(gdpBoost * 1000) / 1000; // 3 decimal places

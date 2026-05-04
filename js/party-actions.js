@@ -1251,6 +1251,20 @@ function ministryRoleDescriptor(key, faction) {
 // Per-role action registry. PM gets the moved Call Early Elections and
 // Resign actions; everyone else is empty for now (placeholders until
 // per-ministry actions ship).
+// State Owned Enterprise — placeholder action mounted under the seven
+// SOE-eligible cabinet ministries below. Greyed out + non-clickable
+// via ministryActionLockReason returning a coming-soon string for the
+// 'stateOwnedEnterprise' id. Same data shape as every other entry in
+// this registry so the renderer just works.
+const _SOE_ACTION_ENTRY = {
+    id: 'stateOwnedEnterprise',
+    name: 'State Owned Enterprise',
+    desc: 'Advocate for the creation of a State Owned Enterprise in this ministry.',
+    cost: '$100K',
+    costColor: 'var(--text-dim)',
+    tags: [],
+};
+
 const _MINISTRY_ACTION_REGISTRY = {
     prime_minister: [
         {
@@ -1271,6 +1285,13 @@ const _MINISTRY_ACTION_REGISTRY = {
         },
     ],
     president: [],
+    defense:        [_SOE_ACTION_ENTRY],
+    transportation: [_SOE_ACTION_ENTRY],
+    finance:        [_SOE_ACTION_ENTRY],
+    energy:         [_SOE_ACTION_ENTRY],
+    healthcare:     [_SOE_ACTION_ENTRY],
+    justice:        [_SOE_ACTION_ENTRY],
+    education:      [_SOE_ACTION_ENTRY],
 };
 
 function listHeldMinistryKeys(faction) {
@@ -1318,6 +1339,12 @@ function renderCabinetMinistriesPanel(faction) {
 
 function ministryActionLockReason(actionId, faction) {
     const nation = _state?.nation;
+    // SOE placeholder is greyed out + not clickable until the backend
+    // exists. The .locked class on the rendered card both styles the
+    // greyed state and makes the panel-level click handler skip it.
+    if (actionId === 'stateOwnedEnterprise') {
+        return 'Coming soon — backend not yet wired.';
+    }
     if (actionId === 'call_early_elections' || actionId === 'resign_as_pm') {
         // Reachable only inside the PM detail panel (renderMinistryDetail
         // is gated on classifyHeadOfGovernment.isPM), so the PM-only /
