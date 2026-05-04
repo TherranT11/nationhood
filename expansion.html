@@ -799,7 +799,7 @@ body.corp-expansion.light-mode {
       <div class="ex-acquire-tab active" id="ex-tab-build">
         <div class="ex-info">
           <h3>Build a Regional HQ</h3>
-          <p>A Regional HQ lets your corporation operate in another nation. Cost is <strong>$300M base × the host nation's standard-of-living multiplier</strong> (clamped between ×0.5 and ×2.0). The HQ becomes a standard property asset — sell it later from your assets list at <strong>60% × condition resale</strong>.</p>
+          <p>A Regional HQ lets your corporation operate in another nation. Cost is <strong>$300M base × the host nation's standard-of-living multiplier</strong> (clamped between ×0.5 and ×2.0). The HQ becomes a standard property asset — sell it later from your assets list at <strong>condition-adjusted resale</strong> (purchase price × current condition %).</p>
         </div>
 
         <div class="ex-nation-table" id="ex-build-table"></div>
@@ -1243,7 +1243,7 @@ async function buildRegionalHQ(nationId) {
         'Build Regional HQ in ' + target.name + '?\n\n' +
         'Cost: ' + hfFmtBig(cost) + ' ($300M base × ' + regionalHqMultiplier(sol).toFixed(2) + 'x SoL)\n' +
         'Capacity: ' + REGIONAL_HQ_CAPACITY + '\n\n' +
-        'The HQ becomes a standard property asset. You can sell it later from your assets list (60% × condition resale).'
+        'The HQ becomes a standard property asset. You can sell it later from your assets list (purchase price × current condition %).'
     )) return;
 
     _buildInflight.add(nationId);
@@ -1322,11 +1322,11 @@ async function sellProperty(propId) {
     if (!prop) return;
 
     const conditionFactor = Math.max(0, Math.min(1, (Number(prop.condition) || 50) / 100));
-    const saleValue = Math.round((Number(prop.purchase_price) || 0) * 0.6 * conditionFactor);
+    const saleValue = Math.round((Number(prop.purchase_price) || 0) * conditionFactor);
 
     if (!confirm(
         'Sell "' + prop.name + '"?\n\n' +
-        'Sale value: ' + hfFmtBig(saleValue) + ' (60% × ' + Math.round(conditionFactor * 100) + '% condition)\n\n' +
+        'Sale value: ' + hfFmtBig(saleValue) + ' (' + Math.round(conditionFactor * 100) + '% condition)\n\n' +
         'The property goes back on the market for 6 ticks.\nThis cannot be undone.'
     )) return;
 
