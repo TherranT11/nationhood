@@ -263,7 +263,7 @@ const MINISTRY_ACTIONS = {
                 ],
                 baseEffects: [
                     { stat_key: 'gdp_growth',    direction: 'up',   rate: 0.4, scalable: true },
-                    { stat_key: 'workforce',     direction: 'up',   rate: 1,   scalable: true },
+                    { stat_key: 'unskilled_workers',     direction: 'up',   rate: 1,   scalable: true },
                     { stat_key: 'cost_of_living', direction: 'up',  rate: 0.3, scalable: false },
                     { stat_key: 'minister_approval', direction: 'up', rate: 1, scalable: false, target: 'minister', delayOverride: 0, durationOverride: 1 }
                 ]
@@ -441,7 +441,7 @@ const MINISTRY_ACTIONS = {
                             { label: 'GDP ↓', cls: 'negative' }
                         ],
                         baseEffects: [
-                            { stat_key: 'workforce',           direction: 'up',   rate: 0.1, scalable: true },
+                            { stat_key: 'unskilled_workers',           direction: 'up',   rate: 0.1, scalable: true },
                             { stat_key: 'standard_of_living',  direction: 'up',   rate: 0.1, scalable: true },
                             { stat_key: 'gdp_growth',          direction: 'down', rate: 0.1, scalable: false }
                         ]
@@ -459,7 +459,7 @@ const MINISTRY_ACTIONS = {
                             { label: 'STD LIVING ↓', cls: 'negative' }
                         ],
                         baseEffects: [
-                            { stat_key: 'workforce',           direction: 'up',   rate: 0.1, scalable: true },
+                            { stat_key: 'unskilled_workers',           direction: 'up',   rate: 0.1, scalable: true },
                             { stat_key: 'gdp_growth',          direction: 'up',   rate: 0.1, scalable: true },
                             { stat_key: 'industry',            direction: 'up',   rate: 0.1, scalable: true },
                             { stat_key: 'standard_of_living',  direction: 'down', rate: 0.1, scalable: false }
@@ -484,7 +484,7 @@ const MINISTRY_ACTIONS = {
                     { label: 'LITERACY ↑', cls: 'positive' }
                 ],
                 baseEffects: [
-                    { stat_key: 'workforce',                 direction: 'up',   rate: 0.2, scalable: true },
+                    { stat_key: 'unskilled_workers',                 direction: 'up',   rate: 0.2, scalable: true },
                     { stat_key: 'education',                 direction: 'up',   rate: 0.1, scalable: true },
                     { stat_key: 'minister_approval', direction: 'up', rate: 1, scalable: false, target: 'minister', delayOverride: 0, durationOverride: 1 }
                 ]
@@ -537,7 +537,7 @@ const MINISTRY_ACTIONS = {
                 ],
                 baseEffects: [
                     { stat_key: 'education',              direction: 'up',   rate: 2, scalable: true },
-                    { stat_key: 'workforce',              direction: 'up',   rate: 0.5, scalable: true },
+                    { stat_key: 'unskilled_workers',              direction: 'up',   rate: 0.5, scalable: true },
                     { stat_key: 'minister_approval', direction: 'up', rate: 1, scalable: false, target: 'minister', delayOverride: 0, durationOverride: 1 }
                 ]
             }
@@ -593,7 +593,7 @@ const MINISTRY_ACTIONS = {
                 baseEffects: [
                     { stat_key: 'infrastructure',         direction: 'up',   rate: 0.1, scalable: true, permanentResidue: 0.1 },
                     { stat_key: 'standard_of_living',     direction: 'up',   rate: 0.1, scalable: true },
-                    { stat_key: 'workforce',              direction: 'up',   rate: 0.1, scalable: false }
+                    { stat_key: 'unskilled_workers',              direction: 'up',   rate: 0.1, scalable: false }
                 ]
             },
             {

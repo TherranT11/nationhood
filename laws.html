@@ -4710,8 +4710,8 @@ async function submitDefaultResolution() {
             description_used: `The ${currentFaction.faction_name} has filed a ${defaultType === 'full' ? 'full sovereign default' : 'debt restructuring'} resolution. Markets react with alarm.`,
             category: 'economy',
             effects_applied: [
-                { stat: 'power',    change: cfg.FILING_POWER_HIT },
-                { stat: 'industry', change: cfg.FILING_INDUSTRY_HIT }
+                { stat: 'global_image', change: cfg.FILING_POWER_HIT },
+                { stat: 'industry',     change: cfg.FILING_INDUSTRY_HIT }
             ],
             fired_at_tick: currentTick
         });

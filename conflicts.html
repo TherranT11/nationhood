@@ -622,7 +622,7 @@ async function renderCardBilateralIntel(issue) {
 
     const ourApproval = Number(currentNation.gov_approval ?? 50);
     const ourControl = Number(currentNation.control ?? 50);
-    const ourPower = Number(currentNation.power ?? 50);
+    const ourPower = Number(currentNation.global_image ?? 50);
     const theirApproval = Number(theirNation?.gov_approval ?? 50);
     const theirControl = Number(theirNation?.control ?? 50);
     const theirPower = Number(theirNation?.power ?? 50);
@@ -696,7 +696,7 @@ function renderCardDeckStrip(issue, totalCardDefs) {
     const theirHand = issue.nation_a_id === currentNation.id ? (issue.hand_b || []) : (issue.hand_a || []);
     const deckLeft = (issue.deck_remaining || []).length;
     const activeCard = issue.active_card ? 1 : 0;
-    const fa = Math.round(Number(currentNation.power) || 0);
+    const fa = Math.round(Number(currentNation.global_image) || 0);
 
     let pips = '';
     for (let i = 0; i < played; i++) pips += '<div style="width:6px;height:10px;border:1px solid var(--text-dim);background:var(--text-dim);opacity:0.3;"></div>';
@@ -708,7 +708,7 @@ function renderCardDeckStrip(issue, totalCardDefs) {
         <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);">Deck</span>
         <div style="display:flex;gap:2px;">${pips}</div>
         <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${played} played / ${myHand.length} hand / ${deckLeft} deck</span>
-        <span style="font-family:var(--font-mono);font-size:8px;color:var(--teal,#5b9a8b);margin-left:auto;">Foreign Affairs: ${faToDrawCount(Number(currentNation.power))} cards</span>
+        <span style="font-family:var(--font-mono);font-size:8px;color:var(--teal,#5b9a8b);margin-left:auto;">Foreign Affairs: ${faToDrawCount(Number(currentNation.global_image))} cards</span>
     </div>`;
 }
 
@@ -1031,7 +1031,7 @@ function renderCardHand(issue, myHand, cardDefMap, mySide, isMyTurn) {
         return;
     }
 
-    const fa = Math.round(Number(currentNation.power) || 0);
+    const fa = Math.round(Number(currentNation.global_image) || 0);
     const played = (issue.played_cards || []).filter(p => p.played_by === mySide).length;
 
     const typeShort = { unilateral: 'Uni', diplomatic: 'Dip', aggressive: 'Agg', special: 'Spc' };
