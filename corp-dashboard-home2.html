@@ -2617,11 +2617,12 @@ async function renderFinances(nation, shard, wfData, faction, propertyMaint, equ
 
     const execSalaries = Math.round((execCompensation || 0) / 12);
     const fleet = fleetMaint || 0;
-    const FIXED_OVERHEAD = 75000; // minimum operating costs (matches tick processor)
+    // Fixed-overhead baseline removed (matches tick processor); was a flat
+    // $75k/tick floor folded into property/admin/insurance/utilities.
     // Corporate tax: applied to positive income (matches tick processor formula)
     // PHASE 7 TODO: corporate_tax drops in Phase 9
     const corpTaxRate = Math.max(0, Math.min(1, (Number(nation?.corporate_tax ?? 0) / 100) || 0));
-    const preExpenses = wages + execSalaries + materials + properties + equipment + fleet + debtService + corpLoanService + insurancePremiums + projectCosts + FIXED_OVERHEAD;
+    const preExpenses = wages + execSalaries + materials + properties + equipment + fleet + debtService + corpLoanService + insurancePremiums + projectCosts;
     const taxableIncome = Math.max(0, totalRevenue - preExpenses);
     const taxes = Math.round(taxableIncome * corpTaxRate);
 

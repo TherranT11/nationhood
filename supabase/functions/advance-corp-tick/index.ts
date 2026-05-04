@@ -3751,15 +3751,12 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
         const totalExecAnnual = (executives || []).reduce((sum, ex) => sum + (Number(ex.salary_per_year) || 0), 0);
         const monthlyExecSalaries = Math.round(totalExecAnnual / 12);
 
-        // Fixed overhead: minimum operating costs even with 0 employees
-        // Property maintenance, admin, insurance, utilities
-        const FIXED_OVERHEAD_MONTHLY = 75_000;
-
-        // Passive income removed: corps must actively earn (contracts, routes,
-        // loans, etc.). monthlyIncome is the per-tick burn rate before debt
-        // service and corporate tax (which is now always 0 here since the
-        // burn rate is always negative — taxableIncome = max(0, ...) clamps it).
-        const monthlyIncome = -monthlyWages - monthlyExecSalaries - FIXED_OVERHEAD_MONTHLY;
+        // Fixed-overhead baseline removed (per design). Property maintenance
+        // is already billed per-property elsewhere; admin/insurance/utilities
+        // were folded into the $75k floor and are gone with it. Corps now
+        // burn only on real workforce + executive salaries plus debt service
+        // and per-property maintenance billed elsewhere.
+        const monthlyIncome = -monthlyWages - monthlyExecSalaries;
 
         // Compute monthly loan payment (amortized) and split into interest + principal
         let debtPayment = 0;
@@ -3794,7 +3791,6 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
             // cash write succeeded.
             logCashEvent(corp.id, 'wages',          'Workforce wages',        -monthlyWages);
             logCashEvent(corp.id, 'exec_salary',    'Executive salaries',     -monthlyExecSalaries);
-            logCashEvent(corp.id, 'fixed_overhead', 'Fixed overhead',         -FIXED_OVERHEAD_MONTHLY);
             // Debt service is currently lumped — interest + principal under
             // debt_interest. Splitting requires the loan-amortization fields
             // to be plumbed here; deferred to the cleanup phase.
