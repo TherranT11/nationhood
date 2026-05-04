@@ -3701,15 +3701,12 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
     // still pay per-crew wages via apply_construction_wages_for_nation
     // ('wages' event, "Construction wages" label); other sectors no
     // longer carry a generic monthly headcount payroll.
-
-    // Loan servicing constants (5% annual rate, 10-year amortization).
-    // LOAN_ANNUAL_RATE_PCT is in percent form (5 = 5%) so the shared
-    // monthlyInterest() helper can be used. monthlyRate is kept in
-    // fraction form because the amortization formula on the next
-    // step needs (1 + r) compounding.
-    const LOAN_ANNUAL_RATE_PCT = 5;
-    const LOAN_TERM_MONTHS = 120;
-    const monthlyRate = (LOAN_ANNUAL_RATE_PCT / 100) / 12;
+    //
+    // Internal-debt-service baseline also removed: it was amortizing a
+    // legacy `corp_loans` ghost balance that nothing in the current
+    // codebase increments. Real loans go through bank_loans /
+    // finance_active_loans and are serviced in processBankLoanPayments
+    // (debt_interest / "Loan interest paid", decrements corp_debt).
 
     for (const corp of corpFactions) {
         const currentCash = Number(corp.corp_cash_reserves || 0);
@@ -3725,8 +3722,6 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
             continue;
         }
 
-        const currentLoans = Number(corp.corp_loans || 0);
-
         // Executive salaries (C-suite: CEO, CFO, COO, CTO, CMO, CLO, Lobbyist)
         const { data: executives } = await supabase.from('corp_executives')
             .select('salary_per_year')
@@ -3741,43 +3736,25 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
         // maintenance, aircraft ops, etc.) are billed in their own paths.
         const monthlyIncome = -monthlyExecSalaries;
 
-        // Compute monthly loan payment (amortized) and split into interest + principal
-        let debtPayment = 0;
-        let principalPaid = 0;
-        if (currentLoans > 0) {
-            const monthlyPayment = Math.round((currentLoans * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -LOAN_TERM_MONTHS)));
-            const interestPortion = monthlyInterest(currentLoans, LOAN_ANNUAL_RATE_PCT);
-            principalPaid = Math.min(currentLoans, principalPortion(monthlyPayment, interestPortion));
-            debtPayment = monthlyPayment;
-        }
-
         // Corporate tax: applied to positive monthly income (profit only)
         // corporate_tax is 0-100 scale on the nation, treated as percentage
         const corpTaxRate = Math.max(0, Math.min(1, (Number(nation.corporate_tax ?? 0) / 100) || 0));
         const taxableIncome = Math.max(0, monthlyIncome);
         const taxAmount = Math.round(taxableIncome * corpTaxRate);
 
-        const netChange = monthlyIncome - debtPayment - taxAmount;
+        const netChange = monthlyIncome - taxAmount;
         const newCash = Math.max(0, currentCash + netChange);
-        const newLoans = Math.max(0, currentLoans - principalPaid);
-
-        const updateFields = { corp_cash_reserves: newCash };
-        if (principalPaid > 0) updateFields.corp_loans = newLoans;
 
         const { error: updateErr } = await supabase.from('factions')
-            .update(updateFields)
+            .update({ corp_cash_reserves: newCash })
             .eq('id', corp.id);
         if (updateErr) {
             console.error(`[advance-corp-tick] Income update failed for ${corp.faction_name}:`, updateErr.message);
         } else {
             // Log each P&L component to corp_cash_events, only after the
             // cash write succeeded.
-            logCashEvent(corp.id, 'exec_salary',    'Executive salaries',     -monthlyExecSalaries);
-            // Debt service is currently lumped — interest + principal under
-            // debt_interest. Splitting requires the loan-amortization fields
-            // to be plumbed here; deferred to the cleanup phase.
-            logCashEvent(corp.id, 'debt_interest',  'Internal debt service',  -debtPayment);
-            logCashEvent(corp.id, 'tax',            'Corporate tax',          -taxAmount);
+            logCashEvent(corp.id, 'exec_salary', 'Executive salaries', -monthlyExecSalaries);
+            logCashEvent(corp.id, 'tax',         'Corporate tax',      -taxAmount);
         }
 
         // Credit corporate tax to the nation's debt reduction
@@ -5845,7 +5822,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // Load corporation factions for this nation (exclude dissolved corps)
             const { data: corpFactions, error: corpErr } = await supabase
                 .from('factions')
-                .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_loans, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce, corp_reputation')
+                .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce, corp_reputation')
                 .eq('nation_id', nation.id)
                 .eq('faction_type', 'corporation')
                 .is('abandoned_at', null);
@@ -6304,7 +6281,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 if (missingFactionIds.length > 0) {
                     const { data: extraCorps, error: extraErr } = await supabase
                         .from('factions')
-                        .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_loans, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce, corp_reputation')
+                        .select('id, faction_name, corp_sector, corp_subsector, corp_cash_reserves, corp_general_workforce, corp_skilled_workforce, corp_innovative_workforce, corp_reputation')
                         .in('id', missingFactionIds);
                     if (extraErr) console.warn('[advance-corp-tick] Failed to fetch cross-nation claim-holders:', extraErr.message);
                     for (const c of (extraCorps || [])) corpById[c.id] = c;

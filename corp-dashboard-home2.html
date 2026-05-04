@@ -2466,23 +2466,17 @@ async function renderFinances(nation, shard, faction, propertyMaint, equipmentMa
     const materials = 0;
     const properties = propertyMaint || 0;
     const equipment = equipmentMaint || 0;
-    // Debt service: monthly payment on outstanding loans (5% annual rate, 10-year amortization)
-    const outstandingDebt = Number(faction?.corp_loans) || 0;
-    const LOAN_ANNUAL_RATE = 0.05;
-    const LOAN_TERM_MONTHS = 120;
-    const debtService = outstandingDebt > 0
-        ? Math.round((outstandingDebt * (LOAN_ANNUAL_RATE / 12)) / (1 - Math.pow(1 + LOAN_ANNUAL_RATE / 12, -LOAN_TERM_MONTHS)))
-        : 0;
+    // Outstanding debt = real bank_loans amortizing through corp_debt.
+    // Real loan payment outflow is captured below via finance_active_loans
+    // (corpLoanService).
+    const outstandingDebt = Number(faction?.corp_debt) || 0;
 
     // Borrower-side obligations on finance_active_loans. The server
-    // (advance-corp-tick:2881-3005) iterates these rows every tick and
-    // deducts either the full monthly loan payment OR the insurance
-    // premium from the borrower/policyholder's cash — completely separate
-    // from the `corp_loans` debt service above. Without these two lines
-    // the Net Profit card was missing a significant monthly outflow for
-    // any corp that had taken a corp-to-corp loan or held insurance
-    // policies, which is why Montequilla Contructions saw +$1.2M/tick
-    // profit while cash actually grew only ~$300-400k/tick.
+    // iterates these rows every tick and deducts either the full
+    // monthly loan payment OR the insurance premium from the
+    // borrower/policyholder's cash. Without these two lines the Net
+    // Profit card under-reports a significant monthly outflow for any
+    // corp holding a corp-to-corp loan or insurance policy.
     let corpLoanService = 0;
     let insurancePremiums = 0;
     if (faction?.id) {
@@ -2520,7 +2514,7 @@ async function renderFinances(nation, shard, faction, propertyMaint, equipmentMa
     // Corporate tax: applied to positive income (matches tick processor formula)
     // PHASE 7 TODO: corporate_tax drops in Phase 9
     const corpTaxRate = Math.max(0, Math.min(1, (Number(nation?.corporate_tax ?? 0) / 100) || 0));
-    const preExpenses = execSalaries + materials + properties + equipment + fleet + debtService + corpLoanService + insurancePremiums + projectCosts;
+    const preExpenses = execSalaries + materials + properties + equipment + fleet + corpLoanService + insurancePremiums + projectCosts;
     const taxableIncome = Math.max(0, totalRevenue - preExpenses);
     const taxes = Math.round(taxableIncome * corpTaxRate);
 
@@ -2659,7 +2653,6 @@ async function renderFinances(nation, shard, faction, propertyMaint, equipmentMa
             <div class="fin-row"><span class="fin-row__label">Equipment</span><span class="fin-row__value" style="color:#a44">${fmtMoney(equipment)}</span></div>
             ${fleet > 0 ? `<div class="fin-row"><span class="fin-row__label">Fleet Maintenance</span><span class="fin-row__value" style="color:#a44">${fmtMoney(fleet)}</span></div>` : ''}
             ${projectCosts > 0 ? `<div class="fin-row"><span class="fin-row__label">Project Build Costs</span><span class="fin-row__value" style="color:#a44">${fmtMoney(projectCosts)}</span></div>` : ''}
-            <div class="fin-row"><span class="fin-row__label">Debt Service</span><span class="fin-row__value" style="color:#a44">${fmtMoney(debtService)}</span></div>
             ${corpLoanService > 0 ? `<div class="fin-row"><span class="fin-row__label">Loan Repayments</span><span class="fin-row__value" style="color:#a44">${fmtMoney(corpLoanService)}</span></div>` : ''}
             ${insurancePremiums > 0 ? `<div class="fin-row"><span class="fin-row__label">Insurance Premiums</span><span class="fin-row__value" style="color:#a44">${fmtMoney(insurancePremiums)}</span></div>` : ''}
             <div class="fin-row"><span class="fin-row__label">Taxes</span><span class="fin-row__value" style="color:#a44">${fmtMoney(taxes)}</span></div>
@@ -3486,7 +3479,7 @@ async function renderValuation(nation, nationName, faction, propData, equipmentV
     // proxy; with that line gone there's no clean monthly-expense
     // estimate to plug in here, so payables drop to 0 until a real
     // accruals model is built.
-    const outstandingLoans = Number(faction.corp_loans) || 0;
+    const outstandingLoans = Number(faction.corp_debt) || 0;
     const accountsPayable = 0;
     const pendingProjectCosts = 0;
     const totalLiabilities = outstandingLoans + accountsPayable + pendingProjectCosts;
