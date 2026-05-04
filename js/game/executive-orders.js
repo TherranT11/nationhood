@@ -79,7 +79,7 @@ export const STIMULATE_ECONOMY_ORDERS = {
         ideology: 'COLLECTIVISM',
         name: 'Wage Floor for Federal Contractors',
         description: 'Mandate all federal contractors pay a living wage minimum, rippling through supply chains.',
-        stat_increases: { minimum_wage: 3, standard_of_living: 2, happiness: 1 },
+        stat_increases: { wages: 3, standard_of_living: 2, happiness: 1 },
         stat_decreases: { poverty_rate: 2, manufacturing_output: 1, cost_of_living: 1, foreign_investment: 1, service_output: 1 },
     },
 

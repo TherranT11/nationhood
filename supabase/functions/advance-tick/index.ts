@@ -870,7 +870,9 @@ const AID_CONDITION_STATS = [
     { key: 'authority', label: 'Authority', default_operator: 'gte', category: 'Governance' },
     // Economic
     { key: 'cost_of_living', label: 'Cost of Living', default_operator: 'lte', category: 'Economic' },
-    { key: 'workforce', label: 'Workforce Participation', default_operator: 'gte', category: 'Economic' },
+    { key: 'unskilled_workers', label: 'Unskilled Workers', default_operator: 'gte', category: 'Economic' },
+    { key: 'skilled_workers', label: 'Skilled Workers', default_operator: 'gte', category: 'Economic' },
+    { key: 'wages', label: 'Wages', default_operator: 'gte', category: 'Economic' },
     // Social
     { key: 'education', label: 'Education', default_operator: 'gte', category: 'Social' },
     { key: 'health', label: 'Healthcare', default_operator: 'gte', category: 'Social' },
@@ -879,7 +881,7 @@ const AID_CONDITION_STATS = [
     { key: 'control', label: 'Control', default_operator: 'gte', category: 'Security' },
     { key: 'unrest', label: 'Unrest', default_operator: 'lte', category: 'Security' },
     // International
-    { key: 'power', label: 'Power', default_operator: 'gte', category: 'International' }
+    { key: 'global_image', label: 'Global Image', default_operator: 'gte', category: 'International' }
 ];
 
 /**
@@ -1204,7 +1206,7 @@ const PROPOSAL_TYPES = {
         description: 'Establish cultural exchange programs between nations.',
         stat_effects: [
             // alpha-19: international_reputation → power.
-            { stat_key: 'power', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+            { stat_key: 'global_image', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
     visa_agreement: {
@@ -1213,7 +1215,7 @@ const PROPOSAL_TYPES = {
         description: 'Simplify visa requirements for travel between nations.',
         stat_effects: [
             // alpha-19: international_reputation → power.
-            { stat_key: 'power', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
+            { stat_key: 'global_image', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
             { stat_key: 'immigration', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
@@ -1241,7 +1243,7 @@ const PROPOSAL_TYPES = {
         stat_effects: [
             // alpha-19: stability → control; international_reputation → power.
             { stat_key: 'control', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
-            { stat_key: 'power', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+            { stat_key: 'global_image', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
     military_alliance: {
@@ -1251,7 +1253,7 @@ const PROPOSAL_TYPES = {
         stat_effects: [
             // alpha-19: stability → control; international_reputation → power.
             { stat_key: 'control', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 },
-            { stat_key: 'power', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
+            { stat_key: 'global_image', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
     embargo: {
@@ -1260,7 +1262,7 @@ const PROPOSAL_TYPES = {
         description: 'Economic warfare — tanks target trade stats, also hurts your own.',
         stat_effects: [
             // alpha-19: trade_balance dropped (no replacement); international_reputation → power.
-            { stat_key: 'power', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 }
+            { stat_key: 'global_image', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 }
         ]
     },
     ceasefire: {
@@ -1289,7 +1291,7 @@ const PROPOSAL_TYPES = {
         description: 'Shut down diplomatic presence in the target nation.',
         stat_effects: [
             // alpha-19: international_reputation → power.
-            { stat_key: 'power', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
+            { stat_key: 'global_image', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
         ]
     }
 };
@@ -1476,10 +1478,12 @@ const VISA_EXCLUDES = [
 const VISA_BASE_EFFECTS = {
     relations: 6,
     revenue: 12_000_000,
-    // alpha-19: intl_reputation → power (international_reputation → power).
-    // polarization + terrorism_risk dropped — no alpha-column replacements;
-    // calculateVisaEffects no longer surfaces them in its return structs.
-    power: 1,
+    // Canonical-stats Phase 3: power → global_image (the rename rolled
+    // up the legacy intl_reputation / diplomatic_standing / tourism /
+    // sanctions sources). polarization + terrorism_risk had been dropped
+    // earlier with no alpha-column replacements; calculateVisaEffects
+    // no longer surfaces them in its return structs.
+    global_image: 1,
     immigration: 1
 };
 
@@ -1517,8 +1521,8 @@ const CULTURAL_FUNDING_OPTIONS = [
  */
 const CULTURAL_BASE_EFFECTS = {
     relations: 4,
-    // alpha-19: intl_reputation → power
-    power: 1,
+    // Canonical-stats Phase 3: power → global_image
+    global_image: 1,
     soft_power: 3
 };
 
@@ -1608,8 +1612,7 @@ function calculateVisaEffects(config) {
 
     let relations = Math.round(VISA_BASE_EFFECTS.relations * dMod * sMod);
     let revenue = Math.round(VISA_BASE_EFFECTS.revenue * dMod * sMod);
-    // alpha-19: intl_reputation → power.
-    let power = VISA_BASE_EFFECTS.power;
+    let global_image = VISA_BASE_EFFECTS.global_image;
     let immigration = workIncluded ? 2 : 1;
 
     // One-way: halve relations for the non-receiving nation, revenue only to receiver
@@ -1637,20 +1640,20 @@ function calculateVisaEffects(config) {
         proposer: {
             relations: proposer_relations,
             revenue: proposer_revenue,
-            power,
+            global_image,
             immigration: isReciprocal || !isOneWayProposer ? immigration : 0
         },
         target: {
             relations: target_relations,
             revenue: target_revenue,
-            power,
+            global_image,
             immigration: isReciprocal || isOneWayProposer ? immigration : 0
         },
         // Summary (for display in proposer's UI — shows total combined)
         summary: {
             relations,
             revenue,
-            power,
+            global_image,
             immigration
         }
     };
@@ -1666,8 +1669,7 @@ function calculateCulturalEffects(config) {
 
     return {
         relations: CULTURAL_BASE_EFFECTS.relations,
-        // alpha-19: intl_reputation → power
-        power: CULTURAL_BASE_EFFECTS.power,
+        global_image: CULTURAL_BASE_EFFECTS.global_image,
         soft_power: CULTURAL_BASE_EFFECTS.soft_power,
         soft_power_duration: durationOpt.permanent ? null : durationOpt.key,
         cost_proposer: Math.round(totalCost * fundingOpt.proposer_share),
@@ -1903,9 +1905,11 @@ const OPEN_BORDERS_BASE_EFFECTS = {
     relations: 8,
     immigration: 4,
     gdp_growth: 1,
-    // alpha-19: labor_force_participation → workforce; civil_unrest → unrest.
-    // polarization, terrorism, housing_affordability dropped — no alpha replacements.
-    workforce: 2,
+    // Canonical-stats Phase 3: workforce → unskilled_workers (open
+    // borders predominantly grow the unskilled tier — entry-level
+    // service jobs, agricultural labor, etc.). Skilled tier moves
+    // separately via student / professional-visa pathways.
+    unskilled_workers: 2,
     unrest: 3,
     cost_of_living: 0.5,
     cost_proposer: 15000000,
@@ -1928,13 +1932,12 @@ function calculateOpenBordersEffects(config) {
     const sMod = scopeOpt.modifier;
     const base = OPEN_BORDERS_BASE_EFFECTS;
 
-    // alpha-19: labor_force_participation → workforce (kept positive — open borders
-    // grow the workforce); civil_unrest → unrest. polarization / terrorism /
-    // housing_affordability dropped (no alpha replacements).
+    // Canonical-stats Phase 3: workforce → unskilled_workers (kept
+    // positive — open borders grow the unskilled tier).
     const relations = Math.round(base.relations * sMod);
     const immigration = Math.round(base.immigration * sMod);
     const gdp_growth = +(base.gdp_growth * sMod).toFixed(2);
-    const workforce = Math.round(base.workforce * sMod);
+    const unskilled_workers = Math.round(base.unskilled_workers * sMod);
     const unrest = Math.round(transOpt.unrest_spike * sMod);
     const col = +(base.cost_of_living * sMod).toFixed(2);
 
@@ -1947,7 +1950,7 @@ function calculateOpenBordersEffects(config) {
 
     if (isReciprocal) {
         proposer = {
-            relations, immigration, gdp_growth, workforce,
+            relations, immigration, gdp_growth, unskilled_workers,
             unrest, cost_of_living: col
         };
         target = { ...proposer };
@@ -1955,21 +1958,21 @@ function calculateOpenBordersEffects(config) {
         // Our citizens go to them — target receives migrants
         proposer = {
             relations: Math.round(relations * 0.6), immigration: 0, gdp_growth: 0,
-            workforce: 0, unrest: 0, cost_of_living: 0
+            unskilled_workers: 0, unrest: 0, cost_of_living: 0
         };
         target = {
-            relations, immigration, gdp_growth, workforce,
+            relations, immigration, gdp_growth, unskilled_workers,
             unrest, cost_of_living: col
         };
     } else {
         // Their citizens come to us — proposer receives migrants
         proposer = {
-            relations, immigration, gdp_growth, workforce,
+            relations, immigration, gdp_growth, unskilled_workers,
             unrest, cost_of_living: col
         };
         target = {
             relations: Math.round(relations * 0.6), immigration: 0, gdp_growth: 0,
-            workforce: 0, unrest: 0, cost_of_living: 0
+            unskilled_workers: 0, unrest: 0, cost_of_living: 0
         };
     }
 
@@ -1977,7 +1980,7 @@ function calculateOpenBordersEffects(config) {
         proposer,
         target,
         summary: {
-            relations, immigration, gdp_growth, workforce,
+            relations, immigration, gdp_growth, unskilled_workers,
             unrest, cost_of_living: col
         },
         costs: {
@@ -2019,12 +2022,11 @@ const EXTRADITION_EXCEPTION_OPTIONS = [
 
 const EXTRADITION_BASE_EFFECTS = {
     relations: 5,
-    // alpha-19: terrorism dropped (collapsed into unrest); international_reputation
-    // → power; judicial_independence → authority → public_approval (alpha-23).
-    // alpha-23: corruption + crime restored to live menu (Phase 8.5.2);
-    // a future balance pass can re-add small effects on those columns
-    // here if extradition pacts should nudge corruption / crime trends.
-    power: 1,
+    // Canonical-stats Phase 3: power → global_image (rolled up from
+    // the legacy international_reputation source). public_approval
+    // already lives on the canonical menu. corruption + crime can be
+    // added later if extradition pacts should nudge those trends.
+    global_image: 1,
     public_approval: 0.5,
     cost_proposer: 8000000,
     cost_target: 8000000,
@@ -2049,27 +2051,24 @@ function calculateExtraditionEffects(config) {
     // political-offense / dual-criminality warnings + sovereignty constraints.
     void exceptions;
     const relations = base.relations;
-    // alpha-19: international_reputation → power.
-    const power_base = base.power;
-    // alpha-19/23: judicial_independence → authority → public_approval.
+    const global_image_base = base.global_image;
+    // judicial_independence collapsed into public_approval in Phase 8.5.
     // appealOpt.judicial_penalty (negative for executive-style processes)
     // still pulls public_approval down.
     const public_approval = +(base.public_approval + appealOpt.judicial_penalty).toFixed(1);
 
-    // Political offenses penalties — alpha-19: freedom_index / press_freedom /
-    // polarization dropped. Reputation/power penalty for political-offense
-    // scopes is preserved.
+    // Political offenses: reputation penalty for political-offense scopes.
     const hasPoliticalOffenses = scopes.includes('political_offenses');
     const reputation_penalty = hasPoliticalOffenses ? -2 : 0;
 
-    // alpha-19: dual-criminality waiver previously dinged freedom_index — that
-    // column is dropped; no remaining alpha-column hook for this lever.
+    // dual-criminality waiver had a freedom_index hook that was dropped
+    // when that column went away; no canonical-stats replacement.
     const dualWaived = config.dual_criminality === 'waived';
     void dualWaived;
 
     const effects = {
         relations,
-        power: power_base + reputation_penalty,
+        global_image: global_image_base + reputation_penalty,
         public_approval
     };
 
@@ -2132,9 +2131,9 @@ const ENVIRONMENT_PENALTY_OPTIONS = [
 
 const ENVIRONMENT_BASE_EFFECTS = {
     relations: 6,
-    // alpha-19: international_reputation → power; pollution dropped (no
-    // alpha-column replacement).
-    power: 2,
+    // Canonical-stats Phase 3: power → global_image. pollution had been
+    // dropped earlier with no canonical replacement.
+    global_image: 2,
     cost_proposer: 12000000,
     cost_target: 12000000,
     ongoing_cost: 4000000
@@ -2153,25 +2152,23 @@ function calculateEnvironmentalEffects(config) {
     const base = ENVIRONMENT_BASE_EFFECTS;
 
     const relations = base.relations;
-    // alpha-19: international_reputation → power.
-    const power = base.power + emissionOpt.reputation_bonus
+    const global_image = base.global_image + emissionOpt.reputation_bonus
         + conservation.reduce((sum, c) => {
             const opt = ENVIRONMENT_CONSERVATION_OPTIONS.find(o => o.key === c);
             return sum + (opt ? opt.bonus_reputation : 0);
         }, 0);
 
-    // alpha-19: pollution dropped (no alpha-column replacement). pollutionOpt
-    // / conservation bonus_pollution data is still consumed by the compliance
-    // block below (cap_offset) but no longer surfaces as a stat delta.
-
-    // alpha-19: manufacturing_output → industry. pollutionOpt.manufacturing_penalty
-    // is negative under strict standards and still drags industrial capacity.
+    // pollution had been dropped (no canonical replacement). pollutionOpt
+    // / conservation bonus_pollution data is still consumed by the
+    // compliance block below (cap_offset) but no longer surfaces as a
+    // stat delta. pollutionOpt.manufacturing_penalty is negative under
+    // strict standards and still drags industrial capacity.
     const industry = pollutionOpt.manufacturing_penalty;
     const gdp_growth = emissionOpt.gdp_penalty;
 
     const effects = {
         relations,
-        power,
+        global_image,
         industry,
         gdp_growth
     };
@@ -2429,26 +2426,29 @@ function checkSovereigntyConstraints(activeProposals, policySector) {
  *   service_output             Services & finance sector output (0-100)
  *   housing_affordability      Housing accessibility (0-100, higher is better)
  */
-// Alpha stats refactor — Phase 9 dropped the legacy stat columns from
-// the schema. The whitelist is now exactly the 23 alpha stats:
-//   * 5 pass-throughs from the legacy schema:
-//     gdp_growth, debt, immigration, standard_of_living, cost_of_living
-//   * 18 alpha-only columns added in Phase 2 / 8.5.1
-// Legacy stat keys still appear in event/policy stat_effects JSON;
-// STAT_KEY_ALIASES routes or null-filters them at apply time.
+// Alpha stats refactor — Phase 9 dropped the legacy stat columns; the
+// canonical-stats Phase 2 (this commit) renamed `power` → `global_image`
+// and split `workforce` → `unskilled_workers` + `skilled_workers`, plus
+// added `wages` as a first-class stat (replacing the dropped legacy
+// `minimum_wage`). Net: 23 + 4 − 2 = 25 alpha stats.
+//
+// Legacy stat keys (`power`, `workforce`, `minimum_wage`, etc.) still
+// appear in event/policy stat_effects JSON across the codebase;
+// STAT_KEY_ALIASES routes or null-filters them at apply time so the
+// effect pipeline keeps working until Phase 3 rewrites every call site.
 const NATION_STAT_COLUMNS = [
     'gdp_growth', 'debt', 'immigration', 'standard_of_living', 'cost_of_living',
     'budget',
     'control', 'unrest', 'public_approval', 'crown_authority',
-    'energy', 'health', 'education', 'power',
+    'energy', 'health', 'education', 'global_image',
     'infrastructure', 'industry', 'farmland',
-    'service_sector', 'workforce',
+    'service_sector', 'unskilled_workers', 'skilled_workers', 'wages',
     'income_tax', 'corporate_tax', 'crime', 'corruption',
 ];
 
 const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
 
-// Phase 4 translation shim — maps old stat keys to the new 19-column
+// Phase 4 translation shim — maps old stat keys to the canonical 25-stat
 // schema at apply time. Two value types:
 //   * String: rename only (passes through to a live column)
 //   * null:   stat is deleted in the alpha refactor with no replacement;
@@ -2458,7 +2458,7 @@ const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
 // INVERTED_ALIAS_KEYS — for those, the apply path also flips
 // up↔down / negates delta so the semantics survive the rename.
 const STAT_KEY_ALIASES = {
-    // ── Direct renames into the alpha-23 schema ──
+    // ── Direct renames into the alpha-25 schema ──
     civil_unrest:               'unrest',
     terrorism:                  'unrest',
     political_violence:         'unrest',
@@ -2469,21 +2469,37 @@ const STAT_KEY_ALIASES = {
     physical_infrastructure:    'infrastructure',
     digital_infrastructure:     'infrastructure',
     rail_network:               'infrastructure',
-    urbanization:               'workforce',
-    labor_force_participation:  'workforce',
     higher_education:           'education',
     education_quality:          'education',
     arable_land:                'farmland',
     manufacturing_output:       'industry',
-    international_reputation:   'power',
-    intl_reputation:            'power',
-    diplomatic_standing:        'power',
-    tourism:                    'power',
-    trade_agreements:           'power',
-    sanctions:                  'power',
     stability:                  'control',
     military_strength:          'control',
     hospital_beds:              'health',
+
+    // ── Canonical-stats Phase 2: power → global_image ──
+    // The six legacy underlying columns + the canonical `power` alias
+    // all collapse into the new `global_image` column.
+    power:                      'global_image',
+    international_reputation:   'global_image',
+    intl_reputation:            'global_image',
+    diplomatic_standing:        'global_image',
+    tourism:                    'global_image',
+    trade_agreements:           'global_image',
+    sanctions:                  'global_image',
+
+    // ── Canonical-stats Phase 2: workforce split ──
+    // Single workforce concept is split into two tiers. The mapping
+    // policy (per design): urban legacy stat → skilled tier;
+    // labor-force participation / unemployment → unskilled tier;
+    // bare `workforce` legacy alias → unskilled (matches lfp/unemp
+    // routing so historical bills don't change which tier they hit).
+    workforce:                  'unskilled_workers',
+    labor_force_participation:  'unskilled_workers',
+    urbanization:               'skilled_workers',
+
+    // ── Canonical-stats Phase 2: minimum_wage → wages ──
+    minimum_wage:               'wages',
 
     // ── Phase 8.5.1 renames ──
     authority:                  'public_approval',
@@ -2493,7 +2509,9 @@ const STAT_KEY_ALIASES = {
     crime_rate:                 'crime',
 
     // ── Inverted (rename + flip direction; also see INVERTED_ALIAS_KEYS) ──
-    unemployment:               'workforce',
+    // unemployment is the only direction-flipped alias today: bills that
+    // pushed unemployment UP are pushing the unskilled_workers tier DOWN.
+    unemployment:               'unskilled_workers',
 
     // ── DELETED stats — Phase 9 drops the column. Apply path skips. ──
     // Phase 8.5.2 restored income_tax / corporate_tax / corruption /
@@ -2524,7 +2542,6 @@ const STAT_KEY_ALIASES = {
     benefits:                   null,
     population_growth:          null,
     debt_growth:                null,
-    minimum_wage:               null,
     union_strength:             null,
     illegal_immigration:        null,
     emigration:                 null,
@@ -2572,13 +2589,13 @@ function normalizeNationStatKey(statKey) {
 
 /**
  * Phase 4 translation shim — re-maps a stat-effect entry from the legacy
- * key set onto the alpha 19-column schema at apply time.
+ * key set onto the canonical 25-stat schema at apply time.
  *
  *   in:  { stat_key: 'civil_unrest', direction: 'up', rate: 0.5, ... }
  *   out: { stat_key: 'unrest',       direction: 'up', rate: 0.5, ... }
  *
- *   in:  { stat_key: 'unemployment', direction: 'up', delta: 5 }
- *   out: { stat_key: 'workforce',    direction: 'down', delta: -5 }
+ *   in:  { stat_key: 'unemployment',       direction: 'up', delta: 5 }
+ *   out: { stat_key: 'unskilled_workers',  direction: 'down', delta: -5 }
  *
  *   in:  { stat_key: 'happiness', ... }   (DELETED)
  *   out: null
@@ -2608,7 +2625,7 @@ function translateStatEffect(eff) {
 
 /**
  * Stats where HIGHER values are better (increase = achievement).
- * Alpha 23-column schema. Excludes budget (flow, not 0-100), debt
+ * Canonical 25-stat schema. Excludes budget (flow, not 0-100), debt
  * (LOWER_IS_BETTER), and the two tax stats (income_tax, corporate_tax)
  * which are neutral player-controlled levers (high = revenue but
  * dampens growth — UI/momentum logic shouldn't auto-flag either
@@ -2617,8 +2634,9 @@ function translateStatEffect(eff) {
 const STATS_HIGHER_IS_BETTER = [
     'gdp_growth', 'immigration', 'standard_of_living',
     'control', 'public_approval', 'crown_authority',
-    'energy', 'health', 'education', 'power',
-    'infrastructure', 'industry', 'farmland', 'service_sector', 'workforce',
+    'energy', 'health', 'education', 'global_image',
+    'infrastructure', 'industry', 'farmland', 'service_sector',
+    'unskilled_workers', 'skilled_workers', 'wages',
 ];
 
 /**
@@ -2638,10 +2656,17 @@ const DECAY_SPEED = { CRAWL: 0.15, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 }
  *   - 'erosion': degrades toward a bad floor (punishes neglect)
  * Stats not listed are persistent — they hold value indefinitely.
  *
- * Alpha 19-column schema. budget + debt are flow-based and not in here
+ * Canonical 25-stat schema. budget + debt are flow-based and not in here
  * (managed by budget.js / debt.js). crown_authority decays only when
  * the column is non-NULL — processStatDecay's null-guard at
  * political-actions.js:110 skips non-monarchies cleanly.
+ *
+ * Canonical-stats Phase 2: power and workforce removed (replaced by
+ * global_image and unskilled_workers + skilled_workers). The four new
+ * canonical stats (global_image, unskilled_workers, skilled_workers,
+ * wages) intentionally have NO decay entries per design direction —
+ * they hold the value policies / events set them to until decay rules
+ * are introduced in a later phase.
  */
 const STAT_DECAY_CONFIG = {
     // ── Equilibrium (drift back to midpoint) ──
@@ -2651,8 +2676,6 @@ const STAT_DECAY_CONFIG = {
     unrest:            { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
     public_approval:   { type: 'equilibrium', target: 40, speed: DECAY_SPEED.CRAWL },
     crown_authority:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    power:             { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    workforce:         { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     service_sector:    { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
 
     // ── Erosion (degrade toward bad floor if neglected) ──
@@ -15299,10 +15322,11 @@ const ISSUE_DEFS = {
     },
     unemployment: {
         label: 'Unemployment',
-        // Alpha refactor: unemployment/labor_force_participation → workforce
-        // (inversion handled via statDirectionSign); minimum_wage dropped;
-        // poverty_rate → standard_of_living (inverted).
-        stats: ['workforce', 'standard_of_living'],
+        // Canonical-stats Phase 3: unemployment/labor_force_participation
+        // map to unskilled_workers (inversion handled via statDirectionSign).
+        // minimum_wage replaced by `wages`. poverty_rate →
+        // standard_of_living (inverted).
+        stats: ['unskilled_workers', 'standard_of_living', 'wages'],
         axes: ['liberty_equality', 'individualism_collectivism'],
     },
     corruption: {
@@ -15365,7 +15389,7 @@ const DEMOGRAPHIC_STAT_MAP = {
     age: {
         age_18_29:  [],
         age_30_44:  [{ stat: 'education', weight: 0.3, direction: 1 }],
-        age_45_64:  [{ stat: 'workforce', weight: 0.2, direction: 1 }],
+        age_45_64:  [{ stat: 'skilled_workers', weight: 0.2, direction: 1 }],
         age_65plus: [{ stat: 'health', weight: 0.5, direction: 1 }],
     },
     income: {
@@ -15380,10 +15404,10 @@ const DEMOGRAPHIC_STAT_MAP = {
         edu_postgrad:  [{ stat: 'education', weight: 0.5, direction: 1 }],
     },
     urbanization: {
-        urban_rural:     [{ stat: 'workforce', weight: 0.6, direction: -1 }, { stat: 'farmland', weight: 0.3, direction: 1 }],
-        urban_smalltown: [{ stat: 'workforce', weight: 0.2, direction: -1 }],
-        urban_suburban:  [{ stat: 'workforce', weight: 0.3, direction: 1 }],
-        urban_urban:     [{ stat: 'workforce', weight: 0.6, direction: 1 }],
+        urban_rural:     [{ stat: 'skilled_workers', weight: 0.6, direction: -1 }, { stat: 'farmland', weight: 0.3, direction: 1 }],
+        urban_smalltown: [{ stat: 'skilled_workers', weight: 0.2, direction: -1 }],
+        urban_suburban:  [{ stat: 'skilled_workers', weight: 0.3, direction: 1 }],
+        urban_urban:     [{ stat: 'skilled_workers', weight: 0.6, direction: 1 }],
     },
     religion: {
         religion_secular:  [{ stat: 'education', weight: 0.2, direction: 1 }],
@@ -17359,12 +17383,13 @@ const PROTEST_CONFIG = {
 // target rather than excluded.
 const EXCLUDED_STAT_KEYS = new Set([]);
 
-// Stats eligible for Tier 7 demand generation (alpha-23 menu only).
+// Stats eligible for Tier 7 demand generation (canonical 25-stat menu).
 const TIER7_ELIGIBLE_STATS = new Set([
     'gdp_growth', 'unrest', 'crime', 'health', 'education',
-    'standard_of_living', 'cost_of_living', 'workforce',
+    'standard_of_living', 'cost_of_living',
+    'unskilled_workers', 'skilled_workers', 'wages',
     'infrastructure', 'industry', 'farmland', 'service_sector',
-    'energy', 'public_approval',
+    'energy', 'public_approval', 'global_image',
 ]);
 
 // Stats where higher values are bad (inverted display).
@@ -19232,7 +19257,8 @@ function buildEnergyBucketDeltas(nation, tradingByNation) {
 // Build {bucket, met_pct, deltas} for MINERALS on this nation.
 function buildMineralsBucketDeltas(nation, tradingByNation) {
     const mineralsStat  = Number(nation.minerals)       || 0;
-    const workforceStat = Number(nation.workforce)      || 0;
+    // Canonical Phase 3: workforce split → average of the two tiers.
+    const workforceStat = ((Number(nation.unskilled_workers) || 0) + (Number(nation.skilled_workers) || 0)) / 2;
     const industryStat  = Number(nation.industry)       || 0;
     const infraStat     = Number(nation.infrastructure) || 0;
 
@@ -19266,7 +19292,7 @@ function buildMineralsBucketDeltas(nation, tradingByNation) {
 //   demand     = population_M / 3
 function buildFoodBucketDeltas(nation, tradingByNation) {
     const farmlandStat  = Number(nation.farmland)  || 0;
-    const workforceStat = Number(nation.workforce) || 0;
+    const workforceStat = ((Number(nation.unskilled_workers) || 0) + (Number(nation.skilled_workers) || 0)) / 2;
     const popMillions   = (Number(nation.population) || 0) / 1_000_000;
 
     const production = (farmlandStat / 2) * (workforceStat / 100);
@@ -19310,7 +19336,7 @@ function buildFoodBucketDeltas(nation, tradingByNation) {
 //   demand     = (standard_of_living / 100) × population_M / 2
 function buildConsumerGoodsBucketDeltas(nation, tradingByNation) {
     const industryStat  = Number(nation.industry)           || 0;
-    const workforceStat = Number(nation.workforce)          || 0;
+    const workforceStat = ((Number(nation.unskilled_workers) || 0) + (Number(nation.skilled_workers) || 0)) / 2;
     const solStat       = Number(nation.standard_of_living) || 0;
     const popMillions   = (Number(nation.population) || 0) / 1_000_000;
 
@@ -23672,7 +23698,8 @@ const SOVEREIGN_DEFAULT_CONFIG = {
 // the ~9-stat legacy list collapses into the 6 alpha columns that
 // actually represent state-funded categories.
 const AUSTERITY_ELIGIBLE_STATS = [
-    'health', 'education', 'infrastructure', 'energy', 'industry', 'workforce'
+    'health', 'education', 'infrastructure', 'energy', 'industry',
+    'unskilled_workers', 'skilled_workers'
 ];
 
 // Stats whose policy effects are reduced by debt service burden
@@ -23681,7 +23708,8 @@ const AUSTERITY_ELIGIBLE_STATS = [
 // that suffer first.
 const SPENDING_AFFECTED_STATS = new Set([
     'health', 'education', 'infrastructure',
-    'standard_of_living', 'energy', 'industry', 'workforce'
+    'standard_of_living', 'energy', 'industry',
+    'unskilled_workers', 'skilled_workers'
 ]);
 
 
@@ -23920,27 +23948,26 @@ function previewDefaultConsequences(nation, defaultType, repaymentRate, austerit
     const currentDebt = Number(nation.debt ?? 0);
     const debtAfter = defaultType === 'full' ? 0 : Math.round(currentDebt * (repaymentRate || 0.5));
 
-    // Apply discount to eligible penalties (power + industry — the
+    // Apply discount to eligible penalties (global_image + industry — the
     // international-standing flavors). Other penalties take the full
     // multiplier without discount.
     const discountedMultiplier = multiplier * (1 - discount);
 
     const clamp = (current, delta) => Math.max(0, Math.min(100, Math.round((current + delta) * 10) / 10));
-    // Read a current alpha-19 stat with a 50 fallback for nations whose
-    // Phase 2 backfill hasn't run yet. Repeated read avoided by hoisting
-    // each stat into a local before the statChanges literal.
-    const power_         = Number(nation.power           ?? 50);
-    const industry_      = Number(nation.industry        ?? 50);
+    // Read each canonical stat once with a sensible fallback. Hoisted
+    // out of the statChanges literal to avoid duplicate reads.
+    const globalImage_    = Number(nation.global_image    ?? 50);
+    const industry_       = Number(nation.industry        ?? 50);
     const cost_of_living_ = Number(nation.cost_of_living ?? 50);
-    const sol_           = Number(nation.standard_of_living ?? 50);
-    const unrest_        = Number(nation.unrest          ?? 20);
+    const sol_            = Number(nation.standard_of_living ?? 50);
+    const unrest_         = Number(nation.unrest          ?? 20);
 
     const statChanges = {
         debt: { before: currentDebt, after: debtAfter, change: debtAfter - currentDebt },
-        power: {
-            before: power_,
+        global_image: {
+            before: globalImage_,
             change: Math.round(cfg.FULL_DEFAULT_POWER_HIT * discountedMultiplier),
-            after: clamp(power_, cfg.FULL_DEFAULT_POWER_HIT * discountedMultiplier)
+            after: clamp(globalImage_, cfg.FULL_DEFAULT_POWER_HIT * discountedMultiplier)
         },
         industry: {
             before: industry_,
@@ -28462,7 +28489,7 @@ const PLATFORMS = [
         icon: '\u2696\uFE0F',
         tagline: 'Redistribution and equity',
         desc: 'Raise minimum wage, expand welfare, progressive taxation. Close the gap between rich and poor through direct intervention.',
-        improve: ['minimum_wage', 'poverty_rate', 'income_inequality', 'social_mobility', 'healthcare_accessibility', 'education_accessibility'],
+        improve: ['wages', 'poverty_rate', 'income_inequality', 'social_mobility', 'healthcare_accessibility', 'education_accessibility'],
         worsen: ['foreign_investment', 'gdp_growth', 'corporate_tax'],
         tradeoff: 'Capital flight risk. Foreign investors avoid high-tax environments. Growth may slow.',
     },
@@ -28532,7 +28559,7 @@ const PLATFORMS = [
         icon: '\uD83C\uDDF2',
         tagline: 'The people vs. elites and outsiders',
         desc: 'Restrict immigration, protect domestic industry, reject globalism. Our people first. Our jobs first. Our culture first.',
-        improve: ['immigration', 'illegal_immigration', 'manufacturing_output', 'minimum_wage', 'union_strength'],
+        improve: ['immigration', 'illegal_immigration', 'manufacturing_output', 'wages', 'union_strength'],
         worsen: ['foreign_investment', 'academic_immigration', 'freedom_index', 'press_freedom', 'polarization', 'ethnic_diversity'],
         tradeoff: 'International isolation. Brain drain as educated professionals emigrate. Deep social polarization.',
     },
@@ -28543,7 +28570,7 @@ const PLATFORMS = [
         tagline: 'Deregulate everything',
         desc: 'Cut taxes, cut red tape, let the market decide winners and losers. Government is the problem, not the solution.',
         improve: ['gdp_growth', 'foreign_investment', 'credit', 'service_output', 'currency_strength'],
-        worsen: ['union_strength', 'minimum_wage', 'healthcare_accessibility', 'income_inequality', 'poverty_rate'],
+        worsen: ['union_strength', 'wages', 'healthcare_accessibility', 'income_inequality', 'poverty_rate'],
         tradeoff: 'Growth at the cost of the working class. Social safety net erodes. Boom-bust volatility.',
     },
     {
@@ -28614,7 +28641,10 @@ const STAT_NAMES = {
     currency_strength: 'Currency Strength', foreign_investment: 'Foreign Investment',
     credit: 'Credit', income_tax: 'Income Tax', corporate_tax: 'Corporate Tax',
     sales_tax: 'Sales Tax', unemployment: 'Unemployment',
-    labor_force_participation: 'Labor Force Participation', minimum_wage: 'Minimum Wage',
+    labor_force_participation: 'Labor Force Participation',
+    wages: 'Wages',
+    unskilled_workers: 'Unskilled Workers', skilled_workers: 'Skilled Workers',
+    global_image: 'Global Image',
     union_strength: 'Union Strength', poverty_rate: 'Poverty Rate',
     income_inequality: 'Income Inequality', healthcare_quality: 'Healthcare Quality',
     healthcare_accessibility: 'Healthcare Accessibility', beds_per_100k: 'Beds per 100k',

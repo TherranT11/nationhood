@@ -111,12 +111,13 @@ export const PROTEST_CONFIG = {
 // target rather than excluded.
 const EXCLUDED_STAT_KEYS = new Set([]);
 
-// Stats eligible for Tier 7 demand generation (alpha-23 menu only).
+// Stats eligible for Tier 7 demand generation (canonical 25-stat menu).
 const TIER7_ELIGIBLE_STATS = new Set([
     'gdp_growth', 'unrest', 'crime', 'health', 'education',
-    'standard_of_living', 'cost_of_living', 'workforce',
+    'standard_of_living', 'cost_of_living',
+    'unskilled_workers', 'skilled_workers', 'wages',
     'infrastructure', 'industry', 'farmland', 'service_sector',
-    'energy', 'public_approval',
+    'energy', 'public_approval', 'global_image',
 ]);
 
 // Stats where higher values are bad (inverted display).

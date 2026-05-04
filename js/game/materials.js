@@ -29,7 +29,7 @@ export const MATERIALS = [
             STD:  { requirements: [{ stat: 'industry', min: 20 }] },
             HIGH: { requirements: [{ stat: 'industry', min: 50 }, { stat: 'education', min: 40 }] },
         },
-        priceDrivers: ['industry', 'cost_of_living', 'workforce'],
+        priceDrivers: ['industry', 'cost_of_living', 'unskilled_workers'],
     },
     {
         key: 'steel',

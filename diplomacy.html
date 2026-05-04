@@ -9824,7 +9824,7 @@ async function acceptProposal(proposalId) {
         if (totals.relations) parts.push((totals.relations > 0 ? '+' : '') + totals.relations + ' Relations');
         if (totals.revenue > 0) parts.push('+$' + (totals.revenue / 1e6).toFixed(0) + 'M Revenue');
         if (totals.cost_proposer > 0 || totals.cost_target > 0) parts.push('-$' + (((totals.cost_proposer || 0) + (totals.cost_target || 0)) / 1e6).toFixed(1) + 'M Cost');
-        if (totals.intl_reputation || totals.power) parts.push(((totals.intl_reputation || totals.power) > 0 ? '+' : '') + (totals.intl_reputation || totals.power) + ' Power');
+        if (totals.global_image || totals.intl_reputation || totals.power) parts.push(((totals.global_image || totals.intl_reputation || totals.power) > 0 ? '+' : '') + (totals.global_image || totals.intl_reputation || totals.power) + ' Power');
         if (totals.immigration) parts.push('+' + totals.immigration + ' Immigration');
         if (totals.higher_education || totals.education) parts.push('+' + (totals.higher_education || totals.education) + ' Education');
         if (totals.soft_power) parts.push('+' + totals.soft_power + ' Soft Power');
@@ -12867,8 +12867,8 @@ function renderEffectTags(effects, articleType) {
         const total = (e.cost_proposer || 0) + (e.cost_target || 0);
         tags.push({ label: '-$' + (total / 1e6).toFixed(1) + 'M Cost', cls: 'effect-tag--money-neg' });
     }
-    if (e.intl_reputation || e.international_reputation || e.power) {
-        const val = e.intl_reputation || e.international_reputation || e.power;
+    if (e.global_image || e.intl_reputation || e.international_reputation || e.power) {
+        const val = e.global_image || e.intl_reputation || e.international_reputation || e.power;
         tags.push({ label: (val > 0 ? '+' : '') + val + ' Power', cls: val > 0 ? 'effect-tag--positive' : 'effect-tag--warning' });
     }
     if (e.immigration) tags.push({ label: '+' + e.immigration + ' Immigration', cls: 'effect-tag--positive' });
