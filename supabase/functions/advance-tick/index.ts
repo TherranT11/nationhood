@@ -9861,6 +9861,9 @@ async function enactConstitutionalReform(supabase, bill, currentTick) {
             .eq('nation_id', bill.nation_id)
             .eq('is_active', true);
         if (presErr) console.error('[enactFoundationalBill] Failed to deactivate president:', presErr.message);
+        // Mirror the now-vacant president seat onto the nation row.
+        const { error: syncErr } = await supabase.rpc('sync_nation_head_of_state', { p_nation_id: bill.nation_id });
+        if (syncErr) console.error('[enactFoundationalBill] HOS sync failed:', syncErr.message);
 
         const { error: delPresElErr } = await supabase.from('elections').delete()
             .eq('nation_id', bill.nation_id)
@@ -10218,6 +10221,9 @@ async function enactHosElectionMethod(supabase, bill, currentTick) {
                 .eq('nation_id', bill.nation_id)
                 .eq('is_active', true);
             if (presErr) console.error('[enactFoundationalBill] Failed to deactivate president:', presErr.message);
+            // Mirror the now-vacant president seat onto the nation row.
+            const { error: syncErr } = await supabase.rpc('sync_nation_head_of_state', { p_nation_id: bill.nation_id });
+            if (syncErr) console.error('[enactFoundationalBill] HOS sync failed:', syncErr.message);
 
             // Change government type
             const { error: govErr } = await supabase.from('nations').update({
@@ -14018,6 +14024,12 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
     } else if (activeCount !== 1) {
         throw new Error(`[inauguratePresident] post-condition violation: nation ${nationId} has ${activeCount} active president rows (expected exactly 1)`);
     }
+
+    // Mirror the active president onto nations.head_of_state_* so the UI
+    // (which reads the nation row, not the presidents table) stays
+    // current. Single source of mirror logic in the SQL RPC.
+    const { error: syncErr } = await supabase.rpc('sync_nation_head_of_state', { p_nation_id: nationId });
+    if (syncErr) console.error(`[inauguratePresident] HOS sync failed for ${nationId}:`, syncErr.message);
 
     // Phase 5a: presidential ideology shift removed. The legacy mechanic
     // wrote a +15 shift on the winning candidate's ideology axis to faction_
@@ -32234,6 +32246,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         is_active: false,
                         removal_reason: 'impeached'
                     }).eq('id', proc.president_id);
+
+                    // Mirror the now-vacant seat onto the nation row.
+                    const { error: hosSyncErr } = await supabase.rpc('sync_nation_head_of_state', { p_nation_id: nation.id });
+                    if (hosSyncErr) console.error(`[Impeachment] HOS sync failed for ${nation.name}:`, hosSyncErr.message);
 
                     // President's party takes massive momentum hit
                     await adjustFactionMomentum(supabase, president.faction_id, nation.id, -5, { source: 'impeachment:convicted', tick: newTick });

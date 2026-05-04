@@ -4305,6 +4305,9 @@ async function enactConstitutionalReform(supabase, bill, currentTick) {
             .eq('nation_id', bill.nation_id)
             .eq('is_active', true);
         if (presErr) console.error('[enactFoundationalBill] Failed to deactivate president:', presErr.message);
+        // Mirror the now-vacant president seat onto the nation row.
+        const { error: syncErr } = await supabase.rpc('sync_nation_head_of_state', { p_nation_id: bill.nation_id });
+        if (syncErr) console.error('[enactFoundationalBill] HOS sync failed:', syncErr.message);
 
         const { error: delPresElErr } = await supabase.from('elections').delete()
             .eq('nation_id', bill.nation_id)
@@ -4662,6 +4665,9 @@ async function enactHosElectionMethod(supabase, bill, currentTick) {
                 .eq('nation_id', bill.nation_id)
                 .eq('is_active', true);
             if (presErr) console.error('[enactFoundationalBill] Failed to deactivate president:', presErr.message);
+            // Mirror the now-vacant president seat onto the nation row.
+            const { error: syncErr } = await supabase.rpc('sync_nation_head_of_state', { p_nation_id: bill.nation_id });
+            if (syncErr) console.error('[enactFoundationalBill] HOS sync failed:', syncErr.message);
 
             // Change government type
             const { error: govErr } = await supabase.from('nations').update({

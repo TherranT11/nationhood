@@ -2010,6 +2010,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         removal_reason: 'impeached'
                     }).eq('id', proc.president_id);
 
+                    // Mirror the now-vacant seat onto the nation row.
+                    const { error: hosSyncErr } = await supabase.rpc('sync_nation_head_of_state', { p_nation_id: nation.id });
+                    if (hosSyncErr) console.error(`[Impeachment] HOS sync failed for ${nation.name}:`, hosSyncErr.message);
+
                     // President's party takes massive momentum hit
                     await adjustFactionMomentum(supabase, president.faction_id, nation.id, -5, { source: 'impeachment:convicted', tick: newTick });
 

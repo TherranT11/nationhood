@@ -3132,6 +3132,12 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         throw new Error(`[inauguratePresident] post-condition violation: nation ${nationId} has ${activeCount} active president rows (expected exactly 1)`);
     }
 
+    // Mirror the active president onto nations.head_of_state_* so the UI
+    // (which reads the nation row, not the presidents table) stays
+    // current. Single source of mirror logic in the SQL RPC.
+    const { error: syncErr } = await supabase.rpc('sync_nation_head_of_state', { p_nation_id: nationId });
+    if (syncErr) console.error(`[inauguratePresident] HOS sync failed for ${nationId}:`, syncErr.message);
+
     // Phase 5a: presidential ideology shift removed. The legacy mechanic
     // wrote a +15 shift on the winning candidate's ideology axis to faction_
     // ideology. With sectors as the live political dimension, ideology data
