@@ -1403,11 +1403,43 @@ function renderFoundView() {
     `;
 }
 
+// Threshold for the red "INACTIVE (N ticks)" badge on candidate cards.
+// Matches the admin.html inactive filter (>= 6 ticks since last_seen_tick).
+const INACTIVITY_THRESHOLD_TICKS = 6;
+
+// Logo chip: prefers custom_logo_url when uploaded, falls back to the
+// abbreviation initials (the existing chip style). Same 36×36 footprint
+// either way so the row layout doesn't shift when corps mix logos and
+// initials.
+function renderCorpChip(c) {
+    const url = c.custom_logo_url;
+    if (url) {
+        return `<div class="fnd-invitee__chip" style="padding:0;overflow:hidden;background:var(--bg-1);border:1px solid var(--text-dim);">
+            <img src="${escHtml(url)}" alt="${escHtml(corpInitials(c))}" style="width:100%;height:100%;object-fit:cover;display:block;"
+                 onerror="this.parentElement.innerHTML='${escHtml(corpInitials(c))}';this.parentElement.style.padding='';this.parentElement.style.background='';">
+        </div>`;
+    }
+    return `<div class="fnd-invitee__chip">${escHtml(corpInitials(c))}</div>`;
+}
+
+// Red inactivity badge below the corp name when the corp's player has
+// been silent for INACTIVITY_THRESHOLD_TICKS+ ticks. Returns '' when
+// active (or last_seen_tick is null — treat unknown as active until
+// they actually idle out).
+function renderInactivityLabel(c, currentTick) {
+    const lastSeen = Number(c.last_seen_tick);
+    if (!Number.isFinite(lastSeen) || lastSeen <= 0) return '';
+    const ticksInactive = Number(currentTick) - lastSeen;
+    if (ticksInactive < INACTIVITY_THRESHOLD_TICKS) return '';
+    return `<div style="font-family:var(--font-mono);font-size:9px;color:var(--red);letter-spacing:0.04em;text-transform:uppercase;margin-top:2px;">Inactive (${ticksInactive} tick${ticksInactive === 1 ? '' : 's'})</div>`;
+}
+
 function renderInviteeCard(c) {
     const sector = c.corp_sector || 'Construction';
     const heroDefs = HERO_STATS[sector] || [];
     const isSelected = _form.selectedInviteeIds.has(c.id);
     const valuation = c.__valuation;
+    const currentTick = Number(shard?.current_tick) || 0;
     const heroLine = heroDefs.map(([label, col]) => {
         const v = col ? c[col] : null;
         return `${escHtml(label)} <b>${fmtStat(v)}</b>`;
@@ -1415,9 +1447,10 @@ function renderInviteeCard(c) {
     return `
         <div class="fnd-invitee ${isSelected ? 'selected' : ''}" data-corp-id="${escHtml(c.id)}">
             <div class="fnd-invitee__check">${isSelected ? '✓' : ''}</div>
-            <div class="fnd-invitee__chip">${escHtml(corpInitials(c))}</div>
+            ${renderCorpChip(c)}
             <div class="fnd-invitee__body">
                 <div class="fnd-invitee__name">${escHtml(c.faction_name || 'Unnamed Corp')}</div>
+                ${renderInactivityLabel(c, currentTick)}
                 <div class="fnd-invitee__meta">
                     ${c.__hq_nation ? `<b style="color:var(--text-primary)">${escHtml(c.__hq_nation)}</b> &middot; ` : ''}Valuation <b style="color:var(--text-primary)">${fmtMoney(valuation)}</b>
                     &middot; Reputation <b style="color:var(--text-primary)">${fmtStat(c.corp_reputation)}</b>
@@ -1952,9 +1985,11 @@ async function loadCandidates() {
     // both used to be in this select, both 400'd the request and made
     // the candidate roster look empty. corp_op_safety replaces the
     // Airline hero stat that used to read corp_operational_efficiency.
+    // last_seen_tick + custom_logo_url drive the inactivity label
+    // and the logo chip in renderInviteeCard.
     const { data: corps, error } = await _supabase
         .from('factions')
-        .select('id, faction_name, abbreviation, corp_ticker, corp_sector, corp_cash_reserves, corp_reputation, corp_work_crews, corp_regulatory_standing, corp_supply_chain, corp_op_safety, nation_id')
+        .select('id, faction_name, abbreviation, corp_ticker, corp_sector, corp_cash_reserves, corp_reputation, corp_work_crews, corp_regulatory_standing, corp_supply_chain, corp_op_safety, last_seen_tick, custom_logo_url, nation_id')
         .eq('faction_type', 'corporation')
         .eq('corp_sector', sector)
         .is('abandoned_at', null)
