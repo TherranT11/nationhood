@@ -143,7 +143,6 @@ export function initGameConfigForNation(nation) {
 }
 
 export const FORMATION_DEADLINE_TICKS = 3; // ticks per formation window — applied both pre- and post-snap
-export const SNAP_COOLDOWN_GAP = FORMATION_DEADLINE_TICKS + 2; // 5 — general snap cycle guard (overridden by formation escalation)
 
 /**
  * Atomic AP deduction via database RPC.
