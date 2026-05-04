@@ -797,16 +797,25 @@ async function loadAlliancesData() {
         const ids = allRows.map(a => a.id);
 
         // 2. Members + their factions + nations + votes + chat + articles.
+        // Members + articles use the full id list (public surfaces — the
+        // "All Strategic Alliances" section displays both for non-member
+        // alliances). Votes + chat are member-only displays — scope them
+        // to myIds so we don't fetch (and so RLS can't be a surprise on)
+        // data we never render.
         const [membersRes, votesRes, chatRes, articlesRes] = await Promise.all([
             _supabase.from('alliance_members')
                 .select('alliance_id, faction_id, role, joined_at_tick, left_at_tick')
                 .in('alliance_id', ids).is('left_at_tick', null),
-            _supabase.from('alliance_negotiation_votes')
-                .select('alliance_id, faction_id, article_id, voted_at_tick')
-                .in('alliance_id', ids),
-            _supabase.from('alliance_chat_messages')
-                .select('alliance_id, faction_id, body, sent_at_tick, created_at')
-                .in('alliance_id', ids).order('created_at', { ascending: true }),
+            myIds.length === 0
+                ? Promise.resolve({ data: [], error: null })
+                : _supabase.from('alliance_negotiation_votes')
+                    .select('alliance_id, faction_id, article_id, voted_at_tick')
+                    .in('alliance_id', myIds),
+            myIds.length === 0
+                ? Promise.resolve({ data: [], error: null })
+                : _supabase.from('alliance_chat_messages')
+                    .select('alliance_id, faction_id, body, sent_at_tick, created_at')
+                    .in('alliance_id', myIds).order('created_at', { ascending: true }),
             _supabase.from('alliance_articles')
                 .select('alliance_id, article_id, article_name, article_kind, article_body, cartel_score, chs_bonus, ratified_at_tick')
                 .in('alliance_id', ids).eq('status', 'active'),
