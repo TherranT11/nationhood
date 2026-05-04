@@ -20070,10 +20070,18 @@ function negStructuredTradeFlowForm() {
     const nameA = _activeNegModal?.myNationName || 'Nation A';
     const nameB = _activeNegModal?.partnerNationName || 'Nation B';
 
-    // Energy is the only tradeable commodity right now — no demand
-    // modeling exists for the other sectors yet, so the dropdown is
-    // pinned to a single accurate option.
-    const sectorOpts = `<option value="energy">⚡ Energy</option>`;
+    // Same five commodities the Your Economy panel + THEY NEED panel
+    // surface (see _computeStatCommodities at the top of this file).
+    // Backend trade-flow plumbing is only live for Energy right now;
+    // the other four can be drafted in negotiations and ratified, but
+    // their per-tick processor hooks land separately.
+    const sectorOpts = [
+        { value: 'energy',         label: '⚡ Energy' },
+        { value: 'minerals',       label: '⛏ Minerals' },
+        { value: 'food',           label: '🌾 Food' },
+        { value: 'consumer_goods', label: '📦 Consumer Goods' },
+        { value: 'luxury_goods',   label: '💎 Luxury Goods' },
+    ].map(o => `<option value="${o.value}">${o.label}</option>`).join('');
 
     form.innerHTML = `<div class="trade-neg-add-form">
         <div class="trade-neg-add-form__label">Trade Flow</div>
@@ -20235,10 +20243,18 @@ function negFlowUpdatePrice() {
 
     if (priceLabel) priceLabel.textContent = (priceMod > 0 ? '+' : '') + priceMod + '%';
 
-    // Real-world reference prices per physical unit at 1:1 supply/demand
+    // Real-world reference prices per physical unit at 1:1 supply/demand.
+    // Top block matches the trade-flow dropdown options (the five
+    // _computeStatCommodities keys); fuel_energy / manufactured_goods etc.
+    // remain as legacy aliases for any other caller still using them.
     const UNIT_PRICES = {
-        fuel_energy:        { price: 85,    unit: 'barrel' },
+        energy:             { price: 85,    unit: 'barrel' },
         minerals:           { price: 120,   unit: 'tonne' },
+        food:               { price: 300,   unit: 'tonne' },
+        consumer_goods:     { price: 2200,  unit: 'TEU' },
+        luxury_goods:       { price: 5000,  unit: 'unit' },
+        // Legacy aliases (other callers / older articles).
+        fuel_energy:        { price: 85,    unit: 'barrel' },
         grains_staples:     { price: 235,   unit: 'tonne' },
         livestock_dairy:    { price: 2800,  unit: 'tonne' },
         fruits_vegetables:  { price: 900,   unit: 'tonne' },
