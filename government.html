@@ -2239,6 +2239,28 @@ async function loadBudgetData() {
     //    a different source, not the legacy ministry_institution_config /
     //    active_laws fiscal_category fan-out.
 
+    // Pre-fetch every active law + chosen option for this nation. The
+    // Costs panel uses this to surface ongoing per-tick costs under the
+    // appropriate spending category (e.g. Industrial Policy laws roll
+    // up into Subsidies & Industry Support, Pension Policy laws roll
+    // up into Pension). One fetch, two consumers (_gbBuildCostRows for
+    // the panel row totals + _gbSelectCategory for the deep-dive
+    // sub-rows) — single source of truth for active-law spending.
+    let activeLaws = [];
+    try {
+        const { data: lawsData, error: lawsErr } = await _supabase
+            .from('active_laws')
+            .select('id, policies(policy_name, law_category), selected_option:policy_options!selected_option_id(option_name, ongoing_base_cost)')
+            .eq('nation_id', nation.id);
+        if (lawsErr) {
+            console.warn('[Budget] active_laws fetch failed:', lawsErr.message);
+        } else {
+            activeLaws = lawsData || [];
+        }
+    } catch (err) {
+        console.warn('[Budget] active_laws fetch threw:', err.message);
+    }
+
     _budgetData = {
         budget,
         aidReceived,
@@ -2250,6 +2272,7 @@ async function loadBudgetData() {
         // National Infrastructure without re-querying.
         nationId: nation.id,
         isMonarchy: isAbsoluteMonarchy(nation),
+        activeLaws,
     };
 }
 
@@ -2281,18 +2304,53 @@ function _gbBuildIncomeRows(d) {
 // breaks it out as a sub-allocation so the line item is auditable.
 const _GB_ROYAL_HOLDINGS_MONTHLY = 3;
 
+// descKey → regex matching policies.law_category — defines which
+// spending row a given active law rolls up into. Both the row total
+// in _gbBuildCostRows and the deep-dive sub-rows in _gbSelectCategory
+// read this map. To bucket more spending categories, add more entries.
+const _GB_DESCKEY_TO_LAW_CATEGORY_REGEX = {
+    pension:           /pension/i,
+    subsidiesIndustry: /industrial/i,
+};
+
+// Annualize an active law's per-tick ongoing cost. Treats
+// selected_option.ongoing_base_cost as already in abstract scale
+// (the same scale every other Costs panel row renders in).
+function _gbAnnualLawCost(law) {
+    const opt = law?.selected_option;
+    return (Number(opt?.ongoing_base_cost) || 0) * 12;
+}
+
+// Filter the active-laws array to those whose policy.law_category
+// matches a given descKey. Empty array if descKey isn't in the map.
+function _gbLawsForDescKey(activeLaws, descKey) {
+    const re = _GB_DESCKEY_TO_LAW_CATEGORY_REGEX[descKey];
+    if (!re) return [];
+    return (activeLaws || []).filter(al => re.test(al?.policies?.law_category || ''));
+}
+
+// Sum the annual ongoing-cost of every active law under a descKey.
+function _gbAnnualLawCostFor(activeLaws, descKey) {
+    return _gbLawsForDescKey(activeLaws, descKey).reduce((s, l) => s + _gbAnnualLawCost(l), 0);
+}
+
 function _gbBuildCostRows(d) {
     const royalHoldingsAnnual = d.isMonarchy ? _GB_ROYAL_HOLDINGS_MONTHLY * 12 : 0;
+    // Aggregated active-law costs per spending category. _gbSelectCategory
+    // re-reads the same _budgetData.activeLaws to populate the deep-dive
+    // sub-rows, so the row total here always matches the breakdown.
+    const pensionAnnual          = _gbAnnualLawCostFor(d.activeLaws, 'pension');
+    const subsidiesIndustryAnnual = _gbAnnualLawCostFor(d.activeLaws, 'subsidiesIndustry');
     return [
-        { key: 'public_sector_wages',  name: 'Public Sector Wages',     yr: 0,                      descKey: 'publicSectorWages'    },
-        { key: 'welfare_benefits',     name: 'Welfare Benefits',        yr: 0,                      descKey: 'welfareBenefits'      },
-        { key: 'pension',              name: 'Pension',                 yr: 0,                      descKey: 'pension'              },
-        { key: 'procurement_capital',  name: 'Procurement & Capital',   yr: 0,                      descKey: 'procurementCapital'   },
-        { key: 'subsidies_industry',   name: 'Subsidies & Industry Support', yr: 0,                 descKey: 'subsidiesIndustry'    },
-        { key: 'defense_security',     name: 'Defense & Security',      yr: 0,                      descKey: 'defenseSecurity'      },
-        { key: 'national_infra',       name: 'National Infrastructure', yr: royalHoldingsAnnual,    descKey: 'nationalInfrastructure' },
-        { key: 'foreign_aid',          name: 'Foreign Aid & Diplomacy', yr: 0,                      descKey: 'foreignAid'           },
-        { key: 'discretionary',        name: 'Discretionary Programs',  yr: 0,                      descKey: 'discretionary'        },
+        { key: 'public_sector_wages',  name: 'Public Sector Wages',     yr: 0,                          descKey: 'publicSectorWages'    },
+        { key: 'welfare_benefits',     name: 'Welfare Benefits',        yr: 0,                          descKey: 'welfareBenefits'      },
+        { key: 'pension',              name: 'Pension',                 yr: pensionAnnual,              descKey: 'pension'              },
+        { key: 'procurement_capital',  name: 'Procurement & Capital',   yr: 0,                          descKey: 'procurementCapital'   },
+        { key: 'subsidies_industry',   name: 'Subsidies & Industry Support', yr: subsidiesIndustryAnnual, descKey: 'subsidiesIndustry'   },
+        { key: 'defense_security',     name: 'Defense & Security',      yr: 0,                          descKey: 'defenseSecurity'      },
+        { key: 'national_infra',       name: 'National Infrastructure', yr: royalHoldingsAnnual,        descKey: 'nationalInfrastructure' },
+        { key: 'foreign_aid',          name: 'Foreign Aid & Diplomacy', yr: 0,                          descKey: 'foreignAid'           },
+        { key: 'discretionary',        name: 'Discretionary Programs',  yr: 0,                          descKey: 'discretionary'        },
         { key: 'debt_interest',        name: 'Interest on Debt',        yr: _gbToAbstract(d.debtService), descKey: 'debtInterest'   },
     ];
 }
@@ -2585,35 +2643,21 @@ async function _gbSelectCategory(container, row, kind) {
         }
     }
 
-    // Pension: surface the currently active pension policy + chosen
-    // option + its per-tick ongoing cost as a single sub-row. Looks
-    // up active_laws by joining policies on a law_category that
-    // matches "pension" (case-insensitive). Ongoing cost is per-tick;
-    // annualize by × 12 to match the Costs panel's yearly column.
-    // Whole block falls through silently (no sub-row, generic copy)
-    // if no pension policy is active.
-    if (row.descKey === 'pension' && currentNation) {
-        try {
-            const { data: laws, error: lawsErr } = await _supabase
-                .from('active_laws')
-                .select('id, policies(policy_name, law_category), selected_option:policy_options!selected_option_id(option_name, ongoing_base_cost)')
-                .eq('nation_id', currentNation.id);
-            if (lawsErr) {
-                console.warn('[Budget] Pension active-law fetch failed:', lawsErr.message);
-            } else {
-                const active = (laws || []).find(al => /pension/i.test(al?.policies?.law_category || ''));
-                if (active) {
-                    const opt = active.selected_option;
-                    const ongoingPerTick = Number(opt?.ongoing_base_cost || 0);
-                    const ongoingAnnual = ongoingPerTick * 12;
-                    const label = opt?.option_name
-                        ? `${active.policies?.policy_name || 'Pension'} — ${opt.option_name}`
-                        : (active.policies?.policy_name || 'Active pension policy');
-                    subRows.push({ k: label, v: ongoingAnnual });
-                }
-            }
-        } catch (err) {
-            console.warn('[Budget] Pension deep-dive failed:', err.message);
+    // Active-law roll-up: any descKey in _GB_DESCKEY_TO_LAW_CATEGORY_REGEX
+    // (currently 'pension' and 'subsidiesIndustry') gets a per-law
+    // sub-row showing the policy/option name + its annualized ongoing
+    // cost. Reads from the pre-fetched _budgetData.activeLaws — same
+    // source the row total in _gbBuildCostRows aggregated. So clicking
+    // a categorized row always shows the breakdown that produced its
+    // total. Falls through silently for non-categorized descKeys.
+    if (_GB_DESCKEY_TO_LAW_CATEGORY_REGEX[row.descKey] && _budgetData?.activeLaws) {
+        for (const law of _gbLawsForDescKey(_budgetData.activeLaws, row.descKey)) {
+            const annual = _gbAnnualLawCost(law);
+            if (annual <= 0) continue;
+            const policyName = law.policies?.policy_name || 'Active law';
+            const optionName = law.selected_option?.option_name;
+            const label = optionName ? `${policyName} — ${optionName}` : policyName;
+            subRows.push({ k: label, v: annual });
         }
     }
 

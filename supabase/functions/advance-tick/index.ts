@@ -3325,10 +3325,34 @@ async function processBudgetSurplusPaydown(supabase, nation) {
     const annualRevenue = Number(budget.grossRevenue || 0);
 
     // Annual expenditures, in abstract units, mirroring
-    // _gbBuildCostRows in government.html.
+    // _gbBuildCostRows in government.html. Three line items:
+    //   - Interest on Debt   = debtService (raw $) / 1e9
+    //   - Royal Holdings     = $36/yr if monarchy, else 0
+    //   - Active-law ongoing = sum(every active_laws.selected_option.ongoing_base_cost) × 12
+    // The third line bills the player for whatever law-driven spending
+    // appears in the panel (Pension, Industrial Policy, etc.) so the
+    // treasury balance and the debt-paydown math stay consistent with
+    // what the player sees on the Costs panel.
     const debtServiceAbstract = (Number(budget.debtService || 0)) / _RAW_PER_ABSTRACT;
     const royalHoldingsAnnual = isAbsoluteMonarchy(nation) ? 36 : 0;
-    const annualExpenditures = debtServiceAbstract + royalHoldingsAnnual;
+    let activeLawAnnual = 0;
+    try {
+        const { data: laws, error: lawsErr } = await supabase
+            .from('active_laws')
+            .select('selected_option:policy_options!selected_option_id(ongoing_base_cost)')
+            .eq('nation_id', nation.id);
+        if (lawsErr) {
+            console.warn(`[BudgetSurplusPaydown] active_laws fetch failed for ${nation.name}:`, lawsErr.message);
+        } else {
+            for (const law of (laws || [])) {
+                const perTick = Number(law?.selected_option?.ongoing_base_cost) || 0;
+                if (perTick > 0) activeLawAnnual += perTick * 12;
+            }
+        }
+    } catch (err) {
+        console.warn(`[BudgetSurplusPaydown] active_laws threw for ${nation.name}:`, err?.message || err);
+    }
+    const annualExpenditures = debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual;
 
     const annualBalance = annualRevenue - annualExpenditures;
     if (annualBalance <= 0) return null;
