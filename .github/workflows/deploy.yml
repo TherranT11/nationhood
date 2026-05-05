@@ -52,3 +52,11 @@ jobs:
       - run: supabase functions deploy advance-tick --no-verify-jwt --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      # JWT verification ON for this one — only authenticated users
+      # (anyone with a valid Supabase session) can trigger a static
+      # wiki rebuild. The wiki_pages RLS policy already gates who can
+      # actually edit pages, so any authenticated user reaching this
+      # endpoint is by definition allowed to fire it.
+      - run: supabase functions deploy trigger-wiki-rebuild --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
