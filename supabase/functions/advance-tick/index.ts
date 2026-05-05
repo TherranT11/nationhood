@@ -3282,6 +3282,86 @@ function calculateNationalBudget(nation, opts = {}) {
     };
 }
 
+// ════════════════════════════════════════════════════════════════
+// Budget surplus → debt paydown (per-tick).
+//
+// Mirrors the Government Budget panel's monthly-balance math exactly
+// so what the player sees on the cards is what gets applied each
+// tick: revenue (treasury cash, treated as annual) minus
+// expenditures (Interest on Debt + monarchy-only Royal Holdings,
+// other rows still $0 placeholders) → annual balance → /12 →
+// per-tick paydown applied to principal.
+//
+// Unit handling: this is the load-bearing piece. The panel mixes
+// scales — nation.budget is "abstract" (small number, displayed
+// directly), debtService comes back from calculateNationalBudget in
+// raw dollars and is divided by 1e9 to render, and nation.debt is
+// raw dollars (also /1e9 to display). The legacy processDebtTick
+// silently ate this mismatch by subtracting an abstract surplus
+// from a raw debt value, which is why a $17 abstract balance never
+// dented a $1.2e12 raw debt. Here we convert abstract → raw with
+// _RAW_PER_ABSTRACT before touching nation.debt.
+//
+// Treasury bookkeeping: the abstract amount is also deducted from
+// nation.budget (the treasury cash balance) so the player's reserve
+// drops by the same amount the debt does — money paid out, not
+// magicked from thin air.
+//
+// Order of operations: caller wires this AFTER processDebtTick so
+// bond maturities, coupon charges, and offer expiry have already
+// hit. The interest payment side ("goes toward Interest on Debt")
+// is handled by processBondCouponsTick / the panel's debt-service
+// expenditure line; this helper is the "and then paying toward
+// the Debt" half of the user's spec.
+// ════════════════════════════════════════════════════════════════
+const _RAW_PER_ABSTRACT = 1e9;
+
+async function processBudgetSurplusPaydown(supabase, nation) {
+    const debtRaw = Number(nation?.debt) || 0;
+    if (debtRaw <= 0) return null; // No debt — nothing to pay down.
+
+    // Compute the same monthly balance the budget panel renders.
+    const budget = calculateNationalBudget(nation);
+    const annualRevenue = Number(budget.grossRevenue || 0);
+
+    // Annual expenditures, in abstract units, mirroring
+    // _gbBuildCostRows in government.html.
+    const debtServiceAbstract = (Number(budget.debtService || 0)) / _RAW_PER_ABSTRACT;
+    const royalHoldingsAnnual = isAbsoluteMonarchy(nation) ? 36 : 0;
+    const annualExpenditures = debtServiceAbstract + royalHoldingsAnnual;
+
+    const annualBalance = annualRevenue - annualExpenditures;
+    if (annualBalance <= 0) return null;
+
+    // Per-tick deduction = monthly balance (12 ticks / year).
+    let tickPaydown = annualBalance / 12;
+    if (tickPaydown <= 0) return null;
+
+    // Cap at the actual treasury so we never pay more than we have.
+    // Without this, a tick where revenue < expenditures but
+    // grossRevenue is still positive (treasury accumulated from
+    // earlier ticks) could send debt negative on the abstract side
+    // while taking treasury below zero. Math.max(0, ...) on the
+    // updates is a belt; this is the suspenders.
+    const treasury = Number(nation.budget) || 0;
+    if (treasury < tickPaydown) tickPaydown = treasury;
+    if (tickPaydown <= 0) return null;
+
+    const newBudget = Math.max(0, treasury - tickPaydown);
+    const newDebtRaw = Math.max(0, debtRaw - tickPaydown * _RAW_PER_ABSTRACT);
+
+    const { error } = await supabase.from('nations')
+        .update({ budget: newBudget, debt: newDebtRaw })
+        .eq('id', nation.id);
+    if (error) {
+        console.warn(`[BudgetSurplusPaydown] update failed for ${nation.name}:`, error.message);
+        return null;
+    }
+    nation.budget = newBudget;
+    nation.debt = newDebtRaw;
+    return { paid: tickPaydown, newBudget, newDebtRaw };
+}
+
 /**
  * Override formula-based tariff revenue with real trade engine data.
  * Mutates the budget object in place and returns it. Alpha refactor:
@@ -33178,6 +33258,23 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         ? ` surplus=${Math.round(debtResult.surplus)}`
                         : '')
             );
+
+            // Apply panel-accurate per-tick budget surplus to debt
+            // principal. processDebtTick's surplus path uses a
+            // placeholder gdp×0.12 expenditures heuristic and mixes
+            // abstract/raw scales, so its paydown is microscopic on
+            // realistic debt loads. This step mirrors the Government
+            // Budget panel's monthly-balance math (with correct
+            // abstract→raw conversion on debt) so what the player
+            // sees on the cards is what actually gets applied.
+            const paydown = await processBudgetSurplusPaydown(supabase, nation);
+            if (paydown) {
+                console.log(
+                    `[Debt] ${nation.name}: surplus_paydown=${paydown.paid.toFixed(2)} (abstract)` +
+                    ` newDebtRaw=${Math.round(paydown.newDebtRaw)}` +
+                    ` newBudget=${paydown.newBudget.toFixed(2)}`
+                );
+            }
         } catch (debtErr) {
             console.error(`[advanceTick] Debt system failed for ${nation.name} (non-fatal):`, debtErr);
         }

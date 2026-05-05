@@ -2469,6 +2469,23 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         ? ` surplus=${Math.round(debtResult.surplus)}`
                         : '')
             );
+
+            // Apply panel-accurate per-tick budget surplus to debt
+            // principal. processDebtTick's surplus path uses a
+            // placeholder gdp×0.12 expenditures heuristic and mixes
+            // abstract/raw scales, so its paydown is microscopic on
+            // realistic debt loads. This step mirrors the Government
+            // Budget panel's monthly-balance math (with correct
+            // abstract→raw conversion on debt) so what the player
+            // sees on the cards is what actually gets applied.
+            const paydown = await processBudgetSurplusPaydown(supabase, nation);
+            if (paydown) {
+                console.log(
+                    `[Debt] ${nation.name}: surplus_paydown=${paydown.paid.toFixed(2)} (abstract)` +
+                    ` newDebtRaw=${Math.round(paydown.newDebtRaw)}` +
+                    ` newBudget=${paydown.newBudget.toFixed(2)}`
+                );
+            }
         } catch (debtErr) {
             console.error(`[advanceTick] Debt system failed for ${nation.name} (non-fatal):`, debtErr);
         }
