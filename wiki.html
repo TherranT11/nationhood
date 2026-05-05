@@ -47,11 +47,22 @@ import { initWikiPage, renderWikiSearchBar, fetchPage, fetchPageList, fetchExist
     // scripts/generate-wiki-pages.js) is the authoritative public URL,
     // not this dynamic-viewer query-string variant. Skip for the home
     // landing page since there's no static analogue.
+    //
+    // Also rewrite the URL bar to the static URL via replaceState. The
+    // page keeps rendering dynamically (so in-app editors still see
+    // fresh content before the next CI rebuild), but the URL the
+    // player copies and shares becomes wiki-SLUG.html — which serves
+    // a fully-rendered crawlable page to AI tools, social-media
+    // unfurlers, and search engines that don't execute JS. Without
+    // this rewrite, players paste wiki.html?slug=X into Gemini/
+    // ChatGPT/etc. and get back "page content not available" because
+    // the dynamic shell is just a loading spinner pre-JS.
     if (slug !== 'home') {
         const canonical = document.createElement('link');
         canonical.rel = 'canonical';
         canonical.href = `wiki-${encodeURIComponent(slug)}.html`;
         document.head.appendChild(canonical);
+        history.replaceState(null, '', `wiki-${encodeURIComponent(slug)}.html${window.location.hash || ''}`);
     }
 
     // --- HOME PAGE: curated landing ---

@@ -113,11 +113,20 @@
                     </div>
                     <div class="form-field">
                         <label>Policy Type</label>
-                        <select id="b-policy-type">
+                        <select id="b-policy-type" onchange="onPolicyTypeChange()">
                             <option value="structural">🏗️ Structural — Activate once, stays on, rescind to remove</option>
                             <option value="lever">🔄 Lever — Toggle on/off, pays upfront each activation</option>
+                            <option value="multi_option_spectrum">🎯 Multi-Option Spectrum — players pick one option, switching changes targets</option>
                         </select>
                     </div>
+                </div>
+
+                <!-- How Targets Work — only shown for multi_option_spectrum -->
+                <div id="targets-explainer" class="builder-section" style="display:none; border-left:3px solid #5a8aaa;">
+                    <div style="font-size:0.78rem; color:#7ba8c4; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px; font-weight:bold;">ℹ️ How Targets Work</div>
+                    <p style="color:#bbb; font-size:0.86rem; line-height:1.5; margin:0;">
+                        Each option specifies a <strong>Target value</strong> (where the stat will settle, 0–10) and a <strong>Pull strength</strong> (how strongly this policy yanks the stat toward its target). Multiple policies may pull the same stat in different directions — the stat settles at the weighted equilibrium <code>Σ(target × pull) / Σ(pull)</code> and converges toward it gradually each tick.
+                    </p>
                 </div>
 
                 <!-- Section 2: Options (programmatically rendered cards in Phase 2.9) -->
@@ -277,7 +286,30 @@ function createEmptyOption() {
         ongoing_scaling_stat: '',
         fiscal_category: '',
         starting_nations: new Set(),
+        // Target-based policy fields (Phase 2). Coexist with legacy
+        // stat_effects/sector_effects so the user can switch policy_type
+        // back and forth without losing data — savePolicy writes to the
+        // shape matching the chosen type.
+        spectrum_position: null,
+        stat_targets: [],     // [{ stat_key, target 0-10, pull 0-1 }]
+        sector_rapport_targets: [], // [{ sector_key, rapport -10..+10 }]
     };
+}
+
+// True when the policy_type select is set to the multi-option spectrum
+// model. Read at every render and save site so a single source of truth
+// drives which form / save path runs.
+function isTargetBasedPolicy() {
+    const sel = document.getElementById('b-policy-type');
+    return sel && sel.value === 'multi_option_spectrum';
+}
+
+// Toggle the explainer block + re-render every option card so the
+// target-based vs legacy sub-sections swap when the user changes type.
+function onPolicyTypeChange() {
+    const explainer = document.getElementById('targets-explainer');
+    if (explainer) explainer.style.display = isTargetBasedPolicy() ? '' : 'none';
+    renderAllOptions();
 }
 let options = [createEmptyOption()];
 
@@ -562,6 +594,12 @@ async function loadPolicyIntoBuilder(p) {
     document.getElementById('b-sector').value = p.major_sector || '';
     // Policy type (lever vs structural) — must be set here or edits silently reset to structural
     document.getElementById('b-policy-type').value = p.policy_type || 'structural';
+    // Toggle the targets-explainer block to match the loaded policy type.
+    // Skipping onPolicyTypeChange() here because options[] is still stale
+    // from the previous edit; renderAllOptions at the end of this function
+    // does the real card rebuild.
+    const explainer = document.getElementById('targets-explainer');
+    if (explainer) explainer.style.display = isTargetBasedPolicy() ? '' : 'none';
     populateLawCategories();
     const lawCatVal = p.law_category || p.minor_sector || '';
     const select = document.getElementById('b-law-category-select');
@@ -683,6 +721,22 @@ async function loadPolicyIntoBuilder(p) {
                 .filter(e => e && typeof e.sector_key === 'string' && Number.isFinite(Number(e.change_tenths)))
                 .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) || 0 }));
 
+            // Target-based fields (Phase 2). Tolerate legacy rows where
+            // these columns were never written — defaults to empty arrays.
+            opt.spectrum_position = (row.spectrum_position == null) ? null : Number(row.spectrum_position);
+            const rawTargets = Array.isArray(row.stat_targets) ? row.stat_targets : [];
+            opt.stat_targets = rawTargets
+                .map(r => ({
+                    stat_key: normalizePolicyStatKey(r.stat_key),
+                    target: Math.max(0, Math.min(10, Number(r.target) || 0)),
+                    pull: Math.max(0, Math.min(1, Number(r.pull) || 0))
+                }))
+                .filter(r => r.stat_key);
+            const rawRapport = Array.isArray(row.sector_rapport_targets) ? row.sector_rapport_targets : [];
+            opt.sector_rapport_targets = rawRapport
+                .filter(r => r && typeof r.sector_key === 'string' && Number.isFinite(Number(r.rapport)))
+                .map(r => ({ sector_key: r.sector_key, rapport: Math.max(-10, Math.min(10, parseInt(r.rapport, 10) || 0)) }));
+
             const startingSet = startingByOption.get(row.id);
             if (startingSet) opt.starting_nations = startingSet;
 
@@ -705,11 +759,18 @@ function renderAllOptions() {
     container.innerHTML = options.map((_, idx) => renderOptionCard(idx)).join('');
     document.getElementById('add-option-btn').disabled = options.length >= MAX_OPTIONS_PER_POLICY;
 
+    const isTB = isTargetBasedPolicy();
     options.forEach((_, idx) => {
-        renderSectorEffects(idx);
         renderNationChecks(idx);
-        renderStatEffects(idx);
         updateCostPreview(idx);
+        if (isTB) {
+            renderStatTargets(idx);
+            renderSectorRapportTargets(idx);
+            renderEquilibriumPreview(idx);
+        } else {
+            renderSectorEffects(idx);
+            renderStatEffects(idx);
+        }
     });
 }
 
@@ -734,6 +795,91 @@ function renderOptionCard(idx) {
     const subTitle = (emoji, text) =>
         `<div style="font-size:0.78rem; color:#d48a3c; text-transform:uppercase; letter-spacing:1.2px; margin-bottom:10px; font-weight:bold;">${emoji} ${text}</div>`;
     const subDivider = 'border-top:1px solid #2a2a2a; padding-top:18px; margin-top:18px;';
+
+    // Target-based card swaps Sector Effects → Voter Bloc Rapport Targets
+    // and Stat Effects → Stat Targets, and adds an Equilibrium Preview
+    // block. Costs + Starting Status sub-sections are reused unchanged.
+    if (isTargetBasedPolicy()) {
+        const positionVal = (opt.spectrum_position == null || opt.spectrum_position === '') ? '' : Number(opt.spectrum_position);
+        return `
+        <div class="builder-section">
+            <div class="builder-section-title" style="display:flex; justify-content:space-between; align-items:center;">
+                <span>🎚️ Option ${idx + 1}</span>
+                ${removeBtn}
+            </div>
+            <div style="display:grid; grid-template-columns:2fr 1fr; gap:14px;">
+                <div class="form-field">
+                    <label>Option Name</label>
+                    <input type="text" id="b-option-name-${idx}" placeholder="e.g. Selective Skilled-Only" value="${escapeHtml(opt.option_name || '')}" oninput="syncOptionField(${idx}, 'option_name', this.value)">
+                </div>
+                <div class="form-field">
+                    <label>Spectrum Position <span style="font-size:0.7rem;color:var(--text-dim);">1 = least, N = most</span></label>
+                    <input type="number" id="b-spectrum-pos-${idx}" min="1" step="1" value="${positionVal}" oninput="syncOptionField(${idx}, 'spectrum_position', this.value === '' ? null : parseInt(this.value, 10))">
+                </div>
+            </div>
+            <div class="form-field">
+                <label>Option Description</label>
+                <textarea id="b-option-desc-${idx}" placeholder="What this option does and who it appeals to..." oninput="syncOptionField(${idx}, 'option_description', this.value)">${escapeHtml(opt.option_description || '')}</textarea>
+            </div>
+
+            <div style="${subDivider}">
+                ${subTitle('📊', 'Stat Targets')}
+                <p style="color:#888; font-size:0.82rem; margin-bottom:10px;">
+                    Each row picks a stat, where it should <strong>target</strong> (0–10), and how hard this option <strong>pulls</strong> on it (0.0–1.0). Multiple active options across all policies combine via weighted average <code>Σ(target × pull) / Σ(pull)</code>; the stat converges toward that equilibrium each tick.
+                </p>
+                <div id="stat-targets-container-${idx}"></div>
+                <button class="add-btn" id="add-target-btn-${idx}" onclick="addStatTarget(${idx})">+ Add Stat Target</button>
+                <div style="margin-top:10px; font-size:0.72rem; color:#888;">
+                    <strong>Pull:</strong> 0.1–0.2 minor effect · 0.3–0.5 moderate · 0.6–0.8 strong · 0.9–1.0 primary driver
+                </div>
+            </div>
+
+            <div style="${subDivider}">
+                ${subTitle('🗳️', 'Voter Bloc Rapport Targets')}
+                <p style="color:#888; font-size:0.82rem; margin-bottom:10px;">
+                    When this option is active, the governing faction's popularity in each sector pulls toward the listed rapport value. Range −10 to +10. Leave a slider at 0 for no effect.
+                </p>
+                <div id="sector-rapport-container-${idx}"></div>
+            </div>
+
+            <div style="${subDivider}">
+                ${subTitle('🌍', 'Starting Status')}
+                <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
+                    Which nations have this option active at game start?
+                    <span style="color:#d48a3c;">Every nation must be assigned to exactly one option of this policy.</span>
+                </p>
+                <div class="nation-checks" id="nation-checks-${idx}">Loading nations...</div>
+            </div>
+
+            <div style="${subDivider}">
+                ${subTitle('💰', 'Costs')}
+                <div class="form-field">
+                    <label>Fiscal Category <span style="font-size:0.7rem;color:var(--text-dim);">which budget bucket these costs fall under</span></label>
+                    <select id="b-fiscal-category-${idx}" onchange="syncOptionField(${idx}, 'fiscal_category', this.value)">${fiscalSelect}</select>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+                    <div class="form-field">
+                        <label>Upfront Base Cost ($M)</label>
+                        <input type="number" id="b-upfront-${idx}" value="${Number(opt.upfront_cost) || 0}" step="1" oninput="syncOptionField(${idx}, 'upfront_cost', parseFloat(this.value) || 0); updateCostPreview(${idx})">
+                    </div>
+                    <div class="form-field">
+                        <label>Ongoing Cost ($M/tick)</label>
+                        <input type="number" id="b-ongoing-base-${idx}" value="${Number(opt.ongoing_base_cost) || 0}" step="0.1" oninput="syncOptionField(${idx}, 'ongoing_base_cost', parseFloat(this.value) || 0); updateCostPreview(${idx})">
+                    </div>
+                </div>
+                <div class="formula-preview" id="cost-preview-${idx}" style="display:none;"></div>
+            </div>
+
+            <div style="${subDivider}">
+                ${subTitle('⚖️', `Equilibrium Preview — Option ${idx + 1}`)}
+                <p style="color:#888; font-size:0.82rem; margin-bottom:10px;">
+                    If a country adopted this option <em>in isolation</em> (no other policies competing), stats would settle at:
+                </p>
+                <div id="equilibrium-preview-${idx}"></div>
+            </div>
+        </div>
+        `;
+    }
 
     return `
         <div class="builder-section">
@@ -1210,6 +1356,190 @@ function getLawCategoryValue() {
     }
     return select.value || '';
 }
+
+// ==================== STAT TARGETS (target-based policies) ====================
+// Phase 2: target-based options store [{ stat_key, target 0-10, pull 0-1 }]
+// rows. Each row maps to one stat the policy nudges toward an equilibrium.
+const MAX_STAT_TARGETS_PER_OPTION = 12;
+
+function addStatTarget(optIdx) {
+    const opt = options[optIdx];
+    if (!opt) return;
+    if (opt.stat_targets.length >= MAX_STAT_TARGETS_PER_OPTION) {
+        alert(`Max ${MAX_STAT_TARGETS_PER_OPTION} stat targets per option.`);
+        return;
+    }
+    opt.stat_targets.push({ stat_key: '', target: 5, pull: 0.5 });
+    renderStatTargets(optIdx);
+    renderEquilibriumPreview(optIdx);
+}
+
+function removeStatTarget(optIdx, idx) {
+    const opt = options[optIdx];
+    if (!opt || !opt.stat_targets[idx]) return;
+    opt.stat_targets.splice(idx, 1);
+    renderStatTargets(optIdx);
+    renderEquilibriumPreview(optIdx);
+}
+
+function syncStatTarget(optIdx, idx, field, value) {
+    const opt = options[optIdx];
+    if (!opt || !opt.stat_targets[idx]) return;
+    if (field === 'stat_key') {
+        opt.stat_targets[idx].stat_key = value;
+    } else if (field === 'target') {
+        const v = Number(value);
+        opt.stat_targets[idx].target = Number.isFinite(v) ? Math.max(0, Math.min(10, v)) : 0;
+        const display = document.getElementById(`b-stat-target-val-${optIdx}-${idx}`);
+        if (display) display.textContent = opt.stat_targets[idx].target.toFixed(1);
+    } else if (field === 'pull') {
+        const v = Number(value);
+        opt.stat_targets[idx].pull = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
+        const display = document.getElementById(`b-stat-pull-val-${optIdx}-${idx}`);
+        if (display) display.textContent = opt.stat_targets[idx].pull.toFixed(2);
+    }
+    renderEquilibriumPreview(optIdx);
+}
+
+function renderStatTargets(optIdx) {
+    const opt = options[optIdx];
+    if (!opt) return;
+    const container = document.getElementById(`stat-targets-container-${optIdx}`);
+    if (!container) return;
+
+    if (opt.stat_targets.length === 0) {
+        container.innerHTML = '<div style="color:#666; font-size:0.85rem; padding:8px 0;">No stat targets yet. Click + Add Stat Target to define which stats this option pulls.</div>';
+        document.getElementById(`add-target-btn-${optIdx}`).disabled = false;
+        return;
+    }
+
+    const rowStyle  = 'display:grid; grid-template-columns:1fr 1fr 1fr 32px; gap:10px; align-items:center; padding:10px 12px; background:#1a1a1a; border:1px solid #333; margin-bottom:8px; border-radius:4px;';
+    const selStyle  = 'background:#0f0f0f; border:1px solid #333; color:#eee; padding:6px 8px; border-radius:3px; font-size:0.85rem;';
+    const sliderStyle = 'flex:1; min-width:0;';
+    const valStyle  = 'font-family:var(--font-mono,monospace); color:#eee; font-size:0.85rem; min-width:36px; text-align:right;';
+    const removeStyle = 'background:#3a1f1f; border:1px solid #5c2929; color:#e57373; cursor:pointer; padding:4px 8px; border-radius:3px;';
+
+    container.innerHTML = opt.stat_targets.map((row, idx) => {
+        const statSel = '<option value="">-- pick stat --</option>' +
+            STAT_OPTIONS_HTML.replace(`value="${row.stat_key}"`, `value="${row.stat_key}" selected`);
+        const target = Number(row.target ?? 5);
+        const pull = Number(row.pull ?? 0.5);
+        return `
+            <div style="${rowStyle}">
+                <select style="${selStyle}" onchange="syncStatTarget(${optIdx}, ${idx}, 'stat_key', this.value); renderEquilibriumPreview(${optIdx})">${statSel}</select>
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <span style="font-size:0.7rem; color:#888;">TARGET</span>
+                    <input type="range" min="0" max="10" step="0.1" value="${target}" style="${sliderStyle}" oninput="syncStatTarget(${optIdx}, ${idx}, 'target', this.value)">
+                    <span id="b-stat-target-val-${optIdx}-${idx}" style="${valStyle}">${target.toFixed(1)}</span>
+                </div>
+                <div style="display:flex; gap:6px; align-items:center;">
+                    <span style="font-size:0.7rem; color:#888;">PULL</span>
+                    <input type="range" min="0" max="1" step="0.05" value="${pull}" style="${sliderStyle}" oninput="syncStatTarget(${optIdx}, ${idx}, 'pull', this.value)">
+                    <span id="b-stat-pull-val-${optIdx}-${idx}" style="${valStyle}">${pull.toFixed(2)}</span>
+                </div>
+                <button style="${removeStyle}" title="Remove" onclick="removeStatTarget(${optIdx}, ${idx})">✕</button>
+            </div>
+        `;
+    }).join('');
+    document.getElementById(`add-target-btn-${optIdx}`).disabled = opt.stat_targets.length >= MAX_STAT_TARGETS_PER_OPTION;
+}
+
+// ==================== SECTOR RAPPORT TARGETS (target-based policies) ====================
+// Twelve fixed rows, one per sector_key from the seed_default_sectors list.
+// Stored as integer −10..+10. State holds only non-zero entries — re-render
+// hydrates 0 for missing keys so the UI always shows all twelve.
+const SECTOR_RAPPORT_KEYS = [
+    { key: 'CAPITAL_OWNERS_EXECUTIVES',     label: 'Capital Owners' },
+    { key: 'RELIGIOUS_CONSERVATIVES',       label: 'Religious Conservatives' },
+    { key: 'STUDENTS_YOUNG_PRECARIAT',      label: 'Students & Young' },
+    { key: 'SERVICE_GIG_WORKERS',           label: 'Service & Gig Workers' },
+    { key: 'SKILLED_TRADES_MANUFACTURING',  label: 'Skilled Trades' },
+    { key: 'SMALL_BUSINESS_OWNERS',         label: 'Small Business Owners' },
+    { key: 'TECH_ENGINEERING_CLASS',        label: 'Tech & Engineering' },
+    { key: 'URBAN_PROFESSIONALS',           label: 'Urban Professionals' },
+    { key: 'CULTURAL_PRODUCERS',            label: 'Cultural Producers' },
+    { key: 'IMMIGRANT_MINORITY_COMMUNITIES', label: 'Immigrant & Minority' },
+    { key: 'RETIREES_PENSIONERS',           label: 'Retirees & Pensioners' },
+    { key: 'RURAL_AGRICULTURAL',            label: 'Rural & Agricultural' }
+];
+
+function syncSectorRapport(optIdx, sectorKey, value) {
+    const opt = options[optIdx];
+    if (!opt) return;
+    const v = Math.round(Number(value) || 0);
+    const clamped = Math.max(-10, Math.min(10, v));
+    const idx = opt.sector_rapport_targets.findIndex(r => r.sector_key === sectorKey);
+    if (clamped === 0) {
+        if (idx !== -1) opt.sector_rapport_targets.splice(idx, 1);
+    } else if (idx === -1) {
+        opt.sector_rapport_targets.push({ sector_key: sectorKey, rapport: clamped });
+    } else {
+        opt.sector_rapport_targets[idx].rapport = clamped;
+    }
+    const display = document.getElementById(`b-rapport-val-${optIdx}-${sectorKey}`);
+    if (display) display.textContent = clamped > 0 ? `+${clamped}` : String(clamped);
+}
+
+function renderSectorRapportTargets(optIdx) {
+    const opt = options[optIdx];
+    if (!opt) return;
+    const container = document.getElementById(`sector-rapport-container-${optIdx}`);
+    if (!container) return;
+
+    const lookup = new Map(opt.sector_rapport_targets.map(r => [r.sector_key, Number(r.rapport) || 0]));
+    const rowStyle = 'display:grid; grid-template-columns:1fr 80px 36px; gap:8px; align-items:center; padding:6px 10px;';
+
+    container.innerHTML = `<div style="display:grid; grid-template-columns:1fr 1fr; gap:4px;">${
+        SECTOR_RAPPORT_KEYS.map(s => {
+            const val = lookup.get(s.key) || 0;
+            const valColor = val > 0 ? '#7fc97f' : (val < 0 ? '#e57373' : '#888');
+            return `
+                <div style="${rowStyle} background:#1a1a1a; border:1px solid #2a2a2a; border-radius:3px;">
+                    <span style="color:#bbb; font-size:0.82rem;">${escapeHtml(s.label)}</span>
+                    <input type="range" min="-10" max="10" step="1" value="${val}" oninput="syncSectorRapport(${optIdx}, '${s.key}', this.value)">
+                    <span id="b-rapport-val-${optIdx}-${s.key}" style="font-family:var(--font-mono,monospace); font-size:0.85rem; font-weight:bold; text-align:right; color:${valColor};">${val > 0 ? '+' + val : val}</span>
+                </div>
+            `;
+        }).join('')
+    }</div>`;
+}
+
+// Equilibrium preview shows where each stat would settle if this option
+// were the ONLY policy targeting that stat (the in-isolation case). With
+// no other pulls in the math, equilibrium = target — pull strength is
+// moot in isolation but still displayed alongside as context.
+function renderEquilibriumPreview(optIdx) {
+    const opt = options[optIdx];
+    if (!opt) return;
+    const container = document.getElementById(`equilibrium-preview-${optIdx}`);
+    if (!container) return;
+
+    const valid = opt.stat_targets.filter(r => r.stat_key);
+    if (valid.length === 0) {
+        container.innerHTML = '<div style="color:#666; font-size:0.82rem;">Add stat targets above to see where this option settles each stat.</div>';
+        return;
+    }
+
+    const cardStyle = 'background:#1a1a1a; border:1px solid #2a2a2a; border-radius:3px; padding:10px 12px;';
+    container.innerHTML = `<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:8px;">${
+        valid.map(r => {
+            const target = Number(r.target) || 0;
+            const pull = Number(r.pull) || 0;
+            const pullLabel = pull >= 0.9 ? 'PRIMARY DRIVER' : pull >= 0.6 ? 'STRONG' : pull >= 0.3 ? 'MODERATE' : 'MINOR';
+            const targetColor = target >= 7 ? '#7fc97f' : target <= 3 ? '#e57373' : '#d4a83c';
+            return `
+                <div style="${cardStyle}">
+                    <div style="display:flex; justify-content:space-between; align-items:baseline; gap:8px;">
+                        <span style="color:#bbb; font-size:0.78rem;">${escapeHtml(fmtStat(r.stat_key))}</span>
+                        <span style="font-family:var(--font-mono,monospace); font-size:1.1rem; font-weight:bold; color:${targetColor};">${target.toFixed(1)}</span>
+                    </div>
+                    <div style="font-size:0.7rem; color:#888; margin-top:2px;">${pullLabel} · ${pull.toFixed(2)} pull</div>
+                </div>
+            `;
+        }).join('')
+    }</div>`;
+}
+
 // ==================== SAVE POLICY ====================
 async function savePolicy() {
     if (saveInProgress) return;
@@ -1248,12 +1578,68 @@ async function savePolicy() {
         return;
     }
 
+    const isTB = isTargetBasedPolicy();
+
     const optionPayloads = []; // [{ stateRef, normalizedEffects, optionData }]
     for (let i = 0; i < options.length; i++) {
         const o = options[i];
         const optionName = (o.option_name || '').trim();
         if (!optionName) { alert(`Option ${i + 1}: enter an option name.`); return; }
 
+        if (isTB) {
+            // ── Target-based validation ────────────────────────────
+            const validTargets = o.stat_targets
+                .filter(r => r.stat_key)
+                .map(r => ({
+                    stat_key: normalizePolicyStatKey(r.stat_key),
+                    target: Math.max(0, Math.min(10, Number(r.target) || 0)),
+                    pull: Math.max(0, Math.min(1, Number(r.pull) || 0))
+                }))
+                .filter(r => r.stat_key);
+            if (validTargets.length === 0) {
+                alert(`Option ${i + 1} ("${optionName}"): add at least 1 stat target.`);
+                return;
+            }
+            const unknownT = [...new Set(validTargets.map(r => r.stat_key).filter(k => !CANONICAL_STAT_KEYS.has(k)))];
+            if (unknownT.length > 0) {
+                alert(`Option ${i + 1} ("${optionName}"): unknown stat key(s): ${unknownT.join(', ')}.`);
+                return;
+            }
+            const validRapport = o.sector_rapport_targets
+                // Number.isFinite guards against NaN slipping past the UI
+                // sync path — Number(NaN) !== 0 is true, so a NaN row
+                // would otherwise pass and be persisted as rapport:0,
+                // contradicting "zero values aren't persisted".
+                .filter(r => r.sector_key && Number.isFinite(Number(r.rapport)) && Number(r.rapport) !== 0)
+                .map(r => ({ sector_key: r.sector_key, rapport: Math.max(-10, Math.min(10, parseInt(r.rapport, 10) || 0)) }));
+
+            optionPayloads.push({
+                stateRef: o,
+                normalizedEffects: [],
+                optionData: {
+                    option_name: optionName,
+                    option_description: (o.option_description || '').trim() || null,
+                    option_order: i,
+                    is_active: true,
+                    upfront_cost: Number.isFinite(Number(o.upfront_cost)) ? Number(o.upfront_cost) : 0,
+                    upfront_scaling_stat: null,
+                    ongoing_base_cost: Number.isFinite(Number(o.ongoing_base_cost)) ? Number(o.ongoing_base_cost) : 0,
+                    ongoing_scaling_stat: null,
+                    fiscal_category: o.fiscal_category || null,
+                    // Legacy fields stay empty for target-based options.
+                    sector_effects: [],
+                    stat_effects: [],
+                    // New target-based shape.
+                    spectrum_position: Number.isFinite(Number(o.spectrum_position)) ? parseInt(o.spectrum_position, 10) : null,
+                    stat_targets: validTargets,
+                    sector_rapport_targets: validRapport,
+                    is_target_based: true,
+                }
+            });
+            continue;
+        }
+
+        // ── Legacy rate/duration validation ────────────────────────
         const validEffects = o.stat_effects.filter(e => e.stat_key);
         if (validEffects.length === 0) { alert(`Option ${i + 1} ("${optionName}"): add at least 1 stat effect.`); return; }
 
@@ -1294,7 +1680,14 @@ async function savePolicy() {
                     duration_ticks: e.duration_ticks || 12,
                     adjust_type: e.adjust_type || null,
                     adjust_value: e.adjust_type ? (e.adjust_value || 0) : 0
-                }))
+                })),
+                // Explicit legacy markers — kept so re-saving an existing
+                // legacy policy doesn't accidentally inherit a stale
+                // is_target_based=true from a prior draft.
+                spectrum_position: null,
+                stat_targets: [],
+                sector_rapport_targets: [],
+                is_target_based: false,
             }
         });
     }
@@ -1414,7 +1807,12 @@ async function savePolicy() {
 
             if (payload.stateRef.starting_nations.size === 0) continue;
 
-            const totalDuration = Math.max(...payload.normalizedEffects.map(e => (e.delay_ticks || 0) + (e.duration_ticks || 12)));
+            // normalizedEffects is empty for target-based options — they
+            // have no rate/duration concept, so ticks_elapsed defaults to
+            // 0 (the engine treats target-based options as always-on).
+            const totalDuration = payload.normalizedEffects.length === 0
+                ? 0
+                : Math.max(...payload.normalizedEffects.map(e => (e.delay_ticks || 0) + (e.duration_ticks || 12)));
             const npRecords = [...payload.stateRef.starting_nations].map(nationId => ({
                 nation_id: nationId,
                 policy_id: policyId,
@@ -1471,6 +1869,8 @@ function resetBuilder() {
     document.getElementById('b-law-category-select').innerHTML = '<option value="">-- Select sector first --</option>';
     document.getElementById('b-law-category-new').value = '';
     document.getElementById('new-category-wrapper').style.display = 'none';
+    const explainer = document.getElementById('targets-explainer');
+    if (explainer) explainer.style.display = 'none';
 
     renderAllOptions();
     document.getElementById('submit-btn').textContent = '✅ Create Policy';
@@ -1518,6 +1918,12 @@ window.removeSectorEffect = removeSectorEffect;
 window.updateSectorEffect = updateSectorEffect;
 window.setSectorSign = setSectorSign;
 window.updateSectorMagnitude = updateSectorMagnitude;
+window.onPolicyTypeChange = onPolicyTypeChange;
+window.addStatTarget = addStatTarget;
+window.removeStatTarget = removeStatTarget;
+window.syncStatTarget = syncStatTarget;
+window.syncSectorRapport = syncSectorRapport;
+window.renderEquilibriumPreview = renderEquilibriumPreview;
 </script>
 </body>
 </html>
