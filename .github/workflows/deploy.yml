@@ -24,6 +24,8 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npx vite build
+      - name: Generate static wiki pages
+        run: node scripts/generate-wiki-pages.js
       - name: Copy CNAME to dist
         run: cp CNAME dist/CNAME
       - uses: actions/upload-pages-artifact@v3
