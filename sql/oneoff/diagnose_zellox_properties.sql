@@ -72,11 +72,15 @@ SELECT
     )                                                                       AS hidden_on_expansion
 FROM zellox_props;
 
--- ── 3. Recently deactivated rows (last ~60 ticks) ───────────────────────────
--- If the sell/demolish path is bugged we'd see rows with stale
--- is_active=true here. If it's working we'd see is_active=false rows
--- (and the user's "missing properties" story is bogus — they didn't
--- actually sell them).
+-- ── 3. Recently deactivated rows ────────────────────────────────────────────
+-- corp_properties tracks no updated_at column, so "deactivation time"
+-- isn't directly recoverable. We list every is_active=false row Zellox
+-- has, ordered by purchased_at_tick descending. If the user remembers
+-- selling/demolishing a Regional HQ or office building recently and
+-- it shows up here as is_active=false, the sell path is fine and the
+-- still-counted-by-Actions rows are real purchases (Option A). If
+-- nothing shows here, the sell path is bugged and the extra Action
+-- rows are zombies (Option C).
 SELECT
     cp.id,
     cp.name,
@@ -84,12 +88,9 @@ SELECT
     cp.role,
     cp.purchased_at_tick,
     cp.is_active,
-    cp.updated_at
+    cp.created_at
 FROM public.corp_properties cp
 JOIN public.factions f ON f.id = cp.faction_id
-LEFT JOIN public.shard s ON s.name = 'Alpha Shard'
 WHERE f.faction_name = 'Zellox Investments'
   AND cp.is_active = false
-  AND cp.purchased_at_tick IS NOT NULL
-  AND cp.purchased_at_tick > COALESCE(s.current_tick, 0) - 60
-ORDER BY cp.updated_at DESC NULLS LAST;
+ORDER BY cp.purchased_at_tick DESC NULLS LAST;
