@@ -851,7 +851,7 @@ function renderOptionCard(idx) {
             <div style="${subDivider}">
                 ${subTitle('🗳️', 'Voter Bloc Rapport Targets')}
                 <p style="color:#888; font-size:0.82rem; margin-bottom:10px;">
-                    When this option is active, the governing faction's popularity in each sector pulls toward the listed rapport value. Range −10 to +10. Leave a slider at 0 for no effect.
+                    When the bill that selects this option <strong>passes</strong>, every faction that voted <strong>YES</strong> (sponsor + supporters) takes this rapport against their popularity in each listed sector — <strong>once</strong>. Values are on the displayed 0–10 popularity scale, so +5 = +5 popularity / −3 = −3 popularity. Range −10 to +10. Leave a slider at 0 for no effect.
                 </p>
                 <div id="sector-rapport-container-${idx}"></div>
             </div>

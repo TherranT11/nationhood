@@ -4,9 +4,15 @@
  * Per-tick processor for the target-based policy model introduced in the
  * Target-Based Policies Phase 1–4 work. Reads active_laws joined to
  * policy_options where is_target_based = TRUE, computes per-stat weighted
- * equilibria, converges the actual nation column toward each equilibrium
- * each tick, and applies sector rapport deltas to the proposing faction's
- * popularity.
+ * equilibria, and converges the actual nation column toward each
+ * equilibrium each tick.
+ *
+ * Sector rapport effects are NOT processed here. They were originally a
+ * per-tick accumulator on the proposing faction, but that produced
+ * runaway popularity (every law eventually pinned every party at 0 or
+ * max). The model is now a one-shot delta to YES voters at bill-pass
+ * time, applied by applyOptionRapportToYesVoters() in bills.js. See
+ * enactBill().
  *
  * Coexists with the legacy rate/duration model in
  * buildPolicyDecayAdjustments + processStatDecay — only options whose
@@ -38,21 +44,10 @@ import { STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
 // global constant for legibility — "primary driver" pull means
 // dominant influence on the equilibrium, not faster speed.
 //
-// Sector rapport targets apply additively to the proposing
-// faction's popularity in the matching sector each tick:
-//
-//     popularity_delta_tenths = rapport / 10                   (per tick)
-//
-// So +10 rapport adds 1 popularity tenth per tick (+0.1
-// displayed popularity per tick); over 100 ticks that's +10
-// displayed popularity. Multiple options on the same (faction,
-// sector) sum.
-//
 // Skips stats not in NATION_STAT_COLUMN_SET, stats in
 // STAT_PROCESSOR_SKIP (debt), and raw-scale stats that don't
 // map sensibly onto a 0–10 target (population, eligible_voters,
-// budget). Skips rapport where proposed_by is null or the sector
-// row is missing for the nation.
+// budget).
 //
 // Interaction with legacy floor/ceiling adjustments
 // (buildPolicyDecayAdjustments → processStatDecay): floor and
@@ -66,7 +61,6 @@ import { STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
 
 export const TARGET_STAT_SCALE = 10;
 export const TARGET_CONVERGENCE_RATE = 0.10;
-export const RAPPORT_PER_TICK_DIVISOR = 10;
 
 // Stats whose column values are raw (population, debt, budget) don't map
 // onto a 0–10 target. The policy builder lets admins pick them anyway;
@@ -76,14 +70,12 @@ export const TARGET_BASED_STAT_SKIP = new Set([
 ]);
 
 export async function processTargetBasedPolicies(supabase, nation) {
-    const summary = { stats: [], rapport: [] };
+    const summary = { stats: [] };
 
-    // 1. Pull active target-based options for this nation. Joined fields
-    //    let one round trip cover both the equilibrium math and the
-    //    rapport apply step.
+    // 1. Pull active target-based options for this nation.
     const { data: laws, error: lawsErr } = await supabase
         .from('active_laws')
-        .select('id, proposed_by, selected_option:policy_options!selected_option_id(is_target_based, stat_targets, sector_rapport_targets)')
+        .select('id, selected_option:policy_options!selected_option_id(is_target_based, stat_targets)')
         .eq('nation_id', nation.id);
     if (lawsErr) {
         console.error(`[processTargetBasedPolicies] active_laws fetch failed for ${nation.name}:`, lawsErr.message);
@@ -138,81 +130,6 @@ export async function processTargetBasedPolicies(supabase, nation) {
             return summary;
         }
         Object.assign(nation, statUpdates);
-    }
-
-    // 4. Sector rapport: each option's rapport contributes to its
-    //    proposed_by faction's popularity in that sector this tick.
-    //    Aggregate across all active options first so two options
-    //    nudging the same (faction, sector) pair sum cleanly.
-    //    rapportAggregate[factionId + '|' + sectorKey] = sumRapport
-    const rapportAggregate = new Map();
-    for (const law of targetLaws) {
-        const factionId = law.proposed_by;
-        if (!factionId) continue;
-        const targets = Array.isArray(law.selected_option.sector_rapport_targets) ? law.selected_option.sector_rapport_targets : [];
-        for (const r of targets) {
-            const sectorKey = r?.sector_key;
-            const rapport = Number(r?.rapport);
-            if (!sectorKey || !Number.isFinite(rapport) || rapport === 0) continue;
-            const k = factionId + '|' + sectorKey;
-            rapportAggregate.set(k, (rapportAggregate.get(k) || 0) + rapport);
-        }
-    }
-    if (rapportAggregate.size === 0) return summary;
-
-    // 5. Resolve sector_key → sector_id for this nation (one query) so
-    //    the popularity update can use the FK column.
-    const { data: sectorRows, error: secErr } = await supabase
-        .from('sectors').select('id, sector_key')
-        .eq('nation_id', nation.id).eq('is_active', true);
-    if (secErr) {
-        console.error(`[processTargetBasedPolicies] sectors fetch failed for ${nation.name}:`, secErr.message);
-        return summary;
-    }
-    const sectorIdByKey = new Map((sectorRows || []).map(s => [s.sector_key, s.id]));
-
-    // 6. Apply each (faction, sector) delta. popularity is stored in
-    //    integer tenths (0..100). delta_tenths = rapport / RAPPORT_PER_TICK_DIVISOR
-    //    rounded to the nearest tenth so a single +1 rapport policy
-    //    eventually moves the needle (0.1/tick) instead of always
-    //    rounding to zero. Read-modify-write per row — small N, fine.
-    for (const [k, totalRapport] of rapportAggregate.entries()) {
-        const sepIdx = k.indexOf('|');
-        const factionId = k.slice(0, sepIdx);
-        const sectorKey = k.slice(sepIdx + 1);
-        const sectorId = sectorIdByKey.get(sectorKey);
-        if (!sectorId) continue;
-
-        const deltaTenths = Math.round(totalRapport / RAPPORT_PER_TICK_DIVISOR);
-        if (deltaTenths === 0) continue;
-
-        const { data: existing, error: existErr } = await supabase
-            .from('faction_sector_popularity')
-            .select('id, popularity')
-            .eq('faction_id', factionId).eq('sector_id', sectorId)
-            .maybeSingle();
-        if (existErr) {
-            console.warn(`[processTargetBasedPolicies] popularity fetch failed (${factionId}/${sectorKey}):`, existErr.message);
-            continue;
-        }
-        if (!existing) continue; // No row to nudge — sector wasn't seeded for this faction.
-
-        const before = Number(existing.popularity) || 0;
-        const after = Math.max(0, Math.min(100, before + deltaTenths));
-        if (after === before) continue;
-
-        const { error: updErr } = await supabase
-            .from('faction_sector_popularity')
-            .update({ popularity: after, updated_at: new Date().toISOString() })
-            .eq('id', existing.id);
-        if (updErr) {
-            console.warn(`[processTargetBasedPolicies] popularity update failed (${factionId}/${sectorKey}):`, updErr.message);
-            continue;
-        }
-        summary.rapport.push({
-            faction_id: factionId, sector_key: sectorKey,
-            before, after, delta_tenths: deltaTenths
-        });
     }
 
     return summary;

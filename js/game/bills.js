@@ -571,6 +571,145 @@ async function applyInverseSectorEffectsToFaction(supabase, nationId, factionId,
     }
 }
 
+// ════════════════════════════════════════════════════════════════
+// Target-based policy: one-shot rapport apply at bill-pass time.
+//
+// When a target-based option is enacted (or switched into) via a
+// passing bill, every faction that voted YES on that bill gets the
+// option's sector_rapport_targets applied to their
+// faction_sector_popularity in each listed sector — once.
+//
+// Why one-shot: an earlier per-tick accumulator pinned every
+// participating party at 0 or max within ~100 ticks (rapport=10
+// stacks +0.1 displayed/tick → +10 displayed over a typical
+// election cycle). The new model treats rapport as a one-time
+// political payout: "you backed this bill, you wear the
+// consequences with that bloc, immediately and permanently."
+//
+// Mapping:
+//   rapport (-10..+10) → displayed-popularity delta on the same
+//   0..10 scale → stored as integer tenths (0..100). delta_stored
+//   = round(rapport * 10), clamped after add to [0, 100].
+//
+// YES voters:
+//   - The bill's proposed_by faction (sponsor implicitly votes yes).
+//   - Every bill_support row whose stance normalizes to 'yes'
+//     (committee 'accept' and floor 'yes' both qualify).
+//
+// Skips:
+//   - Repeal articles (no option to enact).
+//   - Articles with no selected_option_id.
+//   - Options with is_target_based = FALSE.
+//   - Sector keys that don't exist in this nation's sectors table.
+//   - Faction rows that don't have a faction_sector_popularity row
+//     for the sector (sector wasn't seeded for them — no row to
+//     nudge; create-on-write would diverge from the rest of the
+//     popularity pipeline which only ever read-modify-writes).
+// ════════════════════════════════════════════════════════════════
+async function applyOptionRapportToYesVoters(supabase, bill, art) {
+    if (!art?.selected_option_id || art?.repeal_active_law_id) return;
+
+    // Fetch the option's rapport config fresh — callers pass `bill`
+    // with varying joins, so we don't trust art.selected_option to
+    // carry is_target_based + sector_rapport_targets reliably.
+    const { data: opt, error: optErr } = await supabase
+        .from('policy_options')
+        .select('is_target_based, sector_rapport_targets')
+        .eq('id', art.selected_option_id)
+        .maybeSingle();
+    if (optErr) {
+        console.warn(`[applyOptionRapportToYesVoters] option fetch failed for ${art.selected_option_id}:`, optErr.message);
+        return;
+    }
+    if (!opt?.is_target_based) return;
+    const targets = (Array.isArray(opt.sector_rapport_targets) ? opt.sector_rapport_targets : [])
+        .filter(t => t && t.sector_key && Number.isFinite(Number(t.rapport)) && Number(t.rapport) !== 0);
+    if (targets.length === 0) return;
+
+    // Build the YES-voter set. Prefer the bill_support rows already on
+    // the bill object; fall back to a fresh fetch if the caller didn't
+    // join it. Sponsor always counts (matches the existing voter-stance
+    // convention used elsewhere in this file).
+    const yesIds = new Set();
+    if (bill.proposed_by) yesIds.add(bill.proposed_by);
+
+    let supportRows = Array.isArray(bill.bill_support) ? bill.bill_support : null;
+    if (!supportRows) {
+        const { data, error } = await supabase
+            .from('bill_support')
+            .select('faction_id, stance')
+            .eq('bill_id', bill.id);
+        if (error) {
+            console.warn(`[applyOptionRapportToYesVoters] bill_support fetch failed for bill ${bill.id}:`, error.message);
+            return;
+        }
+        supportRows = data || [];
+    }
+    for (const s of supportRows) {
+        if (!s?.faction_id) continue;
+        const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
+        if (stance === 'yes') yesIds.add(s.faction_id);
+    }
+    if (yesIds.size === 0) return;
+
+    // Resolve the listed sector_keys to sector_ids for this nation.
+    const sectorKeys = [...new Set(targets.map(t => t.sector_key))];
+    const { data: sectorRows, error: secErr } = await supabase
+        .from('sectors')
+        .select('id, sector_key')
+        .eq('nation_id', bill.nation_id)
+        .eq('is_active', true)
+        .in('sector_key', sectorKeys);
+    if (secErr) {
+        console.warn(`[applyOptionRapportToYesVoters] sectors fetch failed for nation ${bill.nation_id}:`, secErr.message);
+        return;
+    }
+    const sectorIdByKey = new Map((sectorRows || []).map(s => [s.sector_key, s.id]));
+    if (sectorIdByKey.size === 0) return;
+
+    // Apply rapport once per (YES voter, sector). Read-modify-write
+    // through the existing popularity row; skip silently if the sector
+    // wasn't seeded for this faction.
+    const factionIds = [...yesIds];
+    const sectorIds  = [...sectorIdByKey.values()];
+    const { data: popRows, error: popErr } = await supabase
+        .from('faction_sector_popularity')
+        .select('id, faction_id, sector_id, popularity')
+        .in('faction_id', factionIds)
+        .in('sector_id', sectorIds);
+    if (popErr) {
+        console.warn(`[applyOptionRapportToYesVoters] popularity fetch failed:`, popErr.message);
+        return;
+    }
+    const rowByKey = new Map((popRows || []).map(r => [`${r.faction_id}|${r.sector_id}`, r]));
+
+    for (const factionId of factionIds) {
+        for (const t of targets) {
+            const sectorId = sectorIdByKey.get(t.sector_key);
+            if (!sectorId) continue;
+            const row = rowByKey.get(`${factionId}|${sectorId}`);
+            if (!row) continue;
+
+            const rapport = Number(t.rapport);
+            // rapport is on the displayed 0..10 popularity scale; storage
+            // is tenths 0..100 → multiply by 10.
+            const deltaStored = Math.round(rapport * 10);
+            if (deltaStored === 0) continue;
+            const before = Number(row.popularity) || 0;
+            const after = Math.max(0, Math.min(100, before + deltaStored));
+            if (after === before) continue;
+
+            const { error: updErr } = await supabase
+                .from('faction_sector_popularity')
+                .update({ popularity: after, updated_at: new Date().toISOString() })
+                .eq('id', row.id);
+            if (updErr) {
+                console.warn(`[applyOptionRapportToYesVoters] popularity update failed (${factionId}/${t.sector_key}):`, updErr.message);
+            }
+        }
+    }
+}
+
 // ==================== BILL RESOLUTION ENGINE ====================
 
 /**
@@ -3382,6 +3521,13 @@ export async function enactBill(supabase, bill, currentTick) {
             if (art.selected_option) {
                 await chargePolicyUpfrontCost(supabase, bill.nation_id, art.selected_option);
             }
+
+            // One-shot rapport apply for target-based options. Every YES
+            // voter on this bill (sponsor + bill_support 'accept'/'yes')
+            // takes the option's sector_rapport_targets against their
+            // faction_sector_popularity. Internal no-op for non-target-
+            // based options.
+            await applyOptionRapportToYesVoters(supabase, bill, art);
 
             // MLA enact hook: cancel pending defense-minister confirmations
             // so they don't collide with the forced per-tick sync.
