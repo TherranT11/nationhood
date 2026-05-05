@@ -2250,7 +2250,7 @@ async function loadBudgetData() {
     try {
         const { data: lawsData, error: lawsErr } = await _supabase
             .from('active_laws')
-            .select('id, policies(policy_name, law_category), selected_option:policy_options!selected_option_id(option_name, ongoing_base_cost)')
+            .select('id, policies(policy_name, law_category, ongoing_base_cost, ongoing_cost_per_tick), selected_option:policy_options!selected_option_id(option_name, ongoing_base_cost)')
             .eq('nation_id', nation.id);
         if (lawsErr) {
             console.warn('[Budget] active_laws fetch failed:', lawsErr.message);
@@ -2313,12 +2313,28 @@ const _GB_DESCKEY_TO_LAW_CATEGORY_REGEX = {
     subsidiesIndustry: /industrial/i,
 };
 
-// Annualize an active law's per-tick ongoing cost. Treats
-// selected_option.ongoing_base_cost as already in abstract scale
-// (the same scale every other Costs panel row renders in).
+// Annualize an active law's per-tick ongoing cost. The canonical
+// fallback chain (mirrors js/game/budget.js:_scalePolicyCost call
+// site + policyadmin.html:495):
+//   policy_options.ongoing_base_cost   (multi-option policies)
+//   policies.ongoing_base_cost          (single-option / structural)
+//   policies.ongoing_cost_per_tick      (legacy column name)
+// Older structural policies (e.g. Industrial Policy laws authored
+// before the multi-option migration) store the cost on the policies
+// row directly — without this fallback, the option-only read returns
+// 0 and the panel shows $0 even though the law has a real cost.
+// Treats the value as already in abstract scale, same as every
+// other Costs panel row.
 function _gbAnnualLawCost(law) {
     const opt = law?.selected_option;
-    return (Number(opt?.ongoing_base_cost) || 0) * 12;
+    const pol = law?.policies;
+    const perTick = (
+        opt?.ongoing_base_cost      ??
+        pol?.ongoing_base_cost      ??
+        pol?.ongoing_cost_per_tick  ??
+        0
+    );
+    return (Number(perTick) || 0) * 12;
 }
 
 // Filter the active-laws array to those whose policy.law_category
