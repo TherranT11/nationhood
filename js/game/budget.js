@@ -126,15 +126,30 @@ export async function processBudgetSurplusPaydown(supabase, nation) {
     const royalHoldingsAnnual = isAbsoluteMonarchy(nation) ? 36 : 0;
     let activeLawAnnual = 0;
     try {
+        // Canonical fallback chain for ongoing law cost (mirrors the
+        // budget panel's _gbAnnualLawCost in government.html and the
+        // _scalePolicyCost call site at line 272):
+        //   policy_options.ongoing_base_cost  (multi-option policies)
+        //   policies.ongoing_base_cost         (single-option / structural)
+        //   policies.ongoing_cost_per_tick     (legacy column name)
+        // Reading only the first leg meant older structural policies
+        // (e.g. Industrial Policy laws stored on the policies row)
+        // were treated as $0 and the player got an under-billed
+        // surplus paydown.
         const { data: laws, error: lawsErr } = await supabase
             .from('active_laws')
-            .select('selected_option:policy_options!selected_option_id(ongoing_base_cost)')
+            .select('policies(ongoing_base_cost, ongoing_cost_per_tick), selected_option:policy_options!selected_option_id(ongoing_base_cost)')
             .eq('nation_id', nation.id);
         if (lawsErr) {
             console.warn(`[BudgetSurplusPaydown] active_laws fetch failed for ${nation.name}:`, lawsErr.message);
         } else {
             for (const law of (laws || [])) {
-                const perTick = Number(law?.selected_option?.ongoing_base_cost) || 0;
+                const perTick = Number(
+                    law?.selected_option?.ongoing_base_cost ??
+                    law?.policies?.ongoing_base_cost ??
+                    law?.policies?.ongoing_cost_per_tick ??
+                    0
+                ) || 0;
                 if (perTick > 0) activeLawAnnual += perTick * 12;
             }
         }
