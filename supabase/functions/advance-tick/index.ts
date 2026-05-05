@@ -12,7 +12,7 @@
  * Regenerate with: node scripts/sync-edge-function.js
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 let rpcPreflightCheckPromise = null;
 
