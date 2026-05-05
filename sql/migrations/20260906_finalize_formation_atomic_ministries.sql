@@ -296,6 +296,20 @@ BEGIN
 
     v_restored_balance := COALESCE((v_saved_balances->>'prime_minister')::NUMERIC, 0);
 
+    -- Deactivate any prior active HOG row before inserting the new
+    -- one. The RPC body used to do an INSERT ... ON CONFLICT
+    -- (nation_id) DO UPDATE here, but head_of_government has no
+    -- unique constraint on nation_id (the table is designed to hold
+    -- one active row per nation alongside historical inactive rows
+    -- — the same pattern dissolveCoalition uses). The ON CONFLICT
+    -- clause crashed the function the first time it reached this
+    -- step in production with 42P10. Mirror the
+    -- closeAdministration / dissolveCoalition pattern: set
+    -- active=false on the prior row then INSERT cleanly.
+    UPDATE head_of_government
+    SET active = false
+    WHERE nation_id = v_nation.id AND active = true;
+
     INSERT INTO head_of_government (
       nation_id, faction_id, first_name, last_name, age,
       appointed_tick, active
@@ -306,15 +320,7 @@ BEGIN
       v_pm_faction.leader_age,
       v_shard.current_tick,
       true
-    )
-    ON CONFLICT (nation_id)
-    DO UPDATE SET
-      faction_id     = EXCLUDED.faction_id,
-      first_name     = EXCLUDED.first_name,
-      last_name      = EXCLUDED.last_name,
-      age            = EXCLUDED.age,
-      appointed_tick = EXCLUDED.appointed_tick,
-      active         = true;
+    );
 
     -- Defensive UPDATE of admin identity fields — PARLIAMENTARY ONLY.
     IF NOT v_is_semi_pres THEN
