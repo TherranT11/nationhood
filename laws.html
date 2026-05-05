@@ -587,7 +587,7 @@ async function loadLawsData() {
         // is bumped to v2 here because Phase 3.1 widens the query shape to
         // include policy_options; an older cached blob without options would
         // fail the picker silently.
-        const cachedPolicies = qCache('policies_active_v2');
+        const cachedPolicies = qCache('policies_active_v3');
 
         // Phase 3.2: kick off the sector-name lookup in parallel; we don't
         // await it here (the picker will format from cached keys when
@@ -612,13 +612,13 @@ async function loadLawsData() {
             // first-listed option is canonical.
             cachedPolicies ? Promise.resolve({ data: cachedPolicies }) : _supabase
                 .from('policies')
-                .select('*, policy_options(id, option_name, option_description, option_order, is_active, sector_effects, stat_effects, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_scaling_stat, fiscal_category)')
+                .select('*, policy_options(id, option_name, option_description, option_order, is_active, sector_effects, stat_effects, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_scaling_stat, fiscal_category, spectrum_position, stat_targets, sector_rapport_targets, is_target_based)')
                 .eq('is_active', true),
             // Phase 3.4: each bill_articles row also embeds the chosen
             // policy_options row (via the selected_option_id FK) so the
             // article-card renderer can show "Switch to X" without a
             // second round-trip per bill.
-            _supabase.from('active_laws').select('*, policies(*), selected_option:policy_options!selected_option_id(option_name, option_description)').eq('nation_id', nid),
+            _supabase.from('active_laws').select('*, policies(*), selected_option:policy_options!selected_option_id(option_name, option_description, stat_targets, sector_rapport_targets, is_target_based, spectrum_position)').eq('nation_id', nid),
             _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*), factions(faction_name), selected_option:policy_options!selected_option_id(option_name, option_description)), bill_support(*)').eq('nation_id', nid).eq('status', 'committee'),
             _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(option_name, option_description)), bill_support(faction_id, stance, seat_count)').eq('nation_id', nid).in('status', ['floor', 'vetoed', 'referendum_pending', 'referendum_approved']),
             _supabase.from('bills').select('*, factions(faction_name), bill_articles(*, policies(*), selected_option:policy_options!selected_option_id(option_name, option_description))').eq('nation_id', nid).eq('status', 'frozen'),
@@ -633,7 +633,7 @@ async function loadLawsData() {
                 ? [...p.policy_options].sort((a, b) => (a.option_order || 0) - (b.option_order || 0))
                 : []
         }));
-        if (!cachedPolicies && allPolicies.length) qCacheSet('policies_active_v2', allPolicies, 10 * 60 * 1000);
+        if (!cachedPolicies && allPolicies.length) qCacheSet('policies_active_v3', allPolicies, 10 * 60 * 1000);
         activeLaws = lawsRes.data || [];
         committeeBills = committeeRes.data || [];
         floorBills = floorRes.data || [];
@@ -1372,21 +1372,37 @@ function renderActiveLaw(law) {
     const opt = law.selected_option || null;
     const optName = opt?.option_name;
     const optDesc = opt?.option_description;
-    const statEffects = (Array.isArray(opt?.stat_effects) && opt.stat_effects.length > 0)
-        ? opt.stat_effects
-        : (Array.isArray(p?.stat_effects) ? p.stat_effects : null);
 
+    // Target-based path: option declares stat targets + pull strengths
+    // instead of rate/duration deltas. Render as "Stat → 5.0 (strong)"
+    // pills so players see where each stat is being pulled. Engine
+    // (Phase 3 processTargetBasedPolicies) computes the actual
+    // equilibrium across every active option targeting the same stat.
     let effectsHTML = '';
-    if (statEffects && statEffects.length > 0) {
-        effectsHTML = statEffects.map(e => {
-            const dir = e.direction === 'up' ? '↑' : '↓';
-            const cls = e.direction === 'up' ? 'effect-up' : 'effect-down';
-            return `${formatStatName(e.stat_key)} <span class="${cls}">${dir}</span>`;
-        }).join(', ');
-    } else if (p.target_stat) {
-        const dir = p.stat_direction === 'UP' ? '↑' : '↓';
-        const cls = p.stat_direction === 'UP' ? 'effect-up' : 'effect-down';
-        effectsHTML = `${formatStatName(p.target_stat)} <span class="${cls}">${dir}</span>`;
+    if (opt?.is_target_based && Array.isArray(opt.stat_targets) && opt.stat_targets.length > 0) {
+        effectsHTML = opt.stat_targets.map(t => {
+            const target = Number(t.target);
+            const pull = Number(t.pull);
+            if (!Number.isFinite(target) || !Number.isFinite(pull)) return '';
+            const pullLabel = pull >= 0.9 ? 'primary' : pull >= 0.6 ? 'strong' : pull >= 0.3 ? 'moderate' : 'minor';
+            return `${formatStatName(t.stat_key)} → <span style="color:var(--blue,#5b9bd5);font-weight:600;">${target.toFixed(1)}</span> <span style="color:var(--text-dim);font-size:0.7rem;">(${pullLabel})</span>`;
+        }).filter(Boolean).join(', ');
+    } else {
+        const statEffects = (Array.isArray(opt?.stat_effects) && opt.stat_effects.length > 0)
+            ? opt.stat_effects
+            : (Array.isArray(p?.stat_effects) ? p.stat_effects : null);
+
+        if (statEffects && statEffects.length > 0) {
+            effectsHTML = statEffects.map(e => {
+                const dir = e.direction === 'up' ? '↑' : '↓';
+                const cls = e.direction === 'up' ? 'effect-up' : 'effect-down';
+                return `${formatStatName(e.stat_key)} <span class="${cls}">${dir}</span>`;
+            }).join(', ');
+        } else if (p.target_stat) {
+            const dir = p.stat_direction === 'UP' ? '↑' : '↓';
+            const cls = p.stat_direction === 'UP' ? 'effect-up' : 'effect-down';
+            effectsHTML = `${formatStatName(p.target_stat)} <span class="${cls}">${dir}</span>`;
+        }
     }
     const canRescind = currentSeats > 0 && !isCaretaker;
     // Entrenchment badge and rescind restrictions
@@ -1605,17 +1621,17 @@ function openDraftModal() {
 
 // Re-pull active_laws + policies (with options) so getCurrentOptionForPolicy
 // always reflects the live DB without needing a page reload. The cached
-// 'policies_active_v2' blob is busted here so the picker's option list is
+// 'policies_active_v3' blob is busted here so the picker's option list is
 // fresh too — useful after a policyadmin save or an SQL migration.
 async function _refreshActivePolicyState() {
     if (!currentNation?.id) return;
-    qCacheBust('policies_active_v2');
+    qCacheBust('policies_active_v3');
     const [policiesRes, lawsRes] = await Promise.all([
         _supabase.from('policies')
-            .select('*, policy_options(id, option_name, option_description, option_order, is_active, sector_effects, stat_effects, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_scaling_stat, fiscal_category)')
+            .select('*, policy_options(id, option_name, option_description, option_order, is_active, sector_effects, stat_effects, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_scaling_stat, fiscal_category, spectrum_position, stat_targets, sector_rapport_targets, is_target_based)')
             .eq('is_active', true),
         _supabase.from('active_laws')
-            .select('*, policies(*), selected_option:policy_options!selected_option_id(option_name, option_description)')
+            .select('*, policies(*), selected_option:policy_options!selected_option_id(option_name, option_description, stat_targets, sector_rapport_targets, is_target_based, spectrum_position)')
             .eq('nation_id', currentNation.id),
     ]);
     if (policiesRes.error) throw policiesRes.error;
@@ -1627,7 +1643,7 @@ async function _refreshActivePolicyState() {
             : []
     }));
     activeLaws = lawsRes.data || [];
-    if (allPolicies.length) qCacheSet('policies_active_v2', allPolicies, 10 * 60 * 1000);
+    if (allPolicies.length) qCacheSet('policies_active_v3', allPolicies, 10 * 60 * 1000);
 }
 
 function closeModal() { document.getElementById('draft-modal').classList.remove('active'); }
@@ -3067,7 +3083,44 @@ function onTargetOptionChange() {
 
 // Phase 3.2: HTML for a single option's details — name, description,
 // sectors affected (green ↑ / red ↓), stats affected (green ↑ / red ↓).
+//
+// Phase 4 (target-based): when option.is_target_based, swap the chip
+// renderers — stats become "Stat → 5.0 (strong)", sectors become rapport
+// chips (+5 Tech & Engineering / -3 Religious Conservatives). Same layout,
+// different semantics, so a player switching options sees a consistent
+// "what does this option do" card regardless of policy model.
 function renderOptionDetails(option) {
+    if (option && option.is_target_based) {
+        const targetChips = (Array.isArray(option.stat_targets) ? option.stat_targets : [])
+            .filter(t => t && t.stat_key && Number.isFinite(Number(t.target)) && Number.isFinite(Number(t.pull)))
+            .map(t => {
+                const target = Number(t.target);
+                const pull = Number(t.pull);
+                const pullLabel = pull >= 0.9 ? 'primary' : pull >= 0.6 ? 'strong' : pull >= 0.3 ? 'moderate' : 'minor';
+                return '<span class="opt-effect" style="background:rgba(91,155,213,0.12);color:#5b9bd5;">' +
+                    escapeHtml(formatStatName(t.stat_key)) + ' → ' + target.toFixed(1) +
+                    ' <span style="font-size:0.7rem;opacity:0.7;">(' + pullLabel + ')</span></span>';
+            }).join('');
+
+        const rapportChips = (Array.isArray(option.sector_rapport_targets) ? option.sector_rapport_targets : [])
+            .filter(r => r && r.sector_key && Number.isFinite(Number(r.rapport)) && Number(r.rapport) !== 0)
+            .map(r => {
+                const v = Number(r.rapport);
+                const cls = v > 0 ? 'effect-up' : 'effect-down';
+                const sign = v > 0 ? '+' : '';
+                return '<span class="opt-effect ' + cls + '">' + sign + v + ' ' + escapeHtml(formatSectorKey(r.sector_key)) + '</span>';
+            }).join('');
+
+        return '<div class="option-details-card">' +
+            '<div class="opt-name">' + escapeHtml(option.option_name || 'Untitled') + '</div>' +
+            (option.option_description ? '<div class="opt-desc">' + escapeHtml(option.option_description) + '</div>' : '') +
+            '<div class="opt-row-label">Stat Targets</div>' +
+            '<div>' + (targetChips || '<span style="color:var(--text-muted);font-size:0.8rem;">None</span>') + '</div>' +
+            '<div class="opt-row-label">Voter Bloc Rapport</div>' +
+            '<div>' + (rapportChips || '<span style="color:var(--text-muted);font-size:0.8rem;">None</span>') + '</div>' +
+        '</div>';
+    }
+
     const sectorChips = (Array.isArray(option.sector_effects) ? option.sector_effects : [])
         // Number.isFinite guards against NaN / null / strings that happen to
         // pass !== 0 — corrupted rows would otherwise pass the !== 0 check.
