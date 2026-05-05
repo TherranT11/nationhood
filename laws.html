@@ -467,7 +467,7 @@ function articleTargetEffectsHtml(art) {
             const target = Number(t.target);
             const pull = Number(t.pull);
             const pullLabel = pull >= 0.9 ? 'primary' : pull >= 0.6 ? 'strong' : pull >= 0.3 ? 'moderate' : 'minor';
-            return `${formatStatName(t.stat_key)} → <span style="color:var(--blue,#5b9bd5);font-weight:600;">${target.toFixed(1)}</span> <span style="color:var(--text-dim);font-size:0.7rem;">(${pullLabel})</span>`;
+            return `${formatStatName(t.stat_key)} → <span style="color:var(--blue,#5b9bd5);font-weight:600;">${Math.round(target)}</span> <span style="color:var(--text-dim);font-size:0.7rem;">(${pullLabel})</span>`;
         }).join(', ');
 
     const rapportChips = (Array.isArray(opt.sector_rapport_targets) ? opt.sector_rapport_targets : [])
@@ -1440,7 +1440,7 @@ function renderActiveLaw(law) {
             const pull = Number(t.pull);
             if (!Number.isFinite(target) || !Number.isFinite(pull)) return '';
             const pullLabel = pull >= 0.9 ? 'primary' : pull >= 0.6 ? 'strong' : pull >= 0.3 ? 'moderate' : 'minor';
-            return `${formatStatName(t.stat_key)} → <span style="color:var(--blue,#5b9bd5);font-weight:600;">${target.toFixed(1)}</span> <span style="color:var(--text-dim);font-size:0.7rem;">(${pullLabel})</span>`;
+            return `${formatStatName(t.stat_key)} → <span style="color:var(--blue,#5b9bd5);font-weight:600;">${Math.round(target)}</span> <span style="color:var(--text-dim);font-size:0.7rem;">(${pullLabel})</span>`;
         }).filter(Boolean).join(', ');
     } else {
         const statEffects = (Array.isArray(opt?.stat_effects) && opt.stat_effects.length > 0)
@@ -3153,7 +3153,7 @@ function renderOptionDetails(option) {
                 const pull = Number(t.pull);
                 const pullLabel = pull >= 0.9 ? 'primary' : pull >= 0.6 ? 'strong' : pull >= 0.3 ? 'moderate' : 'minor';
                 return '<span class="opt-effect" style="background:rgba(91,155,213,0.12);color:#5b9bd5;">' +
-                    escapeHtml(formatStatName(t.stat_key)) + ' → ' + target.toFixed(1) +
+                    escapeHtml(formatStatName(t.stat_key)) + ' → ' + Math.round(target) +
                     ' <span style="font-size:0.7rem;opacity:0.7;">(' + pullLabel + ')</span></span>';
             }).join('');
 

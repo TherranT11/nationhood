@@ -35,14 +35,17 @@ import { STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
 // policy_options.is_target_based = TRUE. For each per-stat target
 // across those options, compute the weighted equilibrium
 //
-//     equilibrium_display = Σ(target × pull) / Σ(pull)        (0–10 scale)
-//     equilibrium_engine  = equilibrium_display × 10           (0–100 scale)
+//     equilibrium = Σ(target × pull) / Σ(pull)         (0–100 scale)
 //
-// then converge the actual nation stat toward equilibrium_engine
-// at a global rate (10% of the remaining gap per tick). Pull is
-// the weight in the equilibrium math; the convergence rate is a
-// global constant for legibility — "primary driver" pull means
-// dominant influence on the equilibrium, not faster speed.
+// then converge the actual nation stat toward equilibrium at a
+// global rate (10% of the remaining gap per tick). Pull is the
+// weight in the equilibrium math; the convergence rate is a global
+// constant for legibility — "primary driver" pull means dominant
+// influence on the equilibrium, not faster speed.
+//
+// Target and the nation stat columns share the 0–100 scale. The
+// previous 0–10 displayed-target convention was retired because
+// authors think in stat values they actually see in-game.
 //
 // Skips stats not in NATION_STAT_COLUMN_SET, stats in
 // STAT_PROCESSOR_SKIP (debt), and raw-scale stats that don't
@@ -59,7 +62,6 @@ import { STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
 // re-author the policy as target-based with a target ≥ floor.
 // ════════════════════════════════════════════════════════════════
 
-export const TARGET_STAT_SCALE = 10;
 export const TARGET_CONVERGENCE_RATE = 0.10;
 
 // Stats whose column values are raw (population, debt, budget) don't map
@@ -109,17 +111,17 @@ export async function processTargetBasedPolicies(supabase, nation) {
     const statUpdates = {};
     for (const [statKey, agg] of Object.entries(perStat)) {
         if (agg.sumPull <= 0) continue;
-        const equilibriumEngine = Math.max(0, Math.min(100,
-            (agg.sumTargetWeighted / agg.sumPull) * TARGET_STAT_SCALE
+        const equilibrium = Math.max(0, Math.min(100,
+            agg.sumTargetWeighted / agg.sumPull
         ));
         const current = Number(nation[statKey]);
         if (!Number.isFinite(current)) continue;
-        const next = current + (equilibriumEngine - current) * TARGET_CONVERGENCE_RATE;
+        const next = current + (equilibrium - current) * TARGET_CONVERGENCE_RATE;
         const clamped = Math.max(0, Math.min(100, Math.round(next * 10) / 10));
         if (clamped === current) continue;
         statUpdates[statKey] = clamped;
         summary.stats.push({
-            stat: statKey, before: current, equilibrium: equilibriumEngine, after: clamped
+            stat: statKey, before: current, equilibrium, after: clamped
         });
     }
     if (Object.keys(statUpdates).length > 0) {
