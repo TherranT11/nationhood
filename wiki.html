@@ -42,6 +42,18 @@ import { initWikiPage, renderWikiSearchBar, fetchPage, fetchPageList, fetchExist
     const params = new URLSearchParams(window.location.search);
     const slug = params.get('slug') || 'home';
 
+    // Canonical URL hint: tells crawlers / link-preview services that
+    // the static wiki-SLUG.html file (generated at build time by
+    // scripts/generate-wiki-pages.js) is the authoritative public URL,
+    // not this dynamic-viewer query-string variant. Skip for the home
+    // landing page since there's no static analogue.
+    if (slug !== 'home') {
+        const canonical = document.createElement('link');
+        canonical.rel = 'canonical';
+        canonical.href = `wiki-${encodeURIComponent(slug)}.html`;
+        document.head.appendChild(canonical);
+    }
+
     // --- HOME PAGE: curated landing ---
     if (slug === 'home') {
         let allPages = [];

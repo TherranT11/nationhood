@@ -441,6 +441,24 @@ const TEMPLATE_TYPES = [
                 }
             }
             _dirty = false;
+
+            // Fire-and-forget rebuild of the static wiki pages
+            // (wiki-SLUG.html files served at the canonical public
+            // URL). The save itself doesn't wait on this — the
+            // dynamic viewer at wiki.html?slug=foo already shows the
+            // edit immediately, and the static URL refresh happens
+            // in the background via GitHub Actions (~2 minute lag).
+            // Errors are logged but don't block the redirect.
+            try {
+                _supabase.functions.invoke('trigger-wiki-rebuild', { body: {} })
+                    .then(({ error: rebuildErr }) => {
+                        if (rebuildErr) console.warn('[wiki-rebuild] trigger failed:', rebuildErr.message);
+                    })
+                    .catch(err => console.warn('[wiki-rebuild] trigger threw:', err?.message || err));
+            } catch (rebuildErr) {
+                console.warn('[wiki-rebuild] invoke threw synchronously:', rebuildErr?.message || rebuildErr);
+            }
+
             window.location.href = `wiki.html?slug=${encodeURIComponent(slug)}`;
         } catch (err) {
             saveBtn.textContent = 'Save Page';
