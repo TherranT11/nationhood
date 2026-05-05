@@ -1853,9 +1853,9 @@ async function savePolicy() {
                     option_order: i,
                     is_active: true,
                     upfront_cost: Number.isFinite(Number(o.upfront_cost)) ? Number(o.upfront_cost) : 0,
-                    upfront_scaling_stat: null,
+                    upfront_scaling_stat: o.upfront_scaling_stat || null,
                     ongoing_base_cost: Number.isFinite(Number(o.ongoing_base_cost)) ? Number(o.ongoing_base_cost) : 0,
-                    ongoing_scaling_stat: null,
+                    ongoing_scaling_stat: o.ongoing_scaling_stat || null,
                     fiscal_category: o.fiscal_category || null,
                     // Legacy fields stay empty for target-based options.
                     sector_effects: [],
