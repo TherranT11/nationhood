@@ -128,7 +128,7 @@ function attachListeners(root) {
 // — the parliamentary render path produced "Unknown PM, 14 seats minority"
 // nonsense by reading the wrong shape and joining a same-tick parliamentary
 // admin row.
-function renderPresidentialRow(elec, idx) {
+function renderPresidentialRow(elec) {
     const isExp = _expandedId === elec.id;
     const candidates = (elec.results?.presidential_candidates || [])
         .slice()
@@ -262,7 +262,7 @@ function render(root) {
 
     const electionRows = _elections.map((elec, idx) => {
         if (elec.election_type === 'presidential') {
-            return renderPresidentialRow(elec, idx);
+            return renderPresidentialRow(elec);
         }
         const isExp = _expandedId === elec.id;
         const votes = (elec.results?.votes || []).sort((a, b) => (b.seats || 0) - (a.seats || 0));
