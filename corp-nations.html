@@ -429,7 +429,7 @@ function renderNationList() {
             <!-- Row 3: Key stats mini bar -->
             <div style="display:flex;gap:0;background:var(--bg-3);border:1px solid var(--border-0);">
                 <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-0);text-align:center;">
-                    <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);">CONTROL</div>
+                    <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);">STATE APPARATUS</div>
                     <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${statColor(control)};margin-top:1px;">${control}</div>
                 </div>
                 <div style="flex:1;padding:3px 6px;border-right:1px solid var(--border-0);text-align:center;">
@@ -509,7 +509,7 @@ function renderNationDetail() {
     // PHASE 7 TODO: corporate_tax drops in Phase 9
     const bizStats = [
         { stat: 'Corporate Tax', value: s('corporate_tax'), display: s('corporate_tax') + '%', invert: true },
-        { stat: 'Control', value: s('control'), display: s('control'), invert: false },
+        { stat: 'State Apparatus', value: s('control'), display: s('control'), invert: false },
         { stat: 'Public Approval', value: s('public_approval'), display: s('public_approval'), invert: false },
         { stat: 'Unrest', value: s('unrest'), display: s('unrest'), invert: true },
         { stat: 'Infrastructure', value: s('infrastructure'), display: s('infrastructure'), invert: false },
