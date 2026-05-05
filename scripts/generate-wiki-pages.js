@@ -31,6 +31,13 @@
 import { createClient } from '@supabase/supabase-js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import {
+    escapeHtml,
+    renderWikiLinks,
+    renderInfobox,
+    renderTagDisplay,
+    bodyExcerpt,
+} from '../js/wiki-render.js';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL
     || process.env.SUPABASE_URL
@@ -44,84 +51,10 @@ const SITE_URL = 'https://nationhoodgame.com';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-function escapeHtml(s) {
-    return String(s ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
-// Mirrors js/wiki.js slugify so wikilinks resolve to the same slug
-// the in-app editor would generate.
-function slugify(s) {
-    return String(s || '')
-        .toLowerCase()
-        .trim()
-        .replace(/['"]/g, '')
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
-}
-
-// [[Page Name]] → <a href="wiki-page-name.html">. If the slug doesn't
-// exist in the wiki yet the link points at wiki-edit.html?new=1 — same
-// as the dynamic viewer, just routed through the static URL.
-function renderWikiLinks(html, existingSlugs) {
-    return String(html || '').replace(/\[\[([^\]]+)\]\]/g, (match, pageName) => {
-        const slug = slugify(pageName);
-        const exists = existingSlugs.has(slug);
-        const cls = exists ? 'wiki-link' : 'wiki-link-missing';
-        const href = exists
-            ? `wiki-${encodeURIComponent(slug)}.html`
-            : `wiki-edit.html?new=1&title=${encodeURIComponent(pageName.trim())}`;
-        return `<a href="${href}" class="${cls}">${escapeHtml(pageName.trim())}</a>`;
-    });
-}
-
-function renderInfobox(page) {
-    if (!page.template_type) return '';
-    const rows = Array.isArray(page.template_data) ? page.template_data : [];
-    const imageHtml = page.infobox_image
-        ? `<img class="wiki-infobox-image" src="${escapeHtml(page.infobox_image)}" alt="${escapeHtml(page.title)}">`
-        : '';
-    const typeLabel = String(page.template_type)
-        .split('_')
-        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(' ');
-    const rowsHtml = rows.map(r =>
-        `<tr><td>${escapeHtml(r.label || '')}</td><td>${escapeHtml(r.value || '')}</td></tr>`
-    ).join('');
-    return `
-        <aside class="wiki-infobox">
-            ${imageHtml}
-            <div class="wiki-infobox-title">${escapeHtml(page.title)}</div>
-            <div class="wiki-infobox-type">${escapeHtml(typeLabel)}</div>
-            ${rowsHtml ? `<table class="wiki-infobox-table">${rowsHtml}</table>` : ''}
-        </aside>
-    `;
-}
-
-function renderTagDisplay(tags) {
-    if (!tags || tags.length === 0) return '';
-    const chips = tags.map(t =>
-        `<a href="wiki-list.html?tags=${encodeURIComponent(t)}" class="wiki-tag-chip">#${escapeHtml(t)}</a>`
-    ).join('');
-    return `<div class="wiki-tag-display">${chips}</div>`;
-}
-
-// Strip HTML tags + collapse whitespace, then truncate. Used for the
-// <meta description> and og:description so link previews show real
-// page content instead of "Loading wiki...".
-function bodyExcerpt(html, max = 200) {
-    const text = String(html || '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\[\[([^\]]+)\]\]/g, '$1')
-        .replace(/\s+/g, ' ')
-        .trim();
-    if (text.length <= max) return text;
-    return text.slice(0, max - 1).trimEnd() + '…';
-}
+// Static-page URL builder for wikilinks. Generator emits links to the
+// pre-rendered static HTML; the browser's dynamic viewer would use
+// `wiki.html?slug=SLUG` instead and pass its own builder.
+const staticUrlForSlug = (slug) => `wiki-${encodeURIComponent(slug)}.html`;
 
 function renderPageHtml(page, existingSlugs, factionNames) {
     const title = page.title || page.slug;
@@ -129,7 +62,7 @@ function renderPageHtml(page, existingSlugs, factionNames) {
     const canonical = `${SITE_URL}/wiki-${encodeURIComponent(page.slug)}.html`;
     const ogImage = page.infobox_image || '';
 
-    const bodyHtml = renderWikiLinks(page.body || '<p><em>This page is empty.</em></p>', existingSlugs);
+    const bodyHtml = renderWikiLinks(page.body || '<p><em>This page is empty.</em></p>', existingSlugs, staticUrlForSlug);
     const infoboxHtml = renderInfobox(page);
     const tagsHtml = renderTagDisplay(page.tags);
 
