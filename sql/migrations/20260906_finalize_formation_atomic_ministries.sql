@@ -107,8 +107,14 @@ BEGIN
     RETURN jsonb_build_object('error', 'Formation already resolved: ' || v_formation.status);
   END IF;
 
-  -- ── Auth check (skip for service_role / tick processor) ─────────
-  IF v_user IS NOT NULL THEN
+  -- ── Auth check (skip for service_role / tick processor / admin) ─────
+  -- is_admin() returns true for users in the moderation table set up
+  -- by 20260424_phase5_moderation.sql. Admin override on the client
+  -- side means the operator is logged in as themselves but
+  -- impersonating a different faction; the JS faction-ownership
+  -- check would fail without this bypass, but the RPC needs to honor
+  -- the admin context the same way it honors service_role.
+  IF v_user IS NOT NULL AND NOT is_admin() THEN
     IF p_caller_faction_id IS NULL THEN
       RETURN jsonb_build_object('error', 'Missing caller faction id');
     END IF;
