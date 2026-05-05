@@ -125,6 +125,7 @@ export const NATION_STAT_COLUMNS = [
     'infrastructure', 'industry', 'farmland',
     'service_sector', 'unskilled_workers', 'skilled_workers', 'wages',
     'income_tax', 'corporate_tax', 'crime', 'corruption',
+    'inequality',
 ];
 
 export const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
