@@ -471,7 +471,7 @@ function articleTargetEffectsHtml(art) {
         }).join(', ');
 
     const rapportChips = (Array.isArray(opt.sector_rapport_targets) ? opt.sector_rapport_targets : [])
-        .filter(r => r && r.sector_key && Number.isFinite(Number(r.rapport)) && Number(r.rapport) !== 0)
+        .filter(r => r && r.sector_key && sectorBelongsToCurrentNation(r.sector_key) && Number.isFinite(Number(r.rapport)) && Number(r.rapport) !== 0)
         .map(r => {
             const v = Number(r.rapport);
             const cls = v > 0 ? 'effect-up' : 'effect-down';
@@ -480,7 +480,7 @@ function articleTargetEffectsHtml(art) {
         }).join(', ');
 
     const turnoutChips = (Array.isArray(opt.sector_turnout_targets) ? opt.sector_turnout_targets : [])
-        .filter(r => r && r.sector_key && Number.isFinite(Number(r.delta)) && Number(r.delta) !== 0)
+        .filter(r => r && r.sector_key && sectorBelongsToCurrentNation(r.sector_key) && Number.isFinite(Number(r.delta)) && Number(r.delta) !== 0)
         .map(r => {
             const v = Number(r.delta);
             const cls = v > 0 ? 'effect-up' : 'effect-down';
@@ -489,7 +489,7 @@ function articleTargetEffectsHtml(art) {
         }).join(', ');
 
     const weightChips = (Array.isArray(opt.sector_weight_targets) ? opt.sector_weight_targets : [])
-        .filter(r => r && r.sector_key && Number.isFinite(Number(r.delta)) && Number(r.delta) !== 0)
+        .filter(r => r && r.sector_key && sectorBelongsToCurrentNation(r.sector_key) && Number.isFinite(Number(r.delta)) && Number(r.delta) !== 0)
         .map(r => {
             const v = Number(r.delta);
             const cls = v > 0 ? 'effect-up' : 'effect-down';
@@ -510,6 +510,17 @@ function articleTargetEffectsHtml(art) {
 // during loadLawsData. Falls back to a title-cased version of the key when
 // the sectors table doesn't have a row for the key (e.g. orphaned data).
 const sectorNames = new Map();
+
+// True if the given sector_key exists in the viewing nation's sectors
+// table — i.e. either a default sector (every nation has those) or a
+// custom sector owned by THIS nation. False for custom sectors that
+// belong to another nation; render code uses this to hide chips a
+// player can't possibly be affected by (e.g. Hajjara seeing
+// AVELIAN_MARKET_SYNDICATES).
+function sectorBelongsToCurrentNation(sectorKey) {
+    if (!sectorKey) return false;
+    return sectorNames.has(sectorKey);
+}
 function formatSectorKey(key) {
     if (!key) return '';
     const fromTable = sectorNames.get(key);
@@ -3158,7 +3169,7 @@ function renderOptionDetails(option) {
             }).join('');
 
         const rapportChips = (Array.isArray(option.sector_rapport_targets) ? option.sector_rapport_targets : [])
-            .filter(r => r && r.sector_key && Number.isFinite(Number(r.rapport)) && Number(r.rapport) !== 0)
+            .filter(r => r && r.sector_key && sectorBelongsToCurrentNation(r.sector_key) && Number.isFinite(Number(r.rapport)) && Number(r.rapport) !== 0)
             .map(r => {
                 const v = Number(r.rapport);
                 const cls = v > 0 ? 'effect-up' : 'effect-down';
@@ -3167,7 +3178,7 @@ function renderOptionDetails(option) {
             }).join('');
 
         const turnoutChips = (Array.isArray(option.sector_turnout_targets) ? option.sector_turnout_targets : [])
-            .filter(r => r && r.sector_key && Number.isFinite(Number(r.delta)) && Number(r.delta) !== 0)
+            .filter(r => r && r.sector_key && sectorBelongsToCurrentNation(r.sector_key) && Number.isFinite(Number(r.delta)) && Number(r.delta) !== 0)
             .map(r => {
                 const v = Number(r.delta);
                 const cls = v > 0 ? 'effect-up' : 'effect-down';
@@ -3176,7 +3187,7 @@ function renderOptionDetails(option) {
             }).join('');
 
         const weightChips = (Array.isArray(option.sector_weight_targets) ? option.sector_weight_targets : [])
-            .filter(r => r && r.sector_key && Number.isFinite(Number(r.delta)) && Number(r.delta) !== 0)
+            .filter(r => r && r.sector_key && sectorBelongsToCurrentNation(r.sector_key) && Number.isFinite(Number(r.delta)) && Number(r.delta) !== 0)
             .map(r => {
                 const v = Number(r.delta);
                 const cls = v > 0 ? 'effect-up' : 'effect-down';
