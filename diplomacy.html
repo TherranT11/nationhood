@@ -3592,7 +3592,7 @@ function renderNationHighlight(nation, state, relations, agreements, ambassadors
     const controlColor = control >= 50 ? 'var(--green)' : control >= 30 ? 'var(--amber)' : 'var(--red)';
     const stats = [
         { label: 'Population', value: popLabel },
-        { label: 'Control', value: control.toFixed(1), color: controlColor },
+        { label: 'State Apparatus', value: control.toFixed(1), color: controlColor },
     ];
     html += stats.map(s => `<div class="world-highlight-stat-row">
         <span class="world-highlight-stat-label">${escapeHtml(s.label)}</span>
@@ -5762,7 +5762,7 @@ async function renderNationCardBody(nationId) {
                     <span class="info-value gold">${formatNumber(targetNation.population)}</span>
                 </div>
                 <div class="info-row">
-                    <span class="info-label">Control</span>
+                    <span class="info-label">State Apparatus</span>
                     <span class="info-value" style="color:${getStatColor(targetNation.control)}">${targetNation.control != null ? Number(targetNation.control).toFixed(1) : '—'}%</span>
                 </div>
                 <div class="info-row">

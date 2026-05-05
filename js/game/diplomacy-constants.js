@@ -178,7 +178,7 @@ export const AID_CONDITION_STATS = [
     { key: 'health', label: 'Healthcare', default_operator: 'gte', category: 'Social' },
     { key: 'standard_of_living', label: 'Standard of Living', default_operator: 'gte', category: 'Social' },
     // Security
-    { key: 'control', label: 'Control', default_operator: 'gte', category: 'Security' },
+    { key: 'control', label: 'State Apparatus', default_operator: 'gte', category: 'Security' },
     { key: 'unrest', label: 'Unrest', default_operator: 'lte', category: 'Security' },
     // International
     { key: 'global_image', label: 'Global Image', default_operator: 'gte', category: 'International' }

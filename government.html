@@ -1256,7 +1256,7 @@ function adm2RenderAdminCard() {
         const n = Number(v);
         return n >= 60 ? 'var(--green)' : n >= 35 ? 'var(--amber)' : 'var(--red)';
     };
-    let regimeStatsHtml = `<div style="display:flex;flex-direction:column;"><span style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Control</span><span style="color:${regimeStatColor(controlVal)};font-weight:700;">${fmtRegimeStat(controlVal)}</span></div>`
+    let regimeStatsHtml = `<div style="display:flex;flex-direction:column;"><span style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">State Apparatus</span><span style="color:${regimeStatColor(controlVal)};font-weight:700;">${fmtRegimeStat(controlVal)}</span></div>`
         + `<div style="display:flex;flex-direction:column;"><span style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Public Approval</span><span style="color:${regimeStatColor(authorityVal)};font-weight:700;">${fmtRegimeStat(authorityVal)}</span></div>`;
     if (crownAuthVal != null) {
         regimeStatsHtml += `<div style="display:flex;flex-direction:column;"><span style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Crown Auth.</span><span style="color:${regimeStatColor(crownAuthVal)};font-weight:700;">${fmtRegimeStat(crownAuthVal)}</span></div>`;

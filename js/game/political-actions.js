@@ -3037,6 +3037,11 @@ export async function processCrises(supabase, nation, currentTick) {
 
 export function _removedProcessRevolution() { return null; }
 export function formatStatName(stat) {
+    // 'control' renders as "State Apparatus" — a relabel without a
+    // schema rename. Every other stat falls through to the generic
+    // title-case path. If more relabels accumulate, promote this to
+    // a small lookup table.
+    if (stat === 'control') return 'State Apparatus';
     return stat.charAt(0).toUpperCase() + stat.slice(1).replace(/_/g, ' ');
 }
 export function formatMinorSector(key) {
