@@ -12358,8 +12358,8 @@ async function processPartialElection(supabase, nation, election, currentTick) {
         console.warn(`[processPartialElection] dynamic-weight recompute failed (non-fatal):`, wErr?.message || wErr);
     }
 
-    // Layer in target-based-option turnout deltas before TWP scaling.
-    await applyOptionTurnoutDeltas(supabase, nation.id, sectorList);
+    // Layer in target-based-option turnout + weight deltas before TWP scaling.
+    await applyActiveOptionSectorEffects(supabase, nation.id, sectorList);
 
     // 2. Tie-breakers + TWP per faction.
     const bonuses = applyTieBreakerBonuses(factionList, sectorList, popularity);
@@ -12762,9 +12762,10 @@ async function runSectorElection(supabase, nation) {
         console.warn(`[runSectorElection] dynamic-weight recompute failed (non-fatal):`, wErr?.message || wErr);
     }
 
-    // Layer in target-based-option turnout deltas. Election-scope only —
-    // sectors.base_turnout in the DB is untouched.
-    await applyOptionTurnoutDeltas(supabase, nationId, sectorList);
+    // Layer in target-based-option turnout + weight deltas.
+    // Election-scope only — sectors.base_turnout / sectors.weight in the
+    // DB are untouched.
+    await applyActiveOptionSectorEffects(supabase, nationId, sectorList);
 
     // 3. Tie-breaker bonuses (election-scope, not persisted).
     const bonuses = applyTieBreakerBonuses(factionList, sectorList, popularity);
@@ -12920,9 +12921,9 @@ async function runSectorPresidentialElectionRound(supabase, nationId) {
     const sectors  = sectorsRes.data || [];
     const tick     = shardRes.data?.current_tick ?? 0;
 
-    // Apply target-based options' sector turnout deltas before the
-    // weighted turnout is computed below. Mutates sectors in place.
-    await applyOptionTurnoutDeltas(supabase, nationId, sectors);
+    // Apply target-based options' sector turnout + weight deltas before
+    // the weighted turnout / TWP math below. Mutates sectors in place.
+    await applyActiveOptionSectorEffects(supabase, nationId, sectors);
 
     // Filter candidates to active parties (mirrors the inactivity-drain
     // window — once a party starts losing seats, it can't field new
@@ -13066,48 +13067,61 @@ function layerBonusesIntoPopularity(popularity, sectors, bonuses) {
 }
 
 /**
- * Aggregate sector_turnout_targets across all active target-based options
- * for a nation and apply the resulting deltas to the supplied sectors
- * array's base_turnout in place. Mutates and returns the same array so
- * callers can chain.
+ * Aggregate every active target-based option's per-sector deltas for a
+ * nation and apply them to the supplied sectors array in place. Two
+ * effect types share one fetch:
  *
- * Model: effective_turnout(sector) = base_turnout + Σ(deltas for sector_key)
- * computed at election time only — base_turnout in sectors stays untouched
- * in the DB. Deltas are clamped so no sector falls below 0 or above 2 to
- * keep the weighted-turnout math sane (1.0 = 100% participation; we leave
- * headroom for stacked options).
+ *   - sector_turnout_targets[].delta → sectors[].base_turnout (float ±0.30)
+ *     effective_turnout = base_turnout + Σ deltas, clamped [0, 2]
+ *   - sector_weight_targets[].delta  → sectors[].weight       (integer ±5)
+ *     effective_weight  = weight + Σ deltas, floored at 1
  *
- * Schema: policy_options.sector_turnout_targets is JSONB array of
- * { sector_key, delta } added in migration 20260829.
+ * Both deltas are election-scope only — the columns in `sectors` stay
+ * untouched in the DB. Multiple active options on the same sector sum.
+ *
+ * Schema: columns added in migrations 20260829 (turnout) + 20260830 (weight).
+ * Mutates and returns the same sectors array so callers can chain.
  */
-async function applyOptionTurnoutDeltas(supabase, nationId, sectors) {
+async function applyActiveOptionSectorEffects(supabase, nationId, sectors) {
     if (!Array.isArray(sectors) || sectors.length === 0) return sectors;
     const { data: laws, error } = await supabase
         .from('active_laws')
-        .select('selected_option:policy_options!selected_option_id(is_target_based, sector_turnout_targets)')
+        .select('selected_option:policy_options!selected_option_id(is_target_based, sector_turnout_targets, sector_weight_targets)')
         .eq('nation_id', nationId);
     if (error) {
-        console.warn(`[applyOptionTurnoutDeltas] active_laws fetch failed for ${nationId}:`, error.message);
+        console.warn(`[applyActiveOptionSectorEffects] active_laws fetch failed for ${nationId}:`, error.message);
         return sectors;
     }
-    const deltaBySector = new Map();
+    const turnoutBySector = new Map();
+    const weightBySector  = new Map();
     for (const law of (laws || [])) {
         const opt = law.selected_option;
         if (!opt?.is_target_based) continue;
-        const targets = Array.isArray(opt.sector_turnout_targets) ? opt.sector_turnout_targets : [];
-        for (const t of targets) {
+        for (const t of (Array.isArray(opt.sector_turnout_targets) ? opt.sector_turnout_targets : [])) {
             const key = t?.sector_key;
-            const delta = Number(t?.delta);
-            if (!key || !Number.isFinite(delta) || delta === 0) continue;
-            deltaBySector.set(key, (deltaBySector.get(key) || 0) + delta);
+            const d = Number(t?.delta);
+            if (!key || !Number.isFinite(d) || d === 0) continue;
+            turnoutBySector.set(key, (turnoutBySector.get(key) || 0) + d);
+        }
+        for (const t of (Array.isArray(opt.sector_weight_targets) ? opt.sector_weight_targets : [])) {
+            const key = t?.sector_key;
+            const d = Number(t?.delta);
+            if (!key || !Number.isFinite(d) || d === 0) continue;
+            weightBySector.set(key, (weightBySector.get(key) || 0) + d);
         }
     }
-    if (deltaBySector.size === 0) return sectors;
+    if (turnoutBySector.size === 0 && weightBySector.size === 0) return sectors;
     for (const sector of sectors) {
-        const delta = deltaBySector.get(sector.sector_key);
-        if (!delta) continue;
-        const base = Number(sector.base_turnout) || 0;
-        sector.base_turnout = Math.max(0, Math.min(2, base + delta));
+        const turnoutDelta = turnoutBySector.get(sector.sector_key);
+        if (turnoutDelta) {
+            const base = Number(sector.base_turnout) || 0;
+            sector.base_turnout = Math.max(0, Math.min(2, base + turnoutDelta));
+        }
+        const weightDelta = weightBySector.get(sector.sector_key);
+        if (weightDelta) {
+            const base = Number(sector.weight) || 0;
+            sector.weight = Math.max(1, Math.round(base + weightDelta));
+        }
     }
     return sectors;
 }
