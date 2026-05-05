@@ -11471,6 +11471,16 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
                 .eq('id', currentAdmin.id);
             if (updateErr) throw updateErr;
 
+            // ONE INVARIANT: admin closed ⇒ cabinet vacated. Atomic with
+            // the admin row update from the caller's perspective; if
+            // either step fails the outer catch surfaces it. This used to
+            // be a separate orphanCabinet() call at five different sites,
+            // two of which forgot to call it (vacancy timeout + gov
+            // collapse) and leaked stale ministers into the next
+            // formation cycle. Inlining here means every close-admin path
+            // gets cabinet-vacate for free.
+            await orphanCabinet(supabase, nationId);
+
             console.log(`Administration closed: "${currentAdmin.admin_name}" — reason: ${endReason}`);
         }
     } catch (err) {
@@ -11945,9 +11955,11 @@ async function rolloverAdministration(supabase, nationId, nation, endReason, coa
  * shapes — this helper covers only the identical "orphan everyone"
  * pattern.
  *
- * Errors are logged but non-blocking, matching the surrounding code
- * style. A failed clear leaves stale ministers in place for one tick
- * cycle; the next confirmation flow overwrites them anyway.
+ * Errors throw — a failed clear used to be silently warned and
+ * leaked stale ministers across formation cycles (Sangreza, Calveth,
+ * Sierramar all hit this). Throwing surfaces the failure to the
+ * caller (closeAdministration) whose outer catch already handles
+ * partial-state rollback semantics.
  */
 async function orphanCabinet(supabase, nationId) {
     const { error } = await supabase.from('ministries')
@@ -11959,7 +11971,7 @@ async function orphanCabinet(supabase, nationId) {
         })
         .eq('nation_id', nationId)
         .eq('is_active', true);
-    if (error) console.warn('orphanCabinet: ministries clear failed:', error.message);
+    if (error) throw new Error(`orphanCabinet: ministries clear failed for nation ${nationId}: ${error.message}`);
 }
 
 async function dissolveCoalition(supabase, nationId, excludeFormationId) {
@@ -11984,12 +11996,13 @@ async function dissolveCoalition(supabase, nationId, excludeFormationId) {
         .eq('active', true);
     if (pmErr) console.warn('dissolveCoalition: PM deactivation failed:', pmErr);
 
-    // NOTE: ministries are NOT vacated here. Cabinet members persist as a
-    // caretaker government through the dissolution / snap-election window.
-    // Ministries are cleared exactly once per cycle — inside the parliamentary
-    // branch of election resolution (processScheduledElections /
-    // processManualElection). See design rule: ministers are only auto-
-    // removed after a government election.
+    // dissolveCoalition does NOT close the admin row — it dissolves the
+    // formation and deactivates the PM, but the admin stays open as
+    // caretaker until the next election. Cabinet ministers persist
+    // through this caretaker window. They get vacated atomically when
+    // closeAdministration finally runs (see orphanCabinet inlined at
+    // the end of closeAdministration). One invariant, one place: admin
+    // closed ⇔ cabinet vacant.
 }
 
 
@@ -12952,7 +12965,8 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
                 .eq('nation_id', nation.id)
                 .in('status', ['formed', 'active', 'caretaker']);
 
-            await orphanCabinet(supabase, nation.id);
+            // closeAdministration above already vacated the cabinet —
+            // explicit orphanCabinet here would be redundant.
         }
 
         // HoG deactivation runs UNCONDITIONALLY — even if no government_formations
@@ -13906,8 +13920,8 @@ async function processElections(supabase, nation, currentTick) {
                     .eq('nation_id', nation.id)
                     .in('status', ['formed', 'active', 'caretaker']);
 
-                // Vacate all ministries
-                await orphanCabinet(supabase, nation.id);
+                // closeAdministration above already vacated the cabinet —
+                // explicit orphanCabinet here would be redundant.
             }
 
             // HoG deactivation runs UNCONDITIONALLY — see matching comment in
