@@ -30,7 +30,7 @@ SELECT
     id, status, formed_at,
     ministry_assignments->>'prime_minister' AS pm_party_id
 FROM public.government_formations
-WHERE nation_id = (SELECT id FROM public.nations WHERE name = :test_nation)
+WHERE nation_id = (SELECT id FROM public.nations WHERE name = 'Sangreza')
   AND status = 'formed'
 ORDER BY formed_at DESC NULLS LAST
 LIMIT 1;
@@ -40,7 +40,7 @@ LIMIT 1;
 SELECT
     id, admin_name, pm_party_id, started_at_tick, ended_at_tick
 FROM public.administrations
-WHERE nation_id = (SELECT id FROM public.nations WHERE name = :test_nation)
+WHERE nation_id = (SELECT id FROM public.nations WHERE name = 'Sangreza')
   AND ended_at_tick IS NULL;
 -- Expect: 1 row, ended_at_tick IS NULL.
 
@@ -54,7 +54,7 @@ FROM public.head_of_government hog
 JOIN public.government_formations f
   ON f.nation_id = hog.nation_id
  AND f.status = 'formed'
-WHERE hog.nation_id = (SELECT id FROM public.nations WHERE name = :test_nation)
+WHERE hog.nation_id = (SELECT id FROM public.nations WHERE name = 'Sangreza')
   AND hog.active = true;
 -- Expect: 1 row, active=true, pm_matches_formation=true.
 
@@ -64,7 +64,7 @@ WHERE hog.nation_id = (SELECT id FROM public.nations WHERE name = :test_nation)
 WITH f AS (
     SELECT ministry_assignments, minister_names
     FROM public.government_formations
-    WHERE nation_id = (SELECT id FROM public.nations WHERE name = :test_nation)
+    WHERE nation_id = (SELECT id FROM public.nations WHERE name = 'Sangreza')
       AND status = 'formed'
     ORDER BY formed_at DESC LIMIT 1
 )
@@ -86,7 +86,7 @@ FROM (
       AND kv.value <> ''
 ) expected
 LEFT JOIN public.ministries m
-  ON m.nation_id = (SELECT id FROM public.nations WHERE name = :test_nation)
+  ON m.nation_id = (SELECT id FROM public.nations WHERE name = 'Sangreza')
  AND m.ministry_key = expected.key
  AND m.is_active = true
 ORDER BY expected.key;
@@ -97,7 +97,7 @@ ORDER BY expected.key;
 -- ── 5. Failed-formation counter reset ───────────────────────────────────────
 SELECT name, failed_formation_attempts
 FROM public.nations
-WHERE name = :test_nation;
+WHERE name = 'Sangreza';
 -- Expect: failed_formation_attempts = 0.
 
 -- ── 6. PM_APPOINTED event_log row at current tick ──────────────────────────
@@ -109,7 +109,7 @@ SELECT
     e.created_at
 FROM public.event_log e
 JOIN public.shard s ON s.name = 'Alpha Shard'
-WHERE e.nation_id = (SELECT id FROM public.nations WHERE name = :test_nation)
+WHERE e.nation_id = (SELECT id FROM public.nations WHERE name = 'Sangreza')
   AND e.event_name = 'PM_APPOINTED'
   AND e.fired_at_tick >= s.current_tick - 1
 ORDER BY e.created_at DESC
@@ -128,7 +128,7 @@ SELECT
     'ministries with names'   AS bucket,
     COUNT(*) FILTER (WHERE m.minister_first_name IS NOT NULL AND m.ministry_key <> 'prime_minister') AS count
 FROM public.ministries m
-WHERE m.nation_id = (SELECT id FROM public.nations WHERE name = :test_nation)
+WHERE m.nation_id = (SELECT id FROM public.nations WHERE name = 'Sangreza')
   AND m.is_active = true
 UNION ALL
 SELECT
@@ -137,7 +137,7 @@ SELECT
      FROM jsonb_each_text(
          (SELECT ministry_assignments
           FROM public.government_formations
-          WHERE nation_id = (SELECT id FROM public.nations WHERE name = :test_nation)
+          WHERE nation_id = (SELECT id FROM public.nations WHERE name = 'Sangreza')
             AND status = 'formed'
           ORDER BY formed_at DESC LIMIT 1)
      ) kv
