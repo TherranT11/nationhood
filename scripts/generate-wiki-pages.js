@@ -47,7 +47,14 @@ const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY
     || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBidW1qYWx4Y2xtZWd6Y2tocXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk3ODk0NTUsImV4cCI6MjA4NTM2NTQ1NX0.ykjUqdJbwF3yliond1Vz2lcNQZCWA-5SnviruXm4ypI';
 
 const OUT_DIR = path.resolve(process.cwd(), 'dist');
+const ROOT_DIR = path.resolve(process.cwd());
 const SITE_URL = 'https://nationhoodgame.com';
+
+// CSS files referenced by the static wiki page <link rel="stylesheet">
+// tags. Vite (publicDir: false in vite.config.js) doesn't copy /css/
+// wholesale to /dist/, so the static wiki HTML — written AFTER vite
+// build runs — would 404 on these without an explicit copy step here.
+const WIKI_CSS_FILES = ['dashboard.css', 'wiki.css'];
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -158,7 +165,25 @@ async function main() {
 
     await fs.mkdir(OUT_DIR, { recursive: true });
 
+    // Copy the unhashed CSS files the static wiki HTML expects.
+    // Vite produces hashed copies at /assets/*.css for HTML files it
+    // processes, but the wiki-SLUG.html files written below link to
+    // /css/dashboard.css and /css/wiki.css — paths that don't exist in
+    // dist/ unless we put them there explicitly.
+    await fs.mkdir(path.join(OUT_DIR, 'css'), { recursive: true });
+    for (const cssName of WIKI_CSS_FILES) {
+        const src = path.join(ROOT_DIR, 'css', cssName);
+        const dst = path.join(OUT_DIR, 'css', cssName);
+        try {
+            await fs.copyFile(src, dst);
+        } catch (err) {
+            console.warn(`[wiki-gen] Failed to copy css/${cssName} → dist/css/${cssName}:`, err.message);
+        }
+    }
+
     let written = 0;
+    const sitemapEntries = [];
+    const llmsEntries = [];
     for (const page of pages) {
         if (!page.slug) {
             console.warn(`[wiki-gen] Skipping page id=${page.id} — no slug.`);
@@ -168,8 +193,57 @@ async function main() {
         const fileName = `wiki-${page.slug}.html`;
         await fs.writeFile(path.join(OUT_DIR, fileName), html, 'utf8');
         written++;
+
+        // Capture per-page metadata for sitemap.xml and llms.txt.
+        // Both files emit one entry per generated wiki page.
+        const url = `${SITE_URL}/${fileName}`;
+        const lastmod = page.updated_at
+            ? new Date(page.updated_at).toISOString().slice(0, 10)
+            : null;
+        sitemapEntries.push({ url, lastmod });
+
+        const title = page.title || page.slug;
+        const summary = bodyExcerpt(page.body, 160) || `Wiki page on ${title}.`;
+        llmsEntries.push({ title, url, summary });
     }
     console.log(`[wiki-gen] Wrote ${written} static wiki pages to ${OUT_DIR}/`);
+
+    // sitemap.xml — standard sitemaps.org schema. Crawlers (Google,
+    // Bing, plus most AI fetch tools) read this to discover URLs.
+    const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${sitemapEntries.map(e => `  <url>
+    <loc>${escapeHtml(e.url)}</loc>${e.lastmod ? `
+    <lastmod>${e.lastmod}</lastmod>` : ''}
+  </url>`).join('\n')}
+</urlset>
+`;
+    await fs.writeFile(path.join(OUT_DIR, 'sitemap.xml'), sitemapXml, 'utf8');
+    console.log(`[wiki-gen] Wrote sitemap.xml with ${sitemapEntries.length} URLs.`);
+
+    // robots.txt — explicit allow + sitemap pointer. Lets crawlers know
+    // they're welcome and where to find the URL index.
+    const robotsTxt = `User-agent: *
+Allow: /
+
+Sitemap: ${SITE_URL}/sitemap.xml
+`;
+    await fs.writeFile(path.join(OUT_DIR, 'robots.txt'), robotsTxt, 'utf8');
+    console.log(`[wiki-gen] Wrote robots.txt.`);
+
+    // llms.txt — emerging AI-tool convention (https://llmstxt.org). One
+    // line per page with a summary so AI fetch tools can index without
+    // having to crawl every HTML file.
+    const llmsTxt = `# Nationhood Wiki
+
+> Player-driven encyclopedia for the Nationhood political simulation game. Pages cover nations, factions, lore, religions, mechanics, and historical events.
+
+## Pages
+
+${llmsEntries.map(e => `- [${e.title}](${e.url}): ${e.summary}`).join('\n')}
+`;
+    await fs.writeFile(path.join(OUT_DIR, 'llms.txt'), llmsTxt, 'utf8');
+    console.log(`[wiki-gen] Wrote llms.txt with ${llmsEntries.length} entries.`);
 }
 
 main().catch(err => {
