@@ -172,14 +172,21 @@ const RAW_SCALING_INFO = {
     population: { divisor: 1_000_000, unit: 'per million people', example: '10M', exampleVal: 10_000_000 }
 };
 
+// Source-of-truth canonical stats live in js/game/stats.js
+// (NATION_STAT_COLUMNS). When that list changes, mirror the keys here
+// and slot each into the right group. Two legacy aliases were swept
+// out alongside the canonical-stats Phase 2 rework: `workforce` split
+// into `unskilled_workers` + `skilled_workers`, and `power` was
+// renamed to `global_image`. `wages` is the Phase 2 successor to
+// `minimum_wage` and lives with the labor stats.
 const STAT_GROUPS = [
     { label: '💰 Fiscal', stats: ['budget','debt','gdp_growth','income_tax','corporate_tax'] },
     { label: '🏛️ Governance', stats: ['control','public_approval','crown_authority','corruption'] },
     { label: '🔥 Stability', stats: ['unrest','crime'] },
     { label: '👥 Population', stats: ['population','immigration'] },
     { label: '🏥 Wellbeing', stats: ['health','education','standard_of_living','cost_of_living'] },
-    { label: '🏗️ Productive base', stats: ['infrastructure','industry','farmland','service_sector','workforce','energy'] },
-    { label: '🌐 International', stats: ['power'] }
+    { label: '🏗️ Productive base', stats: ['infrastructure','industry','farmland','service_sector','unskilled_workers','skilled_workers','wages','energy'] },
+    { label: '🌐 International', stats: ['global_image'] }
 ];
 
 // Flatten for dropdown building
