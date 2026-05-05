@@ -80,6 +80,7 @@ import { buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
 import { RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './js/game/diplomacy-constants.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
+import { formGovernment as formGovernmentShared } from './js/coalition-formation.js';
 (function () {
     'use strict';
 
@@ -6351,26 +6352,6 @@ async function retractProposal(formationId) {
 // ===== Form Government =====
 
 async function formGovernment() {
-    // DIAGNOSTIC: Log every call with stack trace to find ghost formations
-    const diagStack = new Error().stack;
-    const diagTime = new Date().toISOString();
-    console.warn(`[DIAG] formGovernment() CALLED at ${diagTime}`, {
-        faction: currentFaction?.id,
-        factionName: currentFaction?.faction_name,
-        nation: currentNation?.name,
-        activeFormationId,
-        stack: diagStack
-    });
-    try {
-        await _supabase.from('event_log').insert({
-            nation_id: currentNation?.id,
-            event_name: 'DIAG_FORM_GOVERNMENT_CALLED',
-            trigger_key: 'diag_form_government',
-            description_used: `formGovernment() called by ${currentFaction?.faction_name} (${currentFaction?.id}) at ${diagTime}. Formation: ${activeFormationId}. Stack: ${diagStack?.split('\n').slice(0, 5).join(' | ')}`,
-            category: 'POLITICAL'
-        });
-    } catch (diagErr) { console.warn('[DIAG] event_log insert failed:', diagErr); }
-
     if (_formingInProgress) return;
     if (!activeFormationId) return;
 
@@ -6389,15 +6370,8 @@ async function formGovernment() {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const authoritativeTick = shard?.current_tick || currentTick || 0;
 
-        // First call the existing form_government RPC to validate and set status
-        const { data: formResult, error: formError } = await _supabase.rpc('form_government', {
-            p_formation_id: activeFormationId, p_caller_faction_id: currentFaction.id
-        });
-        if (formError) throw formError;
-        if (!formResult.success) { alert(formResult.message); return; }
-
-        // If HoS method is 'appointed', clear the HoS so formation auto-generates a new one
-        // If 'hereditary', skip — monarch is permanent
+        // If HoS method is 'appointed', clear the HoS so formation auto-generates a new one.
+        // 'hereditary' skipped — monarch is permanent.
         const { data: preNation } = await _supabase.from('nations').select('hos_election_method').eq('id', currentNation.id).single();
         if (preNation?.hos_election_method === 'appointed') {
             await _supabase.from('nations').update({
@@ -6407,31 +6381,27 @@ async function formGovernment() {
             }).eq('id', currentNation.id);
         }
 
-        // Compute ministry baselines from current nation state
+        // Read the assignments out of the formation row (the in-page
+        // coalition flow saves them there) so we can pass them to the
+        // shared wrapper. The wrapper handles minister_names generation,
+        // baselines, and the atomic RPC call.
         const { data: freshNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
-        const ministryBaselines = {};
-        FORMATION_MINISTRIES.forEach(m => {
-            if (!m.inactive) {
-                ministryBaselines[m.key] = buildMinistryBaselines(m.key, freshNation || currentNation);
-            }
-        });
+        const { data: formationRow } = await _supabase
+            .from('government_formations')
+            .select('ministry_assignments, minister_names')
+            .eq('id', activeFormationId)
+            .maybeSingle();
+        const ministryAssignments = formationRow?.ministry_assignments || {};
+        const ministerNames       = formationRow?.minister_names || null;
 
-        // Try the new atomic RPC
-        const { data: finalizeResult, error: finalizeError } = await _supabase.rpc('finalize_government_formation', {
-            p_formation_id: activeFormationId,
-            p_caller_faction_id: currentFaction.id,
-            p_ministry_baselines: ministryBaselines
+        const finalizeResult = await formGovernmentShared({
+            supabase:            _supabase,
+            formationId:         activeFormationId,
+            callerFactionId:     currentFaction.id,
+            nation:              freshNation || currentNation,
+            ministryAssignments,
+            ministerNames,
         });
-
-        if (finalizeError) {
-            // Fall back to sequential client-side operations on ANY RPC error
-            // (covers both "RPC not deployed" and runtime SQL errors like uuid[] cast failures)
-            console.warn('finalize_government_formation RPC failed; falling back to sequential operations:', finalizeError.message);
-            await formGovernmentFallback(ministryBaselines, authoritativeTick);
-        } else if (finalizeResult && !finalizeResult.success) {
-            alert(finalizeResult.message);
-            return;
-        }
 
         const { data: formedFormation } = await _supabase.from('government_formations')
             .select('party_ids, ministry_assignments')
@@ -6447,7 +6417,9 @@ async function formGovernment() {
             await _supabase.from('factions').update({ last_seen_tick: authoritativeTick }).in('id', relevantFactionIds);
         }
 
-        alert(finalizeResult?.message || formResult.message);
+        alert(finalizeResult?.pm_appointed
+            ? `Government formed. ${finalizeResult.pm_appointed} (${finalizeResult.pm_party}) appointed PM.`
+            : 'Government formed.');
         if (formationRealtimeChannel) { _supabase.removeChannel(formationRealtimeChannel); formationRealtimeChannel = null; }
         sessionStorage.removeItem('nationhood_state');
         location.reload();
@@ -6455,155 +6427,14 @@ async function formGovernment() {
     finally { _formingInProgress = false; }
 }
 
-// Fallback for when finalize_government_formation RPC is not deployed
-async function formGovernmentFallback(ministryBaselines, authoritativeTick) {
-    await dissolveCoalition(_supabase, currentNation.id, activeFormationId);
-
-    await _supabase.from('nations')
-        .update({ failed_formation_attempts: 0 })
-        .eq('id', currentNation.id);
-
-    // Cancel any pending snap elections — government formed, no longer needed
-    const { data: shardForSnap } = await _supabase.from('shard')
-        .select('current_tick').eq('name', 'Alpha Shard').single();
-    if (shardForSnap) {
-        await _supabase.from('elections')
-            .update({ status: 'cancelled' })
-            .eq('nation_id', currentNation.id)
-            .eq('status', 'scheduled')
-            .is('election_type', null)
-            .lte('election_tick', shardForSnap.current_tick + 5);
-        // Also cancel parliamentary-typed snap elections
-        await _supabase.from('elections')
-            .update({ status: 'cancelled' })
-            .eq('nation_id', currentNation.id)
-            .eq('status', 'scheduled')
-            .eq('election_type', 'parliamentary')
-            .lte('election_tick', shardForSnap.current_tick + 5);
-    }
-
-    await _supabase.from('government_formations')
-        .update({ status: 'cancelled' })
-        .eq('nation_id', currentNation.id)
-        .eq('status', 'active')
-        .neq('id', activeFormationId);
-
-    await _supabase.from('bills')
-        .update({ status: 'failed' })
-        .eq('nation_id', currentNation.id)
-        .eq('status', 'frozen');
-
-    const { data: formation } = await _supabase
-        .from('government_formations')
-        .select('party_ids, ministry_assignments, minister_names')
-        .eq('id', activeFormationId)
-        .single();
-
-    const assignments = formation?.ministry_assignments || {};
-    const ministerNames = formation?.minister_names || {};
-    const pmPartyId = assignments.prime_minister;
-    const fallbackTick = authoritativeTick || 0;
-
-    for (const [ministryKey, partyId] of Object.entries(assignments)) {
-        if (!partyId || ministryKey === 'prime_minister') continue;
-        const minister = ministerNames[ministryKey];
-        if (!minister) continue;
-
-        const ministryPayload = {
-            party_id: partyId,
-            minister_first_name: minister.first_name,
-            minister_last_name: minister.last_name,
-            minister_age: minister.age,
-            minister_approval: NEW_MINISTER_APPROVAL,
-            stat_baselines: ministryBaselines[ministryKey] || {}
-        };
-
-        const { data: existing } = await _supabase.from('ministries')
-            .select('id').eq('nation_id', currentNation.id)
-            .eq('ministry_key', ministryKey).eq('is_active', true)
-            .maybeSingle();
-
-        if (existing) {
-            await _supabase.from('ministries').update(ministryPayload).eq('id', existing.id);
-        } else {
-            await _supabase.from('ministries').insert({
-                nation_id: currentNation.id,
-                ministry_key: ministryKey,
-                ministry_name: FORMATION_MINISTRIES.find(m => m.key === ministryKey)?.name || ministryKey,
-                is_active: true,
-                ...ministryPayload
-            });
-        }
-    }
-
-    // If HoS method is 'appointed', always generate a new HoS; if 'hereditary', keep existing monarch
-    const fallbackHosMethod = currentNation.hos_election_method || null;
-    const forceNewHos = fallbackHosMethod === 'appointed';
-    // Auto-generate Head of State if missing (or forced by appointed method)
-    const hasValidHosAge = Number.isFinite(Number(currentNation.head_of_state_age)) && Number(currentNation.head_of_state_age) > 0;
-    if (fallbackHosMethod !== 'hereditary' && (forceNewHos || !currentNation.head_of_state_first_name || !currentNation.head_of_state_last_name || !hasValidHosAge)) {
-        // Use nation-specific name pools (FIRST/LAST_NAMES_POOL set on page init via getNationNames)
-        const hosFirst = forceNewHos ? FIRST_NAMES_POOL[Math.floor(Math.random() * FIRST_NAMES_POOL.length)] : (currentNation.head_of_state_first_name || FIRST_NAMES_POOL[Math.floor(Math.random() * FIRST_NAMES_POOL.length)]);
-        const hosLast = forceNewHos ? LAST_NAMES_POOL[Math.floor(Math.random() * LAST_NAMES_POOL.length)] : (currentNation.head_of_state_last_name || LAST_NAMES_POOL[Math.floor(Math.random() * LAST_NAMES_POOL.length)]);
-        const hosAge = forceNewHos ? (45 + Math.floor(Math.random() * 25)) : (hasValidHosAge ? Number(currentNation.head_of_state_age) : (45 + Math.floor(Math.random() * 25)));
-        try {
-            await _supabase.from('nations').update({
-                head_of_state_first_name: hosFirst, head_of_state_last_name: hosLast, head_of_state_age: hosAge
-            }).eq('id', currentNation.id);
-        } catch (hosErr) { console.warn('Could not set head of state:', hosErr); }
-    }
-
-    if (pmPartyId) {
-        const { data: shard } = await _supabase.from('shard')
-            .select('current_tick, current_date').eq('name', 'Alpha Shard').single();
-
-        const { data: fullNation } = await _supabase.from('nations').select('*').eq('id', currentNation.id).single();
-        const { data: allFactions } = await _supabase.from('factions')
-            .select('id, faction_name, seats')
-            .eq('nation_id', currentNation.id).eq('faction_type', 'party');
-        const { data: newFormation } = await _supabase.from('government_formations')
-            .select('party_ids, ministry_assignments, proposed_by')
-            .eq('id', activeFormationId).single();
-        if (newFormation) {
-            newFormation.lead_party_id = newFormation.ministry_assignments?.prime_minister || newFormation.proposed_by;
-        }
-        if (fullNation && newFormation) {
-            const { data: recentElection } = await _supabase.from('elections')
-                .select('election_tick').eq('nation_id', currentNation.id)
-                .eq('status', 'completed').order('election_tick', { ascending: false }).limit(1).maybeSingle();
-            const endReason = (recentElection && (shard?.current_tick - recentElection.election_tick) <= 8)
-                ? 'election_loss' : 'new_coalition';
-
-            const coalitionIds = (newFormation.party_ids || []);
-            const { data: standings } = await _supabase.from('faction_electoral_standing')
-                .select('faction_id, party_approval')
-                .eq('nation_id', currentNation.id)
-                .in('faction_id', coalitionIds);
-            const coalitionApprovals = (standings || []).map(s => Number(s.party_approval ?? 40));
-            const govApproval = coalitionApprovals.length > 0
-                ? Math.round(coalitionApprovals.reduce((sum, a) => sum + a, 0) / coalitionApprovals.length)
-                : null;
-
-            try {
-                await rolloverAdministration(_supabase, currentNation.id, fullNation, endReason, newFormation, allFactions || [], fallbackTick || shard?.current_tick || 0, shard?.current_date || '', govApproval);
-            } catch (adminErr) { console.error('Administration lifecycle error (non-fatal):', adminErr); }
-        }
-
-        try {
-            await autoAppointPartyLeaderAsPM(_supabase, currentNation.id, pmPartyId, fallbackTick || shard?.current_tick || 0);
-        } catch (pmErr) { console.error('Auto-appoint PM failed:', pmErr); }
-    }
-
-    const fallbackFactionIds = Array.from(new Set([
-        ...Object.values(assignments || {}).filter(Boolean),
-        ...(formation?.party_ids || []),
-        currentFaction?.id
-    ].filter(Boolean)));
-    if (fallbackFactionIds.length) {
-        // Prevents false inactivity disband for active governing parties.
-        await _supabase.from('factions').update({ last_seen_tick: fallbackTick }).in('id', fallbackFactionIds);
-    }
-}
+// Phase C: formGovernmentFallback removed. The
+// finalize_government_formation RPC is now the single source of truth
+// for the formation transition (see migration 20260906) — every write
+// is atomic inside one SQL transaction. The 170-line JS fallback that
+// used to mirror those writes piecemeal is gone, and so are its
+// failure modes (half-state when one of the steps errored mid-way).
+// If the RPC fails, the operator sees the error, fixes it, and the
+// player retries. No silent partial writes.
 
 // ==================== MINISTRY STAT BREAKDOWN ====================
 
