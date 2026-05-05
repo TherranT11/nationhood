@@ -3189,7 +3189,7 @@ function renderOptionDetails(option) {
             (option.option_description ? '<div class="opt-desc">' + escapeHtml(option.option_description) + '</div>' : '') +
             '<div class="opt-row-label">Stat Targets</div>' +
             '<div>' + (targetChips || '<span style="color:var(--text-muted);font-size:0.8rem;">None</span>') + '</div>' +
-            '<div class="opt-row-label">Voter Bloc Rapport</div>' +
+            '<div class="opt-row-label" title="Where this option places voters on a -10..+10 scale per sector. On pass, YES voters take Standing(this) - Standing(previously-active) against their popularity in each sector.">Voter Bloc Standing</div>' +
             '<div>' + (rapportChips || '<span style="color:var(--text-muted);font-size:0.8rem;">None</span>') + '</div>' +
             '<div class="opt-row-label">Voter Turnout Modifiers</div>' +
             '<div>' + (turnoutChips || '<span style="color:var(--text-muted);font-size:0.8rem;">None</span>') + '</div>' +
