@@ -4,6 +4,7 @@ import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } f
 import { tickToDate } from './utils.js';
 
 import { fetchActiveCoalition, loadSeats } from './game/government-structure.js';
+import { INACTIVITY_DRAIN_THRESHOLD } from './game/electorate.js';
 import { hasElectedPresident } from './game/government-types.js';
 import { initGameConfigForNation, switchPartyEndorsement } from './game/config.js';
 import { RALLY_CONFIG, executeRally, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, disbandParty, getNationNames } from './game/political-actions.js';
@@ -732,7 +733,7 @@ function importanceColor(pct) {
 function renderForecastBox(allParties, totalSeats, currentTick, nextElection, _, playerFactionId) {
     const FORECAST_START = 12;
     const MARGIN_START = 12;
-    const INACTIVITY_EXCLUSION = 12;
+    const INACTIVITY_EXCLUSION = INACTIVITY_DRAIN_THRESHOLD;
     const electionTick = nextElection?.election_tick || 0;
     const ticksLeft = electionTick > currentTick ? electionTick - currentTick : 0;
     const forecastVisible = electionTick > 0 && ticksLeft <= FORECAST_START;

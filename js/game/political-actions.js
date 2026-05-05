@@ -3870,7 +3870,18 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
 
 // ==================== DISBAND PARTY ====================
 
-export async function disbandParty(supabase, nationId, factionId, currentTick) {
+/**
+ * Disband a party.
+ *
+ * @param {object} opts
+ * @param {boolean} [opts.redistribute=true] - When true (default, voluntary
+ *   disband path) the disbanded party's seats are immediately redistributed
+ *   to the remaining parties via rebalanceVacantSeats. When false (used by
+ *   the inactivity auto-disband path) the seats stay vacant until the next
+ *   election re-allocates the chamber.
+ */
+export async function disbandParty(supabase, nationId, factionId, currentTick, opts = {}) {
+    const { redistribute = true } = opts;
     // Guard: never disband corporations
     const { data: faction } = await supabase
         .from('factions')
@@ -4002,8 +4013,10 @@ export async function disbandParty(supabase, nationId, factionId, currentTick) {
         .update({ seats: 0 })
         .eq('id', factionId);
 
-    // 6. Immediately redistribute vacated seats to remaining parties
-    if (nation && vacatedSeats > 0) {
+    // 6. Redistribute vacated seats to remaining parties — unless the
+    //    caller asked us not to (inactivity auto-disband leaves the seats
+    //    vacant until the next election).
+    if (redistribute && nation && vacatedSeats > 0) {
         await rebalanceVacantSeats(supabase, nation);
     }
 

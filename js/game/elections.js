@@ -8,6 +8,7 @@ import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, hasElectedPresi
 import { snapshotNationStats } from './stats.js';
 import { adjustCredibility, adjustGovernmentApprovalEvent, round2 } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
+import { INACTIVITY_DRAIN_THRESHOLD } from './electorate.js';
 import { syncAmbassadorsForFailedConfirmationBills, syncMinistriesForFailedConfirmationBills } from './bills.js';
 import { autoSelectPresidentialCandidates, registerPartyLeaderAsCandidate } from './presidential.js';
 import {
@@ -2017,15 +2018,16 @@ export async function runSectorPresidentialElectionRound(supabase, nationId) {
     const sectors  = sectorsRes.data || [];
     const tick     = shardRes.data?.current_tick ?? 0;
 
-    // Filter candidates to active parties (mirrors the RPC's last-seen-tick window)
-    const INACTIVE_GAP = 12;
+    // Filter candidates to active parties (mirrors the inactivity-drain
+    // window — once a party starts losing seats, it can't field new
+    // presidential candidates either).
     const allCands = (candRes.data || []).filter(c => {
         const f = c.factions;
         if (!f) return false;
         if (f.faction_type !== 'party') return false;
         if (f.abandoned_at) return false;
-        if (f.last_seen_tick != null) return (tick - f.last_seen_tick) < INACTIVE_GAP;
-        return (tick - (f.founded_tick || 0)) < INACTIVE_GAP;
+        if (f.last_seen_tick != null) return (tick - f.last_seen_tick) < INACTIVITY_DRAIN_THRESHOLD;
+        return (tick - (f.founded_tick || 0)) < INACTIVITY_DRAIN_THRESHOLD;
     });
 
     if (allCands.length === 0) {
