@@ -6172,7 +6172,21 @@ async function applyInverseSectorEffectsToFaction(supabase, nationId, factionId,
 //     nudge; create-on-write would diverge from the rest of the
 //     popularity pipeline which only ever read-modify-writes).
 // ════════════════════════════════════════════════════════════════
+
+// Canonicalize a bill_support stance to one of 'yes' | 'no' | 'abstain'
+// (or whatever was already set if it doesn't normalize). Committee rows
+// use 'accept'/'reject'; floor rows use 'yes'/'no'. This helper lets
+// new code stay agnostic; the seven other sites in this file that do
+// the same conditional inline pre-date the helper and aren't in scope
+// for this changeset.
+function normalizeSupportStance(stance) {
+    if (stance === 'accept') return 'yes';
+    if (stance === 'reject') return 'no';
+    return stance;
+}
+
 async function applyOptionRapportToYesVoters(supabase, bill, art) {
+    if (!bill?.id || !bill?.nation_id) return;
     if (!art?.selected_option_id || art?.repeal_active_law_id) return;
 
     // Fetch the option's rapport config fresh — callers pass `bill`
@@ -6213,8 +6227,7 @@ async function applyOptionRapportToYesVoters(supabase, bill, art) {
     }
     for (const s of supportRows) {
         if (!s?.faction_id) continue;
-        const stance = s.stance === 'accept' ? 'yes' : s.stance === 'reject' ? 'no' : s.stance;
-        if (stance === 'yes') yesIds.add(s.faction_id);
+        if (normalizeSupportStance(s.stance) === 'yes') yesIds.add(s.faction_id);
     }
     if (yesIds.size === 0) return;
 
