@@ -3282,6 +3282,86 @@ function calculateNationalBudget(nation, opts = {}) {
     };
 }
 
+// ════════════════════════════════════════════════════════════════
+// Budget surplus → debt paydown (per-tick).
+//
+// Mirrors the Government Budget panel's monthly-balance math exactly
+// so what the player sees on the cards is what gets applied each
+// tick: revenue (treasury cash, treated as annual) minus
+// expenditures (Interest on Debt + monarchy-only Royal Holdings,
+// other rows still $0 placeholders) → annual balance → /12 →
+// per-tick paydown applied to principal.
+//
+// Unit handling: this is the load-bearing piece. The panel mixes
+// scales — nation.budget is "abstract" (small number, displayed
+// directly), debtService comes back from calculateNationalBudget in
+// raw dollars and is divided by 1e9 to render, and nation.debt is
+// raw dollars (also /1e9 to display). The legacy processDebtTick
+// silently ate this mismatch by subtracting an abstract surplus
+// from a raw debt value, which is why a $17 abstract balance never
+// dented a $1.2e12 raw debt. Here we convert abstract → raw with
+// _RAW_PER_ABSTRACT before touching nation.debt.
+//
+// Treasury bookkeeping: the abstract amount is also deducted from
+// nation.budget (the treasury cash balance) so the player's reserve
+// drops by the same amount the debt does — money paid out, not
+// magicked from thin air.
+//
+// Order of operations: caller wires this AFTER processDebtTick so
+// bond maturities, coupon charges, and offer expiry have already
+// hit. The interest payment side ("goes toward Interest on Debt")
+// is handled by processBondCouponsTick / the panel's debt-service
+// expenditure line; this helper is the "and then paying toward
+// the Debt" half of the user's spec.
+// ════════════════════════════════════════════════════════════════
+const _RAW_PER_ABSTRACT = 1e9;
+
+async function processBudgetSurplusPaydown(supabase, nation) {
+    const debtRaw = Number(nation?.debt) || 0;
+    if (debtRaw <= 0) return null; // No debt — nothing to pay down.
+
+    // Compute the same monthly balance the budget panel renders.
+    const budget = calculateNationalBudget(nation);
+    const annualRevenue = Number(budget.grossRevenue || 0);
+
+    // Annual expenditures, in abstract units, mirroring
+    // _gbBuildCostRows in government.html.
+    const debtServiceAbstract = (Number(budget.debtService || 0)) / _RAW_PER_ABSTRACT;
+    const royalHoldingsAnnual = isAbsoluteMonarchy(nation) ? 36 : 0;
+    const annualExpenditures = debtServiceAbstract + royalHoldingsAnnual;
+
+    const annualBalance = annualRevenue - annualExpenditures;
+    if (annualBalance <= 0) return null;
+
+    // Per-tick deduction = monthly balance (12 ticks / year).
+    let tickPaydown = annualBalance / 12;
+    if (tickPaydown <= 0) return null;
+
+    // Cap at the actual treasury so we never pay more than we have.
+    // Without this, a tick where revenue < expenditures but
+    // grossRevenue is still positive (treasury accumulated from
+    // earlier ticks) could send debt negative on the abstract side
+    // while taking treasury below zero. Math.max(0, ...) on the
+    // updates is a belt; this is the suspenders.
+    const treasury = Number(nation.budget) || 0;
+    if (treasury < tickPaydown) tickPaydown = treasury;
+    if (tickPaydown <= 0) return null;
+
+    const newBudget = Math.max(0, treasury - tickPaydown);
+    const newDebtRaw = Math.max(0, debtRaw - tickPaydown * _RAW_PER_ABSTRACT);
+
+    const { error } = await supabase.from('nations')
+        .update({ budget: newBudget, debt: newDebtRaw })
+        .eq('id', nation.id);
+    if (error) {
+        console.warn(`[BudgetSurplusPaydown] update failed for ${nation.name}:`, error.message);
+        return null;
+    }
+    nation.budget = newBudget;
+    nation.debt = newDebtRaw;
+    return { paid: tickPaydown, newBudget, newDebtRaw };
+}
+
 /**
  * Override formula-based tariff revenue with real trade engine data.
  * Mutates the budget object in place and returns it. Alpha refactor:
@@ -19771,11 +19851,11 @@ function buildMineralsBucketDeltas(nation, tradingByNation) {
     const mineralsStat  = Number(nation.minerals)       || 0;
     // Mining/extraction is unskilled physical labour — read the
     // unskilled tier directly instead of averaging both tiers.
-    const workforceStat = Number(nation.unskilled_workers) || 0;
+    const unskilledStat = Number(nation.unskilled_workers) || 0;
     const industryStat  = Number(nation.industry)       || 0;
     const infraStat     = Number(nation.infrastructure) || 0;
 
-    const production = (mineralsStat / 3) * ((workforceStat + industryStat) / 200);
+    const production = (mineralsStat / 3) * ((unskilledStat + industryStat) / 200);
     const demand     = (infraStat / 10) + (industryStat / 16);
     if (demand <= 0) return null;
 
@@ -19806,10 +19886,10 @@ function buildMineralsBucketDeltas(nation, tradingByNation) {
 function buildFoodBucketDeltas(nation, tradingByNation) {
     const farmlandStat  = Number(nation.farmland)  || 0;
     // Agriculture runs on the unskilled labour tier.
-    const workforceStat = Number(nation.unskilled_workers) || 0;
+    const unskilledStat = Number(nation.unskilled_workers) || 0;
     const popMillions   = (Number(nation.population) || 0) / 1_000_000;
 
-    const production = (farmlandStat / 2) * (workforceStat / 100);
+    const production = (farmlandStat / 2) * (unskilledStat / 100);
     const demand     = popMillions / 3;
     if (demand <= 0) return null;
 
@@ -19851,11 +19931,11 @@ function buildFoodBucketDeltas(nation, tradingByNation) {
 function buildConsumerGoodsBucketDeltas(nation, tradingByNation) {
     const industryStat  = Number(nation.industry)           || 0;
     // Mass-production manufacturing is unskilled labour.
-    const workforceStat = Number(nation.unskilled_workers) || 0;
+    const unskilledStat = Number(nation.unskilled_workers) || 0;
     const solStat       = Number(nation.standard_of_living) || 0;
     const popMillions   = (Number(nation.population) || 0) / 1_000_000;
 
-    const production = (industryStat / 3) * (workforceStat / 100);
+    const production = (industryStat / 3) * (unskilledStat / 100);
     const demand     = (solStat / 100) * popMillions / 2;
     if (demand <= 0) return null;
 
@@ -22825,8 +22905,8 @@ function getNationNames(nationName) {
  *
  * Every PM-install path (parliamentary auto-appoint, presidential PM
  * confirmation, monarchy royal appointment) routes through this helper so
- * the upsert columns, ideology lookup, and unique(nation_id) handling stay
- * identical across paths.
+ * the upsert columns and unique(nation_id) handling stay identical across
+ * paths.
  *
  * @param {object} supabase
  * @param {object} opts
@@ -22838,10 +22918,6 @@ function getNationNames(nationName) {
  * @param {number} opts.currentTick
  * @param {string} [opts.traitKey]          leader trait, optional
  * @param {string} [opts.candidateId]       presidential candidate row id, optional
- * @param {string} [opts.ideology]          uppercase tag; if omitted, loaded
- *                                          from factions.leader_ideology with
- *                                          a CENTRIST fallback
- * @returns {Promise<{ ideologyTag: string }>}
  */
 async function installHOG(supabase, opts) {
     if (!opts?.nationId || !opts?.factionId) {
@@ -23044,10 +23120,12 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
         }
     }
 
-    // Load faction with leader data (including leader_ideology as single source of truth)
+    // Load faction leader data. leader_ideology was previously selected
+    // here for a return-shape field that's been retired; the column is
+    // no longer consumed in this function.
     const { data: faction, error: factionErr } = await supabase
         .from('factions')
-        .select('id, faction_name, leader_first_name, leader_last_name, leader_age, leader_ideology, leader_positive_traits')
+        .select('id, faction_name, leader_first_name, leader_last_name, leader_age, leader_positive_traits')
         .eq('id', factionId)
         .single();
     if (factionErr || !faction) throw new Error('Faction not found');
@@ -23168,7 +23246,17 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
         }
     }
 
-    return { first_name: faction.leader_first_name, last_name: faction.leader_last_name, age: leaderAge, ideology: ideology.tag, trait_key: traitKey };
+    // Ideology has been retired — no field on the return shape. The
+    // single existing caller (coalition-formation.js handleFormGovernment)
+    // discards the return value entirely, so the shape only matters
+    // for any future caller; keeping it minimal avoids re-introducing
+    // dead state.
+    return {
+        first_name: faction.leader_first_name,
+        last_name: faction.leader_last_name,
+        age: leaderAge,
+        trait_key: traitKey,
+    };
 }
 
 async function processPMTraitEffects(supabase, nation, currentTick) {
@@ -33178,6 +33266,23 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         ? ` surplus=${Math.round(debtResult.surplus)}`
                         : '')
             );
+
+            // Apply panel-accurate per-tick budget surplus to debt
+            // principal. processDebtTick's surplus path uses a
+            // placeholder gdp×0.12 expenditures heuristic and mixes
+            // abstract/raw scales, so its paydown is microscopic on
+            // realistic debt loads. This step mirrors the Government
+            // Budget panel's monthly-balance math (with correct
+            // abstract→raw conversion on debt) so what the player
+            // sees on the cards is what actually gets applied.
+            const paydown = await processBudgetSurplusPaydown(supabase, nation);
+            if (paydown) {
+                console.log(
+                    `[Debt] ${nation.name}: surplus_paydown=${paydown.paid.toFixed(2)} (abstract)` +
+                    ` newDebtRaw=${Math.round(paydown.newDebtRaw)}` +
+                    ` newBudget=${paydown.newBudget.toFixed(2)}`
+                );
+            }
         } catch (debtErr) {
             console.error(`[advanceTick] Debt system failed for ${nation.name} (non-fatal):`, debtErr);
         }

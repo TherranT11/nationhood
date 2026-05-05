@@ -517,8 +517,16 @@ const sectorNames = new Map();
 // belong to another nation; render code uses this to hide chips a
 // player can't possibly be affected by (e.g. Hajjara seeing
 // AVELIAN_MARKET_SYNDICATES).
+//
+// Loading-state guard: loadSectorsLookup() is called fire-and-forget
+// at line ~661, so the first render after a faction switch may run
+// before sectorNames populates. Treat an empty Map as "not yet
+// loaded" and fall back to true so chips render normally — re-running
+// the renderer after the fetch settles applies the filter for real.
+// Without this guard, every chip gets hidden during the load window.
 function sectorBelongsToCurrentNation(sectorKey) {
     if (!sectorKey) return false;
+    if (sectorNames.size === 0) return true;
     return sectorNames.has(sectorKey);
 }
 function formatSectorKey(key) {

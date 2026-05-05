@@ -2518,7 +2518,9 @@ const _GB_DEEP_COPY = {
     nationalInfrastructure: { desc: 'Public works — transport networks, utilities, civic buildings, the physical platform the rest of the economy runs on. In monarchies, includes a Royal Holdings & Estates sub-line for the upkeep of crown property.' },
     foreignAid:             { desc: 'Non-trade-agreement foreign disbursements: development aid, humanitarian relief, soft-power grants. Trade-agreement aid lives under Trade Agreements on the income side instead.' },
     discretionary:          { desc: 'Catch-all for short-cycle programs and one-off initiatives that don’t fit a permanent ministry budget — pilots, commissions, special funds.' },
-    royalHoldings:          { desc: 'Upkeep, security, and operational costs for crown estates, palaces, and royal patrimonial assets. Monarchy-only; rolled into the National Infrastructure total.' },
+    // Royal Holdings & Estates is rendered as a sub-row (k/v only)
+    // under nationalInfrastructure rather than its own clickable row,
+    // so it doesn't need a top-level descKey lookup entry here.
     // ministries fall through to a shared template, filled with
     // funding-pct / institution count at render time
 };

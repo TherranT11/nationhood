@@ -254,11 +254,11 @@ function buildMineralsBucketDeltas(nation, tradingByNation) {
     const mineralsStat  = Number(nation.minerals)       || 0;
     // Mining/extraction is unskilled physical labour — read the
     // unskilled tier directly instead of averaging both tiers.
-    const workforceStat = Number(nation.unskilled_workers) || 0;
+    const unskilledStat = Number(nation.unskilled_workers) || 0;
     const industryStat  = Number(nation.industry)       || 0;
     const infraStat     = Number(nation.infrastructure) || 0;
 
-    const production = (mineralsStat / 3) * ((workforceStat + industryStat) / 200);
+    const production = (mineralsStat / 3) * ((unskilledStat + industryStat) / 200);
     const demand     = (infraStat / 10) + (industryStat / 16);
     if (demand <= 0) return null;
 
@@ -289,10 +289,10 @@ function buildMineralsBucketDeltas(nation, tradingByNation) {
 function buildFoodBucketDeltas(nation, tradingByNation) {
     const farmlandStat  = Number(nation.farmland)  || 0;
     // Agriculture runs on the unskilled labour tier.
-    const workforceStat = Number(nation.unskilled_workers) || 0;
+    const unskilledStat = Number(nation.unskilled_workers) || 0;
     const popMillions   = (Number(nation.population) || 0) / 1_000_000;
 
-    const production = (farmlandStat / 2) * (workforceStat / 100);
+    const production = (farmlandStat / 2) * (unskilledStat / 100);
     const demand     = popMillions / 3;
     if (demand <= 0) return null;
 
@@ -334,11 +334,11 @@ function buildFoodBucketDeltas(nation, tradingByNation) {
 function buildConsumerGoodsBucketDeltas(nation, tradingByNation) {
     const industryStat  = Number(nation.industry)           || 0;
     // Mass-production manufacturing is unskilled labour.
-    const workforceStat = Number(nation.unskilled_workers) || 0;
+    const unskilledStat = Number(nation.unskilled_workers) || 0;
     const solStat       = Number(nation.standard_of_living) || 0;
     const popMillions   = (Number(nation.population) || 0) / 1_000_000;
 
-    const production = (industryStat / 3) * (workforceStat / 100);
+    const production = (industryStat / 3) * (unskilledStat / 100);
     const demand     = (solStat / 100) * popMillions / 2;
     if (demand <= 0) return null;
 
@@ -3308,8 +3308,8 @@ export function getNationNames(nationName) {
  *
  * Every PM-install path (parliamentary auto-appoint, presidential PM
  * confirmation, monarchy royal appointment) routes through this helper so
- * the upsert columns, ideology lookup, and unique(nation_id) handling stay
- * identical across paths.
+ * the upsert columns and unique(nation_id) handling stay identical across
+ * paths.
  *
  * @param {object} supabase
  * @param {object} opts
@@ -3321,10 +3321,6 @@ export function getNationNames(nationName) {
  * @param {number} opts.currentTick
  * @param {string} [opts.traitKey]          leader trait, optional
  * @param {string} [opts.candidateId]       presidential candidate row id, optional
- * @param {string} [opts.ideology]          uppercase tag; if omitted, loaded
- *                                          from factions.leader_ideology with
- *                                          a CENTRIST fallback
- * @returns {Promise<{ ideologyTag: string }>}
  */
 export async function installHOG(supabase, opts) {
     if (!opts?.nationId || !opts?.factionId) {
@@ -3527,10 +3523,12 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
         }
     }
 
-    // Load faction with leader data (including leader_ideology as single source of truth)
+    // Load faction leader data. leader_ideology was previously selected
+    // here for a return-shape field that's been retired; the column is
+    // no longer consumed in this function.
     const { data: faction, error: factionErr } = await supabase
         .from('factions')
-        .select('id, faction_name, leader_first_name, leader_last_name, leader_age, leader_ideology, leader_positive_traits')
+        .select('id, faction_name, leader_first_name, leader_last_name, leader_age, leader_positive_traits')
         .eq('id', factionId)
         .single();
     if (factionErr || !faction) throw new Error('Faction not found');
@@ -3651,7 +3649,17 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
         }
     }
 
-    return { first_name: faction.leader_first_name, last_name: faction.leader_last_name, age: leaderAge, ideology: ideology.tag, trait_key: traitKey };
+    // Ideology has been retired — no field on the return shape. The
+    // single existing caller (coalition-formation.js handleFormGovernment)
+    // discards the return value entirely, so the shape only matters
+    // for any future caller; keeping it minimal avoids re-introducing
+    // dead state.
+    return {
+        first_name: faction.leader_first_name,
+        last_name: faction.leader_last_name,
+        age: leaderAge,
+        trait_key: traitKey,
+    };
 }
 
 export async function processPMTraitEffects(supabase, nation, currentTick) {
