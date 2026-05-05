@@ -424,7 +424,7 @@ export function renderTopBar(activeTab) {
                     </div>
                 </div>
             </div>
-            <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.4.2.1</div>
+            <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">Alpha 2.4.4.0.1</div>
             <div class="top-bar-right">
                 <div class="notif-wrap">
                     <button class="notif-bell" id="notif-bell" type="button" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
