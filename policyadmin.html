@@ -739,11 +739,8 @@ async function loadPolicyIntoBuilder(p) {
                 .map(r => ({ sector_key: r.sector_key, rapport: Math.max(-10, Math.min(10, parseInt(r.rapport, 10) || 0)) }));
             const rawTurnout = Array.isArray(row.sector_turnout_targets) ? row.sector_turnout_targets : [];
             opt.sector_turnout_targets = rawTurnout
-                .filter(r => r && typeof r.sector_key === 'string' && Number.isFinite(Number(r.delta)))
-                .map(r => {
-                    const snapped = Math.round((Number(r.delta) || 0) / 0.05) * 0.05;
-                    return { sector_key: r.sector_key, delta: Math.max(-0.30, Math.min(0.30, Math.round(snapped * 100) / 100)) };
-                })
+                .filter(r => r && typeof r.sector_key === 'string')
+                .map(r => ({ sector_key: r.sector_key, delta: normalizeTurnoutDelta(r.delta) }))
                 .filter(r => r.delta !== 0);
 
             const startingSet = startingByOption.get(row.id);
@@ -1575,14 +1572,23 @@ function renderSectorRapportTargets(optIdx) {
 // Twelve fixed rows, one per sector_key. Stored as float in 0.05 steps,
 // range −0.30..+0.30. State holds only non-zero entries — re-render
 // hydrates 0 for missing keys so the UI always shows all twelve.
+// Single source of truth for the turnout-delta domain: snap to the 0.05
+// grid the slider exposes, clamp to [-0.30, +0.30], round-trip through
+// hundredths to kill floating-point dust. Returns 0 for blank / NaN
+// inputs so callers can use that as the "drop entry" sentinel.
+const TURNOUT_DELTA_STEP = 0.05;
+const TURNOUT_DELTA_MAX = 0.30;
+function normalizeTurnoutDelta(value) {
+    const raw = Number(value);
+    if (!Number.isFinite(raw)) return 0;
+    const snapped = Math.round(raw / TURNOUT_DELTA_STEP) * TURNOUT_DELTA_STEP;
+    return Math.max(-TURNOUT_DELTA_MAX, Math.min(TURNOUT_DELTA_MAX, Math.round(snapped * 100) / 100));
+}
+
 function syncSectorTurnout(optIdx, sectorKey, value) {
     const opt = options[optIdx];
     if (!opt) return;
-    const raw = Number(value);
-    if (!Number.isFinite(raw)) return;
-    // Snap to 0.05 grid + clamp.
-    const snapped = Math.round(raw / 0.05) * 0.05;
-    const clamped = Math.max(-0.30, Math.min(0.30, Math.round(snapped * 100) / 100));
+    const clamped = normalizeTurnoutDelta(value);
     if (!Array.isArray(opt.sector_turnout_targets)) opt.sector_turnout_targets = [];
     const idx = opt.sector_turnout_targets.findIndex(r => r.sector_key === sectorKey);
     if (clamped === 0) {
@@ -1728,20 +1734,24 @@ async function savePolicy() {
                 alert(`Option ${i + 1} ("${optionName}"): unknown stat key(s): ${unknownT.join(', ')}.`);
                 return;
             }
+            // L-1: drop entries whose sector_key no longer maps to a live
+            // sector (e.g. a custom sector deleted in admin.html). Without
+            // this, orphaned values stay in JSONB across re-saves while
+            // being invisible in the renderer that iterates the live list.
+            const knownSectorKeys = new Set(SECTOR_RAPPORT_KEYS.map(k => k.key));
             const validRapport = o.sector_rapport_targets
                 // Number.isFinite guards against NaN slipping past the UI
                 // sync path — Number(NaN) !== 0 is true, so a NaN row
                 // would otherwise pass and be persisted as rapport:0,
                 // contradicting "zero values aren't persisted".
-                .filter(r => r.sector_key && Number.isFinite(Number(r.rapport)) && Number(r.rapport) !== 0)
+                .filter(r => r.sector_key && knownSectorKeys.has(r.sector_key) && Number.isFinite(Number(r.rapport)) && Number(r.rapport) !== 0)
                 .map(r => ({ sector_key: r.sector_key, rapport: Math.max(-10, Math.min(10, parseInt(r.rapport, 10) || 0)) }));
+            // L-1: same orphan-key filter as validRapport above —
+            // knownSectorKeys is built once and reused.
             const rawTurnout = Array.isArray(o.sector_turnout_targets) ? o.sector_turnout_targets : [];
             const validTurnout = rawTurnout
-                .filter(r => r && typeof r.sector_key === 'string' && Number.isFinite(Number(r.delta)) && Number(r.delta) !== 0)
-                .map(r => {
-                    const snapped = Math.round(Number(r.delta) / 0.05) * 0.05;
-                    return { sector_key: r.sector_key, delta: Math.max(-0.30, Math.min(0.30, Math.round(snapped * 100) / 100)) };
-                })
+                .filter(r => r && typeof r.sector_key === 'string' && knownSectorKeys.has(r.sector_key))
+                .map(r => ({ sector_key: r.sector_key, delta: normalizeTurnoutDelta(r.delta) }))
                 .filter(r => r.delta !== 0);
 
             optionPayloads.push({
