@@ -1646,7 +1646,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Implementation lives in js/game/policies.js.
         try {
             const tbResult = await processTargetBasedPolicies(supabase, nation);
-            if (tbResult.stats.length > 0 || tbResult.rapport.length > 0) {
+            if (tbResult.stats.length > 0) {
                 summary.targetBasedPolicies = summary.targetBasedPolicies || [];
                 summary.targetBasedPolicies.push({ nation: nation.name, ...tbResult });
             }

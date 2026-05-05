@@ -291,9 +291,9 @@ function createEmptyOption() {
         // back and forth without losing data — savePolicy writes to the
         // shape matching the chosen type.
         spectrum_position: null,
-        stat_targets: [],     // [{ stat_key, target 0-10, pull 0-1 }]
+        stat_targets: [],     // [{ stat_key, target 0-100, pull 0-1 }]
         sector_rapport_targets: [], // [{ sector_key, rapport -10..+10 }]
-        sector_turnout_targets: [], // [{ sector_key, delta -0.30..+0.30 }]
+        sector_turnout_targets: [], // [{ sector_key, delta -1.00..+0.30 }]
         sector_weight_targets: [],  // [{ sector_key, delta -5..+5 }]
     };
 }
@@ -730,7 +730,7 @@ async function loadPolicyIntoBuilder(p) {
             opt.stat_targets = rawTargets
                 .map(r => ({
                     stat_key: normalizePolicyStatKey(r.stat_key),
-                    target: Math.max(0, Math.min(10, Number(r.target) || 0)),
+                    target: Math.max(0, Math.min(100, Number(r.target) || 0)),
                     pull: Math.max(0, Math.min(1, Number(r.pull) || 0))
                 }))
                 .filter(r => r.stat_key);
@@ -839,7 +839,7 @@ function renderOptionCard(idx) {
             <div style="${subDivider}">
                 ${subTitle('📊', 'Stat Targets')}
                 <p style="color:#888; font-size:0.82rem; margin-bottom:10px;">
-                    Each row picks a stat, where it should <strong>target</strong> (0–10), and how hard this option <strong>pulls</strong> on it (0.0–1.0). Multiple active options across all policies combine via weighted average <code>Σ(target × pull) / Σ(pull)</code>; the stat converges toward that equilibrium each tick.
+                    Each row picks a stat, where it should <strong>target</strong> (0–100, same scale as the nation's stat columns), and how hard this option <strong>pulls</strong> on it (0.0–1.0). Multiple active options across all policies combine via weighted average <code>Σ(target × pull) / Σ(pull)</code>; the stat converges toward that equilibrium each tick.
                 </p>
                 <div id="stat-targets-container-${idx}"></div>
                 <button class="add-btn" id="add-target-btn-${idx}" onclick="addStatTarget(${idx})">+ Add Stat Target</button>
@@ -851,7 +851,7 @@ function renderOptionCard(idx) {
             <div style="${subDivider}">
                 ${subTitle('🗳️', 'Voter Bloc Rapport Targets')}
                 <p style="color:#888; font-size:0.82rem; margin-bottom:10px;">
-                    When this option is active, the governing faction's popularity in each sector pulls toward the listed rapport value. Range −10 to +10. Leave a slider at 0 for no effect.
+                    When the bill that selects this option <strong>passes</strong>, every faction that voted <strong>YES</strong> (sponsor + supporters) takes this rapport against their popularity in each listed sector — <strong>once</strong>. Values are on the displayed 0–10 popularity scale, so +5 = +5 popularity / −3 = −3 popularity. Range −10 to +10. Leave a slider at 0 for no effect.
                 </p>
                 <div id="sector-rapport-container-${idx}"></div>
             </div>
@@ -859,7 +859,7 @@ function renderOptionCard(idx) {
             <div style="${subDivider}">
                 ${subTitle('📈', 'Voter Turnout Modifiers')}
                 <p style="color:#888; font-size:0.82rem; margin-bottom:10px;">
-                    When this option is active, each sector's election-time turnout is <code>base_turnout + delta</code>. Range −0.30 to +0.30 (e.g. +0.10 means that sector turns out 10 percentage points higher). Stacks with other active options. Leave a slider at 0 for no effect.
+                    When this option is active, each sector's election-time turnout is <code>base_turnout + delta</code>. Range −1.00 to +0.30 (a strong negative delta can fully suppress a bloc; +0.10 means that sector turns out 10 percentage points higher). Stacks with other active options. Leave a slider at 0 for no effect.
                 </p>
                 <div id="sector-turnout-container-${idx}"></div>
             </div>
@@ -1388,7 +1388,7 @@ function getLawCategoryValue() {
 }
 
 // ==================== STAT TARGETS (target-based policies) ====================
-// Phase 2: target-based options store [{ stat_key, target 0-10, pull 0-1 }]
+// Phase 2: target-based options store [{ stat_key, target 0-100, pull 0-1 }]
 // rows. Each row maps to one stat the policy nudges toward an equilibrium.
 const MAX_STAT_TARGETS_PER_OPTION = 12;
 
@@ -1399,7 +1399,7 @@ function addStatTarget(optIdx) {
         alert(`Max ${MAX_STAT_TARGETS_PER_OPTION} stat targets per option.`);
         return;
     }
-    opt.stat_targets.push({ stat_key: '', target: 5, pull: 0.5 });
+    opt.stat_targets.push({ stat_key: '', target: 50, pull: 0.5 });
     renderStatTargets(optIdx);
     renderEquilibriumPreview(optIdx);
 }
@@ -1419,9 +1419,9 @@ function syncStatTarget(optIdx, idx, field, value) {
         opt.stat_targets[idx].stat_key = value;
     } else if (field === 'target') {
         const v = Number(value);
-        opt.stat_targets[idx].target = Number.isFinite(v) ? Math.max(0, Math.min(10, v)) : 0;
+        opt.stat_targets[idx].target = Number.isFinite(v) ? Math.max(0, Math.min(100, Math.round(v))) : 0;
         const display = document.getElementById(`b-stat-target-val-${optIdx}-${idx}`);
-        if (display) display.textContent = opt.stat_targets[idx].target.toFixed(1);
+        if (display) display.textContent = String(opt.stat_targets[idx].target);
     } else if (field === 'pull') {
         const v = Number(value);
         opt.stat_targets[idx].pull = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
@@ -1452,15 +1452,15 @@ function renderStatTargets(optIdx) {
     container.innerHTML = opt.stat_targets.map((row, idx) => {
         const statSel = '<option value="">-- pick stat --</option>' +
             STAT_OPTIONS_HTML.replace(`value="${row.stat_key}"`, `value="${row.stat_key}" selected`);
-        const target = Number(row.target ?? 5);
+        const target = Number(row.target ?? 50);
         const pull = Number(row.pull ?? 0.5);
         return `
             <div style="${rowStyle}">
                 <select style="${selStyle}" onchange="syncStatTarget(${optIdx}, ${idx}, 'stat_key', this.value); renderEquilibriumPreview(${optIdx})">${statSel}</select>
                 <div style="display:flex; gap:6px; align-items:center;">
                     <span style="font-size:0.7rem; color:#888;">TARGET</span>
-                    <input type="range" min="0" max="10" step="0.1" value="${target}" style="${sliderStyle}" oninput="syncStatTarget(${optIdx}, ${idx}, 'target', this.value)">
-                    <span id="b-stat-target-val-${optIdx}-${idx}" style="${valStyle}">${target.toFixed(1)}</span>
+                    <input type="range" min="0" max="100" step="1" value="${target}" style="${sliderStyle}" oninput="syncStatTarget(${optIdx}, ${idx}, 'target', this.value)">
+                    <span id="b-stat-target-val-${optIdx}-${idx}" style="${valStyle}">${Math.round(target)}</span>
                 </div>
                 <div style="display:flex; gap:6px; align-items:center;">
                     <span style="font-size:0.7rem; color:#888;">PULL</span>
@@ -1588,16 +1588,21 @@ function renderSectorRapportTargets(optIdx) {
 // range −0.30..+0.30. State holds only non-zero entries — re-render
 // hydrates 0 for missing keys so the UI always shows all twelve.
 // Single source of truth for the turnout-delta domain: snap to the 0.05
-// grid the slider exposes, clamp to [-0.30, +0.30], round-trip through
-// hundredths to kill floating-point dust. Returns 0 for blank / NaN
-// inputs so callers can use that as the "drop entry" sentinel.
+// grid the slider exposes, clamp to [TURNOUT_DELTA_MIN, TURNOUT_DELTA_MAX],
+// round-trip through hundredths to kill floating-point dust. Returns 0
+// for blank / NaN inputs so callers can use that as the "drop entry"
+// sentinel. The negative leg goes deeper than the positive leg because
+// "fully suppress this bloc" is a stronger lever than "boost it" — a
+// base 0.65 turnout sector can be driven near zero with delta=-1.00 but
+// realistically can't move much above 100%.
 const TURNOUT_DELTA_STEP = 0.05;
-const TURNOUT_DELTA_MAX = 0.30;
+const TURNOUT_DELTA_MIN = -1.00;
+const TURNOUT_DELTA_MAX =  0.30;
 function normalizeTurnoutDelta(value) {
     const raw = Number(value);
     if (!Number.isFinite(raw)) return 0;
     const snapped = Math.round(raw / TURNOUT_DELTA_STEP) * TURNOUT_DELTA_STEP;
-    return Math.max(-TURNOUT_DELTA_MAX, Math.min(TURNOUT_DELTA_MAX, Math.round(snapped * 100) / 100));
+    return Math.max(TURNOUT_DELTA_MIN, Math.min(TURNOUT_DELTA_MAX, Math.round(snapped * 100) / 100));
 }
 
 function syncSectorTurnout(optIdx, sectorKey, value) {
@@ -1640,7 +1645,7 @@ function renderSectorTurnoutTargets(optIdx) {
             return `
                 <div style="${rowStyle} background:#1a1a1a; border:1px solid #2a2a2a; border-radius:3px;">
                     <span style="color:#bbb; font-size:0.82rem;">${escapeHtml(s.label)}</span>
-                    <input type="range" min="-0.30" max="0.30" step="0.05" value="${val}" oninput="syncSectorTurnout(${optIdx}, '${s.key}', this.value)">
+                    <input type="range" min="${TURNOUT_DELTA_MIN}" max="${TURNOUT_DELTA_MAX}" step="${TURNOUT_DELTA_STEP}" value="${val}" oninput="syncSectorTurnout(${optIdx}, '${s.key}', this.value)">
                     <span id="b-turnout-val-${optIdx}-${s.key}" style="font-family:var(--font-mono,monospace); font-size:0.85rem; font-weight:bold; text-align:right; color:${valColor};">${formatTurnoutDelta(val)}</span>
                 </div>
             `;
@@ -1728,12 +1733,12 @@ function renderEquilibriumPreview(optIdx) {
             const target = Number(r.target) || 0;
             const pull = Number(r.pull) || 0;
             const pullLabel = pull >= 0.9 ? 'PRIMARY DRIVER' : pull >= 0.6 ? 'STRONG' : pull >= 0.3 ? 'MODERATE' : 'MINOR';
-            const targetColor = target >= 7 ? '#7fc97f' : target <= 3 ? '#e57373' : '#d4a83c';
+            const targetColor = target >= 70 ? '#7fc97f' : target <= 30 ? '#e57373' : '#d4a83c';
             return `
                 <div style="${cardStyle}">
                     <div style="display:flex; justify-content:space-between; align-items:baseline; gap:8px;">
                         <span style="color:#bbb; font-size:0.78rem;">${escapeHtml(fmtStat(r.stat_key))}</span>
-                        <span style="font-family:var(--font-mono,monospace); font-size:1.1rem; font-weight:bold; color:${targetColor};">${target.toFixed(1)}</span>
+                        <span style="font-family:var(--font-mono,monospace); font-size:1.1rem; font-weight:bold; color:${targetColor};">${Math.round(target)}</span>
                     </div>
                     <div style="font-size:0.7rem; color:#888; margin-top:2px;">${pullLabel} · ${pull.toFixed(2)} pull</div>
                 </div>
@@ -1794,7 +1799,7 @@ async function savePolicy() {
                 .filter(r => r.stat_key)
                 .map(r => ({
                     stat_key: normalizePolicyStatKey(r.stat_key),
-                    target: Math.max(0, Math.min(10, Number(r.target) || 0)),
+                    target: Math.max(0, Math.min(100, Math.round(Number(r.target) || 0))),
                     pull: Math.max(0, Math.min(1, Number(r.pull) || 0))
                 }))
                 .filter(r => r.stat_key);
