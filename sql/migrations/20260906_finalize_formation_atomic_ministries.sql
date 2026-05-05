@@ -174,28 +174,46 @@ BEGIN
     WHERE id = ANY(v_formation.party_ids);
   END IF;
 
-  -- 8. Stats snapshot for the new admin
+  -- 8. Stats snapshot for the new admin. Mirrors the canonical
+  -- NATION_STAT_COLUMNS list in js/game/stats.js. The previous
+  -- version of this RPC referenced legacy columns from before the
+  -- canonical-stats refactor (unemployment, inflation, stability,
+  -- happiness, healthcare_accessibility, physical_infrastructure,
+  -- civil_unrest, carbon_emissions, income_inequality, crime_rate,
+  -- manufacturing_output, foreign_investment, terrorism,
+  -- renewable_energy_percentage, beds_per_100k) — every one of them
+  -- was dropped from the schema and would crash the function when
+  -- v_nation.<col> was read against a record type missing that
+  -- field. The deleted JS fallback used to mask the RPC error; Phase
+  -- C removed the fallback so the bug surfaced. Now snapshot only
+  -- canonical columns; if the canonical list grows, mirror it here.
   v_stats_snapshot := jsonb_build_object(
-    'gdp_growth', v_nation.gdp_growth,
-    'unemployment', v_nation.unemployment,
-    'inflation', v_nation.inflation,
-    'stability', v_nation.stability,
-    'happiness', v_nation.happiness,
-    'healthcare_accessibility', v_nation.healthcare_accessibility,
-    'education', v_nation.education,
-    'physical_infrastructure', v_nation.physical_infrastructure,
-    'corruption', v_nation.corruption,
-    'civil_unrest', v_nation.civil_unrest,
-    'carbon_emissions', v_nation.carbon_emissions,
-    'income_inequality', v_nation.income_inequality,
-    'cost_of_living', v_nation.cost_of_living,
+    'gdp_growth',         v_nation.gdp_growth,
+    'debt',               v_nation.debt,
+    'immigration',        v_nation.immigration,
     'standard_of_living', v_nation.standard_of_living,
-    'crime_rate', v_nation.crime_rate,
-    'manufacturing_output', v_nation.manufacturing_output,
-    'foreign_investment', v_nation.foreign_investment,
-    'terrorism', v_nation.terrorism,
-    'renewable_energy_percentage', v_nation.renewable_energy_percentage,
-    'beds_per_100k', v_nation.beds_per_100k
+    'cost_of_living',     v_nation.cost_of_living,
+    'budget',             v_nation.budget,
+    'control',            v_nation.control,
+    'unrest',             v_nation.unrest,
+    'public_approval',    v_nation.public_approval,
+    'crown_authority',    v_nation.crown_authority,
+    'energy',             v_nation.energy,
+    'health',             v_nation.health,
+    'education',          v_nation.education,
+    'global_image',       v_nation.global_image,
+    'infrastructure',     v_nation.infrastructure,
+    'industry',           v_nation.industry,
+    'farmland',           v_nation.farmland,
+    'service_sector',     v_nation.service_sector,
+    'unskilled_workers',  v_nation.unskilled_workers,
+    'skilled_workers',    v_nation.skilled_workers,
+    'wages',              v_nation.wages,
+    'income_tax',         v_nation.income_tax,
+    'corporate_tax',      v_nation.corporate_tax,
+    'crime',              v_nation.crime,
+    'corruption',         v_nation.corruption,
+    'inequality',         v_nation.inequality
   );
 
   v_gov_approval := COALESCE(v_nation.gov_approval, 50);
