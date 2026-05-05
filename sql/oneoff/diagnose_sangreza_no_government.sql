@@ -34,9 +34,14 @@ FROM public.nations
 WHERE name = 'Sangreza';
 
 -- ── 2. government_formations rows ────────────────────────────────────────────
+-- The PM party isn't a top-level column on this table — it lives inside
+-- ministry_assignments JSONB at the 'prime_minister' key. Surface it
+-- explicitly so we can see who the formation thinks the PM is.
 SELECT
-    id, status, party_ids, prime_minister_party_id,
-    ministry_assignments, minister_names,
+    id, status, party_ids,
+    ministry_assignments,
+    minister_names,
+    ministry_assignments->>'prime_minister' AS pm_party_id,
     started_at_tick, ended_at_tick, deadline_tick, formed_at_tick,
     created_at
 FROM public.government_formations
@@ -88,14 +93,9 @@ LIMIT 10;
 -- ── 5. coalitions ────────────────────────────────────────────────────────────
 -- The Coalition card on the Administrative panel reads the active coalition.
 -- "None" means no row with status IN ('formed','active','caretaker').
-SELECT
-    c.id,
-    c.status,
-    c.party_ids,
-    c.prime_minister_party_id,
-    c.formed_at_tick,
-    c.dissolved_at_tick,
-    c.created_at
+-- to_jsonb(c.*) emits every column whatever the schema looks like — saves
+-- another guessing-game on column names.
+SELECT to_jsonb(c.*) AS row_data
 FROM public.coalitions c
 WHERE c.nation_id = (SELECT id FROM public.nations WHERE name = 'Sangreza')
 ORDER BY c.created_at DESC
