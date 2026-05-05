@@ -3308,8 +3308,8 @@ export function getNationNames(nationName) {
  *
  * Every PM-install path (parliamentary auto-appoint, presidential PM
  * confirmation, monarchy royal appointment) routes through this helper so
- * the upsert columns, ideology lookup, and unique(nation_id) handling stay
- * identical across paths.
+ * the upsert columns and unique(nation_id) handling stay identical across
+ * paths.
  *
  * @param {object} supabase
  * @param {object} opts
@@ -3321,10 +3321,6 @@ export function getNationNames(nationName) {
  * @param {number} opts.currentTick
  * @param {string} [opts.traitKey]          leader trait, optional
  * @param {string} [opts.candidateId]       presidential candidate row id, optional
- * @param {string} [opts.ideology]          uppercase tag; if omitted, loaded
- *                                          from factions.leader_ideology with
- *                                          a CENTRIST fallback
- * @returns {Promise<{ ideologyTag: string }>}
  */
 export async function installHOG(supabase, opts) {
     if (!opts?.nationId || !opts?.factionId) {
