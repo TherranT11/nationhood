@@ -4779,6 +4779,13 @@ function computeSectorWeights(nation, sectors) {
 
         if (!s.primary_stat) { out[s.id] = existing; continue; }
 
+        // Admin override: stepStatToWeight only ever returns 1/2/3, so a
+        // value above MAX could only have come from an admin manually
+        // setting it via admin.html. Skip the stat-driven recompute so
+        // their override survives the next election. Without this,
+        // persistSectorWeights would write 1/2/3 back over the override.
+        if (existing > SECTOR_WEIGHT_MAX) { out[s.id] = existing; continue; }
+
         const primaryVal = getStatValueForSector(nation, s.primary_stat);
         if (primaryVal == null) { out[s.id] = existing; continue; }
 
