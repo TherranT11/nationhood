@@ -6,25 +6,30 @@
 --   2. RPC finalize_government_formation — atomic: close old admin, insert
 --      new admin, install HOG, mark formation 'formed', dissolve rivals,
 --      reset gov_approval
---   3. createMinistriesFromAssignments — INSERT ministry rows
---   4. autoAppointPartyLeaderAsPM — JS-side ministry write + pm_appointed
+--   3. createMinistriesFromAssignments — INSERT/UPDATE ministry rows
+--   4. autoAppointPartyLeaderAsPM — JS-side PM install + pm_appointed
 --      event_log
 --
--- The recent ideology ReferenceError (now fixed) crashed in step 4's
--- return statement AFTER ministries had been written. Sangreza is most
--- likely residue from one of those pre-fix attempts. This script reads
--- every table the Administrative panel consults so we can see exactly
--- which of {administrations, head_of_government, government_formations,
--- ministries, coalitions} got partial writes.
+-- Original Sangreza diagnosis revealed the bug pattern was different:
+-- the Cabinet panel was rendering stale rows from the previous Pacheco
+-- admin (which closed at tick 49 but never had its ministry rows
+-- vacated). See sql/oneoff/vacate_zombie_ministers_global.sql for the
+-- cleanup. This script stays useful for any future "no government /
+-- partial state" report — re-point it at the affected nation and run.
 --
--- Sections:
---   1. Nation row (sanity check + context)
---   2. government_formations — every row for Sangreza, status + assignments
---   3. administrations — open + recently closed admins
---   4. head_of_government — active + inactive HOG rows
---   5. coalitions — active + recent
---   6. ministries — every row, with faction names attached
---   7. event_log — last 30 form/HOG/admin events for the nation
+-- Schema notes captured during the diagnostic session:
+--   - government_formations has no deadline_tick / formed_at_tick column;
+--     the only timestamp is formed_at (timestamptz).
+--   - government_formations has no prime_minister_party_id column; the PM
+--     party_id lives inside ministry_assignments JSONB at the
+--     'prime_minister' key.
+--   - head_of_government uses appointed_tick (NOT appointed_at_tick).
+--   - There is no public.coalitions table — coalition state is encoded
+--     in government_formations.status.
+--   - ministries uses party_id (NOT faction_id).
+--
+-- All sections use SELECT * where the column shape might drift, so the
+-- script keeps working even if the schema evolves.
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 -- ── 1. Nation context ────────────────────────────────────────────────────────
@@ -33,95 +38,48 @@ SELECT id, name, government_type, hos_election_method, public_approval, control,
 FROM public.nations
 WHERE name = 'Sangreza';
 
--- ── 2. government_formations rows ────────────────────────────────────────────
--- The PM party isn't a top-level column on this table — it lives inside
--- ministry_assignments JSONB at the 'prime_minister' key. Surface it
--- explicitly so we can see who the formation thinks the PM is.
-SELECT
-    id, status, party_ids,
-    ministry_assignments,
-    minister_names,
-    ministry_assignments->>'prime_minister' AS pm_party_id,
-    started_at_tick, ended_at_tick, deadline_tick, formed_at_tick,
-    created_at
+-- ── 2. government_formations rows (every column) ─────────────────────────────
+-- Every row for the nation. Look at status (active / dissolved / formed),
+-- ministry_assignments JSONB, formed_at timestamp.
+SELECT *
 FROM public.government_formations
 WHERE nation_id = (SELECT id FROM public.nations WHERE name = 'Sangreza')
-ORDER BY created_at DESC
-LIMIT 5;
+ORDER BY created_at DESC;
 
--- ── 3. administrations ───────────────────────────────────────────────────────
--- Active = ended_at_tick IS NULL. The Administrative panel's "No Government"
--- card means there's no row matching that filter (or the join to factions
--- fails). Closed admins included for context — if the only admin is closed,
--- finalize_government_formation never inserted the new one.
-SELECT
-    a.id,
-    a.administration_type,
-    a.governing_faction_id,
-    f.faction_name AS governing_party,
-    a.started_at_tick,
-    a.ended_at_tick,
-    a.end_reason,
-    a.coalition_id,
-    a.created_at
-FROM public.administrations a
-LEFT JOIN public.factions f ON f.id = a.governing_faction_id
-WHERE a.nation_id = (SELECT id FROM public.nations WHERE name = 'Sangreza')
-ORDER BY a.started_at_tick DESC NULLS LAST, a.created_at DESC
-LIMIT 10;
+-- ── 3. administrations (active admin = ended_at_tick IS NULL) ────────────────
+SELECT *
+FROM public.administrations
+WHERE nation_id = (SELECT id FROM public.nations WHERE name = 'Sangreza')
+ORDER BY started_at_tick DESC NULLS LAST, created_at DESC;
 
 -- ── 4. head_of_government rows ───────────────────────────────────────────────
--- An "active=true" row is what the Executive panel reads. If the cabinet
--- shows ministers but no Executive data, the HOG insert failed or got
--- deactivated before the page loaded.
-SELECT
-    hog.id,
-    hog.faction_id,
-    f.faction_name AS pm_party,
-    hog.first_name,
-    hog.last_name,
-    hog.active,
-    hog.appointed_at_tick,
-    hog.deactivated_at_tick,
-    hog.reason
-FROM public.head_of_government hog
-LEFT JOIN public.factions f ON f.id = hog.faction_id
-WHERE hog.nation_id = (SELECT id FROM public.nations WHERE name = 'Sangreza')
-ORDER BY hog.appointed_at_tick DESC NULLS LAST
-LIMIT 10;
+-- An active=true row is what the Executive panel reads.
+SELECT *
+FROM public.head_of_government
+WHERE nation_id = (SELECT id FROM public.nations WHERE name = 'Sangreza')
+ORDER BY appointed_tick DESC NULLS LAST;
 
--- ── 5. coalitions ────────────────────────────────────────────────────────────
--- The Coalition card on the Administrative panel reads the active coalition.
--- "None" means no row with status IN ('formed','active','caretaker').
--- to_jsonb(c.*) emits every column whatever the schema looks like — saves
--- another guessing-game on column names.
-SELECT to_jsonb(c.*) AS row_data
-FROM public.coalitions c
-WHERE c.nation_id = (SELECT id FROM public.nations WHERE name = 'Sangreza')
-ORDER BY c.created_at DESC
-LIMIT 5;
-
--- ── 6. ministries — should match the 11 cabinet rows on the page ─────────────
--- Group by faction_id to confirm party assignments. If 11 rows here but
--- no admin/HOG/coalition above, that's the smoking gun: createMinistriesFromAssignments
--- ran but its prerequisite atomic RPC didn't (or got rolled back later).
+-- ── 5. ministries — should match the Cabinet panel exactly ───────────────────
+-- Group by party_id to confirm coalition splits. If rows are populated
+-- here but no admin/HOG above, that's the zombie-cabinet pattern fixed
+-- by vacate_zombie_ministers_global.sql.
 SELECT
     m.id,
     m.ministry_key,
-    m.faction_id,
+    m.party_id,
     f.faction_name,
     m.minister_first_name,
     m.minister_last_name,
     m.minister_approval,
-    m.appointed_at_tick,
-    m.is_active
+    m.is_active,
+    m.created_at
 FROM public.ministries m
-LEFT JOIN public.factions f ON f.id = m.faction_id
+LEFT JOIN public.factions f ON f.id = m.party_id
 WHERE m.nation_id = (SELECT id FROM public.nations WHERE name = 'Sangreza')
   AND m.is_active = true
 ORDER BY m.ministry_key;
 
--- ── 7. event_log — last form/HOG/admin events ───────────────────────────────
+-- ── 6. event_log — last 30 form/HOG/admin/PM events ──────────────────────────
 SELECT
     e.fired_at_tick,
     e.event_name,
