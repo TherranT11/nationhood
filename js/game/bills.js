@@ -574,22 +574,31 @@ async function applyInverseSectorEffectsToFaction(supabase, nationId, factionId,
 // ════════════════════════════════════════════════════════════════
 // Target-based policy: one-shot rapport apply at bill-pass time.
 //
-// When a target-based option is enacted (or switched into) via a
-// passing bill, every faction that voted YES on that bill gets the
-// option's sector_rapport_targets applied to their
-// faction_sector_popularity in each listed sector — once.
+// `sector_rapport_targets` describes Voter Bloc Standing — where
+// each option places voters' feelings about the policy on a
+// −10..+10 scale. When a passing bill enacts (or switches to) an
+// option, every YES voter takes the *difference* between the new
+// option's standing and the previously-active option's standing
+// against their faction_sector_popularity, once.
+//
+// Why level-based instead of an absolute delta: passing
+// "Means-Tested Pensions" should feel great to retirees if the old
+// law was "No Pensions" and bad if the old law was "Generous
+// Pensions". With per-option Standing values, the engine subtracts
+// what was already in place (or 0 if first enactment) so the same
+// option produces opposite reactions depending on what it
+// replaced.
 //
 // Why one-shot: an earlier per-tick accumulator pinned every
-// participating party at 0 or max within ~100 ticks (rapport=10
-// stacks +0.1 displayed/tick → +10 displayed over a typical
-// election cycle). The new model treats rapport as a one-time
-// political payout: "you backed this bill, you wear the
-// consequences with that bloc, immediately and permanently."
+// participating party at 0 or max within ~100 ticks. Treating the
+// move between standings as a single political payout is more
+// honest about "you backed this swap, you wear the consequences."
 //
 // Mapping:
-//   rapport (-10..+10) → displayed-popularity delta on the same
-//   0..10 scale → stored as integer tenths (0..100). delta_stored
-//   = round(rapport * 10), clamped after add to [0, 100].
+//   delta_rapport = standing_new − standing_prev (each in −10..+10)
+//   → displayed-popularity delta on the same 0..10 scale
+//   → stored as integer tenths (0..100). delta_stored
+//   = round(delta_rapport * 10), clamped after add to [0, 100].
 //
 // YES voters:
 //   - The bill's proposed_by faction (sponsor implicitly votes yes).
@@ -597,7 +606,9 @@ async function applyInverseSectorEffectsToFaction(supabase, nationId, factionId,
 //     (committee 'accept' and floor 'yes' both qualify).
 //
 // Skips:
-//   - Repeal articles (no option to enact).
+//   - Repeal articles (no option to enact). Repeal currently leaves
+//     prior standing in place; a future change could move it back
+//     toward 0 if "no policy" should mean "no standing."
 //   - Articles with no selected_option_id.
 //   - Options with is_target_based = FALSE.
 //   - Sector keys that don't exist in this nation's sectors table.
@@ -619,11 +630,25 @@ function normalizeSupportStance(stance) {
     return stance;
 }
 
-async function applyOptionRapportToYesVoters(supabase, bill, art) {
+// Helper: turn a `[{ sector_key, rapport }]` list into a Map keyed by
+// sector_key. Hostile inputs (NaN, missing fields) silently drop.
+function _rapportListToMap(list) {
+    const out = new Map();
+    if (!Array.isArray(list)) return out;
+    for (const r of list) {
+        if (!r?.sector_key) continue;
+        const v = Number(r.rapport);
+        if (!Number.isFinite(v)) continue;
+        out.set(r.sector_key, v);
+    }
+    return out;
+}
+
+async function applyOptionRapportToYesVoters(supabase, bill, art, previousRapport = []) {
     if (!bill?.id || !bill?.nation_id) return;
     if (!art?.selected_option_id || art?.repeal_active_law_id) return;
 
-    // Fetch the option's rapport config fresh — callers pass `bill`
+    // Fetch the new option's rapport config fresh — callers pass `bill`
     // with varying joins, so we don't trust art.selected_option to
     // carry is_target_based + sector_rapport_targets reliably.
     const { data: opt, error: optErr } = await supabase
@@ -636,9 +661,20 @@ async function applyOptionRapportToYesVoters(supabase, bill, art) {
         return;
     }
     if (!opt?.is_target_based) return;
-    const targets = (Array.isArray(opt.sector_rapport_targets) ? opt.sector_rapport_targets : [])
-        .filter(t => t && t.sector_key && Number.isFinite(Number(t.rapport)) && Number(t.rapport) !== 0);
-    if (targets.length === 0) return;
+
+    // Compute Standing(new) − Standing(prev) per sector_key. Sectors only
+    // listed on one side of the swap take their full magnitude (the other
+    // side's standing is implicitly 0). Sectors on both sides take the
+    // difference. Sectors on neither side are absent from the map.
+    const newMap  = _rapportListToMap(opt.sector_rapport_targets);
+    const prevMap = _rapportListToMap(previousRapport);
+    const deltas  = []; // [{ sector_key, delta }]
+    const allKeys = new Set([...newMap.keys(), ...prevMap.keys()]);
+    for (const key of allKeys) {
+        const delta = (newMap.get(key) || 0) - (prevMap.get(key) || 0);
+        if (delta !== 0) deltas.push({ sector_key: key, delta });
+    }
+    if (deltas.length === 0) return;
 
     // Build the YES-voter set. Prefer the bill_support rows already on
     // the bill object; fall back to a fresh fetch if the caller didn't
@@ -666,7 +702,7 @@ async function applyOptionRapportToYesVoters(supabase, bill, art) {
     if (yesIds.size === 0) return;
 
     // Resolve the listed sector_keys to sector_ids for this nation.
-    const sectorKeys = [...new Set(targets.map(t => t.sector_key))];
+    const sectorKeys = [...new Set(deltas.map(d => d.sector_key))];
     const { data: sectorRows, error: secErr } = await supabase
         .from('sectors')
         .select('id, sector_key')
@@ -680,7 +716,7 @@ async function applyOptionRapportToYesVoters(supabase, bill, art) {
     const sectorIdByKey = new Map((sectorRows || []).map(s => [s.sector_key, s.id]));
     if (sectorIdByKey.size === 0) return;
 
-    // Apply rapport once per (YES voter, sector). Read-modify-write
+    // Apply delta once per (YES voter, sector). Read-modify-write
     // through the existing popularity row; skip silently if the sector
     // wasn't seeded for this faction.
     const factionIds = [...yesIds];
@@ -697,16 +733,15 @@ async function applyOptionRapportToYesVoters(supabase, bill, art) {
     const rowByKey = new Map((popRows || []).map(r => [`${r.faction_id}|${r.sector_id}`, r]));
 
     for (const factionId of factionIds) {
-        for (const t of targets) {
-            const sectorId = sectorIdByKey.get(t.sector_key);
+        for (const d of deltas) {
+            const sectorId = sectorIdByKey.get(d.sector_key);
             if (!sectorId) continue;
             const row = rowByKey.get(`${factionId}|${sectorId}`);
             if (!row) continue;
 
-            const rapport = Number(t.rapport);
-            // rapport is on the displayed 0..10 popularity scale; storage
+            // delta is on the displayed 0..10 popularity scale; storage
             // is tenths 0..100 → multiply by 10.
-            const deltaStored = Math.round(rapport * 10);
+            const deltaStored = Math.round(d.delta * 10);
             if (deltaStored === 0) continue;
             const before = Number(row.popularity) || 0;
             const after = Math.max(0, Math.min(100, before + deltaStored));
@@ -717,7 +752,7 @@ async function applyOptionRapportToYesVoters(supabase, bill, art) {
                 .update({ popularity: after, updated_at: new Date().toISOString() })
                 .eq('id', row.id);
             if (updErr) {
-                console.warn(`[applyOptionRapportToYesVoters] popularity update failed (${factionId}/${t.sector_key}):`, updErr.message);
+                console.warn(`[applyOptionRapportToYesVoters] popularity update failed (${factionId}/${d.sector_key}):`, updErr.message);
             }
         }
     }
@@ -3440,7 +3475,7 @@ export async function enactBill(supabase, bill, currentTick) {
             // we can detect option switches and revert the old option's
             // sector_effects below.
             const { data: existingActiveLaw } = await supabase.from('active_laws')
-                .select('id, selected_option_id, selected_option:policy_options!selected_option_id(sector_effects)')
+                .select('id, selected_option_id, selected_option:policy_options!selected_option_id(sector_effects, sector_rapport_targets)')
                 .eq('nation_id', bill.nation_id)
                 .eq('policy_id', policy.id)
                 .maybeSingle();
@@ -3461,6 +3496,11 @@ export async function enactBill(supabase, bill, currentTick) {
             const oldOptionSectorEffects = isOptionSwitch
                 ? (existingActiveLaw.selected_option?.sector_effects || null)
                 : null;
+            // Capture the previously-active option's rapport so the helper
+            // below can compute Standing(new) − Standing(prev) instead of
+            // applying an absolute delta. Falls back to [] when this is the
+            // first enactment of the policy (no prior level → baseline 0).
+            const previousOptionRapport = existingActiveLaw?.selected_option?.sector_rapport_targets || [];
             console.log('[enactBill] stage=upsert_active_law attempt', {
                 ...logContext,
                 policyId: policy.id,
@@ -3537,10 +3577,11 @@ export async function enactBill(supabase, bill, currentTick) {
 
             // One-shot rapport apply for target-based options. Every YES
             // voter on this bill (sponsor + bill_support 'accept'/'yes')
-            // takes the option's sector_rapport_targets against their
-            // faction_sector_popularity. Internal no-op for non-target-
-            // based options.
-            await applyOptionRapportToYesVoters(supabase, bill, art);
+            // takes Standing(new) − Standing(prev) per sector against
+            // their faction_sector_popularity. First-time enactment ⇒
+            // prev is [] ⇒ delta == new (matches the original semantics).
+            // Internal no-op for non-target-based options.
+            await applyOptionRapportToYesVoters(supabase, bill, art, previousOptionRapport);
 
             // MLA enact hook: cancel pending defense-minister confirmations
             // so they don't collide with the forced per-tick sync.

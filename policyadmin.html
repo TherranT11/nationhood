@@ -856,9 +856,12 @@ function renderOptionCard(idx) {
             </div>
 
             <div style="${subDivider}">
-                ${subTitle('🗳️', 'Voter Bloc Rapport Targets')}
+                ${subTitle('🗳️', 'Voter Bloc Standing')}
                 <p style="color:#888; font-size:0.82rem; margin-bottom:10px;">
-                    When the bill that selects this option <strong>passes</strong>, every faction that voted <strong>YES</strong> (sponsor + supporters) takes this rapport against their popularity in each listed sector — <strong>once</strong>. Values are on the displayed 0–10 popularity scale, so +5 = +5 popularity / −3 = −3 popularity. Range −10 to +10. Leave a slider at 0 for no effect.
+                    Where this option places voters' feelings about the policy on a <strong>−10 to +10</strong> scale, per sector. When a passing bill enacts (or switches to) this option, every <strong>YES</strong> voter takes <code>Standing(this option) − Standing(previously-active option)</code> against their popularity in each listed sector — <strong>once</strong>. Values are on the displayed 0–10 popularity scale.
+                </p>
+                <p style="color:#888; font-size:0.78rem; margin-bottom:10px;">
+                    Worked example for Pensions: if Retirees stand at +8 under "Generous" and +2 under "Means-Tested", switching from Generous → Means-Tested applies <strong>−6</strong> to YES voters' popularity with Retirees; the reverse switch applies <strong>+6</strong>. First-time enactment uses 0 as the prior level, so it behaves like an absolute apply.
                 </p>
                 <div id="sector-rapport-container-${idx}"></div>
             </div>
