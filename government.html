@@ -2244,6 +2244,11 @@ async function loadBudgetData() {
         recurringReceivedAnnual,
         debtService: Number(budget.debtService || 0),
         debt: Number(nation.debt || 0),
+        // Capture the nation's government type so _gbBuildCostRows can
+        // light up the monarchy-only Royal Holdings sub-line on
+        // National Infrastructure without re-querying.
+        nationId: nation.id,
+        isMonarchy: isAbsoluteMonarchy(nation),
     };
 }
 
@@ -2262,17 +2267,32 @@ function _gbBuildIncomeRows(d) {
     return rows;
 }
 
-// Cost line items. Reduced to a single row — Interest on Debt — while
-// the budget system is rebuilt from the ground up. Per-ministry
-// institution costs, foreign aid, and recurring-transfer outflows are
-// all culled at the source so neither the Costs panel nor the
-// Expenditures headline card surface placeholder data. debtService
-// arrives in raw dollars from calculateNationalBudget; convert to
-// abstract scale here so the row matches the Income panel's units
-// (revenue is already abstract via nation.budget).
+// Cost line items. The nine spending categories are placeholders —
+// every yr is 0 except National Infrastructure in monarchies (which
+// carries a flat $3/mo Royal Holdings & Estates line) and Pension
+// (whose deep-dive surfaces the active multi-option pension policy's
+// ongoing cost lazily on click). Interest on Debt sits at the bottom
+// as the one wired-up financing cost. Real allocation logic ships
+// when the budget system rebuild lands.
+//
+// Royal Holdings & Estates: monarchy-only, flat $3/mo → $36/yr,
+// rolled into the National Infrastructure row total. The deep-dive
+// breaks it out as a sub-allocation so the line item is auditable.
+const _GB_ROYAL_HOLDINGS_MONTHLY = 3;
+
 function _gbBuildCostRows(d) {
+    const royalHoldingsAnnual = d.isMonarchy ? _GB_ROYAL_HOLDINGS_MONTHLY * 12 : 0;
     return [
-        { key: 'debt_interest', name: 'Interest on Debt', yr: _gbToAbstract(d.debtService), descKey: 'debtInterest' },
+        { key: 'public_sector_wages',  name: 'Public Sector Wages',     yr: 0,                      descKey: 'publicSectorWages'    },
+        { key: 'welfare_benefits',     name: 'Welfare Benefits',        yr: 0,                      descKey: 'welfareBenefits'      },
+        { key: 'pension',              name: 'Pension',                 yr: 0,                      descKey: 'pension'              },
+        { key: 'procurement_capital',  name: 'Procurement & Capital',   yr: 0,                      descKey: 'procurementCapital'   },
+        { key: 'subsidies_industry',   name: 'Subsidies & Industry Support', yr: 0,                 descKey: 'subsidiesIndustry'    },
+        { key: 'defense_security',     name: 'Defense & Security',      yr: 0,                      descKey: 'defenseSecurity'      },
+        { key: 'national_infra',       name: 'National Infrastructure', yr: royalHoldingsAnnual,    descKey: 'nationalInfrastructure' },
+        { key: 'foreign_aid',          name: 'Foreign Aid & Diplomacy', yr: 0,                      descKey: 'foreignAid'           },
+        { key: 'discretionary',        name: 'Discretionary Programs',  yr: 0,                      descKey: 'discretionary'        },
+        { key: 'debt_interest',        name: 'Interest on Debt',        yr: _gbToAbstract(d.debtService), descKey: 'debtInterest'   },
     ];
 }
 
@@ -2484,6 +2504,21 @@ const _GB_DEEP_COPY = {
     debtInterest:{ desc: 'Interest service on sovereign debt.' },
     aidGiven:    { desc: 'Outgoing financial aid under accepted economic-aid agreements. Offsets inbound trade-agreement income on the Revenue side.' },
     tradeTransfersGiven: { desc: 'Outgoing recurring financial transfers under accepted GTAs. Annualized as per-tick amount × ticks-per-year. Mirrors inbound transfers on the Revenue side.' },
+    // Spending categories — descriptions in place, allocation engines
+    // not yet wired (every row reads $0 until the rebuild lands).
+    // Pension and National Infrastructure surface live sub-rows in
+    // the deep-dive (active pension option's ongoing cost; monarchy
+    // Royal Holdings & Estates respectively).
+    publicSectorWages:      { desc: 'Salaries for civil servants, public-sector employees, and state-owned enterprise staff. Scales with the size of the state apparatus and prevailing wages.' },
+    welfareBenefits:        { desc: 'Means-tested cash transfers and in-kind support for low-income households — unemployment assistance, family allowances, housing subsidies. Scales with the welfare regime in force.' },
+    pension:                { desc: 'Old-age income support paid out of the state pension system. Click-through surfaces the currently active pension policy option and its per-tick ongoing cost.' },
+    procurementCapital:     { desc: 'Government purchases of goods, services, and capital equipment — IT, vehicles, materials, contracted services. The lumpy, one-shot side of public spending.' },
+    subsidiesIndustry:      { desc: 'Direct support to private firms and sectors — agricultural subsidies, industrial credits, R&D grants, strategic-industry bailouts. Distinct from welfare, which targets households.' },
+    defenseSecurity:        { desc: 'Standing military pay, materiel, intelligence services, and internal security forces. Scales with force structure and active doctrine.' },
+    nationalInfrastructure: { desc: 'Public works — transport networks, utilities, civic buildings, the physical platform the rest of the economy runs on. In monarchies, includes a Royal Holdings & Estates sub-line for the upkeep of crown property.' },
+    foreignAid:             { desc: 'Non-trade-agreement foreign disbursements: development aid, humanitarian relief, soft-power grants. Trade-agreement aid lives under Trade Agreements on the income side instead.' },
+    discretionary:          { desc: 'Catch-all for short-cycle programs and one-off initiatives that don’t fit a permanent ministry budget — pilots, commissions, special funds.' },
+    royalHoldings:          { desc: 'Upkeep, security, and operational costs for crown estates, palaces, and royal patrimonial assets. Monarchy-only; rolled into the National Infrastructure total.' },
     // ministries fall through to a shared template, filled with
     // funding-pct / institution count at render time
 };
@@ -2545,6 +2580,49 @@ async function _gbSelectCategory(container, row, kind) {
         } catch (err) {
             console.warn('[Budget] Deep-dive institution fetch failed:', err.message);
         }
+    }
+
+    // Pension: surface the currently active pension policy + chosen
+    // option + its per-tick ongoing cost as a single sub-row. Looks
+    // up active_laws by joining policies on a law_category that
+    // matches "pension" (case-insensitive). Ongoing cost is per-tick;
+    // annualize by × 12 to match the Costs panel's yearly column.
+    // Whole block falls through silently (no sub-row, generic copy)
+    // if no pension policy is active.
+    if (row.descKey === 'pension' && currentNation) {
+        try {
+            const { data: laws, error: lawsErr } = await _supabase
+                .from('active_laws')
+                .select('id, policies(policy_name, law_category), selected_option:policy_options!selected_option_id(option_name, ongoing_base_cost)')
+                .eq('nation_id', currentNation.id);
+            if (lawsErr) {
+                console.warn('[Budget] Pension active-law fetch failed:', lawsErr.message);
+            } else {
+                const active = (laws || []).find(al => /pension/i.test(al?.policies?.law_category || ''));
+                if (active) {
+                    const opt = active.selected_option;
+                    const ongoingPerTick = Number(opt?.ongoing_base_cost || 0);
+                    const ongoingAnnual = ongoingPerTick * 12;
+                    const label = opt?.option_name
+                        ? `${active.policies?.policy_name || 'Pension'} — ${opt.option_name}`
+                        : (active.policies?.policy_name || 'Active pension policy');
+                    subRows.push({ k: label, v: ongoingAnnual });
+                }
+            }
+        } catch (err) {
+            console.warn('[Budget] Pension deep-dive failed:', err.message);
+        }
+    }
+
+    // National Infrastructure: monarchies get a single Royal Holdings
+    // & Estates sub-line at the flat $3/mo rate. The row total in
+    // _gbBuildCostRows already includes it; we just surface the
+    // breakdown here so the value isn't a black box.
+    if (row.descKey === 'nationalInfrastructure' && _budgetData?.isMonarchy) {
+        subRows.push({
+            k: 'Royal Holdings & Estates',
+            v: _GB_ROYAL_HOLDINGS_MONTHLY * 12,
+        });
     }
 
     // A later click superseded this selection — bail before we write into

@@ -19631,18 +19631,24 @@ async function buildPolicyDecayAdjustments(supabase, nationId) {
 //     met_pct ≥ 1.20 → SoL +0.05, cost_of_living -0.05,
 //                      public_approval +0.05, service_sector +0.05
 //
-//   MINERALS (production = (minerals/3) × ((workforce + industry)/200),
+//   MINERALS (production = (minerals/3) × ((unskilled + industry)/200),
 //             demand     = (infra/10) + (industry/16)):
 //     met_pct < 1.00 → infrastructure -0.1, industry -0.1, gdp_growth -0.1
 //     met_pct ≥ 1.20 → SoL +0.05, infrastructure +0.05,
 //                      industry +0.05, gdp_growth +0.05
 //
-//   FOOD (production = (farmland / 2) × (workforce / 100),
+//   FOOD (production = (farmland / 2) × (unskilled / 100),
 //         demand     = population_M / 3):
 //     met_pct < 1.00 → health -0.2, public_approval -0.2,
 //                      unrest +0.2, crime +0.1, workforce -0.1
 //     met_pct ≥ 1.20 → health +0.1, public_approval +0.1,
 //                      SoL +0.05, cost_of_living -0.05
+//
+//   Workforce tiering: Minerals (extraction), Food (agriculture),
+//   and Consumer Goods (mass-production manufacturing) all read the
+//   unskilled_workers tier. Luxury Goods uses Education × Services
+//   as its operational multiplier — that pair stands in for the
+//   skilled / knowledge-work tier and stays as-is.
 //
 //   demand = 0 → skip (no effects either way).
 //   100-119% inclusive → no effects.
@@ -19763,8 +19769,9 @@ function buildEnergyBucketDeltas(nation, tradingByNation) {
 // Build {bucket, met_pct, deltas} for MINERALS on this nation.
 function buildMineralsBucketDeltas(nation, tradingByNation) {
     const mineralsStat  = Number(nation.minerals)       || 0;
-    // Canonical Phase 3: workforce split → average of the two tiers.
-    const workforceStat = ((Number(nation.unskilled_workers) || 0) + (Number(nation.skilled_workers) || 0)) / 2;
+    // Mining/extraction is unskilled physical labour — read the
+    // unskilled tier directly instead of averaging both tiers.
+    const workforceStat = Number(nation.unskilled_workers) || 0;
     const industryStat  = Number(nation.industry)       || 0;
     const infraStat     = Number(nation.infrastructure) || 0;
 
@@ -19798,7 +19805,8 @@ function buildMineralsBucketDeltas(nation, tradingByNation) {
 //   demand     = population_M / 3
 function buildFoodBucketDeltas(nation, tradingByNation) {
     const farmlandStat  = Number(nation.farmland)  || 0;
-    const workforceStat = ((Number(nation.unskilled_workers) || 0) + (Number(nation.skilled_workers) || 0)) / 2;
+    // Agriculture runs on the unskilled labour tier.
+    const workforceStat = Number(nation.unskilled_workers) || 0;
     const popMillions   = (Number(nation.population) || 0) / 1_000_000;
 
     const production = (farmlandStat / 2) * (workforceStat / 100);
@@ -19842,7 +19850,8 @@ function buildFoodBucketDeltas(nation, tradingByNation) {
 //   demand     = (standard_of_living / 100) × population_M / 2
 function buildConsumerGoodsBucketDeltas(nation, tradingByNation) {
     const industryStat  = Number(nation.industry)           || 0;
-    const workforceStat = ((Number(nation.unskilled_workers) || 0) + (Number(nation.skilled_workers) || 0)) / 2;
+    // Mass-production manufacturing is unskilled labour.
+    const workforceStat = Number(nation.unskilled_workers) || 0;
     const solStat       = Number(nation.standard_of_living) || 0;
     const popMillions   = (Number(nation.population) || 0) / 1_000_000;
 
