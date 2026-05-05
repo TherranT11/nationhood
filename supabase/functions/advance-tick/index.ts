@@ -23248,7 +23248,19 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
         }
     }
 
-    return { first_name: faction.leader_first_name, last_name: faction.leader_last_name, age: leaderAge, ideology: ideology.tag, trait_key: traitKey };
+    // ideology was sourced from a removed-since `ideologies[]` lookup that
+    // had a `.tag` field. The current single-source-of-truth column on
+    // factions is leader_ideology (already an uppercase tag string), and
+    // every caller of this function ignores the return value anyway. Read
+    // it straight off the faction row so the return shape stays honest
+    // for any future caller that does want to consume it.
+    return {
+        first_name: faction.leader_first_name,
+        last_name: faction.leader_last_name,
+        age: leaderAge,
+        ideology: faction.leader_ideology || null,
+        trait_key: traitKey,
+    };
 }
 
 async function processPMTraitEffects(supabase, nation, currentTick) {
