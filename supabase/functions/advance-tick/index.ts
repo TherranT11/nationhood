@@ -19771,11 +19771,11 @@ function buildMineralsBucketDeltas(nation, tradingByNation) {
     const mineralsStat  = Number(nation.minerals)       || 0;
     // Mining/extraction is unskilled physical labour — read the
     // unskilled tier directly instead of averaging both tiers.
-    const workforceStat = Number(nation.unskilled_workers) || 0;
+    const unskilledStat = Number(nation.unskilled_workers) || 0;
     const industryStat  = Number(nation.industry)       || 0;
     const infraStat     = Number(nation.infrastructure) || 0;
 
-    const production = (mineralsStat / 3) * ((workforceStat + industryStat) / 200);
+    const production = (mineralsStat / 3) * ((unskilledStat + industryStat) / 200);
     const demand     = (infraStat / 10) + (industryStat / 16);
     if (demand <= 0) return null;
 
@@ -19806,10 +19806,10 @@ function buildMineralsBucketDeltas(nation, tradingByNation) {
 function buildFoodBucketDeltas(nation, tradingByNation) {
     const farmlandStat  = Number(nation.farmland)  || 0;
     // Agriculture runs on the unskilled labour tier.
-    const workforceStat = Number(nation.unskilled_workers) || 0;
+    const unskilledStat = Number(nation.unskilled_workers) || 0;
     const popMillions   = (Number(nation.population) || 0) / 1_000_000;
 
-    const production = (farmlandStat / 2) * (workforceStat / 100);
+    const production = (farmlandStat / 2) * (unskilledStat / 100);
     const demand     = popMillions / 3;
     if (demand <= 0) return null;
 
@@ -19851,11 +19851,11 @@ function buildFoodBucketDeltas(nation, tradingByNation) {
 function buildConsumerGoodsBucketDeltas(nation, tradingByNation) {
     const industryStat  = Number(nation.industry)           || 0;
     // Mass-production manufacturing is unskilled labour.
-    const workforceStat = Number(nation.unskilled_workers) || 0;
+    const unskilledStat = Number(nation.unskilled_workers) || 0;
     const solStat       = Number(nation.standard_of_living) || 0;
     const popMillions   = (Number(nation.population) || 0) / 1_000_000;
 
-    const production = (industryStat / 3) * (workforceStat / 100);
+    const production = (industryStat / 3) * (unskilledStat / 100);
     const demand     = (solStat / 100) * popMillions / 2;
     if (demand <= 0) return null;
 
