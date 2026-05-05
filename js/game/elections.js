@@ -288,18 +288,23 @@ export async function closeAdministration(supabase, nationId, nation, endReason,
                 .eq('id', currentAdmin.id);
             if (updateErr) throw updateErr;
 
-            // ONE INVARIANT: admin closed ⇒ cabinet vacated. Atomic with
-            // the admin row update from the caller's perspective; if
-            // either step fails the outer catch surfaces it. This used to
-            // be a separate orphanCabinet() call at five different sites,
-            // two of which forgot to call it (vacancy timeout + gov
-            // collapse) and leaked stale ministers into the next
-            // formation cycle. Inlining here means every close-admin path
-            // gets cabinet-vacate for free.
-            await orphanCabinet(supabase, nationId);
-
             console.log(`Administration closed: "${currentAdmin.admin_name}" — reason: ${endReason}`);
         }
+
+        // Pair admin-close with cabinet-vacate. This used to live at five
+        // separate close-admin call sites; two of them (vacancy timeout,
+        // gov collapse) silently forgot, leaking stale ministers across
+        // formation cycles. Inlining means every close path gets the
+        // vacate for free. Runs once per closeAdministration call (after
+        // the loop) so it's not redundant on duplicate-open-admin nations.
+        //
+        // Not strictly atomic with the admin UPDATE — the UPDATEs above
+        // landed already, and an orphanCabinet failure would throw with
+        // admin-closed+cabinet-stale state. But orphanCabinet now throws
+        // on error (was console.warn) so the failure surfaces instead of
+        // being swallowed; Phase C will move both writes into a single
+        // SQL RPC for true atomicity.
+        await orphanCabinet(supabase, nationId);
     } catch (err) {
         console.error('closeAdministration error:', err);
         throw err;
