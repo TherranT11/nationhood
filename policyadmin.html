@@ -360,7 +360,7 @@ async function checkAuth() {
 
 // ==================== INIT ====================
 async function init() {
-    await Promise.all([loadPolicies(), loadNations(), loadSectorOptions()]);
+    await Promise.all([loadPolicies(), loadNations(), loadSectorOptions(), loadSectorRapportKeys()]);
     populateFilterDropdowns();
     renderAllOptions();
     renderPolicyTable();
@@ -1463,10 +1463,14 @@ function renderStatTargets(optIdx) {
 }
 
 // ==================== SECTOR RAPPORT TARGETS (target-based policies) ====================
-// Twelve fixed rows, one per sector_key from the seed_default_sectors list.
-// Stored as integer −10..+10. State holds only non-zero entries — re-render
-// hydrates 0 for missing keys so the UI always shows all twelve.
-const SECTOR_RAPPORT_KEYS = [
+// Twelve fixed rows per nation by default — populated from the DB so
+// nation-specific custom sectors (e.g. Avelia's bespoke blocs) show up
+// alongside the universal defaults. Custom sectors carry a "[NationName]"
+// suffix so authors know the rapport/turnout target only fires for that
+// nation. Stored as integer −10..+10 (rapport) / float −0.30..+0.30
+// (turnout). State holds only non-zero entries — re-render hydrates 0
+// for missing keys so the UI always shows every option.
+let SECTOR_RAPPORT_KEYS = [
     { key: 'CAPITAL_OWNERS_EXECUTIVES',     label: 'Capital Owners' },
     { key: 'RELIGIOUS_CONSERVATIVES',       label: 'Religious Conservatives' },
     { key: 'STUDENTS_YOUNG_PRECARIAT',      label: 'Students & Young' },
@@ -1480,6 +1484,51 @@ const SECTOR_RAPPORT_KEYS = [
     { key: 'RETIREES_PENSIONERS',           label: 'Retirees & Pensioners' },
     { key: 'RURAL_AGRICULTURAL',            label: 'Rural & Agricultural' }
 ];
+
+// Refresh SECTOR_RAPPORT_KEYS from the live sectors table. Default sectors
+// share their sector_key across every nation (e.g. STUDENTS_YOUNG_PRECARIAT
+// exists in every nation that's been seeded), so they collapse to one row
+// using the canonical name. Custom sectors are keyed per-nation —
+// AVELIAN_NOBILITY only exists in Avelia — so they appear with a
+// "[NationName]" suffix to make the scope explicit.
+async function loadSectorRapportKeys() {
+    try {
+        const { data, error } = await _supabase
+            .from('sectors')
+            .select('sector_key, name, is_default, is_active, display_order, nation_id, nations(name)')
+            .eq('is_active', true);
+        if (error) throw error;
+        const defaults = new Map();   // sector_key → { key, label, order }
+        const customs  = [];          // [{ key, label }]
+        for (const s of (data || [])) {
+            if (!s.sector_key) continue;
+            if (s.is_default) {
+                if (!defaults.has(s.sector_key)) {
+                    defaults.set(s.sector_key, {
+                        key: s.sector_key,
+                        label: s.name || s.sector_key,
+                        order: Number(s.display_order) || 0
+                    });
+                }
+            } else {
+                const nationName = s.nations?.name || 'Unknown';
+                customs.push({
+                    key: s.sector_key,
+                    label: `${s.name || s.sector_key} [${nationName}]`
+                });
+            }
+        }
+        const defaultsArr = Array.from(defaults.values())
+            .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
+            .map(({ key, label }) => ({ key, label }));
+        customs.sort((a, b) => a.label.localeCompare(b.label));
+        if (defaultsArr.length > 0 || customs.length > 0) {
+            SECTOR_RAPPORT_KEYS = [...defaultsArr, ...customs];
+        }
+    } catch (err) {
+        console.warn('loadSectorRapportKeys failed; falling back to hardcoded defaults:', err.message);
+    }
+}
 
 function syncSectorRapport(optIdx, sectorKey, value) {
     const opt = options[optIdx];

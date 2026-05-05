@@ -4767,9 +4767,14 @@ function computeSectorWeights(nation, sectors) {
     const out = {};
     for (const s of sectors) {
         if (!s.is_active) continue;
+        // Admin-set weights aren't capped at SECTOR_WEIGHT_MAX anymore —
+        // the cap was removed so admins can dial in whatever value the
+        // nation needs (e.g. an oversized "Religious Conservatives" sector
+        // in a theocracy). We still floor at MIN so a 0/blank value is
+        // treated as 1.
         const existing = Math.max(
             SECTOR_WEIGHT_MIN,
-            Math.min(SECTOR_WEIGHT_MAX, Math.round(Number(s.weight) || SECTOR_WEIGHT_MIN))
+            Math.round(Number(s.weight) || SECTOR_WEIGHT_MIN)
         );
 
         if (!s.primary_stat) { out[s.id] = existing; continue; }
@@ -4789,10 +4794,8 @@ function computeSectorWeights(nation, sectors) {
     if (total > SECTOR_WEIGHT_NATION_CAP) {
         const scale = SECTOR_WEIGHT_NATION_CAP / total;
         for (const id of Object.keys(out)) {
-            out[id] = Math.max(
-                SECTOR_WEIGHT_MIN,
-                Math.min(SECTOR_WEIGHT_MAX, Math.round(out[id] * scale))
-            );
+            // Same relaxation as above — only floor at MIN, no upper cap.
+            out[id] = Math.max(SECTOR_WEIGHT_MIN, Math.round(out[id] * scale));
         }
     }
     return out;
