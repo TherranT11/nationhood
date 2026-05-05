@@ -22,9 +22,15 @@
 BEGIN;
 
 -- 1. Migrate stat_targets[i].target ×10 inside the JSONB array.
---    LEAST/GREATEST keep the result inside [0, 100] in case any value was
---    already on the new scale (defensive; pre-migration storage should
---    only contain 0..10 floats).
+--    LEAST/GREATEST keep the result inside [0, 100]. COALESCE on the
+--    pre-cast NULLIF defaults blank/missing target values to 0 so a
+--    bad row doesn't end up with a literal `null` written into the
+--    JSONB after jsonb_set.
+--
+--    Idempotency guard (B-1): only touch rows where every stat target
+--    value is still ≤ 10. After migration, max possible is 100, so any
+--    row with target > 10 has already been rescaled. Re-running this
+--    script becomes a no-op for those rows.
 UPDATE public.policy_options
 SET stat_targets = sub.next_targets
 FROM (
@@ -38,7 +44,9 @@ FROM (
                         '{target}',
                         to_jsonb(
                             LEAST(100, GREATEST(0,
-                                ROUND( (NULLIF(elem->>'target','')::numeric) * 10 )::int
+                                ROUND(
+                                    COALESCE(NULLIF(elem->>'target','')::numeric, 0) * 10
+                                )::int
                             ))
                         )
                     )
@@ -51,6 +59,13 @@ FROM (
     FROM public.policy_options po
     WHERE jsonb_typeof(po.stat_targets) = 'array'
       AND jsonb_array_length(po.stat_targets) > 0
+      -- Skip already-migrated rows: any target > 10 can only exist
+      -- after a successful rescale, so leave them alone.
+      AND NOT EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(po.stat_targets) AS guard(elem)
+          WHERE COALESCE(NULLIF(guard.elem->>'target','')::numeric, 0) > 10
+      )
 ) AS sub
 WHERE public.policy_options.id = sub.id;
 
