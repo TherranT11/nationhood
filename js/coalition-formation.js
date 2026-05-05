@@ -169,23 +169,64 @@ function buildElectionHeader() {
 
     if (isAbsoluteMonarchy(nation)) return '';
 
-    // Label always reads "NEXT ELECTION"; the subtitle names the election type
-    // relative to the nation's constitutional setup:
-    //   - Pure parliamentary systems → "Parliamentary"
-    //   - Presidential / semi-presidential, next is a presidential election → "General"
-    //   - Presidential / semi-presidential, next is a parliamentary election → "Midterm"
+    // Pure parliamentary nations get one election block ("NEXT ELECTION").
+    // Presidential / semi-presidential nations get two stacked blocks —
+    // NEXT GENERAL ELECTION (parliamentary) and NEXT PRESIDENTIAL ELECTION
+    // — with subtitles indicating whether they're paired (same tick = a
+    // combined General Election cycle) or staggered (parliamentary
+    // midterm without a presidential vote, or vice versa).
     const isPresidentialSystem = hasElectedPresident(nation);
-    const next = _scheduledElections[0] || null;
-    const nextTick = next?.election_tick ?? null;
-    const nextType = next?.election_type || 'parliamentary';
-    const typeLabel = !isPresidentialSystem
-        ? 'Parliamentary'
-        : (nextType === 'presidential' ? 'General' : 'Midterm');
-
     const currentTick = Number(_currentTick) || 0;
-    const months = nextTick != null ? Math.max(0, nextTick - currentTick) : null;
-    const monthLabel = months == null ? null : `${months} Month${months === 1 ? '' : 's'}`;
-    const dateLabel = nextTick != null ? tickToDate(nextTick) : 'TBD';
+    const nextParl = _scheduledElections.find(e => e.election_type === 'parliamentary') || null;
+    const nextPres = _scheduledElections.find(e => e.election_type === 'presidential') || null;
+
+    function fmtBlock(label, election, pairedWith, pairedSubtitle, soloSubtitle) {
+        if (!election) {
+            return `<div class="cf-eh-stat-label">${label}</div>
+                <div class="cf-eh-stat-value cf-eh-stat-value--accent">TBD</div>`;
+        }
+        const tick = election.election_tick;
+        const months = Math.max(0, tick - currentTick);
+        const monthLabel = `${months} Month${months === 1 ? '' : 's'}`;
+        const dateLabel = tickToDate(tick);
+        const isPaired = pairedWith && pairedWith.election_tick === tick;
+        const subtitle = isPaired ? pairedSubtitle : soloSubtitle;
+        return `<div class="cf-eh-stat-label">${label}</div>
+            <div class="cf-eh-stat-value cf-eh-stat-value--accent">${esc(dateLabel)}</div>
+            <div class="cf-eh-stat-sub">${esc(monthLabel)}</div>
+            <div class="cf-eh-stat-sub">${esc(subtitle)}</div>`;
+    }
+
+    let electionBlocks;
+    if (isPresidentialSystem) {
+        electionBlocks = `<div class="cf-eh-stat">
+            ${fmtBlock(
+                'NEXT GENERAL ELECTION',
+                nextParl,
+                nextPres,
+                'Parliament + Presidential',
+                'Parliament only (Midterm)'
+            )}
+            <div style="margin-top:14px;border-top:1px solid var(--border-main);padding-top:12px;"></div>
+            ${fmtBlock(
+                'NEXT PRESIDENTIAL ELECTION',
+                nextPres,
+                nextParl,
+                'Paired with general',
+                'Standalone'
+            )}
+        </div>`;
+    } else {
+        electionBlocks = `<div class="cf-eh-stat">
+            ${fmtBlock(
+                'NEXT ELECTION',
+                nextParl,
+                null,
+                'Parliamentary',
+                'Parliamentary'
+            )}
+        </div>`;
+    }
 
     const totalSeats = Number(nation.total_seats) || 0;
     // Electoral frequency: ticks between parliamentary elections per the
@@ -195,9 +236,6 @@ function buildElectionHeader() {
     const freqValue = `${freqMonths} Month${freqMonths === 1 ? '' : 's'}`;
     const nationName = nation.name || 'Unknown';
     const flagSrc = nation.flag_url || `assets/flags/${nationName}.png`;
-
-    const subLines = [monthLabel, `Type: ${typeLabel}`].filter(Boolean)
-        .map(line => `<div class="cf-eh-stat-sub">${esc(line)}</div>`).join('');
 
     // Government status line appears to the left of the flag when a coalition
     // or virtualized presidential government is active. Capitalized for the
@@ -218,11 +256,7 @@ function buildElectionHeader() {
             </div>
         </div>
         <div class="cf-eh-stats">
-            <div class="cf-eh-stat">
-                <div class="cf-eh-stat-label">NEXT ELECTION</div>
-                <div class="cf-eh-stat-value cf-eh-stat-value--accent">${esc(dateLabel)}</div>
-                ${subLines}
-            </div>
+            ${electionBlocks}
             <div class="cf-eh-stat">
                 <div class="cf-eh-stat-label">TOTAL SEATS</div>
                 <div class="cf-eh-stat-value">${totalSeats}</div>
