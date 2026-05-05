@@ -1515,14 +1515,18 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         totalWeightEl.textContent = totalWeight;
         countEl.textContent = `${defaultCount} default + ${customCount} custom = ${defaultCount + customCount}`;
 
+        // Recommended band is 24-26 — the seat-allocation math was tuned
+        // for that range. A nation can ship higher: per-sector and
+        // total-weight caps were both relaxed so admins can shape an
+        // outsized bloc when the design calls for it.
         if (totalWeight < 24) {
-            statusEl.textContent = `below target band 24-26 (${24 - totalWeight} short)`;
+            statusEl.textContent = `below recommended band 24-26 (${24 - totalWeight} short)`;
             statusEl.style.color = '#e57373';
         } else if (totalWeight > 26) {
-            statusEl.textContent = `above target band 24-26 (${totalWeight - 26} over)`;
-            statusEl.style.color = '#e57373';
+            statusEl.textContent = `above recommended band 24-26 (${totalWeight - 26} over — allowed, but check seat-math impact)`;
+            statusEl.style.color = '#d4a83c';
         } else {
-            statusEl.textContent = 'within target band 24-26';
+            statusEl.textContent = 'within recommended band 24-26';
             statusEl.style.color = '#81c784';
         }
     }
