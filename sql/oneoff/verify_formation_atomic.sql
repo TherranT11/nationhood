@@ -24,9 +24,6 @@
 --      at the current tick.
 -- ═══════════════════════════════════════════════════════════════════════════════
 
--- Set this once and the rest of the script reads it.
-\set test_nation '\'TestNation\''
-
 -- ── 1. Formation status ─────────────────────────────────────────────────────
 SELECT
     id, status, formed_at,
