@@ -19201,6 +19201,15 @@ async function buildPolicyDecayAdjustments(supabase, nationId) {
 // map sensibly onto a 0–10 target (population, eligible_voters,
 // budget). Skips rapport where proposed_by is null or the sector
 // row is missing for the nation.
+//
+// Interaction with legacy floor/ceiling adjustments
+// (buildPolicyDecayAdjustments → processStatDecay): floor and
+// ceiling are decay-only concepts — they bound how far decay can
+// push a stat each tick, not where the stat eventually sits.
+// A target-based pull toward 30 will drag a stat below a legacy
+// floor of 50 because pull and floor are separate systems. That's
+// intentional. If you need a hard floor that target-based respects,
+// re-author the policy as target-based with a target ≥ floor.
 // ════════════════════════════════════════════════════════════════
 
 const TARGET_STAT_SCALE = 10;
@@ -19214,7 +19223,7 @@ const TARGET_BASED_STAT_SKIP = new Set([
     'population', 'eligible_voters', 'debt', 'budget'
 ]);
 
-async function processTargetBasedPolicies(supabase, nation, currentTick) {
+async function processTargetBasedPolicies(supabase, nation) {
     const summary = { stats: [], rapport: [] };
 
     // 1. Pull active target-based options for this nation. Joined fields
@@ -32073,7 +32082,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // step uses the post-settled stat as its starting point. Skipped
         // silently if no active_laws on this nation are target-based.
         try {
-            const tbResult = await processTargetBasedPolicies(supabase, nation, newTick);
+            const tbResult = await processTargetBasedPolicies(supabase, nation);
             if (tbResult.stats.length > 0 || tbResult.rapport.length > 0) {
                 summary.targetBasedPolicies = summary.targetBasedPolicies || [];
                 summary.targetBasedPolicies.push({ nation: nation.name, ...tbResult });
