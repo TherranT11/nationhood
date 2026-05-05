@@ -19,6 +19,9 @@ BEGIN;
 -- Sanity-check the target. Bail loudly if Hajjara isn't actually an absolute
 -- monarchy (e.g. someone changed the government type since this script was
 -- written) so we don't accidentally delete a democracy's election queue.
+-- The DB stores 'Absolute Monarchy' (canonical, see js/game/government-types.js
+-- CANONICAL_GOVERNMENT_TYPES); the lowercase/underscore form is one of the
+-- accepted aliases the JS normalizer also recognises.
 DO $$
 DECLARE
     v_gov_type text;
@@ -30,8 +33,8 @@ BEGIN
     IF v_gov_type IS NULL THEN
         RAISE EXCEPTION 'No nation named Hajjara found.';
     END IF;
-    IF v_gov_type <> 'absolute_monarchy' THEN
-        RAISE EXCEPTION 'Hajjara government_type is %; expected absolute_monarchy. Aborting.', v_gov_type;
+    IF lower(replace(v_gov_type, '_', ' ')) <> 'absolute monarchy' THEN
+        RAISE EXCEPTION 'Hajjara government_type is %; expected an Absolute Monarchy variant. Aborting.', v_gov_type;
     END IF;
 END $$;
 
