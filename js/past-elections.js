@@ -7,6 +7,7 @@ let _supabase = null;
 let _state = null;
 let _elections = [];
 let _administrations = [];
+let _partyMap = {};
 let _expandedId = null;
 
 function esc(str) {
@@ -83,26 +84,28 @@ export async function initPastElections(supabase, state) {
     _elections = electionsResult.data || [];
     _administrations = adminResult.data || [];
     const parties = partiesResult.data || [];
-    const partyMap = {};
-    for (const p of parties) partyMap[p.id] = p;
+    _partyMap = {};
+    for (const p of parties) _partyMap[p.id] = p;
 
-    // Attach party colors/names to election results
+    // Attach party colors/names to both shapes — parliamentary stores
+    // under results.votes, presidential under results.presidential_candidates.
     for (const elec of _elections) {
         const votes = elec.results?.votes || [];
         for (const v of votes) {
-            const party = partyMap[v.party_id];
-            if (party) {
-                v.color = party.party_color || '#666';
-                v.abbreviation = party.abbreviation || v.party_name?.slice(0, 3)?.toUpperCase() || '?';
-            } else {
-                v.color = '#666';
-                v.abbreviation = v.party_name?.slice(0, 3)?.toUpperCase() || '?';
-            }
+            const party = _partyMap[v.party_id];
+            v.color = party?.party_color || '#666';
+            v.abbreviation = party?.abbreviation || v.party_name?.slice(0, 3)?.toUpperCase() || '?';
+        }
+        const cands = elec.results?.presidential_candidates || [];
+        for (const c of cands) {
+            const party = _partyMap[c.faction_id];
+            c.color = party?.party_color || '#666';
+            c.abbreviation = party?.abbreviation || c.party_name?.slice(0, 3)?.toUpperCase() || '?';
         }
     }
 
     attachListeners(root);
-    render(root, partyMap);
+    render(root);
 }
 
 // ═══════════════════════════════════════════════════
@@ -120,7 +123,131 @@ function attachListeners(root) {
     });
 }
 
-function render(root, partyMap) {
+// Presidential elections store candidates under results.presidential_candidates,
+// not the parliamentary results.votes. They have no seats / coalition / majority
+// — the parliamentary render path produced "Unknown PM, 14 seats minority"
+// nonsense by reading the wrong shape and joining a same-tick parliamentary
+// admin row.
+function renderPresidentialRow(elec) {
+    const isExp = _expandedId === elec.id;
+    const candidates = (elec.results?.presidential_candidates || [])
+        .slice()
+        .sort((a, b) => (b.votes || 0) - (a.votes || 0));
+    const winner = candidates.find(c => c.winner) || null;
+    const turnout = elec.results?.turnout_pct ?? 0;
+    const totalVotesCast = elec.results?.total_votes_cast ?? 0;
+    const date = tickToDate(elec.election_tick);
+    const typeColor = '#5a8aaa';
+    const myFactionId = _state.faction?.id;
+
+    const top3 = candidates.slice(0, 3);
+    const winnerName = winner ? `${winner.candidate_name || ''}`.trim() : '';
+    const winnerColor = winner?.color || '#888';
+
+    let html = `<div data-election-id="${elec.id}" style="
+        background:var(--bg-panel);border:1px solid var(--border-main);
+        ${isExp ? 'border-bottom:none;' : ''}
+    ">
+        <div class="pe-row-head" style="padding:12px 20px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <div class="pe-row-head-left" style="display:flex;align-items:center;gap:12px;min-width:0;flex-wrap:wrap;">
+                <div class="pe-date" style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--text-secondary);width:130px;">${date}</div>
+                <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;padding:3px 10px;color:${typeColor};background:${typeColor}0a;border:1px solid ${typeColor}25;">PRESIDENTIAL ELECTION</span>
+                <div class="pe-top-chips" style="display:flex;gap:8px;margin-left:10px;flex-wrap:wrap;">
+                    ${top3.map(c => `<div style="display:flex;align-items:center;gap:4px;">
+                        <div style="width:8px;height:8px;background:${c.color};"></div>
+                        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">${esc(c.abbreviation)}</span>
+                        <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--text-bright);">${(c.vote_percentage || 0).toFixed(1)}%</span>
+                    </div>`).join('')}
+                </div>
+            </div>
+            <div class="pe-row-head-right" style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+                <div class="pe-leader-meta" style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">
+                    President: <span style="color:${winnerColor};font-weight:700;">${esc(winnerName || 'No winner')}</span>
+                </div>
+                <span style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim);">${isExp ? '▲' : '▼'}</span>
+            </div>
+        </div>
+    </div>`;
+
+    if (isExp) {
+        // Vote-share bar: one segment per candidate, widths from vote_percentage.
+        const totalPct = candidates.reduce((s, c) => s + (Number(c.vote_percentage) || 0), 0) || 100;
+        const voteBarHtml = candidates.map(c => {
+            const w = ((Number(c.vote_percentage) || 0) / totalPct) * 100;
+            const pct = (c.vote_percentage || 0).toFixed(1);
+            return `<div style="width:${w}%;background:${c.color};height:100%;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:${w >= 8 ? 9 : 6}px;font-weight:700;color:#000;">${w >= 5 ? pct + '%' : ''}</div>`;
+        }).join('');
+
+        const candidatesHtml = candidates.map(c => {
+            const isPlayer = c.faction_id === myFactionId;
+            const isWin = !!c.winner;
+            return `<div class="pe-tbl-row" style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid rgba(200,196,184,0.03);${isPlayer ? `background:${c.color}08;` : ''}">
+                <div class="pe-col-logo" style="width:30px;height:30px;background:${c.color}15;border:1px solid ${c.color}33;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;margin-right:8px;">${(c.abbreviation || '?').slice(0, 2)}</div>
+                <div class="pe-col-party" style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;gap:5px;">
+                        <span style="font-size:13px;font-weight:700;color:var(--text-bright);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.candidate_name || 'Unknown')}</span>
+                        ${isWin ? '<span style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:#5c5;padding:0 3px;background:rgba(92,204,92,0.06);border:1px solid rgba(92,204,92,0.15);">WINNER</span>' : ''}
+                        ${isPlayer ? '<span style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:#5c5;padding:0 3px;background:rgba(92,204,92,0.06);border:1px solid rgba(92,204,92,0.15);">YOU</span>' : ''}
+                    </div>
+                    <div style="font-family:var(--font-mono);font-size:9px;color:${c.color};">${esc(c.party_name || '')}</div>
+                </div>
+                <span class="pe-col-votes" style="width:90px;text-align:right;font-family:var(--font-mono);font-size:14px;font-weight:700;color:var(--text-bright);">${fmtVotes(c.votes || 0)}</span>
+                <span class="pe-col-pct" style="width:70px;text-align:right;font-family:var(--font-mono);font-size:12px;color:var(--text-secondary);">${(c.vote_percentage || 0).toFixed(1)}%</span>
+            </div>`;
+        }).join('');
+
+        const winnerCardHtml = winner ? `<div style="margin:0 20px 16px;background:var(--bg-card);border:1px solid var(--border-main);border-left:3px solid ${winnerColor};">
+            <div style="padding:12px 16px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text-dim);">PRESIDENT-ELECT</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:36px;height:36px;background:${winnerColor}15;border:1.5px solid ${winnerColor};display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;font-weight:700;color:${winnerColor};">${esc((winnerName || '?').split(' ').map(n => n[0] || '').join('').slice(0,3))}</div>
+                    <div>
+                        <div style="font-size:14px;font-weight:700;color:var(--text-bright);">${esc(winnerName)}</div>
+                        <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">President &middot; ${esc(winner.party_name || '')} &middot; ${(winner.vote_percentage || 0).toFixed(1)}% of vote</div>
+                    </div>
+                </div>
+            </div>
+        </div>` : '';
+
+        html += `<div style="background:var(--bg-panel);border:1px solid var(--border-main);border-top:1px solid var(--border-main);">
+            <div style="display:flex;border-bottom:1px solid var(--border-main);">
+                <div style="flex:1;padding:12px 20px;border-right:1px solid var(--border-main);">
+                    <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:4px;">CONTEXT</div>
+                    <div style="font-size:13px;color:var(--text-secondary);line-height:1.5;">Presidential Election</div>
+                </div>
+                <div style="width:260px;padding:12px 20px;display:flex;gap:16px;flex-shrink:0;">
+                    <div>
+                        <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.5px;">TURNOUT</div>
+                        <div style="font-family:var(--font-mono);font-size:24px;font-weight:700;color:${turnout > 70 ? '#5c5' : turnout > 60 ? '#ca5' : '#c84'};">${turnout.toFixed(1)}%</div>
+                    </div>
+                    <div>
+                        <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.5px;">TOTAL VOTES</div>
+                        <div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--text-bright);">${fmtVotes(totalVotesCast)}</div>
+                    </div>
+                </div>
+            </div>
+            ${candidates.length > 0 ? `<div style="padding:10px 20px;border-bottom:1px solid var(--border-main);">
+                <div style="display:flex;height:18px;gap:1px;">${voteBarHtml}</div>
+            </div>` : ''}
+            <div style="padding:0 20px;">
+                <div class="pe-tbl-head" style="display:flex;padding:8px 0;border-bottom:1px solid var(--border-main);font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.5px;">
+                    <span class="pe-col-logo" style="width:30px;"></span>
+                    <span class="pe-col-party" style="flex:1;">CANDIDATE</span>
+                    <span class="pe-col-votes" style="width:90px;text-align:right;">VOTES</span>
+                    <span class="pe-col-pct" style="width:70px;text-align:right;">VOTE %</span>
+                </div>
+                ${candidates.length > 0 ? candidatesHtml : `<div style="padding:20px 0;text-align:center;color:var(--text-dim);font-family:var(--font-mono);font-size:11px;">No candidate data on record.</div>`}
+            </div>
+            ${winnerCardHtml}
+        </div>`;
+    }
+
+    return html;
+}
+
+function render(root) {
     if (_elections.length === 0) {
         root.innerHTML = `<div style="padding:12px 16px;">
             <div style="font-family:var(--font-mono);font-size:14px;font-weight:700;letter-spacing:2px;color:var(--text-bright);margin-bottom:8px;">PAST ELECTIONS</div>
@@ -134,6 +261,9 @@ function render(root, partyMap) {
     const majority = Math.ceil(totalSeats / 2) + 1;
 
     const electionRows = _elections.map((elec, idx) => {
+        if (elec.election_type === 'presidential') {
+            return renderPresidentialRow(elec);
+        }
         const isExp = _expandedId === elec.id;
         const votes = (elec.results?.votes || []).sort((a, b) => (b.seats || 0) - (a.seats || 0));
         const topParties = votes.slice(0, 3);

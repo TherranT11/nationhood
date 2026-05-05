@@ -4999,6 +4999,9 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
             // a thing for airlines yet.
             try {
                 const airlineCorps = corps.filter(c => c.corp_sector === 'Airline');
+                if (airlineCorps.length > 0) {
+                    console.log(`[Airline] ${nation.name}: ${airlineCorps.length} airline corp(s) — ${airlineCorps.map(c => c.faction_name).join(', ')}`);
+                }
                 for (const ac of airlineCorps) {
                     const { data: airlineResult, error: airlineErr } = await supabase
                         .rpc('process_airline_corp_tick', { p_corp_id: ac.id, p_tick: currentTick });
@@ -5007,6 +5010,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                         summary.errors.push({ nation: nation.name, sector: 'airline', corp: ac.faction_name, error: airlineErr.message });
                         continue;
                     }
+                    console.log(`[Airline] ${ac.faction_name} → routes=${airlineResult?.routes ?? 'null'}, pax=${airlineResult?.pax ?? 'null'}, revenue=${airlineResult?.revenue ?? 'null'}`);
                     if (airlineResult && Number(airlineResult.routes) > 0) {
                         summary.airline.push({
                             nation: nation.name,
