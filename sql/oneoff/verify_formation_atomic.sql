@@ -3,8 +3,10 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- Run this immediately after a live Form Government call against a
 -- low-stakes nation to confirm the new RPC's atomic post-conditions.
--- Replace 'TestNation' below with whichever nation you used as the test.
--- Every section should return exactly one row (or the value shown).
+-- The nation name is hardcoded as 'Sangreza' below (the original
+-- test target). For a different nation, find/replace 'Sangreza'
+-- with the target name. Every section should return exactly one row
+-- (or the value shown).
 -- If any section diverges, the migration broke something — ROLLBACK
 -- the RPC migration and we re-cut.
 --
