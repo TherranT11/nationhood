@@ -1606,7 +1606,11 @@ async function savePolicy() {
                 return;
             }
             const validRapport = o.sector_rapport_targets
-                .filter(r => r.sector_key && Number(r.rapport) !== 0)
+                // Number.isFinite guards against NaN slipping past the UI
+                // sync path — Number(NaN) !== 0 is true, so a NaN row
+                // would otherwise pass and be persisted as rapport:0,
+                // contradicting "zero values aren't persisted".
+                .filter(r => r.sector_key && Number.isFinite(Number(r.rapport)) && Number(r.rapport) !== 0)
                 .map(r => ({ sector_key: r.sector_key, rapport: Math.max(-10, Math.min(10, parseInt(r.rapport, 10) || 0)) }));
 
             optionPayloads.push({
