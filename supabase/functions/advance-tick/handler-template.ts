@@ -1638,6 +1638,22 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Stat connections failed for ${nation.name} (non-fatal):`, connErr);
         }
 
+        // Target-based policies — per-tick weighted-equilibrium pull on
+        // stats + additive sector rapport on the proposing faction. Runs
+        // AFTER decay / commodities / connections so the convergence
+        // step uses the post-settled stat as its starting point. Skipped
+        // silently if no active_laws on this nation are target-based.
+        // Implementation lives in js/game/policies.js.
+        try {
+            const tbResult = await processTargetBasedPolicies(supabase, nation);
+            if (tbResult.stats.length > 0 || tbResult.rapport.length > 0) {
+                summary.targetBasedPolicies = summary.targetBasedPolicies || [];
+                summary.targetBasedPolicies.push({ nation: nation.name, ...tbResult });
+            }
+        } catch (tbErr) {
+            console.error(`[advanceTick] Target-based policies failed for ${nation.name} (non-fatal):`, tbErr);
+        }
+
         // Ongoing costs (tracking only — accumulated per-policy, does not modify debt)
         try {
             const costResult = await processOngoingCosts(supabase, nation, newTick);
@@ -2178,9 +2194,23 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Purge decay failed for ${nation.name} (non-fatal):`, purgeErr);
         }
 
-        // Inactivity seat drain + auto-disband
-        // 12-17 ticks inactive: lose ~20% of seats per tick (min 1)
-        // 18+ ticks inactive: auto-disband (seats → 0, nation_id → null)
+        // Inactivity seat drain + auto-disband.
+        //
+        // INACTIVITY_DRAIN_THRESHOLD .. INACTIVITY_DISBAND_THRESHOLD-1
+        //     → lose 20% of seats per tick (min 1)
+        // ≥ INACTIVITY_DISBAND_THRESHOLD
+        //     → auto-disband (monarchies trigger succession instead)
+        //
+        // Vacated seats stay EMPTY — rebalanceVacantSeats is skipped this
+        // tick if any inactivity event fired (tracked by inactivityChanged),
+        // and disbandParty is invoked with redistribute=false so its
+        // internal rebalance call is also bypassed.
+        //
+        // INACTIVITY_DRAIN_THRESHOLD / INACTIVITY_DISBAND_THRESHOLD are
+        // exported from js/game/electorate.js; the sync script
+        // concatenates that module ahead of this footer so the constants
+        // are in scope here without re-declaration.
+        let inactivityChanged = false;
         try {
             const { data: allParties } = await supabase
                 .from('factions')
@@ -2193,7 +2223,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 const ref = party.last_seen_tick ?? party.founded_tick ?? 0;
                 const ticksInactive = newTick - ref;
 
-                if (ticksInactive >= 18) {
+                if (ticksInactive >= INACTIVITY_DISBAND_THRESHOLD) {
                     // Absolute Monarchy: if this is the monarch's faction, trigger succession instead of disband
                     const isMonarchFaction = nation.monarch_faction_id === party.id
                         && (nation.government_type || '').toLowerCase().includes('monarchy');
@@ -2247,16 +2277,21 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                             console.error(`[Succession] Failed for ${nation.name}: ${succErr.message}`);
                         }
                     } else {
-                    // Auto-disband: full cleanup via existing disbandParty()
+                    // Auto-disband: full cleanup via existing disbandParty(),
+                    // but pass redistribute=false so the disbanded seats stay
+                    // empty rather than getting rebalanced to remaining parties.
                     try {
-                        await disbandParty(supabase, nation.id, party.id, newTick);
-                        console.log(`[Inactivity] Auto-disbanded ${party.faction_name} in ${nation.name} (${ticksInactive} ticks inactive)`);
+                        await disbandParty(supabase, nation.id, party.id, newTick, { redistribute: false });
+                        inactivityChanged = true;
+                        console.log(`[Inactivity] Auto-disbanded ${party.faction_name} in ${nation.name} (${ticksInactive} ticks inactive, seats left vacant)`);
                     } catch (disbandErr) {
                         console.error(`[Inactivity] Auto-disband failed for ${party.faction_name}: ${disbandErr.message}`);
                     }
                     }
-                } else if (ticksInactive >= 12 && (party.seats || 0) > 0) {
-                    // Seat drain: lose 20% of seats per tick (minimum 1)
+                } else if (ticksInactive >= INACTIVITY_DRAIN_THRESHOLD && (party.seats || 0) > 0) {
+                    // Seat drain: lose 20% of seats per tick (minimum 1).
+                    // Drained seats stay vacant — the post-loop rebalance is
+                    // skipped when inactivityChanged is true.
                     const currentSeats = party.seats || 0;
                     const seatsLost = Math.max(1, Math.floor(currentSeats * 0.2));
                     const newSeats = Math.max(0, currentSeats - seatsLost);
@@ -2264,7 +2299,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     if (drainErr) {
                         console.error(`[Inactivity] Seat drain failed for ${party.faction_name}: ${drainErr.message}`);
                     } else {
-                        console.log(`[Inactivity] ${party.faction_name} in ${nation.name}: ${currentSeats} → ${newSeats} seats (${ticksInactive} ticks inactive, -${seatsLost})`);
+                        inactivityChanged = true;
+                        console.log(`[Inactivity] ${party.faction_name} in ${nation.name}: ${currentSeats} → ${newSeats} seats (${ticksInactive} ticks inactive, -${seatsLost} vacant)`);
                     }
                 }
             }
@@ -2272,16 +2308,21 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Inactivity processing failed for ${nation.name} (non-fatal):`, inactErr);
         }
 
-        // Seat rebalancing: if factions were disbanded and seats are vacant,
-        // proportionally redistribute the empty seats across remaining factions.
-        try {
-            const seatResult = await rebalanceVacantSeats(supabase, nation);
-            if (seatResult) {
-                summary.seatRebalancing = summary.seatRebalancing || [];
-                summary.seatRebalancing.push(seatResult);
+        // Seat rebalancing: skipped when inactivity drained or disbanded a
+        // party this tick — those vacated seats are meant to stay empty
+        // until the next election re-allocates the chamber. Still runs for
+        // non-inactivity vacancies (e.g., post-election sync, manual admin
+        // adjustments) so other paths keep their pre-existing behavior.
+        if (!inactivityChanged) {
+            try {
+                const seatResult = await rebalanceVacantSeats(supabase, nation);
+                if (seatResult) {
+                    summary.seatRebalancing = summary.seatRebalancing || [];
+                    summary.seatRebalancing.push(seatResult);
+                }
+            } catch (seatErr) {
+                console.error(`[advanceTick] Seat rebalancing failed for ${nation.name} (non-fatal):`, seatErr);
             }
-        } catch (seatErr) {
-            console.error(`[advanceTick] Seat rebalancing failed for ${nation.name} (non-fatal):`, seatErr);
         }
 
         // Crises (persistent negative events that apply effects every tick)

@@ -27,6 +27,26 @@ import { computeEngagementScores } from './engagement.js';
 // ============================================================================
 
 /**
+ * Inactivity-driven seat penalties.
+ *
+ * Single source of truth for both browser-side filters (politics.js
+ * forecast, elections.js candidate eligibility) and the per-tick seat
+ * drain / auto-disband loop in advance-tick. The edge function bundle
+ * mirrors these constants locally — see handler-template.ts for the
+ * "must match" comment.
+ *
+ * Seat-loss model:
+ *   ticksInactive < DRAIN          → no penalty
+ *   DRAIN ≤ ticksInactive < DISBAND → lose 20% of seats per tick (min 1)
+ *   ticksInactive ≥ DISBAND        → auto-disband (monarchies → succession)
+ *
+ * Vacated seats are NOT redistributed to remaining parties — they sit
+ * empty until the next election re-allocates the chamber.
+ */
+export const INACTIVITY_DRAIN_THRESHOLD = 10;
+export const INACTIVITY_DISBAND_THRESHOLD = 14;
+
+/**
  * The 8 core issues tracked by the electorate engine.
  * Each issue maps to a set of nation stats (for salience computation)
  * and one or more ideology axes (for stance alignment).
@@ -234,7 +254,10 @@ const ELECTORATE_CONFIG = {
     TURNOUT_MAX: 0.88,               // hard cap on turnout rate
 
     // ── Inactivity ──
-    INACTIVITY_EXCLUSION_TICKS: 12,   // parties unseen for this many ticks are excluded
+    // Mirror of INACTIVITY_DRAIN_THRESHOLD — parties unseen for this many
+    // ticks are excluded from electorate calculations (and start losing
+    // seats per the inactivity processor in advance-tick).
+    INACTIVITY_EXCLUSION_TICKS: INACTIVITY_DRAIN_THRESHOLD,
 
     // ── Phase 2C: Issue salience drift ──
     SALIENCE_DRIFT_SPEED: 2,          // max salience points per tick toward target

@@ -12910,15 +12910,16 @@ async function runSectorPresidentialElectionRound(supabase, nationId) {
     const sectors  = sectorsRes.data || [];
     const tick     = shardRes.data?.current_tick ?? 0;
 
-    // Filter candidates to active parties (mirrors the RPC's last-seen-tick window)
-    const INACTIVE_GAP = 12;
+    // Filter candidates to active parties (mirrors the inactivity-drain
+    // window — once a party starts losing seats, it can't field new
+    // presidential candidates either).
     const allCands = (candRes.data || []).filter(c => {
         const f = c.factions;
         if (!f) return false;
         if (f.faction_type !== 'party') return false;
         if (f.abandoned_at) return false;
-        if (f.last_seen_tick != null) return (tick - f.last_seen_tick) < INACTIVE_GAP;
-        return (tick - (f.founded_tick || 0)) < INACTIVE_GAP;
+        if (f.last_seen_tick != null) return (tick - f.last_seen_tick) < INACTIVITY_DRAIN_THRESHOLD;
+        return (tick - (f.founded_tick || 0)) < INACTIVITY_DRAIN_THRESHOLD;
     });
 
     if (allCands.length === 0) {
@@ -15356,6 +15357,26 @@ async function computeEngagementScores(supabase, nation, factions, coalitionPart
 // ============================================================================
 
 /**
+ * Inactivity-driven seat penalties.
+ *
+ * Single source of truth for both browser-side filters (politics.js
+ * forecast, elections.js candidate eligibility) and the per-tick seat
+ * drain / auto-disband loop in advance-tick. The edge function bundle
+ * mirrors these constants locally — see handler-template.ts for the
+ * "must match" comment.
+ *
+ * Seat-loss model:
+ *   ticksInactive < DRAIN          → no penalty
+ *   DRAIN ≤ ticksInactive < DISBAND → lose 20% of seats per tick (min 1)
+ *   ticksInactive ≥ DISBAND        → auto-disband (monarchies → succession)
+ *
+ * Vacated seats are NOT redistributed to remaining parties — they sit
+ * empty until the next election re-allocates the chamber.
+ */
+const INACTIVITY_DRAIN_THRESHOLD = 10;
+const INACTIVITY_DISBAND_THRESHOLD = 14;
+
+/**
  * The 8 core issues tracked by the electorate engine.
  * Each issue maps to a set of nation stats (for salience computation)
  * and one or more ideology axes (for stance alignment).
@@ -15563,7 +15584,10 @@ const ELECTORATE_CONFIG = {
     TURNOUT_MAX: 0.88,               // hard cap on turnout rate
 
     // ── Inactivity ──
-    INACTIVITY_EXCLUSION_TICKS: 12,   // parties unseen for this many ticks are excluded
+    // Mirror of INACTIVITY_DRAIN_THRESHOLD — parties unseen for this many
+    // ticks are excluded from electorate calculations (and start losing
+    // seats per the inactivity processor in advance-tick).
+    INACTIVITY_EXCLUSION_TICKS: INACTIVITY_DRAIN_THRESHOLD,
 
     // ── Phase 2C: Issue salience drift ──
     SALIENCE_DRIFT_SPEED: 2,          // max salience points per tick toward target
@@ -16712,6 +16736,225 @@ async function logActivity(supabase, factionId, nationId, actionType, actionLabe
     if (error) {
         console.error(`[Electorate] Failed to log activity (${actionType}):`, error.message);
     }
+}
+
+// ────────── policies ──────────
+
+/**
+ * policies.js — Target-based policy engine
+ *
+ * Per-tick processor for the target-based policy model introduced in the
+ * Target-Based Policies Phase 1–4 work. Reads active_laws joined to
+ * policy_options where is_target_based = TRUE, computes per-stat weighted
+ * equilibria, converges the actual nation column toward each equilibrium
+ * each tick, and applies sector rapport deltas to the proposing faction's
+ * popularity.
+ *
+ * Coexists with the legacy rate/duration model in
+ * buildPolicyDecayAdjustments + processStatDecay — only options whose
+ * is_target_based flag is TRUE hit this path. Legacy options pass through
+ * the existing pipeline unchanged.
+ *
+ * The edge-function bundler concatenates this module after stats.js
+ * (which exports normalizeNationStatKey, NATION_STAT_COLUMN_SET,
+ * STAT_PROCESSOR_SKIP), so those symbols are in scope at sync time.
+ * Imports declared here are stripped by scripts/sync-edge-function.js.
+ */
+
+// ════════════════════════════════════════════════════════════════
+// Target-based policies — per-tick processor.
+//
+// For every nation, gather every active_laws row whose chosen
+// policy_options.is_target_based = TRUE. For each per-stat target
+// across those options, compute the weighted equilibrium
+//
+//     equilibrium_display = Σ(target × pull) / Σ(pull)        (0–10 scale)
+//     equilibrium_engine  = equilibrium_display × 10           (0–100 scale)
+//
+// then converge the actual nation stat toward equilibrium_engine
+// at a global rate (10% of the remaining gap per tick). Pull is
+// the weight in the equilibrium math; the convergence rate is a
+// global constant for legibility — "primary driver" pull means
+// dominant influence on the equilibrium, not faster speed.
+//
+// Sector rapport targets apply additively to the proposing
+// faction's popularity in the matching sector each tick:
+//
+//     popularity_delta_tenths = rapport / 10                   (per tick)
+//
+// So +10 rapport adds 1 popularity tenth per tick (+0.1
+// displayed popularity per tick); over 100 ticks that's +10
+// displayed popularity. Multiple options on the same (faction,
+// sector) sum.
+//
+// Skips stats not in NATION_STAT_COLUMN_SET, stats in
+// STAT_PROCESSOR_SKIP (debt), and raw-scale stats that don't
+// map sensibly onto a 0–10 target (population, eligible_voters,
+// budget). Skips rapport where proposed_by is null or the sector
+// row is missing for the nation.
+//
+// Interaction with legacy floor/ceiling adjustments
+// (buildPolicyDecayAdjustments → processStatDecay): floor and
+// ceiling are decay-only concepts — they bound how far decay can
+// push a stat each tick, not where the stat eventually sits.
+// A target-based pull toward 30 will drag a stat below a legacy
+// floor of 50 because pull and floor are separate systems. That's
+// intentional. If you need a hard floor that target-based respects,
+// re-author the policy as target-based with a target ≥ floor.
+// ════════════════════════════════════════════════════════════════
+
+const TARGET_STAT_SCALE = 10;
+const TARGET_CONVERGENCE_RATE = 0.10;
+const RAPPORT_PER_TICK_DIVISOR = 10;
+
+// Stats whose column values are raw (population, debt, budget) don't map
+// onto a 0–10 target. The policy builder lets admins pick them anyway;
+// engine silently skips so nothing weird happens at apply time.
+const TARGET_BASED_STAT_SKIP = new Set([
+    'population', 'eligible_voters', 'debt', 'budget'
+]);
+
+async function processTargetBasedPolicies(supabase, nation) {
+    const summary = { stats: [], rapport: [] };
+
+    // 1. Pull active target-based options for this nation. Joined fields
+    //    let one round trip cover both the equilibrium math and the
+    //    rapport apply step.
+    const { data: laws, error: lawsErr } = await supabase
+        .from('active_laws')
+        .select('id, proposed_by, selected_option:policy_options!selected_option_id(is_target_based, stat_targets, sector_rapport_targets)')
+        .eq('nation_id', nation.id);
+    if (lawsErr) {
+        console.error(`[processTargetBasedPolicies] active_laws fetch failed for ${nation.name}:`, lawsErr.message);
+        return summary;
+    }
+    const targetLaws = (laws || []).filter(l => l.selected_option?.is_target_based);
+    if (targetLaws.length === 0) return summary;
+
+    // 2. Aggregate stat targets across every active option.
+    //    perStat[statKey] = { sumTargetWeighted, sumPull }
+    const perStat = {};
+    for (const law of targetLaws) {
+        const targets = Array.isArray(law.selected_option.stat_targets) ? law.selected_option.stat_targets : [];
+        for (const t of targets) {
+            const rawKey = t?.stat_key;
+            const key = normalizeNationStatKey(rawKey);
+            if (!key || !NATION_STAT_COLUMN_SET.has(key)) continue;
+            if (STAT_PROCESSOR_SKIP.has(key) || TARGET_BASED_STAT_SKIP.has(key)) continue;
+            const target = Number(t.target);
+            const pull = Number(t.pull);
+            if (!Number.isFinite(target) || !Number.isFinite(pull) || pull <= 0) continue;
+            if (!perStat[key]) perStat[key] = { sumTargetWeighted: 0, sumPull: 0 };
+            perStat[key].sumTargetWeighted += target * pull;
+            perStat[key].sumPull += pull;
+        }
+    }
+
+    // 3. For each stat with non-zero total pull, converge the nation
+    //    column toward the equilibrium. One merged update at the end so
+    //    twelve stats nudging at once cost one DB write, not twelve.
+    const statUpdates = {};
+    for (const [statKey, agg] of Object.entries(perStat)) {
+        if (agg.sumPull <= 0) continue;
+        const equilibriumEngine = Math.max(0, Math.min(100,
+            (agg.sumTargetWeighted / agg.sumPull) * TARGET_STAT_SCALE
+        ));
+        const current = Number(nation[statKey]);
+        if (!Number.isFinite(current)) continue;
+        const next = current + (equilibriumEngine - current) * TARGET_CONVERGENCE_RATE;
+        const clamped = Math.max(0, Math.min(100, Math.round(next * 10) / 10));
+        if (clamped === current) continue;
+        statUpdates[statKey] = clamped;
+        summary.stats.push({
+            stat: statKey, before: current, equilibrium: equilibriumEngine, after: clamped
+        });
+    }
+    if (Object.keys(statUpdates).length > 0) {
+        const { error: updErr } = await supabase
+            .from('nations').update(statUpdates).eq('id', nation.id);
+        if (updErr) {
+            console.error(`[processTargetBasedPolicies] Nation stat update failed for ${nation.name}:`, updErr.message);
+            return summary;
+        }
+        Object.assign(nation, statUpdates);
+    }
+
+    // 4. Sector rapport: each option's rapport contributes to its
+    //    proposed_by faction's popularity in that sector this tick.
+    //    Aggregate across all active options first so two options
+    //    nudging the same (faction, sector) pair sum cleanly.
+    //    rapportAggregate[factionId + '|' + sectorKey] = sumRapport
+    const rapportAggregate = new Map();
+    for (const law of targetLaws) {
+        const factionId = law.proposed_by;
+        if (!factionId) continue;
+        const targets = Array.isArray(law.selected_option.sector_rapport_targets) ? law.selected_option.sector_rapport_targets : [];
+        for (const r of targets) {
+            const sectorKey = r?.sector_key;
+            const rapport = Number(r?.rapport);
+            if (!sectorKey || !Number.isFinite(rapport) || rapport === 0) continue;
+            const k = factionId + '|' + sectorKey;
+            rapportAggregate.set(k, (rapportAggregate.get(k) || 0) + rapport);
+        }
+    }
+    if (rapportAggregate.size === 0) return summary;
+
+    // 5. Resolve sector_key → sector_id for this nation (one query) so
+    //    the popularity update can use the FK column.
+    const { data: sectorRows, error: secErr } = await supabase
+        .from('sectors').select('id, sector_key')
+        .eq('nation_id', nation.id).eq('is_active', true);
+    if (secErr) {
+        console.error(`[processTargetBasedPolicies] sectors fetch failed for ${nation.name}:`, secErr.message);
+        return summary;
+    }
+    const sectorIdByKey = new Map((sectorRows || []).map(s => [s.sector_key, s.id]));
+
+    // 6. Apply each (faction, sector) delta. popularity is stored in
+    //    integer tenths (0..100). delta_tenths = rapport / RAPPORT_PER_TICK_DIVISOR
+    //    rounded to the nearest tenth so a single +1 rapport policy
+    //    eventually moves the needle (0.1/tick) instead of always
+    //    rounding to zero. Read-modify-write per row — small N, fine.
+    for (const [k, totalRapport] of rapportAggregate.entries()) {
+        const sepIdx = k.indexOf('|');
+        const factionId = k.slice(0, sepIdx);
+        const sectorKey = k.slice(sepIdx + 1);
+        const sectorId = sectorIdByKey.get(sectorKey);
+        if (!sectorId) continue;
+
+        const deltaTenths = Math.round(totalRapport / RAPPORT_PER_TICK_DIVISOR);
+        if (deltaTenths === 0) continue;
+
+        const { data: existing, error: existErr } = await supabase
+            .from('faction_sector_popularity')
+            .select('id, popularity')
+            .eq('faction_id', factionId).eq('sector_id', sectorId)
+            .maybeSingle();
+        if (existErr) {
+            console.warn(`[processTargetBasedPolicies] popularity fetch failed (${factionId}/${sectorKey}):`, existErr.message);
+            continue;
+        }
+        if (!existing) continue; // No row to nudge — sector wasn't seeded for this faction.
+
+        const before = Number(existing.popularity) || 0;
+        const after = Math.max(0, Math.min(100, before + deltaTenths));
+        if (after === before) continue;
+
+        const { error: updErr } = await supabase
+            .from('faction_sector_popularity')
+            .update({ popularity: after, updated_at: new Date().toISOString() })
+            .eq('id', existing.id);
+        if (updErr) {
+            console.warn(`[processTargetBasedPolicies] popularity update failed (${factionId}/${sectorKey}):`, updErr.message);
+            continue;
+        }
+        summary.rapport.push({
+            faction_id: factionId, sector_key: sectorKey,
+            before, after, delta_tenths: deltaTenths
+        });
+    }
+
+    return summary;
 }
 
 // ────────── party-leadership ──────────
@@ -19168,202 +19411,6 @@ async function buildPolicyDecayAdjustments(supabase, nationId) {
     }
 
     return adjustments;
-}
-
-// ════════════════════════════════════════════════════════════════
-// Target-based policies — per-tick processor.
-//
-// For every nation, gather every active_laws row whose chosen
-// policy_options.is_target_based = TRUE. For each per-stat target
-// across those options, compute the weighted equilibrium
-//
-//     equilibrium_display = Σ(target × pull) / Σ(pull)        (0–10 scale)
-//     equilibrium_engine  = equilibrium_display × 10           (0–100 scale)
-//
-// then converge the actual nation stat toward equilibrium_engine
-// at a global rate (10% of the remaining gap per tick). Pull is
-// the weight in the equilibrium math; the convergence rate is a
-// global constant for legibility — "primary driver" pull means
-// dominant influence on the equilibrium, not faster speed.
-//
-// Sector rapport targets apply additively to the proposing
-// faction's popularity in the matching sector each tick:
-//
-//     popularity_delta_tenths = rapport / 10                   (per tick)
-//
-// So +10 rapport adds 1 popularity tenth per tick (+0.1
-// displayed popularity per tick); over 100 ticks that's +10
-// displayed popularity. Multiple options on the same (faction,
-// sector) sum.
-//
-// Skips stats not in NATION_STAT_COLUMN_SET, stats in
-// STAT_PROCESSOR_SKIP (debt), and raw-scale stats that don't
-// map sensibly onto a 0–10 target (population, eligible_voters,
-// budget). Skips rapport where proposed_by is null or the sector
-// row is missing for the nation.
-//
-// Interaction with legacy floor/ceiling adjustments
-// (buildPolicyDecayAdjustments → processStatDecay): floor and
-// ceiling are decay-only concepts — they bound how far decay can
-// push a stat each tick, not where the stat eventually sits.
-// A target-based pull toward 30 will drag a stat below a legacy
-// floor of 50 because pull and floor are separate systems. That's
-// intentional. If you need a hard floor that target-based respects,
-// re-author the policy as target-based with a target ≥ floor.
-// ════════════════════════════════════════════════════════════════
-
-const TARGET_STAT_SCALE = 10;
-const TARGET_CONVERGENCE_RATE = 0.10;
-const RAPPORT_PER_TICK_DIVISOR = 10;
-
-// Stats whose column values are raw (population, debt, budget) don't map
-// onto a 0–10 target. The policy builder lets admins pick them anyway;
-// engine silently skips so nothing weird happens at apply time.
-const TARGET_BASED_STAT_SKIP = new Set([
-    'population', 'eligible_voters', 'debt', 'budget'
-]);
-
-async function processTargetBasedPolicies(supabase, nation) {
-    const summary = { stats: [], rapport: [] };
-
-    // 1. Pull active target-based options for this nation. Joined fields
-    //    let one round trip cover both the equilibrium math and the
-    //    rapport apply step.
-    const { data: laws, error: lawsErr } = await supabase
-        .from('active_laws')
-        .select('id, proposed_by, selected_option:policy_options!selected_option_id(is_target_based, stat_targets, sector_rapport_targets)')
-        .eq('nation_id', nation.id);
-    if (lawsErr) {
-        console.error(`[processTargetBasedPolicies] active_laws fetch failed for ${nation.name}:`, lawsErr.message);
-        return summary;
-    }
-    const targetLaws = (laws || []).filter(l => l.selected_option?.is_target_based);
-    if (targetLaws.length === 0) return summary;
-
-    // 2. Aggregate stat targets across every active option.
-    //    perStat[statKey] = { sumTargetWeighted, sumPull }
-    const perStat = {};
-    for (const law of targetLaws) {
-        const targets = Array.isArray(law.selected_option.stat_targets) ? law.selected_option.stat_targets : [];
-        for (const t of targets) {
-            const rawKey = t?.stat_key;
-            const key = normalizeNationStatKey(rawKey);
-            if (!key || !NATION_STAT_COLUMN_SET.has(key)) continue;
-            if (STAT_PROCESSOR_SKIP.has(key) || TARGET_BASED_STAT_SKIP.has(key)) continue;
-            const target = Number(t.target);
-            const pull = Number(t.pull);
-            if (!Number.isFinite(target) || !Number.isFinite(pull) || pull <= 0) continue;
-            if (!perStat[key]) perStat[key] = { sumTargetWeighted: 0, sumPull: 0 };
-            perStat[key].sumTargetWeighted += target * pull;
-            perStat[key].sumPull += pull;
-        }
-    }
-
-    // 3. For each stat with non-zero total pull, converge the nation
-    //    column toward the equilibrium. One merged update at the end so
-    //    twelve stats nudging at once cost one DB write, not twelve.
-    const statUpdates = {};
-    for (const [statKey, agg] of Object.entries(perStat)) {
-        if (agg.sumPull <= 0) continue;
-        const equilibriumEngine = Math.max(0, Math.min(100,
-            (agg.sumTargetWeighted / agg.sumPull) * TARGET_STAT_SCALE
-        ));
-        const current = Number(nation[statKey]);
-        if (!Number.isFinite(current)) continue;
-        const next = current + (equilibriumEngine - current) * TARGET_CONVERGENCE_RATE;
-        const clamped = Math.max(0, Math.min(100, Math.round(next * 10) / 10));
-        if (clamped === current) continue;
-        statUpdates[statKey] = clamped;
-        summary.stats.push({
-            stat: statKey, before: current, equilibrium: equilibriumEngine, after: clamped
-        });
-    }
-    if (Object.keys(statUpdates).length > 0) {
-        const { error: updErr } = await supabase
-            .from('nations').update(statUpdates).eq('id', nation.id);
-        if (updErr) {
-            console.error(`[processTargetBasedPolicies] Nation stat update failed for ${nation.name}:`, updErr.message);
-            return summary;
-        }
-        Object.assign(nation, statUpdates);
-    }
-
-    // 4. Sector rapport: each option's rapport contributes to its
-    //    proposed_by faction's popularity in that sector this tick.
-    //    Aggregate across all active options first so two options
-    //    nudging the same (faction, sector) pair sum cleanly.
-    //    rapportAggregate[factionId + '|' + sectorKey] = sumRapport
-    const rapportAggregate = new Map();
-    for (const law of targetLaws) {
-        const factionId = law.proposed_by;
-        if (!factionId) continue;
-        const targets = Array.isArray(law.selected_option.sector_rapport_targets) ? law.selected_option.sector_rapport_targets : [];
-        for (const r of targets) {
-            const sectorKey = r?.sector_key;
-            const rapport = Number(r?.rapport);
-            if (!sectorKey || !Number.isFinite(rapport) || rapport === 0) continue;
-            const k = factionId + '|' + sectorKey;
-            rapportAggregate.set(k, (rapportAggregate.get(k) || 0) + rapport);
-        }
-    }
-    if (rapportAggregate.size === 0) return summary;
-
-    // 5. Resolve sector_key → sector_id for this nation (one query) so
-    //    the popularity update can use the FK column.
-    const { data: sectorRows, error: secErr } = await supabase
-        .from('sectors').select('id, sector_key')
-        .eq('nation_id', nation.id).eq('is_active', true);
-    if (secErr) {
-        console.error(`[processTargetBasedPolicies] sectors fetch failed for ${nation.name}:`, secErr.message);
-        return summary;
-    }
-    const sectorIdByKey = new Map((sectorRows || []).map(s => [s.sector_key, s.id]));
-
-    // 6. Apply each (faction, sector) delta. popularity is stored in
-    //    integer tenths (0..100). delta_tenths = rapport / RAPPORT_PER_TICK_DIVISOR
-    //    rounded to the nearest tenth so a single +1 rapport policy
-    //    eventually moves the needle (0.1/tick) instead of always
-    //    rounding to zero. Read-modify-write per row — small N, fine.
-    for (const [k, totalRapport] of rapportAggregate.entries()) {
-        const sepIdx = k.indexOf('|');
-        const factionId = k.slice(0, sepIdx);
-        const sectorKey = k.slice(sepIdx + 1);
-        const sectorId = sectorIdByKey.get(sectorKey);
-        if (!sectorId) continue;
-
-        const deltaTenths = Math.round(totalRapport / RAPPORT_PER_TICK_DIVISOR);
-        if (deltaTenths === 0) continue;
-
-        const { data: existing, error: existErr } = await supabase
-            .from('faction_sector_popularity')
-            .select('id, popularity')
-            .eq('faction_id', factionId).eq('sector_id', sectorId)
-            .maybeSingle();
-        if (existErr) {
-            console.warn(`[processTargetBasedPolicies] popularity fetch failed (${factionId}/${sectorKey}):`, existErr.message);
-            continue;
-        }
-        if (!existing) continue; // No row to nudge — sector wasn't seeded for this faction.
-
-        const before = Number(existing.popularity) || 0;
-        const after = Math.max(0, Math.min(100, before + deltaTenths));
-        if (after === before) continue;
-
-        const { error: updErr } = await supabase
-            .from('faction_sector_popularity')
-            .update({ popularity: after, updated_at: new Date().toISOString() })
-            .eq('id', existing.id);
-        if (updErr) {
-            console.warn(`[processTargetBasedPolicies] popularity update failed (${factionId}/${sectorKey}):`, updErr.message);
-            continue;
-        }
-        summary.rapport.push({
-            faction_id: factionId, sector_key: sectorKey,
-            before, after, delta_tenths: deltaTenths
-        });
-    }
-
-    return summary;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -23138,7 +23185,18 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
 
 // ==================== DISBAND PARTY ====================
 
-async function disbandParty(supabase, nationId, factionId, currentTick) {
+/**
+ * Disband a party.
+ *
+ * @param {object} opts
+ * @param {boolean} [opts.redistribute=true] - When true (default, voluntary
+ *   disband path) the disbanded party's seats are immediately redistributed
+ *   to the remaining parties via rebalanceVacantSeats. When false (used by
+ *   the inactivity auto-disband path) the seats stay vacant until the next
+ *   election re-allocates the chamber.
+ */
+async function disbandParty(supabase, nationId, factionId, currentTick, opts = {}) {
+    const { redistribute = true } = opts;
     // Guard: never disband corporations
     const { data: faction } = await supabase
         .from('factions')
@@ -23270,8 +23328,10 @@ async function disbandParty(supabase, nationId, factionId, currentTick) {
         .update({ seats: 0 })
         .eq('id', factionId);
 
-    // 6. Immediately redistribute vacated seats to remaining parties
-    if (nation && vacatedSeats > 0) {
+    // 6. Redistribute vacated seats to remaining parties — unless the
+    //    caller asked us not to (inactivity auto-disband leaves the seats
+    //    vacant until the next election).
+    if (redistribute && nation && vacatedSeats > 0) {
         await rebalanceVacantSeats(supabase, nation);
     }
 
@@ -32081,6 +32141,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // AFTER decay / commodities / connections so the convergence
         // step uses the post-settled stat as its starting point. Skipped
         // silently if no active_laws on this nation are target-based.
+        // Implementation lives in js/game/policies.js.
         try {
             const tbResult = await processTargetBasedPolicies(supabase, nation);
             if (tbResult.stats.length > 0 || tbResult.rapport.length > 0) {
@@ -32631,9 +32692,23 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Purge decay failed for ${nation.name} (non-fatal):`, purgeErr);
         }
 
-        // Inactivity seat drain + auto-disband
-        // 12-17 ticks inactive: lose ~20% of seats per tick (min 1)
-        // 18+ ticks inactive: auto-disband (seats → 0, nation_id → null)
+        // Inactivity seat drain + auto-disband.
+        //
+        // INACTIVITY_DRAIN_THRESHOLD .. INACTIVITY_DISBAND_THRESHOLD-1
+        //     → lose 20% of seats per tick (min 1)
+        // ≥ INACTIVITY_DISBAND_THRESHOLD
+        //     → auto-disband (monarchies trigger succession instead)
+        //
+        // Vacated seats stay EMPTY — rebalanceVacantSeats is skipped this
+        // tick if any inactivity event fired (tracked by inactivityChanged),
+        // and disbandParty is invoked with redistribute=false so its
+        // internal rebalance call is also bypassed.
+        //
+        // INACTIVITY_DRAIN_THRESHOLD / INACTIVITY_DISBAND_THRESHOLD are
+        // exported from js/game/electorate.js; the sync script
+        // concatenates that module ahead of this footer so the constants
+        // are in scope here without re-declaration.
+        let inactivityChanged = false;
         try {
             const { data: allParties } = await supabase
                 .from('factions')
@@ -32646,7 +32721,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 const ref = party.last_seen_tick ?? party.founded_tick ?? 0;
                 const ticksInactive = newTick - ref;
 
-                if (ticksInactive >= 18) {
+                if (ticksInactive >= INACTIVITY_DISBAND_THRESHOLD) {
                     // Absolute Monarchy: if this is the monarch's faction, trigger succession instead of disband
                     const isMonarchFaction = nation.monarch_faction_id === party.id
                         && (nation.government_type || '').toLowerCase().includes('monarchy');
@@ -32700,16 +32775,21 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                             console.error(`[Succession] Failed for ${nation.name}: ${succErr.message}`);
                         }
                     } else {
-                    // Auto-disband: full cleanup via existing disbandParty()
+                    // Auto-disband: full cleanup via existing disbandParty(),
+                    // but pass redistribute=false so the disbanded seats stay
+                    // empty rather than getting rebalanced to remaining parties.
                     try {
-                        await disbandParty(supabase, nation.id, party.id, newTick);
-                        console.log(`[Inactivity] Auto-disbanded ${party.faction_name} in ${nation.name} (${ticksInactive} ticks inactive)`);
+                        await disbandParty(supabase, nation.id, party.id, newTick, { redistribute: false });
+                        inactivityChanged = true;
+                        console.log(`[Inactivity] Auto-disbanded ${party.faction_name} in ${nation.name} (${ticksInactive} ticks inactive, seats left vacant)`);
                     } catch (disbandErr) {
                         console.error(`[Inactivity] Auto-disband failed for ${party.faction_name}: ${disbandErr.message}`);
                     }
                     }
-                } else if (ticksInactive >= 12 && (party.seats || 0) > 0) {
-                    // Seat drain: lose 20% of seats per tick (minimum 1)
+                } else if (ticksInactive >= INACTIVITY_DRAIN_THRESHOLD && (party.seats || 0) > 0) {
+                    // Seat drain: lose 20% of seats per tick (minimum 1).
+                    // Drained seats stay vacant — the post-loop rebalance is
+                    // skipped when inactivityChanged is true.
                     const currentSeats = party.seats || 0;
                     const seatsLost = Math.max(1, Math.floor(currentSeats * 0.2));
                     const newSeats = Math.max(0, currentSeats - seatsLost);
@@ -32717,7 +32797,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     if (drainErr) {
                         console.error(`[Inactivity] Seat drain failed for ${party.faction_name}: ${drainErr.message}`);
                     } else {
-                        console.log(`[Inactivity] ${party.faction_name} in ${nation.name}: ${currentSeats} → ${newSeats} seats (${ticksInactive} ticks inactive, -${seatsLost})`);
+                        inactivityChanged = true;
+                        console.log(`[Inactivity] ${party.faction_name} in ${nation.name}: ${currentSeats} → ${newSeats} seats (${ticksInactive} ticks inactive, -${seatsLost} vacant)`);
                     }
                 }
             }
@@ -32725,16 +32806,21 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Inactivity processing failed for ${nation.name} (non-fatal):`, inactErr);
         }
 
-        // Seat rebalancing: if factions were disbanded and seats are vacant,
-        // proportionally redistribute the empty seats across remaining factions.
-        try {
-            const seatResult = await rebalanceVacantSeats(supabase, nation);
-            if (seatResult) {
-                summary.seatRebalancing = summary.seatRebalancing || [];
-                summary.seatRebalancing.push(seatResult);
+        // Seat rebalancing: skipped when inactivity drained or disbanded a
+        // party this tick — those vacated seats are meant to stay empty
+        // until the next election re-allocates the chamber. Still runs for
+        // non-inactivity vacancies (e.g., post-election sync, manual admin
+        // adjustments) so other paths keep their pre-existing behavior.
+        if (!inactivityChanged) {
+            try {
+                const seatResult = await rebalanceVacantSeats(supabase, nation);
+                if (seatResult) {
+                    summary.seatRebalancing = summary.seatRebalancing || [];
+                    summary.seatRebalancing.push(seatResult);
+                }
+            } catch (seatErr) {
+                console.error(`[advanceTick] Seat rebalancing failed for ${nation.name} (non-fatal):`, seatErr);
             }
-        } catch (seatErr) {
-            console.error(`[advanceTick] Seat rebalancing failed for ${nation.name} (non-fatal):`, seatErr);
         }
 
         // Crises (persistent negative events that apply effects every tick)
