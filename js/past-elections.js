@@ -140,6 +140,30 @@ function renderPresidentialRow(elec) {
     const typeColor = '#5a8aaa';
     const myFactionId = _state.faction?.id;
 
+    // Runoff data shape (set by processPresidentialElectionResult when no
+    // candidate cleared 50% in round 1):
+    //   results.was_runoff          = true
+    //   results.round_1_candidates  = original round 1 tally (all candidates)
+    //   results.runoff_candidates   = round 2 tally (top 2 only) — same as
+    //                                 results.presidential_candidates
+    //   results.runoff_transfers    = vote transfers between rounds
+    // When was_runoff is false/absent, the election was decided outright in
+    // round 1 — no second-round display needed.
+    const wasRunoff = elec.results?.was_runoff === true;
+    const round1Candidates = wasRunoff && Array.isArray(elec.results?.round_1_candidates)
+        ? [...elec.results.round_1_candidates].sort((a, b) => (b.votes || 0) - (a.votes || 0))
+        : null;
+    // Attach color/abbreviation to round 1 entries the same way we do for
+    // current candidates — those rows are stored without the rendering
+    // metadata since the engine writes them before client-side enrichment.
+    if (round1Candidates) {
+        for (const r of round1Candidates) {
+            const party = _partyMap[r.faction_id];
+            r.color = party?.party_color || r.color || '#666';
+            r.abbreviation = party?.abbreviation || r.abbreviation || r.party_name?.slice(0, 3)?.toUpperCase() || '?';
+        }
+    }
+
     const top3 = candidates.slice(0, 3);
     const winnerName = winner ? `${winner.candidate_name || ''}`.trim() : '';
     const winnerColor = winner?.color || '#888';
@@ -152,6 +176,7 @@ function renderPresidentialRow(elec) {
             <div class="pe-row-head-left" style="display:flex;align-items:center;gap:12px;min-width:0;flex-wrap:wrap;">
                 <div class="pe-date" style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--text-secondary);width:130px;">${date}</div>
                 <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;padding:3px 10px;color:${typeColor};background:${typeColor}0a;border:1px solid ${typeColor}25;">PRESIDENTIAL ELECTION</span>
+                ${wasRunoff ? `<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;padding:3px 10px;color:#d4a83c;background:rgba(212,168,60,0.08);border:1px solid rgba(212,168,60,0.3);">RUNOFF</span>` : ''}
                 <div class="pe-top-chips" style="display:flex;gap:8px;margin-left:10px;flex-wrap:wrap;">
                     ${top3.map(c => `<div style="display:flex;align-items:center;gap:4px;">
                         <div style="width:8px;height:8px;background:${c.color};"></div>
@@ -196,20 +221,55 @@ function renderPresidentialRow(elec) {
             </div>`;
         }).join('');
 
+        // President-Elect card. The mandate-tag distinguishes a clean
+        // round-1 majority ("Elected Outright") from a runoff comeback
+        // ("Won Runoff") — meaningful for downstream coalition / public
+        // approval framing even after the engine settles.
+        const mandateTag = winner
+            ? (wasRunoff ? 'Won Runoff' : 'Elected Outright')
+            : null;
+        const mandateColor = wasRunoff ? '#d4a83c' : '#5c5';
         const winnerCardHtml = winner ? `<div style="margin:0 20px 16px;background:var(--bg-card);border:1px solid var(--border-main);border-left:3px solid ${winnerColor};">
             <div style="padding:12px 16px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                     <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text-dim);">PRESIDENT-ELECT</span>
+                    ${mandateTag ? `<span style="font-family:var(--font-mono);font-size:9px;font-weight:700;padding:2px 8px;color:${mandateColor};background:${mandateColor}0a;border:1px solid ${mandateColor}30;">${esc(mandateTag).toUpperCase()}</span>` : ''}
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;">
                     <div style="width:36px;height:36px;background:${winnerColor}15;border:1.5px solid ${winnerColor};display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;font-weight:700;color:${winnerColor};">${esc((winnerName || '?').split(' ').map(n => n[0] || '').join('').slice(0,3))}</div>
                     <div>
                         <div style="font-size:14px;font-weight:700;color:var(--text-bright);">${esc(winnerName)}</div>
-                        <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">President &middot; ${esc(winner.party_name || '')} &middot; ${(winner.vote_percentage || 0).toFixed(1)}% of vote</div>
+                        <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">President &middot; ${esc(winner.party_name || '')} &middot; ${(winner.vote_percentage || 0).toFixed(1)}% of vote${wasRunoff ? ' (runoff)' : ''}</div>
                     </div>
                 </div>
             </div>
         </div>` : '';
+
+        // Round 1 callout. Renders only when a runoff happened — shows the
+        // original round 1 tally so players can see who was eliminated and
+        // which two candidates advanced. The candidate table below this
+        // callout shows the runoff (final) results.
+        const round1AdvancingIds = new Set(candidates.map(c => c.candidate_id));
+        const round1Html = (wasRunoff && round1Candidates && round1Candidates.length > 0) ? `
+            <div style="padding:12px 20px;border-bottom:1px solid var(--border-main);background:rgba(212,168,60,0.04);">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+                    <span style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:#d4a83c;">ROUND 1 — NO MAJORITY</span>
+                    <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">Top 2 advanced to runoff</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;">
+                    ${round1Candidates.map(r => {
+                        const advanced = round1AdvancingIds.has(r.candidate_id);
+                        const pctVal = (Number(r.vote_percentage) || 0).toFixed(1);
+                        return `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:${advanced ? 'rgba(91,155,213,0.06)' : 'transparent'};border-left:2px solid ${advanced ? '#5b9bd5' : 'transparent'};">
+                            <div style="width:10px;height:10px;background:${r.color};flex-shrink:0;"></div>
+                            <span style="flex:1;font-size:12px;color:var(--text-bright);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(r.candidate_name || 'Unknown')}</span>
+                            <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);min-width:56px;text-align:right;">${esc(r.party_name || '')}</span>
+                            <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${advanced ? '#5b9bd5' : 'var(--text-secondary)'};min-width:48px;text-align:right;">${pctVal}%</span>
+                            <span style="font-family:var(--font-mono);font-size:8px;font-weight:700;color:${advanced ? '#5b9bd5' : '#888'};min-width:80px;text-align:right;">${advanced ? 'ADVANCED' : 'ELIMINATED'}</span>
+                        </div>`;
+                    }).join('')}
+                </div>
+            </div>` : '';
 
         html += `<div style="background:var(--bg-panel);border:1px solid var(--border-main);border-top:1px solid var(--border-main);">
             <div style="display:flex;border-bottom:1px solid var(--border-main);">
@@ -231,10 +291,11 @@ function renderPresidentialRow(elec) {
             ${candidates.length > 0 ? `<div style="padding:10px 20px;border-bottom:1px solid var(--border-main);">
                 <div style="display:flex;height:18px;gap:1px;">${voteBarHtml}</div>
             </div>` : ''}
+            ${round1Html}
             <div style="padding:0 20px;">
                 <div class="pe-tbl-head" style="display:flex;padding:8px 0;border-bottom:1px solid var(--border-main);font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.5px;">
                     <span class="pe-col-logo" style="width:30px;"></span>
-                    <span class="pe-col-party" style="flex:1;">CANDIDATE</span>
+                    <span class="pe-col-party" style="flex:1;">${wasRunoff ? 'RUNOFF — FINAL RESULTS' : 'CANDIDATE'}</span>
                     <span class="pe-col-votes" style="width:90px;text-align:right;">VOTES</span>
                     <span class="pe-col-pct" style="width:70px;text-align:right;">VOTE %</span>
                 </div>
