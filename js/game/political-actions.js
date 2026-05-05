@@ -3527,10 +3527,12 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
         }
     }
 
-    // Load faction with leader data (including leader_ideology as single source of truth)
+    // Load faction leader data. leader_ideology was previously selected
+    // here for a return-shape field that's been retired; the column is
+    // no longer consumed in this function.
     const { data: faction, error: factionErr } = await supabase
         .from('factions')
-        .select('id, faction_name, leader_first_name, leader_last_name, leader_age, leader_ideology, leader_positive_traits')
+        .select('id, faction_name, leader_first_name, leader_last_name, leader_age, leader_positive_traits')
         .eq('id', factionId)
         .single();
     if (factionErr || !faction) throw new Error('Faction not found');
@@ -3651,17 +3653,15 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
         }
     }
 
-    // ideology was sourced from a removed-since `ideologies[]` lookup that
-    // had a `.tag` field. The current single-source-of-truth column on
-    // factions is leader_ideology (already an uppercase tag string), and
-    // every caller of this function ignores the return value anyway. Read
-    // it straight off the faction row so the return shape stays honest
-    // for any future caller that does want to consume it.
+    // Ideology has been retired — no field on the return shape. The
+    // single existing caller (coalition-formation.js handleFormGovernment)
+    // discards the return value entirely, so the shape only matters
+    // for any future caller; keeping it minimal avoids re-introducing
+    // dead state.
     return {
         first_name: faction.leader_first_name,
         last_name: faction.leader_last_name,
         age: leaderAge,
-        ideology: faction.leader_ideology || null,
         trait_key: traitKey,
     };
 }
