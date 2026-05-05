@@ -496,8 +496,12 @@ function _computeStatCommodities(nation) {
     const solStat        = Number(nation.standard_of_living) || 0;
     const popMillions    = (Number(nation.population) || 0) / 1_000_000;
     const mineralsStat   = Number(nation.minerals)        || 0;
-    // Canonical-stats Phase 4: workforce split → average of the two new tiers.
-    const workforceStat  = ((Number(nation.unskilled_workers) || 0) + (Number(nation.skilled_workers) || 0)) / 2;
+    // Canonical-stats Phase 4: workforce split → tier per commodity.
+    // Minerals (extraction), Food (agriculture), and Consumer Goods
+    // (manufacturing) all use the unskilled tier. Luxury Goods has no
+    // workforce term — Education × Services stands in for the skilled
+    // / knowledge tier. Mirror political-actions.js commodity engine.
+    const unskilledStat  = Number(nation.unskilled_workers) || 0;
     const farmlandStat   = Number(nation.farmland)        || 0;
     const educationStat  = Number(nation.education)       || 0;
     const serviceStat    = Number(nation.service_sector)  || 0;
@@ -511,15 +515,15 @@ function _computeStatCommodities(nation) {
           potential: energyStat / 3,
           dem:  ((infraStat + industryStat) * solStat * Math.sqrt(popMillions)) / 3500 },
         { key: 'minerals',       name: 'Minerals',       icon: '⛏',
-          prod: (mineralsStat / 3) * ((workforceStat + industryStat) / 200),
+          prod: (mineralsStat / 3) * ((unskilledStat + industryStat) / 200),
           potential: mineralsStat / 3,
           dem:  (infraStat / 10) + (industryStat / 16) },
         { key: 'food',           name: 'Food',           icon: '🌾',
-          prod: (farmlandStat / 2) * (workforceStat / 100),
+          prod: (farmlandStat / 2) * (unskilledStat / 100),
           potential: farmlandStat / 2,
           dem:  popMillions / 3 },
         { key: 'consumer_goods', name: 'Consumer Goods', icon: '📦',
-          prod: (industryStat / 3) * (workforceStat / 100),
+          prod: (industryStat / 3) * (unskilledStat / 100),
           potential: industryStat / 3,
           dem:  (solStat / 100) * popMillions / 2 },
         { key: 'luxury_goods',   name: 'Luxury Goods',   icon: '💎',
@@ -627,9 +631,9 @@ function renderTradeEconomy() {
     // tick-time trade_flows pipeline rather than a closed-form stat eq.
     const PRODUCTION_FORMULAS = {
         energy:         '(Energy / 3)',
-        minerals:       '(Minerals / 3) × ((Workforce + Industry) / 200)',
-        food:           '(Farmland / 2) × (Workforce / 100)',
-        consumer_goods: '(Industry / 3) × (Workforce / 100)',
+        minerals:       '(Minerals / 3) × ((Unskilled + Industry) / 200)',
+        food:           '(Farmland / 2) × (Unskilled / 100)',
+        consumer_goods: '(Industry / 3) × (Unskilled / 100)',
         luxury_goods:   '(SoL / 6) × ((Education × Services) / 10000)',
     };
     for (const c of commodities) {
@@ -2596,42 +2600,45 @@ function getNationEnergyBalance(nation) {
 }
 
 // Same shape for Minerals \u2014 mirrors the YOUR ECONOMY panel:
-//   Production = (minerals / 3) \u00D7 ((workforce + industry) / 200)
+//   Production = (minerals / 3) \u00D7 ((unskilled + industry) / 200)
 //   Demand     = (infrastructure / 10) + (industry / 16)
 function getNationMineralsBalance(nation) {
     const n = nation || {};
     const mineralsStat  = Number(n.minerals)       || 0;
-    const workforceStat = ((Number(n.unskilled_workers) || 0) + (Number(n.skilled_workers) || 0)) / 2;
+    // Mining is unskilled extraction labour.
+    const unskilledStat = Number(n.unskilled_workers) || 0;
     const industryStat  = Number(n.industry)       || 0;
     const infraStat     = Number(n.infrastructure) || 0;
-    const production    = (mineralsStat / 3) * ((workforceStat + industryStat) / 200);
+    const production    = (mineralsStat / 3) * ((unskilledStat + industryStat) / 200);
     const demand        = (infraStat / 10) + (industryStat / 16);
     return { production, demand, net: production - demand };
 }
 
 // Same shape for Food \u2014 mirrors the YOUR ECONOMY panel:
-//   Production = (farmland / 2) \u00D7 (workforce / 100)
+//   Production = (farmland / 2) \u00D7 (unskilled / 100)
 //   Demand     = population_M / 3
 function getNationFoodBalance(nation) {
     const n = nation || {};
     const farmlandStat  = Number(n.farmland)  || 0;
-    const workforceStat = ((Number(n.unskilled_workers) || 0) + (Number(n.skilled_workers) || 0)) / 2;
+    // Agriculture runs on the unskilled tier.
+    const unskilledStat = Number(n.unskilled_workers) || 0;
     const popMillions   = (Number(n.population) || 0) / 1_000_000;
-    const production    = (farmlandStat / 2) * (workforceStat / 100);
+    const production    = (farmlandStat / 2) * (unskilledStat / 100);
     const demand        = popMillions / 3;
     return { production, demand, net: production - demand };
 }
 
 // Same shape for Consumer Goods \u2014 mirrors the YOUR ECONOMY panel:
-//   Production = (industry / 3) \u00D7 (workforce / 100)
+//   Production = (industry / 3) \u00D7 (unskilled / 100)
 //   Demand     = (standard_of_living / 100) \u00D7 population_M / 2
 function getNationConsumerGoodsBalance(nation) {
     const n = nation || {};
     const industryStat  = Number(n.industry)           || 0;
-    const workforceStat = ((Number(n.unskilled_workers) || 0) + (Number(n.skilled_workers) || 0)) / 2;
+    // Mass-production manufacturing is unskilled labour.
+    const unskilledStat = Number(n.unskilled_workers) || 0;
     const solStat       = Number(n.standard_of_living) || 0;
     const popMillions   = (Number(n.population) || 0) / 1_000_000;
-    const production    = (industryStat / 3) * (workforceStat / 100);
+    const production    = (industryStat / 3) * (unskilledStat / 100);
     const demand        = (solStat / 100) * popMillions / 2;
     return { production, demand, net: production - demand };
 }
