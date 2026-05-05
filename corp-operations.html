@@ -1641,20 +1641,31 @@ async function loadContracts() {
     }
 
     // Pull the player's bids on every visible contract so the card can
-    // show "Bid Placed" after submit instead of the bid button. One
-    // query keyed by faction_id + visible contract ids; cheap.
+    // show "Bid Placed" after submit instead of the bid button, and so
+    // active-contract cards can read crews_committed (which lives on the
+    // bid, not the contract). Includes both available (pending bids) and
+    // active (accepted bids) ids in one query.
     _myBids = new Map();
-    const visibleIds = _availableContracts.map(c => c.id);
-    if (visibleIds.length > 0) {
+    const bidContractIds = [
+        ..._availableContracts.map(c => c.id),
+        ..._activeContracts.map(c => c.id),
+    ];
+    if (bidContractIds.length > 0) {
         const { data: myBids, error: bidsErr } = await _supabase
             .from('corp_contract_bids')
-            .select('contract_id, bid_amount, crews_committed, markup_pct, quoted_timeline_months')
+            .select('contract_id, bid_amount, crews_committed, markup_pct, quoted_timeline_months, status')
             .eq('faction_id', faction.id)
-            .in('contract_id', visibleIds);
+            .in('contract_id', bidContractIds);
         if (bidsErr) {
             console.warn('[corp-operations] my bids fetch failed:', bidsErr.message);
         } else {
-            for (const b of (myBids || [])) _myBids.set(b.contract_id, b);
+            // For active contracts we want the accepted bid; for available
+            // we want whatever bid the player placed (status='pending').
+            // If both somehow exist for one contract, accepted wins.
+            for (const b of (myBids || [])) {
+                const existing = _myBids.get(b.contract_id);
+                if (!existing || b.status === 'accepted') _myBids.set(b.contract_id, b);
+            }
         }
     }
 
@@ -1804,14 +1815,49 @@ function renderActiveCard(contract) {
 
     const currentTick = Number(shard?.current_tick) || 0;
     const progress    = Math.max(0, Math.min(100, Number(contract.progress_pct) || 0));
-    const ticksOver   = contract.deadline_tick != null
-        ? currentTick - contract.deadline_tick : 0;
-    const isBehind    = ticksOver > 0 && progress < 100;
-    const deadlineText = isBehind
-        ? `Behind schedule — ${ticksOver} tick${ticksOver === 1 ? '' : 's'}`
-        : (contract.expected_finish_tick != null
-            ? `Due ${escapeHtml(tickToDate(contract.expected_finish_tick))}`
-            : 'No deadline');
+
+    // ── Schedule status ─────────────────────────────────────────────
+    // Slated completion = expected_finish_tick (started_at + timeline).
+    // On Track / Late is a progress-rate check, not a deadline check —
+    // a contract can be ahead of its deadline but still falling behind
+    // its own pace if crews are missing.
+    const startedAt   = contract.started_at_tick != null ? Number(contract.started_at_tick) : null;
+    const timeline    = Number(contract.timeline_months) || 0;
+    const expectedPct = startedAt != null && timeline > 0
+        ? Math.max(0, Math.min(100, ((currentTick - startedAt) / timeline) * 100))
+        : 0;
+    let scheduleLabel = 'On Track';
+    let scheduleWarn  = false;
+    if (progress >= 100) {
+        scheduleLabel = 'Complete';
+    } else if (expectedPct - progress > 5) {
+        // 5-pt tolerance: if the contract is more than 5 points behind
+        // its proportional expected progress, flag as Late. Stalled
+        // contracts (no crews) end up here naturally — actual stays at
+        // 0 while expected climbs each tick.
+        scheduleLabel = 'Late';
+        scheduleWarn  = true;
+    }
+
+    const finishText = contract.expected_finish_tick != null
+        ? `Slated to Complete on: ${escapeHtml(tickToDate(contract.expected_finish_tick))}`
+        : 'No deadline set';
+
+    // ── Crew display ────────────────────────────────────────────────
+    // The accepted bid carries crews_committed. _myBids was populated
+    // by loadContracts() for every active contract this corp won.
+    // When the contract requires more than 1 crew, switch the label to
+    // "Crews Required" and show "assigned / committed" so the gap is
+    // obvious. Single-crew contracts keep the simpler "Crews Assigned".
+    const acceptedBid = _myBids.get(contract.id);
+    const crewsAssigned  = Number(contract.crews_assigned || 0);
+    const crewsCommitted = Number(acceptedBid?.crews_committed || 0);
+    const multiCrew = crewsCommitted > 1;
+    const crewsLabel = multiCrew ? 'Crews Required' : 'Crews Assigned';
+    const crewsValue = multiCrew
+        ? `${crewsAssigned.toFixed(0)} / ${crewsCommitted.toFixed(0)}`
+        : crewsAssigned.toFixed(0);
+    const crewsWarn  = multiCrew && crewsAssigned < crewsCommitted ? ' warn' : '';
 
     // Margin = (budget − amount_spent) / budget × 100
     const budget = Number(contract.budget) || 0;
@@ -1823,7 +1869,10 @@ function renderActiveCard(contract) {
     return `<div class="co-contract-card">
         <div class="co-contract-meta-row">
             <span class="co-contract-tag ${tagClass}">${escapeHtml(tagText)}</span>
-            <span class="co-contract-deadline${isBehind ? ' warn' : ''}">${escapeHtml(deadlineText)}</span>
+            <span class="co-contract-deadline${scheduleWarn ? ' warn' : ''}" style="text-align:right; line-height:1.3;">
+                ${escapeHtml(finishText)}<br>
+                <small style="opacity:0.85;">${escapeHtml(scheduleLabel)}</small>
+            </span>
         </div>
         <div class="co-contract-name">${escapeHtml(contract.name || 'Untitled Contract')}</div>
         <div class="co-contract-client">— ${escapeHtml(contract.issuer_name || 'Unknown issuer')}</div>
@@ -1833,8 +1882,8 @@ function renderActiveCard(contract) {
                 <div class="value green">${fmtMoney(budget)}</div>
             </div>
             <div>
-                <div class="label">Crews Assigned</div>
-                <div class="value">${Number(contract.crews_assigned || 0).toFixed(0)}</div>
+                <div class="label">${crewsLabel}</div>
+                <div class="value${crewsWarn}">${crewsValue}</div>
             </div>
             <div>
                 <div class="label">Margin</div>
@@ -1843,11 +1892,11 @@ function renderActiveCard(contract) {
         </div>
         <div class="co-contract-progress">
             <div class="co-contract-progress-label">
-                <span>Construction Progress${isBehind ? ' — Behind' : ''}</span>
-                <span class="pct${isBehind ? ' warn' : ''}">${progress.toFixed(0)}%</span>
+                <span>Construction Progress${scheduleWarn ? ' — Late' : ''}</span>
+                <span class="pct${scheduleWarn ? ' warn' : ''}">${progress.toFixed(0)}%</span>
             </div>
             <div class="co-contract-progress-bar">
-                <div class="co-contract-progress-fill${isBehind ? ' warn' : ''}" style="width: ${progress}%;"></div>
+                <div class="co-contract-progress-fill${scheduleWarn ? ' warn' : ''}" style="width: ${progress}%;"></div>
             </div>
         </div>
         <div class="co-contract-actions">
