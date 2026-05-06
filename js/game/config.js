@@ -145,60 +145,24 @@ export function initGameConfigForNation(nation) {
 export const FORMATION_DEADLINE_TICKS = 3; // ticks per formation window — applied both pre- and post-snap
 
 /**
- * Atomic AP deduction via database RPC.
- * Returns { success: true, newAp } on success,
- * or { success: false, error, currentAp } on failure.
- * The DB function checks balance and deducts in a single UPDATE, preventing
- * race conditions.  On insufficient AP it returns -(current_ap + 1) so the
- * caller always has the real server-side balance (single source of truth).
+ * AP system has been deprecated (Phase A of removal — see CLAUDE.md history).
+ *
+ * deductAP / accumulateAP are now no-ops that always succeed without
+ * touching the database. Every JS callsite (rallies, attacks, press
+ * conferences, ministry actions, etc.) keeps working without code
+ * changes; the cost simply isn't applied. The DB column, table, and
+ * RPCs are still in place for Phase A — they're stripped in Phase C.
+ *
+ * The `ledger` argument is accepted and ignored so callers don't need
+ * to be updated. The returned shape matches the old success path so
+ * `if (result.success)` branches still take the happy path.
  */
-export async function deductAP(supabase, factionId, cost, ledger) {
-    const { data, error } = await supabase.rpc('deduct_ap', {
-        p_faction_id: factionId,
-        p_cost: cost
-    });
-    if (error) {
-        console.error(`[deductAP] RPC failed for faction ${factionId}, cost ${cost}:`, error.message);
-        return { success: false, error: error.message };
-    }
-    if (data < 0) {
-        const currentAp = -(data) - 1;
-        return { success: false, error: 'Insufficient AP', currentAp };
-    }
-    // Log to AP ledger if reason provided
-    if (ledger?.reason) {
-        supabase.from('ap_ledger').insert({
-            faction_id: factionId,
-            tick: ledger.tick || 0,
-            delta: -cost,
-            reason: ledger.reason,
-            detail: ledger.detail || null,
-        }).then(() => {}, (e) => console.warn('[deductAP] ledger insert failed:', e));
-    }
-    return { success: true, newAp: data };
+export async function deductAP(_supabase, _factionId, _cost, _ledger) {
+    return { success: true, newAp: 0 };
 }
 
-/**
- * Atomic AP accumulation via database RPC.
- * Returns { success: true, newAp } on success, or { success: false, error } on failure.
- * The DB function atomically increments AP capped at max, preventing race conditions
- * with concurrent deductions.
- * Retries up to 2 additional times on transient RPC failure with short backoff.
- */
-export async function accumulateAP(supabase, factionId, gain, maxAp = GAME_CONFIG.MAX_AP) {
-    const { data, error } = await supabase.rpc('accumulate_ap', {
-        p_faction_id: factionId,
-        p_gain: gain,
-        p_max_ap: maxAp
-    });
-    if (error) {
-        console.error(`[accumulateAP] RPC failed for faction ${factionId}, gain ${gain}:`, error.message);
-        return { success: false, error: error.message };
-    }
-    if (data === -1) {
-        return { success: false, error: 'Faction not found' };
-    }
-    return { success: true, newAp: data };
+export async function accumulateAP(_supabase, _factionId, _gain, _maxAp) {
+    return { success: true, newAp: 0 };
 }
 
 /**

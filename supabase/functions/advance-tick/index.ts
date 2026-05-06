@@ -14,45 +14,10 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-let rpcPreflightCheckPromise = null;
-
-async function ensureApRpcAvailability(supabase) {
-    if (!rpcPreflightCheckPromise) {
-        rpcPreflightCheckPromise = (async () => {
-            const probeFactionId = "00000000-0000-0000-0000-000000000000";
-
-            const probes = [
-                {
-                    name: "accumulate_ap",
-                    call: () => supabase.rpc("accumulate_ap", {
-                        p_faction_id: probeFactionId,
-                        p_gain: 0,
-                        p_max_ap: 20,
-                    }),
-                },
-                {
-                    name: "deduct_ap",
-                    call: () => supabase.rpc("deduct_ap", {
-                        p_faction_id: probeFactionId,
-                        p_cost: 0,
-                    }),
-                },
-            ];
-
-            for (const probe of probes) {
-                const { error } = await probe.call();
-                if (error) {
-                    throw new Error(
-                        `Missing or inaccessible required RPC '${probe.name}'. Deploy SQL function/grants before rolling out advance-tick. Detail: ${error.message}`
-                    );
-                }
-            }
-            console.log("[advance-tick] RPC preflight passed for accumulate_ap and deduct_ap.");
-        })();
-    }
-
-    return rpcPreflightCheckPromise;
-}
+// AP DEPRECATED (Phase A): the accumulate_ap / deduct_ap preflight
+// check has been removed. Both RPCs still exist in the database as
+// SQL no-ops so any external caller stays green; nothing the tick
+// processor does depends on them anymore.
 
 // ===== GAME LOGIC (from js/game/*.js modules) =====
 
@@ -201,60 +166,24 @@ function initGameConfigForNation(nation) {
 const FORMATION_DEADLINE_TICKS = 3; // ticks per formation window — applied both pre- and post-snap
 
 /**
- * Atomic AP deduction via database RPC.
- * Returns { success: true, newAp } on success,
- * or { success: false, error, currentAp } on failure.
- * The DB function checks balance and deducts in a single UPDATE, preventing
- * race conditions.  On insufficient AP it returns -(current_ap + 1) so the
- * caller always has the real server-side balance (single source of truth).
+ * AP system has been deprecated (Phase A of removal — see CLAUDE.md history).
+ *
+ * deductAP / accumulateAP are now no-ops that always succeed without
+ * touching the database. Every JS callsite (rallies, attacks, press
+ * conferences, ministry actions, etc.) keeps working without code
+ * changes; the cost simply isn't applied. The DB column, table, and
+ * RPCs are still in place for Phase A — they're stripped in Phase C.
+ *
+ * The `ledger` argument is accepted and ignored so callers don't need
+ * to be updated. The returned shape matches the old success path so
+ * `if (result.success)` branches still take the happy path.
  */
-async function deductAP(supabase, factionId, cost, ledger) {
-    const { data, error } = await supabase.rpc('deduct_ap', {
-        p_faction_id: factionId,
-        p_cost: cost
-    });
-    if (error) {
-        console.error(`[deductAP] RPC failed for faction ${factionId}, cost ${cost}:`, error.message);
-        return { success: false, error: error.message };
-    }
-    if (data < 0) {
-        const currentAp = -(data) - 1;
-        return { success: false, error: 'Insufficient AP', currentAp };
-    }
-    // Log to AP ledger if reason provided
-    if (ledger?.reason) {
-        supabase.from('ap_ledger').insert({
-            faction_id: factionId,
-            tick: ledger.tick || 0,
-            delta: -cost,
-            reason: ledger.reason,
-            detail: ledger.detail || null,
-        }).then(() => {}, (e) => console.warn('[deductAP] ledger insert failed:', e));
-    }
-    return { success: true, newAp: data };
+async function deductAP(_supabase, _factionId, _cost, _ledger) {
+    return { success: true, newAp: 0 };
 }
 
-/**
- * Atomic AP accumulation via database RPC.
- * Returns { success: true, newAp } on success, or { success: false, error } on failure.
- * The DB function atomically increments AP capped at max, preventing race conditions
- * with concurrent deductions.
- * Retries up to 2 additional times on transient RPC failure with short backoff.
- */
-async function accumulateAP(supabase, factionId, gain, maxAp = GAME_CONFIG.MAX_AP) {
-    const { data, error } = await supabase.rpc('accumulate_ap', {
-        p_faction_id: factionId,
-        p_gain: gain,
-        p_max_ap: maxAp
-    });
-    if (error) {
-        console.error(`[accumulateAP] RPC failed for faction ${factionId}, gain ${gain}:`, error.message);
-        return { success: false, error: error.message };
-    }
-    if (data === -1) {
-        return { success: false, error: 'Faction not found' };
-    }
-    return { success: true, newAp: data };
+async function accumulateAP(_supabase, _factionId, _gain, _maxAp) {
+    return { success: true, newAp: 0 };
 }
 
 /**
@@ -33542,117 +33471,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         events: [],
         apFailures: []
     };
-    const failedNationIds = new Set();
-    const failedFactionIds = new Set();
 
-    // Accumulate AP for party factions each tick:
-    // base 5 AP, +2 if in government coalition or strongman. Capped at MAX_AP (20).
-    // Uses atomic RPC to prevent race conditions with concurrent player deductions.
-    // Skip AP accumulation in reprocess mode — AP was already granted on the original tick.
-    let apDistributed = 0;
-    let apFailed = 0;
-    if (reprocess) {
-        console.log(`[advanceTick] REPROCESS mode — skipping AP accumulation`);
-    }
-    for (const nation of (reprocess ? [] : nationList)) {
-      try {
-        const { data: factions } = await supabase
-            .from('factions')
-            .select('id, faction_type, leader_positive_traits, leader_negative_traits')
-            .eq('nation_id', nation.id)
-            .eq('faction_type', 'party');
-
-        if (factions && factions.length > 0) {
-        // Guard: skip AP if already distributed this tick (prevents double AP on retry/overlap)
-        const { data: existingLedger } = await supabase
-            .from('ap_ledger')
-            .select('id')
-            .eq('faction_id', factions[0].id)
-            .eq('tick', newTick)
-            .eq('reason', 'tick_gain')
-            .limit(1);
-        if (existingLedger && existingLedger.length > 0) {
-            console.warn(`[advanceTick] AP already distributed for nation ${nation.name} tick ${newTick} — skipping`);
-            continue;
-        }
-        // Democracy AP logic
-        const coalition = await fetchActiveCoalition(supabase, nation.id);
-        const governmentPartyIds = new Set([
-            ...(coalition?.party_ids || []),
-            nation.ruling_faction_id
-        ].filter(Boolean));
-
-        for (const faction of factions) {
-            const isInGovernment = governmentPartyIds.has(faction.id);
-            let apGain = 5;
-            if (isInGovernment) apGain += 2;
-
-            // Leader trait: tireless_campaigner → +1 AP per tick
-            const posTraits = faction.leader_positive_traits || [];
-            const negTraits = faction.leader_negative_traits || [];
-            if (posTraits.includes('tireless_campaigner')) apGain += 1;
-            // Leader trait: indecisive → -1 AP per tick
-            if (negTraits.includes('indecisive')) apGain = Math.max(1, apGain - 1);
-
-            // Family member successor penalty: ruling faction loses 1 AP/tick
-            if (nation.successor_is_family_member && faction.id === nation.ruling_faction_id) {
-                apGain = Math.max(1, apGain - 1);
-            }
-
-            const result = await accumulateAP(supabase, faction.id, apGain);
-            if (result.success) {
-                console.log(`[advanceTick] AP: faction ${faction.id} → ${result.newAp} (+${apGain})`);
-                apDistributed++;
-                const parts = ['Base +5'];
-                if (isInGovernment) parts.push('Coalition +2');
-                if (posTraits.includes('tireless_campaigner')) parts.push('Tireless Campaigner +1');
-                if (negTraits.includes('indecisive')) parts.push('Indecisive -1');
-                if (nation.successor_is_family_member && faction.id === nation.ruling_faction_id) parts.push('Family successor -1');
-                await supabase.from('ap_ledger').insert({ faction_id: faction.id, tick: newTick, delta: apGain, reason: 'tick_gain', detail: parts.join(', ') }).then(() => {});
-            } else {
-                console.error(`[advanceTick] AP accumulation FAILED for faction ${faction.id}: ${result.error}`);
-                apFailed++;
-                summary.apFailures.push({
-                    nationId: nation.id,
-                    nation: nation.name,
-                    factionId: faction.id,
-                    error: result.error
-                });
-                failedNationIds.add(nation.id);
-                failedFactionIds.add(faction.id);
-            }
-        }
-        } // end factions.length > 0
-      } catch (apErr) {
-        console.error(`[advanceTick] AP distribution FAILED for nation ${nation.id} (${nation.name}):`, apErr);
-        summary.errors = summary.errors || [];
-        summary.errors.push({ nation: nation.name, nationId: nation.id, phase: 'ap_distribution', error: String(apErr) });
-        apFailed++;
-        summary.apFailures.push({
-            nationId: nation.id,
-            nation: nation.name,
-            factionId: null,
-            error: String(apErr)
-        });
-        failedNationIds.add(nation.id);
-      }
-    }
-    summary.apDistributed = apDistributed;
-    summary.apFailed = apFailed;
-
-    if (apFailed > 0) {
-        // Log AP failures but DO NOT abort the tick.
-        // AP is non-critical — stats, elections, history snapshots, and the
-        // entire simulation must continue even if AP distribution fails.
-        // Aborting here previously caused the shard tick to never advance,
-        // freezing all stat updates, arrows, and game progression.
-        console.error(`[advanceTick] AP distribution had ${apFailed} failure(s) — continuing tick processing`);
-        summary.apWarnings = {
-            failedNationIds: Array.from(failedNationIds),
-            failedFactionIds: Array.from(failedFactionIds),
-            message: `AP distribution failed for ${apFailed} faction(s); tick processing continued.`
-        };
-    }
+    // AP DEPRECATED (Phase A of removal): the per-tick AP accumulation
+    // pass is disabled. The fields stay on `summary` so any downstream
+    // log readers still see the shape they expect; both counts are
+    // permanently zero.
+    summary.apDistributed = 0;
+    summary.apFailed = 0;
 
     // NOTE: Shard tick/date commit moved to AFTER nation processing (see below).
     // This prevents the tick number from advancing if the function times out
@@ -35874,10 +35699,7 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     try {
-        // 0. Startup checks
-        console.log("[advance-tick] Step 0: Running preflight...");
-        await ensureApRpcAvailability(supabase);
-        console.log("[advance-tick] Step 0: Preflight complete.");
+        // 0. Startup checks (AP preflight removed — Phase A of AP deprecation)
 
         // 1. Check for force/reprocess parameters (admin manual trigger)
         let force = false;
