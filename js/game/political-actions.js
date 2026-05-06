@@ -598,14 +598,17 @@ export async function processVolaCultureDecay(supabase, nation) {
 
 // ==================== VOLA INVESTMENT (Sports Minister action) ====================
 
-// Three tiers — cost in abstract dollars (matches nation.budget scale,
-// the same $-figures the Government Budget panel headlines). Deducted
-// directly from nation.budget; if budget runs negative, the per-tick
-// balance math turns the shortfall into debt next tick.
+// Three tiers — cost in raw dollars (millions), deducted from
+// ministries.sports.discretionary_balance. Funding articles on bills
+// are the canonical path to top up that balance from the national
+// treasury; the action itself only ever touches what's been earmarked
+// for the ministry. Display drops the M suffix per UI preference
+// ($2 / $5 / $8 visible, $2M / $5M / $8M deducted).
+const _M = 1_000_000;
 export const VOLA_INVESTMENT_LEVELS = Object.freeze({
-    low:      { cost: 2, gain: 3, label: 'Low Investment' },
-    moderate: { cost: 5, gain: 5, label: 'Moderate Investment' },
-    high:     { cost: 8, gain: 7, label: 'High Investment' },
+    low:      { cost: 2 * _M, gain: 3, label: 'Low Investment' },
+    moderate: { cost: 5 * _M, gain: 5, label: 'Moderate Investment' },
+    high:     { cost: 8 * _M, gain: 7, label: 'High Investment' },
 });
 export const VOLA_INVESTMENT_COOLDOWN_TICKS = 1;
 export const VOLA_INVESTMENT_ACTION_KEY = 'invest_in_sports_culture';
@@ -640,10 +643,9 @@ export async function investInVolaCulture(supabase, nation, callerFactionId, lev
         };
     }
 
-    // Mirror the RPC's writes onto the local nation object so the
-    // calling UI can render fresh values without a re-fetch.
+    // Mirror the RPC's culture write onto the local nation object so
+    // the calling UI can render fresh values without a re-fetch.
     if (data.newCulture != null) nation.national_vola_culture = Number(data.newCulture);
-    if (data.newBudget  != null) nation.budget                = Number(data.newBudget);
 
     return {
         success:    true,
@@ -651,7 +653,7 @@ export async function investInVolaCulture(supabase, nation, callerFactionId, lev
         gain:       Number(data.gain || 0),
         cost:       Number(data.cost || 0),
         newCulture: Number(data.newCulture || 0),
-        newBudget:  Number(data.newBudget  || 0),
+        newBalance: Number(data.newBalance || 0),
     };
 }
 
@@ -4392,9 +4394,13 @@ function _isParliamentaryForChallenge(nation) {
 }
 
 /**
- * Player-initiated claim. Validates eligibility and inserts a row in
- * leadership_challenges; the next tick's resolveLeadershipChallenges
- * pass picks the winner from all rows with the same claimed_at_tick.
+ * Player-initiated claim. Routes through the SECURITY DEFINER
+ * claim_leadership_challenge RPC because authenticated client INSERTs
+ * into leadership_challenges are blocked by the default RLS posture
+ * on user-created tables. The RPC re-validates eligibility server-side
+ * (parliamentary, vacancy, coalition membership, leader, seats), so
+ * the JS-side checks here are kept as fast pre-flight bails only —
+ * the RPC is the source of truth.
  *
  * Returns { success, reason?, alreadyClaimed? }.
  */
@@ -4404,40 +4410,17 @@ export async function claimLeadershipChallenge(supabase, nation, faction, curren
     if (!faction.leader_first_name)        return { success: false, reason: 'no_leader' };
     if (!faction.seats || faction.seats <= 0) return { success: false, reason: 'no_seats' };
 
-    // Vacancy check — no active head_of_government row.
-    const { data: hog } = await supabase
-        .from('head_of_government')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('active', true)
-        .maybeSingle();
-    if (hog) return { success: false, reason: 'pm_already_installed' };
-
-    // Coalition membership check.
-    const { data: formation } = await supabase
-        .from('government_formations')
-        .select('party_ids')
-        .eq('nation_id', nation.id)
-        .in('status', ['formed', 'active', 'caretaker'])
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-    if (!formation) return { success: false, reason: 'no_coalition' };
-    if (!(formation.party_ids || []).includes(faction.id)) return { success: false, reason: 'not_in_coalition' };
-
-    // Insert claim. UNIQUE(nation_id, faction_id, claimed_at_tick) makes
-    // a same-tick double-click a silent no-op (treated as success).
-    const { error } = await supabase.from('leadership_challenges').insert({
-        nation_id: nation.id,
-        faction_id: faction.id,
-        claimed_at_tick: currentTick,
-        seats_at_claim: faction.seats,
+    const { data, error } = await supabase.rpc('claim_leadership_challenge', {
+        p_nation_id:  nation.id,
+        p_faction_id: faction.id,
     });
-    if (error) {
-        if (error.code === '23505') return { success: true, alreadyClaimed: true };
-        return { success: false, reason: 'insert_failed', error: error.message };
-    }
-    return { success: true };
+    if (error) return { success: false, reason: 'rpc_failed', error: error.message };
+    if (!data?.success) return { success: false, reason: data?.reason || 'unknown' };
+    return {
+        success: true,
+        alreadyClaimed: !!data.already_claimed,
+        claimedAtTick: Number(data.claimed_at_tick) || currentTick,
+    };
 }
 
 /**
@@ -4611,40 +4594,39 @@ async function _resolveOneNation(supabase, nationId, claims, currentTick) {
 // ==================== VOLA STADIUM CONSTRUCTION (Sports Minister action) ====================
 
 // Three tiers — small/modest/extravagant. Each posts a Construction-sector
-// contract (corp_contracts) for corps to bid on. Posting cost is in
-// abstract dollars (matches nation.budget scale); contract budget target
-// is raw dollars (the figure corps see + bid against).
+// contract (corp_contracts) for corps to bid on. Posting cost is in raw
+// dollars deducted from ministries.sports.discretionary_balance; contract
+// budget target is also raw dollars (the figure corps see + bid against).
 //
-// Cost mapping:
-//     Small        $3 from budget, $60M target budget, floor +2 / 24 ticks
-//     Modest       $7 from budget, $140M target budget, floor +4 / 36 ticks
-//     Extravagant  $10 from budget, $450M target budget, floor +9 / 60 ticks
+// Cost mapping (raw dollars deducted from discretionary):
+//     Small        $3M discretionary, $60M target,  floor +2 / 24 ticks
+//     Modest       $7M discretionary, $140M target, floor +4 / 36 ticks
+//     Extravagant  $10M discretionary, $450M target, floor +9 / 60 ticks
 //
 // spec_category is the cross-system identifier (corp Operations page
 // reads this for filtering); project_subtype='Vola Stadium' is the
 // discriminator for our completion sweep + RPCs.
-const _STADIUM_M = 1_000_000;
 export const VOLA_STADIUM_TIERS = Object.freeze({
     small: {
         label: 'Small',
-        postingCost:       3,                  // abstract dollars deducted from nation.budget
-        budgetTarget:      60  * _STADIUM_M,   // raw dollars on the contract row
+        postingCost:       3 * _M,             // raw dollars deducted from discretionary
+        budgetTarget:      60  * _M,           // raw dollars on the contract row
         floorContribution: 2,
         timelineMonths:    24,
         specCategory:     'Light Infrastructure',
     },
     modest: {
         label: 'Modest',
-        postingCost:       7,
-        budgetTarget:      140 * _STADIUM_M,
+        postingCost:       7 * _M,
+        budgetTarget:      140 * _M,
         floorContribution: 4,
         timelineMonths:    36,
         specCategory:     'Heavy Infrastructure',
     },
     extravagant: {
         label: 'Extravagant',
-        postingCost:       10,
-        budgetTarget:      450 * _STADIUM_M,
+        postingCost:       10 * _M,
+        budgetTarget:      450 * _M,
         floorContribution: 9,
         timelineMonths:    60,
         specCategory:     'Megaproject',
@@ -4765,6 +4747,218 @@ export async function processVolaStadiumCompletions(supabase, currentTick) {
     }
 
     return { completed };
+}
+
+// ==================== VWC HOST BIDDING (Sports Minister action) ====================
+
+// Sports Minister submits a host bid for a future World Vola Cup.
+// $10M discretionary cost, once per cup per nation (UNIQUE constraint).
+// Resolution fires 12 ticks before cup start (= the qualifier tick) via
+// resolveVolaCupBids in the post-loop sweep.
+//
+// Cup ordinal helper duplicated locally rather than reaching across to
+// sports-subtab code so the tick processor has zero UI deps.
+function _cupOrdinal(n) {
+    const v = n % 100;
+    const last = n % 10;
+    if (v >= 11 && v <= 13) return n + 'th';
+    if (last === 1) return n + 'st';
+    if (last === 2) return n + 'nd';
+    if (last === 3) return n + 'rd';
+    return n + 'th';
+}
+
+// Convert tick number to "March, 2007"-style label without depending
+// on js/utils.js (which the edge bundle doesn't include).
+const _MONTHS = ['January','February','March','April','May','June',
+                 'July','August','September','October','November','December'];
+function _tickToYear(tick) { return 2000 + Math.floor(Number(tick) / 12); }
+
+/**
+ * Player-initiated bid. Routes through the bid_to_host_vwc RPC for the
+ * server-side validation + atomic discretionary deduction. The RPC owns
+ * eligibility (minister, balance, deadline, no existing host or bid) so
+ * the JS wrapper just relays the result.
+ *
+ * Returns { success, reason?, cupNumber?, resolutionTick?, cost? }.
+ */
+export async function bidToHostVwc(supabase, cupNumber) {
+    if (!cupNumber || cupNumber <= 0) return { success: false, reason: 'invalid_cup' };
+    const { data, error } = await supabase.rpc('bid_to_host_vwc', { p_cup_number: cupNumber });
+    if (error) return { success: false, reason: 'rpc_failed', error: error.message };
+    if (!data?.success) return { success: false, reason: data?.reason || 'unknown' };
+    return {
+        success:        true,
+        cupNumber:      Number(data.cup_number || cupNumber),
+        cupStartTick:   Number(data.cup_start_tick || 0),
+        resolutionTick: Number(data.resolution_tick || 0),
+        cost:           Number(data.cost || 0),
+    };
+}
+
+/**
+ * Tick-processor sweep: pick the host for every cup whose qualifier
+ * tick (= cup_start - 12) is the current tick. Per-cup formula:
+ *
+ *   bid_score = (sports_culture / 2)
+ *             + (infrastructure × 3)
+ *             + (global_image × 3)
+ *             + (vola_stadiums × 5)
+ *             + 1d20
+ *
+ * Highest score wins; tie → higher national_vola_culture. Winner gets
+ * +1d20+5 budget, +3 global_image, +0.5 public_approval, +1d6 culture,
+ * and a vola_cup_hosts row with home_advantage=15. Losers get -0.2
+ * public_approval.
+ *
+ * Idempotent: skip cups that already have a vola_cup_hosts row.
+ */
+export async function resolveVolaCupBids(supabase, currentTick) {
+    const targetCupStart = Number(currentTick) + 12;
+
+    const { data: pending, error } = await supabase
+        .from('vola_host_bids')
+        .select('id, nation_id, cup_number, cup_start_tick')
+        .eq('cup_start_tick', targetCupStart)
+        .is('resolved_at_tick', null);
+    if (error) {
+        console.warn('[VWCHost] pending fetch failed:', error.message);
+        return null;
+    }
+    if (!pending || pending.length === 0) return null;
+
+    // Group by cup_number — each cup resolves independently.
+    const byCup = new Map();
+    for (const b of pending) {
+        if (!byCup.has(b.cup_number)) byCup.set(b.cup_number, []);
+        byCup.get(b.cup_number).push(b);
+    }
+
+    let resolved = 0;
+    for (const [cupNumber, bids] of byCup) {
+        try {
+            const did = await _resolveOneCup(supabase, cupNumber, bids, targetCupStart, currentTick);
+            if (did) resolved++;
+        } catch (err) {
+            console.error('[VWCHost] resolve failed for cup', cupNumber, err);
+        }
+    }
+    return { resolved, cups: byCup.size };
+}
+
+async function _resolveOneCup(supabase, cupNumber, bids, cupStartTick, currentTick) {
+    // Idempotency — skip cups that already have a host row.
+    const { data: existingHost } = await supabase.from('vola_cup_hosts')
+        .select('cup_number').eq('cup_number', cupNumber).maybeSingle();
+    if (existingHost) return false;
+
+    // Load every bidder's relevant stats.
+    const nationIds = bids.map(b => b.nation_id);
+    const { data: nations, error: nErr } = await supabase.from('nations')
+        .select('id, name, national_vola_culture, infrastructure, global_image, vola_stadiums, public_approval, budget')
+        .in('id', nationIds);
+    if (nErr) {
+        console.warn('[VWCHost] nation fetch failed:', nErr.message);
+        return false;
+    }
+    const nationMap = new Map((nations || []).map(n => [n.id, n]));
+
+    // Filter out bids whose nation is gone (e.g. nation deleted between
+    // bid and resolution). Without this, a missing-nation bid scores
+    // with all-zero stats but could still "win" with just +1d20, then
+    // the win-effect UPDATE silently no-ops on the undefined id.
+    const validBids = bids.filter(b => nationMap.has(b.nation_id));
+    const stalebids = bids.filter(b => !nationMap.has(b.nation_id));
+    if (stalebids.length > 0) {
+        await supabase.from('vola_host_bids').update({
+            resolved_at_tick: currentTick, won: false,
+        }).in('id', stalebids.map(b => b.id));
+    }
+    if (validBids.length === 0) return false;
+
+    const scored = validBids.map(b => {
+        const n = nationMap.get(b.nation_id);
+        const culture       = Number(n.national_vola_culture) || 0;
+        const infrastructure = Number(n.infrastructure) || 0;
+        const globalImage   = Number(n.global_image) || 0;
+        const stadiums      = Number(n.vola_stadiums) || 0;
+        const d20           = Math.floor(Math.random() * 20) + 1;
+        const score = (culture / 2) + (infrastructure * 3) + (globalImage * 3) + (stadiums * 5) + d20;
+        return { bid: b, nation: n, score, culture };
+    });
+
+    // Highest score wins; tie → higher national_vola_culture.
+    scored.sort((a, b) => (b.score - a.score) || (b.culture - a.culture));
+    const winner = scored[0];
+    const losers = scored.slice(1);
+
+    // Award. PRIMARY KEY on cup_number guards against a parallel
+    // resolution duplicating the row.
+    const { error: hostErr } = await supabase.from('vola_cup_hosts').insert({
+        cup_number:      cupNumber,
+        cup_start_tick:  cupStartTick,
+        host_nation_id:  winner.bid.nation_id,
+        awarded_at_tick: currentTick,
+        winning_score:   winner.score,
+        home_advantage:  15,
+    });
+    if (hostErr) {
+        console.warn('[VWCHost] host insert failed for cup', cupNumber, hostErr.message);
+        return false;
+    }
+
+    // Apply win effects to the winner.
+    const winN = winner.nation;
+    const budgetBonus  = (Math.floor(Math.random() * 20) + 1) + 5;            // 1d20 + 5
+    const cultureBonus = Math.floor(Math.random() * 6) + 1;                   // 1d6
+    const newBudget    = (Number(winN.budget) || 0) + budgetBonus;
+    const newGI        = Math.min(100, (Number(winN.global_image) || 0) + 3);
+    const newPA        = Math.min(100, (Number(winN.public_approval) || 0) + 0.5);
+    const newCulture   = Math.min(100, _roundCulture((Number(winN.national_vola_culture) || 0) + cultureBonus));
+
+    await supabase.from('nations').update({
+        budget: newBudget,
+        global_image: newGI,
+        public_approval: newPA,
+        national_vola_culture: newCulture,
+    }).eq('id', winN.id);
+
+    // Apply lose effect to losers (one UPDATE per loser keeps it
+    // simple; bid sets are typically small).
+    for (const s of losers) {
+        const lN = s.nation;
+        if (!lN || !lN.id) continue;
+        const newLPA = Math.max(0, (Number(lN.public_approval) || 0) - 0.2);
+        await supabase.from('nations').update({ public_approval: newLPA }).eq('id', lN.id);
+    }
+
+    // Mark bid rows resolved (winner first, then losers).
+    await supabase.from('vola_host_bids').update({
+        resolved_at_tick: currentTick,
+        won: false,
+    }).eq('cup_number', cupNumber);
+    await supabase.from('vola_host_bids').update({
+        won: true, bid_score: winner.score,
+    }).eq('id', winner.bid.id);
+    for (const s of losers) {
+        await supabase.from('vola_host_bids').update({
+            bid_score: s.score,
+        }).eq('id', s.bid.id);
+    }
+
+    // Event log on the winning nation.
+    const ord  = _cupOrdinal(cupNumber);
+    const year = _tickToYear(cupStartTick);
+    await supabase.from('event_log').insert({
+        nation_id:           winN.id,
+        event_name:          'VWC Host Awarded',
+        category:            'political',
+        trigger_key:         'vwc_host_awarded',
+        description_chosen:  `The nation of ${winN.name} has won the bid and will host the ${ord} Vola World Cup in ${year}!`,
+        fired_at_tick:       currentTick,
+    });
+
+    return true;
 }
 
 // +N to faction_sector_popularity for every active sector in the nation,

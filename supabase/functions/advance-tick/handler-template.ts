@@ -2812,6 +2812,22 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // 4a-quinque. VWC HOST BID RESOLUTION — global pass.
+    // For every cup whose qualifier tick is current_tick (= cup_start
+    // - 12), pick a host via the bid-score formula. Winner gets the
+    // host slot + budget/global_image/PA/culture bumps; losers take
+    // a small PA penalty.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const hostResult = await resolveVolaCupBids(supabase, currentTick);
+        if (hostResult?.resolved) {
+            console.log(`[VWCHost] resolved ${hostResult.resolved}/${hostResult.cups} cup host bid(s)`);
+        }
+    } catch (hostErr) {
+        console.error('[advanceTick] VWC host bid resolution failed (non-fatal):', hostErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // 4a-tris. LEADERSHIP CHALLENGES — global pass.
     // Resolves every leadership_challenges row with claimed_at_tick <
     // currentTick that hasn't been marked yet. Per nation: re-checks

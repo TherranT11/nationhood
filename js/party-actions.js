@@ -12,7 +12,7 @@ import { PLATFORMS, STAT_NAMES, BAD_STATS, statDirection, platformMomentumInfo }
 import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, getGoverningStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
 import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsuit, fetchActiveLawsuits } from './game/lawsuits.js';
-import { getNationNames, resignPM, installHOG, investInVolaCulture, VOLA_INVESTMENT_LEVELS, claimLeadershipChallenge, postStadiumConstruction, VOLA_STADIUM_TIERS } from './game/political-actions.js';
+import { getNationNames, resignPM, installHOG, investInVolaCulture, VOLA_INVESTMENT_LEVELS, claimLeadershipChallenge, postStadiumConstruction, VOLA_STADIUM_TIERS, bidToHostVwc } from './game/political-actions.js';
 import { isAbsoluteMonarchy, isSemiPresidential, hasParliamentaryPM, hasElectedPresident } from './game/government-types.js';
 import { fetchActiveCoalition } from './game/government-structure.js';
 import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './game/config.js';
@@ -1013,6 +1013,7 @@ function renderPage(root) {
             <div class="pa-modal-overlay" id="pa-bloc-modal"></div>
             <div class="pa-modal-overlay" id="pa-vola-invest-modal"></div>
             <div class="pa-modal-overlay" id="pa-vola-stadium-modal"></div>
+            <div class="pa-modal-overlay" id="pa-vola-host-bid-modal"></div>
         `,
     });
 
@@ -1077,6 +1078,8 @@ function renderPage(root) {
             openVolaInvestmentModal(root, faction);
         } else if (actionId === 'expand_stadium_infrastructure') {
             openVolaStadiumModal(root, faction);
+        } else if (actionId === 'bid_to_host_vwc') {
+            openVolaHostBidModal(root, faction);
         } else if (actionId === 'leadership_challenge') {
             triggerLeadershipChallenge(root, faction);
         }
@@ -1370,6 +1373,14 @@ const _MINISTRY_ACTION_REGISTRY = {
             cost: '$3 – $10',
             costColor: '#c8a832',
             tags: ['SPORTS', 'CONSTRUCTION'],
+        },
+        {
+            id: 'bid_to_host_vwc',
+            name: 'Bid to Host VWC',
+            desc: 'Submit your nation as a candidate to host the next available Vola World Cup. Multiple nations can bid; the highest score wins. Winner hosts the cycle, gains a treasury bump, Global Image, Public Approval, and home advantage in matches. Once per cup.',
+            cost: '$10',
+            costColor: '#c8a832',
+            tags: ['SPORTS', 'COSTS BUDGET'],
         },
     ],
 };
@@ -2267,13 +2278,16 @@ async function openVolaInvestmentModal(root, faction) {
     const overlay = document.getElementById('pa-vola-invest-modal');
     if (!overlay) return;
 
-    // Refresh nation.budget before showing — Sports actions deduct from
-    // the national treasury directly (abstract scale, $5 = $5). If
-    // budget goes negative the per-tick balance math turns the shortfall
-    // into debt next tick — no hard floor.
-    const { data: nationRow } = await _supabase.from('nations')
-        .select('budget').eq('id', _state.nation.id).maybeSingle();
-    const balance = Number(nationRow?.budget) || 0;
+    // Refresh discretionary balance before showing — funding bills can
+    // top it up between renders, so re-fetch instead of trusting a
+    // cached descriptor.
+    const { data: mRow } = await _supabase.from('ministries')
+        .select('id, party_id, discretionary_balance')
+        .eq('nation_id', _state.nation.id)
+        .eq('ministry_key', 'sports')
+        .eq('is_active', true)
+        .maybeSingle();
+    const balance = Number(mRow?.discretionary_balance) || 0;
 
     let submitting = false;
     let result = null; // populated after success: { level, gain, cost, newCulture, newBalance }
@@ -2284,17 +2298,15 @@ async function openVolaInvestmentModal(root, faction) {
             cfg: VOLA_INVESTMENT_LEVELS[k],
         }));
         const tiersHtml = tiers.map(t => {
-            // No affordability lock — going negative is allowed and just
-            // creates debt. Surface the budget impact below the row.
-            const costLabel = '$' + t.cfg.cost;
-            const willGoNegative = balance < t.cfg.cost;
-            return `<div class="pa-action-item ${submitting ? 'locked' : ''}" data-tier="${t.key}" style="cursor:${submitting ? 'not-allowed' : 'pointer'};">
+            const canAfford = balance >= t.cfg.cost;
+            const costLabel = '$' + (t.cfg.cost / 1_000_000);
+            return `<div class="pa-action-item ${!canAfford || submitting ? 'locked' : ''}" data-tier="${t.key}" style="cursor:${canAfford && !submitting ? 'pointer' : 'not-allowed'};">
                 <div class="pa-action-top">
                     <span style="font-size:13px;font-weight:700;color:var(--text-bright);">${t.cfg.label}</span>
                     <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;">+${t.cfg.gain} National Sports Culture</span>
                 </div>
-                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">Cost: ${costLabel} from national budget</div>
-                ${willGoNegative ? `<div style="font-family:var(--font-mono);font-size:8px;color:var(--amber);margin-top:4px;">Budget would dip below 0 — shortfall rolls into debt next tick.</div>` : ''}
+                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">Cost: ${costLabel} from discretionary budget</div>
+                ${!canAfford ? `<div style="font-family:var(--font-mono);font-size:8px;color:var(--red);margin-top:4px;">Insufficient budget — need ${costLabel}</div>` : ''}
             </div>`;
         }).join('');
 
@@ -2303,7 +2315,7 @@ async function openVolaInvestmentModal(root, faction) {
                 <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;margin-bottom:4px;">Investment applied</div>
                 <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">
                     +${result.gain} National Sports Culture · new total <strong>${Number(result.newCulture).toFixed(1)}</strong><br>
-                    $${result.cost} deducted · budget now <strong>$${Number(result.newBudget).toFixed(0)}</strong>
+                    $${(result.cost / 1_000_000).toFixed(0)} deducted · remaining discretionary <strong>${fmtDiscretionaryBalance(result.newBalance)}</strong>
                 </div>
             </div>
         ` : '';
@@ -2318,9 +2330,9 @@ async function openVolaInvestmentModal(root, faction) {
                     <button class="pa-modal-close" id="vola-close">&times;</button>
                 </div>
                 <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
-                    Fund local Vola leagues, training academies, and marketing. Pulls directly from
-                    the national budget — current balance <strong style="color:${balance >= 0 ? 'var(--green)' : 'var(--red)'};">$${balance.toFixed(0)}</strong>.
-                    Going negative is fine; the shortfall rolls into debt next tick. 1 tick cooldown.
+                    Fund local Vola leagues, training academies, and marketing. Pulls from the
+                    Sports Ministry's discretionary budget — <strong style="color:${balance > 0 ? 'var(--green)' : 'var(--red)'};">${fmtDiscretionaryBalance(balance)}</strong> available.
+                    Top it up via a funding article on a passed bill. 1 tick cooldown.
                 </div>
                 <div class="pa-modal-body" style="gap:6px;">
                     <div class="pa-modal-step-label">Choose Investment Level</div>
@@ -2383,12 +2395,10 @@ async function openVolaStadiumModal(root, faction) {
 
     async function refreshState() {
         const { data: mRow } = await _supabase.from('ministries')
-            .select('party_id')
+            .select('id, party_id, discretionary_balance')
             .eq('nation_id', _state.nation.id)
             .eq('ministry_key', 'sports').eq('is_active', true).maybeSingle();
-        const { data: nationRow } = await _supabase.from('nations')
-            .select('budget').eq('id', _state.nation.id).maybeSingle();
-        const balance = Number(nationRow?.budget) || 0;
+        const balance = Number(mRow?.discretionary_balance) || 0;
 
         const { data: open } = await _supabase.from('corp_contracts')
             .select('id, name, description, spec_category, expires_at_tick, created_at_tick')
@@ -2476,19 +2486,19 @@ async function openVolaStadiumModal(root, faction) {
         } else {
             // Posting view: show tiers + name/team inputs.
             const tiersHtml = tiers.map(t => {
+                const canAfford = balance >= t.cfg.postingCost;
                 const isSel = selectedSize === t.key;
-                const costLabel = '$' + t.cfg.postingCost;
+                const costLabel = '$' + (t.cfg.postingCost / 1_000_000);
                 const budgetLabel = '$' + (t.cfg.budgetTarget / 1_000_000) + 'M';
-                const willGoNegative = balance < t.cfg.postingCost;
-                return `<div class="pa-action-item ${submitting ? 'locked' : ''} ${isSel ? 'selected' : ''}" data-size="${t.key}" style="cursor:${submitting ? 'not-allowed' : 'pointer'};${isSel ? 'border-color:#c8a832;background:rgba(200,168,50,0.06);' : ''}">
+                return `<div class="pa-action-item ${!canAfford || submitting ? 'locked' : ''} ${isSel ? 'selected' : ''}" data-size="${t.key}" style="cursor:${canAfford && !submitting ? 'pointer' : 'not-allowed'};${isSel ? 'border-color:#c8a832;background:rgba(200,168,50,0.06);' : ''}">
                     <div class="pa-action-top">
                         <span style="font-size:13px;font-weight:700;color:${isSel ? '#c8a832' : 'var(--text-bright)'};">${t.cfg.label}</span>
                         <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;">Floor +${t.cfg.floorContribution}</span>
                     </div>
                     <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">
-                        Posting cost ${costLabel} from budget · Contract budget ${budgetLabel} · Timeline ~${t.cfg.timelineMonths} ticks
+                        Discretionary ${costLabel} · Contract budget ${budgetLabel} · Timeline ~${t.cfg.timelineMonths} ticks
                     </div>
-                    ${willGoNegative ? `<div style="font-family:var(--font-mono);font-size:8px;color:var(--amber);margin-top:4px;">Budget would dip below 0 — shortfall rolls into debt next tick.</div>` : ''}
+                    ${!canAfford ? `<div style="font-family:var(--font-mono);font-size:8px;color:var(--red);margin-top:4px;">Insufficient discretionary — need ${costLabel}</div>` : ''}
                 </div>`;
             }).join('');
 
@@ -2529,7 +2539,7 @@ async function openVolaStadiumModal(root, faction) {
                 </div>
                 <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
                     ${hasMinister && isMinister
-                        ? `Posting cost pulls from the national budget — current balance <strong style="color:${balanceColor};">$${balance.toFixed(0)}</strong>. Going negative is fine; the shortfall rolls into debt next tick.`
+                        ? `Posting cost pulls from the Sports Ministry's discretionary budget — <strong style="color:${balanceColor};">${fmtDiscretionaryBalance(balance)}</strong> available. Top it up via a funding article on a passed bill.`
                         : '<span style="color:var(--red);">You are no longer the active Sports Minister.</span>'}
                 </div>
                 <div class="pa-modal-body" style="gap:6px;">
@@ -2630,13 +2640,270 @@ async function openVolaStadiumModal(root, faction) {
 
     function _stadiumReasonCopy(reason) {
         const map = {
-            no_minister:           'No active Sports Minister.',
-            not_minister:          'Only the Sports Minister can post stadium contracts.',
-            already_open:          'A stadium contract is already open. Wait for it to resolve, or cancel it first.',
-            no_stadium_name:       'Stadium name is required.',
-            invalid_size:          'Pick a stadium size first.',
-            budget_update_failed:  'Could not deduct from the national budget. Try again.',
-            insert_failed:         'Could not post the contract. Try again in a moment.',
+            no_minister:          'No active Sports Minister.',
+            not_minister:         'Only the Sports Minister can post stadium contracts.',
+            insufficient_balance: 'Sports discretionary budget is below the tier cost — pass a funding bill first.',
+            already_open:         'A stadium contract is already open. Wait for it to resolve, or cancel it first.',
+            no_stadium_name:      'Stadium name is required.',
+            invalid_size:         'Pick a stadium size first.',
+            insert_failed:        'Could not post the contract. Try again in a moment.',
+        };
+        return map[reason];
+    }
+
+    overlay.classList.add('active');
+    await render();
+}
+
+// ════════════════════════ BID TO HOST VWC ════════════════════════
+
+// Cup-schedule constants — mirror political-actions.js (which the
+// edge bundle owns; the JS-side modal needs them locally).
+const _VWC_FIRST_TICK = 84;
+const _VWC_PERIOD     = 24;
+const _VWC_QUAL_OFFSET = 12;
+
+function _hbCupOrdinal(n) {
+    const v = n % 100, last = n % 10;
+    if (v >= 11 && v <= 13) return n + 'th';
+    if (last === 1) return n + 'st';
+    if (last === 2) return n + 'nd';
+    if (last === 3) return n + 'rd';
+    return n + 'th';
+}
+
+function _hbTickToDate(tick) {
+    if (tick == null) return '—';
+    const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const y = 2000 + Math.floor(tick / 12);
+    return `${MONTHS[tick % 12]}, ${y}`;
+}
+
+async function openVolaHostBidModal(root, faction) {
+    const overlay = document.getElementById('pa-vola-host-bid-modal');
+    if (!overlay) return;
+
+    let submitting = false;
+    let lastError = null;
+    let result = null;
+
+    async function refreshState() {
+        const { data: mRow } = await _supabase.from('ministries')
+            .select('id, party_id, discretionary_balance')
+            .eq('nation_id', _state.nation.id)
+            .eq('ministry_key', 'sports').eq('is_active', true).maybeSingle();
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = Number(shard?.current_tick) || 0;
+
+        // Pick the next 3 cups whose start tick is in the future. Skip
+        // any cup whose qualifier (resolution) tick has already passed
+        // — bidding is closed.
+        const cups = [];
+        let n = 0;
+        while (cups.length < 3 && n < 200) {
+            const cupNumber = n + 1;
+            const cupStart = _VWC_FIRST_TICK + _VWC_PERIOD * n;
+            const resolutionTick = cupStart - _VWC_QUAL_OFFSET;
+            if (resolutionTick > tick) {
+                cups.push({ cupNumber, cupStart, resolutionTick });
+            }
+            n++;
+        }
+
+        if (cups.length > 0) {
+            const cupNumbers = cups.map(c => c.cupNumber);
+            const [{ data: hosts }, { data: myBids }] = await Promise.all([
+                _supabase.from('vola_cup_hosts')
+                    .select('cup_number, host_nation_id, nations:host_nation_id(name)')
+                    .in('cup_number', cupNumbers),
+                _supabase.from('vola_host_bids')
+                    .select('cup_number')
+                    .eq('nation_id', _state.nation.id)
+                    .in('cup_number', cupNumbers),
+            ]);
+            const hostMap = new Map((hosts || []).map(h => [h.cup_number, h]));
+            const myBidSet = new Set((myBids || []).map(b => b.cup_number));
+            for (const c of cups) {
+                c.host = hostMap.get(c.cupNumber) || null;
+                c.iBid = myBidSet.has(c.cupNumber);
+            }
+            // First cup without a host is the "next available". Cups
+            // before it are already taken; cups after it are future
+            // bid windows but we want to enforce sequential bidding.
+            let foundNext = false;
+            for (const c of cups) {
+                if (!c.host && !foundNext) {
+                    c.selectable = true;
+                    foundNext = true;
+                } else {
+                    c.selectable = false;
+                }
+            }
+        }
+
+        return {
+            balance:      Number(mRow?.discretionary_balance) || 0,
+            isMinister:   mRow?.party_id === faction.id,
+            cups,
+        };
+    }
+
+    async function render() {
+        const { balance, isMinister, cups } = await refreshState();
+        const cost = 10_000_000; // $10M raw
+        const canAfford = balance >= cost;
+
+        const cupRowsHtml = cups.length === 0
+            ? `<div class="pa-empty-msg" style="padding:20px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">No upcoming Vola World Cups within the bid window.</div>`
+            : cups.map(c => {
+                let badge = '';
+                let cardStyle = '';
+                let cls = '';
+                let actionBtn = '';
+                if (c.host) {
+                    const hostName = c.host.nations?.name || 'Awarded';
+                    badge = `<span class="pa-action-tag" style="color:var(--text-dim);">HOSTED — ${esc(hostName.toUpperCase())}</span>`;
+                    cls = 'locked';
+                    cardStyle = 'opacity:0.5;cursor:not-allowed;';
+                } else if (c.iBid) {
+                    badge = `<span class="pa-action-tag" style="color:#5cc55c;">YOUR BID PENDING</span>`;
+                    cls = 'locked';
+                    cardStyle = 'cursor:not-allowed;border-color:#5cc55c;background:rgba(92,197,92,0.06);';
+                } else if (c.selectable && isMinister && canAfford) {
+                    badge = `<span class="pa-action-tag" style="color:#c8a832;">AVAILABLE</span>`;
+                    cardStyle = 'cursor:pointer;border-color:#c8a832;background:rgba(200,168,50,0.06);';
+                    actionBtn = `<button class="pa-modal-btn pa-modal-btn--submit" data-cup-number="${c.cupNumber}" ${submitting ? 'disabled' : ''} style="background:#c8a832;padding:4px 10px;font-size:9px;">Submit Bid — $10</button>`;
+                } else if (c.selectable && !canAfford) {
+                    badge = `<span class="pa-action-tag" style="color:var(--red);">INSUFFICIENT BUDGET</span>`;
+                    cls = 'locked';
+                    cardStyle = 'opacity:0.6;cursor:not-allowed;';
+                } else {
+                    badge = `<span class="pa-action-tag" style="color:var(--text-dim);">FUTURE CYCLE</span>`;
+                    cls = 'locked';
+                    cardStyle = 'opacity:0.5;cursor:not-allowed;';
+                }
+
+                return `<div class="pa-action-item ${cls}" data-cup-number="${c.cupNumber}" style="${cardStyle}">
+                    <div class="pa-action-top">
+                        <div>
+                            <div style="font-size:13px;font-weight:700;color:var(--text-bright);">${_hbCupOrdinal(c.cupNumber)} World Vola Cup</div>
+                            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">
+                                Begins ${_hbTickToDate(c.cupStart)} · Bids resolve ${_hbTickToDate(c.resolutionTick)}
+                            </div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+                            ${badge}
+                            ${actionBtn}
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+
+        const formulaHtml = `
+            <div style="margin-top:14px;padding:10px;background:var(--bg-card);border:1px solid var(--border-main);font-family:var(--font-mono);font-size:9px;color:var(--text-dim);line-height:1.6;">
+                <div style="font-weight:700;color:var(--text-secondary);margin-bottom:4px;">Bid Score Formula</div>
+                (Sports Culture &divide; 2) + (Infrastructure &times; 3) + (Global Image &times; 3) + (Stadiums &times; 5) + 1d20<br>
+                Highest score wins · ties broken by Sports Culture
+            </div>
+        `;
+
+        const winEffectsHtml = `
+            <div style="margin-top:10px;padding:10px;background:rgba(92,197,92,0.06);border:1px solid rgba(92,197,92,0.2);font-family:var(--font-mono);font-size:9px;color:var(--text-dim);line-height:1.6;">
+                <div style="font-weight:700;color:#5cc55c;margin-bottom:4px;">Win Effects</div>
+                Host the VWC · +15 home advantage · +1d20+5 Budget · +3 Global Image · +0.5 Public Approval · +1d6 Sports Culture
+            </div>
+        `;
+
+        const loseEffectsHtml = `
+            <div style="margin-top:6px;padding:10px;background:rgba(200,80,80,0.06);border:1px solid rgba(200,80,80,0.2);font-family:var(--font-mono);font-size:9px;color:var(--text-dim);line-height:1.6;">
+                <div style="font-weight:700;color:var(--red);margin-bottom:4px;">Lose Effect</div>
+                &minus;0.2 Public Approval (failed national bid)
+            </div>
+        `;
+
+        const resultHtml = result ? `
+            <div style="margin-top:12px;padding:12px;background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.22);">
+                <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;margin-bottom:4px;">Bid submitted</div>
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">
+                    ${_hbCupOrdinal(result.cupNumber)} World Vola Cup · resolves ${_hbTickToDate(result.resolutionTick)}<br>
+                    $${(result.cost / 1_000_000)} deducted from discretionary
+                </div>
+            </div>
+        ` : '';
+
+        const errorHtml = lastError ? `
+            <div style="margin-top:10px;padding:8px 10px;background:rgba(200,80,80,0.08);border:1px solid rgba(200,80,80,0.2);font-family:var(--font-mono);font-size:10px;color:var(--red);">${esc(lastError)}</div>
+        ` : '';
+
+        overlay.innerHTML = `
+            <div class="pa-modal" style="width:560px;max-height:85vh;overflow-y:auto;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:#c8a832;"></div>
+                        <span class="pa-modal-title">Bid to Host Vola World Cup</span>
+                    </div>
+                    <button class="pa-modal-close" id="vola-host-x">&times;</button>
+                </div>
+                <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                    ${isMinister
+                        ? `Discretionary budget <strong style="color:${balance > 0 ? 'var(--green)' : 'var(--red)'};">${fmtDiscretionaryBalance(balance)}</strong> available · cost <strong style="color:#c8a832;">$10</strong> per bid · once per cup.`
+                        : '<span style="color:var(--red);">You are no longer the active Sports Minister.</span>'}
+                </div>
+                <div class="pa-modal-body" style="gap:6px;">
+                    ${cupRowsHtml}
+                    ${formulaHtml}
+                    ${winEffectsHtml}
+                    ${loseEffectsHtml}
+                    ${resultHtml}
+                    ${errorHtml}
+                </div>
+                <div class="pa-modal-footer">
+                    <button class="pa-modal-btn pa-modal-btn--cancel" id="vola-host-close">Close</button>
+                </div>
+            </div>
+        `;
+
+        const close = () => { overlay.classList.remove('active'); renderPage(root); };
+        document.getElementById('vola-host-x')?.addEventListener('click', close);
+        document.getElementById('vola-host-close')?.addEventListener('click', close);
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+        overlay.querySelectorAll('[data-cup-number]').forEach(el => {
+            // Only the inner Submit button gets a click handler — outer
+            // card stays informational. Filter to <button> nodes.
+            if (el.tagName !== 'BUTTON') return;
+            el.addEventListener('click', async () => {
+                if (submitting || result) return;
+                const cupNumber = Number(el.dataset.cupNumber);
+                if (!cupNumber) return;
+                if (!confirm(`Submit a host bid for the ${_hbCupOrdinal(cupNumber)} World Vola Cup?\n\n$10 from discretionary budget.\nResolves at the qualifier tick (12 ticks before the cup begins).`)) return;
+                submitting = true; lastError = null; render();
+                try {
+                    const r = await bidToHostVwc(_supabase, cupNumber);
+                    if (r?.success) {
+                        result = r;
+                    } else {
+                        lastError = _vwcBidReasonCopy(r?.reason) || 'Could not submit: ' + (r?.reason || 'unknown error');
+                    }
+                } catch (err) {
+                    lastError = 'Bid failed: ' + (err?.message || err);
+                } finally {
+                    submitting = false;
+                    render();
+                }
+            });
+        });
+    }
+
+    function _vwcBidReasonCopy(reason) {
+        const map = {
+            invalid_cup:          'Invalid cup selection.',
+            not_minister:         'Only the Sports Minister can submit host bids.',
+            insufficient_balance: 'Sports discretionary budget is below $10M — pass a funding bill first.',
+            no_shard:             'Game state unavailable. Try again.',
+            bidding_closed:       'Bidding window has closed for this cup.',
+            already_hosted:       'This cup has already been awarded.',
+            already_bid:          'You have already bid for this cup.',
         };
         return map[reason];
     }
