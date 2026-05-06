@@ -2797,6 +2797,21 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // 4a-quater. VOLA STADIUM COMPLETIONS — global pass.
+    // Marks active stadium contracts whose expected_finish_tick has
+    // arrived as completed; bumps vola_stadiums + vola_culture_floor on
+    // the host nation; fires the "Stadium opened" event.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const stadResult = await processVolaStadiumCompletions(supabase, currentTick);
+        if (stadResult?.completed) {
+            console.log(`[VolaStadiumCompletion] ${stadResult.completed} stadium(s) opened`);
+        }
+    } catch (stadErr) {
+        console.error('[advanceTick] Vola stadium completion sweep failed (non-fatal):', stadErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // 4a-tris. LEADERSHIP CHALLENGES — global pass.
     // Resolves every leadership_challenges row with claimed_at_tick <
     // currentTick that hasn't been marked yet. Per nation: re-checks

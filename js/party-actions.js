@@ -12,7 +12,7 @@ import { PLATFORMS, STAT_NAMES, BAD_STATS, statDirection, platformMomentumInfo }
 import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, getGoverningStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
 import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsuit, fetchActiveLawsuits } from './game/lawsuits.js';
-import { getNationNames, resignPM, installHOG, investInVolaCulture, VOLA_INVESTMENT_LEVELS, claimLeadershipChallenge } from './game/political-actions.js';
+import { getNationNames, resignPM, installHOG, investInVolaCulture, VOLA_INVESTMENT_LEVELS, claimLeadershipChallenge, postStadiumConstruction, VOLA_STADIUM_TIERS } from './game/political-actions.js';
 import { isAbsoluteMonarchy, isSemiPresidential, hasParliamentaryPM, hasElectedPresident } from './game/government-types.js';
 import { fetchActiveCoalition } from './game/government-structure.js';
 import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './game/config.js';
@@ -1012,6 +1012,7 @@ function renderPage(root) {
             <div class="pa-modal-overlay" id="pa-royal-modal"></div>
             <div class="pa-modal-overlay" id="pa-bloc-modal"></div>
             <div class="pa-modal-overlay" id="pa-vola-invest-modal"></div>
+            <div class="pa-modal-overlay" id="pa-vola-stadium-modal"></div>
         `,
     });
 
@@ -1074,6 +1075,8 @@ function renderPage(root) {
             openInviteToBlocModal(root);
         } else if (actionId === 'invest_in_sports_culture') {
             openVolaInvestmentModal(root, faction);
+        } else if (actionId === 'expand_stadium_infrastructure') {
+            openVolaStadiumModal(root, faction);
         } else if (actionId === 'leadership_challenge') {
             triggerLeadershipChallenge(root, faction);
         }
@@ -1356,9 +1359,17 @@ const _MINISTRY_ACTION_REGISTRY = {
             id: 'invest_in_sports_culture',
             name: 'Invest in National Sports Culture',
             desc: 'Fund local Vola leagues, training academies, and marketing campaigns. Pulls from the Sports Ministry discretionary budget; raises National Sports Culture immediately. 1 tick cooldown.',
-            cost: '$2M – $8M',
+            cost: '$2 – $8',
             costColor: '#c8a832',
             tags: ['SPORTS', 'COSTS BUDGET'],
+        },
+        {
+            id: 'expand_stadium_infrastructure',
+            name: 'Expand Stadium Infrastructure',
+            desc: 'Post a stadium construction contract. Construction Corporations bid; you pick the winner. Once built, the stadium adds a permanent floor to National Sports Culture so decay can never bring you back to zero.',
+            cost: '$3 – $10',
+            costColor: '#c8a832',
+            tags: ['SPORTS', 'CONSTRUCTION'],
         },
     ],
 };
@@ -2256,16 +2267,13 @@ async function openVolaInvestmentModal(root, faction) {
     const overlay = document.getElementById('pa-vola-invest-modal');
     if (!overlay) return;
 
-    // Refresh ministry row before showing — discretionary balance can
-    // change between renders (funding bills passing, other actions
-    // firing) so re-fetch instead of trusting the cached descriptor.
-    const { data: mRow } = await _supabase.from('ministries')
-        .select('id, party_id, discretionary_balance')
-        .eq('nation_id', _state.nation.id)
-        .eq('ministry_key', 'sports')
-        .eq('is_active', true)
-        .maybeSingle();
-    const balance = Number(mRow?.discretionary_balance) || 0;
+    // Refresh nation.budget before showing — Sports actions deduct from
+    // the national treasury directly (abstract scale, $5 = $5). If
+    // budget goes negative the per-tick balance math turns the shortfall
+    // into debt next tick — no hard floor.
+    const { data: nationRow } = await _supabase.from('nations')
+        .select('budget').eq('id', _state.nation.id).maybeSingle();
+    const balance = Number(nationRow?.budget) || 0;
 
     let submitting = false;
     let result = null; // populated after success: { level, gain, cost, newCulture, newBalance }
@@ -2276,15 +2284,17 @@ async function openVolaInvestmentModal(root, faction) {
             cfg: VOLA_INVESTMENT_LEVELS[k],
         }));
         const tiersHtml = tiers.map(t => {
-            const canAfford = balance >= t.cfg.cost;
-            const costLabel = '$' + (t.cfg.cost / 1_000_000) + 'M';
-            return `<div class="pa-action-item ${!canAfford || submitting ? 'locked' : ''}" data-tier="${t.key}" style="cursor:${canAfford && !submitting ? 'pointer' : 'not-allowed'};">
+            // No affordability lock — going negative is allowed and just
+            // creates debt. Surface the budget impact below the row.
+            const costLabel = '$' + t.cfg.cost;
+            const willGoNegative = balance < t.cfg.cost;
+            return `<div class="pa-action-item ${submitting ? 'locked' : ''}" data-tier="${t.key}" style="cursor:${submitting ? 'not-allowed' : 'pointer'};">
                 <div class="pa-action-top">
                     <span style="font-size:13px;font-weight:700;color:var(--text-bright);">${t.cfg.label}</span>
                     <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;">+${t.cfg.gain} National Sports Culture</span>
                 </div>
-                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">Cost: ${costLabel} from discretionary budget</div>
-                ${!canAfford ? `<div style="font-family:var(--font-mono);font-size:8px;color:var(--red);margin-top:4px;">Insufficient budget — need ${costLabel}</div>` : ''}
+                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">Cost: ${costLabel} from national budget</div>
+                ${willGoNegative ? `<div style="font-family:var(--font-mono);font-size:8px;color:var(--amber);margin-top:4px;">Budget would dip below 0 — shortfall rolls into debt next tick.</div>` : ''}
             </div>`;
         }).join('');
 
@@ -2293,7 +2303,7 @@ async function openVolaInvestmentModal(root, faction) {
                 <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;margin-bottom:4px;">Investment applied</div>
                 <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">
                     +${result.gain} National Sports Culture · new total <strong>${Number(result.newCulture).toFixed(1)}</strong><br>
-                    $${(result.cost / 1_000_000).toFixed(0)}M deducted · remaining budget <strong>${fmtDiscretionaryBalance(result.newBalance)}</strong>
+                    $${result.cost} deducted · budget now <strong>$${Number(result.newBudget).toFixed(0)}</strong>
                 </div>
             </div>
         ` : '';
@@ -2308,9 +2318,9 @@ async function openVolaInvestmentModal(root, faction) {
                     <button class="pa-modal-close" id="vola-close">&times;</button>
                 </div>
                 <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
-                    Fund local Vola leagues, training academies, and marketing. Pulls from the
-                    Sports Ministry's discretionary budget — <strong style="color:${balance > 0 ? 'var(--green)' : 'var(--red)'};">${fmtDiscretionaryBalance(balance)}</strong> available.
-                    1 tick cooldown after investing.
+                    Fund local Vola leagues, training academies, and marketing. Pulls directly from
+                    the national budget — current balance <strong style="color:${balance >= 0 ? 'var(--green)' : 'var(--red)'};">$${balance.toFixed(0)}</strong>.
+                    Going negative is fine; the shortfall rolls into debt next tick. 1 tick cooldown.
                 </div>
                 <div class="pa-modal-body" style="gap:6px;">
                     <div class="pa-modal-step-label">Choose Investment Level</div>
@@ -2355,6 +2365,284 @@ async function openVolaInvestmentModal(root, faction) {
 
     overlay.classList.add('active');
     render();
+}
+
+// ════════════════════════ EXPAND STADIUM INFRASTRUCTURE ════════════════════════
+
+async function openVolaStadiumModal(root, faction) {
+    const overlay = document.getElementById('pa-vola-stadium-modal');
+    if (!overlay) return;
+
+    let stadiumName = '';
+    let teamName    = '';
+    let selectedSize = null;
+    let submitting = false;
+    let bidsContract = null;        // { id, name, description, ... } current open contract for this nation
+    let bids = [];                  // pending bids on the open contract
+    let lastError = null;
+
+    async function refreshState() {
+        const { data: mRow } = await _supabase.from('ministries')
+            .select('party_id')
+            .eq('nation_id', _state.nation.id)
+            .eq('ministry_key', 'sports').eq('is_active', true).maybeSingle();
+        const { data: nationRow } = await _supabase.from('nations')
+            .select('budget').eq('id', _state.nation.id).maybeSingle();
+        const balance = Number(nationRow?.budget) || 0;
+
+        const { data: open } = await _supabase.from('corp_contracts')
+            .select('id, name, description, spec_category, expires_at_tick, created_at_tick')
+            .eq('issuer_nation_id', _state.nation.id)
+            .eq('project_subtype', 'Vola Stadium').eq('status', 'open')
+            .order('created_at_tick', { ascending: false }).limit(1).maybeSingle();
+        bidsContract = open || null;
+
+        bids = [];
+        if (bidsContract) {
+            const { data: bidRows } = await _supabase.from('corp_contract_bids')
+                .select('id, faction_id, bid_amount, quoted_timeline_months, status, created_at_tick, factions:faction_id(id, faction_name, nation_id, nations:nation_id(name))')
+                .eq('contract_id', bidsContract.id)
+                .eq('status', 'pending')
+                .order('created_at_tick', { ascending: true });
+            bids = bidRows || [];
+        }
+
+        return { balance, hasMinister: !!mRow, isMinister: mRow?.party_id === faction.id };
+    }
+
+    async function render() {
+        const { balance, hasMinister, isMinister } = await refreshState();
+
+        const tiers = ['small', 'modest', 'extravagant'].map(k => ({ key: k, cfg: VOLA_STADIUM_TIERS[k] }));
+        const balanceColor = balance > 0 ? 'var(--green)' : 'var(--red)';
+
+        let bodyHtml = '';
+
+        if (bidsContract) {
+            // Existing-contract view: show bids list + cancel.
+            const tierFloor = bidsContract.spec_category === 'Light Infrastructure' ? 2
+                            : bidsContract.spec_category === 'Heavy Infrastructure' ? 4
+                            : bidsContract.spec_category === 'Megaproject'          ? 9 : 0;
+            const teamLabel = (bidsContract.description || '').replace(/^Home of:\s*/i, '').trim();
+
+            bodyHtml += `
+                <div class="pa-modal-step-label">Open Stadium Contract</div>
+                <div class="pa-action-item" style="cursor:default;">
+                    <div class="pa-action-top">
+                        <span style="font-size:13px;font-weight:700;color:var(--text-bright);">${esc(bidsContract.name)}</span>
+                        <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;">Floor +${tierFloor}</span>
+                    </div>
+                    <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">
+                        ${teamLabel ? 'Home of ' + esc(teamLabel) + ' · ' : ''}${esc(bidsContract.spec_category)}
+                    </div>
+                </div>
+            `;
+
+            bodyHtml += `<div class="pa-modal-step-label" style="margin-top:14px;">Submitted Stadium Bids ${bids.length ? '· ' + bids.length : ''}</div>`;
+            if (bids.length === 0) {
+                bodyHtml += `<div style="padding:14px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;text-align:center;">Awaiting corporate bids…</div>`;
+            } else {
+                const tickToDate = (t) => {
+                    if (t == null) return '—';
+                    const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                    const y = 2000 + Math.floor(t / 12);
+                    return `${MONTHS[t % 12]}, ${y}`;
+                };
+                bodyHtml += bids.map(b => {
+                    const corpName = b.factions?.faction_name || 'Unknown Corp';
+                    const hqNation = b.factions?.nations?.name || '—';
+                    const price    = Number(b.bid_amount || 0);
+                    const priceLabel = price >= 1e9 ? '$' + (price / 1e9).toFixed(2) + 'B'
+                                     : price >= 1e6 ? '$' + (price / 1e6).toFixed(1) + 'M'
+                                     : '$' + Math.round(price).toLocaleString();
+                    const timeline = Number(b.quoted_timeline_months || 0);
+                    const finishTick = Number(b.created_at_tick || 0) + timeline;
+                    return `<div class="pa-action-item" style="cursor:default;" data-bid-id="${esc(b.id)}">
+                        <div class="pa-action-top">
+                            <div>
+                                <div style="font-size:13px;font-weight:700;color:var(--text-bright);">${esc(corpName)}</div>
+                                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">
+                                    HQ ${esc(hqNation)} · Price ${priceLabel} · Timeline ${timeline} ticks · Finished ${tickToDate(finishTick)}
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:6px;">
+                                <button class="pa-modal-btn pa-modal-btn--submit" data-action="accept" data-bid-id="${esc(b.id)}" ${submitting ? 'disabled' : ''} style="padding:4px 10px;font-size:9px;background:#5cc55c;border-color:#5cc55c;">Accept</button>
+                                <button class="pa-modal-btn pa-modal-btn--cancel" data-action="reject" data-bid-id="${esc(b.id)}" ${submitting ? 'disabled' : ''} style="padding:4px 10px;font-size:9px;">Reject</button>
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+        } else {
+            // Posting view: show tiers + name/team inputs.
+            const tiersHtml = tiers.map(t => {
+                const isSel = selectedSize === t.key;
+                const costLabel = '$' + t.cfg.postingCost;
+                const budgetLabel = '$' + (t.cfg.budgetTarget / 1_000_000) + 'M';
+                const willGoNegative = balance < t.cfg.postingCost;
+                return `<div class="pa-action-item ${submitting ? 'locked' : ''} ${isSel ? 'selected' : ''}" data-size="${t.key}" style="cursor:${submitting ? 'not-allowed' : 'pointer'};${isSel ? 'border-color:#c8a832;background:rgba(200,168,50,0.06);' : ''}">
+                    <div class="pa-action-top">
+                        <span style="font-size:13px;font-weight:700;color:${isSel ? '#c8a832' : 'var(--text-bright)'};">${t.cfg.label}</span>
+                        <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;">Floor +${t.cfg.floorContribution}</span>
+                    </div>
+                    <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">
+                        Posting cost ${costLabel} from budget · Contract budget ${budgetLabel} · Timeline ~${t.cfg.timelineMonths} ticks
+                    </div>
+                    ${willGoNegative ? `<div style="font-family:var(--font-mono);font-size:8px;color:var(--amber);margin-top:4px;">Budget would dip below 0 — shortfall rolls into debt next tick.</div>` : ''}
+                </div>`;
+            }).join('');
+
+            bodyHtml = `
+                <div class="pa-modal-step-label">Stadium Name</div>
+                <input id="vola-stadium-name" type="text" maxlength="60"
+                       placeholder="e.g. Coastal Vola Park"
+                       value="${esc(stadiumName)}"
+                       style="width:100%;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:12px;">
+
+                <div class="pa-modal-step-label" style="margin-top:14px;">Home Of</div>
+                <input id="vola-stadium-team" type="text" maxlength="60"
+                       placeholder="e.g. F.C. Drevlak / Sporting San Maria / Real Avelia"
+                       value="${esc(teamName)}"
+                       style="width:100%;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border-main);color:var(--text-bright);font-family:var(--font-mono);font-size:12px;">
+
+                <div class="pa-modal-step-label" style="margin-top:14px;">Choose Stadium Size</div>
+                <div id="vola-stadium-tiers">${tiersHtml}</div>
+
+                ${lastError ? `<div style="margin-top:10px;padding:8px 10px;background:rgba(200,80,80,0.08);border:1px solid rgba(200,80,80,0.2);font-family:var(--font-mono);font-size:10px;color:var(--red);">${esc(lastError)}</div>` : ''}
+            `;
+        }
+
+        const footerHtml = bidsContract
+            ? `<button class="pa-modal-btn pa-modal-btn--cancel" id="vola-stadium-cancel-bid" ${submitting ? 'disabled' : ''}>Cancel Bid</button>
+               <button class="pa-modal-btn" id="vola-stadium-close" style="background:var(--bg-card);">Close</button>`
+            : `<button class="pa-modal-btn pa-modal-btn--cancel" id="vola-stadium-close">Cancel</button>
+               <button class="pa-modal-btn pa-modal-btn--submit" id="vola-stadium-post" ${(!selectedSize || !stadiumName.trim() || submitting) ? 'disabled' : ''} style="background:#c8a832;">Post Stadium Contract</button>`;
+
+        overlay.innerHTML = `
+            <div class="pa-modal" style="width:560px;max-height:85vh;overflow-y:auto;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:#c8a832;"></div>
+                        <span class="pa-modal-title">Expand Stadium Infrastructure</span>
+                    </div>
+                    <button class="pa-modal-close" id="vola-stadium-x">&times;</button>
+                </div>
+                <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                    ${hasMinister && isMinister
+                        ? `Posting cost pulls from the national budget — current balance <strong style="color:${balanceColor};">$${balance.toFixed(0)}</strong>. Going negative is fine; the shortfall rolls into debt next tick.`
+                        : '<span style="color:var(--red);">You are no longer the active Sports Minister.</span>'}
+                </div>
+                <div class="pa-modal-body" style="gap:6px;">
+                    ${bodyHtml}
+                </div>
+                <div class="pa-modal-footer">${footerHtml}</div>
+            </div>
+        `;
+
+        const close = () => overlay.classList.remove('active');
+        document.getElementById('vola-stadium-x')?.addEventListener('click', close);
+        document.getElementById('vola-stadium-close')?.addEventListener('click', close);
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+        // Posting view bindings.
+        const nameEl = document.getElementById('vola-stadium-name');
+        const teamEl = document.getElementById('vola-stadium-team');
+        nameEl?.addEventListener('input', (e) => { stadiumName = e.target.value; document.getElementById('vola-stadium-post').disabled = !stadiumName.trim() || !selectedSize || submitting; });
+        teamEl?.addEventListener('input', (e) => { teamName = e.target.value; });
+
+        document.getElementById('vola-stadium-tiers')?.addEventListener('click', (e) => {
+            const item = e.target.closest('[data-size]');
+            if (!item || item.classList.contains('locked') || submitting) return;
+            selectedSize = item.dataset.size;
+            render();
+        });
+
+        document.getElementById('vola-stadium-post')?.addEventListener('click', async () => {
+            if (submitting || !selectedSize || !stadiumName.trim()) return;
+            submitting = true; lastError = null; render();
+            try {
+                const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+                const tick = Number(shard?.current_tick) || 0;
+                const r = await postStadiumConstruction(_supabase, _state.nation, faction.id, {
+                    stadiumName: stadiumName.trim(),
+                    teamName:    teamName.trim(),
+                    size:        selectedSize,
+                }, tick);
+                if (r?.success) {
+                    selectedSize = null; stadiumName = ''; teamName = '';
+                    await render();
+                } else {
+                    lastError = _stadiumReasonCopy(r?.reason) || 'Could not post: ' + (r?.reason || 'unknown error');
+                }
+            } catch (err) {
+                lastError = 'Posting failed: ' + (err?.message || err);
+            } finally {
+                submitting = false;
+                render();
+            }
+        });
+
+        // Bids-list view bindings.
+        document.querySelectorAll('[data-action]').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                if (submitting) return;
+                const action = btn.dataset.action;
+                const bidId  = btn.dataset.bidId;
+                if (!bidId) return;
+                submitting = true; render();
+                try {
+                    if (action === 'accept') {
+                        const { data, error } = await _supabase.rpc('award_stadium_bid_to_corp', { p_bid_id: bidId });
+                        if (error) throw error;
+                        if (!data?.success) throw new Error(data?.error || 'Award failed');
+                    } else if (action === 'reject') {
+                        const { data, error } = await _supabase.rpc('reject_stadium_bid', { p_bid_id: bidId });
+                        if (error) throw error;
+                        if (!data?.success) throw new Error(data?.error || 'Reject failed');
+                    }
+                } catch (err) {
+                    alert('Action failed: ' + (err?.message || err));
+                } finally {
+                    submitting = false;
+                    render();
+                }
+            });
+        });
+
+        document.getElementById('vola-stadium-cancel-bid')?.addEventListener('click', async () => {
+            if (submitting || !bidsContract) return;
+            if (!confirm('Cancel this stadium contract?\n\nDiscretionary cost will be refunded.')) return;
+            submitting = true; render();
+            try {
+                const { data, error } = await _supabase.rpc('cancel_stadium_contract', { p_contract_id: bidsContract.id });
+                if (error) throw error;
+                if (!data?.success) throw new Error(data?.error || 'Cancel failed');
+                bidsContract = null;
+                bids = [];
+            } catch (err) {
+                alert('Cancel failed: ' + (err?.message || err));
+            } finally {
+                submitting = false;
+                render();
+            }
+        });
+    }
+
+    function _stadiumReasonCopy(reason) {
+        const map = {
+            no_minister:           'No active Sports Minister.',
+            not_minister:          'Only the Sports Minister can post stadium contracts.',
+            already_open:          'A stadium contract is already open. Wait for it to resolve, or cancel it first.',
+            no_stadium_name:       'Stadium name is required.',
+            invalid_size:          'Pick a stadium size first.',
+            budget_update_failed:  'Could not deduct from the national budget. Try again.',
+            insert_failed:         'Could not post the contract. Try again in a moment.',
+        };
+        return map[reason];
+    }
+
+    overlay.classList.add('active');
+    await render();
 }
 
 // ════════════════════════ CAMPAIGN MANAGER PANEL ════════════════════════

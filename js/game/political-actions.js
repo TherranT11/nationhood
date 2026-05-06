@@ -570,9 +570,19 @@ export const VOLA_CULTURE_DECAY_RATE = 0.03;
 function _roundCulture(v) { return Math.round(v * 10) / 10; }
 
 export async function processVolaCultureDecay(supabase, nation) {
-    const cur = Number(nation.national_vola_culture) || 0;
-    if (cur <= 0) return null;
-    const next = Math.max(0, _roundCulture(cur * (1 - VOLA_CULTURE_DECAY_RATE)));
+    const cur   = Number(nation.national_vola_culture) || 0;
+    const floor = Number(nation.vola_culture_floor) || 0;
+    // Single rule: next = max(floor, cur × 0.97). Covers every case:
+    //   cur=0, floor=0      → decayed=0,    next=0     → no-op
+    //   cur=0, floor=4      → decayed=0,    next=4     → raise to floor
+    //   cur=10, floor=4     → decayed=9.7,  next=9.7   → normal decay
+    //   cur=4.2, floor=4    → decayed=4.07, next=4.07  → decay clamped at floor
+    //   cur=4, floor=4      → decayed=3.88, next=4     → no-op (already at floor)
+    // The previous early returns (cur<=0 / cur<=floor) bypassed the
+    // floor lift on cur=0 and made the floor stat invisible until the
+    // player invested.
+    const decayed = _roundCulture(cur * (1 - VOLA_CULTURE_DECAY_RATE));
+    const next    = Math.max(floor, decayed);
     if (next === cur) return null;
 
     const { error } = await supabase.from('nations')
@@ -583,19 +593,19 @@ export async function processVolaCultureDecay(supabase, nation) {
         return null;
     }
     nation.national_vola_culture = next;
-    return { previous: cur, next, delta: next - cur };
+    return { previous: cur, next, delta: next - cur, floor };
 }
 
 // ==================== VOLA INVESTMENT (Sports Minister action) ====================
 
-// Three tiers — cost in millions (raw dollars deducted from
-// ministries.discretionary_balance), gain added to national_vola_culture
-// directly. Match the funding-bill UI which also takes input in millions.
-const _M = 1_000_000;
+// Three tiers — cost in abstract dollars (matches nation.budget scale,
+// the same $-figures the Government Budget panel headlines). Deducted
+// directly from nation.budget; if budget runs negative, the per-tick
+// balance math turns the shortfall into debt next tick.
 export const VOLA_INVESTMENT_LEVELS = Object.freeze({
-    low:      { cost: 2 * _M, gain: 3, label: 'Low Investment' },
-    moderate: { cost: 5 * _M, gain: 5, label: 'Moderate Investment' },
-    high:     { cost: 8 * _M, gain: 7, label: 'High Investment' },
+    low:      { cost: 2, gain: 3, label: 'Low Investment' },
+    moderate: { cost: 5, gain: 5, label: 'Moderate Investment' },
+    high:     { cost: 8, gain: 7, label: 'High Investment' },
 });
 export const VOLA_INVESTMENT_COOLDOWN_TICKS = 1;
 export const VOLA_INVESTMENT_ACTION_KEY = 'invest_in_sports_culture';
@@ -610,72 +620,39 @@ export const VOLA_INVESTMENT_ACTION_KEY = 'invest_in_sports_culture';
  * cover the tier cost, and the nation must be off cooldown.
  */
 export async function investInVolaCulture(supabase, nation, callerFactionId, level, currentTick) {
-    const cfg = VOLA_INVESTMENT_LEVELS[level];
-    if (!cfg) return { success: false, reason: 'invalid_level' };
+    if (!VOLA_INVESTMENT_LEVELS[level]) return { success: false, reason: 'invalid_level' };
     if (!nation?.id) return { success: false, reason: 'no_nation' };
 
-    // Load the active sports ministry row.
-    const { data: mRow, error: mErr } = await supabase.from('ministries')
-        .select('id, party_id, discretionary_balance')
-        .eq('nation_id', nation.id)
-        .eq('ministry_key', 'sports')
-        .eq('is_active', true)
-        .maybeSingle();
-    if (mErr) return { success: false, reason: 'fetch_failed', error: mErr.message };
-    if (!mRow) return { success: false, reason: 'no_minister' };
-    if (mRow.party_id !== callerFactionId) return { success: false, reason: 'not_minister' };
-
-    const balance = Number(mRow.discretionary_balance) || 0;
-    if (balance < cfg.cost) {
-        return { success: false, reason: 'insufficient_balance', balance, cost: cfg.cost };
+    // Routed through the SECURITY DEFINER RPC so authenticated clients
+    // can write nations.budget + ministry_action_log (both gated by RLS
+    // for non-admins). Server-side callers (tick processor) pass a
+    // service-role client that bypasses RLS, but we still go through
+    // the RPC for consistency. callerFactionId is implicit from auth.uid()
+    // inside the RPC; the parameter is kept for back-compat with the
+    // signature.
+    const { data, error } = await supabase.rpc('invest_in_vola_culture', { p_level: level });
+    if (error) return { success: false, reason: 'rpc_failed', error: error.message };
+    if (!data?.success) {
+        return {
+            success: false,
+            reason: data?.reason || 'unknown',
+            readyAtTick: data?.ready_at_tick,
+        };
     }
 
-    // Cooldown check — last log row for this action on this nation.
-    const { data: lastLog } = await supabase
-        .from('ministry_action_log')
-        .select('cooldown_until_tick')
-        .eq('nation_id', nation.id)
-        .eq('ministry_key', 'sports')
-        .eq('action_key', VOLA_INVESTMENT_ACTION_KEY)
-        .order('applied_at_tick', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-    if (lastLog && Number(lastLog.cooldown_until_tick) > currentTick) {
-        return { success: false, reason: 'cooldown', readyAtTick: Number(lastLog.cooldown_until_tick) };
-    }
+    // Mirror the RPC's writes onto the local nation object so the
+    // calling UI can render fresh values without a re-fetch.
+    if (data.newCulture != null) nation.national_vola_culture = Number(data.newCulture);
+    if (data.newBudget  != null) nation.budget                = Number(data.newBudget);
 
-    const newBalance = balance - cfg.cost;
-    const prevCulture = Number(nation.national_vola_culture) || 0;
-    const newCulture = Math.min(100, _roundCulture(prevCulture + cfg.gain));
-
-    // Apply both updates. Failure on the second one would leave the
-    // discretionary balance debited but culture unchanged — a small
-    // refund window the player wouldn't notice. Worth the simplicity
-    // versus a transaction-RPC for what's a rare error path.
-    const { error: balErr } = await supabase.from('ministries')
-        .update({ discretionary_balance: newBalance }).eq('id', mRow.id);
-    if (balErr) return { success: false, reason: 'balance_update_failed', error: balErr.message };
-
-    const { error: cultErr } = await supabase.from('nations')
-        .update({ national_vola_culture: newCulture }).eq('id', nation.id);
-    if (cultErr) return { success: false, reason: 'culture_update_failed', error: cultErr.message };
-    nation.national_vola_culture = newCulture;
-
-    // Log + cooldown. ap_cost=0 (AP system retired); money_cost stores
-    // the raw-dollar cost so future audit/replay can reconstruct.
-    await supabase.from('ministry_action_log').insert({
-        nation_id: nation.id,
-        ministry_key: 'sports',
-        action_key: VOLA_INVESTMENT_ACTION_KEY,
-        faction_id: callerFactionId,
-        ap_cost: 0,
-        money_cost: cfg.cost,
-        applied_at_tick: currentTick,
-        cooldown_until_tick: currentTick + VOLA_INVESTMENT_COOLDOWN_TICKS,
-        action_data: { level, gain: cfg.gain, prevCulture, newCulture },
-    });
-
-    return { success: true, level, gain: cfg.gain, cost: cfg.cost, newCulture, newBalance };
+    return {
+        success:    true,
+        level:      data.level || level,
+        gain:       Number(data.gain || 0),
+        cost:       Number(data.cost || 0),
+        newCulture: Number(data.newCulture || 0),
+        newBudget:  Number(data.newBudget  || 0),
+    };
 }
 
 // ==================== VWC RANKINGS (global per-tick) ====================
@@ -4629,6 +4606,165 @@ async function _resolveOneNation(supabase, nationId, claims, currentTick) {
     });
 
     return true;
+}
+
+// ==================== VOLA STADIUM CONSTRUCTION (Sports Minister action) ====================
+
+// Three tiers — small/modest/extravagant. Each posts a Construction-sector
+// contract (corp_contracts) for corps to bid on. Posting cost is in
+// abstract dollars (matches nation.budget scale); contract budget target
+// is raw dollars (the figure corps see + bid against).
+//
+// Cost mapping:
+//     Small        $3 from budget, $60M target budget, floor +2 / 24 ticks
+//     Modest       $7 from budget, $140M target budget, floor +4 / 36 ticks
+//     Extravagant  $10 from budget, $450M target budget, floor +9 / 60 ticks
+//
+// spec_category is the cross-system identifier (corp Operations page
+// reads this for filtering); project_subtype='Vola Stadium' is the
+// discriminator for our completion sweep + RPCs.
+const _STADIUM_M = 1_000_000;
+export const VOLA_STADIUM_TIERS = Object.freeze({
+    small: {
+        label: 'Small',
+        postingCost:       3,                  // abstract dollars deducted from nation.budget
+        budgetTarget:      60  * _STADIUM_M,   // raw dollars on the contract row
+        floorContribution: 2,
+        timelineMonths:    24,
+        specCategory:     'Light Infrastructure',
+    },
+    modest: {
+        label: 'Modest',
+        postingCost:       7,
+        budgetTarget:      140 * _STADIUM_M,
+        floorContribution: 4,
+        timelineMonths:    36,
+        specCategory:     'Heavy Infrastructure',
+    },
+    extravagant: {
+        label: 'Extravagant',
+        postingCost:       10,
+        budgetTarget:      450 * _STADIUM_M,
+        floorContribution: 9,
+        timelineMonths:    60,
+        specCategory:     'Megaproject',
+    },
+});
+
+const _STADIUM_PROJECT_SUBTYPE = 'Vola Stadium';
+const _STADIUM_BID_WINDOW_TICKS = 6; // bids open for 6 ticks before auto-cancel
+
+/**
+ * Sports Minister posts a stadium construction contract. Validates only-one-
+ * open-bid-per-nation, deducts the discretionary tier cost, inserts a
+ * corp_contracts row corps can immediately bid on. Idempotent against
+ * the discretionary deduction by virtue of the open-contract check —
+ * if a bid is already open, this fails before the deduction runs.
+ *
+ * Returns { success, contractId? } or { success: false, reason }.
+ */
+export async function postStadiumConstruction(supabase, nation, callerFactionId, params, currentTick) {
+    if (!nation?.id) return { success: false, reason: 'missing_args' };
+    if (!VOLA_STADIUM_TIERS[params?.size]) return { success: false, reason: 'invalid_size' };
+    const stadiumName = String(params?.stadiumName || '').trim();
+    if (!stadiumName) return { success: false, reason: 'no_stadium_name' };
+
+    // Routed through the SECURITY DEFINER RPC. Authenticated clients
+    // can't INSERT corp_contracts or UPDATE nations.budget directly
+    // (RLS); the RPC validates caller = active sports minister and
+    // performs every write atomically.
+    const { data, error } = await supabase.rpc('post_stadium_contract', {
+        p_size:          params.size,
+        p_stadium_name:  stadiumName,
+        p_team_name:     String(params?.teamName || '').trim(),
+    });
+    if (error) return { success: false, reason: 'rpc_failed', error: error.message };
+    if (!data?.success) return { success: false, reason: data?.reason || 'unknown' };
+
+    // Mirror the budget deduction onto the local nation object.
+    const tier = VOLA_STADIUM_TIERS[params.size];
+    if (tier && nation.budget != null) {
+        nation.budget = (Number(nation.budget) || 0) - tier.postingCost;
+    }
+
+    return { success: true, contractId: data.contract_id, tier: data.tier || params.size };
+}
+
+/**
+ * Tick-processor sweep: detect stadium contracts that have hit their
+ * expected_finish_tick and apply completion side-effects. Idempotent —
+ * scoped to project_subtype='Vola Stadium' AND status='active', so
+ * already-completed contracts are skipped.
+ *
+ * Side effects per completed contract:
+ *   - status='completed', completed_at_tick=currentTick
+ *   - issuer_nation_id: vola_stadiums += 1, vola_culture_floor += contribution
+ *   - event_log entry: "Stadium NAME opened (floor +N) — home of TEAM"
+ */
+export async function processVolaStadiumCompletions(supabase, currentTick) {
+    const { data: due, error } = await supabase.from('corp_contracts')
+        .select('id, name, description, spec_category, issuer_nation_id, expected_finish_tick, winner_faction_id')
+        .eq('project_subtype', _STADIUM_PROJECT_SUBTYPE)
+        .eq('status', 'active')
+        .not('expected_finish_tick', 'is', null)
+        .lte('expected_finish_tick', currentTick);
+    if (error) {
+        console.warn('[VolaStadiumCompletion] fetch failed:', error.message);
+        return null;
+    }
+    if (!due || due.length === 0) return null;
+
+    let completed = 0;
+    for (const c of due) {
+        // Map spec_category back to floor contribution.
+        const floor = c.spec_category === 'Light Infrastructure' ? 2
+                    : c.spec_category === 'Heavy Infrastructure' ? 4
+                    : c.spec_category === 'Megaproject'          ? 9
+                    : 0;
+
+        // Mark contract complete first (defensive — if a downstream
+        // step fails we don't double-apply on the next tick).
+        const { error: updErr } = await supabase.from('corp_contracts').update({
+            status: 'completed',
+            completed_at_tick: currentTick,
+            payout_tick: currentTick + 3,
+        }).eq('id', c.id).eq('status', 'active');
+        if (updErr) {
+            console.warn('[VolaStadiumCompletion] mark-complete failed for', c.id, ':', updErr.message);
+            continue;
+        }
+
+        // Pull the host nation's current vola_stadiums + floor (NUMERIC
+        // values — the schema lets the column hold decimals but the
+        // stadium count is integer-valued).
+        const { data: host } = await supabase.from('nations')
+            .select('id, name, vola_stadiums, vola_culture_floor')
+            .eq('id', c.issuer_nation_id).single();
+        if (host) {
+            const newCount = (Number(host.vola_stadiums) || 0) + 1;
+            const newFloor = Math.min(100, _roundCulture((Number(host.vola_culture_floor) || 0) + floor));
+            await supabase.from('nations').update({
+                vola_stadiums: newCount,
+                vola_culture_floor: newFloor,
+            }).eq('id', host.id);
+        }
+
+        // Event log — "Coastal Vola Park opened · floor +7 · home of Coastal Tide".
+        const teamLabel = (c.description || '').replace(/^Home of:\s*/i, '').trim();
+        const desc = `${c.name} opened · floor +${floor}` + (teamLabel ? ` · home of ${teamLabel}` : '');
+        await supabase.from('event_log').insert({
+            nation_id:          c.issuer_nation_id,
+            event_name:         'Vola Stadium Opened',
+            category:           'political',
+            trigger_key:        'vola_stadium_completed',
+            description_chosen: desc,
+            fired_at_tick:      currentTick,
+        });
+
+        completed++;
+    }
+
+    return { completed };
 }
 
 // +N to faction_sector_popularity for every active sector in the nation,
