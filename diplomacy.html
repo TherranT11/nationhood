@@ -102,6 +102,7 @@
         <h1 class="sports-title"><span class="sports-title-accent">Vola</span> Program</h1>
         <div class="sports-subtitle" id="sports-subtitle"></div>
         <div class="sports-cards" id="sports-cards"></div>
+        <div class="vola-cup" id="vola-cup"></div>
         <div class="sports-activity" id="sports-activity"></div>
     </div>
 </div>
@@ -316,6 +317,35 @@ function ordinalSuffix(n) {
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
+// Returns the cup currently being played, or the next upcoming cup if
+// there's no active one. Each cup spans 6 ticks (GS1..F). The window
+// closes the tick AFTER F passes — i.e. tick > cupStart+5 rolls forward.
+function computeActiveOrNextCup(currentTick) {
+    const tick = Number(currentTick) || 0;
+    let n = 0;
+    while (n < 1000) {
+        const cupStart = VOLA_CUP_FIRST_TICK + VOLA_CUP_PERIOD * n;
+        const cupEnd   = cupStart + 5; // F at +5
+        if (tick <= cupEnd) {
+            const isActive = tick >= cupStart;
+            return {
+                cupNum: n + 1,
+                cupStart, cupEnd,
+                isActive,
+                stage: isActive ? (tick - cupStart) : -1, // 0..5 active, -1 upcoming
+                gs1: cupStart,
+                gs2: cupStart + 1,
+                gs3: cupStart + 2,
+                qf:  cupStart + 3,
+                sf:  cupStart + 4,
+                f:   cupStart + 5,
+            };
+        }
+        n++;
+    }
+    return null;
+}
+
 // Returns the next 3 Cups + next 3 Qualifiers, sorted chronologically.
 // "Upcoming" = tick >= currentTick (event still showing on the day-of,
 // disappears the moment current_tick advances past it).
@@ -346,6 +376,7 @@ function renderSportsTab() {
     const subtitleEl = document.getElementById('sports-subtitle');
     const cardsEl = document.getElementById('sports-cards');
     const activityEl = document.getElementById('sports-activity');
+    const cupEl = document.getElementById('vola-cup');
     if (!subtitleEl || !cardsEl) return;
 
     const nation = _worldState?.nation;
@@ -354,6 +385,7 @@ function renderSportsTab() {
         subtitleEl.textContent = '';
         cardsEl.innerHTML = '<div class="sports-empty">No nation selected.</div>';
         if (activityEl) activityEl.innerHTML = '';
+        if (cupEl) cupEl.innerHTML = '';
         return;
     }
 
@@ -412,6 +444,8 @@ function renderSportsTab() {
         </div>
     `;
 
+    if (cupEl) cupEl.innerHTML = renderVolaCup(tick);
+
     if (activityEl) {
         const events = computeUpcomingVolaEvents(tick);
         const rowsHtml = events.map(ev => {
@@ -460,6 +494,147 @@ function renderSportsTab() {
             </div>
         `;
     }
+}
+
+// Renders the Vola World Cup container — title/host/schedule header,
+// stage-tab strip, 3 group standings, 4-2-1 knockout bracket, champion
+// card. All team data is intentionally blank (placeholder slots) — only
+// the frame, dates, group letters, and stage state are tick-driven.
+function renderVolaCup(currentTick) {
+    const cup = computeActiveOrNextCup(currentTick);
+    if (!cup) return '';
+
+    const titleHtml = cup.isActive
+        ? `${ordinalSuffix(cup.cupNum)} World <span class="vola-cup-title-accent">Vola</span> Cup`
+        : `Next World Cup &mdash; <span class="vola-cup-title-date">${tickToDate(cup.gs1)}</span>`;
+
+    const livePill = cup.isActive
+        ? `<span class="vola-cup-live">&bullet; LIVE</span>`
+        : '';
+
+    let statusText;
+    if (!cup.isActive)         statusText = 'UPCOMING';
+    else if (cup.stage <= 2)   statusText = `GROUP STAGE — ROUND ${cup.stage + 1} IN PROGRESS`;
+    else if (cup.stage === 3)  statusText = 'QUARTERFINALS IN PROGRESS';
+    else if (cup.stage === 4)  statusText = 'SEMIFINALS IN PROGRESS';
+    else                       statusText = 'FINAL IN PROGRESS';
+
+    // Tab state: 0=PLACEMENT, 1=GROUP STAGE, 2=KNOCKOUT, 3=FINAL
+    const tabState = (idx) => {
+        if (!cup.isActive) return idx === 0 ? 'pending' : 'pending';
+        if (idx === 0) return 'done';                            // placement always done by GS1
+        if (idx === 1) return cup.stage <= 2 ? 'active' : 'done';
+        if (idx === 2) return cup.stage <= 2 ? 'pending' : (cup.stage <= 4 ? 'active' : 'done');
+        if (idx === 3) return cup.stage === 5 ? 'active' : 'pending';
+        return 'pending';
+    };
+    const tabIcon = (state) => state === 'done' ? '&check;' : state === 'active' ? '&times;' : '&#9675;';
+    const tabHtml = (idx, label) => {
+        const state = tabState(idx);
+        return `<div class="vola-cup-tab vola-cup-tab--${state}">
+            <span class="vola-cup-tab-icon">${tabIcon(state)}</span> ${label}
+        </div>`;
+    };
+
+    const blankRow = (rank) => `
+        <div class="vola-cup-group-row">
+            <span class="vola-cup-group-rank">${rank}.</span>
+            <span class="vola-cup-group-team vola-cup-group-team--blank">&mdash;</span>
+            <span class="vola-cup-group-stat vola-cup-group-stat--blank">&mdash;</span>
+            <span class="vola-cup-group-stat vola-cup-group-stat--blank">&mdash;</span>
+            <span class="vola-cup-group-stat vola-cup-group-stat--blank">&mdash;</span>
+        </div>
+    `;
+    const groupCard = (letter) => `
+        <div class="vola-cup-group">
+            <div class="vola-cup-group-header">GROUP ${letter}</div>
+            <div class="vola-cup-group-table">
+                <div class="vola-cup-group-row vola-cup-group-row--head">
+                    <span class="vola-cup-group-rank"></span>
+                    <span class="vola-cup-group-team"></span>
+                    <span class="vola-cup-group-stat-label">W-L</span>
+                    <span class="vola-cup-group-stat-label">PTS</span>
+                    <span class="vola-cup-group-stat-label">PROW</span>
+                </div>
+                ${[1,2,3,4].map(blankRow).join('')}
+            </div>
+        </div>
+    `;
+
+    const matchSlot = (a, b) => `
+        <div class="vola-cup-match">
+            <div class="vola-cup-match-team">${a}</div>
+            <div class="vola-cup-match-team">${b}</div>
+            <div class="vola-cup-match-status">PENDING</div>
+        </div>
+    `;
+
+    return `
+        <div class="vola-cup-header">
+            <div class="vola-cup-header-left">
+                <div class="vola-cup-title-row">
+                    ${livePill}
+                    <span class="vola-cup-title">${titleHtml}</span>
+                </div>
+                <div class="vola-cup-meta">
+                    <span class="vola-cup-meta-icon">&#x1F4CD;</span>
+                    HOSTED BY <span class="vola-cup-meta-host">[NO HOST]</span>
+                    &middot; 12 TEAMS
+                </div>
+            </div>
+            <div class="vola-cup-header-right">
+                <div class="vola-cup-status">${statusText}</div>
+                <div class="vola-cup-schedule">
+                    <div>${tickToDate(cup.qf)} &mdash; Quarterfinals begin</div>
+                    <div>${tickToDate(cup.sf)} &mdash; Semifinals</div>
+                    <div>${tickToDate(cup.f)} &mdash; Final</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="vola-cup-tabs">
+            ${tabHtml(0, 'PLACEMENT MATCHES')}
+            ${tabHtml(1, 'GROUP STAGE')}
+            ${tabHtml(2, 'KNOCKOUT ROUND')}
+            ${tabHtml(3, 'FINAL')}
+        </div>
+
+        <div class="vola-cup-section-label">
+            <span class="vola-cup-section-icon">&#x1F4CA;</span> GROUP STAGE FINAL STANDINGS
+        </div>
+        <div class="vola-cup-groups">
+            ${groupCard('A')}
+            ${groupCard('B')}
+            ${groupCard('C')}
+        </div>
+
+        <div class="vola-cup-section-label vola-cup-section-label--knockout">
+            <span class="vola-cup-section-icon">&times;</span> KNOCKOUT ROUND
+        </div>
+        <div class="vola-cup-bracket">
+            <div class="vola-cup-bracket-col">
+                <div class="vola-cup-bracket-col-label">QUARTERFINALS &middot; ${tickToDate(cup.qf)}</div>
+                ${matchSlot('&mdash;', '&mdash;')}
+                ${matchSlot('&mdash;', '&mdash;')}
+                ${matchSlot('&mdash;', '&mdash;')}
+                ${matchSlot('&mdash;', '&mdash;')}
+            </div>
+            <div class="vola-cup-bracket-col">
+                <div class="vola-cup-bracket-col-label">SEMIFINALS &middot; ${tickToDate(cup.sf)}</div>
+                ${matchSlot('Winner QF1', 'Winner QF2')}
+                ${matchSlot('Winner QF3', 'Winner QF4')}
+            </div>
+            <div class="vola-cup-bracket-col">
+                <div class="vola-cup-bracket-col-label">FINAL &middot; ${tickToDate(cup.f)}</div>
+                ${matchSlot('Winner SF1', 'Winner SF2')}
+                <div class="vola-cup-champion">
+                    <div class="vola-cup-champion-icon">&#x1F3C6;</div>
+                    <div class="vola-cup-champion-label">VWC CHAMPION</div>
+                    <div class="vola-cup-champion-text">To Be Crowned</div>
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 // ═══════════════════════════════════════════════════
