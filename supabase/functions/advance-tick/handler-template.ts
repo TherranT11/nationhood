@@ -2789,6 +2789,18 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // 4a-bis. VWC RANKINGS — global pass after all nations processed.
+    // Sorts every nation by (national_vola_culture + random ±5 delta);
+    // top 12 get vwc_ranking 1..12, others 0. Skipped silently on
+    // fetch error.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        await recomputeVwcRankings(supabase);
+    } catch (vwcErr) {
+        console.error('[advanceTick] VWC ranking recompute failed (non-fatal):', vwcErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // 4b. INTERNATIONAL PARTY ORGANISATIONS — cross-nation processing
     // ══════════════════════════════════════════════════════════════════
     try {

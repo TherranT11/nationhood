@@ -12,7 +12,7 @@ import { PLATFORMS, STAT_NAMES, BAD_STATS, statDirection, platformMomentumInfo }
 import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, getGoverningStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
 import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsuit, fetchActiveLawsuits } from './game/lawsuits.js';
-import { getNationNames, resignPM, installHOG } from './game/political-actions.js';
+import { getNationNames, resignPM, installHOG, investInVolaCulture, VOLA_INVESTMENT_LEVELS } from './game/political-actions.js';
 import { isAbsoluteMonarchy, isSemiPresidential, hasParliamentaryPM, hasElectedPresident } from './game/government-types.js';
 import { fetchActiveCoalition } from './game/government-structure.js';
 import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './game/config.js';
@@ -366,7 +366,7 @@ export async function initPartyActions(supabase, state) {
     _heldMinistries = [];
     if (faction?.id && state.nation?.id) {
         const { data: minRows, error: minErr } = await _supabase.from('ministries')
-            .select('ministry_key, party_id, is_active, minister_first_name, minister_last_name, minister_age')
+            .select('id, ministry_key, party_id, is_active, minister_first_name, minister_last_name, minister_age, discretionary_balance')
             .eq('nation_id', state.nation.id)
             .eq('party_id', faction.id)
             .eq('is_active', true);
@@ -971,6 +971,7 @@ function renderPage(root) {
             <div class="pa-modal-overlay" id="pa-rally-modal"></div>
             <div class="pa-modal-overlay" id="pa-royal-modal"></div>
             <div class="pa-modal-overlay" id="pa-bloc-modal"></div>
+            <div class="pa-modal-overlay" id="pa-vola-invest-modal"></div>
         `,
     });
 
@@ -1031,6 +1032,8 @@ function renderPage(root) {
             triggerLeaveBloc(root);
         } else if (actionId === 'invite_to_bloc') {
             openInviteToBlocModal(root);
+        } else if (actionId === 'invest_in_sports_culture') {
+            openVolaInvestmentModal(root, faction);
         }
     });
 
@@ -1174,6 +1177,7 @@ const _MINISTRY_LABELS = {
     transport:   { short: 'MoT',  name: 'Ministry of Transport',        short_role: 'Transport',    domain: 'INFRASTRUCTURE' },
     trade:       { short: 'MoTr', name: 'Ministry of Trade',            short_role: 'Trade',        domain: 'TRADE' },
     environment: { short: 'MoEv', name: 'Ministry of Environment',      short_role: 'Environment',  domain: 'ENVIRONMENT' },
+    sports:      { short: 'MoS',  name: 'Ministry of Sports',           short_role: 'Sports',       domain: 'SPORTS' },
 };
 
 function ministryDisplay(key) {
@@ -1244,8 +1248,21 @@ function ministryRoleDescriptor(key, faction) {
         personLast:  m?.minister_last_name || '',
         personName:  `${m?.minister_first_name || ''} ${m?.minister_last_name || ''}`.trim() || 'Vacant',
         personAge:   m?.minister_age ?? null,
+        ministryId:  m?.id || null,
+        discretionaryBalance: Number(m?.discretionary_balance ?? 0),
         actions: _MINISTRY_ACTION_REGISTRY[key] || [],
     };
+}
+
+// Compact discretionary balance formatter — mirrors government.html's
+// formatDiscretionaryBalance shape so the two pages stay visually
+// consistent. Raw dollars in, "$1.5B" / "$120M" / "$8,500" / "$0" out.
+function fmtDiscretionaryBalance(rawBalance) {
+    const v = Number(rawBalance) || 0;
+    if (v >= 1e9) return '$' + (v / 1e9).toFixed(1) + 'B';
+    if (v >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M';
+    if (v > 0)    return '$' + Math.round(v).toLocaleString();
+    return '$0';
 }
 
 // Per-role action registry. PM gets the moved Call Early Elections and
@@ -1292,6 +1309,16 @@ const _MINISTRY_ACTION_REGISTRY = {
     healthcare:     [_SOE_ACTION_ENTRY],
     justice:        [_SOE_ACTION_ENTRY],
     education:      [_SOE_ACTION_ENTRY],
+    sports: [
+        {
+            id: 'invest_in_sports_culture',
+            name: 'Invest in National Sports Culture',
+            desc: 'Fund local Vola leagues, training academies, and marketing campaigns. Pulls from the Sports Ministry discretionary budget; raises National Sports Culture immediately. 1 tick cooldown.',
+            cost: '$2M – $8M',
+            costColor: '#c8a832',
+            tags: ['SPORTS', 'COSTS BUDGET'],
+        },
+    ],
 };
 
 function listHeldMinistryKeys(faction) {
@@ -1337,13 +1364,21 @@ function renderCabinetMinistriesPanel(faction) {
     `;
 }
 
-function ministryActionLockReason(actionId, faction) {
+function ministryActionLockReason(actionId, faction, roleDescriptor) {
     const nation = _state?.nation;
     // SOE placeholder is greyed out + not clickable until the backend
     // exists. The .locked class on the rendered card both styles the
     // greyed state and makes the panel-level click handler skip it.
     if (actionId === 'stateOwnedEnterprise') {
         return 'Coming soon — backend not yet wired.';
+    }
+    if (actionId === 'invest_in_sports_culture') {
+        // Cheapest tier (Low = $2M). If the discretionary budget can't
+        // cover even that, lock the card so the player sees why.
+        const balance = Number(roleDescriptor?.discretionaryBalance ?? 0);
+        if (balance < 2_000_000) {
+            return 'Sports Ministry discretionary budget is below $2M — pass a funding bill first.';
+        }
     }
     if (actionId === 'call_early_elections' || actionId === 'resign_as_pm') {
         // Reachable only inside the PM detail panel (renderMinistryDetail
@@ -1367,12 +1402,16 @@ function renderMinistryDetail(faction, partyColor) {
     if (!key) return '';
     const r = ministryRoleDescriptor(key, faction);
     const ageStr = r.personAge != null ? `, Age ${r.personAge}` : '';
+    // PM and President roles aren't tied to a ministries row — they
+    // don't carry a discretionary balance. Show it only for keys that
+    // have a real cabinet seat.
+    const showBalance = key !== 'prime_minister' && key !== 'president' && r.ministryId;
 
     // Matches the structure in renderActionsPanel's leader action loop
     // so the existing pa-action-item / pa-action-top / pa-action-right
     // styles apply without new CSS.
     const actionsHtml = (r.actions || []).map(a => {
-        const lockReason = ministryActionLockReason(a.id, faction);
+        const lockReason = ministryActionLockReason(a.id, faction, r);
         const isDisabled = !!lockReason;
         const tagsHtml = (a.tags || []).map(t =>
             `<span class="pa-action-tag" style="color:${TAG_COLORS[t] || 'var(--text-dim)'};">${esc(t)}</span>`
@@ -1395,7 +1434,7 @@ function renderMinistryDetail(faction, partyColor) {
     }).join('');
 
     return `
-        <div class="pa-detail-header">
+        <div class="pa-detail-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
             <div class="pa-detail-left">
                 <div class="pa-detail-avatar" style="color:#c8a832;background:#c8a83215;border-color:#c8a83233;">${esc(r.chip)}</div>
                 <div>
@@ -1409,6 +1448,12 @@ function renderMinistryDetail(faction, partyColor) {
                     </div>
                 </div>
             </div>
+            ${showBalance ? `
+                <div style="text-align:right;font-family:var(--font-mono);flex-shrink:0;">
+                    <div style="font-size:9px;letter-spacing:0.14em;color:var(--text-dim);text-transform:uppercase;">Discretionary Budget</div>
+                    <div style="font-size:14px;font-weight:700;color:${r.discretionaryBalance > 0 ? 'var(--green)' : 'var(--red)'};margin-top:2px;">${fmtDiscretionaryBalance(r.discretionaryBalance)}</div>
+                </div>
+            ` : ''}
         </div>
         <div class="pa-actions-list">
             ${(r.actions && r.actions.length > 0)
@@ -2115,6 +2160,113 @@ function openRallyModal(root) {
             } catch (err) {
                 console.error('[Rally] Error:', err);
                 alert('Rally failed.');
+            }
+        });
+    }
+
+    overlay.classList.add('active');
+    render();
+}
+
+// ════════════════════════ INVEST IN NATIONAL SPORTS CULTURE ════════════════════════
+
+async function openVolaInvestmentModal(root, faction) {
+    const overlay = document.getElementById('pa-vola-invest-modal');
+    if (!overlay) return;
+
+    // Refresh ministry row before showing — discretionary balance can
+    // change between renders (funding bills passing, other actions
+    // firing) so re-fetch instead of trusting the cached descriptor.
+    const { data: mRow } = await _supabase.from('ministries')
+        .select('id, party_id, discretionary_balance')
+        .eq('nation_id', _state.nation.id)
+        .eq('ministry_key', 'sports')
+        .eq('is_active', true)
+        .maybeSingle();
+    const balance = Number(mRow?.discretionary_balance) || 0;
+
+    let submitting = false;
+    let result = null; // populated after success: { level, gain, cost, newCulture, newBalance }
+
+    function render() {
+        const tiers = ['low', 'moderate', 'high'].map(k => ({
+            key: k,
+            cfg: VOLA_INVESTMENT_LEVELS[k],
+        }));
+        const tiersHtml = tiers.map(t => {
+            const canAfford = balance >= t.cfg.cost;
+            const costLabel = '$' + (t.cfg.cost / 1_000_000) + 'M';
+            return `<div class="pa-action-item ${!canAfford || submitting ? 'locked' : ''}" data-tier="${t.key}" style="cursor:${canAfford && !submitting ? 'pointer' : 'not-allowed'};">
+                <div class="pa-action-top">
+                    <span style="font-size:13px;font-weight:700;color:var(--text-bright);">${t.cfg.label}</span>
+                    <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;">+${t.cfg.gain} National Sports Culture</span>
+                </div>
+                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">Cost: ${costLabel} from discretionary budget</div>
+                ${!canAfford ? `<div style="font-family:var(--font-mono);font-size:8px;color:var(--red);margin-top:4px;">Insufficient budget — need ${costLabel}</div>` : ''}
+            </div>`;
+        }).join('');
+
+        const resultHtml = result ? `
+            <div style="padding:12px;background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.22);margin-top:12px;">
+                <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;margin-bottom:4px;">Investment applied</div>
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">
+                    +${result.gain} National Sports Culture · new total <strong>${Number(result.newCulture).toFixed(1)}</strong><br>
+                    $${(result.cost / 1_000_000).toFixed(0)}M deducted · remaining budget <strong>${fmtDiscretionaryBalance(result.newBalance)}</strong>
+                </div>
+            </div>
+        ` : '';
+
+        overlay.innerHTML = `
+            <div class="pa-modal" style="width:480px;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:#c8a832;"></div>
+                        <span class="pa-modal-title">Invest in National Sports Culture</span>
+                    </div>
+                    <button class="pa-modal-close" id="vola-close">&times;</button>
+                </div>
+                <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                    Fund local Vola leagues, training academies, and marketing. Pulls from the
+                    Sports Ministry's discretionary budget — <strong style="color:${balance > 0 ? 'var(--green)' : 'var(--red)'};">${fmtDiscretionaryBalance(balance)}</strong> available.
+                    1 tick cooldown after investing.
+                </div>
+                <div class="pa-modal-body" style="gap:6px;">
+                    <div class="pa-modal-step-label">Choose Investment Level</div>
+                    <div id="vola-tiers">${tiersHtml}</div>
+                    ${resultHtml}
+                </div>
+                <div class="pa-modal-footer">
+                    <button class="pa-modal-btn pa-modal-btn--cancel" id="vola-cancel">${result ? 'Close' : 'Cancel'}</button>
+                </div>
+            </div>
+        `;
+
+        const close = () => { overlay.classList.remove('active'); if (result) renderPage(root); };
+        document.getElementById('vola-close')?.addEventListener('click', close);
+        document.getElementById('vola-cancel')?.addEventListener('click', close);
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+        document.getElementById('vola-tiers')?.addEventListener('click', async (e) => {
+            const item = e.target.closest('[data-tier]');
+            if (!item || item.classList.contains('locked')) return;
+            if (submitting || result) return;
+            const level = item.dataset.tier;
+            submitting = true;
+            render();
+            try {
+                const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+                const currentTick = Number(shard?.current_tick) || 0;
+                const r = await investInVolaCulture(_supabase, _state.nation, faction.id, level, currentTick);
+                if (r?.success) {
+                    result = r;
+                } else {
+                    alert('Could not invest: ' + (r?.reason || 'unknown error'));
+                }
+            } catch (err) {
+                alert('Investment failed: ' + (err?.message || err));
+            } finally {
+                submitting = false;
+                render();
             }
         });
     }

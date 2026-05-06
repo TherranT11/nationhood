@@ -20209,15 +20209,19 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
 
 // ==================== NATIONAL VOLA CULTURE (Sports subtab — multiplicative decay) ====================
 
-// Hidden stat on `nations` (0-100). Decays 3% per tick toward 0. Kept
-// outside STAT_DECAY_CONFIG because that pipeline is additive; vola
-// culture is multiplicative by design.
+// Hidden stat on `nations` (0.0-100.0, NUMERIC(5,1)). Decays 3% per tick
+// toward 0; raised by Sports Minister "Invest in National Sports Culture"
+// action. Kept outside STAT_DECAY_CONFIG because that pipeline is
+// additive; vola culture is multiplicative by design.
 const VOLA_CULTURE_DECAY_RATE = 0.03;
+
+// Round to 1 decimal place — matches NUMERIC(5,1) on the column.
+function _roundCulture(v) { return Math.round(v * 10) / 10; }
 
 async function processVolaCultureDecay(supabase, nation) {
     const cur = Number(nation.national_vola_culture) || 0;
     if (cur <= 0) return null;
-    const next = Math.max(0, Math.round(cur * (1 - VOLA_CULTURE_DECAY_RATE)));
+    const next = Math.max(0, _roundCulture(cur * (1 - VOLA_CULTURE_DECAY_RATE)));
     if (next === cur) return null;
 
     const { error } = await supabase.from('nations')
@@ -20229,6 +20233,152 @@ async function processVolaCultureDecay(supabase, nation) {
     }
     nation.national_vola_culture = next;
     return { previous: cur, next, delta: next - cur };
+}
+
+// ==================== VOLA INVESTMENT (Sports Minister action) ====================
+
+// Three tiers — cost in millions (raw dollars deducted from
+// ministries.discretionary_balance), gain added to national_vola_culture
+// directly. Match the funding-bill UI which also takes input in millions.
+const _M = 1_000_000;
+const VOLA_INVESTMENT_LEVELS = Object.freeze({
+    low:      { cost: 2 * _M, gain: 3, label: 'Low Investment' },
+    moderate: { cost: 5 * _M, gain: 5, label: 'Moderate Investment' },
+    high:     { cost: 8 * _M, gain: 7, label: 'High Investment' },
+});
+const VOLA_INVESTMENT_COOLDOWN_TICKS = 1;
+const VOLA_INVESTMENT_ACTION_KEY = 'invest_in_sports_culture';
+
+/**
+ * Sports Minister: invest discretionary funds to raise National Sports
+ * Culture. Returns { success, ... } so the caller (the modal in
+ * party-actions.js) can render success/failure feedback.
+ *
+ * Validates: callerFactionId must own the active sports ministry row,
+ * level must be one of the three tiers, discretionary_balance must
+ * cover the tier cost, and the nation must be off cooldown.
+ */
+async function investInVolaCulture(supabase, nation, callerFactionId, level, currentTick) {
+    const cfg = VOLA_INVESTMENT_LEVELS[level];
+    if (!cfg) return { success: false, reason: 'invalid_level' };
+    if (!nation?.id) return { success: false, reason: 'no_nation' };
+
+    // Load the active sports ministry row.
+    const { data: mRow, error: mErr } = await supabase.from('ministries')
+        .select('id, party_id, discretionary_balance')
+        .eq('nation_id', nation.id)
+        .eq('ministry_key', 'sports')
+        .eq('is_active', true)
+        .maybeSingle();
+    if (mErr) return { success: false, reason: 'fetch_failed', error: mErr.message };
+    if (!mRow) return { success: false, reason: 'no_minister' };
+    if (mRow.party_id !== callerFactionId) return { success: false, reason: 'not_minister' };
+
+    const balance = Number(mRow.discretionary_balance) || 0;
+    if (balance < cfg.cost) {
+        return { success: false, reason: 'insufficient_balance', balance, cost: cfg.cost };
+    }
+
+    // Cooldown check — last log row for this action on this nation.
+    const { data: lastLog } = await supabase
+        .from('ministry_action_log')
+        .select('cooldown_until_tick')
+        .eq('nation_id', nation.id)
+        .eq('ministry_key', 'sports')
+        .eq('action_key', VOLA_INVESTMENT_ACTION_KEY)
+        .order('applied_at_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (lastLog && Number(lastLog.cooldown_until_tick) > currentTick) {
+        return { success: false, reason: 'cooldown', readyAtTick: Number(lastLog.cooldown_until_tick) };
+    }
+
+    const newBalance = balance - cfg.cost;
+    const prevCulture = Number(nation.national_vola_culture) || 0;
+    const newCulture = Math.min(100, _roundCulture(prevCulture + cfg.gain));
+
+    // Apply both updates. Failure on the second one would leave the
+    // discretionary balance debited but culture unchanged — a small
+    // refund window the player wouldn't notice. Worth the simplicity
+    // versus a transaction-RPC for what's a rare error path.
+    const { error: balErr } = await supabase.from('ministries')
+        .update({ discretionary_balance: newBalance }).eq('id', mRow.id);
+    if (balErr) return { success: false, reason: 'balance_update_failed', error: balErr.message };
+
+    const { error: cultErr } = await supabase.from('nations')
+        .update({ national_vola_culture: newCulture }).eq('id', nation.id);
+    if (cultErr) return { success: false, reason: 'culture_update_failed', error: cultErr.message };
+    nation.national_vola_culture = newCulture;
+
+    // Log + cooldown. ap_cost=0 (AP system retired); money_cost stores
+    // the raw-dollar cost so future audit/replay can reconstruct.
+    await supabase.from('ministry_action_log').insert({
+        nation_id: nation.id,
+        ministry_key: 'sports',
+        action_key: VOLA_INVESTMENT_ACTION_KEY,
+        faction_id: callerFactionId,
+        ap_cost: 0,
+        money_cost: cfg.cost,
+        applied_at_tick: currentTick,
+        cooldown_until_tick: currentTick + VOLA_INVESTMENT_COOLDOWN_TICKS,
+        action_data: { level, gain: cfg.gain, prevCulture, newCulture },
+    });
+
+    return { success: true, level, gain: cfg.gain, cost: cfg.cost, newCulture, newBalance };
+}
+
+// ==================== VWC RANKINGS (global per-tick) ====================
+
+/**
+ * Recompute Vola World Cup rankings across every nation. Sort by
+ * (national_vola_culture + random(-5,+5)) descending — random delta is
+ * the user-spec'd "+/- 5 for some randomness" that lets close-culture
+ * nations swap rank position tick-to-tick.
+ *
+ * Top 12 get vwc_ranking 1..12, everyone else 0. Only writes rows
+ * whose rank actually changed (avoids spamming UPDATEs every tick on
+ * a stable leaderboard).
+ *
+ * Called once per tick from the post-loop block in handler-template
+ * (NOT per-nation — needs the full sorted set).
+ */
+async function recomputeVwcRankings(supabase) {
+    const { data: nations, error } = await supabase
+        .from('nations')
+        .select('id, national_vola_culture, vwc_ranking');
+    if (error) {
+        console.error('[recomputeVwcRankings] fetch failed:', error.message);
+        return null;
+    }
+    if (!nations || nations.length === 0) return null;
+
+    const ranked = nations.map(n => ({
+        id: n.id,
+        currentRank: Number(n.vwc_ranking) || 0,
+        // ±5 random delta on top of the real culture stat. This is the
+        // ranking input only — the underlying national_vola_culture
+        // column is untouched.
+        effective: (Number(n.national_vola_culture) || 0) + (Math.random() * 10 - 5),
+    }));
+    ranked.sort((a, b) => b.effective - a.effective);
+
+    const updates = [];
+    for (let i = 0; i < ranked.length; i++) {
+        const newRank = i < 12 ? (i + 1) : 0;
+        if (newRank !== ranked[i].currentRank) {
+            updates.push({ id: ranked[i].id, newRank });
+        }
+    }
+    if (updates.length === 0) return { changed: 0 };
+
+    for (const u of updates) {
+        const { error: uErr } = await supabase.from('nations')
+            .update({ vwc_ranking: u.newRank }).eq('id', u.id);
+        if (uErr) {
+            console.warn('[recomputeVwcRankings] rank update failed:', uErr.message);
+        }
+    }
+    return { changed: updates.length };
 }
 
 // ==================== STAT CONNECTIONS (threshold-triggered ripple effects) ====================
@@ -33374,6 +33524,18 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] History snapshot FAILED for ${nation.id} (${nation.name}):`, snapErr);
         }
       }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4a-bis. VWC RANKINGS — global pass after all nations processed.
+    // Sorts every nation by (national_vola_culture + random ±5 delta);
+    // top 12 get vwc_ranking 1..12, others 0. Skipped silently on
+    // fetch error.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        await recomputeVwcRankings(supabase);
+    } catch (vwcErr) {
+        console.error('[advanceTick] VWC ranking recompute failed (non-fatal):', vwcErr);
     }
 
     // ══════════════════════════════════════════════════════════════════
