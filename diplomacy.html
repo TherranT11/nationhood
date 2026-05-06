@@ -104,7 +104,6 @@
         <div class="sports-cards" id="sports-cards"></div>
         <div class="vola-team" id="vola-team"></div>
         <div class="vola-cup" id="vola-cup"></div>
-        <div class="sports-activity" id="sports-activity"></div>
     </div>
 </div>
 
@@ -347,36 +346,9 @@ function computeActiveOrNextCup(currentTick) {
     return null;
 }
 
-// Returns the next 3 Cups + next 3 Qualifiers, sorted chronologically.
-// "Upcoming" = tick >= currentTick (event still showing on the day-of,
-// disappears the moment current_tick advances past it).
-function computeUpcomingVolaEvents(currentTick) {
-    const tick = Number(currentTick) || 0;
-    const cups = [];
-    const quals = [];
-    let n = 0;
-    // Walk the schedule until both buckets have 3 future entries; cap at
-    // 200 iterations as a safety net so this can't ever spin if the math
-    // gets pathological.
-    while ((cups.length < 3 || quals.length < 3) && n < 200) {
-        const cupTick  = VOLA_CUP_FIRST_TICK + VOLA_CUP_PERIOD * n;
-        const qualTick = cupTick - VOLA_QUAL_OFFSET;
-        const cupNum   = n + 1;
-        if (qualTick >= tick && quals.length < 3) {
-            quals.push({ kind: 'qual', tick: qualTick, cupNum });
-        }
-        if (cupTick >= tick && cups.length < 3) {
-            cups.push({ kind: 'cup', tick: cupTick, cupNum });
-        }
-        n++;
-    }
-    return [...cups, ...quals].sort((a, b) => a.tick - b.tick);
-}
-
 function renderSportsTab() {
     const subtitleEl = document.getElementById('sports-subtitle');
     const cardsEl = document.getElementById('sports-cards');
-    const activityEl = document.getElementById('sports-activity');
     const cupEl = document.getElementById('vola-cup');
     const teamEl = document.getElementById('vola-team');
     if (!subtitleEl || !cardsEl) return;
@@ -386,7 +358,6 @@ function renderSportsTab() {
     if (!nation) {
         subtitleEl.textContent = '';
         cardsEl.innerHTML = '<div class="sports-empty">No nation selected.</div>';
-        if (activityEl) activityEl.innerHTML = '';
         if (cupEl) cupEl.innerHTML = '';
         if (teamEl) teamEl.innerHTML = '';
         return;
@@ -401,6 +372,21 @@ function renderSportsTab() {
     const vwcRank      = Math.max(0, Number(nation.vwc_ranking) || 0);
     const teamProwess  = Math.max(0, Number(nation.national_team_prowess) || 0);
     const stadiums     = Math.max(0, Number(nation.vola_stadiums) || 0);
+
+    // Next-event ticks. Walk the schedule until we land on a cup/qual
+    // tick at or after the current tick. 200-iteration cap is a safety
+    // net so this can't spin if the math goes pathological.
+    let nextCupTick = null, nextQualTick = null, nextCupNum = null, nextQualCupNum = null;
+    for (let n = 0; n < 200 && (nextCupTick === null || nextQualTick === null); n++) {
+        const cupTick  = VOLA_CUP_FIRST_TICK + VOLA_CUP_PERIOD * n;
+        const qualTick = cupTick - VOLA_QUAL_OFFSET;
+        if (nextQualTick === null && qualTick >= tick) { nextQualTick = qualTick; nextQualCupNum = n + 1; }
+        if (nextCupTick  === null && cupTick  >= tick) { nextCupTick  = cupTick;  nextCupNum     = n + 1; }
+    }
+    const nextCupDate  = nextCupTick  != null ? tickToDate(nextCupTick)  : '—';
+    const nextQualDate = nextQualTick != null ? tickToDate(nextQualTick) : '—';
+    const nextCupSub   = nextCupTick  != null ? `${ordinalSuffix(nextCupNum)} World Vola Cup · tick ${nextCupTick}` : 'no cup scheduled';
+    const nextQualSub  = nextQualTick != null ? `${ordinalSuffix(nextQualCupNum)} cup qualifiers · tick ${nextQualTick}` : 'no qualifiers scheduled';
 
     cardsEl.innerHTML = `
         <div class="sports-card">
@@ -444,6 +430,24 @@ function renderSportsTab() {
                 <div class="sports-stat-card-value">${stadiums}</div>
                 <div class="sports-stat-card-sub">${stadiums > 0 ? 'across the nation' : 'none yet'}</div>
             </div>
+            <!-- Spacer so the next two cards line up under Team Prowess + Stadiums Built. -->
+            <div class="sports-stat-card" style="visibility:hidden" aria-hidden="true"></div>
+            <div class="sports-stat-card">
+                <div class="sports-stat-card-header">
+                    <span class="sports-stat-card-icon">&#x1F4C5;</span>
+                    <span class="sports-stat-card-label">NEXT VOLA WORLD CUP QUALIFIERS</span>
+                </div>
+                <div class="sports-stat-card-value">${nextQualDate}</div>
+                <div class="sports-stat-card-sub">${nextQualSub}</div>
+            </div>
+            <div class="sports-stat-card">
+                <div class="sports-stat-card-header">
+                    <span class="sports-stat-card-icon">&#x1F3C6;</span>
+                    <span class="sports-stat-card-label">NEXT VOLA WORLD CUP</span>
+                </div>
+                <div class="sports-stat-card-value">${nextCupDate}</div>
+                <div class="sports-stat-card-sub">${nextCupSub}</div>
+            </div>
         </div>
     `;
 
@@ -475,54 +479,6 @@ function renderSportsTab() {
         );
     }
 
-    if (activityEl) {
-        const events = computeUpcomingVolaEvents(tick);
-        const rowsHtml = events.map(ev => {
-            const ord = ordinalSuffix(ev.cupNum);
-            const ticksAway = Math.max(0, ev.tick - tick);
-            const whenSuffix = ticksAway === 0 ? 'happening now'
-                             : ticksAway === 1 ? 'next tick'
-                             : `in ${ticksAway} ticks`;
-            if (ev.kind === 'cup') {
-                return `
-                    <div class="sports-event-row sports-event-row--cup">
-                        <div class="sports-event-meta">
-                            <span class="sports-event-badge sports-event-badge--cup">WORLD VOLA CUP</span>
-                            <span class="sports-event-tick">TICK ${ev.tick}</span>
-                        </div>
-                        <div class="sports-event-desc">
-                            <span class="sports-event-highlight sports-event-highlight--cup">${ord} World Vola Cup</span>
-                            begins &middot; <span class="sports-event-when">${whenSuffix}</span>
-                        </div>
-                    </div>
-                `;
-            }
-            return `
-                <div class="sports-event-row sports-event-row--qual">
-                    <div class="sports-event-meta">
-                        <span class="sports-event-badge sports-event-badge--qual">QUALIFIERS</span>
-                        <span class="sports-event-tick">TICK ${ev.tick}</span>
-                    </div>
-                    <div class="sports-event-desc">
-                        Qualifiers for the <span class="sports-event-highlight sports-event-highlight--cup">${ord} World Vola Cup</span>
-                        &middot; <span class="sports-event-when">${whenSuffix}</span>
-                    </div>
-                </div>
-            `;
-        }).join('');
-
-        activityEl.innerHTML = `
-            <div class="sports-activity-header">
-                <span class="sports-activity-title">
-                    <span class="sports-activity-icon">&#x1F4C5;</span> SPORTS ACTIVITY
-                </span>
-                <span class="sports-activity-meta">UPCOMING &middot; NEXT 3 CUPS &middot; 3 QUALIFIERS</span>
-            </div>
-            <div class="sports-activity-list">
-                ${rowsHtml || '<div class="sports-empty">No scheduled events.</div>'}
-            </div>
-        `;
-    }
 }
 
 // Renders the Vola World Cup container — title/host/schedule header,
