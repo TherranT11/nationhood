@@ -5608,6 +5608,89 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   color: var(--green);
 }
 
+/* ── Sports Activity panel (upcoming Vola tournaments) ── */
+.sports-activity {
+  margin-top: 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-main);
+  padding: 16px 20px 18px;
+}
+.sports-activity-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-main);
+  margin-bottom: 14px;
+}
+.sports-activity-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--text-bright);
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.sports-activity-icon { font-size: 13px; }
+.sports-activity-meta {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+.sports-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sports-event-row {
+  background: var(--bg-card);
+  border: 1px solid var(--border-main);
+  border-left: 3px solid var(--text-dim);
+  padding: 10px 14px 11px;
+}
+.sports-event-row--cup  { border-left-color: var(--amber); }
+.sports-event-row--qual { border-left-color: var(--blue); }
+.sports-event-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.sports-event-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.sports-event-badge--cup  { color: var(--amber); }
+.sports-event-badge--qual { color: var(--blue); }
+.sports-event-tick {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+}
+.sports-event-tick::before {
+  content: "·";
+  margin-right: 6px;
+  color: var(--text-dim);
+}
+.sports-event-desc {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text-bright);
+  line-height: 1.4;
+}
+.sports-event-highlight { font-weight: 600; }
+.sports-event-highlight--cup  { color: var(--amber); }
+.sports-event-when      { color: var(--text-dim); font-family: var(--font-mono); font-size: 11px; }
+
 /* ── Responsive ── */
 @media (max-width: 1400px) {
   .trade-neg-econ { width: 200px; }
