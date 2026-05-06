@@ -556,8 +556,8 @@ function renderVolaCup(currentTick) {
         </div>
     `;
     const groupCard = (letter) => `
-        <div class="vola-cup-group">
-            <div class="vola-cup-group-header">GROUP ${letter}</div>
+        <div class="vola-cup-group vola-cup-group--${letter.toLowerCase()}">
+            <div class="vola-cup-group-header">GROUP <span class="vola-cup-group-letter">${letter}</span></div>
             <div class="vola-cup-group-table">
                 <div class="vola-cup-group-row vola-cup-group-row--head">
                     <span class="vola-cup-group-rank"></span>
@@ -659,6 +659,22 @@ function renderVolaCup(currentTick) {
     `;
 }
 
+// Deterministic per-name color hash so the same nation always gets the
+// same accent in the cup UI. Cheap "djb2-ish" rolling hash → palette
+// lookup. Used by placement matches today; group standings + bracket
+// once team data populates.
+const _VOLA_NATION_PALETTE = [
+    '#d65a5a', '#e07a3a', '#e8b13a', '#cdd055', '#9ac84e',
+    '#5eb564', '#4ab59c', '#5aa9d6', '#6e8ad6', '#9070cf',
+    '#b46ac5', '#d66aaa', '#cc8866',
+];
+function _volaNationColor(name) {
+    if (!name) return 'var(--text-bright)';
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = ((h * 31) + name.charCodeAt(i)) | 0;
+    return _VOLA_NATION_PALETTE[Math.abs(h) % _VOLA_NATION_PALETTE.length];
+}
+
 // Fetch placement matches for the active/next cup and render them into
 // the .vola-cup-placement-body slot that renderVolaCup left in the DOM.
 // Called from renderSportsTab right after the cup HTML is written.
@@ -668,7 +684,7 @@ async function loadAndRenderVolaPlacement(cupNum) {
 
     const { data: matches, error } = await _supabase
         .from('vola_placement_matches')
-        .select('match_number, scheduled_tick, team_a_score, team_b_score, winner_nation_id, team_a:team_a_nation_id(id, name), team_b:team_b_nation_id(id, name)')
+        .select('match_number, scheduled_tick, team_a_score, team_b_score, winner_nation_id, team_a:team_a_nation_id(id, name, flag_url), team_b:team_b_nation_id(id, name, flag_url)')
         .eq('cup_number', cupNum)
         .order('match_number', { ascending: true });
 
@@ -682,14 +698,26 @@ async function loadAndRenderVolaPlacement(cupNum) {
         return;
     }
 
+    const flagImg = (url) => url
+        ? `<img src="${escapeHtml(url)}" class="vola-flag" alt="" loading="lazy">`
+        : '';
+
     body.innerHTML = matches.map(m => {
-        const teamA = m.team_a?.name || 'TBD';
-        const teamB = m.team_b?.name || 'TBD';
+        const teamA  = m.team_a?.name || 'TBD';
+        const teamB  = m.team_b?.name || 'TBD';
+        const flagA  = flagImg(m.team_a?.flag_url);
+        const flagB  = flagImg(m.team_b?.flag_url);
+        const colorA = _volaNationColor(teamA);
+        const colorB = _volaNationColor(teamB);
         const sa = m.team_a_score, sb = m.team_b_score;
         const played = sa != null && sb != null;
         const winnerId = m.winner_nation_id;
         const aWon = played && winnerId === m.team_a?.id;
         const bWon = played && winnerId === m.team_b?.id;
+        const aColor = aWon ? colorA : (played ? 'var(--text-dim)' : colorA);
+        const bColor = bWon ? colorB : (played ? 'var(--text-dim)' : colorB);
+        const aGlow  = aWon ? `text-shadow:0 0 8px ${colorA}55;` : '';
+        const bGlow  = bWon ? `text-shadow:0 0 8px ${colorB}55;` : '';
         return `
             <div class="vola-placement-row ${played ? 'played' : 'pending'}">
                 <div class="vola-placement-meta">
@@ -697,9 +725,9 @@ async function loadAndRenderVolaPlacement(cupNum) {
                     <span class="vola-placement-tick">${tickToDate(m.scheduled_tick)} &middot; tick ${m.scheduled_tick}</span>
                 </div>
                 <div class="vola-placement-teams">
-                    <span class="vola-placement-team ${aWon ? 'won' : ''}">${escapeHtml(teamA)}</span>
-                    <span class="vola-placement-score">${played ? `${sa} &mdash; ${sb}` : 'vs'}</span>
-                    <span class="vola-placement-team ${bWon ? 'won' : ''}">${escapeHtml(teamB)}</span>
+                    <span class="vola-placement-team ${aWon ? 'won' : ''}" style="color:${aColor};${aGlow}">${flagA}${escapeHtml(teamA)}</span>
+                    <span class="vola-placement-score">${played ? `<strong style="color:${colorA};">${sa}</strong> &mdash; <strong style="color:${colorB};">${sb}</strong>` : 'vs'}</span>
+                    <span class="vola-placement-team ${bWon ? 'won' : ''}" style="color:${bColor};${bGlow}">${flagB}${escapeHtml(teamB)}</span>
                 </div>
             </div>
         `;

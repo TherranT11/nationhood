@@ -5752,8 +5752,14 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   display: flex;
   align-items: center;
   gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(200, 168, 50, 0.18);
 }
-.vola-cup-section-label--knockout { color: var(--amber); }
+.vola-cup-section-label--knockout {
+  color: var(--amber);
+  border-bottom-color: rgba(200, 168, 50, 0.35);
+  text-shadow: 0 0 8px rgba(200, 168, 50, 0.25);
+}
 .vola-cup-section-icon { font-size: 12px; }
 
 /* ── Group standings (3 columns) ── */
@@ -5765,7 +5771,17 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
 .vola-cup-group {
   background: var(--bg-card);
   border: 1px solid var(--border-main);
+  border-top: 3px solid var(--border-main);
+  position: relative;
+  transition: border-color 0.2s ease;
 }
+/* Per-group accent — top border + letter glow distinguish the columns. */
+.vola-cup-group--a { border-top-color: #c8a832; }
+.vola-cup-group--b { border-top-color: #5aa9d6; }
+.vola-cup-group--c { border-top-color: #5eb564; }
+.vola-cup-group--a .vola-cup-group-letter { color: #c8a832; text-shadow: 0 0 8px rgba(200,168,50,0.4); }
+.vola-cup-group--b .vola-cup-group-letter { color: #5aa9d6; text-shadow: 0 0 8px rgba(90,169,214,0.4); }
+.vola-cup-group--c .vola-cup-group-letter { color: #5eb564; text-shadow: 0 0 8px rgba(94,181,100,0.4); }
 .vola-cup-group-header {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -5774,8 +5790,9 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   color: var(--text-dim);
   text-transform: uppercase;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--border-main);
+  border-bottom: 1px solid rgba(200, 168, 50, 0.18);
 }
+.vola-cup-group-letter { font-weight: 700; }
 .vola-cup-group-table { padding: 4px 0 8px; }
 .vola-cup-group-row {
   display: grid;
@@ -5831,18 +5848,27 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   color: var(--amber);
   text-transform: uppercase;
   text-align: center;
-  padding-bottom: 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(200, 168, 50, 0.22);
+  margin-bottom: 4px;
+  text-shadow: 0 0 6px rgba(200, 168, 50, 0.2);
 }
 .vola-cup-match {
   background: var(--bg-card);
-  border: 1px solid var(--border-main);
+  border: 1px solid rgba(200, 168, 50, 0.15);
+  border-left: 3px solid rgba(200, 168, 50, 0.35);
+  transition: border-color 0.2s ease;
 }
+.vola-cup-match:hover { border-color: rgba(200, 168, 50, 0.4); }
 .vola-cup-match-team {
   padding: 10px 14px;
   font-family: var(--font-sans);
   font-size: 12px;
   color: var(--text-bright);
-  border-bottom: 1px dashed var(--border-main);
+  border-bottom: 1px dashed rgba(200, 168, 50, 0.12);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .vola-cup-match-team:last-of-type { border-bottom: none; }
 .vola-cup-match-status {
@@ -5853,32 +5879,59 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   color: var(--text-dim);
   text-transform: uppercase;
   text-align: center;
-  border-top: 1px solid var(--border-main);
+  border-top: 1px solid rgba(200, 168, 50, 0.12);
 }
+
+/* Champion card: gold gradient border + soft glow. The border shows
+   through via a layered radial gradient on the background so the inner
+   card stays dark. */
 .vola-cup-champion {
-  background: var(--bg-card);
-  border: 1px solid var(--amber-border);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(200, 168, 50, 0.14), transparent 70%),
+    var(--bg-card);
+  border: 1px solid rgba(200, 168, 50, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(200, 168, 50, 0.28),
+    0 0 18px rgba(200, 168, 50, 0.12);
   padding: 22px 14px;
   text-align: center;
+  position: relative;
 }
 .vola-cup-champion-icon {
-  font-size: 18px;
+  font-size: 22px;
   color: var(--amber);
   margin-bottom: 6px;
+  text-shadow: 0 0 12px rgba(200, 168, 50, 0.65);
 }
 .vola-cup-champion-label {
   font-family: var(--font-mono);
   font-size: 10px;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.18em;
   color: var(--amber);
   text-transform: uppercase;
   margin-bottom: 8px;
+  text-shadow: 0 0 8px rgba(200, 168, 50, 0.35);
 }
 .vola-cup-champion-text {
   font-family: var(--font-serif);
   font-style: italic;
   font-size: 16px;
   color: var(--text-bright);
+}
+
+/* Inline flag chip — used in placement matches today and group/bracket
+   rows once team data populates. Wide-aspect strip clipped to a small
+   pill, matching the geographic-flag conventions on the site. */
+.vola-flag {
+  width: 22px;
+  height: 14px;
+  object-fit: cover;
+  margin-right: 8px;
+  vertical-align: middle;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: inline-block;
+  flex-shrink: 0;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.4);
 }
 
 /* ── Scheduled Qualifiers (bottom-3 placement matches) ── */
