@@ -4749,6 +4749,205 @@ export async function processVolaStadiumCompletions(supabase, currentTick) {
     return { completed };
 }
 
+// ==================== VWC HOST BIDDING (Sports Minister action) ====================
+
+// Sports Minister submits a host bid for a future World Vola Cup.
+// $10M discretionary cost, once per cup per nation (UNIQUE constraint).
+// Resolution fires 12 ticks before cup start (= the qualifier tick) via
+// resolveVolaCupBids in the post-loop sweep.
+//
+// Cup ordinal helper duplicated locally rather than reaching across to
+// sports-subtab code so the tick processor has zero UI deps.
+function _cupOrdinal(n) {
+    const v = n % 100;
+    const last = n % 10;
+    if (v >= 11 && v <= 13) return n + 'th';
+    if (last === 1) return n + 'st';
+    if (last === 2) return n + 'nd';
+    if (last === 3) return n + 'rd';
+    return n + 'th';
+}
+
+// Convert tick number to "March, 2007"-style label without depending
+// on js/utils.js (which the edge bundle doesn't include).
+const _MONTHS = ['January','February','March','April','May','June',
+                 'July','August','September','October','November','December'];
+function _tickToYear(tick) { return 2000 + Math.floor(Number(tick) / 12); }
+
+/**
+ * Player-initiated bid. Routes through the bid_to_host_vwc RPC for the
+ * server-side validation + atomic discretionary deduction. The RPC owns
+ * eligibility (minister, balance, deadline, no existing host or bid) so
+ * the JS wrapper just relays the result.
+ *
+ * Returns { success, reason?, cupNumber?, resolutionTick?, cost? }.
+ */
+export async function bidToHostVwc(supabase, cupNumber) {
+    if (!cupNumber || cupNumber <= 0) return { success: false, reason: 'invalid_cup' };
+    const { data, error } = await supabase.rpc('bid_to_host_vwc', { p_cup_number: cupNumber });
+    if (error) return { success: false, reason: 'rpc_failed', error: error.message };
+    if (!data?.success) return { success: false, reason: data?.reason || 'unknown' };
+    return {
+        success:        true,
+        cupNumber:      Number(data.cup_number || cupNumber),
+        cupStartTick:   Number(data.cup_start_tick || 0),
+        resolutionTick: Number(data.resolution_tick || 0),
+        cost:           Number(data.cost || 0),
+    };
+}
+
+/**
+ * Tick-processor sweep: pick the host for every cup whose qualifier
+ * tick (= cup_start - 12) is the current tick. Per-cup formula:
+ *
+ *   bid_score = (sports_culture / 2)
+ *             + (infrastructure × 3)
+ *             + (global_image × 3)
+ *             + (vola_stadiums × 5)
+ *             + 1d20
+ *
+ * Highest score wins; tie → higher national_vola_culture. Winner gets
+ * +1d20+5 budget, +3 global_image, +0.5 public_approval, +1d6 culture,
+ * and a vola_cup_hosts row with home_advantage=15. Losers get -0.2
+ * public_approval.
+ *
+ * Idempotent: skip cups that already have a vola_cup_hosts row.
+ */
+export async function resolveVolaCupBids(supabase, currentTick) {
+    const targetCupStart = Number(currentTick) + 12;
+
+    const { data: pending, error } = await supabase
+        .from('vola_host_bids')
+        .select('id, nation_id, cup_number, cup_start_tick')
+        .eq('cup_start_tick', targetCupStart)
+        .is('resolved_at_tick', null);
+    if (error) {
+        console.warn('[VWCHost] pending fetch failed:', error.message);
+        return null;
+    }
+    if (!pending || pending.length === 0) return null;
+
+    // Group by cup_number — each cup resolves independently.
+    const byCup = new Map();
+    for (const b of pending) {
+        if (!byCup.has(b.cup_number)) byCup.set(b.cup_number, []);
+        byCup.get(b.cup_number).push(b);
+    }
+
+    let resolved = 0;
+    for (const [cupNumber, bids] of byCup) {
+        try {
+            const did = await _resolveOneCup(supabase, cupNumber, bids, targetCupStart, currentTick);
+            if (did) resolved++;
+        } catch (err) {
+            console.error('[VWCHost] resolve failed for cup', cupNumber, err);
+        }
+    }
+    return { resolved, cups: byCup.size };
+}
+
+async function _resolveOneCup(supabase, cupNumber, bids, cupStartTick, currentTick) {
+    // Idempotency — skip cups that already have a host row.
+    const { data: existingHost } = await supabase.from('vola_cup_hosts')
+        .select('cup_number').eq('cup_number', cupNumber).maybeSingle();
+    if (existingHost) return false;
+
+    // Load every bidder's relevant stats.
+    const nationIds = bids.map(b => b.nation_id);
+    const { data: nations, error: nErr } = await supabase.from('nations')
+        .select('id, name, national_vola_culture, infrastructure, global_image, vola_stadiums, public_approval, budget')
+        .in('id', nationIds);
+    if (nErr) {
+        console.warn('[VWCHost] nation fetch failed:', nErr.message);
+        return false;
+    }
+    const nationMap = new Map((nations || []).map(n => [n.id, n]));
+
+    const scored = bids.map(b => {
+        const n = nationMap.get(b.nation_id) || {};
+        const culture       = Number(n.national_vola_culture) || 0;
+        const infrastructure = Number(n.infrastructure) || 0;
+        const globalImage   = Number(n.global_image) || 0;
+        const stadiums      = Number(n.vola_stadiums) || 0;
+        const d20           = Math.floor(Math.random() * 20) + 1;
+        const score = (culture / 2) + (infrastructure * 3) + (globalImage * 3) + (stadiums * 5) + d20;
+        return { bid: b, nation: n, score, culture };
+    });
+
+    // Highest score wins; tie → higher national_vola_culture.
+    scored.sort((a, b) => (b.score - a.score) || (b.culture - a.culture));
+    const winner = scored[0];
+    const losers = scored.slice(1);
+
+    // Award. PRIMARY KEY on cup_number guards against a parallel
+    // resolution duplicating the row.
+    const { error: hostErr } = await supabase.from('vola_cup_hosts').insert({
+        cup_number:      cupNumber,
+        cup_start_tick:  cupStartTick,
+        host_nation_id:  winner.bid.nation_id,
+        awarded_at_tick: currentTick,
+        winning_score:   winner.score,
+        home_advantage:  15,
+    });
+    if (hostErr) {
+        console.warn('[VWCHost] host insert failed for cup', cupNumber, hostErr.message);
+        return false;
+    }
+
+    // Apply win effects to the winner.
+    const winN = winner.nation;
+    const budgetBonus  = (Math.floor(Math.random() * 20) + 1) + 5;            // 1d20 + 5
+    const cultureBonus = Math.floor(Math.random() * 6) + 1;                   // 1d6
+    const newBudget    = (Number(winN.budget) || 0) + budgetBonus;
+    const newGI        = Math.min(100, (Number(winN.global_image) || 0) + 3);
+    const newPA        = Math.min(100, (Number(winN.public_approval) || 0) + 0.5);
+    const newCulture   = Math.min(100, _roundCulture((Number(winN.national_vola_culture) || 0) + cultureBonus));
+
+    await supabase.from('nations').update({
+        budget: newBudget,
+        global_image: newGI,
+        public_approval: newPA,
+        national_vola_culture: newCulture,
+    }).eq('id', winN.id);
+
+    // Apply lose effect to losers (one UPDATE per loser keeps it
+    // simple; bid sets are typically small).
+    for (const s of losers) {
+        const lN = s.nation;
+        if (!lN || !lN.id) continue;
+        const newLPA = Math.max(0, (Number(lN.public_approval) || 0) - 0.2);
+        await supabase.from('nations').update({ public_approval: newLPA }).eq('id', lN.id);
+    }
+
+    // Mark bid rows resolved (winner first, then losers).
+    await supabase.from('vola_host_bids').update({
+        resolved_at_tick: currentTick,
+        won: false,
+    }).eq('cup_number', cupNumber);
+    await supabase.from('vola_host_bids').update({
+        won: true, bid_score: winner.score,
+    }).eq('id', winner.bid.id);
+    for (const s of losers) {
+        await supabase.from('vola_host_bids').update({
+            bid_score: s.score,
+        }).eq('id', s.bid.id);
+    }
+
+    // Event log on the winning nation.
+    const ord  = _cupOrdinal(cupNumber);
+    const year = _tickToYear(cupStartTick);
+    await supabase.from('event_log').insert({
+        nation_id:           winN.id,
+        event_name:          'VWC Host Awarded',
+        category:            'political',
+        trigger_key:         'vwc_host_awarded',
+        description_chosen:  `The nation of ${winN.name} has won the bid and will host the ${ord} Vola World Cup in ${year}!`,
+        fired_at_tick:       currentTick,
+    });
+
+    return true;
+}
+
 // +N to faction_sector_popularity for every active sector in the nation,
 // upserting (insert if missing, increment if present), capped at 100.
 async function _applyAllSectorPopularityBoost(supabase, nationId, factionId, deltaTenths) {
