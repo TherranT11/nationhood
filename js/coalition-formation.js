@@ -600,7 +600,7 @@ const MINISTRY_NAMES = {
     interior: 'Interior', foreign: 'Foreign Affairs', defense: 'Defense',
     finance: 'Finance', education: 'Education', healthcare: 'Healthcare',
     labor: 'Labor', justice: 'Justice', trade: 'Trade',
-    energy: 'Energy', transportation: 'Transportation', security: 'Security',
+    energy: 'Energy', transportation: 'Transportation', sports: 'Sports', security: 'Security',
 };
 // MINISTRY_NAMES (short labels) is the only locally-defined ministry map
 // — the office-name and key-list maps are the shared exports from
