@@ -2877,6 +2877,22 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // 4a-octo. VWC GROUP STAGE MATCH RESOLUTION — global pass.
+    // Plays out any group-stage matches scheduled for currentTick
+    // (cup_start + 0/1/2). 6 matches per round × 3 groups = 18 per
+    // cup, spread across 3 ticks. Independent from placement so
+    // cups in different stages can co-exist if cycles overlap.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const groupRes = await processVolaCupGroupMatches(supabase, currentTick);
+        if (groupRes?.resolved) {
+            console.log(`[VolaCupGroup] resolved ${groupRes.resolved} match(es) at tick ${currentTick}`);
+        }
+    } catch (groupErr) {
+        console.error('[advanceTick] Vola group match resolution failed (non-fatal):', groupErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // 4a-tris. LEADERSHIP CHALLENGES — global pass.
     // Resolves every leadership_challenges row with claimed_at_tick <
     // currentTick that hasn't been marked yet. Per nation: re-checks

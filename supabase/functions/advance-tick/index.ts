@@ -24909,10 +24909,22 @@ async function processVolaPlacementMatches(supabase, currentTick) {
             console.error('[VolaPlacement] settle failed for cup', cupNumber, err);
         }
         if (!settled) continue;
+        let drawn = false;
         try {
             await generateVolaCupGroupDraw(supabase, cupNumber, currentTick);
+            drawn = true;
         } catch (err) {
             console.error('[VolaCupGroups] draw failed for cup', cupNumber, err);
+        }
+        if (!drawn) continue;
+        try {
+            // cup_start = qualifier_tick + 12 = currentTick + 10
+            // (currentTick is the tick Match 3 of placement just settled on,
+            //  i.e. qualifier_tick + 2.)
+            const cupStartTick = currentTick + 10;
+            await generateVolaCupGroupSchedule(supabase, cupNumber, cupStartTick);
+        } catch (err) {
+            console.error('[VolaCupGroupSchedule] failed for cup', cupNumber, err);
         }
     }
 
@@ -25024,6 +25036,126 @@ function _seedCompare(a, b) {
     const pb = Number(b.national_team_prowess) || 0;
     if (pb !== pa) return pb - pa;
     return String(a.name || '').localeCompare(String(b.name || ''));
+}
+
+/**
+ * Phase 2: generate the 18 group-stage matches for `cupNumber`.
+ *
+ * Each group plays a 3-round round-robin (6 matches per group):
+ *   R1 (cup_start+0): s1 v s2, s3 v s4
+ *   R2 (cup_start+1): s1 v s3, s2 v s4
+ *   R3 (cup_start+2): s1 v s4, s2 v s3
+ *
+ * Idempotent — no-op if rows for this cup already exist.
+ */
+async function generateVolaCupGroupSchedule(supabase, cupNumber, cupStartTick) {
+    const { data: existing } = await supabase.from('vola_cup_group_matches')
+        .select('id').eq('cup_number', cupNumber).limit(1).maybeSingle();
+    if (existing) return null;
+
+    const { data: draw, error } = await supabase.from('vola_cup_groups')
+        .select('group_letter, seed_rank, nation_id')
+        .eq('cup_number', cupNumber);
+    if (error) {
+        console.warn('[VolaCupGroupSchedule] draw fetch failed:', error.message);
+        return null;
+    }
+    if (!draw || draw.length !== 12) return null;
+
+    // Bucket the draw by group, indexed by seed_rank (1..4).
+    const byGroup = { A: {}, B: {}, C: {} };
+    for (const row of draw) {
+        if (!byGroup[row.group_letter]) continue;
+        byGroup[row.group_letter][row.seed_rank] = row.nation_id;
+    }
+
+    const PAIRINGS = [
+        { round: 1, pairs: [[1, 2], [3, 4]] },
+        { round: 2, pairs: [[1, 3], [2, 4]] },
+        { round: 3, pairs: [[1, 4], [2, 3]] },
+    ];
+
+    const rows = [];
+    for (const letter of ['A', 'B', 'C']) {
+        const g = byGroup[letter];
+        if (!g[1] || !g[2] || !g[3] || !g[4]) {
+            console.warn('[VolaCupGroupSchedule] incomplete group', letter, 'for cup', cupNumber);
+            return null;
+        }
+        for (const block of PAIRINGS) {
+            block.pairs.forEach(([sA, sB], i) => {
+                rows.push({
+                    cup_number:       cupNumber,
+                    group_letter:     letter,
+                    round_number:     block.round,
+                    match_in_round:   i + 1,
+                    scheduled_tick:   cupStartTick + (block.round - 1),
+                    team_a_nation_id: g[sA],
+                    team_b_nation_id: g[sB],
+                });
+            });
+        }
+    }
+
+    const { error: insErr } = await supabase.from('vola_cup_group_matches').insert(rows);
+    if (insErr) {
+        console.warn('[VolaCupGroupSchedule] insert failed:', insErr.message);
+        return null;
+    }
+    return { cupNumber, scheduled: rows.length };
+}
+
+/**
+ * Phase 2 resolver: play out every group-stage match scheduled for
+ * `currentTick`. Same prowess+1d20 + 1d24 score system as placement
+ * and the upcoming knockout rounds — _resolveMatchScores is shared.
+ */
+async function processVolaCupGroupMatches(supabase, currentTick) {
+    const { data: due, error } = await supabase.from('vola_cup_group_matches')
+        .select('id, cup_number, group_letter, round_number, team_a_nation_id, team_b_nation_id')
+        .eq('scheduled_tick', currentTick)
+        .is('resolved_at_tick', null);
+    if (error) {
+        console.warn('[VolaCupGroup] due fetch failed:', error.message);
+        return null;
+    }
+    if (!due || due.length === 0) return null;
+
+    const teamIds = Array.from(new Set(due.flatMap(m => [m.team_a_nation_id, m.team_b_nation_id])));
+    const { data: nations, error: nErr } = await supabase.from('nations')
+        .select('id, name, national_team_prowess')
+        .in('id', teamIds);
+    if (nErr) {
+        console.warn('[VolaCupGroup] nation fetch failed:', nErr.message);
+        return null;
+    }
+    const teamMap = new Map((nations || []).map(n => [n.id, n]));
+
+    let resolved = 0;
+    for (const m of due) {
+        const A = teamMap.get(m.team_a_nation_id);
+        const B = teamMap.get(m.team_b_nation_id);
+        if (!A || !B) {
+            await supabase.from('vola_cup_group_matches').update({
+                resolved_at_tick: currentTick,
+            }).eq('id', m.id);
+            continue;
+        }
+        const r = _resolveMatchScores(A.national_team_prowess, B.national_team_prowess);
+        const winnerId = r.winner === 'A' ? A.id : B.id;
+        const { error: updErr } = await supabase.from('vola_cup_group_matches').update({
+            team_a_score:     r.scoreA,
+            team_b_score:     r.scoreB,
+            winner_nation_id: winnerId,
+            resolved_at_tick: currentTick,
+        }).eq('id', m.id);
+        if (updErr) {
+            console.warn('[VolaCupGroup] match update failed:', updErr.message);
+            continue;
+        }
+        resolved++;
+    }
+    return { resolved };
 }
 
 async function _settleVolaPlacement(supabase, cupNumber, currentTick) {
@@ -34687,6 +34819,22 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
     } catch (placeErr) {
         console.error('[advanceTick] Vola placement match resolution failed (non-fatal):', placeErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4a-octo. VWC GROUP STAGE MATCH RESOLUTION — global pass.
+    // Plays out any group-stage matches scheduled for currentTick
+    // (cup_start + 0/1/2). 6 matches per round × 3 groups = 18 per
+    // cup, spread across 3 ticks. Independent from placement so
+    // cups in different stages can co-exist if cycles overlap.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const groupRes = await processVolaCupGroupMatches(supabase, currentTick);
+        if (groupRes?.resolved) {
+            console.log(`[VolaCupGroup] resolved ${groupRes.resolved} match(es) at tick ${currentTick}`);
+        }
+    } catch (groupErr) {
+        console.error('[advanceTick] Vola group match resolution failed (non-fatal):', groupErr);
     }
 
     // ══════════════════════════════════════════════════════════════════
