@@ -30852,13 +30852,9 @@ async function processSurplusConnectors(supabase: any, nation: any) {
         updates.inflation = clamp(inflation + delta);
         changed = true;
     }
-    // Deficit → inflation was previously handled here with a heuristic
-    // (-5% deficit started a small additive hit). The Debt & Deficit
-    // System (js/game/debt.js) now owns this signal — printing the
-    // unbonded portion of the deficit is the canonical inflation driver,
-    // and the forced-print path on expired bond offers carries any
-    // unfilled-market cost. Removed to avoid double-counting; the debt
-    // system's INFLATION_PER_PRINT_PCT is the single tunable knob.
+    // Deficit → inflation was previously handled here with a heuristic.
+    // Bond/print system retired (2026-05); per-tick balance now applies
+    // directly to debt via processNationDebtTick. No inflation cascade.
 
     // ── Surplus → Currency Strength ──
     if (surplusRatio > 3) {
