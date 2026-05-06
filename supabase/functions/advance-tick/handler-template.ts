@@ -2441,60 +2441,18 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Tariff relations penalty failed for ${nation.name} (non-fatal):`, tariffErr);
         }
 
-        // Debt & Deficit System (v2 — panel-accurate).
-        // Order is exact: maturities → coupons → expiries → deficit gate
-        // → surplus paydown. Maturities recycle cash before coupons commit
-        // it; expiries resolve yesterday's unfilled bonds before today's
-        // deficit posts a new offer.
-        //
-        // v2 fix (2026-05): the v1 path passed gdp × 0.12 × efficiency as
-        // the expenditures input to processDebtTick, while the surplus
-        // paydown used the panel's actual annual cost rollup. The two
-        // disagreed on what a deficit looked like, so a nation with
-        // real surplus per the panel ($28 rev / $21 exp / +$7 bal) was
-        // also being charged a synthetic deficit each tick — bond
-        // creation outpaced surplus paydown, so debt climbed.
-        //
-        // v2 computes one annual expenditures figure (panel-accurate via
-        // computePanelAnnualExpenditures) and gates processDebtTick on
-        // an actual deficit. Surplus path now lives entirely in
-        // processBudgetSurplusPaydown.
+        // National debt — single rule. Bonds retired (2026-05).
+        //   balance = revenue − expenditures (panel-accurate, /12 per tick)
+        //   surplus → debt down, treasury down by the same amount
+        //   deficit → debt up, treasury unchanged (implicit borrow)
+        // No bond offers, no coupon payments, no printing.
         try {
-            await processBondMaturitiesTick(supabase, nation, currentTick);
-            await processBondCouponsTick(supabase, nation, currentTick);
-            await processBondOfferExpiryTick(supabase, nation, currentTick);
-
-            const annualExp = await computePanelAnnualExpenditures(supabase, nation);
-            const annualRev = Number(calculateNationalBudget(nation).grossRevenue || 0);
-            const annualBal = annualRev - annualExp;
-
-            if (annualBal < 0) {
-                const deficitAbstract = -annualBal;
-                const debtResult = await processDebtTick(
-                    supabase, nation, annualExp, annualRev, currentTick
-                );
+            const result = await processNationDebtTick(supabase, nation);
+            if (result) {
                 console.log(
-                    `[Debt] ${nation.name}: mode=${debtResult?.mode || 'n/a'}` +
-                    ` deficit=${Math.round(deficitAbstract)}` +
-                    (debtResult?.mode === 'deficit'
-                        ? ` bond=${Math.round(debtResult.bondPortion)}` +
-                          ` print=${Math.round(debtResult.printPortion)}`
-                        : '')
-                );
-            } else {
-                console.log(
-                    `[Debt] ${nation.name}: surplus=${Math.round(annualBal)} (no bond posted)`
-                );
-            }
-
-            // Surplus paydown — also panel-accurate. No-ops when there's
-            // no debt or no surplus.
-            const paydown = await processBudgetSurplusPaydown(supabase, nation);
-            if (paydown) {
-                console.log(
-                    `[Debt] ${nation.name}: surplus_paydown=${paydown.paid.toFixed(2)} (abstract)` +
-                    ` newDebtRaw=${Math.round(paydown.newDebtRaw)}` +
-                    ` newBudget=${paydown.newBudget.toFixed(2)}`
+                    `[Debt] ${nation.name}: mode=${result.mode}` +
+                    ` perTick=${result.perTickBalance.toFixed(2)}` +
+                    ` newDebtRaw=${Math.round(result.newDebtRaw)}`
                 );
             }
         } catch (debtErr) {
@@ -2828,6 +2786,18 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] History snapshot FAILED for ${nation.id} (${nation.name}):`, snapErr);
         }
       }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4a-bis. VWC RANKINGS — global pass after all nations processed.
+    // Sorts every nation by (national_vola_culture + random ±5 delta);
+    // top 12 get vwc_ranking 1..12, others 0. Skipped silently on
+    // fetch error.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        await recomputeVwcRankings(supabase);
+    } catch (vwcErr) {
+        console.error('[advanceTick] VWC ranking recompute failed (non-fatal):', vwcErr);
     }
 
     // ══════════════════════════════════════════════════════════════════

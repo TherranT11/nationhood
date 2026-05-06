@@ -72,36 +72,20 @@ export function calculateNationalBudget(nation, opts = {}) {
 }
 
 // ════════════════════════════════════════════════════════════════
-// Budget surplus → debt paydown (per-tick).
+// Per-tick national debt math (v3 — bonds retired).
 //
-// Mirrors the Government Budget panel's monthly-balance math exactly
-// so what the player sees on the cards is what gets applied each
-// tick: revenue (treasury cash, treated as annual) minus
-// expenditures (Interest on Debt + monarchy-only Royal Holdings,
-// other rows still $0 placeholders) → annual balance → /12 →
-// per-tick paydown applied to principal.
+// Single rule: balance = revenue − expenditures.
+//   surplus → debt shrinks by per-tick balance, treasury drains
+//   deficit → debt grows by per-tick balance, treasury unchanged
+//             (implicit borrow — no bond offers, no printing)
 //
-// Unit handling: this is the load-bearing piece. The panel mixes
-// scales — nation.budget is "abstract" (small number, displayed
-// directly), debtService comes back from calculateNationalBudget in
-// raw dollars and is divided by 1e9 to render, and nation.debt is
-// raw dollars (also /1e9 to display). The legacy processDebtTick
-// silently ate this mismatch by subtracting an abstract surplus
-// from a raw debt value, which is why a $17 abstract balance never
-// dented a $1.2e12 raw debt. Here we convert abstract → raw with
-// _RAW_PER_ABSTRACT before touching nation.debt.
+// Mirrors the Government Budget panel's monthly-balance math so
+// what the player sees on the cards is what gets applied each tick.
 //
-// Treasury bookkeeping: the abstract amount is also deducted from
-// nation.budget (the treasury cash balance) so the player's reserve
-// drops by the same amount the debt does — money paid out, not
-// magicked from thin air.
-//
-// Order of operations: caller wires this AFTER processDebtTick so
-// bond maturities, coupon charges, and offer expiry have already
-// hit. The interest payment side ("goes toward Interest on Debt")
-// is handled by processBondCouponsTick / the panel's debt-service
-// expenditure line; this helper is the "and then paying toward
-// the Debt" half of the user's spec.
+// Unit handling: nation.budget is "abstract" (small number,
+// displayed directly), nation.debt is raw dollars (1 abstract =
+// 1e9 raw, divided by 1e9 to display). _RAW_PER_ABSTRACT bridges
+// the two when applying the abstract delta to the raw debt column.
 // ════════════════════════════════════════════════════════════════
 const _RAW_PER_ABSTRACT = 1e9;
 
@@ -115,9 +99,10 @@ const _RAW_PER_ABSTRACT = 1e9;
  *   - Royal Holdings     = $36/yr if monarchy, else 0
  *   - Active-law ongoing = sum(active_laws.selected_option.ongoing_base_cost) × 12
  *
- * Shared by processBudgetSurplusPaydown AND the handler-template
- * deficit gate so processDebtTick stops firing phantom deficits when
- * the panel says surplus.
+ * Single source of truth: processNationDebtTick in this file +
+ * _gbBuildCostRows in government.html both depend on this returning
+ * the same number, so the panel's monthly balance and the per-tick
+ * debt change always agree.
  */
 export async function computePanelAnnualExpenditures(supabase, nation) {
     const budget = calculateNationalBudget(nation);
@@ -147,43 +132,53 @@ export async function computePanelAnnualExpenditures(supabase, nation) {
     return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual;
 }
 
-export async function processBudgetSurplusPaydown(supabase, nation) {
-    const debtRaw = Number(nation?.debt) || 0;
-    if (debtRaw <= 0) return null; // No debt — nothing to pay down.
-
+export async function processNationDebtTick(supabase, nation) {
     const budget = calculateNationalBudget(nation);
     const annualRevenue = Number(budget.grossRevenue || 0);
     const annualExpenditures = await computePanelAnnualExpenditures(supabase, nation);
-    const annualBalance = annualRevenue - annualExpenditures;
-    if (annualBalance <= 0) return null;
+    const perTickBalance = (annualRevenue - annualExpenditures) / 12;
 
-    // Per-tick deduction = monthly balance (12 ticks / year).
-    let tickPaydown = annualBalance / 12;
-    if (tickPaydown <= 0) return null;
+    if (perTickBalance === 0) return null;
 
-    // Cap at the actual treasury so we never pay more than we have.
-    // Without this, a tick where revenue < expenditures but
-    // grossRevenue is still positive (treasury accumulated from
-    // earlier ticks) could send debt negative on the abstract side
-    // while taking treasury below zero. Math.max(0, ...) on the
-    // updates is a belt; this is the suspenders.
-    const treasury = Number(nation.budget) || 0;
-    if (treasury < tickPaydown) tickPaydown = treasury;
-    if (tickPaydown <= 0) return null;
+    const debtRaw = Number(nation?.debt) || 0;
+    const treasury = Number(nation?.budget) || 0;
 
-    const newBudget = Math.max(0, treasury - tickPaydown);
-    const newDebtRaw = Math.max(0, debtRaw - tickPaydown * _RAW_PER_ABSTRACT);
+    if (perTickBalance > 0) {
+        // Surplus → pay down debt, drain treasury by the same amount.
+        // Skip when there's no debt: surplus just sits in treasury.
+        if (debtRaw <= 0) return null;
+        // Cap paydown at available treasury so we never pay more than
+        // we actually have on hand.
+        const tickPaydown = Math.min(perTickBalance, treasury);
+        if (tickPaydown <= 0) return null;
 
+        const newBudget = treasury - tickPaydown;
+        const newDebtRaw = Math.max(0, debtRaw - tickPaydown * _RAW_PER_ABSTRACT);
+        const { error } = await supabase.from('nations')
+            .update({ budget: newBudget, debt: newDebtRaw })
+            .eq('id', nation.id);
+        if (error) {
+            console.warn(`[Debt] surplus update failed for ${nation.name}:`, error.message);
+            return null;
+        }
+        nation.budget = newBudget;
+        nation.debt = newDebtRaw;
+        return { mode: 'surplus', perTickBalance: tickPaydown, newBudget, newDebtRaw };
+    }
+
+    // perTickBalance < 0 → deficit. Debt grows by the deficit;
+    // treasury is left alone (no implicit cash drain — the spending
+    // happened, the shortfall is now on the books as more debt).
+    const deficit = -perTickBalance;
+    const newDebtRaw = debtRaw + deficit * _RAW_PER_ABSTRACT;
     const { error } = await supabase.from('nations')
-        .update({ budget: newBudget, debt: newDebtRaw })
-        .eq('id', nation.id);
+        .update({ debt: newDebtRaw }).eq('id', nation.id);
     if (error) {
-        console.warn(`[BudgetSurplusPaydown] update failed for ${nation.name}:`, error.message);
+        console.warn(`[Debt] deficit update failed for ${nation.name}:`, error.message);
         return null;
     }
-    nation.budget = newBudget;
     nation.debt = newDebtRaw;
-    return { paid: tickPaydown, newBudget, newDebtRaw };
+    return { mode: 'deficit', perTickBalance: -deficit, newDebtRaw };
 }
 
 /**
