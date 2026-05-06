@@ -5609,6 +5609,119 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   color: var(--green);
 }
 
+/* ── VWC Ranking card: clickable, with rotating chevron ── */
+.sports-stat-card--clickable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.sports-stat-card--clickable:hover {
+  border-color: var(--amber);
+  background: rgba(200, 168, 50, 0.04);
+}
+.sports-stat-card--clickable:focus-visible {
+  outline: 1px solid var(--amber);
+  outline-offset: -1px;
+}
+.sports-stat-card-chevron {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 12px;
+  transition: transform 0.18s ease, color 0.18s ease;
+}
+.sports-stat-card--open .sports-stat-card-chevron {
+  transform: rotate(180deg);
+  color: var(--amber);
+}
+.sports-stat-card--open {
+  border-color: var(--amber);
+}
+
+/* ── VWC Ranking expandable panel (all-nations list) ── */
+.vwc-ranking-panel {
+  margin-top: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-main);
+  border-left: 3px solid var(--amber);
+  padding: 16px 20px 18px;
+}
+.vwc-ranking-panel[hidden] { display: none; }
+.vwc-ranking-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(200, 168, 50, 0.18);
+}
+.vwc-ranking-panel-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: var(--text-bright);
+  text-transform: uppercase;
+}
+.vwc-ranking-panel-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+}
+.vwc-ranking-panel-tag {
+  color: var(--amber);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+.vwc-ranking-panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.vwc-ranking-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--border-main);
+}
+.vwc-ranking-row--me {
+  border-color: var(--amber);
+  background: rgba(200, 168, 50, 0.06);
+}
+.vwc-ranking-rank {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text-bright);
+  width: 48px;
+  flex-shrink: 0;
+}
+.vwc-ranking-flag {
+  width: 28px;
+  height: 18px;
+  object-fit: cover;
+  border: 1px solid var(--border-main);
+  flex-shrink: 0;
+}
+.vwc-ranking-name {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text-bright);
+  flex: 1 1 auto;
+}
+.vwc-ranking-tag {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--amber);
+  text-shadow: 0 0 8px rgba(200, 168, 50, 0.35);
+  white-space: nowrap;
+}
+
 /* ─────────────────────────────────────────────────────────────
    VOLA WORLD CUP container (full second row)
    Header (title + LIVE pill + host / status + schedule)
@@ -6227,6 +6340,12 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   .sports-stat-card-value       { font-size: 28px; }
   .sports-stat-card-label       { font-size: 9px; letter-spacing: 0.08em; }
   .sports-stat-card-sub         { font-size: 9px; }
+  .vwc-ranking-panel            { padding: 12px 14px 14px; }
+  .vwc-ranking-row              { gap: 10px; padding: 7px 10px; }
+  .vwc-ranking-rank             { font-size: 16px; width: 38px; }
+  .vwc-ranking-flag             { width: 24px; height: 16px; }
+  .vwc-ranking-name             { font-size: 13px; }
+  .vwc-ranking-tag              { font-size: 8px; }
 
   .vola-cup                     { padding: 16px 14px 18px; margin-top: 18px; }
   .vola-cup-header              { flex-direction: column; align-items: stretch; gap: 10px; }

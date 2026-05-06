@@ -414,10 +414,11 @@ function renderSportsTab() {
             </div>
         </div>
         <div class="sports-stat-grid">
-            <div class="sports-stat-card">
+            <div class="sports-stat-card sports-stat-card--clickable" id="vwc-ranking-card" role="button" tabindex="0" aria-expanded="false" aria-controls="vwc-ranking-panel">
                 <div class="sports-stat-card-header">
                     <span class="sports-stat-card-icon">&#x1F3C6;</span>
                     <span class="sports-stat-card-label">VWC RANKING</span>
+                    <span class="sports-stat-card-chevron" aria-hidden="true">&#x25BE;</span>
                 </div>
                 <div class="sports-stat-card-value">${vwcRank > 0 ? ordinalSuffix(vwcRank) : '—'}</div>
                 <div class="sports-stat-card-sub">${vwcRank > 0 ? 'of 12 qualified' : 'unranked'}</div>
@@ -455,7 +456,18 @@ function renderSportsTab() {
                 <div class="sports-stat-card-sub">${nextCupSub}</div>
             </div>
         </div>
+        <div class="vwc-ranking-panel" id="vwc-ranking-panel" hidden>
+            <div class="vwc-ranking-panel-header">
+                <span class="vwc-ranking-panel-title">VWC RANKING &mdash; ALL NATIONS</span>
+                <span class="vwc-ranking-panel-meta">Top 3 are <span class="vwc-ranking-panel-tag">[WORLD CLASS]</span></span>
+            </div>
+            <div class="vwc-ranking-panel-list" id="vwc-ranking-panel-list"></div>
+        </div>
     `;
+
+    // Build the all-nations ranking list (uses _worldAllNations populated
+    // by initNationHighlight). Top 3 by vwc_ranking get the WORLD CLASS tag.
+    renderVwcRankingPanel();
 
     if (cupEl) {
         cupEl.innerHTML = renderVolaCup(tick);
@@ -486,6 +498,84 @@ function renderSportsTab() {
     }
 
 }
+
+// Render the all-nations VWC ranking list inside the collapsible
+// panel triggered by the VWC RANKING stat card. Sorted by ranking
+// (lowest = best, 0 = unranked → bottom). Top 3 carry [WORLD CLASS].
+async function renderVwcRankingPanel() {
+    const list = document.getElementById('vwc-ranking-panel-list');
+    if (!list) return;
+    let all = Array.isArray(_worldAllNations) ? _worldAllNations : [];
+    if (all.length === 0) {
+        // Lazy fetch — covers the case where the World tab hasn't been
+        // visited yet so initNationHighlight never populated the cache.
+        list.innerHTML = '<div class="sports-empty">Loading rankings&hellip;</div>';
+        try {
+            const { data } = await _supabase.from('nations')
+                .select('id, name, flag_url, vwc_ranking')
+                .order('name');
+            all = data || [];
+            _worldAllNations = all;
+        } catch (err) {
+            list.innerHTML = `<div class="sports-empty">Failed to load: ${escapeHtml(err?.message || '')}</div>`;
+            return;
+        }
+    }
+    if (all.length === 0) {
+        list.innerHTML = '<div class="sports-empty">No nation data available.</div>';
+        return;
+    }
+    const ranked = all.slice().sort((a, b) => {
+        const ra = Number(a?.vwc_ranking) || 0;
+        const rb = Number(b?.vwc_ranking) || 0;
+        // Unranked (0) sorts to the bottom; otherwise ascending rank.
+        if (ra === 0 && rb === 0) return (a.name || '').localeCompare(b.name || '');
+        if (ra === 0) return 1;
+        if (rb === 0) return -1;
+        return ra - rb;
+    });
+    const myId = _worldState?.nation?.id;
+    list.innerHTML = ranked.map((n, idx) => {
+        const rank = Number(n.vwc_ranking) || 0;
+        const flagUrl = n.flag_url || FLAG_URLS[n.name] || (n.name ? `assets/flags/${n.name}.png` : '');
+        const flagImg = flagUrl
+            ? `<img class="vwc-ranking-flag" src="${escapeHtml(flagUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">`
+            : '';
+        const rankLabel = rank > 0 ? ordinalSuffix(rank) : '—';
+        const tier = (rank > 0 && rank <= 3) ? '<span class="vwc-ranking-tag">[WORLD CLASS]</span>' : '';
+        const isMe = n.id && myId && n.id === myId ? ' vwc-ranking-row--me' : '';
+        return `
+            <div class="vwc-ranking-row${isMe}">
+                <span class="vwc-ranking-rank">${rankLabel}</span>
+                ${flagImg}
+                <span class="vwc-ranking-name">${escapeHtml(n.name || 'Unknown')}</span>
+                ${tier}
+            </div>
+        `;
+    }).join('');
+}
+
+// Wire the VWC Ranking card click → toggle panel + chevron rotation.
+// Single delegated handler; idempotent on re-render because we always
+// query fresh elements on click.
+document.addEventListener('click', (ev) => {
+    const card = ev.target.closest && ev.target.closest('#vwc-ranking-card');
+    if (!card) return;
+    const panel = document.getElementById('vwc-ranking-panel');
+    if (!panel) return;
+    const isOpen = !panel.hidden;
+    panel.hidden = isOpen;
+    card.setAttribute('aria-expanded', String(!isOpen));
+    card.classList.toggle('sports-stat-card--open', !isOpen);
+});
+// Keyboard parity: Enter / Space on the focused card toggles too.
+document.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    const card = ev.target && ev.target.id === 'vwc-ranking-card' ? ev.target : null;
+    if (!card) return;
+    ev.preventDefault();
+    card.click();
+});
 
 // Renders the Vola World Cup container — title/host/schedule header,
 // stage-tab strip, 3 group standings, 4-2-1 knockout bracket, champion
