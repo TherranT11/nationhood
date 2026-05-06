@@ -3319,23 +3319,22 @@ function calculateNationalBudget(nation, opts = {}) {
 // ════════════════════════════════════════════════════════════════
 const _RAW_PER_ABSTRACT = 1e9;
 
-async function processBudgetSurplusPaydown(supabase, nation) {
-    const debtRaw = Number(nation?.debt) || 0;
-    if (debtRaw <= 0) return null; // No debt — nothing to pay down.
-
-    // Compute the same monthly balance the budget panel renders.
+/**
+ * Panel-accurate annual expenditures. Mirrors _gbBuildCostRows in
+ * government.html so the tick processor's debt math agrees with what
+ * the Government Budget panel shows the player.
+ *
+ * Three line items, all in abstract units:
+ *   - Interest on Debt   = debtService (raw $) / 1e9
+ *   - Royal Holdings     = $36/yr if monarchy, else 0
+ *   - Active-law ongoing = sum(active_laws.selected_option.ongoing_base_cost) × 12
+ *
+ * Shared by processBudgetSurplusPaydown AND the handler-template
+ * deficit gate so processDebtTick stops firing phantom deficits when
+ * the panel says surplus.
+ */
+async function computePanelAnnualExpenditures(supabase, nation) {
     const budget = calculateNationalBudget(nation);
-    const annualRevenue = Number(budget.grossRevenue || 0);
-
-    // Annual expenditures, in abstract units, mirroring
-    // _gbBuildCostRows in government.html. Three line items:
-    //   - Interest on Debt   = debtService (raw $) / 1e9
-    //   - Royal Holdings     = $36/yr if monarchy, else 0
-    //   - Active-law ongoing = sum(every active_laws.selected_option.ongoing_base_cost) × 12
-    // The third line bills the player for whatever law-driven spending
-    // appears in the panel (Pension, Industrial Policy, etc.) so the
-    // treasury balance and the debt-paydown math stay consistent with
-    // what the player sees on the Costs panel.
     const debtServiceAbstract = (Number(budget.debtService || 0)) / _RAW_PER_ABSTRACT;
     const royalHoldingsAnnual = isAbsoluteMonarchy(nation) ? 36 : 0;
     let activeLawAnnual = 0;
@@ -3343,16 +3342,13 @@ async function processBudgetSurplusPaydown(supabase, nation) {
         // Canonical cost column: policy_options.ongoing_base_cost.
         // Both policies.ongoing_base_cost and
         // policies.ongoing_cost_per_tick that older code referenced
-        // were dropped from the schema; PostgREST silently
-        // null-coalesced those reads which is why the previous
-        // multi-leg fallback "worked" without erroring but always
-        // returned 0. Mirrors government.html _gbAnnualLawCost.
+        // were dropped from the schema.
         const { data: laws, error: lawsErr } = await supabase
             .from('active_laws')
             .select('selected_option:policy_options!selected_option_id(ongoing_base_cost)')
             .eq('nation_id', nation.id);
         if (lawsErr) {
-            console.warn(`[BudgetSurplusPaydown] active_laws fetch failed for ${nation.name}:`, lawsErr.message);
+            console.warn(`[Budget] active_laws fetch failed for ${nation.name}:`, lawsErr.message);
         } else {
             for (const law of (laws || [])) {
                 const perTick = Number(law?.selected_option?.ongoing_base_cost) || 0;
@@ -3360,10 +3356,18 @@ async function processBudgetSurplusPaydown(supabase, nation) {
             }
         }
     } catch (err) {
-        console.warn(`[BudgetSurplusPaydown] active_laws threw for ${nation.name}:`, err?.message || err);
+        console.warn(`[Budget] active_laws threw for ${nation.name}:`, err?.message || err);
     }
-    const annualExpenditures = debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual;
+    return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual;
+}
 
+async function processBudgetSurplusPaydown(supabase, nation) {
+    const debtRaw = Number(nation?.debt) || 0;
+    if (debtRaw <= 0) return null; // No debt — nothing to pay down.
+
+    const budget = calculateNationalBudget(nation);
+    const annualRevenue = Number(budget.grossRevenue || 0);
+    const annualExpenditures = await computePanelAnnualExpenditures(supabase, nation);
     const annualBalance = annualRevenue - annualExpenditures;
     if (annualBalance <= 0) return null;
 
@@ -33320,50 +33324,54 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Tariff relations penalty failed for ${nation.name} (non-fatal):`, tariffErr);
         }
 
-        // Debt & Deficit System (v1-MANUAL).
-        // Order is exact: maturities → coupons → expiries → new deficit.
-        // Maturities recycle cash before coupons commit it; expiries
-        // resolve yesterday's unfilled bonds before today's deficit posts
-        // a new offer.
+        // Debt & Deficit System (v2 — panel-accurate).
+        // Order is exact: maturities → coupons → expiries → deficit gate
+        // → surplus paydown. Maturities recycle cash before coupons commit
+        // it; expiries resolve yesterday's unfilled bonds before today's
+        // deficit posts a new offer.
         //
-        // Expenditures here mirror processSurplusConnectors's heuristic
-        // (gdp × 0.12 × efficiency factor) so both systems agree on what
-        // a deficit looks like. Real ministry-budget expenditures will
-        // replace this when wired in v2 — at that point pass the actual
-        // sum here AND set opts.actualDebtService on calculateNationalBudget
-        // for the SUM(holdings × coupon_rate) figure.
+        // v2 fix (2026-05): the v1 path passed gdp × 0.12 × efficiency as
+        // the expenditures input to processDebtTick, while the surplus
+        // paydown used the panel's actual annual cost rollup. The two
+        // disagreed on what a deficit looked like, so a nation with
+        // real surplus per the panel ($28 rev / $21 exp / +$7 bal) was
+        // also being charged a synthetic deficit each tick — bond
+        // creation outpaced surplus paydown, so debt climbed.
+        //
+        // v2 computes one annual expenditures figure (panel-accurate via
+        // computePanelAnnualExpenditures) and gates processDebtTick on
+        // an actual deficit. Surplus path now lives entirely in
+        // processBudgetSurplusPaydown.
         try {
-            const debtGdp = Number(nation.gdp ?? nation.GDP ?? 0);
-            const debtEff = Number(nation.efficiency ?? 50);
-            const debtExp = debtGdp * 0.12 * (1 + (100 - debtEff) / 200);
-            const debtBudget = calculateNationalBudget(nation);
-
             await processBondMaturitiesTick(supabase, nation, currentTick);
             await processBondCouponsTick(supabase, nation, currentTick);
             await processBondOfferExpiryTick(supabase, nation, currentTick);
-            const debtResult = await processDebtTick(
-                supabase, nation, debtExp, debtBudget.grossRevenue, currentTick
-            );
-            console.log(
-                `[Debt] ${nation.name}: mode=${debtResult?.mode || 'n/a'}` +
-                (debtResult?.mode === 'deficit'
-                    ? ` deficit=${Math.round(debtResult.deficit)}` +
-                      ` bond=${Math.round(debtResult.bondPortion)}` +
-                      ` print=${Math.round(debtResult.printPortion)}` +
-                      ` credit_drop=${debtResult.creditDeterioration?.toFixed(2)}`
-                    : debtResult?.mode === 'surplus'
-                        ? ` surplus=${Math.round(debtResult.surplus)}`
-                        : '')
-            );
 
-            // Apply panel-accurate per-tick budget surplus to debt
-            // principal. processDebtTick's surplus path uses a
-            // placeholder gdp×0.12 expenditures heuristic and mixes
-            // abstract/raw scales, so its paydown is microscopic on
-            // realistic debt loads. This step mirrors the Government
-            // Budget panel's monthly-balance math (with correct
-            // abstract→raw conversion on debt) so what the player
-            // sees on the cards is what actually gets applied.
+            const annualExp = await computePanelAnnualExpenditures(supabase, nation);
+            const annualRev = Number(calculateNationalBudget(nation).grossRevenue || 0);
+            const annualBal = annualRev - annualExp;
+
+            if (annualBal < 0) {
+                const deficitAbstract = -annualBal;
+                const debtResult = await processDebtTick(
+                    supabase, nation, annualExp, annualRev, currentTick
+                );
+                console.log(
+                    `[Debt] ${nation.name}: mode=${debtResult?.mode || 'n/a'}` +
+                    ` deficit=${Math.round(deficitAbstract)}` +
+                    (debtResult?.mode === 'deficit'
+                        ? ` bond=${Math.round(debtResult.bondPortion)}` +
+                          ` print=${Math.round(debtResult.printPortion)}`
+                        : '')
+                );
+            } else {
+                console.log(
+                    `[Debt] ${nation.name}: surplus=${Math.round(annualBal)} (no bond posted)`
+                );
+            }
+
+            // Surplus paydown — also panel-accurate. No-ops when there's
+            // no debt or no surplus.
             const paydown = await processBudgetSurplusPaydown(supabase, nation);
             if (paydown) {
                 console.log(
