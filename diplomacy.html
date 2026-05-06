@@ -444,7 +444,17 @@ function renderSportsTab() {
         </div>
     `;
 
-    if (cupEl) cupEl.innerHTML = renderVolaCup(tick);
+    if (cupEl) {
+        cupEl.innerHTML = renderVolaCup(tick);
+        // Kick off the async placement fetch that fills the
+        // SCHEDULED QUALIFIERS box renderVolaCup leaves as a stub.
+        const cupForPlacement = computeActiveOrNextCup(tick);
+        if (cupForPlacement?.cupNum) {
+            loadAndRenderVolaPlacement(cupForPlacement.cupNum).catch(err =>
+                console.warn('[Sports] placement render failed:', err?.message || err)
+            );
+        }
+    }
 
     if (activityEl) {
         const events = computeUpcomingVolaEvents(tick);
@@ -634,7 +644,66 @@ function renderVolaCup(currentTick) {
                 </div>
             </div>
         </div>
+
+        <!-- Scheduled Qualifiers box: bottom-3 round-robin lined up at
+             the qualifier tick. Populated async by loadVolaPlacement
+             so the synchronous render stays cheap. -->
+        <div class="vola-cup-placement" id="vola-cup-placement-${cup.cupNum}">
+            <div class="vola-cup-section-label">
+                <span class="vola-cup-section-icon">&times;</span> SCHEDULED QUALIFIERS
+            </div>
+            <div class="vola-cup-placement-body" data-cup-num="${cup.cupNum}">
+                <div class="sports-empty">Loading placement matches&hellip;</div>
+            </div>
+        </div>
     `;
+}
+
+// Fetch placement matches for the active/next cup and render them into
+// the .vola-cup-placement-body slot that renderVolaCup left in the DOM.
+// Called from renderSportsTab right after the cup HTML is written.
+async function loadAndRenderVolaPlacement(cupNum) {
+    const body = document.querySelector(`.vola-cup-placement-body[data-cup-num="${cupNum}"]`);
+    if (!body) return;
+
+    const { data: matches, error } = await _supabase
+        .from('vola_placement_matches')
+        .select('match_number, scheduled_tick, team_a_score, team_b_score, winner_nation_id, team_a:team_a_nation_id(id, name), team_b:team_b_nation_id(id, name)')
+        .eq('cup_number', cupNum)
+        .order('match_number', { ascending: true });
+
+    if (error) {
+        body.innerHTML = `<div class="sports-empty">Failed to load placement matches: ${escapeHtml(error.message || '')}</div>`;
+        return;
+    }
+
+    if (!matches || matches.length === 0) {
+        body.innerHTML = `<div class="sports-empty">Placement schedule not yet generated. The bottom 3 nations face a 3-tick round-robin starting at the qualifier tick.</div>`;
+        return;
+    }
+
+    body.innerHTML = matches.map(m => {
+        const teamA = m.team_a?.name || 'TBD';
+        const teamB = m.team_b?.name || 'TBD';
+        const sa = m.team_a_score, sb = m.team_b_score;
+        const played = sa != null && sb != null;
+        const winnerId = m.winner_nation_id;
+        const aWon = played && winnerId === m.team_a?.id;
+        const bWon = played && winnerId === m.team_b?.id;
+        return `
+            <div class="vola-placement-row ${played ? 'played' : 'pending'}">
+                <div class="vola-placement-meta">
+                    <span class="vola-placement-num">MATCH ${m.match_number}</span>
+                    <span class="vola-placement-tick">${tickToDate(m.scheduled_tick)} &middot; tick ${m.scheduled_tick}</span>
+                </div>
+                <div class="vola-placement-teams">
+                    <span class="vola-placement-team ${aWon ? 'won' : ''}">${escapeHtml(teamA)}</span>
+                    <span class="vola-placement-score">${played ? `${sa} &mdash; ${sb}` : 'vs'}</span>
+                    <span class="vola-placement-team ${bWon ? 'won' : ''}">${escapeHtml(teamB)}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
 // ═══════════════════════════════════════════════════

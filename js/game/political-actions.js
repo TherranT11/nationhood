@@ -4966,6 +4966,236 @@ async function _resolveOneCup(supabase, cupNumber, bids, cupStartTick, currentTi
     return true;
 }
 
+// ==================== VWC PLACEMENT MATCHES (bottom-3 round-robin) ====================
+
+// 13 nations world: top 10 auto-qualify, bottom 3 play 3 round-robin
+// matches over 3 ticks starting at qualifier_tick (cup_start - 12).
+// Top 2 of the round-robin take spots 11 + 12; bottom 1 is eliminated
+// (label = Aspirant) and takes a -1 global_image penalty.
+//
+// All three pieces — schedule generation, per-tick match resolution,
+// and final standings + penalties — live here. Wired from
+// handler-template's post-loop block.
+
+const _PLACEMENT_PENALTY_GLOBAL_IMAGE = 1;
+
+// Score: (national_team_prowess + 1d20), clamped 1..24. Re-roll if both
+// sides tie so wins are always decisive.
+function _placementRollScore(prowess) {
+    const base = (Number(prowess) || 0) + Math.floor(Math.random() * 20) + 1;
+    return Math.max(1, Math.min(24, base));
+}
+
+// Pick bottom 3 nations for the cup. Cycle 1: prowess → culture → name.
+// Cycle 2+: vwc_ranking (1=best, 0=unranked = treated as worst).
+function _pickBottomThree(nations, cupNumber) {
+    const list = nations.slice();
+    if (cupNumber <= 1) {
+        // Cycle 1 fallback ordering.
+        list.sort((a, b) => {
+            const pa = Number(a.national_team_prowess) || 0;
+            const pb = Number(b.national_team_prowess) || 0;
+            if (pb !== pa) return pb - pa;
+            const ca = Number(a.national_vola_culture) || 0;
+            const cb = Number(b.national_vola_culture) || 0;
+            if (cb !== ca) return cb - ca;
+            return String(a.name || '').localeCompare(String(b.name || ''));
+        });
+    } else {
+        // Cycle 2+: vwc_ranking ascending, but unranked (0) goes last.
+        list.sort((a, b) => {
+            const ra = Number(a.vwc_ranking) || 0;
+            const rb = Number(b.vwc_ranking) || 0;
+            const aRanked = ra > 0 ? ra : 9999;
+            const bRanked = rb > 0 ? rb : 9999;
+            if (aRanked !== bRanked) return aRanked - bRanked;
+            // Same rank tier — break by prowess then culture then name.
+            const pa = Number(a.national_team_prowess) || 0;
+            const pb = Number(b.national_team_prowess) || 0;
+            if (pb !== pa) return pb - pa;
+            return String(a.name || '').localeCompare(String(b.name || ''));
+        });
+    }
+    // Bottom 3 = ranks 11, 12, 13 in this ordering.
+    return list.slice(10, 13);
+}
+
+/**
+ * Generate the 3 round-robin match rows for the bottom 3 of a cup,
+ * scheduled at qualifierTick, qualifierTick+1, qualifierTick+2.
+ * Idempotent — re-runs no-op if any matches already exist for the cup.
+ */
+export async function generateVolaPlacementSchedule(supabase, cupNumber, qualifierTick) {
+    const { data: existing } = await supabase.from('vola_placement_matches')
+        .select('id').eq('cup_number', cupNumber).limit(1).maybeSingle();
+    if (existing) return null;
+
+    const { data: nations, error } = await supabase.from('nations')
+        .select('id, name, national_team_prowess, national_vola_culture, vwc_ranking');
+    if (error) {
+        console.warn('[VolaPlacement] nation fetch failed:', error.message);
+        return null;
+    }
+    if (!nations || nations.length < 13) return null;
+
+    const bottom3 = _pickBottomThree(nations, cupNumber);
+    if (bottom3.length !== 3) return null;
+    const [A, B, C] = bottom3;
+
+    // Round-robin: A-B, A-C, B-C.
+    const matches = [
+        { match_number: 1, scheduled_tick: qualifierTick + 0, a: A.id, b: B.id },
+        { match_number: 2, scheduled_tick: qualifierTick + 1, a: A.id, b: C.id },
+        { match_number: 3, scheduled_tick: qualifierTick + 2, a: B.id, b: C.id },
+    ];
+
+    const rows = matches.map(m => ({
+        cup_number:       cupNumber,
+        match_number:     m.match_number,
+        scheduled_tick:   m.scheduled_tick,
+        team_a_nation_id: m.a,
+        team_b_nation_id: m.b,
+    }));
+
+    const { error: insErr } = await supabase.from('vola_placement_matches').insert(rows);
+    if (insErr) {
+        console.warn('[VolaPlacement] schedule insert failed:', insErr.message);
+        return null;
+    }
+
+    // Reset is_vola_aspirant for the new cycle's bottom 3 — old aspirant
+    // flag is stale once a new round starts.
+    await supabase.from('nations').update({ is_vola_aspirant: false })
+        .eq('is_vola_aspirant', true);
+
+    return { cupNumber, matches: rows.length };
+}
+
+/**
+ * Per-tick: resolve every placement match scheduled for currentTick.
+ * Rolls prowess+1d20 for each side, picks the winner (re-rolls on tie),
+ * updates the row. After Match 3 of any cup resolves, computes
+ * standings and applies the -1 global_image penalty + aspirant flag
+ * to the bottom 1.
+ */
+export async function processVolaPlacementMatches(supabase, currentTick) {
+    const { data: due, error } = await supabase.from('vola_placement_matches')
+        .select('id, cup_number, match_number, team_a_nation_id, team_b_nation_id')
+        .eq('scheduled_tick', currentTick)
+        .is('resolved_at_tick', null);
+    if (error) {
+        console.warn('[VolaPlacement] due fetch failed:', error.message);
+        return null;
+    }
+    if (!due || due.length === 0) return null;
+
+    // Pull prowess for every team in this batch in one query.
+    const teamIds = Array.from(new Set(due.flatMap(m => [m.team_a_nation_id, m.team_b_nation_id])));
+    const { data: nations } = await supabase.from('nations')
+        .select('id, name, national_team_prowess, global_image')
+        .in('id', teamIds);
+    const teamMap = new Map((nations || []).map(n => [n.id, n]));
+
+    const cupsThatJustFinished = new Set();
+    let resolved = 0;
+    for (const m of due) {
+        const A = teamMap.get(m.team_a_nation_id);
+        const B = teamMap.get(m.team_b_nation_id);
+        if (!A || !B) {
+            await supabase.from('vola_placement_matches').update({
+                resolved_at_tick: currentTick,
+            }).eq('id', m.id);
+            continue;
+        }
+
+        let scoreA = _placementRollScore(A.national_team_prowess);
+        let scoreB = _placementRollScore(B.national_team_prowess);
+        // Tie-break by re-roll so wins are decisive.
+        let safety = 5;
+        while (scoreA === scoreB && safety-- > 0) {
+            scoreA = _placementRollScore(A.national_team_prowess);
+            scoreB = _placementRollScore(B.national_team_prowess);
+        }
+        const winnerId = scoreA > scoreB ? A.id : (scoreB > scoreA ? B.id : null);
+
+        const { error: updErr } = await supabase.from('vola_placement_matches').update({
+            team_a_score:     scoreA,
+            team_b_score:     scoreB,
+            winner_nation_id: winnerId,
+            resolved_at_tick: currentTick,
+        }).eq('id', m.id);
+        if (updErr) {
+            console.warn('[VolaPlacement] match update failed:', updErr.message);
+            continue;
+        }
+        resolved++;
+        if (m.match_number === 3) cupsThatJustFinished.add(m.cup_number);
+    }
+
+    // Final standings — runs once per cup whose Match 3 just resolved.
+    for (const cupNumber of cupsThatJustFinished) {
+        try {
+            await _settleVolaPlacement(supabase, cupNumber, currentTick);
+        } catch (err) {
+            console.error('[VolaPlacement] settle failed for cup', cupNumber, err);
+        }
+    }
+
+    return { resolved, cupsSettled: cupsThatJustFinished.size };
+}
+
+async function _settleVolaPlacement(supabase, cupNumber, currentTick) {
+    // Pull all 3 matches for this cup.
+    const { data: matches } = await supabase.from('vola_placement_matches')
+        .select('team_a_nation_id, team_b_nation_id, team_a_score, team_b_score, winner_nation_id')
+        .eq('cup_number', cupNumber);
+    if (!matches || matches.length < 3) return;
+
+    // Tally per-team wins + total points.
+    const stats = new Map(); // nation_id → { wins, points }
+    const bump = (id, isWin, points) => {
+        if (!stats.has(id)) stats.set(id, { wins: 0, points: 0 });
+        const s = stats.get(id);
+        if (isWin) s.wins++;
+        s.points += points;
+    };
+    for (const m of matches) {
+        const a = m.team_a_nation_id, b = m.team_b_nation_id;
+        const sa = Number(m.team_a_score) || 0, sb = Number(m.team_b_score) || 0;
+        bump(a, m.winner_nation_id === a, sa);
+        bump(b, m.winner_nation_id === b, sb);
+    }
+
+    // Sort: wins DESC, points DESC, random tiebreak.
+    const standings = Array.from(stats.entries())
+        .map(([id, s]) => ({ id, wins: s.wins, points: s.points, jitter: Math.random() }));
+    standings.sort((a, b) => (b.wins - a.wins) || (b.points - a.points) || (b.jitter - a.jitter));
+
+    if (standings.length < 3) return;
+    const bottom = standings[2]; // last in the sorted standings = aspirant
+
+    // -1 global_image penalty + aspirant flag.
+    const { data: bottomN } = await supabase.from('nations')
+        .select('id, global_image').eq('id', bottom.id).single();
+    if (bottomN) {
+        const newGI = Math.max(0, (Number(bottomN.global_image) || 0) - _PLACEMENT_PENALTY_GLOBAL_IMAGE);
+        await supabase.from('nations').update({
+            global_image:     newGI,
+            is_vola_aspirant: true,
+        }).eq('id', bottom.id);
+
+        // Event log on the eliminated nation.
+        await supabase.from('event_log').insert({
+            nation_id:          bottom.id,
+            event_name:         'VWC Placement Eliminated',
+            category:           'political',
+            trigger_key:        'vwc_placement_eliminated',
+            description_chosen: `Placement defeat — ${bottomN ? '' : ''}their nation drops out of the ${_cupOrdinal(cupNumber)} World Vola Cup as Aspirant. Global Image −${_PLACEMENT_PENALTY_GLOBAL_IMAGE}.`,
+            fired_at_tick:      currentTick,
+        });
+    }
+}
+
 // +N to faction_sector_popularity for every active sector in the nation,
 // upserting (insert if missing, increment if present), capped at 100.
 async function _applyAllSectorPopularityBoost(supabase, nationId, factionId, deltaTenths) {
