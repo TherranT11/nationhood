@@ -25315,6 +25315,118 @@ async function seedVolaCupKnockout(supabase, cupNumber, currentTick) {
     return { cupNumber, qf: 4, sf: 2, f: 1 };
 }
 
+/**
+ * Phase 4: resolve any QF / SF / F matches scheduled for `currentTick`.
+ *
+ * SF and F rows are seeded with team_a/b_nation_id NULL; the moment we
+ * see a row at its scheduled tick we look up the feeder match's
+ * winner_nation_id and persist it onto the row before playing.
+ *
+ * Same scoring as placement and group stage — _resolveMatchScores
+ * stays the single source of truth so all 3 stages behave identically.
+ *
+ * Idempotent at the row level via `.is('resolved_at_tick', null)`. Champion
+ * crowning + VWC ranking rewards are deliberately out of scope (Phase 5).
+ */
+async function processVolaCupKnockoutMatches(supabase, currentTick) {
+    const { data: due, error } = await supabase.from('vola_cup_knockout')
+        .select('id, cup_number, round, match_number, team_a_nation_id, team_b_nation_id, feeder_a_match, feeder_b_match')
+        .eq('scheduled_tick', currentTick)
+        .is('resolved_at_tick', null);
+    if (error) {
+        console.warn('[VolaKnockout] due fetch failed:', error.message);
+        return null;
+    }
+    if (!due || due.length === 0) return null;
+
+    // ── Step 1: fill team_a/b on SF/F rows from upstream winners. ──
+    // Feeders for SF rows live in QF; feeders for F rows live in SF. Anything
+    // already filled (every QF row at this point) is skipped.
+    const needsFill = due.filter(r => !r.team_a_nation_id || !r.team_b_nation_id);
+    for (const row of needsFill) {
+        const feederRound = row.round === 'SF' ? 'QF'
+                          : row.round === 'F'  ? 'SF'
+                          : null;
+        if (!feederRound) {
+            console.warn('[VolaKnockout] unexpected NULL teams on QF row', row.id);
+            continue;
+        }
+        if (row.feeder_a_match == null || row.feeder_b_match == null) {
+            console.warn('[VolaKnockout] missing feeder refs on', row.round, row.match_number);
+            continue;
+        }
+
+        const { data: feeders, error: fErr } = await supabase.from('vola_cup_knockout')
+            .select('match_number, winner_nation_id, resolved_at_tick')
+            .eq('cup_number', row.cup_number)
+            .eq('round', feederRound)
+            .in('match_number', [row.feeder_a_match, row.feeder_b_match]);
+        if (fErr) {
+            console.warn('[VolaKnockout] feeder fetch failed:', fErr.message);
+            continue;
+        }
+        const fmap = new Map((feeders || []).map(f => [f.match_number, f]));
+        const fA = fmap.get(row.feeder_a_match);
+        const fB = fmap.get(row.feeder_b_match);
+        if (!fA?.winner_nation_id || !fB?.winner_nation_id) {
+            // Upstream not resolved — shouldn't happen since the schedule
+            // guarantees feeders run on the previous tick, but skip safely.
+            console.warn('[VolaKnockout] feeder unresolved for', row.round, row.match_number);
+            continue;
+        }
+        const { error: uErr } = await supabase.from('vola_cup_knockout').update({
+            team_a_nation_id: fA.winner_nation_id,
+            team_b_nation_id: fB.winner_nation_id,
+        }).eq('id', row.id);
+        if (uErr) {
+            console.warn('[VolaKnockout] team-fill update failed:', uErr.message);
+            continue;
+        }
+        row.team_a_nation_id = fA.winner_nation_id;
+        row.team_b_nation_id = fB.winner_nation_id;
+    }
+
+    // ── Step 2: play every row whose teams are now both set. ──
+    const playable = due.filter(r => r.team_a_nation_id && r.team_b_nation_id);
+    if (playable.length === 0) return null;
+
+    const teamIds = Array.from(new Set(playable.flatMap(r => [r.team_a_nation_id, r.team_b_nation_id])));
+    const { data: nations, error: nErr } = await supabase.from('nations')
+        .select('id, name, national_team_prowess')
+        .in('id', teamIds);
+    if (nErr) {
+        console.warn('[VolaKnockout] nation fetch failed:', nErr.message);
+        return null;
+    }
+    const teamMap = new Map((nations || []).map(n => [n.id, n]));
+
+    let resolved = 0;
+    for (const row of playable) {
+        const A = teamMap.get(row.team_a_nation_id);
+        const B = teamMap.get(row.team_b_nation_id);
+        if (!A || !B) {
+            await supabase.from('vola_cup_knockout').update({
+                resolved_at_tick: currentTick,
+            }).eq('id', row.id);
+            continue;
+        }
+        const r = _resolveMatchScores(A.national_team_prowess, B.national_team_prowess);
+        const winnerId = r.winner === 'A' ? A.id : B.id;
+        const { error: updErr } = await supabase.from('vola_cup_knockout').update({
+            team_a_score:     r.scoreA,
+            team_b_score:     r.scoreB,
+            winner_nation_id: winnerId,
+            resolved_at_tick: currentTick,
+        }).eq('id', row.id);
+        if (updErr) {
+            console.warn('[VolaKnockout] match update failed:', updErr.message);
+            continue;
+        }
+        resolved++;
+    }
+    return { resolved };
+}
+
 async function _settleVolaPlacement(supabase, cupNumber, currentTick) {
     // Pull all 3 matches for this cup.
     const { data: matches } = await supabase.from('vola_placement_matches')
@@ -34992,6 +35104,23 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
     } catch (groupErr) {
         console.error('[advanceTick] Vola group match resolution failed (non-fatal):', groupErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4a-novem. VWC KNOCKOUT MATCH RESOLUTION — global pass.
+    // Plays QF (cup_start+3), SF (cup_start+4), F (cup_start+5). For
+    // SF/F rows, fills team_a/b_nation_id from the upstream feeder
+    // match's winner before playing. Same scoring system as placement
+    // and group stage. Champion crowning + ranking rewards land in
+    // Phase 5.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const koRes = await processVolaCupKnockoutMatches(supabase, currentTick);
+        if (koRes?.resolved) {
+            console.log(`[VolaKnockout] resolved ${koRes.resolved} match(es) at tick ${currentTick}`);
+        }
+    } catch (koErr) {
+        console.error('[advanceTick] Vola knockout match resolution failed (non-fatal):', koErr);
     }
 
     // ══════════════════════════════════════════════════════════════════
