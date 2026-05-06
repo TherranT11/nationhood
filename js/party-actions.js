@@ -1682,12 +1682,16 @@ function renderActionsPanel(leaderName, partyColor, faction) {
                 && Array.isArray(_administration.coalition_parties)
                 && _administration.coalition_parties.some(p => p?.party_id === faction.id);
             const seatVacant = !_hogActive;
+            const isOwnFactionPM = !!_hogActive && _hogActive.faction_id === faction.id;
             const noLeader  = !faction.leader_first_name;
             const noSeats   = !faction.seats || faction.seats <= 0;
 
             if (!isParliamentary) {
                 isDisabled = true;
                 action.lockReason = 'Only available in parliamentary systems.';
+            } else if (isOwnFactionPM) {
+                isDisabled = true;
+                action.lockReason = 'You are already the Prime Minister.';
             } else if (!inCoalition) {
                 isDisabled = true;
                 action.lockReason = 'You must be in the governing coalition.';
