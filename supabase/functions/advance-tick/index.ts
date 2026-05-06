@@ -3308,10 +3308,13 @@ const _RAW_PER_ABSTRACT = 1e9;
  * government.html so the tick processor's debt math agrees with what
  * the Government Budget panel shows the player.
  *
- * Three line items, all in abstract units:
- *   - Interest on Debt   = debtService (raw $) / 1e9
- *   - Royal Holdings     = $36/yr if monarchy, else 0
- *   - Active-law ongoing = sum(active_laws.selected_option.ongoing_base_cost) × 12
+ * Four line items, all in abstract units:
+ *   - Interest on Debt        = debtService (raw $) / 1e9
+ *   - Royal Holdings          = $36/yr if monarchy, else 0
+ *   - Active-law ongoing      = sum(active_laws.selected_option.ongoing_base_cost) × 12
+ *   - Sports & Culture (Vola) = nations.vola_stadium_annual_cost
+ *                               (sum of every completed stadium's tier annual cost
+ *                               — small $0.5 / modest $1 / extravagant $2)
  *
  * Single source of truth: processNationDebtTick in this file +
  * _gbBuildCostRows in government.html both depend on this returning
@@ -3343,7 +3346,8 @@ async function computePanelAnnualExpenditures(supabase, nation) {
     } catch (err) {
         console.warn(`[Budget] active_laws threw for ${nation.name}:`, err?.message || err);
     }
-    return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual;
+    const stadiumAnnualCost = Number(nation.vola_stadium_annual_cost) || 0;
+    return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost;
 }
 
 async function processNationDebtTick(supabase, nation) {
@@ -24347,11 +24351,16 @@ async function processVolaStadiumCompletions(supabase, currentTick) {
 
     let completed = 0;
     for (const c of due) {
-        // Map spec_category back to floor contribution.
-        const floor = c.spec_category === 'Light Infrastructure' ? 2
-                    : c.spec_category === 'Heavy Infrastructure' ? 4
-                    : c.spec_category === 'Megaproject'          ? 9
-                    : 0;
+        // spec_category drives both the floor contribution and the
+        // annual upkeep cost added to the host's budget.
+        const floor      = c.spec_category === 'Light Infrastructure' ? 2
+                         : c.spec_category === 'Heavy Infrastructure' ? 4
+                         : c.spec_category === 'Megaproject'          ? 9
+                         : 0;
+        const annualCost = c.spec_category === 'Light Infrastructure' ? 0.5
+                         : c.spec_category === 'Heavy Infrastructure' ? 1.0
+                         : c.spec_category === 'Megaproject'          ? 2.0
+                         : 0;
 
         // Mark contract complete first (defensive — if a downstream
         // step fails we don't double-apply on the next tick).
@@ -24365,18 +24374,18 @@ async function processVolaStadiumCompletions(supabase, currentTick) {
             continue;
         }
 
-        // Pull the host nation's current vola_stadiums + floor (NUMERIC
-        // values — the schema lets the column hold decimals but the
-        // stadium count is integer-valued).
+        // Pull the host nation's current sport-related counters.
         const { data: host } = await supabase.from('nations')
-            .select('id, name, vola_stadiums, vola_culture_floor')
+            .select('id, name, vola_stadiums, vola_culture_floor, vola_stadium_annual_cost')
             .eq('id', c.issuer_nation_id).single();
         if (host) {
-            const newCount = (Number(host.vola_stadiums) || 0) + 1;
-            const newFloor = Math.min(100, _roundCulture((Number(host.vola_culture_floor) || 0) + floor));
+            const newCount      = (Number(host.vola_stadiums) || 0) + 1;
+            const newFloor      = Math.min(100, _roundCulture((Number(host.vola_culture_floor) || 0) + floor));
+            const newAnnualCost = Math.round(((Number(host.vola_stadium_annual_cost) || 0) + annualCost) * 10) / 10;
             await supabase.from('nations').update({
-                vola_stadiums: newCount,
-                vola_culture_floor: newFloor,
+                vola_stadiums:            newCount,
+                vola_culture_floor:       newFloor,
+                vola_stadium_annual_cost: newAnnualCost,
             }).eq('id', host.id);
         }
 

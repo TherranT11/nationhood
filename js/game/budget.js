@@ -94,10 +94,13 @@ const _RAW_PER_ABSTRACT = 1e9;
  * government.html so the tick processor's debt math agrees with what
  * the Government Budget panel shows the player.
  *
- * Three line items, all in abstract units:
- *   - Interest on Debt   = debtService (raw $) / 1e9
- *   - Royal Holdings     = $36/yr if monarchy, else 0
- *   - Active-law ongoing = sum(active_laws.selected_option.ongoing_base_cost) × 12
+ * Four line items, all in abstract units:
+ *   - Interest on Debt        = debtService (raw $) / 1e9
+ *   - Royal Holdings          = $36/yr if monarchy, else 0
+ *   - Active-law ongoing      = sum(active_laws.selected_option.ongoing_base_cost) × 12
+ *   - Sports & Culture (Vola) = nations.vola_stadium_annual_cost
+ *                               (sum of every completed stadium's tier annual cost
+ *                               — small $0.5 / modest $1 / extravagant $2)
  *
  * Single source of truth: processNationDebtTick in this file +
  * _gbBuildCostRows in government.html both depend on this returning
@@ -129,7 +132,8 @@ export async function computePanelAnnualExpenditures(supabase, nation) {
     } catch (err) {
         console.warn(`[Budget] active_laws threw for ${nation.name}:`, err?.message || err);
     }
-    return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual;
+    const stadiumAnnualCost = Number(nation.vola_stadium_annual_cost) || 0;
+    return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost;
 }
 
 export async function processNationDebtTick(supabase, nation) {

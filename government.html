@@ -2357,6 +2357,12 @@ function _gbBuildCostRows(d) {
     // sub-rows, so the row total here always matches the breakdown.
     const pensionAnnual          = _gbAnnualLawCostFor(d.activeLaws, 'pension');
     const subsidiesIndustryAnnual = _gbAnnualLawCostFor(d.activeLaws, 'subsidiesIndustry');
+    // Sports & Culture: today the only sub-line is Sport Stadiums &
+    // Infrastructure (every completed Vola stadium adds its tier's
+    // annual cost — small $0.5 / modest $1 / extravagant $2). Future
+    // sports-related ongoing costs (team salaries, training programs,
+    // etc.) will roll up under the same descKey.
+    const sportsCultureAnnual = Number(currentNation?.vola_stadium_annual_cost) || 0;
     return [
         { key: 'public_sector_wages',  name: 'Public Sector Wages',     yr: 0,                          descKey: 'publicSectorWages'    },
         { key: 'welfare_benefits',     name: 'Welfare Benefits',        yr: 0,                          descKey: 'welfareBenefits'      },
@@ -2365,6 +2371,7 @@ function _gbBuildCostRows(d) {
         { key: 'subsidies_industry',   name: 'Subsidies & Industry Support', yr: subsidiesIndustryAnnual, descKey: 'subsidiesIndustry'   },
         { key: 'defense_security',     name: 'Defense & Security',      yr: 0,                          descKey: 'defenseSecurity'      },
         { key: 'national_infra',       name: 'National Infrastructure', yr: royalHoldingsAnnual,        descKey: 'nationalInfrastructure' },
+        { key: 'sports_culture',       name: 'Sports & Culture',        yr: sportsCultureAnnual,        descKey: 'sportsAndCulture'     },
         { key: 'foreign_aid',          name: 'Foreign Aid & Diplomacy', yr: 0,                          descKey: 'foreignAid'           },
         { key: 'discretionary',        name: 'Discretionary Programs',  yr: 0,                          descKey: 'discretionary'        },
         { key: 'debt_interest',        name: 'Interest on Debt',        yr: _gbToAbstract(d.debtService), descKey: 'debtInterest'   },
@@ -2591,6 +2598,7 @@ const _GB_DEEP_COPY = {
     subsidiesIndustry:      { desc: 'Direct support to private firms and sectors — agricultural subsidies, industrial credits, R&D grants, strategic-industry bailouts. Distinct from welfare, which targets households.' },
     defenseSecurity:        { desc: 'Standing military pay, materiel, intelligence services, and internal security forces. Scales with force structure and active doctrine.' },
     nationalInfrastructure: { desc: 'Public works — transport networks, utilities, civic buildings, the physical platform the rest of the economy runs on. In monarchies, includes a Royal Holdings & Estates sub-line for the upkeep of crown property.' },
+    sportsAndCulture:       { desc: 'Recurring cultural and sporting upkeep — primarily Vola stadium maintenance once venues are completed. Each tier carries a fixed annual cost (small $0.5, modest $1, extravagant $2). Click-through surfaces the running total of stadium upkeep.' },
     foreignAid:             { desc: 'Non-trade-agreement foreign disbursements: development aid, humanitarian relief, soft-power grants. Trade-agreement aid lives under Trade Agreements on the income side instead.' },
     discretionary:          { desc: 'Catch-all for short-cycle programs and one-off initiatives that don’t fit a permanent ministry budget — pilots, commissions, special funds.' },
     // Royal Holdings & Estates is rendered as a sub-row (k/v only)
@@ -2686,6 +2694,20 @@ async function _gbSelectCategory(container, row, kind) {
             k: 'Royal Holdings & Estates',
             v: _GB_ROYAL_HOLDINGS_MONTHLY * 12,
         });
+    }
+
+    // Sports & Culture: today the only sub-line is Sport Stadiums &
+    // Infrastructure. Reads from nations.vola_stadium_annual_cost (sum
+    // maintained by processVolaStadiumCompletions). Skipped silently
+    // when no stadiums are built.
+    if (row.descKey === 'sportsAndCulture') {
+        const stadiumCost = Number(currentNation?.vola_stadium_annual_cost) || 0;
+        if (stadiumCost > 0) {
+            subRows.push({
+                k: 'Sport Stadiums & Infrastructure',
+                v: stadiumCost,
+            });
+        }
     }
 
     // A later click superseded this selection — bail before we write into
