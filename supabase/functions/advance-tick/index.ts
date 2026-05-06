@@ -24038,6 +24038,279 @@ async function disbandParty(supabase, nationId, factionId, currentTick, opts = {
 
 // (Appoint successor, Dynasty actions, Coup/Regime health systems removed — Phase 0)
 
+// ==================== LEADERSHIP CHALLENGE (coalition vacancy claim) ====================
+
+// "If you are in a coalition, and the Head of Government seat is vacant,
+// you can click this and it appoints your party leader as PM. For every
+// party that clicked on the same tick, when it processes on the next
+// tick, the party with the most seats is always chosen. Earliest claim
+// wins ties." — design spec.
+
+const LEADERSHIP_CHALLENGE_POPULARITY_BOOST = 3;       // +0.3 in display = +3 in integer tenths
+const LEADERSHIP_CHALLENGE_BOOST_COOLDOWN  = 12;       // ticks — same-party PM within this window suppresses the boost
+
+// Returns true if the nation runs the parliamentary mechanic
+// (parliamentary republic OR constitutional monarchy = parliamentary
+// + hereditary HoS). Absolute monarchy / presidential / semi-presidential
+// are out — leadership challenge would undermine the monarch / president.
+function _isParliamentaryForChallenge(nation) {
+    const govType = (nation?.government_type || '').toLowerCase();
+    const isAM    = govType.includes('absolute monarchy');
+    const isPres  = govType.includes('presidential') && !govType.includes('semi');
+    const isSemi  = govType.includes('semi-presidential') || govType.includes('semi_presidential');
+    if (isAM || isPres || isSemi) return false;
+    return govType.includes('parliamentary')
+        || nation?.hos_election_method === 'hereditary';
+}
+
+/**
+ * Player-initiated claim. Validates eligibility and inserts a row in
+ * leadership_challenges; the next tick's resolveLeadershipChallenges
+ * pass picks the winner from all rows with the same claimed_at_tick.
+ *
+ * Returns { success, reason?, alreadyClaimed? }.
+ */
+async function claimLeadershipChallenge(supabase, nation, faction, currentTick) {
+    if (!nation?.id || !faction?.id) return { success: false, reason: 'missing_args' };
+    if (!_isParliamentaryForChallenge(nation)) return { success: false, reason: 'wrong_gov_type' };
+    if (!faction.leader_first_name)        return { success: false, reason: 'no_leader' };
+    if (!faction.seats || faction.seats <= 0) return { success: false, reason: 'no_seats' };
+
+    // Vacancy check — no active head_of_government row.
+    const { data: hog } = await supabase
+        .from('head_of_government')
+        .select('id')
+        .eq('nation_id', nation.id)
+        .eq('active', true)
+        .maybeSingle();
+    if (hog) return { success: false, reason: 'pm_already_installed' };
+
+    // Coalition membership check.
+    const { data: formation } = await supabase
+        .from('government_formations')
+        .select('party_ids')
+        .eq('nation_id', nation.id)
+        .in('status', ['formed', 'active', 'caretaker'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (!formation) return { success: false, reason: 'no_coalition' };
+    if (!(formation.party_ids || []).includes(faction.id)) return { success: false, reason: 'not_in_coalition' };
+
+    // Insert claim. UNIQUE(nation_id, faction_id, claimed_at_tick) makes
+    // a same-tick double-click a silent no-op (treated as success).
+    const { error } = await supabase.from('leadership_challenges').insert({
+        nation_id: nation.id,
+        faction_id: faction.id,
+        claimed_at_tick: currentTick,
+        seats_at_claim: faction.seats,
+    });
+    if (error) {
+        if (error.code === '23505') return { success: true, alreadyClaimed: true };
+        return { success: false, reason: 'insert_failed', error: error.message };
+    }
+    return { success: true };
+}
+
+/**
+ * Resolution pass — runs once per tick from the global post-loop block
+ * in handler-template. Processes all unresolved claims with
+ * claimed_at_tick < currentTick (i.e. from previous ticks). For each
+ * affected nation: re-checks vacancy + coalition + per-faction validity,
+ * picks the highest-seats / earliest-claim winner, installs them as PM,
+ * applies the +0.3 popularity boost (gated by the 12-tick PM cooldown),
+ * marks rows won/lost/discarded.
+ */
+async function resolveLeadershipChallenges(supabase, currentTick) {
+    const { data: pending, error } = await supabase
+        .from('leadership_challenges')
+        .select('id, nation_id, faction_id, claimed_at_tick, seats_at_claim, created_at')
+        .is('resolved_at_tick', null)
+        .lt('claimed_at_tick', currentTick);
+    if (error) {
+        console.error('[LeadershipChallenge] pending fetch failed:', error.message);
+        return null;
+    }
+    if (!pending || pending.length === 0) return null;
+
+    const byNation = new Map();
+    for (const p of pending) {
+        if (!byNation.has(p.nation_id)) byNation.set(p.nation_id, []);
+        byNation.get(p.nation_id).push(p);
+    }
+
+    let installedCount = 0;
+    for (const [nationId, claims] of byNation) {
+        try {
+            const installed = await _resolveOneNation(supabase, nationId, claims, currentTick);
+            if (installed) installedCount++;
+        } catch (err) {
+            console.error('[LeadershipChallenge] nation resolution failed:', nationId, err);
+        }
+    }
+    return { installedCount, totalNations: byNation.size };
+}
+
+async function _markResolution(supabase, ids, resolution, currentTick) {
+    if (!ids.length) return;
+    const { error } = await supabase.from('leadership_challenges')
+        .update({ resolved_at_tick: currentTick, resolution })
+        .in('id', ids);
+    if (error) console.warn('[LeadershipChallenge] mark', resolution, 'failed:', error.message);
+}
+
+async function _resolveOneNation(supabase, nationId, claims, currentTick) {
+    const allIds = claims.map(c => c.id);
+
+    // Vacancy still open?
+    const { data: hog } = await supabase
+        .from('head_of_government').select('id')
+        .eq('nation_id', nationId).eq('active', true).maybeSingle();
+    if (hog) {
+        await _markResolution(supabase, allIds, 'discarded', currentTick);
+        return false;
+    }
+
+    // Nation still parliamentary?
+    const { data: nation } = await supabase
+        .from('nations').select('id, name, government_type, hos_election_method, successor_cooldown_end_tick')
+        .eq('id', nationId).single();
+    if (!nation || !_isParliamentaryForChallenge(nation)) {
+        await _markResolution(supabase, allIds, 'discarded', currentTick);
+        return false;
+    }
+    if (nation.successor_cooldown_end_tick && currentTick < nation.successor_cooldown_end_tick) {
+        await _markResolution(supabase, allIds, 'discarded', currentTick);
+        return false;
+    }
+
+    // Coalition still active?
+    const { data: formation } = await supabase
+        .from('government_formations')
+        .select('party_ids')
+        .eq('nation_id', nationId)
+        .in('status', ['formed', 'active', 'caretaker'])
+        .order('created_at', { ascending: false })
+        .limit(1).maybeSingle();
+    if (!formation) {
+        await _markResolution(supabase, allIds, 'discarded', currentTick);
+        return false;
+    }
+    const coalitionIds = new Set(formation.party_ids || []);
+
+    // Filter claims: faction must still be in coalition + have leader + have seats.
+    const inCoalitionClaims = claims.filter(c => coalitionIds.has(c.faction_id));
+    if (!inCoalitionClaims.length) {
+        await _markResolution(supabase, allIds, 'discarded', currentTick);
+        return false;
+    }
+    const { data: factions } = await supabase.from('factions')
+        .select('id, faction_name, seats, leader_first_name, leader_last_name, leader_age')
+        .in('id', inCoalitionClaims.map(c => c.faction_id));
+    const factionMap = new Map((factions || []).map(f => [f.id, f]));
+    const validClaims = inCoalitionClaims.filter(c => {
+        const f = factionMap.get(c.faction_id);
+        return f && (Number(f.seats) || 0) > 0 && f.leader_first_name;
+    });
+    if (!validClaims.length) {
+        await _markResolution(supabase, allIds, 'discarded', currentTick);
+        return false;
+    }
+
+    // Sort: most seats wins; earliest created_at breaks ties.
+    validClaims.sort((a, b) => {
+        const sa = Number(factionMap.get(a.faction_id)?.seats) || 0;
+        const sb = Number(factionMap.get(b.faction_id)?.seats) || 0;
+        if (sb !== sa) return sb - sa;
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
+    const winnerClaim = validClaims[0];
+    const winner = factionMap.get(winnerClaim.faction_id);
+
+    // Install as PM.
+    try {
+        await installHOG(supabase, {
+            nationId,
+            factionId: winner.id,
+            firstName: winner.leader_first_name,
+            lastName:  winner.leader_last_name,
+            age:       winner.leader_age || 50,
+            currentTick,
+            reason: 'leadership_challenge',
+        });
+    } catch (err) {
+        console.error('[LeadershipChallenge] installHOG failed for', winner.id, err);
+        // Don't mark anything — try again next tick.
+        return false;
+    }
+
+    // Popularity boost (gated by the 12-tick same-party PM cooldown to
+    // block resign→reclaim farming).
+    const { data: recentPM } = await supabase
+        .from('head_of_government')
+        .select('id')
+        .eq('nation_id', nationId)
+        .eq('faction_id', winner.id)
+        .gte('appointed_tick', currentTick - LEADERSHIP_CHALLENGE_BOOST_COOLDOWN)
+        // Exclude the row we just inserted via installHOG (appointed at currentTick).
+        .lt('appointed_tick', currentTick)
+        .limit(1).maybeSingle();
+    if (!recentPM) {
+        await _applyAllSectorPopularityBoost(supabase, nationId, winner.id, LEADERSHIP_CHALLENGE_POPULARITY_BOOST);
+    }
+
+    // Mark winner / losers / discarded.
+    await _markResolution(supabase, [winnerClaim.id], 'won', currentTick);
+    const loserIds = validClaims.filter(c => c.id !== winnerClaim.id).map(c => c.id);
+    await _markResolution(supabase, loserIds, 'lost', currentTick);
+    const validIdSet = new Set(validClaims.map(c => c.id));
+    const discardedIds = claims.filter(c => !validIdSet.has(c.id)).map(c => c.id);
+    await _markResolution(supabase, discardedIds, 'discarded', currentTick);
+
+    // Event log entry — surfaces in the executive timeline.
+    await supabase.from('event_log').insert({
+        nation_id: nationId,
+        event_name: 'Leadership Challenge — PM Installed',
+        category: 'political',
+        trigger_key: 'leadership_challenge_won',
+        description_chosen: `${winner.faction_name} claimed the Premiership via Leadership Challenge — ${winner.leader_first_name} ${winner.leader_last_name} installed as Prime Minister.`,
+        fired_at_tick: currentTick,
+    });
+
+    return true;
+}
+
+// +N to faction_sector_popularity for every active sector in the nation,
+// upserting (insert if missing, increment if present), capped at 100.
+async function _applyAllSectorPopularityBoost(supabase, nationId, factionId, deltaTenths) {
+    const { data: sectors, error: sErr } = await supabase
+        .from('sectors').select('id').eq('nation_id', nationId).eq('is_active', true);
+    if (sErr || !sectors || !sectors.length) return;
+
+    const sectorIds = sectors.map(s => s.id);
+    const { data: existing } = await supabase
+        .from('faction_sector_popularity')
+        .select('id, sector_id, popularity')
+        .eq('faction_id', factionId)
+        .in('sector_id', sectorIds);
+    const existingMap = new Map((existing || []).map(r => [r.sector_id, r]));
+
+    for (const s of sectors) {
+        const ex = existingMap.get(s.id);
+        if (ex) {
+            const newPop = Math.min(100, (Number(ex.popularity) || 0) + deltaTenths);
+            await supabase.from('faction_sector_popularity')
+                .update({ popularity: newPop }).eq('id', ex.id);
+        } else {
+            await supabase.from('faction_sector_popularity').insert({
+                faction_id: factionId,
+                sector_id: s.id,
+                popularity: deltaTenths,
+            });
+        }
+    }
+}
+
 // ────────── election-simulation ──────────
 
 /**
@@ -30852,13 +31125,9 @@ async function processSurplusConnectors(supabase: any, nation: any) {
         updates.inflation = clamp(inflation + delta);
         changed = true;
     }
-    // Deficit → inflation was previously handled here with a heuristic
-    // (-5% deficit started a small additive hit). The Debt & Deficit
-    // System (js/game/debt.js) now owns this signal — printing the
-    // unbonded portion of the deficit is the canonical inflation driver,
-    // and the forced-print path on expired bond offers carries any
-    // unfilled-market cost. Removed to avoid double-counting; the debt
-    // system's INFLATION_PER_PRINT_PCT is the single tunable knob.
+    // Deficit → inflation was previously handled here with a heuristic.
+    // Bond/print system retired (2026-05); per-tick balance now applies
+    // directly to debt via processNationDebtTick. No inflation cascade.
 
     // ── Surplus → Currency Strength ──
     if (surplusRatio > 3) {
@@ -33536,6 +33805,23 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         await recomputeVwcRankings(supabase);
     } catch (vwcErr) {
         console.error('[advanceTick] VWC ranking recompute failed (non-fatal):', vwcErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4a-tris. LEADERSHIP CHALLENGES — global pass.
+    // Resolves every leadership_challenges row with claimed_at_tick <
+    // currentTick that hasn't been marked yet. Per nation: re-checks
+    // vacancy + coalition + faction validity, picks highest-seats /
+    // earliest-claim winner, installs them as PM, applies popularity
+    // boost (with 12-tick same-party PM cooldown).
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const lcResult = await resolveLeadershipChallenges(supabase, currentTick);
+        if (lcResult?.installedCount) {
+            console.log(`[LeadershipChallenge] installed ${lcResult.installedCount} PM(s) across ${lcResult.totalNations} nation(s)`);
+        }
+    } catch (lcErr) {
+        console.error('[advanceTick] Leadership challenge resolution failed (non-fatal):', lcErr);
     }
 
     // ══════════════════════════════════════════════════════════════════

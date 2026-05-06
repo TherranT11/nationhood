@@ -114,13 +114,9 @@ async function processSurplusConnectors(supabase: any, nation: any) {
         updates.inflation = clamp(inflation + delta);
         changed = true;
     }
-    // Deficit → inflation was previously handled here with a heuristic
-    // (-5% deficit started a small additive hit). The Debt & Deficit
-    // System (js/game/debt.js) now owns this signal — printing the
-    // unbonded portion of the deficit is the canonical inflation driver,
-    // and the forced-print path on expired bond offers carries any
-    // unfilled-market cost. Removed to avoid double-counting; the debt
-    // system's INFLATION_PER_PRINT_PCT is the single tunable knob.
+    // Deficit → inflation was previously handled here with a heuristic.
+    // Bond/print system retired (2026-05); per-tick balance now applies
+    // directly to debt via processNationDebtTick. No inflation cascade.
 
     // ── Surplus → Currency Strength ──
     if (surplusRatio > 3) {
@@ -2798,6 +2794,23 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         await recomputeVwcRankings(supabase);
     } catch (vwcErr) {
         console.error('[advanceTick] VWC ranking recompute failed (non-fatal):', vwcErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4a-tris. LEADERSHIP CHALLENGES — global pass.
+    // Resolves every leadership_challenges row with claimed_at_tick <
+    // currentTick that hasn't been marked yet. Per nation: re-checks
+    // vacancy + coalition + faction validity, picks highest-seats /
+    // earliest-claim winner, installs them as PM, applies popularity
+    // boost (with 12-tick same-party PM cooldown).
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const lcResult = await resolveLeadershipChallenges(supabase, currentTick);
+        if (lcResult?.installedCount) {
+            console.log(`[LeadershipChallenge] installed ${lcResult.installedCount} PM(s) across ${lcResult.totalNations} nation(s)`);
+        }
+    } catch (lcErr) {
+        console.error('[advanceTick] Leadership challenge resolution failed (non-fatal):', lcErr);
     }
 
     // ══════════════════════════════════════════════════════════════════
