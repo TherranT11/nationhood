@@ -521,7 +521,7 @@ function renderVolaCup(currentTick) {
 
     // Tab state: 0=PLACEMENT, 1=GROUP STAGE, 2=KNOCKOUT, 3=FINAL
     const tabState = (idx) => {
-        if (!cup.isActive) return idx === 0 ? 'pending' : 'pending';
+        if (!cup.isActive) return 'pending';
         if (idx === 0) return 'done';                            // placement always done by GS1
         if (idx === 1) return cup.stage <= 2 ? 'active' : 'done';
         if (idx === 2) return cup.stage <= 2 ? 'pending' : (cup.stage <= 4 ? 'active' : 'done');
