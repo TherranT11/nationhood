@@ -570,12 +570,19 @@ export const VOLA_CULTURE_DECAY_RATE = 0.03;
 function _roundCulture(v) { return Math.round(v * 10) / 10; }
 
 export async function processVolaCultureDecay(supabase, nation) {
-    const cur = Number(nation.national_vola_culture) || 0;
-    if (cur <= 0) return null;
+    const cur   = Number(nation.national_vola_culture) || 0;
     const floor = Number(nation.vola_culture_floor) || 0;
-    if (cur <= floor) return null; // Already at or below floor — decay no-ops.
+    // Single rule: next = max(floor, cur × 0.97). Covers every case:
+    //   cur=0, floor=0      → decayed=0,    next=0     → no-op
+    //   cur=0, floor=4      → decayed=0,    next=4     → raise to floor
+    //   cur=10, floor=4     → decayed=9.7,  next=9.7   → normal decay
+    //   cur=4.2, floor=4    → decayed=4.07, next=4.07  → decay clamped at floor
+    //   cur=4, floor=4      → decayed=3.88, next=4     → no-op (already at floor)
+    // The previous early returns (cur<=0 / cur<=floor) bypassed the
+    // floor lift on cur=0 and made the floor stat invisible until the
+    // player invested.
     const decayed = _roundCulture(cur * (1 - VOLA_CULTURE_DECAY_RATE));
-    const next = Math.max(floor, decayed);
+    const next    = Math.max(floor, decayed);
     if (next === cur) return null;
 
     const { error } = await supabase.from('nations')
@@ -613,66 +620,39 @@ export const VOLA_INVESTMENT_ACTION_KEY = 'invest_in_sports_culture';
  * cover the tier cost, and the nation must be off cooldown.
  */
 export async function investInVolaCulture(supabase, nation, callerFactionId, level, currentTick) {
-    const cfg = VOLA_INVESTMENT_LEVELS[level];
-    if (!cfg) return { success: false, reason: 'invalid_level' };
+    if (!VOLA_INVESTMENT_LEVELS[level]) return { success: false, reason: 'invalid_level' };
     if (!nation?.id) return { success: false, reason: 'no_nation' };
 
-    // Active sports minister gate — the row exists for the
-    // ownership check, but no balance check (Sports actions pull from
-    // nation.budget, not discretionary).
-    const { data: mRow, error: mErr } = await supabase.from('ministries')
-        .select('party_id')
-        .eq('nation_id', nation.id)
-        .eq('ministry_key', 'sports')
-        .eq('is_active', true)
-        .maybeSingle();
-    if (mErr) return { success: false, reason: 'fetch_failed', error: mErr.message };
-    if (!mRow) return { success: false, reason: 'no_minister' };
-    if (mRow.party_id !== callerFactionId) return { success: false, reason: 'not_minister' };
-
-    // Cooldown check — last log row for this action on this nation.
-    const { data: lastLog } = await supabase
-        .from('ministry_action_log')
-        .select('cooldown_until_tick')
-        .eq('nation_id', nation.id)
-        .eq('ministry_key', 'sports')
-        .eq('action_key', VOLA_INVESTMENT_ACTION_KEY)
-        .order('applied_at_tick', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-    if (lastLog && Number(lastLog.cooldown_until_tick) > currentTick) {
-        return { success: false, reason: 'cooldown', readyAtTick: Number(lastLog.cooldown_until_tick) };
+    // Routed through the SECURITY DEFINER RPC so authenticated clients
+    // can write nations.budget + ministry_action_log (both gated by RLS
+    // for non-admins). Server-side callers (tick processor) pass a
+    // service-role client that bypasses RLS, but we still go through
+    // the RPC for consistency. callerFactionId is implicit from auth.uid()
+    // inside the RPC; the parameter is kept for back-compat with the
+    // signature.
+    const { data, error } = await supabase.rpc('invest_in_vola_culture', { p_level: level });
+    if (error) return { success: false, reason: 'rpc_failed', error: error.message };
+    if (!data?.success) {
+        return {
+            success: false,
+            reason: data?.reason || 'unknown',
+            readyAtTick: data?.ready_at_tick,
+        };
     }
 
-    // Deduct from nation.budget directly (abstract scale = display scale).
-    // No floor — going negative is fine; the per-tick balance math will
-    // route the shortfall into debt next tick via processNationDebtTick.
-    const prevBudget = Number(nation.budget) || 0;
-    const newBudget = prevBudget - cfg.cost;
-    const prevCulture = Number(nation.national_vola_culture) || 0;
-    const newCulture = Math.min(100, _roundCulture(prevCulture + cfg.gain));
+    // Mirror the RPC's writes onto the local nation object so the
+    // calling UI can render fresh values without a re-fetch.
+    if (data.newCulture != null) nation.national_vola_culture = Number(data.newCulture);
+    if (data.newBudget  != null) nation.budget                = Number(data.newBudget);
 
-    const { error: updErr } = await supabase.from('nations')
-        .update({ budget: newBudget, national_vola_culture: newCulture })
-        .eq('id', nation.id);
-    if (updErr) return { success: false, reason: 'update_failed', error: updErr.message };
-    nation.budget = newBudget;
-    nation.national_vola_culture = newCulture;
-
-    // Log + cooldown. money_cost stores the abstract-dollar cost.
-    await supabase.from('ministry_action_log').insert({
-        nation_id: nation.id,
-        ministry_key: 'sports',
-        action_key: VOLA_INVESTMENT_ACTION_KEY,
-        faction_id: callerFactionId,
-        ap_cost: 0,
-        money_cost: cfg.cost,
-        applied_at_tick: currentTick,
-        cooldown_until_tick: currentTick + VOLA_INVESTMENT_COOLDOWN_TICKS,
-        action_data: { level, gain: cfg.gain, prevCulture, newCulture, prevBudget, newBudget },
-    });
-
-    return { success: true, level, gain: cfg.gain, cost: cfg.cost, newCulture, newBudget };
+    return {
+        success:    true,
+        level:      data.level || level,
+        gain:       Number(data.gain || 0),
+        cost:       Number(data.cost || 0),
+        newCulture: Number(data.newCulture || 0),
+        newBudget:  Number(data.newBudget  || 0),
+    };
 }
 
 // ==================== VWC RANKINGS (global per-tick) ====================
@@ -4684,73 +4664,30 @@ const _STADIUM_BID_WINDOW_TICKS = 6; // bids open for 6 ticks before auto-cancel
  * Returns { success, contractId? } or { success: false, reason }.
  */
 export async function postStadiumConstruction(supabase, nation, callerFactionId, params, currentTick) {
-    if (!nation?.id || !callerFactionId) return { success: false, reason: 'missing_args' };
-    const tier = VOLA_STADIUM_TIERS[params?.size];
-    if (!tier) return { success: false, reason: 'invalid_size' };
+    if (!nation?.id) return { success: false, reason: 'missing_args' };
+    if (!VOLA_STADIUM_TIERS[params?.size]) return { success: false, reason: 'invalid_size' };
     const stadiumName = String(params?.stadiumName || '').trim();
-    const teamName    = String(params?.teamName    || '').trim();
     if (!stadiumName) return { success: false, reason: 'no_stadium_name' };
 
-    // Active sports minister gate (no balance check — pulls from
-    // nation.budget, negative balance is allowed).
-    const { data: mRow, error: mErr } = await supabase.from('ministries')
-        .select('party_id')
-        .eq('nation_id', nation.id)
-        .eq('ministry_key', 'sports')
-        .eq('is_active', true).maybeSingle();
-    if (mErr) return { success: false, reason: 'fetch_failed', error: mErr.message };
-    if (!mRow) return { success: false, reason: 'no_minister' };
-    if (mRow.party_id !== callerFactionId) return { success: false, reason: 'not_minister' };
+    // Routed through the SECURITY DEFINER RPC. Authenticated clients
+    // can't INSERT corp_contracts or UPDATE nations.budget directly
+    // (RLS); the RPC validates caller = active sports minister and
+    // performs every write atomically.
+    const { data, error } = await supabase.rpc('post_stadium_contract', {
+        p_size:          params.size,
+        p_stadium_name:  stadiumName,
+        p_team_name:     String(params?.teamName || '').trim(),
+    });
+    if (error) return { success: false, reason: 'rpc_failed', error: error.message };
+    if (!data?.success) return { success: false, reason: data?.reason || 'unknown' };
 
-    // One-open-stadium-bid-per-nation gate.
-    const { data: existing } = await supabase.from('corp_contracts')
-        .select('id').eq('issuer_nation_id', nation.id)
-        .eq('project_subtype', _STADIUM_PROJECT_SUBTYPE)
-        .eq('status', 'open').limit(1).maybeSingle();
-    if (existing) return { success: false, reason: 'already_open' };
-
-    // Generate contract number — same convention as other gov contracts.
-    const year = 2000 + Math.floor(currentTick / 12);
-    const contractNumber = `GOV-${year}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
-
-    // Deduct posting cost from nation.budget first. Allowed to go
-    // negative; the next-tick balance math sweeps the shortfall into
-    // debt via processNationDebtTick.
-    const prevBudget = Number(nation.budget) || 0;
-    const newBudget  = prevBudget - tier.postingCost;
-    const { error: budgetErr } = await supabase.from('nations')
-        .update({ budget: newBudget }).eq('id', nation.id);
-    if (budgetErr) return { success: false, reason: 'budget_update_failed', error: budgetErr.message };
-    nation.budget = newBudget;
-
-    // Insert the contract.
-    const { data: contract, error: cErr } = await supabase.from('corp_contracts').insert({
-        contract_number:    contractNumber,
-        name:               stadiumName,
-        description:        teamName ? `Home of: ${teamName}` : 'Vola Stadium',
-        contract_type:      'GOVERNMENT',
-        issuer_name:        'Ministry of Sports',
-        issuer_faction_id:  null,
-        issuer_nation_id:   nation.id,
-        required_sector:    'Construction',
-        spec_category:      tier.specCategory,
-        budget:             tier.budgetTarget,
-        timeline_months:    tier.timelineMonths,
-        project_type:       'Civil Engineering',
-        project_subtype:    _STADIUM_PROJECT_SUBTYPE,
-        status:             'open',
-        created_at_tick:    currentTick,
-        expires_at_tick:    currentTick + _STADIUM_BID_WINDOW_TICKS,
-    }).select('id').single();
-    if (cErr) {
-        // Refund the budget deduction since the contract didn't land.
-        await supabase.from('nations')
-            .update({ budget: prevBudget }).eq('id', nation.id);
-        nation.budget = prevBudget;
-        return { success: false, reason: 'insert_failed', error: cErr.message };
+    // Mirror the budget deduction onto the local nation object.
+    const tier = VOLA_STADIUM_TIERS[params.size];
+    if (tier && nation.budget != null) {
+        nation.budget = (Number(nation.budget) || 0) - tier.postingCost;
     }
 
-    return { success: true, contractId: contract.id, tier: params.size };
+    return { success: true, contractId: data.contract_id, tier: data.tier || params.size };
 }
 
 /**
