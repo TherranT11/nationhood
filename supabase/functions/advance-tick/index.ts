@@ -24512,8 +24512,21 @@ async function _resolveOneCup(supabase, cupNumber, bids, cupStartTick, currentTi
     }
     const nationMap = new Map((nations || []).map(n => [n.id, n]));
 
-    const scored = bids.map(b => {
-        const n = nationMap.get(b.nation_id) || {};
+    // Filter out bids whose nation is gone (e.g. nation deleted between
+    // bid and resolution). Without this, a missing-nation bid scores
+    // with all-zero stats but could still "win" with just +1d20, then
+    // the win-effect UPDATE silently no-ops on the undefined id.
+    const validBids = bids.filter(b => nationMap.has(b.nation_id));
+    const stalebids = bids.filter(b => !nationMap.has(b.nation_id));
+    if (stalebids.length > 0) {
+        await supabase.from('vola_host_bids').update({
+            resolved_at_tick: currentTick, won: false,
+        }).in('id', stalebids.map(b => b.id));
+    }
+    if (validBids.length === 0) return false;
+
+    const scored = validBids.map(b => {
+        const n = nationMap.get(b.nation_id);
         const culture       = Number(n.national_vola_culture) || 0;
         const infrastructure = Number(n.infrastructure) || 0;
         const globalImage   = Number(n.global_image) || 0;

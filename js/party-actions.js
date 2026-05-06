@@ -2868,7 +2868,7 @@ async function openVolaHostBidModal(root, faction) {
         document.getElementById('vola-host-close')?.addEventListener('click', close);
         overlay.onclick = (e) => { if (e.target === overlay) close(); };
 
-        document.querySelectorAll('[data-cup-number]').forEach(el => {
+        overlay.querySelectorAll('[data-cup-number]').forEach(el => {
             // Only the inner Submit button gets a click handler — outer
             // card stays informational. Filter to <button> nodes.
             if (el.tagName !== 'BUTTON') return;
