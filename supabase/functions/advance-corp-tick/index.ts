@@ -2707,6 +2707,30 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
+//  EXECUTIVE CONTRACT EXPIRY
+//  Flip every active exec whose contract_end_tick has passed to
+//  status='expired'. The role becomes vacant in the Actions UI;
+//  player must use Executive Search to refill. Replaces the old
+//  auto-rehire-on-page-load behavior.
+// ════════════════════════════════════════════════════════════════════════════════
+async function expireExecutiveContracts(supabase, currentTick) {
+    const { data: expired, error } = await supabase.from('corp_executives')
+        .update({ status: 'expired', updated_at: new Date().toISOString() })
+        .eq('status', 'active')
+        .lt('contract_end_tick', currentTick)
+        .select('id, role, faction_id');
+    if (error) {
+        console.error('[advance-corp-tick] Exec expiry failed:', error.message);
+        return 0;
+    }
+    const count = (expired || []).length;
+    if (count > 0) {
+        console.log(`[advance-corp-tick] Expired ${count} executive contract(s) at tick ${currentTick}`);
+    }
+    return count;
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 //  SHIP MARKET — Generate NPC listings + process vessel order deliveries
 // ════════════════════════════════════════════════════════════════════════════════
 
@@ -5160,6 +5184,19 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
                 }
             } catch (mktErr) {
                 console.error(`[advance-corp-tick] Ship market generation failed (non-fatal):`, mktErr);
+            }
+
+            // ── Executive Contract Expiry — Once per tick (global pass) ──
+            // Flips status='active'→'expired' for any exec whose
+            // contract_end_tick is now in the past. Vacates the role
+            // until the player explicitly re-hires via Executive Search.
+            try {
+                if (!summary._execExpiryProcessed) {
+                    await expireExecutiveContracts(supabase, currentTick);
+                    summary._execExpiryProcessed = true;
+                }
+            } catch (expErr) {
+                console.error(`[advance-corp-tick] Executive expiry failed (non-fatal):`, expErr);
             }
 
             // ── Vessel Orders — Deliver completed commissions ────────────

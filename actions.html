@@ -145,7 +145,7 @@ import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, hfFmtBig } from './js/utils.js';
 import { renderCorpTopBar } from './js/corp-topbar.js';
 import { renderCorpActions } from './js/corp-actions.js';
-import { EXEC_ROLES, EXEC_ROLE_META, createInitialExecutiveRoster, generateExecutivePool } from './js/game/corp-executives.js';
+import { EXEC_ROLES, EXEC_ROLE_META, generateExecutivePool } from './js/game/corp-executives.js';
 import { applyForEquity } from './js/equity-apply.js';
 import { declareBankruptcy } from './js/corp-bankruptcy.js';
 import { openSueCorpModal } from './js/sue-corp.js';
@@ -189,18 +189,10 @@ async function loadExecutives() {
     if (poolRes.error) console.warn('Failed to load executive pool:', poolRes.error.message);
     _executives = execRes.data || [];
     _execPool = poolRes.data || [];
-    const seedResult = await createInitialExecutiveRoster({
-        supabase: _supabase,
-        faction: faction,
-        currentTick: shard?.current_tick || 0,
-        poolCandidates: _execPool,
-    });
-    if (seedResult?.error) {
-        console.warn('Failed to seed initial executive roster:', seedResult.error.message || seedResult.error);
-    }
-    if (seedResult?.executives) {
-        _executives = seedResult.executives;
-    }
+    // Auto-rehire on page load was removed — empty roles persist as
+    // vacant until the player explicitly hires via Executive Search.
+    // CEO is still seeded once at corp creation (corp-nation-select.html
+    // → createCEORecord); every other role starts vacant.
 }
 
 // ═══════════════════════════════════════════════════
@@ -221,11 +213,62 @@ function getInitials(first, last) {
     return (first || '?')[0] + (last || '?')[0];
 }
 
-function skillColor(s) {
-    if (s >= 70) return '#5cb85c';
-    if (s >= 50) return '#ca5';
-    return '#c84';
+// Ticks-remaining label for the exec contract column. Reads
+// contract_end_tick (set at hire / renewal) and the current shard
+// tick. "expires in N tick(s)" reads cleanly whether the value is
+// 1 or 12+; "expired" if the value is non-positive (the corp tick
+// processor will flip the row to status='expired' on its next pass).
+function execContractRemainingLabel(exec) {
+    if (!exec || exec.contract_end_tick == null) return `${exec?.contract_years || 0}yr`;
+    const cur = shard?.current_tick || 0;
+    const remaining = Number(exec.contract_end_tick) - cur;
+    if (remaining <= 0) return 'expired';
+    if (remaining === 1) return '1 tick left';
+    return `${remaining} ticks left`;
 }
+
+// Deterministic 10..25% renewal markup keyed off the exec's UUID
+// so the predicted offer the player sees in the Renew modal is
+// the same value the renew_executive_contract RPC will apply.
+// Mirrors the PG-side hash in 20260938.
+function execRenewalMarkupPct(execId) {
+    if (!execId) return 17;
+    let h = 0;
+    for (let i = 0; i < execId.length; i++) {
+        h = ((h * 31) + execId.charCodeAt(i)) & 0x7fffffff;
+    }
+    return 10 + (h % 16); // 10..25
+}
+
+async function confirmRenewExec(execId, role, name, currentSalary) {
+    const markup = execRenewalMarkupPct(execId);
+    const proposedSalary = Math.round(Number(currentSalary || 0) * (100 + markup) / 100);
+    const msg = `RENEW ${role}: ${name}\n\n` +
+        `Predicted contract:\n` +
+        `  Salary: ${actFmtSalary(proposedSalary)}/yr  (+${markup}% counter-offer)\n` +
+        `  Length: 4 years\n` +
+        `  Cost:   FREE\n\n` +
+        `Confirm renewal?`;
+    if (!confirm(msg)) return;
+
+    try {
+        const { data, error } = await _supabase.rpc('renew_executive_contract', { p_exec_id: execId });
+        if (error) {
+            alert('Renewal failed: ' + error.message);
+            return;
+        }
+        if (!data?.success) {
+            alert('Renewal failed: ' + (data?.reason || 'unknown'));
+            return;
+        }
+        alert(`${role} ${name} renewed.\nNew salary: ${actFmtSalary(data.new_salary)}/yr  (+${data.markup_pct}%)`);
+        await loadExecutives();
+        renderActionsTab();
+    } catch (err) {
+        alert('Renewal failed: ' + (err?.message || err));
+    }
+}
+window.confirmRenewExec = confirmRenewExec;
 
 function renderActionsTab() {
     const container = document.getElementById('actions-container');
@@ -250,7 +293,7 @@ function renderActionsTab() {
 
 const EXEC_ACTIONS = {
     CEO: [
-        { id: 'statement', name: 'Issue Statement', desc: 'Issue a press release to the public events feed. Other players and media corps see it. Cost scales with CEO skill.', cost: '~$20k', costColor: '#5cb85c', tags: ['REPUTATION'], cooldown: 'once/tick' },
+        { id: 'statement', name: 'Issue Statement', desc: 'Issue a press release to the public events feed. Other players and media corps see it.', cost: '~$20k', costColor: '#5cb85c', tags: ['REPUTATION'], cooldown: 'once/tick' },
         { id: 'ipo', name: 'IPO', desc: 'Take the corporation public. Sell ~30% of shares for a massive cash injection. Permanent loss of full control.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['STRUCTURAL'], locked: true, lockReason: 'Coming soon' },
         { id: 'bankruptcy', name: 'Declare Bankruptcy', desc: 'The CEO officially files for bankruptcy, ceasing all operations. Outstanding loans will be repaid up to 50% of the corporation\'s market valuation.', descRed: 'This will dissolve your corporation. Loans will be paid back, and you will need to found a new corporation. There is a 24 tick cooldown on declaring bankruptcy.', cost: 'IRREVERSIBLE', costColor: '#c55', tags: ['IRREVERSIBLE'] },
     ],
@@ -260,13 +303,13 @@ const EXEC_ACTIONS = {
         { id: 'paydown', name: 'Pay Down Debt', desc: 'Use cash to retire outstanding loan principal early. Reduces debt and improves your credit standing. Paying off a loan in full grants +1 Reputation. Costs $100k admin fee.', cost: '$100k', costColor: '#5a8aaa', tags: ['FINANCIAL'] },
     ],
     COO: [
-        { id: 'restructure', name: 'Restructure Operations', desc: 'Lay off 10-20% of workforce, cut ~7% of debt. Reputation hit scales with COO skill — high skill minimizes damage.', cost: 'FREE', costColor: '#5cb85c', tags: ['OPERATIONAL'], cooldown: 'once/tick' },
+        { id: 'restructure', name: 'Restructure Operations', desc: 'Lay off 10-20% of workforce, cut ~7% of debt. Takes a small reputation hit.', cost: 'FREE', costColor: '#5cb85c', tags: ['OPERATIONAL'], cooldown: 'once/tick' },
     ],
     CTO: [
         { id: 'research', name: 'Begin Research', desc: 'Start researching a tech tree node. Opens the tech tree interface.', cost: 'COMING SOON', costColor: 'var(--text-dim)', tags: ['INNOVATION'], locked: true, lockReason: 'Coming soon' },
     ],
     CMO: [
-        { id: 'rebrand', name: 'Rebrand Corporation', desc: 'Change name and abbreviation. Cost and reputation hit scale with CMO skill — high skill reduces both.', cost: '~$2M', costColor: '#ca5', tags: ['STRUCTURAL'], cooldown: 'once/tick' },
+        { id: 'rebrand', name: 'Rebrand Corporation', desc: 'Change name and abbreviation. Costs ~$2M and takes a small reputation hit.', cost: '~$2M', costColor: '#ca5', tags: ['STRUCTURAL'], cooldown: 'once/tick' },
         { id: 'branding', name: 'Branding', desc: 'Upload a custom corporate logo. Replaces the default monogram on the dashboard, nation roster, and shipping vessels.', cost: '$1M', costColor: '#ca5', tags: ['IDENTITY'], cooldownTicks: 12 },
     ],
     CLO: [
@@ -277,10 +320,13 @@ const EXEC_ACTIONS = {
     ],
 };
 
-// ─── Skill modifier: >50 = cheaper/less damage, <50 = more expensive/more damage ──
-// Returns a multiplier: skill 0 → 1.5, skill 50 → 1.0, skill 100 → 0.5
-function skillCostMod(skill) {
-    return 1.5 - (skill / 100);
+// ─── Skill removed from gameplay (will be replaced later). Every
+// callsite below still passes a skill argument so the call shape
+// stays stable, but the multiplier is now a constant 1.0 — no
+// scaling. The corp_executives.skill column is left in place as
+// an inert placeholder. ──
+function skillCostMod(_skill) {
+    return 1.0;
 }
 
 // ─── Cooldown tracking: actions limited to once per tick ──
@@ -333,21 +379,15 @@ function renderActionsRightPanel() {
         </div>
         <div style="display:flex;gap:16px;align-items:center;">
             <div style="text-align:right;">
-                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:0.8px;">SKILL</div>
-                <div style="display:flex;align-items:center;gap:5px;margin-top:2px;">
-                    <div style="width:50px;height:4px;background:var(--border-0,rgba(255,255,255,0.06));">
-                        <div style="width:${exec.skill}%;height:100%;background:${skillColor(exec.skill)};"></div>
-                    </div>
-                    <span style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${skillColor(exec.skill)};">${exec.skill}</span>
-                </div>
-            </div>
-            <div style="text-align:right;">
                 <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:0.8px;">SALARY</div>
                 <div style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--text-muted);margin-top:2px;">${actFmtSalary(exec.salary_per_year)}/yr</div>
             </div>
             <div style="text-align:right;">
                 <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:0.8px;">CONTRACT</div>
-                <div style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--text-muted);margin-top:2px;">${exec.contract_years}yr</div>
+                <div style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--text-muted);margin-top:2px;">${execContractRemainingLabel(exec)}</div>
+            </div>
+            <div style="text-align:right;">
+                <span onclick="event.stopPropagation();confirmRenewExec('${exec.id}','${escapeHtml(role)}','${escapeHtml(exec.first_name + ' ' + exec.last_name)}',${exec.salary_per_year || 0})" style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.5px;padding:5px 12px;color:#5cb85c;border:1px solid rgba(92,184,92,0.3);background:rgba(92,184,92,0.07);cursor:pointer;">RENEW</span>
             </div>
             ${role !== 'CEO' ? `<div style="text-align:right;">
                 <span onclick="event.stopPropagation();confirmFireExec('${exec.id}','${escapeHtml(role)}','${escapeHtml(exec.first_name + ' ' + exec.last_name)}',${exec.salary_per_year},${exec.contract_end_tick || 0})" style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.5px;padding:5px 12px;color:#d9534f;border:1px solid rgba(217,83,79,0.25);background:rgba(217,83,79,0.06);cursor:pointer;">FIRE</span>
@@ -411,19 +451,6 @@ function renderActionsRightPanel() {
     }
 
     html += '</div>'; // close actions list
-
-    // ── Skill effect note ──
-    html += `<div style="padding:8px 20px;background:var(--bg-3,#252525);border:1px solid var(--border-0,rgba(255,255,255,0.06));border-top:none;">
-        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">
-            <span style="color:${meta.color};font-weight:700;">${escapeHtml(role)}</span> skill (${exec.skill}/100) affects action outcomes.
-            ${exec.skill >= 70
-                ? ' High skill increases success probability and reduces costs.'
-                : exec.skill >= 50
-                    ? ' Moderate skill — outcomes are average. Consider recruiting a stronger executive.'
-                    : ' Low skill — actions are less effective and more expensive. Replacement recommended.'
-            }
-        </div>
-    </div>`;
 
     panel.innerHTML = html;
 
@@ -2288,7 +2315,6 @@ function renderExecSearchModal() {
     for (let i = 0; i < candidates.length; i++) {
         const c = candidates[i];
         const isSel = _execSearchSelected === i;
-        const skC = skillColor(c.skill);
 
         html += `<div onclick="esSelectCandidate(${i})" style="
             padding:10px 14px;
@@ -2302,13 +2328,11 @@ function renderExecSearchModal() {
                 <div style="flex:1;min-width:0;">
                     <div style="font-size:13px;font-weight:600;color:${isSel ? 'var(--text-bright,#f0efe6)' : '#9e9a92'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.first_name)} ${escapeHtml(c.last_name)}</div>
                     <div style="display:flex;align-items:center;gap:8px;margin-top:3px;">
-                        <div style="display:flex;align-items:center;gap:4px;flex:1;">
-                            <div style="flex:1;height:3px;background:var(--panel-border);">
-                                <div style="width:${c.skill}%;height:100%;background:${skC};"></div>
-                            </div>
-                            <span style="font-family:var(--font-mono);font-size:9px;color:${skC};width:18px;text-align:right;">${c.skill}</span>
-                        </div>
+                        <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">Age ${c.age || '—'}</span>
+                        <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">·</span>
                         <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">${actFmtSalary(c.required_salary)}/yr</span>
+                        <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">·</span>
+                        <span style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">${c.required_years || 0}yr term</span>
                     </div>
                 </div>
             </div>
@@ -2327,7 +2351,6 @@ function renderExecSearchModal() {
         </div>`;
     } else {
         const totalComp = sel.required_salary * sel.required_years;
-        const skC = skillColor(sel.skill);
 
         // Identity header
         html += `<div style="padding:20px;border-bottom:1px solid var(--panel-border);">
@@ -2340,17 +2363,8 @@ function renderExecSearchModal() {
             </div>
         </div>`;
 
-        // Stats row
+        // Stats row (skill removed from gameplay; AGE + ORIGIN remain)
         html += `<div style="display:flex;gap:0;border-bottom:1px solid var(--panel-border);">
-            <div style="flex:1;padding:12px 14px;text-align:center;border-right:1px solid var(--panel-border);">
-                <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.5px;">SKILL</div>
-                <div style="display:flex;align-items:center;justify-content:center;gap:5px;margin-top:5px;">
-                    <div style="width:60px;height:4px;background:var(--panel-border);">
-                        <div style="width:${sel.skill}%;height:100%;background:${skC};"></div>
-                    </div>
-                    <span style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:${skC};">${sel.skill}</span>
-                </div>
-            </div>
             <div style="flex:1;padding:12px 14px;text-align:center;border-right:1px solid var(--panel-border);">
                 <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.5px;">AGE</div>
                 <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--text-bright,#f0efe6);margin-top:5px;">${sel.age}</div>
@@ -2392,15 +2406,6 @@ function renderExecSearchModal() {
             <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;margin-top:5px;">Salary is deducted from cash reserves each tick as an operating expense.</div>
         </div>`;
 
-        // Skill assessment
-        const skillLabel = sel.skill >= 80 ? 'EXCEPTIONAL' : sel.skill >= 65 ? 'STRONG' : sel.skill >= 50 ? 'COMPETENT' : sel.skill >= 35 ? 'DEVELOPING' : 'WEAK';
-        const skillDescr = sel.skill >= 80 ? 'Elite talent. Actions have high success rate and reduced costs.' : sel.skill >= 65 ? 'Strong performer. Reliable outcomes across most actions.' : sel.skill >= 50 ? 'Adequate for the role. Outcomes are average.' : sel.skill >= 35 ? 'Below average. Actions may fail or cost more. Consider alternatives.' : 'Poor fit. High failure rates. Replacement recommended.';
-        html += `<div style="padding:12px 20px;">
-            <div style="padding:8px 12px;background:${skC}08;border:1px solid ${skC}18;">
-                <div style="font-family:var(--font-mono);font-size:10px;color:${skC};letter-spacing:0.8px;margin-bottom:3px;">${skillLabel}</div>
-                <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;">${skillDescr}</div>
-            </div>
-        </div>`;
     }
 
     html += '</div>'; // close right panel
@@ -2411,7 +2416,6 @@ function renderExecSearchModal() {
         <div style="display:flex;gap:14px;">`;
     if (sel) {
         html += `<div><div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">CANDIDATE</div><div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:var(--text-bright,#f0efe6);">${escapeHtml(sel.first_name)} ${escapeHtml(sel.last_name)}</div></div>
-            <div><div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">SKILL</div><div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:${skillColor(sel.skill)};">${sel.skill}</div></div>
             <div><div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.8px;">SALARY</div><div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:#c84;">${actFmtSalary(sel.required_salary)}/yr</div></div>`;
     } else {
         html += `<div style="font-family:var(--font-mono);font-size:11px;color:#6a6660;">Select a candidate to hire</div>`;
