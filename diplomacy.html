@@ -97,7 +97,7 @@
 
 <!-- ===== SPORTS SUBTAB ===== -->
 <div id="subtab-sports" class="diplo-subtab-content" style="display:none;">
-    <div class="sports-page" id="sports-page">
+    <div class="sports-page">
         <div class="sports-eyebrow">— MINISTRY OF SPORTS —</div>
         <h1 class="sports-title"><span class="sports-title-accent">Vola</span> Program</h1>
         <div class="sports-subtitle" id="sports-subtitle"></div>
@@ -164,7 +164,7 @@ import { syncVoteTallies } from './js/game/bills.js';
 import { TRADE_SECTOR_MAP, calculateExportCapacity, calculateImportDemand, formatSectorVolume, FOOD_SUBSECTOR_MAP, isFoodSubsector, calculateFoodExportCapacity, calculateFoodImportDemand, DEFAULT_FOOD_ALLOCATION, getGlobalAverageUnitPrice, formatPricePerTonne, SECTOR_DISPLAY_UNITS, shippingNeedFor } from './js/game/trade-constants.js';
 import { adjustGovernmentApprovalEvent } from './js/game/momentum.js';
 import { clampServiceRate, computeServiceRateCeiling, revenueTierMultiplier } from './js/game/shipping.js';
-import { getNationNames } from './js/game/political-actions.js';
+import { getNationNames, VOLA_CULTURE_DECAY_RATE } from './js/game/political-actions.js';
 /**
  * Diplomacy Page
  * World map + nation sidebar with role-based diplomatic actions
@@ -299,8 +299,6 @@ function showDiploSubtab() {
 // SPORTS TAB — VOLA PROGRAM
 // ═══════════════════════════════════════════════════
 
-const VOLA_DECAY_RATE = 0.03;
-
 function renderSportsTab() {
     const subtitleEl = document.getElementById('sports-subtitle');
     const cardsEl = document.getElementById('sports-cards');
@@ -315,8 +313,15 @@ function renderSportsTab() {
     }
 
     const value = Math.max(0, Math.min(100, Number(nation.national_vola_culture) || 0));
-    const nextLoss = Math.round(value * VOLA_DECAY_RATE * 10) / 10;
-    const nationName = (nation.name || '').toUpperCase();
+    // Mirror processVolaCultureDecay's rounding so the "next tick" preview
+    // matches the value the engine will actually write.
+    const predictedNext = Math.max(0, Math.round(value * (1 - VOLA_CULTURE_DECAY_RATE)));
+    const predictedLoss = value - predictedNext;
+    const decayPct = Math.round(VOLA_CULTURE_DECAY_RATE * 100);
+    const decayLine = predictedLoss > 0
+        ? `<div class="sports-card-decay">&#x25BC; &minus;${predictedLoss} next tick (${decayPct}% decay)</div>`
+        : '';
+    const nationName = (nation.name || 'YOUR NATION').toUpperCase();
 
     subtitleEl.textContent = `${nationName} NATIONAL VOLA AUTHORITY · TICK ${tick}`;
 
@@ -327,7 +332,7 @@ function renderSportsTab() {
                 <span class="sports-card-label">NATIONAL SPORTS CULTURE</span>
             </div>
             <div class="sports-card-value">${value}</div>
-            <div class="sports-card-decay">&#x25BC; &minus;${nextLoss.toFixed(1)} next tick (3% decay)</div>
+            ${decayLine}
             <div class="sports-bar-track">
                 <div class="sports-bar-fill" style="width:${value}%;"></div>
             </div>
