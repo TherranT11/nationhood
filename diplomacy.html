@@ -952,6 +952,27 @@ async function loadAndRenderVolaKnockout(cupNum) {
     }
     if (!data || data.length === 0) return;
 
+    // Champion card lives outside the per-match loop. If the F row is
+    // resolved, swap the placeholder for the winning team's name + flag.
+    const finalRow = data.find(m => m.round === 'F');
+    const champEl = bracket.querySelector('.vola-cup-champion-text');
+    if (champEl) {
+        if (finalRow?.winner_nation_id && (finalRow.team_a || finalRow.team_b)) {
+            const championNation = finalRow.winner_nation_id === finalRow.team_a?.id
+                ? finalRow.team_a
+                : finalRow.team_b;
+            if (championNation?.name) {
+                const flag = _volaFlagImg(championNation, 'vola-cup-champion-flag');
+                const color = _volaNationColor(championNation.name);
+                champEl.innerHTML = `${flag}<span style="color:${color};">${escapeHtml(championNation.name)}</span>`;
+                bracket.classList.add('vola-cup-bracket--crowned');
+            }
+        } else {
+            champEl.textContent = 'To Be Crowned';
+            bracket.classList.remove('vola-cup-bracket--crowned');
+        }
+    }
+
     for (const m of data) {
         const slot = bracket.querySelector(
             `.vola-cup-match[data-round="${m.round}"][data-match-num="${m.match_number}"]`

@@ -25379,7 +25379,217 @@ async function processVolaCupKnockoutMatches(supabase, currentTick) {
     // ── Step 2: play every row whose teams are now both set. ──
     const playable = due.filter(r => r.team_a_nation_id && r.team_b_nation_id);
     const resolved = await _playMatchBatch(supabase, 'vola_cup_knockout', playable, currentTick, 'VolaKnockout');
+
+    // ── Phase 5 hook: any cup whose Final row was due this tick is a
+    // candidate for championship settlement. The settle function is
+    // idempotent and self-gates on "Final has a winner + not already
+    // settled", so calling it for every Final cup_number is safe.
+    const finalsThisTick = Array.from(new Set(
+        due.filter(r => r.round === 'F').map(r => r.cup_number)
+    ));
+    for (const cupNumber of finalsThisTick) {
+        try {
+            await settleVolaCupChampionship(supabase, cupNumber, currentTick);
+        } catch (err) {
+            console.error('[VolaChampion] settlement failed for cup', cupNumber, err);
+        }
+    }
+
     return { resolved };
+}
+
+const _CHAMPION_GLOBAL_IMAGE_BONUS  = 2;
+const _RUNNER_UP_GLOBAL_IMAGE_BONUS = 1;
+
+/**
+ * Phase 5: crown the champion + write the 1..13 final standings +
+ * push results back into nations.vwc_ranking so the next cup's
+ * seed-by-ranking actually uses the latest results.
+ *
+ * Self-gating idempotency: bails if final_standings rows already
+ * exist for this cup, or if the Final row doesn't yet have a
+ * winner. Callable safely from every tick.
+ *
+ * Position assignment:
+ *   1   Champion
+ *   2   Runner-up
+ *   3-4 SF losers, sorted by group record (W → PTS → prowess → name)
+ *   5-8 QF losers, sorted same
+ *   9-12 4 non-knockout participants (1 unlucky 3rd + 3 4th-placers), sorted same
+ *   13  Aspirant (placement loser)
+ *
+ * Bonuses: +2 global_image to champion, +1 to runner-up. Aspirant's
+ * −1 global_image penalty was already applied by _settleVolaPlacement
+ * 8 ticks earlier.
+ */
+async function settleVolaCupChampionship(supabase, cupNumber, currentTick) {
+    const { data: existing } = await supabase.from('vola_cup_final_standings')
+        .select('id').eq('cup_number', cupNumber).limit(1).maybeSingle();
+    if (existing) return null;
+
+    const { data: finalRow, error: fErr } = await supabase.from('vola_cup_knockout')
+        .select('team_a_nation_id, team_b_nation_id, winner_nation_id, resolved_at_tick')
+        .eq('cup_number', cupNumber)
+        .eq('round', 'F')
+        .maybeSingle();
+    if (fErr) {
+        console.warn('[VolaChampion] final fetch failed:', fErr.message);
+        return null;
+    }
+    if (!finalRow?.winner_nation_id || finalRow.resolved_at_tick == null) return null;
+
+    const { data: koRows, error: kErr } = await supabase.from('vola_cup_knockout')
+        .select('round, team_a_nation_id, team_b_nation_id')
+        .eq('cup_number', cupNumber);
+    if (kErr || !koRows || koRows.length !== 7) {
+        console.warn('[VolaChampion] knockout fetch incomplete for cup', cupNumber);
+        return null;
+    }
+
+    const { data: groupRows, error: gErr } = await supabase.from('vola_cup_groups')
+        .select('group_letter, nation:nation_id(id, name, national_team_prowess)')
+        .eq('cup_number', cupNumber);
+    if (gErr || !groupRows || groupRows.length !== 12) {
+        console.warn('[VolaChampion] groups fetch incomplete for cup', cupNumber);
+        return null;
+    }
+
+    const { data: gmatches, error: gmErr } = await supabase.from('vola_cup_group_matches')
+        .select('team_a_nation_id, team_b_nation_id, team_a_score, team_b_score, winner_nation_id')
+        .eq('cup_number', cupNumber);
+    if (gmErr) {
+        console.warn('[VolaChampion] group match fetch failed:', gmErr.message);
+        return null;
+    }
+
+    // Per-team registry, tally group-stage stats for the tiebreak.
+    const reg = new Map();
+    for (const r of groupRows) {
+        const n = r.nation;
+        if (!n?.id) continue;
+        reg.set(n.id, {
+            id:      n.id,
+            name:    n.name || '',
+            prowess: Number(n.national_team_prowess) || 0,
+            wins:    0,
+            points:  0,
+        });
+    }
+    for (const m of (gmatches || [])) {
+        const a = reg.get(m.team_a_nation_id);
+        const b = reg.get(m.team_b_nation_id);
+        if (!a || !b) continue;
+        a.points += Number(m.team_a_score) || 0;
+        b.points += Number(m.team_b_score) || 0;
+        if (m.winner_nation_id === a.id)      a.wins++;
+        else if (m.winner_nation_id === b.id) b.wins++;
+    }
+
+    const cmp = (x, y) =>
+        (y.wins   - x.wins)    ||
+        (y.points - x.points)  ||
+        (y.prowess - x.prowess) ||
+        String(x.name || '').localeCompare(String(y.name || ''));
+
+    // Bucket teams by knockout depth. SF teams = whoever appeared as
+    // team_a/b on an SF row; QF teams = whoever was in QF.
+    const qfTeams = new Set();
+    const sfTeams = new Set();
+    for (const k of koRows) {
+        const ids = [k.team_a_nation_id, k.team_b_nation_id].filter(Boolean);
+        if (k.round === 'QF') ids.forEach(id => qfTeams.add(id));
+        else if (k.round === 'SF') ids.forEach(id => sfTeams.add(id));
+    }
+
+    const championId = finalRow.winner_nation_id;
+    const runnerUpId = finalRow.team_a_nation_id === championId
+        ? finalRow.team_b_nation_id
+        : finalRow.team_a_nation_id;
+
+    const positions = [];
+    if (championId)  positions.push({ id: championId, position: 1, eliminated_at: 'champion' });
+    if (runnerUpId)  positions.push({ id: runnerUpId, position: 2, eliminated_at: 'final' });
+
+    const sfLosers = Array.from(sfTeams)
+        .filter(id => id !== championId && id !== runnerUpId)
+        .map(id => reg.get(id))
+        .filter(Boolean)
+        .sort(cmp);
+    sfLosers.forEach((t, i) => positions.push({ id: t.id, position: 3 + i, eliminated_at: 'semifinal' }));
+
+    const qfLosers = Array.from(qfTeams)
+        .filter(id => !sfTeams.has(id))
+        .map(id => reg.get(id))
+        .filter(Boolean)
+        .sort(cmp);
+    qfLosers.forEach((t, i) => positions.push({ id: t.id, position: 5 + i, eliminated_at: 'quarterfinal' }));
+
+    const nonAdvancers = Array.from(reg.values())
+        .filter(t => !qfTeams.has(t.id))
+        .sort(cmp);
+    nonAdvancers.forEach((t, i) => positions.push({ id: t.id, position: 9 + i, eliminated_at: 'group_stage' }));
+
+    // Aspirant rounds out 13th. Don't clear is_vola_aspirant — that
+    // happens at the next cycle's qualifier tick (see
+    // generateVolaPlacementSchedule).
+    const { data: aspirantRows, error: aErr } = await supabase.from('nations')
+        .select('id').eq('is_vola_aspirant', true).limit(1);
+    if (aErr) {
+        console.warn('[VolaChampion] aspirant fetch failed:', aErr.message);
+    }
+    const aspirantId = aspirantRows?.[0]?.id;
+    if (aspirantId) positions.push({ id: aspirantId, position: 13, eliminated_at: 'placement' });
+
+    if (positions.length === 0) return null;
+
+    const standingRows = positions.map(p => ({
+        cup_number:      cupNumber,
+        nation_id:       p.id,
+        final_position:  p.position,
+        eliminated_at:   p.eliminated_at,
+        settled_at_tick: currentTick,
+    }));
+    const { error: insErr } = await supabase.from('vola_cup_final_standings').insert(standingRows);
+    if (insErr) {
+        console.warn('[VolaChampion] standings insert failed:', insErr.message);
+        return null;
+    }
+
+    // Write back into nations.vwc_ranking so seedVolaCupKnockout's
+    // seed-by-ranking uses the latest results next cycle.
+    for (const p of positions) {
+        const { error: rErr } = await supabase.from('nations')
+            .update({ vwc_ranking: p.position })
+            .eq('id', p.id);
+        if (rErr) console.warn('[VolaChampion] ranking update failed for', p.id, rErr.message);
+    }
+
+    // Champion + runner-up global_image bonuses.
+    const giBonusApply = async (nationId, bonus) => {
+        if (!nationId) return;
+        const { data: n } = await supabase.from('nations')
+            .select('global_image').eq('id', nationId).single();
+        const newGI = Math.min(100, (Number(n?.global_image) || 0) + bonus);
+        await supabase.from('nations').update({ global_image: newGI }).eq('id', nationId);
+    };
+    await giBonusApply(championId, _CHAMPION_GLOBAL_IMAGE_BONUS);
+    await giBonusApply(runnerUpId, _RUNNER_UP_GLOBAL_IMAGE_BONUS);
+
+    // Event log: the headline crowning entry.
+    const champion = reg.get(championId);
+    const championName = champion?.name || 'Unknown';
+    const runnerUp = runnerUpId ? reg.get(runnerUpId) : null;
+    const runnerUpName = runnerUp?.name || 'Unknown';
+    await supabase.from('event_log').insert({
+        nation_id:          championId,
+        event_name:         `${_cupOrdinal(cupNumber)} World Vola Cup — Champion`,
+        category:           'political',
+        trigger_key:        'vwc_champion',
+        description_chosen: `${championName} are crowned champions of the ${_cupOrdinal(cupNumber)} World Vola Cup, defeating ${runnerUpName} in the Final. Global Image +${_CHAMPION_GLOBAL_IMAGE_BONUS}.`,
+        fired_at_tick:      currentTick,
+    });
+
+    return { cupNumber, champion: championName, runnerUp: runnerUpName, settled: positions.length };
 }
 
 async function _settleVolaPlacement(supabase, cupNumber, currentTick) {

@@ -6077,6 +6077,23 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   font-style: italic;
   font-size: 16px;
   color: var(--text-bright);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.vola-cup-champion-flag {
+  width: 28px;
+  height: 18px;
+  object-fit: cover;
+  border: 1px solid rgba(200, 168, 50, 0.6);
+  flex-shrink: 0;
+}
+.vola-cup-bracket--crowned .vola-cup-champion {
+  box-shadow: 0 0 16px rgba(200, 168, 50, 0.25);
+}
+.vola-cup-bracket--crowned .vola-cup-champion-text {
+  font-style: normal;
+  font-weight: 600;
 }
 
 /* Inline flag chip — used in placement matches today and group/bracket
