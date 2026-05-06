@@ -7,7 +7,7 @@
 --   Position 3 → Defender
 --
 -- Each player has a fixed rating set at recruitment time:
---     rating = floor(national_vola_culture) + 6
+--     rating = floor(national_vola_culture) + 1d6
 --
 -- Players retire after 1d36 ticks; the tick processor auto-generates
 -- a replacement at the *current* culture, so a nation that's been
@@ -42,7 +42,7 @@ CREATE INDEX IF NOT EXISTS vola_team_players_retire_idx
     ON public.vola_team_players (retires_at_tick);
 
 COMMENT ON TABLE public.vola_team_players IS
-    '3-player national Vola roster per nation. position_number 1=Forward(Captain), 2=Midfielder, 3=Defender. Rating fixed at recruitment (floor(culture) + 6); retires_at_tick = recruited_at_tick + 1d36. Tick processor auto-replaces retired players.';
+    '3-player national Vola roster per nation. position_number 1=Forward(Captain), 2=Midfielder, 3=Defender. Rating fixed at recruitment (floor(culture) + 1d6); retires_at_tick = recruited_at_tick + 1d36. Tick processor auto-replaces retired players.';
 
 -- Read access for clients (the team panel renders these).
 ALTER TABLE public.vola_team_players ENABLE ROW LEVEL SECURITY;
@@ -70,22 +70,25 @@ SELECT
     n.id,
     p.pos,
     CASE p.pos WHEN 1 THEN 'Forward' WHEN 2 THEN 'Midfielder' ELSE 'Defender' END,
-    COALESCE(
-        n.first_name_pool[1 + floor(random() * GREATEST(array_length(n.first_name_pool, 1), 1))::int],
-        'Player'
-    ),
-    COALESCE(
-        n.last_name_pool[1 + floor(random() * GREATEST(array_length(n.last_name_pool, 1), 1))::int],
-        CASE p.pos WHEN 1 THEN 'One' WHEN 2 THEN 'Two' ELSE 'Three' END
-    ),
-    18 + floor(random() * 18)::int,
-    floor(COALESCE(n.national_vola_culture, 0))::int + 6,
+    COALESCE(n.first_name_pool[r.first_idx], 'Player'),
+    COALESCE(n.last_name_pool[r.last_idx],
+             CASE p.pos WHEN 1 THEN 'One' WHEN 2 THEN 'Two' ELSE 'Three' END),
+    r.age,
+    floor(COALESCE(n.national_vola_culture, 0))::int + r.d6,
     (SELECT t FROM shard_tick),
     COALESCE(n.national_vola_culture, 0),
-    (SELECT t FROM shard_tick) + 1 + floor(random() * 36)::int,
+    (SELECT t FROM shard_tick) + 1 + r.d36,
     p.pos = 1
 FROM nations n
 CROSS JOIN (VALUES (1),(2),(3)) AS p(pos)
+CROSS JOIN LATERAL (
+    SELECT
+        1 + floor(random() * GREATEST(COALESCE(array_length(n.first_name_pool, 1), 0), 1))::int AS first_idx,
+        1 + floor(random() * GREATEST(COALESCE(array_length(n.last_name_pool,  1), 0), 1))::int AS last_idx,
+        18 + floor(random() * 18)::int AS age,
+        1  + floor(random() *  6)::int AS d6,
+        floor(random() * 36)::int      AS d36
+) r
 WHERE NOT EXISTS (
     SELECT 1 FROM vola_team_players x
     WHERE x.nation_id = n.id AND x.position_number = p.pos
@@ -157,7 +160,7 @@ BEGIN
         'Replacement'
     );
     v_new_age    := 18 + floor(random() * 18)::int;
-    v_new_rating := floor(COALESCE(v_nation.national_vola_culture, 0))::int + 6;
+    v_new_rating := floor(COALESCE(v_nation.national_vola_culture, 0))::int + 1 + floor(random() * 6)::int;
     v_new_retire := v_tick + 1 + floor(random() * 36)::int;
 
     -- Replace the slot atomically.
