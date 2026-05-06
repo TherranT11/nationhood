@@ -180,6 +180,16 @@ const LEADER_ACTIONS = [
         locked: false,
     },
     {
+        id: 'form_coalition',
+        name: 'Form Coalition',
+        desc: 'Open the coalition formation flow. Available whenever there is no active government — invite parties, assemble at least the majority threshold of seats, then assign ministries and install a new Prime Minister. Greys out automatically when a coalition is already in place.',
+        cost: 'GOVERNMENT',
+        costColor: '#c8a832',
+        moneyCost: 0,
+        tags: ['GOVERNMENT', 'COALITION'],
+        locked: false,
+    },
+    {
         id: 'leave_coalition',
         name: 'Leave Coalition',
         desc: 'Walk out of the current governing coalition. Any ministries your party holds are vacated. You drop from governing to opposition. Coalition flips to minority if your exit drops it below the majority threshold. Cost: −3 Momentum to you, −5 Momentum to the PM’s party. 12-tick cooldown. PM’s party cannot use this — resign first.',
@@ -1082,6 +1092,11 @@ function renderPage(root) {
             openVolaHostBidModal(root, faction);
         } else if (actionId === 'leadership_challenge') {
             triggerLeadershipChallenge(root, faction);
+        } else if (actionId === 'form_coalition') {
+            // Jump to the Election subtab, which already hosts the
+            // existing coalition-formation UI (renderFormationTab).
+            const electionTab = document.querySelector('.pa-subtab[data-panel="election"]');
+            if (electionTab) electionTab.click();
         }
     });
 
@@ -1665,6 +1680,33 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             } else if (!_administration || !_administration.pm_party_id) {
                 isDisabled = true;
                 action.lockReason = 'No active Prime Minister to file against.';
+            } else {
+                action.lockReason = '';
+            }
+        } else if (action.id === 'form_coalition') {
+            // Greyed when an active coalition is already in place
+            // (status formed/active/caretaker — i.e. anything fetchActiveCoalition
+            // returned non-null). Available whenever there's a vacancy.
+            // Parliamentary-only; presidential systems install via election.
+            const nation = _state.nation;
+            const govType = (nation?.government_type || '').toLowerCase();
+            const isAM   = govType.includes('absolute monarchy');
+            const isPres = govType.includes('presidential') && !govType.includes('semi');
+            const isParliamentaryLike = !isAM && !isPres
+                && (govType.includes('parliamentary') || govType.includes('semi-presidential') ||
+                    govType.includes('semi_presidential') || nation?.hos_election_method === 'hereditary');
+            const hasActiveCoalition = !!_administration && !!_administration.pm_party_id;
+            const noSeats = !faction.seats || faction.seats <= 0;
+
+            if (!isParliamentaryLike) {
+                isDisabled = true;
+                action.lockReason = 'Coalition formation only applies to parliamentary systems.';
+            } else if (hasActiveCoalition) {
+                isDisabled = true;
+                action.lockReason = 'A government is already in place.';
+            } else if (noSeats) {
+                isDisabled = true;
+                action.lockReason = 'Your party has no parliamentary seats.';
             } else {
                 action.lockReason = '';
             }

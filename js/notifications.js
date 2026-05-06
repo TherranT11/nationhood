@@ -100,15 +100,42 @@ function injectStyles() {
     overflow-y: auto;
     flex: 1 1 auto;
 }
-.notif-row {
-    display: block; padding: 10px 14px;
+.notif-row-wrap {
+    position: relative;
     border-bottom: 1px solid var(--border-mid, rgba(255,255,255,0.06));
+}
+.notif-row-wrap:last-child { border-bottom: 0; }
+.notif-row-wrap:hover { background: rgba(200,166,78,0.08); }
+.notif-row {
+    display: block; padding: 10px 36px 10px 14px;
     color: inherit; text-decoration: none;
     cursor: pointer;
     transition: background 0.1s;
 }
-.notif-row:hover { background: rgba(200,166,78,0.08); }
-.notif-row:last-child { border-bottom: 0; }
+.notif-row__close {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    width: 20px; height: 20px;
+    border-radius: 3px;
+    border: 1px solid rgba(217, 83, 79, 0.4);
+    background: rgba(217, 83, 79, 0.12);
+    color: #d9534f;
+    font-size: 14px;
+    line-height: 1;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.notif-row__close:hover {
+    background: #d9534f;
+    border-color: #d9534f;
+    color: #fff;
+}
 .notif-row__title {
     font-size: 13px; color: var(--text-bright, #f0efe6);
     font-weight: 600; line-height: 1.3;
@@ -275,6 +302,39 @@ async function checkRecentElection(nation, shard) {
         title: 'Election completed',
         sub: ticksAgo === 0 ? 'Just now' : `${ticksAgo} tick${ticksAgo === 1 ? '' : 's'} ago`,
         href: 'elections.html',
+    }];
+}
+
+// Prompt every party to use the Form Coalition action when the most
+// recent election is recent AND there's no government in place. Fires
+// for every nation party (not just the largest) since anyone can now
+// propose. Runs alongside checkRecentElection — election notice tells
+// the player something happened, this tells them what to do next.
+async function checkPostElectionFormation(nation, shard) {
+    const tick = Number(shard?.current_tick) || 0;
+    if (tick <= 0) return [];
+    const [{ data: elRows }, { data: gfRows }] = await Promise.all([
+        _supabase.from('elections')
+            .select('election_tick')
+            .eq('nation_id', nation.id)
+            .eq('status', 'completed')
+            .order('election_tick', { ascending: false })
+            .limit(1),
+        _supabase.from('government_formations')
+            .select('id, status')
+            .eq('nation_id', nation.id)
+            .in('status', ['formed', 'active', 'caretaker'])
+            .limit(1),
+    ]);
+    const el = (elRows || [])[0];
+    if (!el) return [];
+    const completed = Number(el.election_tick) || 0;
+    if (!completed || completed > tick || tick - completed > ELECTION_RECENCY_TICKS) return [];
+    if ((gfRows || []).length > 0) return []; // Government already in place.
+    return [{
+        title: 'Form Coalition',
+        sub: "Use 'Form Coalition' to create a government.",
+        href: 'politics.html',
     }];
 }
 
@@ -447,16 +507,45 @@ function rowsFingerprint(rows) {
     return (rows || []).map(r => `${r.title || ''}|${r.sub || ''}`).join('||');
 }
 
+// Stable per-row dismissal key. Excludes the sub-line so a row whose
+// sub changes each tick (e.g. "2 ticks ago" → "3 ticks ago") still
+// matches its own dismissal record.
+function dismissKeyFor(row) {
+    return `${row.title || ''}::${row.href || ''}`;
+}
+
+function getDismissedSet() {
+    const factionId = _ctx?.faction?.id;
+    if (!factionId) return new Set();
+    try {
+        const raw = localStorage.getItem('notif_dismissed_' + factionId);
+        return new Set(raw ? JSON.parse(raw) : []);
+    } catch { return new Set(); }
+}
+
+function saveDismissedSet(set) {
+    const factionId = _ctx?.faction?.id;
+    if (!factionId) return;
+    try {
+        localStorage.setItem('notif_dismissed_' + factionId, JSON.stringify([...set]));
+    } catch { /* quota exceeded; ignore */ }
+}
+
 function renderRows(rows) {
     const list = document.getElementById('notif-list');
     const count = document.getElementById('notif-count');
     const dot = document.getElementById('notif-dot');
     if (!list) return;
 
-    if (count) count.textContent = String(rows.length);
+    // Strip dismissed rows before counting — count + dot should reflect
+    // what the user can actually see.
+    const dismissed = getDismissedSet();
+    const visible = rows.filter(r => !dismissed.has(dismissKeyFor(r)));
+
+    if (count) count.textContent = String(visible.length);
     // Dot lights only when there are rows AND the set has changed
     // since the user last opened the dropdown.
-    _lastRenderedFingerprint = rowsFingerprint(rows);
+    _lastRenderedFingerprint = rowsFingerprint(visible);
     // If the dropdown is currently open, the user is actively looking
     // at these rows — fold them into the acknowledged set so the dot
     // stays off (a) when the very first render lands after an early
@@ -464,21 +553,25 @@ function renderRows(rows) {
     // already open. Either way, the user has seen them.
     const drop = document.getElementById('notif-dropdown');
     if (drop && !drop.hidden) _acknowledgedFingerprint = _lastRenderedFingerprint;
-    const hasUnseen = rows.length > 0 && _lastRenderedFingerprint !== _acknowledgedFingerprint;
+    const hasUnseen = visible.length > 0 && _lastRenderedFingerprint !== _acknowledgedFingerprint;
     if (dot) dot.hidden = !hasUnseen;
 
-    if (rows.length === 0) {
+    if (visible.length === 0) {
         list.innerHTML = '<div class="notif-empty">No notifications</div>';
         return;
     }
-    list.innerHTML = rows.map(r => {
+    list.innerHTML = visible.map(r => {
         const href = r.href || '#';
         const title = escapeHtml(r.title || '');
         const sub = escapeHtml(r.sub || '');
-        return `<a class="notif-row" href="${escapeHtml(href)}" data-action="${escapeHtml(href)}">
-            <span class="notif-row__title">${title}</span>
-            <span class="notif-row__sub">${sub}</span>
-        </a>`;
+        const key = escapeHtml(dismissKeyFor(r));
+        return `<div class="notif-row-wrap">
+            <a class="notif-row" href="${escapeHtml(href)}" data-action="${escapeHtml(href)}">
+                <span class="notif-row__title">${title}</span>
+                <span class="notif-row__sub">${sub}</span>
+            </a>
+            <button type="button" class="notif-row__close" data-dismiss-key="${key}" title="Dismiss" aria-label="Dismiss notification">&times;</button>
+        </div>`;
     }).join('');
 
     // Intercept the in-app actions (#open-messaging…) so they pop the
@@ -489,6 +582,22 @@ function renderRows(rows) {
         a.addEventListener('click', (e) => {
             e.preventDefault();
             handleInAppAction(href);
+        });
+    });
+
+    // Wire the dismiss X on every row.
+    list.querySelectorAll('.notif-row__close').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const key = btn.getAttribute('data-dismiss-key');
+            if (!key) return;
+            const set = getDismissedSet();
+            set.add(key);
+            saveDismissedSet(set);
+            // Re-render with the same source rows so the dismissed row
+            // disappears immediately without a server roundtrip.
+            renderRows(rows);
         });
     });
 }
@@ -521,6 +630,7 @@ async function refreshNotifications() {
         const settled = await Promise.allSettled([
             checkBills(faction, nation),
             checkRecentElection(nation, shard),
+            checkPostElectionFormation(nation, shard),
             checkCoalitionInvites(faction, nation),
             checkChatUnread(faction),
             checkTradeNegotiationMessages(faction, nation, isPM, isTradeMin),
