@@ -5555,6 +5555,59 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   padding: 24px 0;
 }
 
+/* ── Right-side stat trio (VWC Ranking / Team Prowess / Stadiums Built) ── */
+.sports-stat-grid {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+  min-width: 320px;
+  flex-wrap: wrap;
+  align-content: flex-start;
+}
+.sports-stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-main);
+  padding: 14px 16px 12px;
+  flex: 1;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+}
+.sports-stat-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.sports-stat-card-icon {
+  font-size: 12px;
+  color: var(--amber);
+}
+.sports-stat-card-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+.sports-stat-card-value {
+  font-family: var(--font-serif);
+  font-size: 36px;
+  font-weight: 500;
+  color: var(--text-bright);
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.sports-stat-card-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
+.sports-stat-card-sub--accent {
+  color: var(--green);
+}
+
 /* ── Responsive ── */
 @media (max-width: 1400px) {
   .trade-neg-econ { width: 200px; }
