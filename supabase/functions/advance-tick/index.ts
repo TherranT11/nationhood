@@ -3286,36 +3286,20 @@ function calculateNationalBudget(nation, opts = {}) {
 }
 
 // ════════════════════════════════════════════════════════════════
-// Budget surplus → debt paydown (per-tick).
+// Per-tick national debt math (v3 — bonds retired).
 //
-// Mirrors the Government Budget panel's monthly-balance math exactly
-// so what the player sees on the cards is what gets applied each
-// tick: revenue (treasury cash, treated as annual) minus
-// expenditures (Interest on Debt + monarchy-only Royal Holdings,
-// other rows still $0 placeholders) → annual balance → /12 →
-// per-tick paydown applied to principal.
+// Single rule: balance = revenue − expenditures.
+//   surplus → debt shrinks by per-tick balance, treasury drains
+//   deficit → debt grows by per-tick balance, treasury unchanged
+//             (implicit borrow — no bond offers, no printing)
 //
-// Unit handling: this is the load-bearing piece. The panel mixes
-// scales — nation.budget is "abstract" (small number, displayed
-// directly), debtService comes back from calculateNationalBudget in
-// raw dollars and is divided by 1e9 to render, and nation.debt is
-// raw dollars (also /1e9 to display). The legacy processDebtTick
-// silently ate this mismatch by subtracting an abstract surplus
-// from a raw debt value, which is why a $17 abstract balance never
-// dented a $1.2e12 raw debt. Here we convert abstract → raw with
-// _RAW_PER_ABSTRACT before touching nation.debt.
+// Mirrors the Government Budget panel's monthly-balance math so
+// what the player sees on the cards is what gets applied each tick.
 //
-// Treasury bookkeeping: the abstract amount is also deducted from
-// nation.budget (the treasury cash balance) so the player's reserve
-// drops by the same amount the debt does — money paid out, not
-// magicked from thin air.
-//
-// Order of operations: caller wires this AFTER processDebtTick so
-// bond maturities, coupon charges, and offer expiry have already
-// hit. The interest payment side ("goes toward Interest on Debt")
-// is handled by processBondCouponsTick / the panel's debt-service
-// expenditure line; this helper is the "and then paying toward
-// the Debt" half of the user's spec.
+// Unit handling: nation.budget is "abstract" (small number,
+// displayed directly), nation.debt is raw dollars (1 abstract =
+// 1e9 raw, divided by 1e9 to display). _RAW_PER_ABSTRACT bridges
+// the two when applying the abstract delta to the raw debt column.
 // ════════════════════════════════════════════════════════════════
 const _RAW_PER_ABSTRACT = 1e9;
 
@@ -3329,9 +3313,10 @@ const _RAW_PER_ABSTRACT = 1e9;
  *   - Royal Holdings     = $36/yr if monarchy, else 0
  *   - Active-law ongoing = sum(active_laws.selected_option.ongoing_base_cost) × 12
  *
- * Shared by processBudgetSurplusPaydown AND the handler-template
- * deficit gate so processDebtTick stops firing phantom deficits when
- * the panel says surplus.
+ * Single source of truth: processNationDebtTick in this file +
+ * _gbBuildCostRows in government.html both depend on this returning
+ * the same number, so the panel's monthly balance and the per-tick
+ * debt change always agree.
  */
 async function computePanelAnnualExpenditures(supabase, nation) {
     const budget = calculateNationalBudget(nation);
@@ -3361,43 +3346,53 @@ async function computePanelAnnualExpenditures(supabase, nation) {
     return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual;
 }
 
-async function processBudgetSurplusPaydown(supabase, nation) {
-    const debtRaw = Number(nation?.debt) || 0;
-    if (debtRaw <= 0) return null; // No debt — nothing to pay down.
-
+async function processNationDebtTick(supabase, nation) {
     const budget = calculateNationalBudget(nation);
     const annualRevenue = Number(budget.grossRevenue || 0);
     const annualExpenditures = await computePanelAnnualExpenditures(supabase, nation);
-    const annualBalance = annualRevenue - annualExpenditures;
-    if (annualBalance <= 0) return null;
+    const perTickBalance = (annualRevenue - annualExpenditures) / 12;
 
-    // Per-tick deduction = monthly balance (12 ticks / year).
-    let tickPaydown = annualBalance / 12;
-    if (tickPaydown <= 0) return null;
+    if (perTickBalance === 0) return null;
 
-    // Cap at the actual treasury so we never pay more than we have.
-    // Without this, a tick where revenue < expenditures but
-    // grossRevenue is still positive (treasury accumulated from
-    // earlier ticks) could send debt negative on the abstract side
-    // while taking treasury below zero. Math.max(0, ...) on the
-    // updates is a belt; this is the suspenders.
-    const treasury = Number(nation.budget) || 0;
-    if (treasury < tickPaydown) tickPaydown = treasury;
-    if (tickPaydown <= 0) return null;
+    const debtRaw = Number(nation?.debt) || 0;
+    const treasury = Number(nation?.budget) || 0;
 
-    const newBudget = Math.max(0, treasury - tickPaydown);
-    const newDebtRaw = Math.max(0, debtRaw - tickPaydown * _RAW_PER_ABSTRACT);
+    if (perTickBalance > 0) {
+        // Surplus → pay down debt, drain treasury by the same amount.
+        // Skip when there's no debt: surplus just sits in treasury.
+        if (debtRaw <= 0) return null;
+        // Cap paydown at available treasury so we never pay more than
+        // we actually have on hand.
+        const tickPaydown = Math.min(perTickBalance, treasury);
+        if (tickPaydown <= 0) return null;
 
+        const newBudget = treasury - tickPaydown;
+        const newDebtRaw = Math.max(0, debtRaw - tickPaydown * _RAW_PER_ABSTRACT);
+        const { error } = await supabase.from('nations')
+            .update({ budget: newBudget, debt: newDebtRaw })
+            .eq('id', nation.id);
+        if (error) {
+            console.warn(`[Debt] surplus update failed for ${nation.name}:`, error.message);
+            return null;
+        }
+        nation.budget = newBudget;
+        nation.debt = newDebtRaw;
+        return { mode: 'surplus', perTickBalance: tickPaydown, newBudget, newDebtRaw };
+    }
+
+    // perTickBalance < 0 → deficit. Debt grows by the deficit;
+    // treasury is left alone (no implicit cash drain — the spending
+    // happened, the shortfall is now on the books as more debt).
+    const deficit = -perTickBalance;
+    const newDebtRaw = debtRaw + deficit * _RAW_PER_ABSTRACT;
     const { error } = await supabase.from('nations')
-        .update({ budget: newBudget, debt: newDebtRaw })
-        .eq('id', nation.id);
+        .update({ debt: newDebtRaw }).eq('id', nation.id);
     if (error) {
-        console.warn(`[BudgetSurplusPaydown] update failed for ${nation.name}:`, error.message);
+        console.warn(`[Debt] deficit update failed for ${nation.name}:`, error.message);
         return null;
     }
-    nation.budget = newBudget;
     nation.debt = newDebtRaw;
-    return { paid: tickPaydown, newBudget, newDebtRaw };
+    return { mode: 'deficit', perTickBalance: -deficit, newDebtRaw };
 }
 
 /**
@@ -24758,296 +24753,6 @@ function formatDebtToGDP(ratio) {
     return Math.round(ratio * 100) + '%';
 }
 
-// ────────── debt ──────────
-
-// js/game/debt.js — Debt & Deficit System (v1-MANUAL)
-//
-// Per-tick government borrowing loop. Splits each nation's deficit into
-// a bond portion (offered to Investment Corps via Deal Flow) and a
-// printed portion (added to inflation). Bonds that don't sell within
-// 3 ticks auto-print at expiry.
-//
-// Stat ownership recap (post alpha refactor):
-//   * nations.debt    — kept in sync with SUM(active_holdings.principal) by
-//                       buy_bond RPC and processBondMaturitiesTick below
-//   * nations.budget_reserves — credited by printPortion + forcedPrinted
-//                       paths. Reduced by coupon payouts.
-//
-// Retired by alpha refactor:
-//   * inflation cascade (column deleted)
-//   * credit deterioration / recovery (column deleted)
-//   * gdp-based print-to-inflation ratio (column deleted)
-//
-// Order matters when these are called per nation each tick:
-//   1. processBondMaturitiesTick   — pay back maturing principals
-//   2. processBondCouponsTick      — pay per-tick coupons to holders
-//   3. processBondOfferExpiryTick  — convert unfilled offers to printing
-//   4. processDebtTick             — calculate deficit, post new offer, print remainder
-
-// ════════════════════════════════════════════════════════════════════════════
-//  CONFIG
-// ════════════════════════════════════════════════════════════════════════════
-
-const DEBT_CONFIG = Object.freeze({
-    INFLATION_PER_PRINT_PCT: 25,    // start safe; bump to 30-40 if too slow
-    CREDIT_RECOVERY_RATE:    0.1,
-    BOND_TERM_TICKS:         36,
-    BOND_OFFER_EXPIRY_TICKS: 3,
-});
-
-// Tiered bond ratio + letter grade. First tier whose min_credit is
-// satisfied wins. Same SSoT shape used by the Deal Flow UI to display
-// "what fraction of a deficit can this nation expect to borrow vs.
-// print" and by the Ministry of Finance budget overview to render the
-// sovereign credit rating card.
-const BOND_RATIO_TIERS = Object.freeze([
-    { min_credit: 70, ratio: 0.95, letter: 'AAA' },
-    { min_credit: 40, ratio: 0.60, letter: 'AA'  },
-    { min_credit: 20, ratio: 0.20, letter: 'BBB' },
-    { min_credit:  5, ratio: 0.05, letter: 'B'   },
-    { min_credit:  0, ratio: 0.00, letter: 'D'   },
-]);
-
-// ════════════════════════════════════════════════════════════════════════════
-//  HELPERS
-// ════════════════════════════════════════════════════════════════════════════
-
-// Alpha stats refactor (Phase 7e): the credit column is deleted with no
-// replacement, so the bond-tier system flattens to a single default
-// tier ('BBB' — 60/40 bond/print split, ~8.5% annual coupon). The tier
-// table above is preserved for when the bond-credit system is
-// redesigned against alpha-19 stats (likely keyed off debt-to-budget).
-// Functions retain their (credit) parameter for back-compat; the value
-// is ignored.
-const ALPHA_DEFAULT_TIER = { letter: 'BBB', ratio: 0.60, min_credit: 0 };
-const ALPHA_DEFAULT_COUPON_PER_TICK = 0.00708; // (8.5% annual) / 12, 5dp
-
-function getBondRatio(_creditUnused) {
-    return ALPHA_DEFAULT_TIER.ratio;
-}
-
-function getCreditRating(_creditUnused) {
-    return {
-        letter: ALPHA_DEFAULT_TIER.letter,
-        bondRatio: ALPHA_DEFAULT_TIER.ratio,
-        printRatio: 1 - ALPHA_DEFAULT_TIER.ratio
-    };
-}
-
-function creditToCouponRate(_creditUnused) {
-    return ALPHA_DEFAULT_COUPON_PER_TICK;
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-//  PER-TICK PROCESSORS — call in order from the tick processor.
-// ════════════════════════════════════════════════════════════════════════════
-
-// (1) Maturities: pay back principal in full on holdings reaching matures_at_tick.
-// Routed through the mature_bond_holding RPC (Phase 2 atomicity fix) so the
-// pay + mark operations run in one DB transaction — no more double-payback
-// risk if the mark-matured UPDATE fails after principal was already paid.
-// Local nation.budget_reserves / nation.debt are mirrored after each RPC so
-// subsequent iterations (and subsequent per-tick processors) see fresh values.
-async function processBondMaturitiesTick(supabase, nation, currentTick) {
-    const { data: due, error } = await supabase
-        .from('bond_holdings')
-        .select('id, principal')
-        .eq('issuer_nation_id', nation.id)
-        .eq('matured', false)
-        .lte('matures_at_tick', currentTick);
-    if (error) {
-        console.error(`[Debt] maturity fetch failed for ${nation.name}:`, error.message);
-        return { paid: 0, totalPrincipal: 0 };
-    }
-    if (!due || due.length === 0) return { paid: 0, totalPrincipal: 0 };
-
-    let totalPrincipal = 0;
-    for (const h of due) {
-        const principal = Number(h.principal) || 0;
-        if (principal <= 0) continue;
-
-        const { data: result, error: rpcErr } = await supabase.rpc('mature_bond_holding', {
-            p_holding_id:   h.id,
-            p_current_tick: currentTick,
-        });
-        if (rpcErr) {
-            console.error(`[Debt] mature_bond_holding RPC failed for holding ${h.id}:`, rpcErr.message);
-            continue;
-        }
-        if (result && result.already_matured) continue;
-
-        // Atomic success: mirror locally so subsequent iterations in this tick
-        // see fresh budget_reserves / debt values.
-        nation.budget_reserves = Math.max(0, Number(nation.budget_reserves || 0) - principal);
-        nation.debt            = Math.max(0, Number(nation.debt || 0) - principal);
-        totalPrincipal += principal;
-    }
-    return { paid: due.length, totalPrincipal };
-}
-
-// (2) Coupons: pay per-tick interest on every active holding.
-// Routed through the pay_bond_coupons RPC (Phase 2) so the nation debit,
-// holder credits, and coupon-shortfall inflation hit all run atomically.
-// If the nation can't cover the total coupon, the RPC prints the
-// shortfall AND applies the inflation cost — holders still get paid in
-// full, but inflation reflects the cost of covering the gap.
-async function processBondCouponsTick(supabase, nation, currentTick) {
-    const { data: result, error: rpcErr } = await supabase.rpc('pay_bond_coupons', {
-        p_nation_id:    nation.id,
-        p_current_tick: currentTick,
-    });
-    if (rpcErr) {
-        console.error(`[Debt] pay_bond_coupons RPC failed for ${nation.name}:`, rpcErr.message);
-        return { totalCoupon: 0, shortfall: 0 };
-    }
-    const totalCoupon = Number(result?.total_coupon || 0);
-    const shortfall   = Number(result?.shortfall    || 0);
-    if (totalCoupon === 0) return { totalCoupon: 0, shortfall: 0 };
-
-    // Mirror the DB state locally so downstream per-tick processors see
-    // the post-coupon value of budget_reserves. Inflation accumulation
-    // path retired by alpha refactor (column deleted); the underlying
-    // RPC may still emit inflation_delta but we no longer apply it.
-    nation.budget_reserves = Math.max(0, Number(nation.budget_reserves || 0) - (totalCoupon - shortfall));
-    return { totalCoupon, shortfall };
-}
-
-// (3) Offer expiry: any open bond request past its expires_tick has its
-// unfilled principal converted to printing. Inflation hit is applied
-// here (not at issuance) — this is the "we couldn't sell the bonds, so
-// we had to print the rest" path. Bond requests live in
-// finance_loan_requests with request_type='bond' so the existing Deal
-// Flow UI renders them without modification.
-async function processBondOfferExpiryTick(supabase, nation, currentTick) {
-    const { data: expired, error } = await supabase
-        .from('finance_loan_requests')
-        .select('id, principal_remaining, amount')
-        .eq('issuer_nation_id', nation.id)
-        .eq('request_type', 'bond')
-        .eq('status', 'open')
-        .lte('expires_tick', currentTick);
-    if (error) {
-        console.error(`[Debt] offer expiry fetch failed for ${nation.name}:`, error.message);
-        return { expired: 0, forcedPrinted: 0 };
-    }
-    if (!expired || expired.length === 0) return { expired: 0, forcedPrinted: 0 };
-
-    let forcedPrinted = 0;
-    for (const o of expired) {
-        // principal_remaining is the unfilled amount (NULL fallback to amount
-        // for any rows from before this column was populated).
-        const unfilled = Number(o.principal_remaining ?? o.amount) || 0;
-        // Flip status FIRST — if this UPDATE fails we skip the print so the
-        // same offer can't be picked up by the next tick and counted twice.
-        const { error: uErr } = await supabase.from('finance_loan_requests')
-            .update({ status: 'expired' }).eq('id', o.id);
-        if (uErr) {
-            console.warn(
-                `[Debt] offer mark-expired failed for ${o.id}; skipping print this tick: ${uErr.message}`
-            );
-            continue;
-        }
-        forcedPrinted += unfilled;
-    }
-
-    // Alpha refactor: inflation column is deleted, so the printing →
-    // inflation cascade is retired. Forced-printed money still credits
-    // budget_reserves so the deficit is covered fiscally; the
-    // monetary-debasement penalty no longer applies.
-    if (forcedPrinted > 0) {
-        const newReserves = Number(nation.budget_reserves || 0) + forcedPrinted;
-        await supabase.from('nations').update({
-            budget_reserves: newReserves,
-        }).eq('id', nation.id);
-        nation.budget_reserves = newReserves;
-    }
-
-    return { expired: expired.length, forcedPrinted };
-}
-
-// (4) Deficit/surplus: calculate this tick's gap, decide funding split,
-// post bond offer for borrow portion, "print" the rest into reserves.
-//
-// Alpha stats refactor (Phase 7e): credit and inflation columns are
-// deleted by the alpha refactor. The credit-recovery-on-surplus and
-// credit-deterioration-on-deficit dynamics are retired (no signal to
-// modulate). The "print → inflation accumulation" model is also
-// retired (gdp gone, inflation gone) — printPortion still credits
-// budget_reserves but no longer cascades through inflation. A future
-// fiscal-redesign phase can reintroduce a credit-equivalent signal
-// keyed off debt-to-budget.
-async function processDebtTick(supabase, nation, expenditures, revenue, currentTick) {
-    const exp = Number(expenditures) || 0;
-    const rev = Number(revenue) || 0;
-    const deficit = exp - rev;
-
-    // Surplus path — pay down debt.
-    if (deficit <= 0) {
-        const surplus = -deficit;
-        const newDebt = Math.max(0, Number(nation.debt || 0) - surplus);
-        const { error } = await supabase.from('nations')
-            .update({ debt: newDebt }).eq('id', nation.id);
-        if (error) {
-            console.warn(`[Debt] surplus update failed for ${nation.name}:`, error.message);
-            return { mode: 'surplus', surplus, error: error.message };
-        }
-        nation.debt = newDebt;
-        return { mode: 'surplus', surplus, newDebt };
-    }
-
-    // Deficit path. Bond ratio + coupon rate are flat defaults (alpha
-    // refactor) until a credit-equivalent system is rebuilt.
-    const bondRatio    = getBondRatio();
-    const bondPortion  = Math.floor(deficit * bondRatio);
-    const printPortion = deficit - bondPortion;
-
-    // Post a bond offer in finance_loan_requests (request_type='bond')
-    // so the existing Deal Flow UI renders it. Coupon rate flat-defaulted.
-    let offerId = null;
-    if (bondPortion > 0) {
-        const couponRate = creditToCouponRate();
-        const { data: offer, error: oErr } = await supabase.from('finance_loan_requests').insert({
-            requesting_faction_id: null,
-            nation_id:             nation.id,
-            issuer_nation_id:      nation.id,
-            request_type:          'bond',
-            amount:                bondPortion,
-            principal_remaining:   bondPortion,
-            coupon_rate:           couponRate,
-            term_months:           DEBT_CONFIG.BOND_TERM_TICKS,
-            purpose:               `Sovereign bond: ${nation.name || 'nation'} fiscal year`,
-            status:                'open',
-            created_tick:          currentTick,
-            expires_tick:          currentTick + DEBT_CONFIG.BOND_OFFER_EXPIRY_TICKS,
-        }).select('id').single();
-        if (oErr) {
-            console.warn(`[Debt] bond offer insert failed for ${nation.name}:`, oErr.message);
-        } else {
-            offerId = offer?.id || null;
-        }
-    }
-
-    // Credit budget_reserves with the printed portion. Pre-alpha this
-    // also accrued inflation via printPortion / gdp; that cascade is
-    // retired with the gdp + inflation columns.
-    if (printPortion > 0) {
-        const newReserves = Number(nation.budget_reserves || 0) + printPortion;
-        const { error: pErr } = await supabase.from('nations')
-            .update({ budget_reserves: newReserves }).eq('id', nation.id);
-        if (pErr) {
-            console.warn(`[Debt] print update failed for ${nation.name}:`, pErr.message);
-        } else {
-            nation.budget_reserves = newReserves;
-        }
-    }
-
-    return {
-        mode: 'deficit',
-        deficit, bondPortion, printPortion, offerId,
-        creditDeterioration: 0,
-    };
-}
-
 // ────────── shipping ──────────
 
 /**
@@ -33324,60 +33029,18 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Tariff relations penalty failed for ${nation.name} (non-fatal):`, tariffErr);
         }
 
-        // Debt & Deficit System (v2 — panel-accurate).
-        // Order is exact: maturities → coupons → expiries → deficit gate
-        // → surplus paydown. Maturities recycle cash before coupons commit
-        // it; expiries resolve yesterday's unfilled bonds before today's
-        // deficit posts a new offer.
-        //
-        // v2 fix (2026-05): the v1 path passed gdp × 0.12 × efficiency as
-        // the expenditures input to processDebtTick, while the surplus
-        // paydown used the panel's actual annual cost rollup. The two
-        // disagreed on what a deficit looked like, so a nation with
-        // real surplus per the panel ($28 rev / $21 exp / +$7 bal) was
-        // also being charged a synthetic deficit each tick — bond
-        // creation outpaced surplus paydown, so debt climbed.
-        //
-        // v2 computes one annual expenditures figure (panel-accurate via
-        // computePanelAnnualExpenditures) and gates processDebtTick on
-        // an actual deficit. Surplus path now lives entirely in
-        // processBudgetSurplusPaydown.
+        // National debt — single rule. Bonds retired (2026-05).
+        //   balance = revenue − expenditures (panel-accurate, /12 per tick)
+        //   surplus → debt down, treasury down by the same amount
+        //   deficit → debt up, treasury unchanged (implicit borrow)
+        // No bond offers, no coupon payments, no printing.
         try {
-            await processBondMaturitiesTick(supabase, nation, currentTick);
-            await processBondCouponsTick(supabase, nation, currentTick);
-            await processBondOfferExpiryTick(supabase, nation, currentTick);
-
-            const annualExp = await computePanelAnnualExpenditures(supabase, nation);
-            const annualRev = Number(calculateNationalBudget(nation).grossRevenue || 0);
-            const annualBal = annualRev - annualExp;
-
-            if (annualBal < 0) {
-                const deficitAbstract = -annualBal;
-                const debtResult = await processDebtTick(
-                    supabase, nation, annualExp, annualRev, currentTick
-                );
+            const result = await processNationDebtTick(supabase, nation);
+            if (result) {
                 console.log(
-                    `[Debt] ${nation.name}: mode=${debtResult?.mode || 'n/a'}` +
-                    ` deficit=${Math.round(deficitAbstract)}` +
-                    (debtResult?.mode === 'deficit'
-                        ? ` bond=${Math.round(debtResult.bondPortion)}` +
-                          ` print=${Math.round(debtResult.printPortion)}`
-                        : '')
-                );
-            } else {
-                console.log(
-                    `[Debt] ${nation.name}: surplus=${Math.round(annualBal)} (no bond posted)`
-                );
-            }
-
-            // Surplus paydown — also panel-accurate. No-ops when there's
-            // no debt or no surplus.
-            const paydown = await processBudgetSurplusPaydown(supabase, nation);
-            if (paydown) {
-                console.log(
-                    `[Debt] ${nation.name}: surplus_paydown=${paydown.paid.toFixed(2)} (abstract)` +
-                    ` newDebtRaw=${Math.round(paydown.newDebtRaw)}` +
-                    ` newBudget=${paydown.newBudget.toFixed(2)}`
+                    `[Debt] ${nation.name}: mode=${result.mode}` +
+                    ` perTick=${result.perTickBalance.toFixed(2)}` +
+                    ` newDebtRaw=${Math.round(result.newDebtRaw)}`
                 );
             }
         } catch (debtErr) {
