@@ -79,6 +79,7 @@ export const MINISTRY_DOMAINS = Object.freeze({
     justice:        'domestic',
     energy:         'domestic',
     transportation: 'domestic',
+    sports:         'domestic',
     security:       'domestic'
 });
 
@@ -91,7 +92,7 @@ export const CABINET_MINISTRY_KEYS = Object.freeze([
     'prime_minister',
     'interior', 'foreign', 'defense', 'finance',
     'education', 'healthcare', 'labor', 'justice',
-    'trade', 'energy', 'transportation',
+    'trade', 'energy', 'transportation', 'sports',
     // 'security' is referenced in MINISTRY_DOMAINS but not yet a default cabinet seat.
 ]);
 
@@ -111,6 +112,7 @@ export const MINISTRY_OFFICE_NAMES = Object.freeze({
     trade:          'Ministry of Trade',
     energy:         'Ministry of Energy',
     transportation: 'Ministry of Transportation',
+    sports:         'Ministry of Sports',
     security:       'Ministry of Security',
 });
 
@@ -129,6 +131,7 @@ export const MINISTER_TITLES = Object.freeze({
     trade:          'Minister of Trade',
     energy:         'Minister of Energy',
     transportation: 'Minister of Transportation',
+    sports:         'Minister of Sports',
     security:       'Minister of Security',
 });
 
