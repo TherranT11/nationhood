@@ -6021,6 +6021,26 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   text-align: center;
   border-top: 1px solid rgba(200, 168, 50, 0.12);
 }
+.vola-cup-match-flag {
+  width: 18px;
+  height: 12px;
+  object-fit: cover;
+  border: 1px solid var(--border-main);
+  flex-shrink: 0;
+}
+.vola-cup-match--played .vola-cup-match-status {
+  color: var(--amber);
+  font-family: var(--font-serif);
+  font-size: 13px;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+.vola-cup-match--played.vola-cup-match--win-a .vola-cup-match-team[data-side="b"],
+.vola-cup-match--played.vola-cup-match--win-b .vola-cup-match-team[data-side="a"] {
+  opacity: 0.45;
+  text-decoration: line-through;
+  text-decoration-color: rgba(255,255,255,0.25);
+}
 
 /* Champion card: gold gradient border + soft glow. The border shows
    through via a layered radial gradient on the background so the inner

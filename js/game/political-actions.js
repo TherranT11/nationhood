@@ -5502,7 +5502,164 @@ export async function processVolaCupGroupMatches(supabase, currentTick) {
         }
         resolved++;
     }
+
+    // Phase 3 hook: any cup that just played a group match might now
+    // have its 18 group rows fully resolved. seedVolaCupKnockout is
+    // idempotent and self-gates on the all-resolved + no-bracket-yet
+    // condition, so calling it here for every touched cup is safe.
+    const cupsThisTick = Array.from(new Set(due.map(m => m.cup_number)));
+    for (const cupNumber of cupsThisTick) {
+        try {
+            await seedVolaCupKnockout(supabase, cupNumber, currentTick);
+        } catch (err) {
+            console.error('[VolaKnockout] seed failed for cup', cupNumber, err);
+        }
+    }
+
     return { resolved };
+}
+
+/**
+ * Phase 3: seed the knockout bracket for `cupNumber`.
+ *
+ * Self-gating: bails if the 18 group matches aren't all resolved
+ * yet, or if knockout rows already exist (idempotent).
+ *
+ * Standings per group: W → PTS → prowess → name. Top 2 advance
+ * automatically. Across all 3 groups, the top 2 third-placers
+ * also advance.
+ *
+ * Seeds 1-3 = group winners sorted by record;
+ * seeds 4-6 = runners-up sorted by record;
+ * seeds 7-8 = top 2 third-placers.
+ *
+ * Bracket: QF1=1v8, QF2=4v5, QF3=3v6, QF4=2v7; SF1 from QF1+QF2,
+ * SF2 from QF3+QF4; F from SF1+SF2.
+ */
+export async function seedVolaCupKnockout(supabase, cupNumber, currentTick) {
+    const { data: existing } = await supabase.from('vola_cup_knockout')
+        .select('id').eq('cup_number', cupNumber).limit(1).maybeSingle();
+    if (existing) return null;
+
+    const { data: gmatches, error: gErr } = await supabase.from('vola_cup_group_matches')
+        .select('group_letter, team_a_nation_id, team_b_nation_id, team_a_score, team_b_score, winner_nation_id, resolved_at_tick')
+        .eq('cup_number', cupNumber);
+    if (gErr) {
+        console.warn('[VolaKnockout] group match fetch failed:', gErr.message);
+        return null;
+    }
+    if (!gmatches || gmatches.length !== 18) return null;
+    if (gmatches.some(m => m.resolved_at_tick == null)) return null;
+
+    const { data: draw, error: dErr } = await supabase.from('vola_cup_groups')
+        .select('group_letter, seed_rank, nation:nation_id(id, name, national_team_prowess)')
+        .eq('cup_number', cupNumber);
+    if (dErr) {
+        console.warn('[VolaKnockout] draw fetch failed:', dErr.message);
+        return null;
+    }
+    if (!draw || draw.length !== 12) return null;
+
+    // Per-team registry: id → standings + metadata.
+    const reg = new Map();
+    for (const r of draw) {
+        const n = r.nation;
+        if (!n?.id) continue;
+        reg.set(n.id, {
+            id:      n.id,
+            name:    n.name || '',
+            prowess: Number(n.national_team_prowess) || 0,
+            group:   r.group_letter,
+            seedIn:  r.seed_rank,
+            wins:    0,
+            losses:  0,
+            points:  0,
+        });
+    }
+
+    for (const m of gmatches) {
+        const a = reg.get(m.team_a_nation_id);
+        const b = reg.get(m.team_b_nation_id);
+        if (!a || !b) continue;
+        a.points += Number(m.team_a_score) || 0;
+        b.points += Number(m.team_b_score) || 0;
+        if (m.winner_nation_id === a.id)      { a.wins++; b.losses++; }
+        else if (m.winner_nation_id === b.id) { b.wins++; a.losses++; }
+    }
+
+    const cmp = (x, y) =>
+        (y.wins   - x.wins)    ||
+        (y.points - x.points)  ||
+        (y.prowess - x.prowess) ||
+        String(x.name || '').localeCompare(String(y.name || ''));
+
+    // Per group: sort, take top 3 (winner / runner-up / 3rd-placer).
+    const winners = [];
+    const runners = [];
+    const thirds  = [];
+    for (const letter of ['A', 'B', 'C']) {
+        const g = Array.from(reg.values()).filter(t => t.group === letter).sort(cmp);
+        if (g.length < 4) {
+            console.warn('[VolaKnockout] incomplete group', letter, 'for cup', cupNumber);
+            return null;
+        }
+        winners.push(g[0]);
+        runners.push(g[1]);
+        thirds.push(g[2]);
+    }
+
+    winners.sort(cmp);
+    runners.sort(cmp);
+    const topThirds = thirds.slice().sort(cmp).slice(0, 2);
+
+    const seeded = [
+        ...winners.map((t, i) => ({ ...t, seed: i + 1 })),
+        ...runners.map((t, i) => ({ ...t, seed: i + 4 })),
+        ...topThirds.map((t, i) => ({ ...t, seed: i + 7 })),
+    ];
+    if (seeded.length !== 8) return null;
+    const bySeed = new Map(seeded.map(t => [t.seed, t]));
+
+    // Cup schedule (canonical: cup 1 starts at tick 84, period 24).
+    const cupStartTick = 84 + 24 * (cupNumber - 1);
+    const qfTick = cupStartTick + 3;
+    const sfTick = cupStartTick + 4;
+    const fTick  = cupStartTick + 5;
+
+    const QF_PAIRS = [[1, 8], [4, 5], [3, 6], [2, 7]];
+    const rows = [];
+    QF_PAIRS.forEach(([sA, sB], i) => {
+        const tA = bySeed.get(sA);
+        const tB = bySeed.get(sB);
+        if (!tA || !tB) return;
+        rows.push({
+            cup_number:       cupNumber,
+            round:            'QF',
+            match_number:     i + 1,
+            scheduled_tick:   qfTick,
+            team_a_nation_id: tA.id,
+            team_b_nation_id: tB.id,
+            team_a_seed:      sA,
+            team_b_seed:      sB,
+        });
+    });
+    if (rows.length !== 4) return null;
+
+    rows.push(
+        { cup_number: cupNumber, round: 'SF', match_number: 1, scheduled_tick: sfTick,
+          feeder_a_match: 1, feeder_b_match: 2 },
+        { cup_number: cupNumber, round: 'SF', match_number: 2, scheduled_tick: sfTick,
+          feeder_a_match: 3, feeder_b_match: 4 },
+        { cup_number: cupNumber, round: 'F',  match_number: 1, scheduled_tick: fTick,
+          feeder_a_match: 1, feeder_b_match: 2 },
+    );
+
+    const { error: insErr } = await supabase.from('vola_cup_knockout').insert(rows);
+    if (insErr) {
+        console.warn('[VolaKnockout] seed insert failed:', insErr.message);
+        return null;
+    }
+    return { cupNumber, qf: 4, sf: 2, f: 1 };
 }
 
 async function _settleVolaPlacement(supabase, cupNumber, currentTick) {

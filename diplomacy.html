@@ -481,6 +481,9 @@ function renderSportsTab() {
             loadAndRenderVolaGroups(cupForPlacement.cupNum).catch(err =>
                 console.warn('[Sports] group render failed:', err?.message || err)
             );
+            loadAndRenderVolaKnockout(cupForPlacement.cupNum).catch(err =>
+                console.warn('[Sports] knockout render failed:', err?.message || err)
+            );
         }
     }
 
@@ -644,10 +647,10 @@ function renderVolaCup(currentTick) {
         </div>
     `;
 
-    const matchSlot = (a, b) => `
-        <div class="vola-cup-match">
-            <div class="vola-cup-match-team">${a}</div>
-            <div class="vola-cup-match-team">${b}</div>
+    const matchSlot = (round, matchNum, defaultA = '&mdash;', defaultB = '&mdash;') => `
+        <div class="vola-cup-match" data-cup-num="${cup.cupNum}" data-round="${round}" data-match-num="${matchNum}">
+            <div class="vola-cup-match-team" data-side="a">${defaultA}</div>
+            <div class="vola-cup-match-team" data-side="b">${defaultB}</div>
             <div class="vola-cup-match-status">PENDING</div>
         </div>
     `;
@@ -694,22 +697,22 @@ function renderVolaCup(currentTick) {
         <div class="vola-cup-section-label vola-cup-section-label--knockout">
             <span class="vola-cup-section-icon">&times;</span> KNOCKOUT ROUND
         </div>
-        <div class="vola-cup-bracket">
+        <div class="vola-cup-bracket" data-cup-num="${cup.cupNum}">
             <div class="vola-cup-bracket-col">
                 <div class="vola-cup-bracket-col-label">QUARTERFINALS &middot; ${tickToDate(cup.qf)}</div>
-                ${matchSlot('&mdash;', '&mdash;')}
-                ${matchSlot('&mdash;', '&mdash;')}
-                ${matchSlot('&mdash;', '&mdash;')}
-                ${matchSlot('&mdash;', '&mdash;')}
+                ${matchSlot('QF', 1)}
+                ${matchSlot('QF', 2)}
+                ${matchSlot('QF', 3)}
+                ${matchSlot('QF', 4)}
             </div>
             <div class="vola-cup-bracket-col">
                 <div class="vola-cup-bracket-col-label">SEMIFINALS &middot; ${tickToDate(cup.sf)}</div>
-                ${matchSlot('Winner QF1', 'Winner QF2')}
-                ${matchSlot('Winner QF3', 'Winner QF4')}
+                ${matchSlot('SF', 1, 'Winner QF1', 'Winner QF2')}
+                ${matchSlot('SF', 2, 'Winner QF3', 'Winner QF4')}
             </div>
             <div class="vola-cup-bracket-col">
                 <div class="vola-cup-bracket-col-label">FINAL &middot; ${tickToDate(cup.f)}</div>
-                ${matchSlot('Winner SF1', 'Winner SF2')}
+                ${matchSlot('F', 1, 'Winner SF1', 'Winner SF2')}
                 <div class="vola-cup-champion">
                     <div class="vola-cup-champion-icon">&#x1F3C6;</div>
                     <div class="vola-cup-champion-label">VWC CHAMPION</div>
@@ -923,6 +926,71 @@ async function loadAndRenderVolaGroups(cupNum) {
             `;
         }).join('');
     });
+}
+
+// Phase 3 of the VWC pipeline: fill the QF / SF / F slots in the
+// bracket from vola_cup_knockout. QF rows have both team_a/b set
+// at seed time, so those slots show real teams + flags as soon as
+// the seeding lands. SF/F rows have feeder_a_match / feeder_b_match
+// references but no teams yet — Phase 4 will fill those when the
+// upstream match resolves; until then they keep the static
+// "Winner QF1" / "Winner SF1" defaults from renderVolaCup.
+async function loadAndRenderVolaKnockout(cupNum) {
+    const bracket = document.querySelector(`.vola-cup-bracket[data-cup-num="${cupNum}"]`);
+    if (!bracket) return;
+
+    const { data, error } = await _supabase
+        .from('vola_cup_knockout')
+        .select('round, match_number, team_a_seed, team_b_seed, feeder_a_match, feeder_b_match, team_a_score, team_b_score, winner_nation_id, resolved_at_tick, team_a:team_a_nation_id(id, name, flag_url), team_b:team_b_nation_id(id, name, flag_url)')
+        .eq('cup_number', cupNum);
+
+    if (error) {
+        console.warn('[Sports] vola_cup_knockout fetch failed:', error.message || error);
+        return;
+    }
+    if (!data || data.length === 0) return;
+
+    for (const m of data) {
+        const slot = bracket.querySelector(
+            `.vola-cup-match[data-round="${m.round}"][data-match-num="${m.match_number}"]`
+        );
+        if (!slot) continue;
+
+        const aEl = slot.querySelector('[data-side="a"]');
+        const bEl = slot.querySelector('[data-side="b"]');
+        const statusEl = slot.querySelector('.vola-cup-match-status');
+        if (!aEl || !bEl) continue;
+
+        const renderSide = (team, sideLabel, feederMatch) => {
+            if (team?.id) {
+                const flag = _volaFlagImg(team, 'vola-cup-match-flag');
+                const color = _volaNationColor(team.name);
+                return `<span style="color:${color};">${flag}${escapeHtml(team.name || 'TBD')}</span>`;
+            }
+            // Pre-resolution placeholder using feeder reference.
+            if (feederMatch != null) {
+                const upstream = m.round === 'SF' ? `QF${feederMatch}` : `SF${feederMatch}`;
+                return `Winner ${upstream}`;
+            }
+            return sideLabel;
+        };
+
+        aEl.innerHTML = renderSide(m.team_a, '&mdash;', m.feeder_a_match);
+        bEl.innerHTML = renderSide(m.team_b, '&mdash;', m.feeder_b_match);
+
+        if (statusEl) {
+            if (m.resolved_at_tick != null && m.winner_nation_id) {
+                const sa = Number(m.team_a_score) || 0;
+                const sb = Number(m.team_b_score) || 0;
+                statusEl.textContent = `${sa} – ${sb}`;
+                slot.classList.add('vola-cup-match--played');
+                const winSide = m.winner_nation_id === m.team_a?.id ? 'a' : 'b';
+                slot.classList.add(`vola-cup-match--win-${winSide}`);
+            } else {
+                statusEl.textContent = 'PENDING';
+            }
+        }
+    }
 }
 
 // Render the National Vola Team — 3 player cards + total prowess footer.
