@@ -572,7 +572,10 @@ function _roundCulture(v) { return Math.round(v * 10) / 10; }
 export async function processVolaCultureDecay(supabase, nation) {
     const cur = Number(nation.national_vola_culture) || 0;
     if (cur <= 0) return null;
-    const next = Math.max(0, _roundCulture(cur * (1 - VOLA_CULTURE_DECAY_RATE)));
+    const floor = Number(nation.vola_culture_floor) || 0;
+    if (cur <= floor) return null; // Already at or below floor — decay no-ops.
+    const decayed = _roundCulture(cur * (1 - VOLA_CULTURE_DECAY_RATE));
+    const next = Math.max(floor, decayed);
     if (next === cur) return null;
 
     const { error } = await supabase.from('nations')
@@ -583,7 +586,7 @@ export async function processVolaCultureDecay(supabase, nation) {
         return null;
     }
     nation.national_vola_culture = next;
-    return { previous: cur, next, delta: next - cur };
+    return { previous: cur, next, delta: next - cur, floor };
 }
 
 // ==================== VOLA INVESTMENT (Sports Minister action) ====================
@@ -4629,6 +4632,211 @@ async function _resolveOneNation(supabase, nationId, claims, currentTick) {
     });
 
     return true;
+}
+
+// ==================== VOLA STADIUM CONSTRUCTION (Sports Minister action) ====================
+
+// Three tiers — small/modest/extravagant. Each posts a Construction-sector
+// contract (corp_contracts) for corps to bid on, and deducts a flat
+// discretionary cost from the Sports Ministry on posting.
+//
+// Cost mapping (raw dollars from the displayed millions):
+//     Small        $3M discretionary, $60M target budget,  +2 culture floor on completion
+//     Modest       $7M discretionary, $140M target budget, +4 culture floor
+//     Extravagant  $10M discretionary, $450M target budget, +9 culture floor
+//
+// spec_category is the cross-system identifier (corp Operations page reads
+// this for filtering); project_subtype='Vola Stadium' is the discriminator
+// for our completion sweep + RPCs.
+const _STADIUM_M = 1_000_000;
+export const VOLA_STADIUM_TIERS = Object.freeze({
+    small: {
+        label: 'Small',
+        discretionaryCost: 3 * _STADIUM_M,
+        budgetTarget:      60  * _STADIUM_M,
+        floorContribution: 2,
+        timelineMonths:    24,
+        specCategory:     'Light Infrastructure',
+    },
+    modest: {
+        label: 'Modest',
+        discretionaryCost: 7 * _STADIUM_M,
+        budgetTarget:      140 * _STADIUM_M,
+        floorContribution: 4,
+        timelineMonths:    36,
+        specCategory:     'Heavy Infrastructure',
+    },
+    extravagant: {
+        label: 'Extravagant',
+        discretionaryCost: 10 * _STADIUM_M,
+        budgetTarget:      450 * _STADIUM_M,
+        floorContribution: 9,
+        timelineMonths:    60,
+        specCategory:     'Megaproject',
+    },
+});
+
+const _STADIUM_PROJECT_SUBTYPE = 'Vola Stadium';
+const _STADIUM_BID_WINDOW_TICKS = 6; // bids open for 6 ticks before auto-cancel
+
+/**
+ * Sports Minister posts a stadium construction contract. Validates only-one-
+ * open-bid-per-nation, deducts the discretionary tier cost, inserts a
+ * corp_contracts row corps can immediately bid on. Idempotent against
+ * the discretionary deduction by virtue of the open-contract check —
+ * if a bid is already open, this fails before the deduction runs.
+ *
+ * Returns { success, contractId? } or { success: false, reason }.
+ */
+export async function postStadiumConstruction(supabase, nation, callerFactionId, params, currentTick) {
+    if (!nation?.id || !callerFactionId) return { success: false, reason: 'missing_args' };
+    const tier = VOLA_STADIUM_TIERS[params?.size];
+    if (!tier) return { success: false, reason: 'invalid_size' };
+    const stadiumName = String(params?.stadiumName || '').trim();
+    const teamName    = String(params?.teamName    || '').trim();
+    if (!stadiumName) return { success: false, reason: 'no_stadium_name' };
+
+    // Active sports minister gate.
+    const { data: mRow, error: mErr } = await supabase.from('ministries')
+        .select('id, party_id, discretionary_balance')
+        .eq('nation_id', nation.id)
+        .eq('ministry_key', 'sports')
+        .eq('is_active', true).maybeSingle();
+    if (mErr) return { success: false, reason: 'fetch_failed', error: mErr.message };
+    if (!mRow) return { success: false, reason: 'no_minister' };
+    if (mRow.party_id !== callerFactionId) return { success: false, reason: 'not_minister' };
+
+    // Discretionary balance gate.
+    const balance = Number(mRow.discretionary_balance) || 0;
+    if (balance < tier.discretionaryCost) {
+        return { success: false, reason: 'insufficient_balance', balance, cost: tier.discretionaryCost };
+    }
+
+    // One-open-stadium-bid-per-nation gate.
+    const { data: existing } = await supabase.from('corp_contracts')
+        .select('id').eq('issuer_nation_id', nation.id)
+        .eq('project_subtype', _STADIUM_PROJECT_SUBTYPE)
+        .eq('status', 'open').limit(1).maybeSingle();
+    if (existing) return { success: false, reason: 'already_open' };
+
+    // Generate contract number — same convention as other gov contracts.
+    // No tightly-enforced uniqueness; collision risk is negligible for
+    // our volumes and contracts are referenced by id elsewhere.
+    const year = 2000 + Math.floor(currentTick / 12);
+    const contractNumber = `GOV-${year}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
+
+    // Deduct discretionary first — if the contract insert later fails
+    // we'd need to refund, but that path is rare and the postStadium
+    // call is single-shot from the modal.
+    const newBalance = balance - tier.discretionaryCost;
+    const { error: balErr } = await supabase.from('ministries')
+        .update({ discretionary_balance: newBalance }).eq('id', mRow.id);
+    if (balErr) return { success: false, reason: 'balance_update_failed', error: balErr.message };
+
+    // Insert the contract.
+    const { data: contract, error: cErr } = await supabase.from('corp_contracts').insert({
+        contract_number:    contractNumber,
+        name:               stadiumName,
+        description:        teamName ? `Home of: ${teamName}` : 'Vola Stadium',
+        contract_type:      'GOVERNMENT',
+        issuer_name:        'Ministry of Sports',
+        issuer_faction_id:  null,
+        issuer_nation_id:   nation.id,
+        required_sector:    'Construction',
+        spec_category:      tier.specCategory,
+        budget:             tier.budgetTarget,
+        timeline_months:    tier.timelineMonths,
+        project_type:       'Civil Engineering',
+        project_subtype:    _STADIUM_PROJECT_SUBTYPE,
+        status:             'open',
+        created_at_tick:    currentTick,
+        expires_at_tick:    currentTick + _STADIUM_BID_WINDOW_TICKS,
+    }).select('id').single();
+    if (cErr) {
+        // Refund the discretionary deduction since the contract didn't land.
+        await supabase.from('ministries')
+            .update({ discretionary_balance: balance }).eq('id', mRow.id);
+        return { success: false, reason: 'insert_failed', error: cErr.message };
+    }
+
+    return { success: true, contractId: contract.id, tier: params.size };
+}
+
+/**
+ * Tick-processor sweep: detect stadium contracts that have hit their
+ * expected_finish_tick and apply completion side-effects. Idempotent —
+ * scoped to project_subtype='Vola Stadium' AND status='active', so
+ * already-completed contracts are skipped.
+ *
+ * Side effects per completed contract:
+ *   - status='completed', completed_at_tick=currentTick
+ *   - issuer_nation_id: vola_stadiums += 1, vola_culture_floor += contribution
+ *   - event_log entry: "Stadium NAME opened (floor +N) — home of TEAM"
+ */
+export async function processVolaStadiumCompletions(supabase, currentTick) {
+    const { data: due, error } = await supabase.from('corp_contracts')
+        .select('id, name, description, spec_category, issuer_nation_id, expected_finish_tick, winner_faction_id')
+        .eq('project_subtype', _STADIUM_PROJECT_SUBTYPE)
+        .eq('status', 'active')
+        .not('expected_finish_tick', 'is', null)
+        .lte('expected_finish_tick', currentTick);
+    if (error) {
+        console.warn('[VolaStadiumCompletion] fetch failed:', error.message);
+        return null;
+    }
+    if (!due || due.length === 0) return null;
+
+    let completed = 0;
+    for (const c of due) {
+        // Map spec_category back to floor contribution.
+        const floor = c.spec_category === 'Light Infrastructure' ? 2
+                    : c.spec_category === 'Heavy Infrastructure' ? 4
+                    : c.spec_category === 'Megaproject'          ? 9
+                    : 0;
+
+        // Mark contract complete first (defensive — if a downstream
+        // step fails we don't double-apply on the next tick).
+        const { error: updErr } = await supabase.from('corp_contracts').update({
+            status: 'completed',
+            completed_at_tick: currentTick,
+            payout_tick: currentTick + 3,
+        }).eq('id', c.id).eq('status', 'active');
+        if (updErr) {
+            console.warn('[VolaStadiumCompletion] mark-complete failed for', c.id, ':', updErr.message);
+            continue;
+        }
+
+        // Pull the host nation's current vola_stadiums + floor (NUMERIC
+        // values — the schema lets the column hold decimals but the
+        // stadium count is integer-valued).
+        const { data: host } = await supabase.from('nations')
+            .select('id, name, vola_stadiums, vola_culture_floor')
+            .eq('id', c.issuer_nation_id).single();
+        if (host) {
+            const newCount = (Number(host.vola_stadiums) || 0) + 1;
+            const newFloor = Math.min(100, _roundCulture((Number(host.vola_culture_floor) || 0) + floor));
+            await supabase.from('nations').update({
+                vola_stadiums: newCount,
+                vola_culture_floor: newFloor,
+            }).eq('id', host.id);
+        }
+
+        // Event log — "Coastal Vola Park opened · floor +7 · home of Coastal Tide".
+        const teamLabel = (c.description || '').replace(/^Home of:\s*/i, '').trim();
+        const desc = `${c.name} opened · floor +${floor}` + (teamLabel ? ` · home of ${teamLabel}` : '');
+        await supabase.from('event_log').insert({
+            nation_id:          c.issuer_nation_id,
+            event_name:         'Vola Stadium Opened',
+            category:           'political',
+            trigger_key:        'vola_stadium_completed',
+            description_chosen: desc,
+            fired_at_tick:      currentTick,
+        });
+
+        completed++;
+    }
+
+    return { completed };
 }
 
 // +N to faction_sector_popularity for every active sector in the nation,
