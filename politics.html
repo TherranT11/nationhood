@@ -59,7 +59,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { initPartyActions } from './js/party-actions.js';
 import { initPartyOverview } from './js/party-overview.js';
-import { initCoalitionFormation, isFormationNeeded, renderFormationTab } from './js/coalition-formation.js';
+import { initCoalitionFormation, renderFormationTab } from './js/coalition-formation.js';
 import { initPastElections } from './js/past-elections.js';
 
 let _state = null;
@@ -109,22 +109,13 @@ document.getElementById('pa-subtabs').addEventListener('click', (e) => {
 initPage('politics', async (state) => {
     _state = state;
 
-    // Init coalition formation data (needed before Election tab can render)
-    initCoalitionFormation(_supabase, state).then(({ needed }) => {
+    // Init coalition formation data (needed before Election tab can render).
+    // The legacy auto-popup badge that lit up the Election + Politics tabs
+    // when isFormationNeeded() returned true has been removed — coalition
+    // formation now happens exclusively when a player clicks the
+    // [Form Coalition] action card on the Actions subtab.
+    initCoalitionFormation(_supabase, state).then(() => {
         _coalitionReady = true;
-        if (needed) {
-            // Add amber badge to Election subtab
-            const electionTab = document.querySelector('.pa-subtab[data-panel="election"]');
-            if (electionTab && !electionTab.querySelector('.pa-subtab-badge')) {
-                electionTab.innerHTML += '<span class="pa-subtab-badge"></span>';
-            }
-            // Add amber badge to ACTIONS top nav tab (not the subtab)
-            const topNavTab = document.querySelector('.nav-tab[data-tab="politics"]');
-            if (topNavTab && !topNavTab.querySelector('.pa-subtab-badge')) {
-                topNavTab.innerHTML += '<span class="pa-subtab-badge"></span>';
-            }
-        }
-        // If user already clicked Election tab while we were loading, render now
         if (_electionInitialized) {
             renderFormationTab(document.getElementById('pa-election-root'));
         }

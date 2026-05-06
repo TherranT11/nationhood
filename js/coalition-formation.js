@@ -153,9 +153,11 @@ export async function initCoalitionFormation(supabase, state) {
     return { needed: _formationNeeded };
 }
 
-export function isFormationNeeded() {
-    return _formationNeeded;
-}
+// isFormationNeeded export removed — the politics.html badge that
+// consumed it is gone; coalition formation is now entry-pointed via
+// the [Form Coalition] action card on the Actions subtab. The internal
+// _formationNeeded flag still gates rendering inside renderFormationTab
+// itself, so it stays where it is.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Election header — visible for every system except absolute monarchy.

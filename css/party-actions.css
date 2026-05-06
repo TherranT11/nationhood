@@ -711,9 +711,6 @@
 .cf-withdraw-btn { color: var(--red); background: transparent; border: 1px solid var(--red-border); }
 .cf-withdraw-btn:hover { background: var(--red-faint); }
 
-/* Notification badge */
-.pa-subtab-badge { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--amber); margin-left: 6px; vertical-align: middle; animation: cf-pulse 1.5s ease-in-out infinite; }
-@keyframes cf-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 /* Responsive */
 @media (max-width: 768px) {
