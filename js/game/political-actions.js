@@ -5033,7 +5033,7 @@ export async function processVolaTeamLifecycle(supabase, currentTick) {
             first_name:          _pickFromPool(n.first_name_pool, 'Player'),
             last_name:           _pickFromPool(n.last_name_pool, 'Replacement'),
             age:                 18 + Math.floor(Math.random() * 18),
-            rating:              Math.floor(culture) + 6,
+            rating:              Math.floor(culture) + 1 + Math.floor(Math.random() * 6),
             recruited_at_tick:   currentTick,
             recruited_at_culture: culture,
             retires_at_tick:     currentTick + 1 + Math.floor(Math.random() * 36),
