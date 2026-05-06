@@ -24897,12 +24897,22 @@ async function processVolaPlacementMatches(supabase, currentTick) {
     // Final standings — runs once per cup whose Match 3 just resolved.
     // Group draw chains right after settlement: by this point the
     // Aspirant flag is set, so the 12-team qualified pool is locked in.
+    // Settle and draw run in independent try/catch blocks so a transient
+    // settle failure doesn't permanently skip the draw — the draw is
+    // idempotent so a manual retry of just the draw is safe.
     for (const cupNumber of cupsThatJustFinished) {
+        let settled = false;
         try {
             await _settleVolaPlacement(supabase, cupNumber, currentTick);
+            settled = true;
+        } catch (err) {
+            console.error('[VolaPlacement] settle failed for cup', cupNumber, err);
+        }
+        if (!settled) continue;
+        try {
             await generateVolaCupGroupDraw(supabase, cupNumber, currentTick);
         } catch (err) {
-            console.error('[VolaPlacement] settle/draw failed for cup', cupNumber, err);
+            console.error('[VolaCupGroups] draw failed for cup', cupNumber, err);
         }
     }
 

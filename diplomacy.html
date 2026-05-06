@@ -834,8 +834,11 @@ async function loadAndRenderVolaGroups(cupNum) {
         .order('group_letter', { ascending: true })
         .order('seed_rank',    { ascending: true });
 
-    if (error || !data) return;
-    if (data.length === 0) return; // Draw hasn't fired yet — leave placeholders.
+    if (error) {
+        console.warn('[Sports] vola_cup_groups fetch failed:', error.message || error);
+        return;
+    }
+    if (!data || data.length === 0) return; // Draw hasn't fired yet — leave placeholders.
 
     // Bucket by group letter.
     const byGroup = { A: [], B: [], C: [] };
