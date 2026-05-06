@@ -4784,10 +4784,8 @@ function _cupOrdinal(n) {
     return n + 'th';
 }
 
-// Convert tick number to "March, 2007"-style label without depending
-// on js/utils.js (which the edge bundle doesn't include).
-const _MONTHS = ['January','February','March','April','May','June',
-                 'July','August','September','October','November','December'];
+// Convert tick number to year. Lives here (not js/utils.js) because the
+// edge bundle doesn't include utils.js.
 function _tickToYear(tick) { return 2000 + Math.floor(Number(tick) / 12); }
 
 /**
