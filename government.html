@@ -74,7 +74,7 @@ import { nominateMinister, nominatePMCandidate, signPresidentialBill, vetoPresid
 import { EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder } from './js/game/executive-orders.js';
 import { PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game/protest.js';
 import { POSITIVE_TRAITS } from './js/game/party-leadership.js';
-import { calculateBillSupport, computeBillCostTotals, enactBill } from './js/game/bills.js';
+import { calculateBillSupport, computeBillCostTotals, enactBill, evaluateBillVote } from './js/game/bills.js';
 import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_TO_MINISTRY_KEY, FISCAL_CATEGORIES } from './js/game/budget.js';
 import { buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
 import { RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './js/game/diplomacy-constants.js';
@@ -3549,6 +3549,25 @@ function renderBillCard(bill, stageColor) {
     const passing = support >= Math.round((majority / totalSeats) * 100);
     const articles = (bill.bill_articles || []).sort((a, b) => (a.article_number || 0) - (b.article_number || 0));
 
+    // Live quorum/threshold evaluation for floor bills (mirrors laws.html)
+    const isFloorOrVoting = bill.status === 'floor' || bill.status === 'voting';
+    let voteEval = null;
+    if (isFloorOrVoting) {
+        try {
+            voteEval = evaluateBillVote({
+                votes_for: bill.votes_for || 0,
+                votes_against: bill.votes_against || 0,
+                votes_abstain: bill.votes_abstain || 0,
+                bill_type: bill.bill_type,
+                entrenchment_tier: bill.entrenchment_tier,
+            }, totalSeats, currentNation || {});
+        } catch (_) { voteEval = null; }
+    }
+    const yesVotes = bill.votes_for || 0;
+    const noVotes = bill.votes_against || 0;
+    const abstainVotes = bill.votes_abstain || 0;
+    const undeclared = Math.max(0, totalSeats - yesVotes - noVotes - abstainVotes);
+
     // Committee bills that haven't been sent to the floor expire after
     // COMMITTEE_EXPIRY_TICKS. On the final tick before expiry, dim the card
     // and post a warning so the sponsor sees what's about to happen.
@@ -3568,7 +3587,18 @@ function renderBillCard(bill, stageColor) {
                     <span class="leg-bill-title" style="color:${expiringNextTick ? 'var(--text-dim)' : stageColor};">${escapeHtml(bill.bill_name || 'Untitled Bill')}</span>`;
     if (expiringNextTick) {
         html += `<span class="ga-badge ga-badge--red">LOST SUPPORT · DISAPPEARS NEXT TICK</span>`;
-    } else if (bill.status === 'floor' || bill.status === 'voting') {
+    } else if (isFloorOrVoting && voteEval) {
+        const ev = voteEval;
+        let badgeText = '', badgeCls = 'ga-badge--red';
+        if (ev.status === 'will_pass')           { badgeText = 'WILL PASS — RESOLVES NEXT TICK'; badgeCls = 'ga-badge--green'; }
+        else if (ev.status === 'will_fail')      { badgeText = 'WILL FAIL — RESOLVES NEXT TICK'; badgeCls = 'ga-badge--red'; }
+        else if (ev.status === 'passing')        { badgeText = `PASSING — ${ev.quorumCurrent}/${ev.quorumThreshold} QUORUM`; badgeCls = 'ga-badge--green'; }
+        else if (ev.status === 'failing')        { badgeText = `FAILING — ${ev.quorumCurrent}/${ev.quorumThreshold} QUORUM`; badgeCls = 'ga-badge--red'; }
+        else if (ev.status === 'tied')           { badgeText = 'TIED'; badgeCls = 'ga-badge--red'; }
+        else if (ev.status === 'quorum_not_met') { badgeText = `QUORUM NOT MET — ${ev.quorumCurrent}/${ev.quorumThreshold}`; badgeCls = 'ga-badge--red'; }
+        else if (ev.status === 'pending')        { badgeText = passing ? 'LIKELY TO PASS' : 'AT RISK'; badgeCls = passing ? 'ga-badge--green' : 'ga-badge--red'; }
+        if (badgeText) html += `<span class="ga-badge ${badgeCls}">${badgeText}</span>`;
+    } else if (isFloorOrVoting) {
         html += passing
             ? `<span class="ga-badge ga-badge--green">LIKELY TO PASS</span>`
             : `<span class="ga-badge ga-badge--red">AT RISK</span>`;
@@ -3594,6 +3624,20 @@ function renderBillCard(bill, stageColor) {
         <div class="leg-support-marker" style="left:${majorityPct}%;"></div>
     </div>`;
 
+    // Concrete vote totals + resolution date (floor/voting bills only)
+    if (isFloorOrVoting) {
+        const tallyParts = [
+            `<span style="color:var(--green);">${yesVotes} For</span>`,
+            `<span style="color:var(--red);">${noVotes} Against</span>`,
+        ];
+        if (abstainVotes > 0) tallyParts.push(`<span style="color:var(--text-dim);">${abstainVotes} Abstain</span>`);
+        tallyParts.push(`<span style="color:var(--text-dim);">${undeclared} undeclared</span>`);
+        html += `<div style="padding:0 14px 4px;font-family:var(--font-mono);font-size:calc(8px * var(--leg-scale, 1.755));display:flex;gap:10px;flex-wrap:wrap;">${tallyParts.join(' · ')}</div>`;
+        if (bill.voting_ends_tick) {
+            html += `<div style="padding:0 14px 6px;font-family:var(--font-mono);font-size:calc(7px * var(--leg-scale, 1.755));color:var(--text-dim);">Resolves ${escapeHtml(tickToDate(bill.voting_ends_tick))}</div>`;
+        }
+    }
+
     // Always-visible effect chips, cost summary, and vote actions
     const totals = computeBillCostTotals(bill, currentNation);
     const ongoingMonthly = totals.ongoingMonthly;
@@ -3617,8 +3661,8 @@ function renderBillCard(bill, stageColor) {
     }
     html += `</div>`;
 
-    // Articles (always visible for committee, on expand for floor)
-    if (bill.status === 'committee' || isExp) {
+    // Articles (always visible for committee + floor; expand toggles full detail)
+    if (bill.status === 'committee' || isFloorOrVoting || isExp) {
         html += `<div style="padding:0 14px 8px;">`;
         const toRoman = (n) => {
             if (!n || n < 1) return '?';
@@ -3649,9 +3693,9 @@ function renderBillCard(bill, stageColor) {
         html += renderBillExpandedContent(bill);
     }
 
-    // Expand hint for floor bills (articles hidden by default)
-    if (!isExp && (bill.status === 'floor' || bill.status === 'voting') && articles.length > 0) {
-        html += `<div style="padding:0 14px 8px;font-family:var(--font-mono);font-size:calc(7px * var(--leg-scale, 1.755));color:var(--text-dim);">&#9656; ${articles.length} article${articles.length !== 1 ? 's' : ''} \u00B7 click to expand details</div>`;
+    // Expand hint for floor bills \u2014 articles are visible; offer detail toggle
+    if (!isExp && isFloorOrVoting && articles.length > 0) {
+        html += `<div style="padding:0 14px 8px;font-family:var(--font-mono);font-size:calc(7px * var(--leg-scale, 1.755));color:var(--text-dim);">&#9656; click to expand effects &amp; vote actions</div>`;
     }
 
     // President's Desk: sign/veto controls inline so the president doesn't
@@ -3843,6 +3887,7 @@ function renderBillsList() {
     const filters = [
         { id: 'active', label: 'ACTIVE BILLS', color: 'var(--orange)', count: totalActive },
         { id: 'resolved', label: 'RESOLVED', color: 'var(--green)', count: resolved.length },
+        { id: 'laws', label: 'ALL LAWS', color: 'var(--blue)', count: activeLaws.length },
     ];
     for (const f of filters) {
         const isActive = _legFilter === f.id;
