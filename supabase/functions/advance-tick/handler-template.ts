@@ -2877,6 +2877,39 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // 4a-octo. VWC GROUP STAGE MATCH RESOLUTION — global pass.
+    // Plays out any group-stage matches scheduled for currentTick
+    // (cup_start + 0/1/2). 6 matches per round × 3 groups = 18 per
+    // cup, spread across 3 ticks. Independent from placement so
+    // cups in different stages can co-exist if cycles overlap.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const groupRes = await processVolaCupGroupMatches(supabase, currentTick);
+        if (groupRes?.resolved) {
+            console.log(`[VolaCupGroup] resolved ${groupRes.resolved} match(es) at tick ${currentTick}`);
+        }
+    } catch (groupErr) {
+        console.error('[advanceTick] Vola group match resolution failed (non-fatal):', groupErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4a-novem. VWC KNOCKOUT MATCH RESOLUTION — global pass.
+    // Plays QF (cup_start+3), SF (cup_start+4), F (cup_start+5). For
+    // SF/F rows, fills team_a/b_nation_id from the upstream feeder
+    // match's winner before playing. Same scoring system as placement
+    // and group stage. Champion crowning + ranking rewards land in
+    // Phase 5.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const koRes = await processVolaCupKnockoutMatches(supabase, currentTick);
+        if (koRes?.resolved) {
+            console.log(`[VolaKnockout] resolved ${koRes.resolved} match(es) at tick ${currentTick}`);
+        }
+    } catch (koErr) {
+        console.error('[advanceTick] Vola knockout match resolution failed (non-fatal):', koErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // 4a-tris. LEADERSHIP CHALLENGES — global pass.
     // Resolves every leadership_challenges row with claimed_at_tick <
     // currentTick that hasn't been marked yet. Per nation: re-checks

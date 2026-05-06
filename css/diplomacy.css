@@ -5925,7 +5925,34 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   font-size: 10px;
   color: var(--text-dim);
 }
-.vola-cup-group-team { font-weight: 500; }
+.vola-cup-group-team {
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vola-cup-group-flag {
+  width: 18px;
+  height: 12px;
+  object-fit: cover;
+  border: 1px solid var(--border-main);
+  flex-shrink: 0;
+}
+.vola-cup-group-via {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  border: 1px solid var(--border-main);
+  padding: 1px 4px;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
 .vola-cup-group-team--blank,
 .vola-cup-group-stat--blank { color: var(--text-dim); }
 .vola-cup-group-stat,
@@ -5994,6 +6021,26 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   text-align: center;
   border-top: 1px solid rgba(200, 168, 50, 0.12);
 }
+.vola-cup-match-flag {
+  width: 18px;
+  height: 12px;
+  object-fit: cover;
+  border: 1px solid var(--border-main);
+  flex-shrink: 0;
+}
+.vola-cup-match--played .vola-cup-match-status {
+  color: var(--amber);
+  font-family: var(--font-serif);
+  font-size: 13px;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+.vola-cup-match--played.vola-cup-match--win-a .vola-cup-match-team[data-side="b"],
+.vola-cup-match--played.vola-cup-match--win-b .vola-cup-match-team[data-side="a"] {
+  opacity: 0.45;
+  text-decoration: line-through;
+  text-decoration-color: rgba(255,255,255,0.25);
+}
 
 /* Champion card: gold gradient border + soft glow. The border shows
    through via a layered radial gradient on the background so the inner
@@ -6030,6 +6077,23 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   font-style: italic;
   font-size: 16px;
   color: var(--text-bright);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.vola-cup-champion-flag {
+  width: 28px;
+  height: 18px;
+  object-fit: cover;
+  border: 1px solid rgba(200, 168, 50, 0.6);
+  flex-shrink: 0;
+}
+.vola-cup-bracket--crowned .vola-cup-champion {
+  box-shadow: 0 0 16px rgba(200, 168, 50, 0.25);
+}
+.vola-cup-bracket--crowned .vola-cup-champion-text {
+  font-style: normal;
+  font-weight: 600;
 }
 
 /* Inline flag chip — used in placement matches today and group/bracket
