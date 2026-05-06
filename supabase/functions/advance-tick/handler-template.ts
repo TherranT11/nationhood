@@ -1608,6 +1608,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Stat decay failed for ${nation.name} (non-fatal):`, decayErr);
         }
 
+        // National Vola Culture: 3% multiplicative decay toward 0 (Sports subtab)
+        try {
+            await processVolaCultureDecay(supabase, nation);
+        } catch (volaErr) {
+            console.error(`[advanceTick] Vola culture decay failed for ${nation.name} (non-fatal):`, volaErr);
+        }
+
         // Commodity demand-met effects (per-tick stat deltas across
         // every stat-derived commodity — Energy + Minerals today).
         // Single merged update per nation so two commodities nudging

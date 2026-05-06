@@ -97,6 +97,12 @@
 
 <!-- ===== SPORTS SUBTAB ===== -->
 <div id="subtab-sports" class="diplo-subtab-content" style="display:none;">
+    <div class="sports-page" id="sports-page">
+        <div class="sports-eyebrow">— MINISTRY OF SPORTS —</div>
+        <h1 class="sports-title"><span class="sports-title-accent">Vola</span> Program</h1>
+        <div class="sports-subtitle" id="sports-subtitle"></div>
+        <div class="sports-cards" id="sports-cards"></div>
+    </div>
 </div>
 
 <!-- Original content hidden during UI 2.0 rollout -->
@@ -268,6 +274,10 @@ function showDiploSubtab() {
         initTradeTab();
     }
 
+    if (_diploActiveSubtab === 'sports') {
+        renderSportsTab();
+    }
+
     if (_diploActiveSubtab === 'ipo') {
         if (typeof renderIPOView === 'function' && currentFaction) {
             renderIPOView();
@@ -283,6 +293,51 @@ function showDiploSubtab() {
             ipoVotesChannel = null;
         }
     }
+}
+
+// ═══════════════════════════════════════════════════
+// SPORTS TAB — VOLA PROGRAM
+// ═══════════════════════════════════════════════════
+
+const VOLA_DECAY_RATE = 0.03;
+
+function renderSportsTab() {
+    const subtitleEl = document.getElementById('sports-subtitle');
+    const cardsEl = document.getElementById('sports-cards');
+    if (!subtitleEl || !cardsEl) return;
+
+    const nation = _worldState?.nation;
+    const tick = _worldState?.shard?.current_tick ?? 0;
+    if (!nation) {
+        subtitleEl.textContent = '';
+        cardsEl.innerHTML = '<div class="sports-empty">No nation selected.</div>';
+        return;
+    }
+
+    const value = Math.max(0, Math.min(100, Number(nation.national_vola_culture) || 0));
+    const nextLoss = Math.round(value * VOLA_DECAY_RATE * 10) / 10;
+    const nationName = (nation.name || '').toUpperCase();
+
+    subtitleEl.textContent = `${nationName} NATIONAL VOLA AUTHORITY · TICK ${tick}`;
+
+    cardsEl.innerHTML = `
+        <div class="sports-card">
+            <div class="sports-card-header">
+                <span class="sports-card-icon">&#x1F4CA;</span>
+                <span class="sports-card-label">NATIONAL SPORTS CULTURE</span>
+            </div>
+            <div class="sports-card-value">${value}</div>
+            <div class="sports-card-decay">&#x25BC; &minus;${nextLoss.toFixed(1)} next tick (3% decay)</div>
+            <div class="sports-bar-track">
+                <div class="sports-bar-fill" style="width:${value}%;"></div>
+            </div>
+            <div class="sports-bar-labels">
+                <span>0</span>
+                <span class="sports-bar-current">CURRENT ${value}</span>
+                <span>100</span>
+            </div>
+        </div>
+    `;
 }
 
 // ═══════════════════════════════════════════════════
