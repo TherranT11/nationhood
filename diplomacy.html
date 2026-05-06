@@ -102,6 +102,7 @@
         <h1 class="sports-title"><span class="sports-title-accent">Vola</span> Program</h1>
         <div class="sports-subtitle" id="sports-subtitle"></div>
         <div class="sports-cards" id="sports-cards"></div>
+        <div class="vola-team" id="vola-team"></div>
         <div class="vola-cup" id="vola-cup"></div>
         <div class="sports-activity" id="sports-activity"></div>
     </div>
@@ -377,6 +378,7 @@ function renderSportsTab() {
     const cardsEl = document.getElementById('sports-cards');
     const activityEl = document.getElementById('sports-activity');
     const cupEl = document.getElementById('vola-cup');
+    const teamEl = document.getElementById('vola-team');
     if (!subtitleEl || !cardsEl) return;
 
     const nation = _worldState?.nation;
@@ -386,6 +388,7 @@ function renderSportsTab() {
         cardsEl.innerHTML = '<div class="sports-empty">No nation selected.</div>';
         if (activityEl) activityEl.innerHTML = '';
         if (cupEl) cupEl.innerHTML = '';
+        if (teamEl) teamEl.innerHTML = '';
         return;
     }
 
@@ -454,6 +457,22 @@ function renderSportsTab() {
                 console.warn('[Sports] placement render failed:', err?.message || err)
             );
         }
+    }
+
+    if (teamEl) {
+        teamEl.innerHTML = `
+            <div class="vola-team-header">
+                <span class="vola-team-title"><span class="vola-team-icon">&#x274C;</span> NATIONAL VOLA TEAM</span>
+                <span class="vola-team-meta" id="vola-team-meta">&hellip;</span>
+            </div>
+            <div class="vola-team-grid" id="vola-team-grid">
+                <div class="sports-empty">Loading roster&hellip;</div>
+            </div>
+            <div class="vola-team-footer" id="vola-team-footer"></div>
+        `;
+        loadAndRenderVolaTeam(tick).catch(err =>
+            console.warn('[Sports] team render failed:', err?.message || err)
+        );
     }
 
     if (activityEl) {
@@ -732,6 +751,110 @@ async function loadAndRenderVolaPlacement(cupNum) {
             </div>
         `;
     }).join('');
+}
+
+// Render the National Vola Team — 3 player cards + total prowess footer.
+// Reads from vola_team_players for the player's nation. Auto-generated
+// by the tick processor + the SQL backfill, so we expect exactly 3 rows;
+// any drift (e.g., 0 or 1 players) shows a graceful empty state.
+async function loadAndRenderVolaTeam(currentTick) {
+    const grid    = document.getElementById('vola-team-grid');
+    const meta    = document.getElementById('vola-team-meta');
+    const footer  = document.getElementById('vola-team-footer');
+    if (!grid) return;
+
+    const nation = _worldState?.nation;
+    if (!nation?.id) {
+        grid.innerHTML = '<div class="sports-empty">No nation selected.</div>';
+        if (meta) meta.textContent = '';
+        if (footer) footer.innerHTML = '';
+        return;
+    }
+
+    const { data: players, error } = await _supabase.from('vola_team_players')
+        .select('id, position_number, position_name, first_name, last_name, age, rating, recruited_at_tick, recruited_at_culture, retires_at_tick, is_captain')
+        .eq('nation_id', nation.id)
+        .order('position_number', { ascending: true });
+
+    if (error) {
+        grid.innerHTML = `<div class="sports-empty">Failed to load roster: ${escapeHtml(error.message || '')}</div>`;
+        if (meta) meta.textContent = '';
+        if (footer) footer.innerHTML = '';
+        return;
+    }
+
+    if (!players || players.length === 0) {
+        grid.innerHTML = '<div class="sports-empty">Roster pending — players generate next tick.</div>';
+        if (meta) meta.textContent = '';
+        if (footer) footer.innerHTML = '';
+        return;
+    }
+
+    const totalProwess = players.reduce((s, p) => s + (Number(p.rating) || 0), 0);
+    if (meta) meta.textContent = `${players.length} PLAYERS · TOTAL PROWESS ${totalProwess}`;
+
+    grid.innerHTML = players.map(p => {
+        const ticksRemaining = Math.max(0, Number(p.retires_at_tick) - Number(currentTick));
+        const retiresNext    = ticksRemaining === 1;
+        const fullName       = `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unnamed';
+        const culture        = Number(p.recruited_at_culture).toFixed(0);
+        const cardCls        = retiresNext ? 'vola-player-card vola-player-card--retiring' : 'vola-player-card';
+        const remainingHtml = retiresNext
+            ? `<div class="vola-player-retire-warn"><span>&#9888;</span> RETIRES NEXT TICK</div>`
+            : `<div class="vola-player-remaining"><span>&#x29D6;</span> ${ticksRemaining} tick${ticksRemaining === 1 ? '' : 's'} remaining</div>`;
+        const recruitBtn = retiresNext
+            ? `<button class="vola-player-recruit-btn" data-position="${p.position_number}">RECRUIT REPLACEMENT &rarr;</button>`
+            : '';
+        const positionLabel = p.is_captain
+            ? `CAPTAIN &middot; POS ${p.position_number}`
+            : `POSITION ${p.position_number}`;
+        return `
+            <div class="${cardCls}">
+                <div class="vola-player-pos">${positionLabel}</div>
+                <div class="vola-player-name">${escapeHtml(fullName)}</div>
+                <div class="vola-player-meta">${escapeHtml(p.position_name || '').toUpperCase()} &middot; AGE ${Number(p.age) || '?'}</div>
+                <div class="vola-player-rating"><span class="vola-player-rating-num">${Number(p.rating) || 0}</span> <span class="vola-player-rating-label">RATING</span></div>
+                ${remainingHtml}
+                <div class="vola-player-recruit-line">recruited at Culture ${escapeHtml(culture)} &middot; tick ${Number(p.recruited_at_tick) || 0}</div>
+                ${recruitBtn}
+            </div>
+        `;
+    }).join('');
+
+    if (footer) {
+        const breakdown = players.map(p => Number(p.rating) || 0).join(' + ');
+        footer.innerHTML = `
+            <div class="vola-team-footer-left">
+                <div class="vola-team-footer-label">TEAM PROWESS (sum)</div>
+                <div class="vola-team-footer-formula">${breakdown} = ${totalProwess}</div>
+            </div>
+            <div class="vola-team-footer-total">${totalProwess}</div>
+        `;
+    }
+
+    // Wire the manual recruit button — calls the RPC, then re-renders.
+    grid.querySelectorAll('[data-position]').forEach(btn => {
+        if (btn.tagName !== 'BUTTON') return;
+        btn.addEventListener('click', async () => {
+            const pos = Number(btn.dataset.position);
+            if (!pos) return;
+            if (!confirm('Force-retire this player and recruit a replacement at current culture?')) return;
+            btn.disabled = true;
+            btn.textContent = 'RECRUITING…';
+            try {
+                const { data, error: rpcErr } = await _supabase.rpc('recruit_vola_player_replacement', { p_position_number: pos });
+                if (rpcErr) throw rpcErr;
+                if (!data?.success) throw new Error(data?.reason || 'Recruit failed');
+            } catch (err) {
+                alert('Recruit failed: ' + (err?.message || err));
+                btn.disabled = false;
+                btn.textContent = 'RECRUIT REPLACEMENT →';
+                return;
+            }
+            // Re-fetch + re-render so the new player appears.
+            await loadAndRenderVolaTeam(currentTick);
+        });
+    });
 }
 
 // ═══════════════════════════════════════════════════
