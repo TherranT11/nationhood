@@ -1067,6 +1067,7 @@ async function loadAlliancesData() {
                     })),
                 founded_at_tick: a.founded_at_tick ?? null,
                 hq: founderNation || '—',
+                mission: a.mission || '',
             });
         }
 
@@ -1267,22 +1268,43 @@ function renderAllAlliancesSection() {
 // no buttons) since the player can't act on these alliances.
 function renderAllAllianceRow(a) {
     const ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX'];
-    const memberChips = (a.members || []).map(m => {
+
+    const members = a.members || [];
+    const founders = members.filter(m => m.is_founder);
+    const otherMembers = members.filter(m => !m.is_founder);
+    const renderMemberChip = (m, opts = {}) => {
         const ticker = escHtml(m.corp_ticker || m.abbreviation || '—');
         const nation = escHtml(m.nation_name || '—');
-        return `<span class="al-row__tag" title="${escHtml(m.faction_name || '')}">${ticker} &middot; ${nation}</span>`;
-    }).join('');
+        const tone = opts.founder
+            ? 'color:var(--amber);border-color:var(--amber-border);background:var(--amber-faint);'
+            : '';
+        return `<span class="al-row__tag" style="${tone}" title="${escHtml(m.faction_name || '')}">${ticker} &middot; ${nation}</span>`;
+    };
+    const founderChips = founders.map(m => renderMemberChip(m, { founder: true })).join('');
+    const memberChips = otherMembers.map(m => renderMemberChip(m)).join('');
+
+    // Founded — derive year from tick (12 ticks/year, base 2000 — matches tickToDate)
+    const foundedYear = (a.founded_at_tick != null)
+        ? 2000 + Math.floor(Number(a.founded_at_tick) / 12)
+        : null;
+
     const articlesHtml = (a.articles || []).length === 0
-        ? `<div class="al-empty" style="padding:8px 0;">No ratified articles.</div>`
+        ? `<div class="al-empty" style="padding:10px 0;">No ratified articles.</div>`
         : (a.articles || []).map((ar, i) => `
-            <div style="padding:6px 0;border-top:1px solid var(--al-line, rgba(255,255,255,0.06));">
+            <div style="padding:10px 0;border-top:1px solid var(--al-line, rgba(255,255,255,0.06));">
                 <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.18em;color:var(--text-dim);">ARTICLE ${ROMAN[i] || (i + 1)}</div>
-                <div style="font-weight:600;margin-top:2px;">${escHtml(ar.name || '—')}</div>
-                ${ar.body ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:2px;line-height:1.4;">${escHtml(ar.body)}</div>` : ''}
+                <div style="font-weight:600;margin-top:3px;color:var(--text-bright);">${escHtml(ar.name || '—')}</div>
+                ${ar.body ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:3px;line-height:1.5;">${escHtml(ar.body)}</div>` : ''}
             </div>
         `).join('');
+
+    const subParts = [];
+    subParts.push(`<span><span style="color:var(--text-dim);">Members</span> <span style="color:var(--text-bright);">${a.member_count ?? 0}</span></span>`);
+    if (foundedYear) subParts.push(`<span><span style="color:var(--text-dim);">Founded</span> <span style="color:var(--text-bright);">${foundedYear}</span></span>`);
+    if (a.hq && a.hq !== '—') subParts.push(`<span><span style="color:var(--text-dim);">HQ</span> <span style="color:var(--text-bright);">${escHtml(a.hq)}</span></span>`);
+
     return `
-        <div class="al-row" style="opacity:0.92;">
+        <div class="al-row" style="opacity:0.95;">
             <div class="al-row__head">
                 <span class="al-row__name">${escHtml(a.name)}</span>
                 <span class="al-row__tag">${escHtml(SECTOR_LABEL[a.sector] || a.sector)}</span>
@@ -1297,10 +1319,29 @@ function renderAllAllianceRow(a) {
                     </div>
                 </div>
             </div>
-            <div class="al-row__sub" style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 0;">
-                ${memberChips || `<span style="color:var(--text-dim);font-style:italic;">No active members.</span>`}
+            <div class="al-row__sub" style="display:flex;flex-wrap:wrap;gap:14px;padding:6px 0 2px;font-family:var(--font-mono);font-size:10px;letter-spacing:0.04em;">
+                ${subParts.join('')}
             </div>
-            <div style="padding:8px 0 4px;">
+            ${a.mission ? `
+                <div style="margin-top:10px;padding:10px 14px;border-left:2px solid var(--amber);font-style:italic;color:var(--text-secondary);font-size:12px;line-height:1.5;">
+                    &ldquo;${escHtml(a.mission)}&rdquo;
+                </div>
+            ` : ''}
+            ${founderChips ? `
+                <div style="margin-top:12px;">
+                    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.18em;color:var(--text-dim);margin-bottom:6px;">FOUNDERS</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:4px;">${founderChips}</div>
+                </div>
+            ` : ''}
+            ${memberChips ? `
+                <div style="margin-top:10px;">
+                    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.18em;color:var(--text-dim);margin-bottom:6px;">MEMBERS</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:4px;">${memberChips}</div>
+                </div>
+            ` : ''}
+            ${!founderChips && !memberChips ? `<div style="margin-top:8px;color:var(--text-dim);font-style:italic;">No active members.</div>` : ''}
+            <div style="margin-top:14px;">
+                <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.18em;color:var(--text-dim);">CHARTER${(a.articles || []).length ? ' &middot; ' + a.articles.length + ' articles ratified' : ''}</div>
                 ${articlesHtml}
             </div>
         </div>
