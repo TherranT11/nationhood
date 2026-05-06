@@ -2828,6 +2828,41 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // 4a-sex. VWC PLACEMENT SCHEDULE GENERATION — global pass.
+    // If currentTick is the qualifier tick for an upcoming cup that
+    // doesn't yet have placement matches scheduled, build the bottom-3
+    // round-robin (3 matches over 3 ticks starting now). Cup_start =
+    // qualifier_tick + 12, so the cup table tells us which cup is
+    // approaching.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        // qualifier tick → cup_start = currentTick + 12, cup_number from
+        // (currentTick + 12 - 84) / 24 + 1 (clean on-cadence ticks only).
+        const candidateCupStart = currentTick + 12;
+        if (candidateCupStart >= 84 && (candidateCupStart - 84) % 24 === 0) {
+            const cupNumber = ((candidateCupStart - 84) / 24) + 1;
+            await generateVolaPlacementSchedule(supabase, cupNumber, currentTick);
+        }
+    } catch (placeGenErr) {
+        console.error('[advanceTick] Vola placement schedule failed (non-fatal):', placeGenErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4a-septem. VWC PLACEMENT MATCH RESOLUTION — global pass.
+    // Plays out any placement matches scheduled for currentTick. After
+    // a cup's Match 3 resolves, settles standings + applies the -1
+    // global_image penalty to the bottom 1 + flips is_vola_aspirant.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const placeRes = await processVolaPlacementMatches(supabase, currentTick);
+        if (placeRes?.resolved) {
+            console.log(`[VolaPlacement] resolved ${placeRes.resolved} match(es); settled ${placeRes.cupsSettled} cup(s)`);
+        }
+    } catch (placeErr) {
+        console.error('[advanceTick] Vola placement match resolution failed (non-fatal):', placeErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // 4a-tris. LEADERSHIP CHALLENGES — global pass.
     // Resolves every leadership_challenges row with claimed_at_tick <
     // currentTick that hasn't been marked yet. Per nation: re-checks
