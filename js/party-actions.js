@@ -1356,7 +1356,7 @@ const _MINISTRY_ACTION_REGISTRY = {
             id: 'invest_in_sports_culture',
             name: 'Invest in National Sports Culture',
             desc: 'Fund local Vola leagues, training academies, and marketing campaigns. Pulls from the Sports Ministry discretionary budget; raises National Sports Culture immediately. 1 tick cooldown.',
-            cost: '$2M – $8M',
+            cost: '$2 – $8',
             costColor: '#c8a832',
             tags: ['SPORTS', 'COSTS BUDGET'],
         },
@@ -2277,7 +2277,7 @@ async function openVolaInvestmentModal(root, faction) {
         }));
         const tiersHtml = tiers.map(t => {
             const canAfford = balance >= t.cfg.cost;
-            const costLabel = '$' + (t.cfg.cost / 1_000_000) + 'M';
+            const costLabel = '$' + (t.cfg.cost / 1_000_000);
             return `<div class="pa-action-item ${!canAfford || submitting ? 'locked' : ''}" data-tier="${t.key}" style="cursor:${canAfford && !submitting ? 'pointer' : 'not-allowed'};">
                 <div class="pa-action-top">
                     <span style="font-size:13px;font-weight:700;color:var(--text-bright);">${t.cfg.label}</span>
@@ -2293,7 +2293,7 @@ async function openVolaInvestmentModal(root, faction) {
                 <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;margin-bottom:4px;">Investment applied</div>
                 <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">
                     +${result.gain} National Sports Culture · new total <strong>${Number(result.newCulture).toFixed(1)}</strong><br>
-                    $${(result.cost / 1_000_000).toFixed(0)}M deducted · remaining budget <strong>${fmtDiscretionaryBalance(result.newBalance)}</strong>
+                    $${(result.cost / 1_000_000).toFixed(0)} deducted · remaining budget <strong>${fmtDiscretionaryBalance(result.newBalance)}</strong>
                 </div>
             </div>
         ` : '';
