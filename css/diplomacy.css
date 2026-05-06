@@ -6201,6 +6201,70 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   .vola-team-grid { grid-template-columns: 1fr; }
 }
 
+/* ─────────────────────────────────────────────────────────────
+   Sports subtab — mobile refresh.
+   On phone widths the 5-stat row, big serif titles, and bracket
+   columns blow out the viewport. Stack everything vertically,
+   shrink hero typography, and let the stat cards reflow into a
+   2-column grid so values aren't cropped at the column edge.
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .sports-page                  { padding: 16px 14px 28px; }
+  .sports-title                 { font-size: 32px; }
+  .sports-subtitle              { font-size: 10px; margin-bottom: 14px; }
+  .sports-cards                 { gap: 10px; }
+  .sports-card                  { flex: 1 1 100%; min-width: 0; padding: 14px 16px 14px; }
+  .sports-card-value            { font-size: 44px; }
+  .sports-card-decay            { font-size: 10px; margin-bottom: 12px; }
+  .sports-stat-grid             {
+    flex: 1 1 100%;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .sports-stat-card             { padding: 12px 12px 10px; }
+  .sports-stat-card-value       { font-size: 28px; }
+  .sports-stat-card-label       { font-size: 9px; letter-spacing: 0.08em; }
+  .sports-stat-card-sub         { font-size: 9px; }
+
+  .vola-cup                     { padding: 16px 14px 18px; margin-top: 18px; }
+  .vola-cup-header              { flex-direction: column; align-items: stretch; gap: 10px; }
+  .vola-cup-header-right        { text-align: left; }
+  .vola-cup-title               { font-size: 22px; }
+  .vola-cup-meta                { font-size: 10px; flex-wrap: wrap; }
+  .vola-cup-status              { font-size: 10px; }
+  .vola-cup-schedule            { font-size: 10px; }
+  .vola-cup-tabs                { flex-wrap: wrap; gap: 6px; }
+  .vola-cup-tab                 { font-size: 10px; padding: 6px 8px; flex: 1 1 calc(50% - 6px); justify-content: center; }
+  .vola-cup-section-label       { font-size: 11px; }
+  .vola-cup-groups,
+  .vola-cup-bracket             { grid-template-columns: 1fr; gap: 12px; }
+  .vola-cup-bracket-col-label   { font-size: 9px; }
+  .vola-placement-row           { padding: 10px 12px; }
+  .vola-placement-meta          { flex-wrap: wrap; gap: 6px; }
+  .vola-placement-num           { font-size: 9px; }
+  .vola-placement-tick          { font-size: 9px; }
+  .vola-placement-teams         { flex-wrap: wrap; gap: 6px; row-gap: 4px; }
+  .vola-placement-team          { font-size: 13px; }
+
+  .vola-team                    { padding: 14px 14px 14px; margin-top: 18px; }
+  .vola-team-header             { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .vola-team-grid               { gap: 10px; }
+  .vola-player-card             { padding: 12px 14px 12px; }
+  .vola-team-footer             { flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 14px; }
+  .vola-team-footer-total       { font-size: 36px; }
+}
+
+/* Phone-narrow: collapse the 2-col stat grid to a single column so
+   the date values keep their breathing room. */
+@media (max-width: 420px) {
+  .sports-title                 { font-size: 26px; }
+  .sports-stat-grid             { grid-template-columns: 1fr; }
+  .sports-card-value            { font-size: 38px; }
+  .sports-stat-card-value       { font-size: 32px; }
+}
+
 /* ── Responsive ── */
 @media (max-width: 1400px) {
   .trade-neg-econ { width: 200px; }
