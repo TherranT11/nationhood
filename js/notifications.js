@@ -302,6 +302,10 @@ async function checkRecentElection(nation, shard) {
         title: 'Election completed',
         sub: ticksAgo === 0 ? 'Just now' : `${ticksAgo} tick${ticksAgo === 1 ? '' : 's'} ago`,
         href: 'elections.html',
+        // Per-occurrence dismissal: dismissing one election's notice
+        // does not silence the next election's. Tick is unique per
+        // election in a given nation.
+        dismissId: `election:${completed}`,
     }];
 }
 
@@ -335,6 +339,10 @@ async function checkPostElectionFormation(nation, shard) {
         title: 'Form Coalition',
         sub: "Use 'Form Coalition' to create a government.",
         href: 'politics.html',
+        // Per-occurrence dismissal so a player who dismisses this
+        // for the current vacancy still gets the prompt after the
+        // next election creates a fresh vacancy.
+        dismissId: `form_coalition:${completed}`,
     }];
 }
 
@@ -509,9 +517,14 @@ function rowsFingerprint(rows) {
 
 // Stable per-row dismissal key. Excludes the sub-line so a row whose
 // sub changes each tick (e.g. "2 ticks ago" → "3 ticks ago") still
-// matches its own dismissal record.
+// matches its own dismissal record. Rows that recur across game
+// occurrences (e.g. a new election fires the same-titled notification)
+// MUST set `dismissId` to something unique-per-occurrence (typically
+// the underlying record id or the trigger tick) so dismissing one
+// occurrence doesn't permanently silence the type.
 function dismissKeyFor(row) {
-    return `${row.title || ''}::${row.href || ''}`;
+    const id = row.dismissId == null ? '' : String(row.dismissId);
+    return `${row.title || ''}::${row.href || ''}::${id}`;
 }
 
 function getDismissedSet() {
