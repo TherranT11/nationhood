@@ -24251,10 +24251,18 @@ async function _resolveOneNation(supabase, nationId, claims, currentTick) {
 // dollars deducted from ministries.sports.discretionary_balance; contract
 // budget target is also raw dollars (the figure corps see + bid against).
 //
-// Cost mapping (raw dollars deducted from discretionary):
-//     Small        $3M discretionary, $60M target,  floor +2 / 24 ticks
-//     Modest       $7M discretionary, $140M target, floor +4 / 36 ticks
-//     Extravagant  $10M discretionary, $450M target, floor +9 / 60 ticks
+// Tunings:
+//     Small        $3M discretionary, $60M target,  floor +2 / 18-mo timeline / 1 crew
+//     Modest       $7M discretionary, $140M target, floor +4 / 28-mo timeline / 1 crew
+//     Extravagant  $10M discretionary, $450M target, floor +9 / 38-mo timeline / 2 crews
+//
+// timelineMonths is the contract's stated duration (corps may quote
+// faster bids per the construction system, so on-the-ground build
+// time averages slightly under these figures).
+//
+// crewsRequired writes to corp_contracts.requirements JSONB so the
+// existing construction-sector bid gate (work_crews stat) filters
+// out under-staffed corps.
 //
 // spec_category is the cross-system identifier (corp Operations page
 // reads this for filtering); project_subtype='Vola Stadium' is the
@@ -24262,10 +24270,11 @@ async function _resolveOneNation(supabase, nationId, claims, currentTick) {
 const VOLA_STADIUM_TIERS = Object.freeze({
     small: {
         label: 'Small',
-        postingCost:       3 * _M,             // raw dollars deducted from discretionary
-        budgetTarget:      60  * _M,           // raw dollars on the contract row
+        postingCost:       3 * _M,
+        budgetTarget:      60  * _M,
         floorContribution: 2,
-        timelineMonths:    24,
+        timelineMonths:    18,
+        crewsRequired:     1,
         specCategory:     'Light Infrastructure',
     },
     modest: {
@@ -24273,7 +24282,8 @@ const VOLA_STADIUM_TIERS = Object.freeze({
         postingCost:       7 * _M,
         budgetTarget:      140 * _M,
         floorContribution: 4,
-        timelineMonths:    36,
+        timelineMonths:    28,
+        crewsRequired:     1,
         specCategory:     'Heavy Infrastructure',
     },
     extravagant: {
@@ -24281,7 +24291,8 @@ const VOLA_STADIUM_TIERS = Object.freeze({
         postingCost:       10 * _M,
         budgetTarget:      450 * _M,
         floorContribution: 9,
-        timelineMonths:    60,
+        timelineMonths:    38,
+        crewsRequired:     2,
         specCategory:     'Megaproject',
     },
 });
@@ -24837,13 +24848,17 @@ async function _settleVolaPlacement(supabase, cupNumber, currentTick) {
             is_vola_aspirant: true,
         }).eq('id', bottom.id);
 
-        // Event log on the eliminated nation.
+        // Pull the nation name for the event description.
+        const { data: nameRow } = await supabase.from('nations')
+            .select('name').eq('id', bottom.id).maybeSingle();
+        const nationLabel = nameRow?.name || 'The eliminated nation';
+
         await supabase.from('event_log').insert({
             nation_id:          bottom.id,
             event_name:         'VWC Placement Eliminated',
             category:           'political',
             trigger_key:        'vwc_placement_eliminated',
-            description_chosen: `Placement defeat — ${bottomN ? '' : ''}their nation drops out of the ${_cupOrdinal(cupNumber)} World Vola Cup as Aspirant. Global Image −${_PLACEMENT_PENALTY_GLOBAL_IMAGE}.`,
+            description_chosen: `${nationLabel} fell short in the placement round and drops out of the ${_cupOrdinal(cupNumber)} World Vola Cup as Aspirant. Global Image −${_PLACEMENT_PENALTY_GLOBAL_IMAGE}.`,
             fired_at_tick:      currentTick,
         });
     }

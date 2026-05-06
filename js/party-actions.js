@@ -2496,7 +2496,7 @@ async function openVolaStadiumModal(root, faction) {
                         <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;">Floor +${t.cfg.floorContribution}</span>
                     </div>
                     <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">
-                        Discretionary ${costLabel} · Contract budget ${budgetLabel} · Timeline ~${t.cfg.timelineMonths} ticks
+                        Discretionary ${costLabel} · Contract budget ${budgetLabel} · Timeline ~${t.cfg.timelineMonths} ticks · ${t.cfg.crewsRequired} crew${t.cfg.crewsRequired === 1 ? '' : 's'} required
                     </div>
                     ${!canAfford ? `<div style="font-family:var(--font-mono);font-size:8px;color:var(--red);margin-top:4px;">Insufficient discretionary — need ${costLabel}</div>` : ''}
                 </div>`;
