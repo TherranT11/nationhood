@@ -320,6 +320,17 @@ function renderSportsTab() {
 
     subtitleEl.textContent = `${nationName} NATIONAL VOLA AUTHORITY · TICK ${tick}`;
 
+    const vwcRank      = Math.max(0, Number(nation.vwc_ranking) || 0);
+    const teamProwess  = Math.max(0, Number(nation.national_team_prowess) || 0);
+    const stadiums     = Math.max(0, Number(nation.vola_stadiums) || 0);
+
+    const ordinal = (n) => {
+        if (!n) return '—';
+        const s = ['th','st','nd','rd'];
+        const v = n % 100;
+        return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    };
+
     cardsEl.innerHTML = `
         <div class="sports-card">
             <div class="sports-card-header">
@@ -335,6 +346,32 @@ function renderSportsTab() {
                 <span>0</span>
                 <span class="sports-bar-current">CURRENT ${value}</span>
                 <span>100</span>
+            </div>
+        </div>
+        <div class="sports-stat-grid">
+            <div class="sports-stat-card">
+                <div class="sports-stat-card-header">
+                    <span class="sports-stat-card-icon">&#x1F3C6;</span>
+                    <span class="sports-stat-card-label">VWC RANKING</span>
+                </div>
+                <div class="sports-stat-card-value">${vwcRank > 0 ? ordinal(vwcRank) : '—'}</div>
+                <div class="sports-stat-card-sub">${vwcRank > 0 ? 'of 12 qualified' : 'unranked'}</div>
+            </div>
+            <div class="sports-stat-card">
+                <div class="sports-stat-card-header">
+                    <span class="sports-stat-card-icon">&#x26A1;</span>
+                    <span class="sports-stat-card-label">TEAM PROWESS</span>
+                </div>
+                <div class="sports-stat-card-value">${teamProwess.toLocaleString()}</div>
+                <div class="sports-stat-card-sub sports-stat-card-sub--accent">${teamProwess > 0 ? 'avg ' + Math.round(teamProwess / 3) + ' per player' : 'no roster'}</div>
+            </div>
+            <div class="sports-stat-card">
+                <div class="sports-stat-card-header">
+                    <span class="sports-stat-card-icon">&#x1F3DF;</span>
+                    <span class="sports-stat-card-label">STADIUMS BUILT</span>
+                </div>
+                <div class="sports-stat-card-value">${stadiums}</div>
+                <div class="sports-stat-card-sub">${stadiums > 0 ? 'across the nation' : 'none yet'}</div>
             </div>
         </div>
     `;
