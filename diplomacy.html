@@ -383,8 +383,16 @@ function renderSportsTab() {
         if (nextQualTick === null && qualTick >= tick) { nextQualTick = qualTick; nextQualCupNum = n + 1; }
         if (nextCupTick  === null && cupTick  >= tick) { nextCupTick  = cupTick;  nextCupNum     = n + 1; }
     }
-    const nextCupDate  = nextCupTick  != null ? tickToDate(nextCupTick)  : '—';
-    const nextQualDate = nextQualTick != null ? tickToDate(nextQualTick) : '—';
+    // Compact "Jan 2007" form so the value fits in a narrow card at the
+    // same 36px serif as "10th" / "33" / "0" — avoids two-line wrap.
+    const _shortDate = (t) => {
+        if (t == null) return '—';
+        const full = tickToDate(t);  // "January, 2007"
+        const [mon, yr] = full.split(', ');
+        return `${(mon || '').slice(0, 3)} ${yr || ''}`.trim();
+    };
+    const nextCupDate  = _shortDate(nextCupTick);
+    const nextQualDate = _shortDate(nextQualTick);
     const nextCupSub   = nextCupTick  != null ? `${ordinalSuffix(nextCupNum)} World Vola Cup · tick ${nextCupTick}` : 'no cup scheduled';
     const nextQualSub  = nextQualTick != null ? `${ordinalSuffix(nextQualCupNum)} cup qualifiers · tick ${nextQualTick}` : 'no qualifiers scheduled';
 
@@ -430,8 +438,6 @@ function renderSportsTab() {
                 <div class="sports-stat-card-value">${stadiums}</div>
                 <div class="sports-stat-card-sub">${stadiums > 0 ? 'across the nation' : 'none yet'}</div>
             </div>
-            <!-- Spacer so the next two cards line up under Team Prowess + Stadiums Built. -->
-            <div class="sports-stat-card" style="visibility:hidden" aria-hidden="true"></div>
             <div class="sports-stat-card">
                 <div class="sports-stat-card-header">
                     <span class="sports-stat-card-icon">&#x1F4C5;</span>
@@ -673,15 +679,23 @@ async function loadAndRenderVolaPlacement(cupNum) {
         return;
     }
 
-    const flagImg = (url) => url
-        ? `<img src="${escapeHtml(url)}" class="vola-flag" alt="" loading="lazy">`
-        : '';
+    // Per-nation flag URL: prefer the column, fall back to the
+    // FLAG_URLS map keyed by name, then to a guessed path. This
+    // way every nation gets a flag whether or not nations.flag_url
+    // has been populated for it.
+    const flagFor = (n) => {
+        if (!n) return '';
+        const url = n.flag_url || FLAG_URLS[n.name] || (n.name ? `assets/flags/${n.name}.png` : '');
+        return url
+            ? `<img src="${escapeHtml(url)}" class="vola-flag" alt="" loading="lazy" onerror="this.style.display='none'">`
+            : '';
+    };
 
     body.innerHTML = matches.map(m => {
         const teamA  = m.team_a?.name || 'TBD';
         const teamB  = m.team_b?.name || 'TBD';
-        const flagA  = flagImg(m.team_a?.flag_url);
-        const flagB  = flagImg(m.team_b?.flag_url);
+        const flagA  = flagFor(m.team_a);
+        const flagB  = flagFor(m.team_b);
         const colorA = _volaNationColor(teamA);
         const colorB = _volaNationColor(teamB);
         const sa = m.team_a_score, sb = m.team_b_score;
