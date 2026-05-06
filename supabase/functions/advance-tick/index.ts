@@ -24895,15 +24895,125 @@ async function processVolaPlacementMatches(supabase, currentTick) {
     }
 
     // Final standings — runs once per cup whose Match 3 just resolved.
+    // Group draw chains right after settlement: by this point the
+    // Aspirant flag is set, so the 12-team qualified pool is locked in.
     for (const cupNumber of cupsThatJustFinished) {
         try {
             await _settleVolaPlacement(supabase, cupNumber, currentTick);
+            await generateVolaCupGroupDraw(supabase, cupNumber, currentTick);
         } catch (err) {
-            console.error('[VolaPlacement] settle failed for cup', cupNumber, err);
+            console.error('[VolaPlacement] settle/draw failed for cup', cupNumber, err);
         }
     }
 
     return { resolved, cupsSettled: cupsThatJustFinished.size };
+}
+
+/**
+ * Phase 1 of the VWC pipeline: draw the 12 qualified nations into
+ * Groups A / B / C (4 teams per group).
+ *
+ * Runs right after the placement matches settle for `cupNumber`.
+ * The Aspirant (is_vola_aspirant=true) is excluded; the other 12
+ * are the qualified set.
+ *
+ * Seeding: vwc_ranking ASC (best first); cycle 1 falls back to
+ * national_team_prowess DESC because rankings don't exist yet.
+ *
+ * Pot draw: split the 12 into 4 pots of 3 by seed, shuffle each
+ * pot, then deal pot 1 → A1/B1/C1, pot 2 → A2/B2/C2, etc. This
+ * spreads seed strength evenly across the three groups.
+ *
+ * Idempotent — no-op if rows for this cup already exist.
+ */
+async function generateVolaCupGroupDraw(supabase, cupNumber, currentTick) {
+    const { data: existing } = await supabase.from('vola_cup_groups')
+        .select('id').eq('cup_number', cupNumber).limit(1).maybeSingle();
+    if (existing) return null;
+
+    const { data: nations, error } = await supabase.from('nations')
+        .select('id, name, national_team_prowess, vwc_ranking, is_vola_aspirant');
+    if (error) {
+        console.warn('[VolaCupGroups] nation fetch failed:', error.message);
+        return null;
+    }
+    if (!nations || nations.length < 13) return null;
+
+    // 12 qualified = all nations except the Aspirant. If multiple are
+    // flagged (shouldn't happen) take the lowest-seeded as Aspirant by
+    // ranking/prowess order.
+    const aspirantIds = new Set(nations.filter(n => n.is_vola_aspirant).map(n => n.id));
+    let qualified = nations.filter(n => !aspirantIds.has(n.id));
+    if (qualified.length !== 12) {
+        // Defensive fallback: take top 12 by seed.
+        qualified = nations.slice().sort(_seedCompare).slice(0, 12);
+    }
+
+    qualified.sort(_seedCompare);
+
+    // Track who came from placement (the bottom-3 set, of whom 2 made it
+    // through). Used as informational metadata on the row.
+    const aspirantPool = nations.filter(n => n.is_vola_aspirant).map(n => n.id);
+    const placementWinnerIds = new Set();
+    if (aspirantPool.length > 0 && cupNumber >= 1) {
+        const { data: placementRows } = await supabase.from('vola_placement_matches')
+            .select('team_a_nation_id, team_b_nation_id')
+            .eq('cup_number', cupNumber);
+        if (placementRows) {
+            for (const m of placementRows) {
+                placementWinnerIds.add(m.team_a_nation_id);
+                placementWinnerIds.add(m.team_b_nation_id);
+            }
+            for (const aId of aspirantIds) placementWinnerIds.delete(aId);
+        }
+    }
+
+    // Pot draw: 4 pots × 3 teams. Shuffle within each pot.
+    const pots = [];
+    for (let p = 0; p < 4; p++) {
+        const slice = qualified.slice(p * 3, p * 3 + 3);
+        for (let i = slice.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [slice[i], slice[j]] = [slice[j], slice[i]];
+        }
+        pots.push(slice);
+    }
+
+    const groupLetters = ['A', 'B', 'C'];
+    const rows = [];
+    for (let potIdx = 0; potIdx < 4; potIdx++) {
+        for (let g = 0; g < 3; g++) {
+            const team = pots[potIdx][g];
+            if (!team) continue;
+            rows.push({
+                cup_number:    cupNumber,
+                nation_id:     team.id,
+                group_letter:  groupLetters[g],
+                seed_rank:     potIdx + 1,
+                qualified_via: placementWinnerIds.has(team.id) ? 'placement' : 'auto',
+                drawn_at_tick: currentTick,
+            });
+        }
+    }
+
+    const { error: insErr } = await supabase.from('vola_cup_groups').insert(rows);
+    if (insErr) {
+        console.warn('[VolaCupGroups] draw insert failed:', insErr.message);
+        return null;
+    }
+    return { cupNumber, drawn: rows.length };
+}
+
+function _seedCompare(a, b) {
+    const ra = Number(a.vwc_ranking) || 0;
+    const rb = Number(b.vwc_ranking) || 0;
+    const aRank = ra > 0 ? ra : 9999;
+    const bRank = rb > 0 ? rb : 9999;
+    if (aRank !== bRank) return aRank - bRank;
+    const pa = Number(a.national_team_prowess) || 0;
+    const pb = Number(b.national_team_prowess) || 0;
+    if (pb !== pa) return pb - pa;
+    return String(a.name || '').localeCompare(String(b.name || ''));
 }
 
 async function _settleVolaPlacement(supabase, cupNumber, currentTick) {

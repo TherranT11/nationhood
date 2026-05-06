@@ -478,6 +478,9 @@ function renderSportsTab() {
             loadAndRenderVolaPlacement(cupForPlacement.cupNum).catch(err =>
                 console.warn('[Sports] placement render failed:', err?.message || err)
             );
+            loadAndRenderVolaGroups(cupForPlacement.cupNum).catch(err =>
+                console.warn('[Sports] group render failed:', err?.message || err)
+            );
         }
     }
 
@@ -627,7 +630,7 @@ function renderVolaCup(currentTick) {
         </div>
     `;
     const groupCard = (letter) => `
-        <div class="vola-cup-group vola-cup-group--${letter.toLowerCase()}">
+        <div class="vola-cup-group vola-cup-group--${letter.toLowerCase()}" data-cup-num="${cup.cupNum}" data-group-letter="${letter}">
             <div class="vola-cup-group-header">GROUP <span class="vola-cup-group-letter">${letter}</span></div>
             <div class="vola-cup-group-table">
                 <div class="vola-cup-group-row vola-cup-group-row--head">
@@ -637,7 +640,9 @@ function renderVolaCup(currentTick) {
                     <span class="vola-cup-group-stat-label">PTS</span>
                     <span class="vola-cup-group-stat-label">PROW</span>
                 </div>
-                ${[1,2,3,4].map(blankRow).join('')}
+                <div class="vola-cup-group-rows">
+                    ${[1,2,3,4].map(blankRow).join('')}
+                </div>
             </div>
         </div>
     `;
@@ -811,6 +816,62 @@ async function loadAndRenderVolaPlacement(cupNum) {
             </div>
         `;
     }).join('');
+}
+
+// Phase 1 of the VWC pipeline: fill the 3 group cards with the team
+// names + flags drawn into each group. Reads from vola_cup_groups
+// (populated by generateVolaCupGroupDraw the moment placement Match 3
+// settles). W-L / PTS / PROW columns stay blank — those land in
+// Phase 2 once vola_cup_group_matches is wired in.
+async function loadAndRenderVolaGroups(cupNum) {
+    const cards = document.querySelectorAll(`.vola-cup-group[data-cup-num="${cupNum}"]`);
+    if (!cards.length) return;
+
+    const { data, error } = await _supabase
+        .from('vola_cup_groups')
+        .select('group_letter, seed_rank, qualified_via, nation:nation_id(id, name, flag_url)')
+        .eq('cup_number', cupNum)
+        .order('group_letter', { ascending: true })
+        .order('seed_rank',    { ascending: true });
+
+    if (error || !data) return;
+    if (data.length === 0) return; // Draw hasn't fired yet — leave placeholders.
+
+    // Bucket by group letter.
+    const byGroup = { A: [], B: [], C: [] };
+    for (const row of data) {
+        if (byGroup[row.group_letter]) byGroup[row.group_letter].push(row);
+    }
+
+    cards.forEach(card => {
+        const letter = card.getAttribute('data-group-letter');
+        const rowsEl = card.querySelector('.vola-cup-group-rows');
+        if (!rowsEl) return;
+        const teams = (byGroup[letter] || []).slice().sort((a, b) => a.seed_rank - b.seed_rank);
+        if (teams.length === 0) return;
+
+        rowsEl.innerHTML = teams.map((row, i) => {
+            const n = row.nation || {};
+            const name = n.name || 'TBD';
+            const flagUrl = n.flag_url || FLAG_URLS[name] || (name ? `assets/flags/${name}.png` : '');
+            const flagImg = flagUrl
+                ? `<img class="vola-cup-group-flag" src="${escapeHtml(flagUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">`
+                : '';
+            const color = _volaNationColor(name);
+            const viaTag = row.qualified_via === 'placement'
+                ? '<span class="vola-cup-group-via" title="Qualified via placement round">P</span>'
+                : '';
+            return `
+                <div class="vola-cup-group-row">
+                    <span class="vola-cup-group-rank">${i + 1}.</span>
+                    <span class="vola-cup-group-team" style="color:${color};">${flagImg}${escapeHtml(name)}${viaTag}</span>
+                    <span class="vola-cup-group-stat vola-cup-group-stat--blank">&mdash;</span>
+                    <span class="vola-cup-group-stat vola-cup-group-stat--blank">&mdash;</span>
+                    <span class="vola-cup-group-stat vola-cup-group-stat--blank">&mdash;</span>
+                </div>
+            `;
+        }).join('');
+    });
 }
 
 // Render the National Vola Team — 3 player cards + total prowess footer.
