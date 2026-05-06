@@ -58,41 +58,59 @@ CREATE POLICY "Vola team players viewable by all authenticated"
 -- Names sampled from nations.first_name_pool / last_name_pool. Falls
 -- back to generic 'Player'/'One' if a pool is empty (shouldn't happen
 -- on the existing 13-nation seed but defensive).
-WITH shard_tick AS (
-    SELECT current_tick AS t FROM shard WHERE name = 'Alpha Shard' LIMIT 1
-)
-INSERT INTO vola_team_players (
-    nation_id, position_number, position_name,
-    first_name, last_name, age, rating,
-    recruited_at_tick, recruited_at_culture, retires_at_tick, is_captain
-)
-SELECT
-    n.id,
-    p.pos,
-    CASE p.pos WHEN 1 THEN 'Forward' WHEN 2 THEN 'Midfielder' ELSE 'Defender' END,
-    COALESCE(n.first_name_pool[r.first_idx], 'Player'),
-    COALESCE(n.last_name_pool[r.last_idx],
-             CASE p.pos WHEN 1 THEN 'One' WHEN 2 THEN 'Two' ELSE 'Three' END),
-    r.age,
-    floor(COALESCE(n.national_vola_culture, 0))::int + r.d6,
-    (SELECT t FROM shard_tick),
-    COALESCE(n.national_vola_culture, 0),
-    (SELECT t FROM shard_tick) + 1 + r.d36,
-    p.pos = 1
-FROM nations n
-CROSS JOIN (VALUES (1),(2),(3)) AS p(pos)
-CROSS JOIN LATERAL (
-    SELECT
-        1 + floor(random() * GREATEST(COALESCE(array_length(n.first_name_pool, 1), 0), 1))::int AS first_idx,
-        1 + floor(random() * GREATEST(COALESCE(array_length(n.last_name_pool,  1), 0), 1))::int AS last_idx,
-        18 + floor(random() * 18)::int AS age,
-        1  + floor(random() *  6)::int AS d6,
-        floor(random() * 36)::int      AS d36
-) r
-WHERE NOT EXISTS (
-    SELECT 1 FROM vola_team_players x
-    WHERE x.nation_id = n.id AND x.position_number = p.pos
-);
+DO $$
+DECLARE
+    v_tick      INT;
+    v_nation    RECORD;
+    v_pos       INT;
+    v_first_len INT;
+    v_last_len  INT;
+    v_first     TEXT;
+    v_last      TEXT;
+BEGIN
+    SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
+    IF v_tick IS NULL THEN v_tick := 0; END IF;
+
+    FOR v_nation IN
+        SELECT id, first_name_pool, last_name_pool, national_vola_culture
+        FROM nations
+    LOOP
+        v_first_len := COALESCE(array_length(v_nation.first_name_pool, 1), 0);
+        v_last_len  := COALESCE(array_length(v_nation.last_name_pool,  1), 0);
+
+        FOR v_pos IN 1..3 LOOP
+            -- Skip if this slot already has a player.
+            IF EXISTS (
+                SELECT 1 FROM vola_team_players
+                WHERE nation_id = v_nation.id AND position_number = v_pos
+            ) THEN CONTINUE; END IF;
+
+            v_first := CASE WHEN v_first_len > 0
+                THEN v_nation.first_name_pool[1 + floor(random() * v_first_len)::int]
+                ELSE 'Player' END;
+            v_last  := CASE WHEN v_last_len > 0
+                THEN v_nation.last_name_pool[1 + floor(random() * v_last_len)::int]
+                ELSE CASE v_pos WHEN 1 THEN 'One' WHEN 2 THEN 'Two' ELSE 'Three' END END;
+
+            INSERT INTO vola_team_players (
+                nation_id, position_number, position_name,
+                first_name, last_name, age, rating,
+                recruited_at_tick, recruited_at_culture, retires_at_tick, is_captain
+            ) VALUES (
+                v_nation.id,
+                v_pos,
+                CASE v_pos WHEN 1 THEN 'Forward' WHEN 2 THEN 'Midfielder' ELSE 'Defender' END,
+                v_first, v_last,
+                18 + floor(random() * 18)::int,
+                floor(COALESCE(v_nation.national_vola_culture, 0))::int + 1 + floor(random() * 6)::int,
+                v_tick,
+                COALESCE(v_nation.national_vola_culture, 0),
+                v_tick + 1 + floor(random() * 36)::int,
+                v_pos = 1
+            );
+        END LOOP;
+    END LOOP;
+END $$;
 
 -- Recompute Team Prowess for every nation that just got a roster.
 UPDATE nations n SET national_team_prowess = (
