@@ -102,6 +102,7 @@
         <h1 class="sports-title"><span class="sports-title-accent">Vola</span> Program</h1>
         <div class="sports-subtitle" id="sports-subtitle"></div>
         <div class="sports-cards" id="sports-cards"></div>
+        <div class="sports-activity" id="sports-activity"></div>
     </div>
 </div>
 
@@ -301,9 +302,50 @@ function showDiploSubtab() {
 
 const VOLA_DECAY_RATE = 0.03;
 
+// Vola tournament calendar — every 24 ticks starting at tick 84.
+// Qualifiers are pinned exactly 12 ticks before each cup (tick 72, 96, 120…).
+// Pure tick math; no DB schedule table needed.
+const VOLA_CUP_FIRST_TICK = 84;
+const VOLA_CUP_PERIOD     = 24;
+const VOLA_QUAL_OFFSET    = 12;
+
+function ordinalSuffix(n) {
+    if (!n) return String(n);
+    const s = ['th','st','nd','rd'];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+// Returns the next 3 Cups + next 3 Qualifiers, sorted chronologically.
+// "Upcoming" = tick >= currentTick (event still showing on the day-of,
+// disappears the moment current_tick advances past it).
+function computeUpcomingVolaEvents(currentTick) {
+    const tick = Number(currentTick) || 0;
+    const cups = [];
+    const quals = [];
+    let n = 0;
+    // Walk the schedule until both buckets have 3 future entries; cap at
+    // 200 iterations as a safety net so this can't ever spin if the math
+    // gets pathological.
+    while ((cups.length < 3 || quals.length < 3) && n < 200) {
+        const cupTick  = VOLA_CUP_FIRST_TICK + VOLA_CUP_PERIOD * n;
+        const qualTick = cupTick - VOLA_QUAL_OFFSET;
+        const cupNum   = n + 1;
+        if (qualTick >= tick && quals.length < 3) {
+            quals.push({ kind: 'qual', tick: qualTick, cupNum });
+        }
+        if (cupTick >= tick && cups.length < 3) {
+            cups.push({ kind: 'cup', tick: cupTick, cupNum });
+        }
+        n++;
+    }
+    return [...cups, ...quals].sort((a, b) => a.tick - b.tick);
+}
+
 function renderSportsTab() {
     const subtitleEl = document.getElementById('sports-subtitle');
     const cardsEl = document.getElementById('sports-cards');
+    const activityEl = document.getElementById('sports-activity');
     if (!subtitleEl || !cardsEl) return;
 
     const nation = _worldState?.nation;
@@ -311,6 +353,7 @@ function renderSportsTab() {
     if (!nation) {
         subtitleEl.textContent = '';
         cardsEl.innerHTML = '<div class="sports-empty">No nation selected.</div>';
+        if (activityEl) activityEl.innerHTML = '';
         return;
     }
 
@@ -323,13 +366,6 @@ function renderSportsTab() {
     const vwcRank      = Math.max(0, Number(nation.vwc_ranking) || 0);
     const teamProwess  = Math.max(0, Number(nation.national_team_prowess) || 0);
     const stadiums     = Math.max(0, Number(nation.vola_stadiums) || 0);
-
-    const ordinal = (n) => {
-        if (!n) return '—';
-        const s = ['th','st','nd','rd'];
-        const v = n % 100;
-        return n + (s[(v - 20) % 10] || s[v] || s[0]);
-    };
 
     cardsEl.innerHTML = `
         <div class="sports-card">
@@ -354,7 +390,7 @@ function renderSportsTab() {
                     <span class="sports-stat-card-icon">&#x1F3C6;</span>
                     <span class="sports-stat-card-label">VWC RANKING</span>
                 </div>
-                <div class="sports-stat-card-value">${vwcRank > 0 ? ordinal(vwcRank) : '—'}</div>
+                <div class="sports-stat-card-value">${vwcRank > 0 ? ordinalSuffix(vwcRank) : '—'}</div>
                 <div class="sports-stat-card-sub">${vwcRank > 0 ? 'of 12 qualified' : 'unranked'}</div>
             </div>
             <div class="sports-stat-card">
@@ -375,6 +411,55 @@ function renderSportsTab() {
             </div>
         </div>
     `;
+
+    if (activityEl) {
+        const events = computeUpcomingVolaEvents(tick);
+        const rowsHtml = events.map(ev => {
+            const ord = ordinalSuffix(ev.cupNum);
+            const ticksAway = Math.max(0, ev.tick - tick);
+            const whenSuffix = ticksAway === 0 ? 'happening now'
+                             : ticksAway === 1 ? 'next tick'
+                             : `in ${ticksAway} ticks`;
+            if (ev.kind === 'cup') {
+                return `
+                    <div class="sports-event-row sports-event-row--cup">
+                        <div class="sports-event-meta">
+                            <span class="sports-event-badge sports-event-badge--cup">WORLD VOLA CUP</span>
+                            <span class="sports-event-tick">TICK ${ev.tick}</span>
+                        </div>
+                        <div class="sports-event-desc">
+                            <span class="sports-event-highlight sports-event-highlight--cup">${ord} World Vola Cup</span>
+                            begins &middot; <span class="sports-event-when">${whenSuffix}</span>
+                        </div>
+                    </div>
+                `;
+            }
+            return `
+                <div class="sports-event-row sports-event-row--qual">
+                    <div class="sports-event-meta">
+                        <span class="sports-event-badge sports-event-badge--qual">QUALIFIERS</span>
+                        <span class="sports-event-tick">TICK ${ev.tick}</span>
+                    </div>
+                    <div class="sports-event-desc">
+                        Qualifiers for the <span class="sports-event-highlight sports-event-highlight--cup">${ord} World Vola Cup</span>
+                        &middot; <span class="sports-event-when">${whenSuffix}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        activityEl.innerHTML = `
+            <div class="sports-activity-header">
+                <span class="sports-activity-title">
+                    <span class="sports-activity-icon">&#x1F4C5;</span> SPORTS ACTIVITY
+                </span>
+                <span class="sports-activity-meta">UPCOMING &middot; NEXT 3 CUPS &middot; 3 QUALIFIERS</span>
+            </div>
+            <div class="sports-activity-list">
+                ${rowsHtml || '<div class="sports-empty">No scheduled events.</div>'}
+            </div>
+        `;
+    }
 }
 
 // ═══════════════════════════════════════════════════
