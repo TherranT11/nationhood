@@ -889,15 +889,17 @@ async function loadAndRenderVolaGroups(cupNum) {
         const teams = (byGroup[letter] || []).slice();
         if (teams.length === 0) return;
 
-        // Sort: wins DESC, points DESC, prowess DESC, name ASC. Until
-        // a team has played a match the order falls back to seed_rank
-        // (seed_rank is also the deterministic tiebreaker on equal stats
-        // so the row order stays stable round-to-round).
+        // Sort: wins DESC, points DESC, prowess DESC, name ASC. Final
+        // tiebreaker is name to match seedVolaCupKnockout's server-side
+        // comparator — keeps the displayed group order identical to the
+        // bracket-seed order in the rare all-stats-tied case.
         teams.sort((a, b) => {
             if (b.wins !== a.wins) return b.wins - a.wins;
             if (b.points !== a.points) return b.points - a.points;
             if (b.prowess !== a.prowess) return b.prowess - a.prowess;
-            return (a.seed_rank || 99) - (b.seed_rank || 99);
+            const an = a.nation?.name || '';
+            const bn = b.nation?.name || '';
+            return an.localeCompare(bn);
         });
 
         rowsEl.innerHTML = teams.map((row, i) => {
@@ -978,6 +980,9 @@ async function loadAndRenderVolaKnockout(cupNum) {
         aEl.innerHTML = renderSide(m.team_a, '&mdash;', m.feeder_a_match);
         bEl.innerHTML = renderSide(m.team_b, '&mdash;', m.feeder_b_match);
 
+        // Reset state-driven classes before re-applying so a stale "played"
+        // class from a prior render can't cling to a now-pending slot.
+        slot.classList.remove('vola-cup-match--played', 'vola-cup-match--win-a', 'vola-cup-match--win-b');
         if (statusEl) {
             if (m.resolved_at_tick != null && m.winner_nation_id) {
                 const sa = Number(m.team_a_score) || 0;
