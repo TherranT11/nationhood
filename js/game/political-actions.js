@@ -591,14 +591,14 @@ export async function processVolaCultureDecay(supabase, nation) {
 
 // ==================== VOLA INVESTMENT (Sports Minister action) ====================
 
-// Three tiers — cost in millions (raw dollars deducted from
-// ministries.discretionary_balance), gain added to national_vola_culture
-// directly. Match the funding-bill UI which also takes input in millions.
-const _M = 1_000_000;
+// Three tiers — cost in abstract dollars (matches nation.budget scale,
+// the same $-figures the Government Budget panel headlines). Deducted
+// directly from nation.budget; if budget runs negative, the per-tick
+// balance math turns the shortfall into debt next tick.
 export const VOLA_INVESTMENT_LEVELS = Object.freeze({
-    low:      { cost: 2 * _M, gain: 3, label: 'Low Investment' },
-    moderate: { cost: 5 * _M, gain: 5, label: 'Moderate Investment' },
-    high:     { cost: 8 * _M, gain: 7, label: 'High Investment' },
+    low:      { cost: 2, gain: 3, label: 'Low Investment' },
+    moderate: { cost: 5, gain: 5, label: 'Moderate Investment' },
+    high:     { cost: 8, gain: 7, label: 'High Investment' },
 });
 export const VOLA_INVESTMENT_COOLDOWN_TICKS = 1;
 export const VOLA_INVESTMENT_ACTION_KEY = 'invest_in_sports_culture';
@@ -617,9 +617,11 @@ export async function investInVolaCulture(supabase, nation, callerFactionId, lev
     if (!cfg) return { success: false, reason: 'invalid_level' };
     if (!nation?.id) return { success: false, reason: 'no_nation' };
 
-    // Load the active sports ministry row.
+    // Active sports minister gate — the row exists for the
+    // ownership check, but no balance check (Sports actions pull from
+    // nation.budget, not discretionary).
     const { data: mRow, error: mErr } = await supabase.from('ministries')
-        .select('id, party_id, discretionary_balance')
+        .select('party_id')
         .eq('nation_id', nation.id)
         .eq('ministry_key', 'sports')
         .eq('is_active', true)
@@ -627,11 +629,6 @@ export async function investInVolaCulture(supabase, nation, callerFactionId, lev
     if (mErr) return { success: false, reason: 'fetch_failed', error: mErr.message };
     if (!mRow) return { success: false, reason: 'no_minister' };
     if (mRow.party_id !== callerFactionId) return { success: false, reason: 'not_minister' };
-
-    const balance = Number(mRow.discretionary_balance) || 0;
-    if (balance < cfg.cost) {
-        return { success: false, reason: 'insufficient_balance', balance, cost: cfg.cost };
-    }
 
     // Cooldown check — last log row for this action on this nation.
     const { data: lastLog } = await supabase
@@ -647,25 +644,22 @@ export async function investInVolaCulture(supabase, nation, callerFactionId, lev
         return { success: false, reason: 'cooldown', readyAtTick: Number(lastLog.cooldown_until_tick) };
     }
 
-    const newBalance = balance - cfg.cost;
+    // Deduct from nation.budget directly (abstract scale = display scale).
+    // No floor — going negative is fine; the per-tick balance math will
+    // route the shortfall into debt next tick via processNationDebtTick.
+    const prevBudget = Number(nation.budget) || 0;
+    const newBudget = prevBudget - cfg.cost;
     const prevCulture = Number(nation.national_vola_culture) || 0;
     const newCulture = Math.min(100, _roundCulture(prevCulture + cfg.gain));
 
-    // Apply both updates. Failure on the second one would leave the
-    // discretionary balance debited but culture unchanged — a small
-    // refund window the player wouldn't notice. Worth the simplicity
-    // versus a transaction-RPC for what's a rare error path.
-    const { error: balErr } = await supabase.from('ministries')
-        .update({ discretionary_balance: newBalance }).eq('id', mRow.id);
-    if (balErr) return { success: false, reason: 'balance_update_failed', error: balErr.message };
-
-    const { error: cultErr } = await supabase.from('nations')
-        .update({ national_vola_culture: newCulture }).eq('id', nation.id);
-    if (cultErr) return { success: false, reason: 'culture_update_failed', error: cultErr.message };
+    const { error: updErr } = await supabase.from('nations')
+        .update({ budget: newBudget, national_vola_culture: newCulture })
+        .eq('id', nation.id);
+    if (updErr) return { success: false, reason: 'update_failed', error: updErr.message };
+    nation.budget = newBudget;
     nation.national_vola_culture = newCulture;
 
-    // Log + cooldown. ap_cost=0 (AP system retired); money_cost stores
-    // the raw-dollar cost so future audit/replay can reconstruct.
+    // Log + cooldown. money_cost stores the abstract-dollar cost.
     await supabase.from('ministry_action_log').insert({
         nation_id: nation.id,
         ministry_key: 'sports',
@@ -675,10 +669,10 @@ export async function investInVolaCulture(supabase, nation, callerFactionId, lev
         money_cost: cfg.cost,
         applied_at_tick: currentTick,
         cooldown_until_tick: currentTick + VOLA_INVESTMENT_COOLDOWN_TICKS,
-        action_data: { level, gain: cfg.gain, prevCulture, newCulture },
+        action_data: { level, gain: cfg.gain, prevCulture, newCulture, prevBudget, newBudget },
     });
 
-    return { success: true, level, gain: cfg.gain, cost: cfg.cost, newCulture, newBalance };
+    return { success: true, level, gain: cfg.gain, cost: cfg.cost, newCulture, newBudget };
 }
 
 // ==================== VWC RANKINGS (global per-tick) ====================
@@ -4637,30 +4631,31 @@ async function _resolveOneNation(supabase, nationId, claims, currentTick) {
 // ==================== VOLA STADIUM CONSTRUCTION (Sports Minister action) ====================
 
 // Three tiers — small/modest/extravagant. Each posts a Construction-sector
-// contract (corp_contracts) for corps to bid on, and deducts a flat
-// discretionary cost from the Sports Ministry on posting.
+// contract (corp_contracts) for corps to bid on. Posting cost is in
+// abstract dollars (matches nation.budget scale); contract budget target
+// is raw dollars (the figure corps see + bid against).
 //
-// Cost mapping (raw dollars from the displayed millions):
-//     Small        $3M discretionary, $60M target budget,  +2 culture floor on completion
-//     Modest       $7M discretionary, $140M target budget, +4 culture floor
-//     Extravagant  $10M discretionary, $450M target budget, +9 culture floor
+// Cost mapping:
+//     Small        $3 from budget, $60M target budget, floor +2 / 24 ticks
+//     Modest       $7 from budget, $140M target budget, floor +4 / 36 ticks
+//     Extravagant  $10 from budget, $450M target budget, floor +9 / 60 ticks
 //
-// spec_category is the cross-system identifier (corp Operations page reads
-// this for filtering); project_subtype='Vola Stadium' is the discriminator
-// for our completion sweep + RPCs.
+// spec_category is the cross-system identifier (corp Operations page
+// reads this for filtering); project_subtype='Vola Stadium' is the
+// discriminator for our completion sweep + RPCs.
 const _STADIUM_M = 1_000_000;
 export const VOLA_STADIUM_TIERS = Object.freeze({
     small: {
         label: 'Small',
-        discretionaryCost: 3 * _STADIUM_M,
-        budgetTarget:      60  * _STADIUM_M,
+        postingCost:       3,                  // abstract dollars deducted from nation.budget
+        budgetTarget:      60  * _STADIUM_M,   // raw dollars on the contract row
         floorContribution: 2,
         timelineMonths:    24,
         specCategory:     'Light Infrastructure',
     },
     modest: {
         label: 'Modest',
-        discretionaryCost: 7 * _STADIUM_M,
+        postingCost:       7,
         budgetTarget:      140 * _STADIUM_M,
         floorContribution: 4,
         timelineMonths:    36,
@@ -4668,7 +4663,7 @@ export const VOLA_STADIUM_TIERS = Object.freeze({
     },
     extravagant: {
         label: 'Extravagant',
-        discretionaryCost: 10 * _STADIUM_M,
+        postingCost:       10,
         budgetTarget:      450 * _STADIUM_M,
         floorContribution: 9,
         timelineMonths:    60,
@@ -4696,21 +4691,16 @@ export async function postStadiumConstruction(supabase, nation, callerFactionId,
     const teamName    = String(params?.teamName    || '').trim();
     if (!stadiumName) return { success: false, reason: 'no_stadium_name' };
 
-    // Active sports minister gate.
+    // Active sports minister gate (no balance check — pulls from
+    // nation.budget, negative balance is allowed).
     const { data: mRow, error: mErr } = await supabase.from('ministries')
-        .select('id, party_id, discretionary_balance')
+        .select('party_id')
         .eq('nation_id', nation.id)
         .eq('ministry_key', 'sports')
         .eq('is_active', true).maybeSingle();
     if (mErr) return { success: false, reason: 'fetch_failed', error: mErr.message };
     if (!mRow) return { success: false, reason: 'no_minister' };
     if (mRow.party_id !== callerFactionId) return { success: false, reason: 'not_minister' };
-
-    // Discretionary balance gate.
-    const balance = Number(mRow.discretionary_balance) || 0;
-    if (balance < tier.discretionaryCost) {
-        return { success: false, reason: 'insufficient_balance', balance, cost: tier.discretionaryCost };
-    }
 
     // One-open-stadium-bid-per-nation gate.
     const { data: existing } = await supabase.from('corp_contracts')
@@ -4720,18 +4710,18 @@ export async function postStadiumConstruction(supabase, nation, callerFactionId,
     if (existing) return { success: false, reason: 'already_open' };
 
     // Generate contract number — same convention as other gov contracts.
-    // No tightly-enforced uniqueness; collision risk is negligible for
-    // our volumes and contracts are referenced by id elsewhere.
     const year = 2000 + Math.floor(currentTick / 12);
     const contractNumber = `GOV-${year}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
 
-    // Deduct discretionary first — if the contract insert later fails
-    // we'd need to refund, but that path is rare and the postStadium
-    // call is single-shot from the modal.
-    const newBalance = balance - tier.discretionaryCost;
-    const { error: balErr } = await supabase.from('ministries')
-        .update({ discretionary_balance: newBalance }).eq('id', mRow.id);
-    if (balErr) return { success: false, reason: 'balance_update_failed', error: balErr.message };
+    // Deduct posting cost from nation.budget first. Allowed to go
+    // negative; the next-tick balance math sweeps the shortfall into
+    // debt via processNationDebtTick.
+    const prevBudget = Number(nation.budget) || 0;
+    const newBudget  = prevBudget - tier.postingCost;
+    const { error: budgetErr } = await supabase.from('nations')
+        .update({ budget: newBudget }).eq('id', nation.id);
+    if (budgetErr) return { success: false, reason: 'budget_update_failed', error: budgetErr.message };
+    nation.budget = newBudget;
 
     // Insert the contract.
     const { data: contract, error: cErr } = await supabase.from('corp_contracts').insert({
@@ -4753,9 +4743,10 @@ export async function postStadiumConstruction(supabase, nation, callerFactionId,
         expires_at_tick:    currentTick + _STADIUM_BID_WINDOW_TICKS,
     }).select('id').single();
     if (cErr) {
-        // Refund the discretionary deduction since the contract didn't land.
-        await supabase.from('ministries')
-            .update({ discretionary_balance: balance }).eq('id', mRow.id);
+        // Refund the budget deduction since the contract didn't land.
+        await supabase.from('nations')
+            .update({ budget: prevBudget }).eq('id', nation.id);
+        nation.budget = prevBudget;
         return { success: false, reason: 'insert_failed', error: cErr.message };
     }
 
