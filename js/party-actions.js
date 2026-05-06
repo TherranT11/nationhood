@@ -2267,13 +2267,16 @@ async function openVolaInvestmentModal(root, faction) {
     const overlay = document.getElementById('pa-vola-invest-modal');
     if (!overlay) return;
 
-    // Refresh nation.budget before showing — Sports actions deduct from
-    // the national treasury directly (abstract scale, $5 = $5). If
-    // budget goes negative the per-tick balance math turns the shortfall
-    // into debt next tick — no hard floor.
-    const { data: nationRow } = await _supabase.from('nations')
-        .select('budget').eq('id', _state.nation.id).maybeSingle();
-    const balance = Number(nationRow?.budget) || 0;
+    // Refresh discretionary balance before showing — funding bills can
+    // top it up between renders, so re-fetch instead of trusting a
+    // cached descriptor.
+    const { data: mRow } = await _supabase.from('ministries')
+        .select('id, party_id, discretionary_balance')
+        .eq('nation_id', _state.nation.id)
+        .eq('ministry_key', 'sports')
+        .eq('is_active', true)
+        .maybeSingle();
+    const balance = Number(mRow?.discretionary_balance) || 0;
 
     let submitting = false;
     let result = null; // populated after success: { level, gain, cost, newCulture, newBalance }
@@ -2284,17 +2287,15 @@ async function openVolaInvestmentModal(root, faction) {
             cfg: VOLA_INVESTMENT_LEVELS[k],
         }));
         const tiersHtml = tiers.map(t => {
-            // No affordability lock — going negative is allowed and just
-            // creates debt. Surface the budget impact below the row.
-            const costLabel = '$' + t.cfg.cost;
-            const willGoNegative = balance < t.cfg.cost;
-            return `<div class="pa-action-item ${submitting ? 'locked' : ''}" data-tier="${t.key}" style="cursor:${submitting ? 'not-allowed' : 'pointer'};">
+            const canAfford = balance >= t.cfg.cost;
+            const costLabel = '$' + (t.cfg.cost / 1_000_000);
+            return `<div class="pa-action-item ${!canAfford || submitting ? 'locked' : ''}" data-tier="${t.key}" style="cursor:${canAfford && !submitting ? 'pointer' : 'not-allowed'};">
                 <div class="pa-action-top">
                     <span style="font-size:13px;font-weight:700;color:var(--text-bright);">${t.cfg.label}</span>
                     <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;">+${t.cfg.gain} National Sports Culture</span>
                 </div>
-                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">Cost: ${costLabel} from national budget</div>
-                ${willGoNegative ? `<div style="font-family:var(--font-mono);font-size:8px;color:var(--amber);margin-top:4px;">Budget would dip below 0 — shortfall rolls into debt next tick.</div>` : ''}
+                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">Cost: ${costLabel} from discretionary budget</div>
+                ${!canAfford ? `<div style="font-family:var(--font-mono);font-size:8px;color:var(--red);margin-top:4px;">Insufficient budget — need ${costLabel}</div>` : ''}
             </div>`;
         }).join('');
 
@@ -2303,7 +2304,7 @@ async function openVolaInvestmentModal(root, faction) {
                 <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;margin-bottom:4px;">Investment applied</div>
                 <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">
                     +${result.gain} National Sports Culture · new total <strong>${Number(result.newCulture).toFixed(1)}</strong><br>
-                    $${result.cost} deducted · budget now <strong>$${Number(result.newBudget).toFixed(0)}</strong>
+                    $${(result.cost / 1_000_000).toFixed(0)} deducted · remaining discretionary <strong>${fmtDiscretionaryBalance(result.newBalance)}</strong>
                 </div>
             </div>
         ` : '';
@@ -2318,9 +2319,9 @@ async function openVolaInvestmentModal(root, faction) {
                     <button class="pa-modal-close" id="vola-close">&times;</button>
                 </div>
                 <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
-                    Fund local Vola leagues, training academies, and marketing. Pulls directly from
-                    the national budget — current balance <strong style="color:${balance >= 0 ? 'var(--green)' : 'var(--red)'};">$${balance.toFixed(0)}</strong>.
-                    Going negative is fine; the shortfall rolls into debt next tick. 1 tick cooldown.
+                    Fund local Vola leagues, training academies, and marketing. Pulls from the
+                    Sports Ministry's discretionary budget — <strong style="color:${balance > 0 ? 'var(--green)' : 'var(--red)'};">${fmtDiscretionaryBalance(balance)}</strong> available.
+                    Top it up via a funding article on a passed bill. 1 tick cooldown.
                 </div>
                 <div class="pa-modal-body" style="gap:6px;">
                     <div class="pa-modal-step-label">Choose Investment Level</div>
@@ -2383,12 +2384,10 @@ async function openVolaStadiumModal(root, faction) {
 
     async function refreshState() {
         const { data: mRow } = await _supabase.from('ministries')
-            .select('party_id')
+            .select('id, party_id, discretionary_balance')
             .eq('nation_id', _state.nation.id)
             .eq('ministry_key', 'sports').eq('is_active', true).maybeSingle();
-        const { data: nationRow } = await _supabase.from('nations')
-            .select('budget').eq('id', _state.nation.id).maybeSingle();
-        const balance = Number(nationRow?.budget) || 0;
+        const balance = Number(mRow?.discretionary_balance) || 0;
 
         const { data: open } = await _supabase.from('corp_contracts')
             .select('id, name, description, spec_category, expires_at_tick, created_at_tick')
@@ -2476,19 +2475,19 @@ async function openVolaStadiumModal(root, faction) {
         } else {
             // Posting view: show tiers + name/team inputs.
             const tiersHtml = tiers.map(t => {
+                const canAfford = balance >= t.cfg.postingCost;
                 const isSel = selectedSize === t.key;
-                const costLabel = '$' + t.cfg.postingCost;
+                const costLabel = '$' + (t.cfg.postingCost / 1_000_000);
                 const budgetLabel = '$' + (t.cfg.budgetTarget / 1_000_000) + 'M';
-                const willGoNegative = balance < t.cfg.postingCost;
-                return `<div class="pa-action-item ${submitting ? 'locked' : ''} ${isSel ? 'selected' : ''}" data-size="${t.key}" style="cursor:${submitting ? 'not-allowed' : 'pointer'};${isSel ? 'border-color:#c8a832;background:rgba(200,168,50,0.06);' : ''}">
+                return `<div class="pa-action-item ${!canAfford || submitting ? 'locked' : ''} ${isSel ? 'selected' : ''}" data-size="${t.key}" style="cursor:${canAfford && !submitting ? 'pointer' : 'not-allowed'};${isSel ? 'border-color:#c8a832;background:rgba(200,168,50,0.06);' : ''}">
                     <div class="pa-action-top">
                         <span style="font-size:13px;font-weight:700;color:${isSel ? '#c8a832' : 'var(--text-bright)'};">${t.cfg.label}</span>
                         <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;">Floor +${t.cfg.floorContribution}</span>
                     </div>
                     <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">
-                        Posting cost ${costLabel} from budget · Contract budget ${budgetLabel} · Timeline ~${t.cfg.timelineMonths} ticks
+                        Discretionary ${costLabel} · Contract budget ${budgetLabel} · Timeline ~${t.cfg.timelineMonths} ticks
                     </div>
-                    ${willGoNegative ? `<div style="font-family:var(--font-mono);font-size:8px;color:var(--amber);margin-top:4px;">Budget would dip below 0 — shortfall rolls into debt next tick.</div>` : ''}
+                    ${!canAfford ? `<div style="font-family:var(--font-mono);font-size:8px;color:var(--red);margin-top:4px;">Insufficient discretionary — need ${costLabel}</div>` : ''}
                 </div>`;
             }).join('');
 
@@ -2529,7 +2528,7 @@ async function openVolaStadiumModal(root, faction) {
                 </div>
                 <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
                     ${hasMinister && isMinister
-                        ? `Posting cost pulls from the national budget — current balance <strong style="color:${balanceColor};">$${balance.toFixed(0)}</strong>. Going negative is fine; the shortfall rolls into debt next tick.`
+                        ? `Posting cost pulls from the Sports Ministry's discretionary budget — <strong style="color:${balanceColor};">${fmtDiscretionaryBalance(balance)}</strong> available. Top it up via a funding article on a passed bill.`
                         : '<span style="color:var(--red);">You are no longer the active Sports Minister.</span>'}
                 </div>
                 <div class="pa-modal-body" style="gap:6px;">
@@ -2630,13 +2629,13 @@ async function openVolaStadiumModal(root, faction) {
 
     function _stadiumReasonCopy(reason) {
         const map = {
-            no_minister:           'No active Sports Minister.',
-            not_minister:          'Only the Sports Minister can post stadium contracts.',
-            already_open:          'A stadium contract is already open. Wait for it to resolve, or cancel it first.',
-            no_stadium_name:       'Stadium name is required.',
-            invalid_size:          'Pick a stadium size first.',
-            budget_update_failed:  'Could not deduct from the national budget. Try again.',
-            insert_failed:         'Could not post the contract. Try again in a moment.',
+            no_minister:          'No active Sports Minister.',
+            not_minister:         'Only the Sports Minister can post stadium contracts.',
+            insufficient_balance: 'Sports discretionary budget is below the tier cost — pass a funding bill first.',
+            already_open:         'A stadium contract is already open. Wait for it to resolve, or cancel it first.',
+            no_stadium_name:      'Stadium name is required.',
+            invalid_size:         'Pick a stadium size first.',
+            insert_failed:        'Could not post the contract. Try again in a moment.',
         };
         return map[reason];
     }

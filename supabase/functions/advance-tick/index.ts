@@ -20247,14 +20247,17 @@ async function processVolaCultureDecay(supabase, nation) {
 
 // ==================== VOLA INVESTMENT (Sports Minister action) ====================
 
-// Three tiers — cost in abstract dollars (matches nation.budget scale,
-// the same $-figures the Government Budget panel headlines). Deducted
-// directly from nation.budget; if budget runs negative, the per-tick
-// balance math turns the shortfall into debt next tick.
+// Three tiers — cost in raw dollars (millions), deducted from
+// ministries.sports.discretionary_balance. Funding articles on bills
+// are the canonical path to top up that balance from the national
+// treasury; the action itself only ever touches what's been earmarked
+// for the ministry. Display drops the M suffix per UI preference
+// ($2 / $5 / $8 visible, $2M / $5M / $8M deducted).
+const _M = 1_000_000;
 const VOLA_INVESTMENT_LEVELS = Object.freeze({
-    low:      { cost: 2, gain: 3, label: 'Low Investment' },
-    moderate: { cost: 5, gain: 5, label: 'Moderate Investment' },
-    high:     { cost: 8, gain: 7, label: 'High Investment' },
+    low:      { cost: 2 * _M, gain: 3, label: 'Low Investment' },
+    moderate: { cost: 5 * _M, gain: 5, label: 'Moderate Investment' },
+    high:     { cost: 8 * _M, gain: 7, label: 'High Investment' },
 });
 const VOLA_INVESTMENT_COOLDOWN_TICKS = 1;
 const VOLA_INVESTMENT_ACTION_KEY = 'invest_in_sports_culture';
@@ -20289,10 +20292,9 @@ async function investInVolaCulture(supabase, nation, callerFactionId, level, cur
         };
     }
 
-    // Mirror the RPC's writes onto the local nation object so the
-    // calling UI can render fresh values without a re-fetch.
+    // Mirror the RPC's culture write onto the local nation object so
+    // the calling UI can render fresh values without a re-fetch.
     if (data.newCulture != null) nation.national_vola_culture = Number(data.newCulture);
-    if (data.newBudget  != null) nation.budget                = Number(data.newBudget);
 
     return {
         success:    true,
@@ -20300,7 +20302,7 @@ async function investInVolaCulture(supabase, nation, callerFactionId, level, cur
         gain:       Number(data.gain || 0),
         cost:       Number(data.cost || 0),
         newCulture: Number(data.newCulture || 0),
-        newBudget:  Number(data.newBudget  || 0),
+        newBalance: Number(data.newBalance || 0),
     };
 }
 
@@ -24041,9 +24043,13 @@ function _isParliamentaryForChallenge(nation) {
 }
 
 /**
- * Player-initiated claim. Validates eligibility and inserts a row in
- * leadership_challenges; the next tick's resolveLeadershipChallenges
- * pass picks the winner from all rows with the same claimed_at_tick.
+ * Player-initiated claim. Routes through the SECURITY DEFINER
+ * claim_leadership_challenge RPC because authenticated client INSERTs
+ * into leadership_challenges are blocked by the default RLS posture
+ * on user-created tables. The RPC re-validates eligibility server-side
+ * (parliamentary, vacancy, coalition membership, leader, seats), so
+ * the JS-side checks here are kept as fast pre-flight bails only —
+ * the RPC is the source of truth.
  *
  * Returns { success, reason?, alreadyClaimed? }.
  */
@@ -24053,40 +24059,17 @@ async function claimLeadershipChallenge(supabase, nation, faction, currentTick) 
     if (!faction.leader_first_name)        return { success: false, reason: 'no_leader' };
     if (!faction.seats || faction.seats <= 0) return { success: false, reason: 'no_seats' };
 
-    // Vacancy check — no active head_of_government row.
-    const { data: hog } = await supabase
-        .from('head_of_government')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('active', true)
-        .maybeSingle();
-    if (hog) return { success: false, reason: 'pm_already_installed' };
-
-    // Coalition membership check.
-    const { data: formation } = await supabase
-        .from('government_formations')
-        .select('party_ids')
-        .eq('nation_id', nation.id)
-        .in('status', ['formed', 'active', 'caretaker'])
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-    if (!formation) return { success: false, reason: 'no_coalition' };
-    if (!(formation.party_ids || []).includes(faction.id)) return { success: false, reason: 'not_in_coalition' };
-
-    // Insert claim. UNIQUE(nation_id, faction_id, claimed_at_tick) makes
-    // a same-tick double-click a silent no-op (treated as success).
-    const { error } = await supabase.from('leadership_challenges').insert({
-        nation_id: nation.id,
-        faction_id: faction.id,
-        claimed_at_tick: currentTick,
-        seats_at_claim: faction.seats,
+    const { data, error } = await supabase.rpc('claim_leadership_challenge', {
+        p_nation_id:  nation.id,
+        p_faction_id: faction.id,
     });
-    if (error) {
-        if (error.code === '23505') return { success: true, alreadyClaimed: true };
-        return { success: false, reason: 'insert_failed', error: error.message };
-    }
-    return { success: true };
+    if (error) return { success: false, reason: 'rpc_failed', error: error.message };
+    if (!data?.success) return { success: false, reason: data?.reason || 'unknown' };
+    return {
+        success: true,
+        alreadyClaimed: !!data.already_claimed,
+        claimedAtTick: Number(data.claimed_at_tick) || currentTick,
+    };
 }
 
 /**
@@ -24260,40 +24243,39 @@ async function _resolveOneNation(supabase, nationId, claims, currentTick) {
 // ==================== VOLA STADIUM CONSTRUCTION (Sports Minister action) ====================
 
 // Three tiers — small/modest/extravagant. Each posts a Construction-sector
-// contract (corp_contracts) for corps to bid on. Posting cost is in
-// abstract dollars (matches nation.budget scale); contract budget target
-// is raw dollars (the figure corps see + bid against).
+// contract (corp_contracts) for corps to bid on. Posting cost is in raw
+// dollars deducted from ministries.sports.discretionary_balance; contract
+// budget target is also raw dollars (the figure corps see + bid against).
 //
-// Cost mapping:
-//     Small        $3 from budget, $60M target budget, floor +2 / 24 ticks
-//     Modest       $7 from budget, $140M target budget, floor +4 / 36 ticks
-//     Extravagant  $10 from budget, $450M target budget, floor +9 / 60 ticks
+// Cost mapping (raw dollars deducted from discretionary):
+//     Small        $3M discretionary, $60M target,  floor +2 / 24 ticks
+//     Modest       $7M discretionary, $140M target, floor +4 / 36 ticks
+//     Extravagant  $10M discretionary, $450M target, floor +9 / 60 ticks
 //
 // spec_category is the cross-system identifier (corp Operations page
 // reads this for filtering); project_subtype='Vola Stadium' is the
 // discriminator for our completion sweep + RPCs.
-const _STADIUM_M = 1_000_000;
 const VOLA_STADIUM_TIERS = Object.freeze({
     small: {
         label: 'Small',
-        postingCost:       3,                  // abstract dollars deducted from nation.budget
-        budgetTarget:      60  * _STADIUM_M,   // raw dollars on the contract row
+        postingCost:       3 * _M,             // raw dollars deducted from discretionary
+        budgetTarget:      60  * _M,           // raw dollars on the contract row
         floorContribution: 2,
         timelineMonths:    24,
         specCategory:     'Light Infrastructure',
     },
     modest: {
         label: 'Modest',
-        postingCost:       7,
-        budgetTarget:      140 * _STADIUM_M,
+        postingCost:       7 * _M,
+        budgetTarget:      140 * _M,
         floorContribution: 4,
         timelineMonths:    36,
         specCategory:     'Heavy Infrastructure',
     },
     extravagant: {
         label: 'Extravagant',
-        postingCost:       10,
-        budgetTarget:      450 * _STADIUM_M,
+        postingCost:       10 * _M,
+        budgetTarget:      450 * _M,
         floorContribution: 9,
         timelineMonths:    60,
         specCategory:     'Megaproject',
