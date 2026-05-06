@@ -12,7 +12,7 @@ import { PLATFORMS, STAT_NAMES, BAD_STATS, statDirection, platformMomentumInfo }
 import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, getGoverningStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
 import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsuit, fetchActiveLawsuits } from './game/lawsuits.js';
-import { getNationNames, resignPM, installHOG, investInVolaCulture, VOLA_INVESTMENT_LEVELS } from './game/political-actions.js';
+import { getNationNames, resignPM, installHOG, investInVolaCulture, VOLA_INVESTMENT_LEVELS, claimLeadershipChallenge } from './game/political-actions.js';
 import { isAbsoluteMonarchy, isSemiPresidential, hasParliamentaryPM, hasElectedPresident } from './game/government-types.js';
 import { fetchActiveCoalition } from './game/government-structure.js';
 import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './game/config.js';
@@ -32,6 +32,8 @@ let _heldMinistries = [];    // ministries held by my faction (active rows from 
 let _lawsuits = [];          // faction's lawsuits (active + resolved)
 let _standing = null;        // faction_electoral_standing row (pillar scores)
 let _seatTxInProgress = false; // module-level lock for Grant/Revoke Seats actions
+let _hogActive = null;         // active head_of_government row, or null when seat is vacant
+let _leadershipChallengeClaimed = false; // true after the player clicks the action this tick
 
 // ===== BLOCS (Phase 1: formation & membership) =====
 let _myBloc = null;           // active bloc row + { members: [...] } when in one
@@ -165,6 +167,16 @@ const LEADER_ACTIONS = [
         costColor: 'var(--text-dim)',
         moneyCost: 0,
         tags: ['LEGISLATIVE', 'OPPOSITION'],
+        locked: false,
+    },
+    {
+        id: 'leadership_challenge',
+        name: 'Leadership Challenge',
+        desc: 'Claim the vacant Premiership for your party leader. Available only when there is no sitting Prime Minister. If multiple coalition parties claim on the same tick, the largest-by-seats wins (earliest claim breaks ties). Winning parties get a one-time +0.3 popularity boost across all voter sectors.',
+        cost: 'COALITION ONLY',
+        costColor: '#c8a832',
+        moneyCost: 0,
+        tags: ['GOVERNMENT', 'COALITION'],
         locked: false,
     },
     {
@@ -354,6 +366,34 @@ export async function initPartyActions(supabase, state) {
     // _administration is set above, otherwise cooldown silently skips on first load.
     await loadFundraiseCount();
     await loadNoConfidenceState();
+
+    // Leadership Challenge gating: need to know whether the HOG seat is
+    // vacant + whether THIS faction has already claimed for the current
+    // unresolved challenge window.
+    try {
+        const [{ data: hogRow }, { data: shard }] = await Promise.all([
+            _supabase.from('head_of_government')
+                .select('id, faction_id, active')
+                .eq('nation_id', state.nation?.id)
+                .eq('active', true)
+                .maybeSingle(),
+            _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+        ]);
+        _hogActive = hogRow || null;
+        const tick = Number(shard?.current_tick) || 0;
+        const { data: pendingClaim } = await _supabase.from('leadership_challenges')
+            .select('id')
+            .eq('nation_id', state.nation?.id)
+            .eq('faction_id', faction.id)
+            .is('resolved_at_tick', null)
+            .gte('claimed_at_tick', tick - 1)  // tick or tick-1 (since resolution runs at end-of-tick)
+            .limit(1).maybeSingle();
+        _leadershipChallengeClaimed = !!pendingClaim;
+    } catch (err) {
+        console.warn('[PartyActions] HOG / leadership claim state load failed:', err?.message || err);
+        _hogActive = null;
+        _leadershipChallengeClaimed = false;
+    }
 
     // Fetch deputy leader
     const { data: deputyData } = await _supabase.from('faction_deputies')
@@ -1034,6 +1074,8 @@ function renderPage(root) {
             openInviteToBlocModal(root);
         } else if (actionId === 'invest_in_sports_culture') {
             openVolaInvestmentModal(root, faction);
+        } else if (actionId === 'leadership_challenge') {
+            triggerLeadershipChallenge(root, faction);
         }
     });
 
@@ -1601,6 +1643,46 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             } else if (!_administration || !_administration.pm_party_id) {
                 isDisabled = true;
                 action.lockReason = 'No active Prime Minister to file against.';
+            } else {
+                action.lockReason = '';
+            }
+        } else if (action.id === 'leadership_challenge') {
+            // Parliamentary (incl. constitutional monarchy) only; coalition
+            // member; HOG seat vacant; haven't already claimed this round.
+            const nation = _state.nation;
+            const govType = (nation?.government_type || '').toLowerCase();
+            const isAM   = govType.includes('absolute monarchy');
+            const isPres = govType.includes('presidential') && !govType.includes('semi');
+            const isSemi = govType.includes('semi-presidential') || govType.includes('semi_presidential');
+            const isParliamentary = !isAM && !isPres && !isSemi
+                && (govType.includes('parliamentary') || nation?.hos_election_method === 'hereditary');
+            const inCoalition = !!_administration
+                && Array.isArray(_administration.coalition_parties)
+                && _administration.coalition_parties.some(p => p?.party_id === faction.id);
+            const seatVacant = !_hogActive;
+            const noLeader  = !faction.leader_first_name;
+            const noSeats   = !faction.seats || faction.seats <= 0;
+
+            if (!isParliamentary) {
+                isDisabled = true;
+                action.lockReason = 'Only available in parliamentary systems.';
+            } else if (!inCoalition) {
+                isDisabled = true;
+                action.lockReason = 'You must be in the governing coalition.';
+            } else if (!seatVacant) {
+                isDisabled = true;
+                action.lockReason = 'A Prime Minister is already serving.';
+            } else if (noLeader) {
+                isDisabled = true;
+                action.lockReason = 'Your party has no leader to install.';
+            } else if (noSeats) {
+                isDisabled = true;
+                action.lockReason = 'Your party has no parliamentary seats.';
+            } else if (_leadershipChallengeClaimed) {
+                isDisabled = true;
+                action.lockReason = 'Challenge submitted — resolves next tick.';
+                costDisplay = 'PENDING';
+                costColor = 'var(--text-dim)';
             } else {
                 action.lockReason = '';
             }
@@ -4068,6 +4150,53 @@ async function triggerLeaveCoalition() {
         alert('Failed to leave coalition: ' + (err?.message || err));
     } finally {
         _leaveCoalitionSubmitting = false;
+    }
+}
+
+let _leadershipChallengeSubmitting = false;
+
+async function triggerLeadershipChallenge(root, faction) {
+    if (_leadershipChallengeSubmitting || _leadershipChallengeClaimed) return;
+    if (!_state?.nation?.id || !faction?.id) return;
+
+    if (!confirm(
+        'LEADERSHIP CHALLENGE?\n\n' +
+        'Claim the vacant Premiership for your party leader.\n' +
+        'Resolves on the next tick. If multiple coalition parties claim, the\n' +
+        'largest by seats wins (earliest claim breaks ties).\n\n' +
+        'Winner gets +0.3 popularity across all voter sectors\n' +
+        '(suppressed if your party held PM in the last 12 ticks).\n\n' +
+        'Proceed?'
+    )) return;
+
+    _leadershipChallengeSubmitting = true;
+    try {
+        const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+        const currentTick = Number(shard?.current_tick) || 0;
+        const r = await claimLeadershipChallenge(_supabase, _state.nation, faction, currentTick);
+        if (r?.success) {
+            _leadershipChallengeClaimed = true;
+            const msg = r.alreadyClaimed
+                ? 'You already submitted this tick — sit tight, resolves next tick.'
+                : 'Leadership Challenge submitted. Resolves on the next tick.';
+            alert(msg);
+            renderPage(root);
+        } else {
+            const reasonMap = {
+                wrong_gov_type:        'Leadership Challenge is only available in parliamentary systems.',
+                pm_already_installed:  'A Prime Minister is already serving — vacancy required.',
+                no_coalition:          'No active coalition.',
+                not_in_coalition:      'Your party is not in the governing coalition.',
+                no_leader:             'Your party has no leader to install.',
+                no_seats:              'Your party holds no parliamentary seats.',
+            };
+            alert(reasonMap[r?.reason] || ('Could not submit: ' + (r?.reason || 'unknown error')));
+        }
+    } catch (err) {
+        console.error('[PartyActions] Leadership Challenge failed:', err);
+        alert('Leadership Challenge failed: ' + (err?.message || err));
+    } finally {
+        _leadershipChallengeSubmitting = false;
     }
 }
 

@@ -2797,6 +2797,23 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // 4a-tris. LEADERSHIP CHALLENGES — global pass.
+    // Resolves every leadership_challenges row with claimed_at_tick <
+    // currentTick that hasn't been marked yet. Per nation: re-checks
+    // vacancy + coalition + faction validity, picks highest-seats /
+    // earliest-claim winner, installs them as PM, applies popularity
+    // boost (with 12-tick same-party PM cooldown).
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const lcResult = await resolveLeadershipChallenges(supabase, currentTick);
+        if (lcResult?.installedCount) {
+            console.log(`[LeadershipChallenge] installed ${lcResult.installedCount} PM(s) across ${lcResult.totalNations} nation(s)`);
+        }
+    } catch (lcErr) {
+        console.error('[advanceTick] Leadership challenge resolution failed (non-fatal):', lcErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // 4b. INTERNATIONAL PARTY ORGANISATIONS — cross-nation processing
     // ══════════════════════════════════════════════════════════════════
     try {
