@@ -540,10 +540,7 @@ async function renderVwcRankingPanel() {
     const myId = _worldState?.nation?.id;
     list.innerHTML = ranked.map((n, idx) => {
         const rank = Number(n.vwc_ranking) || 0;
-        const flagUrl = n.flag_url || FLAG_URLS[n.name] || (n.name ? `assets/flags/${n.name}.png` : '');
-        const flagImg = flagUrl
-            ? `<img class="vwc-ranking-flag" src="${escapeHtml(flagUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">`
-            : '';
+        const flagImg = _volaFlagImg(n, 'vwc-ranking-flag');
         const rankLabel = rank > 0 ? ordinalSuffix(rank) : '—';
         const tier = (rank > 0 && rank <= 3) ? '<span class="vwc-ranking-tag">[WORLD CLASS]</span>' : '';
         const isMe = n.id && myId && n.id === myId ? ' vwc-ranking-row--me' : '';
@@ -751,6 +748,18 @@ function _volaNationColor(name) {
     return _VOLA_NATION_PALETTE[Math.abs(h) % _VOLA_NATION_PALETTE.length];
 }
 
+// Build an <img> for a nation's flag. Falls back through nations.flag_url →
+// FLAG_URLS[name] → assets/flags/{name}.png so any seeded nation gets a
+// flag whether or not the column is populated. Caller controls the CSS
+// class so each surface can size the flag appropriately.
+function _volaFlagImg(nation, className) {
+    if (!nation) return '';
+    const name = nation.name || '';
+    const url = nation.flag_url || FLAG_URLS[name] || (name ? `assets/flags/${name}.png` : '');
+    if (!url) return '';
+    return `<img class="${className}" src="${escapeHtml(url)}" alt="" loading="lazy" onerror="this.style.display='none'">`;
+}
+
 // Fetch placement matches for the active/next cup and render them into
 // the .vola-cup-placement-body slot that renderVolaCup left in the DOM.
 // Called from renderSportsTab right after the cup HTML is written.
@@ -774,23 +783,11 @@ async function loadAndRenderVolaPlacement(cupNum) {
         return;
     }
 
-    // Per-nation flag URL: prefer the column, fall back to the
-    // FLAG_URLS map keyed by name, then to a guessed path. This
-    // way every nation gets a flag whether or not nations.flag_url
-    // has been populated for it.
-    const flagFor = (n) => {
-        if (!n) return '';
-        const url = n.flag_url || FLAG_URLS[n.name] || (n.name ? `assets/flags/${n.name}.png` : '');
-        return url
-            ? `<img src="${escapeHtml(url)}" class="vola-flag" alt="" loading="lazy" onerror="this.style.display='none'">`
-            : '';
-    };
-
     body.innerHTML = matches.map(m => {
         const teamA  = m.team_a?.name || 'TBD';
         const teamB  = m.team_b?.name || 'TBD';
-        const flagA  = flagFor(m.team_a);
-        const flagB  = flagFor(m.team_b);
+        const flagA  = _volaFlagImg(m.team_a, 'vola-flag');
+        const flagB  = _volaFlagImg(m.team_b, 'vola-flag');
         const colorA = _volaNationColor(teamA);
         const colorB = _volaNationColor(teamB);
         const sa = m.team_a_score, sb = m.team_b_score;
@@ -903,10 +900,7 @@ async function loadAndRenderVolaGroups(cupNum) {
         rowsEl.innerHTML = teams.map((row, i) => {
             const n = row.nation || {};
             const name = n.name || 'TBD';
-            const flagUrl = n.flag_url || FLAG_URLS[name] || (name ? `assets/flags/${name}.png` : '');
-            const flagImg = flagUrl
-                ? `<img class="vola-cup-group-flag" src="${escapeHtml(flagUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">`
-                : '';
+            const flagImg = _volaFlagImg(n, 'vola-cup-group-flag');
             const color = _volaNationColor(name);
             const viaTag = row.qualified_via === 'placement'
                 ? '<span class="vola-cup-group-via" title="Qualified via placement round">P</span>'
