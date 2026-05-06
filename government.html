@@ -1126,6 +1126,7 @@ function renderAdministrationTab(container) {
     container.innerHTML = `<div class="adm2-page">
         <div class="adm2-left">
             <div id="adm2-admin-card"></div>
+            <div id="adm2-hos-card"></div>
             <div id="adm2-exec-card"></div>
             <div id="adm2-hog-card"></div>
             <div id="adm2-nation-card"></div>
@@ -1146,6 +1147,7 @@ function renderAdministrationTab(container) {
     </div>`;
 
     adm2RenderAdminCard();
+    adm2RenderHosCard();
     adm2RenderExecCard();
     adm2RenderHogCard();
     adm2RenderNationCard();
@@ -1264,80 +1266,143 @@ function adm2RenderAdminCard() {
 }
 
 // ── Executive card — PM + Head of State ─────────────────────────────
-function adm2RenderExecCard() {
-    const el = document.getElementById('adm2-exec-card');
+// ── Head of State card (above Head of Government) ──────────────────
+// Visible for monarchies (Constitutional + Absolute) and the President
+// in Semi-Presidential systems. For pure presidential and parliamentary-
+// republic nations the HoS is also the HoG, so the dedicated card is
+// hidden and the single Head of Government card carries all the info.
+function adm2RenderHosCard() {
+    const el = document.getElementById('adm2-hos-card');
     if (!el || !_govData) return;
-    const { hog, president, parties } = _govData;
     const nation = currentNation;
-    const isPresSys = isPresidential || isSemiPresidential(nation);
-    const isPurePres = isPresidential && !isSemiPresidential(nation);
-
-    const rows = [];
-
-    // President (presidential / semi-presidential nations)
-    if (president || isPresSys) {
-        const name = president
-            ? `${president.first_name || ''} ${president.last_name || ''}`.trim()
-            : [nation?.head_of_state_first_name, nation?.head_of_state_last_name].filter(Boolean).join(' ') || 'Vacant';
-        const party = president?.factions?.faction_name || '';
-        const color = president?.factions?.party_color || 'var(--text-muted)';
-        const initials = name === 'Vacant' ? '—' : name.split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
-        rows.push(`<div class="adm2-exec-person">
-            <div class="adm2-avatar" style="color:${color};border-color:${color}44;background:${color}15;">${escapeHtml(initials)}</div>
-            <div class="adm2-exec-body">
-                <div class="role">President</div>
-                <div class="name">${escapeHtml(name)}</div>
-                ${party ? `<div class="party"><span class="dot" style="background:${color};"></span>${escapeHtml(party)}</div>` : ''}
-            </div>
-        </div>`);
-    }
-
-    // Prime Minister (parliamentary + absolute monarchy only).
-    // Semi-presidential nations render PM in the dedicated Head of
-    // Government panel (adm2RenderHogCard) — the President-nominates-PM
-    // dynamic deserves its own surface so the Vacant + [Nominate] flow
-    // has somewhere to live.
-    // Absolute monarchies route through the same hog row — when the Monarch
-    // hasn't appointed a separate party, the migration defaults the row to
-    // their own faction (sql/migrations/20260710_backfill_ministries_and_monarch_hog.sql).
-    if (hog && !isPurePres && !isSemiPresidential(nation)) {
-        const name = `${hog.first_name || ''} ${hog.last_name || ''}`.trim();
-        const pmParty = parties.find(p => p.id === hog.faction_id);
-        const party = pmParty?.faction_name || '';
-        const color = pmParty?.party_color || 'var(--text-muted)';
-        const initials = name.split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
-        rows.push(`<div class="adm2-exec-person">
-            <div class="adm2-avatar" style="color:${color};border-color:${color}44;background:${color}15;">${escapeHtml(initials)}</div>
-            <div class="adm2-exec-body">
-                <div class="role">Prime Minister</div>
-                <div class="name">${escapeHtml(name)}</div>
-                ${party ? `<div class="party"><span class="dot" style="background:${color};"></span>${escapeHtml(party)}</div>` : ''}
-            </div>
-        </div>`);
-    }
-
-    // Head of State (hereditary HoS — separate from PM/president rows)
+    const { president } = _govData;
     const isHereditaryHos = (nation?.hos_election_method === 'hereditary');
+    const isSemiPres = isSemiPresidential(nation);
+
+    let body = '';
+
     if (isHereditaryHos && nation?.head_of_state_first_name) {
+        // Monarch (Constitutional or Absolute).
         const name = `${nation.head_of_state_first_name || ''} ${nation.head_of_state_last_name || ''}`.trim();
         const title = nation.head_of_state_title || 'King';
         const initials = name.split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
         const ageLine = `<div class="party">Age ${escapeHtml(String(nation.head_of_state_age || '—'))}</div>`;
-        const dynastyLine = nation.dynasty_name ? `<div class="party" style="font-style:italic;">${escapeHtml(nation.dynasty_name)}</div>` : '';
-        rows.push(`<div class="adm2-exec-person">
-            <div class="adm2-avatar" style="color:var(--amber);border-color:rgba(176,154,91,0.3);background:rgba(176,154,91,0.1);">${escapeHtml(initials)}</div>
+        const dynastyLine = nation.dynasty_name
+            ? `<div class="party" style="font-style:italic;">House of ${escapeHtml(nation.dynasty_name)}</div>`
+            : '';
+        body = `<div class="adm2-exec-person">
+            <div class="adm2-avatar" style="color:var(--amber);border-color:rgba(200,168,50,0.4);background:rgba(200,168,50,0.1);">${escapeHtml(initials)}</div>
             <div class="adm2-exec-body">
                 <div class="role">${escapeHtml(title)}</div>
                 <div class="name">${escapeHtml(name)}</div>
                 ${ageLine}
                 ${dynastyLine}
             </div>
-        </div>`);
+        </div>`;
+    } else if (isSemiPres) {
+        // President in Semi-Presidential. Acts as ceremonial HoS while
+        // the PM (rendered in adm2-hog-card below) is the HoG.
+        const name = president
+            ? `${president.first_name || ''} ${president.last_name || ''}`.trim()
+            : [nation?.head_of_state_first_name, nation?.head_of_state_last_name].filter(Boolean).join(' ') || 'Vacant';
+        const party = president?.factions?.faction_name || '';
+        const color = president?.factions?.party_color || 'var(--text-muted)';
+        const initials = name === 'Vacant' ? '—' : name.split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
+        body = `<div class="adm2-exec-person">
+            <div class="adm2-avatar" style="color:${color};border-color:${color}44;background:${color}15;">${escapeHtml(initials)}</div>
+            <div class="adm2-exec-body">
+                <div class="role">President</div>
+                <div class="name">${escapeHtml(name)}</div>
+                ${party ? `<div class="party"><span class="dot" style="background:${color};"></span>${escapeHtml(party)}</div>` : ''}
+            </div>
+        </div>`;
+    } else {
+        // No separate HoS — PM/President is also HoS. Hide the card.
+        el.innerHTML = '';
+        return;
     }
 
     el.innerHTML = `<div class="adm2-panel">
-        <div class="adm2-panel-head"><span class="sq" style="background:var(--green);"></span>Executive</div>
-        ${rows.join('') || '<div style="padding:16px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">No executive data.</div>'}
+        <div class="adm2-panel-head"><span class="sq" style="background:var(--amber);"></span>Head of State</div>
+        ${body}
+    </div>`;
+}
+
+// ── Head of Government card ────────────────────────────────────────
+// Renamed from "Executive". Shows the actual head of government:
+//   Parliamentary / Constitutional Monarchy → Prime Minister
+//   Pure Presidential                       → President
+//   Absolute Monarchy                       → Monarch (or appointed HoG)
+//   Semi-Presidential                       → handled by adm2RenderHogCard
+//                                             (this card is hidden in semi-pres)
+function adm2RenderExecCard() {
+    const el = document.getElementById('adm2-exec-card');
+    if (!el || !_govData) return;
+    const { hog, president, parties } = _govData;
+    const nation = currentNation;
+    const isPurePres = isPresidential && !isSemiPresidential(nation);
+    const isSemiPres = isSemiPresidential(nation);
+
+    // Semi-pres uses adm2-hog-card for the PM (with nominate flow).
+    // Hide this card entirely so the HoS card above + the HoG card
+    // below carry the picture.
+    if (isSemiPres) {
+        el.innerHTML = '';
+        return;
+    }
+
+    let body = '';
+
+    if (isPurePres) {
+        // Pure presidential — President is HoG (and HoS).
+        const name = president
+            ? `${president.first_name || ''} ${president.last_name || ''}`.trim()
+            : [nation?.head_of_state_first_name, nation?.head_of_state_last_name].filter(Boolean).join(' ') || 'Vacant';
+        const party = president?.factions?.faction_name || '';
+        const color = president?.factions?.party_color || 'var(--text-muted)';
+        const initials = name === 'Vacant' ? '—' : name.split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
+        body = `<div class="adm2-exec-person">
+            <div class="adm2-avatar" style="color:${color};border-color:${color}44;background:${color}15;">${escapeHtml(initials)}</div>
+            <div class="adm2-exec-body">
+                <div class="role">President</div>
+                <div class="name">${escapeHtml(name)}</div>
+                ${party ? `<div class="party"><span class="dot" style="background:${color};"></span>${escapeHtml(party)}</div>` : ''}
+            </div>
+        </div>`;
+    } else if (hog) {
+        // Parliamentary / Constitutional Monarchy / Absolute Monarchy with
+        // an appointed HoG — show the PM/Vizier from the head_of_government
+        // row.
+        const name = `${hog.first_name || ''} ${hog.last_name || ''}`.trim();
+        const pmParty = parties.find(p => p.id === hog.faction_id);
+        const party = pmParty?.faction_name || '';
+        const color = pmParty?.party_color || 'var(--text-muted)';
+        const initials = name.split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase();
+        body = `<div class="adm2-exec-person">
+            <div class="adm2-avatar" style="color:${color};border-color:${color}44;background:${color}15;">${escapeHtml(initials)}</div>
+            <div class="adm2-exec-body">
+                <div class="role">Prime Minister</div>
+                <div class="name">${escapeHtml(name)}</div>
+                ${party ? `<div class="party"><span class="dot" style="background:${color};"></span>${escapeHtml(party)}</div>` : ''}
+            </div>
+        </div>`;
+    } else {
+        // Vacant HoG (parliamentary system with formed coalition but no
+        // installed PM yet — Leadership Challenge is the canonical
+        // resolution path).
+        body = `<div class="adm2-exec-person">
+            <div class="adm2-avatar" style="color:var(--text-muted);border-color:rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);">—</div>
+            <div class="adm2-exec-body">
+                <div class="role">Prime Minister</div>
+                <div class="name" style="color:var(--text-dim);font-style:italic;">Vacant</div>
+                <div class="party" style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;">No sitting PM. Coalition members can use Leadership Challenge under Actions.</div>
+            </div>
+        </div>`;
+    }
+
+    el.innerHTML = `<div class="adm2-panel">
+        <div class="adm2-panel-head"><span class="sq" style="background:var(--green);"></span>Head of Government</div>
+        ${body}
     </div>`;
 }
 

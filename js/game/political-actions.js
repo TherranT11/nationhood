@@ -4977,6 +4977,90 @@ async function _resolveOneCup(supabase, cupNumber, bids, cupStartTick, currentTi
     return true;
 }
 
+// ==================== NATIONAL VOLA TEAM (3-player roster lifecycle) ====================
+
+// Each nation runs a 3-player Vola roster. Players retire after 1d36
+// ticks; on retirement the tick processor draws a fresh name from the
+// nation's pool and locks the new rating at floor(current_culture) + 6.
+// Team Prowess (= sum of all 3 active player ratings) is mirrored onto
+// nations.national_team_prowess so the UI + match resolver read one
+// column instead of joining + summing every read.
+
+const _VOLA_POSITION_NAMES = ['Forward', 'Midfielder', 'Defender']; // 1, 2, 3
+
+function _pickFromPool(pool, fallback) {
+    const arr = Array.isArray(pool) ? pool : [];
+    if (arr.length === 0) return fallback;
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
+/**
+ * Tick sweep: retire any player whose retires_at_tick has arrived,
+ * recruit a replacement at the host nation's current culture, then
+ * recompute national_team_prowess for every affected nation.
+ *
+ * Idempotent — once a player is replaced, the new player's
+ * retires_at_tick is in the future so the same row won't be picked
+ * up next tick.
+ */
+export async function processVolaTeamLifecycle(supabase, currentTick) {
+    const { data: due, error } = await supabase.from('vola_team_players')
+        .select('id, nation_id, position_number, position_name, is_captain')
+        .lte('retires_at_tick', currentTick);
+    if (error) {
+        console.warn('[VolaTeam] retiring fetch failed:', error.message);
+        return null;
+    }
+    if (!due || due.length === 0) return null;
+
+    // Pull culture + name pools for the affected nations in one query.
+    const nationIds = Array.from(new Set(due.map(p => p.nation_id)));
+    const { data: nations } = await supabase.from('nations')
+        .select('id, first_name_pool, last_name_pool, national_vola_culture')
+        .in('id', nationIds);
+    const nationMap = new Map((nations || []).map(n => [n.id, n]));
+
+    const affectedNations = new Set();
+    let replaced = 0;
+    for (const p of due) {
+        const n = nationMap.get(p.nation_id);
+        if (!n) continue;
+        const culture = Number(n.national_vola_culture) || 0;
+        const newPlayer = {
+            nation_id:           p.nation_id,
+            position_number:     p.position_number,
+            position_name:       p.position_name || _VOLA_POSITION_NAMES[p.position_number - 1] || 'Forward',
+            first_name:          _pickFromPool(n.first_name_pool, 'Player'),
+            last_name:           _pickFromPool(n.last_name_pool, 'Replacement'),
+            age:                 18 + Math.floor(Math.random() * 18),
+            rating:              Math.floor(culture) + 6,
+            recruited_at_tick:   currentTick,
+            recruited_at_culture: culture,
+            retires_at_tick:     currentTick + 1 + Math.floor(Math.random() * 36),
+            is_captain:          !!p.is_captain,
+        };
+
+        // Replace atomically: delete the slot, insert the new one.
+        const { error: dErr } = await supabase.from('vola_team_players')
+            .delete().eq('id', p.id);
+        if (dErr) { console.warn('[VolaTeam] delete failed:', dErr.message); continue; }
+        const { error: iErr } = await supabase.from('vola_team_players').insert(newPlayer);
+        if (iErr) { console.warn('[VolaTeam] insert failed:', iErr.message); continue; }
+        replaced++;
+        affectedNations.add(p.nation_id);
+    }
+
+    // Recompute Team Prowess for every nation that lost a player.
+    for (const nid of affectedNations) {
+        const { data: roster } = await supabase.from('vola_team_players')
+            .select('rating').eq('nation_id', nid);
+        const sum = (roster || []).reduce((s, r) => s + (Number(r.rating) || 0), 0);
+        await supabase.from('nations').update({ national_team_prowess: sum }).eq('id', nid);
+    }
+
+    return { replaced, nationsAffected: affectedNations.size };
+}
+
 // ==================== VWC PLACEMENT MATCHES (bottom-3 round-robin) ====================
 
 // 13 nations world: top 10 auto-qualify, bottom 3 play 3 round-robin
@@ -4990,11 +5074,30 @@ async function _resolveOneCup(supabase, cupNumber, bids, cupStartTick, currentTi
 
 const _PLACEMENT_PENALTY_GLOBAL_IMAGE = 1;
 
-// Score: (national_team_prowess + 1d20), clamped 1..24. Re-roll if both
-// sides tie so wins are always decisive.
-function _placementRollScore(prowess) {
-    const base = (Number(prowess) || 0) + Math.floor(Math.random() * 20) + 1;
-    return Math.max(1, Math.min(24, base));
+// Match resolution per spec:
+//   1. Each side rolls (Team Prowess + 1d20) → higher total wins
+//      (re-roll on tie so wins are decisive).
+//   2. 1d24 rolled twice independently; the higher result is assigned
+//      to the winner, the lower to the loser. These 1d24 values are
+//      what gets displayed as the match score (always 1..24).
+function _resolveMatchScores(prowessA, prowessB) {
+    let pA = (Number(prowessA) || 0) + Math.floor(Math.random() * 20) + 1;
+    let pB = (Number(prowessB) || 0) + Math.floor(Math.random() * 20) + 1;
+    let safety = 5;
+    while (pA === pB && safety-- > 0) {
+        pA = (Number(prowessA) || 0) + Math.floor(Math.random() * 20) + 1;
+        pB = (Number(prowessB) || 0) + Math.floor(Math.random() * 20) + 1;
+    }
+    const winner = pA > pB ? 'A' : 'B';
+
+    // 1d24 ×2 → assign higher to winner, lower to loser.
+    const r1 = 1 + Math.floor(Math.random() * 24);
+    const r2 = 1 + Math.floor(Math.random() * 24);
+    const high = Math.max(r1, r2);
+    const low  = Math.min(r1, r2);
+    return winner === 'A'
+        ? { scoreA: high, scoreB: low,  winner: 'A' }
+        : { scoreA: low,  scoreB: high, winner: 'B' };
 }
 
 // Pick bottom 3 nations for the cup. Cycle 1: prowess → culture → name.
@@ -5119,15 +5222,10 @@ export async function processVolaPlacementMatches(supabase, currentTick) {
             continue;
         }
 
-        let scoreA = _placementRollScore(A.national_team_prowess);
-        let scoreB = _placementRollScore(B.national_team_prowess);
-        // Tie-break by re-roll so wins are decisive.
-        let safety = 5;
-        while (scoreA === scoreB && safety-- > 0) {
-            scoreA = _placementRollScore(A.national_team_prowess);
-            scoreB = _placementRollScore(B.national_team_prowess);
-        }
-        const winnerId = scoreA > scoreB ? A.id : (scoreB > scoreA ? B.id : null);
+        const r = _resolveMatchScores(A.national_team_prowess, B.national_team_prowess);
+        const scoreA = r.scoreA;
+        const scoreB = r.scoreB;
+        const winnerId = r.winner === 'A' ? A.id : B.id;
 
         const { error: updErr } = await supabase.from('vola_placement_matches').update({
             team_a_score:     scoreA,

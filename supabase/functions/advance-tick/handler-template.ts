@@ -2797,6 +2797,20 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // 4a-ter. NATIONAL VOLA TEAM LIFECYCLE — global pass.
+    // Retires players whose retires_at_tick has arrived, drafts a
+    // replacement at current culture, recomputes national_team_prowess.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const teamRes = await processVolaTeamLifecycle(supabase, currentTick);
+        if (teamRes?.replaced) {
+            console.log(`[VolaTeam] replaced ${teamRes.replaced} player(s) across ${teamRes.nationsAffected} nation(s)`);
+        }
+    } catch (teamErr) {
+        console.error('[advanceTick] Vola team lifecycle failed (non-fatal):', teamErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // 4a-quater. VOLA STADIUM COMPLETIONS — global pass.
     // Marks active stadium contracts whose expected_finish_tick has
     // arrived as completed; bumps vola_stadiums + vola_culture_floor on

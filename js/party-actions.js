@@ -4744,8 +4744,14 @@ async function triggerLeadershipChallenge(root, faction) {
                 not_in_coalition:      'Your party is not in the governing coalition.',
                 no_leader:             'Your party has no leader to install.',
                 no_seats:              'Your party holds no parliamentary seats.',
+                rpc_failed:            'Server function call failed. The claim_leadership_challenge RPC may not be deployed yet — run migration 20260917_claim_leadership_challenge_rpc.sql.',
             };
-            alert(reasonMap[r?.reason] || ('Could not submit: ' + (r?.reason || 'unknown error')));
+            // Surface the SQL/RPC error message inline so future failures
+            // are debuggable without diving into the console.
+            const baseMsg = reasonMap[r?.reason] || ('Could not submit: ' + (r?.reason || 'unknown error'));
+            const detail  = r?.error ? `\n\nDetail: ${r.error}` : '';
+            alert(baseMsg + detail);
+            console.warn('[LeadershipChallenge] failed:', r);
         }
     } catch (err) {
         console.error('[PartyActions] Leadership Challenge failed:', err);
