@@ -1591,15 +1591,35 @@ function adm2RenderCabinet() {
     const { coalition, ministries, parties, hog } = _govData;
     const coalitionIds = new Set(coalition?.party_ids || []);
 
-    const cabinet = (ministries || []).filter(m =>
-        m.ministry_key !== 'prime_minister' && MINISTRY_KEYS_CABINET.includes(m.ministry_key)
+    // Project the full cabinet from MINISTRY_KEYS_CABINET so newly-added
+    // seats (Sports, future positions) render as vacant placeholders even
+    // before a row exists in the ministries table. The appoint flow handles
+    // the no-existing-row case by INSERT (see confirmAssign at line ~10589),
+    // so synthetic vacant entries work end-to-end.
+    const existingByKey = new Map();
+    (ministries || []).forEach(m => existingByKey.set(m.ministry_key, m));
+    const filledKeys = MINISTRY_KEYS_CABINET.filter(k =>
+        k !== 'prime_minister' && existingByKey.has(k)
     );
-    if (titleEl) titleEl.textContent = `Cabinet · ${cabinet.length}`;
-
-    if (!cabinet.length) {
+    // Fall back to the legacy "no cabinet" state only when nothing exists at
+    // all — projecting 12 vacant slots for a brand-new nation that has never
+    // formed a government would be misleading.
+    if (filledKeys.length === 0) {
+        if (titleEl) titleEl.textContent = 'Cabinet · 0';
         listEl.innerHTML = '<div style="padding:20px 14px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;">No cabinet assembled.</div>';
         return;
     }
+    const cabinet = MINISTRY_KEYS_CABINET
+        .filter(k => k !== 'prime_minister')
+        .map(k => existingByKey.get(k) || {
+            ministry_key: k,
+            nation_id: currentNation?.id,
+            is_active: true,
+        });
+    // Title shows count of filled seats (matches the player's mental model
+    // of "how many ministers do we have"), not slot count.
+    const filledCount = cabinet.filter(m => m.minister_first_name).length;
+    if (titleEl) titleEl.textContent = `Cabinet · ${filledCount}`;
 
     // Precompute static govContext fields shared by every minister row.
     // Per-row isMyMinistry is spread-in inside the .map() below.

@@ -105,23 +105,22 @@ export function calculateNationalBudget(nation, opts = {}) {
 // ════════════════════════════════════════════════════════════════
 const _RAW_PER_ABSTRACT = 1e9;
 
-export async function processBudgetSurplusPaydown(supabase, nation) {
-    const debtRaw = Number(nation?.debt) || 0;
-    if (debtRaw <= 0) return null; // No debt — nothing to pay down.
-
-    // Compute the same monthly balance the budget panel renders.
+/**
+ * Panel-accurate annual expenditures. Mirrors _gbBuildCostRows in
+ * government.html so the tick processor's debt math agrees with what
+ * the Government Budget panel shows the player.
+ *
+ * Three line items, all in abstract units:
+ *   - Interest on Debt   = debtService (raw $) / 1e9
+ *   - Royal Holdings     = $36/yr if monarchy, else 0
+ *   - Active-law ongoing = sum(active_laws.selected_option.ongoing_base_cost) × 12
+ *
+ * Shared by processBudgetSurplusPaydown AND the handler-template
+ * deficit gate so processDebtTick stops firing phantom deficits when
+ * the panel says surplus.
+ */
+export async function computePanelAnnualExpenditures(supabase, nation) {
     const budget = calculateNationalBudget(nation);
-    const annualRevenue = Number(budget.grossRevenue || 0);
-
-    // Annual expenditures, in abstract units, mirroring
-    // _gbBuildCostRows in government.html. Three line items:
-    //   - Interest on Debt   = debtService (raw $) / 1e9
-    //   - Royal Holdings     = $36/yr if monarchy, else 0
-    //   - Active-law ongoing = sum(every active_laws.selected_option.ongoing_base_cost) × 12
-    // The third line bills the player for whatever law-driven spending
-    // appears in the panel (Pension, Industrial Policy, etc.) so the
-    // treasury balance and the debt-paydown math stay consistent with
-    // what the player sees on the Costs panel.
     const debtServiceAbstract = (Number(budget.debtService || 0)) / _RAW_PER_ABSTRACT;
     const royalHoldingsAnnual = isAbsoluteMonarchy(nation) ? 36 : 0;
     let activeLawAnnual = 0;
@@ -129,16 +128,13 @@ export async function processBudgetSurplusPaydown(supabase, nation) {
         // Canonical cost column: policy_options.ongoing_base_cost.
         // Both policies.ongoing_base_cost and
         // policies.ongoing_cost_per_tick that older code referenced
-        // were dropped from the schema; PostgREST silently
-        // null-coalesced those reads which is why the previous
-        // multi-leg fallback "worked" without erroring but always
-        // returned 0. Mirrors government.html _gbAnnualLawCost.
+        // were dropped from the schema.
         const { data: laws, error: lawsErr } = await supabase
             .from('active_laws')
             .select('selected_option:policy_options!selected_option_id(ongoing_base_cost)')
             .eq('nation_id', nation.id);
         if (lawsErr) {
-            console.warn(`[BudgetSurplusPaydown] active_laws fetch failed for ${nation.name}:`, lawsErr.message);
+            console.warn(`[Budget] active_laws fetch failed for ${nation.name}:`, lawsErr.message);
         } else {
             for (const law of (laws || [])) {
                 const perTick = Number(law?.selected_option?.ongoing_base_cost) || 0;
@@ -146,10 +142,18 @@ export async function processBudgetSurplusPaydown(supabase, nation) {
             }
         }
     } catch (err) {
-        console.warn(`[BudgetSurplusPaydown] active_laws threw for ${nation.name}:`, err?.message || err);
+        console.warn(`[Budget] active_laws threw for ${nation.name}:`, err?.message || err);
     }
-    const annualExpenditures = debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual;
+    return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual;
+}
 
+export async function processBudgetSurplusPaydown(supabase, nation) {
+    const debtRaw = Number(nation?.debt) || 0;
+    if (debtRaw <= 0) return null; // No debt — nothing to pay down.
+
+    const budget = calculateNationalBudget(nation);
+    const annualRevenue = Number(budget.grossRevenue || 0);
+    const annualExpenditures = await computePanelAnnualExpenditures(supabase, nation);
     const annualBalance = annualRevenue - annualExpenditures;
     if (annualBalance <= 0) return null;
 
