@@ -5446,6 +5446,115 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   text-align: center;
 }
 
+/* ─────────────────────────────────────────────
+   SPORTS SUBTAB — Vola Program
+   ───────────────────────────────────────────── */
+.sports-page {
+  padding: 24px 28px 32px;
+  max-width: 1200px;
+}
+.sports-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.sports-title {
+  font-family: var(--font-serif);
+  font-size: 44px;
+  font-weight: 500;
+  color: var(--text-bright);
+  margin: 0 0 8px;
+  line-height: 1.05;
+}
+.sports-title-accent {
+  color: var(--amber);
+  font-style: italic;
+}
+.sports-subtitle {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  margin-bottom: 20px;
+}
+.sports-cards {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.sports-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-main);
+  border-left: 3px solid var(--amber);
+  padding: 18px 22px 16px;
+  min-width: 360px;
+  flex: 1;
+  max-width: 560px;
+}
+.sports-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.sports-card-icon { font-size: 14px; }
+.sports-card-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+.sports-card-value {
+  font-family: var(--font-serif);
+  font-size: 56px;
+  font-weight: 500;
+  color: var(--amber);
+  line-height: 1;
+  margin-bottom: 8px;
+}
+.sports-card-decay {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--amber);
+  opacity: 0.75;
+  margin-bottom: 18px;
+}
+.sports-bar-track {
+  width: 100%;
+  height: 8px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid var(--border-main);
+  position: relative;
+  overflow: hidden;
+}
+.sports-bar-fill {
+  height: 100%;
+  background: var(--amber);
+  transition: width 0.3s ease;
+}
+.sports-bar-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.sports-bar-current { color: var(--amber); }
+.sports-empty {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 24px 0;
+}
+
 /* ── Responsive ── */
 @media (max-width: 1400px) {
   .trade-neg-econ { width: 200px; }

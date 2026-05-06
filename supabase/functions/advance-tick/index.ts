@@ -20205,6 +20205,30 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
     return appliedDecay;
 }
 
+// ==================== NATIONAL VOLA CULTURE (Sports subtab — multiplicative decay) ====================
+
+// Hidden stat on `nations` (0-100). Decays 3% per tick toward 0. Kept
+// outside STAT_DECAY_CONFIG because that pipeline is additive; vola
+// culture is multiplicative by design.
+const VOLA_CULTURE_DECAY_RATE = 0.03;
+
+async function processVolaCultureDecay(supabase, nation) {
+    const cur = Number(nation.national_vola_culture) || 0;
+    if (cur <= 0) return null;
+    const next = Math.max(0, Math.round(cur * (1 - VOLA_CULTURE_DECAY_RATE)));
+    if (next === cur) return null;
+
+    const { error } = await supabase.from('nations')
+        .update({ national_vola_culture: next })
+        .eq('id', nation.id);
+    if (error) {
+        console.error('[processVolaCultureDecay] update failed', { nationId: nation.id, error: error.message });
+        return null;
+    }
+    nation.national_vola_culture = next;
+    return { previous: cur, next, delta: next - cur };
+}
+
 // ==================== STAT CONNECTIONS (threshold-triggered ripple effects) ====================
 
 /**
@@ -32458,6 +32482,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (decayErr) {
             console.error(`[advanceTick] Stat decay failed for ${nation.name} (non-fatal):`, decayErr);
+        }
+
+        // National Vola Culture: 3% multiplicative decay toward 0 (Sports subtab)
+        try {
+            await processVolaCultureDecay(supabase, nation);
+        } catch (volaErr) {
+            console.error(`[advanceTick] Vola culture decay failed for ${nation.name} (non-fatal):`, volaErr);
         }
 
         // Commodity demand-met effects (per-tick stat deltas across
