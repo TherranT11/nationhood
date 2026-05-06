@@ -24753,6 +24753,59 @@ function _resolveMatchScores(prowessA, prowessB) {
         : { scoreA: low,  scoreB: high, winner: 'B' };
 }
 
+/**
+ * Play a batch of matches for one of the Vola tables (placement,
+ * group stage, or knockout). Pulls all involved nations once,
+ * iterates rows, applies _resolveMatchScores, writes scores +
+ * winner + resolved_at_tick. Returns count of resolved rows.
+ *
+ * Shared by processVolaPlacementMatches, processVolaCupGroupMatches,
+ * and processVolaCupKnockoutMatches — all three tables use the same
+ * column names (team_a/b_nation_id, team_a/b_score, winner_nation_id,
+ * resolved_at_tick) so this helper stays table-agnostic. Caller does
+ * its own pre/post-batch bookkeeping (e.g., settlement triggers).
+ */
+async function _playMatchBatch(supabase, tableName, rows, currentTick, logTag) {
+    if (!rows || rows.length === 0) return 0;
+
+    const teamIds = Array.from(new Set(rows.flatMap(r => [r.team_a_nation_id, r.team_b_nation_id]).filter(Boolean)));
+    if (teamIds.length === 0) return 0;
+    const { data: nations, error: nErr } = await supabase.from('nations')
+        .select('id, name, national_team_prowess')
+        .in('id', teamIds);
+    if (nErr) {
+        console.warn(`[${logTag}] nation fetch failed:`, nErr.message);
+        return 0;
+    }
+    const teamMap = new Map((nations || []).map(n => [n.id, n]));
+
+    let resolved = 0;
+    for (const row of rows) {
+        const A = teamMap.get(row.team_a_nation_id);
+        const B = teamMap.get(row.team_b_nation_id);
+        if (!A || !B) {
+            await supabase.from(tableName).update({
+                resolved_at_tick: currentTick,
+            }).eq('id', row.id);
+            continue;
+        }
+        const r = _resolveMatchScores(A.national_team_prowess, B.national_team_prowess);
+        const winnerId = r.winner === 'A' ? A.id : B.id;
+        const { error: updErr } = await supabase.from(tableName).update({
+            team_a_score:     r.scoreA,
+            team_b_score:     r.scoreB,
+            winner_nation_id: winnerId,
+            resolved_at_tick: currentTick,
+        }).eq('id', row.id);
+        if (updErr) {
+            console.warn(`[${logTag}] match update failed:`, updErr.message);
+            continue;
+        }
+        resolved++;
+    }
+    return resolved;
+}
+
 // Pick bottom 3 nations for the cup. Cycle 1: prowess → culture → name.
 // Cycle 2+: vwc_ranking (1=best, 0=unranked = treated as worst).
 function _pickBottomThree(nations, cupNumber) {
@@ -24856,43 +24909,13 @@ async function processVolaPlacementMatches(supabase, currentTick) {
     }
     if (!due || due.length === 0) return null;
 
-    // Pull prowess for every team in this batch in one query.
-    const teamIds = Array.from(new Set(due.flatMap(m => [m.team_a_nation_id, m.team_b_nation_id])));
-    const { data: nations } = await supabase.from('nations')
-        .select('id, name, national_team_prowess, global_image')
-        .in('id', teamIds);
-    const teamMap = new Map((nations || []).map(n => [n.id, n]));
-
-    const cupsThatJustFinished = new Set();
-    let resolved = 0;
-    for (const m of due) {
-        const A = teamMap.get(m.team_a_nation_id);
-        const B = teamMap.get(m.team_b_nation_id);
-        if (!A || !B) {
-            await supabase.from('vola_placement_matches').update({
-                resolved_at_tick: currentTick,
-            }).eq('id', m.id);
-            continue;
-        }
-
-        const r = _resolveMatchScores(A.national_team_prowess, B.national_team_prowess);
-        const scoreA = r.scoreA;
-        const scoreB = r.scoreB;
-        const winnerId = r.winner === 'A' ? A.id : B.id;
-
-        const { error: updErr } = await supabase.from('vola_placement_matches').update({
-            team_a_score:     scoreA,
-            team_b_score:     scoreB,
-            winner_nation_id: winnerId,
-            resolved_at_tick: currentTick,
-        }).eq('id', m.id);
-        if (updErr) {
-            console.warn('[VolaPlacement] match update failed:', updErr.message);
-            continue;
-        }
-        resolved++;
-        if (m.match_number === 3) cupsThatJustFinished.add(m.cup_number);
-    }
+    // Track which cups had a Match-3 row scheduled this tick — settlement
+    // runs for those after the play batch (idempotent, so it's safe even
+    // if a particular Match-3 row failed to update).
+    const cupsThatJustFinished = new Set(
+        due.filter(m => m.match_number === 3).map(m => m.cup_number)
+    );
+    const resolved = await _playMatchBatch(supabase, 'vola_placement_matches', due, currentTick, 'VolaPlacement');
 
     // Final standings — runs once per cup whose Match 3 just resolved.
     // Group draw chains right after settlement: by this point the
@@ -25121,40 +25144,7 @@ async function processVolaCupGroupMatches(supabase, currentTick) {
     }
     if (!due || due.length === 0) return null;
 
-    const teamIds = Array.from(new Set(due.flatMap(m => [m.team_a_nation_id, m.team_b_nation_id])));
-    const { data: nations, error: nErr } = await supabase.from('nations')
-        .select('id, name, national_team_prowess')
-        .in('id', teamIds);
-    if (nErr) {
-        console.warn('[VolaCupGroup] nation fetch failed:', nErr.message);
-        return null;
-    }
-    const teamMap = new Map((nations || []).map(n => [n.id, n]));
-
-    let resolved = 0;
-    for (const m of due) {
-        const A = teamMap.get(m.team_a_nation_id);
-        const B = teamMap.get(m.team_b_nation_id);
-        if (!A || !B) {
-            await supabase.from('vola_cup_group_matches').update({
-                resolved_at_tick: currentTick,
-            }).eq('id', m.id);
-            continue;
-        }
-        const r = _resolveMatchScores(A.national_team_prowess, B.national_team_prowess);
-        const winnerId = r.winner === 'A' ? A.id : B.id;
-        const { error: updErr } = await supabase.from('vola_cup_group_matches').update({
-            team_a_score:     r.scoreA,
-            team_b_score:     r.scoreB,
-            winner_nation_id: winnerId,
-            resolved_at_tick: currentTick,
-        }).eq('id', m.id);
-        if (updErr) {
-            console.warn('[VolaCupGroup] match update failed:', updErr.message);
-            continue;
-        }
-        resolved++;
-    }
+    const resolved = await _playMatchBatch(supabase, 'vola_cup_group_matches', due, currentTick, 'VolaCupGroup');
 
     // Phase 3 hook: any cup that just played a group match might now
     // have its 18 group rows fully resolved. seedVolaCupKnockout is
@@ -25388,42 +25378,7 @@ async function processVolaCupKnockoutMatches(supabase, currentTick) {
 
     // ── Step 2: play every row whose teams are now both set. ──
     const playable = due.filter(r => r.team_a_nation_id && r.team_b_nation_id);
-    if (playable.length === 0) return null;
-
-    const teamIds = Array.from(new Set(playable.flatMap(r => [r.team_a_nation_id, r.team_b_nation_id])));
-    const { data: nations, error: nErr } = await supabase.from('nations')
-        .select('id, name, national_team_prowess')
-        .in('id', teamIds);
-    if (nErr) {
-        console.warn('[VolaKnockout] nation fetch failed:', nErr.message);
-        return null;
-    }
-    const teamMap = new Map((nations || []).map(n => [n.id, n]));
-
-    let resolved = 0;
-    for (const row of playable) {
-        const A = teamMap.get(row.team_a_nation_id);
-        const B = teamMap.get(row.team_b_nation_id);
-        if (!A || !B) {
-            await supabase.from('vola_cup_knockout').update({
-                resolved_at_tick: currentTick,
-            }).eq('id', row.id);
-            continue;
-        }
-        const r = _resolveMatchScores(A.national_team_prowess, B.national_team_prowess);
-        const winnerId = r.winner === 'A' ? A.id : B.id;
-        const { error: updErr } = await supabase.from('vola_cup_knockout').update({
-            team_a_score:     r.scoreA,
-            team_b_score:     r.scoreB,
-            winner_nation_id: winnerId,
-            resolved_at_tick: currentTick,
-        }).eq('id', row.id);
-        if (updErr) {
-            console.warn('[VolaKnockout] match update failed:', updErr.message);
-            continue;
-        }
-        resolved++;
-    }
+    const resolved = await _playMatchBatch(supabase, 'vola_cup_knockout', playable, currentTick, 'VolaKnockout');
     return { resolved };
 }
 
