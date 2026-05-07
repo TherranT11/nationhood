@@ -293,6 +293,123 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
     margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;
 }
 
+/* Aligned Interest vote modal — wider 2-column layout (vote left, chat right). */
+.al-aiv-modal {
+    width: 920px; max-width: calc(100vw - 24px);
+    max-height: 88vh;
+    background: var(--bg-2); border: 1px solid var(--border-2);
+    display: flex; flex-direction: column; overflow: hidden;
+}
+.al-aiv-header {
+    padding: 14px 18px; border-bottom: 1px solid var(--border-main, rgba(255,255,255,0.06));
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.al-aiv-title {
+    font-family: var(--font-serif); font-size: 18px; color: var(--text-bright); font-weight: 600;
+}
+.al-aiv-subtitle {
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-dim);
+    letter-spacing: 0.1em; text-transform: uppercase;
+}
+.al-aiv-body {
+    display: flex; flex: 1; min-height: 0; overflow: hidden;
+}
+.al-aiv-vote-pane {
+    flex: 1; padding: 16px 20px; overflow-y: auto;
+    border-right: 1px solid var(--border-main, rgba(255,255,255,0.06));
+    min-width: 0;
+}
+.al-aiv-chat-pane {
+    width: 320px; flex-shrink: 0; display: flex; flex-direction: column; min-width: 0;
+}
+.al-aiv-chat-head {
+    padding: 10px 14px; font-family: var(--font-mono); font-size: 9px;
+    letter-spacing: 0.18em; color: var(--text-dim); text-transform: uppercase;
+    border-bottom: 1px solid var(--border-main, rgba(255,255,255,0.06));
+}
+.al-aiv-chat-list {
+    flex: 1; overflow-y: auto; padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 8px; min-height: 0;
+}
+.al-aiv-chat-msg {
+    font-size: 12px; line-height: 1.45; color: var(--text-primary);
+}
+.al-aiv-chat-msg__head {
+    font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+    letter-spacing: 0.06em; margin-bottom: 2px;
+}
+.al-aiv-chat-msg--observer .al-aiv-chat-msg__body { color: #6a6660; font-style: italic; }
+.al-aiv-chat-msg--system   .al-aiv-chat-msg__body {
+    color: var(--amber); font-family: var(--font-mono); font-size: 11px;
+}
+.al-aiv-chat-tag {
+    display: inline-block; font-family: var(--font-mono); font-size: 8px;
+    letter-spacing: 0.08em; padding: 0 4px; border: 1px solid #6a6660;
+    color: #6a6660; margin-left: 4px; vertical-align: middle;
+}
+.al-aiv-chat-input {
+    padding: 10px 12px; border-top: 1px solid var(--border-main, rgba(255,255,255,0.06));
+    display: flex; gap: 6px;
+}
+.al-aiv-chat-input input {
+    flex: 1; padding: 7px 10px; background: var(--bg-1); color: var(--text-bright);
+    border: 1px solid var(--border-main, rgba(255,255,255,0.06)); font-size: 12px; outline: none;
+}
+.al-aiv-chat-input button {
+    padding: 7px 12px; background: var(--amber); color: #000; border: none; cursor: pointer;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+}
+.al-aiv-chat-input button:disabled { opacity: 0.5; cursor: not-allowed; }
+.al-aiv-section-label {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.18em;
+    color: var(--text-dim); text-transform: uppercase; margin: 14px 0 6px;
+}
+.al-aiv-radios { display: flex; flex-wrap: wrap; gap: 6px; }
+.al-aiv-radio {
+    cursor: pointer; padding: 8px 12px; border: 1px solid var(--border-main, rgba(255,255,255,0.1));
+    background: var(--bg-1); color: var(--text-secondary);
+    font-family: var(--font-mono); font-size: 11px; min-width: 56px; text-align: center;
+    transition: all 0.15s;
+}
+.al-aiv-radio:hover { border-color: var(--amber); color: var(--text-bright); }
+.al-aiv-radio.selected { border-color: var(--amber); background: rgba(200,168,50,0.12); color: var(--amber); }
+.al-aiv-radio.disabled { opacity: 0.4; cursor: not-allowed; }
+.al-aiv-tally {
+    margin-top: 14px; padding: 10px 12px; background: var(--bg-1);
+    border: 1px solid var(--border-main, rgba(255,255,255,0.06));
+    font-family: var(--font-mono); font-size: 11px; line-height: 1.6;
+}
+.al-aiv-actions {
+    margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;
+}
+.al-aiv-actions button {
+    padding: 8px 14px; font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    letter-spacing: 0.06em; cursor: pointer; transition: all 0.15s;
+}
+.al-aiv-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+.al-aiv-actions .btn-submit {
+    background: var(--amber); color: #000; border: 1px solid var(--amber);
+}
+.al-aiv-actions .btn-withdraw {
+    background: transparent; color: #c55; border: 1px solid #c55;
+}
+.al-aiv-actions .btn-close {
+    background: transparent; color: var(--text-dim); border: 1px solid var(--border-main, rgba(255,255,255,0.06));
+}
+.al-aiv-status {
+    padding: 8px 12px; margin-bottom: 12px; border-radius: 2px;
+    font-family: var(--font-mono); font-size: 11px; line-height: 1.45;
+}
+.al-aiv-status--info  { background: rgba(90,175,165,0.08);  border-left: 2px solid var(--accent, #5aafa5); color: var(--text-secondary); }
+.al-aiv-status--warn  { background: rgba(200,150,50,0.08); border-left: 2px solid var(--amber); color: var(--text-secondary); }
+.al-aiv-status--error { background: rgba(200,80,80,0.08);  border-left: 2px solid #c55; color: #c55; }
+@media (max-width: 720px) {
+    .al-aiv-modal { width: 100%; max-width: 100%; max-height: 100vh; border: none; }
+    .al-aiv-body { flex-direction: column; overflow-y: auto; }
+    .al-aiv-vote-pane { border-right: none; border-bottom: 1px solid var(--border-main, rgba(255,255,255,0.06)); }
+    .al-aiv-chat-pane { width: 100%; max-height: 38vh; }
+}
+
 /* ── Found-alliance form ── */
 .fnd-crumb {
     font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em;
@@ -489,6 +606,12 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
     <div class="al-modal-overlay" id="al-confirm-overlay" role="dialog" aria-hidden="true">
         <div class="al-modal" id="al-confirm">
             <!-- confirm body rendered in JS -->
+        </div>
+    </div>
+    <!-- Aligned Interest vote modal — opened via .al-aiv-open-btn -->
+    <div class="al-modal-overlay" id="al-aiv-overlay" role="dialog" aria-hidden="true">
+        <div class="al-aiv-modal" id="al-aiv-modal">
+            <!-- vote body + chat panel rendered in JS -->
         </div>
     </div>
 </div>
@@ -999,6 +1122,10 @@ async function loadAlliancesData() {
                     aligned_interest_band: (aiFloor != null && aiCeiling != null)
                         ? `${Number(aiFloor).toFixed(1)}% – ${Number(aiCeiling).toFixed(1)}%`
                         : null,
+                    // Vote-on-Interest-Rate gate: button surfaces when
+                    // the Aligned Interest article is ratified, even
+                    // if the band hasn't been set yet.
+                    has_aligned_interest: hasAlignedInterest,
                     bad_debt_aid_active: hasBadDebtAid,
                     syndicated_lending_active: hasSyndicatedLending,
                     joint_equity_active: hasJointEquity,
@@ -1430,11 +1557,15 @@ function renderAllianceExpanded(a, isMember) {
                 <div><div class="al-stat__label">Cohesion</div><div style="margin-top:2px;color:var(--green);">${escHtml((a.cohesion ?? '—') + ' / 10.0')}</div></div>
                 <div><div class="al-stat__label">Antitrust Heat</div><div style="margin-top:2px;color:${(a.heat || 0) >= 7 ? 'var(--red)' : 'var(--amber)'};">${escHtml((a.heat ?? '—') + ' / 10.0')}</div></div>
             </div>
-            ${a.aligned_interest_band ? `
-                <div style="margin-top:14px;padding:10px 14px;background:var(--amber-faint);border:1px solid var(--amber-border);font-family:var(--font-mono);font-size:11px;letter-spacing:0.04em;">
+            ${a.has_aligned_interest ? `
+                <div style="margin-top:14px;padding:10px 14px;background:var(--amber-faint);border:1px solid var(--amber-border);font-family:var(--font-mono);font-size:11px;letter-spacing:0.04em;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                     <span style="color:var(--text-dim);text-transform:uppercase;">Aligned Interest Band</span>
-                    <span style="color:var(--amber);margin-left:10px;font-weight:700;">${escHtml(a.aligned_interest_band)}</span>
-                    <span style="color:var(--text-secondary);margin-left:10px;">Loans outside this band trigger −2 Cohesion alliance, −1 Reputation lender.</span>
+                    ${a.aligned_interest_band
+                        ? `<span style="color:var(--amber);font-weight:700;">${escHtml(a.aligned_interest_band)}</span>
+                           <span style="color:var(--text-secondary);">Loans outside this band trigger −2 Cohesion alliance, −1 Reputation lender.</span>`
+                        : `<span style="color:var(--text-secondary);font-style:italic;">No band set — members must vote.</span>`
+                    }
+                    <button class="al-aiv-open-btn" data-alliance-id="${escHtml(a.id)}" style="margin-left:auto;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;padding:6px 12px;color:var(--amber);background:transparent;border:1px solid var(--amber);cursor:pointer;text-transform:uppercase;">Vote on Interest Rate</button>
                 </div>
             ` : ''}
             ${a.bad_debt_aid_active ? `
@@ -1944,6 +2075,13 @@ function bindShellEvents() {
         document.querySelectorAll('[data-pending-id]').forEach(row => {
             row.addEventListener('click', () => openNegotiation(row.dataset.pendingId));
         });
+        document.querySelectorAll('.al-aiv-open-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const allianceId = btn.dataset.allianceId;
+                if (allianceId) openAivModal(allianceId);
+            });
+        });
         document.querySelectorAll('[data-leave-id]').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -2340,6 +2478,339 @@ async function loadCandidates() {
     // Sort: highest-valuation first so the strongest candidates surface up top.
     corpRows.sort((a, b) => (b.__valuation || 0) - (a.__valuation || 0));
     _candidates = corpRows;
+}
+
+// ════════════════════════════════════════════════════════════════
+// Aligned Interest Vote modal — vote pane (Floor 1-5%, Ceiling 6-10%)
+// + persistent per-alliance chat. Members can vote / withdraw;
+// non-members can read + post (gray "OBSERVER" tag).
+// ════════════════════════════════════════════════════════════════
+
+let _aivState = null;   // { allianceId, vote, ballots, chat, draftFloor, draftCeiling, busy, error }
+
+async function openAivModal(allianceId) {
+    const overlay = document.getElementById('al-aiv-overlay');
+    if (!overlay) return;
+    _aivState = {
+        allianceId,
+        vote: null,
+        ballots: [],
+        chat: [],
+        members: [],
+        myMembership: false,
+        draftFloor: null,
+        draftCeiling: null,
+        chatDraft: '',
+        busy: false,
+        error: null,
+    };
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
+    await refreshAivState();
+}
+
+function closeAivModal() {
+    const overlay = document.getElementById('al-aiv-overlay');
+    overlay?.classList.remove('open');
+    overlay?.setAttribute('aria-hidden', 'true');
+    _aivState = null;
+}
+
+async function refreshAivState() {
+    if (!_aivState) return;
+    const { allianceId } = _aivState;
+    try {
+        const [voteRes, chatRes, membersRes, allianceRes] = await Promise.all([
+            _supabase.from('alliance_interest_votes')
+                .select('id, alliance_id, initiator_faction_id, status, opened_at_tick, expires_at_tick, pending_resolve_at_tick, pending_floor_apr, pending_ceiling_apr, resolved_at_tick, winning_floor_apr, winning_ceiling_apr')
+                .eq('alliance_id', allianceId)
+                .order('opened_at_tick', { ascending: false })
+                .limit(1)
+                .maybeSingle(),
+            _supabase.from('alliance_interest_vote_chat')
+                .select('id, author_faction_id, is_observer, is_system, body, posted_at_tick, created_at, factions:author_faction_id(faction_name, abbreviation, party_color)')
+                .eq('alliance_id', allianceId)
+                .order('created_at', { ascending: true })
+                .limit(200),
+            _supabase.from('alliance_members')
+                .select('faction_id, role, factions:faction_id(faction_name, abbreviation, party_color)')
+                .eq('alliance_id', allianceId)
+                .is('left_at_tick', null),
+            _supabase.from('strategic_alliances')
+                .select('id, name, aligned_interest_floor_apr, aligned_interest_ceiling_apr')
+                .eq('id', allianceId)
+                .maybeSingle(),
+        ]);
+        if (voteRes.error)     console.warn('[aiv] vote fetch failed:', voteRes.error.message);
+        if (chatRes.error)     console.warn('[aiv] chat fetch failed:', chatRes.error.message);
+        if (membersRes.error)  console.warn('[aiv] members fetch failed:', membersRes.error.message);
+        if (allianceRes.error) console.warn('[aiv] alliance fetch failed:', allianceRes.error.message);
+
+        _aivState.vote     = voteRes.data || null;
+        _aivState.chat     = chatRes.data || [];
+        _aivState.members  = membersRes.data || [];
+        _aivState.alliance = allianceRes.data || null;
+        _aivState.myMembership = (membersRes.data || []).some(m =>
+            m.faction_id === faction?.id);
+
+        // Pull ballots if there's an open or just-resolved vote.
+        if (_aivState.vote) {
+            const { data: ballots, error } = await _supabase
+                .from('alliance_interest_vote_ballots')
+                .select('voter_faction_id, floor_choice, ceiling_choice, cast_at_tick')
+                .eq('vote_id', _aivState.vote.id);
+            if (error) console.warn('[aiv] ballots fetch failed:', error.message);
+            _aivState.ballots = ballots || [];
+            // Pre-fill draft from existing ballot if the player has voted.
+            const myBallot = (ballots || []).find(b => b.voter_faction_id === faction?.id);
+            if (myBallot) {
+                _aivState.draftFloor   = _aivState.draftFloor   ?? myBallot.floor_choice;
+                _aivState.draftCeiling = _aivState.draftCeiling ?? myBallot.ceiling_choice;
+            }
+        } else {
+            _aivState.ballots = [];
+        }
+    } catch (err) {
+        console.error('[aiv] refresh threw:', err);
+        _aivState.error = err?.message || String(err);
+    }
+    renderAivModal();
+}
+
+function _aivTickToDate(tick) {
+    if (tick == null) return '—';
+    const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const y = 2000 + Math.floor(tick / 12);
+    return `${MONTHS[tick % 12]}, ${y}`;
+}
+
+function renderAivModal() {
+    const overlay = document.getElementById('al-aiv-overlay');
+    const modal = document.getElementById('al-aiv-modal');
+    if (!overlay || !modal || !_aivState) return;
+
+    const s = _aivState;
+    const a = s.alliance;
+    const v = s.vote;
+    const isMember = s.myMembership;
+    const isInitiator = !!(v && faction?.id && v.initiator_faction_id === faction.id);
+    const voteOpen = !!(v && v.status === 'open');
+    const myBallot = (s.ballots || []).find(b => b.voter_faction_id === faction?.id);
+
+    // Tally: votes per option per axis.
+    const floorCounts = {1:0,2:0,3:0,4:0,5:0};
+    const ceilingCounts = {6:0,7:0,8:0,9:0,10:0};
+    for (const b of (s.ballots || [])) {
+        if (floorCounts[b.floor_choice]   !== undefined) floorCounts[b.floor_choice]++;
+        if (ceilingCounts[b.ceiling_choice] !== undefined) ceilingCounts[b.ceiling_choice]++;
+    }
+    const total = (s.ballots || []).length;
+
+    const bandLine = (a?.aligned_interest_floor_apr != null && a?.aligned_interest_ceiling_apr != null)
+        ? `Current band: <span style="color:var(--amber);font-weight:700;">${Number(a.aligned_interest_floor_apr).toFixed(1)}% – ${Number(a.aligned_interest_ceiling_apr).toFixed(1)}%</span>`
+        : `<span style="font-style:italic;">No band set yet.</span>`;
+
+    let statusBlock = '';
+    if (!v || v.status !== 'open') {
+        if (v?.status === 'resolved') {
+            statusBlock = `<div class="al-aiv-status al-aiv-status--info">Last vote resolved: Floor ${Number(v.winning_floor_apr)}%, Ceiling ${Number(v.winning_ceiling_apr)}% (tick ${v.resolved_at_tick}).</div>`;
+        } else if (v?.status === 'withdrawn') {
+            statusBlock = `<div class="al-aiv-status al-aiv-status--warn">Last vote withdrawn at tick ${v.resolved_at_tick}.</div>`;
+        } else if (v?.status === 'expired') {
+            statusBlock = `<div class="al-aiv-status al-aiv-status--warn">Last vote expired without majority at tick ${v.resolved_at_tick}.</div>`;
+        }
+    } else if (v.pending_resolve_at_tick != null) {
+        statusBlock = `<div class="al-aiv-status al-aiv-status--info">Majority reached: Floor ${v.pending_floor_apr}%, Ceiling ${v.pending_ceiling_apr}%. Band updates next tick.</div>`;
+    } else {
+        statusBlock = `<div class="al-aiv-status al-aiv-status--info">Vote open — closes at tick ${v.expires_at_tick} (30-tick window).</div>`;
+    }
+
+    // Floor / ceiling radio rows.
+    const renderRadios = (axis, range, selected, counts, locked) => range.map(n => {
+        const tally = counts[n] || 0;
+        const sel = selected === n ? 'selected' : '';
+        const dis = locked ? 'disabled' : '';
+        return `<button type="button" class="al-aiv-radio ${sel} ${dis}"
+            ${locked ? 'disabled' : ''} data-axis="${axis}" data-value="${n}">
+            ${n}%${tally > 0 ? `<span style="display:block;font-size:8px;color:var(--text-dim);margin-top:2px;">${tally} vote${tally !== 1 ? 's' : ''}</span>` : ''}
+        </button>`;
+    }).join('');
+
+    const canVote = isMember && voteOpen && !s.busy && s.draftFloor != null && s.draftCeiling != null
+        && (myBallot == null || myBallot.floor_choice !== s.draftFloor || myBallot.ceiling_choice !== s.draftCeiling);
+
+    const votePane = `
+        <div class="al-aiv-vote-pane">
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);line-height:1.5;">${bandLine}</div>
+            ${statusBlock}
+            ${voteOpen ? `
+                <div class="al-aiv-section-label">Floor (your pick)</div>
+                <div class="al-aiv-radios">${renderRadios('floor', [1,2,3,4,5], s.draftFloor, floorCounts, !isMember)}</div>
+                <div class="al-aiv-section-label">Ceiling (your pick)</div>
+                <div class="al-aiv-radios">${renderRadios('ceiling', [6,7,8,9,10], s.draftCeiling, ceilingCounts, !isMember)}</div>
+                <div class="al-aiv-tally">
+                    <div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.1em;font-size:9px;margin-bottom:4px;">Tally · ${total} ballot${total !== 1 ? 's' : ''} cast</div>
+                    <div>Floor leader needs >${Math.floor(total / 2)} of ${total}, Ceiling leader same. Both must independently cross 50% before the band updates next tick.</div>
+                </div>
+                <div class="al-aiv-actions">
+                    ${isInitiator ? `<button class="btn-withdraw" id="al-aiv-withdraw-btn" ${s.busy ? 'disabled' : ''}>Withdraw Vote</button>` : ''}
+                    ${isMember ? `<button class="btn-submit" id="al-aiv-submit-btn" ${canVote ? '' : 'disabled'}>${myBallot ? 'Update Vote' : 'Submit Vote'}</button>` : ''}
+                    <button class="btn-close" id="al-aiv-close-btn">Close</button>
+                </div>
+            ` : `
+                <div class="al-aiv-actions">
+                    ${isMember ? `<button class="btn-submit" id="al-aiv-start-btn" ${s.busy ? 'disabled' : ''}>Start New Vote</button>` : ''}
+                    <button class="btn-close" id="al-aiv-close-btn">Close</button>
+                </div>
+            `}
+            ${s.error ? `<div class="al-aiv-status al-aiv-status--error">${escHtml(s.error)}</div>` : ''}
+        </div>
+    `;
+
+    // Chat pane.
+    const chatRows = (s.chat || []).map(m => {
+        const f = m.factions || {};
+        const name = m.is_system ? '—' : (f.faction_name || 'Unknown');
+        const cls = m.is_system
+            ? 'al-aiv-chat-msg--system'
+            : m.is_observer ? 'al-aiv-chat-msg--observer' : '';
+        const tag = m.is_system ? '' : (m.is_observer
+            ? `<span class="al-aiv-chat-tag">OBSERVER</span>`
+            : '');
+        return `<div class="al-aiv-chat-msg ${cls}">
+            <div class="al-aiv-chat-msg__head">${m.is_system ? 'System' : escHtml(name)}${tag} <span style="margin-left:6px;">tick ${m.posted_at_tick}</span></div>
+            <div class="al-aiv-chat-msg__body">${escHtml(m.body || '')}</div>
+        </div>`;
+    }).join('') || `<div style="color:var(--text-dim);font-family:var(--font-mono);font-size:10px;text-align:center;padding:20px;">No messages yet.</div>`;
+
+    const chatPane = `
+        <div class="al-aiv-chat-pane">
+            <div class="al-aiv-chat-head">Discussion${isMember ? '' : ' · OBSERVER'}</div>
+            <div class="al-aiv-chat-list" id="al-aiv-chat-list">${chatRows}</div>
+            <div class="al-aiv-chat-input">
+                <input id="al-aiv-chat-input" type="text" maxlength="1000" placeholder="Message…" value="${escHtml(s.chatDraft || '')}">
+                <button id="al-aiv-chat-send" ${(s.busy || !s.chatDraft || !s.chatDraft.trim()) ? 'disabled' : ''}>Send</button>
+            </div>
+        </div>
+    `;
+
+    modal.innerHTML = `
+        <div class="al-aiv-header">
+            <div>
+                <div class="al-aiv-title">${escHtml(a?.name || 'Alliance')}</div>
+                <div class="al-aiv-subtitle">Aligned Interest · Vote on Rate Band</div>
+            </div>
+            <button class="btn-close" id="al-aiv-x" style="background:transparent;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;">&times;</button>
+        </div>
+        <div class="al-aiv-body">
+            ${votePane}
+            ${chatPane}
+        </div>
+    `;
+
+    // Auto-scroll chat to bottom.
+    const list = document.getElementById('al-aiv-chat-list');
+    if (list) list.scrollTop = list.scrollHeight;
+
+    // Wire interactions.
+    document.getElementById('al-aiv-x')?.addEventListener('click', closeAivModal);
+    document.getElementById('al-aiv-close-btn')?.addEventListener('click', closeAivModal);
+    overlay.onclick = (e) => { if (e.target === overlay) closeAivModal(); };
+
+    modal.querySelectorAll('[data-axis]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (btn.disabled) return;
+            const axis = btn.dataset.axis;
+            const val = Number(btn.dataset.value);
+            if (axis === 'floor')   _aivState.draftFloor = val;
+            if (axis === 'ceiling') _aivState.draftCeiling = val;
+            renderAivModal();
+        });
+    });
+
+    document.getElementById('al-aiv-submit-btn')?.addEventListener('click', aivSubmitVote);
+    document.getElementById('al-aiv-withdraw-btn')?.addEventListener('click', aivWithdrawVote);
+    document.getElementById('al-aiv-start-btn')?.addEventListener('click', aivStartVote);
+
+    const chatInput = document.getElementById('al-aiv-chat-input');
+    const chatSend  = document.getElementById('al-aiv-chat-send');
+    if (chatInput) {
+        chatInput.addEventListener('input', () => { _aivState.chatDraft = chatInput.value; chatSend.disabled = !chatInput.value.trim() || s.busy; });
+        chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') aivPostChat(); });
+    }
+    chatSend?.addEventListener('click', aivPostChat);
+}
+
+async function aivStartVote() {
+    if (!_aivState || _aivState.busy) return;
+    _aivState.busy = true; _aivState.error = null; renderAivModal();
+    try {
+        const { data, error } = await _supabase.rpc('start_alliance_interest_vote', { p_alliance_id: _aivState.allianceId });
+        if (error)         _aivState.error = error.message;
+        else if (!data?.success) _aivState.error = `Could not start vote: ${data?.reason || 'unknown'}`;
+    } catch (err) {
+        _aivState.error = err?.message || String(err);
+    } finally {
+        _aivState.busy = false;
+        await refreshAivState();
+    }
+}
+
+async function aivSubmitVote() {
+    if (!_aivState || !_aivState.vote || _aivState.busy) return;
+    if (_aivState.draftFloor == null || _aivState.draftCeiling == null) return;
+    _aivState.busy = true; _aivState.error = null; renderAivModal();
+    try {
+        const { data, error } = await _supabase.rpc('cast_alliance_interest_vote', {
+            p_vote_id: _aivState.vote.id,
+            p_floor:   _aivState.draftFloor,
+            p_ceiling: _aivState.draftCeiling,
+        });
+        if (error)         _aivState.error = error.message;
+        else if (!data?.success) _aivState.error = `Vote failed: ${data?.reason || 'unknown'}`;
+    } catch (err) {
+        _aivState.error = err?.message || String(err);
+    } finally {
+        _aivState.busy = false;
+        await refreshAivState();
+    }
+}
+
+async function aivWithdrawVote() {
+    if (!_aivState || !_aivState.vote || _aivState.busy) return;
+    if (!confirm('Withdraw the active Interest Rate vote? All cast ballots are discarded.')) return;
+    _aivState.busy = true; _aivState.error = null; renderAivModal();
+    try {
+        const { data, error } = await _supabase.rpc('withdraw_alliance_interest_vote', { p_vote_id: _aivState.vote.id });
+        if (error)         _aivState.error = error.message;
+        else if (!data?.success) _aivState.error = `Withdraw failed: ${data?.reason || 'unknown'}`;
+    } catch (err) {
+        _aivState.error = err?.message || String(err);
+    } finally {
+        _aivState.busy = false;
+        await refreshAivState();
+    }
+}
+
+async function aivPostChat() {
+    if (!_aivState || _aivState.busy) return;
+    const body = (_aivState.chatDraft || '').trim();
+    if (!body) return;
+    _aivState.busy = true; renderAivModal();
+    try {
+        const { data, error } = await _supabase.rpc('post_alliance_interest_vote_message', {
+            p_alliance_id: _aivState.allianceId,
+            p_body:        body,
+        });
+        if (error)         _aivState.error = error.message;
+        else if (!data?.success) _aivState.error = `Post failed: ${data?.reason || 'unknown'}`;
+        else _aivState.chatDraft = '';
+    } catch (err) {
+        _aivState.error = err?.message || String(err);
+    } finally {
+        _aivState.busy = false;
+        await refreshAivState();
+    }
 }
 
 init();
