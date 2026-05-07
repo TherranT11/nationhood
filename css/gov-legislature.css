@@ -242,15 +242,46 @@
     background: var(--bg-panel);
 }
 
+/* Bills-list filter toolbar — wraps so the panel title, three
+   filter chips, and the Propose Bill button stay readable across
+   widths instead of horizontal-scrolling on narrow viewports. */
+.leg-bills-toolbar {
+    padding: 8px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.leg-bills-toolbar__filters {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
 /* ── Responsive ── */
+/* Tablet and below: stack the two legislature columns vertically so
+   the bills list (Committee, ON THE FLOOR, Frozen, etc.) gets full
+   width to render. The legacy selector here matched leg-left /
+   leg-right's INTERNAL flex direction (they themselves use
+   display:flex for their inner stacks) instead of their parent
+   .legislature-text-scale, so the outer row never collapsed and the
+   right column got squeezed off-screen. inline width:320px and
+   flex:1 are overridden via !important; nothing in JS reads or
+   writes those styles. */
 @media (max-width: 1200px) {
-    #leg-left { width: 100% !important; }
-    #leg-right { width: 100% !important; }
-    #gov-content > div > div[style*="display:flex"] {
-        flex-direction: column !important;
+    .legislature-text-scale { flex-direction: column !important; }
+    #leg-left,
+    #leg-right {
+        width: 100% !important;
+        flex: none !important;
     }
 }
 @media (max-width: 768px) {
+    /* Bills-list filter chips need to wrap on phone, otherwise the
+       three filters (ACTIVE / RESOLVED / ALL LAWS) push the panel
+       title off the row. */
     .leg-bill-header { flex-direction: column; gap: 8px; align-items: flex-start !important; }
     .leg-filter-btn { padding: 4px 9px; font-size: calc(7px * var(--leg-scale, 1.35)); }
     .leg-propose-btn { font-size: calc(8px * var(--leg-scale, 1.35)); padding: 4px 11px; }

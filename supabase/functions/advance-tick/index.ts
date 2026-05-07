@@ -3217,10 +3217,15 @@ function calculateNationalBudget(nation, opts = {}) {
 // ════════════════════════════════════════════════════════════════
 // Per-tick national debt math (v3 — bonds retired).
 //
-// Single rule: balance = revenue − expenditures.
-//   surplus → debt shrinks by per-tick balance, treasury drains
-//   deficit → debt grows by per-tick balance, treasury unchanged
-//             (implicit borrow — no bond offers, no printing)
+// Balance = revenue − expenditures.
+//   surplus + debt > 0 → debt shrinks by the surplus (capped at
+//                         remaining debt); any leftover after the
+//                         debt clears accumulates in treasury.
+//   surplus + debt = 0 → full surplus accumulates in treasury
+//                         (stockpile, not flow — once the books
+//                         are square, future surpluses are savings).
+//   deficit            → debt grows by |balance|, treasury untouched
+//                         (implicit borrow — no bond offers, no printing).
 //
 // Mirrors the Government Budget panel's monthly-balance math so
 // what the player sees on the cards is what gets applied each tick.
@@ -3229,6 +3234,17 @@ function calculateNationalBudget(nation, opts = {}) {
 // displayed directly), nation.debt is raw dollars (1 abstract =
 // 1e9 raw, divided by 1e9 to display). _RAW_PER_ABSTRACT bridges
 // the two when applying the abstract delta to the raw debt column.
+//
+// KNOWN PRE-EXISTING FLAW (Phase 8.5.4 half-finished migration):
+// calculateNationalBudget aliases nation.budget (treasury) as
+// `grossRevenue`, and the Government Budget panel reads it as the
+// "Tax Revenue" headline. Per-tick taxes are added to nation.budget
+// at advance-tick.ts (search "Per-tick tax revenue"), so treasury
+// also grows from that path — and the panel's Tax Revenue display
+// climbs over time as a side effect. Properly fixing this means
+// decoupling treasury from grossRevenue (compute headline revenue
+// per-tick from the tax functions, leave treasury as a pure
+// stockpile). Out of scope for the debt fix.
 // ════════════════════════════════════════════════════════════════
 const _RAW_PER_ABSTRACT = 1e9;
 
@@ -3291,31 +3307,41 @@ async function processNationDebtTick(supabase, nation) {
     const treasury = Number(nation?.budget) || 0;
 
     if (perTickBalance > 0) {
-        // Surplus → pay down debt, drain treasury by the same amount.
-        // Skip when there's no debt: surplus just sits in treasury.
-        if (debtRaw <= 0) return null;
-        // Cap paydown at available treasury so we never pay more than
-        // we actually have on hand.
-        const tickPaydown = Math.min(perTickBalance, treasury);
-        if (tickPaydown <= 0) return null;
+        // Surplus → pay down debt first; any leftover accumulates in
+        // treasury (stockpile). When debt is already 0, the entire
+        // surplus goes straight to treasury. Combining both branches
+        // into one Math.min lets the overshoot case (balance > debt)
+        // split cleanly: pay off what's owed, bank the rest.
+        const balanceRaw       = perTickBalance * _RAW_PER_ABSTRACT;
+        const debtPaydownRaw   = Math.min(balanceRaw, Math.max(0, debtRaw));
+        const newDebtRaw       = Math.max(0, debtRaw - debtPaydownRaw);
+        const leftoverAbstract = (balanceRaw - debtPaydownRaw) / _RAW_PER_ABSTRACT;
+        const newBudget        = treasury + leftoverAbstract;
 
-        const newBudget = treasury - tickPaydown;
-        const newDebtRaw = Math.max(0, debtRaw - tickPaydown * _RAW_PER_ABSTRACT);
+        if (newDebtRaw === debtRaw && newBudget === treasury) return null;
+
         const { error } = await supabase.from('nations')
-            .update({ budget: newBudget, debt: newDebtRaw })
+            .update({ debt: newDebtRaw, budget: newBudget })
             .eq('id', nation.id);
         if (error) {
             console.warn(`[Debt] surplus update failed for ${nation.name}:`, error.message);
             return null;
         }
-        nation.budget = newBudget;
         nation.debt = newDebtRaw;
-        return { mode: 'surplus', perTickBalance: tickPaydown, newBudget, newDebtRaw };
+        nation.budget = newBudget;
+        return {
+            mode: debtRaw > 0 && newDebtRaw === 0 && leftoverAbstract > 0
+                ? 'surplus_split'
+                : (debtRaw > 0 ? 'surplus_paydown' : 'surplus_to_treasury'),
+            perTickBalance,
+            newDebtRaw,
+            newBudget,
+        };
     }
 
-    // perTickBalance < 0 → deficit. Debt grows by the deficit;
-    // treasury is left alone (no implicit cash drain — the spending
-    // happened, the shortfall is now on the books as more debt).
+    // perTickBalance < 0 → deficit. Debt grows by the deficit; treasury
+    // is unchanged (implicit borrow — the shortfall is now on the books
+    // as more debt rather than a cash drain).
     const deficit = -perTickBalance;
     const newDebtRaw = debtRaw + deficit * _RAW_PER_ABSTRACT;
     const { error } = await supabase.from('nations')
@@ -33146,81 +33172,6 @@ async function processAusterityCommitments(supabase, nation, currentTick) {
     return results;
 }
 
-/**
- * Per-tick budget deficit → debt accumulation.
- * Computes the full national budget (revenue vs expenditure), then:
- *   - Deficit: adds |deficit| / 12 to debt
- *   - Surplus: subtracts surplus / 12 from debt (floor at 0)
- */
-async function processBudgetDeficit(supabase, nation, currentTick, institutionConfig) {
-    // 1. Fetch active laws with policy data + the chosen option so
-    //    computeMinistryPolicyCost (Phase 4.4) can read the option's
-    //    fiscal_category / ongoing_base_cost / ongoing_scaling_stat.
-    const { data: activeLaws } = await supabase
-        .from('active_laws')
-        .select('*, policies(*), selected_option:policy_options!selected_option_id(fiscal_category, ongoing_base_cost, ongoing_scaling_stat)')
-        .eq('nation_id', nation.id);
-
-    // Phase 10A: trade engine wiped — trade_summary table dropped.
-    // Tariff revenue feed is null until the goods-trade rebuild.
-    const tradeTariffRevenue = null;
-
-    // 3. Fetch aid data
-    const aidData = await getActiveAidForNation(supabase, nation.id);
-
-    // 4. Build full budget (all values are ANNUAL raw dollars)
-    const budgetData = buildBudgetData(nation, activeLaws || [], tradeTariffRevenue, institutionConfig, aidData);
-
-    // 5. Compute annual balance
-    //    grossRevenue already includes aidReceived.
-    //    Mandatory costs (debtService + aidGiven) are already subtracted in 'available'.
-    //    Discretionary costs: totalExpenditure (ministry policies + institutions).
-    const annualBalance = budgetData.available - budgetData.totalExpenditure;
-
-    // 6. Per-tick balance
-    const perTickBalance = annualBalance / GAME_CONFIG.TICKS_PER_YEAR;
-
-    // 7. Update debt
-    const currentDebt = Number(nation.debt ?? 0);
-    let newDebt;
-    if (perTickBalance < 0) {
-        // Deficit: accumulate debt
-        newDebt = currentDebt + Math.abs(perTickBalance);
-    } else {
-        // Surplus: pay down debt (cannot go below 0)
-        newDebt = Math.max(0, currentDebt - perTickBalance);
-    }
-    newDebt = Math.round(newDebt);
-
-    const debtDelta = newDebt - currentDebt;
-
-    // 8. Write to DB only if changed
-    if (debtDelta !== 0) {
-        const { error } = await supabase.from('nations').update({ debt: newDebt }).eq('id', nation.id);
-        if (error) {
-            console.error(`[BudgetDeficit] DB update failed for ${nation.name}:`, error.message);
-            return { nationId: nation.id, debtDelta: 0 };
-        }
-        nation.debt = newDebt;
-    }
-
-    // 9. Log
-    const fmtM = (v) => `$${(v / 1_000_000).toFixed(1)}M`;
-    if (debtDelta !== 0) {
-        console.log(`[BudgetDeficit] ${nation.name}: revenue=${fmtM(budgetData.grossRevenue)}/yr expenditure=${fmtM(budgetData.totalExpenditure + budgetData.debtService + budgetData.aidGiven)}/yr balance=${fmtM(annualBalance)}/yr (${fmtM(perTickBalance)}/tick) debt: ${fmtM(currentDebt)} → ${fmtM(newDebt)}`);
-    }
-
-    return {
-        nationId: nation.id,
-        annualRevenue: budgetData.grossRevenue,
-        annualExpenditure: budgetData.totalExpenditure + budgetData.debtService + budgetData.aidGiven,
-        annualBalance,
-        perTickBalance,
-        debtBefore: currentDebt,
-        debtAfter: newDebt,
-        debtDelta
-    };
-}
 
 // ==================== IPO VOTE EFFECT HELPER ====================
 
@@ -33883,16 +33834,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Ongoing costs failed for ${nation.name} (non-fatal):`, costErr);
         }
 
-        // Budget deficit → debt accumulation (surplus pays down debt, deficit adds to it)
-        try {
-            const deficitResult = await processBudgetDeficit(supabase, nation, newTick, _institutionConfig);
-            if (deficitResult && deficitResult.debtDelta !== 0) {
-                summary.budgetDeficit = summary.budgetDeficit || [];
-                summary.budgetDeficit.push({ nation: nation.name, ...deficitResult });
-            }
-        } catch (deficitErr) {
-            console.error(`[advanceTick] Budget deficit processing failed for ${nation.name} (non-fatal):`, deficitErr);
-        }
+        // Budget deficit handler retired (commit 04d91e3) — replaced by
+        // processNationDebtTick further down. Kept this comment so the
+        // deletion is discoverable in git blame instead of looking like
+        // a missing call site.
 
         // Sovereign debt mechanics (burden, credit deterioration, lockout, debt crisis trigger)
         try {
