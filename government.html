@@ -80,8 +80,7 @@ import { EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinis
 import { PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game/protest.js';
 import { POSITIVE_TRAITS } from './js/game/party-leadership.js';
 import { calculateBillSupport, computeBillCostTotals, enactBill, evaluateBillVote } from './js/game/bills.js';
-import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_TO_MINISTRY_KEY, FISCAL_CATEGORIES } from './js/game/budget.js';
-import { buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
+import { calculateNationalBudget } from './js/game/budget.js';
 import { RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './js/game/diplomacy-constants.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
@@ -2216,18 +2215,20 @@ async function loadLawsData() {
 // BUDGET SUBTAB
 // ═══════════════════════════════════════════════════════════════
 //
-// Mirrors the standalone "Government Budget" design: 4 headline stat
-// cards (Revenue / Expenditures / Balance / Surplus), an Income panel
-// and Costs panel stacked on the left, and a sticky Deep Dive panel on
-// the right that populates inline when the user clicks a row.
+// Headline stat cards (GDP / Budget / Revenue / Expenditures /
+// Balance / Debt-or-Surplus), an Income panel + Costs panel stacked
+// on the left, and a sticky Deep Dive panel on the right that
+// populates inline when the user clicks a row.
 //
-// Revenue breakdown comes from calculateNationalBudget() in budget.js
-// (same source the Economy page uses). Expenditure breakdown mirrors
-// economy.html's loadExpenditureData but trimmed to totals-only since
-// the Budget tab doesn't need per-policy detail — the Deep Dive
-// surfaces the same institution-level breakdowns live.
+// Revenue breakdown comes from calculateNationalBudget() in
+// budget.js (same source the Economy page uses). Expenditure
+// breakdown is hand-built in _gbBuildCostRows below — most rows are
+// $0 placeholders until the spending-allocation rebuild lands. The
+// live ones today are Pension, National Infrastructure (monarchy
+// Royal Holdings), Sports & Culture (Vola stadium upkeep), Trade
+// Agreement Obligations (recurring transfers), and Interest on Debt.
 
-let _budgetData = null;         // { budget, aidReceived, recurringReceivedAnnual, debtService, debt }
+let _budgetData = null;         // { budget, aidReceived, recurringReceivedAnnual, recurringSentAnnual, debtService, debt, nationId, isMonarchy, activeLaws }
 let _budgetLoading = false;
 let _budgetSelectedKey = null;  // selected income/cost row key
 let _budgetSelectGen = 0;       // monotonic counter — prevents an earlier
@@ -2414,7 +2415,7 @@ const _GB_DESCKEY_TO_LAW_CATEGORY_REGEX = {
 // as already in abstract scale, same as every other Costs panel row.
 function _gbAnnualLawCost(law) {
     const perTick = Number(law?.selected_option?.ongoing_base_cost) || 0;
-    return perTick * 12;
+    return perTick * GAME_CONFIG.TICKS_PER_YEAR;
 }
 
 // Filter the active-laws array to those whose policy.law_category
@@ -2431,7 +2432,7 @@ function _gbAnnualLawCostFor(activeLaws, descKey) {
 }
 
 function _gbBuildCostRows(d) {
-    const royalHoldingsAnnual = d.isMonarchy ? _GB_ROYAL_HOLDINGS_MONTHLY * 12 : 0;
+    const royalHoldingsAnnual = d.isMonarchy ? _GB_ROYAL_HOLDINGS_MONTHLY * GAME_CONFIG.TICKS_PER_YEAR : 0;
     // Aggregated active-law costs per spending category. _gbSelectCategory
     // re-reads the same _budgetData.activeLaws to populate the deep-dive
     // sub-rows, so the row total here always matches the breakdown.
@@ -2517,8 +2518,6 @@ function renderBudgetTab(container) {
 
     const balNeg = balanceYr < 0;
     const balSign = balanceYr >= 0 ? '+' : '-';
-
-    // Credit / bond-print split was removed when the credit stat was dropped from the 19-col schema.
 
     // GDP card values. nation.gdp_growth is a 0-100 stat that maps
     // linearly to ±1% per month at the extremes (stat 50 = 0%, stat
@@ -2671,15 +2670,13 @@ function _gbWireRows(container, incomeRows, costRows) {
 // back to the fiscal_category's policy + institution mix at render time.
 const _GB_DEEP_COPY = {
     taxRevenue:  { desc: 'Aggregate state taxation. The 19-column schema reports a single consolidated tax revenue figure rather than per-bracket breakdowns.' },
-    tradeAgr:    { desc: 'Recurring income from accepted trade agreements — both economic aid received and recurring financial transfers under GTAs. Outgoing flows appear on the Costs side. One-time transfers are not counted here (they hit reserves once and are not ongoing income).' },
+    tradeAgr:    { desc: 'Recurring income from accepted trade agreements — both economic aid received and recurring financial transfers under GTAs. Outgoing flows appear on the Costs side. One-time transfers are not counted here (they hit treasury once and are not ongoing income).' },
     debtInterest:{ desc: 'Interest service on sovereign debt.' },
-    aidGiven:    { desc: 'Outgoing financial aid under accepted economic-aid agreements. Offsets inbound trade-agreement income on the Revenue side.' },
-    tradeTransfersGiven: { desc: 'Outgoing recurring financial transfers under accepted GTAs. Annualized as per-tick amount × ticks-per-year. Mirrors inbound transfers on the Revenue side.' },
     // Spending categories — descriptions in place, allocation engines
-    // not yet wired (every row reads $0 until the rebuild lands).
-    // Pension and National Infrastructure surface live sub-rows in
-    // the deep-dive (active pension option's ongoing cost; monarchy
-    // Royal Holdings & Estates respectively).
+    // not yet wired (every placeholder row reads $0 until the rebuild
+    // lands). Pension, National Infrastructure, Sports & Culture, and
+    // Trade Agreement Obligations are the only categories with live
+    // figures + sub-row breakdowns in the deep dive today.
     publicSectorWages:      { desc: 'Salaries for civil servants, public-sector employees, and state-owned enterprise staff. Scales with the size of the state apparatus and prevailing wages.' },
     welfareBenefits:        { desc: 'Means-tested cash transfers and in-kind support for low-income households — unemployment assistance, family allowances, housing subsidies. Scales with the welfare regime in force.' },
     pension:                { desc: 'Old-age income support paid out of the state pension system. Click-through surfaces the currently active pension policy option and its per-tick ongoing cost.' },
@@ -2690,11 +2687,7 @@ const _GB_DEEP_COPY = {
     sportsAndCulture:       { desc: 'Recurring cultural and sporting upkeep — primarily Vola stadium maintenance once venues are completed. Each tier carries a fixed annual cost (small $0.5, modest $1, extravagant $2). Click-through surfaces the running total of stadium upkeep.' },
     foreignAid:             { desc: 'Non-trade-agreement foreign disbursements: development aid, humanitarian relief, soft-power grants. Trade-agreement aid lives under Trade Agreements on the income side instead.' },
     discretionary:          { desc: 'Catch-all for short-cycle programs and one-off initiatives that don’t fit a permanent ministry budget — pilots, commissions, special funds.' },
-    // Royal Holdings & Estates is rendered as a sub-row (k/v only)
-    // under nationalInfrastructure rather than its own clickable row,
-    // so it doesn't need a top-level descKey lookup entry here.
-    // ministries fall through to a shared template, filled with
-    // funding-pct / institution count at render time
+    tradeObligations:       { desc: 'Outgoing recurring financial transfers under accepted trade agreements. Annualized as per-tick amount × ticks-per-year and drained from the Treasury Cash Balance each tick (overflowing to debt only when treasury hits zero). Mirrors inbound transfers on the Revenue side.' },
 };
 
 async function _gbSelectCategory(container, row, kind) {
@@ -2720,41 +2713,12 @@ async function _gbSelectCategory(container, row, kind) {
         || 'Detailed breakdown not yet modeled for this line item.';
     let subRows = [];
 
-    // Ministries: fetch the institution mix for that fiscal_category on
-    // the fly so the Deep Dive shows which underlying programs add up to
-    // the total. We run this only when a ministry row is clicked so the
-    // initial load stays fast.
-    if (row.descKey && row.descKey.startsWith('ministry_')) {
-        const ministryKey = row.descKey.slice('ministry_'.length);
-        desc = `Annual expenditure across programs, institutions, and active policies under the ${row.name}. Institution funding levels are set by funding bills; policy costs are continuous until repealed.`;
-        try {
-            const fCat = Object.keys(FISCAL_TO_MINISTRY_KEY).find(k => FISCAL_TO_MINISTRY_KEY[k] === ministryKey);
-            const nation = currentNation;
-            if (fCat && nation) {
-                const [cfgRes, allocRes] = await Promise.all([
-                    _supabase.from('ministry_institution_config').select('*').eq('ministry_key', ministryKey),
-                    _supabase.from('budget_item_allocations')
-                        .select('item_id, item_type, allocation_amount, needed_amount')
-                        .eq('nation_id', nation.id)
-                        .eq('item_type', 'institution'),
-                ]);
-                const allocMap = buildFundingPctMap(allocRes.data);
-                const inflationMult = 1;
-                const population = Number(nation.population || 0);
-                const gdp = Number(nation.gdp || 0);
-                for (const cfg of (cfgRes.data || [])) {
-                    const baseVal = Number(cfg.base_cost_per_capita || 0);
-                    let needed = cfg.scaling_type === 'gdp' ? (baseVal / 100) * gdp : baseVal * population;
-                    needed *= inflationMult;
-                    const fundPct = getInstFundingPct(allocMap, cfg.id);
-                    const cost = needed * (fundPct / 100);
-                    if (cost > 0) subRows.push({ k: cfg.institution_name, v: cost });
-                }
-            }
-        } catch (err) {
-            console.warn('[Budget] Deep-dive institution fetch failed:', err.message);
-        }
-    }
+    // (Ministry-level deep-dive branch retired — no row in
+    // _gbBuildCostRows uses a 'ministry_*' descKey, and the rebuild
+    // that would re-introduce them will own its own data path. The
+    // dead branch was importing FISCAL_TO_MINISTRY_KEY +
+    // buildFundingPctMap + getInstFundingPct just to keep the
+    // unreachable code compiling.)
 
     // Active-law roll-up: any descKey in _GB_DESCKEY_TO_LAW_CATEGORY_REGEX
     // (currently 'pension' and 'subsidiesIndustry') gets a per-law
@@ -2781,7 +2745,7 @@ async function _gbSelectCategory(container, row, kind) {
     if (row.descKey === 'nationalInfrastructure' && _budgetData?.isMonarchy) {
         subRows.push({
             k: 'Royal Holdings & Estates',
-            v: _GB_ROYAL_HOLDINGS_MONTHLY * 12,
+            v: _GB_ROYAL_HOLDINGS_MONTHLY * GAME_CONFIG.TICKS_PER_YEAR,
         });
     }
 
@@ -2814,9 +2778,6 @@ async function _gbSelectCategory(container, row, kind) {
         </div>
     `).join('');
 
-    // Per-bracket tax rates were removed from the 19-column schema; we no longer surface them.
-    const rateCell = '';
-
     body.innerHTML = `
         <div>
             <div class="gb-deep__kicker">${escapeHtml(kicker)}</div>
@@ -2825,7 +2786,6 @@ async function _gbSelectCategory(container, row, kind) {
         <div class="gb-deep__stats">
             <div><span class="gb-deep__stat-k">Monthly</span><span class="gb-deep__stat-v">${_gbFmtCurrency(mo)}</span></div>
             <div><span class="gb-deep__stat-k">Yearly</span><span class="gb-deep__stat-v">${_gbFmtCurrency(row.yr)}</span></div>
-            ${rateCell}
         </div>
         <p class="gb-deep__desc">${escapeHtml(desc)}</p>
         ${subRows.length ? `
