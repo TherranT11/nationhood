@@ -242,6 +242,24 @@
     background: var(--bg-panel);
 }
 
+/* Bills-list filter toolbar — wraps so the panel title, three
+   filter chips, and the Propose Bill button stay readable across
+   widths instead of horizontal-scrolling on narrow viewports. */
+.leg-bills-toolbar {
+    padding: 8px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.leg-bills-toolbar__filters {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
 /* ── Responsive ── */
 /* Tablet and below: stack the two legislature columns vertically so
    the bills list (Committee, ON THE FLOOR, Frozen, etc.) gets full
