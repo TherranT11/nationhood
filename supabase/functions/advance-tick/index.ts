@@ -35688,6 +35688,37 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 }
 
 
+
+async function triggerCorpTickAfterShardCommit({ supabaseUrl, supabaseServiceKey, tick }) {
+    if (!supabaseUrl || !supabaseServiceKey) {
+        return { triggered: false, error: 'missing_supabase_env' };
+    }
+
+    const endpoint = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/advance-corp-tick`;
+    try {
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceKey}`,
+                'apikey': supabaseServiceKey,
+            },
+            body: JSON.stringify({ run_now: true, source: 'advance-tick', tick }),
+        });
+        let payload = null;
+        try { payload = await res.json(); } catch (_) { /* non-JSON response */ }
+        if (!res.ok) {
+            console.error('[advance-tick] advance-corp-tick trigger failed:', res.status, payload);
+            return { triggered: false, status: res.status, payload };
+        }
+        console.log(`[advance-tick] advance-corp-tick triggered for tick ${tick}:`, payload);
+        return { triggered: true, status: res.status, payload };
+    } catch (err) {
+        console.error('[advance-tick] advance-corp-tick trigger threw:', err?.message || err);
+        return { triggered: false, error: String(err?.message || err) };
+    }
+}
+
 // ===== EDGE FUNCTION HANDLER =====
 
 Deno.serve(async (req) => {
@@ -35786,6 +35817,13 @@ Deno.serve(async (req) => {
         console.log(`[advance-tick] Lock acquired, processing tick ${shard.current_tick}...`);
         try {
             const summary = await advanceTick(supabase, { force, reprocess });
+            if (!reprocess) {
+                summary.corp_tick_trigger = await triggerCorpTickAfterShardCommit({
+                    supabaseUrl,
+                    supabaseServiceKey,
+                    tick: summary.tick,
+                });
+            }
             const responseStatus = summary.partial ? "partial" : "success";
             console.log(
                 `[advance-tick] Tick ${summary.tick} ${summary.partial ? 'partially processed' : 'processed'} (${summary.nations} nations)`
