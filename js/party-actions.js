@@ -2747,6 +2747,11 @@ async function openVolaHostBidModal(root, faction) {
     let submitting = false;
     let lastError = null;
     let result = null;
+    // In-session bid tracker — belt-and-suspenders so the cup row
+    // flips to YOUR BID PENDING immediately on success, even if the
+    // re-fetch from vola_host_bids hasn't surfaced the new row yet
+    // (postgrest read-after-write occasionally lags by a frame).
+    const inSessionBids = new Set();
 
     async function refreshState() {
         const { data: mRow } = await _supabase.from('ministries')
@@ -2756,9 +2761,9 @@ async function openVolaHostBidModal(root, faction) {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const tick = Number(shard?.current_tick) || 0;
 
-        // Pick the next 3 cups whose start tick is in the future. Skip
-        // any cup whose qualifier (resolution) tick has already passed
-        // — bidding is closed.
+        // Pick the next 3 cups whose qualifier (resolution) tick is
+        // still in the future. Once that tick passes, bidding is
+        // closed regardless of host state.
         const cups = [];
         let n = 0;
         while (cups.length < 3 && n < 200) {
@@ -2786,19 +2791,23 @@ async function openVolaHostBidModal(root, faction) {
             const myBidSet = new Set((myBids || []).map(b => b.cup_number));
             for (const c of cups) {
                 c.host = hostMap.get(c.cupNumber) || null;
-                c.iBid = myBidSet.has(c.cupNumber);
+                // Combine the DB read with the in-session set so a
+                // freshly-placed bid never re-renders as AVAILABLE.
+                c.iBid = myBidSet.has(c.cupNumber) || inSessionBids.has(c.cupNumber);
             }
-            // First cup without a host is the "next available". Cups
-            // before it are already taken; cups after it are future
-            // bid windows but we want to enforce sequential bidding.
-            let foundNext = false;
+            // Per-spec: "the next cup opens up 1 tick after the
+            // current/upcoming World Cup passes." So Cup N+1 only
+            // unlocks once tick > cupStart(N) — i.e., the previous
+            // cup has already begun. Cup #1 has no predecessor and
+            // is always selectable inside its bid window.
+            // Already-bid cups are also locked out so the player
+            // can't double-tap their way into a constraint error.
             for (const c of cups) {
-                if (!c.host && !foundNext) {
-                    c.selectable = true;
-                    foundNext = true;
-                } else {
-                    c.selectable = false;
-                }
+                const prevCupStart = c.cupNumber > 1
+                    ? _VWC_FIRST_TICK + _VWC_PERIOD * (c.cupNumber - 2)
+                    : null;
+                const prevCupHasPassed = prevCupStart === null || tick > prevCupStart;
+                c.selectable = !c.host && !c.iBid && prevCupHasPassed;
             }
         }
 
@@ -2943,7 +2952,14 @@ async function openVolaHostBidModal(root, faction) {
                     const r = await bidToHostVwc(_supabase, cupNumber);
                     if (r?.success) {
                         result = r;
+                        inSessionBids.add(cupNumber);
                     } else {
+                        // Server flagged a duplicate (constraint hit or
+                        // explicit already_bid) — record locally too so
+                        // the cup row reflects the bound state on the
+                        // next render even though we didn't INSERT this
+                        // round.
+                        if (r?.reason === 'already_bid') inSessionBids.add(cupNumber);
                         lastError = _vwcBidReasonCopy(r?.reason) || 'Could not submit: ' + (r?.reason || 'unknown error');
                     }
                 } catch (err) {
@@ -2965,6 +2981,7 @@ async function openVolaHostBidModal(root, faction) {
             bidding_closed:       'Bidding window has closed for this cup.',
             already_hosted:       'This cup has already been awarded.',
             already_bid:          'You have already bid for this cup.',
+            cup_not_open_yet:     'This cup’s bid window opens 1 tick after the previous cup begins.',
         };
         return map[reason];
     }
