@@ -5163,20 +5163,34 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  gap: 8px;
 }
-.trade-neg-footer-btn--add {
+/* Shared base for every footer button so mobile sizing scales uniformly. */
+.trade-neg-footer-btn {
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.5px;
   padding: 8px 16px;
-  color: var(--accent, #5aafa5);
   background: transparent;
-  border: 1px solid var(--accent, #5aafa5);
   cursor: pointer;
   transition: all 0.15s;
+  white-space: nowrap;
+}
+.trade-neg-footer-btn--add {
+  color: var(--accent, #5aafa5);
+  border: 1px solid var(--accent, #5aafa5);
 }
 .trade-neg-footer-btn--add:hover { background: rgba(90,175,165,0.08); }
+.trade-neg-footer-btn--toggle {
+  color: var(--text-dim);
+  border: 1px solid var(--border-main);
+}
+.trade-neg-footer-btn--enact {
+  color: #000;
+  background: var(--green, #5cc55c);
+  border: 1px solid var(--green, #5cc55c);
+}
 
 /* ── Articles ── */
 .trade-neg-article {
@@ -6457,11 +6471,79 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   .trade-neg-econ--mine,
   .trade-neg-econ--theirs { display: none; }
 }
+/* Tablet / large phone: stack main over chat, give the footer a real
+   tap-target row, let the body scroll vertically. */
 @media (max-width: 768px) {
-  .trade-neg-modal-content { max-width: 98%; }
-  .trade-neg-modal-body { flex-direction: column; }
-  .trade-neg-main { border-right: none; border-bottom: 1px solid var(--border-main); }
-  .trade-neg-chat { width: 100%; min-height: 250px; }
+  .trade-neg-modal-content {
+    width: 98%;
+    max-width: 98%;
+    max-height: 92vh;
+  }
+  .trade-neg-modal-body { flex-direction: column; overflow-y: auto; }
+  .trade-neg-main {
+    padding: 12px 14px;
+    border-right: none;
+    border-bottom: 1px solid var(--border-main);
+    overflow-y: visible; /* parent body scrolls instead */
+  }
+  .trade-neg-chat {
+    width: 100%;
+    min-height: 0;
+    max-height: 38vh;
+    flex-shrink: 0;
+  }
+  .trade-neg-chat__messages { min-height: 140px; }
   .trade-neg-header__nations { flex-wrap: wrap; gap: 10px; }
-  .trade-neg-header__title { min-width: auto; }
+  .trade-neg-header__title { min-width: auto; font-size: 9px; }
+
+  /* Footer stacks into rows; both groups become full-width. Inline
+     styles on the toggle/enact/withdraw buttons get overridden by the
+     shared classes added in the markup. */
+  .trade-neg-modal-footer {
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .trade-neg-modal-footer > div {
+    width: 100%;
+    margin-left: 0 !important;
+    flex-wrap: wrap;
+    gap: 6px !important;
+  }
+  .trade-neg-modal-footer button {
+    flex: 1 1 calc(33% - 6px);
+    min-height: 40px;
+    font-size: 11px;
+    padding: 10px 8px;
+  }
+}
+/* Narrow phone: full-bleed modal, two-up button rows so labels stay
+   readable without horizontal scroll. */
+@media (max-width: 480px) {
+  .trade-neg-modal-content {
+    width: 100%;
+    max-width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+  .trade-neg-modal-header { padding: 10px 14px; }
+  .trade-neg-header__flag { width: 32px; height: 22px; }
+  .trade-neg-header__name { font-size: 13px; }
+  .trade-neg-modal-footer { padding: 8px 10px; }
+  .trade-neg-modal-footer button {
+    flex: 1 1 calc(50% - 6px);
+    font-size: 11px;
+    padding: 11px 6px;
+  }
+  .trade-neg-withdraw-btn {
+    /* Withdraw is the destructive action — give it its own row so a
+       fat-finger tap doesn't kill the negotiation by accident. */
+    flex: 1 1 100%;
+  }
+  /* Inline width on the article-form selects/inputs already uses
+     box-sizing:border-box; no override needed. The form's own padding
+     gets a small trim so the 10px-side selects don't crowd. */
+  .trade-neg-add-form { padding: 10px 12px; }
 }

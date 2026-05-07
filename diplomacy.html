@@ -130,14 +130,14 @@
             <div class="trade-neg-econ trade-neg-econ--theirs" id="trade-neg-their-econ"></div>
         </div>
         <div class="trade-neg-modal-footer">
-            <div style="display:flex;gap:8px;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <button class="trade-neg-footer-btn trade-neg-footer-btn--add" id="trade-neg-add-structured-btn" onclick="negStructuredArticleOpen()">Add Article</button>
                 <button class="trade-neg-footer-btn trade-neg-footer-btn--add" id="trade-neg-add-article-btn" onclick="negArticleShowForm()">Add Text Article</button>
                 <button class="trade-neg-footer-btn trade-neg-footer-btn--add" id="trade-neg-name-btn" onclick="negNameAgreementOpen()" style="border-color:var(--amber);color:var(--amber);">Name Agreement</button>
             </div>
-            <div style="display:flex;gap:8px;margin-left:auto;">
-                <button id="trade-neg-agreement-btn" onclick="negAgreementToggle()" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;padding:8px 16px;color:var(--text-dim);background:transparent;border:1px solid var(--border-main);cursor:pointer;transition:all 0.15s;">Not in Agreement [0/2]</button>
-                <button id="trade-neg-send-parliament-btn" onclick="sendTradeToParliamentFromModal()" style="display:none;font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.5px;padding:8px 16px;color:#000;background:var(--green);border:1px solid var(--green);cursor:pointer;transition:all 0.15s;">Send to Parliament</button>
+            <div style="display:flex;gap:8px;margin-left:auto;flex-wrap:wrap;">
+                <button class="trade-neg-footer-btn trade-neg-footer-btn--toggle" id="trade-neg-agreement-btn" onclick="negAgreementToggle()">Not in Agreement [0/2]</button>
+                <button class="trade-neg-footer-btn trade-neg-footer-btn--enact" id="trade-neg-send-parliament-btn" onclick="sendTradeToParliamentFromModal()" style="display:none;">Send to Parliament</button>
                 <button class="trade-neg-withdraw-btn" id="trade-neg-withdraw-btn" onclick="withdrawFromNegotiations()">Withdraw from Negotiations</button>
             </div>
         </div>
@@ -19602,6 +19602,17 @@ function negArticlesRender() {
 
 // ── Name Agreement ──
 
+// Scroll a freshly-opened article form into view inside the scrollable
+// modal body. Important on mobile, where the form lives below the
+// articles list and the footer button that opened it.
+function _negScrollFormIntoView() {
+    const form = document.getElementById('trade-neg-add-article-form');
+    if (!form) return;
+    requestAnimationFrame(() => {
+        try { form.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) { /* older browsers */ }
+    });
+}
+
 function negNameAgreementOpen() {
     if (_activeNegModal?.approvedByA && _activeNegModal?.approvedByB) { return; }
     const form = document.getElementById('trade-neg-add-article-form');
@@ -19621,6 +19632,7 @@ function negNameAgreementOpen() {
         </div>
     </div>`;
     document.getElementById('neg-name-input')?.focus();
+    _negScrollFormIntoView();
 }
 
 let _negNaming = false;
@@ -19766,6 +19778,7 @@ function negStructuredArticleOpen() {
     html += '<button onclick="negArticleCancelForm()" style="padding:6px 14px;font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--text-dim);border:1px solid var(--border-main);background:transparent;cursor:pointer;">Cancel</button>';
     html += '</div></div>';
     form.innerHTML = html;
+    _negScrollFormIntoView();
 }
 
 function negStructuredArticleSelectType(typeKey) {
@@ -20292,6 +20305,7 @@ function negArticleShowForm() {
         counter.textContent = textarea.value.length;
         addBtn.disabled = !textarea.value.trim();
     });
+    _negScrollFormIntoView();
 }
 
 function negArticleCancelForm() {
