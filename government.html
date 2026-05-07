@@ -65,6 +65,12 @@ import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, isPr
 import { loadSeats, detectHeadFaction, fetchActiveCoalition } from './js/game/government-structure.js';
 import { isMilitaryLoyaltyActive } from './js/game/military-loyalty.js';
 import { GRIEVANCE_LABEL, RELIEF_LABEL } from './js/game/lawsuit-types.js';
+// Static import so the ruling modal lands in the main government
+// bundle instead of a separate hashed chunk. The previous dynamic
+// import worked locally but the lazy chunk was 404-ing on the
+// deployed dist (build artifact missing), which left the modal
+// dimmed-out-but-empty when Justice Ministers clicked Rule on Case.
+import { openLawsuitRuleModal } from './js/lawsuit-rule.js';
 import { STATS_HIGHER_IS_BETTER, STATS_LOWER_IS_BETTER, MINISTRY_TO_STATS, statDirectionSign, buildMinistryBaselines } from './js/game/stats.js';
 import { formatStatName, autoAppointPartyLeaderAsPM, getNationNames } from './js/game/political-actions.js';
 import { adjustGovernmentApprovalEvent } from './js/game/momentum.js';
@@ -12764,8 +12770,7 @@ async function renderJudicialTab(container) {
             const lawsuit = (suitsRes.data || []).find(x => x.id === id);
             if (!lawsuit) return;
             try {
-                const m = await import('./js/lawsuit-rule.js');
-                m.openLawsuitRuleModal(lawsuit, currentFaction);
+                openLawsuitRuleModal(lawsuit, currentFaction);
             } catch (err) {
                 console.warn('[judicial] rule modal mount failed:', err?.message || err);
             }
