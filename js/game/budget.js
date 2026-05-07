@@ -89,6 +89,17 @@ export function calculateNationalBudget(nation, opts = {}) {
 // displayed directly), nation.debt is raw dollars (1 abstract =
 // 1e9 raw, divided by 1e9 to display). _RAW_PER_ABSTRACT bridges
 // the two when applying the abstract delta to the raw debt column.
+//
+// KNOWN PRE-EXISTING FLAW (Phase 8.5.4 half-finished migration):
+// calculateNationalBudget aliases nation.budget (treasury) as
+// `grossRevenue`, and the Government Budget panel reads it as the
+// "Tax Revenue" headline. Per-tick taxes are added to nation.budget
+// at advance-tick.ts (search "Per-tick tax revenue"), so with the
+// surplus drain removed treasury grows monotonically — and the
+// panel's Tax Revenue display climbs over time as a side effect.
+// Properly fixing this means decoupling treasury from grossRevenue
+// (compute headline revenue per-tick from the tax functions, leave
+// treasury as a pure stockpile). Out of scope for the debt fix.
 // ════════════════════════════════════════════════════════════════
 const _RAW_PER_ABSTRACT = 1e9;
 
