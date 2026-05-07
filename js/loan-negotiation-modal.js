@@ -916,6 +916,13 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
     };
     markSeen();
 
+    // Latch — the open→fired transition runs onFired + schedules
+    // auto-close exactly once per modal lifecycle. Without this, a
+    // realtime UPDATE arriving at t=14.99s and the poll tick at
+    // t=15.0s can both pass the change-detection guard before either
+    // has written `neg`, run onFired twice, and schedule two closes.
+    let firedHandled = false;
+
     // Single source of truth for absorbing a fresh negotiation row.
     // Called from BOTH the realtime UPDATE listener and the polling
     // fallback below — whichever one delivers the change first wins,
@@ -948,7 +955,8 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
         if (chatIn && chatDraft && !chatIn.value) chatIn.value = chatDraft;
         restoreFocus(modalEl, focusSnap);
 
-        if (previousStatus === 'open' && neg.status === 'fired') {
+        if (!firedHandled && previousStatus === 'open' && neg.status === 'fired') {
+            firedHandled = true;
             if (typeof onFired === 'function') {
                 try { await onFired(neg); } catch (e) {
                     console.warn('[loan-negotiation-modal] onFired callback threw:', e?.message || e);
