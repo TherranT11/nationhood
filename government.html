@@ -73,7 +73,7 @@ import { nominateMinister, nominatePMCandidate, signPresidentialBill, vetoPresid
 import { EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinister, issueTaxAdjustment, issuePriceControls, issueNationalEmergency, endNationalEmergency, issueCensure, advanceBillEmergency, fetchActiveOrders, checkOrderAvailability, STIMULATE_ECONOMY_ORDERS, issueStimulusOrder } from './js/game/executive-orders.js';
 import { PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game/protest.js';
 import { POSITIVE_TRAITS } from './js/game/party-leadership.js';
-import { calculateBillSupport, computeBillCostTotals, enactBill, evaluateBillVote } from './js/game/bills.js';
+import { calculateBillSupport, computeBillCostTotals, enactBill, evaluateBillVote, processSectorShifts } from './js/game/bills.js';
 import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_TO_MINISTRY_KEY, FISCAL_CATEGORIES } from './js/game/budget.js';
 import { buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
 import { RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './js/game/diplomacy-constants.js';
@@ -3088,6 +3088,24 @@ window.royalAssent = async function(billId, enact) {
             if (!enactment?.success) {
                 alert('Enactment failed: ' + (enactment?.error || 'unknown error'));
                 return;
+            }
+            // Faction-sector-popularity shifts. Same gap as
+            // signPresidentialBill — enactBill handles active_laws +
+            // stat effects + approval, but the per-faction sector
+            // shifts driven by the chosen policy_option's
+            // sector_effects live in processSectorShifts, which the
+            // tick orchestrator only invokes from auto-paths
+            // (resolveExpiredVotes, processPresidentDesk,
+            // processRoyalAssent). Manual royal assent skipped it,
+            // so monarchies signing laws by hand silently lost every
+            // sector shift the policy_option declared. Mirror the
+            // orchestrator's shape so the call is treated identically.
+            try {
+                await processSectorShifts(_supabase, currentNation.id, [
+                    { billId, result: 'passed' }
+                ]);
+            } catch (shiftErr) {
+                console.warn('[royalAssent] sector-shift pass failed (non-fatal):', shiftErr?.message || shiftErr);
             }
             // +1 crown authority for active engagement (no delta on auto-enact via
             // processRoyalAssent — that path rewards absentee monarchs).

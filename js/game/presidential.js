@@ -5,7 +5,7 @@
 
 import { GAME_CONFIG, getPresidentialTermLimit } from './config.js';
 import { hasElectedPresident, isSemiPresidential, isPresidentialDomainMinistry, MINISTRY_OFFICE_NAMES, MINISTER_TITLES } from './government-types.js';
-import { enactBill, failBill } from './bills.js';
+import { enactBill, failBill, processSectorShifts } from './bills.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { fireBillEvent } from './event-helpers.js';
 
@@ -283,6 +283,27 @@ export async function signPresidentialBill(supabase, billId, presidentFactionId)
             ...context,
             error: enactment?.error
         });
+    }
+
+    // Faction-sector-popularity shifts. enactBill handles active_laws +
+    // stat effects + approval; the per-faction sector shifts (driven by
+    // the chosen policy_option's sector_effects, weighted by each
+    // faction's recorded stance) live in a separate pass that the tick
+    // orchestrator runs for resolveExpiredVotes / processPresidentDesk
+    // / processRoyalAssent. Manual signs don't go through that
+    // orchestrator, so they used to silently skip every sector shift —
+    // a passed bill would update active_laws and headline stats but
+    // leave the per-sector popularity card unchanged. Mirror the same
+    // shape the orchestrator passes ({billId, result:'passed'}) so
+    // processSectorShifts treats it identically.
+    if (enactment?.success) {
+        try {
+            await processSectorShifts(supabase, signedBill.nation_id, [
+                { billId: signedBill.id, result: 'passed' }
+            ]);
+        } catch (shiftErr) {
+            console.warn('[signPresidentialBill] sector-shift pass failed (non-fatal):', shiftErr?.message || shiftErr);
+        }
     }
 
     const floorVotes = tallyFloorVotes(signedBill);
