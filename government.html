@@ -1498,15 +1498,17 @@ async function adm2LoadCrises(nationId) {
         return _adm2CrisesCache.crises;
     }
     try {
-        // Read directly from active_crises (which carries name + crisis_id)
-        // instead of forcing an inner-join on crisis_templates. The inner
-        // join silently returned 0 rows when crisis_templates RLS blocked
-        // the embed even though active_crises had matching rows. We
-        // hydrate descriptions via a second lookup so missing template
-        // access still leaves the crisis name + start tick visible.
+        // Read active_crises with its real columns only — name lives on
+        // crisis_templates, NOT here. The previous select asked for
+        // active_crises.name and 400'd against PostgREST every page
+        // load (column doesn't exist), which made adm2LoadCrises return
+        // [] and the Nation card forever read "No active crises"
+        // regardless of state. We hydrate names + descriptions via a
+        // second lookup against crisis_templates so missing template
+        // access still leaves the crisis_id + start tick visible.
         const { data: crisesRows, error: crisesErr } = await _supabase
             .from('active_crises')
-            .select('id, name, crisis_id, started_at_tick')
+            .select('id, crisis_id, started_at_tick')
             .eq('nation_id', nationId);
         if (crisesErr) throw crisesErr;
         const rows = crisesRows || [];
@@ -1530,7 +1532,7 @@ async function adm2LoadCrises(nationId) {
         const crises = rows.map(r => {
             const tmpl = templateById.get(r.crisis_id);
             return {
-                name: r.name || tmpl?.name || 'Crisis',
+                name: tmpl?.name || 'Crisis',
                 description: tmpl?.description || '',
                 started_at_tick: r.started_at_tick,
             };
