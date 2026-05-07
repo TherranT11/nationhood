@@ -4793,9 +4793,13 @@ function _tickToYear(tick) { return 2000 + Math.floor(Number(tick) / 12); }
  *
  * Returns { success, reason?, cupNumber?, resolutionTick?, cost? }.
  */
-export async function bidToHostVwc(supabase, cupNumber) {
+export async function bidToHostVwc(supabase, cupNumber, nationId) {
     if (!cupNumber || cupNumber <= 0) return { success: false, reason: 'invalid_cup' };
-    const { data, error } = await supabase.rpc('bid_to_host_vwc', { p_cup_number: cupNumber });
+    if (!nationId)                     return { success: false, reason: 'invalid_nation' };
+    const { data, error } = await supabase.rpc('bid_to_host_vwc', {
+        p_cup_number: cupNumber,
+        p_nation_id:  nationId,
+    });
     if (error) return { success: false, reason: 'rpc_failed', error: error.message };
     if (!data?.success) return { success: false, reason: data?.reason || 'unknown' };
     return {

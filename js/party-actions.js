@@ -2967,7 +2967,7 @@ async function openVolaHostBidModal(root, faction) {
                 if (!confirm(`Submit a host bid for the ${_hbCupOrdinal(cupNumber)} World Vola Cup?\n\n$10 from discretionary budget.\nResolves at the qualifier tick (12 ticks before the cup begins).`)) return;
                 submitting = true; lastError = null; render();
                 try {
-                    const r = await bidToHostVwc(_supabase, cupNumber);
+                    const r = await bidToHostVwc(_supabase, cupNumber, _state.nation.id);
                     if (r?.success) {
                         result = r;
                         // Capture the bid tick locally so the row can
@@ -3003,6 +3003,7 @@ async function openVolaHostBidModal(root, faction) {
     function _vwcBidReasonCopy(reason) {
         const map = {
             invalid_cup:          'Invalid cup selection.',
+            invalid_nation:       'Nation context unavailable. Reload and try again.',
             not_minister:         'Only the Sports Minister can submit host bids.',
             insufficient_balance: 'Sports discretionary budget is below $10M — pass a funding bill first.',
             no_shard:             'Game state unavailable. Try again.',
