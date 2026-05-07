@@ -12615,6 +12615,10 @@ async function renderJudicialTab(container) {
         container.innerHTML = `<div style="padding:16px;color:#c55;font-family:var(--font-mono);font-size:12px;">Failed to load lawsuits: ${escapeHtml(suitsRes.error.message)}</div>`;
         return;
     }
+    // Non-fatal — fall through to "Vacant" rather than blocking the docket.
+    if (justiceRes?.error) {
+        console.warn('[judicial] justice ministry fetch failed:', justiceRes.error.message);
+    }
 
     const lawsuits = suitsRes.data || [];
     const justiceMinistry = justiceRes?.data || null;
@@ -12624,7 +12628,7 @@ async function renderJudicialTab(container) {
         : '';
     const justicePartyName = justiceMinistry?.factions?.faction_name || '';
     const justicePartyColor = justiceMinistry?.factions?.party_color || '#c8a832';
-    const viewerHoldsJustice = !!currentFaction && justicePartyId && currentFaction.id === justicePartyId;
+    const viewerHoldsJustice = !!(currentFaction && justicePartyId && currentFaction.id === justicePartyId);
     // Vacant when no party holds the ministry. Party-held but unappointed
     // is a separate state — banner reports "Unappointed [Party]" so players
     // can see who's responsible for naming a minister.
