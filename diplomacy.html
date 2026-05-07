@@ -20486,7 +20486,7 @@ async function sendTradeToParliamentFromModal() {
     try {
         await sendTradeToParliament(_activeNegModal.negotiationId);
         _activeNegModal.status = 'ratification';
-        updateAgreementToggleButton();
+        negAgreementRender();
     } finally {
         if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Send to Parliament'; }
     }

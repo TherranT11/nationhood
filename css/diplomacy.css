@@ -6492,7 +6492,9 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
     max-height: 38vh;
     flex-shrink: 0;
   }
-  .trade-neg-chat__messages { min-height: 140px; }
+  /* Drop the desktop 300px min-height — the chat panel's max-height
+     would otherwise be overrun on short viewports (< ~600px tall). */
+  .trade-neg-chat__messages { min-height: 0; }
   .trade-neg-header__nations { flex-wrap: wrap; gap: 10px; }
   .trade-neg-header__title { min-width: auto; font-size: 9px; }
 
