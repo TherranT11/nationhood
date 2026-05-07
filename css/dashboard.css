@@ -29,6 +29,15 @@
     --border-mid:     rgba(200,196,184,0.08);
     --border-strong:  rgba(200,196,184,0.12);
 
+    /* Panel surface tokens — used by floating modals (lawsuit-rule,
+       contract review, etc.) so they pick up the right background +
+       border + body text without reaching into a per-page :root.
+       Originally lived only in actions.html; promoted here so any
+       page loading dashboard.css renders these modals themed. */
+    --panel-main:   #1f1f1a;
+    --panel-border: rgba(255,255,255,0.08);
+    --panel-text:   #c4c2b8;
+
     /* Accent — amber/gold */
     --accent:       #b09a5b;
     --accent-hover: #c4ad6a;
@@ -104,6 +113,16 @@ body.light-mode {
     --border-light:   rgba(0,0,0,0.05);
     --border-mid:     rgba(0,0,0,0.12);
     --border-strong:  rgba(0,0,0,0.18);
+
+    /* Panel tokens, light-mode mirror. Body text is the dark
+       --text-primary value rather than a near-bg color so floating
+       modals stay legible — actions.html declared its own
+       light-mode --panel-text as #e8e4dc which would render
+       text invisibly on the light panel; that local block stays
+       intact (higher specificity) and only matters on actions.html. */
+    --panel-main:   #faf9f5;
+    --panel-border: rgba(0,0,0,0.08);
+    --panel-text:   #1a1a1a;
 
     --accent:       #b8960a;
     --accent-hover: #a58500;
