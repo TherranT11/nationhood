@@ -4165,6 +4165,7 @@ async function fetchActiveCoalition(supabase, nationId) {
             lead_party_id: pmPartyId,
             ministry_allocations: newGov.ministry_assignments || {},
             formed_at: newGov.formed_at,
+            formed_at_tick: newGov.formed_at_tick ?? null,
             status: newGov.status,
             formation_type: newGov.formation_type || 'coalition',
         };
@@ -12585,6 +12586,40 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
             }
         }
         return null; // Caretaker is a valid government state
+    }
+
+    // Emergency minority government auto-snap timer. A player-formed
+    // minority government runs at most 36 ticks before a snap election
+    // is forced, so the deadlock breaker can't become permanent rule
+    // by a plurality party that simply refuses to negotiate further.
+    // Dissolving the formation here also clears the -20% YES penalty
+    // that bills.js applies via formation_type='emergency_minority'.
+    if (coalition?.formation_type === 'emergency_minority'
+        && coalition.status === 'formed'
+        && coalition.formed_at_tick != null) {
+        const ticksAsMinority = currentTick - coalition.formed_at_tick;
+        if (ticksAsMinority >= 36) {
+            await supabase.rpc('schedule_snap_election', {
+                p_nation_id: nation.id,
+                p_election_tick: currentTick + 1,
+                p_preserve_presidential: false,
+            });
+            await supabase.from('government_formations')
+                .update({ status: 'dissolved' })
+                .eq('id', coalition.id);
+            await supabase.from('event_log').insert({
+                nation_id: nation.id,
+                event_name: 'Minority Government Mandate Expired',
+                trigger_key: 'emergency_minority_government',
+                description_used: `${nation.name}'s minority government has exhausted its 36-tick mandate. A snap election has been scheduled.`,
+                category: 'POLITICAL',
+                fired_at_tick: currentTick,
+            }).then(({ error }) => {
+                if (error) console.warn('Minority auto-snap event log failed:', error.message);
+            });
+            return { nation: nation.name, autoSnapFired: true, ticksAsMinority };
+        }
+        return null;  // minority gov still within mandate
     }
 
     // fetchActiveCoalition only returns 'formed' or 'caretaker' (not proposals)
@@ -24430,6 +24465,30 @@ function _cupOrdinal(n) {
 // Convert tick number to year. Lives here (not js/utils.js) because the
 // edge bundle doesn't include utils.js.
 function _tickToYear(tick) { return 2000 + Math.floor(Number(tick) / 12); }
+
+/**
+ * Player-triggered minority government. Routes through the
+ * form_minority_government RPC; server validates caller is leader of
+ * the largest active party, formation deadline has elapsed, no formed
+ * coalition exists, and no party has outright majority. JS just relays.
+ *
+ * Returns { success, reason?, formationId?, pmParty?, autoSnapAtTick? }.
+ */
+async function formMinorityGovernment(supabase, nationId) {
+    if (!nationId) return { success: false, reason: 'invalid_nation' };
+    const { data, error } = await supabase.rpc('form_minority_government', {
+        p_nation_id: nationId,
+    });
+    if (error) return { success: false, reason: 'rpc_failed', error: error.message };
+    if (!data?.success) return { success: false, reason: data?.reason || 'unknown' };
+    return {
+        success:         true,
+        formationId:     data.formation_id,
+        pmParty:         data.pm_party,
+        formedAtTick:    Number(data.formed_at_tick || 0),
+        autoSnapAtTick:  Number(data.auto_snap_at_tick || 0),
+    };
+}
 
 /**
  * Player-initiated bid. Routes through the bid_to_host_vwc RPC for the

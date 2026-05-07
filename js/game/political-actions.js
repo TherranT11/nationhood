@@ -4786,6 +4786,30 @@ function _cupOrdinal(n) {
 function _tickToYear(tick) { return 2000 + Math.floor(Number(tick) / 12); }
 
 /**
+ * Player-triggered minority government. Routes through the
+ * form_minority_government RPC; server validates caller is leader of
+ * the largest active party, formation deadline has elapsed, no formed
+ * coalition exists, and no party has outright majority. JS just relays.
+ *
+ * Returns { success, reason?, formationId?, pmParty?, autoSnapAtTick? }.
+ */
+export async function formMinorityGovernment(supabase, nationId) {
+    if (!nationId) return { success: false, reason: 'invalid_nation' };
+    const { data, error } = await supabase.rpc('form_minority_government', {
+        p_nation_id: nationId,
+    });
+    if (error) return { success: false, reason: 'rpc_failed', error: error.message };
+    if (!data?.success) return { success: false, reason: data?.reason || 'unknown' };
+    return {
+        success:         true,
+        formationId:     data.formation_id,
+        pmParty:         data.pm_party,
+        formedAtTick:    Number(data.formed_at_tick || 0),
+        autoSnapAtTick:  Number(data.auto_snap_at_tick || 0),
+    };
+}
+
+/**
  * Player-initiated bid. Routes through the bid_to_host_vwc RPC for the
  * server-side validation + atomic discretionary deduction. The RPC owns
  * eligibility (minister, balance, deadline, no existing host or bid) so

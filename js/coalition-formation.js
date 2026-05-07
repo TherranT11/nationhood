@@ -3,7 +3,7 @@
 // ministry assignment, and Form Government action.
 
 import { buildMinistryBaselines } from './game/stats.js';
-import { getNationNames } from './game/political-actions.js';
+import { getNationNames, formMinorityGovernment } from './game/political-actions.js';
 import { fetchActiveCoalition } from './game/government-structure.js';
 import { CABINET_MINISTRY_KEYS, hasElectedPresident, isSemiPresidential, isAbsoluteMonarchy } from './game/government-types.js';
 import { PLATFORMS } from './game/platforms.js';
@@ -532,6 +532,33 @@ export async function renderFormationTab(root) {
             </div>`;
     }
 
+    // Deadlock breaker — Form Minority Government.
+    // Appears once the formation window has elapsed and the caller leads
+    // the largest active party. Server re-validates everything; the UI
+    // gate is just a hint so the button stops being visible noise to
+    // players who can't actually use it.
+    let minorityHtml = '';
+    if (ticksRemaining === 0) {
+        const myFactionId = faction.id;
+        const activeParties = _allParties
+            .filter(p => (p.seats || 0) > 0
+                && (Number(p.last_seen_tick) || 0) >= _currentTick - INACTIVITY_TICKS)
+            .sort((a, b) => (b.seats || 0) - (a.seats || 0) || (a.id < b.id ? -1 : 1));
+        const largest = activeParties[0];
+        const iAmLargestActive = largest && largest.id === myFactionId;
+        if (iAmLargestActive) {
+            minorityHtml = `
+                <div class="cf-minority-section" style="margin-top:18px;padding:14px 16px;background:rgba(200,80,80,0.05);border:1px solid rgba(200,80,80,0.25);">
+                    <div class="cf-section-title" style="color:var(--red);">Deadlock Breaker</div>
+                    <div class="cf-section-desc">
+                        The coalition window has closed without a government. As the largest active party, you may form a <strong>minority government</strong>.
+                        Bills will pass with -20% effective YES votes; a snap election fires automatically in 36 ticks if you don't form a stable coalition before then.
+                    </div>
+                    <button class="cf-submit-btn" id="cf-form-minority-btn" style="background:var(--red);border-color:var(--red);color:#fff;margin-top:10px;">Form Minority Government</button>
+                </div>`;
+        }
+    }
+
     // Active proposals
     const proposalsHtml = _formations.length > 0 ? `
         <div class="cf-section-title" style="margin-top:16px;">Active Proposals</div>
@@ -616,6 +643,7 @@ export async function renderFormationTab(root) {
 
         ${proposeHtml}
         ${proposalsHtml}
+        ${minorityHtml}
     </div>`;
 
     // Edit mode preserves _proposalSelectedParties across re-renders.
@@ -851,6 +879,24 @@ async function loadFormations() {
     _formations = enriched;
 }
 
+function _minorityReasonCopy(reason) {
+    const map = {
+        invalid_nation:     'Nation context unavailable. Reload and try again.',
+        not_parliamentary:  'This action only applies to parliamentary governments.',
+        not_party_leader:   'Only a party leader can form a minority government.',
+        no_shard:           'Game state unavailable.',
+        no_election:        'No completed election to form a government from.',
+        gate_not_elapsed:   'The coalition window has not yet closed.',
+        majority_exists:    'A party already holds an outright majority — form a normal government instead.',
+        coalition_exists:   'A government has already been formed for this cycle.',
+        already_minority:   'A minority government is already in place.',
+        no_active_parties:  'No active parties qualify to form a government.',
+        not_largest_active: 'Only the largest active party may form a minority government.',
+        rpc_failed:         'Server error — try again.',
+    };
+    return map[reason] || (reason || 'Unknown error');
+}
+
 // ════════════════════════ EVENTS ════════════════════════
 
 let _formationEventsBound = false;
@@ -936,6 +982,32 @@ function bindFormationEvents(root) {
         if (e.target.closest('#cf-form-gov-btn')) {
             const f = _formations.find(x => x.id === _expandedFormationId);
             if (f) await handleFormGovernment(f, root);
+            return;
+        }
+
+        // Form Minority Government — deadlock breaker
+        const minorityBtn = e.target.closest('#cf-form-minority-btn');
+        if (minorityBtn) {
+            if (_formingGovernment) return;
+            if (!confirm('Form a minority government?\n\nBills will pass with -20% effective YES votes. A snap election fires automatically in 36 ticks if a stable coalition isn\'t formed before then.')) return;
+            _formingGovernment = true;
+            minorityBtn.disabled = true;
+            minorityBtn.textContent = 'FORMING...';
+            try {
+                const r = await formMinorityGovernment(_supabase, _state.nation.id);
+                if (r?.success) {
+                    _formationNeeded = false;
+                    alert('Minority government formed.');
+                } else {
+                    alert('Could not form minority government: ' + _minorityReasonCopy(r?.reason));
+                }
+            } catch (err) {
+                console.error('[Coalition] Form minority failed:', err);
+                alert('Failed to form minority government: ' + (err.message || err));
+            } finally {
+                _formingGovernment = false;
+                await renderFormationTab(root);
+            }
             return;
         }
     });

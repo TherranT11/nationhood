@@ -197,6 +197,7 @@ export async function fetchActiveCoalition(supabase, nationId) {
             lead_party_id: pmPartyId,
             ministry_allocations: newGov.ministry_assignments || {},
             formed_at: newGov.formed_at,
+            formed_at_tick: newGov.formed_at_tick ?? null,
             status: newGov.status,
             formation_type: newGov.formation_type || 'coalition',
         };

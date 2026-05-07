@@ -1374,6 +1374,40 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
         return null; // Caretaker is a valid government state
     }
 
+    // Emergency minority government auto-snap timer. A player-formed
+    // minority government runs at most 36 ticks before a snap election
+    // is forced, so the deadlock breaker can't become permanent rule
+    // by a plurality party that simply refuses to negotiate further.
+    // Dissolving the formation here also clears the -20% YES penalty
+    // that bills.js applies via formation_type='emergency_minority'.
+    if (coalition?.formation_type === 'emergency_minority'
+        && coalition.status === 'formed'
+        && coalition.formed_at_tick != null) {
+        const ticksAsMinority = currentTick - coalition.formed_at_tick;
+        if (ticksAsMinority >= 36) {
+            await supabase.rpc('schedule_snap_election', {
+                p_nation_id: nation.id,
+                p_election_tick: currentTick + 1,
+                p_preserve_presidential: false,
+            });
+            await supabase.from('government_formations')
+                .update({ status: 'dissolved' })
+                .eq('id', coalition.id);
+            await supabase.from('event_log').insert({
+                nation_id: nation.id,
+                event_name: 'Minority Government Mandate Expired',
+                trigger_key: 'emergency_minority_government',
+                description_used: `${nation.name}'s minority government has exhausted its 36-tick mandate. A snap election has been scheduled.`,
+                category: 'POLITICAL',
+                fired_at_tick: currentTick,
+            }).then(({ error }) => {
+                if (error) console.warn('Minority auto-snap event log failed:', error.message);
+            });
+            return { nation: nation.name, autoSnapFired: true, ticksAsMinority };
+        }
+        return null;  // minority gov still within mandate
+    }
+
     // fetchActiveCoalition only returns 'formed' or 'caretaker' (not proposals)
     if (coalition && coalition.status === 'formed') return null;
 
