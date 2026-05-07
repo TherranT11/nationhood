@@ -2845,14 +2845,18 @@ async function openVolaHostBidModal(root, faction) {
                     badge = `<span class="pa-action-tag" style="color:#5cc55c;">YOUR BID PENDING</span>`;
                     cls = 'locked';
                     cardStyle = 'cursor:not-allowed;border-color:#5cc55c;background:rgba(92,197,92,0.06);';
-                    // "Bid placed on January, 2005 for $10" line surfaces
-                    // when the player needs to confirm they already bid.
-                    // Bid date falls back to "earlier" only when neither
-                    // the DB nor the in-session tracker has a tick.
+                    // Greyed-out, disabled button replaces SUBMIT BID once
+                    // a bid is on file. Keeps the cup row's visual rhythm
+                    // identical to AVAILABLE so the Minister can see at a
+                    // glance which cups they've already committed to,
+                    // while the disabled attribute + cursor + opacity
+                    // make it unmistakably non-clickable. No data-cup-number
+                    // here so the click delegate skips it entirely (belt to
+                    // the existing tagName !== 'BUTTON' suspender).
                     const placedCopy = c.bidAtTick != null
                         ? `Bid placed on ${_hbTickToDate(c.bidAtTick)} for $10`
                         : 'Bid placed earlier this session for $10';
-                    actionBtn = `<span class="pa-bid-placed-note" style="font-family:var(--font-mono);font-size:9px;color:#5cc55c;letter-spacing:0.06em;text-align:right;">${esc(placedCopy)}</span>`;
+                    actionBtn = `<button class="pa-modal-btn pa-modal-btn--placed" disabled style="background:transparent;color:#5cc55c;border:1px solid #5cc55c;padding:4px 10px;font-size:9px;cursor:not-allowed;opacity:0.75;font-weight:600;letter-spacing:0.04em;">${esc(placedCopy)}</button>`;
                 } else if (c.selectable && isMinister && canAfford) {
                     badge = `<span class="pa-action-tag" style="color:#c8a832;">AVAILABLE</span>`;
                     cardStyle = 'cursor:pointer;border-color:#c8a832;background:rgba(200,168,50,0.06);';
