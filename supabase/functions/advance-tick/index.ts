@@ -1363,7 +1363,6 @@ const MINOR_INITIATIVE_CONFIG = {
     AP_COST: 2,
     TIER: 1,
     TYPE: 'minor_diplomatic_initiative',
-    BUDGET_SOURCE: 'embassies',              // institution id in budget_item_allocations
     HOSTILE_RELATION_THRESHOLD: -50,         // cannot propose below this
     MAX_VISA_AGREEMENTS_PER_INITIATIVE: 1,   // only one visa agreement per initiative
 };
@@ -1800,7 +1799,6 @@ const MAJOR_INITIATIVE_CONFIG = {
     AP_COST: 2,
     TIER: 3,
     TYPE: 'major_diplomatic_initiative',
-    BUDGET_SOURCE: 'foreign',               // institution id in budget_item_allocations
     HOSTILE_RELATION_THRESHOLD: -50,         // cannot propose below this
     HOG_FALLBACK_AP_PENALTY: 3,             // extra AP if HoG proposes without FM
     RATIFICATION_VOTING_TICKS: 6,           // both parliaments vote for 6 ticks
@@ -2644,103 +2642,6 @@ for (const key of Object.keys(STAT_DECAY_CONFIG)) {
     }
 }
 
-// ==================== INSTITUTION FUNDING DECAY TIERS ====================
-// Institutions counteract natural stat decay. At 100% funding, decay is fully
-// blocked. Below 100%, the rates below REPLACE the natural decay rate for stats
-// covered by that institution. When multiple institutions cover the same stat,
-// their rates are averaged.
-
-const INSTITUTION_DECAY_TIERS = [
-    { minPct: 100, primary: 0,    secondary: 0    },  // Fully Funded
-    { minPct: 90,  primary: 0.3,  secondary: 0    },  // Stretched
-    { minPct: 75,  primary: 0.5,  secondary: 0.2  },  // Strained
-    { minPct: 50,  primary: 0.9,  secondary: 0.5  },  // Underfunded
-    { minPct: 25,  primary: 1.7,  secondary: 0.9  },  // Critical
-    { minPct: 0,   primary: 2.7,  secondary: 1.7  },  // Collapsed
-];
-
-/**
- * Look up the institution decay rate for a given funding percentage.
- * @param {number} fundingPct - 0-100 funding percentage
- * @param {'primary'|'secondary'} role - whether this stat is the institution's primary or secondary
- * @returns {number} decay rate per tick (0 = no decay)
- */
-function getInstitutionDecayRate(fundingPct, role) {
-    for (const tier of INSTITUTION_DECAY_TIERS) {
-        if (fundingPct >= tier.minPct) return tier[role];
-    }
-    return INSTITUTION_DECAY_TIERS[INSTITUTION_DECAY_TIERS.length - 1][role];
-}
-
-/**
- * Build a map of institutionId → fundingPct from budget_item_allocations rows.
- * This is the single source of truth for computing funding percentages.
- *
- * @param {Array} itemAllocations - rows from budget_item_allocations (must have item_id, item_type, allocation_amount, needed_amount)
- * @returns {Object} e.g. { tax_admin: 85, police_force: 100 }  — default 100 for missing institutions
- */
-function buildFundingPctMap(itemAllocations) {
-    const map = {};
-    for (const row of (itemAllocations || [])) {
-        if (row.item_type === 'institution') {
-            const needed = Number(row.needed_amount || 0);
-            map[row.item_id] = needed > 0
-                ? Math.min(200, Math.round((Number(row.allocation_amount || 0) / needed) * 100))
-                : 100;
-        }
-    }
-    return map;
-}
-
-/**
- * Get the funding percentage for a single institution from a pre-built map.
- * Returns 100 (fully funded) if no allocation exists.
- */
-function getInstFundingPct(fundingPctMap, instId) {
-    return (fundingPctMap && fundingPctMap[instId] !== undefined) ? fundingPctMap[instId] : 100;
-}
-
-/**
- * Build a map of statKey → array of { institutionId, role, fundingPct } from
- * institution config rows and budget_item_allocations for the active budget.
- *
- * @param {Array} instConfig - rows from ministry_institution_config
- * @param {Array} itemAllocations - rows from budget_item_allocations for the active bill
- * @returns {Object} e.g. { healthcare_quality: [{ id: 'workforce', role: 'primary', fundingPct: 85 }, ...] }
- */
-function buildStatInstitutionMap(instConfig, itemAllocations) {
-    const fundingPctMap = buildFundingPctMap(itemAllocations);
-
-    const statMap = {};
-    for (const inst of (instConfig || [])) {
-        const fundingPct = getInstFundingPct(fundingPctMap, inst.id);
-
-        for (const role of ['primary', 'secondary']) {
-            const statKey = inst[`${role}_stat`];
-            if (!statKey) continue;
-            if (!statMap[statKey]) statMap[statKey] = [];
-            statMap[statKey].push({ id: inst.id, role, fundingPct });
-        }
-    }
-    return statMap;
-}
-
-/**
- * For a given stat, compute the effective institution decay rate by averaging
- * all institutions that cover it (as primary or secondary).
- *
- * @param {Array} institutions - entries from buildStatInstitutionMap()[statKey]
- * @returns {number|null} averaged decay rate, or null if no institutions cover this stat
- */
-function getAveragedInstitutionDecay(institutions) {
-    if (!institutions || institutions.length === 0) return null;
-    let total = 0;
-    for (const inst of institutions) {
-        total += getInstitutionDecayRate(inst.fundingPct, inst.role);
-    }
-    return total / institutions.length;
-}
-
 // ==================== THREE-PILLAR VOTING SYSTEM MAPPINGS ====================
 
 /**
@@ -3407,7 +3308,7 @@ const FISCAL_CATEGORIES = [
 ];
 
 /**
- * Map fiscal category names → ministry_key used in ministry_institution_config.
+ * Map fiscal category names → ministry_key.
  */
 const FISCAL_TO_MINISTRY_KEY = {
     'Interior': 'interior', 'Labor': 'labor', 'Healthcare': 'healthcare',
@@ -3472,40 +3373,10 @@ function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
 }
 
 /**
- * Compute the annualized cost of all institutions for a given fiscal category.
- * Alpha stats refactor: gdp-scaled institutions collapse to population
- * scaling (matches bill.html / laws.html _computeInstitutionBaseCost from
- * Phase 7b). Inflation multiplier is a no-op (Phase 7e).
- * @param {Array} institutions - rows from ministry_institution_config
- * @param {string} fiscalCategory - e.g. 'Healthcare', 'Trade'
- * @param {Object} nation
- */
-function computeMinistryInstitutionCost(institutions, fiscalCategory, nation) {
-    const ministryKey = FISCAL_TO_MINISTRY_KEY[fiscalCategory] || fiscalCategory.toLowerCase();
-    const insts = (institutions || []).filter(i => i.ministry_key === ministryKey);
-    const population = Number(nation.population || 0);
-
-    let total = 0;
-    const items = [];
-    for (const inst of insts) {
-        const baseVal = Number(inst.base_cost_per_capita || 0);
-        const scalingType = inst.scaling_type || 'population';
-        const cost = baseVal * population;
-        items.push({
-            id: inst.id, institution_name: inst.institution_name, cost,
-            base_cost_per_capita: inst.base_cost_per_capita,
-            scaling_type: scalingType
-        });
-        total += cost;
-    }
-    return { total, institutions: items };
-}
-
-/**
  * Build full budget data for a nation: revenue, expenditures per ministry, debt service, etc.
  * @param {Object} aidData - Optional { received: number, given: number, agreements: [...] }
  */
-function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions, aidData) {
+function buildBudgetData(nation, activeLaws, tradeTariffRevenue, aidData) {
     const budget = calculateNationalBudget(nation);
     applyTradeTariffOverride(budget, tradeTariffRevenue, 0);
     // Inflation column was deleted by the alpha refactor; both fields are
@@ -3526,14 +3397,11 @@ function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions, a
 
     for (const cat of FISCAL_CATEGORIES) {
         const polResult = computeMinistryPolicyCost(activeLaws, cat, nation);
-        const instResult = computeMinistryInstitutionCost(institutions || [], cat, nation);
-        const fulfilledCost = polResult.total + instResult.total;
+        const fulfilledCost = polResult.total;
         ministries[cat] = {
             fulfilledCost,
             allocation: fulfilledCost,  // default: fulfill
             policies: polResult.policies,
-            institutions: instResult.institutions,
-            institutionTotal: instResult.total,
             policyTotal: polResult.total
         };
         totalExpenditure += fulfilledCost;
@@ -5720,8 +5588,9 @@ function _scalePolicyCost(baseCost, scalingStat, nation) {
  * per-tick (1 tick = 1 month); ongoingYearly = ongoingMonthly × 12.
  *
  * Article handling (matches bill.html's per-article render):
- *   1. Funding-data (BUDGET): fd.discretionary → upfront,
- *      Σ institutions[].base_cost × (toPct - fromPct)/100 → monthly ongoing.
+ *   1. Funding-data (BUDGET): fd.discretionary → upfront. Per-institution
+ *      slider math used to add Σ base_cost × Δpct to monthly ongoing;
+ *      institutions are removed and that branch is gone.
  *   2. Repeal: subtract the repealed policy's scaled ongoing (negative
  *      monthly) — repealing saves what the law was spending.
  *   3. Policy: scaled upfront_cost + scaled (ongoing_cost_per_tick ||
@@ -5734,17 +5603,12 @@ function computeBillCostTotals(bill, nation) {
     let ongoingMonthly = 0;
 
     for (const art of articles) {
-        // (1) Funding-data (BUDGET) article
+        // (1) Funding-data (BUDGET) article — discretionary grants only.
+        // Per-institution slider math used to live here; institutions are
+        // removed and that branch is gone.
         const fd = art.funding_data;
         if (fd) {
             upfront += Number(fd.discretionary || 0);
-            for (const inst of (fd.institutions || [])) {
-                const fromPct = Number(inst.current_pct || 0);
-                const toPct = Number(inst.proposed_pct || 0);
-                if (fromPct === toPct) continue;
-                const baseCost = Number(inst.base_cost || 0);
-                ongoingMonthly += ((toPct - fromPct) / 100) * baseCost;
-            }
             continue;
         }
 
@@ -9488,103 +9352,14 @@ async function enactBill(supabase, bill, currentTick) {
         }
     }
 
-    // ── Apply funding articles (per-institution level changes & discretionary grants) ──
+    // ── Apply funding articles (discretionary grants only) ──
+    // Per-institution funding changes used to live here (sliders that wrote
+    // budget_item_allocations + a weighted-average ministry funding_level
+    // update). Institutions are removed; the funding-bill framework stays
+    // for discretionary grants and the rework will add new article shapes.
     for (const art of (bill.bill_articles || [])) {
         const fd = art.funding_data;
         if (!fd || !fd.ministry_key) continue;
-
-        // Per-institution funding changes: update ministry funding_level + budget_item_allocations
-        const instChanges = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
-
-        // Update the ministry-level funding_level as a weighted average
-        if (instChanges.length > 0) {
-            const allInst = fd.institutions || [];
-            const avgPct = allInst.reduce((sum, i) => sum + i.proposed_pct, 0) / (allInst.length || 1);
-            const newLevel = avgPct / 100;
-            console.log('[enactBill] stage=update_ministry_funding attempt', {
-                ...logContext,
-                ministryKey: fd.ministry_key,
-                newLevel
-            });
-            const { error: ministryFundingErr } = await supabase.from('ministries')
-                .update({ funding_level: newLevel })
-                .eq('nation_id', bill.nation_id)
-                .eq('ministry_key', fd.ministry_key)
-                .eq('is_active', true);
-            if (ministryFundingErr) {
-                console.error('[enactBill] stage=update_ministry_funding result=rls_blocked', {
-                    ...logContext,
-                    ministryKey: fd.ministry_key,
-                    error: ministryFundingErr.message
-                });
-                console.error('[enactBill] stage=terminal_result result=rls_blocked', {
-                    ...logContext,
-                    error: ministryFundingErr.message
-                });
-                return { success: false, error: `Ministry funding update failed for ${fd.ministry_key}: ${ministryFundingErr.message}` };
-            }
-            console.log('[enactBill] stage=update_ministry_funding result=success', {
-                ...logContext,
-                ministryKey: fd.ministry_key,
-                avgPercent: Math.round(avgPct)
-            });
-
-            // Upsert per-institution funding into budget_item_allocations
-            // Stores actual dollar amounts: needed_amount = true cost, allocation_amount = funded amount
-            // so fundingPct = allocation_amount / needed_amount * 100
-            const { data: _billNation } = await supabase.from('nations').select('population, gdp, cost_of_living').eq('id', bill.nation_id).single();
-            const { data: _instConfigs } = await supabase.from('ministry_institution_config').select('id, base_cost_per_capita, scaling_type');
-            const _billPop = Number(_billNation?.population || 0);
-            const _billGdp = Number(_billNation?.gdp || 0);
-            const _billInfRate = Math.pow(Math.max(0, Number(_billNation?.cost_of_living || 0)), 1.5) / 100;
-            const _billInfMult = 1 + (_billInfRate / 100);
-
-            for (const inst of allInst) {
-                const instCfg = (_instConfigs || []).find(c => c.id === inst.id);
-                let neededAmt = 0;
-                if (instCfg) {
-                    const bv = Number(instCfg.base_cost_per_capita || 0);
-                    const st = instCfg.scaling_type || 'population';
-                    neededAmt = Math.round((st === 'gdp' ? (bv / 100) * _billGdp : bv * _billPop) * _billInfMult);
-                }
-                const allocAmt = Math.round(neededAmt * (inst.proposed_pct / 100));
-
-                const { error: allocErr } = await supabase.from('budget_item_allocations')
-                    .upsert({
-                        bill_id: bill.id,
-                        nation_id: bill.nation_id,
-                        fiscal_category: fd.ministry_key,
-                        item_type: 'institution',
-                        item_id: inst.id,
-                        item_name: inst.name,
-                        allocation_amount: allocAmt,
-                        needed_amount: neededAmt
-                    }, { onConflict: 'bill_id,item_type,item_id' });
-                if (allocErr) {
-                    // Fatal: if the budget_item_allocations row can't be written,
-                    // the decay engine has no input for this institution and the
-                    // bill's intent is silently lost. Roll back the bill rather
-                    // than mark it 'passed' with no effect (this exact path
-                    // produced ghost-passed Austerity Acts in Hajjara during a
-                    // deploy-lag window — see backfill at sql/...).
-                    console.error('[enactBill] stage=upsert_institution_allocation result=fatal', {
-                        ...logContext,
-                        institutionId: inst.id,
-                        error: allocErr.message
-                    });
-                    console.error('[enactBill] stage=terminal_result result=allocation_upsert_failed', {
-                        ...logContext,
-                        error: allocErr.message
-                    });
-                    return { success: false, error: `Budget allocation upsert failed for ${inst.id}: ${allocErr.message}` };
-                }
-            }
-            console.log('[enactBill] stage=upsert_institution_allocations result=success', {
-                ...logContext,
-                ministryKey: fd.ministry_key,
-                institutionCount: allInst.length
-            });
-        }
 
         // Discretionary funds: credit ministry balance and add cost to national debt
         // fd.discretionary is in $M — convert to raw dollars for the balance column.
@@ -19724,16 +19499,13 @@ function _logStatDebug(supabase, nation, tick, statKey, contributorType, contrib
 
 /**
  * Apply natural stat decay for a nation. Each tick, configured stats drift
- * toward their target (equilibrium or erosion).
- *
- * Institution funding modifies decay: fully-funded institutions block decay on
- * their primary/secondary stats entirely. Underfunded institutions let decay
- * through (or worsen it). When multiple institutions cover the same stat, their
- * rates are averaged. Stats not covered by any institution decay at natural rates.
+ * toward their target (equilibrium or erosion). Policies can raise/lower
+ * the target via active_laws → policies → stat_effects (floor/ceiling).
  *
  * @param {object} supabase - Supabase client
  * @param {object} nation   - Full nation row (in-memory, mutated on success)
- * @param {Object|null} statInstitutionMap - from buildStatInstitutionMap(), or null to use natural rates
+ * @param {Object|null} policyDecayAdjustments - from buildPolicyDecayAdjustments
+ * @param {number} currentTick
  * @returns {Array<object>}  Applied decay descriptors for tick summary
  */
 /**
@@ -20137,7 +19909,7 @@ async function processCommodityDemandEffects(supabase, nation, tradingByNation) 
     return { sources, applied: updates };
 }
 
-async function processStatDecay(supabase, nation, statInstitutionMap, policyDecayAdjustments = null, currentTick = 0) {
+async function processStatDecay(supabase, nation, policyDecayAdjustments = null, currentTick = 0) {
     const appliedDecay = [];
     const nationUpdates = {};
 
@@ -20166,13 +19938,8 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
 
         if (currentVal === target) continue;
 
-        // Determine effective decay speed: institution-modified or natural
-        const instDecay = statInstitutionMap
-            ? getAveragedInstitutionDecay(statInstitutionMap[statKey])
-            : null;
-        const speed = instDecay !== null ? instDecay : config.speed;
-
-        if (speed === 0) continue;  // fully funded institutions block all decay
+        const speed = config.speed;
+        if (speed === 0) continue;
 
         let newVal;
         if (currentVal > target) {
@@ -20188,9 +19955,9 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
             const prevRounded = Math.round(currentVal * 10) / 10;
             _logStatDebug(supabase, nation, currentTick, statKey,
                 'decay',
-                instDecay !== null ? `institution-decay (target=${target}, avg=${speed})` : `natural-decay (target=${target}, speed=${speed})`,
+                `natural-decay (target=${target}, speed=${speed})`,
                 speed, null, newVal - prevRounded,
-                instDecay !== null ? 'institution-modified' : 'natural');
+                'natural');
             appliedDecay.push({
                 stat: statKey,
                 type: config.type,
@@ -20198,7 +19965,6 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
                 newValue: newVal,
                 target,
                 speed,
-                institutionModified: instDecay !== null
             });
         }
     }
@@ -20231,8 +19997,7 @@ async function processStatDecay(supabase, nation, statInstitutionMap, policyDeca
             return [];
         }
 
-        const instCount = appliedDecay.filter(d => d.institutionModified).length;
-        console.log(`[processStatDecay] Decay applied for ${nation.name}: ${appliedDecay.length} stat(s)${instCount > 0 ? ` (${instCount} institution-modified)` : ''}`);
+        console.log(`[processStatDecay] Decay applied for ${nation.name}: ${appliedDecay.length} stat(s)`);
         Object.assign(nation, nationUpdates);
     }
 
@@ -22388,17 +22153,6 @@ async function processCrises(supabase, nation, currentTick) {
     const nationUpdates = {};
     const statBounds = {}; // { stat_key: { floor: highestFloor, ceiling: lowestCeiling } }
 
-    // Load per-institution funding allocations (written by enactBill funding articles)
-    const { data: _fundingAllocRows } = await supabase.from('budget_item_allocations')
-        .select('item_id, item_type, allocation_amount, needed_amount')
-        .eq('nation_id', nation.id)
-        .eq('item_type', 'institution')
-        .order('created_at', { ascending: true });
-    const _fundingMap = buildFundingPctMap(_fundingAllocRows);
-    function getInstitutionFundingPct(instId) {
-        return getInstFundingPct(_fundingMap, instId);
-    }
-
     // 3. Check inactive crises for activation (skip programmatic crises with is_active=false)
     for (const template of crisisTemplates) {
         if (activeMap[template.id]) continue; // already active
@@ -22407,19 +22161,10 @@ async function processCrises(supabase, nation, currentTick) {
         let allTriggersMet = false;
 
         if (template.crisis_type === 'ministry') {
-            // Ministry crisis: check institution funding levels
-            const institutionIds = template.institution_ids || [];
-            const threshold = Number(template.funding_threshold_pct) || 0;
-            if (institutionIds.length === 0) continue;
-
-            allTriggersMet = true;
-            for (const instId of institutionIds) {
-                const pct = getInstitutionFundingPct(instId);
-                if (pct >= threshold) {
-                    allTriggersMet = false;
-                    break;
-                }
-            }
+            // Ministry crises previously gated on institution funding levels.
+            // Institutions are removed; ministry crises no longer auto-activate
+            // until the rework lands.
+            continue;
         } else {
             // Stat-based crisis: check crisis_triggers
             const triggers = template.crisis_triggers || [];
@@ -22706,19 +22451,11 @@ async function processCrises(supabase, nation, currentTick) {
         let allEndConditionsMet = false;
 
         if (template.crisis_type === 'ministry') {
-            // Ministry crisis: resolve when ALL institutions are at/above recovery_threshold_pct
-            const institutionIds = template.institution_ids || [];
-            const recoveryPct = Number(template.recovery_threshold_pct) || (Number(template.funding_threshold_pct) + 20);
-            if (institutionIds.length > 0) {
-                allEndConditionsMet = true;
-                for (const instId of institutionIds) {
-                    const pct = getInstitutionFundingPct(instId);
-                    if (pct < recoveryPct) {
-                        allEndConditionsMet = false;
-                        break;
-                    }
-                }
-            }
+            // Ministry crisis recovery previously gated on institution funding
+            // levels. Institutions are removed; ministry crises that were
+            // already active before this change resolve only on duration
+            // fizzle (handled below) or via legacy admin tools.
+            allEndConditionsMet = false;
         } else {
             // Stat-based crisis: check crisis_end_triggers
             const endTriggers = template.crisis_end_triggers || [];
@@ -33509,7 +33246,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
     // Lazy-loaded once per tick for all nations
     let _statConnections = null;
-    let _institutionConfig = null;
 
     const summary = {
         tick: newTick,
@@ -33839,20 +33575,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] GDP growth failed for ${nation.name} (non-fatal):`, gdpErr);
         }
 
-        // Stat decay (equilibrium drift + erosion, modified by institution funding)
+        // Stat decay (equilibrium drift + erosion). Policies can raise/lower
+        // the per-stat decay target via stat_effects floor/ceiling.
         try {
-            if (!_institutionConfig) {
-                const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
-                _institutionConfig = icRows || [];
-            }
-            const { data: _fundingRows } = await supabase.from('budget_item_allocations')
-                .select('item_id, item_type, allocation_amount, needed_amount')
-                .eq('nation_id', nation.id)
-                .eq('item_type', 'institution')
-                .order('created_at', { ascending: true });
-            const statInstMap = buildStatInstitutionMap(_institutionConfig, _fundingRows);
             const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
-            const decayResults = await processStatDecay(supabase, nation, statInstMap, policyDecayAdj, newTick);
+            const decayResults = await processStatDecay(supabase, nation, policyDecayAdj, newTick);
             if (decayResults.length > 0) {
                 summary.decay = summary.decay || [];
                 summary.decay.push({ nation: nation.name, effects: decayResults });

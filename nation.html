@@ -354,14 +354,7 @@ async function loadStatEffectSources(nationId, nation) {
         loadLeaderTraitEffects(nationId, nation),
         _supabase.from('stat_connections')
             .select('source_stat, source_dir, threshold, target_stat, target_dir, magnitude, dampening')
-            .eq('enabled', true),
-        _supabase.from('budget_item_allocations')
-            .select('item_id, item_type, allocation_amount, needed_amount')
-            .eq('nation_id', nationId)
-            .eq('item_type', 'institution')
-            .order('created_at', { ascending: true }),
-        _supabase.from('ministry_institution_config')
-            .select('*')
+            .eq('enabled', true)
     ]);
     } catch (e) {
         console.warn('[loadStatEffectSources] Failed to fetch effect sources:', e.message);
@@ -375,7 +368,6 @@ async function loadStatEffectSources(nationId, nation) {
     parseMinistryEffects(results[2].data || [], map, currentTick);
     parseDiplomaticEffects(results[3].data || [], map, currentTick);
     parseLeaderTraitEffects(results[4], map);
-    parseInstitutionEffects(results[6].data || [], results[7].data || [], nation, map);
     parseDebtPressureEffects(nation, map);
     rawStatConnections = results[5].data || [];
     parseStatConnectionEffects(rawStatConnections, nation, map);
@@ -576,113 +568,6 @@ function parseStatConnectionEffects(connections, nation, map) {
     }
 }
 
-var INSTITUTION_TIER_LABELS = [
-    { minPct: 100, label: 'Fully Funded', color: '#4ade80' },
-    { minPct: 90,  label: 'Stretched',    color: '#a3e635' },
-    { minPct: 75,  label: 'Strained',     color: '#fbbf24' },
-    { minPct: 50,  label: 'Underfunded',  color: '#f97316' },
-    { minPct: 25,  label: 'Critical',     color: '#ef4444' },
-    { minPct: 0,   label: 'Collapsed',    color: '#f43f5e' },
-];
-
-function getInstitutionTier(pct) {
-    for (var i = 0; i < INSTITUTION_TIER_LABELS.length; i++) {
-        if (pct >= INSTITUTION_TIER_LABELS[i].minPct) return INSTITUTION_TIER_LABELS[i];
-    }
-    return INSTITUTION_TIER_LABELS[INSTITUTION_TIER_LABELS.length - 1];
-}
-
-// Decay rates matching INSTITUTION_DECAY_TIERS in stats.js
-var INST_DECAY_RATES = [
-    { minPct: 100, primary: 0,   secondary: 0   },
-    { minPct: 90,  primary: 0.3, secondary: 0   },
-    { minPct: 75,  primary: 0.5, secondary: 0.2 },
-    { minPct: 50,  primary: 0.9, secondary: 0.5 },
-    { minPct: 25,  primary: 1.7, secondary: 0.9 },
-    { minPct: 0,   primary: 2.7, secondary: 1.7 },
-];
-
-function getInstDecayRate(pct, role) {
-    for (var i = 0; i < INST_DECAY_RATES.length; i++) {
-        if (pct >= INST_DECAY_RATES[i].minPct) return INST_DECAY_RATES[i][role];
-    }
-    return INST_DECAY_RATES[INST_DECAY_RATES.length - 1][role];
-}
-
-function parseInstitutionEffects(allocations, institutions, nation, map) {
-    // Build funding pct map
-    var fundingMap = {};
-    for (var i = 0; i < allocations.length; i++) {
-        var row = allocations[i];
-        var needed = Number(row.needed_amount || 0);
-        fundingMap[row.item_id] = needed > 0
-            ? Math.min(200, Math.round((Number(row.allocation_amount || 0) / needed) * 100))
-            : 100;
-    }
-    // Show every institution on its covered stats — regardless of funding level
-    for (var j = 0; j < institutions.length; j++) {
-        var inst = institutions[j];
-        var pct = fundingMap[inst.id] !== undefined ? fundingMap[inst.id] : 100;
-        var tier = getInstitutionTier(pct);
-        var isFullyFunded = pct >= 100;
-        var isCollapsed = pct < 25;
-        var hasGrowth = !!inst.growth_stat;
-
-        var roles = ['primary', 'secondary'];
-        for (var r = 0; r < roles.length; r++) {
-            var statKey = inst[roles[r] + '_stat'];
-            if (!statKey) continue;
-
-            var rate = null;
-            var dir = 'up';
-            var badge = tier.label;
-
-            if (isFullyFunded) {
-                // Check if this institution has a growth stat that matches this stat key
-                if (hasGrowth && inst.growth_stat === statKey) {
-                    // Actively growing: +0.25/tick toward ceiling
-                    var currentVal = nation[statKey] !== undefined && nation[statKey] !== null ? Number(nation[statKey]) : 0;
-                    var ceiling = Number(inst.growth_ceiling || 30);
-                    if (currentVal < ceiling) {
-                        dir = 'up';
-                        rate = 0.25;
-                    } else {
-                        // At ceiling — holding
-                        dir = 'up';
-                        rate = null;
-                    }
-                } else {
-                    // Fully funded, no growth on this stat — holding (no decay)
-                    dir = 'up';
-                    rate = null;
-                }
-            } else {
-                // Underfunded — decaying
-                var decayRate = getInstDecayRate(pct, roles[r]);
-                if (decayRate > 0) {
-                    dir = 'down';
-                    rate = decayRate;
-                } else {
-                    // e.g. Stretched secondary = 0 decay
-                    dir = 'up';
-                    rate = null;
-                    badge = tier.label;
-                }
-            }
-
-            var label = inst.institution_name || inst.name;
-            addEffectToMap(map, statKey, label, dir, 'Institution', rate, null, {
-                fundingPct: pct,
-                tierLabel: badge,
-                tierColor: tier.color,
-                isCollapsed: isCollapsed,
-                isFullyFunded: isFullyFunded,
-                hasGrowthEffect: isFullyFunded && hasGrowth && inst.growth_stat === statKey,
-            });
-        }
-    }
-}
-
 // ── Debt Pressure: graduated stat effects from debt-to-budget ratio ──
 var DEBT_PRESSURE_TIERS_CLIENT = [
     { maxRatio: 0.60, label: 'Healthy',     color: '#4ade80', effects: {} },
@@ -880,32 +765,15 @@ function buildFeaturedAbpHTML(statKey) {
     for (var i = 0; i < effects.length; i++) {
         var eff = effects[i];
         var ext = eff.extras;
-        var isInst = eff.type === 'Institution' && ext;
         var isDebtP = ext && ext.isDebtPressure;
-        var hasTierColor = isInst || isDebtP;
+        var hasTierColor = isDebtP;
 
-        // Row class — collapsed institutions get warning background
-        var rowClass = 'featured-card__abp-row';
-        if (isInst && ext.isCollapsed) rowClass += ' featured-card__abp-row--collapsed';
-        h += '<div class="' + rowClass + '">';
+        h += '<div class="featured-card__abp-row">';
+        h += '<span class="featured-card__abp-name">' + escapeHtml(eff.name) + '</span>';
 
-        // Name — collapsed gets warning icon prefix
-        if (isInst && ext.isCollapsed) {
-            h += '<span class="featured-card__abp-name"><span class="featured-card__abp-warn">&#9888;</span>' + escapeHtml(eff.name) + '</span>';
-        } else {
-            h += '<span class="featured-card__abp-name">' + escapeHtml(eff.name) + '</span>';
-        }
-
-        // Arrow and rate
-        if (isInst && ext.isFullyFunded && !ext.hasGrowthEffect) {
-            // Holding entry — flat indicator, no rate
-            h += '<span class="featured-card__abp-arrow featured-card__abp-arrow--hold">&#9644;</span>';
-        } else {
-            var arrow = eff.direction === 'up' ? '&#9650;' : '&#9660;';
-            var arrowClass = eff.direction === 'up' ? 'featured-card__abp-arrow--up' : 'featured-card__abp-arrow--down';
-            if (hasTierColor) arrowClass += ' featured-card__abp-arrow--inst';
-            h += '<span class="featured-card__abp-arrow ' + arrowClass + '"' + (hasTierColor ? ' style="color:' + ext.tierColor + '"' : '') + '>' + arrow + '</span>';
-        }
+        var arrow = eff.direction === 'up' ? '&#9650;' : '&#9660;';
+        var arrowClass = eff.direction === 'up' ? 'featured-card__abp-arrow--up' : 'featured-card__abp-arrow--down';
+        h += '<span class="featured-card__abp-arrow ' + arrowClass + '"' + (hasTierColor ? ' style="color:' + ext.tierColor + '"' : '') + '>' + arrow + '</span>';
 
         if (eff.rate !== null && eff.rate !== undefined) {
             var sign = eff.direction === 'up' ? '+' : '-';
@@ -913,10 +781,8 @@ function buildFeaturedAbpHTML(statKey) {
             h += '<span class="featured-card__abp-rate"' + rateStyle + '>' + sign + (Math.round(Math.abs(Number(eff.rate)) * 100) / 100) + '/tick</span>';
         }
 
-        // Type badge — institutions and debt pressure get tier-specific badges
-        if (isInst) {
-            h += '<span class="featured-card__abp-type featured-card__abp-type--institution" style="background:' + ext.tierColor + '18;color:' + ext.tierColor + '">' + escapeHtml(ext.tierLabel) + '</span>';
-        } else if (isDebtP) {
+        // Type badge — debt pressure gets tier-specific badge
+        if (isDebtP) {
             h += '<span class="featured-card__abp-type featured-card__abp-type--debt-pressure" style="background:' + ext.tierColor + '18;color:' + ext.tierColor + '">' + escapeHtml(ext.tierLabel) + '</span>';
         } else {
             var typeClass = 'featured-card__abp-type--' + eff.type.toLowerCase().replace(/ /g, '-');

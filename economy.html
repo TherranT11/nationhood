@@ -33,7 +33,7 @@ import { RAW_SCALING_DIVISORS, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS } from '
 // Phase 10A/10B: trade-constants.js wiped to a label-only shell. None
 // of its exports are referenced from economy.html anymore — all goods-
 // trade UI was removed in 10B.
-import { ISSUE_CATEGORY_STATS, buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
+import { ISSUE_CATEGORY_STATS } from './js/game/stats.js';
 import { formatStatName } from './js/game/political-actions.js';
 import { getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, calculateDebtServiceBurden, SOVEREIGN_DEFAULT_CONFIG } from './js/game/sovereign-default.js';
 
@@ -68,7 +68,10 @@ var NATION_COLORS = {
 // ==================== TAXATION TAB STATE ====================
 var currentFaction = null;
 var taxConnections = [];
-var taxAdminFunding = { allocated: 0, needed: 0, fundingPct: 0 };
+// Tax Admin funding compliance bonus used to read from a tax_admin
+// institution's allocation. Institutions are removed; default to 100%
+// (no bonus, no penalty) until the rework lands.
+var taxAdminFunding = { allocated: 0, needed: 0, fundingPct: 100 };
 var taxRateChanges = {};  // legacy tax-key map; tax columns removed in 19-col schema
 var originalRates = {};   // legacy tax-key map; tax columns removed in 19-col schema
 var taxPendingBills = [];
@@ -97,7 +100,6 @@ initPage('economy', async function(state) {
         loadTradeAgreements(nation.id),
         loadAidData(nation.id),
         loadTaxConnections(),
-        loadTaxAdminFunding(nation),
         loadTaxPendingBills(nation.id),
         fetchActiveCoalition(_supabase, nation.id).then(function(c) { activeCoalition = c; }),
         loadIndustriesData(nation.id)
@@ -204,54 +206,10 @@ async function loadExpenditureData(nationId, nation) {
         }
     }
 
-    // Institution costs from config, scaled by funding levels from budget_item_allocations
-    {
-        var configRes = await _supabase.from('ministry_institution_config').select('*');
-        var allocRes = await _supabase.from('budget_item_allocations')
-            .select('item_id, item_type, allocation_amount, needed_amount')
-            .eq('nation_id', nationId)
-            .eq('item_type', 'institution')
-            .order('created_at', { ascending: true });
-        var allocMap = buildFundingPctMap(allocRes.data);
-        var population = Number(nation.population || 0);
-        var gdp = Number(nation.gdp || 0);
-        var catFundingSums = {}; // { fCat: { totalPct, count } }
-        for (var k = 0; k < (configRes.data || []).length; k++) {
-            var cfg = configRes.data[k];
-            var mKey = cfg.ministry_key;
-            var fCat = null;
-            for (var fc in FISCAL_TO_MINISTRY_KEY) {
-                if (FISCAL_TO_MINISTRY_KEY[fc] === mKey) { fCat = fc; break; }
-            }
-            if (!fCat) continue;
-            var baseVal = Number(cfg.base_cost_per_capita || 0);
-            var instNeeded = cfg.scaling_type === 'gdp' ? (baseVal / 100) * gdp : baseVal * population;
-            instNeeded *= inflationMult;
-            var instFundPct = getInstFundingPct(allocMap, cfg.id);
-            var instCost = instNeeded * (instFundPct / 100);
-            if (!catFundingSums[fCat]) catFundingSums[fCat] = { totalPct: 0, count: 0 };
-            catFundingSums[fCat].totalPct += instFundPct;
-            catFundingSums[fCat].count += 1;
-            if (!totals[fCat]) totals[fCat] = 0;
-            if (!details[fCat]) details[fCat] = [];
-            totals[fCat] += instCost;
-            if (instCost > 0) {
-                details[fCat].push({
-                    name: cfg.institution_name,
-                    cost: instCost,
-                    type: 'institution',
-                    needed: instNeeded,
-                    fundingPct: instFundPct
-                });
-            }
-        }
-        ministryFundingPcts = {};
-        for (var mc in catFundingSums) {
-            ministryFundingPcts[mc] = catFundingSums[mc].count > 0
-                ? Math.round(catFundingSums[mc].totalPct / catFundingSums[mc].count)
-                : 100;
-        }
-    }
+    // Institution costs used to be summed here; institutions are removed
+    // pending the funding rework. Per-ministry funding percentages no
+    // longer have a meaningful source until the rework lands.
+    ministryFundingPcts = {};
 
     expenditureData = totals;
     expenditureDetails = details;
@@ -785,42 +743,6 @@ async function loadTaxConnections() {
     qCacheSet(cacheKey, taxConnections, 5 * 60 * 1000);
 }
 
-
-async function loadTaxAdminFunding(nation) {
-    var cacheKey = 'tax_admin_funding_' + nation.id + '_t' + currentTick;
-    var cached = qCache(cacheKey);
-    if (cached) { taxAdminFunding = cached; return; }
-
-    var allocated = 0;
-    var needed = 0;
-
-    // Compute needed from ministry_institution_config
-    var { data: cfg } = await _supabase.from('ministry_institution_config')
-        .select('base_cost_per_capita, scaling_type')
-        .eq('id', 'tax_admin')
-        .single();
-    if (cfg) {
-        var population = Number(nation.population || 0);
-        var gdp = Number(nation.gdp || 0);
-        needed = cfg.scaling_type === 'gdp'
-            ? (Number(cfg.base_cost_per_capita) / 100) * gdp
-            : Number(cfg.base_cost_per_capita) * population;
-    }
-
-    // Read actual allocation from budget_item_allocations (written by funding bill enactment)
-    var { data: allocRows } = await _supabase.from('budget_item_allocations')
-        .select('item_id, item_type, allocation_amount, needed_amount')
-        .eq('nation_id', nation.id)
-        .eq('item_type', 'institution')
-        .eq('item_id', 'tax_admin')
-        .order('created_at', { ascending: false })
-        .limit(1);
-    var fundingPctMap = buildFundingPctMap(allocRows);
-    var fundingPct = getInstFundingPct(fundingPctMap, 'tax_admin');
-    allocated = needed * (fundingPct / 100);
-    taxAdminFunding = { allocated: allocated, needed: needed, fundingPct: fundingPct };
-    qCacheSet(cacheKey, taxAdminFunding, 5 * 60 * 1000);
-}
 
 async function loadTaxPendingBills(nationId) {
     var cacheKey = 'tax_pending_bills_' + nationId;
@@ -1435,27 +1357,10 @@ function renderMinistryPoliciesHtml(category) {
         return h;
     }
 
-    var institutions = [];
-    var policies = [];
-    for (var i = 0; i < items.length; i++) {
-        if (items[i].type === 'institution') {
-            institutions.push(items[i]);
-        } else {
-            policies.push(items[i]);
-        }
-    }
+    var policies = items.filter(function(it) { return it.type !== 'institution'; });
 
     var total = 0;
     h += '<div class="ministry-policy-list">';
-
-    if (institutions.length > 0) {
-        h += '<div class="ministry-section-label">Institutions</div>';
-        for (var j = 0; j < institutions.length; j++) {
-            total += institutions[j].cost;
-            var fpLabel = institutions[j].fundingPct !== undefined ? institutions[j].fundingPct + '% funded' : null;
-            h += budgetLineItem(institutions[j].name, institutions[j].cost, null, null, fpLabel);
-        }
-    }
 
     if (policies.length > 0) {
         h += '<div class="ministry-section-label">Policies</div>';
