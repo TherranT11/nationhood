@@ -3484,7 +3484,7 @@ async function processShippingRoutes(supabase, currentTick) {
 //     until at least one offer arrives). Phase 1 spec: "It will sit
 //     until at least 1 offer is made."
 //
-//   - Per-tick payment debits the buyer nation's budget_reserves and
+//   - Per-tick payment debits the buyer nation's treasury and
 //     credits the corp's cash + emits a revenue_trade event. (SOP
 //     path prints revenue ambiently — wrong model for trade agreements.)
 //
@@ -3895,14 +3895,19 @@ async function processTradeAgreementShipping(supabase, currentTick) {
 
         // Buyer nation pays. Skip if treasury can't cover (Phase 5 will
         // add late-payment / contract-default handling).
+        // Unit boundary: nation.budget is abstract (1 = $1B); revenue is
+        // raw dollars. Convert through 1e9 so the comparison + debit
+        // math stays in raw.
+        const RAW_PER_ABSTRACT = 1_000_000_000;
         const { data: buyer, error: bErr } = await supabase.from('nations')
-            .select('budget_reserves').eq('id', contract.nation_id).single();
+            .select('budget').eq('id', contract.nation_id).single();
         if (bErr || !buyer) {
             console.warn(`[TradeAgreementShipping] buyer fetch failed for ${contract.id}:`, bErr?.message);
             continue;
         }
-        const buyerReserves = Number(buyer.budget_reserves) || 0;
-        const canPay        = buyerReserves >= revenue;
+        const buyerBudgetAbstract = Number(buyer.budget) || 0;
+        const buyerBudgetRaw      = buyerBudgetAbstract * RAW_PER_ABSTRACT;
+        const canPay              = buyerBudgetRaw >= revenue;
 
         // Phase 8: payment-skipped tracking. When the buyer treasury
         // can't cover the contract this tick, increment
@@ -3955,7 +3960,7 @@ async function processTradeAgreementShipping(supabase, currentTick) {
 
         const actualPayment = revenue;
         const { error: debitErr } = await supabase.from('nations')
-            .update({ budget_reserves: buyerReserves - actualPayment })
+            .update({ budget: (buyerBudgetRaw - actualPayment) / RAW_PER_ABSTRACT })
             .eq('id', contract.nation_id);
         if (debitErr) {
             console.warn(`[TradeAgreementShipping] buyer debit failed for ${contract.id}:`, debitErr.message);

@@ -6097,10 +6097,14 @@ async function processSectorShifts(supabase, nationId, resolutions) {
 // Phase 4.3: charge a policy_option's upfront_cost against the nation's
 // treasury. The option stores cost in $M; we scale by the option's
 // upfront_scaling_stat (when defined and present on the nations row),
-// convert to raw dollars, then draw from budget_reserves first and
-// overflow to debt — same pattern as the government-bailout enactment.
-// Negative upfront values represent revenue and credit budget_reserves.
-// Zero / null values are no-ops.
+// convert to raw dollars, then draw from nation.budget (treasury) first
+// and overflow to debt — same pattern as the government-bailout
+// enactment. Negative upfront values represent revenue and credit
+// treasury. Zero / null values are no-ops.
+//
+// Unit boundary: nation.budget is abstract (1 = $1B), `dollars` and
+// nation.debt are raw. Convert via 1e9 so the floor + overflow math
+// stays in raw and only the persisted budget value is converted back.
 async function chargePolicyUpfrontCost(supabase, nationId, option) {
     if (!option) return;
     const base = Number(option.upfront_cost || 0);
@@ -6120,37 +6124,39 @@ async function chargePolicyUpfrontCost(supabase, nationId, option) {
     const dollars = Math.round(scaledM * 1_000_000); // option.upfront_cost is stored in $M
     if (dollars === 0) return;
 
-    const reserves = Number(nation.budget_reserves || 0);
+    const RAW_PER_ABSTRACT = 1_000_000_000;
+    const budgetAbstract = Number(nation.budget || 0);
+    const budgetRaw = budgetAbstract * RAW_PER_ABSTRACT;
     const debt = Number(nation.debt || 0);
 
     if (dollars > 0) {
-        // Cost: pull from reserves, overflow to debt.
-        const drawReserves = Math.max(0, Math.min(dollars, reserves));
-        const drawDebt = dollars - drawReserves;
-        const newReserves = Math.max(0, Math.round(reserves - drawReserves));
-        const newDebt = Math.max(0, Math.round(debt + drawDebt));
+        // Cost: pull from treasury, overflow to debt.
+        const drawBudget = Math.max(0, Math.min(dollars, budgetRaw));
+        const drawDebt   = dollars - drawBudget;
+        const newBudget  = Math.max(0, budgetRaw - drawBudget) / RAW_PER_ABSTRACT;
+        const newDebt    = Math.max(0, Math.round(debt + drawDebt));
         const { error } = await supabase
             .from('nations')
-            .update({ budget_reserves: newReserves, debt: newDebt })
+            .update({ budget: newBudget, debt: newDebt })
             .eq('id', nationId);
         if (error) {
             console.error('[chargePolicyUpfrontCost] cost update failed', { nationId, error: error.message });
             return;
         }
-        console.log(`[chargePolicyUpfrontCost] cost: $${Math.round(dollars / 1e6)}M (reserves: $${Math.round(drawReserves / 1e6)}M, debt: +$${Math.round(drawDebt / 1e6)}M) on nation ${nationId}`);
+        console.log(`[chargePolicyUpfrontCost] cost: $${Math.round(dollars / 1e6)}M (budget: -$${Math.round(drawBudget / 1e6)}M, debt: +$${Math.round(drawDebt / 1e6)}M) on nation ${nationId}`);
     } else {
-        // Revenue: credit reserves.
+        // Revenue: credit treasury.
         const credit = Math.abs(dollars);
-        const newReserves = Math.round(reserves + credit);
+        const newBudget = budgetAbstract + (credit / RAW_PER_ABSTRACT);
         const { error } = await supabase
             .from('nations')
-            .update({ budget_reserves: newReserves })
+            .update({ budget: newBudget })
             .eq('id', nationId);
         if (error) {
             console.error('[chargePolicyUpfrontCost] revenue update failed', { nationId, error: error.message });
             return;
         }
-        console.log(`[chargePolicyUpfrontCost] revenue: +$${Math.round(credit / 1e6)}M to reserves on nation ${nationId}`);
+        console.log(`[chargePolicyUpfrontCost] revenue: +$${Math.round(credit / 1e6)}M to treasury on nation ${nationId}`);
     }
 }
 
@@ -7829,37 +7835,45 @@ async function resolveTradeRatificationBill(supabase, bill, ctx) {
                         }
                         const { fromNation, toNation, amount } = endpoints;
 
-                        // The agreement is binding: receiver always gets the full
-                        // amount. Sender pays from reserves first; any shortfall
-                        // becomes debt (matches the discretionary-grant pattern at
-                        // bills.js#3543 — money has to come from somewhere).
+                        // The agreement is binding: receiver always gets the
+                        // full amount. Sender pays from treasury first; any
+                        // shortfall becomes debt (matches the discretionary-
+                        // grant pattern at bills.js#3543 — money has to come
+                        // from somewhere).
+                        //
+                        // Unit boundary: nation.budget is abstract (1 = $1B),
+                        // `amount` and nation.debt are raw dollars. Convert
+                        // through 1e9 at the arithmetic boundary so the
+                        // comparison + floor land in raw.
+                        const RAW_PER_ABSTRACT = 1_000_000_000;
                         const { data: rows } = await supabase.from('nations')
-                            .select('id, budget_reserves, debt').in('id', [fromNation, toNation]);
-                        const reserves = {};
-                        const debts = {};
+                            .select('id, budget, debt').in('id', [fromNation, toNation]);
+                        const budgets = {};   // abstract
+                        const debts = {};     // raw
                         for (const r of (rows || [])) {
-                            reserves[r.id] = Number(r.budget_reserves || 0);
-                            debts[r.id]    = Number(r.debt || 0);
+                            budgets[r.id] = Number(r.budget || 0);
+                            debts[r.id]   = Number(r.debt   || 0);
                         }
-                        const fromAfter  = Math.max(0, (reserves[fromNation] ?? 0) - amount);
-                        const shortfall  = Math.max(0, amount - (reserves[fromNation] ?? 0));
-                        const toAfter    = (reserves[toNation] ?? 0) + amount;
+                        const fromBudgetRaw = (budgets[fromNation] ?? 0) * RAW_PER_ABSTRACT;
+                        const fromAfter     = Math.max(0, fromBudgetRaw - amount) / RAW_PER_ABSTRACT;
+                        const shortfall     = Math.max(0, amount - fromBudgetRaw);
+                        const toAfter       = (budgets[toNation] ?? 0) + (amount / RAW_PER_ABSTRACT);
                         const fromDebtAfter = (debts[fromNation] ?? 0) + shortfall;
 
                         const { error: fromErr } = await supabase.from('nations')
-                            .update({ budget_reserves: fromAfter, debt: fromDebtAfter }).eq('id', fromNation);
+                            .update({ budget: fromAfter, debt: fromDebtAfter }).eq('id', fromNation);
                         if (fromErr) {
                             console.error('[resolveTradeRatification] transfer debit failed for', fromNation, fromErr.message);
                             continue;
                         }
                         const { error: toErr } = await supabase.from('nations')
-                            .update({ budget_reserves: toAfter }).eq('id', toNation);
+                            .update({ budget: toAfter }).eq('id', toNation);
                         if (toErr) {
                             console.error('[resolveTradeRatification] transfer credit failed for', toNation, toErr.message);
                             // Best-effort rollback so the sender doesn't eat the debt without the receiver getting paid.
                             await supabase.from('nations').update({
-                                budget_reserves: reserves[fromNation] ?? 0,
-                                debt: debts[fromNation] ?? 0
+                                budget: budgets[fromNation] ?? 0,
+                                debt:   debts[fromNation]   ?? 0
                             }).eq('id', fromNation);
                             continue;
                         }
@@ -9338,16 +9352,21 @@ async function enactBill(supabase, bill, currentTick) {
                     const cap = Math.max(0, 3 * valuation);
                     const payout = Math.min(requested, cap);
                     if (payout > 0) {
+                        // Pay out from nation.budget (treasury, abstract,
+                        // 1 = $1B); overflow becomes raw debt. Same
+                        // unit-boundary pattern as chargePolicyUpfrontCost.
+                        const RAW_PER_ABSTRACT = 1_000_000_000;
                         const { data: nation } = await supabase.from('nations')
-                            .select('budget_reserves, debt, gdp_growth').eq('id', bill.nation_id).single();
-                        const reserves = Number(nation?.budget_reserves || 0);
-                        const drawReserves = Math.max(0, Math.min(payout, reserves));
-                        const drawDebt = payout - drawReserves;
+                            .select('budget, debt, gdp_growth').eq('id', bill.nation_id).single();
+                        const budgetAbstract = Number(nation?.budget || 0);
+                        const budgetRaw      = budgetAbstract * RAW_PER_ABSTRACT;
+                        const drawBudget     = Math.max(0, Math.min(payout, budgetRaw));
+                        const drawDebt       = payout - drawBudget;
                         const currentGdp = Number(nation?.gdp_growth ?? 50);
                         const newGdp = Math.round(Math.max(0, Math.min(100, currentGdp + 0.1)) * 10) / 10;
                         await supabase.from('nations').update({
-                            budget_reserves: Math.round(reserves - drawReserves),
-                            debt: Math.round(Number(nation?.debt || 0) + drawDebt),
+                            budget: Math.max(0, budgetRaw - drawBudget) / RAW_PER_ABSTRACT,
+                            debt:   Math.round(Number(nation?.debt || 0) + drawDebt),
                             gdp_growth: newGdp,
                         }).eq('id', bill.nation_id);
                         // Bailout payout flows through the SSoT helper so
@@ -9360,7 +9379,7 @@ async function enactBill(supabase, bill, currentTick) {
                             p_delta:    payout,
                             p_tick:     currentTick,
                         });
-                        console.log(`[enactBill] gov_bailout: $${Math.round(payout / 1e6)}M to ${corp.faction_name} (reserves: $${Math.round(drawReserves / 1e6)}M, debt: +$${Math.round(drawDebt / 1e6)}M, gdp_growth: ${currentGdp} → ${newGdp})`);
+                        console.log(`[enactBill] gov_bailout: $${Math.round(payout / 1e6)}M to ${corp.faction_name} (budget: -$${Math.round(drawBudget / 1e6)}M, debt: +$${Math.round(drawDebt / 1e6)}M, gdp_growth: ${currentGdp} → ${newGdp})`);
                     } else {
                         console.log(`[enactBill] gov_bailout: payout capped to 0 (valuation $${Math.round(valuation / 1e6)}M)`);
                     }
@@ -33500,43 +33519,49 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 }
                 const { fromNation, toNation, amount } = endpoints;
 
-                // Atomic per-pair: read reserves+debt, debit reserves (floor 0)
+                // Atomic per-pair: read budget+debt, debit treasury (floor 0)
                 // with shortfall absorbed as debt, credit receiver in full.
                 // Skip on read failure — without correct baselines the UPDATEs
                 // below would overwrite values with garbage.
+                //
+                // Unit boundary: nation.budget is abstract (1 = $1B), `amount`
+                // and nation.debt are raw dollars. Convert through 1e9 at the
+                // arithmetic boundary so the comparison + floor land in raw.
+                const RAW_PER_ABSTRACT = 1_000_000_000;
                 const { data: rows, error: readErr } = await supabase.from('nations')
-                    .select('id, budget_reserves, debt')
+                    .select('id, budget, debt')
                     .in('id', [fromNation, toNation]);
                 if (readErr || !rows || rows.length < 2) {
-                    console.error('[recurring transfer] reserves read failed/incomplete; skipping agreement',
+                    console.error('[recurring transfer] treasury read failed/incomplete; skipping agreement',
                         agreement.id, readErr?.message || `got ${rows?.length || 0}/2 rows`);
                     continue;
                 }
-                const reserves: Record<string, number> = {};
-                const debts: Record<string, number> = {};
+                const budgets: Record<string, number> = {};   // abstract
+                const debts: Record<string, number> = {};     // raw
                 for (const r of rows) {
-                    reserves[r.id] = Number(r.budget_reserves || 0);
-                    debts[r.id]    = Number(r.debt || 0);
+                    budgets[r.id] = Number(r.budget || 0);
+                    debts[r.id]   = Number(r.debt   || 0);
                 }
-                const fromAfter     = Math.max(0, (reserves[fromNation] ?? 0) - amount);
-                const shortfall     = Math.max(0, amount - (reserves[fromNation] ?? 0));
-                const toAfter       = (reserves[toNation] ?? 0) + amount;
+                const fromBudgetRaw = (budgets[fromNation] ?? 0) * RAW_PER_ABSTRACT;
+                const fromAfter     = Math.max(0, fromBudgetRaw - amount) / RAW_PER_ABSTRACT;
+                const shortfall     = Math.max(0, amount - fromBudgetRaw);
+                const toAfter       = (budgets[toNation] ?? 0) + (amount / RAW_PER_ABSTRACT);
                 const fromDebtAfter = (debts[fromNation] ?? 0) + shortfall;
 
                 const { error: fromErr } = await supabase.from('nations')
-                    .update({ budget_reserves: fromAfter, debt: fromDebtAfter }).eq('id', fromNation);
+                    .update({ budget: fromAfter, debt: fromDebtAfter }).eq('id', fromNation);
                 if (fromErr) {
                     console.error('[recurring transfer] debit failed for', fromNation, fromErr.message);
                     continue;
                 }
                 const { error: toErr } = await supabase.from('nations')
-                    .update({ budget_reserves: toAfter }).eq('id', toNation);
+                    .update({ budget: toAfter }).eq('id', toNation);
                 if (toErr) {
                     console.error('[recurring transfer] credit failed for', toNation, toErr.message);
                     // Best-effort rollback so sender doesn't eat the debt without receiver getting paid.
                     await supabase.from('nations').update({
-                        budget_reserves: reserves[fromNation] ?? 0,
-                        debt: debts[fromNation] ?? 0
+                        budget: budgets[fromNation] ?? 0,
+                        debt:   debts[fromNation]   ?? 0
                     }).eq('id', fromNation);
                     continue;
                 }

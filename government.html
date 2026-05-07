@@ -2287,10 +2287,15 @@ async function loadBudgetData() {
         }
     } catch (_) { /* aid stays 0 */ }
 
-    // 2b. Recurring transfer flows — recipient side only, same reason
-    //     as above. Annualized by multiplying per-tick amount ×
-    //     TICKS_PER_YEAR. One-time transfers excluded.
+    // 2b. Recurring transfer flows — both sides. The receiving leg
+    //     credits the income panel ("Trade Agreements"); the sending
+    //     leg debits the cost panel ("Trade Obligations"). Until this
+    //     row landed on the cost side, recurring outflows hit
+    //     nation.debt off-panel and the displayed Balance silently
+    //     diverged from reality. Annualized via TICKS_PER_YEAR.
+    //     One-time transfers excluded — they fire once at ratification.
     let recurringReceivedAnnual = 0;
+    let recurringSentAnnual = 0;
     try {
         const { data: gtas } = await _supabase.from('trade_agreements')
             .select('nation_a_id, nation_b_id, articles')
@@ -2301,11 +2306,12 @@ async function loadBudgetData() {
                 if (art?.data?.transfer_type !== 'recurring') continue;
                 const endpoints = resolveTransferEndpoints(art, a);
                 if (!endpoints) continue;
-                if (endpoints.toNation !== nation.id) continue;
-                recurringReceivedAnnual += endpoints.amount * GAME_CONFIG.TICKS_PER_YEAR;
+                const annual = endpoints.amount * GAME_CONFIG.TICKS_PER_YEAR;
+                if (endpoints.toNation === nation.id)   recurringReceivedAnnual += annual;
+                if (endpoints.fromNation === nation.id) recurringSentAnnual     += annual;
             }
         }
-    } catch (_) { /* recurring stays 0 */ }
+    } catch (_) { /* recurring stays 0 on both sides */ }
 
     // 3. Expenditures: per-ministry institution costs and policy
     //    fiscal-category costs were both wiped when the Costs panel
@@ -2346,6 +2352,7 @@ async function loadBudgetData() {
         budget,
         aidReceived,
         recurringReceivedAnnual,
+        recurringSentAnnual,
         debtService: Number(budget.debtService || 0),
         debt: Number(nation.debt || 0),
         // Capture the nation's government type so _gbBuildCostRows can
@@ -2436,6 +2443,14 @@ function _gbBuildCostRows(d) {
     // sports-related ongoing costs (team salaries, training programs,
     // etc.) will roll up under the same descKey.
     const sportsCultureAnnual = Number(currentNation?.vola_stadium_annual_cost) || 0;
+    // Trade-agreement recurring transfers — the SENDING leg is a real
+    // per-tick outflow that hits nation.budget every tick. Surfacing
+    // it here so the displayed Balance accurately reflects what the
+    // tick processor is actually doing; before this row landed,
+    // recurring transfer obligations were drained off-panel and the
+    // headline Balance would over-state by the transfer amount. Stored
+    // raw → /1e9 to abstract for display alongside the other rows.
+    const tradeObligationsAnnual = _gbToAbstract(d.recurringSentAnnual || 0);
     return [
         { key: 'public_sector_wages',  name: 'Public Sector Wages',     yr: 0,                          descKey: 'publicSectorWages'    },
         { key: 'welfare_benefits',     name: 'Welfare Benefits',        yr: 0,                          descKey: 'welfareBenefits'      },
@@ -2447,6 +2462,7 @@ function _gbBuildCostRows(d) {
         { key: 'sports_culture',       name: 'Sports & Culture',        yr: sportsCultureAnnual,        descKey: 'sportsAndCulture'     },
         { key: 'foreign_aid',          name: 'Foreign Aid & Diplomacy', yr: 0,                          descKey: 'foreignAid'           },
         { key: 'discretionary',        name: 'Discretionary Programs',  yr: 0,                          descKey: 'discretionary'        },
+        { key: 'trade_obligations',    name: 'Trade Agreement Obligations', yr: tradeObligationsAnnual, descKey: 'tradeObligations'     },
         { key: 'debt_interest',        name: 'Interest on Debt',        yr: _gbToAbstract(d.debtService), descKey: 'debtInterest'   },
     ];
 }
