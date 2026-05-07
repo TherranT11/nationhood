@@ -12,7 +12,7 @@ import { PLATFORMS, STAT_NAMES, BAD_STATS, statDirection, platformMomentumInfo }
 import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, getGoverningStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
 import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsuit, fetchActiveLawsuits } from './game/lawsuits.js';
-import { getNationNames, resignPM, installHOG, investInVolaCulture, VOLA_INVESTMENT_LEVELS, claimLeadershipChallenge, postStadiumConstruction, VOLA_STADIUM_TIERS, bidToHostVwc } from './game/political-actions.js';
+import { getNationNames, resignPM, installHOG, investInVolaCulture, VOLA_INVESTMENT_LEVELS, claimLeadershipChallenge, postStadiumConstruction, VOLA_STADIUM_TIERS, bidToHostVwc, formMinorityGovernment } from './game/political-actions.js';
 import { isAbsoluteMonarchy, isSemiPresidential, hasParliamentaryPM, hasElectedPresident } from './game/government-types.js';
 import { fetchActiveCoalition } from './game/government-structure.js';
 import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './game/config.js';
@@ -73,6 +73,10 @@ const ROLES = [
 let _fundraiseUseCount = 0; // loaded from DB on init, not just session state
 let _noConfidenceCooldownTicks = 0; // ticks remaining before another vonc can be filed against the current PM party
 let _noConfidencePending = false;   // there's already a pending no_confidence bill in this nation
+// Form Minority Government — gate state. Loaded once during panel init so the
+// LEADER_ACTIONS render can lock/unlock the action without per-frame fetches.
+// Server re-validates everything; this is just the UI hint.
+let _minorityGate = { eligible: false, lockReason: 'Loading...' };
 
 async function loadFundraiseCount() {
     if (!_supabase || !_state?.faction?.id || !_state?.shard?.current_tick) return;
@@ -123,6 +127,103 @@ async function loadNoConfidenceState() {
         // Non-fatal: action defaults to unlocked if we can't determine state.
         console.warn('[PartyActions] loadNoConfidenceState failed:', e?.message || e);
     }
+}
+
+// Resolves the eligibility + lock-reason for the Form Minority Government
+// action. Mirrors the server-side gates in form_minority_government RPC
+// (sql/migrations/20261003_form_minority_government_rpc.sql) — kept in sync
+// so the UI lock copy matches what the RPC would have rejected with.
+async function loadMinorityGovState() {
+    _minorityGate = { eligible: false, lockReason: 'Loading...' };
+    if (!_supabase || !_state?.nation?.id || !_state?.faction?.id) return;
+    const nation = _state.nation;
+    const faction = _state.faction;
+    const tick = Number(_state?.shard?.current_tick) || 0;
+
+    const govType = (nation.government_type || '').toLowerCase();
+    if (govType.includes('absolute monarchy') || govType.includes('absolute_monarchy')) {
+        _minorityGate = { eligible: false, lockReason: 'Only available in parliamentary systems.' };
+        return;
+    }
+
+    if ((faction.seats || 0) <= 0) {
+        _minorityGate = { eligible: false, lockReason: 'Your party has no parliamentary seats.' };
+        return;
+    }
+
+    // Already-formed government blocks the action.
+    if (_activeCoalition && (_activeCoalition.status === 'formed' || _activeCoalition.status === 'caretaker')) {
+        if (_activeCoalition.formation_type === 'emergency_minority') {
+            _minorityGate = { eligible: false, lockReason: 'A minority government is already in place.' };
+        } else {
+            _minorityGate = { eligible: false, lockReason: 'A government is already in place.' };
+        }
+        return;
+    }
+
+    // Need a completed election. Use the same query shape as the RPC — latest
+    // election with results. fetchActiveCoalition already filters on this so
+    // we duplicate the lookup minimally.
+    const { data: latestElection } = await _supabase.from('elections')
+        .select('id, election_tick')
+        .eq('nation_id', nation.id)
+        .eq('status', 'completed')
+        .not('results', 'is', null)
+        .order('election_tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (!latestElection) {
+        _minorityGate = { eligible: false, lockReason: 'No completed election to form a government from.' };
+        return;
+    }
+
+    const ticksSinceElection = tick - Number(latestElection.election_tick || 0);
+    const formationDeadline = (typeof FORMATION_DEADLINE_TICKS === 'number') ? FORMATION_DEADLINE_TICKS : 3;
+    if (ticksSinceElection < formationDeadline) {
+        const remaining = formationDeadline - ticksSinceElection;
+        _minorityGate = { eligible: false,
+            lockReason: `Coalition window still open: ${remaining} tick${remaining !== 1 ? 's' : ''} remaining.` };
+        return;
+    }
+
+    // Reject if any party has outright majority — they should form normally.
+    const totalSeats = Number(nation.total_seats) || 100;
+    const majority = Math.floor(totalSeats / 2) + 1;
+    const { data: allPartiesData, error: pErr } = await _supabase.from('factions')
+        .select('id, faction_name, seats, last_seen_tick')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'party');
+    if (pErr) {
+        _minorityGate = { eligible: false, lockReason: 'Could not load party state.' };
+        return;
+    }
+    const allParties = allPartiesData || [];
+    const hasMajorityParty = allParties.some(p => (p.seats || 0) >= majority);
+    if (hasMajorityParty) {
+        _minorityGate = { eligible: false,
+            lockReason: 'A party already holds an outright majority — form a normal government instead.' };
+        return;
+    }
+
+    // Caller must be the largest active party (last_seen_tick within 4 ticks,
+    // mirroring INACTIVITY_TICKS in coalition-formation.js). Tiebreak: id ASC,
+    // matching the server.
+    const INACTIVITY_TICKS = 4;
+    const activeParties = allParties
+        .filter(p => (p.seats || 0) > 0 && (Number(p.last_seen_tick) || 0) >= tick - INACTIVITY_TICKS)
+        .sort((a, b) => (b.seats || 0) - (a.seats || 0) || (a.id < b.id ? -1 : 1));
+    const largest = activeParties[0];
+    if (!largest) {
+        _minorityGate = { eligible: false, lockReason: 'No active parties qualify to form a government.' };
+        return;
+    }
+    if (largest.id !== faction.id) {
+        _minorityGate = { eligible: false,
+            lockReason: `Only the largest active party (${largest.faction_name || 'unknown'}) may form a minority government.` };
+        return;
+    }
+
+    _minorityGate = { eligible: true, lockReason: '' };
 }
 
 const LEADER_ACTIONS = [
@@ -188,6 +289,16 @@ const LEADER_ACTIONS = [
         costColor: '#c8a832',
         moneyCost: 0,
         tags: ['GOVERNMENT', 'COALITION'],
+        locked: false,
+    },
+    {
+        id: 'form_minority_government',
+        name: 'Form Minority Government',
+        desc: 'Deadlock breaker. After the coalition window closes (3 ticks post-election) with no government formed, the leader of the largest active party can govern alone. Bills pass with -20% effective YES votes; a snap election fires automatically in 36 ticks if a stable coalition isn\'t formed before then.',
+        cost: 'GOVERNMENT',
+        costColor: '#c84',
+        moneyCost: 0,
+        tags: ['GOVERNMENT', 'DEADLOCK'],
         locked: false,
     },
     {
@@ -378,6 +489,7 @@ export async function initPartyActions(supabase, state) {
     // _administration is set above, otherwise cooldown silently skips on first load.
     await loadFundraiseCount();
     await loadNoConfidenceState();
+    await loadMinorityGovState();
 
     // Leadership Challenge gating: need to know whether the HOG seat is
     // vacant + whether THIS faction has already claimed for the current
@@ -1099,6 +1211,8 @@ function renderPage(root) {
             // existing coalition-formation UI (renderFormationTab).
             const electionTab = document.querySelector('.pa-subtab[data-panel="election"]');
             if (electionTab) electionTab.click();
+        } else if (actionId === 'form_minority_government') {
+            triggerFormMinorityGovernment();
         }
     });
 
@@ -1718,6 +1832,15 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             } else if (noSeats) {
                 isDisabled = true;
                 action.lockReason = 'Your party has no parliamentary seats.';
+            } else {
+                action.lockReason = '';
+            }
+        } else if (action.id === 'form_minority_government') {
+            // Eligibility loaded by loadMinorityGovState during panel init —
+            // mirrors the server-side gates in form_minority_government RPC.
+            if (!_minorityGate.eligible) {
+                isDisabled = true;
+                action.lockReason = _minorityGate.lockReason || 'Not currently available.';
             } else {
                 action.lockReason = '';
             }
@@ -4774,6 +4897,54 @@ async function triggerCallEarlyElections() {
 // cooldown) is mirrored server-side so a bypass still fails.
 
 let _leaveCoalitionSubmitting = false;
+let _formMinorityGovSubmitting = false;
+
+async function triggerFormMinorityGovernment() {
+    if (_formMinorityGovSubmitting) return;
+    if (!_state?.nation?.id) return;
+
+    if (!confirm(
+        'FORM MINORITY GOVERNMENT?\n\n' +
+        'Consequences:\n' +
+        '• Your party governs alone — no coalition partners\n' +
+        '• Bills pass with -20% effective YES votes\n' +
+        '• A snap election fires automatically in 36 ticks if a stable\n' +
+        '  coalition isn\'t formed before then\n' +
+        '• Other parties’ ministers are dismissed; only your PM remains\n\n' +
+        'Proceed?'
+    )) return;
+
+    _formMinorityGovSubmitting = true;
+    try {
+        const r = await formMinorityGovernment(_supabase, _state.nation.id);
+        if (!r?.success) {
+            const reasonCopy = {
+                invalid_nation:     'Nation context unavailable. Reload and try again.',
+                not_parliamentary:  'This action only applies to parliamentary governments.',
+                not_party_leader:   'Only a party leader can form a minority government.',
+                no_shard:           'Game state unavailable.',
+                no_election:        'No completed election to form a government from.',
+                gate_not_elapsed:   'The coalition window has not yet closed.',
+                majority_exists:    'A party already holds an outright majority — form a normal government instead.',
+                coalition_exists:   'A government has already been formed for this cycle.',
+                already_minority:   'A minority government is already in place.',
+                no_active_parties:  'No active parties qualify to form a government.',
+                not_largest_active: 'Only the largest active party may form a minority government.',
+                rpc_failed:         r?.error || 'Server error — try again.',
+            };
+            const copy = reasonCopy[r?.reason] || (r?.reason || 'Unknown error');
+            alert('Could not form minority government:\n\n' + copy);
+            return;
+        }
+        alert('Minority government formed.');
+        window.location.reload();
+    } catch (err) {
+        console.error('[PartyActions] Form Minority Government failed:', err);
+        alert('Failed to form minority government: ' + (err?.message || err));
+    } finally {
+        _formMinorityGovSubmitting = false;
+    }
+}
 
 async function triggerLeaveCoalition() {
     if (_leaveCoalitionSubmitting) return;
