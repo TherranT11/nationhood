@@ -1319,13 +1319,14 @@ function ministryRoleDescriptor(key, faction) {
 
 // Compact discretionary balance formatter — mirrors government.html's
 // formatDiscretionaryBalance shape so the two pages stay visually
-// consistent. Raw dollars in, "$1.5B" / "$120M" / "$8,500" / "$0" out.
+// consistent. Per the no-M spec for nation/ministry budgets, raw
+// dollars in, integer-millions out (e.g. 33000000 → "$33"). GDP /
+// debt headlines and corp cash keep their own M / B formatters
+// (formatCurrencyShort, etc.) — this one is nation/ministry only.
 function fmtDiscretionaryBalance(rawBalance) {
     const v = Number(rawBalance) || 0;
-    if (v >= 1e9) return '$' + (v / 1e9).toFixed(1) + 'B';
-    if (v >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M';
-    if (v > 0)    return '$' + Math.round(v).toLocaleString();
-    return '$0';
+    if (v <= 0) return '$0';
+    return '$' + Math.round(v / 1_000_000);
 }
 
 // Per-role action registry. PM gets the moved Call Early Elections and

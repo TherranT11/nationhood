@@ -751,14 +751,14 @@ async function insertMinisterActionTimelineEvent(ministryKey, actionName, tickOv
     }
 }
 
-// Format discretionary balance for display (shared across ministry card renderers)
+// Format discretionary balance for display (shared across ministry card renderers).
+// Nation/ministry budgets are integer-millions per spec — raw dollars
+// in, "$33" / "$2" / "$0" out. GDP / debt headlines + corp cash keep
+// their own M / B formatters (formatCurrencyShort, etc.); this is
+// the nation/ministry-only formatter.
 function formatDiscretionaryBalance(rawBalance) {
     const balance = Number(rawBalance || 0);
-    const fmt = balance >= 1000000000
-        ? '$' + (balance / 1000000000).toFixed(1) + 'B'
-        : balance >= 1000000
-        ? '$' + (balance / 1000000).toFixed(1) + 'M'
-        : balance > 0 ? '$' + Math.round(balance).toLocaleString() : '$0';
+    const fmt = balance > 0 ? '$' + Math.round(balance / 1_000_000) : '$0';
     const cls = balance > 0 ? 'color:var(--green)' : 'color:var(--red)';
     return { balance, fmt, cls };
 }
