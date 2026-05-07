@@ -628,27 +628,74 @@ function handleInAppAction(_href) {
 //  Refresh orchestrator
 // ──────────────────────────────────────────────────────────────────────
 
+// Corp-flavored: warn the player when any active executive's
+// contract is within EXEC_EXPIRY_WARNING_TICKS of running out, so
+// they can hit Renew before the corp tick processor flips the row
+// to status='expired' and vacates the role.
+const EXEC_EXPIRY_WARNING_TICKS = 3;
+async function checkExecContractsExpiring(faction, shard) {
+    if (!faction?.id || faction.faction_type !== 'corporation') return [];
+    const tick = Number(shard?.current_tick) || 0;
+    if (tick <= 0) return [];
+    const { data, error } = await _supabase.from('corp_executives')
+        .select('id, role, first_name, last_name, contract_end_tick')
+        .eq('faction_id', faction.id)
+        .eq('status', 'active');
+    if (error || !data) return [];
+    const rows = [];
+    for (const exec of data) {
+        const end = Number(exec.contract_end_tick) || 0;
+        if (!end) continue;
+        const remaining = end - tick;
+        if (remaining > EXEC_EXPIRY_WARNING_TICKS || remaining <= 0) continue;
+        const ticksLabel = remaining === 1 ? '1 tick' : `${remaining} ticks`;
+        rows.push({
+            title: `${exec.role} contract expiring`,
+            sub: `${exec.first_name || ''} ${exec.last_name || ''} — ${ticksLabel} left. Renew or lose the role.`,
+            href: 'actions.html',
+            // Per-occurrence dismissal so dismissing one expiring
+            // contract doesn't silence the warning for the next exec
+            // (or the next time this exec's renewal cycle runs out).
+            dismissId: `exec_expiring:${exec.id}:${end}`,
+        });
+    }
+    return rows;
+}
+
 async function refreshNotifications() {
     if (_inflight || !_ctx) return;
     _inflight = true;
     try {
         const { faction, nation, shard } = _ctx;
-        // Recompute roles every refresh. Mid-session ministry shuffles
-        // (cabinet reshuffle, snap election) need to flip gating in real
-        // time; caching roles indefinitely would silently miss that.
-        const { isPM, isTradeMin, isJusticeMin } = await detectRoles(faction, nation);
+        const isCorp = faction.faction_type === 'corporation';
+
+        let probes;
+        if (isCorp) {
+            // Corp-flavored checks only. Party checks (bills, elections,
+            // coalitions) are nonsensical for corps and would either
+            // 4xx or always return [] — skip them.
+            probes = [
+                checkExecContractsExpiring(faction, shard),
+            ];
+        } else {
+            // Recompute roles every refresh. Mid-session ministry shuffles
+            // (cabinet reshuffle, snap election) need to flip gating in real
+            // time; caching roles indefinitely would silently miss that.
+            const { isPM, isTradeMin, isJusticeMin } = await detectRoles(faction, nation);
+            probes = [
+                checkBills(faction, nation),
+                checkRecentElection(nation, shard),
+                checkPostElectionFormation(nation, shard),
+                checkCoalitionInvites(faction, nation),
+                checkChatUnread(faction),
+                checkTradeNegotiationMessages(faction, nation, isPM, isTradeMin),
+                checkLawsuits(nation, isJusticeMin),
+            ];
+        }
 
         // allSettled so a single failing query doesn't drop every other
         // notification on the floor.
-        const settled = await Promise.allSettled([
-            checkBills(faction, nation),
-            checkRecentElection(nation, shard),
-            checkPostElectionFormation(nation, shard),
-            checkCoalitionInvites(faction, nation),
-            checkChatUnread(faction),
-            checkTradeNegotiationMessages(faction, nation, isPM, isTradeMin),
-            checkLawsuits(nation, isJusticeMin),
-        ]);
+        const settled = await Promise.allSettled(probes);
         const rows = settled
             .filter(r => r.status === 'fulfilled' && Array.isArray(r.value))
             .flatMap(r => r.value);
@@ -666,14 +713,16 @@ async function refreshNotifications() {
 
 export async function initNotifications(ctx) {
     const wrap = document.querySelector('.notif-wrap');
-    if (!ctx?.faction || !ctx?.nation) {
+    if (!ctx?.faction) {
         if (wrap) wrap.style.display = 'none';
         return;
     }
-    // Notifications are scoped to political play. Corporations land on
-    // shared pages (news, wiki) without redirecting, so guard here so
-    // the bell never shows political alerts to a corp account.
-    if (ctx.faction.faction_type && ctx.faction.faction_type !== 'party') {
+    // Party flow needs both faction + nation (every party-flavored
+    // check runs against the nation row). Corp flow only needs the
+    // faction — corp-flavored checks (exec contracts, future:
+    // lawsuit responses, property events) key off faction.id alone.
+    const isCorp = ctx.faction.faction_type === 'corporation';
+    if (!isCorp && !ctx.nation) {
         if (wrap) wrap.style.display = 'none';
         return;
     }

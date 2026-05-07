@@ -824,6 +824,7 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
     let neg = null;
     let messages = [];
     let channel = null;
+    let pollTimer = null;
     let closed = false;
 
     const cleanupChannel = () => {
@@ -831,7 +832,12 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
         try { supabase.removeChannel(channel); } catch (_) { /* ignore */ }
         channel = null;
     };
-    const onPageUnload = () => cleanupChannel();
+    const cleanupPoll = () => {
+        if (!pollTimer) return;
+        clearInterval(pollTimer);
+        pollTimer = null;
+    };
+    const onPageUnload = () => { cleanupChannel(); cleanupPoll(); };
     window.addEventListener('beforeunload', onPageUnload);
 
     const close = () => {
@@ -839,6 +845,7 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
         closed = true;
         _activeNegotiationModals.delete(negotiationId);
         cleanupChannel();
+        cleanupPoll();
         window.removeEventListener('beforeunload', onPageUnload);
         overlay.remove();
         if (typeof onClose === 'function') onClose();
@@ -909,11 +916,70 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
     };
     markSeen();
 
+    // Latch — the open→fired transition runs onFired + schedules
+    // auto-close exactly once per modal lifecycle. Without this, a
+    // realtime UPDATE arriving at t=14.99s and the poll tick at
+    // t=15.0s can both pass the change-detection guard before either
+    // has written `neg`, run onFired twice, and schedule two closes.
+    let firedHandled = false;
+
+    // Single source of truth for absorbing a fresh negotiation row.
+    // Called from BOTH the realtime UPDATE listener and the polling
+    // fallback below — whichever one delivers the change first wins,
+    // the other becomes a no-op via the change-detection guard.
+    const reconcileNegRow = async () => {
+        if (closed) return;
+        const focusSnap = captureFocus(modalEl);
+        const chatDraft = modalEl.querySelector('[data-lnm-field="chat-input"]')?.value || '';
+        const previousStatus = neg?.status;
+        const previousActivity = neg?.last_activity_at;
+        const { data, error } = await fetchNegotiation(supabase, negotiationId);
+        if (closed) return;
+        if (error) {
+            console.warn('[loan-negotiation-modal] re-fetch failed:', error.message);
+            return;
+        }
+        if (!data) return;
+        // Skip the re-render entirely if nothing meaningful changed —
+        // last_activity_at advances on every server-side row touch,
+        // status flips capture the terminal transitions. Avoids
+        // thrashing the user's focus + chat draft on every poll tick.
+        if (data.status === previousStatus && data.last_activity_at === previousActivity) {
+            return;
+        }
+        neg = data;
+        pendingCollateral = Array.isArray(neg.collateral) ? neg.collateral.slice() : [];
+        renderModal(modalEl, neg, messages, viewerRole, pendingCollateral, collateralOptions);
+        wireActionHandlers(modalEl, supabase, negotiationId, () => neg, viewerRole, pendingCollateral, () => collateralOptions);
+        const chatIn = modalEl.querySelector('[data-lnm-field="chat-input"]');
+        if (chatIn && chatDraft && !chatIn.value) chatIn.value = chatDraft;
+        restoreFocus(modalEl, focusSnap);
+
+        if (!firedHandled && previousStatus === 'open' && neg.status === 'fired') {
+            firedHandled = true;
+            if (typeof onFired === 'function') {
+                try { await onFired(neg); } catch (e) {
+                    console.warn('[loan-negotiation-modal] onFired callback threw:', e?.message || e);
+                }
+            }
+            setTimeout(() => { if (!closed) close(); }, 3000);
+        }
+
+        markSeen();
+    };
+
     // ── Realtime subscriptions ───────────────────────────────────
     // One channel, two listeners. UPDATE on the negotiation row
     // triggers a re-fetch (because realtime payloads don't carry the
     // joined faction_name); INSERT on messages appends in-place.
     // De-dupe by id so the optimistic-or-not paths stay consistent.
+    //
+    // A 15s polling fallback covers cases where the WebSocket UPDATE
+    // never reaches this client — backgrounded tab, momentary network
+    // blip, expired auth token, channel error. Without it, a missed
+    // 'open' → 'fired' event leaves the modal interactive forever and
+    // lets the counterparty keep typing changes that the server will
+    // silently reject.
     channel = supabase.channel('lnm:' + negotiationId);
     channel
         .on('postgres_changes', {
@@ -922,49 +988,7 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
             table: 'loan_negotiations',
             filter: 'id=eq.' + negotiationId,
         }, async () => {
-            if (closed) return;
-            const focusSnap = captureFocus(modalEl);
-            // Preserve any in-flight chat draft so a counterparty term-
-            // change re-render doesn't wipe what you were typing.
-            const chatDraft = modalEl.querySelector('[data-lnm-field="chat-input"]')?.value || '';
-            const previousStatus = neg?.status;
-            const { data, error } = await fetchNegotiation(supabase, negotiationId);
-            if (closed) return;
-            if (error) {
-                console.warn('[loan-negotiation-modal] realtime re-fetch failed:', error.message);
-                return;
-            }
-            if (!data) return;
-            neg = data;
-            // Re-sync pending collateral to the new server state — any
-            // working-draft toggles the user hadn't applied are lost
-            // (consistent with how term inputs reset on remote update).
-            pendingCollateral = Array.isArray(neg.collateral) ? neg.collateral.slice() : [];
-            renderModal(modalEl, neg, messages, viewerRole, pendingCollateral, collateralOptions);
-            wireActionHandlers(modalEl, supabase, negotiationId, () => neg, viewerRole, pendingCollateral, () => collateralOptions);
-            // Restore chat draft only if the re-rendered input is empty —
-            // avoids clobbering a value the user managed to type during
-            // the brief re-render window.
-            const chatIn = modalEl.querySelector('[data-lnm-field="chat-input"]');
-            if (chatIn && chatDraft && !chatIn.value) chatIn.value = chatDraft;
-            restoreFocus(modalEl, focusSnap);
-
-            // Fire transition: open → fired. Notify the parent (so
-            // dashboards can refresh hero stats / cash cards), then
-            // schedule a celebratory auto-close. Manual close during
-            // the window short-circuits via the closed flag.
-            if (previousStatus === 'open' && neg.status === 'fired') {
-                if (typeof onFired === 'function') {
-                    try { await onFired(neg); } catch (e) {
-                        console.warn('[loan-negotiation-modal] onFired callback threw:', e?.message || e);
-                    }
-                }
-                setTimeout(() => { if (!closed) close(); }, 3000);
-            }
-
-            // Modal is open and just absorbed an update — bump seen so
-            // the inbox doesn't show this row as unread to the viewer.
-            markSeen();
+            await reconcileNegRow();
         })
         .on('postgres_changes', {
             event: 'INSERT',
@@ -980,6 +1004,12 @@ export async function mountLoanNegotiationModal({ supabase, negotiationId, onClo
             markSeen();
         })
         .subscribe();
+
+    // Polling fallback. Runs reconcileNegRow every 15s while the
+    // modal is open. The change-detection guard inside makes a no-op
+    // poll free, so this only re-renders when the server row has
+    // actually advanced beyond what the local state knows about.
+    pollTimer = setInterval(() => { reconcileNegRow(); }, 15000);
 
     return { close };
 }

@@ -170,6 +170,19 @@ export function renderCorpTopBar(container, opts = {}) {
                     <span class="corp-topbar__badge-btn" id="corp-name-badge" onclick="window._corpTopbarToggleDropdown()">[${escHtml(ticker.toUpperCase() || '--')}] ▾</span>
                     <div class="corp-topbar__dropdown" id="corp-faction-dropdown">${dropdownHtml}</div>
                 </div>
+                <span class="notif-wrap" style="display:inline-flex;">
+                    <button id="notif-bell" class="notif-bell" type="button" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
+                        <span class="notif-bell__icon">&#9788;</span>
+                        <span id="notif-dot" class="notif-bell__dot" hidden></span>
+                    </button>
+                    <div id="notif-dropdown" class="notif-dropdown" hidden role="dialog" aria-label="Notifications">
+                        <div class="notif-dropdown__header">
+                            <span class="notif-dropdown__title">Notifications</span>
+                            <span class="notif-dropdown__count" id="notif-count">0</span>
+                        </div>
+                        <div class="notif-dropdown__list" id="notif-list"></div>
+                    </div>
+                </span>
                 <button class="corp-topbar__btn" onclick="window._corpTopbarToggleTheme()" id="theme-toggle">${isLightMode ? 'Dark' : 'Light'}</button>
                 ${activeTab === 'home2' ? `<button class="corp-topbar__btn" onclick="window._corpHome2ToggleMode()" id="home2-mode-toggle" title="Home2 paper/dark mode">${(document.documentElement.getAttribute('data-mode') === 'paper') ? 'Dark' : 'Paper'}</button>` : ''}
                 <button class="corp-topbar__btn corp-topbar__btn--logout" onclick="window._corpTopbarLogout()">Logout</button>
@@ -220,10 +233,11 @@ export function renderCorpTopBar(container, opts = {}) {
     // Start countdown timer
     startCorpCountdown(shard);
 
-    // Lazy-load the messaging bubble. Mirrors the party-side init in
-    // common.js so corp pages get the same floating chat affordance via
-    // the one shared topbar call. Module-level _msgInjected flag keeps
-    // it one-shot per page load even if renderCorpTopBar re-renders.
+    // Lazy-load the messaging bubble + notification dropdown. Mirrors
+    // the party-side init in common.js so corp pages get the same
+    // floating chat affordance and bell via the one shared topbar
+    // call. Module-level _msgInjected flag keeps both one-shot per
+    // page load even if renderCorpTopBar re-renders.
     if (faction?.id && !_msgInjected) {
         _msgInjected = true;
         const schedule = typeof requestIdleCallback === 'function' ? requestIdleCallback : setTimeout;
@@ -231,6 +245,9 @@ export function renderCorpTopBar(container, opts = {}) {
             import('./messaging.js')
                 .then(m => m.initMessaging(faction, opts.nation || null, shard))
                 .catch(err => console.warn('[corp-topbar] messaging init failed:', err));
+            import('./notifications.js')
+                .then(m => m.initNotifications({ faction, nation: opts.nation || null, shard }))
+                .catch(err => console.warn('[corp-topbar] notifications init failed:', err));
         });
     }
 }

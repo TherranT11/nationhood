@@ -34,12 +34,6 @@ function getInitials(first, last) {
     return (first || '?')[0] + (last || '?')[0];
 }
 
-function skillColor(s) {
-    if (s >= 70) return '#5cb85c';
-    if (s >= 50) return '#ca5';
-    return '#c84';
-}
-
 function fmtSalary(n) {
     if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
     if (n >= 1e3) return '$' + (n / 1e3).toFixed(0) + 'k';
@@ -184,7 +178,6 @@ export function renderCorpActions(container, ctx) {
             } else {
                 const name = exec ? `${exec.first_name} ${exec.last_name}` : '—';
                 const age = exec ? exec.age : 0;
-                const sk = exec ? exec.skill : 0;
                 const sal = exec ? exec.salary_per_year : 0;
                 const portrait = exec ? getInitials(exec.first_name, exec.last_name) : '—';
 
@@ -196,12 +189,6 @@ export function renderCorpActions(container, ctx) {
                         </div>
                         <div style="font-size:13px;font-weight:600;color:${isSel ? 'var(--text-bright,#f0efe6)' : 'var(--text-muted,#666)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(name)}${age ? ` <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">(${age})</span>` : ''}</div>
                         <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
-                            <div style="display:flex;align-items:center;gap:3px;flex:1;">
-                                <div style="flex:1;height:3px;background:var(--border-0,rgba(255,255,255,0.06));">
-                                    <div style="width:${sk}%;height:100%;background:${skillColor(sk)};"></div>
-                                </div>
-                                <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);width:18px;text-align:right;">${sk}</span>
-                            </div>
                             <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);">${fmtSalary(sal)}/yr</span>
                         </div>
                     </div>

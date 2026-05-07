@@ -8480,10 +8480,25 @@ async function resolveExpiredVotes(supabase, nationId) {
         // The royal_assent_deadline gives processRoyalAssent (advance-tick) a tick
         // to auto-enact if the Monarch never acts — without it, an inactive
         // Monarch could freeze every passed bill in the nation indefinitely.
+        //
+        // 'ratification' is excluded: bilateral by design (trade negotiations,
+        // diplomatic proposals, retaliatory tariffs, embargos all need both
+        // parliaments to flip status='passed' on the same tick so each side's
+        // resolveX_RatificationBill can see the other side as 'passed' and
+        // create the trade_agreements / activate the pipeline). Routing
+        // through royal assent parks the bill in 'awaiting_royal_assent' for
+        // ROYAL_ASSENT_TICKS, during which the OTHER parliament's mirror bill
+        // resolves, sees the stale status, and bails out of the bilateral
+        // activation. By the time the monarch decides, neither side's
+        // resolver runs and the agreement silently never lands. Domestic
+        // policy bills still go through royal assent — only the bilateral
+        // ratification path bypasses, which matches real-world constitutional
+        // convention (parliaments ratify treaties; sovereigns sign laws).
         const isMonarchy = isAbsoluteMonarchy(nation);
         const isOrdinaryBill = !isNoConfidence && !isFoundational
             && bill.bill_type !== 'impeachment_motion' && bill.bill_type !== 'impeachment_conviction'
-            && bill.bill_type !== 'veto_override' && bill.bill_type !== 'default_resolution';
+            && bill.bill_type !== 'veto_override' && bill.bill_type !== 'default_resolution'
+            && bill.bill_type !== 'ratification';
         if (isMonarchy && passed && isOrdinaryBill) {
             await supabase.from('bills').update({
                 status: 'awaiting_royal_assent',
