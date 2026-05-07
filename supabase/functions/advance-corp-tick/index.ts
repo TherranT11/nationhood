@@ -4647,7 +4647,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     // wrong project / silent failure). Bump the date suffix on each
     // intentional redeploy so we can distinguish stale invocations
     // from new ones in the function logs.
-    console.log('[advance-corp-tick] BUILD_MARKER 2026-04-25-c (workforce-audit-followup)');
+    console.log('[advance-corp-tick] BUILD_MARKER 2026-05-07-a (run-now-sync-visible)');
 
     // 1. Read shard to get current tick and scheduling info
     const { data: shard, error: shardErr } = await supabase
@@ -6203,10 +6203,17 @@ Deno.serve(async (req) => {
                 new Promise((_, reject) => setTimeout(() => reject(new Error("body read timeout")), 3000)),
             ]);
             force = body?.force === true;
-            runNow = body?.run_now === true;
+            runNow = body?.run_now === true || body?.runNow === true;
         } catch (_) {
             // No body, invalid JSON, or timeout — not forced
         }
+
+        const url = new URL(req.url);
+        force = force || url.searchParams.get('force') === 'true' || req.headers.get('x-force') === 'true';
+        runNow = runNow
+            || url.searchParams.get('run_now') === 'true'
+            || url.searchParams.get('runNow') === 'true'
+            || req.headers.get('x-run-now') === 'true';
 
         console.log(`[advance-corp-tick] Invoked (force=${force}, run_now=${runNow})`);
 
