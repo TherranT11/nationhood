@@ -32,6 +32,13 @@ let _chatChannel = null;
 export async function openLawsuitRuleModal(lawsuit, judgeFaction) {
     if (!lawsuit?.id || !judgeFaction?.id) return;
 
+    // mountOverlay() invokes closeModal() to clear any prior session,
+    // and closeModal() nukes _state to null. So the cleanup MUST run
+    // before _state is populated — otherwise the brand-new state gets
+    // wiped and render() bails on the !_state guard, leaving an empty
+    // dim overlay (the symptom Justice Ministers were reporting).
+    mountOverlay();
+
     _state = {
         lawsuit,
         judge: judgeFaction,
@@ -47,7 +54,6 @@ export async function openLawsuitRuleModal(lawsuit, judgeFaction) {
         error: null,
     };
 
-    mountOverlay();
     render();
     await Promise.all([loadChat(), loadLoan(), loadCurrentTick()]);
     subscribeChat();
