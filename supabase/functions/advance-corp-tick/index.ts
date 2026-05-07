@@ -6210,13 +6210,23 @@ Deno.serve(async (req) => {
 
         console.log(`[advance-corp-tick] Invoked (force=${force}, run_now=${runNow})`);
 
-        // Background tasks pattern: kick off the work but don't block the
-        // HTTP response on it. The 150s "request idle timeout" gateway will
-        // close the request after that long even if the worker is still
-        // chewing — so we respond immediately, then EdgeRuntime.waitUntil
-        // keeps the worker alive (up to the 400s wall-clock limit) until
-        // advanceCorpTick finishes. The function does its own idempotency
-        // check internally (line 4469), so safe to fire on every invocation.
+        // For run_now / force calls, this function is being invoked as a
+        // synchronous dependency (usually by advance-tick or an admin repair).
+        // Await it so the caller sees the real result instead of a false
+        // positive "started" response while failures disappear into logs.
+        if (runNow || force) {
+            const result = await advanceCorpTick(supabase, { force, runNow });
+            return new Response(
+                JSON.stringify({ status: result?.status || "processed", result }),
+                { headers: corsHeaders }
+            );
+        }
+
+        // Normal cron invocations stay backgrounded: the cron fires every
+        // minute and advanceCorpTick has its own persisted idempotency guard.
+        // EdgeRuntime.waitUntil keeps the worker alive after the HTTP response
+        // returns, but any background failure is logged and can be retried by
+        // the next cron fire if corp_last_processed_tick was not claimed.
         const work = advanceCorpTick(supabase, { force, runNow })
             .catch((err) => {
                 console.error("[advance-corp-tick] Background work failed:", err);
