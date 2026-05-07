@@ -28,6 +28,11 @@ let _scheduledElections = [];
 // Active coalition (virtualized for presidential) from fetchActiveCoalition,
 // used by the header's Government Status line. Single fetch at init time.
 let _activeCoalition = null;
+// Active Prime Minister / Head of Government row. Kept separate from
+// _activeCoalition because a malformed/stale formation can exist without a
+// seated PM; that vacancy needs a recovery workflow, not a misleading
+// "Government Formed" dead end.
+let _activeHog = null;
 let _majoritySeats = 0;
 let _lastElectionTick = null;
 let _currentTick = 0;
@@ -68,7 +73,7 @@ export async function initCoalitionFormation(supabase, state) {
 
     // Fetch latest election, current tick, active coalition, all parties,
     // scheduled elections, and active platforms used by coalition matching.
-    const [electionResult, shardResult, activeCoalition, partiesResult, scheduledResult, platformsResult] = await Promise.all([
+    const [electionResult, shardResult, activeCoalition, partiesResult, scheduledResult, platformsResult, hogResult] = await Promise.all([
         supabase.from('elections')
             .select('id, election_type, election_tick, status')
             .eq('nation_id', nation.id)
@@ -101,6 +106,11 @@ export async function initCoalitionFormation(supabase, state) {
             .eq('nation_id', nation.id)
             .eq('status', 'active')
             .order('slot', { ascending: true }),
+        supabase.from('head_of_government')
+            .select('id, faction_id, first_name, last_name, active')
+            .eq('nation_id', nation.id)
+            .eq('active', true)
+            .maybeSingle(),
     ]);
 
     _currentTick = shardResult.data?.current_tick ?? 0;
@@ -109,6 +119,7 @@ export async function initCoalitionFormation(supabase, state) {
     _majoritySeats = Math.ceil(_totalSeats / 2) + 1;
     _scheduledElections = scheduledResult?.data || [];
     _activeCoalition = activeCoalition || null;
+    _activeHog = hogResult?.data || null;
     _platformsByFaction = {};
     if (platformsResult?.error) {
         console.warn('[CoalitionFormation] faction_platforms query failed:', platformsResult.error.message);
@@ -385,12 +396,29 @@ export async function renderFormationTab(root) {
     }
 
     if (!_formationNeeded) {
+        const hasPmVacancy = _activeCoalition && !_activeHog && !hasElectedPresident(_state.nation);
+        if (hasPmVacancy) {
+            const myFactionId = _state.faction?.id;
+            const coalitionIds = Array.isArray(_activeCoalition.party_ids) ? _activeCoalition.party_ids : [];
+            const isCoalitionMember = coalitionIds.includes(myFactionId);
+            root.innerHTML = `${header}${makeupRow}
+            <div class="cf-page">
+                <div class="cf-no-formation">
+                    <div class="cf-no-icon" style="color:var(--accent);">!</div>
+                    <div class="cf-no-title">Prime Minister Vacant</div>
+                    <div class="cf-no-desc">A coalition exists, but no Prime Minister is seated. ${isCoalitionMember
+                        ? 'Use <strong>Actions → Leadership Challenge</strong> to claim the Premiership for your party leader; it resolves on the next tick.'
+                        : 'Only coalition members can use <strong>Leadership Challenge</strong> to fill the vacancy.'}</div>
+                </div>
+            </div>`;
+            return;
+        }
         root.innerHTML = `${header}${makeupRow}
         <div class="cf-page">
             <div class="cf-no-formation">
                 <div class="cf-no-icon">✓</div>
                 <div class="cf-no-title">Government Formed</div>
-                <div class="cf-no-desc">A coalition government is currently active. No formation needed.</div>
+                <div class="cf-no-desc">A coalition government is currently active with a seated Prime Minister. No formation needed.</div>
             </div>
         </div>`;
         return;

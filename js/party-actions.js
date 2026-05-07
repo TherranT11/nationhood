@@ -33,6 +33,7 @@ let _lawsuits = [];          // faction's lawsuits (active + resolved)
 let _standing = null;        // faction_electoral_standing row (pillar scores)
 let _seatTxInProgress = false; // module-level lock for Grant/Revoke Seats actions
 let _hogActive = null;         // active head_of_government row, or null when seat is vacant
+let _activeCoalition = null;    // canonical government_formations / virtual coalition state
 let _leadershipChallengeClaimed = false; // true after the player clicks the action this tick
 
 // ===== BLOCS (Phase 1: formation & membership) =====
@@ -182,7 +183,7 @@ const LEADER_ACTIONS = [
     {
         id: 'form_coalition',
         name: 'Form Coalition',
-        desc: 'Open the coalition formation flow. Available whenever there is no active government — invite parties, assemble at least the majority threshold of seats, then assign ministries and install a new Prime Minister. Greys out automatically when a coalition is already in place.',
+        desc: 'Open the coalition formation flow when no coalition government exists — invite parties, assemble at least the majority threshold of seats, then assign ministries and install a new Prime Minister. If a coalition exists but the PM is vacant, coalition members should use Leadership Challenge instead.',
         cost: 'GOVERNMENT',
         costColor: '#c8a832',
         moneyCost: 0,
@@ -360,6 +361,7 @@ export async function initPartyActions(supabase, state) {
     // Populate caretaker flag on the nation so the action-locking check at
     // render time (Call Early Elections / Resign as PM) sees it. Without
     // this, both actions stayed clickable after the legislature dissolved.
+    _activeCoalition = coalition || null;
     if (state.nation) {
         state.nation.__coalition_status = coalition?.status || null;
     }
@@ -1696,15 +1698,23 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             const isParliamentaryLike = !isAM && !isPres
                 && (govType.includes('parliamentary') || govType.includes('semi-presidential') ||
                     govType.includes('semi_presidential') || nation?.hos_election_method === 'hereditary');
-            const hasActiveCoalition = !!_administration && !!_administration.pm_party_id;
+            const hasCoalitionRow = !!_activeCoalition;
+            const hasSeatedPm = !!_hogActive;
+            const coalitionPartyIds = Array.isArray(_activeCoalition?.party_ids) ? _activeCoalition.party_ids : [];
+            const inCoalition = coalitionPartyIds.includes(faction.id);
             const noSeats = !faction.seats || faction.seats <= 0;
 
             if (!isParliamentaryLike) {
                 isDisabled = true;
                 action.lockReason = 'Coalition formation only applies to parliamentary systems.';
-            } else if (hasActiveCoalition) {
+            } else if (hasCoalitionRow && hasSeatedPm) {
                 isDisabled = true;
                 action.lockReason = 'A government is already in place.';
+            } else if (hasCoalitionRow && !hasSeatedPm) {
+                isDisabled = true;
+                action.lockReason = inCoalition
+                    ? 'A coalition exists but the Prime Minister is vacant — use Leadership Challenge instead.'
+                    : 'A coalition exists but the Prime Minister is vacant; only coalition members can claim it.';
             } else if (noSeats) {
                 isDisabled = true;
                 action.lockReason = 'Your party has no parliamentary seats.';
@@ -4789,6 +4799,7 @@ async function triggerLeadershipChallenge(root, faction) {
                 pm_already_installed:  'A Prime Minister is already serving — vacancy required.',
                 no_coalition:          'No active coalition.',
                 not_in_coalition:      'Your party is not in the governing coalition.',
+                not_owner:             'This session is not authorized to act for that party. Refresh or re-select your faction; admins must deploy the admin-inspector Leadership Challenge migration.',
                 no_leader:             'Your party has no leader to install.',
                 no_seats:              'Your party holds no parliamentary seats.',
                 rpc_failed:            'Server function call failed. The claim_leadership_challenge RPC may not be deployed yet — run migration 20260917_claim_leadership_challenge_rpc.sql.',
