@@ -75,12 +75,15 @@ export function calculateNationalBudget(nation, opts = {}) {
 // Per-tick national debt math (v3 — bonds retired).
 //
 // Single rule: balance = revenue − expenditures.
-//   surplus → debt shrinks by per-tick balance, treasury drains
-//   deficit → debt grows by per-tick balance, treasury unchanged
+//   surplus → debt shrinks by per-tick balance, treasury untouched
+//   deficit → debt grows by per-tick balance, treasury untouched
 //             (implicit borrow — no bond offers, no printing)
 //
 // Mirrors the Government Budget panel's monthly-balance math so
 // what the player sees on the cards is what gets applied each tick.
+// Treasury is a separate stockpile — discretionary cash on hand
+// that only moves via explicit transactions (foreign aid, asset
+// sales, etc.), not by routine surplus/deficit netting.
 //
 // Unit handling: nation.budget is "abstract" (small number,
 // displayed directly), nation.debt is raw dollars (1 abstract =
@@ -145,34 +148,29 @@ export async function processNationDebtTick(supabase, nation) {
     if (perTickBalance === 0) return null;
 
     const debtRaw = Number(nation?.debt) || 0;
-    const treasury = Number(nation?.budget) || 0;
 
     if (perTickBalance > 0) {
-        // Surplus → pay down debt, drain treasury by the same amount.
-        // Skip when there's no debt: surplus just sits in treasury.
+        // Surplus → pay down debt. Treasury is independent of routine
+        // surplus/deficit math; per spec, "balance +3 means debt -3,
+        // budget unchanged." When there's no debt left, the surplus
+        // just dissolves — there is no implicit treasury accumulation
+        // tied to budget netting.
         if (debtRaw <= 0) return null;
-        // Cap paydown at available treasury so we never pay more than
-        // we actually have on hand.
-        const tickPaydown = Math.min(perTickBalance, treasury);
-        if (tickPaydown <= 0) return null;
-
-        const newBudget = treasury - tickPaydown;
-        const newDebtRaw = Math.max(0, debtRaw - tickPaydown * _RAW_PER_ABSTRACT);
+        const newDebtRaw = Math.max(0, debtRaw - perTickBalance * _RAW_PER_ABSTRACT);
         const { error } = await supabase.from('nations')
-            .update({ budget: newBudget, debt: newDebtRaw })
+            .update({ debt: newDebtRaw })
             .eq('id', nation.id);
         if (error) {
             console.warn(`[Debt] surplus update failed for ${nation.name}:`, error.message);
             return null;
         }
-        nation.budget = newBudget;
         nation.debt = newDebtRaw;
-        return { mode: 'surplus', perTickBalance: tickPaydown, newBudget, newDebtRaw };
+        return { mode: 'surplus', perTickBalance, newDebtRaw };
     }
 
-    // perTickBalance < 0 → deficit. Debt grows by the deficit;
-    // treasury is left alone (no implicit cash drain — the spending
-    // happened, the shortfall is now on the books as more debt).
+    // perTickBalance < 0 → deficit. Debt grows by the deficit; treasury
+    // is unchanged (implicit borrow — the shortfall is now on the books
+    // as more debt rather than a cash drain).
     const deficit = -perTickBalance;
     const newDebtRaw = debtRaw + deficit * _RAW_PER_ABSTRACT;
     const { error } = await supabase.from('nations')
