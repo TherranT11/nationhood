@@ -1117,43 +1117,49 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 }
                 const { fromNation, toNation, amount } = endpoints;
 
-                // Atomic per-pair: read reserves+debt, debit reserves (floor 0)
+                // Atomic per-pair: read budget+debt, debit treasury (floor 0)
                 // with shortfall absorbed as debt, credit receiver in full.
                 // Skip on read failure — without correct baselines the UPDATEs
                 // below would overwrite values with garbage.
+                //
+                // Unit boundary: nation.budget is abstract (1 = $1B), `amount`
+                // and nation.debt are raw dollars. Convert through 1e9 at the
+                // arithmetic boundary so the comparison + floor land in raw.
+                const RAW_PER_ABSTRACT = 1_000_000_000;
                 const { data: rows, error: readErr } = await supabase.from('nations')
-                    .select('id, budget_reserves, debt')
+                    .select('id, budget, debt')
                     .in('id', [fromNation, toNation]);
                 if (readErr || !rows || rows.length < 2) {
-                    console.error('[recurring transfer] reserves read failed/incomplete; skipping agreement',
+                    console.error('[recurring transfer] treasury read failed/incomplete; skipping agreement',
                         agreement.id, readErr?.message || `got ${rows?.length || 0}/2 rows`);
                     continue;
                 }
-                const reserves: Record<string, number> = {};
-                const debts: Record<string, number> = {};
+                const budgets: Record<string, number> = {};   // abstract
+                const debts: Record<string, number> = {};     // raw
                 for (const r of rows) {
-                    reserves[r.id] = Number(r.budget_reserves || 0);
-                    debts[r.id]    = Number(r.debt || 0);
+                    budgets[r.id] = Number(r.budget || 0);
+                    debts[r.id]   = Number(r.debt   || 0);
                 }
-                const fromAfter     = Math.max(0, (reserves[fromNation] ?? 0) - amount);
-                const shortfall     = Math.max(0, amount - (reserves[fromNation] ?? 0));
-                const toAfter       = (reserves[toNation] ?? 0) + amount;
+                const fromBudgetRaw = (budgets[fromNation] ?? 0) * RAW_PER_ABSTRACT;
+                const fromAfter     = Math.max(0, fromBudgetRaw - amount) / RAW_PER_ABSTRACT;
+                const shortfall     = Math.max(0, amount - fromBudgetRaw);
+                const toAfter       = (budgets[toNation] ?? 0) + (amount / RAW_PER_ABSTRACT);
                 const fromDebtAfter = (debts[fromNation] ?? 0) + shortfall;
 
                 const { error: fromErr } = await supabase.from('nations')
-                    .update({ budget_reserves: fromAfter, debt: fromDebtAfter }).eq('id', fromNation);
+                    .update({ budget: fromAfter, debt: fromDebtAfter }).eq('id', fromNation);
                 if (fromErr) {
                     console.error('[recurring transfer] debit failed for', fromNation, fromErr.message);
                     continue;
                 }
                 const { error: toErr } = await supabase.from('nations')
-                    .update({ budget_reserves: toAfter }).eq('id', toNation);
+                    .update({ budget: toAfter }).eq('id', toNation);
                 if (toErr) {
                     console.error('[recurring transfer] credit failed for', toNation, toErr.message);
                     // Best-effort rollback so sender doesn't eat the debt without receiver getting paid.
                     await supabase.from('nations').update({
-                        budget_reserves: reserves[fromNation] ?? 0,
-                        debt: debts[fromNation] ?? 0
+                        budget: budgets[fromNation] ?? 0,
+                        debt:   debts[fromNation]   ?? 0
                     }).eq('id', fromNation);
                     continue;
                 }
