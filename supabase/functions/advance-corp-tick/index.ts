@@ -4638,7 +4638,7 @@ async function captureShippingRouteTelemetry(supabase, currentTick) {
 //  MAIN ORCHESTRATOR
 // ════════════════════════════════════════════════════════════════════════════════
 
-async function advanceCorpTick(supabase, { force = false } = {}) {
+async function advanceCorpTick(supabase, { force = false, runNow = false } = {}) {
     // ── Build fingerprint canary ──
     // Tells us whether a deploy actually replaced the running bundle.
     // After `supabase functions deploy advance-corp-tick`, the next
@@ -4671,7 +4671,7 @@ async function advanceCorpTick(supabase, { force = false } = {}) {
 
     // 3. Time-based gating — only run at the midpoint of the tick interval
     //    (e.g. 4 hours after tick advance for an 8-hour interval)
-    if (!force && shard.next_tick_at) {
+    if (!force && !runNow && shard.next_tick_at) {
         const now = Date.now();
         const nextTickAt = new Date(shard.next_tick_at).getTime();
         const intervalMs = (shard.tick_interval_hours || 8) * 60 * 60 * 1000;
@@ -6193,28 +6193,41 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     try {
-        // Check for force parameter (admin manual trigger)
+        // Check for force parameter (admin manual trigger) and run_now
+        // (called by advance-tick after committing a new shard tick).
         let force = false;
+        let runNow = false;
         try {
             const body = await Promise.race([
                 req.json(),
                 new Promise((_, reject) => setTimeout(() => reject(new Error("body read timeout")), 3000)),
             ]);
             force = body?.force === true;
+            runNow = body?.run_now === true;
         } catch (_) {
             // No body, invalid JSON, or timeout — not forced
         }
 
-        console.log(`[advance-corp-tick] Invoked (force=${force})`);
+        console.log(`[advance-corp-tick] Invoked (force=${force}, run_now=${runNow})`);
 
-        // Background tasks pattern: kick off the work but don't block the
-        // HTTP response on it. The 150s "request idle timeout" gateway will
-        // close the request after that long even if the worker is still
-        // chewing — so we respond immediately, then EdgeRuntime.waitUntil
-        // keeps the worker alive (up to the 400s wall-clock limit) until
-        // advanceCorpTick finishes. The function does its own idempotency
-        // check internally (line 4469), so safe to fire on every invocation.
-        const work = advanceCorpTick(supabase, { force })
+        // For run_now / force calls, this function is being invoked as a
+        // synchronous dependency (usually by advance-tick or an admin repair).
+        // Await it so the caller sees the real result instead of a false
+        // positive "started" response while failures disappear into logs.
+        if (runNow || force) {
+            const result = await advanceCorpTick(supabase, { force, runNow });
+            return new Response(
+                JSON.stringify({ status: result?.status || "processed", result }),
+                { headers: corsHeaders }
+            );
+        }
+
+        // Normal cron invocations stay backgrounded: the cron fires every
+        // minute and advanceCorpTick has its own persisted idempotency guard.
+        // EdgeRuntime.waitUntil keeps the worker alive after the HTTP response
+        // returns, but any background failure is logged and can be retried by
+        // the next cron fire if corp_last_processed_tick was not claimed.
+        const work = advanceCorpTick(supabase, { force, runNow })
             .catch((err) => {
                 console.error("[advance-corp-tick] Background work failed:", err);
             });
