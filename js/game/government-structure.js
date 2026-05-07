@@ -205,8 +205,12 @@ export async function fetchActiveCoalition(supabase, nationId) {
     }
 
     // === ABSOLUTE MONARCHY FALLBACK: synthesize virtual coalition for UI context ===
-    const isMonarchyNation = isAbsoluteMonarchy(nationRow) || nationRow?.hos_election_method === 'hereditary';
-    if (!isMonarchyNation) return null;
+    // Constitutional monarchies also have hos_election_method='hereditary',
+    // but they are still parliamentary systems. They must use
+    // government_formations as the coalition source of truth; otherwise stale
+    // ministry rows can masquerade as an active coalition, grey out Form
+    // Coalition, and make Leadership Challenge fail with no_coalition.
+    if (!isAbsoluteMonarchy(nationRow)) return null;
 
     const { data: ministries } = await supabase
         .from('ministries')

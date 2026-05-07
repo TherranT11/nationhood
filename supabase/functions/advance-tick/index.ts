@@ -4147,8 +4147,12 @@ async function fetchActiveCoalition(supabase, nationId) {
     }
 
     // === ABSOLUTE MONARCHY FALLBACK: synthesize virtual coalition for UI context ===
-    const isMonarchyNation = isAbsoluteMonarchy(nationRow) || nationRow?.hos_election_method === 'hereditary';
-    if (!isMonarchyNation) return null;
+    // Constitutional monarchies also have hos_election_method='hereditary',
+    // but they are still parliamentary systems. They must use
+    // government_formations as the coalition source of truth; otherwise stale
+    // ministry rows can masquerade as an active coalition, grey out Form
+    // Coalition, and make Leadership Challenge fail with no_coalition.
+    if (!isAbsoluteMonarchy(nationRow)) return null;
 
     const { data: ministries } = await supabase
         .from('ministries')
@@ -24092,15 +24096,12 @@ async function _resolveOneNation(supabase, nationId, claims, currentTick) {
         return false;
     }
 
-    // Coalition still active?
-    const { data: formation } = await supabase
-        .from('government_formations')
-        .select('party_ids')
-        .eq('nation_id', nationId)
-        .in('status', ['formed', 'active', 'caretaker'])
-        .order('created_at', { ascending: false })
-        .limit(1).maybeSingle();
-    if (!formation) {
+    // Coalition still active? Use fetchActiveCoalition so the resolver
+    // matches the same latest-election formed/caretaker source of truth as
+    // the UI and claim RPC. Do not allow stale active proposals or monarchy
+    // ministry fallbacks to decide a parliamentary PM challenge.
+    const formation = await fetchActiveCoalition(supabase, nationId);
+    if (!formation || !Array.isArray(formation.party_ids) || !formation.party_ids.length) {
         await _markResolution(supabase, allIds, 'discarded', currentTick);
         return false;
     }

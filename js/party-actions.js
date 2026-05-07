@@ -1731,9 +1731,8 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             const isSemi = govType.includes('semi-presidential') || govType.includes('semi_presidential');
             const isParliamentary = !isAM && !isPres && !isSemi
                 && (govType.includes('parliamentary') || nation?.hos_election_method === 'hereditary');
-            const inCoalition = !!_administration
-                && Array.isArray(_administration.coalition_parties)
-                && _administration.coalition_parties.some(p => p?.party_id === faction.id);
+            const coalitionPartyIds = Array.isArray(_activeCoalition?.party_ids) ? _activeCoalition.party_ids : [];
+            const inCoalition = coalitionPartyIds.includes(faction.id);
             const seatVacant = !_hogActive;
             const isOwnFactionPM = !!_hogActive && _hogActive.faction_id === faction.id;
             const noLeader  = !faction.leader_first_name;
@@ -1770,11 +1769,16 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             // Server RPC mirrors these, so a client-side bypass still fails.
             const nation = _state.nation;
             const isParliamentaryPM = hasParliamentaryPM(nation);
-            const isPMParty = !!_administration && _administration.pm_party_id === faction.id;
+            const coalitionPartyIds = Array.isArray(_activeCoalition?.party_ids) ? _activeCoalition.party_ids : [];
+            const inActiveCoalition = coalitionPartyIds.includes(faction.id);
+            const isPMParty = !!_hogActive && _hogActive.faction_id === faction.id;
             if (!isParliamentaryPM) {
                 isDisabled = true;
                 action.lockReason = 'Only available in parliamentary systems.';
-            } else if (_isOpposition) {
+            } else if (!_activeCoalition) {
+                isDisabled = true;
+                action.lockReason = 'No active coalition to leave.';
+            } else if (!inActiveCoalition || _isOpposition) {
                 isDisabled = true;
                 action.lockReason = 'You are in opposition.';
             } else if (isPMParty) {
