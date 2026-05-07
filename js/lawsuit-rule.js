@@ -161,13 +161,13 @@ function renderHTML() {
     const grievance = GRIEVANCE_LABEL[l.grievance_type] || l.grievance_type;
     const relief    = RELIEF_LABEL[l.relief_sought]    || l.relief_sought;
 
-    return `<div onclick="event.stopPropagation()" style="width:1180px;max-width:96vw;background:var(--panel-main);border:1px solid var(--panel-border);display:flex;flex-direction:column;overflow:hidden;max-height:94vh;">
+    return `<div onclick="event.stopPropagation()" style="width:1180px;max-width:96vw;background:var(--panel-main, #1f1f1a);border:1px solid var(--panel-border, rgba(255,255,255,0.08));display:flex;flex-direction:column;overflow:hidden;max-height:94vh;">
 
         <!-- Header -->
-        <div style="padding:18px 26px;border-bottom:1px solid var(--panel-border);background:var(--bg-panel);display:flex;justify-content:space-between;align-items:flex-start;">
+        <div style="padding:18px 26px;border-bottom:1px solid var(--panel-border, rgba(255,255,255,0.08));background:var(--bg-panel);display:flex;justify-content:space-between;align-items:flex-start;">
             <div>
                 <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.22em;color:#8a722f;text-transform:uppercase;margin-bottom:4px;">Judicial Review · Active Case</div>
-                <div style="font-size:22px;font-weight:600;color:var(--panel-text);letter-spacing:-0.01em;">${escapeHtml(l.plaintiff?.faction_name || 'Plaintiff')} <span style="color:#9e9a92;font-style:italic;">v.</span> ${escapeHtml(l.defendant?.faction_name || 'Defendant')}</div>
+                <div style="font-size:22px;font-weight:600;color:var(--panel-text, #c4c2b8);letter-spacing:-0.01em;">${escapeHtml(l.plaintiff?.faction_name || 'Plaintiff')} <span style="color:#9e9a92;font-style:italic;">v.</span> ${escapeHtml(l.defendant?.faction_name || 'Defendant')}</div>
                 <div style="font-family:var(--font-mono);font-size:11px;color:#6a6660;margin-top:6px;">Reviewing as <span style="color:#c8a832;">${escapeHtml(_state.judge?.faction_name || 'Justice Minister')}</span> · Filing #${escapeHtml((l.id || '').slice(0,8))}</div>
                 <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
                     ${chip('Filed tick ' + l.filed_at_tick, 'rust')}
@@ -183,7 +183,7 @@ function renderHTML() {
         <div style="flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);overflow:hidden;">
 
             <!-- LEFT: case materials + ruling -->
-            <div style="overflow-y:auto;padding:22px 26px;border-right:1px solid var(--panel-border);">
+            <div style="overflow-y:auto;padding:22px 26px;border-right:1px solid var(--panel-border, rgba(255,255,255,0.08));">
 
                 ${sectionHeader('I.', "Plaintiff's Accusation", 'Filed tick ' + l.filed_at_tick)}
                 ${filingBlock({
@@ -229,16 +229,16 @@ function renderHTML() {
         </div>
 
         <!-- Footer -->
-        <div style="padding:14px 26px;border-top:1px solid var(--panel-border);background:var(--bg-panel);display:flex;justify-content:space-between;align-items:center;gap:18px;">
+        <div style="padding:14px 26px;border-top:1px solid var(--panel-border, rgba(255,255,255,0.08));background:var(--bg-panel);display:flex;justify-content:space-between;align-items:center;gap:18px;">
             <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#6a6660;">
                 Ruling deadline: <span style="color:#c55;">${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}</span> · Public verdict on submission · Affects approval &amp; sector relations
             </div>
             <div style="display:flex;gap:8px;">
-                <div onclick="window.lawsuitRuleClose()" style="padding:9px 22px;font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:#9e9a92;border:1px solid var(--panel-border);cursor:pointer;">Defer</div>
-                <div onclick="${canSubmit() ? 'window.lawsuitRuleSubmit()' : ''}" style="padding:9px 22px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:${canSubmit() ? '#000' : '#6a6660'};background:${canSubmit() ? '#c8a832' : 'var(--panel-border)'};border:1px solid ${canSubmit() ? '#c8a832' : 'var(--panel-border)'};cursor:${canSubmit() ? 'pointer' : 'not-allowed'};${canSubmit() ? '' : 'opacity:0.45;pointer-events:none;'}">Issue Ruling ▸</div>
+                <div onclick="window.lawsuitRuleClose()" style="padding:9px 22px;font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:#9e9a92;border:1px solid var(--panel-border, rgba(255,255,255,0.08));cursor:pointer;">Defer</div>
+                <div onclick="${canSubmit() ? 'window.lawsuitRuleSubmit()' : ''}" style="padding:9px 22px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:${canSubmit() ? '#000' : '#6a6660'};background:${canSubmit() ? '#c8a832' : 'var(--panel-border, rgba(255,255,255,0.08))'};border:1px solid ${canSubmit() ? '#c8a832' : 'var(--panel-border, rgba(255,255,255,0.08))'};cursor:${canSubmit() ? 'pointer' : 'not-allowed'};${canSubmit() ? '' : 'opacity:0.45;pointer-events:none;'}">Issue Ruling ▸</div>
             </div>
         </div>
-        ${_state.error ? `<div style="padding:8px 26px;font-family:var(--font-mono);font-size:10px;color:#c55;background:var(--bg-panel);border-top:1px solid var(--panel-border);">${escapeHtml(_state.error)}</div>` : ''}
+        ${_state.error ? `<div style="padding:8px 26px;font-family:var(--font-mono);font-size:10px;color:#c55;background:var(--bg-panel);border-top:1px solid var(--panel-border, rgba(255,255,255,0.08));">${escapeHtml(_state.error)}</div>` : ''}
     </div>`;
 }
 
@@ -247,33 +247,33 @@ function chip(text, tone) {
         rust:    ['#a0633a', 'rgba(160,99,58,0.08)',  'rgba(160,99,58,0.4)'],
         blue:    ['#5a8aaa', 'rgba(90,138,170,0.08)', 'rgba(90,138,170,0.4)'],
         red:     ['#c55',    'rgba(200,90,58,0.08)',  '#c55'],
-        neutral: ['#9e9a92', 'var(--bg-2,#1a1a17)',   'var(--panel-border)'],
-    }[tone] || ['#9e9a92', 'var(--bg-2,#1a1a17)', 'var(--panel-border)'];
+        neutral: ['#9e9a92', 'var(--bg-2,#1a1a17)',   'var(--panel-border, rgba(255,255,255,0.08))'],
+    }[tone] || ['#9e9a92', 'var(--bg-2,#1a1a17)', 'var(--panel-border, rgba(255,255,255,0.08))'];
     return `<span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.16em;text-transform:uppercase;padding:3px 9px;color:${colors[0]};background:${colors[1]};border:1px solid ${colors[2]};">${escapeHtml(text)}</span>`;
 }
 
 function sectionHeader(num, title, meta) {
-    return `<div style="display:flex;justify-content:space-between;align-items:baseline;margin:18px 0 12px;padding-bottom:8px;border-bottom:1px dashed var(--panel-border);">
-        <div style="font-size:15px;font-weight:600;color:var(--panel-text);"><span style="font-family:var(--font-mono);font-size:11px;color:#8a722f;letter-spacing:0.1em;margin-right:10px;">${escapeHtml(num)}</span>${escapeHtml(title)}</div>
+    return `<div style="display:flex;justify-content:space-between;align-items:baseline;margin:18px 0 12px;padding-bottom:8px;border-bottom:1px dashed var(--panel-border, rgba(255,255,255,0.08));">
+        <div style="font-size:15px;font-weight:600;color:var(--panel-text, #c4c2b8);"><span style="font-family:var(--font-mono);font-size:11px;color:#8a722f;letter-spacing:0.1em;margin-right:10px;">${escapeHtml(num)}</span>${escapeHtml(title)}</div>
         <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.16em;text-transform:uppercase;color:#6a6660;">${escapeHtml(meta)}</div>
     </div>`;
 }
 
 function filingBlock({ accent, party, grievanceLabel, grievanceValue, reliefLabel, reliefValue, statement }) {
-    return `<div style="background:var(--bg-2,#1a1a17);border:1px solid var(--panel-border);border-left:3px solid ${accent};padding:16px 18px;margin-bottom:14px;">
-        <div style="display:flex;align-items:center;gap:14px;padding-bottom:12px;margin-bottom:12px;border-bottom:1px dashed var(--panel-border);">
+    return `<div style="background:var(--bg-2,#1a1a17);border:1px solid var(--panel-border, rgba(255,255,255,0.08));border-left:3px solid ${accent};padding:16px 18px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:14px;padding-bottom:12px;margin-bottom:12px;border-bottom:1px dashed var(--panel-border, rgba(255,255,255,0.08));">
             <div style="width:38px;height:38px;border:1px solid ${accent}66;background:${accent}14;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:11px;font-weight:700;color:${accent};">${escapeHtml(party.ticker || '—')}</div>
             <div>
                 <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.16em;">${escapeHtml(party.tag)}</div>
-                <div style="font-size:16px;font-weight:600;color:var(--panel-text);">${escapeHtml(party.name || 'Unknown')}</div>
+                <div style="font-size:16px;font-weight:600;color:var(--panel-text, #c4c2b8);">${escapeHtml(party.name || 'Unknown')}</div>
             </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
-            <div style="background:var(--bg-panel);border:1px solid var(--panel-border);padding:8px 10px;">
+            <div style="background:var(--bg-panel);border:1px solid var(--panel-border, rgba(255,255,255,0.08));padding:8px 10px;">
                 <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.16em;margin-bottom:4px;">${escapeHtml(grievanceLabel)}</div>
                 <div style="font-size:13px;font-weight:600;color:${accent};">${escapeHtml(grievanceValue)}</div>
             </div>
-            <div style="background:var(--bg-panel);border:1px solid var(--panel-border);padding:8px 10px;">
+            <div style="background:var(--bg-panel);border:1px solid var(--panel-border, rgba(255,255,255,0.08));padding:8px 10px;">
                 <div style="font-family:var(--font-mono);font-size:9px;color:#6a6660;letter-spacing:0.16em;margin-bottom:4px;">${escapeHtml(reliefLabel)}</div>
                 <div style="font-size:13px;font-weight:600;color:${accent};">${escapeHtml(reliefValue)}</div>
             </div>
@@ -297,9 +297,9 @@ function renderContractContext(loan) {
         </div>`;
 }
 function ctxCell(label, value) {
-    return `<div style="background:var(--bg-2,#1a1a17);border:1px solid var(--panel-border);padding:10px 12px;">
+    return `<div style="background:var(--bg-2,#1a1a17);border:1px solid var(--panel-border, rgba(255,255,255,0.08));padding:10px 12px;">
         <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.16em;color:#6a6660;margin-bottom:5px;">${escapeHtml(label)}</div>
-        <div style="font-size:14px;font-weight:600;color:var(--panel-text);">${escapeHtml(value)}</div>
+        <div style="font-size:14px;font-weight:600;color:var(--panel-text, #c4c2b8);">${escapeHtml(value)}</div>
     </div>`;
 }
 
@@ -308,18 +308,18 @@ function rulingCard(kind, name, desc, bullets) {
     return `<div onclick="window.lawsuitRuleChoose('${kind}')" style="
         padding:14px 16px;
         background:${sel ? 'rgba(201,164,73,0.06)' : 'var(--bg-2,#1a1a17)'};
-        border:1px solid ${sel ? '#c8a832' : 'var(--panel-border)'};
+        border:1px solid ${sel ? '#c8a832' : 'var(--panel-border, rgba(255,255,255,0.08))'};
         ${sel ? 'border-left:3px solid #c8a832;' : ''}
         cursor:pointer;
         display:grid;grid-template-columns:18px 1fr;gap:14px;align-items:flex-start;
     ">
-        <div style="width:14px;height:14px;border:1px solid ${sel ? '#c8a832' : 'var(--panel-border)'};border-radius:50%;background:var(--bg-panel);position:relative;margin-top:3px;">
+        <div style="width:14px;height:14px;border:1px solid ${sel ? '#c8a832' : 'var(--panel-border, rgba(255,255,255,0.08))'};border-radius:50%;background:var(--bg-panel);position:relative;margin-top:3px;">
             ${sel ? '<div style="position:absolute;inset:3px;background:#c8a832;border-radius:50%;"></div>' : ''}
         </div>
         <div style="min-width:0;">
-            <div style="font-size:15px;font-weight:600;color:var(--panel-text);">${escapeHtml(name)}</div>
+            <div style="font-size:15px;font-weight:600;color:var(--panel-text, #c4c2b8);">${escapeHtml(name)}</div>
             <div style="font-size:12px;color:#9e9a92;margin-top:4px;line-height:1.45;">${escapeHtml(desc)}</div>
-            ${bullets && bullets.length ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;">${bullets.map(b => `<span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;text-transform:uppercase;padding:2px 7px;border:1px solid var(--panel-border);color:#9e9a92;background:var(--bg-panel);">${escapeHtml(b)}</span>`).join('')}</div>` : ''}
+            ${bullets && bullets.length ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;">${bullets.map(b => `<span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.1em;text-transform:uppercase;padding:2px 7px;border:1px solid var(--panel-border, rgba(255,255,255,0.08));color:#9e9a92;background:var(--bg-panel);">${escapeHtml(b)}</span>`).join('')}</div>` : ''}
         </div>
     </div>`;
 }
@@ -333,19 +333,19 @@ function renderSettlementBuilder() {
         <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.18em;color:#c8a832;text-transform:uppercase;margin-bottom:14px;">Construct Settlement Terms</div>
 
         <!-- Clause 1: Relief -->
-        <div style="background:var(--bg-panel);border:1px solid var(--panel-border);padding:12px 14px;margin-bottom:8px;${r.enabled ? 'border-color:#8a722f;' : ''}">
+        <div style="background:var(--bg-panel);border:1px solid var(--panel-border, rgba(255,255,255,0.08));padding:12px 14px;margin-bottom:8px;${r.enabled ? 'border-color:#8a722f;' : ''}">
             <label onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:${r.enabled ? '10px' : '0'};">
                 <input type="checkbox" ${r.enabled ? 'checked' : ''} onchange="window.lawsuitRuleClause('relief', 'enabled', this.checked)" style="cursor:pointer;" />
                 <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.16em;text-transform:uppercase;color:${r.enabled ? '#c8a832' : '#9e9a92'};">Clause 1: Provide Relief</span>
             </label>
             ${r.enabled ? `<div style="padding-left:24px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px;color:#9e9a92;font-style:italic;">
                 <span>Provide relief to</span>
-                <select onchange="window.lawsuitRuleClause('relief','recipient',this.value)" style="background:var(--bg-2,#1a1a17);border:1px solid var(--panel-border);color:var(--panel-text);font-size:13px;padding:3px 8px;cursor:pointer;outline:none;font-style:italic;font-family:inherit;">
+                <select onchange="window.lawsuitRuleClause('relief','recipient',this.value)" style="background:var(--bg-2,#1a1a17);border:1px solid var(--panel-border, rgba(255,255,255,0.08));color:var(--panel-text, #c4c2b8);font-size:13px;padding:3px 8px;cursor:pointer;outline:none;font-style:italic;font-family:inherit;">
                     <option value="plaintiff" ${r.recipient === 'plaintiff' ? 'selected' : ''}>the Plaintiff</option>
                     <option value="defendant" ${r.recipient === 'defendant' ? 'selected' : ''}>the Defendant</option>
                 </select>
                 <span>in the amount of</span>
-                <span style="display:inline-flex;align-items:baseline;background:var(--bg-2,#1a1a17);border:1px solid var(--panel-border);padding:2px 8px;">
+                <span style="display:inline-flex;align-items:baseline;background:var(--bg-2,#1a1a17);border:1px solid var(--panel-border, rgba(255,255,255,0.08));padding:2px 8px;">
                     <span style="font-family:var(--font-mono);font-size:12px;color:#6a6660;">$</span>
                     <input type="number" min="${SETTLE_MIN}" max="${SETTLE_MAX/1000000}" step="${SETTLE_STEP/1000000}" value="${Math.round(r.amount/1000000)}" oninput="window.lawsuitRuleClause('relief','amount',Number(this.value)*1000000)" style="background:transparent;border:none;color:#c8a832;font-weight:600;font-size:14px;width:80px;padding:2px 4px;outline:none;" />
                     <span style="font-family:var(--font-mono);font-size:12px;color:#6a6660;">M</span>
@@ -354,20 +354,20 @@ function renderSettlementBuilder() {
         </div>
 
         <!-- Clause 2: Contract Disposition (was Clause 3 in mockup; Halt-Operations is Phase 4) -->
-        <div style="background:var(--bg-panel);border:1px solid var(--panel-border);padding:12px 14px;margin-bottom:8px;${c.enabled ? 'border-color:#8a722f;' : ''}">
+        <div style="background:var(--bg-panel);border:1px solid var(--panel-border, rgba(255,255,255,0.08));padding:12px 14px;margin-bottom:8px;${c.enabled ? 'border-color:#8a722f;' : ''}">
             <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:${c.enabled ? '10px' : '0'};">
                 <input type="checkbox" ${c.enabled ? 'checked' : ''} onchange="window.lawsuitRuleClause('contract', 'enabled', this.checked)" style="cursor:pointer;" />
                 <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.16em;text-transform:uppercase;color:${c.enabled ? '#c8a832' : '#9e9a92'};">Clause 2: Contract Disposition</span>
             </label>
             ${c.enabled ? `<div style="padding-left:24px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px;color:#9e9a92;font-style:italic;">
                 <span>The Loan Agreement shall</span>
-                <select onchange="window.lawsuitRuleClause('contract','disposition',this.value)" style="background:var(--bg-2,#1a1a17);border:1px solid var(--panel-border);color:var(--panel-text);font-size:13px;padding:3px 8px;cursor:pointer;outline:none;font-style:italic;font-family:inherit;">
+                <select onchange="window.lawsuitRuleClause('contract','disposition',this.value)" style="background:var(--bg-2,#1a1a17);border:1px solid var(--panel-border, rgba(255,255,255,0.08));color:var(--panel-text, #c4c2b8);font-size:13px;padding:3px 8px;cursor:pointer;outline:none;font-style:italic;font-family:inherit;">
                     <option value="continue" ${c.disposition === 'continue' ? 'selected' : ''}>continue with original terms</option>
                     <option value="modify"   ${c.disposition === 'modify'   ? 'selected' : ''}>continue at modified APR</option>
                     <option value="void"     ${c.disposition === 'void'     ? 'selected' : ''}>be voided in full</option>
                 </select>
                 ${c.disposition === 'modify' ? `<span>at</span>
-                    <span style="display:inline-flex;align-items:baseline;background:var(--bg-2,#1a1a17);border:1px solid var(--panel-border);padding:2px 8px;">
+                    <span style="display:inline-flex;align-items:baseline;background:var(--bg-2,#1a1a17);border:1px solid var(--panel-border, rgba(255,255,255,0.08));padding:2px 8px;">
                         <input type="number" min="${APR_MIN}" max="${APR_MAX}" step="0.1" value="${c.new_apr}" oninput="window.lawsuitRuleClause('contract','new_apr',Number(this.value))" style="background:transparent;border:none;color:#c8a832;font-weight:600;font-size:14px;width:60px;padding:2px 4px;outline:none;" />
                         <span style="font-family:var(--font-mono);font-size:12px;color:#6a6660;">%</span>
                     </span>` : ''}
@@ -375,9 +375,9 @@ function renderSettlementBuilder() {
         </div>
 
         <!-- Live summary -->
-        <div style="margin-top:16px;padding:14px 16px;background:var(--bg-panel);border:1px solid var(--panel-border);border-top:2px solid #c8a832;">
+        <div style="margin-top:16px;padding:14px 16px;background:var(--bg-panel);border:1px solid var(--panel-border, rgba(255,255,255,0.08));border-top:2px solid #c8a832;">
             <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:#8a722f;margin-bottom:8px;">Final Ruling Reads</div>
-            <div style="font-size:13px;line-height:1.6;color:var(--panel-text);font-style:italic;">${summary}</div>
+            <div style="font-size:13px;line-height:1.6;color:var(--panel-text, #c4c2b8);font-style:italic;">${summary}</div>
         </div>
     </div>`;
 }
@@ -416,20 +416,20 @@ function renderChamberPanel() {
             continue;
         }
         body += `<div style="display:flex;justify-content:${mine ? 'flex-end' : 'flex-start'};margin:5px 0;">
-            <div style="max-width:85%;padding:8px 12px;background:${mine ? 'rgba(201,164,73,0.10)' : 'var(--bg-2,#1a1a17)'};border:1px solid ${mine ? 'rgba(201,164,73,0.4)' : 'var(--panel-border)'};font-size:12px;color:var(--panel-text);line-height:1.5;word-wrap:break-word;">${escapeHtml(m.message_text)}</div>
+            <div style="max-width:85%;padding:8px 12px;background:${mine ? 'rgba(201,164,73,0.10)' : 'var(--bg-2,#1a1a17)'};border:1px solid ${mine ? 'rgba(201,164,73,0.4)' : 'var(--panel-border, rgba(255,255,255,0.08))'};font-size:12px;color:var(--panel-text, #c4c2b8);line-height:1.5;word-wrap:break-word;">${escapeHtml(m.message_text)}</div>
         </div>`;
     }
     if (_state.chatMessages.length === 0) {
         body = '<div style="text-align:center;font-family:var(--font-mono);font-size:10px;color:#6a6660;padding:20px;">No discussion yet.</div>';
     }
     return `<div style="display:flex;flex-direction:column;background:var(--bg-panel);min-height:0;">
-        <div style="padding:12px 18px;border-bottom:1px solid var(--panel-border);">
+        <div style="padding:12px 18px;border-bottom:1px solid var(--panel-border, rgba(255,255,255,0.08));">
             <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.22em;color:#8a722f;text-transform:uppercase;margin-bottom:3px;">Chamber Discussion</div>
-            <div style="font-size:14px;font-weight:600;color:var(--panel-text);font-style:italic;">Pretrial Conference</div>
+            <div style="font-size:14px;font-weight:600;color:var(--panel-text, #c4c2b8);font-style:italic;">Pretrial Conference</div>
         </div>
         <div id="lawsuit-rule-chat-body" style="flex:1;overflow-y:auto;padding:10px 14px;">${body}</div>
-        <div style="border-top:1px solid var(--panel-border);padding:8px 12px;display:flex;gap:6px;">
-            <input type="text" value="${escapeHtml(_state.chatDraft || '')}" oninput="window.lawsuitRuleChatDraft(this.value)" onkeydown="if(event.key==='Enter'){window.lawsuitRuleChatSend();event.preventDefault();}" placeholder="Address counsel directly…" style="flex:1;background:var(--bg-2,#1a1a17);border:1px solid var(--panel-border);color:var(--panel-text);font-size:12px;padding:6px 10px;outline:none;font-family:inherit;" />
+        <div style="border-top:1px solid var(--panel-border, rgba(255,255,255,0.08));padding:8px 12px;display:flex;gap:6px;">
+            <input type="text" value="${escapeHtml(_state.chatDraft || '')}" oninput="window.lawsuitRuleChatDraft(this.value)" onkeydown="if(event.key==='Enter'){window.lawsuitRuleChatSend();event.preventDefault();}" placeholder="Address counsel directly…" style="flex:1;background:var(--bg-2,#1a1a17);border:1px solid var(--panel-border, rgba(255,255,255,0.08));color:var(--panel-text, #c4c2b8);font-size:12px;padding:6px 10px;outline:none;font-family:inherit;" />
             <div onclick="window.lawsuitRuleChatSend()" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;padding:6px 12px;color:#000;background:#c8a832;border:1px solid #c8a832;cursor:pointer;">Send</div>
         </div>
     </div>`;
