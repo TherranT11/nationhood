@@ -2748,10 +2748,12 @@ async function openVolaHostBidModal(root, faction) {
     let lastError = null;
     let result = null;
     // In-session bid tracker — belt-and-suspenders so the cup row
-    // flips to YOUR BID PENDING immediately on success, even if the
+    // flips to "bid placed" immediately on success, even if the
     // re-fetch from vola_host_bids hasn't surfaced the new row yet
     // (postgrest read-after-write occasionally lags by a frame).
-    const inSessionBids = new Set();
+    // Map of cupNumber → bid_at_tick so the row's metadata
+    // (placed-on date) renders without a second round-trip.
+    const inSessionBids = new Map();
 
     async function refreshState() {
         const { data: mRow } = await _supabase.from('ministries')
@@ -2783,17 +2785,21 @@ async function openVolaHostBidModal(root, faction) {
                     .select('cup_number, host_nation_id, nations:host_nation_id(name)')
                     .in('cup_number', cupNumbers),
                 _supabase.from('vola_host_bids')
-                    .select('cup_number')
+                    .select('cup_number, bid_at_tick')
                     .eq('nation_id', _state.nation.id)
                     .in('cup_number', cupNumbers),
             ]);
             const hostMap = new Map((hosts || []).map(h => [h.cup_number, h]));
-            const myBidSet = new Set((myBids || []).map(b => b.cup_number));
+            const myBidMap = new Map((myBids || []).map(b => [b.cup_number, b]));
             for (const c of cups) {
                 c.host = hostMap.get(c.cupNumber) || null;
                 // Combine the DB read with the in-session set so a
-                // freshly-placed bid never re-renders as AVAILABLE.
-                c.iBid = myBidSet.has(c.cupNumber) || inSessionBids.has(c.cupNumber);
+                // freshly-placed bid never re-renders as AVAILABLE,
+                // even if the postgrest read-after-write lags a frame.
+                const dbBid = myBidMap.get(c.cupNumber);
+                const hasSessionBid = inSessionBids.has(c.cupNumber);
+                c.iBid = !!dbBid || hasSessionBid;
+                c.bidAtTick = dbBid?.bid_at_tick ?? inSessionBids.get(c.cupNumber) ?? null;
             }
             // Per-spec: "the next cup opens up 1 tick after the
             // current/upcoming World Cup passes." So Cup N+1 only
@@ -2839,6 +2845,14 @@ async function openVolaHostBidModal(root, faction) {
                     badge = `<span class="pa-action-tag" style="color:#5cc55c;">YOUR BID PENDING</span>`;
                     cls = 'locked';
                     cardStyle = 'cursor:not-allowed;border-color:#5cc55c;background:rgba(92,197,92,0.06);';
+                    // "Bid placed on January, 2005 for $10" line surfaces
+                    // when the player needs to confirm they already bid.
+                    // Bid date falls back to "earlier" only when neither
+                    // the DB nor the in-session tracker has a tick.
+                    const placedCopy = c.bidAtTick != null
+                        ? `Bid placed on ${_hbTickToDate(c.bidAtTick)} for $10`
+                        : 'Bid placed earlier this session for $10';
+                    actionBtn = `<span class="pa-bid-placed-note" style="font-family:var(--font-mono);font-size:9px;color:#5cc55c;letter-spacing:0.06em;text-align:right;">${esc(placedCopy)}</span>`;
                 } else if (c.selectable && isMinister && canAfford) {
                     badge = `<span class="pa-action-tag" style="color:#c8a832;">AVAILABLE</span>`;
                     cardStyle = 'cursor:pointer;border-color:#c8a832;background:rgba(200,168,50,0.06);';
@@ -2952,14 +2966,24 @@ async function openVolaHostBidModal(root, faction) {
                     const r = await bidToHostVwc(_supabase, cupNumber);
                     if (r?.success) {
                         result = r;
-                        inSessionBids.add(cupNumber);
+                        // Capture the bid tick locally so the row can
+                        // render its "Bid placed on …" line without
+                        // waiting on the next DB read. Falls back to
+                        // current tick if the RPC didn't echo one.
+                        const { data: shardNow } = await _supabase.from('shard')
+                            .select('current_tick').eq('name', 'Alpha Shard').single();
+                        const placedTick = Number(shardNow?.current_tick) || Number(r.cupStartTick) - 999;
+                        inSessionBids.set(cupNumber, placedTick);
                     } else {
                         // Server flagged a duplicate (constraint hit or
                         // explicit already_bid) — record locally too so
                         // the cup row reflects the bound state on the
-                        // next render even though we didn't INSERT this
-                        // round.
-                        if (r?.reason === 'already_bid') inSessionBids.add(cupNumber);
+                        // next render. Tick value isn't known here so
+                        // we leave it null; the next refreshState will
+                        // backfill from the DB row.
+                        if (r?.reason === 'already_bid' && !inSessionBids.has(cupNumber)) {
+                            inSessionBids.set(cupNumber, null);
+                        }
                         lastError = _vwcBidReasonCopy(r?.reason) || 'Could not submit: ' + (r?.reason || 'unknown error');
                     }
                 } catch (err) {
