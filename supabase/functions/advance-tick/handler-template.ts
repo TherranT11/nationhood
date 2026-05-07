@@ -3230,6 +3230,25 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Syndicated-lending sweep failed (non-fatal):', rescueErr);
     }
 
+    // ══════════════════════════════════════════════════════════════════
+    // 4g. STRATEGIC ALLIANCES — Aligned Interest member-vote sweep
+    // ══════════════════════════════════════════════════════════════════
+    // Per-tick housekeeping for Interest Rate votes inside the alliance
+    // modal. Resolves votes that crossed >50% on Floor + Ceiling on the
+    // PREVIOUS tick (the "next-tick" rule), expires votes past their
+    // 30-tick window, auto-withdraws when the initiator has left.
+    try {
+        const { data: aiVoteSweep, error: aiVoteErr } = await supabase
+            .rpc('sweep_alliance_interest_votes', { p_tick: newTick });
+        if (aiVoteErr) {
+            console.error('[advanceTick] Aligned-interest vote sweep failed (non-fatal):', aiVoteErr.message);
+        } else if (aiVoteSweep && (aiVoteSweep.finalized || aiVoteSweep.expired || aiVoteSweep.initiator_left || aiVoteSweep.newly_majority)) {
+            console.log(`[advanceTick] Aligned-interest votes: ${aiVoteSweep.finalized || 0} finalized, ${aiVoteSweep.newly_majority || 0} newly-majority, ${aiVoteSweep.expired || 0} expired, ${aiVoteSweep.initiator_left || 0} auto-withdrawn`);
+        }
+    } catch (aiVoteErr) {
+        console.error('[advanceTick] Aligned-interest vote sweep threw (non-fatal):', aiVoteErr);
+    }
+
     // 5. Commit shard tick/date AFTER all nation processing completes.
     // This is the last step — if the function timed out earlier, the tick
     // number stays unchanged and the cron will re-process on the next run.
