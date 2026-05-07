@@ -2441,9 +2441,11 @@ const OFFER_MODIFIERS = [
     { key: 'bribe_port',         name: 'Bribe Port Authorities',   desc: 'Slip envelopes to harbormasters. Faster customs clearance, fewer delays — bribes come out of skim, not your line.',           energy: 1,  risk: -1, costM: -0.2  },
     { key: 'rush_schedule',      name: 'Rush Schedule',            desc: 'Push crews and engines hard. Maximum throughput, less idle time — fuel burn drops, but breakdowns climb.',                     energy: 3,  risk:  2, costM: -0.5  },
 ];
-const OFFER_MARKUPS = [10, 15, 20, 25, 30];
-const OFFER_FREIGHTER_COST_M = 3;        // $3M / tick / freighter
-const OFFER_ENERGY_PER_FREIGHTER = 3;    // base energy/tick per freighter
+const OFFER_MARKUPS = [10, 20, 30, 40];
+// Tier → trip price (per trip per freighter, dollars). Mirrors the
+// CASE table inside place_shipping_offer — keep the two in sync.
+const OFFER_TIER_TRIP_PRICE = { 10: 100_000, 20: 200_000, 30: 400_000, 40: 600_000 };
+const OFFER_ENERGY_PER_FREIGHTER = 3;    // base units/tick per freighter, all commodities
 
 let _offerInflight = false;
 let _offerState = null;  // { contract, freighters, modifiers:Set, markup }
@@ -2462,7 +2464,7 @@ function openOfferModal(contract) {
     // Reload an existing offer if the corp is editing before window close.
     const existing = _myBids.get(contract.id);
     const initialModifiers = new Set(['known']);
-    let initialMarkup = 15;
+    let initialMarkup = 10;
     let initialFreightAlloc = initialFreighters;
     if (existing) {
         if (Array.isArray(existing.modifiers)) {
@@ -2574,10 +2576,10 @@ function openOfferModal(contract) {
             </div>
             <div class="so-offer-cost-summary">
                 <div class="so-offer-cost-summary-header">Final Offer Breakdown</div>
-                <div class="so-offer-cost-line"><span class="label" id="so-offer-op-label">Operating Cost</span><span class="value" id="so-offer-op-cost">$0</span></div>
-                <div class="so-offer-cost-line"><span class="label">Route Modifier Costs</span><span class="value" id="so-offer-mod-cost">$0</span></div>
-                <div class="so-offer-cost-line"><span class="label" id="so-offer-markup-label">Markup</span><span class="value" id="so-offer-markup-cost">$0</span></div>
-                <div class="so-offer-cost-line total"><span class="label">Total Offer Price</span><span class="value" id="so-offer-total-cost">$0 / tick</span></div>
+                <div class="so-offer-cost-line"><span class="label" id="so-offer-op-label">Trip Price</span><span class="value" id="so-offer-op-cost">$0</span></div>
+                <div class="so-offer-cost-line"><span class="label">Transit</span><span class="value" id="so-offer-mod-cost">—</span></div>
+                <div class="so-offer-cost-line"><span class="label" id="so-offer-markup-label">Tier</span><span class="value" id="so-offer-markup-cost">$0</span></div>
+                <div class="so-offer-cost-line total"><span class="label">Revenue / Tick</span><span class="value" id="so-offer-total-cost">$0 / tick</span></div>
             </div>
         </div>
 
@@ -2650,16 +2652,8 @@ function openOfferModal(contract) {
 
 function renderOfferModifierCard(m, selected) {
     const effectChips = [];
-    if (m.energy !== 0) effectChips.push(`<span class="so-offer-effect ${m.energy > 0 ? 'positive' : 'negative'}">${m.energy > 0 ? '+' : ''}${m.energy} Energy/tick</span>`);
+    if (m.energy !== 0) effectChips.push(`<span class="so-offer-effect ${m.energy > 0 ? 'positive' : 'negative'}">${m.energy > 0 ? '+' : ''}${m.energy} Cargo/tick</span>`);
     if (m.risk   !== 0) effectChips.push(`<span class="so-offer-effect ${m.risk   > 0 ? 'negative' : 'positive'}">${m.risk   > 0 ? '+' : ''}${m.risk} Route Risk</span>`);
-    if (m.costM  !== 0) {
-        // Negative-cost modifiers (Bribe Port, Rush Schedule) reduce
-        // operating cost — show as savings (green) with a leading −,
-        // not '+$-0.2M' which reads weird.
-        const sign = m.costM > 0 ? '+' : '−';
-        const cls  = m.costM > 0 ? 'cost' : 'positive';
-        effectChips.push(`<span class="so-offer-effect ${cls}">${sign}$${Math.abs(m.costM)}M/tick</span>`);
-    }
     if (effectChips.length === 0)
         effectChips.push('<span class="so-offer-effect cost">BASELINE</span>');
     return `<div class="so-offer-modifier-card${selected ? ' selected' : ''}${m.baseline ? ' baseline' : ''}" data-key="${m.key}">
@@ -2680,38 +2674,38 @@ function recalcOffer() {
     if (!_offerState) return;
     const { contract, freighters, modifiers, markup } = _offerState;
 
-    let energyDelta = 0, riskDelta = 0, costAddM = 0;
+    let energyDelta = 0, riskDelta = 0;
     for (const key of modifiers) {
         const def = OFFER_MODIFIERS.find(m => m.key === key);
         if (!def) continue;
         energyDelta += def.energy;
         riskDelta   += def.risk;
-        costAddM    += def.costM;
     }
     const baseEnergy = freighters * OFFER_ENERGY_PER_FREIGHTER;
     const cap = Number(contract.volume_required) || Infinity;
     const deliveredEnergy = Math.max(0, Math.min(cap, baseEnergy + energyDelta));
 
-    // Mirrors GREATEST(0, ...) clamp in place_shipping_offer.
-    const operatingCost = Math.max(0, (freighters * OFFER_FREIGHTER_COST_M + costAddM) * 1_000_000);
-    const markupCost = Math.round(operatingCost * markup / 100);
-    const totalOffer = operatingCost + markupCost;
+    // Tier-priced trip math. Each freighter completes 1 trip per
+    // transit_ticks; per-tick revenue = freighters × tier / transit.
+    const tripPrice = OFFER_TIER_TRIP_PRICE[markup] || 0;
+    const transitTicks = Math.max(1, Number(contract.transit_ticks) || 1);
+    const totalOffer = Math.floor((freighters * tripPrice) / transitTicks);
 
-    // Signed dollar formatter: '$1.5M' for positive, '−$0.5M' for
-    // negative (clean leading minus, no '$-0.5M' awkwardness).
     const fmt = (n) => {
         const sign = n < 0 ? '−' : '';
-        return sign + '$' + (Math.abs(n) / 1_000_000).toFixed(1) + 'M';
+        const abs = Math.abs(n);
+        if (abs >= 1_000_000) return sign + '$' + (abs / 1_000_000).toFixed(1) + 'M';
+        return sign + '$' + Math.round(abs / 1000) + 'k';
     };
 
     document.getElementById('so-offer-op-label').textContent =
-        `Operating Cost (${freighters} freighters × $${OFFER_FREIGHTER_COST_M}M)`;
-    document.getElementById('so-offer-op-cost').textContent = fmt(freighters * OFFER_FREIGHTER_COST_M * 1_000_000);
-    document.getElementById('so-offer-mod-cost').textContent = fmt(costAddM * 1_000_000);
-    document.getElementById('so-offer-markup-label').textContent = `Markup (${markup}% applied)`;
-    document.getElementById('so-offer-markup-cost').textContent = '+' + fmt(markupCost);
+        `Trip Price (${freighters} freighter${freighters !== 1 ? 's' : ''} × ${fmt(tripPrice)}/trip)`;
+    document.getElementById('so-offer-op-cost').textContent = fmt(freighters * tripPrice) + ' / trip';
+    document.getElementById('so-offer-mod-cost').textContent = `${transitTicks} tick${transitTicks !== 1 ? 's' : ''} per trip`;
+    document.getElementById('so-offer-markup-label').textContent = `Tier ${markup} → ${fmt(tripPrice)}/trip/freighter`;
+    document.getElementById('so-offer-markup-cost').textContent = fmt(totalOffer) + ' / tick';
     document.getElementById('so-offer-total-cost').textContent = fmt(totalOffer) + ' / tick';
-    document.getElementById('so-offer-margin-value').textContent = '+' + fmt(markupCost);
+    document.getElementById('so-offer-margin-value').textContent = fmt(totalOffer) + '/tick';
 
     document.getElementById('so-offer-footer-energy').textContent = `${deliveredEnergy}/tick`;
     const riskEl = document.getElementById('so-offer-footer-risk');
@@ -2719,7 +2713,7 @@ function recalcOffer() {
     riskEl.style.color = riskDelta > 0
         ? 'var(--so-accent-red)'
         : riskDelta < 0 ? 'var(--so-accent-green)' : 'var(--so-text-primary)';
-    document.getElementById('so-offer-footer-profit').textContent = fmt(markupCost) + '/tick';
+    document.getElementById('so-offer-footer-profit').textContent = fmt(totalOffer) + '/tick';
 
     const submitBtn = document.getElementById('so-offer-submit');
     if (submitBtn) submitBtn.disabled = _offerInflight || freighters <= 0;

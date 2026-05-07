@@ -3513,7 +3513,7 @@ async function processTradeAgreementShipping(supabase, currentTick) {
         for (const contract of closing) {
             const { data: bids, error: bidsErr } = await supabase
                 .from('shipping_contract_bids')
-                .select('id, bidder_faction_id, offered_revenue_per_tick, energy_per_tick, route_risk_delta, applied_at_tick')
+                .select('id, bidder_faction_id, offered_revenue_per_tick, energy_per_tick, route_risk_delta, bidder_route_risk_snapshot, freighters_allocated, applied_at_tick')
                 .eq('contract_id', contract.id)
                 .eq('status', 'pending')
                 .order('applied_at_tick', { ascending: true });
@@ -3538,11 +3538,13 @@ async function processTradeAgreementShipping(supabase, currentTick) {
             }
 
             // Score per delivery_priority. Lower score = better in our
-            // sort, so 'fastest' negates energy (higher energy wins).
+            // sort. Fastest negates freighters so the largest fleet wins;
+            // safest reads the corp's full route-risk snapshot (fleet
+            // baseline + modifier deltas), not just the modifier sum.
             const priority = contract.delivery_priority || 'cheapest';
             const score = (b) => {
-                if (priority === 'fastest') return -(Number(b.energy_per_tick) || 0);
-                if (priority === 'safest')  return  Number(b.route_risk_delta) || 0;
+                if (priority === 'fastest') return -(Number(b.freighters_allocated) || 0);
+                if (priority === 'safest')  return  Number(b.bidder_route_risk_snapshot) || 0;
                 return Number(b.offered_revenue_per_tick) || 0;  // cheapest
             };
             bids.sort((a, b) => {
@@ -5153,28 +5155,13 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
             // ── Shipping Sector — Route Generation ───────────────────────
             // Generate shipping routes from bilateral trade_partners data.
             // Runs once per nation (routes are bilateral so each pair is processed once).
-            try {
-                if (!summary._shippingRoutesGenerated) {
-                    const routeResult = await generateShippingRoutes(supabase, currentTick);
-                    if (routeResult.generated > 0 || routeResult.expired > 0) {
-                        summary.shipping = routeResult;
-                        console.log(`[advance-corp-tick] Shipping routes: ${routeResult.generated} generated, ${routeResult.expired} expired`);
-                    }
-                    const organicResult = await generateOrganicRoutes(supabase, currentTick);
-                    if (organicResult.generated > 0 || organicResult.expired > 0) {
-                        summary.organicShipping = organicResult;
-                        console.log(`[advance-corp-tick] Organic routes: ${organicResult.generated} generated, ${organicResult.expired} expired, ${organicResult.capped_out || 0} capped`);
-                    }
-                    const shippingTelemetry = await captureShippingRouteTelemetry(supabase, currentTick);
-                    if (shippingTelemetry) {
-                        summary.shippingTelemetry = shippingTelemetry;
-                        console.log(`[advance-corp-tick] Shipping telemetry @ tick ${currentTick}: agreement=${shippingTelemetry.agreement}, organic=${shippingTelemetry.organic}, government=${shippingTelemetry.government}`);
-                    }
-                    summary._shippingRoutesGenerated = true;
-                }
-            } catch (shipErr) {
-                console.error(`[advance-corp-tick] Shipping route generation failed (non-fatal):`, shipErr);
-            }
+            // Organic + trade-agreement-flow shipping_routes generation is
+            // RETIRED. Trade agreements now spawn shipping_contracts
+            // directly via the trg_spawn_shipping_contracts trigger;
+            // bids land via place_shipping_offer and are auto-awarded by
+            // processTradeAgreementShipping below. Existing awarded
+            // shipping_claims continue to drain through processShippingRoutes
+            // until they complete naturally.
 
             // ── Ship Market — Generate listings every 8 ticks ────────────
             try {
