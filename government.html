@@ -3970,9 +3970,9 @@ function renderBillsList() {
     let html = '';
 
     // Filter bar
-    html += `<div class="ga-panel" style="padding:8px 14px;display:flex;justify-content:space-between;align-items:center;">
+    html += `<div class="ga-panel leg-bills-toolbar" style="padding:8px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
         <span class="ga-panel-title">BILLS & LAWS OF ${escapeHtml(nationName.toUpperCase())}</span>
-        <div style="display:flex;gap:4px;align-items:center;">`;
+        <div class="leg-bills-toolbar__filters" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">`;
     const filters = [
         { id: 'active', label: 'ACTIVE BILLS', color: 'var(--orange)', count: totalActive },
         { id: 'resolved', label: 'RESOLVED', color: 'var(--green)', count: resolved.length },
