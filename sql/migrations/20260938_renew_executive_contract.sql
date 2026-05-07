@@ -6,9 +6,14 @@
 -- into any role that wasn't currently active.
 --
 -- Renewal terms (matches the player-spec):
---   • Salary: existing salary + 10..25% markup (deterministic per
---     exec_id, so the player sees the same predicted offer every
---     time they open the Renew modal until they confirm).
+--   • Salary: existing salary + 15% counter-offer markup. Fixed
+--     value (no per-exec hash) so client-side preview and server-
+--     applied salary always agree — single source of truth via the
+--     EXEC_RENEWAL_MARKUP_PCT constant in actions.html. Per-exec
+--     variance was deferred during audit because the original two
+--     hash implementations (JS char codes vs PG raw bytes) never
+--     produced matching values; revisit when there's a row-stored
+--     markup column to read from.
 --   • Length: 4 years (48 ticks).
 --   • Cost: free.
 --
@@ -29,11 +34,9 @@ DECLARE
     v_caller       UUID := auth.uid();
     v_exec         corp_executives%ROWTYPE;
     v_tick         INT;
-    v_markup_pct   INT;     -- 10..25
+    v_markup_pct   INT  := 15;  -- fixed; mirrors EXEC_RENEWAL_MARKUP_PCT in actions.html
     v_new_salary   BIGINT;
     v_new_end_tick INT;
-    v_hash         BIGINT;
-    v_byte         INT;
 BEGIN
     SELECT * INTO v_exec FROM corp_executives WHERE id = p_exec_id FOR UPDATE;
     IF v_exec.id IS NULL THEN
@@ -60,17 +63,6 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'no_shard');
     END IF;
 
-    -- Deterministic 10..25% markup keyed off exec_id. Hash the bytes
-    -- of the UUID; mod 16 gives 0..15 → +10. Same exec, same offer
-    -- every time, so the predicted-contract preview matches the
-    -- value actually applied here. Mirror of renewalMarkupPct() in
-    -- the JS UI helper.
-    v_hash := 0;
-    FOR v_byte IN SELECT get_byte(uuid_send(p_exec_id), generate_series(0, 15)) LOOP
-        v_hash := ((v_hash * 31) + v_byte) % 2147483647;
-    END LOOP;
-    v_markup_pct := 10 + (v_hash % 16)::INT;
-
     v_new_salary   := ROUND(COALESCE(v_exec.salary_per_year, 0) * (100 + v_markup_pct) / 100.0)::BIGINT;
     v_new_end_tick := v_tick + 48;  -- 4 years × 12 ticks
 
@@ -95,7 +87,7 @@ $$;
 GRANT EXECUTE ON FUNCTION renew_executive_contract(UUID) TO authenticated;
 
 COMMENT ON FUNCTION renew_executive_contract(UUID) IS
-    'Player-triggered executive renewal. Salary +10..25% (deterministic per exec_id), 4yr term, free. Linked-account aware. Refuses non-active execs.';
+    'Player-triggered executive renewal. Salary +15% (fixed; mirrored client-side via EXEC_RENEWAL_MARKUP_PCT), 4yr term, free. Linked-account aware. Refuses non-active execs.';
 
 NOTIFY pgrst, 'reload schema';
 

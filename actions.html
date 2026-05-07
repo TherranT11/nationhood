@@ -213,6 +213,12 @@ function getInitials(first, last) {
     return (first || '?')[0] + (last || '?')[0];
 }
 
+// In-flight guard so a player who clicks RENEW twice (after
+// confirming the first dialog but before the RPC returns) doesn't
+// fire two compound +15% raises against the same exec row. Keyed
+// by exec.id — different execs can renew concurrently.
+const _renewInFlight = new Set();
+
 // Ticks-remaining label for the exec contract column. Reads
 // contract_end_tick (set at hire / renewal) and the current shard
 // tick. "expires in N tick(s)" reads cleanly whether the value is
@@ -227,21 +233,18 @@ function execContractRemainingLabel(exec) {
     return `${remaining} ticks left`;
 }
 
-// Deterministic 10..25% renewal markup keyed off the exec's UUID
-// so the predicted offer the player sees in the Renew modal is
-// the same value the renew_executive_contract RPC will apply.
-// Mirrors the PG-side hash in 20260938.
-function execRenewalMarkupPct(execId) {
-    if (!execId) return 17;
-    let h = 0;
-    for (let i = 0; i < execId.length; i++) {
-        h = ((h * 31) + execId.charCodeAt(i)) & 0x7fffffff;
-    }
-    return 10 + (h % 16); // 10..25
-}
+// Renewal markup. Fixed 15% — single source of truth shared
+// with the renew_executive_contract RPC. Per-exec variance was
+// dropped during audit because matching a per-uuid hash across
+// JS (utf-16 char codes) and PG (raw uuid bytes) is fragile and
+// the two never agreed exactly. If/when variance is restored,
+// store the value on the exec row at hire time so both sides
+// read the same column instead of recomputing.
+const EXEC_RENEWAL_MARKUP_PCT = 15;
 
 async function confirmRenewExec(execId, role, name, currentSalary) {
-    const markup = execRenewalMarkupPct(execId);
+    if (_renewInFlight.has(execId)) return;
+    const markup = EXEC_RENEWAL_MARKUP_PCT;
     const proposedSalary = Math.round(Number(currentSalary || 0) * (100 + markup) / 100);
     const msg = `RENEW ${role}: ${name}\n\n` +
         `Predicted contract:\n` +
@@ -251,6 +254,10 @@ async function confirmRenewExec(execId, role, name, currentSalary) {
         `Confirm renewal?`;
     if (!confirm(msg)) return;
 
+    // Lock only after the player has confirmed — a cancelled
+    // confirm() never adds to the in-flight set, so the player
+    // can change their mind and click RENEW again.
+    _renewInFlight.add(execId);
     try {
         const { data, error } = await _supabase.rpc('renew_executive_contract', { p_exec_id: execId });
         if (error) {
@@ -266,6 +273,8 @@ async function confirmRenewExec(execId, role, name, currentSalary) {
         renderActionsTab();
     } catch (err) {
         alert('Renewal failed: ' + (err?.message || err));
+    } finally {
+        _renewInFlight.delete(execId);
     }
 }
 window.confirmRenewExec = confirmRenewExec;
