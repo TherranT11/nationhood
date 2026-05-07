@@ -12586,8 +12586,11 @@ async function renderJudicialTab(container) {
 
     container.innerHTML = `<div style="padding:16px;color:var(--text-dim);font-family:var(--font-mono);font-size:12px;">Loading lawsuits…</div>`;
 
-    // Pull lawsuits + the active Justice holder in parallel.
-    const [suitsRes, formRes] = await Promise.all([
+    // Pull lawsuits + the active Justice ministry row in parallel.
+    // Source of truth is the `ministries` table — `government_formations` only
+    // holds proposal-stage ministry_assignments, so the old query reported
+    // every cabinet as vacant outside of an active formation flow.
+    const [suitsRes, justiceRes] = await Promise.all([
         _supabase.from('commercial_lawsuits')
             .select(`
                 id, status, grievance_type, relief_sought,
@@ -12599,9 +12602,12 @@ async function renderJudicialTab(container) {
             `)
             .eq('nation_id', currentNation.id)
             .order('filed_at_tick', { ascending: false }),
-        activeFormationId
-            ? _supabase.from('government_formations').select('ministry_assignments').eq('id', activeFormationId).single()
-            : Promise.resolve({ data: null }),
+        _supabase.from('ministries')
+            .select('party_id, minister_first_name, minister_last_name, factions(id, faction_name, abbreviation, party_color)')
+            .eq('nation_id', currentNation.id)
+            .eq('ministry_key', 'justice')
+            .eq('is_active', true)
+            .maybeSingle(),
     ]);
 
     if (suitsRes.error) {
@@ -12611,9 +12617,19 @@ async function renderJudicialTab(container) {
     }
 
     const lawsuits = suitsRes.data || [];
-    const justiceHolderId = formRes?.data?.ministry_assignments?.justice || null;
-    const viewerHoldsJustice = !!currentFaction && justiceHolderId && currentFaction.id === justiceHolderId;
-    const justiceVacant = !justiceHolderId;
+    const justiceMinistry = justiceRes?.data || null;
+    const justicePartyId = justiceMinistry?.party_id || null;
+    const justiceMinisterName = justiceMinistry
+        ? `${justiceMinistry.minister_first_name || ''} ${justiceMinistry.minister_last_name || ''}`.trim()
+        : '';
+    const justicePartyName = justiceMinistry?.factions?.faction_name || '';
+    const justicePartyColor = justiceMinistry?.factions?.party_color || '#c8a832';
+    const viewerHoldsJustice = !!currentFaction && justicePartyId && currentFaction.id === justicePartyId;
+    // Vacant when no party holds the ministry. Party-held but unappointed
+    // is a separate state — banner reports "Unappointed [Party]" so players
+    // can see who's responsible for naming a minister.
+    const justiceVacant = !justicePartyId;
+    const justiceUnappointed = !!justicePartyId && !justiceMinisterName;
 
     const pending = lawsuits.filter(l => ['pending','reviewing','awaiting_trial','settle_offered'].includes(l.status));
     const closed  = lawsuits.filter(l => ['upheld','dismissed','settled','withdrawn'].includes(l.status));
@@ -12687,12 +12703,27 @@ async function renderJudicialTab(container) {
 
     let html = '';
 
-    // Header strip — count + viewer role hint.
-    const banner = justiceVacant
-        ? `<div style="font-family:var(--font-mono);font-size:11px;color:#c84;letter-spacing:0.06em;">Justice ministry vacant — pending cases remain on the docket until a Minister of Justice is appointed.</div>`
+    // Header strip — Justice Minister identity + viewer role hint.
+    let ministerLine;
+    if (justiceVacant) {
+        ministerLine = `<div style="font-family:var(--font-mono);font-size:11px;color:#c84;letter-spacing:0.06em;">Justice Minister: <span style="color:#c84;">Vacant</span></div>`;
+    } else {
+        const partyChip = justicePartyName
+            ? ` <span style="color:${justicePartyColor};">[${escapeHtml(justicePartyName)}]</span>`
+            : '';
+        const nameDisplay = justiceUnappointed
+            ? `<span style="color:#c84;">Unappointed</span>`
+            : `<span style="color:var(--text-bright);">${escapeHtml(justiceMinisterName)}</span>`;
+        ministerLine = `<div style="font-family:var(--font-mono);font-size:11px;color:#9e9a92;letter-spacing:0.06em;">Justice Minister: ${nameDisplay}${partyChip}</div>`;
+    }
+
+    const roleHint = justiceVacant
+        ? `<div style="font-family:var(--font-mono);font-size:11px;color:#c84;letter-spacing:0.06em;margin-top:2px;">Pending cases remain on the docket until a Minister of Justice is appointed.</div>`
         : viewerHoldsJustice
-            ? `<div style="font-family:var(--font-mono);font-size:11px;color:#5cb85c;letter-spacing:0.06em;">Your party holds the Ministry of Justice. Cases awaiting trial show a Rule on Case control.</div>`
-            : `<div style="font-family:var(--font-mono);font-size:11px;color:#9e9a92;letter-spacing:0.06em;">Cases are reviewed by the Ministry of Justice.</div>`;
+            ? `<div style="font-family:var(--font-mono);font-size:11px;color:#5cb85c;letter-spacing:0.06em;margin-top:2px;">Your party holds the Ministry of Justice. Cases awaiting trial show a Rule on Case control.</div>`
+            : `<div style="font-family:var(--font-mono);font-size:11px;color:#9e9a92;letter-spacing:0.06em;margin-top:2px;">Cases are reviewed by the Ministry of Justice.</div>`;
+
+    const banner = `${ministerLine}${roleHint}`;
 
     html += `<div style="padding:16px 20px;border-bottom:1px solid var(--border-main);background:var(--bg-2,#1a1a17);">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
