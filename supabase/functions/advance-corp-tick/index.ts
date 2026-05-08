@@ -3540,12 +3540,20 @@ async function processTradeAgreementShipping(supabase, currentTick) {
     const nowIso = () => new Date().toISOString();
 
     // ── Pass A: Auto-award (trade-agreement contracts only) ──
+    // Trade-agreement contracts have no bid window — they sit as
+    // Available Routes until a corp bids, then award on the next
+    // corp-tick. Pick every status='open' trade-agreement contract;
+    // the per-contract bid fetch decides whether to award now or
+    // skip until later. Migration 20261018 sets a sentinel
+    // expires_at_tick (INT_MAX) at spawn so the UI's
+    // `.gt(expires_at_tick, current_tick)` filter passes forever
+    // and the legacy auto-extend (incrementing expires_at_tick by
+    // +1 each tick on zero bids) is no longer needed.
     const { data: closing, error: closingErr } = await supabase
         .from('shipping_contracts')
         .select('id, delivery_priority, term_ticks, volume_required, trade_agreement_id, nation_id')
         .eq('status', 'open')
-        .not('trade_agreement_id', 'is', null)
-        .lte('expires_at_tick', currentTick);
+        .not('trade_agreement_id', 'is', null);
 
     if (closingErr) {
         console.warn('[TradeAgreementShipping] closing fetch failed:', closingErr.message);
@@ -3562,18 +3570,11 @@ async function processTradeAgreementShipping(supabase, currentTick) {
                 continue;
             }
 
-            // Zero offers ⇒ extend window. Phase 1 spec: "sit until at
-            // least 1 offer is made." +1 tick keeps the contract in the
-            // closing-set next cycle without a backlog of stale rows.
+            // Zero offers ⇒ leave the contract sitting open. No
+            // window to extend, no expiry to advance — just wait
+            // for a corp to bid on a future tick.
             if (!bids || bids.length === 0) {
-                const { error: pollErr } = await supabase.from('shipping_contracts')
-                    .update({ expires_at_tick: currentTick + 1, updated_at: nowIso() })
-                    .eq('id', contract.id).eq('status', 'open');
-                if (pollErr) {
-                    console.warn(`[TradeAgreementShipping] poll-extend failed for ${contract.id}:`, pollErr.message);
-                } else {
-                    results.polling++;
-                }
+                results.polling++;
                 continue;
             }
 
