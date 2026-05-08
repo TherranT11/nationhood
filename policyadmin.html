@@ -2125,6 +2125,7 @@ function resetBuilder() {
 // ==================== UTILITIES ====================
 function fmtStat(stat) {
     if (!stat) return '—';
+    if (stat === 'control') return 'State Apparatus';
     return stat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
     function fmtCost(m) {
