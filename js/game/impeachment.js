@@ -247,14 +247,25 @@ export async function openImpeachmentTrigger(supabase, ctx) {
             seat_count: mySeats,
         }, { onConflict: 'bill_id,faction_id' });
 
-        await supabase.from('event_log').insert({
-            nation_id: nation.id,
-            event_type: 'impeachment',
-            headline: `Impeachment Motion Filed Against President ${presName}`,
-            body: `The ${faction.faction_name} has filed articles of impeachment against President ${presName}. Charges: ${chargesList}. A ${GAME_CONFIG.IMPEACHMENT_COMMITTEE_TICKS}-tick committee debate will precede the floor vote.`,
-            metadata: { status: 'filed', president_name: presName, charges: chargesList, filer: faction.faction_name },
-            tick,
+        // event_log uses the canonical column set: event_name, category,
+        // trigger_key, description_chosen, fired_at_tick. The original
+        // fileImpeachment in government.html used (event_type, headline,
+        // body, metadata, tick) which don't exist on this schema — every
+        // insert silently failed because the original code didn't check
+        // the error. Fixed here while we're at it.
+        const { error: eventErr } = await supabase.from('event_log').insert({
+            nation_id:          nation.id,
+            event_name:         `Impeachment Motion Filed Against President ${presName}`,
+            category:           'government',
+            trigger_key:        'impeachment_motion_filed',
+            description_chosen: `The ${faction.faction_name} has filed articles of impeachment against President ${presName}. Charges: ${chargesList}. A ${GAME_CONFIG.IMPEACHMENT_COMMITTEE_TICKS}-tick committee debate will precede the floor vote.`,
+            fired_at_tick:      tick,
         });
+        if (eventErr) {
+            // Non-blocking — the bill + proceeding rows are already
+            // written; losing the world-news entry isn't worth aborting.
+            console.warn('[impeachment] event_log insert failed:', eventErr.message);
+        }
 
         alert(`⚖ "${motionName}" has been filed!\n\n${GAME_CONFIG.IMPEACHMENT_COMMITTEE_TICKS}-tick committee debate begins now. The motion will then proceed to a floor vote.`);
         window.location.href = `bill.html?id=${bill.id}`;
