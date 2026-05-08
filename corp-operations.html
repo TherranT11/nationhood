@@ -2715,15 +2715,19 @@ async function init() {
     let _lastSeenTick = Number(shard?.current_tick) || 0;
     const _tickPoll = setInterval(async () => {
         if (document.hidden) return;
-        const { data: latest, error } = await _supabase.from('shard')
-            .select('current_tick, current_date')
-            .eq('name', 'Alpha Shard').single();
-        if (error || !latest) return;
-        const liveTick = Number(latest.current_tick) || 0;
-        if (liveTick === _lastSeenTick) return;
-        _lastSeenTick = liveTick;
-        shard = { ...shard, ...latest };
-        await loadContracts();
+        try {
+            const { data: latest, error } = await _supabase.from('shard')
+                .select('current_tick, current_date')
+                .eq('name', 'Alpha Shard').single();
+            if (error || !latest) return;
+            const liveTick = Number(latest.current_tick) || 0;
+            if (liveTick === _lastSeenTick) return;
+            _lastSeenTick = liveTick;
+            shard = { ...shard, ...latest };
+            await loadContracts();
+        } catch (e) {
+            console.error('[corp-operations] tick poll failed:', e);
+        }
     }, 30000);
     window.addEventListener('beforeunload', () => clearInterval(_tickPoll));
 
