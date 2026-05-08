@@ -1174,17 +1174,19 @@ async function loadFleetInventory(corpId, currentTick) {
             : (a.route ? `${escHtml(a.route.origin?.name || '?')} ↔ ${escHtml(a.route.dest?.name || '?')}` : 'Unassigned');
         const cost = OVERHAUL_COST[a.aircraft_class] || 0;
         const canOverhaul = !a.is_overhauling && Number(a.condition) < 100;
-        const btn = canOverhaul
+        const overhaulBtn = canOverhaul
             ? `<button class="ao-route-mini-btn" data-act="overhaul" data-aircraft-id="${a.id}" data-cost="${cost}">Overhaul $${(cost/1000).toFixed(0)}k</button>`
             : (a.is_overhauling
                 ? `<span class="ao-list-tag muted">Sidelined 1 tick</span>`
                 : `<span class="ao-list-tag muted">At full condition</span>`);
+        const isAssigned = a.route ? '1' : '0';
+        const retireBtn = `<button class="ao-route-mini-btn" data-act="retire" data-aircraft-id="${a.id}" data-assigned="${isAssigned}">Retire</button>`;
         return `<div class="ao-list-row">
             <div>
                 <div class="ao-list-primary">${escHtml(cls)} <span class="ao-list-tag muted" style="margin-left:6px;">${slots} slot${slots === 1 ? '' : 's'}</span>${tail}</div>
                 <div class="ao-list-secondary">${condition}% condition · ${assignment} · ${service}${overhaulTag}</div>
             </div>
-            <div style="text-align:right;">${btn}</div>
+            <div style="display:flex; gap:6px; align-items:center; justify-content:flex-end;">${overhaulBtn}${retireBtn}</div>
         </div>`;
     }).join('');
     el.innerHTML = summary + rows;
@@ -1202,6 +1204,28 @@ async function loadFleetInventory(corpId, currentTick) {
                 return;
             }
             await loadFleetInventory(corpId, currentTick);
+        });
+    });
+
+    el.querySelectorAll('[data-act="retire"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const acId = btn.dataset.aircraftId;
+            const isAssigned = btn.dataset.assigned === '1';
+            const msg = isAssigned
+                ? 'Retire this aircraft? It will be released from its route and removed from your fleet permanently. No refund.'
+                : 'Retire this aircraft? It will be removed from your fleet permanently. No refund.';
+            if (!confirm(msg)) return;
+            btn.disabled = true;
+            const { data, error } = await _supabase.rpc('retire_aircraft', { p_aircraft_id: acId });
+            btn.disabled = false;
+            if (error || !data?.success) {
+                alert('Could not retire: ' + (error?.message || data?.error || 'unknown error'));
+                return;
+            }
+            await Promise.all([
+                loadFleetInventory(corpId, currentTick),
+                data.released_route_id ? loadActiveRoutes(corpId) : Promise.resolve(),
+            ]);
         });
     });
 }
