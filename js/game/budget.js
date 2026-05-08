@@ -149,7 +149,12 @@ export async function computePanelAnnualExpenditures(supabase, nation) {
         console.warn(`[Budget] active_laws threw for ${nation.name}:`, err?.message || err);
     }
     const stadiumAnnualCost = Number(nation.vola_stadium_annual_cost) || 0;
-    return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost;
+    // Public Sector Wages: monthly = (state_apparatus × wages) / 100,
+    // annual = monthly × 12. Mirrors _gbBuildCostRows in government.html
+    // exactly so the panel's monthly balance and the per-tick debt
+    // change always agree.
+    const publicSectorWagesAnnual = (Number(nation?.control) || 0) * (Number(nation?.wages) || 0) / 100 * 12;
+    return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost + publicSectorWagesAnnual;
 }
 
 export async function processNationDebtTick(supabase, nation) {
