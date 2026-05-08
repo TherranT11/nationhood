@@ -2382,9 +2382,18 @@ async function loadBudgetData() {
 function _gbBuildIncomeRows(d) {
     const b = d.budget;
     const grossTax = Math.max(0, Number(b.grossRevenue || 0) - Number(d.aidReceived || 0) - Number(d.recurringReceivedAnnual || 0));
+    // Annualized corporate tax revenue computed from the per-tick figure
+    // calculateNationalBudget returns. Split out from Tax Revenue so the
+    // player can see what corporate taxation specifically brings in,
+    // without changing the Income total — the residual "Tax Revenue" row
+    // covers income tax + anything else that was previously in the
+    // catch-all.
+    const corporateTaxAnnual = (Number(b.corpRevenue) || 0) * GAME_CONFIG.TICKS_PER_YEAR;
+    const otherTaxAnnual     = Math.max(0, grossTax - corporateTaxAnnual);
     const rows = [
-        { key: 'tax_revenue',  name: 'Tax Revenue',      yr: grossTax, descKey: 'taxRevenue' },
-        { key: 'trade_agrs',   name: 'Trade Agreements', yr: Number(d.aidReceived || 0) + Number(d.recurringReceivedAnnual || 0), descKey: 'tradeAgr'    },
+        { key: 'tax_revenue',   name: 'Tax Revenue',      yr: otherTaxAnnual,    descKey: 'taxRevenue'    },
+        { key: 'corporate_tax', name: 'Corporate Tax',    yr: corporateTaxAnnual, descKey: 'corporateTax' },
+        { key: 'trade_agrs',    name: 'Trade Agreements', yr: Number(d.aidReceived || 0) + Number(d.recurringReceivedAnnual || 0), descKey: 'tradeAgr'    },
     ];
     return rows;
 }
@@ -2709,7 +2718,8 @@ function _gbWireRows(container, incomeRows, costRows) {
 // what the game already models); sub-allocations for ministries fall
 // back to the fiscal_category's policy + institution mix at render time.
 const _GB_DEEP_COPY = {
-    taxRevenue:  { desc: 'Aggregate state taxation. The 19-column schema reports a single consolidated tax revenue figure rather than per-bracket breakdowns.' },
+    taxRevenue:  { desc: 'Aggregate state taxation excluding corporate tax (which has its own row below). Covers income tax plus any other revenue that lands in the treasury and isn\'t aid, trade transfer, or corporate tax.' },
+    corporateTax: { desc: 'Annual corporate tax revenue. Per-tick formula: (service_sector + industry) / 10 × corporate_tax_rate × (1 − corruption/100). Click to see the active Corporate Taxation policy and its rate.' },
     tradeAgr:    { desc: 'Recurring income from accepted trade agreements — both economic aid received and recurring financial transfers under GTAs. Outgoing flows appear on the Costs side. One-time transfers are not counted here (they hit treasury once and are not ongoing income).' },
     debtInterest:{ desc: 'Interest service on sovereign debt.' },
     // Spending categories — descriptions in place, allocation engines
@@ -2792,6 +2802,26 @@ async function _gbSelectCategory(container, row, kind) {
             const optionName = law.selected_option?.option_name;
             const label = optionName ? `${policyName} — ${optionName}` : policyName;
             subRows.push({ k: label, v: annual });
+        }
+    }
+
+    // Corporate Tax: surface the active Corporate Taxation policy +
+    // option + the literal rate from nation.corporate_tax. Reads
+    // _budgetData.activeLaws (already loaded) for the policy / option
+    // labels; falls back to a generic line when no matching law is
+    // active. The dollar value is the annualized revenue this rate
+    // produces under the current formula.
+    if (row.descKey === 'corporateTax' && currentNation) {
+        const rate = Number(currentNation.corporate_tax || 0);
+        const corpLaw = (_budgetData?.activeLaws || []).find(al =>
+            /corporat.*tax/i.test(al?.policies?.policy_name || '')
+        );
+        if (corpLaw) {
+            const policyName = corpLaw.policies?.policy_name || 'Corporate Taxation';
+            const optionName = corpLaw.selected_option?.option_name || 'Active option';
+            subRows.push({ k: `${policyName} — ${optionName} (${rate}%)`, v: row.yr });
+        } else {
+            subRows.push({ k: `Active rate: ${rate}%`, v: row.yr });
         }
     }
 
