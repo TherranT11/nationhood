@@ -1651,16 +1651,22 @@ function adm2RenderCabinet() {
     // so synthetic vacant entries work end-to-end.
     const existingByKey = new Map();
     (ministries || []).forEach(m => existingByKey.set(m.ministry_key, m));
-    // Empty-state guard: a brand-new nation that has never formed a
-    // government should show "No cabinet assembled" instead of 13 vacant
-    // slots. Once a government is formed (parliamentary or otherwise),
-    // we project the full cabinet so the player can see and fill every
-    // portfolio — including emergency_minority, where the formation
-    // flow doesn't seed non-PM ministry rows but those slots should
-    // still be visible as fillable vacancies.
+    const filledKeys = MINISTRY_KEYS_CABINET.filter(k =>
+        k !== 'prime_minister' && existingByKey.has(k)
+    );
+    // Empty-state guard. Original gate ("no non-PM rows → show empty
+    // state") silently broke minority gov: form_minority_government
+    // doesn't seed non-PM ministry rows, so an emergency_minority with
+    // only the PM row hit this and rendered "No cabinet assembled"
+    // instead of the projected 13 vacant slots the player needs to
+    // fill. Add an explicit unlock when a government is actually
+    // formed (any status flow that finalize seats); otherwise keep
+    // the original "PM-only or empty → no cabinet" behavior so legacy
+    // states with a stray PM row but no coalition row still render
+    // the legacy empty state.
     const hasFormedGov = !!coalition
         && (coalition.status === 'formed' || coalition.status === 'caretaker');
-    if (!hasFormedGov && existingByKey.size === 0) {
+    if (!hasFormedGov && filledKeys.length === 0) {
         if (titleEl) titleEl.textContent = 'Cabinet · 0';
         listEl.innerHTML = '<div style="padding:20px 14px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;">No cabinet assembled.</div>';
         return;
