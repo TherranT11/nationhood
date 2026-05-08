@@ -7,8 +7,7 @@
 // modals, event handlers, and data loaders.
 
 import { renderRoleActionsShell } from './role-actions.js';
-import { hfFmtBig } from './utils.js';
-import { tickToDate } from './utils.js';
+import { hfFmtBig, tickToDate } from './utils.js';
 import { PLATFORMS, STAT_NAMES, BAD_STATS, statDirection, platformMomentumInfo } from './game/platforms.js';
 import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, getGoverningStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
