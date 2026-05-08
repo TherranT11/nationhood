@@ -2501,6 +2501,7 @@ function _gbBuildCostRows(d) {
         { key: 'sports_culture',       name: 'Sports & Culture',        yr: sportsCultureAnnual,        descKey: 'sportsAndCulture'     },
         { key: 'foreign_aid',          name: 'Foreign Aid & Diplomacy', yr: 0,                          descKey: 'foreignAid'           },
         { key: 'discretionary',        name: 'Discretionary Programs',  yr: 0,                          descKey: 'discretionary'        },
+        { key: 'regulatory_agencies',  name: 'Regulatory Agencies',     yr: 0,                          descKey: 'regulatoryAgencies'   },
         { key: 'other_programs',       name: 'Other Programs',          yr: otherProgramsAnnual,        descKey: 'otherPrograms'        },
         { key: 'trade_obligations',    name: 'Trade Agreement Obligations', yr: tradeObligationsAnnual, descKey: 'tradeObligations'     },
         { key: 'debt_interest',        name: 'Interest on Debt',        yr: _gbToAbstract(d.debtService), descKey: 'debtInterest'   },
@@ -2722,10 +2723,11 @@ const _GB_DEEP_COPY = {
     procurementCapital:     { desc: 'Government purchases of goods, services, and capital equipment — IT, vehicles, materials, contracted services. The lumpy, one-shot side of public spending.' },
     subsidiesIndustry:      { desc: 'Direct support to private firms and sectors — agricultural subsidies, industrial credits, R&D grants, strategic-industry bailouts. Distinct from welfare, which targets households.' },
     defenseSecurity:        { desc: 'Standing military pay, materiel, intelligence services, and internal security forces. Scales with force structure and active doctrine.' },
-    nationalInfrastructure: { desc: 'Public works — transport networks, utilities, civic buildings, the physical platform the rest of the economy runs on. In monarchies, includes a Royal Holdings & Estates sub-line for the upkeep of crown property.' },
+    nationalInfrastructure: { desc: 'Capital and operating costs for the government\'s permanent footprint — administrative offices, crown property in monarchies, state-owned enterprises, healthcare facilities, education campuses, military bases, transportation networks, and the strategic arsenal. Click for the per-sector breakdown.' },
     sportsAndCulture:       { desc: 'Recurring cultural and sporting upkeep — primarily Vola stadium maintenance once venues are completed. Each tier carries a fixed annual cost (small $0.5, modest $1, extravagant $2). Click-through surfaces the running total of stadium upkeep.' },
     foreignAid:             { desc: 'Non-trade-agreement foreign disbursements: development aid, humanitarian relief, soft-power grants. Trade-agreement aid lives under Trade Agreements on the income side instead.' },
     discretionary:          { desc: 'Catch-all for short-cycle programs and one-off initiatives that don’t fit a permanent ministry budget — pilots, commissions, special funds.' },
+    regulatoryAgencies:     { desc: 'Funding for sector-specific regulatory bodies that enforce licensing, safety standards, and ongoing compliance. Each enforcement arm scales with the number of regulated entities and the staffing budget approved for it. Click to see the per-sector breakdown.' },
     otherPrograms:          { desc: 'Ongoing administrative costs of active laws not bucketed into a specific category — religious establishment, healthcare framework, education framework, citizenship rules, labor relations, press regulation, family law, and similar regulatory programs. Click for the per-law breakdown.' },
     tradeObligations:       { desc: 'Outgoing recurring financial transfers under accepted trade agreements. Annualized as per-tick amount × ticks-per-year and drained from the Treasury Cash Balance each tick (overflowing to debt only when treasury hits zero). Mirrors inbound transfers on the Revenue side.' },
 };
@@ -2793,15 +2795,67 @@ async function _gbSelectCategory(container, row, kind) {
         }
     }
 
-    // National Infrastructure: monarchies get a single Royal Holdings
-    // & Estates sub-line at the flat $3/mo rate. The row total in
-    // _gbBuildCostRows already includes it; we just surface the
-    // breakdown here so the value isn't a black box.
-    if (row.descKey === 'nationalInfrastructure' && _budgetData?.isMonarchy) {
+    // Regulatory Agencies: scaffolded sub-sectors at $0 until the
+    // per-agency cost wiring lands. Pushed unconditionally (no
+    // value > 0 filter) so the player sees the structure even
+    // before any sector is funded.
+    if (row.descKey === 'regulatoryAgencies') {
+        subRows.push({ k: 'Wage and Labor Enforcement', v: 0 });
+        subRows.push({ k: 'Banking Enforcement',        v: 0 });
+        subRows.push({ k: 'Shipping Enforcement',       v: 0 });
+        subRows.push({ k: 'Construction Enforcement',   v: 0 });
+        subRows.push({ k: 'Airlines Enforcement',       v: 0 });
+        subRows.push({ k: 'Industry Enforcement',       v: 0 });
+    }
+
+    // Procurement & Capital: scaffolded $0 placeholders.
+    if (row.descKey === 'procurementCapital') {
+        subRows.push({ k: 'State Owned Enterprises', v: 0 });
+        subRows.push({ k: 'Defense Spending',        v: 0 });
+        subRows.push({ k: 'Infrastructure',          v: 0 });
+        subRows.push({ k: 'Investment',              v: 0 });
+    }
+
+    // Defense & Security: scaffolded $0 placeholders.
+    if (row.descKey === 'defenseSecurity') {
+        subRows.push({ k: 'Manpower',            v: 0 });
+        subRows.push({ k: 'Military Operations', v: 0 });
+        subRows.push({ k: 'Military Training',   v: 0 });
+        subRows.push({ k: 'Border Security',     v: 0 });
+        subRows.push({ k: 'Internal Security',   v: 0 });
+    }
+
+    // Foreign Aid & Diplomacy: scaffolded $0 placeholders.
+    if (row.descKey === 'foreignAid') {
+        subRows.push({ k: 'Embassies',        v: 0 });
+        subRows.push({ k: 'Humanitarian Aid', v: 0 });
+    }
+
+    // Discretionary Programs: scaffolded $0 placeholders.
+    if (row.descKey === 'discretionary') {
+        subRows.push({ k: 'Conservation Programs',             v: 0 });
+        subRows.push({ k: 'Protected Infrastructure',          v: 0 });
+        subRows.push({ k: 'Environmental Protection Programs', v: 0 });
+    }
+
+    // National Infrastructure: scaffolded sub-sectors. Crown Holdings
+    // carries the existing Royal Holdings & Estates value for
+    // monarchies (flat $3/mo, included in _gbBuildCostRows row total)
+    // and reads $0 for non-monarchy systems. The other seven sub-rows
+    // are scaffolding placeholders at $0 until per-sector cost wiring
+    // lands.
+    if (row.descKey === 'nationalInfrastructure') {
+        subRows.push({ k: 'Government Administration [Control]', v: 0 });
         subRows.push({
-            k: 'Royal Holdings & Estates',
-            v: _GB_ROYAL_HOLDINGS_MONTHLY * GAME_CONFIG.TICKS_PER_YEAR,
+            k: 'Crown Holdings',
+            v: _budgetData?.isMonarchy ? _GB_ROYAL_HOLDINGS_MONTHLY * GAME_CONFIG.TICKS_PER_YEAR : 0,
         });
+        subRows.push({ k: 'State Owned Enterprises',             v: 0 });
+        subRows.push({ k: 'Healthcare Facilities',               v: 0 });
+        subRows.push({ k: 'Education Campuses',                  v: 0 });
+        subRows.push({ k: 'Military Bases',                      v: 0 });
+        subRows.push({ k: 'Transportation',                      v: 0 });
+        subRows.push({ k: 'Nuclear Arsenal',                     v: 0 });
     }
 
     // Sports & Culture: today the only sub-line is Sport Stadiums &
