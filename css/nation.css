@@ -1576,4 +1576,13 @@ body.light-mode .loading-spinner {
     .ill-origin-row { grid-template-columns: 1fr; gap: 4px; }
     .imm-matrix-table { font-size: 9px; }
     .imm-matrix-table th, .imm-matrix-table td { padding: 4px 4px; }
+
+    /* Featured cards (GDP, Inflation, Debt, etc.) — already collapse to
+       width: 100% at 768px (line 1571) and stack vertically. The 28px
+       big-value font and 16px/20px padding were tuned for 380px-wide
+       desktop cards; on a 360px-viewport phone the padding wastes 40px
+       of horizontal room and the 28px value runs close to the card
+       edges. Trim padding + value font for narrow phones. */
+    .featured-card { padding: 12px 14px; }
+    .featured-card__big-value { font-size: 22px; }
 }
