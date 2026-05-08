@@ -1651,13 +1651,16 @@ function adm2RenderCabinet() {
     // so synthetic vacant entries work end-to-end.
     const existingByKey = new Map();
     (ministries || []).forEach(m => existingByKey.set(m.ministry_key, m));
-    const filledKeys = MINISTRY_KEYS_CABINET.filter(k =>
-        k !== 'prime_minister' && existingByKey.has(k)
-    );
-    // Fall back to the legacy "no cabinet" state only when nothing exists at
-    // all — projecting 12 vacant slots for a brand-new nation that has never
-    // formed a government would be misleading.
-    if (filledKeys.length === 0) {
+    // Empty-state guard: a brand-new nation that has never formed a
+    // government should show "No cabinet assembled" instead of 13 vacant
+    // slots. Once a government is formed (parliamentary or otherwise),
+    // we project the full cabinet so the player can see and fill every
+    // portfolio — including emergency_minority, where the formation
+    // flow doesn't seed non-PM ministry rows but those slots should
+    // still be visible as fillable vacancies.
+    const hasFormedGov = !!coalition
+        && (coalition.status === 'formed' || coalition.status === 'caretaker');
+    if (!hasFormedGov && existingByKey.size === 0) {
         if (titleEl) titleEl.textContent = 'Cabinet · 0';
         listEl.innerHTML = '<div style="padding:20px 14px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;">No cabinet assembled.</div>';
         return;
