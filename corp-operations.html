@@ -1140,6 +1140,10 @@ body.corp-operations-construction.light-mode {
            into a dedicated host owned by js/lawsuit-pressing-issues.js
            — same module the other sector ops pages mount. -->
       <div id="co-lawsuit-pressing"></div>
+      <!-- Corporate tax bills (Pay in Full / Cook the Books / Ignore)
+           render into a dedicated host owned by
+           js/corp-tax-pressing-issues.js. -->
+      <div id="co-tax-pressing"></div>
       <div id="co-issues-list">
         <div class="co-contract-empty">Loading…</div>
       </div>
@@ -1202,6 +1206,7 @@ body.corp-operations-construction.light-mode {
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, escapeAttr, tickToDate } from './js/utils.js';
 import { mountLawsuitPressingIssues } from './js/lawsuit-pressing-issues.js';
+import { mountCorporateTaxPressingIssues } from './js/corp-tax-pressing-issues.js';
 
 // Operations pages are sector-gated. Construction stays here; every other
 // sector has its own page. Keep this map in sync with corp-topbar.js's
@@ -2735,6 +2740,14 @@ async function init() {
         supabase: _supabase,
         faction,
         host: document.getElementById('co-lawsuit-pressing'),
+        currentTick: () => Number(shard?.current_tick) || 0,
+        showEmpty: false,
+        onChange: () => renderPressingIssues(),
+    });
+    mountCorporateTaxPressingIssues({
+        supabase: _supabase,
+        faction,
+        host: document.getElementById('co-tax-pressing'),
         currentTick: () => Number(shard?.current_tick) || 0,
         showEmpty: false,
         onChange: () => renderPressingIssues(),
