@@ -2014,6 +2014,26 @@ function attachPressingIssuesHandler() {
 }
 
 // ── ROUTES (Sections III + IV) ──
+
+// Trade-agreement contracts spawn with revenue_per_tick = 1 (sentinel).
+// Real revenue is decided by the corp's bid: markup tier × freighters /
+// transit_ticks, where the tier table from place_shipping_offer
+// (20260940) is 10% → $100k, 20% → $200k, 30% → $400k, 40% → $600k
+// per trip per freighter. Surface a min/max range so the corp sees
+// what the contract is actually worth before they open the offer modal.
+// SOP contracts (no trade_agreement_id) keep the literal cap value.
+const _SO_BID_TIERS_PRICE_MIN = 100000;
+const _SO_BID_TIERS_PRICE_MAX = 600000;
+
+function _soFormatRevenueRange(c) {
+    if (!c?.trade_agreement_id) return hfFmtBig(c?.revenue_per_tick);
+    const fr = Math.max(1, Number(c.freighters_required) || 1);
+    const tt = Math.max(1, Number(c.transit_ticks)       || 1);
+    const minRev = (fr * _SO_BID_TIERS_PRICE_MIN) / tt;
+    const maxRev = (fr * _SO_BID_TIERS_PRICE_MAX) / tt;
+    return `Est. ${hfFmtBig(minRev)} – ${hfFmtBig(maxRev)}`;
+}
+
 async function loadAvailableContracts() {
     if (!faction?.id) { _availableContracts = []; _myBids = new Map(); return; }
     const cur = Number(shard?.current_tick) || 0;
@@ -2022,7 +2042,7 @@ async function loadAvailableContracts() {
         .select(`
             id, nation_id, issuer_name, contract_type, name, description,
             origin_port, destination_port, destination_nation_id,
-            revenue_per_tick, term_ticks, freighters_required,
+            revenue_per_tick, term_ticks, transit_ticks, freighters_required,
             min_fleet_health, max_route_risk, expires_at_tick, award_criterion,
             trade_agreement_id, commodity, volume_required, delivery_priority,
             origin_nation:nations!nation_id ( name ),
@@ -2196,7 +2216,7 @@ function renderAvailableContracts() {
             <div class="so-contract-stats">
                 <div>
                     <div class="label">Revenue/Tick</div>
-                    <div class="value green">${escapeHtml(hfFmtBig(c.revenue_per_tick))}</div>
+                    <div class="value green">${escapeHtml(_soFormatRevenueRange(c))}</div>
                 </div>
                 <div>
                     <div class="label">Term</div>
