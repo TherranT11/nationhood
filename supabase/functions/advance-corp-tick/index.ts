@@ -4453,27 +4453,6 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     // override this default.
     await loadCorpHomeNations(supabase);
 
-    // Corporate tax assessment fires every 12 ticks at the January
-    // anchor. The RPC sums revenue_* corp_cash_events from ticks
-    // [currentTick-12, currentTick-1] per (corp, nation) and inserts
-    // bills with status='due'. Idempotent on (corp, nation, year) via
-    // UNIQUE constraint — a cron retry can't double-issue. Skip
-    // tick 0: no prior year to assess.
-    if (currentTick > 0 && currentTick % 12 === 0) {
-        try {
-            const { data: assessResult, error: assessErr } = await supabase.rpc(
-                'assess_corporate_taxes', { p_current_tick: currentTick }
-            );
-            if (assessErr) {
-                console.error('[CorpTax] assess_corporate_taxes failed:', assessErr.message);
-            } else {
-                console.log(`[CorpTax] Year ${assessResult?.year ?? '?'}: inserted ${assessResult?.inserted ?? 0} bill(s), skipped ${assessResult?.skipped_dup ?? 0} duplicate(s) at tick ${currentTick}.`);
-            }
-        } catch (err) {
-            console.error('[CorpTax] Assessment threw:', err?.message || err);
-        }
-    }
-
     // 4. Load all nations
     const { data: nations, error: nationErr } = await supabase
         .from('nations')
@@ -4497,6 +4476,28 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
         // defense: [],
         errors: [],
     };
+
+    // ── Corporate tax assessment (once per game year at the January anchor) ──
+    // Sums revenue_* corp_cash_events from ticks [currentTick-12, currentTick-1]
+    // per (corp, nation) and inserts corp_tax_bills rows with status='due'.
+    // Idempotent on (corp, nation, year) via UNIQUE constraint — cron retry
+    // can't double-issue. Skip tick 0 (no prior year to assess).
+    if (currentTick > 0 && currentTick % 12 === 0) {
+        try {
+            const { data: assessResult, error: assessErr } = await supabase.rpc(
+                'assess_corporate_taxes', { p_current_tick: currentTick }
+            );
+            if (assessErr) {
+                console.error('[advance-corp-tick] corp tax assessment failed:', assessErr.message);
+                summary.errors.push({ scope: 'corp_tax_assess', error: assessErr.message });
+            } else {
+                console.log(`[CorpTax] Year ${assessResult?.year ?? '?'}: inserted ${assessResult?.inserted ?? 0} bill(s), skipped ${assessResult?.skipped_dup ?? 0} duplicate(s) at tick ${currentTick}.`);
+            }
+        } catch (taxErr) {
+            console.error('[advance-corp-tick] corp tax assessment threw (non-fatal):', taxErr);
+            summary.errors.push({ scope: 'corp_tax_assess', error: String(taxErr) });
+        }
+    }
 
     // ── Tier-based contract generation (once per tick, all nations together) ──
     // Ranks every nation by gdp_growth, generates a deterministic slate per
