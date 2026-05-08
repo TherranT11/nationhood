@@ -1867,7 +1867,7 @@ async function loadAgreementShippingContracts() {
     const { data, error } = await _supabase.from('shipping_contracts')
         .select(`
             id, trade_agreement_id, status, winner_faction_id, revenue_per_tick,
-            volume_required, delivery_priority, expires_at_tick,
+            volume_required, delivery_priority, expires_at_tick, commodity,
             consecutive_missed_payments,
             winner:factions!winner_faction_id(faction_name, abbreviation),
             shipping_contract_bids!contract_id(energy_per_tick, route_risk_delta, status)
@@ -1889,6 +1889,7 @@ async function loadAgreementShippingContracts() {
             volume_required:             Number(c.volume_required) || 0,
             delivery_priority:           c.delivery_priority || null,
             expires_at_tick:             Number(c.expires_at_tick) || null,
+            commodity:                   c.commodity || null,
             winner_faction_id:           c.winner_faction_id,
             winner_faction_name:         c.winner?.faction_name || null,
             revenue_per_tick:            Number(c.revenue_per_tick) || 0,
@@ -2154,29 +2155,32 @@ function renderTradeAgreements() {
                 html += `</div>`;
             }
 
-            // Phase 7: Energy shipping detail block. Lists every
+            // Phase 7: Trade-shipping detail block. Lists every
             // shipping_contracts row spawned by this agreement (one
-            // per Energy trade_flow article), with status, winner
-            // corp, and live delivery rate. Only renders if the
-            // agreement has any spawned contracts.
-            if (hasEnergyArticle && phase4Contracts.length > 0) {
+            // per trade_flow article, any commodity since the widened
+            // 20260939 trigger), with status, winner corp, and live
+            // delivery rate. Auto-award is the design — buyer's
+            // delivery_priority drives the criterion, no per-bid
+            // accept/reject from the trade subtab.
+            if (phase4Contracts.length > 0) {
                 html += `<div style="margin-top:6px;background:var(--bg-card);border:1px solid var(--border-main);padding:8px 10px;">
-                    <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;">⚡ ENERGY SHIPPING</div>`;
+                    <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;">🚢 TRADE SHIPPING</div>`;
                 for (const c of phase4Contracts) {
                     let lineColor, lineLabel;
                     const missed = Number(c.consecutive_missed_payments) || 0;
+                    const commodityLabel = (c.commodity || 'units').replace(/_/g, ' ');
                     if (c.status === 'awarded' && c.winner_faction_name) {
                         if (missed > 0) {
                             lineColor = 'var(--red)';
-                            lineLabel = `⚠ ${c.energy_per_tick} Energy/tick · ${c.winner_faction_name} · ${missed} missed payment${missed === 1 ? '' : 's'}`;
+                            lineLabel = `⚠ ${c.energy_per_tick} ${commodityLabel}/tick · ${c.winner_faction_name} · ${missed} missed payment${missed === 1 ? '' : 's'}`;
                         } else {
                             lineColor = 'var(--green)';
-                            lineLabel = `${c.energy_per_tick} Energy/tick · ${c.winner_faction_name}`;
+                            lineLabel = `${c.energy_per_tick} ${commodityLabel}/tick · ${c.winner_faction_name}`;
                         }
                     } else if (c.status === 'open') {
                         lineColor = 'var(--amber, #b8860b)';
                         const ticksLeft = c.expires_at_tick != null ? Math.max(0, c.expires_at_tick - currentTk) : 0;
-                        lineLabel = `Awaiting offers · ${c.volume_required} Energy/tick · closes in ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}`;
+                        lineLabel = `Awaiting offers · ${c.volume_required} ${commodityLabel}/tick · closes in ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}`;
                     } else if (c.status === 'completed') {
                         lineColor = 'var(--text-dim)';
                         lineLabel = `Completed`;
