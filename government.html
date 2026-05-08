@@ -2808,15 +2808,54 @@ async function _gbSelectCategory(container, row, kind) {
         subRows.push({ k: 'Industry Enforcement',       v: 0 });
     }
 
-    // National Infrastructure: monarchies get a single Royal Holdings
-    // & Estates sub-line at the flat $3/mo rate. The row total in
-    // _gbBuildCostRows already includes it; we just surface the
-    // breakdown here so the value isn't a black box.
-    if (row.descKey === 'nationalInfrastructure' && _budgetData?.isMonarchy) {
+    // Procurement & Capital: scaffolded $0 placeholders.
+    if (row.descKey === 'procurementCapital') {
+        subRows.push({ k: 'State Owned Enterprises', v: 0 });
+        subRows.push({ k: 'Defense Spending',        v: 0 });
+        subRows.push({ k: 'Infrastructure',          v: 0 });
+        subRows.push({ k: 'Investment',              v: 0 });
+    }
+
+    // Defense & Security: scaffolded $0 placeholders.
+    if (row.descKey === 'defenseSecurity') {
+        subRows.push({ k: 'Manpower',            v: 0 });
+        subRows.push({ k: 'Military Operations', v: 0 });
+        subRows.push({ k: 'Military Training',   v: 0 });
+        subRows.push({ k: 'Border Security',     v: 0 });
+        subRows.push({ k: 'Internal Security',   v: 0 });
+    }
+
+    // Foreign Aid & Diplomacy: scaffolded $0 placeholders.
+    if (row.descKey === 'foreignAid') {
+        subRows.push({ k: 'Embassies',        v: 0 });
+        subRows.push({ k: 'Humanitarian Aid', v: 0 });
+    }
+
+    // Discretionary Programs: scaffolded $0 placeholders.
+    if (row.descKey === 'discretionary') {
+        subRows.push({ k: 'Conservation Programs',             v: 0 });
+        subRows.push({ k: 'Protected Infrastructure',          v: 0 });
+        subRows.push({ k: 'Environmental Protection Programs', v: 0 });
+    }
+
+    // National Infrastructure: scaffolded sub-sectors. Crown Holdings
+    // carries the existing Royal Holdings & Estates value for
+    // monarchies (flat $3/mo, included in _gbBuildCostRows row total)
+    // and reads $0 for non-monarchy systems. The other seven sub-rows
+    // are scaffolding placeholders at $0 until per-sector cost wiring
+    // lands.
+    if (row.descKey === 'nationalInfrastructure') {
+        subRows.push({ k: 'Government Administration [Control]', v: 0 });
         subRows.push({
-            k: 'Royal Holdings & Estates',
-            v: _GB_ROYAL_HOLDINGS_MONTHLY * GAME_CONFIG.TICKS_PER_YEAR,
+            k: 'Crown Holdings',
+            v: _budgetData?.isMonarchy ? _GB_ROYAL_HOLDINGS_MONTHLY * GAME_CONFIG.TICKS_PER_YEAR : 0,
         });
+        subRows.push({ k: 'State Owned Enterprises',             v: 0 });
+        subRows.push({ k: 'Healthcare Facilities',               v: 0 });
+        subRows.push({ k: 'Education Campuses',                  v: 0 });
+        subRows.push({ k: 'Military Bases',                      v: 0 });
+        subRows.push({ k: 'Transportation',                      v: 0 });
+        subRows.push({ k: 'Nuclear Arsenal',                     v: 0 });
     }
 
     // Sports & Culture: today the only sub-line is Sport Stadiums &
