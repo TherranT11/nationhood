@@ -2704,6 +2704,33 @@ async function init() {
     // Contracts + Pressing Issues render after the page is visible —
     // each section's empty/loading state covers the gap.
     loadContracts();
+
+    // Auto-refresh on tick advance. loadContracts() snapshots progress_pct
+    // and friends into _activeContracts; without this hook the page shows
+    // load-time progress against a fresh expectedPct read on every render,
+    // flagging on-track contracts as LATE the moment a tick passes. Poll
+    // shard every 30s and re-fetch only when current_tick actually moves.
+    // Skipped while the tab is hidden — no point churning queries for a
+    // backgrounded page.
+    let _lastSeenTick = Number(shard?.current_tick) || 0;
+    const _tickPoll = setInterval(async () => {
+        if (document.hidden) return;
+        try {
+            const { data: latest, error } = await _supabase.from('shard')
+                .select('current_tick, current_date')
+                .eq('name', 'Alpha Shard').single();
+            if (error || !latest) return;
+            const liveTick = Number(latest.current_tick) || 0;
+            if (liveTick === _lastSeenTick) return;
+            _lastSeenTick = liveTick;
+            shard = { ...shard, ...latest };
+            await loadContracts();
+        } catch (e) {
+            console.error('[corp-operations] tick poll failed:', e);
+        }
+    }, 30000);
+    window.addEventListener('beforeunload', () => clearInterval(_tickPoll));
+
     _lawsuitCtl = mountLawsuitPressingIssues({
         supabase: _supabase,
         faction,
