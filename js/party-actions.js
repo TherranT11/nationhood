@@ -18,6 +18,7 @@ import { fetchActiveCoalition } from './game/government-structure.js';
 import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './game/config.js';
 import { fileNoConfidenceMotion } from './game/no-confidence.js';
 import { callEarlyElectionsAction } from './game/elections.js';
+import { openImpeachmentTrigger } from './game/impeachment.js';
 import { getAdminFactionOverride } from './common.js';
 
 let _supabase = null;
@@ -36,6 +37,7 @@ let _seatTxInProgress = false; // module-level lock for Grant/Revoke Seats actio
 let _hogActive = null;         // active head_of_government row, or null when seat is vacant
 let _activeCoalition = null;    // canonical government_formations / virtual coalition state
 let _leadershipChallengeClaimed = false; // true after the player clicks the action this tick
+let _activePresident = null;   // active presidents row (Presidential / Semi-Pres only); null otherwise
 
 // ===== BLOCS (Phase 1: formation & membership) =====
 let _myBloc = null;           // active bloc row + { members: [...] } when in one
@@ -546,6 +548,23 @@ export async function initPartyActions(supabase, state) {
     const { data: deputyData } = await _supabase.from('faction_deputies')
         .select('*').eq('faction_id', faction.id).eq('status', 'active').maybeSingle();
     _deputy = deputyData || null;
+
+    // Active president for Presidential / Semi-Presidential nations.
+    // Drives the Impeach President gate in the Deputy actions panel
+    // (and is the only context the impeachment module needs that
+    // party-actions doesn't otherwise track).
+    _activePresident = null;
+    if (state.nation?.id) {
+        const govType = (state.nation.government_type || '').toLowerCase();
+        if (govType.includes('presidential')) {
+            const { data: presData } = await _supabase.from('presidents')
+                .select('id, faction_id, first_name, last_name, elected_tick')
+                .eq('nation_id', state.nation.id)
+                .eq('is_active', true)
+                .maybeSingle();
+            _activePresident = presData || null;
+        }
+    }
 
     // Ministries this faction holds — feeds the new Cabinet Ministries
     // summary + Ministry Actions panels. Filtered server-side by
@@ -1221,6 +1240,8 @@ function renderPage(root) {
             triggerLeaveBloc(root);
         } else if (actionId === 'invite_to_bloc') {
             openInviteToBlocModal(root);
+        } else if (actionId === 'impeach_president') {
+            triggerImpeachPresident();
         } else if (actionId === 'invest_in_sports_culture') {
             openVolaInvestmentModal(root, faction);
         } else if (actionId === 'expand_stadium_infrastructure') {
@@ -2076,6 +2097,16 @@ const DEPUTY_ACTIONS = [
         tags: ['ALLIANCE'],
         locked: false,
     },
+    {
+        id: 'impeach_president',
+        name: 'Impeach President',
+        desc: 'File articles of impeachment against the sitting President on charges of Abuse of Power, Gross Incompetence, or Constitutional Violation. Triggers a committee debate, then a floor vote requiring an absolute majority. If the motion passes, a 2/3 supermajority conviction vote follows. Presidential and Semi-Presidential systems only.',
+        cost: 'FREE',
+        costColor: 'var(--text-dim)',
+        moneyCost: 0,
+        tags: ['LEGISLATIVE', 'OPPOSITION'],
+        locked: false,
+    },
 ];
 
 const RALLY_TIERS = [
@@ -2132,6 +2163,27 @@ function renderDeputyActionsPanel(role) {
             } else if (!_myBlocIsLeader) {
                 isDisabled = true;
                 lockReason = 'Only the bloc leader can send invitations.';
+            }
+        } else if (action.id === 'impeach_president') {
+            const govType = (_state.nation?.government_type || '').toLowerCase();
+            const isPres = govType.includes('presidential');
+            const currentTick = Number(_state.shard?.current_tick) || 0;
+            const cooldownTick = Number(_state.nation?.impeachment_cooldown_until_tick) || 0;
+            if (!isPres) {
+                isDisabled = true;
+                lockReason = 'Presidential and Semi-Presidential systems only.';
+            } else if (!_activePresident) {
+                isDisabled = true;
+                lockReason = 'No sitting President to impeach.';
+            } else if (_activePresident.faction_id === faction.id) {
+                isDisabled = true;
+                lockReason = "Your party holds the Presidency — you cannot impeach yourself.";
+            } else if ((faction.seats || 0) < 1) {
+                isDisabled = true;
+                lockReason = 'Need at least 1 seat in the legislature.';
+            } else if (cooldownTick > currentTick) {
+                isDisabled = true;
+                lockReason = `Impeachment cooldown: ${cooldownTick - currentTick} tick(s) remaining.`;
             }
         }
 
@@ -5204,6 +5256,39 @@ async function triggerDisbandParty() {
         alert('Disband failed: ' + (err?.message || err));
     } finally {
         _disbandPartySubmitting = false;
+    }
+}
+
+let _impeachSubmitting = false;
+
+async function triggerImpeachPresident() {
+    if (_impeachSubmitting) return;
+    const faction = _state?.faction;
+    const nation  = _state?.nation;
+    if (!faction?.id || !nation?.id) return;
+    if (!_activePresident) {
+        alert('No sitting President to impeach.');
+        return;
+    }
+    _impeachSubmitting = true;
+    try {
+        const currentTick = Number(_state?.shard?.current_tick) || 0;
+        await openImpeachmentTrigger(_supabase, {
+            faction,
+            nation,
+            president: _activePresident,
+            isPresidentParty: _activePresident.faction_id === faction.id,
+            mySeats: faction.seats || 0,
+            currentTick,
+        });
+        // openImpeachmentTrigger redirects on success (window.location to
+        // bill.html). Cancel / failure paths just return; the gate
+        // re-renders next tick poll.
+    } catch (err) {
+        console.error('[party-actions] impeachment threw:', err?.message || err);
+        alert('Impeachment failed — check console.');
+    } finally {
+        _impeachSubmitting = false;
     }
 }
 
