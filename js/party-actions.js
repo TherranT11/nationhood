@@ -1845,8 +1845,21 @@ function renderActionsPanel(leaderName, partyColor, faction) {
                 isDisabled = true;
                 action.lockReason = 'Coalition formation only applies to parliamentary systems.';
             } else if (hasCoalitionRow && hasSeatedPm) {
-                isDisabled = true;
-                action.lockReason = 'A government is already in place.';
+                // Exception: an emergency_minority government's PM party
+                // can use Form Coalition to attempt promotion into a real
+                // majority coalition. finalize_government_formation
+                // (20260910:127) dissolves the prior formation atomically
+                // when the new coalition is finalized, so the server side
+                // needs no special-casing.
+                const isEmergencyMinority = _activeCoalition?.formation_type === 'emergency_minority';
+                if (isEmergencyMinority && inCoalition) {
+                    action.lockReason = '';
+                } else {
+                    isDisabled = true;
+                    action.lockReason = isEmergencyMinority
+                        ? 'A minority government is in place. Only its PM party can promote it to a coalition.'
+                        : 'A government is already in place.';
+                }
             } else if (hasCoalitionRow && !hasSeatedPm) {
                 isDisabled = true;
                 action.lockReason = inCoalition

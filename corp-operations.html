@@ -1140,6 +1140,10 @@ body.corp-operations-construction.light-mode {
            into a dedicated host owned by js/lawsuit-pressing-issues.js
            — same module the other sector ops pages mount. -->
       <div id="co-lawsuit-pressing"></div>
+      <!-- Corporate tax bills (Pay in Full / Cook the Books / Ignore)
+           render into a dedicated host owned by
+           js/corp-tax-pressing-issues.js. -->
+      <div id="co-tax-pressing"></div>
       <div id="co-issues-list">
         <div class="co-contract-empty">Loading…</div>
       </div>
@@ -1202,6 +1206,7 @@ body.corp-operations-construction.light-mode {
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, escapeAttr, tickToDate } from './js/utils.js';
 import { mountLawsuitPressingIssues } from './js/lawsuit-pressing-issues.js';
+import { mountCorporateTaxPressingIssues } from './js/corp-tax-pressing-issues.js';
 
 // Operations pages are sector-gated. Construction stays here; every other
 // sector has its own page. Keep this map in sync with corp-topbar.js's
@@ -1374,6 +1379,7 @@ let _receivedOffers = [];
 // Lawsuit cards (defendant + plaintiff settle-review) are owned by
 // js/lawsuit-pressing-issues.js — mounted to its own host below.
 let _lawsuitCtl = null;
+let _corpTaxCtl = null;
 
 async function loadPressingIssues() {
     if (!faction?.id) return;
@@ -1438,16 +1444,17 @@ function renderPressingIssues() {
     if (!list || !meta) return;
 
     const lawsuitCount = _lawsuitCtl?.getCount?.() ?? 0;
-    const total = _pressingIssues.length + _receivedOffers.length + lawsuitCount;
+    const taxCount     = _corpTaxCtl?.getCount?.() ?? 0;
+    const total = _pressingIssues.length + _receivedOffers.length + lawsuitCount + taxCount;
     meta.textContent = total === 0
         ? 'Time-Sensitive ◊ Decide Before Tick Resolves'
         : `${total} OPEN ◊ DECIDE BEFORE TICK RESOLVES`;
 
     if (_pressingIssues.length === 0 && _receivedOffers.length === 0) {
-        // Lawsuit cards (if any) render into their own host above
-        // #co-issues-list — so the empty copy here only applies to the
-        // event/offer stack, not the section as a whole.
-        list.innerHTML = lawsuitCount === 0
+        // Lawsuit + tax cards (if any) render into their own hosts
+        // above #co-issues-list — so the empty copy here only applies
+        // to the event/offer stack, not the section as a whole.
+        list.innerHTML = (lawsuitCount === 0 && taxCount === 0)
             ? '<div class="co-contract-empty">No pressing issues right now. Time-sensitive decisions will appear here when triggered.</div>'
             : '';
         return;
@@ -2735,6 +2742,14 @@ async function init() {
         supabase: _supabase,
         faction,
         host: document.getElementById('co-lawsuit-pressing'),
+        currentTick: () => Number(shard?.current_tick) || 0,
+        showEmpty: false,
+        onChange: () => renderPressingIssues(),
+    });
+    _corpTaxCtl = mountCorporateTaxPressingIssues({
+        supabase: _supabase,
+        faction,
+        host: document.getElementById('co-tax-pressing'),
         currentTick: () => Number(shard?.current_tick) || 0,
         showEmpty: false,
         onChange: () => renderPressingIssues(),
