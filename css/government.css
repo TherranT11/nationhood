@@ -2305,3 +2305,31 @@ body {
     padding-bottom: 8px;
     margin-bottom: 12px;
 }
+
+/* ════════════════════════ MOBILE OVERRIDES (LATE) ════════════════════════
+   The root-scope size-up rules at the start of this section (around L2238)
+   set .ministry-card { width: 520px } — which clobbers the responsive
+   width: auto declared in the much earlier @media (max-width: 768px) block
+   because both rules share the same specificity and the size-up rule is
+   later in source order. These late overrides re-assert the mobile layout
+   AFTER the size-up so the cascade lands the right way. */
+
+@media (max-width: 768px) {
+    /* Tablet / large phone: ministry cards stop being fixed-width
+       380/520 boxes and become a proper 2-column flex grid. */
+    .ministry-card {
+        width: auto;
+        flex: 1 1 calc(50% - 8px);
+        min-width: 0;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Narrow phone: 1-column. Tighten size-up horizontal padding so a
+       360px-viewport phone doesn't waste 22px on each inner edge. */
+    .ministry-card { flex: 1 1 100%; }
+    .ministry-card__header { padding: 12px 14px; }
+    .ministry-card__minister { padding: 14px 14px; }
+    .ministry-card__mgmt { padding: 10px 14px; }
+    .ministry-card__minister-name { font-size: 1.1rem; }
+}
