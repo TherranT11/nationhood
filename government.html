@@ -2440,6 +2440,20 @@ function _gbAnnualLawCostFor(activeLaws, descKey) {
     return _gbLawsForDescKey(activeLaws, descKey).reduce((s, l) => s + _gbAnnualLawCost(l), 0);
 }
 
+// Active laws whose category doesn't match ANY descKey regex above.
+// These were silently being deducted server-side
+// (computePanelAnnualExpenditures sums ALL active_laws regardless of
+// category) but were invisible in the UI total — players saw a
+// Balance that lied. Surface them here under the "Other Programs"
+// catch-all row so display + server-side debt math agree.
+function _gbLawsNotMatchingAnyDescKey(activeLaws) {
+    const regexes = Object.values(_GB_DESCKEY_TO_LAW_CATEGORY_REGEX);
+    return (activeLaws || []).filter(al => {
+        const cat = al?.policies?.law_category || '';
+        return !regexes.some(re => re.test(cat));
+    });
+}
+
 function _gbBuildCostRows(d) {
     const royalHoldingsAnnual = d.isMonarchy ? _GB_ROYAL_HOLDINGS_MONTHLY * GAME_CONFIG.TICKS_PER_YEAR : 0;
     // Aggregated active-law costs per spending category. _gbSelectCategory
@@ -2447,6 +2461,13 @@ function _gbBuildCostRows(d) {
     // sub-rows, so the row total here always matches the breakdown.
     const pensionAnnual          = _gbAnnualLawCostFor(d.activeLaws, 'pension');
     const subsidiesIndustryAnnual = _gbAnnualLawCostFor(d.activeLaws, 'subsidiesIndustry');
+    // Catch-all for active laws whose law_category doesn't match any
+    // existing descKey regex. Without this row, those costs were
+    // silently deducted by the per-tick processor but invisible in
+    // the displayed expenditures total — Balance lied by exactly this
+    // amount. Adding "Other Programs" closes the UI/server gap.
+    const otherProgramsAnnual = _gbLawsNotMatchingAnyDescKey(d.activeLaws)
+        .reduce((s, l) => s + _gbAnnualLawCost(l), 0);
     // Sports & Culture: today the only sub-line is Sport Stadiums &
     // Infrastructure (every completed Vola stadium adds its tier's
     // annual cost — small $0.5 / modest $1 / extravagant $2). Future
@@ -2480,6 +2501,7 @@ function _gbBuildCostRows(d) {
         { key: 'sports_culture',       name: 'Sports & Culture',        yr: sportsCultureAnnual,        descKey: 'sportsAndCulture'     },
         { key: 'foreign_aid',          name: 'Foreign Aid & Diplomacy', yr: 0,                          descKey: 'foreignAid'           },
         { key: 'discretionary',        name: 'Discretionary Programs',  yr: 0,                          descKey: 'discretionary'        },
+        { key: 'other_programs',       name: 'Other Programs',          yr: otherProgramsAnnual,        descKey: 'otherPrograms'        },
         { key: 'trade_obligations',    name: 'Trade Agreement Obligations', yr: tradeObligationsAnnual, descKey: 'tradeObligations'     },
         { key: 'debt_interest',        name: 'Interest on Debt',        yr: _gbToAbstract(d.debtService), descKey: 'debtInterest'   },
     ];
@@ -2704,6 +2726,7 @@ const _GB_DEEP_COPY = {
     sportsAndCulture:       { desc: 'Recurring cultural and sporting upkeep — primarily Vola stadium maintenance once venues are completed. Each tier carries a fixed annual cost (small $0.5, modest $1, extravagant $2). Click-through surfaces the running total of stadium upkeep.' },
     foreignAid:             { desc: 'Non-trade-agreement foreign disbursements: development aid, humanitarian relief, soft-power grants. Trade-agreement aid lives under Trade Agreements on the income side instead.' },
     discretionary:          { desc: 'Catch-all for short-cycle programs and one-off initiatives that don’t fit a permanent ministry budget — pilots, commissions, special funds.' },
+    otherPrograms:          { desc: 'Ongoing administrative costs of active laws not bucketed into a specific category — religious establishment, healthcare framework, education framework, citizenship rules, labor relations, press regulation, family law, and similar regulatory programs. Click for the per-law breakdown.' },
     tradeObligations:       { desc: 'Outgoing recurring financial transfers under accepted trade agreements. Annualized as per-tick amount × ticks-per-year and drained from the Treasury Cash Balance each tick (overflowing to debt only when treasury hits zero). Mirrors inbound transfers on the Revenue side.' },
 };
 
@@ -2746,6 +2769,21 @@ async function _gbSelectCategory(container, row, kind) {
     // total. Falls through silently for non-categorized descKeys.
     if (_GB_DESCKEY_TO_LAW_CATEGORY_REGEX[row.descKey] && _budgetData?.activeLaws) {
         for (const law of _gbLawsForDescKey(_budgetData.activeLaws, row.descKey)) {
+            const annual = _gbAnnualLawCost(law);
+            if (annual <= 0) continue;
+            const policyName = law.policies?.policy_name || 'Active law';
+            const optionName = law.selected_option?.option_name;
+            const label = optionName ? `${policyName} — ${optionName}` : policyName;
+            subRows.push({ k: label, v: annual });
+        }
+    }
+
+    // Other Programs catch-all: list every active law whose category
+    // didn't match any existing descKey regex. Same shape as the
+    // pension/subsidies branch above so the deep-dive renders
+    // identically.
+    if (row.descKey === 'otherPrograms' && _budgetData?.activeLaws) {
+        for (const law of _gbLawsNotMatchingAnyDescKey(_budgetData.activeLaws)) {
             const annual = _gbAnnualLawCost(law);
             if (annual <= 0) continue;
             const policyName = law.policies?.policy_name || 'Active law';

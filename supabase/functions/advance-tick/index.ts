@@ -3195,8 +3195,8 @@ async function computePanelAnnualExpenditures(supabase, nation) {
     const stadiumAnnualCost = Number(nation.vola_stadium_annual_cost) || 0;
     // Public Sector Wages: monthly = (state_apparatus × wages) / 100,
     // annual = monthly × 12. Mirrors _gbBuildCostRows in government.html
-    // and computePanelAnnualExpenditures in js/game/budget.js so the
-    // panel's monthly balance and the per-tick debt change always agree.
+    // exactly so the panel's monthly balance and the per-tick debt
+    // change always agree.
     const publicSectorWagesAnnual = (Number(nation?.control) || 0) * (Number(nation?.wages) || 0) / 100 * 12;
     return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost + publicSectorWagesAnnual;
 }
