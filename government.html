@@ -2461,8 +2461,16 @@ function _gbBuildCostRows(d) {
     // headline Balance would over-state by the transfer amount. Stored
     // raw → /1e9 to abstract for display alongside the other rows.
     const tradeObligationsAnnual = _gbToAbstract(d.recurringSentAnnual || 0);
+    // Public Sector Wages: monthly = (state_apparatus × wages) / 100,
+    // annual = monthly × TICKS_PER_YEAR. Scales linearly with both
+    // stats — a high state apparatus paying low wages costs less than
+    // a smaller civil service paying market rates. Stats clamp 0-100
+    // server-side; defensive ?? 0 handles missing rows.
+    const stateApparatus      = Number(currentNation?.control) || 0;
+    const wagesStat           = Number(currentNation?.wages)   || 0;
+    const publicSectorWagesAnnual = (stateApparatus * wagesStat) / 100 * GAME_CONFIG.TICKS_PER_YEAR;
     return [
-        { key: 'public_sector_wages',  name: 'Public Sector Wages',     yr: 0,                          descKey: 'publicSectorWages'    },
+        { key: 'public_sector_wages',  name: 'Public Sector Wages',     yr: publicSectorWagesAnnual,    descKey: 'publicSectorWages'    },
         { key: 'welfare_benefits',     name: 'Welfare Benefits',        yr: 0,                          descKey: 'welfareBenefits'      },
         { key: 'pension',              name: 'Pension',                 yr: pensionAnnual,              descKey: 'pension'              },
         { key: 'procurement_capital',  name: 'Procurement & Capital',   yr: 0,                          descKey: 'procurementCapital'   },
