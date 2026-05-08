@@ -6520,7 +6520,10 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   }
 }
 /* Narrow phone: full-bleed modal, two-up button rows so labels stay
-   readable without horizontal scroll. */
+   readable without horizontal scroll. Tap targets bumped to 44px
+   (Apple HIG minimum) and font to 12px so labels are legible without
+   squinting. Inner-content padding tightened a touch so full-bleed
+   modal doesn't feel claustrophobic. */
 @media (max-width: 480px) {
   .trade-neg-modal-content {
     width: 100%;
@@ -6533,11 +6536,13 @@ body.light-mode .ipo-event-log-text strong { color: #333; }
   .trade-neg-modal-header { padding: 10px 14px; }
   .trade-neg-header__flag { width: 32px; height: 22px; }
   .trade-neg-header__name { font-size: 13px; }
-  .trade-neg-modal-footer { padding: 8px 10px; }
+  .trade-neg-main { padding: 12px 12px; }
+  .trade-neg-modal-footer { padding: 10px 12px; gap: 8px; }
   .trade-neg-modal-footer button {
     flex: 1 1 calc(50% - 6px);
-    font-size: 11px;
-    padding: 11px 6px;
+    min-height: 44px;
+    font-size: 12px;
+    padding: 10px 8px;
   }
   .trade-neg-withdraw-btn {
     /* Withdraw is the destructive action — give it its own row so a
