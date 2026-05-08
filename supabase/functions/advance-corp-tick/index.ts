@@ -5062,6 +5062,11 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
                         } else if (assignedVessel.status === 'in_transit' && currentTick >= (claim.transit_arrives_tick || 0)) {
                             // Transit complete — collect revenue and restart cycle
                             const revenue = Number(claim.revenue_per_transit) || 0;
+                            // Hoisted up here from below so the revenue logCashEvent
+                            // call can tag with the destination nation (territorial
+                            // tax). Originally lived next to the auto-refuel block
+                            // since refuel reads it too.
+                            const destNationId = claim.shipping_routes?.destination_nation_id || claim.nation_id;
 
                             // Credit revenue to corp
                             if (revenue > 0) {
@@ -5086,8 +5091,9 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
                                 transit_arrives_tick: null,
                             }).eq('id', claim.id);
 
-                            // Update assigned vessel: arrived at destination port + auto-refuel
-                            const destNationId = claim.shipping_routes?.destination_nation_id || claim.nation_id;
+                            // Update assigned vessel: arrived at destination port + auto-refuel.
+                            // destNationId hoisted above to the top of this branch so the
+                            // revenue tag can use it.
 
                             // Auto-refuel: check for fuel depot in destination nation.
                             // Base fuel cost = $50k per refuel. State = 3x ($150k). Other corp's depot = 1.15x.
