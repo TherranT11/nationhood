@@ -90,6 +90,26 @@ const DEFAULT_MISSED_THRESHOLD = 4;
 let _currentTick = 0;
 const _pendingCashEvents = [];
 
+// corp_id → home nation_id, populated once per advanceCorpTick run so
+// logCashEvent can default to the corp's home nation when callers
+// don't pass an explicit jurisdiction. Revenue sites tied to a
+// foreign nation (Regional HQ income, sub revenue, shipping contract
+// in another nation) override this default by passing nationId.
+let _corpHomeNation = new Map();
+
+async function loadCorpHomeNations(supabase) {
+    const { data, error } = await supabase
+        .from('factions')
+        .select('id, nation_id')
+        .eq('faction_type', 'corporation');
+    if (error) {
+        console.warn('[advance-corp-tick] corp home nation cache load failed:', error.message);
+        _corpHomeNation = new Map();
+        return;
+    }
+    _corpHomeNation = new Map((data || []).map(r => [r.id, r.nation_id]));
+}
+
 // Sum buffered P&L deltas for one corp at the current tick. Used by the
 // corp_cash_history writer to derive non_pnl_cash_movements before
 // flushCashEvents persists the events.
@@ -101,14 +121,16 @@ function _accruedProfitForCorp(corpId) {
     return sum;
 }
 
-function logCashEvent(corpId, category, label, delta) {
+function logCashEvent(corpId, category, label, delta, nationId) {
     if (!corpId || !Number.isFinite(delta) || delta === 0) return;
+    const tagNationId = nationId ?? _corpHomeNation.get(corpId) ?? null;
     _pendingCashEvents.push({
-        corp_id:  corpId,
-        tick:     _currentTick,
+        corp_id:   corpId,
+        tick:      _currentTick,
         category,
-        label:    String(label || category),
+        label:     String(label || category),
         delta,
+        nation_id: tagNationId,
     });
 }
 
@@ -1331,6 +1353,15 @@ async function processSubsidiaryRevenue(supabase, nation, currentTick) {
                 console.warn(`[SubRevenue] Failed to update sub_cash for ${hq.name} (hq.id=${hq.id}, faction_id=${hq.faction_id}):`, updErr.message);
             } else {
                 updatedCount += 1;
+                // Log territorial revenue to corp_cash_events so the
+                // parent corp's tax base includes this subsidiary's
+                // earnings (or losses — revenue can be negative; the
+                // tax assessor floors the bill at $0). Cash stays in
+                // sub_cash; the event is ledger-only.
+                if (hq.faction_id) {
+                    logCashEvent(hq.faction_id, 'revenue_market',
+                        `${hq.name} subsidiary revenue`, revenue, nation.id);
+                }
                 console.log(`[SubRevenue] ${corp?.faction_name || '?'} → ${hq.name}: ${revenue >= 0 ? '+' : ''}${revenue.toLocaleString()} (GDP:${gdpGrowth}, parentRep:${parentRep}, repMult:${parentRepMult.toFixed(2)}, overhead:${overhead.toLocaleString()}, cash:${subCash.toLocaleString()} → ${newSubCash.toLocaleString()})`);
             }
         } catch (hqErr) {
@@ -1355,7 +1386,7 @@ async function processRegionalHqIncome(supabase, nation, currentTick) {
 
     const { data: hqs, error: hqErr } = await supabase
         .from('corp_properties')
-        .select('id, sub_cash, name, purchase_price')
+        .select('id, sub_cash, name, purchase_price, faction_id')
         .eq('nation_id', nation.id)
         .eq('role', 'regional_hq')
         .eq('is_active', true);
@@ -1383,6 +1414,15 @@ async function processRegionalHqIncome(supabase, nation, currentTick) {
                 console.warn(`[HqIncome] Failed to update sub_cash for ${hq.name} (hq.id=${hq.id}):`, updErr.message);
             } else {
                 updatedCount += 1;
+                // Log to corp_cash_events as territorial revenue so the
+                // tax assessor sees this nation's HQ income in the
+                // parent corp's revenue base. Cash stays in sub_cash;
+                // the event is ledger-only (logCashEvent doesn't touch
+                // corp_cash_reserves).
+                if (hq.faction_id) {
+                    logCashEvent(hq.faction_id, 'revenue_market',
+                        `${hq.name} HQ income`, income, nation.id);
+                }
                 console.log(`[HqIncome] ${hq.name}: +${income.toLocaleString()} (price:${purchasePrice.toLocaleString()}, stabMod:${stabilityMod.toFixed(2)}, cash:${Number(hq.sub_cash ?? 0).toLocaleString()} → ${newSubCash.toLocaleString()})`);
             }
         } catch (hqErr) {
@@ -3450,7 +3490,7 @@ async function processShippingRoutes(supabase, currentTick) {
             console.warn(`[ShippingRoutes] credit failed for contract ${contract.id}:`, credErr.message);
             continue;
         }
-        logCashEvent(contract.winner_faction_id, 'revenue_shipping', 'Shipping route revenue', revenue);
+        logCashEvent(contract.winner_faction_id, 'revenue_shipping', 'Shipping route revenue', revenue, contract.nation_id);
 
         const { error: contractErr } = await supabase.from('shipping_contracts').update({
             last_payment_tick: currentTick,
@@ -3981,7 +4021,7 @@ async function processTradeAgreementShipping(supabase, currentTick) {
             console.warn(`[TradeAgreementShipping] corp credit failed for ${contract.id}:`, credErr.message);
             continue;
         }
-        logCashEvent(contract.winner_faction_id, 'revenue_trade', 'Trade-agreement payment', actualPayment);
+        logCashEvent(contract.winner_faction_id, 'revenue_trade', 'Trade-agreement payment', actualPayment, contract.nation_id);
 
         // Phase 8: reset consecutive_missed_payments on any successful
         // payment so the UI's "delayed" indicator clears once the buyer
@@ -4405,6 +4445,13 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     // flushes to corp_cash_events at tick end.
     _currentTick = currentTick;
     _pendingCashEvents.length = 0;
+
+    // Populate the corp → home nation cache so logCashEvent can tag
+    // events with the corp's jurisdiction without callers threading it
+    // through every site. Revenue events tied to a foreign nation
+    // (Regional HQ, sub, foreign contract) pass nationId explicitly to
+    // override this default.
+    await loadCorpHomeNations(supabase);
 
     // 4. Load all nations
     const { data: nations, error: nationErr } = await supabase
@@ -5021,7 +5068,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
                                 const { data: corp } = await supabase.from('factions')
                                     .select('corp_cash_reserves').eq('id', claim.faction_id).single();
                                 if (corp) {
-                                    logCashEvent(claim.faction_id, 'revenue_shipping', 'Shipping claim revenue', revenue);
+                                    logCashEvent(claim.faction_id, 'revenue_shipping', 'Shipping claim revenue', revenue, destNationId);
                                     await supabase.from('factions').update({
                                         corp_cash_reserves: Number(corp.corp_cash_reserves || 0) + revenue
                                     }).eq('id', claim.faction_id);
@@ -5093,7 +5140,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
                                 const { data: depotOwner } = await supabase.from('factions')
                                     .select('corp_cash_reserves').eq('id', fuelDepot.faction_id).single();
                                 if (depotOwner) {
-                                    logCashEvent(fuelDepot.faction_id, 'revenue_shipping', 'Fuel depot revenue', depotRevenue);
+                                    logCashEvent(fuelDepot.faction_id, 'revenue_shipping', 'Fuel depot revenue', depotRevenue, destNationId);
                                     await supabase.from('factions').update({
                                         corp_cash_reserves: Number(depotOwner.corp_cash_reserves || 0) + depotRevenue,
                                     }).eq('id', fuelDepot.faction_id);
@@ -5315,7 +5362,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
                                     const { data: dockOwner } = await supabase.from('factions')
                                         .select('corp_cash_reserves').eq('id', otherDock.faction_id).single();
                                     if (dockOwner) {
-                                        logCashEvent(otherDock.faction_id, 'revenue_shipping', 'Dry dock revenue', dockRevenue);
+                                        logCashEvent(otherDock.faction_id, 'revenue_shipping', 'Dry dock revenue', dockRevenue, portNationId);
                                         await supabase.from('factions').update({
                                             corp_cash_reserves: Number(dockOwner.corp_cash_reserves || 0) + dockRevenue,
                                         }).eq('id', otherDock.faction_id);
