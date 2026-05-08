@@ -19494,6 +19494,11 @@ function negArticlesRender() {
 
     const articles = _activeNegModal.articles || [];
     const myNationId = _activeNegModal.myNationId;
+    // Lock per-article actions (Delete / Request to Strike) once both parties
+    // have approved or the negotiation has moved to ratification. Mirrors the
+    // server-side lock in 20261005_trade_negotiation_lock_trigger.sql.
+    const isLocked = _activeNegModal.status === 'ratification'
+        || (!!_activeNegModal.approvedByA && !!_activeNegModal.approvedByB);
 
     if (articles.length === 0) {
         container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;min-height:200px;color:var(--text-dim);font-family:var(--font-mono);font-size:11px;">No articles yet. Click "Add Text Article" to begin drafting.</div>';
@@ -19562,13 +19567,15 @@ function negArticlesRender() {
             ${demandCtxHtml}
             <div class="trade-neg-article__meta">
                 <span>Added by ${escapeHtml(art.author_nation_name || 'Unknown')}</span>
-                ${isMine
-                    ? `<span class="trade-neg-article__action" onclick="negArticleDelete('${art.id}')">Delete</span>`
-                    : (hasStrike && strikeIsMine
-                        ? `<span style="font-family:var(--font-mono);font-size:8px;color:var(--amber);opacity:0.7;">Strike Requested</span>`
-                        : (!hasStrike
-                            ? `<span class="trade-neg-article__action" style="color:var(--amber);border-color:rgba(184,134,11,0.2);background:rgba(184,134,11,0.04);" onclick="negArticleRequestStrike('${art.id}')">Request to Strike</span>`
-                            : ''))
+                ${isLocked
+                    ? ''
+                    : (isMine
+                        ? `<span class="trade-neg-article__action" onclick="negArticleDelete('${art.id}')">Delete</span>`
+                        : (hasStrike && strikeIsMine
+                            ? `<span style="font-family:var(--font-mono);font-size:8px;color:var(--amber);opacity:0.7;">Strike Requested</span>`
+                            : (!hasStrike
+                                ? `<span class="trade-neg-article__action" style="color:var(--amber);border-color:rgba(184,134,11,0.2);background:rgba(184,134,11,0.04);" onclick="negArticleRequestStrike('${art.id}')">Request to Strike</span>`
+                                : '')))
                 }
             </div>`;
 
@@ -20223,6 +20230,14 @@ async function negStructuredArticleConfirm() {
 
     _negStructuredAdding = true;
 
+    const lockState = await _negFetchLockState(_activeNegModal.negotiationId);
+    if (lockState.locked) {
+        alert('This agreement is locked — both parties have approved and ratification is in motion. Articles cannot be added.');
+        _negStructuredAdding = false;
+        negArticleCancelForm();
+        return;
+    }
+
     const newArticle = {
         id: crypto.randomUUID(),
         article_type: _negStructuredType,
@@ -20295,6 +20310,24 @@ function negArticleCancelForm() {
     if (form) { form.style.display = 'none'; form.innerHTML = ''; }
 }
 
+// ── Articles: Add / Delete / Strike — shared lock guard ──
+//
+// Mirrors the server-side trigger in 20261005_trade_negotiation_lock_trigger.sql.
+// Re-fetches the latest negotiation state and aborts the action if the row is
+// locked (both parties approved OR status='ratification'). Belt-and-suspenders:
+// the trigger blocks the UPDATE anyway, but catching it client-side gives the
+// player a clean message instead of a generic 'check_violation' from PostgREST.
+async function _negFetchLockState(negotiationId) {
+    const { data, error } = await _supabase.from('trade_negotiations')
+        .select('status, approved_by_a, approved_by_b')
+        .eq('id', negotiationId)
+        .single();
+    if (error || !data) return { locked: false, fetchFailed: true };
+    const locked = data.status === 'ratification'
+        || (!!data.approved_by_a && !!data.approved_by_b);
+    return { locked, fetchFailed: false, status: data.status };
+}
+
 // ── Articles: Add ──
 
 let _negArticleAdding = false;
@@ -20307,6 +20340,14 @@ async function negArticleAdd() {
     if (!text) return;
 
     _negArticleAdding = true;
+
+    const lockState = await _negFetchLockState(_activeNegModal.negotiationId);
+    if (lockState.locked) {
+        alert('This agreement is locked — both parties have approved and ratification is in motion. To edit articles, the agreement would need to fail in parliament first.');
+        _negArticleAdding = false;
+        negArticleCancelForm();
+        return;
+    }
 
     const newArticle = {
         id: crypto.randomUUID(),
@@ -20353,11 +20394,18 @@ async function negArticleDelete(articleId) {
     if (!confirm('Delete this article?')) return;
     _negArticleDeleting = true;
 
+    const lockState = await _negFetchLockState(_activeNegModal.negotiationId);
+    if (lockState.locked) {
+        alert('This agreement is locked — both parties have approved and ratification is in motion. Articles cannot be deleted.');
+        _negArticleDeleting = false;
+        return;
+    }
+
     const { data: negRow, error: fetchErr } = await _supabase.from('trade_negotiations')
         .select('draft_articles, agreement_type')
         .eq('id', _activeNegModal.negotiationId)
         .single();
-    if (fetchErr || !negRow) { alert('Failed to load articles.'); return; }
+    if (fetchErr || !negRow) { alert('Failed to load articles.'); _negArticleDeleting = false; return; }
 
     const current = negRow.draft_articles || [];
     const updated = current.filter(a => a.id !== articleId);
@@ -20380,11 +20428,18 @@ async function negArticleRequestStrike(articleId) {
     if (!_activeNegModal || _negArticleStriking) return;
     _negArticleStriking = true;
 
+    const lockState = await _negFetchLockState(_activeNegModal.negotiationId);
+    if (lockState.locked) {
+        alert('This agreement is locked — both parties have approved and ratification is in motion. Articles cannot be struck.');
+        _negArticleStriking = false;
+        return;
+    }
+
     const { data: negRow, error: fetchErr } = await _supabase.from('trade_negotiations')
         .select('draft_articles, agreement_type')
         .eq('id', _activeNegModal.negotiationId)
         .single();
-    if (fetchErr || !negRow) { alert('Failed to load articles.'); return; }
+    if (fetchErr || !negRow) { alert('Failed to load articles.'); _negArticleStriking = false; return; }
 
     const current = negRow.draft_articles || [];
     const updated = current.map(a => {
@@ -20557,31 +20612,19 @@ async function negAgreementToggle() {
             updateData.bill_a_id = resultA.data?.id || null;
             updateData.bill_b_id = resultB.data?.id || null;
 
-            // Build trade goods list from articles for the event description
-            const tradeGoods = (m.articles || [])
-                .filter(a => a.article_type === 'trade_flow' && a.data?.commodity)
-                .map(a => TRADE_SECTOR_LABELS[a.data.commodity] || a.data.commodity);
-            const uniqueGoods = [...new Set(tradeGoods)];
-            const goodsText = uniqueGoods.length > 0
-                ? ' which involved trade of ' + uniqueGoods.join(', ') + (uniqueGoods.length < (m.articles || []).length ? ' and other goods' : '')
-                : '';
-
-            // Fire signing event
-            const signingDesc = nameA + ' and ' + nameB + ' came together and signed the ' + agreementName + goodsText + '.';
+            // Fire the "sent for ratification" event only. The "signed" event
+            // is a misnomer at this stage — both parties have just agreed to
+            // send the agreement to their parliaments. The actual signing
+            // event fires from resolveTradeRatificationBill (bills.js) once
+            // both ratification bills pass.
             const ratifyDesc = 'The ' + agreementName + ' has been sent to both parliaments for ratification.';
-            _supabase.from('event_log').insert([nationAId, nationBId].flatMap(nid => [
-                {
-                    nation_id: nid,
-                    event_name: agreementName + ' — Signed',
-                    trigger_key: 'trade_agreement_signed',
-                    category: 'trade', description_chosen: signingDesc, fired_at_tick: tick,
-                },
-                {
-                    nation_id: nid,
-                    event_name: agreementName + ' — Ratification',
-                    category: 'trade', description_chosen: ratifyDesc, fired_at_tick: tick,
-                },
-            ])).then(() => {});
+            _supabase.from('event_log').insert([nationAId, nationBId].map(nid => ({
+                nation_id: nid,
+                event_name: agreementName + ' — Ratification',
+                category: 'trade',
+                description_chosen: ratifyDesc,
+                fired_at_tick: tick,
+            }))).then(() => {});
         }
 
         const { error } = await _supabase.from('trade_negotiations').update(updateData).eq('id', m.negotiationId);

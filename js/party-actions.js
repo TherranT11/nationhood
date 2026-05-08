@@ -7,7 +7,7 @@
 // modals, event handlers, and data loaders.
 
 import { renderRoleActionsShell } from './role-actions.js';
-import { hfFmtBig } from './utils.js';
+import { hfFmtBig, tickToDate } from './utils.js';
 import { PLATFORMS, STAT_NAMES, BAD_STATS, statDirection, platformMomentumInfo } from './game/platforms.js';
 import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, getGoverningStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
@@ -75,8 +75,11 @@ let _noConfidenceCooldownTicks = 0; // ticks remaining before another vonc can b
 let _noConfidencePending = false;   // there's already a pending no_confidence bill in this nation
 // Form Minority Government — gate state. Loaded once during panel init so the
 // LEADER_ACTIONS render can lock/unlock the action without per-frame fetches.
-// Server re-validates everything; this is just the UI hint.
-let _minorityGate = { eligible: false, lockReason: 'Loading...' };
+// Server re-validates everything; this is just the UI hint. metaLine is the
+// red sub-title under the action card name: shows the last-election date +
+// when the deadlock breaker becomes available, or "Active Coalition" when a
+// government is already seated.
+let _minorityGate = { eligible: false, lockReason: 'Loading...', metaLine: '' };
 
 async function loadFundraiseCount() {
     if (!_supabase || !_state?.faction?.id || !_state?.shard?.current_tick) return;
@@ -134,7 +137,7 @@ async function loadNoConfidenceState() {
 // (sql/migrations/20261003_form_minority_government_rpc.sql) — kept in sync
 // so the UI lock copy matches what the RPC would have rejected with.
 async function loadMinorityGovState() {
-    _minorityGate = { eligible: false, lockReason: 'Loading...' };
+    _minorityGate = { eligible: false, lockReason: 'Loading...', metaLine: '' };
     if (!_supabase || !_state?.nation?.id || !_state?.faction?.id) return;
     const nation = _state.nation;
     const faction = _state.faction;
@@ -142,22 +145,23 @@ async function loadMinorityGovState() {
 
     const govType = (nation.government_type || '').toLowerCase();
     if (govType.includes('absolute monarchy') || govType.includes('absolute_monarchy')) {
-        _minorityGate = { eligible: false, lockReason: 'Only available in parliamentary systems.' };
+        _minorityGate = { eligible: false, lockReason: 'Only available in parliamentary systems.', metaLine: '' };
         return;
     }
 
     if ((faction.seats || 0) <= 0) {
-        _minorityGate = { eligible: false, lockReason: 'Your party has no parliamentary seats.' };
+        _minorityGate = { eligible: false, lockReason: 'Your party has no parliamentary seats.', metaLine: '' };
         return;
     }
 
     // Already-formed government blocks the action.
     if (_activeCoalition && (_activeCoalition.status === 'formed' || _activeCoalition.status === 'caretaker')) {
-        if (_activeCoalition.formation_type === 'emergency_minority') {
-            _minorityGate = { eligible: false, lockReason: 'A minority government is already in place.' };
-        } else {
-            _minorityGate = { eligible: false, lockReason: 'A government is already in place.' };
-        }
+        const isMinority = _activeCoalition.formation_type === 'emergency_minority';
+        _minorityGate = {
+            eligible: false,
+            lockReason: isMinority ? 'A minority government is already in place.' : 'A government is already in place.',
+            metaLine: 'Active Coalition',
+        };
         return;
     }
 
@@ -173,16 +177,23 @@ async function loadMinorityGovState() {
         .limit(1)
         .maybeSingle();
     if (!latestElection) {
-        _minorityGate = { eligible: false, lockReason: 'No completed election to form a government from.' };
+        _minorityGate = { eligible: false, lockReason: 'No completed election to form a government from.', metaLine: 'No election yet' };
         return;
     }
 
-    const ticksSinceElection = tick - Number(latestElection.election_tick || 0);
+    const electionTick = Number(latestElection.election_tick || 0);
     const formationDeadline = (typeof FORMATION_DEADLINE_TICKS === 'number') ? FORMATION_DEADLINE_TICKS : 3;
+    const availableTick = electionTick + formationDeadline;
+    const ticksSinceElection = tick - electionTick;
+    const metaLine = `Last election: ${tickToDate(electionTick)} · Becomes available ${tickToDate(availableTick)}`;
+
     if (ticksSinceElection < formationDeadline) {
         const remaining = formationDeadline - ticksSinceElection;
-        _minorityGate = { eligible: false,
-            lockReason: `Coalition window still open: ${remaining} tick${remaining !== 1 ? 's' : ''} remaining.` };
+        _minorityGate = {
+            eligible: false,
+            lockReason: `Coalition window still open: ${remaining} tick${remaining !== 1 ? 's' : ''} remaining.`,
+            metaLine,
+        };
         return;
     }
 
@@ -194,14 +205,17 @@ async function loadMinorityGovState() {
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
     if (pErr) {
-        _minorityGate = { eligible: false, lockReason: 'Could not load party state.' };
+        _minorityGate = { eligible: false, lockReason: 'Could not load party state.', metaLine };
         return;
     }
     const allParties = allPartiesData || [];
     const hasMajorityParty = allParties.some(p => (p.seats || 0) >= majority);
     if (hasMajorityParty) {
-        _minorityGate = { eligible: false,
-            lockReason: 'A party already holds an outright majority — form a normal government instead.' };
+        _minorityGate = {
+            eligible: false,
+            lockReason: 'A party already holds an outright majority — form a normal government instead.',
+            metaLine,
+        };
         return;
     }
 
@@ -214,16 +228,19 @@ async function loadMinorityGovState() {
         .sort((a, b) => (b.seats || 0) - (a.seats || 0) || (a.id < b.id ? -1 : 1));
     const largest = activeParties[0];
     if (!largest) {
-        _minorityGate = { eligible: false, lockReason: 'No active parties qualify to form a government.' };
+        _minorityGate = { eligible: false, lockReason: 'No active parties qualify to form a government.', metaLine };
         return;
     }
     if (largest.id !== faction.id) {
-        _minorityGate = { eligible: false,
-            lockReason: `Only the largest active party (${largest.faction_name || 'unknown'}) may form a minority government.` };
+        _minorityGate = {
+            eligible: false,
+            lockReason: `Only the largest active party (${largest.faction_name || 'unknown'}) may form a minority government.`,
+            metaLine,
+        };
         return;
     }
 
-    _minorityGate = { eligible: true, lockReason: '' };
+    _minorityGate = { eligible: true, lockReason: '', metaLine };
 }
 
 const LEADER_ACTIONS = [
@@ -1940,6 +1957,10 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             }
         }
 
+        const minorityMetaHtml = (action.id === 'form_minority_government' && _minorityGate.metaLine)
+            ? `<div class="pa-action-meta-minority" style="margin-top:3px;font-family:var(--font-mono);font-size:9px;color:var(--red);font-weight:600;letter-spacing:0.3px;">${esc(_minorityGate.metaLine)}</div>`
+            : '';
+
         return `
             <div class="pa-action-item ${isDisabled ? 'locked' : ''}" data-action-id="${action.id}">
                 <div class="pa-action-top">
@@ -1951,6 +1972,7 @@ function renderActionsPanel(leaderName, partyColor, faction) {
                         <span class="pa-action-cost" style="color:${costColor};">${costDisplay}</span>
                     </div>
                 </div>
+                ${minorityMetaHtml}
                 <div class="pa-action-desc">${esc(action.desc)}</div>
                 ${extraInfo}
                 ${action.locked && action.lockReason ? `<div style="margin-top:4px;font-family:var(--font-mono);font-size:7px;color:var(--orange);display:flex;align-items:center;gap:4px;"><span>\u2298</span><span>${esc(action.lockReason)}</span></div>` : ''}
