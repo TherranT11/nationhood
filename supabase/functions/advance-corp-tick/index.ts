@@ -4116,7 +4116,13 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
         // out by process_equity_dividends (called once per tick from the
         // EDP block below). Old finance_active_loans rows from before
         // the v2 equity rebuild (20260430 → 20260602) are inert; nothing
-        // creates them anymore and the new processor doesn't read them.
+        // creates them anymore. If any do exist they MUST skip the
+        // default loan-processing fall-through at the bottom of this
+        // loop — that path would log them as "Loan interest paid" /
+        // "Loan interest received", which is wrong for equity.
+        if (requestType === 'equity') {
+            continue;
+        }
 
         // Bonds: coupon payments come from nation treasury (increases debt)
         if (requestType === 'bond') {
