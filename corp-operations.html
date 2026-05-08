@@ -1379,6 +1379,7 @@ let _receivedOffers = [];
 // Lawsuit cards (defendant + plaintiff settle-review) are owned by
 // js/lawsuit-pressing-issues.js — mounted to its own host below.
 let _lawsuitCtl = null;
+let _corpTaxCtl = null;
 
 async function loadPressingIssues() {
     if (!faction?.id) return;
@@ -1443,16 +1444,17 @@ function renderPressingIssues() {
     if (!list || !meta) return;
 
     const lawsuitCount = _lawsuitCtl?.getCount?.() ?? 0;
-    const total = _pressingIssues.length + _receivedOffers.length + lawsuitCount;
+    const taxCount     = _corpTaxCtl?.getCount?.() ?? 0;
+    const total = _pressingIssues.length + _receivedOffers.length + lawsuitCount + taxCount;
     meta.textContent = total === 0
         ? 'Time-Sensitive ◊ Decide Before Tick Resolves'
         : `${total} OPEN ◊ DECIDE BEFORE TICK RESOLVES`;
 
     if (_pressingIssues.length === 0 && _receivedOffers.length === 0) {
-        // Lawsuit cards (if any) render into their own host above
-        // #co-issues-list — so the empty copy here only applies to the
-        // event/offer stack, not the section as a whole.
-        list.innerHTML = lawsuitCount === 0
+        // Lawsuit + tax cards (if any) render into their own hosts
+        // above #co-issues-list — so the empty copy here only applies
+        // to the event/offer stack, not the section as a whole.
+        list.innerHTML = (lawsuitCount === 0 && taxCount === 0)
             ? '<div class="co-contract-empty">No pressing issues right now. Time-sensitive decisions will appear here when triggered.</div>'
             : '';
         return;
@@ -2744,7 +2746,7 @@ async function init() {
         showEmpty: false,
         onChange: () => renderPressingIssues(),
     });
-    mountCorporateTaxPressingIssues({
+    _corpTaxCtl = mountCorporateTaxPressingIssues({
         supabase: _supabase,
         faction,
         host: document.getElementById('co-tax-pressing'),

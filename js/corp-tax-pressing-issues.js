@@ -294,16 +294,18 @@ export function mountCorporateTaxPressingIssues({
         const btn = e.target.closest('button[data-action][data-id]');
         if (!btn) return;
         if (btn.disabled) return;
-        // Disable for the duration of the action; refresh re-renders so
-        // the button reference is gone and we don't need to re-enable.
-        // If the action throws and the card stays, leaving disabled is
-        // the safer bias against double-fire.
+        // Disable for the duration of the action; always re-enable in
+        // finally so a server-side rejection (success=false return)
+        // doesn't leave the player stuck. On success, refresh()
+        // detaches the old DOM via innerHTML replacement; setting
+        // disabled on the detached node is a harmless no-op.
         btn.disabled = true;
         try {
             await performAction(btn.dataset.id, btn.dataset.action);
         } catch (err) {
             console.error('[corp-tax-pressing] action threw:', err?.message || err);
             alert('Action failed — check console.');
+        } finally {
             btn.disabled = false;
         }
     });
