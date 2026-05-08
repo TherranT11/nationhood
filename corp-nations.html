@@ -528,7 +528,7 @@ function renderNationDetail() {
 
     // ── Risk Indicators ──
     const risks = [];
-    if (s('control') < 30) risks.push({ icon: '⚠', color: '#c84', text: 'Control below 30. Political collapse, coup, or revolution possible.' });
+    if (s('control') < 30) risks.push({ icon: '⚠', color: '#c84', text: 'State Apparatus below 30. Political collapse, coup, or revolution possible.' });
     if (s('unrest') > 60) risks.push({ icon: '⚠', color: '#c84', text: 'High unrest. Strikes, protests, and disruptions likely.' });
     if (s('public_approval') < 25) risks.push({ icon: '⚠', color: '#c55', text: 'Low public approval. Contracts may not be enforceable.' });
 

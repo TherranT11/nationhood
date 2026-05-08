@@ -18,6 +18,7 @@ import { fetchActiveCoalition } from './game/government-structure.js';
 import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './game/config.js';
 import { fileNoConfidenceMotion } from './game/no-confidence.js';
 import { callEarlyElectionsAction } from './game/elections.js';
+import { getAdminFactionOverride } from './common.js';
 
 let _supabase = null;
 let _state = null;
@@ -231,7 +232,12 @@ async function loadMinorityGovState() {
         _minorityGate = { eligible: false, lockReason: 'No active parties qualify to form a government.', metaLine };
         return;
     }
-    if (largest.id !== faction.id) {
+    // Admin override skips the largest-active gate. Server-side
+    // form_minority_government has its own is_admin() bypass that
+    // anchors the formation to v_largest_active regardless of the
+    // inspected faction (20261011), so the RPC will install CPP
+    // even though the UI is viewing a different party.
+    if (largest.id !== faction.id && !getAdminFactionOverride()) {
         _minorityGate = {
             eligible: false,
             lockReason: `Only the largest active party (${largest.faction_name || 'unknown'}) may form a minority government.`,

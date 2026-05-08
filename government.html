@@ -4448,7 +4448,7 @@ function renderParliamentaryEmergency(activeHOG) {
                 <span style="font-size:0.65rem;color:var(--text-muted);margin-left:auto;">via Emergency Powers Act</span>
             </div>
             <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:10px;">
-                Declare a national emergency to bypass legislative votes on bills. While active: control -1/tick, public_approval -0.5/tick, unrest +0.5/tick.
+                Declare a national emergency to bypass legislative votes on bills. While active: state apparatus -1/tick, public_approval -0.5/tick, unrest +0.5/tick.
             </div>
             <button class="ministry-btn${canDeclare ? '' : ' disabled'}" style="padding:8px 20px;font-size:0.75rem;" onclick="${canDeclare ? 'declareParliamentaryEmergency()' : ''}" id="declare-emergency-btn" ${canDeclare ? '' : 'disabled'}>
                 Declare Emergency 
@@ -4458,7 +4458,7 @@ function renderParliamentaryEmergency(activeHOG) {
 }
 
 window.declareParliamentaryEmergency = async function() {
-    if (!confirm(`Declare a National Emergency?\n\nWhile active:\n• Bills bypass legislative votes\n• Control -1/tick\n• Public Approval -0.5/tick\n• Unrest +0.5/tick\n\n`)) return;
+    if (!confirm(`Declare a National Emergency?\n\nWhile active:\n• Bills bypass legislative votes\n• State Apparatus -1/tick\n• Public Approval -0.5/tick\n• Unrest +0.5/tick\n\n`)) return;
 
     const btn = document.getElementById('declare-emergency-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Declaring...'; }
@@ -12001,9 +12001,9 @@ async function callEarlyElections() {
     if (govApproval > 50) {
         tierEffects = `• Your party gains +3 Momentum (calling from strength)\n`;
     } else if (govApproval < 35) {
-        tierEffects = `• Opposition parties each gain +5 Momentum\n• Nation gains +3 Control (orderly transition)\n`;
+        tierEffects = `• Opposition parties each gain +5 Momentum\n• Nation gains +3 State Apparatus (orderly transition)\n`;
     } else {
-        tierEffects = `• No momentum or control changes (neutral call)\n`;
+        tierEffects = `• No momentum or state apparatus changes (neutral call)\n`;
     }
 
     const confirmMsg =
