@@ -246,8 +246,7 @@
                 </select>
             </div>
             <div id="funding-controls" style="display:none;">
-                <div id="funding-institutions"></div>
-                <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border-main);">
+                <div style="margin-top:12px;">
                     <label class="form-label">Discretionary Funds ($M)</label>
                     <div id="funding-discretionary-balance" style="font-size:0.7rem;margin-bottom:6px;"></div>
                     <input type="number" class="form-input" id="funding-discretionary" min="-50000" max="50000" value="0" placeholder="0">
@@ -400,8 +399,7 @@ import { calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFounda
 import { formatStatName, formatMinorSector } from './js/game/political-actions.js';
 import { MAJOR_SECTORS, RAW_SCALING_DIVISORS, checkSovereigntyConstraints } from './js/game/diplomacy-constants.js';
 import { signPresidentialBill, vetoPresidentialBill } from './js/game/presidential.js';
-import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, buildBudgetData, computeMinistryPolicyCost, computeMinistryInstitutionCost } from './js/game/budget.js';
-import { buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
+import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost } from './js/game/budget.js';
 import { SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS } from './js/game/sovereign-default.js';
 import { getValidNewRates, computeTaxArticleEffects, computeTaxArticleOngoingCost, TAX_STEP_PP, TAX_KEY_LABELS, TAX_EFFECT_LABELS } from './js/game/tax-articles.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
@@ -1136,11 +1134,9 @@ function renderFloorBill(bill, isVetoed) {
                         const _fd = art.funding_data;
                         let _badge;
                         if (_fd) {
-                            const _chs = (_fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
-                            const _hasInc = _chs.some(i => i.proposed_pct > i.current_pct);
-                            const _hasDec = _chs.some(i => i.proposed_pct < i.current_pct);
-                            const _bc = _hasDec ? 'var(--red)' : _hasInc ? 'var(--green)' : 'var(--blue)';
-                            const _bl = _hasDec && !_hasInc ? 'DEFUND' : _hasInc && !_hasDec ? 'FUND' : 'FUNDING';
+                            const _disc = Number(_fd.discretionary || 0);
+                            const _bc = _disc < 0 ? 'var(--red)' : _disc > 0 ? 'var(--green)' : 'var(--blue)';
+                            const _bl = _disc < 0 ? 'DEFUND' : _disc > 0 ? 'FUND' : 'FUNDING';
                             _badge = `<span style="background:${_bc};color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">${_bl}</span>`;
                         } else {
                             _badge = `<span style="background:var(--blue);color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">TEXT</span>`;
@@ -1344,11 +1340,9 @@ function renderCommitteeBill(bill) {
                         const _fd = art.funding_data;
                         let _badge;
                         if (_fd) {
-                            const _chs = (_fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
-                            const _hasInc = _chs.some(i => i.proposed_pct > i.current_pct);
-                            const _hasDec = _chs.some(i => i.proposed_pct < i.current_pct);
-                            const _bc = _hasDec ? 'var(--red)' : _hasInc ? 'var(--green)' : 'var(--blue)';
-                            const _bl = _hasDec && !_hasInc ? 'DEFUND' : _hasInc && !_hasDec ? 'FUND' : 'FUNDING';
+                            const _disc = Number(_fd.discretionary || 0);
+                            const _bc = _disc < 0 ? 'var(--red)' : _disc > 0 ? 'var(--green)' : 'var(--blue)';
+                            const _bl = _disc < 0 ? 'DEFUND' : _disc > 0 ? 'FUND' : 'FUNDING';
                             _badge = `<span style="background:${_bc};color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">${_bl}</span>`;
                         } else {
                             _badge = `<span style="background:var(--blue);color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">TEXT</span>`;
@@ -1682,15 +1676,11 @@ function openDraftModal() {
     });
 
     // Fetch data needed for funding articles
-    Promise.all([
-        _supabase.from('ministries').select('ministry_key, funding_level, discretionary_balance').eq('nation_id', currentNation.id).eq('is_active', true),
-        _supabase.from('ministry_institution_config').select('*'),
-        _supabase.from('budget_item_allocations').select('item_id, item_type, allocation_amount, needed_amount').eq('nation_id', currentNation.id).eq('item_type', 'institution').order('created_at', { ascending: true })
-    ]).then(([ministries, instConfig, itemAllocs]) => {
-        window._allMinistries = ministries.data || [];
-        window._instConfig = instConfig.data || [];
-        window._fundingPctMap = buildFundingPctMap(itemAllocs.data);
-    });
+    _supabase.from('ministries')
+        .select('ministry_key, funding_level, discretionary_balance')
+        .eq('nation_id', currentNation.id)
+        .eq('is_active', true)
+        .then(({ data }) => { window._allMinistries = data || []; });
 }
 
 // Re-pull active_laws + policies (with options) so getCurrentOptionForPolicy
@@ -1808,107 +1798,12 @@ function hideTextArticleForm() {
 
 const FUNDING_MINISTRY_LABELS = { interior:'Interior', foreign:'Foreign Affairs', defense:'Defense', finance:'Finance', education:'Education', healthcare:'Healthcare', labor:'Labor', justice:'Justice', trade:'Trade', energy:'Energy', transportation:'Transport', sports:'Sports' };
 
-// Hardcoded institution map (mirrors MINISTRY_INSTITUTIONS from ministry-actions.html)
-const FUNDING_INSTITUTIONS = {
-    healthcare: [
-        { id: 'hospitals', name: 'Public Hospital Network', desc: 'Buildings, beds, equipment, ERs, operating rooms, ambulances.', primaryStat: 'Healthcare Access', secondaryStat: 'Happiness' },
-        { id: 'workforce', name: 'Medical Workforce', desc: 'Doctors, nurses, surgeons, specialists, paramedics.', primaryStat: 'Healthcare Quality', secondaryStat: 'Happiness' },
-        { id: 'prevention', name: 'Public Health & Disease Prevention', desc: 'Vaccinations, disease surveillance, clean water, epidemic prep.', primaryStat: 'Healthcare Quality', secondaryStat: 'Stability' }
-    ],
-    education: [
-        { id: 'primary_schools', name: 'Primary & Secondary Schools', desc: 'Public schools, teachers, textbooks, school infrastructure.', primaryStat: 'Primary Education', secondaryStat: 'Happiness' },
-        { id: 'universities', name: 'Universities & Research', desc: 'Higher education, research grants, labs, academic institutions.', primaryStat: 'Higher Education', secondaryStat: 'Digital Infrastructure' },
-        { id: 'vocational', name: 'Vocational Training', desc: 'Trade schools, apprenticeships, workforce development programs.', primaryStat: 'Primary Education', secondaryStat: 'Unemployment' }
-    ],
-    defense: [
-        { id: 'military', name: 'Armed Forces', desc: 'Army, navy, air force personnel, equipment, bases.', primaryStat: 'Military Strength', secondaryStat: 'Stability' },
-        { id: 'intelligence', name: 'Intelligence & Cybersecurity', desc: 'Intelligence agencies, cyber defense, counter-terrorism.', primaryStat: 'Digital Infrastructure', secondaryStat: 'Stability' },
-        { id: 'veterans', name: 'Veterans Affairs', desc: 'Veteran healthcare, pensions, rehabilitation services.', primaryStat: 'Happiness', secondaryStat: 'Stability' }
-    ],
-    labor: [
-        { id: 'employment_services', name: 'Employment Services', desc: 'Job centers, unemployment benefits, retraining programs.', primaryStat: 'Unemployment', secondaryStat: 'Happiness' },
-        { id: 'worker_safety', name: 'Worker Safety & Standards', desc: 'Workplace safety inspections, labor law enforcement.', primaryStat: 'Stability', secondaryStat: 'Happiness' },
-        { id: 'social_security', name: 'Social Security & Pensions', desc: 'Retirement pensions, disability benefits, social safety net.', primaryStat: 'Happiness', secondaryStat: 'Stability' }
-    ],
-    justice: [
-        { id: 'courts', name: 'Courts & Legal System', desc: 'Courthouses, judges, prosecutors, public defenders.', primaryStat: 'Rule of Law', secondaryStat: 'Stability' },
-        { id: 'corrections', name: 'Corrections & Prisons', desc: 'Prisons, rehabilitation, parole systems.', primaryStat: 'Stability', secondaryStat: 'Rule of Law' },
-        { id: 'law_enforcement', name: 'Law Enforcement', desc: 'Police force, crime prevention, investigations.', primaryStat: 'Stability', secondaryStat: 'Happiness' }
-    ],
-    energy: [
-        { id: 'power_grid', name: 'Power Grid & Distribution', desc: 'Electrical grid, substations, power distribution networks.', primaryStat: 'Physical Infrastructure', secondaryStat: 'Digital Infrastructure' },
-        { id: 'generation', name: 'Power Generation', desc: 'Power plants, renewable energy, fuel procurement.', primaryStat: 'Physical Infrastructure', secondaryStat: 'Environment' },
-        { id: 'regulation', name: 'Energy Regulation', desc: 'Price controls, safety standards, environmental compliance.', primaryStat: 'Environment', secondaryStat: 'Stability' }
-    ],
-    transportation: [
-        { id: 'roads', name: 'Roads & Highways', desc: 'Road construction, maintenance, bridges, tunnels.', primaryStat: 'Physical Infrastructure', secondaryStat: 'Happiness' },
-        { id: 'public_transit', name: 'Public Transit', desc: 'Buses, metro, rail, ferries, transit infrastructure.', primaryStat: 'Physical Infrastructure', secondaryStat: 'Environment' },
-        { id: 'aviation', name: 'Ports & Aviation', desc: 'Airports, seaports, customs facilities.', primaryStat: 'Physical Infrastructure', secondaryStat: 'Credit' }
-    ],
-    finance: [
-        { id: 'tax_admin', name: 'Tax Administration', desc: 'Tax collection, auditing, compliance enforcement.', primaryStat: 'Credit', secondaryStat: 'Rule of Law' },
-        { id: 'central_bank', name: 'Central Bank & Monetary Policy', desc: 'Interest rates, currency stability, banking regulation.', primaryStat: 'Inflation', secondaryStat: 'Credit' },
-        { id: 'development_bank', name: 'Development & Investment', desc: 'Development loans, infrastructure investment, economic zones.', primaryStat: 'GDP Growth', secondaryStat: 'Unemployment' }
-    ],
-    foreign: [
-        { id: 'embassies', name: 'Embassies & Consulates', desc: 'Diplomatic missions, foreign service officers.', primaryStat: 'Diplomacy', secondaryStat: 'Stability' },
-        { id: 'foreign_aid', name: 'Foreign Aid Programs', desc: 'Humanitarian aid, development assistance, disaster relief.', primaryStat: 'Diplomacy', secondaryStat: 'Happiness' },
-        { id: 'trade_missions', name: 'Trade Missions', desc: 'Trade negotiations, export promotion, trade agreements.', primaryStat: 'Credit', secondaryStat: 'GDP Growth' }
-    ],
-    interior: [
-        { id: 'civil_service', name: 'Civil Service', desc: 'Public administration, government offices, civil servants.', primaryStat: 'Govt. Capacity', secondaryStat: 'Rule of Law' },
-        { id: 'emergency_services', name: 'Emergency Services', desc: 'Fire departments, disaster response, emergency management.', primaryStat: 'Stability', secondaryStat: 'Happiness' },
-        { id: 'census', name: 'Census & Statistics', desc: 'Population data, economic surveys, national statistics.', primaryStat: 'Govt. Capacity', secondaryStat: 'Credit' }
-    ],
-    trade: [
-        { id: 'customs', name: 'Customs & Border Trade', desc: 'Customs enforcement, tariff collection, trade compliance.', primaryStat: 'Credit', secondaryStat: 'Rule of Law' },
-        { id: 'export_promotion', name: 'Export Promotion Agency', desc: 'Export incentives, trade shows, market access programs.', primaryStat: 'GDP Growth', secondaryStat: 'Credit' },
-        { id: 'competition', name: 'Competition & Consumer Protection', desc: 'Anti-monopoly enforcement, consumer rights, market fairness.', primaryStat: 'Rule of Law', secondaryStat: 'Happiness' }
-    ]
-};
+// Per-institution slider math used to live here; institutions are
+// removed and the funding rework will replace this with new article
+// shapes. Funding bills now carry only a discretionary grant.
 
-function _getFundingLabel(pct) {
-    if (pct > 100) return { label: 'OVERFUNDED', color: 'var(--green)' };
-    if (pct >= 100) return { label: 'FULLY FUNDED', color: 'var(--green)' };
-    if (pct >= 90) return { label: 'STRETCHED', color: 'var(--amber)' };
-    if (pct >= 75) return { label: 'STRAINED', color: 'var(--amber)' };
-    if (pct >= 50) return { label: 'UNDERFUNDED', color: 'var(--orange)' };
-    if (pct >= 25) return { label: 'CRITICAL', color: 'var(--red)' };
-    return { label: 'COLLAPSED', color: 'var(--red)' };
-}
-
-function _getInstFundingPct(instId) {
-    return getInstFundingPct(window._fundingPctMap, instId);
-}
-
-function _dollarsToMillions(amount) {
-    return Number(amount || 0) / 1_000_000;
-}
-
-function _computeInstitutionBaseCost(instId) {
-    const cfg = (window._instConfig || []).find(i => i.id === instId);
-    if (!cfg || !currentNation) return 0;
-    // Alpha stats refactor (Phase 7b): see bill.html for full rationale.
-    // Both gdp/GDP and inflation columns are deleted by the alpha
-    // refactor; collapsed gdp-scaled institutions to population
-    // scaling. Mirror of bill.html:_computeInstitutionBaseCost — keep
-    // in sync.
-    const baseVal = Number(cfg.base_cost_per_capita || 0);
-    // Funding article economics are computed and stored in $M to match bill rendering logic.
-    return _dollarsToMillions(baseVal * Number(currentNation.population || 0));
-}
-
-function _calculateFundingArticleOngoingCost(fundingData) {
-    // Expects fundingData institution base_cost and discretionary values in $M.
-    let ongoingCost = 0;
-    for (const inst of (fundingData?.institutions || [])) {
-        const fromPct = Number(inst.current_pct || 0);
-        const toPct = Number(inst.proposed_pct || 0);
-        if (fromPct === toPct) continue;
-        const baseCost = Number((inst.base_cost ?? _computeInstitutionBaseCost(inst.id)) || 0);
-        ongoingCost += ((toPct - fromPct) / 100) * baseCost;
-    }
-    return ongoingCost;
+function _calculateFundingArticleOngoingCost(_fundingData) {
+    return 0;
 }
 
 function _calculateFundingArticleUpfrontCost(fundingData) {
@@ -2416,48 +2311,6 @@ function onFundingMinistryChange() {
         const balColor = curBal > 0 ? 'var(--green, #5cb85c)' : 'var(--red, #d9534f)';
         balLabel.innerHTML = `Current balance: <strong style="color:${balColor}">${fmtBal}</strong>`;
     }
-    // Render institution sliders
-    const institutions = FUNDING_INSTITUTIONS[key] || [];
-    const container = document.getElementById('funding-institutions');
-    container.innerHTML = institutions.map(inst => {
-        const currentPct = _getInstFundingPct(inst.id);
-        const fl = _getFundingLabel(currentPct);
-        return `<div class="funding-inst-card" style="border-left:3px solid ${fl.color};background:var(--bg-panel);padding:10px 12px;margin-bottom:8px;border-radius:3px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div>
-                    <div style="font-weight:600;font-size:0.85rem;color:var(--text-bright);">${escapeHtml(inst.name)}</div>
-                    <div style="font-size:0.7rem;color:var(--text-secondary);">${escapeHtml(inst.desc)}</div>
-                </div>
-                <div style="text-align:right;">
-                    <span style="font-size:0.65rem;font-weight:bold;color:${fl.color};text-transform:uppercase;">${fl.label}</span>
-                    <div style="font-size:0.9rem;font-weight:700;color:${fl.color};" id="funding-pct-${inst.id}">${currentPct}%</div>
-                </div>
-            </div>
-            <div style="margin-top:6px;">
-                <input type="range" id="funding-slider-${inst.id}" data-inst-id="${inst.id}" min="0" max="200" value="${currentPct}" step="5" style="width:100%;" oninput="onInstSliderChange('${inst.id}')">
-                <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-muted);"><span>0%</span><span>100%</span><span>200%</span></div>
-            </div>
-            <div style="display:flex;gap:8px;margin-top:4px;">
-                <span style="font-size:0.65rem;color:var(--text-secondary);">▸ ${inst.primaryStat}</span>
-                <span style="font-size:0.65rem;color:var(--text-muted);">${inst.secondaryStat}</span>
-            </div>
-        </div>`;
-    }).join('');
-}
-
-function onInstSliderChange(instId) {
-    const slider = document.getElementById('funding-slider-' + instId);
-    const pct = parseInt(slider.value);
-    const fl = _getFundingLabel(pct);
-    const pctEl = document.getElementById('funding-pct-' + instId);
-    pctEl.textContent = pct + '%';
-    pctEl.style.color = fl.color;
-    // Update card border
-    const card = slider.closest('.funding-inst-card');
-    if (card) card.style.borderLeftColor = fl.color;
-    // Update badge
-    const badge = card?.querySelector('span[style*="text-transform:uppercase"]');
-    if (badge) { badge.textContent = fl.label; badge.style.color = fl.color; }
 }
 
 async function addFundingArticle() {
@@ -2465,28 +2318,9 @@ async function addFundingArticle() {
     const key = document.getElementById('funding-ministry-select').value;
     if (!key) return;
     const label = FUNDING_MINISTRY_LABELS[key] || key;
-    const institutions = FUNDING_INSTITUTIONS[key] || [];
-
-    // Gather per-institution proposed levels
-    const instLevels = [];
-    let anyChange = false;
-    for (const inst of institutions) {
-        const slider = document.getElementById('funding-slider-' + inst.id);
-        const proposedPct = parseInt(slider.value);
-        const currentPct = _getInstFundingPct(inst.id);
-        instLevels.push({
-            id: inst.id,
-            name: inst.name,
-            current_pct: currentPct,
-            proposed_pct: proposedPct,
-            // Stored in $M for cross-page consistency with bill.html formatCurrency expectations.
-            base_cost: _computeInstitutionBaseCost(inst.id)
-        });
-        if (proposedPct !== currentPct) anyChange = true;
-    }
 
     const discretionary = parseInt(document.getElementById('funding-discretionary').value) || 0;
-    if (!anyChange && discretionary === 0) { alert('No funding changes made. Adjust at least one institution or set discretionary funds.'); return; }
+    if (discretionary === 0) { alert('No funding changes made. Set discretionary funds.'); return; }
     // Cap withdrawals at current balance
     if (discretionary < 0) {
         const mRow = (window._allMinistries || []).find(m => m.ministry_key === key);
@@ -2498,10 +2332,9 @@ async function addFundingArticle() {
         }
     }
 
-    const fundingSignature = JSON.stringify({ key, institutions: instLevels, discretionary: discretionary !== 0 ? discretionary : null });
+    const fundingSignature = JSON.stringify({ key, discretionary });
     const isDuplicateFunding = draftArticles.some(a => a.isFunding && JSON.stringify({
         key: a.fundingData?.ministry_key,
-        institutions: a.fundingData?.institutions || [],
         discretionary: a.fundingData?.discretionary ?? null
     }) === fundingSignature);
     if (isDuplicateFunding) {
@@ -2519,8 +2352,7 @@ async function addFundingArticle() {
             fundingData: {
                 ministry_key: key,
                 ministry_label: label,
-                institutions: instLevels,
-                discretionary: discretionary !== 0 ? discretionary : null
+                discretionary
             }
         });
         renderDraftArticles();
@@ -3842,21 +3674,13 @@ function renderDraftArticles() {
         }
         if (art.isFunding) {
             const fd = art.fundingData;
-            const changes = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
-            const summaryParts = changes.map(i => {
-                const arrow = i.proposed_pct > i.current_pct ? '↑' : '↓';
-                return `${i.name}: ${i.current_pct}% → ${i.proposed_pct}% ${arrow}`;
-            });
-            if (fd.discretionary) summaryParts.push(fd.discretionary > 0 ? `Allocate: +$${fd.discretionary}M` : `Withdraw: -$${Math.abs(fd.discretionary)}M`);
-            const hasIncrease = changes.some(i => i.proposed_pct > i.current_pct);
-            const hasDecrease = changes.some(i => i.proposed_pct < i.current_pct);
-            const borderColor = hasDecrease ? 'var(--red)' : hasIncrease ? 'var(--green)' : 'var(--blue)';
-            const ongoingCost = _calculateFundingArticleOngoingCost(fd);
+            const dAmt = Number(fd.discretionary || 0);
+            const summaryParts = [];
+            if (dAmt) summaryParts.push(dAmt > 0 ? `Allocate: +$${dAmt}M` : `Withdraw: -$${Math.abs(dAmt)}M`);
+            const borderColor = dAmt < 0 ? 'var(--red)' : dAmt > 0 ? 'var(--green)' : 'var(--blue)';
             const upfrontCost = _calculateFundingArticleUpfrontCost(fd);
             const oneTimeText = `${upfrontCost > 0 ? '+' : ''}$${Math.round(upfrontCost)}M`;
-            const ongoingText = `${ongoingCost > 0 ? '+' : ''}$${Math.round(ongoingCost)}M/mo`;
-            const budgetImpact = `<div style="margin-top:4px;font-size:0.8rem;color:var(--text-primary);font-weight:600;">One-time: ${oneTimeText}</div>` +
-                `<div style="margin-top:2px;font-size:0.8rem;color:var(--text-primary);font-weight:600;">Ongoing: ${ongoingText}</div>`;
+            const budgetImpact = `<div style="margin-top:4px;font-size:0.8rem;color:var(--text-primary);font-weight:600;">One-time: ${oneTimeText}</div>`;
             return `<div class="draft-article-card" style="border-left:3px solid ${borderColor};">
                 <div class="draft-article-info">
                     <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:${borderColor};">Funding</span></div>
@@ -4500,11 +4324,9 @@ async function submitToCommittee() {
                 }
                 if (art.isFunding) {
                     const fd = art.fundingData;
-                    const changes = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
-                    const textParts = changes.map(i => `${i.name}: ${i.current_pct}% → ${i.proposed_pct}%`);
-                    if (fd.discretionary) textParts.push(fd.discretionary > 0 ? `Allocate: +$${fd.discretionary}M` : `Withdraw: -$${Math.abs(fd.discretionary)}M`);
+                    const dAmt = Number(fd.discretionary || 0);
+                    const text = (dAmt > 0 ? `Allocate: +$${dAmt}M` : dAmt < 0 ? `Withdraw: -$${Math.abs(dAmt)}M` : '') + '.';
                     const title = `${fd.ministry_label} Funding`;
-                    const text = textParts.join('. ') + '.';
                     return { bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id, article_title: title, article_text: text, funding_data: fd };
                 }
                 const articleRow = { bill_id: bill.id, policy_id: art.policy.id, article_number: art.articleNumber, added_by: currentFaction.id };
@@ -5104,7 +4926,6 @@ window.hidePermitForm = hidePermitForm;
 window.addPermitArticle = addPermitArticle;
 window.onPermitPolicyChange = onPermitPolicyChange;
 window.onFundingMinistryChange = onFundingMinistryChange;
-window.onInstSliderChange = onInstSliderChange;
 window.addFundingArticle = addFundingArticle;
 window.submitToCommittee = submitToCommittee;
 window.closeCommitteeAddModal = closeCommitteeAddModal;

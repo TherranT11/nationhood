@@ -76,8 +76,9 @@ function _scalePolicyCost(baseCost, scalingStat, nation) {
  * per-tick (1 tick = 1 month); ongoingYearly = ongoingMonthly × 12.
  *
  * Article handling (matches bill.html's per-article render):
- *   1. Funding-data (BUDGET): fd.discretionary → upfront,
- *      Σ institutions[].base_cost × (toPct - fromPct)/100 → monthly ongoing.
+ *   1. Funding-data (BUDGET): fd.discretionary → upfront. Per-institution
+ *      slider math used to add Σ base_cost × Δpct to monthly ongoing;
+ *      institutions are removed and that branch is gone.
  *   2. Repeal: subtract the repealed policy's scaled ongoing (negative
  *      monthly) — repealing saves what the law was spending.
  *   3. Policy: scaled upfront_cost + scaled (ongoing_cost_per_tick ||
@@ -90,17 +91,12 @@ export function computeBillCostTotals(bill, nation) {
     let ongoingMonthly = 0;
 
     for (const art of articles) {
-        // (1) Funding-data (BUDGET) article
+        // (1) Funding-data (BUDGET) article — discretionary grants only.
+        // Per-institution slider math used to live here; institutions are
+        // removed and that branch is gone.
         const fd = art.funding_data;
         if (fd) {
             upfront += Number(fd.discretionary || 0);
-            for (const inst of (fd.institutions || [])) {
-                const fromPct = Number(inst.current_pct || 0);
-                const toPct = Number(inst.proposed_pct || 0);
-                if (fromPct === toPct) continue;
-                const baseCost = Number(inst.base_cost || 0);
-                ongoingMonthly += ((toPct - fromPct) / 100) * baseCost;
-            }
             continue;
         }
 
@@ -3844,103 +3840,14 @@ export async function enactBill(supabase, bill, currentTick) {
         }
     }
 
-    // ── Apply funding articles (per-institution level changes & discretionary grants) ──
+    // ── Apply funding articles (discretionary grants only) ──
+    // Per-institution funding changes used to live here (sliders that wrote
+    // budget_item_allocations + a weighted-average ministry funding_level
+    // update). Institutions are removed; the funding-bill framework stays
+    // for discretionary grants and the rework will add new article shapes.
     for (const art of (bill.bill_articles || [])) {
         const fd = art.funding_data;
         if (!fd || !fd.ministry_key) continue;
-
-        // Per-institution funding changes: update ministry funding_level + budget_item_allocations
-        const instChanges = (fd.institutions || []).filter(i => i.proposed_pct !== i.current_pct);
-
-        // Update the ministry-level funding_level as a weighted average
-        if (instChanges.length > 0) {
-            const allInst = fd.institutions || [];
-            const avgPct = allInst.reduce((sum, i) => sum + i.proposed_pct, 0) / (allInst.length || 1);
-            const newLevel = avgPct / 100;
-            console.log('[enactBill] stage=update_ministry_funding attempt', {
-                ...logContext,
-                ministryKey: fd.ministry_key,
-                newLevel
-            });
-            const { error: ministryFundingErr } = await supabase.from('ministries')
-                .update({ funding_level: newLevel })
-                .eq('nation_id', bill.nation_id)
-                .eq('ministry_key', fd.ministry_key)
-                .eq('is_active', true);
-            if (ministryFundingErr) {
-                console.error('[enactBill] stage=update_ministry_funding result=rls_blocked', {
-                    ...logContext,
-                    ministryKey: fd.ministry_key,
-                    error: ministryFundingErr.message
-                });
-                console.error('[enactBill] stage=terminal_result result=rls_blocked', {
-                    ...logContext,
-                    error: ministryFundingErr.message
-                });
-                return { success: false, error: `Ministry funding update failed for ${fd.ministry_key}: ${ministryFundingErr.message}` };
-            }
-            console.log('[enactBill] stage=update_ministry_funding result=success', {
-                ...logContext,
-                ministryKey: fd.ministry_key,
-                avgPercent: Math.round(avgPct)
-            });
-
-            // Upsert per-institution funding into budget_item_allocations
-            // Stores actual dollar amounts: needed_amount = true cost, allocation_amount = funded amount
-            // so fundingPct = allocation_amount / needed_amount * 100
-            const { data: _billNation } = await supabase.from('nations').select('population, gdp, cost_of_living').eq('id', bill.nation_id).single();
-            const { data: _instConfigs } = await supabase.from('ministry_institution_config').select('id, base_cost_per_capita, scaling_type');
-            const _billPop = Number(_billNation?.population || 0);
-            const _billGdp = Number(_billNation?.gdp || 0);
-            const _billInfRate = Math.pow(Math.max(0, Number(_billNation?.cost_of_living || 0)), 1.5) / 100;
-            const _billInfMult = 1 + (_billInfRate / 100);
-
-            for (const inst of allInst) {
-                const instCfg = (_instConfigs || []).find(c => c.id === inst.id);
-                let neededAmt = 0;
-                if (instCfg) {
-                    const bv = Number(instCfg.base_cost_per_capita || 0);
-                    const st = instCfg.scaling_type || 'population';
-                    neededAmt = Math.round((st === 'gdp' ? (bv / 100) * _billGdp : bv * _billPop) * _billInfMult);
-                }
-                const allocAmt = Math.round(neededAmt * (inst.proposed_pct / 100));
-
-                const { error: allocErr } = await supabase.from('budget_item_allocations')
-                    .upsert({
-                        bill_id: bill.id,
-                        nation_id: bill.nation_id,
-                        fiscal_category: fd.ministry_key,
-                        item_type: 'institution',
-                        item_id: inst.id,
-                        item_name: inst.name,
-                        allocation_amount: allocAmt,
-                        needed_amount: neededAmt
-                    }, { onConflict: 'bill_id,item_type,item_id' });
-                if (allocErr) {
-                    // Fatal: if the budget_item_allocations row can't be written,
-                    // the decay engine has no input for this institution and the
-                    // bill's intent is silently lost. Roll back the bill rather
-                    // than mark it 'passed' with no effect (this exact path
-                    // produced ghost-passed Austerity Acts in Hajjara during a
-                    // deploy-lag window — see backfill at sql/...).
-                    console.error('[enactBill] stage=upsert_institution_allocation result=fatal', {
-                        ...logContext,
-                        institutionId: inst.id,
-                        error: allocErr.message
-                    });
-                    console.error('[enactBill] stage=terminal_result result=allocation_upsert_failed', {
-                        ...logContext,
-                        error: allocErr.message
-                    });
-                    return { success: false, error: `Budget allocation upsert failed for ${inst.id}: ${allocErr.message}` };
-                }
-            }
-            console.log('[enactBill] stage=upsert_institution_allocations result=success', {
-                ...logContext,
-                ministryKey: fd.ministry_key,
-                institutionCount: allInst.length
-            });
-        }
 
         // Discretionary funds: credit ministry balance and add cost to national debt
         // fd.discretionary is in $M — convert to raw dollars for the balance column.

@@ -731,7 +731,6 @@ export const MINOR_INITIATIVE_CONFIG = {
     AP_COST: 2,
     TIER: 1,
     TYPE: 'minor_diplomatic_initiative',
-    BUDGET_SOURCE: 'embassies',              // institution id in budget_item_allocations
     HOSTILE_RELATION_THRESHOLD: -50,         // cannot propose below this
     MAX_VISA_AGREEMENTS_PER_INITIATIVE: 1,   // only one visa agreement per initiative
 };
@@ -1168,7 +1167,6 @@ export const MAJOR_INITIATIVE_CONFIG = {
     AP_COST: 2,
     TIER: 3,
     TYPE: 'major_diplomatic_initiative',
-    BUDGET_SOURCE: 'foreign',               // institution id in budget_item_allocations
     HOSTILE_RELATION_THRESHOLD: -50,         // cannot propose below this
     HOG_FALLBACK_AP_PENALTY: 3,             // extra AP if HoG proposes without FM
     RATIFICATION_VOTING_TICKS: 6,           // both parliaments vote for 6 ticks

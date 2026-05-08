@@ -264,7 +264,7 @@ export const FISCAL_CATEGORIES = [
 ];
 
 /**
- * Map fiscal category names → ministry_key used in ministry_institution_config.
+ * Map fiscal category names → ministry_key.
  */
 export const FISCAL_TO_MINISTRY_KEY = {
     'Interior': 'interior', 'Labor': 'labor', 'Healthcare': 'healthcare',
@@ -329,40 +329,10 @@ export function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
 }
 
 /**
- * Compute the annualized cost of all institutions for a given fiscal category.
- * Alpha stats refactor: gdp-scaled institutions collapse to population
- * scaling (matches bill.html / laws.html _computeInstitutionBaseCost from
- * Phase 7b). Inflation multiplier is a no-op (Phase 7e).
- * @param {Array} institutions - rows from ministry_institution_config
- * @param {string} fiscalCategory - e.g. 'Healthcare', 'Trade'
- * @param {Object} nation
- */
-export function computeMinistryInstitutionCost(institutions, fiscalCategory, nation) {
-    const ministryKey = FISCAL_TO_MINISTRY_KEY[fiscalCategory] || fiscalCategory.toLowerCase();
-    const insts = (institutions || []).filter(i => i.ministry_key === ministryKey);
-    const population = Number(nation.population || 0);
-
-    let total = 0;
-    const items = [];
-    for (const inst of insts) {
-        const baseVal = Number(inst.base_cost_per_capita || 0);
-        const scalingType = inst.scaling_type || 'population';
-        const cost = baseVal * population;
-        items.push({
-            id: inst.id, institution_name: inst.institution_name, cost,
-            base_cost_per_capita: inst.base_cost_per_capita,
-            scaling_type: scalingType
-        });
-        total += cost;
-    }
-    return { total, institutions: items };
-}
-
-/**
  * Build full budget data for a nation: revenue, expenditures per ministry, debt service, etc.
  * @param {Object} aidData - Optional { received: number, given: number, agreements: [...] }
  */
-export function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institutions, aidData) {
+export function buildBudgetData(nation, activeLaws, tradeTariffRevenue, aidData) {
     const budget = calculateNationalBudget(nation);
     applyTradeTariffOverride(budget, tradeTariffRevenue, 0);
     // Inflation column was deleted by the alpha refactor; both fields are
@@ -383,14 +353,11 @@ export function buildBudgetData(nation, activeLaws, tradeTariffRevenue, institut
 
     for (const cat of FISCAL_CATEGORIES) {
         const polResult = computeMinistryPolicyCost(activeLaws, cat, nation);
-        const instResult = computeMinistryInstitutionCost(institutions || [], cat, nation);
-        const fulfilledCost = polResult.total + instResult.total;
+        const fulfilledCost = polResult.total;
         ministries[cat] = {
             fulfilledCost,
             allocation: fulfilledCost,  // default: fulfill
             policies: polResult.policies,
-            institutions: instResult.institutions,
-            institutionTotal: instResult.total,
             policyTotal: polResult.total
         };
         totalExpenditure += fulfilledCost;

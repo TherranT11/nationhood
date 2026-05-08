@@ -6,7 +6,7 @@
 import { deductAP, GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './config.js';
 import { CANONICAL_GOVERNMENT_TYPES, hasParliamentaryPM, isSemiPresidential } from './government-types.js';
 import { RAW_SCALING_DIVISORS, STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
-import { MINISTER_APPROVAL_CONFIG, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, buildMinistryBaselines, getAveragedInstitutionDecay, normalizeNationStatKey, translateStatEffect, statDirectionSign, buildFundingPctMap, getInstFundingPct } from './stats.js';
+import { MINISTER_APPROVAL_CONFIG, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, buildMinistryBaselines, normalizeNationStatKey, translateStatEffect, statDirectionSign } from './stats.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
 import { fetchActiveCoalition, deriveLeadPartyId } from './government-structure.js';
 import { closeAdministration, createAdministration, dissolveCoalition } from './elections.js';
@@ -43,16 +43,13 @@ function _logStatDebug(supabase, nation, tick, statKey, contributorType, contrib
 
 /**
  * Apply natural stat decay for a nation. Each tick, configured stats drift
- * toward their target (equilibrium or erosion).
- *
- * Institution funding modifies decay: fully-funded institutions block decay on
- * their primary/secondary stats entirely. Underfunded institutions let decay
- * through (or worsen it). When multiple institutions cover the same stat, their
- * rates are averaged. Stats not covered by any institution decay at natural rates.
+ * toward their target (equilibrium or erosion). Policies can raise/lower
+ * the target via active_laws → policies → stat_effects (floor/ceiling).
  *
  * @param {object} supabase - Supabase client
  * @param {object} nation   - Full nation row (in-memory, mutated on success)
- * @param {Object|null} statInstitutionMap - from buildStatInstitutionMap(), or null to use natural rates
+ * @param {Object|null} policyDecayAdjustments - from buildPolicyDecayAdjustments
+ * @param {number} currentTick
  * @returns {Array<object>}  Applied decay descriptors for tick summary
  */
 /**
@@ -456,7 +453,7 @@ export async function processCommodityDemandEffects(supabase, nation, tradingByN
     return { sources, applied: updates };
 }
 
-export async function processStatDecay(supabase, nation, statInstitutionMap, policyDecayAdjustments = null, currentTick = 0) {
+export async function processStatDecay(supabase, nation, policyDecayAdjustments = null, currentTick = 0) {
     const appliedDecay = [];
     const nationUpdates = {};
 
@@ -485,13 +482,8 @@ export async function processStatDecay(supabase, nation, statInstitutionMap, pol
 
         if (currentVal === target) continue;
 
-        // Determine effective decay speed: institution-modified or natural
-        const instDecay = statInstitutionMap
-            ? getAveragedInstitutionDecay(statInstitutionMap[statKey])
-            : null;
-        const speed = instDecay !== null ? instDecay : config.speed;
-
-        if (speed === 0) continue;  // fully funded institutions block all decay
+        const speed = config.speed;
+        if (speed === 0) continue;
 
         let newVal;
         if (currentVal > target) {
@@ -507,9 +499,9 @@ export async function processStatDecay(supabase, nation, statInstitutionMap, pol
             const prevRounded = Math.round(currentVal * 10) / 10;
             _logStatDebug(supabase, nation, currentTick, statKey,
                 'decay',
-                instDecay !== null ? `institution-decay (target=${target}, avg=${speed})` : `natural-decay (target=${target}, speed=${speed})`,
+                `natural-decay (target=${target}, speed=${speed})`,
                 speed, null, newVal - prevRounded,
-                instDecay !== null ? 'institution-modified' : 'natural');
+                'natural');
             appliedDecay.push({
                 stat: statKey,
                 type: config.type,
@@ -517,7 +509,6 @@ export async function processStatDecay(supabase, nation, statInstitutionMap, pol
                 newValue: newVal,
                 target,
                 speed,
-                institutionModified: instDecay !== null
             });
         }
     }
@@ -550,8 +541,7 @@ export async function processStatDecay(supabase, nation, statInstitutionMap, pol
             return [];
         }
 
-        const instCount = appliedDecay.filter(d => d.institutionModified).length;
-        console.log(`[processStatDecay] Decay applied for ${nation.name}: ${appliedDecay.length} stat(s)${instCount > 0 ? ` (${instCount} institution-modified)` : ''}`);
+        console.log(`[processStatDecay] Decay applied for ${nation.name}: ${appliedDecay.length} stat(s)`);
         Object.assign(nation, nationUpdates);
     }
 
@@ -2707,17 +2697,6 @@ export async function processCrises(supabase, nation, currentTick) {
     const nationUpdates = {};
     const statBounds = {}; // { stat_key: { floor: highestFloor, ceiling: lowestCeiling } }
 
-    // Load per-institution funding allocations (written by enactBill funding articles)
-    const { data: _fundingAllocRows } = await supabase.from('budget_item_allocations')
-        .select('item_id, item_type, allocation_amount, needed_amount')
-        .eq('nation_id', nation.id)
-        .eq('item_type', 'institution')
-        .order('created_at', { ascending: true });
-    const _fundingMap = buildFundingPctMap(_fundingAllocRows);
-    function getInstitutionFundingPct(instId) {
-        return getInstFundingPct(_fundingMap, instId);
-    }
-
     // 3. Check inactive crises for activation (skip programmatic crises with is_active=false)
     for (const template of crisisTemplates) {
         if (activeMap[template.id]) continue; // already active
@@ -2726,19 +2705,10 @@ export async function processCrises(supabase, nation, currentTick) {
         let allTriggersMet = false;
 
         if (template.crisis_type === 'ministry') {
-            // Ministry crisis: check institution funding levels
-            const institutionIds = template.institution_ids || [];
-            const threshold = Number(template.funding_threshold_pct) || 0;
-            if (institutionIds.length === 0) continue;
-
-            allTriggersMet = true;
-            for (const instId of institutionIds) {
-                const pct = getInstitutionFundingPct(instId);
-                if (pct >= threshold) {
-                    allTriggersMet = false;
-                    break;
-                }
-            }
+            // Ministry crises previously gated on institution funding levels.
+            // Institutions are removed; ministry crises no longer auto-activate
+            // until the rework lands.
+            continue;
         } else {
             // Stat-based crisis: check crisis_triggers
             const triggers = template.crisis_triggers || [];
@@ -3025,19 +2995,11 @@ export async function processCrises(supabase, nation, currentTick) {
         let allEndConditionsMet = false;
 
         if (template.crisis_type === 'ministry') {
-            // Ministry crisis: resolve when ALL institutions are at/above recovery_threshold_pct
-            const institutionIds = template.institution_ids || [];
-            const recoveryPct = Number(template.recovery_threshold_pct) || (Number(template.funding_threshold_pct) + 20);
-            if (institutionIds.length > 0) {
-                allEndConditionsMet = true;
-                for (const instId of institutionIds) {
-                    const pct = getInstitutionFundingPct(instId);
-                    if (pct < recoveryPct) {
-                        allEndConditionsMet = false;
-                        break;
-                    }
-                }
-            }
+            // Ministry crisis recovery previously gated on institution funding
+            // levels. Institutions are removed; ministry crises that were
+            // already active before this change resolve only on duration
+            // fizzle (handled below) or via legacy admin tools.
+            allEndConditionsMet = false;
         } else {
             // Stat-based crisis: check crisis_end_triggers
             const endTriggers = template.crisis_end_triggers || [];

@@ -109,7 +109,7 @@ var FISCAL_CATEGORIES = [
     { key: 'Trade', label: 'Trade', icon: '🔄' }
 ];
 
-// Map fiscal categories to ministry institution keys
+// Map fiscal categories to ministry keys
 var FISCAL_TO_MINISTRY_KEY = {
     'Healthcare': 'healthcare',
     'Education': 'education',
@@ -122,60 +122,6 @@ var FISCAL_TO_MINISTRY_KEY = {
     'Foreign Ministry': 'foreign',
     'Interior': 'interior',
     'Trade': 'trade'
-};
-
-// Ministry institutions (mirrors ministry-actions.html MINISTRY_INSTITUTIONS)
-var MINISTRY_INSTITUTIONS = {
-    healthcare: [
-        { id: 'hospitals', name: 'Public Hospital Network', icon: '🏥', costShare: 0.38 },
-        { id: 'workforce', name: 'Medical Workforce', icon: '👩‍⚕️', costShare: 0.47 },
-        { id: 'prevention', name: 'Public Health & Disease Prevention', icon: '🛡️', costShare: 0.15 }
-    ],
-    education: [
-        { id: 'primary_schools', name: 'Primary & Secondary Schools', icon: '🏫', costShare: 0.50 },
-        { id: 'universities', name: 'Universities & Research', icon: '🎓', costShare: 0.35 },
-        { id: 'vocational', name: 'Vocational Training', icon: '🔧', costShare: 0.15 }
-    ],
-    defense: [
-        { id: 'military', name: 'Armed Forces', icon: '🎯', costShare: 0.60 },
-        { id: 'intelligence', name: 'Intelligence & Cybersecurity', icon: '🕵️', costShare: 0.25 },
-        { id: 'veterans', name: 'Veterans Affairs', icon: '🎖️', costShare: 0.15 }
-    ],
-    labor: [
-        { id: 'employment_services', name: 'Employment Services', icon: '💼', costShare: 0.45 },
-        { id: 'worker_safety', name: 'Worker Safety & Standards', icon: '🛡️', costShare: 0.30 },
-        { id: 'social_security', name: 'Social Security & Pensions', icon: '🧓', costShare: 0.25 }
-    ],
-    justice: [
-        { id: 'courts', name: 'Courts & Legal System', icon: '🏛️', costShare: 0.40 },
-        { id: 'corrections', name: 'Corrections & Prisons', icon: '🏢', costShare: 0.35 },
-        { id: 'law_enforcement', name: 'Law Enforcement', icon: '👮', costShare: 0.25 }
-    ],
-    energy: [
-        { id: 'power_grid', name: 'Power Grid & Distribution', icon: '⚡', costShare: 0.50 },
-        { id: 'generation', name: 'Power Generation', icon: '🏭', costShare: 0.35 },
-        { id: 'regulation', name: 'Energy Regulation', icon: '📋', costShare: 0.15 }
-    ],
-    transportation: [
-        { id: 'roads', name: 'Roads & Highways', icon: '🛣️', costShare: 0.50 },
-        { id: 'public_transit', name: 'Public Transit', icon: '🚌', costShare: 0.35 },
-        { id: 'aviation', name: 'Ports & Aviation', icon: '✈️', costShare: 0.15 }
-    ],
-    finance: [
-        { id: 'tax_admin', name: 'Tax Administration', icon: '📊', costShare: 0.40 },
-        { id: 'central_bank', name: 'Central Bank & Monetary Policy', icon: '🏦', costShare: 0.35 },
-        { id: 'development_bank', name: 'Development & Investment', icon: '📈', costShare: 0.25 }
-    ],
-    foreign: [
-        { id: 'embassies', name: 'Embassies & Consulates', icon: '🏢', costShare: 0.45 },
-        { id: 'foreign_aid', name: 'Foreign Aid Programs', icon: '🤝', costShare: 0.30 },
-        { id: 'trade_missions', name: 'Trade Missions', icon: '📦', costShare: 0.25 }
-    ],
-    interior: [
-        { id: 'civil_service', name: 'Civil Service', icon: '🏛️', costShare: 0.40 },
-        { id: 'emergency_services', name: 'Emergency Services', icon: '🚨', costShare: 0.35 },
-        { id: 'census', name: 'Census & Statistics', icon: '📋', costShare: 0.25 }
-    ]
 };
 
 // ==================== INIT ====================
@@ -653,7 +599,6 @@ function renderMCList(crises) {
         var fxCount = (cr.crisis_effects || []).length;
         var fc = FISCAL_CATEGORIES.find(function(f) { return f.key === cr.fiscal_category; });
         var fcLabel = fc ? fc.icon + ' ' + fc.label : cr.fiscal_category || 'Unknown';
-        var instIds = cr.institution_ids || [];
         var desc = (cr.description || '').substring(0, 80);
         return '<div class="crisis-card mc-card ' + (cr.is_active ? 'active' : 'inactive') + '" onclick="editMC(\'' + cr.id + '\')">' +
             '<div class="crisis-card-left">' +
@@ -662,7 +607,6 @@ function renderMCList(crises) {
                     '<span class="tag tag-ministry">' + fcLabel + '</span>' +
                     '<span class="tag tag-funding">Below ' + (cr.funding_threshold_pct || 0) + '%</span>' +
                     '<span class="tag tag-effect">' + fxCount + ' effect' + (fxCount !== 1 ? 's' : '') + '</span>' +
-                    (instIds.length ? '<span class="tag tag-inst">' + instIds.length + ' inst.</span>' : '') +
                     (desc ? '<span style="color:#666;">' + escapeHtml(desc) + '</span>' : '') +
                 '</div>' +
             '</div>' +
@@ -693,7 +637,7 @@ function createNewMC() {
     currentMinistryCrisis = {
         name: '', description: '', is_active: true,
         fiscal_category: '', funding_threshold_pct: 50,
-        recovery_threshold_pct: 75, institution_ids: []
+        recovery_threshold_pct: 75
     };
     mcEditorEffects = [];
     window.mcEditorEffects = mcEditorEffects;
@@ -705,9 +649,7 @@ function editMC(id) {
     var cr = allMinistryCrises.find(function(c) { return c.id === id; });
     if (!cr) return;
     isNewMinistryCrisis = false;
-    currentMinistryCrisis = Object.assign({}, cr, {
-        institution_ids: cr.institution_ids || []
-    });
+    currentMinistryCrisis = Object.assign({}, cr);
     mcEditorEffects = (cr.crisis_effects || []).map(function(e) { return Object.assign({}, e, { isNew: false }); });
     window.mcEditorEffects = mcEditorEffects;
     mcDeletedEffectIds = [];
@@ -719,8 +661,6 @@ function renderMCEditor() {
     var c = document.getElementById('content-area');
     var title = isNewMinistryCrisis ? 'Create Ministry Crisis' : 'Edit Ministry Crisis';
     var mc = currentMinistryCrisis;
-    var ministryKey = FISCAL_TO_MINISTRY_KEY[mc.fiscal_category] || '';
-    var institutions = ministryKey ? (MINISTRY_INSTITUTIONS[ministryKey] || []) : [];
 
     c.innerHTML =
         '<button class="btn-back" onclick="cancelMCEditor()">&#8592; Back to Ministry Crises</button>' +
@@ -771,9 +711,6 @@ function renderMCEditor() {
                             '<div class="form-hint">Crisis ends when funding ratio reaches this</div>' +
                         '</div>' +
                     '</div>' +
-
-                    // Institution checkboxes
-                    '<div id="mc-institutions-area">' + renderMCInstitutions(ministryKey, mc.institution_ids || []) + '</div>' +
                 '</div>' +
 
                 '<div class="section-divider" style="color:#d48a3c;">when active, every tick applies</div>' +
@@ -804,39 +741,6 @@ function cancelMCEditor() { renderMCListView(); }
 
 function onMCMinistryChange(fiscalCat) {
     currentMinistryCrisis.fiscal_category = fiscalCat;
-    currentMinistryCrisis.institution_ids = [];
-    var mk = FISCAL_TO_MINISTRY_KEY[fiscalCat] || '';
-    document.getElementById('mc-institutions-area').innerHTML = renderMCInstitutions(mk, []);
-}
-
-function renderMCInstitutions(ministryKey, selectedIds) {
-    if (!ministryKey) return '<div class="form-hint" style="padding:8px 0;">Select a ministry to see its institutions.</div>';
-    var insts = MINISTRY_INSTITUTIONS[ministryKey] || [];
-    if (!insts.length) return '';
-    return '<div style="margin-top:12px;"><label class="form-label">Institutions (optional context)</label>' +
-        '<div class="form-hint" style="margin-bottom:8px;">Select specific institutions this crisis represents. Leave empty to apply to the whole ministry.</div>' +
-        '<div class="institution-grid">' +
-        insts.map(function(inst) {
-            var checked = selectedIds.indexOf(inst.id) !== -1;
-            return '<label class="institution-check' + (checked ? ' checked' : '') + '">' +
-                '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="toggleMCInstitution(\'' + inst.id + '\',this.checked,this.parentElement)">' +
-                '<span class="inst-icon">' + inst.icon + '</span>' +
-                '<span class="inst-name">' + inst.name + '</span>' +
-                '<span class="inst-share">' + Math.round(inst.costShare * 100) + '% share</span>' +
-            '</label>';
-        }).join('') +
-        '</div></div>';
-}
-
-function toggleMCInstitution(instId, checked, label) {
-    var ids = currentMinistryCrisis.institution_ids || [];
-    if (checked && ids.indexOf(instId) === -1) ids.push(instId);
-    else if (!checked) ids = ids.filter(function(x) { return x !== instId; });
-    currentMinistryCrisis.institution_ids = ids;
-    if (label) {
-        if (checked) label.classList.add('checked');
-        else label.classList.remove('checked');
-    }
 }
 
 // ==================== MINISTRY CRISIS EFFECTS ====================
@@ -944,8 +848,7 @@ async function saveMC() {
             crisis_type: 'ministry',
             fiscal_category: mc.fiscal_category,
             funding_threshold_pct: mc.funding_threshold_pct,
-            recovery_threshold_pct: mc.recovery_threshold_pct,
-            institution_ids: mc.institution_ids || []
+            recovery_threshold_pct: mc.recovery_threshold_pct
         };
 
         if (isNewMinistryCrisis) {
@@ -1029,7 +932,6 @@ window.cancelMCEditor = cancelMCEditor;
 window.deleteMC = deleteMC;
 window.applyMCFilters = applyMCFilters;
 window.onMCMinistryChange = onMCMinistryChange;
-window.toggleMCInstitution = toggleMCInstitution;
 window.addMCEffect = addMCEffect;
 window.removeMCEffect = removeMCEffect;
 window.updateMCEffectTarget = updateMCEffectTarget;

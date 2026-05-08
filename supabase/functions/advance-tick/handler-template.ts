@@ -1044,7 +1044,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
     // Lazy-loaded once per tick for all nations
     let _statConnections = null;
-    let _institutionConfig = null;
 
     const summary = {
         tick: newTick,
@@ -1374,20 +1373,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] GDP growth failed for ${nation.name} (non-fatal):`, gdpErr);
         }
 
-        // Stat decay (equilibrium drift + erosion, modified by institution funding)
+        // Stat decay (equilibrium drift + erosion). Policies can raise/lower
+        // the per-stat decay target via stat_effects floor/ceiling.
         try {
-            if (!_institutionConfig) {
-                const { data: icRows } = await supabase.from('ministry_institution_config').select('*');
-                _institutionConfig = icRows || [];
-            }
-            const { data: _fundingRows } = await supabase.from('budget_item_allocations')
-                .select('item_id, item_type, allocation_amount, needed_amount')
-                .eq('nation_id', nation.id)
-                .eq('item_type', 'institution')
-                .order('created_at', { ascending: true });
-            const statInstMap = buildStatInstitutionMap(_institutionConfig, _fundingRows);
             const policyDecayAdj = await buildPolicyDecayAdjustments(supabase, nation.id);
-            const decayResults = await processStatDecay(supabase, nation, statInstMap, policyDecayAdj, newTick);
+            const decayResults = await processStatDecay(supabase, nation, policyDecayAdj, newTick);
             if (decayResults.length > 0) {
                 summary.decay = summary.decay || [];
                 summary.decay.push({ nation: nation.name, effects: decayResults });
