@@ -5342,32 +5342,14 @@ async function applyStatIncrements(nationId, increments) {
 }
 
 /**
- * Add cost to the Embassies & Consulates institution's needed_amount
- * in budget_item_allocations for the active budget bill.
+ * Embassy/diplomatic cost adjustment used to write to the embassies
+ * institution's needed_amount in budget_item_allocations. Institutions
+ * are removed (sql/migrations/20261004_drop_institutions.sql) so this
+ * is a no-op pending the funding rework — diplomatic ongoing costs
+ * will get a new home when the new system lands.
  */
-async function addEmbassyCost(nationId, amount) {
-    if (!nationId || !amount) return;
-    try {
-        // Find the active budget bill's allocation for embassies
-        const { data: alloc } = await _supabase
-            .from('budget_item_allocations')
-            .select('id, needed_amount')
-            .eq('nation_id', nationId)
-            .eq('item_type', 'institution')
-            .eq('item_id', 'embassies')
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-        if (alloc) {
-            const newNeeded = Math.max(0, Number(alloc.needed_amount || 0) + amount);
-            await _supabase.from('budget_item_allocations')
-                .update({ needed_amount: newNeeded })
-                .eq('id', alloc.id);
-        }
-    } catch (e) {
-        console.warn('Error updating embassy cost for nation', nationId, e);
-    }
+async function addEmbassyCost(_nationId, _amount) {
+    // intentionally empty
 }
 
 async function fireProposalEvent(pd, currentTick, stage, description, involvedNationIds) {

@@ -44,12 +44,12 @@ import { fmtBudgetCurrency, escapeHtml, escapeAttr } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS } from './js/game/config.js';
 import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isGovernmentPresidential } from './js/game/government-types.js';
 import { RAW_SCALING_DIVISORS } from './js/game/diplomacy-constants.js';
-import { FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, computeMinistryInstitutionCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, applyGdpGrowth, calculateNationalBudget } from './js/game/budget.js';
+import { FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, applyGdpGrowth, calculateNationalBudget } from './js/game/budget.js';
 import { processElections, processGovernmentVacancy, resolveNoConfidence, runManualElectionByGovernmentType } from './js/game/elections.js';
 import { processEvents, processCrises, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, processPMTraitEffects, formatStatName } from './js/game/political-actions.js';
 import { processPresidentDesk, processPresidentialTermEnd, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates } from './js/game/presidential.js';
 import { recalcDerivedApproval, resolveExpiredVotes } from './js/game/bills.js';
-import { NATION_STAT_COLUMNS, STAT_DECAY_CONFIG, normalizeNationStatKey, buildFundingPctMap, getInstFundingPct } from './js/game/stats.js';
+import { NATION_STAT_COLUMNS, STAT_DECAY_CONFIG, normalizeNationStatKey } from './js/game/stats.js';
 import { runElectionPreview, runPresidentialElectionPreview } from './js/game/election-simulation.js';
 import { SECTIONS, EVENT_TYPES, HEADLINE_TEMPLATES, LEDE_TEMPLATES, BODY_BLOCK_TEMPLATES, QUOTE_TEMPLATES, OPINION_TRIGGERS, REPORTERS } from './js/game/valdorian-templates.js';
 import { generateArticle, generateTickArticles } from './js/game/valdorian-generator.js';
@@ -2139,399 +2139,21 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
 //  list swaps between party / corp pages based on the selection.)
 
 
-// ==================== MINISTRY INSTITUTION CONFIG ====================
-
-    const MINISTRY_ORDER = [
-        'interior', 'foreign', 'defense', 'finance',
-        'education', 'healthcare', 'labor', 'justice',
-        'trade', 'energy', 'transportation'
-    ];
-    const MINISTRY_DISPLAY_NAMES = {
-        interior: 'Interior', foreign: 'Foreign Affairs', defense: 'Defense',
-        finance: 'Finance', education: 'Education', healthcare: 'Healthcare',
-        labor: 'Labor', justice: 'Justice', trade: 'Trade',
-        energy: 'Energy', transportation: 'Transportation', sports: 'Sports'
-    };
-
-    let ministryConfigData = []; // rows from DB
-    let ministryConfigNation = null; // nation data for computing costs
-    let mcAllNations = []; // all nations for dropdown
-
-    async function loadMinistryConfig() {
-        try {
-            const { data, error } = await _supabase
-                .from('ministry_institution_config')
-                .select('*')
-                .order('ministry_key');
-            if (error) throw error;
-            ministryConfigData = data || [];
-
-            // Load all nations for the dropdown. Only id + name are read
-            // off mcAllNations entries — the previous select pulled
-            // population/gdp/inflation but never referenced them, and one of
-            // those columns 400'd against the live schema.
-            const { data: nations } = await _supabase.from('nations').select('id, name').order('name');
-            mcAllNations = nations || [];
-
-            // Populate dropdown
-            const sel = document.getElementById('mc-nation-select');
-            if (sel) {
-                sel.innerHTML = '<option value="__all__">— All Nations —</option>' + mcAllNations.map(n =>
-                    '<option value="' + n.id + '">' + (n.name || 'Unknown') + '</option>'
-                ).join('');
-                sel.value = mcAllNations.length > 0 ? mcAllNations[0].id : '__all__';
-            }
-
-            // Default to first nation
-            if (mcAllNations.length > 0) {
-                const { data: fullNation } = await _supabase.from('nations').select('*').eq('id', mcAllNations[0].id).single();
-                ministryConfigNation = fullNation;
-            }
-
-            renderMinistryConfig();
-        } catch (err) {
-            console.error('loadMinistryConfig error:', err);
-            document.getElementById('ministry-config-body').innerHTML = '<div style="color:#d9534f;">Error loading config: ' + err.message + '</div>';
-        }
-    }
-
-    window.onMCNationChange = async function(nationId) {
-        if (!nationId) return;
-        if (nationId === '__all__') {
-            // All Nations selected — preview first nation but commit applies to all
-            if (mcAllNations.length > 0) {
-                const { data: fullNation } = await _supabase.from('nations').select('*').eq('id', mcAllNations[0].id).single();
-                ministryConfigNation = fullNation;
-            }
-            renderMinistryConfig();
-            return;
-        }
-        const { data: fullNation } = await _supabase.from('nations').select('*').eq('id', nationId).single();
-        ministryConfigNation = fullNation;
-        renderMinistryConfig();
-    };
-
-    // Helper: commit allocations for a single nation
-    async function commitAllocationsForNation(nation) {
-        const nationId = nation.id;
-        const pop = Number(nation.population || 0);
-        const gdp = Number(nation.gdp ?? nation.GDP ?? 0);
-        const infMult = getInflationMultiplier(nation.inflation);
-
-        let updated = 0;
-        let created = 0;
-        for (const cfg of ministryConfigData) {
-            const bv = Number(cfg.base_cost_per_capita || 0);
-            const st = cfg.scaling_type || 'population';
-            const newNeeded = Math.round((st === 'gdp' ? (bv / 100) * gdp : bv * pop) * infMult);
-
-            const { data: existing } = await _supabase.from('budget_item_allocations')
-                .select('id, allocation_amount, needed_amount')
-                .eq('nation_id', nationId).eq('item_id', cfg.id).eq('item_type', 'institution');
-
-            if (existing && existing.length > 0) {
-                for (const row of existing) {
-                    const oldNeeded = Number(row.needed_amount || 100);
-                    const oldAlloc = Number(row.allocation_amount || oldNeeded);
-                    const pct = oldNeeded > 0 ? oldAlloc / oldNeeded : 1;
-                    const newAlloc = Math.round(newNeeded * pct);
-                    await _supabase.from('budget_item_allocations')
-                        .update({ needed_amount: newNeeded, allocation_amount: newAlloc })
-                        .eq('id', row.id);
-                    updated++;
-                }
-            } else {
-                const { data: activeBill } = await _supabase.from('bills')
-                    .select('id').eq('nation_id', nationId).eq('bill_type', 'funding').eq('status', 'enacted')
-                    .order('proposed_tick', { ascending: false }).limit(1).maybeSingle();
-                if (activeBill) {
-                    const fCat = Object.entries(FISCAL_TO_MINISTRY_KEY).find(([, v]) => v === cfg.ministry_key);
-                    await _supabase.from('budget_item_allocations').insert({
-                        bill_id: activeBill.id,
-                        nation_id: nationId,
-                        fiscal_category: fCat ? fCat[0] : cfg.ministry_key,
-                        item_type: 'institution',
-                        item_id: cfg.id,
-                        item_name: cfg.institution_name,
-                        allocation_amount: newNeeded,
-                        needed_amount: newNeeded
-                    });
-                    created++;
-                }
-            }
-        }
-        return { updated, created };
-    }
-
-    window.commitAllAllocations = async function() {
-        if (!ministryConfigData.length) {
-            alert('No config loaded.');
-            return;
-        }
-        const selectVal = document.getElementById('mc-nation-select')?.value;
-        const isAll = selectVal === '__all__';
-
-        if (isAll) {
-            if (!confirm('Commit institution costs to budget for ALL ' + mcAllNations.length + ' nations?\n\nThis updates budget_item_allocations with current costs for every nation. Existing funding percentages will be preserved.')) return;
-
-            let totalUpdated = 0;
-            let totalCreated = 0;
-            for (const n of mcAllNations) {
-                const result = await commitAllocationsForNation(n);
-                totalUpdated += result.updated;
-                totalCreated += result.created;
-            }
-
-            const status = document.getElementById('ministry-config-status');
-            status.textContent = '✓ Committed to ALL ' + mcAllNations.length + ' nations — ' + totalUpdated + ' updated, ' + totalCreated + ' created';
-            status.className = 'status success';
-            status.classList.remove('hidden');
-            setTimeout(() => status.classList.add('hidden'), 5000);
-        } else {
-            if (!ministryConfigNation) {
-                alert('No nation selected.');
-                return;
-            }
-            const nationName = ministryConfigNation.name || 'Unknown';
-            if (!confirm('Commit institution costs to budget for ' + nationName + '?\n\nThis updates budget_item_allocations with current costs. Existing funding percentages will be preserved.')) return;
-
-            const result = await commitAllocationsForNation(ministryConfigNation);
-
-            const status = document.getElementById('ministry-config-status');
-            status.textContent = '✓ Committed to ' + nationName + ' — ' + result.updated + ' updated, ' + result.created + ' created';
-            status.className = 'status success';
-            status.classList.remove('hidden');
-            setTimeout(() => status.classList.add('hidden'), 4000);
-        }
-    };
-
-
-    function renderMinistryConfig() {
-        const body = document.getElementById('ministry-config-body');
-        if (!ministryConfigData.length) {
-            body.innerHTML = '<div style="color:#888;">No institution config found. Run the migration first.</div>';
-            return;
-        }
-
-        const population = ministryConfigNation ? Number(ministryConfigNation.population || 0) : 0;
-        const inflationMult = ministryConfigNation ? getInflationMultiplier(ministryConfigNation.inflation) : 1;
-
-        // Group by ministry
-        const grouped = {};
-        for (const row of ministryConfigData) {
-            if (!grouped[row.ministry_key]) grouped[row.ministry_key] = [];
-            grouped[row.ministry_key].push(row);
-        }
-
-        const gdp = ministryConfigNation ? Number(ministryConfigNation.gdp ?? ministryConfigNation.GDP ?? 0) : 0;
-
-        let html = '';
-        if (ministryConfigNation) {
-            html += '<div style="color:#888;font-size:0.82rem;margin-bottom:12px;">Population: <strong style="color:#ccc;">' + population.toLocaleString() + '</strong> &middot; GDP: <strong style="color:#ccc;">' + fmtBudgetCurrency(gdp) + '</strong> &middot; Inflation multiplier: <strong style="color:#ccc;">' + inflationMult.toFixed(3) + 'x</strong></div>';
-        }
-        for (const mk of MINISTRY_ORDER) {
-            const insts = grouped[mk];
-            if (!insts) continue;
-            // Compute ministry total
-            let ministryTotal = 0;
-            for (const inst of insts) {
-                const bv = Number(inst.base_cost_per_capita || 0);
-                const st = inst.scaling_type || 'population';
-                ministryTotal += (st === 'gdp' ? (bv / 100) * gdp : bv * population) * inflationMult;
-            }
-            html += '<div class="mc-ministry expanded">';
-            html += '<div class="mc-ministry-header" onclick="this.parentElement.classList.toggle(\'expanded\')">';
-            html += '<span class="mc-ministry-name">' + (MINISTRY_DISPLAY_NAMES[mk] || mk) + '</span>';
-            html += '<span style="color:#aaa;font-size:0.82rem;margin-left:8px;">' + fmtBudgetCurrency(ministryTotal) + '</span>';
-            html += '<span class="mc-ministry-arrow">&#9654;</span>';
-            html += '</div>';
-            html += '<div class="mc-ministry-body">';
-            for (const inst of insts) {
-                const baseCost = Number(inst.base_cost_per_capita || 0);
-                const scalingType = inst.scaling_type || 'population';
-                const isGdp = scalingType === 'gdp';
-                const annualCost = (isGdp ? (baseCost / 100) * gdp : baseCost * population) * inflationMult;
-
-                html += '<div class="mc-inst-card" data-id="' + inst.id + '">';
-                html += '<div class="mc-inst-header">';
-                html += '<span class="mc-inst-name">' + escHtml(inst.institution_name) + '</span>';
-                html += '<span class="mc-inst-cost">' + fmtBudgetCurrency(annualCost) + '</span>';
-                html += '</div>';
-                html += '<div class="mc-inst-details">';
-
-                // Scales With toggle
-                html += '<div class="mc-inst-field">';
-                html += '<label class="mc-field-label">Scales With</label>';
-                html += '<div class="mc-toggle-group">';
-                html += '<button class="mc-toggle-btn' + (!isGdp ? ' active' : '') + '" data-id="' + inst.id + '" data-val="population" onclick="toggleScalingType(this)">Population</button>';
-                html += '<button class="mc-toggle-btn' + (isGdp ? ' active' : '') + '" data-id="' + inst.id + '" data-val="gdp" onclick="toggleScalingType(this)">GDP</button>';
-                html += '</div>';
-                html += '<input type="hidden" data-id="' + inst.id + '" data-field="scaling_type" value="' + scalingType + '">';
-                html += '</div>';
-
-                // Base cost field — label and formula change based on scaling type
-                html += '<div class="mc-inst-field">';
-                if (isGdp) {
-                    html += '<label class="mc-field-label">Base % of GDP</label>';
-                    html += '<input type="number" step="0.01" min="0" class="mc-input" data-id="' + inst.id + '" data-field="base_cost_per_capita" value="' + baseCost + '">';
-                    html += '<span class="mc-field-formula">' + baseCost.toFixed(2) + '% &times; ' + fmtBudgetCurrency(gdp) + ' = ' + fmtBudgetCurrency((baseCost / 100) * gdp) + '</span>';
-                } else {
-                    html += '<label class="mc-field-label">Base $/capita</label>';
-                    html += '<input type="number" step="0.01" min="0" class="mc-input" data-id="' + inst.id + '" data-field="base_cost_per_capita" value="' + baseCost + '">';
-                    html += '<span class="mc-field-formula">$' + baseCost.toFixed(2) + ' &times; ' + population.toLocaleString() + ' = ' + fmtBudgetCurrency(baseCost * population) + '</span>';
-                }
-                html += '</div>';
-
-                // Cost Share
-                html += '<div class="mc-inst-field">';
-                html += '<label class="mc-field-label">Cost Share</label>';
-                html += '<input type="number" step="0.01" min="0" max="1" class="mc-input mc-input-sm" data-id="' + inst.id + '" data-field="cost_share" value="' + (inst.cost_share || 0) + '">';
-                html += '</div>';
-
-                // Primary Stat
-                html += '<div class="mc-inst-field">';
-                html += '<label class="mc-field-label">Primary Stat</label>';
-                html += renderStatSelect(inst.id, 'primary_stat', inst.primary_stat);
-                html += '</div>';
-
-                // Secondary Stat
-                html += '<div class="mc-inst-field">';
-                html += '<label class="mc-field-label">Secondary Stat</label>';
-                html += renderStatSelect(inst.id, 'secondary_stat', inst.secondary_stat);
-                html += '</div>';
-
-                html += '<button class="mc-save-btn" onclick="saveInstitutionRow(\'' + inst.id + '\')">Save</button>';
-                html += '</div>'; // mc-inst-details
-                html += '</div>'; // mc-inst-card
-            }
-            html += '</div></div>';
-        }
-
-        body.innerHTML = html;
-    }
-
-    function toggleScalingType(btn) {
-        const card = btn.closest('.mc-inst-card');
-        const instId = btn.getAttribute('data-id');
-        const newVal = btn.getAttribute('data-val');
-        // Update hidden input
-        const hidden = card.querySelector('input[data-field="scaling_type"]');
-        if (hidden) hidden.value = newVal;
-        // Toggle active class
-        card.querySelectorAll('.mc-toggle-btn[data-id="' + instId + '"]').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        // Update the local data so re-render picks it up
-        const row = ministryConfigData.find(r => r.id === instId);
-        if (row) row.scaling_type = newVal;
-        // Re-render to update label + formula
-        renderMinistryConfig();
-    }
-
-    function renderStatSelect(instId, field, currentValue) {
-        const stats = NATION_STAT_COLUMNS;
-        let h = '<select class="mc-select" data-id="' + instId + '" data-field="' + field + '">';
-        h += '<option value="">-- none --</option>';
-        for (const s of stats) {
-            const label = s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-            h += '<option value="' + s + '"' + (s === currentValue ? ' selected' : '') + '>' + label + '</option>';
-        }
-        h += '</select>';
-        return h;
-    }
-
-    async function saveInstitutionRow(instId) {
-        const row = document.querySelector('.mc-inst-card[data-id="' + instId + '"]') || document.querySelector('tr[data-id="' + instId + '"]');
-        if (!row) return;
-        const costInput = row.querySelector('input[data-field="base_cost_per_capita"]');
-        const shareInput = row.querySelector('input[data-field="cost_share"]');
-        const scalingInput = row.querySelector('input[data-field="scaling_type"]');
-        const primarySelect = row.querySelector('select[data-field="primary_stat"]');
-        const secondarySelect = row.querySelector('select[data-field="secondary_stat"]');
-
-        const updates = {
-            base_cost_per_capita: parseFloat(costInput.value) || 0,
-            cost_share: parseFloat(shareInput.value) || 0,
-            primary_stat: primarySelect.value || null,
-            secondary_stat: secondarySelect.value || null,
-            updated_at: new Date().toISOString()
-        };
-        if (scalingInput) updates.scaling_type = scalingInput.value;
-
-        try {
-            let { error } = await _supabase.from('ministry_institution_config').update(updates).eq('id', instId);
-            // If scaling_type column doesn't exist yet, retry without it
-            if (error && error.message && error.message.includes('scaling_type')) {
-                delete updates.scaling_type;
-                const retry = await _supabase.from('ministry_institution_config').update(updates).eq('id', instId);
-                error = retry.error;
-            }
-            if (error) throw error;
-            // Update local cache so re-render shows new values immediately
-            const localRow = ministryConfigData.find(r => r.id === instId);
-            if (localRow) {
-                localRow.base_cost_per_capita = updates.base_cost_per_capita;
-                localRow.cost_share = updates.cost_share;
-                localRow.primary_stat = updates.primary_stat;
-                localRow.secondary_stat = updates.secondary_stat;
-                if (updates.scaling_type) localRow.scaling_type = updates.scaling_type;
-            }
-            // Re-render to update cost formulas and ministry totals
-            renderMinistryConfig();
-
-            // Propagate updated costs to all nations' budget_item_allocations
-            // This recalculates needed_amount (true cost) and scales allocation_amount
-            // proportionally so funding percentages update correctly.
-            try {
-                const { data: allNations } = await _supabase.from('nations').select('id, population, gdp, inflation');
-                const updatedInst = ministryConfigData.find(r => r.id === instId);
-                if (allNations && updatedInst) {
-                    const baseVal = Number(updatedInst.base_cost_per_capita || 0);
-                    const sType = updatedInst.scaling_type || 'population';
-                    let propagated = 0;
-                    for (const n of allNations) {
-                        const pop = Number(n.population || 0);
-                        const gdpVal = Number(n.gdp || 0);
-                        const infMult = getInflationMultiplier(n.inflation);
-                        const newNeeded = Math.round((sType === 'gdp' ? (baseVal / 100) * gdpVal : baseVal * pop) * infMult);
-
-                        // Read existing allocation for this nation + institution
-                        const { data: existing } = await _supabase.from('budget_item_allocations')
-                            .select('id, allocation_amount, needed_amount')
-                            .eq('nation_id', n.id).eq('item_id', instId).eq('item_type', 'institution');
-
-                        if (existing && existing.length > 0) {
-                            for (const row of existing) {
-                                const oldNeeded = Number(row.needed_amount || 100);
-                                const oldAlloc = Number(row.allocation_amount || oldNeeded);
-                                // Preserve the funding PERCENTAGE: pct = oldAlloc / oldNeeded
-                                const pct = oldNeeded > 0 ? oldAlloc / oldNeeded : 1;
-                                const newAlloc = Math.round(newNeeded * pct);
-                                await _supabase.from('budget_item_allocations')
-                                    .update({ needed_amount: newNeeded, allocation_amount: newAlloc })
-                                    .eq('id', row.id);
-                            }
-                            propagated++;
-                        }
-                    }
-                    console.log('[Admin] Propagated ' + updatedInst.institution_name + ' costs to ' + propagated + ' nations');
-                }
-            } catch (propErr) {
-                console.warn('[Admin] Cost propagation failed (non-fatal):', propErr);
-            }
-
-            // Show success feedback with institution name
-            const instName = localRow ? localRow.institution_name : instId;
-            const status = document.getElementById('ministry-config-status');
-            status.textContent = '✓ Saved — ' + instName + ' (applies next tick)';
-            status.className = 'status success';
-            status.classList.remove('hidden');
-            setTimeout(() => status.classList.add('hidden'), 3000);
-        } catch (err) {
-            alert('Error saving: ' + err.message);
-        }
-    }
+// ==================== MINISTRY INSTITUTION CONFIG (REMOVED) ====================
+// The institution admin tab — Ministry Costs config, per-nation allocation
+// commit, decay-stat picker — was wired to ministry_institution_config and
+// budget_item_allocations, both of which were dropped in
+// 20261004_drop_institutions.sql. The whole block (loadMinistryConfig,
+// commitAllocationsForNation, renderMinistryConfig, toggleScalingType,
+// renderStatSelect, saveInstitutionRow + their window.* exports) is gone
+// pending the funding rework. The Institution Costs tab in admin.html
+// is now a no-op surface; clean it up if/when a replacement panel lands.
 
     function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+    async function loadMinistryConfig() { /* no-op — institutions removed */ }
+    window.onMCNationChange = function() {};
+    window.commitAllAllocations = function() {};
 
 
 // ==================== POLICY AUDIT ====================
@@ -2753,8 +2375,6 @@ window.saveFactionPopularityChanges = saveFactionPopularityChanges;
 window.loadSectorDiagnostics = loadSectorDiagnostics;
 window.runPolicyAudit = runPolicyAudit;
 window.recalculatePolicyCosts = recalculatePolicyCosts;
-window.saveInstitutionRow = saveInstitutionRow;
-window.toggleScalingType = toggleScalingType;
 
 // ==================== STAT CONNECTOR ====================
 
@@ -3439,27 +3059,10 @@ async function runStatAudit() {
         log('  No decay config — stat holds value indefinitely.', '#888');
     }
 
-    // 8. Institution funding (check if decay is being blocked or amplified)
-    heading('INSTITUTION FUNDING');
-    const { data: instConfig } = await _supabase.from('ministry_institution_config').select('*');
-    const covering = (instConfig || []).filter(ic => ic.primary_stat === sk || ic.secondary_stat === sk);
-    if (covering.length === 0) {
-        log('  No institutions cover this stat. Natural decay rate applies.', '#888');
-    } else {
-        const { data: allocRows } = await _supabase.from('budget_item_allocations')
-            .select('item_id, item_type, allocation_amount, needed_amount')
-            .eq('nation_id', nationId)
-            .eq('item_type', 'institution')
-            .order('created_at', { ascending: true });
-        const allocLookup = buildFundingPctMap(allocRows);
-        for (const ic of covering) {
-            const role = ic.primary_stat === sk ? 'primary' : 'secondary';
-            const pct = getInstFundingPct(allocLookup, ic.id);
-            const hasAlloc = allocLookup[ic.id] !== undefined;
-            const color = pct >= 100 ? '#4f4' : pct >= 75 ? '#ff0' : pct >= 50 ? '#f90' : '#f44';
-            log(`  ${ic.institution_name || ic.id} (${role}) — ${pct}% funded${hasAlloc ? '' : ' (default, no funding bill)'}`, color);
-        }
-    }
+    // 8. Institution funding section was removed when institutions were
+    //    dropped (sql/migrations/20261004_drop_institutions.sql). Stat
+    //    decay no longer has an institution-shield modifier; only the
+    //    natural rate above applies, plus any policy floor/ceiling.
 
     // Summary
     heading('TOTAL ESTIMATED PER-TICK IMPACT');
