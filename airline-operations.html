@@ -1173,7 +1173,7 @@ async function loadFleetInventory(corpId, currentTick) {
             ? '<span style="color:var(--text-warn,#c8a13a);">In overhaul</span>'
             : (a.route ? `${escHtml(a.route.origin?.name || '?')} ↔ ${escHtml(a.route.dest?.name || '?')}` : 'Unassigned');
         const cost = OVERHAUL_COST[a.aircraft_class] || 0;
-        const canOverhaul = !a.is_overhauling && condition < 100;
+        const canOverhaul = !a.is_overhauling && Number(a.condition) < 100;
         const btn = canOverhaul
             ? `<button class="ao-route-mini-btn" data-act="overhaul" data-aircraft-id="${a.id}" data-cost="${cost}">Overhaul $${(cost/1000).toFixed(0)}k</button>`
             : (a.is_overhauling

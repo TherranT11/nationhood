@@ -433,6 +433,67 @@ COMMENT ON FUNCTION overhaul_aircraft(UUID) IS
     'Player-facing aircraft overhaul. Validates ownership, charges class-scaled cash ($40k/$120k/$300k regional/narrowbody/widebody), increments overhaul_count, sets condition = 100 - count, and marks is_overhauling=TRUE so process_airline_route_tick skips it next tick. Cap persists per aircraft for life.';
 
 
+-- ── 5. close_airline_route: clear is_overhauling on release ────
+-- Edge case: player overhauls an aircraft, then closes its route
+-- before the next tick processes. The per-route flag-clear inside
+-- process_airline_route_tick keys off route_id and would orphan
+-- the flag on the now-detached aircraft, leaving it permanently
+-- "in overhaul" with no tick ever firing to release it. Adding
+-- is_overhauling = FALSE to the release UPDATE keeps closure
+-- behaving like "release fleet to idle pool" — the player has
+-- already paid the overhaul cost and lost the tick they'd have
+-- flown, so the right outcome is a fully-released aircraft.
+CREATE OR REPLACE FUNCTION close_airline_route(p_route_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_user  UUID := auth.uid();
+    v_route airline_routes%ROWTYPE;
+    v_corp  factions%ROWTYPE;
+    v_tick  INTEGER;
+BEGIN
+    IF v_user IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
+    END IF;
+
+    SELECT * INTO v_route FROM airline_routes
+     WHERE id = p_route_id
+     FOR UPDATE;
+    IF v_route.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Route not found');
+    END IF;
+    IF v_route.status <> 'active' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Route is not active');
+    END IF;
+
+    SELECT * INTO v_corp FROM factions WHERE id = v_route.airline_faction_id;
+    IF v_corp.id <> v_user
+       AND COALESCE(v_corp.linked_user_id, '00000000-0000-0000-0000-000000000000'::uuid) <> v_user THEN
+        RETURN jsonb_build_object('success', false, 'error', 'You do not own this airline');
+    END IF;
+
+    SELECT COALESCE(current_tick, 0) INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
+
+    UPDATE airline_routes
+       SET status         = 'closed',
+           closed_at_tick = v_tick
+     WHERE id = p_route_id;
+
+    UPDATE corp_aircraft
+       SET route_id       = NULL,
+           is_overhauling = FALSE
+     WHERE route_id = p_route_id;
+
+    RETURN jsonb_build_object('success', true, 'route_id', p_route_id);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION close_airline_route(UUID) TO authenticated;
+
+
 NOTIFY pgrst, 'reload schema';
 
 COMMIT;
