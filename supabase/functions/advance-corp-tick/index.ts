@@ -4110,79 +4110,13 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             continue;
         }
 
-        // Equity: pay dividend = equity_pct × target's prior-tick profit
-        // (if profit > 0). Losses don't flow to the investor — equity can't
-        // go negative, they just earn nothing that tick. Profit is summed
-        // from corp_cash_events for currentTick - 1.
-        if (requestType === 'equity') {
-            const { data: target } = await supabase.from('factions')
-                .select('corp_cash_reserves')
-                .eq('id', loan.borrower_faction_id).single();
-            if (!target) {
-                console.warn(`[Equity] Target ${loan.borrower_faction_id} not found; skipping`);
-                continue;
-            }
-
-            const { data: priorEvents, error: priorErr } = await supabase
-                .from('corp_cash_events')
-                .select('delta')
-                .eq('corp_id', loan.borrower_faction_id)
-                .eq('tick', currentTick - 1);
-            if (priorErr) {
-                console.warn(`[Equity] prior-tick events lookup failed for ${loan.borrower_faction_id}:`, priorErr.message);
-            }
-            const profit = (priorEvents || []).reduce((s, e) => s + (Number(e.delta) || 0), 0);
-            const stakePct = Number(loan.equity_pct || 0);
-            const dividendDue = profit > 0 ? Math.floor(profit * stakePct / 100) : 0;
-            const targetCash = Number(target.corp_cash_reserves || 0);
-            // Clamp to cash on hand — a corp with a paper profit but empty till
-            // pays what it can. No "missed payment" concept for equity.
-            const actualPayout = Math.max(0, Math.min(dividendDue, targetCash));
-
-            if (actualPayout > 0) {
-                var { error: debitErr } = await supabase.from('factions').update({
-                    corp_cash_reserves: targetCash - actualPayout,
-                }).eq('id', loan.borrower_faction_id);
-                if (debitErr) {
-                    console.warn('[Equity] Target debit failed:', debitErr.message);
-                } else {
-                    logCashEvent(loan.borrower_faction_id, 'event_cost', 'Equity dividend paid', -actualPayout);
-                }
-
-                const { data: lender } = await supabase.from('factions')
-                    .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
-                if (lender) {
-                    var { error: creditErr } = await supabase.from('factions').update({
-                        corp_cash_reserves: Number(lender.corp_cash_reserves || 0) + actualPayout,
-                    }).eq('id', loan.lender_faction_id);
-                    if (creditErr) {
-                        console.warn('[Equity] Investor credit failed:', creditErr.message);
-                    } else {
-                        logCashEvent(loan.lender_faction_id, 'revenue_finance', 'Equity dividend received', actualPayout);
-                    }
-                }
-            }
-
-            // Track dividend history. payments_made counts ACTUAL dividend
-            // events (only when actualPayout > 0) — this is what the investor
-            // portfolio's "N DIVIDENDS PAID" display reads. $0 loss-ticks don't
-            // count, so the number reflects real distributions. last_payment_*
-            // fields always capture the most recent cycle (amount can be 0)
-            // so the UI can show "LAST: $X" per position.
-            const dividendOccurred = actualPayout > 0;
-            var { error: equityTrackErr } = await supabase.from('finance_active_loans').update({
-                total_paid: (Number(loan.total_paid) || 0) + actualPayout,
-                payments_made: (loan.payments_made || 0) + 1,
-                payments_missed: 0,
-                status: 'current',
-                last_payment_tick: currentTick,
-                last_payment_amount: actualPayout,
-            }).eq('id', loan.id);
-            if (equityTrackErr) console.warn('[Equity] Position tracking update failed:', equityTrackErr.message);
-
-            if (actualPayout > 0) results.payments++;
-            continue;
-        }
+        // Equity dividend processing for finance_active_loans rows with
+        // request_type='equity' was removed in 20261008. The new equity
+        // system uses equity_positions (created by 20260602) and is paid
+        // out by process_equity_dividends (called once per tick from the
+        // EDP block below). Old finance_active_loans rows from before
+        // the v2 equity rebuild (20260430 → 20260602) are inert; nothing
+        // creates them anymore and the new processor doesn't read them.
 
         // Bonds: coupon payments come from nation treasury (increases debt)
         if (requestType === 'bond') {
@@ -5812,6 +5746,30 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     } catch (payErr) {
         console.error('[advance-corp-tick] FAILED bank loan payments:', payErr);
         summary.errors.push({ scope: 'bank_loan_payments', error: String(payErr) });
+    }
+
+    // EDP: Equity dividend processor (shard-wide, anniversary-driven).
+    // Iterates active equity_positions whose 12-tick anniversary has come
+    // up. Pays 2% × borrower.corp_cash_reserves × equity_pct, floored at $0.
+    // Borrower side: dividend_paid (Cost). Holder side: revenue_finance
+    // (Revenue). Both go through emit_corp_cash_event — dashboards update
+    // automatically. RPC owns iteration + locking; this just invokes once
+    // per tick. See sql/migrations/20261008_process_equity_dividends_rpc.sql.
+    try {
+        const { data: divResult, error: divErr } = await supabase.rpc(
+            'process_equity_dividends',
+            { p_current_tick: currentTick }
+        );
+        if (divErr) {
+            console.error('[advance-corp-tick] equity dividends RPC error:', divErr);
+            summary.errors.push({ scope: 'equity_dividends', error: divErr.message });
+        } else if (divResult && (divResult.paid > 0 || divResult.skipped > 0)) {
+            summary.equityDividends = divResult;
+            console.log(`[EquityDividends] tick ${currentTick}: ${divResult.paid} paid, ${divResult.skipped} skipped`);
+        }
+    } catch (divErr) {
+        console.error('[advance-corp-tick] FAILED equity dividends:', divErr);
+        summary.errors.push({ scope: 'equity_dividends', error: String(divErr) });
     }
 
     // SOP2: Shipping route processor (shard-wide). Three internal
