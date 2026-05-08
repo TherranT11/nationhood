@@ -153,8 +153,15 @@ export async function initCoalitionFormation(supabase, state) {
         _electionId = election.id;
         _lastElectionTick = election.election_tick;
     } else {
-        // Even without detection, still allow rendering the Election tab
-        _formationNeeded = !hasFormedGov;
+        // Default: formation needed only when no formed government exists.
+        // Exception: an emergency_minority government's PM party can re-enter
+        // the formation flow to propose a real majority coalition.
+        // finalize_government_formation (20260910:127) dissolves the prior
+        // minority formation atomically when the new coalition is sealed.
+        const minorityPromotePath = activeCoalition?.formation_type === 'emergency_minority'
+            && Array.isArray(activeCoalition.party_ids)
+            && activeCoalition.party_ids.includes(faction.id);
+        _formationNeeded = !hasFormedGov || minorityPromotePath;
         if (election) {
             _electionId = election.id;
             _lastElectionTick = election.election_tick;
