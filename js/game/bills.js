@@ -6,6 +6,7 @@
 import { GAME_CONFIG, initGameConfigForNation, getPresidentialTermTicks, getPresidentialTermLimit } from './config.js';
 import { hasElectedPresident, getCurrentConstitutionalSystem, isAbsoluteMonarchy, MINISTRY_OFFICE_NAMES } from './government-types.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './diplomacy-constants.js';
+import { TRADE_SECTOR_MAP } from './trade-constants.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility, round2 } from './momentum.js';
 import { computeCorpValuation } from './corp-valuation.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
@@ -2282,6 +2283,49 @@ export async function resolveTradeRatificationBill(supabase, bill, ctx) {
                     const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + bonus));
                     await supabase.from('diplomatic_relations')
                         .update({ relation_score: newScore }).eq('id', rel.id);
+                }
+
+                // Fire the "signed" event — only now, when both ratification
+                // bills have passed. The event used to fire client-side at
+                // negotiation-approval time (diplomacy.html), which lied to
+                // players that the agreement was binding before parliament
+                // had voted.
+                try {
+                    const { data: nationRows } = await supabase.from('nations')
+                        .select('id, name').in('id', [nA, nB]);
+                    const nameById = {};
+                    for (const r of (nationRows || [])) nameById[r.id] = r.name || 'Unknown';
+                    const nameA = nameById[nA] || 'Unknown';
+                    const nameB = nameById[nB] || 'Unknown';
+
+                    // Goods text: list trade-flow articles' commodities.
+                    const tradeGoods = (articles || [])
+                        .filter(a => a.article_type === 'trade_flow' && a.data?.commodity)
+                        .map(a => TRADE_SECTOR_MAP[a.data.commodity]?.label || a.data.commodity);
+                    const uniqueGoods = [...new Set(tradeGoods)];
+                    const goodsText = uniqueGoods.length > 0
+                        ? ' which involved trade of ' + uniqueGoods.join(', ')
+                            + (uniqueGoods.length < (articles || []).length ? ' and other goods' : '')
+                        : '';
+                    const agreementName = neg.agreement_name || 'Trade Agreement';
+                    const signingDesc = nameA + ' and ' + nameB + ' came together and signed the '
+                        + agreementName + goodsText + '.';
+
+                    const { error: signedEvtErr } = await supabase.from('event_log').insert(
+                        [nA, nB].map(nid => ({
+                            nation_id: nid,
+                            event_name: agreementName + ' — Signed',
+                            trigger_key: 'trade_agreement_signed',
+                            category: 'trade',
+                            description_chosen: signingDesc,
+                            fired_at_tick: currentTick,
+                        }))
+                    );
+                    if (signedEvtErr) {
+                        console.warn('[resolveTradeRatification] signed event_log insert failed (non-fatal):', signedEvtErr.message);
+                    }
+                } catch (sigEvtErr) {
+                    console.warn('[resolveTradeRatification] signed-event side effect failed (non-fatal):', sigEvtErr?.message || sigEvtErr);
                 }
             }
             // If only one side ratified so far, just leave the negotiation in 'ratification' status.

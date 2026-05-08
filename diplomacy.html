@@ -20557,31 +20557,19 @@ async function negAgreementToggle() {
             updateData.bill_a_id = resultA.data?.id || null;
             updateData.bill_b_id = resultB.data?.id || null;
 
-            // Build trade goods list from articles for the event description
-            const tradeGoods = (m.articles || [])
-                .filter(a => a.article_type === 'trade_flow' && a.data?.commodity)
-                .map(a => TRADE_SECTOR_LABELS[a.data.commodity] || a.data.commodity);
-            const uniqueGoods = [...new Set(tradeGoods)];
-            const goodsText = uniqueGoods.length > 0
-                ? ' which involved trade of ' + uniqueGoods.join(', ') + (uniqueGoods.length < (m.articles || []).length ? ' and other goods' : '')
-                : '';
-
-            // Fire signing event
-            const signingDesc = nameA + ' and ' + nameB + ' came together and signed the ' + agreementName + goodsText + '.';
+            // Fire the "sent for ratification" event only. The "signed" event
+            // is a misnomer at this stage — both parties have just agreed to
+            // send the agreement to their parliaments. The actual signing
+            // event fires from resolveTradeRatificationBill (bills.js) once
+            // both ratification bills pass.
             const ratifyDesc = 'The ' + agreementName + ' has been sent to both parliaments for ratification.';
-            _supabase.from('event_log').insert([nationAId, nationBId].flatMap(nid => [
-                {
-                    nation_id: nid,
-                    event_name: agreementName + ' — Signed',
-                    trigger_key: 'trade_agreement_signed',
-                    category: 'trade', description_chosen: signingDesc, fired_at_tick: tick,
-                },
-                {
-                    nation_id: nid,
-                    event_name: agreementName + ' — Ratification',
-                    category: 'trade', description_chosen: ratifyDesc, fired_at_tick: tick,
-                },
-            ])).then(() => {});
+            _supabase.from('event_log').insert([nationAId, nationBId].map(nid => ({
+                nation_id: nid,
+                event_name: agreementName + ' — Ratification',
+                category: 'trade',
+                description_chosen: ratifyDesc,
+                fired_at_tick: tick,
+            }))).then(() => {});
         }
 
         const { error } = await _supabase.from('trade_negotiations').update(updateData).eq('id', m.negotiationId);
