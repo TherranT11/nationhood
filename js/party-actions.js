@@ -1975,7 +1975,7 @@ function renderActionsPanel(leaderName, partyColor, faction) {
                 ${minorityMetaHtml}
                 <div class="pa-action-desc">${esc(action.desc)}</div>
                 ${extraInfo}
-                ${action.locked && action.lockReason ? `<div style="margin-top:4px;font-family:var(--font-mono);font-size:7px;color:var(--orange);display:flex;align-items:center;gap:4px;"><span>\u2298</span><span>${esc(action.lockReason)}</span></div>` : ''}
+                ${isDisabled && action.lockReason ? `<div style="margin-top:4px;font-family:var(--font-mono);font-size:7px;color:var(--orange);display:flex;align-items:center;gap:4px;"><span>\u2298</span><span>${esc(action.lockReason)}</span></div>` : ''}
             </div>
         `;
     }).join('');

@@ -329,11 +329,18 @@
     .world-page { padding: 8px; gap: 8px; }
     .world-top-row { gap: 8px; }
     .world-map-panel { height: 350px; }
-    .world-highlight { height: 350px; }
+    /* Drop sticky positioning on stacked-layout phones — a 350px-tall
+       full-width sticky panel below the map was hijacking the viewport
+       and burying the events / nations grid below it. Scroll naturally
+       with the rest of the page instead. */
+    .world-highlight { height: 350px; position: static; }
     .world-events-panel { max-height: 280px; }
     .world-nations-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 8px; gap: 6px; }
     .wn-grid-cell { padding: 8px; gap: 8px; }
 }
 @media (max-width: 480px) {
     .world-nations-grid { grid-template-columns: 1fr; }
+    /* Smaller phones: trim panel height so the highlight doesn't fill
+       half the viewport once the layout has stacked. */
+    .world-highlight { height: 280px; }
 }

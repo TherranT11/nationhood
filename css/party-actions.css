@@ -392,8 +392,26 @@
 
 @media (max-width: 768px) {
     .pa-main { flex-direction: column; }
-    .pa-leaders { width: 100%; flex-direction: row; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .pa-leader-card { min-width: 160px; }
+    /* Leader sidebar becomes a wrapping grid on tablet/phone instead of a
+       horizontal scroll strip. The previous overflow-x:auto layout buried
+       .pa-cabinet-header (which is a logical divider between Leader/
+       Agitator/Deputy cards and the cabinet Ministry cards) inline inside
+       the scroll, so its border-top divider was lost. Grid + grid-column
+       span on the cabinet header restores the divider.
+       !important on width: corp-actions.js sets rolesColumnWidth: 262
+       which writes an inline style="width:262px" on .pa-leaders. Inline
+       styles outrank stylesheet rules at any specificity, so without
+       !important the mobile collapse never lands on the corporations
+       page. The party-actions page sets no inline width, so the
+       !important is harmless there. */
+    .pa-leaders {
+        width: 100% !important;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+    }
+    .pa-leader-card { min-width: 0; }
+    .pa-cabinet-header { grid-column: 1 / -1; }
     .pa-header { flex-direction: column; align-items: flex-start; gap: 8px; }
     .pa-status-bar { flex-wrap: wrap; }
     .pa-status-item { min-width: 120px; }
@@ -409,7 +427,11 @@
     .pa-page { padding: 10px 8px 32px; }
     .pa-subtabs { padding: 0 8px; }
     .pa-subtab { padding: 12px 14px; font-size: 10px; letter-spacing: 0.08em; }
-    .pa-leader-card { min-width: 140px; padding: 6px 8px; }
+    /* Narrow phones: collapse the 2-col leader grid to single column.
+       Each card gets full row width — comfortable tap target, no
+       chance of overflow when faction names or role labels run long.
+       Card padding inherits the default 8px 10px from line 83. */
+    .pa-leaders { grid-template-columns: 1fr; }
     .pa-detail-header { padding: 8px 12px; }
     .pa-action-item { padding: 14px 14px; }
     /* Leader detail header: stack avatar + name + meta when space is tight. */
