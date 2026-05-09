@@ -945,6 +945,169 @@ body.corp-operations-aviation.light-mode {
   letter-spacing: 0.08em; text-transform: uppercase;
 }
 
+/* ── Aircraft modal — airframe grid (4 cards) ── */
+.am-airframe-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.am-airframe-card {
+  background: var(--co-bg-card);
+  border: 1px solid var(--co-line);
+  padding: 16px 18px;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.am-airframe-card:hover { border-color: var(--co-line-bright); background: var(--co-bg-elevated); }
+.am-airframe-card.selected { border-color: var(--co-accent-gold); background: rgba(201, 168, 50, 0.05); }
+.am-airframe-card.selected::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0;
+  height: 2px; background: var(--co-accent-gold);
+}
+.am-airframe-head { display: flex; align-items: flex-start; gap: 10px; }
+.am-airframe-radio {
+  width: 13px; height: 13px;
+  border: 1px solid var(--co-line-bright);
+  background: var(--co-bg-secondary);
+  border-radius: 50%;
+  position: relative; margin-top: 4px; flex-shrink: 0;
+}
+.am-airframe-card.selected .am-airframe-radio { border-color: var(--co-accent-gold); }
+.am-airframe-card.selected .am-airframe-radio::after {
+  content: ''; position: absolute; inset: 3px;
+  background: var(--co-accent-gold); border-radius: 50%;
+}
+.am-airframe-name {
+  font-family: var(--co-serif); font-style: italic; font-weight: 500;
+  font-size: 18px; color: var(--co-text-primary);
+  line-height: 1.1; letter-spacing: -0.01em;
+}
+.am-airframe-stats { display: flex; flex-direction: column; gap: 4px; }
+.am-airframe-stat-row {
+  display: flex; justify-content: space-between;
+  font-family: var(--co-mono); font-size: 10px; letter-spacing: 0.05em;
+}
+.am-airframe-stat-row .label {
+  color: var(--co-text-tertiary); text-transform: uppercase; letter-spacing: 0.12em;
+}
+.am-airframe-stat-row .value {
+  color: var(--co-text-primary); font-weight: 500; font-variant-numeric: tabular-nums;
+}
+.am-airframe-stat-row .value.weight { color: var(--co-accent-rust, #a0633a); }
+.am-airframe-cost {
+  font-family: var(--co-serif); font-weight: 500;
+  font-size: 20px; color: var(--co-accent-gold);
+  text-align: center; padding-top: 10px;
+  border-top: 1px dashed var(--co-line-bright);
+  font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+}
+.am-airframe-cost .small {
+  font-family: var(--co-mono); font-size: 9px;
+  color: var(--co-text-tertiary); letter-spacing: 0.14em;
+  display: block; margin-top: 4px; text-transform: uppercase;
+}
+
+/* ── Aircraft modal — engine selection block ── */
+.am-engine-block {
+  background: var(--co-bg-card);
+  border: 1px solid var(--co-line);
+  padding: 18px 22px;
+}
+.am-engine-row {
+  display: grid; grid-template-columns: 1fr auto;
+  gap: 18px; align-items: center;
+}
+.am-engine-select-wrap { display: flex; flex-direction: column; gap: 6px; }
+.am-engine-select-label {
+  font-family: var(--co-mono); font-size: 9px;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--co-text-tertiary);
+}
+.am-engine-select {
+  background: var(--co-bg-secondary);
+  border: 1px solid var(--co-line-bright);
+  color: var(--co-text-primary);
+  font-family: var(--co-serif); font-style: italic; font-size: 16px;
+  padding: 8px 12px; cursor: pointer; outline: none;
+  transition: border-color 0.15s; font-weight: 500;
+}
+.am-engine-select:focus, .am-engine-select:hover { border-color: var(--co-accent-gold); }
+.am-engine-preview { font-family: var(--co-mono); font-size: 9px; color: var(--co-text-tertiary); margin-top: 4px; }
+.am-engine-pill {
+  display: inline-block; padding: 2px 6px; margin-right: 4px;
+  border: 1px solid var(--co-line-bright); background: var(--co-bg-secondary);
+  color: var(--co-text-secondary);
+}
+.am-engine-pill.thrust { color: #8aa653; border-color: rgba(138, 166, 83, 0.3); }
+.am-engine-pill.weight { color: #a0633a; border-color: rgba(160, 99, 58, 0.3); }
+.am-engine-count-control {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.am-count-buttons { display: flex; gap: 6px; }
+.am-count-btn {
+  background: var(--co-bg-secondary);
+  border: 1px solid var(--co-line-bright);
+  color: var(--co-text-secondary);
+  font-family: var(--co-mono); font-size: 11px;
+  padding: 8px 14px; cursor: pointer;
+  transition: all 0.15s; font-weight: 600;
+  min-width: 44px; letter-spacing: 0.05em;
+}
+.am-count-btn:hover { border-color: var(--co-accent-gold-dim, #8a722f); color: var(--co-text-primary); }
+.am-count-btn.selected {
+  border-color: var(--co-accent-gold);
+  background: rgba(201, 168, 50, 0.1);
+  color: var(--co-accent-gold);
+}
+.am-count-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* ── Aircraft modal — multi-select stat chips ── */
+.am-stat-chip {
+  font-family: var(--co-mono); font-size: 9px;
+  padding: 2px 6px; border: 1px solid;
+  letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.4;
+}
+.am-stat-chip.weight   { color: #a0633a; border-color: rgba(160, 99, 58, 0.4); background: rgba(160, 99, 58, 0.06); }
+.am-stat-chip.safety   { color: #8aa653; border-color: rgba(138, 166, 83, 0.4); background: rgba(138, 166, 83, 0.06); }
+.am-stat-chip.demand   { color: #5a7896; border-color: rgba(90, 120, 150, 0.4); background: rgba(90, 120, 150, 0.06); }
+.am-stat-chip.demand-neg { color: var(--co-accent-red); border-color: rgba(200, 90, 58, 0.4); background: rgba(200, 90, 58, 0.06); }
+.am-stat-chip.passengers { color: var(--co-accent-gold); border-color: rgba(201, 168, 50, 0.4); background: rgba(201, 168, 50, 0.06); }
+.am-stat-chip.cost     { color: var(--co-text-secondary); border-color: var(--co-line-bright); background: var(--co-bg-secondary); }
+
+/* ── Aircraft modal — physical-status badge + physics block ── */
+.am-physical-status {
+  font-family: var(--co-mono); font-size: 10px;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  padding: 4px 10px; border: 1px solid;
+}
+.am-physical-status.viable  { color: #8aa653; border-color: rgba(138, 166, 83, 0.4); background: rgba(138, 166, 83, 0.06); }
+.am-physical-status.invalid { color: var(--co-accent-red); border-color: rgba(200, 90, 58, 0.4); background: rgba(200, 90, 58, 0.06); }
+.am-physics-block {
+  background: var(--co-bg-card);
+  border: 1px solid var(--co-line-bright);
+  padding: 14px 18px;
+  margin: 18px 0;
+  display: grid; grid-template-columns: 1fr auto;
+  gap: 18px; align-items: center;
+}
+.am-physics-info { font-size: 12px; color: var(--co-text-secondary); line-height: 1.5; }
+.am-physics-info strong { color: var(--co-text-primary); font-weight: 500; }
+.am-physics-display {
+  font-family: var(--co-serif); font-weight: 500; font-size: 24px;
+  line-height: 1; font-variant-numeric: tabular-nums;
+  text-align: right; letter-spacing: -0.01em;
+  color: var(--co-text-primary);
+}
+.am-physics-display.green { color: #8aa653; }
+.am-physics-display.warn  { color: #a0633a; }
+.am-physics-display.bad   { color: var(--co-accent-red); }
+.am-physics-display .label {
+  font-family: var(--co-mono); font-size: 9px;
+  color: var(--co-text-tertiary); letter-spacing: 0.14em;
+  display: block; margin-top: 4px; text-transform: uppercase;
+}
+
 @media (max-width: 880px) {
   .am-module-grid { grid-template-columns: 1fr; }
   .am-summary-stats-grid { grid-template-columns: 1fr 1fr; }
@@ -952,6 +1115,10 @@ body.corp-operations-aviation.light-mode {
   .am-modal-footer { flex-direction: column; align-items: stretch; gap: 14px; }
   .am-modal-footer-actions { flex-direction: column; }
   .am-modal-btn { width: 100%; }
+  .am-airframe-grid { grid-template-columns: 1fr 1fr; }
+  .am-engine-row { grid-template-columns: 1fr; gap: 12px; }
+  .am-physics-block { grid-template-columns: 1fr; gap: 10px; }
+  .am-physics-display { text-align: left; }
 }
 </style>
 </head>
@@ -1273,10 +1440,10 @@ function renderPageShell(activeOrders) {
 }
 
 // Placeholder labels for the buttons whose mechanics still ship in
-// later Phase F slices. Engine design is wired (start_engine_design_research)
-// — the rest still alert.
+// later Phase F slices. Engine + aircraft design are wired
+// (start_engine_design_research / start_aircraft_design_research) —
+// the rest still alert.
 const PLANT_ACTION_LABELS = {
-    'design-aircraft':  'Aircraft design',
     'new-research':     'New research program',
     'fulfill-order':    'Order fulfillment',
     'request-order':    'New order request',
@@ -1306,7 +1473,33 @@ const ENGINE_MODULES = {
 const ENGINE_BASE_ASSEMBLY_COST = 1000000; // +$1M base on every engine
 
 let _hasEngineAssemblyPlant = false;
+let _hasAircraftAssemblyFacility = false;
 let _designEngineState = null;
+let _designAircraftState = null;
+let _availableEngineCatalog = [];
+
+// ── Aircraft module specs (Tier 1). Mirrors the server-side CASE
+//    ladders in start_aircraft_design_research so the modal preview
+//    and the persisted row agree on totals. Keep in lockstep with
+//    the migration when tuning. ──
+const AIRFRAMES = {
+    business:   { name: 'Business Jet', weight: 2,  pax: 3,  engMin: 1, engMax: 2, range: 5,  cost: 18000000, time: 6  },
+    regional:   { name: 'Regional',     weight: 3,  pax: 10, engMin: 2, engMax: 2, range: 3,  cost: 35000000, time: 8  },
+    narrowbody: { name: 'Narrowbody',   weight: 6,  pax: 25, engMin: 2, engMax: 2, range: 7,  cost: 60000000, time: 10 },
+    widebody:   { name: 'Widebody',     weight: 10, pax: 60, engMin: 2, engMax: 4, range: 10, cost: 75000000, time: 12 },
+};
+
+const MECHANICALS = {
+    'hydraulics':         { name: 'Standard Hydraulic Systems',  weight: 0.5, safety: 1, cost: 1000000 },
+    'blackbox':           { name: 'Black Box & Flight Recorders',weight: 0.3, safety: 2, cost: 1500000 },
+    'redundant-avionics': { name: 'Redundant Avionics Suite',    weight: 0.7, safety: 3, cost: 3000000 },
+};
+
+const OFFERINGS = {
+    'ife':              { name: 'In-Flight Entertainment',   weight: 0.3, demand: 1,  pax: 0, cost: 1500000 },
+    'premium-seating':  { name: 'Premium Seating',           weight: 0.4, demand: 2,  pax: 0, cost: 2000000 },
+    'high-density':     { name: 'High-Density Configuration',weight: 0.2, demand: -1, pax: 5, cost: 1000000 },
+};
 
 function fmtCostShort(n) {
     const v = Number(n) || 0;
@@ -1322,6 +1515,11 @@ function bindPanelActionButtons() {
             if (action === 'design-engine') {
                 if (!_hasEngineAssemblyPlant) return; // gate; disabled state already shown
                 openDesignEngineModal();
+                return;
+            }
+            if (action === 'design-aircraft') {
+                if (!_hasAircraftAssemblyFacility) return; // gate; disabled state already shown
+                openDesignAircraftModal();
                 return;
             }
             const label = PLANT_ACTION_LABELS[action] || 'This action';
@@ -1647,6 +1845,559 @@ async function submitDesignEngine() {
     }
 }
 
+// ════════════════════════════════════════════════════════════════
+// Design Aircraft modal
+// ════════════════════════════════════════════════════════════════
+
+// ── Aircraft assembly-facility gate. Disables [+ Design Aircraft]
+//    until the corp owns at least one Light Assembly Plant, Aircraft
+//    Assembly Facility, or Heavy Manufacturing Plant. Mirrors the
+//    server-side check in start_aircraft_design_research. ──
+function applyAircraftDesignGate(hasFacility) {
+    _hasAircraftAssemblyFacility = !!hasFacility;
+    const btn = document.querySelector('[data-am-action="design-aircraft"]');
+    if (!btn) return;
+    if (hasFacility) {
+        btn.disabled = false;
+        btn.classList.remove('disabled');
+        btn.textContent = '+ Design Aircraft';
+        const note = document.getElementById('co-design-aircraft-gate');
+        if (note) note.remove();
+    } else {
+        btn.disabled = true;
+        btn.classList.add('disabled');
+        btn.textContent = '+ Design Aircraft';
+        if (!document.getElementById('co-design-aircraft-gate')) {
+            const note = document.createElement('div');
+            note.id = 'co-design-aircraft-gate';
+            note.className = 'am-modal-gate-note';
+            note.style.flexBasis = '100%';
+            note.style.order = '-1';
+            note.textContent = 'Light Assembly Plant, Aircraft Assembly Facility, or Heavy Manufacturing Plant Required for Aircraft Design';
+            btn.parentElement.insertBefore(note, btn.parentElement.firstChild);
+            btn.parentElement.style.flexWrap = 'wrap';
+        }
+    }
+}
+
+// ── Engine catalog loader — pulls every Available engine design
+//    across every Aviation Manufacturing corp in the game. RLS
+//    permits SELECT on corp_aircraft_designs to all (read_all). ──
+async function loadAvailableEngineCatalog() {
+    const { data, error } = await _supabase
+        .from('corp_aircraft_designs')
+        .select('id, name, thrust, weight, efficiency, reliability, quality, cost_per_unit, factions:corp_id(faction_name, abbreviation)')
+        .eq('design_type', 'engine')
+        .eq('status', 'available')
+        .eq('is_active', true)
+        .order('quality', { ascending: false });
+    if (error) {
+        console.warn('[aviation-ops] engine catalog fetch failed:', error.message);
+        _availableEngineCatalog = [];
+        return;
+    }
+    _availableEngineCatalog = (data || []).map(row => ({
+        id:           row.id,
+        name:         row.name,
+        thrust:       Number(row.thrust)        || 0,
+        weight:       Number(row.weight)        || 0,
+        efficiency:   Number(row.efficiency)    || 0,
+        reliability:  Number(row.reliability)   || 0,
+        quality:      Number(row.quality)       || 0,
+        costPerUnit:  Number(row.cost_per_unit) || 0,
+        corpAbbr:     row.factions?.abbreviation || '',
+        corpName:     row.factions?.faction_name || '',
+    }));
+}
+
+function renderAirframeCard(id, a, isSelected) {
+    const engineLabel = a.engMin === a.engMax ? String(a.engMin) : `${a.engMin} or ${a.engMax}`;
+    return `<div class="am-airframe-card${isSelected ? ' selected' : ''}" data-airframe="${id}">
+        <div class="am-airframe-head">
+            <div class="am-airframe-radio"></div>
+            <div class="am-airframe-name">${a.name}</div>
+        </div>
+        <div class="am-airframe-stats">
+            <div class="am-airframe-stat-row"><span class="label">Weight</span><span class="value weight">${a.weight}</span></div>
+            <div class="am-airframe-stat-row"><span class="label">Passengers</span><span class="value">${a.pax}</span></div>
+            <div class="am-airframe-stat-row"><span class="label">Engines</span><span class="value">${engineLabel}</span></div>
+            <div class="am-airframe-stat-row"><span class="label">Range @ 1:1</span><span class="value">${a.range}</span></div>
+        </div>
+        <div class="am-airframe-cost">${fmtCostShort(a.cost)}<span class="small">Base Cost ◊ ${a.time} Ticks</span></div>
+    </div>`;
+}
+
+function renderAircraftModuleCard(group, id, m, isSelected) {
+    const chips = [];
+    if (m.safety) chips.push(`<span class="am-stat-chip safety">+${m.safety} Safety</span>`);
+    if (m.demand && m.demand > 0) chips.push(`<span class="am-stat-chip demand">+${m.demand} Demand</span>`);
+    if (m.demand && m.demand < 0) chips.push(`<span class="am-stat-chip demand-neg">${m.demand} Demand</span>`);
+    if (m.pax) chips.push(`<span class="am-stat-chip passengers">+${m.pax} Pax</span>`);
+    chips.push(`<span class="am-stat-chip weight">+${m.weight} Weight</span>`);
+    chips.push(`<span class="am-stat-chip cost">${fmtCostShort(m.cost)}</span>`);
+    return `<div class="am-module-card${isSelected ? ' selected' : ''}" data-group="${group}" data-id="${id}">
+        <div class="am-module-card-header">
+            <div class="am-module-checkbox"></div>
+            <div class="am-module-name">${escHtml(m.name)}</div>
+        </div>
+        <div class="am-module-stats">${chips.join('')}</div>
+    </div>`;
+}
+
+function openDesignAircraftModal() {
+    if (!_availableEngineCatalog.length) {
+        alert('No engine designs are available yet. Design and complete at least one engine before designing an aircraft.');
+        return;
+    }
+
+    let overlay = document.getElementById('am-design-aircraft-modal');
+    if (!overlay) {
+        const corpAbbr = (_faction.abbreviation || _faction.faction_name || 'AM').slice(0, 6);
+        const innov    = Math.round(Number(_faction.corp_innovation) || 0);
+
+        const airframeCards = Object.entries(AIRFRAMES).map(([id, a]) =>
+            renderAirframeCard(id, a, id === 'regional')
+        ).join('');
+
+        const mechCards = Object.entries(MECHANICALS).map(([id, m]) =>
+            renderAircraftModuleCard('mechanical', id, m, false)
+        ).join('');
+
+        const offerCards = Object.entries(OFFERINGS).map(([id, m]) =>
+            renderAircraftModuleCard('offering', id, m, false)
+        ).join('');
+
+        const engineOptions = _availableEngineCatalog.map(e =>
+            `<option value="${e.id}">${escHtml(e.name)}${e.corpAbbr ? ' · ' + escHtml(e.corpAbbr) : ''} ◊ Quality ${e.quality.toFixed(1)}</option>`
+        ).join('');
+
+        overlay = document.createElement('div');
+        overlay.id = 'am-design-aircraft-modal';
+        overlay.className = 'am-modal-overlay';
+        overlay.innerHTML = `
+            <div class="am-modal">
+                <div class="am-modal-header">
+                    <div>
+                        <div class="am-modal-eyebrow">— Aircraft Assembly ◊ New Aircraft Design —</div>
+                        <h2 class="am-modal-title">Design <em>Aircraft</em></h2>
+                        <div class="am-modal-subtitle">Designing for: <strong>${escHtml(corpAbbr)}</strong> ${escHtml(_faction.faction_name || '')} ◊ Innovation: ${innov}/10 ◊ ${_availableEngineCatalog.length} Engine Design${_availableEngineCatalog.length === 1 ? '' : 's'} Available</div>
+                    </div>
+                    <button type="button" class="am-modal-close" aria-label="Close">×</button>
+                </div>
+                <div class="am-modal-body">
+                    <div class="am-form-section">
+                        <div class="am-form-section-header">
+                            <h3><span class="num">I.</span>Identity</h3>
+                            <span class="meta">Name Your Aircraft</span>
+                        </div>
+                        <div class="am-identity-block">
+                            <div class="am-identity-label">Aircraft Name</div>
+                            <input type="text" class="am-identity-input" id="am-aircraft-name" maxlength="60" placeholder="e.g., Phoenix CV-1" />
+                        </div>
+                    </div>
+                    <div class="am-form-section">
+                        <div class="am-form-section-header">
+                            <h3><span class="num">II.</span>Airframe</h3>
+                            <span class="meta">Choose 1 ◊ Determines Aircraft Class</span>
+                        </div>
+                        <div class="am-airframe-grid" id="am-airframe-grid">${airframeCards}</div>
+                    </div>
+                    <div class="am-form-section">
+                        <div class="am-form-section-header">
+                            <h3><span class="num">III.</span>Engine Selection</h3>
+                            <span class="meta">Pick from the Global Engine Catalog</span>
+                        </div>
+                        <div class="am-engine-block">
+                            <div class="am-engine-row">
+                                <div class="am-engine-select-wrap">
+                                    <div class="am-engine-select-label">Engine Model</div>
+                                    <select class="am-engine-select" id="am-engine-select">${engineOptions}</select>
+                                    <div class="am-engine-preview" id="am-engine-preview"></div>
+                                </div>
+                                <div class="am-engine-count-control">
+                                    <div class="am-engine-select-label">Engine Count</div>
+                                    <div class="am-count-buttons" id="am-engine-counts">
+                                        <button type="button" class="am-count-btn" data-count="1">1</button>
+                                        <button type="button" class="am-count-btn selected" data-count="2">2</button>
+                                        <button type="button" class="am-count-btn" data-count="4">4</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="am-form-section">
+                        <div class="am-form-section-header">
+                            <h3><span class="num">IV.</span>Mechanical</h3>
+                            <span class="meta">Multi-Select ◊ Boosts Safety</span>
+                        </div>
+                        <div class="am-module-grid" id="am-mechanical-grid">${mechCards}</div>
+                    </div>
+                    <div class="am-form-section">
+                        <div class="am-form-section-header">
+                            <h3><span class="num">V.</span>Offering</h3>
+                            <span class="meta">Multi-Select ◊ Boosts Demand &amp; Passengers</span>
+                        </div>
+                        <div class="am-module-grid" id="am-offering-grid">${offerCards}</div>
+                    </div>
+                    <div class="am-form-section">
+                        <div class="am-form-section-header">
+                            <h3><span class="num">VI.</span>Aircraft Summary</h3>
+                            <span class="meta">Live Preview ◊ Final Specifications</span>
+                        </div>
+                        <div class="am-summary">
+                            <div class="am-summary-header-line">— Final Aircraft Specifications —</div>
+                            <div class="am-summary-name-row">
+                                <div class="am-summary-name" id="am-ac-summary-name">—</div>
+                                <span class="am-physical-status viable" id="am-ac-physical-status">◊ Physically Viable</span>
+                            </div>
+                            <div class="am-summary-tier-line" id="am-ac-summary-tier"></div>
+                            <div class="am-summary-stats-grid">
+                                <div class="am-summary-stat-card">
+                                    <div class="am-summary-stat-card-label">Range</div>
+                                    <div class="am-summary-stat-card-value"><span id="am-ac-stat-range">—</span><span class="max">/10</span></div>
+                                    <div class="am-summary-stat-card-bar"><div class="am-summary-stat-card-bar-fill" id="am-ac-bar-range"></div></div>
+                                </div>
+                                <div class="am-summary-stat-card">
+                                    <div class="am-summary-stat-card-label">Passengers</div>
+                                    <div class="am-summary-stat-card-value"><span id="am-ac-stat-pax">—</span></div>
+                                    <div class="am-summary-stat-card-bar"><div class="am-summary-stat-card-bar-fill" id="am-ac-bar-pax"></div></div>
+                                </div>
+                                <div class="am-summary-stat-card">
+                                    <div class="am-summary-stat-card-label">Demand</div>
+                                    <div class="am-summary-stat-card-value"><span id="am-ac-stat-demand">—</span><span class="max">/10</span></div>
+                                    <div class="am-summary-stat-card-bar"><div class="am-summary-stat-card-bar-fill" id="am-ac-bar-demand"></div></div>
+                                </div>
+                                <div class="am-summary-stat-card">
+                                    <div class="am-summary-stat-card-label">Safety</div>
+                                    <div class="am-summary-stat-card-value"><span id="am-ac-stat-safety">—</span><span class="max">/10</span></div>
+                                    <div class="am-summary-stat-card-bar"><div class="am-summary-stat-card-bar-fill" id="am-ac-bar-safety"></div></div>
+                                </div>
+                            </div>
+                            <div class="am-physics-block">
+                                <div class="am-physics-info">
+                                    <strong>Total Thrust vs Total Weight:</strong> Engines must produce more thrust than the aircraft weighs to be viable. Higher thrust:weight ratios extend range above the airframe's baseline.
+                                </div>
+                                <div class="am-physics-display green" id="am-ac-physics-display">
+                                    <span id="am-ac-physics-value">—</span>
+                                    <span class="label" id="am-ac-physics-label">Ratio —</span>
+                                </div>
+                            </div>
+                            <div class="am-summary-breakdown">
+                                <div>
+                                    <div class="am-breakdown-title">Cost Breakdown</div>
+                                    <div class="am-breakdown-line"><span class="label">Airframe (<span id="am-ac-cost-airframe-name">—</span>)</span><span class="value" id="am-ac-cost-airframe">—</span></div>
+                                    <div class="am-breakdown-line"><span class="label">Engines (<span id="am-ac-cost-engine-count">—</span>× <span id="am-ac-cost-engine-name">—</span>)</span><span class="value" id="am-ac-cost-engines">—</span></div>
+                                    <div class="am-breakdown-line"><span class="label">Mechanical (<span id="am-ac-cost-mech-count">0</span> selected)</span><span class="value" id="am-ac-cost-mechanical">$0</span></div>
+                                    <div class="am-breakdown-line"><span class="label">Offerings (<span id="am-ac-cost-off-count">0</span> selected)</span><span class="value" id="am-ac-cost-offerings">$0</span></div>
+                                    <div class="am-breakdown-line total"><span class="label">Cost per Aircraft Unit</span><span class="value" id="am-ac-cost-total">—</span></div>
+                                </div>
+                                <div>
+                                    <div class="am-breakdown-title">Design</div>
+                                    <div class="am-breakdown-line"><span class="label">Airframe Layout</span><span class="value" id="am-ac-time-airframe">—</span></div>
+                                    <div class="am-breakdown-line"><span class="label">Engine Integration</span><span class="value" id="am-ac-time-engines">—</span></div>
+                                    <div class="am-breakdown-line"><span class="label">Module Integration</span><span class="value" id="am-ac-time-modules">—</span></div>
+                                    <div class="am-breakdown-line total"><span class="label">Total Design Time</span><span class="value" id="am-ac-time-total">—</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="am-modal-error" id="am-ac-modal-error"></div>
+                <div class="am-modal-footer">
+                    <div class="am-modal-footer-summary">
+                        <div class="am-modal-footer-item">
+                            <span class="am-modal-footer-label">Cost / Unit</span>
+                            <span class="am-modal-footer-value" id="am-ac-footer-cost">—</span>
+                        </div>
+                        <div class="am-modal-footer-item">
+                            <span class="am-modal-footer-label">Range</span>
+                            <span class="am-modal-footer-value" id="am-ac-footer-range">—</span>
+                        </div>
+                        <div class="am-modal-footer-item">
+                            <span class="am-modal-footer-label">Design Time</span>
+                            <span class="am-modal-footer-value" id="am-ac-footer-time">—</span>
+                        </div>
+                    </div>
+                    <div class="am-modal-footer-actions">
+                        <button type="button" class="am-modal-btn" id="am-ac-modal-cancel">Cancel</button>
+                        <button type="button" class="am-modal-btn primary" id="am-ac-modal-submit">Begin Design ▸</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('.am-modal-close').addEventListener('click', closeDesignAircraftModal);
+        overlay.querySelector('#am-ac-modal-cancel').addEventListener('click', closeDesignAircraftModal);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDesignAircraftModal(); });
+
+        overlay.querySelector('#am-aircraft-name').addEventListener('input', () => {
+            _designAircraftState.name = overlay.querySelector('#am-aircraft-name').value || '';
+            recalcDesignAircraft();
+        });
+
+        overlay.querySelectorAll('.am-airframe-card').forEach(card => {
+            card.addEventListener('click', () => {
+                overlay.querySelectorAll('.am-airframe-card').forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                _designAircraftState.airframe = card.dataset.airframe;
+                const a = AIRFRAMES[_designAircraftState.airframe];
+                if (_designAircraftState.engineCount < a.engMin || _designAircraftState.engineCount > a.engMax) {
+                    _designAircraftState.engineCount = a.engMin;
+                }
+                recalcDesignAircraft();
+            });
+        });
+
+        overlay.querySelector('#am-engine-select').addEventListener('change', (e) => {
+            _designAircraftState.engineId = e.target.value;
+            recalcDesignAircraft();
+        });
+
+        overlay.querySelectorAll('.am-count-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (btn.disabled) return;
+                overlay.querySelectorAll('.am-count-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                _designAircraftState.engineCount = parseInt(btn.dataset.count, 10);
+                recalcDesignAircraft();
+            });
+        });
+
+        overlay.querySelectorAll('#am-mechanical-grid .am-module-card, #am-offering-grid .am-module-card').forEach(card => {
+            card.addEventListener('click', () => {
+                const group = card.dataset.group;
+                const id = card.dataset.id;
+                const set = group === 'mechanical' ? _designAircraftState.mechanicals : _designAircraftState.offerings;
+                if (set.has(id)) { set.delete(id); card.classList.remove('selected'); }
+                else             { set.add(id);    card.classList.add('selected'); }
+                recalcDesignAircraft();
+            });
+        });
+
+        overlay.querySelector('#am-ac-modal-submit').addEventListener('click', submitDesignAircraft);
+    } else {
+        // Modal already constructed once. Repopulate the engine dropdown
+        // so any newly-completed engines surface without a page reload.
+        const sel = overlay.querySelector('#am-engine-select');
+        sel.innerHTML = _availableEngineCatalog.map(e =>
+            `<option value="${e.id}">${escHtml(e.name)}${e.corpAbbr ? ' · ' + escHtml(e.corpAbbr) : ''} ◊ Quality ${e.quality.toFixed(1)}</option>`
+        ).join('');
+    }
+
+    // Reset state to defaults each open.
+    const corpAbbr = (_faction.abbreviation || _faction.faction_name || 'AC').slice(0, 6);
+    const existingAircraft = document.querySelectorAll('#co-designs-list [data-design-type="aircraft"], #co-rnd-list [data-design-type="aircraft"]').length;
+    _designAircraftState = {
+        name:         `${corpAbbr}-AC${existingAircraft + 1}`,
+        airframe:     'regional',
+        engineId:     _availableEngineCatalog[0]?.id || null,
+        engineCount:  AIRFRAMES.regional.engMin,
+        mechanicals:  new Set(),
+        offerings:    new Set(),
+    };
+    overlay.querySelector('#am-aircraft-name').value = _designAircraftState.name;
+    overlay.querySelectorAll('.am-airframe-card').forEach(c => {
+        c.classList.toggle('selected', c.dataset.airframe === _designAircraftState.airframe);
+    });
+    overlay.querySelector('#am-engine-select').value = _designAircraftState.engineId || '';
+    overlay.querySelectorAll('.am-count-btn').forEach(b => {
+        b.classList.toggle('selected', parseInt(b.dataset.count, 10) === _designAircraftState.engineCount);
+    });
+    overlay.querySelectorAll('#am-mechanical-grid .am-module-card, #am-offering-grid .am-module-card').forEach(c => c.classList.remove('selected'));
+    overlay.querySelector('#am-ac-modal-error').classList.remove('show');
+    overlay.querySelector('#am-ac-modal-submit').disabled = false;
+    overlay.querySelector('#am-ac-modal-submit').textContent = 'Begin Design ▸';
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    recalcDesignAircraft();
+}
+
+function closeDesignAircraftModal() {
+    const overlay = document.getElementById('am-design-aircraft-modal');
+    if (overlay) overlay.classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+function recalcDesignAircraft() {
+    if (!_designAircraftState) return;
+    const overlay = document.getElementById('am-design-aircraft-modal');
+    if (!overlay) return;
+
+    const airframe = AIRFRAMES[_designAircraftState.airframe];
+    const engine   = _availableEngineCatalog.find(e => e.id === _designAircraftState.engineId);
+    if (!airframe || !engine) return;
+
+    // Enforce engine count bounds for current airframe.
+    overlay.querySelectorAll('.am-count-btn').forEach(btn => {
+        const count = parseInt(btn.dataset.count, 10);
+        const valid = count >= airframe.engMin && count <= airframe.engMax;
+        btn.disabled = !valid;
+        if (!valid && _designAircraftState.engineCount === count) {
+            _designAircraftState.engineCount = airframe.engMin;
+        }
+    });
+    overlay.querySelectorAll('.am-count-btn').forEach(btn => {
+        btn.classList.toggle('selected', parseInt(btn.dataset.count, 10) === _designAircraftState.engineCount);
+    });
+
+    const mechs  = Array.from(_designAircraftState.mechanicals).map(id => MECHANICALS[id]).filter(Boolean);
+    const offers = Array.from(_designAircraftState.offerings).map(id => OFFERINGS[id]).filter(Boolean);
+
+    const totalThrust = engine.thrust * _designAircraftState.engineCount;
+    const engineWeight = engine.weight * _designAircraftState.engineCount;
+    const moduleWeight = mechs.reduce((s,m) => s + m.weight, 0) + offers.reduce((s,o) => s + o.weight, 0);
+    const totalWeight = airframe.weight + engineWeight + moduleWeight;
+    const ratio = totalWeight > 0 ? (totalThrust / totalWeight) : 0;
+    const isPhysical = ratio >= 1.0;
+
+    const range = Math.min(10, Math.max(0, airframe.range * ratio));
+    const passengers = airframe.pax + offers.reduce((s,o) => s + o.pax, 0);
+    const reliabilityBonus = engine.reliability >= 70 ? 1 : 0;
+    const offerDemand = offers.reduce((s,o) => s + o.demand, 0);
+    const demand = Math.min(10, Math.max(0, 5 + offerDemand + reliabilityBonus));
+    const mechSafety = mechs.reduce((s,m) => s + m.safety, 0);
+    const engineSafetyMod = Math.floor((engine.reliability - 50) / 25);
+    const safety = Math.min(10, Math.max(0, 5 + mechSafety + engineSafetyMod));
+
+    const engineCost = engine.costPerUnit * _designAircraftState.engineCount;
+    const mechCost   = mechs.reduce((s,m) => s + m.cost, 0);
+    const offCost    = offers.reduce((s,o) => s + o.cost, 0);
+    const totalCost  = airframe.cost + engineCost + mechCost + offCost;
+
+    const engineTime = _designAircraftState.engineCount;
+    const moduleTime = (mechs.length + offers.length) >= 2 ? 2 : 1;
+    const totalTime  = airframe.time + engineTime + moduleTime;
+
+    const $ = (id) => overlay.querySelector('#' + id);
+    $('am-ac-summary-name').textContent = _designAircraftState.name || 'Untitled Aircraft';
+    $('am-ac-summary-tier').textContent =
+        `${airframe.name.toUpperCase()} ◊ ${_designAircraftState.engineCount}× ${engine.name.toUpperCase()} ENGINES ◊ TIER 1 BUILD`;
+
+    $('am-ac-stat-range').textContent  = range.toFixed(1);
+    $('am-ac-stat-pax').textContent    = String(passengers);
+    $('am-ac-stat-demand').textContent = String(demand);
+    $('am-ac-stat-safety').textContent = String(safety);
+    $('am-ac-bar-range').style.width  = (range * 10) + '%';
+    $('am-ac-bar-pax').style.width    = Math.min(100, (passengers / 60) * 100) + '%';
+    $('am-ac-bar-demand').style.width = (demand * 10) + '%';
+    $('am-ac-bar-safety').style.width = (safety * 10) + '%';
+
+    const physicsDisplay = $('am-ac-physics-display');
+    const physicsLabel   = $('am-ac-physics-label');
+    const physicsStatus  = $('am-ac-physical-status');
+    $('am-ac-physics-value').textContent = `${totalThrust.toFixed(1)} / ${totalWeight.toFixed(1)}`;
+    if (ratio >= 1.5) {
+        physicsDisplay.className = 'am-physics-display green';
+        physicsLabel.textContent = `Ratio ${ratio.toFixed(2)} ◊ Excellent`;
+        physicsStatus.className  = 'am-physical-status viable';
+        physicsStatus.textContent = '◊ Physically Viable';
+    } else if (ratio >= 1.0) {
+        physicsDisplay.className = 'am-physics-display green';
+        physicsLabel.textContent = `Ratio ${ratio.toFixed(2)} ◊ Viable`;
+        physicsStatus.className  = 'am-physical-status viable';
+        physicsStatus.textContent = '◊ Physically Viable';
+    } else if (ratio >= 0.85) {
+        physicsDisplay.className = 'am-physics-display warn';
+        physicsLabel.textContent = `Ratio ${ratio.toFixed(2)} ◊ Underpowered`;
+        physicsStatus.className  = 'am-physical-status invalid';
+        physicsStatus.textContent = '⚠ Insufficient Thrust';
+    } else {
+        physicsDisplay.className = 'am-physics-display bad';
+        physicsLabel.textContent = `Ratio ${ratio.toFixed(2)} ◊ Cannot Fly`;
+        physicsStatus.className  = 'am-physical-status invalid';
+        physicsStatus.textContent = '⚠ Cannot Fly';
+    }
+
+    $('am-ac-cost-airframe-name').textContent = airframe.name;
+    $('am-ac-cost-airframe').textContent      = fmtCostShort(airframe.cost);
+    $('am-ac-cost-engine-count').textContent  = String(_designAircraftState.engineCount);
+    $('am-ac-cost-engine-name').textContent   = engine.name;
+    $('am-ac-cost-engines').textContent       = fmtCostShort(engineCost);
+    $('am-ac-cost-mech-count').textContent    = String(mechs.length);
+    $('am-ac-cost-mechanical').textContent    = fmtCostShort(mechCost);
+    $('am-ac-cost-off-count').textContent     = String(offers.length);
+    $('am-ac-cost-offerings').textContent     = fmtCostShort(offCost);
+    $('am-ac-cost-total').textContent         = fmtCostShort(totalCost);
+
+    $('am-ac-time-airframe').textContent = `${airframe.time} ticks`;
+    $('am-ac-time-engines').textContent  = `${engineTime} tick${engineTime === 1 ? '' : 's'}`;
+    $('am-ac-time-modules').textContent  = `${moduleTime} tick${moduleTime === 1 ? '' : 's'}`;
+    $('am-ac-time-total').textContent    = `${totalTime} ticks`;
+
+    const footerCost = $('am-ac-footer-cost');
+    footerCost.textContent = fmtCostShort(totalCost);
+    footerCost.className = 'am-modal-footer-value' + (isPhysical ? '' : ' bad');
+    $('am-ac-footer-range').textContent = range.toFixed(1);
+    $('am-ac-footer-time').textContent  = `${totalTime} ticks`;
+
+    $('am-engine-preview').innerHTML = `
+        <span class="am-engine-pill thrust">Thrust ${engine.thrust.toFixed(1)}</span>
+        <span class="am-engine-pill weight">Weight ${engine.weight.toFixed(1)}</span>
+        <span class="am-engine-pill">Eff ${engine.efficiency}</span>
+        <span class="am-engine-pill">Rel ${engine.reliability}</span>
+        <span class="am-engine-pill">${fmtCostShort(engine.costPerUnit)} ea.</span>
+    `;
+
+    const submitBtn = $('am-ac-modal-submit');
+    submitBtn.disabled = !isPhysical;
+    submitBtn.textContent = isPhysical ? 'Begin Design ▸' : 'Cannot Fly — Adjust Design';
+}
+
+async function submitDesignAircraft() {
+    if (!_designAircraftState) return;
+    const overlay = document.getElementById('am-design-aircraft-modal');
+    const submitBtn = overlay.querySelector('#am-ac-modal-submit');
+    const errEl = overlay.querySelector('#am-ac-modal-error');
+    const name = (overlay.querySelector('#am-aircraft-name').value || '').trim();
+    if (!name) {
+        errEl.textContent = 'Aircraft name required.';
+        errEl.classList.add('show');
+        return;
+    }
+    if (!_designAircraftState.engineId) {
+        errEl.textContent = 'Pick an engine.';
+        errEl.classList.add('show');
+        return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting…';
+    errEl.classList.remove('show');
+
+    try {
+        const { data, error } = await _supabase.rpc('start_aircraft_design_research', {
+            p_corp_id:          _faction.id,
+            p_name:             name,
+            p_airframe:         _designAircraftState.airframe,
+            p_engine_design_id: _designAircraftState.engineId,
+            p_engine_count:     _designAircraftState.engineCount,
+            p_mechanicals:      Array.from(_designAircraftState.mechanicals),
+            p_offerings:        Array.from(_designAircraftState.offerings),
+        });
+        if (error) {
+            errEl.textContent = error.message;
+            errEl.classList.add('show');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Begin Design ▸';
+            return;
+        }
+        if (!data?.success) {
+            errEl.textContent = data?.error || 'Could not start design.';
+            errEl.classList.add('show');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Begin Design ▸';
+            return;
+        }
+        closeDesignAircraftModal();
+        await loadDesigns(_faction.id);
+    } catch (err) {
+        errEl.textContent = err?.message || 'Unknown error.';
+        errEl.classList.add('show');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Begin Design ▸';
+    }
+}
+
 // ── Live designs panels (R&D + Current Designs) ──────────────────
 async function loadDesigns(corpId) {
     const designsEl = document.getElementById('co-designs-list');
@@ -1655,7 +2406,7 @@ async function loadDesigns(corpId) {
 
     const { data: rows, error } = await _supabase
         .from('corp_aircraft_designs')
-        .select('id, name, design_type, thrust, weight, efficiency, reliability, quality, cost_per_unit, inventory_on_hand, status, research_ticks_total, research_ticks_remaining, completed_at_tick')
+        .select('id, name, design_type, thrust, weight, efficiency, reliability, quality, cost_per_unit, inventory_on_hand, status, research_ticks_total, research_ticks_remaining, completed_at_tick, airframe_class, engine_count, passengers, range_nm, demand_score, safety_score')
         .eq('corp_id', corpId)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
@@ -1682,37 +2433,47 @@ function renderDesignResearchCard(d) {
     const total = Number(d.research_ticks_total) || 1;
     const remaining = Number(d.research_ticks_remaining) || 0;
     const progressPct = Math.max(0, Math.min(100, ((total - remaining) / total) * 100));
-    const typeLabel = d.design_type === 'engine' ? 'Engine' : 'Airframe';
-    return `<div class="am-design-card">
+    const isAircraft = d.design_type === 'aircraft';
+    const typeLabel = isAircraft ? 'Aircraft' : 'Engine';
+    const stats = isAircraft
+        ? `<div><span class="label">Range</span><span class="value">${Number(d.range_nm ?? 0).toFixed(1)}</span></div>
+           <div><span class="label">Pax</span><span class="value">${Number(d.passengers ?? 0)}</span></div>
+           <div><span class="label">Demand</span><span class="value">${Number(d.demand_score ?? 0)}</span></div>
+           <div><span class="label">Safety</span><span class="value">${Number(d.safety_score ?? 0)}</span></div>`
+        : `<div><span class="label">Thrust</span><span class="value">${Number(d.thrust ?? 0).toFixed(1)}</span></div>
+           <div><span class="label">Weight</span><span class="value">${Number(d.weight ?? 0).toFixed(1)}</span></div>
+           <div><span class="label">Eff</span><span class="value">${Number(d.efficiency ?? 0)}</span></div>
+           <div><span class="label">Rel</span><span class="value">${Number(d.reliability ?? 0)}</span></div>`;
+    return `<div class="am-design-card" data-design-type="${d.design_type}">
         <div class="am-design-card-head">
             <div class="am-design-name">${escHtml(d.name)}</div>
             <span class="am-design-meta">${typeLabel} · Tier 1</span>
         </div>
-        <div class="am-design-stats">
-            <div><span class="label">Thrust</span><span class="value">${Number(d.thrust ?? 0).toFixed(1)}</span></div>
-            <div><span class="label">Weight</span><span class="value">${Number(d.weight ?? 0).toFixed(1)}</span></div>
-            <div><span class="label">Eff</span><span class="value">${Number(d.efficiency ?? 0)}</span></div>
-            <div><span class="label">Rel</span><span class="value">${Number(d.reliability ?? 0)}</span></div>
-        </div>
+        <div class="am-design-stats">${stats}</div>
         <div class="am-design-progress"><div class="am-design-progress-fill" style="width:${progressPct.toFixed(0)}%"></div></div>
         <div class="am-design-countdown">${remaining} month${remaining === 1 ? '' : 's'} left · ${progressPct.toFixed(0)}% complete</div>
     </div>`;
 }
 
 function renderAvailableDesignCard(d) {
-    const typeLabel = d.design_type === 'engine' ? 'Engine' : 'Airframe';
+    const isAircraft = d.design_type === 'aircraft';
+    const typeLabel = isAircraft ? 'Aircraft' : 'Engine';
     const cost = fmtCostShort(d.cost_per_unit);
-    return `<div class="am-design-card">
+    const stats = isAircraft
+        ? `<div><span class="label">Range</span><span class="value">${Number(d.range_nm ?? 0).toFixed(1)}</span></div>
+           <div><span class="label">Pax</span><span class="value">${Number(d.passengers ?? 0)}</span></div>
+           <div><span class="label">Cost / Unit</span><span class="value">${cost}</span></div>
+           <div><span class="label">Inventory</span><span class="value">${Number(d.inventory_on_hand ?? 0)}</span></div>`
+        : `<div><span class="label">Thrust</span><span class="value">${Number(d.thrust ?? 0).toFixed(1)}</span></div>
+           <div><span class="label">Weight</span><span class="value">${Number(d.weight ?? 0).toFixed(1)}</span></div>
+           <div><span class="label">Cost / Unit</span><span class="value">${cost}</span></div>
+           <div><span class="label">Inventory</span><span class="value">${Number(d.inventory_on_hand ?? 0)}</span></div>`;
+    return `<div class="am-design-card" data-design-type="${d.design_type}">
         <div class="am-design-card-head">
             <div class="am-design-name">${escHtml(d.name)}</div>
             <span class="am-design-meta">${typeLabel} · Quality ${Number(d.quality ?? 0).toFixed(1)}/10</span>
         </div>
-        <div class="am-design-stats">
-            <div><span class="label">Thrust</span><span class="value">${Number(d.thrust ?? 0).toFixed(1)}</span></div>
-            <div><span class="label">Weight</span><span class="value">${Number(d.weight ?? 0).toFixed(1)}</span></div>
-            <div><span class="label">Cost / Unit</span><span class="value">${cost}</span></div>
-            <div><span class="label">Inventory</span><span class="value">${Number(d.inventory_on_hand ?? 0)}</span></div>
-        </div>
+        <div class="am-design-stats">${stats}</div>
     </div>`;
 }
 
@@ -1774,24 +2535,38 @@ async function init() {
 
     await loadFacilities(faction.id);
 
-    // Engine Assembly Plant gate — toggles the [+ Design Engine] button
-    // and surfaces a "Requires an Engine Assembly Plant" notice when
-    // the corp doesn't yet own one. Mirrors the server-side check in
-    // start_engine_design_research so a stale UI can't bypass the gate.
+    // Facility gates — mirror the server-side checks in
+    // start_engine_design_research / start_aircraft_design_research
+    // so a stale UI can't bypass them. Engine design needs an Engine
+    // Assembly Plant; aircraft design needs any of Light Assembly /
+    // Aircraft Assembly Facility / Heavy Manufacturing Plant. One
+    // round-trip pulls every property type we care about.
     try {
-        const { data: plants } = await _supabase
+        const { data: gateProps } = await _supabase
             .from('corp_properties')
-            .select('id')
+            .select('type')
             .eq('faction_id', faction.id)
-            .eq('type', 'engine_assembly_plant')
-            .eq('is_active', true)
-            .limit(1);
-        applyEngineDesignGate((plants || []).length > 0);
+            .in('type', [
+                'engine_assembly_plant',
+                'light_assembly_plant',
+                'aircraft_assembly_facility',
+                'heavy_manufacturing_plant',
+            ])
+            .eq('is_active', true);
+        const types = new Set((gateProps || []).map(p => p.type));
+        applyEngineDesignGate(types.has('engine_assembly_plant'));
+        applyAircraftDesignGate(
+            types.has('light_assembly_plant')
+            || types.has('aircraft_assembly_facility')
+            || types.has('heavy_manufacturing_plant')
+        );
     } catch (gateErr) {
-        console.warn('[aviation-ops] engine assembly plant gate check failed:', gateErr?.message || gateErr);
+        console.warn('[aviation-ops] facility gate check failed:', gateErr?.message || gateErr);
         applyEngineDesignGate(false);
+        applyAircraftDesignGate(false);
     }
 
+    await loadAvailableEngineCatalog();
     await loadDesigns(faction.id);
 }
 
