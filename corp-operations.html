@@ -1851,10 +1851,15 @@ function renderActiveCard(contract) {
 
     // ── Crew display ────────────────────────────────────────────────
     // crews_committed is locked in at bid time (drives the price and
-    // timeline multipliers). Surfaced as "Crews Working" on the
-    // active card because under the post-20261029 single-step model
-    // those crews are actually on the job — the separate
-    // crews_assigned / Manage Crews flow was retired then.
+    // timeline multipliers). The label stays "Crews Committed" — not
+    // "Crews Working" — because legacy corps that won bids before the
+    // 20261029 aggregate-crew-cap can have sum(crews_committed) >
+    // corp_work_crews, and "Working" would imply a present-tense
+    // physics those corps don't actually meet. "Committed" is honest:
+    // it's what the bid promised at bid time. The post-20261029
+    // single-step model means that promise is never separately
+    // assigned — but for over-committed legacy corps, not every
+    // committed crew is actually present.
     const acceptedBid = _myBids.get(contract.id);
     const crewsCommitted = Number(acceptedBid?.crews_committed || 0);
     const crewsValue = crewsCommitted ? crewsCommitted.toFixed(0) : '—';
@@ -1882,7 +1887,7 @@ function renderActiveCard(contract) {
                 <div class="value green">${fmtMoney(budget)}</div>
             </div>
             <div>
-                <div class="label">Crews Working</div>
+                <div class="label">Crews Committed</div>
                 <div class="value">${crewsValue}</div>
             </div>
             <div>
