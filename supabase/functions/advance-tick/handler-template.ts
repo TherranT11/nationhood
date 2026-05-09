@@ -2218,7 +2218,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Military Loyalty Act: force-sync defense minister to the sitting
         // Head of Government each tick while MLA is active. No-op when not.
         try {
-            await syncMilitaryLoyaltyDefenseMinister(supabase, nation, currentTick);
+            await syncMilitaryLoyaltyDefenseMinister(supabase, nation, newTick);
         } catch (mlaErr) {
             console.error(`[advanceTick] MLA sync failed for ${nation.name} (non-fatal):`, mlaErr);
         }
