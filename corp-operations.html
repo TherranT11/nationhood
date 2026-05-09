@@ -2263,23 +2263,29 @@ function showContractModal(c) {
 // ── Manage Crews modal (re-introduced 20261101) ────────────────
 // Lets the player set crews_working for an active contract,
 // bounded by the bid's crews_committed and the corp's free crew
-// capacity (corp_work_crews minus the sum already deployed on
-// other active contracts). The aggregate cap is enforced both
-// here (UI-side max) and server-side in set_crews_working.
-function showCrewsModal(c) {
+// capacity. The capacity numbers come from crew_capacity_summary()
+// — the same SQL function set_crews_working consults for its
+// server-side cap, so the UI and the server can't disagree on
+// what's free.
+async function showCrewsModal(c) {
     const modal = document.getElementById('co-modal');
     if (!modal) return;
-    const owned = Number(faction.corp_work_crews) || 0;
     const acceptedBid = _myBids.get(c.id);
     const committed = Number(acceptedBid?.crews_committed || 0);
     const current = Number(c.crews_working) || 0;
 
-    // Sum crews_working across this corp's OTHER active contracts.
-    const othersWorking = (_activeContracts || [])
-        .filter(x => x.id !== c.id)
-        .reduce((s, x) => s + (Number(x.crews_working) || 0), 0);
-    const freeCapacity = Math.max(0, Math.floor(owned) - othersWorking);
-    const maxAllowed = Math.min(committed, freeCapacity);
+    const { data: summary, error: capErr } = await _supabase.rpc('crew_capacity_summary', {
+        p_corp_id:             faction.id,
+        p_exclude_contract_id: c.id,
+    });
+    if (capErr) {
+        showToast('Failed to load crew capacity: ' + capErr.message, 'error');
+        return;
+    }
+    const owned        = Number(summary?.owned)          || 0;
+    const othersWorking = Number(summary?.deployed_other) || 0;
+    const freeCapacity  = Number(summary?.free_for_this)  || 0;
+    const maxAllowed    = Math.min(committed, freeCapacity);
 
     modal.innerHTML = `
         <div class="co-modal-title">Manage Crews — ${escapeHtml(c.name || '')}</div>
