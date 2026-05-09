@@ -25,10 +25,11 @@ function applyStoredCorpTheme() {
 // nav, and shared-page nav all route a Finance/Shipping corp to the right
 // page instead of the Construction default.
 export const SECTOR_OPS_PAGE = {
-    Construction: 'corp-operations.html',
-    Shipping:     'corp-operations-shipping.html',
-    Finance:      'corp-operations-finance.html',
-    Airline:      'airline-operations.html',
+    Construction:           'corp-operations.html',
+    Shipping:               'corp-operations-shipping.html',
+    Finance:                'corp-operations-finance.html',
+    Airline:                'airline-operations.html',
+    'Aviation Manufacturing': 'aviation-operations.html',
 };
 
 // Corps with access to the Home2 test dashboard (Chairman's Desk redesign).

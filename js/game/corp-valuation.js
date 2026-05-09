@@ -24,6 +24,16 @@ export function nationalHqQuality(control) {
     return Math.round(70 + c * 0.3);
 }
 
+// Light Industrial Facility — the founding building for an Aviation
+// Manufacturing corp. Bounded SoL curve: $75M baseline at SoL=50,
+// $37.5M at SoL=0, $112.5M at SoL=100. Same curve shape as Airline
+// starting cash and Construction starting cash for parity across the
+// "scaled by host nation prosperity" sectors.
+export function lightIndustrialFacilityValue(sol) {
+    const s = Math.max(0, Math.min(100, Number(sol) || 0));
+    return Math.round(75_000_000 * (0.5 + s / 100));
+}
+
 export function computePropertyValue(properties) {
     let total = 0;
     for (const p of (properties || [])) {

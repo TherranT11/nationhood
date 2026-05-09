@@ -463,7 +463,7 @@ import { escapeHtml } from './js/utils.js';
 import { getNationNames } from './js/game/political-actions.js';
 import { hasElectedPresident } from './js/game/government-types.js';
 import { generateExecutivePool, createCEORecord } from './js/game/corp-executives.js';
-import { nationalHqValue, nationalHqQuality } from './js/game/corp-valuation.js';
+import { nationalHqValue, nationalHqQuality, lightIndustrialFacilityValue } from './js/game/corp-valuation.js';
 
 const FLAG_URLS = {
     'Melizea': 'assets/flags/Melizea.png',
@@ -872,51 +872,76 @@ async function confirmNation() {
 
         // ── Sector-specific starting stats. Sectors not listed here fall
         //    through to the schema defaults.
-        //    Finance: three 0-10 banking stats at 3 (founding position) plus
-        //    the same general-stat baseline as Construction. Overleverage
-        //    starts at 3, NOT zero — a brand-new bank has some exposure on
-        //    day one from depositor obligations.
+        //    Universal founding-stat baseline (Innovation 1, Productivity 1,
+        //    Employee Wages = nation.wages, Market Share 1, Assets 1 per
+        //    starting property) — Aviation Manufacturing is the one outlier
+        //    at Assets 2 (HQ + Light Industrial Facility seeded below).
+        //    Reputation, Op Safety, and sector-specific stats keep their
+        //    sector-tailored seed values.
         let sectorSeeds = {};
+        // nation.wages is 0-100 (alpha nation stat); corp_employee_wages is
+        // 0-10 (NUMERIC(4,2) with CHECK constraint per 20260501). Divide by
+        // 10 so the founding value lands in the corp scale; clamp to the
+        // CHECK range so corrupt / out-of-band nation values don't fail
+        // corp founding cryptically. Default 50 → wagesSeed = 5 (matches
+        // the previous hardcoded value).
+        const wagesSeed = Math.max(0, Math.min(10,
+            Math.round(Number(nation.wages ?? 50) / 10)));
         if (corpSetup.sector === 'Construction') {
             sectorSeeds = {
-                corp_assets:               2,
+                corp_assets:               1,
                 corp_market_share:         1,
-                corp_innovation:           5,
+                corp_innovation:           1,
                 corp_reputation:           5,
-                corp_productivity:         5,
-                corp_employee_wages:       5,
+                corp_productivity:         1,
+                corp_employee_wages:       wagesSeed,
                 corp_work_crews:           3,
                 corp_regulatory_standing:  3,
                 corp_supply_chain:         3,
             };
         } else if (corpSetup.sector === 'Finance') {
             sectorSeeds = {
-                corp_assets:               2,
+                corp_assets:               1,
                 corp_market_share:         1,
-                corp_innovation:           5,
+                corp_innovation:           1,
                 corp_reputation:           5,
-                corp_productivity:         5,
-                corp_employee_wages:       5,
+                corp_productivity:         1,
+                corp_employee_wages:       wagesSeed,
                 corp_lending_capital:      3,
                 corp_interest_rates:       3,
                 corp_overleverage:         0,
             };
         } else if (corpSetup.sector === 'Airline') {
-            // Airline founding seeds. Match the general-stat baseline used
-            // by Construction/Finance, plus full op_safety (untainted record
-            // on day one) and a 2-regional starter fleet (corp_fleet = 2 ×
-            // 1 fleet slot each). The 2 corp_aircraft rows are inserted
-            // below after the corp row exists.
+            // Full op_safety (untainted record on day one) + a 2-regional
+            // starter fleet (corp_fleet = 2 × 1 fleet slot each). The 2
+            // corp_aircraft rows are inserted below after the corp exists.
             sectorSeeds = {
-                corp_assets:              2,
+                corp_assets:              1,
                 corp_market_share:        1,
-                corp_innovation:          5,
+                corp_innovation:          1,
                 corp_reputation:          1,
-                corp_productivity:        5,
-                corp_employee_wages:      5,
+                corp_productivity:        1,
+                corp_employee_wages:      wagesSeed,
                 corp_fleet:               2,
                 corp_routes:              0,
                 corp_op_safety:          10,
+            };
+        } else if (corpSetup.sector === 'Aviation Manufacturing') {
+            // Aviation Manufacturing founding seeds. corp_assets=2 because
+            // the corp starts with HQ + Light Industrial Facility (one row
+            // per property). corp_production_capacity / corp_quality_control
+            // are aviation-specific hero stats from
+            // 20261022_aviation_manufacturing_schema. Light Industrial
+            // Facility row is inserted below after the corp row exists.
+            sectorSeeds = {
+                corp_assets:               2,
+                corp_market_share:         1,
+                corp_innovation:           1,
+                corp_reputation:           1,
+                corp_productivity:         1,
+                corp_employee_wages:       wagesSeed,
+                corp_production_capacity:  1,
+                corp_quality_control:      3,
             };
         }
 
@@ -1099,6 +1124,40 @@ async function confirmNation() {
             ]);
             if (fleetErr) {
                 console.warn('[CorpCreate] starter aircraft insert failed:', fleetErr.message);
+            }
+        }
+
+        // Aviation Manufacturing founding building. Persisted as a
+        // corp_properties row (type='light_industrial_facility') so
+        // maintenance, valuation, expansion, and bankruptcy paths
+        // already-built for HQ + airline_terminal apply uniformly.
+        // Value formula and SoL curve live in corp-valuation.js
+        // (lightIndustrialFacilityValue) so any future caller can
+        // compute the same number without reimplementing the math.
+        if (corpSetup.sector === 'Aviation Manufacturing') {
+            try {
+                const facilityValue = lightIndustrialFacilityValue(nation.standard_of_living);
+                const facilityMaint = Math.round(facilityValue * 0.005);
+                const { error: facilityErr } = await _supabase.from('corp_properties').insert({
+                    faction_id:          corpId,
+                    nation_id:           nation.id,
+                    name:                corpName + ' Industrial Facility',
+                    type:                'light_industrial_facility',
+                    role:                'light_industrial_facility',
+                    style:               'Industrial',
+                    capacity:            0,
+                    purchase_price:      facilityValue,
+                    monthly_maintenance: facilityMaint,
+                    condition:           100,
+                    city:                nation.capital,
+                    purchased_at_tick:   currentTick,
+                    is_active:           true,
+                });
+                if (facilityErr) {
+                    console.warn('[CorpCreate] Light Industrial Facility insert failed:', facilityErr.message);
+                }
+            } catch (facEx) {
+                console.warn('[CorpCreate] Light Industrial Facility insert threw:', facEx?.message || facEx);
             }
         }
 

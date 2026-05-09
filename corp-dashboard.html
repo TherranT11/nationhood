@@ -1575,7 +1575,10 @@ function ownershipColor(holderType) {
 function ownershipLabel(holder) {
     const nationName = nation?.name || 'the State';
     switch (holder.holder_type) {
-        case 'player':       return 'You';
+        // 'player' renders as "Private" (the ownership category) — the
+        // "YOU" tag rendered separately at the row level still identifies
+        // the current player as the holder when applicable.
+        case 'player':       return 'Private';
         case 'state':        return `State of ${escapeHtml(nationName)}`;
         case 'shareholders': return 'Public Shareholders';
         case 'rival_corp':   return 'Rival Corporation';
