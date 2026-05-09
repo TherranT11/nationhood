@@ -154,14 +154,36 @@ export async function initCoalitionFormation(supabase, state) {
         _lastElectionTick = election.election_tick;
     } else {
         // Default: formation needed only when no formed government exists.
-        // Exception: an emergency_minority government's PM party can re-enter
+        // Exception 1: an emergency_minority government's PM party can re-enter
         // the formation flow to propose a real majority coalition.
         // finalize_government_formation (20260910:127) dissolves the prior
         // minority formation atomically when the new coalition is sealed.
         const minorityPromotePath = activeCoalition?.formation_type === 'emergency_minority'
             && Array.isArray(activeCoalition.party_ids)
             && activeCoalition.party_ids.includes(faction.id);
-        _formationNeeded = !hasFormedGov || minorityPromotePath;
+
+        // Exception 2: an active formation proposal exists for this election
+        // that lists my party in its party_ids — I need to see the formation
+        // flow so I can support or decline. Without this branch the invited
+        // parties (especially ones outside the current minority government)
+        // see "Government Formed" and have no surface to act on the
+        // proposal that's blocking the snap-election timer.
+        let invitedToProposal = false;
+        if (election) {
+            const { data: invitingProposals, error: invErr } = await supabase
+                .from('government_formations')
+                .select('id')
+                .eq('election_id', election.id)
+                .eq('status', 'active')
+                .contains('party_ids', [faction.id])
+                .limit(1);
+            if (invErr) {
+                console.warn('[CoalitionFormation] proposal-invite check failed:', invErr.message);
+            }
+            invitedToProposal = (invitingProposals || []).length > 0;
+        }
+
+        _formationNeeded = !hasFormedGov || minorityPromotePath || invitedToProposal;
         if (election) {
             _electionId = election.id;
             _lastElectionTick = election.election_tick;
