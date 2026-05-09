@@ -9,8 +9,14 @@
 --        supabase db push
 --      (canonical migration directory: supabase/migrations)
 --
---      Required migration in this rollout:
+--      Required migrations in this rollout:
+--        supabase/migrations/20260402_corp_last_processed_tick.sql
 --        supabase/migrations/20260425_add_corp_properties_role.sql
+--
+--      Verify shard tick columns are present before deploying advance-corp-tick:
+--        SELECT name, current_tick, corp_last_processed_tick FROM public.shard WHERE name = 'Alpha Shard';
+--
+--      Do not deploy the Edge Function or enable the cron job until this query succeeds.
 --
 --   2. Validate corp_properties.role backfill distribution:
 --        SELECT role, type, COUNT(*) AS rows
