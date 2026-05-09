@@ -4706,6 +4706,16 @@ export async function processVolaStadiumCompletions(supabase, currentTick) {
             }).eq('id', host.id);
         }
 
+        // Construction GDP bonus — host nation gains +0.1 gdp_growth on
+        // every stadium completion. RPC trusts the caller; service_role
+        // (this tick processor) goes through the no-auth.uid() path.
+        // Best-effort — a failure shouldn't block the rest of the sweep.
+        try {
+            await supabase.rpc('award_construction_gdp_bonus', { p_nation_id: c.issuer_nation_id });
+        } catch (gdpErr) {
+            console.warn('[VolaStadiumCompletion] gdp bonus rpc failed for', c.id, ':', gdpErr?.message || gdpErr);
+        }
+
         // Event log — "Coastal Vola Park opened · floor +7 · home of Coastal Tide".
         const teamLabel = (c.description || '').replace(/^Home of:\s*/i, '').trim();
         const desc = `${c.name} opened · floor +${floor}` + (teamLabel ? ` · home of ${teamLabel}` : '');

@@ -1423,6 +1423,12 @@ async function buildRegionalHQ(nationId) {
             return;
         }
 
+        // Construction GDP bonus — host nation gains +0.1 gdp_growth.
+        // Best-effort: if the RPC fails the build itself still succeeded.
+        try {
+            await _supabase.rpc('award_construction_gdp_bonus', { p_nation_id: target.id });
+        } catch (_) { /* non-blocking */ }
+
         // Best-effort event log; non-blocking.
         try {
             await _supabase.from('event_log').insert({
@@ -1554,6 +1560,12 @@ async function buildAssemblyPlant(kind, nationId) {
             showToast('Failed to create property: ' + propErr.message + ' (cash refunded)', 'error');
             return;
         }
+
+        // Construction GDP bonus — host nation gains +0.1 gdp_growth.
+        // Best-effort: if the RPC fails the build itself still succeeded.
+        try {
+            await _supabase.rpc('award_construction_gdp_bonus', { p_nation_id: target.id });
+        } catch (_) { /* non-blocking */ }
 
         try {
             await _supabase.from('event_log').insert({
