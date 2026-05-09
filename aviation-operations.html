@@ -2582,13 +2582,6 @@ const PLANT_SHORT_LABEL = {
     heavy_manufacturing_plant:  'Heavy Manufacturing',
     engine_assembly_plant:      'Engine Assembly',
 };
-// Mirror of the v_time_per_unit / volume-discount CASE ladders in
-// queue_production_run (sql/migrations/20261030_aviation_production_runs.sql).
-// Keep both sides in lockstep when tuning — the server is the source
-// of truth, the client uses these for the live cost/time preview.
-const TIME_PER_UNIT_BY_CLASS = {
-    business: 6, regional: 8, narrowbody: 10, widebody: 12,
-};
 
 let _productionQueueState = null;
 let _ownDesignsCache = [];
@@ -2630,6 +2623,31 @@ function activeTierIndex(qty) {
     let idx = 0;
     for (let i = 0; i < tiers.length; i++) if (qty >= tiers[i].min_qty) idx = i;
     return idx;
+}
+
+// ── Time-per-unit (build ticks) per design class ────────────────
+// Single source of truth: public.time_per_unit_tiers(). Returns a
+// flat key→ticks map (engine + the four airframe classes).
+// queue_production_run reads it via time_per_unit_for(); the client
+// fetches it once per session and walks locally for the live build-
+// time preview.
+let _timePerUnitTiers = null;
+async function loadTimePerUnitTiers() {
+    if (_timePerUnitTiers) return _timePerUnitTiers;
+    const { data, error } = await _supabase.rpc('time_per_unit_tiers');
+    if (error) {
+        console.warn('[aviation-ops] time_per_unit_tiers fetch failed:', error.message);
+        _timePerUnitTiers = {};
+        return _timePerUnitTiers;
+    }
+    _timePerUnitTiers = data || {};
+    return _timePerUnitTiers;
+}
+function timePerUnitFor(designType, airframeClass) {
+    const tiers = _timePerUnitTiers || {};
+    if (designType === 'engine')   return Number(tiers.engine) || 8;
+    if (designType === 'aircraft') return Number(tiers[airframeClass]) || 8;
+    return 8;
 }
 
 async function loadProductionQueueData(corpId) {
@@ -2685,7 +2703,11 @@ function isPlantEligibleFor(plant, design) {
 }
 
 async function openProductionQueueModal() {
-    await Promise.all([loadProductionQueueData(_faction.id), loadVolumeDiscountTiers()]);
+    await Promise.all([
+        loadProductionQueueData(_faction.id),
+        loadVolumeDiscountTiers(),
+        loadTimePerUnitTiers(),
+    ]);
     if (_ownDesignsCache.length === 0) {
         alert('No Available designs to produce. Complete an engine or aircraft design first.');
         return;
@@ -2973,7 +2995,7 @@ function renderProductionQueueModal() {
     const assignedPlantIds = Array.from(_productionQueueState.assignedPlants);
     const parallelCapacity = assignedPlantIds.length;
     const timePerUnit = design
-        ? (design.design_type === 'engine' ? 4 : (TIME_PER_UNIT_BY_CLASS[design.airframe_class] || 8))
+        ? timePerUnitFor(design.design_type, design.airframe_class)
         : 0;
     const totalCycles = parallelCapacity > 0 && qty > 0 ? Math.ceil(qty / parallelCapacity) : 0;
     const totalTicks  = totalCycles * timePerUnit;
