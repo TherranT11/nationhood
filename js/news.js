@@ -54,14 +54,14 @@ function canWriteToPublication(pubKey, nationName) {
     if (!cfg) return false;
     // Check home nation
     if (cfg.nations.some(n => n.toLowerCase() === (nationName || '').toLowerCase())) return true;
-    // Check corporate presence nations (subsidiaries/regional HQs)
+    // Check corporate presence nations (regional HQs / branch offices)
     if (_corpPresenceNations && _corpPresenceNations.length > 0) {
         return cfg.nations.some(n => _corpPresenceNations.includes(n.toLowerCase()));
     }
     return false;
 }
 
-// Corporate presence nations — loaded during init for corps with subsidiaries
+// Corporate presence nations — loaded during init for corps with foreign property
 let _corpPresenceNations = [];
 
 // Season key for quarterly issue grouping
@@ -86,7 +86,7 @@ export async function initNewspaper(supabase, state) {
     const root = document.getElementById('newspaper-root');
     if (!root) return;
 
-    // Load corporate presence nations (for corps with subsidiaries)
+    // Load corporate presence nations (for corps with foreign property)
     _corpPresenceNations = [];
     if (state.faction?.faction_type === 'corporation') {
         try {

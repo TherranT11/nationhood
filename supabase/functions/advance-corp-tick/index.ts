@@ -77,8 +77,6 @@ const DEFAULT_MISSED_THRESHOLD = 4;
 //
 //  KNOWN SCOPE GAP — cash events that still bypass the event log:
 //    - advance-tick/index.ts gov_bailout path (non-P&L equity infusion — correct to skip)
-//    - advance-tick/index.ts processAutoRatePolicies (subsidiary insurance
-//      premiums, loan payments, claim payouts — these SHOULD flow through)
 //    - js/corp-refurbish.js client-side refurbish cost (player-initiated expense)
 //    - non-P&L principal transfers (loan principal debit/credit at ~L4355 /
 //      ~L4378 / ~L5419, bond principal credit at ~L2713). These belong in
@@ -1119,11 +1117,11 @@ async function replenishPropertyMarketplace(supabase, nation, currentTick) {
 
 async function processPropertyEffects(supabase, nation, corps, currentTick) {
     for (const corp of corps) {
-        // No nation filter: subsidiary properties can live in a different
-        // nation than their parent corp. Filtering by nation.id here silently
-        // skipped those rows — same bug pattern processSubsidiaryRevenue was
-        // fixed for at line 1363. Each corp appears in exactly one nation's
-        // corps list (its HQ nation), so this runs once per corp per tick.
+        // No nation filter: a corp's properties can live in a different
+        // nation than its HQ. Filtering by nation.id silently skipped
+        // foreign-nation properties. Each corp appears in exactly one
+        // nation's corps list (its HQ nation), so this runs once per
+        // corp per tick.
         const { data: properties, error: propErr } = await supabase
             .from('corp_properties')
             .select('id, monthly_maintenance, condition, capacity, refurbish_until_tick, refurbish_condition, refurbish_count')
@@ -1242,139 +1240,10 @@ async function processPropertyEffects(supabase, nation, corps, currentTick) {
     }
 }
 
-// ==================== SUBSIDIARY REVENUE ====================
-// Each corp tick: subsidiaries gain or lose cash based on nation GDP Growth
-// and their PARENT corp's reputation (which drifts on contract deliveries).
-// Investment return = sub_cash × 0.02 × (1 + (gdpGrowth - 30)/100) × baseRepMult × parentRepMult
-// Operating overhead = $200K/month base cost per subsidiary (scaled by GDP)
-// Revenue = investment return - operating overhead
-// GDP Growth < 30 → investment returns go negative, PLUS overhead → bleeds fast
-// GDP Growth > 30 → investment returns grow, offset overhead
-// baseRepMult is a flat 0.25 (legacy; was meant to be per-sub reputation).
-// parentRepMult: symmetric around 1.0 at parent corp_reputation=50
-//   (parent rep 0 → 0.3x revenue, rep 50 → 1.0x, rep 100 → 1.7x, clamped).
-//   Natural growth loop: parent ships contracts → rep ↑ → sub revenue ↑ → cash compounds.
-// sub_cash CAN go negative (subsidiary in debt — needs capital injection or dissolution)
-// Losses clamped to max 5% of |sub_cash| per tick to prevent instant wipeout.
-
-const SUB_REVENUE_BASE = 0.02;
-const SUB_GDP_NEUTRAL = 30;
-const SUB_DEFAULT_REPUTATION = 25;
-const SUB_MAX_LOSS_RATE = 0.05;
-const SUB_OPERATING_OVERHEAD = 200_000; // $200K/month base cost per subsidiary
-const SUB_PARENT_REP_NEUTRAL = 50;       // at this rep the parent-rep multiplier is 1.0x
-const SUB_PARENT_REP_MIN = 0.3;          // min multiplier at rep 0
-const SUB_PARENT_REP_MAX = 1.7;          // max multiplier at rep 100
-
 // Regional HQ property income — flat-ish trickle scaled by purchase price.
 // 0.2% of purchase price per tick × stability modifier. At a $20M HQ that's
 // ~$40k/tick baseline, maintenance is charged separately in PropertyEffects.
 const HQ_PROPERTY_INCOME_RATE = 0.002;
-
-async function processSubsidiaryRevenue(supabase, nation, currentTick) {
-    const gdpGrowth = Number(nation.gdp_growth ?? 50);
-
-    // Subsidiaries only (role='subsidiary'). Regional HQ properties are
-    // handled by processRegionalHqIncome with a different formula.
-    // Cross-nation subsidiaries (parent corp in nation A, subsidiary in
-    // nation B) are handled by this path via the parent-corp fetch below.
-    const { data: hqs, error: hqErr } = await supabase
-        .from('corp_properties')
-        .select('id, sub_cash, name, faction_id')
-        .eq('nation_id', nation.id)
-        .eq('role', 'subsidiary')
-        .eq('is_active', true);
-
-    if (hqErr) throw hqErr;
-    if (!hqs || hqs.length === 0) {
-        console.log(`[SubRevenue] ${nation.name}: processed 0 regional HQ(s) at tick ${currentTick}.`);
-        return { hqCount: 0, updatedCount: 0 };
-    }
-
-    const parentCorpIds = [...new Set(hqs.map(hq => hq.faction_id).filter(Boolean))];
-    let corpMap = {};
-    if (parentCorpIds.length > 0) {
-        const { data: parentCorps, error: corpErr } = await supabase
-            .from('factions')
-            .select('id, faction_name, corp_reputation')
-            .in('id', parentCorpIds);
-        if (corpErr) throw corpErr;
-        corpMap = Object.fromEntries((parentCorps || []).map(c => [c.id, c]));
-    }
-
-    const baseRepMult = SUB_DEFAULT_REPUTATION / 100;
-    let updatedCount = 0;
-    let skippedCount = 0;
-    // Per-HQ try/catch: one bad row (unexpected null, math overflow, bigint
-    // coercion failure) was aborting the whole nation's loop, leaving every
-    // HQ after the failure silently untouched. The outer catch at the caller
-    // only logs "Subsidiary revenue failed for <nation>" once — the HQs in
-    // that nation were orphaned. Isolate each HQ so one row can't poison the
-    // batch, and include hq.id + faction_id in the error message so the
-    // specific failing row is diagnosable from logs alone.
-    for (const hq of hqs) {
-        try {
-            const subCash = Number(hq.sub_cash ?? 0);
-            const corp = corpMap[hq.faction_id];
-
-            // Parent corp's reputation drives the growth/shrink delta — symmetric
-            // around 1.0 at rep 50, clamped so one bad tick can't zero revenue.
-            const parentRep = Number(corp?.corp_reputation ?? SUB_PARENT_REP_NEUTRAL);
-            const parentRepMult = Math.max(
-                SUB_PARENT_REP_MIN,
-                Math.min(SUB_PARENT_REP_MAX, (parentRep - SUB_PARENT_REP_NEUTRAL) / 100 + 1)
-            );
-
-            // Investment return: based on positive cash balance × GDP × reputation
-            const investCash = Math.max(0, subCash);
-            const gdpMod = (gdpGrowth - SUB_GDP_NEUTRAL) / 100;
-            const investReturn = Math.round(investCash * SUB_REVENUE_BASE * (1 + gdpMod) * baseRepMult * parentRepMult);
-
-            // Operating overhead: scales with GDP (bad GDP = higher costs)
-            // At GDP 50 (average): 1.0x overhead. At GDP 10: 1.4x. At GDP 80: 0.7x.
-            const overheadMult = Math.max(0.1, 1 + (50 - gdpGrowth) / 100);
-            const overhead = Math.round(SUB_OPERATING_OVERHEAD * overheadMult);
-
-            let revenue = investReturn - overhead;
-
-            // Clamp losses to prevent instant wipeout
-            const maxLoss = Math.max(SUB_OPERATING_OVERHEAD, Math.round(Math.abs(subCash) * SUB_MAX_LOSS_RATE));
-            if (revenue < 0) revenue = Math.max(revenue, -maxLoss);
-            if (revenue === 0) { skippedCount += 1; continue; }
-
-            // sub_cash can go negative (subsidiary in debt)
-            const newSubCash = subCash + revenue;
-            const { error: updErr } = await supabase
-                .from('corp_properties')
-                .update({ sub_cash: newSubCash })
-                .eq('id', hq.id);
-
-            if (updErr) {
-                console.warn(`[SubRevenue] Failed to update sub_cash for ${hq.name} (hq.id=${hq.id}, faction_id=${hq.faction_id}):`, updErr.message);
-            } else {
-                updatedCount += 1;
-                // Log territorial revenue to corp_cash_events so the
-                // parent corp's tax base includes this subsidiary's
-                // earnings (or losses — revenue can be negative; the
-                // tax assessor floors the bill at $0). Cash stays in
-                // sub_cash; the event is ledger-only.
-                if (hq.faction_id) {
-                    logCashEvent(hq.faction_id, 'revenue_market',
-                        `${hq.name} subsidiary revenue`, revenue, nation.id);
-                }
-                console.log(`[SubRevenue] ${corp?.faction_name || '?'} → ${hq.name}: ${revenue >= 0 ? '+' : ''}${revenue.toLocaleString()} (GDP:${gdpGrowth}, parentRep:${parentRep}, repMult:${parentRepMult.toFixed(2)}, overhead:${overhead.toLocaleString()}, cash:${subCash.toLocaleString()} → ${newSubCash.toLocaleString()})`);
-            }
-        } catch (hqErr) {
-            // Isolate the throw so the remaining HQs in this nation still
-            // get processed. Include faction_id / hq.id / hq.name so the
-            // specific failing row is identifiable from the log alone.
-            console.error(`[SubRevenue] HQ threw (hq.id=${hq.id}, faction_id=${hq.faction_id}, name=${hq.name}):`, hqErr);
-        }
-    }
-
-    console.log(`[SubRevenue] ${nation.name}: processed ${hqs.length} subsidiary(ies), updated ${updatedCount}, skipped(rev=0) ${skippedCount}, at tick ${currentTick}.`);
-    return { hqCount: hqs.length, updatedCount, skippedCount };
-}
 
 // Regional HQ property income — simple flat-ish income based on purchase price.
 // Purpose: a marketplace-purchased HQ is a property, not a business branch, so
@@ -1625,7 +1494,7 @@ async function processHealthInsurancePools(supabase, nation, currentTick) {
     // ── Load factions (subsector + skilled workforce + cash reserves) ──
     // Filter out abandoned/bankrupt corps so a defunct faction doesn't keep
     // earning premiums from offices that should be inert. Mirrors the
-    // abandoned_at filter in processSubsidiaryRevenue / processCorpMonthlyIncome.
+    // abandoned_at filter in processCorpMonthlyIncome.
     const { data: factions, error: factErr } = await supabase
         .from('factions')
         .select('id, faction_name, corp_subsector, corp_skilled_workforce, corp_cash_reserves, corp_reputation')
@@ -5011,9 +4880,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
             // Per-corp wrapper handles each active route: pax → revenue →
             // ops → maint (anniversary only) → incident roll → aggregate
             // update. Cash flows go through emit_corp_cash_event so the
-            // ledger and corp_cash_reserves stay in sync. Airline corps
-            // headquartered in this nation only — subsidiary HQs aren't
-            // a thing for airlines yet.
+            // ledger and corp_cash_reserves stay in sync.
             try {
                 const airlineCorps = corps.filter(c => c.corp_sector === 'Airline');
                 if (airlineCorps.length > 0) {
@@ -5043,17 +4910,6 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
             } catch (airlineErr) {
                 console.error(`[advance-corp-tick] Airline pass failed for ${nation.name} (non-fatal):`, airlineErr);
                 summary.errors.push({ nation: nation.name, sector: 'airline', error: String(airlineErr) });
-            }
-
-            // ── Subsidiary Revenue (GDP-based growth/loss per subsidiary) ──
-            try {
-                const subRevenueSummary = await processSubsidiaryRevenue(supabase, nation, currentTick);
-                if (corps.length === 0) {
-                    console.log(`[advance-corp-tick] ${nation.name}: 0 local corporations, subsidiary path processed ${subRevenueSummary?.hqCount || 0} subsidiary(ies).`);
-                }
-            } catch (subRevErr) {
-                console.error(`[advance-corp-tick] Subsidiary revenue failed for ${nation.name} (non-fatal):`, subRevErr);
-                summary.errors.push({ nation: nation.name, sector: 'subsidiary_revenue', error: String(subRevErr) });
             }
 
             // ── Regional HQ Property Income (flat-ish income from marketplace HQs) ──

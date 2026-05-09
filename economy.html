@@ -1493,7 +1493,7 @@ function formatDelta(d) {
 // ==================== INDUSTRIES TAB ====================
 
 var _industriesCorps = [];
-var _industriesSubsidiaries = []; // corps HQ'd elsewhere with properties here
+var _industriesForeignBranches = []; // corps HQ'd elsewhere with properties here
 var _industriesContracts = [];
 var _industriesMaterials = [];
 var _industriesEquipment = [];
@@ -1552,7 +1552,7 @@ async function loadIndustriesData(nationId) {
     var allCorps = corpsRes.data || [];
     _industriesCorps = allCorps.filter(function(c) { return c.nation_id === nationId; });
     var propFactionIds = new Set((propsRes.data || []).map(function(p) { return p.faction_id; }));
-    _industriesSubsidiaries = allCorps.filter(function(c) {
+    _industriesForeignBranches = allCorps.filter(function(c) {
         return c.nation_id !== nationId && propFactionIds.has(c.id);
     });
     _industriesContracts = contractsRes.data || [];
@@ -1588,8 +1588,9 @@ function renderIndustriesTab(nation) {
         corpRevMap[d.faction_id] = (corpRevMap[d.faction_id] || 0) + (d.payment_received || 0);
     });
 
-    // Combine local corps + subsidiaries for display
-    var allLocalCorps = _industriesCorps.concat(_industriesSubsidiaries);
+    // Combine locally-headquartered corps + foreign-headquartered corps
+    // with property in this nation, for display.
+    var allLocalCorps = _industriesCorps.concat(_industriesForeignBranches);
 
     // Construction column: only Construction-sector corps
     var constructionCorps = allLocalCorps.filter(function(c) { return (c.corp_sector || '').toLowerCase() === 'construction'; });
@@ -1597,8 +1598,9 @@ function renderIndustriesTab(nation) {
         return (corpRevMap[b.id] || 0) - (corpRevMap[a.id] || 0);
     });
 
-    // Subsidiary lookup for parent display
-    var subsidiaryIds = new Set(_industriesSubsidiaries.map(function(s) { return s.id; }));
+    // Foreign-branch lookup: corps HQ'd elsewhere but with property in
+    // this nation. Used to disambiguate sector counts (local vs branch).
+    var foreignBranchIds = new Set(_industriesForeignBranches.map(function(s) { return s.id; }));
 
     // ── MATERIALS: aggregate warehouse value ──
     var materialTotals = {};
@@ -1758,12 +1760,12 @@ function renderIndustriesTab(nation) {
             var c = corps[i];
             var rev = revenueMap[c.id] || 0;
             var barW = maxRev > 0 ? Math.max(2, (rev / maxRev) * 100) : 0;
-            var isSub = subsidiaryIds.has(c.id);
+            var isSub = foreignBranchIds.has(c.id);
             rows += '<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04);">';
             rows += '<div style="display:flex;justify-content:space-between;align-items:center;">';
             rows += '<div>';
             rows += '<div style="font-size:0.8rem;font-weight:700;color:var(--dtext-1);">' + (i + 1) + '. ' + escapeHtml(c.faction_name);
-            if (isSub) rows += ' <span style="font-size:0.55rem;padding:1px 5px;border-radius:3px;background:rgba(90,175,165,0.12);color:var(--teal);border:1px solid rgba(90,175,165,0.3);vertical-align:middle;">SUBSIDIARY</span>';
+            if (isSub) rows += ' <span style="font-size:0.55rem;padding:1px 5px;border-radius:3px;background:rgba(90,175,165,0.12);color:var(--teal);border:1px solid rgba(90,175,165,0.3);vertical-align:middle;">FOREIGN</span>';
             rows += '</div>';
             rows += '<div style="font-size:0.65rem;color:var(--dtext-3);">' + escapeHtml(c.corp_ticker || '') + ' · ' + escapeHtml(c.corp_company_type || 'Private') + ' · ' + escapeHtml(c.corp_subsector || 'General');
             if (isSub) rows += ' <span style="font-style:italic;">· HQ: foreign</span>';
@@ -1784,7 +1786,7 @@ function renderIndustriesTab(nation) {
             var fId = purchasers[i][0];
             var val = purchasers[i][1];
             var barW = maxVal > 0 ? Math.max(2, (val / maxVal) * 100) : 0;
-            var allCorps = _industriesCorps.concat(_industriesSubsidiaries);
+            var allCorps = _industriesCorps.concat(_industriesForeignBranches);
             var corp = allCorps.find(function(c) { return c.id === fId; });
             var name = corp ? corp.faction_name : 'Unknown';
             var detail = corp ? (corp.corp_subsector || corp.corp_company_type || '') : '';
@@ -1880,10 +1882,10 @@ function renderIndustriesTab(nation) {
     h += renderDrivers(conDrivers, 'var(--damber)');
     h += secHeader('Notable Corporations', 'var(--damber)');
     h += renderCorpList(constructionCorpsSorted, corpRevMap, 3, 'var(--damber)');
-    var conCorpCount = constructionCorps.filter(function(c) { return !subsidiaryIds.has(c.id); }).length;
-    var conSubCount = constructionCorps.filter(function(c) { return subsidiaryIds.has(c.id); }).length;
-    var subNote = conSubCount > 0 ? ' · ' + conSubCount + ' subsidiar' + (conSubCount !== 1 ? 'ies' : 'y') : '';
-    h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + conCorpCount + ' local construction corp' + (conCorpCount !== 1 ? 's' : '') + subNote + '</div>';
+    var conCorpCount = constructionCorps.filter(function(c) { return !foreignBranchIds.has(c.id); }).length;
+    var conForeignCount = constructionCorps.filter(function(c) { return foreignBranchIds.has(c.id); }).length;
+    var foreignNote = conForeignCount > 0 ? ' · ' + conForeignCount + ' foreign branch' + (conForeignCount !== 1 ? 'es' : '') : '';
+    h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + conCorpCount + ' local construction corp' + (conCorpCount !== 1 ? 's' : '') + foreignNote + '</div>';
     h += '</div>';
 
     // ── COLUMN 2: MATERIALS ──
@@ -1972,7 +1974,7 @@ function renderIndustriesTab(nation) {
     h += secHeader('Notable Lenders', '#5a8aaa');
     var finLenders = Object.entries(finLenderMap).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 3);
     h += renderPurchaserList(finLenders, '#5a8aaa');
-    var finCorpCount = bankingCorps.filter(function(c) { return !subsidiaryIds.has(c.id); }).length;
+    var finCorpCount = bankingCorps.filter(function(c) { return !foreignBranchIds.has(c.id); }).length;
     h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + finCorpCount + ' local banking corp' + (finCorpCount !== 1 ? 's' : '') + '</div>';
     h += '</div>';
 
@@ -1999,7 +2001,7 @@ function renderIndustriesTab(nation) {
     h += secHeader('Notable Firms', '#8a6aaa');
     var invCorpsSorted = investmentCorps.slice().sort(function(a, b) { return (finLenderMap[b.id] || 0) - (finLenderMap[a.id] || 0); });
     h += renderCorpList(invCorpsSorted, finLenderMap, 3, '#8a6aaa');
-    var invCorpCount = investmentCorps.filter(function(c) { return !subsidiaryIds.has(c.id); }).length;
+    var invCorpCount = investmentCorps.filter(function(c) { return !foreignBranchIds.has(c.id); }).length;
     h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + invCorpCount + ' local investment corp' + (invCorpCount !== 1 ? 's' : '') + '</div>';
     h += '</div>';
 
@@ -2030,7 +2032,7 @@ function renderIndustriesTab(nation) {
     });
     var insLenders = Object.entries(insLenderMap).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 3);
     h += renderPurchaserList(insLenders, '#aa7a5a');
-    var insCorpCount = insuranceCorps.filter(function(c) { return !subsidiaryIds.has(c.id); }).length;
+    var insCorpCount = insuranceCorps.filter(function(c) { return !foreignBranchIds.has(c.id); }).length;
     h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + insCorpCount + ' local insurance corp' + (insCorpCount !== 1 ? 's' : '') + '</div>';
     h += '</div>';
 
@@ -2089,7 +2091,7 @@ function renderIndustriesTab(nation) {
 
     h += secHeader('Notable Corporations', shippingColor);
     h += renderCorpList(shippingCorpsSorted, shippingRevMap, 3, shippingColor);
-    var shipCorpCount = shippingCorps.filter(function(c) { return !subsidiaryIds.has(c.id); }).length;
+    var shipCorpCount = shippingCorps.filter(function(c) { return !foreignBranchIds.has(c.id); }).length;
     h += '<div style="font-size:0.6rem;color:var(--dtext-3);margin-top:8px;">' + shipCorpCount + ' local shipping corp' + (shipCorpCount !== 1 ? 's' : '') + '</div>';
     h += '</div>';
 

@@ -189,12 +189,6 @@ DECLARE
         -- ══ Deputies ══
         'faction_deputies',
 
-        -- ══ Subsidiary services ══
-        'subsidiary_auto_policies',
-        'subsidiary_auto_rates',
-        'subsidiary_bids',
-        'subsidiary_sales',
-
         -- ══ Insurance (must come before corp_vessels and finance_active_loans) ══
         'insurance_claims',
 
