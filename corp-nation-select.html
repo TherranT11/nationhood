@@ -612,7 +612,7 @@ function renderNations() {
             : (isAirlineBlocked ? 'Unavailable' : '');
 
         const pop = nation.population ? nation.population.toLocaleString() : '—';
-        const ctrl = nation.control != null ? Math.round(nation.control) : '—';
+        const ctrl = nation.state_apparatus != null ? Math.round(nation.state_apparatus) : '—';
         // PHASE 7 TODO: corporate_tax drops in Phase 9
         const corpTax = nation.corporate_tax != null ? Math.round(nation.corporate_tax) + '%' : '—';
 
@@ -1006,7 +1006,7 @@ async function confirmNation() {
         // in sql/migrations/20260711_persist_national_hq.sql.
         try {
             const hqValue = nationalHqValue(nation.standard_of_living);
-            const hqQuality = nationalHqQuality(nation.control);
+            const hqQuality = nationalHqQuality(nation.state_apparatus);
             const hqMaint = Math.round(hqValue * 0.005);
             const { error: hqErr } = await _supabase.from('corp_properties').insert({
                 faction_id: corpId,

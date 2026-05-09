@@ -16,15 +16,16 @@ import { fireBilateralEvent } from './event-helpers.js';
 
 /**
  * Per-tick income tax revenue.
- *   (population / 10_000_000) × income_tax × (1 − unrest/100)
+ *   (population / 10_000_000) × (income_tax / 100) × wages × (1 − unrest/100)
  * Lands as a small literal number that adds to nation.budget each tick.
  * Pass a rateOverride to preview revenue at a hypothetical rate.
  */
 export function computeIncomeTaxRevenue(nation, rateOverride) {
     const pop = Number(nation.population || 0);
     const rate = rateOverride !== undefined ? Number(rateOverride) : Number(nation.income_tax || 0);
+    const wages = Number(nation.wages || 0);
     const unrest = Number(nation.unrest || 0);
-    const rev = (pop / 10_000_000) * rate * (1 - unrest / 100);
+    const rev = (pop / 10_000_000) * (rate / 100) * wages * (1 - unrest / 100);
     return Math.max(0, rev);
 }
 
@@ -153,7 +154,7 @@ export async function computePanelAnnualExpenditures(supabase, nation) {
     // annual = monthly × 12. Mirrors _gbBuildCostRows in government.html
     // exactly so the panel's monthly balance and the per-tick debt
     // change always agree.
-    const publicSectorWagesAnnual = (Number(nation?.control) || 0) * (Number(nation?.wages) || 0) / 100 * 12;
+    const publicSectorWagesAnnual = (Number(nation?.state_apparatus) || 0) * (Number(nation?.wages) || 0) / 100 * 12;
     return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost + publicSectorWagesAnnual;
 }
 

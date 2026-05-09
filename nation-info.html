@@ -331,7 +331,7 @@ var STAT_SECTIONS = [
         ['Cost of Living', 'cost_of_living', 'Consumer cost burden', null, true]
     ]},
     { id: 'governance', icon: '&#127963;', title: 'Governance', stats: [
-        ['State Apparatus', 'control', 'Government control of territory'],
+        ['State Apparatus', 'state_apparatus', 'Government control of territory'],
         ['Public Approval', 'public_approval', 'Public approval of the government'],
         ['Corruption', 'corruption', 'Government corruption level', null, true],
         ['Crown Authority', 'crown_authority', 'Authority of the crown', null, false, null, function(n){ return n.crown_authority != null; }]
@@ -609,7 +609,7 @@ function renderSidebar() {
         ['Budget', fmtCur(scaleGDP(nation.budget))],
         ['Nat. Debt', fmtCur(scaleGDP(nation.debt))],
         ['Approval', (nation.gov_approval ?? 40) + '%'],
-        ['State Apparatus', nation.control != null ? Number(nation.control).toFixed(0) : 'N/A'],
+        ['State Apparatus', nation.state_apparatus != null ? Number(nation.state_apparatus).toFixed(0) : 'N/A'],
         ['Unrest', nation.unrest != null ? Number(nation.unrest).toFixed(0) : 'N/A']
     ];
     var lh = '';

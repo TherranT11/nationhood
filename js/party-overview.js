@@ -162,12 +162,11 @@ export async function initPartyOverview(supabase, state, containerId) {
                 .eq('is_active', true)
                 .order('display_order'),
             // Recently-passed bills feed. Mirrors the join shape used by
-            // processSectorShifts in advance-tick (selected_option's
-            // sector_effects preferred over the legacy policies column),
-            // plus bill_support stances so the renderer can split parties
-            // into "gained" (sponsor + yes) and "lost" (no) buckets.
+            // processSectorShifts in advance-tick — sector_effects come from
+            // the chosen policy_option. bill_support stances let the renderer
+            // split parties into "gained" (sponsor + yes) and "lost" (no).
             supabase.from('bills')
-                .select('id, bill_name, bill_type, proposed_by, passed_tick, bill_articles(policies(sector_effects), selected_option:policy_options!selected_option_id(sector_effects)), bill_support(faction_id, stance)')
+                .select('id, bill_name, bill_type, proposed_by, passed_tick, bill_articles(selected_option:policy_options!selected_option_id(sector_effects)), bill_support(faction_id, stance)')
                 .eq('nation_id', nationId)
                 .eq('status', 'passed')
                 .not('passed_tick', 'is', null)
@@ -541,15 +540,12 @@ function renderMechanicsCard() {
 }
 
 // Aggregate every article's sector_effects into a single
-// sector_key → change_tenths map, preferring the chosen policy_option's
-// effects (Phase 4.2+) and falling back to the legacy policies.sector_effects
-// for orphaned data. Mirrors sumSectorEffects in advance-tick.
+// sector_key → change_tenths map. sector_effects live on the chosen
+// policy_option. Mirrors sumSectorEffects in advance-tick.
 function aggregateBillEffects(bill) {
     const sums = new Map();
     for (const art of (bill.bill_articles || [])) {
-        const effects = art?.selected_option?.sector_effects
-                     || art?.policies?.sector_effects
-                     || [];
+        const effects = art?.selected_option?.sector_effects || [];
         for (const e of effects) {
             if (!e || typeof e.sector_key !== 'string') continue;
             const change = Number(e.change_tenths);

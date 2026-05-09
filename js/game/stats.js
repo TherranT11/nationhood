@@ -120,7 +120,7 @@
 export const NATION_STAT_COLUMNS = [
     'gdp_growth', 'debt', 'immigration', 'standard_of_living', 'cost_of_living',
     'budget',
-    'control', 'unrest', 'public_approval', 'crown_authority',
+    'state_apparatus', 'unrest', 'public_approval', 'crown_authority',
     'energy', 'health', 'education', 'global_image',
     'infrastructure', 'industry', 'farmland',
     'service_sector', 'unskilled_workers', 'skilled_workers', 'wages',
@@ -164,8 +164,9 @@ export const STAT_KEY_ALIASES = {
     education_quality:          'education',
     arable_land:                'farmland',
     manufacturing_output:       'industry',
-    stability:                  'control',
-    military_strength:          'control',
+    control:                    'state_apparatus',
+    stability:                  'state_apparatus',
+    military_strength:          'state_apparatus',
     hospital_beds:              'health',
 
     // ── Canonical-stats Phase 2: power → global_image ──
@@ -324,7 +325,7 @@ export function translateStatEffect(eff) {
  */
 export const STATS_HIGHER_IS_BETTER = [
     'gdp_growth', 'immigration', 'standard_of_living',
-    'control', 'public_approval', 'crown_authority',
+    'state_apparatus', 'public_approval', 'crown_authority',
     'energy', 'health', 'education', 'global_image',
     'infrastructure', 'industry', 'farmland', 'service_sector',
     'unskilled_workers', 'skilled_workers', 'wages',

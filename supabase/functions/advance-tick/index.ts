@@ -810,7 +810,7 @@ const AID_CONDITION_STATS = [
     { key: 'health', label: 'Healthcare', default_operator: 'gte', category: 'Social' },
     { key: 'standard_of_living', label: 'Standard of Living', default_operator: 'gte', category: 'Social' },
     // Security
-    { key: 'control', label: 'State Apparatus', default_operator: 'gte', category: 'Security' },
+    { key: 'state_apparatus', label: 'State Apparatus', default_operator: 'gte', category: 'Security' },
     { key: 'unrest', label: 'Unrest', default_operator: 'lte', category: 'Security' },
     // International
     { key: 'global_image', label: 'Global Image', default_operator: 'gte', category: 'International' }
@@ -1174,7 +1174,7 @@ const PROPOSAL_TYPES = {
         description: 'Binding commitment not to declare war for a set period.',
         stat_effects: [
             // alpha-19: stability → control; international_reputation → power.
-            { stat_key: 'control', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
+            { stat_key: 'state_apparatus', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
             { stat_key: 'global_image', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
@@ -1184,7 +1184,7 @@ const PROPOSAL_TYPES = {
         description: 'Mutual defense pact — if one is attacked, the other must respond.',
         stat_effects: [
             // alpha-19: stability → control; international_reputation → power.
-            { stat_key: 'control', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 },
+            { stat_key: 'state_apparatus', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 },
             { stat_key: 'global_image', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
@@ -1204,7 +1204,7 @@ const PROPOSAL_TYPES = {
         requires_war: true,
         stat_effects: [
             // alpha-19: stability → control; civil_unrest → unrest.
-            { stat_key: 'control', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 1 },
+            { stat_key: 'state_apparatus', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 1 },
             { stat_key: 'unrest', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
@@ -2369,7 +2369,7 @@ function checkSovereigntyConstraints(activeProposals, policySector) {
 const NATION_STAT_COLUMNS = [
     'gdp_growth', 'debt', 'immigration', 'standard_of_living', 'cost_of_living',
     'budget',
-    'control', 'unrest', 'public_approval', 'crown_authority',
+    'state_apparatus', 'unrest', 'public_approval', 'crown_authority',
     'energy', 'health', 'education', 'global_image',
     'infrastructure', 'industry', 'farmland',
     'service_sector', 'unskilled_workers', 'skilled_workers', 'wages',
@@ -2413,8 +2413,9 @@ const STAT_KEY_ALIASES = {
     education_quality:          'education',
     arable_land:                'farmland',
     manufacturing_output:       'industry',
-    stability:                  'control',
-    military_strength:          'control',
+    control:                    'state_apparatus',
+    stability:                  'state_apparatus',
+    military_strength:          'state_apparatus',
     hospital_beds:              'health',
 
     // ── Canonical-stats Phase 2: power → global_image ──
@@ -2573,7 +2574,7 @@ function translateStatEffect(eff) {
  */
 const STATS_HIGHER_IS_BETTER = [
     'gdp_growth', 'immigration', 'standard_of_living',
-    'control', 'public_approval', 'crown_authority',
+    'state_apparatus', 'public_approval', 'crown_authority',
     'energy', 'health', 'education', 'global_image',
     'infrastructure', 'industry', 'farmland', 'service_sector',
     'unskilled_workers', 'skilled_workers', 'wages',
@@ -3060,15 +3061,16 @@ async function adjustGovernmentApprovalEvent(supabase, nationId, amount, source)
 
 /**
  * Per-tick income tax revenue.
- *   (population / 10_000_000) × income_tax × (1 − unrest/100)
+ *   (population / 10_000_000) × (income_tax / 100) × wages × (1 − unrest/100)
  * Lands as a small literal number that adds to nation.budget each tick.
  * Pass a rateOverride to preview revenue at a hypothetical rate.
  */
 function computeIncomeTaxRevenue(nation, rateOverride) {
     const pop = Number(nation.population || 0);
     const rate = rateOverride !== undefined ? Number(rateOverride) : Number(nation.income_tax || 0);
+    const wages = Number(nation.wages || 0);
     const unrest = Number(nation.unrest || 0);
-    const rev = (pop / 10_000_000) * rate * (1 - unrest / 100);
+    const rev = (pop / 10_000_000) * (rate / 100) * wages * (1 - unrest / 100);
     return Math.max(0, rev);
 }
 
@@ -3197,7 +3199,7 @@ async function computePanelAnnualExpenditures(supabase, nation) {
     // annual = monthly × 12. Mirrors _gbBuildCostRows in government.html
     // exactly so the panel's monthly balance and the per-tick debt
     // change always agree.
-    const publicSectorWagesAnnual = (Number(nation?.control) || 0) * (Number(nation?.wages) || 0) / 100 * 12;
+    const publicSectorWagesAnnual = (Number(nation?.state_apparatus) || 0) * (Number(nation?.wages) || 0) / 100 * 12;
     return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost + publicSectorWagesAnnual;
 }
 
@@ -5317,7 +5319,7 @@ function getStrongholdSectors(factionId, sectors, popularityRows, topN = 3) {
  * hurts (likely NO); zero = neutral.
  *
  * Inputs:
- *   billSectorEffects   = [{ sector_key, change_tenths }]  (from policies.sector_effects)
+ *   billSectorEffects   = [{ sector_key, change_tenths }]  (from policy_options.sector_effects)
  *   factionStrongholds  = [{ sector_key, ... }]            (from getStrongholdSectors)
  */
 function computeStrongholdScore(billSectorEffects, factionStrongholds) {
@@ -5839,14 +5841,12 @@ async function processSectorShifts(supabase, nationId, resolutions) {
     if (actionable.length === 0) return;
 
     const billIds = actionable.map(r => r.billId);
-    // Phase 4.2: each bill_article also embeds the chosen policy_option's
-    // sector_effects via the selected_option_id FK. Multi-option policies
-    // store sector_effects on the option, not the policies row; the article
-    // sums below prefer the option's sector_effects when present and fall
-    // back to the legacy policies.sector_effects only for orphaned data.
+    // Each bill_article carries its sector_effects via the chosen
+    // policy_option (selected_option_id FK). policies.sector_effects was
+    // dropped in the alpha refactor — the option is now the single source.
     const { data: bills, error: billErr } = await supabase
         .from('bills')
-        .select('id, nation_id, proposed_by, bill_type, bill_articles(*, policies(sector_effects), selected_option:policy_options!selected_option_id(sector_effects)), bill_support(faction_id, stance)')
+        .select('id, nation_id, proposed_by, bill_type, bill_articles(*, selected_option:policy_options!selected_option_id(sector_effects)), bill_support(faction_id, stance)')
         .in('id', billIds);
     if (billErr) {
         console.error('[processSectorShifts] failed to load bills', { nationId, error: billErr.message });
@@ -5886,12 +5886,8 @@ async function processSectorShifts(supabase, nationId, resolutions) {
         const result = resultByBill.get(bill.id);
         if (!result) continue;
 
-        // Phase 4.2: per-option sector_effects take precedence over the
-        // legacy policies.sector_effects column. Phase 2.5 onward stops
-        // writing the legacy column, so this fallback only fires for
-        // orphaned pre-multi-option data.
         const articleEffects = (bill.bill_articles || [])
-            .map(art => (art?.selected_option?.sector_effects || art?.policies?.sector_effects))
+            .map(art => art?.selected_option?.sector_effects)
             .filter(e => Array.isArray(e) && e.length > 0);
         if (articleEffects.length === 0) continue;
         const summed = sumSectorEffects(articleEffects);
@@ -6772,7 +6768,7 @@ async function resolveReferendums(supabase, nation, currentTick) {
         // falling to defaults so 4 of 9 sentiment terms contributed nothing.
         var publicApproval     = Number(nation.public_approval ?? 50);
         var unrest             = Number(nation.unrest ?? 50);
-        var stateApparatus     = Number(nation.control ?? 50);
+        var stateApparatus     = Number(nation.state_apparatus ?? 50);
         var crownAuthority     = nation.crown_authority != null ? Number(nation.crown_authority) : null;
         var budget             = Number(nation.budget ?? 50);
         var debt               = Number(nation.debt ?? 50);
@@ -7322,10 +7318,10 @@ async function resolveImpeachmentConvictionBill(supabase, bill, ctx) {
         }
 
         // Stability recovers +3.
-        const { data: natRow } = await supabase.from('nations').select('control').eq('id', bill.nation_id).single();
+        const { data: natRow } = await supabase.from('nations').select('state_apparatus').eq('id', bill.nation_id).single();
         if (natRow) {
             await supabase.from('nations').update({
-                control: Math.min(100, Math.round(Number(natRow.control || 0) + 3)),
+                state_apparatus: Math.min(100, Math.round(Number(natRow.state_apparatus || 0) + 3)),
             }).eq('id', bill.nation_id);
         }
 
@@ -9808,13 +9804,13 @@ async function enactPresidentialTermLength(supabase, bill, currentTick) {
         console.log(`[enactFoundationalBill] Term shortened (polarization + political_engagement effects retired by alpha refactor)`);
     } else if (newTermTicks > oldTermTicks) {
         const newAuthority = Math.max(0, (nation?.public_approval || 50) - 3);
-        const newControl   = Math.min(100, (nation?.control || 50) + 2);
+        const newStateApparatus = Math.min(100, (nation?.state_apparatus || 50) + 2);
         const { error: extErr } = await supabase.from('nations').update({
             public_approval: newAuthority,
-            control:   newControl
+            state_apparatus: newStateApparatus
         }).eq('id', bill.nation_id);
         if (extErr) console.error(`[enactFoundationalBill] Term extended stat update failed:`, extErr.message);
-        else console.log(`[enactFoundationalBill] Term extended: authority -3, control +2`);
+        else console.log(`[enactFoundationalBill] Term extended: public_approval -3, state_apparatus +2`);
     }
 
     // If no imminent election, reschedule the next presidential election with the new term length
@@ -9899,10 +9895,10 @@ async function enactLegislativeTermLength(supabase, bill, currentTick) {
         console.log(`[enactFoundationalBill] Legislative term shortened (polarization + political_engagement effects retired by alpha refactor)`);
     } else if (newParlTermTicks > oldParlTermTicks) {
         const newAuthority = Math.max(0, (nation?.public_approval || 50) - 3);
-        const newControl   = Math.min(100, (nation?.control || 50) + 2);
+        const newStateApparatus = Math.min(100, (nation?.state_apparatus || 50) + 2);
         const { error: extErr } = await supabase.from('nations').update({
             public_approval: newAuthority,
-            control:   newControl
+            state_apparatus: newStateApparatus
         }).eq('id', bill.nation_id);
         if (extErr) console.error(`[enactFoundationalBill] Legislative term extended stat update failed:`, extErr.message);
         else console.log(`[enactFoundationalBill] Legislative term extended: authority -3, control +2`);
@@ -10266,7 +10262,7 @@ async function enactConstitutionalReform(supabase, bill, currentTick) {
     }
 
     // ── Stat effects based on target system ──
-    const stability = nation?.control || 50;
+    const stability = nation?.state_apparatus || 50;
     const legitimacy = nation?.public_approval || 50;
     const politicalEngagement = nation?.political_engagement || 50;
     const polarization = 0;
@@ -10360,12 +10356,11 @@ async function enactHosElectionMethod(supabase, bill, currentTick) {
     }
 
     // Apply mechanical effects based on method. Alpha refactor:
-    // stability → control, legitimacy → authority; polarization +
-    // political_engagement effects retired (columns gone).
+    // polarization + political_engagement effects retired (columns gone).
     if (newMethod === 'hereditary') {
-        const newControl   = Math.min(100, (nation?.control || 50) + 5);
+        const newStateApparatus = Math.min(100, (nation?.state_apparatus || 50) + 5);
         const newAuthority = Math.max(0, (nation?.public_approval || 50) - 5);
-        const statUpdate = { control: newControl, public_approval: newAuthority };
+        const statUpdate = { state_apparatus: newStateApparatus, public_approval: newAuthority };
 
         const { error: statErr } = await supabase.from('nations').update(statUpdate).eq('id', bill.nation_id);
         if (statErr) console.error(`[enactFoundationalBill] Hereditary stat update failed:`, statErr.message);
@@ -12234,8 +12229,8 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
                 p_tick: currentTick
             });
         }
-        const newStability = Math.min(100, Number(nationCheck?.control ?? 50) + 3);
-        await supabase.from('nations').update({ control: newStability }).eq('id', nationId);
+        const newStateApparatus = Math.min(100, Number(nationCheck?.state_apparatus ?? 50) + 3);
+        await supabase.from('nations').update({ state_apparatus: newStateApparatus }).eq('id', nationId);
     }
     // 35-50: no momentum or stability changes
 
@@ -12341,11 +12336,10 @@ async function dissolveParliament(supabase, nationId, presidentFactionId) {
     // Check if dissolving after a recent no-confidence vote (authoritarian overreach)
     const voncPenalty = nation.last_vonc_tick && (currentTick - nation.last_vonc_tick) <= 6;
 
-    // 1. Control -3 (+ authority -5 if post-vonc).
-    // Alpha refactor: stability → control, legitimacy → authority.
-    const newControl = Math.max(0, Number(nation.control ?? 50) - 3);
+    // 1. State Apparatus -3 (+ authority -5 if post-vonc).
+    const newStateApparatus = Math.max(0, Number(nation.state_apparatus ?? 50) - 3);
     const nationUpdate = {
-        control: newControl,
+        state_apparatus: newStateApparatus,
         last_dissolution_tick: currentTick
     };
     if (voncPenalty) {
@@ -14227,29 +14221,27 @@ async function processPresidentialElectionResult(supabase, nation, completedElec
     // === WINNER/LOSER EFFECTS ===
     try {
         const { data: nationStats } = await supabase.from('nations')
-            .select('control, public_approval, standard_of_living, unrest')
+            .select('state_apparatus, public_approval, standard_of_living, unrest')
             .eq('id', nation.id).single();
 
         if (nationStats) {
             const updates = {};
             if (isIncumbentWin) {
-                // Incumbent wins: +3 legitimacy, +2 stability (mandate renewed)
-                updates.legitimacy = Math.min(100, Math.round(((nationStats.public_approval || 50) + 3) * 10) / 10);
-                updates.stability = Math.min(100, Math.round(((nationStats.control || 50) + 2) * 10) / 10);
-                console.log(`Incumbent win effects: +3 legitimacy, +2 stability (${nation.name})`);
+                // Incumbent wins: mandate renewed.
+                updates.public_approval = Math.min(100, Math.round((nationStats.public_approval || 50) + 3));
+                updates.state_apparatus = Math.min(100, Math.round((nationStats.state_apparatus || 50) + 2));
+                console.log(`Incumbent win effects: +3 public_approval, +2 state_apparatus (${nation.name})`);
             } else if (isChallengerWin && !wasRunoff) {
                 // Challenger wins (no runoff): transition effects
-                updates.stability = Math.max(0, Math.round(((nationStats.control || 50) - 2) * 10) / 10);
-                updates.civil_unrest = Math.min(100, Math.round(((nationStats.unrest || 0) + 3) * 10) / 10);
-                updates.happiness = Math.min(100, Math.round(((nationStats.standard_of_living || 50) + 1) * 10) / 10);
-                console.log(`Challenger win effects: -2 stability, +3 civil_unrest, +1 happiness (${nation.name})`);
+                updates.state_apparatus = Math.max(0, Math.round((nationStats.state_apparatus || 50) - 2));
+                updates.unrest = Math.min(100, Math.round((nationStats.unrest || 0) + 3));
+                console.log(`Challenger win effects: -2 state_apparatus, +3 unrest (${nation.name})`);
             } else if (isIncumbentRunoffLoss) {
                 // Incumbent loses in runoff: extra penalties (contested transition)
-                updates.stability = Math.max(0, Math.round(((nationStats.control || 50) - 4) * 10) / 10);
-                updates.legitimacy = Math.max(0, Math.round(((nationStats.public_approval || 50) - 2) * 10) / 10);
-                updates.civil_unrest = Math.min(100, Math.round(((nationStats.unrest || 0) + 5) * 10) / 10);
-                updates.happiness = Math.min(100, Math.round(((nationStats.standard_of_living || 50) + 2) * 10) / 10);
-                console.log(`Incumbent runoff loss effects: -4 stability, -2 legitimacy, +5 civil_unrest, +2 happiness (${nation.name})`);
+                updates.state_apparatus = Math.max(0, Math.round((nationStats.state_apparatus || 50) - 4));
+                updates.public_approval = Math.max(0, Math.round((nationStats.public_approval || 50) - 2));
+                updates.unrest = Math.min(100, Math.round((nationStats.unrest || 0) + 5));
+                console.log(`Incumbent runoff loss effects: -4 state_apparatus, -2 public_approval, +5 unrest (${nation.name})`);
             }
 
             if (Object.keys(updates).length > 0) {
@@ -22738,11 +22730,11 @@ async function processCrises(supabase, nation, currentTick) {
 
 function _removedProcessRevolution() { return null; }
 function formatStatName(stat) {
-    // 'control' renders as "State Apparatus" — a relabel without a
-    // schema rename. Every other stat falls through to the generic
-    // title-case path. If more relabels accumulate, promote this to
-    // a small lookup table.
-    if (stat === 'control') return 'State Apparatus';
+    // state_apparatus renders as "State Apparatus" (and the legacy
+    // 'control' key still translates to the same label for any
+    // pre-rename strings sitting in event_log / stat_effects JSON).
+    // Every other stat falls through to the generic title-case path.
+    if (stat === 'state_apparatus' || stat === 'control') return 'State Apparatus';
     return stat.charAt(0).toUpperCase() + stat.slice(1).replace(/_/g, ' ');
 }
 function formatMinorSector(key) {
@@ -23516,15 +23508,15 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
 
     const { data: nation } = await supabase
         .from('nations')
-        .select('control')
+        .select('state_apparatus')
         .eq('id', nationId)
         .single();
 
     if (nation) {
-        const newStability = Math.max(0, (nation.control ?? 50) - 3);
+        const newStateApparatus = Math.max(0, (nation.state_apparatus ?? 50) - 3);
         await supabase
             .from('nations')
-            .update({ control: newStability })
+            .update({ state_apparatus: newStateApparatus })
             .eq('id', nationId);
     }
 
@@ -34030,7 +34022,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // Military Loyalty Act: force-sync defense minister to the sitting
         // Head of Government each tick while MLA is active. No-op when not.
         try {
-            await syncMilitaryLoyaltyDefenseMinister(supabase, nation, currentTick);
+            await syncMilitaryLoyaltyDefenseMinister(supabase, nation, newTick);
         } catch (mlaErr) {
             console.error(`[advanceTick] MLA sync failed for ${nation.name} (non-fatal):`, mlaErr);
         }
