@@ -5317,7 +5317,7 @@ function getStrongholdSectors(factionId, sectors, popularityRows, topN = 3) {
  * hurts (likely NO); zero = neutral.
  *
  * Inputs:
- *   billSectorEffects   = [{ sector_key, change_tenths }]  (from policies.sector_effects)
+ *   billSectorEffects   = [{ sector_key, change_tenths }]  (from policy_options.sector_effects)
  *   factionStrongholds  = [{ sector_key, ... }]            (from getStrongholdSectors)
  */
 function computeStrongholdScore(billSectorEffects, factionStrongholds) {
@@ -5839,14 +5839,12 @@ async function processSectorShifts(supabase, nationId, resolutions) {
     if (actionable.length === 0) return;
 
     const billIds = actionable.map(r => r.billId);
-    // Phase 4.2: each bill_article also embeds the chosen policy_option's
-    // sector_effects via the selected_option_id FK. Multi-option policies
-    // store sector_effects on the option, not the policies row; the article
-    // sums below prefer the option's sector_effects when present and fall
-    // back to the legacy policies.sector_effects only for orphaned data.
+    // Each bill_article carries its sector_effects via the chosen
+    // policy_option (selected_option_id FK). policies.sector_effects was
+    // dropped in the alpha refactor — the option is now the single source.
     const { data: bills, error: billErr } = await supabase
         .from('bills')
-        .select('id, nation_id, proposed_by, bill_type, bill_articles(*, policies(sector_effects), selected_option:policy_options!selected_option_id(sector_effects)), bill_support(faction_id, stance)')
+        .select('id, nation_id, proposed_by, bill_type, bill_articles(*, selected_option:policy_options!selected_option_id(sector_effects)), bill_support(faction_id, stance)')
         .in('id', billIds);
     if (billErr) {
         console.error('[processSectorShifts] failed to load bills', { nationId, error: billErr.message });
@@ -5886,12 +5884,8 @@ async function processSectorShifts(supabase, nationId, resolutions) {
         const result = resultByBill.get(bill.id);
         if (!result) continue;
 
-        // Phase 4.2: per-option sector_effects take precedence over the
-        // legacy policies.sector_effects column. Phase 2.5 onward stops
-        // writing the legacy column, so this fallback only fires for
-        // orphaned pre-multi-option data.
         const articleEffects = (bill.bill_articles || [])
-            .map(art => (art?.selected_option?.sector_effects || art?.policies?.sector_effects))
+            .map(art => art?.selected_option?.sector_effects)
             .filter(e => Array.isArray(e) && e.length > 0);
         if (articleEffects.length === 0) continue;
         const summed = sumSectorEffects(articleEffects);

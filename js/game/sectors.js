@@ -723,7 +723,7 @@ export function getStrongholdSectors(factionId, sectors, popularityRows, topN = 
  * hurts (likely NO); zero = neutral.
  *
  * Inputs:
- *   billSectorEffects   = [{ sector_key, change_tenths }]  (from policies.sector_effects)
+ *   billSectorEffects   = [{ sector_key, change_tenths }]  (from policy_options.sector_effects)
  *   factionStrongholds  = [{ sector_key, ... }]            (from getStrongholdSectors)
  */
 export function computeStrongholdScore(billSectorEffects, factionStrongholds) {
