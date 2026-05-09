@@ -148,10 +148,15 @@ export async function initCoalitionFormation(supabase, state) {
         return { needed: false };
     }
 
-    if (election && !hasFormedGov) {
-        _formationNeeded = true;
+    // Set _electionId / _lastElectionTick first so loadFormations()
+    // (called below for the invited-proposal check) can run.
+    if (election) {
         _electionId = election.id;
         _lastElectionTick = election.election_tick;
+    }
+
+    if (election && !hasFormedGov) {
+        _formationNeeded = true;
     } else {
         // Default: formation needed only when no formed government exists.
         // Exception 1: an emergency_minority government's PM party can re-enter
@@ -163,31 +168,22 @@ export async function initCoalitionFormation(supabase, state) {
             && activeCoalition.party_ids.includes(faction.id);
 
         // Exception 2: an active formation proposal exists for this election
-        // that lists my party in its party_ids — I need to see the formation
-        // flow so I can support or decline. Without this branch the invited
-        // parties (especially ones outside the current minority government)
-        // see "Government Formed" and have no surface to act on the
-        // proposal that's blocking the snap-election timer.
+        // that lists my party. Without this branch the invited parties
+        // (especially ones outside the current minority government) see
+        // "Government Formed" and have no surface to act on the proposal
+        // that's blocking the snap-election timer.
+        //
+        // Source of truth: loadFormations() already fetches active proposals
+        // for _electionId and tags each with iAmInvited. Reusing it here
+        // means the "am I invited?" check lives in exactly one place
+        // — instead of running a parallel query that could drift.
         let invitedToProposal = false;
         if (election) {
-            const { data: invitingProposals, error: invErr } = await supabase
-                .from('government_formations')
-                .select('id')
-                .eq('election_id', election.id)
-                .eq('status', 'active')
-                .contains('party_ids', [faction.id])
-                .limit(1);
-            if (invErr) {
-                console.warn('[CoalitionFormation] proposal-invite check failed:', invErr.message);
-            }
-            invitedToProposal = (invitingProposals || []).length > 0;
+            await loadFormations();
+            invitedToProposal = (_formations || []).some(f => f.iAmInvited);
         }
 
         _formationNeeded = !hasFormedGov || minorityPromotePath || invitedToProposal;
-        if (election) {
-            _electionId = election.id;
-            _lastElectionTick = election.election_tick;
-        }
     }
 
     return { needed: _formationNeeded };
