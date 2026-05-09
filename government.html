@@ -80,7 +80,7 @@ import { EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinis
 import { PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game/protest.js';
 import { POSITIVE_TRAITS } from './js/game/party-leadership.js';
 import { calculateBillSupport, computeBillCostTotals, enactBill, evaluateBillVote } from './js/game/bills.js';
-import { calculateNationalBudget } from './js/game/budget.js';
+import { calculateNationalBudget, computeIncomeTaxRevenue } from './js/game/budget.js';
 import { RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './js/game/diplomacy-constants.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
@@ -2543,26 +2543,28 @@ async function loadBudgetData() {
     };
 }
 
-// Build the Income line items from the revenue breakdown. Per-tick values
-// in calculateNationalBudget are annualized by multiplying in the caller
-// (grossRevenue is already annual since GDP is annual and tax rates are
-// a fraction of GDP) — the source code comments in budget.js treat these
-// values as annual. We surface both /mo (÷12) and /yr in the UI.
+// Build the Income line items. Income Tax is computed directly from
+// computeIncomeTaxRevenue — single source of truth shared with the
+// per-tick revenue add in advance-tick. Corporate Tax annualises the
+// per-tick figure calculateNationalBudget returns. Trade Agreements is
+// the aid + recurring transfer total. Both /mo (÷12) and /yr surface
+// in the UI.
 function _gbBuildIncomeRows(d) {
     const b = d.budget;
-    const grossTax = Math.max(0, Number(b.grossRevenue || 0) - Number(d.aidReceived || 0) - Number(d.recurringReceivedAnnual || 0));
-    // Annualized corporate tax revenue computed from the per-tick figure
-    // calculateNationalBudget returns. Split out from Tax Revenue so the
-    // player can see what corporate taxation specifically brings in,
-    // without changing the Income total — the residual "Tax Revenue" row
-    // covers income tax + anything else that was previously in the
-    // catch-all.
+    const incomeTaxAnnual    = computeIncomeTaxRevenue(currentNation || {}) * GAME_CONFIG.TICKS_PER_YEAR;
     const corporateTaxAnnual = (Number(b.corpRevenue) || 0) * GAME_CONFIG.TICKS_PER_YEAR;
-    const otherTaxAnnual     = Math.max(0, grossTax - corporateTaxAnnual);
+    // Active Income Tax policy — find by policy name (the only Income
+    // Tax policy on the shard). When present we tag the row with the
+    // chosen option so players see which bracket is live.
+    const incomeTaxLaw = (d.activeLaws || []).find(
+        al => /income\s*tax/i.test(al?.policies?.policy_name || '')
+    );
+    const incomeTaxOption = incomeTaxLaw?.selected_option?.option_name;
+    const incomeTaxName = incomeTaxOption ? `Income Tax · ${incomeTaxOption}` : 'Income Tax';
     const rows = [
-        { key: 'tax_revenue',   name: 'Tax Revenue',      yr: otherTaxAnnual,    descKey: 'taxRevenue'    },
-        { key: 'corporate_tax', name: 'Corporate Tax',    yr: corporateTaxAnnual, descKey: 'corporateTax' },
-        { key: 'trade_agrs',    name: 'Trade Agreements', yr: Number(d.aidReceived || 0) + Number(d.recurringReceivedAnnual || 0), descKey: 'tradeAgr'    },
+        { key: 'income_tax',    name: incomeTaxName,      yr: incomeTaxAnnual,    descKey: 'incomeTax'     },
+        { key: 'corporate_tax', name: 'Corporate Tax',    yr: corporateTaxAnnual, descKey: 'corporateTax'  },
+        { key: 'trade_agrs',    name: 'Trade Agreements', yr: Number(d.aidReceived || 0) + Number(d.recurringReceivedAnnual || 0), descKey: 'tradeAgr' },
     ];
     return rows;
 }
@@ -2887,7 +2889,7 @@ function _gbWireRows(container, incomeRows, costRows) {
 // what the game already models); sub-allocations for ministries fall
 // back to the fiscal_category's policy + institution mix at render time.
 const _GB_DEEP_COPY = {
-    taxRevenue:  { desc: 'Aggregate state taxation excluding corporate tax (which has its own row below). Covers income tax plus any other revenue that lands in the treasury and isn\'t aid, trade transfer, or corporate tax.' },
+    incomeTax:   { desc: 'Per-tick personal income tax revenue. Driven by the active Income Tax policy bracket (the option name appears on the row label) and scales with population × wages, dampened by unrest. Formula: (population / 10M) × (income_tax / 100) × wages × (1 − unrest/100), annualised × 12.' },
     corporateTax: { desc: 'Annual corporate tax revenue. Per-tick formula: (service_sector + industry) / 10 × corporate_tax_rate × (1 − corruption/100). Click to see the active Corporate Taxation policy and its rate.' },
     tradeAgr:    { desc: 'Recurring income from accepted trade agreements — both economic aid received and recurring financial transfers under GTAs. Outgoing flows appear on the Costs side. One-time transfers are not counted here (they hit treasury once and are not ongoing income).' },
     debtInterest:{ desc: 'Interest service on sovereign debt.' },
