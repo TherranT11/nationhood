@@ -24316,6 +24316,109 @@ async function processVolaStadiumCompletions(supabase, currentTick) {
     return { completed };
 }
 
+// ==================== INTERIOR INFRASTRUCTURE COMPLETIONS ====================
+//
+// Mirror of processVolaStadiumCompletions for Ministry of the Interior
+// "Expand Infrastructure" projects. Sweeps active corp_contracts with
+// project_subtype='Interior Infrastructure' that have hit their
+// expected_finish_tick, marks each as completed, applies tier-specific
+// stat effects to the issuing nation, and fires the standard
+// construction GDP bonus + an event-log entry. Tier specs are read
+// from interior_infrastructure_tiers() (single source of truth).
+
+const _INTERIOR_PROJECT_SUBTYPE = 'Interior Infrastructure';
+
+async function processInteriorInfrastructureCompletions(supabase, currentTick) {
+    const { data: due, error } = await supabase.from('corp_contracts')
+        .select('id, name, spec_category, issuer_nation_id, expected_finish_tick')
+        .eq('project_subtype', _INTERIOR_PROJECT_SUBTYPE)
+        .eq('status', 'active')
+        .not('expected_finish_tick', 'is', null)
+        .lte('expected_finish_tick', currentTick);
+    if (error) {
+        console.warn('[InteriorInfrastructure] fetch failed:', error.message);
+        return null;
+    }
+    if (!due || due.length === 0) return null;
+
+    // Pull the tier config once and index by spec_category. Both the
+    // post RPC and this processor consult the same JSONB so the
+    // effects can never disagree with what the player committed to.
+    const { data: tiersData } = await supabase.rpc('interior_infrastructure_tiers');
+    const tiers = tiersData || {};
+    const bySpec = {};
+    for (const key of Object.keys(tiers)) {
+        const t = tiers[key];
+        if (t && t.spec_category) bySpec[t.spec_category] = t;
+    }
+
+    let completed = 0;
+    for (const c of due) {
+        const tier = bySpec[c.spec_category];
+        const effects = (tier && Array.isArray(tier.stat_effects)) ? tier.stat_effects : [];
+
+        // Mark complete first — guards against double-apply if a
+        // downstream step fails.
+        const { error: updErr } = await supabase.from('corp_contracts').update({
+            status:           'completed',
+            completed_at_tick: currentTick,
+            payout_tick:       currentTick + 3,
+        }).eq('id', c.id).eq('status', 'active');
+        if (updErr) {
+            console.warn('[InteriorInfrastructure] mark-complete failed for', c.id, ':', updErr.message);
+            continue;
+        }
+
+        // Apply tier stat effects. Read once, write once with all
+        // bumps. public_approval clamped 0..100; sol/gdp_growth
+        // unclamped (handled by global game systems).
+        if (effects.length > 0) {
+            const cols = effects.map(e => e.stat).filter(Boolean);
+            const selectCols = ['id', ...cols].join(', ');
+            const { data: nation } = await supabase.from('nations')
+                .select(selectCols).eq('id', c.issuer_nation_id).single();
+            if (nation) {
+                const updates = {};
+                for (const eff of effects) {
+                    const cur = Number(nation[eff.stat]) || 0;
+                    let next = cur + Number(eff.delta);
+                    if (eff.stat === 'public_approval') {
+                        next = Math.max(0, Math.min(100, next));
+                    }
+                    updates[eff.stat] = next;
+                }
+                await supabase.from('nations').update(updates).eq('id', c.issuer_nation_id);
+            }
+        }
+
+        // Generic construction GDP bonus (+0.1) — same RPC every
+        // construction completion fires. Stacks on top of the
+        // tier-specific gdp_growth bumps above.
+        try {
+            await supabase.rpc('award_construction_gdp_bonus', { p_nation_id: c.issuer_nation_id });
+        } catch (gdpErr) {
+            console.warn('[InteriorInfrastructure] gdp bonus rpc failed for', c.id, ':', gdpErr?.message || gdpErr);
+        }
+
+        const effectsText = effects.map(e => {
+            const sign = Number(e.delta) >= 0 ? '+' : '';
+            return `${sign}${e.delta} ${e.stat.replace(/_/g, ' ')}`;
+        }).join(' · ');
+        await supabase.from('event_log').insert({
+            nation_id:          c.issuer_nation_id,
+            event_name:         'Interior Infrastructure Completed',
+            category:           'political',
+            trigger_key:        'interior_infrastructure_completed',
+            description_chosen: `${c.name} opened${effectsText ? ' · ' + effectsText : ''}`,
+            fired_at_tick:      currentTick,
+        });
+
+        completed++;
+    }
+
+    return { completed };
+}
+
 // ==================== VWC HOST BIDDING (Sports Minister action) ====================
 
 // Sports Minister submits a host bid for a future World Vola Cup.
@@ -34937,6 +35040,22 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
     } catch (stadErr) {
         console.error('[advanceTick] Vola stadium completion sweep failed (non-fatal):', stadErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4a-quater-bis. INTERIOR INFRASTRUCTURE COMPLETIONS — global pass.
+    // Marks active Interior Infrastructure contracts whose
+    // expected_finish_tick has arrived as completed; applies tier-
+    // specific stat bumps to the issuing nation; fires the "Interior
+    // Infrastructure Completed" event.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const intResult = await processInteriorInfrastructureCompletions(supabase, currentTick);
+        if (intResult?.completed) {
+            console.log(`[InteriorInfrastructure] ${intResult.completed} project(s) completed`);
+        }
+    } catch (intErr) {
+        console.error('[advanceTick] Interior infrastructure completion sweep failed (non-fatal):', intErr);
     }
 
     // ══════════════════════════════════════════════════════════════════
