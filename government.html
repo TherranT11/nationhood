@@ -80,7 +80,7 @@ import { EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinis
 import { PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game/protest.js';
 import { POSITIVE_TRAITS } from './js/game/party-leadership.js';
 import { calculateBillSupport, computeBillCostTotals, enactBill, evaluateBillVote } from './js/game/bills.js';
-import { calculateNationalBudget, computeIncomeTaxRevenue } from './js/game/budget.js';
+import { calculateNationalBudget, computeIncomeTaxRevenue, computeCorporateTaxPerCorp } from './js/game/budget.js';
 import { RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './js/game/diplomacy-constants.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
@@ -2441,10 +2441,23 @@ async function loadBudgetData() {
     if (!currentNation) { _budgetData = null; return; }
     const nation = currentNation;
 
+    // Active corp count for the per-corp footprint adder in
+    // computeCorporateTaxRevenue. Mirrors the same fetch in
+    // advance-tick/handler-template.ts so panel + tick agree.
+    let activeCorpCount = 0;
+    try {
+        const { count } = await _supabase.from('factions')
+            .select('id', { count: 'exact', head: true })
+            .eq('faction_type', 'corporation')
+            .eq('nation_id', nation.id)
+            .is('abandoned_at', null);
+        activeCorpCount = count || 0;
+    } catch (_) { /* fall back to 0 */ }
+
     // 1. Revenue — the calculator does the heavy lifting. Apply the real
     //    capped tariff override if a trade_summary row exists (same rule
     //    the Economy page uses so the two pages can't disagree).
-    const budget = calculateNationalBudget(nation);
+    const budget = calculateNationalBudget(nation, { activeCorpCount });
 
     // Phase 10A: trade_summary table dropped with the goods-trade
     // engine. Tariff revenue feed stays at 0 until the rebuild lands.
@@ -2540,6 +2553,7 @@ async function loadBudgetData() {
         nationId: nation.id,
         isMonarchy: isAbsoluteMonarchy(nation),
         activeLaws,
+        activeCorpCount,
     };
 }
 
@@ -2882,7 +2896,7 @@ function _gbWireRows(container, incomeRows, costRows) {
 // back to the fiscal_category's policy + institution mix at render time.
 const _GB_DEEP_COPY = {
     incomeTax:   { desc: 'Per-tick personal income tax revenue. Driven by the active Income Tax policy bracket (shown in the Composition section below) and scales with population × wages, dampened by unrest. Formula: (population / 10M) × (income_tax / 100) × wages × (1 − unrest/100), annualised × 12.' },
-    corporateTax: { desc: 'Annual corporate tax revenue. Per-tick formula: (service_sector + industry) / 10 × corporate_tax_rate × (1 − corruption/100). Click to see the active Corporate Taxation policy and its rate.' },
+    corporateTax: { desc: 'Annual corporate tax revenue. Two parts: (a) rate revenue = (service_sector + industry) / 10 × corporate_tax_rate × (1 − corruption/100) per tick, and (b) a flat $24/yr per active corporation HQ\'d in this nation. Both lines appear in the Composition section below.' },
     tradeAgr:    { desc: 'Recurring income from accepted trade agreements — both economic aid received and recurring financial transfers under GTAs. Outgoing flows appear on the Costs side. One-time transfers are not counted here (they hit treasury once and are not ongoing income).' },
     debtInterest:{ desc: 'Interest service on sovereign debt.' },
     // Spending categories — descriptions in place, allocation engines
@@ -2994,15 +3008,24 @@ async function _gbSelectCategory(container, row, kind) {
     // produces under the current formula.
     if (row.descKey === 'corporateTax' && currentNation) {
         const rate = Number(currentNation.corporate_tax || 0);
+        const corpCount = Number(_budgetData?.activeCorpCount || 0);
+        const perCorpAnnual = computeCorporateTaxPerCorp(corpCount) * GAME_CONFIG.TICKS_PER_YEAR;
+        const rateAnnual = Math.max(0, row.yr - perCorpAnnual);
         const corpLaw = (_budgetData?.activeLaws || []).find(al =>
             /corporat.*tax/i.test(al?.policies?.policy_name || '')
         );
         if (corpLaw) {
             const policyName = corpLaw.policies?.policy_name || 'Corporate Taxation';
             const optionName = corpLaw.selected_option?.option_name || 'Active option';
-            subRows.push({ k: `${policyName} — ${optionName} (${rate}%)`, v: row.yr });
+            subRows.push({ k: `${policyName} — ${optionName} (${rate}%)`, v: rateAnnual });
         } else {
-            subRows.push({ k: `Active rate: ${rate}%`, v: row.yr });
+            subRows.push({ k: `Active rate: ${rate}%`, v: rateAnnual });
+        }
+        if (corpCount > 0) {
+            subRows.push({
+                k: `Active corp footprint (${corpCount} HQ${corpCount === 1 ? '' : 's'} × $24/yr)`,
+                v: perCorpAnnual,
+            });
         }
     }
 
