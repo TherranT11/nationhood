@@ -1582,7 +1582,6 @@ let _activeContracts = [];
 // is O(1).
 let _myBids = new Map();
 let _bidInflight = false;     // Per-bid double-fire guard
-let _crewsInflight = false;   // Per-crew-assignment double-fire guard
 
 function fmtMoney(n) {
     const num = Number(n) || 0;
@@ -1598,7 +1597,7 @@ const CONTRACT_FIELDS = [
     'id', 'contract_number', 'name', 'description', 'contract_type',
     'issuer_name', 'issuer_nation_id', 'budget', 'timeline_months', 'status',
     'requirements', 'expires_at_tick', 'deadline_tick', 'expected_finish_tick',
-    'started_at_tick', 'progress_pct', 'amount_spent', 'crews_assigned',
+    'started_at_tick', 'progress_pct', 'amount_spent',
     'winner_faction_id',
 ].join(', ') + ', nations:issuer_nation_id(name)';
 
@@ -1851,20 +1850,15 @@ function renderActiveCard(contract) {
         : 'No deadline set';
 
     // ── Crew display ────────────────────────────────────────────────
-    // The accepted bid carries crews_committed. _myBids was populated
-    // by loadContracts() for every active contract this corp won.
-    // When the contract requires more than 1 crew, switch the label to
-    // "Crews Required" and show "assigned / committed" so the gap is
-    // obvious. Single-crew contracts keep the simpler "Crews Assigned".
+    // crews_committed is locked in at bid time (drives the price and
+    // timeline multipliers) and just shown here for context. The
+    // separate crews_assigned / Manage Crews flow was retired in
+    // 20261029 — progress no longer requires a deploy step.
     const acceptedBid = _myBids.get(contract.id);
-    const crewsAssigned  = Number(contract.crews_assigned || 0);
     const crewsCommitted = Number(acceptedBid?.crews_committed || 0);
-    const multiCrew = crewsCommitted > 1;
-    const crewsLabel = multiCrew ? 'Crews Required' : 'Crews Assigned';
-    const crewsValue = multiCrew
-        ? `${crewsAssigned.toFixed(0)} / ${crewsCommitted.toFixed(0)}`
-        : crewsAssigned.toFixed(0);
-    const crewsWarn  = multiCrew && crewsAssigned < crewsCommitted ? ' warn' : '';
+    const crewsLabel = 'Crews Committed';
+    const crewsValue = crewsCommitted ? crewsCommitted.toFixed(0) : '—';
+    const crewsWarn  = '';
 
     // Margin = (budget − amount_spent) / budget × 100
     const budget = Number(contract.budget) || 0;
@@ -1907,7 +1901,6 @@ function renderActiveCard(contract) {
             </div>
         </div>
         <div class="co-contract-actions">
-            <button class="co-contract-btn" data-action="manage-crews" data-id="${escapeHtml(contract.id)}">Manage Crews</button>
             <button class="co-contract-btn" data-action="renegotiate"  data-id="${escapeHtml(contract.id)}">Renegotiate</button>
             <button class="co-contract-btn" data-action="view-details" data-id="${escapeHtml(contract.id)}">Details</button>
         </div>
@@ -1996,11 +1989,6 @@ async function handleContractClick(e) {
         const c = _activeContracts.find(x => x.id === id)
                || _availableContracts.find(x => x.id === id);
         if (c) showContractModal(c);
-        return;
-    }
-    if (action === 'manage-crews') {
-        const c = _activeContracts.find(x => x.id === id);
-        if (c) showCrewsModal(c);
         return;
     }
     if (action === 'renegotiate') {
@@ -2258,81 +2246,6 @@ function showContractModal(c) {
         </div>
     `;
     document.getElementById('co-modal-overlay').classList.add('open');
-}
-
-function showCrewsModal(c) {
-    const modal = document.getElementById('co-modal');
-    if (!modal) return;
-    const myCrews = Number(faction.corp_work_crews) || 0;
-    const current = Number(c.crews_assigned) || 0;
-    // Crews already deployed on every OTHER active contract — cap on
-    // this contract is total stat minus that. Without this the modal
-    // let the player exceed their Work Crews stat by assigning the
-    // full stat to each parallel contract.
-    const othersCrews = (_activeContracts || [])
-        .filter(x => x.id !== c.id)
-        .reduce((s, x) => s + (Number(x.crews_assigned) || 0), 0);
-    const available = Math.max(0, myCrews - othersCrews);
-
-    modal.innerHTML = `
-        <div class="co-modal-title">Manage Crews — ${escapeHtml(c.name || '')}</div>
-        <div class="co-modal-body">
-            Allocate work crews to this contract. You have <strong>${myCrews}</strong>
-            Work Crews; <strong>${othersCrews}</strong> are deployed on other active contracts,
-            leaving <strong>${available}</strong> available for this one.
-        </div>
-        <input type="number" min="0" max="${available}" step="0.5" value="${Math.min(current, available)}"
-               class="co-modal-input" id="co-crews-input"
-               aria-label="Crews assigned" />
-        <div class="co-modal-actions">
-            <button class="co-contract-btn" data-modal-close>Cancel</button>
-            <button class="co-contract-btn primary" id="co-crews-confirm" data-id="${escapeHtml(c.id)}">Confirm</button>
-        </div>
-    `;
-    document.getElementById('co-modal-overlay').classList.add('open');
-
-    document.getElementById('co-crews-confirm')?.addEventListener('click', async () => {
-        if (_crewsInflight) return;
-        const input = document.getElementById('co-crews-input');
-        const crews = Number(input?.value);
-        if (!Number.isFinite(crews)) {
-            showToast('Crews must be a number', 'error');
-            return;
-        }
-        // Browser doesn't enforce max= on programmatically-set values;
-        // re-check the available pool here so a manual edit can't
-        // over-allocate either.
-        if (crews > available) {
-            showToast(`Only ${available} crew${available === 1 ? '' : 's'} available — others are deployed.`, 'error');
-            return;
-        }
-        const btn = document.getElementById('co-crews-confirm');
-        _crewsInflight = true;
-        btn.disabled = true;
-        try {
-            const { data, error } = await _supabase.rpc('assign_construction_crews', {
-                p_contract_id: c.id,
-                p_crews: crews,
-            });
-            if (error) {
-                showToast(error.message, 'error');
-                return;
-            }
-            if (!data?.success) {
-                showToast(data?.error || 'Failed to update crews', 'error');
-                return;
-            }
-            showToast('Crews updated.', 'success');
-            closeModal();
-            await loadContracts();
-        } catch (err) {
-            console.error('[corp-operations] assign crews failed:', err);
-            showToast('Failed: ' + (err?.message || 'unknown'), 'error');
-        } finally {
-            _crewsInflight = false;
-            btn.disabled = false;
-        }
-    }, { once: true });
 }
 
 function closeModal() {
