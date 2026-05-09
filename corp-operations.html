@@ -1582,6 +1582,7 @@ let _activeContracts = [];
 // is O(1).
 let _myBids = new Map();
 let _bidInflight = false;     // Per-bid double-fire guard
+let _crewsInflight = false;   // Per-crews-deploy double-fire guard
 
 function fmtMoney(n) {
     const num = Number(n) || 0;
@@ -1597,7 +1598,7 @@ const CONTRACT_FIELDS = [
     'id', 'contract_number', 'name', 'description', 'contract_type',
     'issuer_name', 'issuer_nation_id', 'budget', 'timeline_months', 'status',
     'requirements', 'expires_at_tick', 'deadline_tick', 'expected_finish_tick',
-    'started_at_tick', 'progress_pct', 'amount_spent',
+    'started_at_tick', 'progress_pct', 'amount_spent', 'crews_working',
     'winner_faction_id',
 ].join(', ') + ', nations:issuer_nation_id(name)';
 
@@ -1850,14 +1851,20 @@ function renderActiveCard(contract) {
         : 'No deadline set';
 
     // ── Crew display ────────────────────────────────────────────────
-    // crews_committed is locked in at bid time (drives the price and
-    // timeline multipliers). Surfaced as "Crews Working" on the
-    // active card because under the post-20261029 single-step model
-    // those crews are actually on the job — the separate
-    // crews_assigned / Manage Crews flow was retired then.
+    // crews_committed is the bid-time promise that drives the price
+    // and timeline multipliers. crews_working is the present-tense
+    // deployment — what's actually on the job site right now. After
+    // winning, the player deploys via Manage Crews. Format: "N / M"
+    // with warn style when working < committed (under-deployed →
+    // progress stalled or partial). The tick processor stalls
+    // progress entirely when crews_working = 0.
     const acceptedBid = _myBids.get(contract.id);
     const crewsCommitted = Number(acceptedBid?.crews_committed || 0);
-    const crewsValue = crewsCommitted ? crewsCommitted.toFixed(0) : '—';
+    const crewsWorking   = Number(contract.crews_working || 0);
+    const crewsValue     = crewsCommitted
+        ? `${crewsWorking.toFixed(0)} / ${crewsCommitted.toFixed(0)}`
+        : '—';
+    const crewsWarn      = crewsCommitted > 0 && crewsWorking < crewsCommitted ? ' warn' : '';
 
     // Margin = (budget − amount_spent) / budget × 100
     const budget = Number(contract.budget) || 0;
@@ -1883,7 +1890,7 @@ function renderActiveCard(contract) {
             </div>
             <div>
                 <div class="label">Crews Working</div>
-                <div class="value">${crewsValue}</div>
+                <div class="value${crewsWarn}">${crewsValue}</div>
             </div>
             <div>
                 <div class="label">Margin</div>
@@ -1900,6 +1907,7 @@ function renderActiveCard(contract) {
             </div>
         </div>
         <div class="co-contract-actions">
+            <button class="co-contract-btn" data-action="manage-crews" data-id="${escapeHtml(contract.id)}">Manage Crews</button>
             <button class="co-contract-btn" data-action="renegotiate"  data-id="${escapeHtml(contract.id)}">Renegotiate</button>
             <button class="co-contract-btn" data-action="view-details" data-id="${escapeHtml(contract.id)}">Details</button>
         </div>
@@ -1988,6 +1996,11 @@ async function handleContractClick(e) {
         const c = _activeContracts.find(x => x.id === id)
                || _availableContracts.find(x => x.id === id);
         if (c) showContractModal(c);
+        return;
+    }
+    if (action === 'manage-crews') {
+        const c = _activeContracts.find(x => x.id === id);
+        if (c) showCrewsModal(c);
         return;
     }
     if (action === 'renegotiate') {
@@ -2245,6 +2258,89 @@ function showContractModal(c) {
         </div>
     `;
     document.getElementById('co-modal-overlay').classList.add('open');
+}
+
+// ── Manage Crews modal (re-introduced 20261101) ────────────────
+// Lets the player set crews_working for an active contract,
+// bounded by the bid's crews_committed and the corp's free crew
+// capacity (corp_work_crews minus the sum already deployed on
+// other active contracts). The aggregate cap is enforced both
+// here (UI-side max) and server-side in set_crews_working.
+function showCrewsModal(c) {
+    const modal = document.getElementById('co-modal');
+    if (!modal) return;
+    const owned = Number(faction.corp_work_crews) || 0;
+    const acceptedBid = _myBids.get(c.id);
+    const committed = Number(acceptedBid?.crews_committed || 0);
+    const current = Number(c.crews_working) || 0;
+
+    // Sum crews_working across this corp's OTHER active contracts.
+    const othersWorking = (_activeContracts || [])
+        .filter(x => x.id !== c.id)
+        .reduce((s, x) => s + (Number(x.crews_working) || 0), 0);
+    const freeCapacity = Math.max(0, Math.floor(owned) - othersWorking);
+    const maxAllowed = Math.min(committed, freeCapacity);
+
+    modal.innerHTML = `
+        <div class="co-modal-title">Manage Crews — ${escapeHtml(c.name || '')}</div>
+        <div class="co-modal-body">
+            You own <strong>${Math.floor(owned)}</strong> Work Crews;
+            <strong>${othersWorking}</strong> are deployed on other active contracts.
+            This contract committed <strong>${committed}</strong> crews at bid time.<br><br>
+            You can deploy up to <strong>${maxAllowed}</strong> on this contract
+            (capped by the lower of your committed bid and your free capacity).
+            Setting this to 0 stalls the contract — no progress, no cost — until you redeploy.
+        </div>
+        <input type="number" min="0" max="${maxAllowed}" step="1"
+               value="${Math.min(current, maxAllowed)}"
+               class="co-modal-input" id="co-crews-input"
+               aria-label="Crews working" />
+        <div class="co-modal-actions">
+            <button class="co-contract-btn" data-modal-close>Cancel</button>
+            <button class="co-contract-btn primary" id="co-crews-confirm" data-id="${escapeHtml(c.id)}">Confirm</button>
+        </div>
+    `;
+    document.getElementById('co-modal-overlay').classList.add('open');
+
+    document.getElementById('co-crews-confirm')?.addEventListener('click', async () => {
+        if (_crewsInflight) return;
+        const input = document.getElementById('co-crews-input');
+        const crews = Number(input?.value);
+        if (!Number.isFinite(crews) || crews < 0 || !Number.isInteger(crews)) {
+            showToast('Crews must be a non-negative whole number', 'error');
+            return;
+        }
+        if (crews > maxAllowed) {
+            showToast(`Cannot deploy more than ${maxAllowed} (committed ${committed}, free capacity ${freeCapacity}).`, 'error');
+            return;
+        }
+        const btn = document.getElementById('co-crews-confirm');
+        _crewsInflight = true;
+        btn.disabled = true;
+        try {
+            const { data, error } = await _supabase.rpc('set_crews_working', {
+                p_contract_id: c.id,
+                p_crews:       crews,
+            });
+            if (error) {
+                showToast(error.message, 'error');
+                return;
+            }
+            if (!data?.success) {
+                showToast(data?.error || 'Failed to update crews', 'error');
+                return;
+            }
+            showToast(crews === 0 ? 'Crews withdrawn — contract stalled.' : `${crews} crew${crews === 1 ? '' : 's'} deployed.`, 'success');
+            closeModal();
+            await loadContracts();
+        } catch (err) {
+            console.error('[corp-operations] set_crews_working failed:', err);
+            showToast('Failed: ' + (err?.message || 'unknown'), 'error');
+        } finally {
+            _crewsInflight = false;
+            btn.disabled = false;
+        }
+    }, { once: true });
 }
 
 function closeModal() {

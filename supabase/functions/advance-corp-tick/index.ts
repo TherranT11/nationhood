@@ -2039,22 +2039,20 @@ async function getPermitComplianceSnapshot(supabase, { nationId, sector, faction
 //  joins to the winning corp_contract_bids row (status='accepted'), and:
 //    1. Idempotency gate: skip if c.progress_pct already matches the
 //       current-tick value (cron re-fire / replay → no double-charge).
-//    2. Deduct perTickCost = bid.bid_amount / timeline_months from the
+//    2. Crew-deploy gate (re-introduced 20261101): skip if
+//       c.crews_working = 0. The contract stalls — no progress, no
+//       cost — until the owning corp deploys crews via
+//       set_crews_working.
+//    3. Deduct perTickCost = bid.bid_amount / timeline_months from the
 //       winning corp's cash, emit 'event_cost' cash event labelled
 //       "{contract.name} Construction Costs".
-//    3. Compute progress_pct = (currentTick − started_at_tick) / timeline_months
+//    4. Compute progress_pct = (currentTick − started_at_tick) / timeline_months
 //       × 100 (clamped 0..100), update progress_pct + amount_spent.
-//    4. On 100%, set status='completed', stamp completed_at_tick, and
+//    5. On 100%, set status='completed', stamp completed_at_tick, and
 //       pay out bid.bid_amount immediately via 'capital_in'
 //       "{name} · final payment". Synchronous payout keeps the
 //       contract on the dashboard until the status flips, so there's no
 //       "completed-but-invisible" window.
-//
-//  The crews-assigned-vs-committed gate was removed in 20261029. Bids
-//  still carry crews_committed (drives price/timeline multipliers at
-//  bid time) but progress no longer requires a separate deploy step;
-//  bait-and-switch is now prevented at bid time via an aggregate
-//  crew-cap check in place_construction_bid.
 //
 //  Replaces the legacy processActiveProjects loop (deleted) which
 //  targeted the now-retired construction_contracts table and never
@@ -2064,7 +2062,7 @@ async function processCorpContracts(supabase, nationId, currentTick) {
 
     const { data: contracts, error: contractsErr } = await supabase
         .from('corp_contracts')
-        .select('id, name, started_at_tick, timeline_months, progress_pct, amount_spent')
+        .select('id, name, started_at_tick, timeline_months, progress_pct, amount_spent, crews_working')
         .eq('issuer_nation_id', nationId)
         .eq('status', 'active');
     if (contractsErr) {
@@ -2107,6 +2105,14 @@ async function processCorpContracts(supabase, nationId, currentTick) {
         // double-deducting the per-tick cost.
         const newProgressPct = Math.min(100, Math.round((ticksElapsed / totalTicks) * 10000) / 100);
         if (Number(c.progress_pct || 0) >= newProgressPct) continue;
+
+        // Crew-deploy gate. Contracts with no crews physically
+        // working stall — no progress, no cost. The owner has to
+        // call set_crews_working to deploy.
+        if ((Number(c.crews_working) || 0) === 0) {
+            console.log(`[CorpContracts] ${c.name}: STALLED (0 crews working — owner must deploy via Manage Crews)`);
+            continue;
+        }
 
         const totalBid = Number(bid.bid_amount || 0);
         const perTickCost = Math.round(totalBid / totalTicks);
