@@ -221,6 +221,34 @@ body.aviation-operations.light-mode {
   text-align: center;
 }
 
+/* ── Panel footer actions (Design / R&D buttons) ───────────────── */
+.ao-panel-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 18px 14px;
+  border-top: 1px solid var(--line-soft);
+}
+.ao-panel-action-btn {
+  flex: 1;
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--line-bright);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.ao-panel-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-bright);
+  border-color: var(--accent-gold);
+}
+.ao-panel-action-btn:active { transform: translateY(1px); }
+
 /* ── List rows (used inside panels) ─────────────────── */
 .ao-list-row {
   display: grid;
@@ -342,6 +370,10 @@ body.aviation-operations.light-mode {
       <div class="ao-panel-body" id="am-designs">
         <div class="ao-panel-empty">No designs yet. Run R&amp;D to develop your first airframe.</div>
       </div>
+      <div class="ao-panel-actions">
+        <button type="button" class="ao-panel-action-btn" data-am-action="design-engine">+ Design Engine</button>
+        <button type="button" class="ao-panel-action-btn" data-am-action="design-aircraft">+ Design Aircraft</button>
+      </div>
     </div>
     <div class="ao-panel">
       <div class="ao-panel-header">
@@ -350,6 +382,9 @@ body.aviation-operations.light-mode {
       </div>
       <div class="ao-panel-body" id="am-rnd">
         <div class="ao-panel-empty">No active R&amp;D. Allocate resources to begin developing a new design.</div>
+      </div>
+      <div class="ao-panel-actions">
+        <button type="button" class="ao-panel-action-btn" data-am-action="new-research">+ New Research</button>
       </div>
     </div>
   </div>
@@ -488,6 +523,24 @@ async function init() {
     document.getElementById('am-stat-innovation').textContent = String(Math.round(Number(faction.corp_innovation) || 0));
 
     await loadFacilities(faction.id);
+
+    // Phase D placeholder wiring for Designs / R&D action buttons.
+    // The mechanics ship in Phase F; until then a click acknowledges
+    // the intent so the buttons feel real instead of dead. Replace
+    // each branch with the real action when the corresponding Phase F
+    // RPC lands (open-design-modal, start-research-program, etc.).
+    const PLANT_ACTION_LABELS = {
+        'design-engine':   'Engine design',
+        'design-aircraft': 'Aircraft design',
+        'new-research':    'New research program',
+    };
+    document.querySelectorAll('[data-am-action]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const action = btn.getAttribute('data-am-action');
+            const label  = PLANT_ACTION_LABELS[action] || 'This action';
+            alert(label + ' will be available when Aviation Manufacturing Phase F mechanics ship.');
+        });
+    });
 }
 
 init().catch(err => {
