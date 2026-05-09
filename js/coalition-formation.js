@@ -148,24 +148,42 @@ export async function initCoalitionFormation(supabase, state) {
         return { needed: false };
     }
 
-    if (election && !hasFormedGov) {
-        _formationNeeded = true;
+    // Set _electionId / _lastElectionTick first so loadFormations()
+    // (called below for the invited-proposal check) can run.
+    if (election) {
         _electionId = election.id;
         _lastElectionTick = election.election_tick;
+    }
+
+    if (election && !hasFormedGov) {
+        _formationNeeded = true;
     } else {
         // Default: formation needed only when no formed government exists.
-        // Exception: an emergency_minority government's PM party can re-enter
+        // Exception 1: an emergency_minority government's PM party can re-enter
         // the formation flow to propose a real majority coalition.
         // finalize_government_formation (20260910:127) dissolves the prior
         // minority formation atomically when the new coalition is sealed.
         const minorityPromotePath = activeCoalition?.formation_type === 'emergency_minority'
             && Array.isArray(activeCoalition.party_ids)
             && activeCoalition.party_ids.includes(faction.id);
-        _formationNeeded = !hasFormedGov || minorityPromotePath;
+
+        // Exception 2: an active formation proposal exists for this election
+        // that lists my party. Without this branch the invited parties
+        // (especially ones outside the current minority government) see
+        // "Government Formed" and have no surface to act on the proposal
+        // that's blocking the snap-election timer.
+        //
+        // Source of truth: loadFormations() already fetches active proposals
+        // for _electionId and tags each with iAmInvited. Reusing it here
+        // means the "am I invited?" check lives in exactly one place
+        // — instead of running a parallel query that could drift.
+        let invitedToProposal = false;
         if (election) {
-            _electionId = election.id;
-            _lastElectionTick = election.election_tick;
+            await loadFormations();
+            invitedToProposal = (_formations || []).some(f => f.iAmInvited);
         }
+
+        _formationNeeded = !hasFormedGov || minorityPromotePath || invitedToProposal;
     }
 
     return { needed: _formationNeeded };
