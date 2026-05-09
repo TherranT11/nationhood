@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aviation Operations | Nationhood</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/corp-topbar.css">
+<link rel="stylesheet" href="css/corp-light-theme.css">
+<style>
+/* ══════════════════════════════════════════════════════════════
+   AVIATION MANUFACTURING OPERATIONS — Phase D scaffold.
+   Reuses the .ao-* class vocabulary established by airline-operations
+   so future shared-CSS extraction is straightforward. Mechanics
+   (Designs / R&D / Orders) ship in Phase F — today the containers are
+   placeholders reading the live corp row + Light Industrial Facility.
+   ══════════════════════════════════════════════════════════════ */
+body.aviation-operations {
+  --bg-0: #0e0e0c;
+  --bg-1: #1a1a1a;
+  --bg-2: #1a1a17;
+  --bg-3: #252525;
+  --bg-4: #24241f;
+  --bg-5: #2c2c26;
+  --bg-hover: #282822;
+  --bg-card: #1a1a17;
+  --bg-panel: #252525;
+  --panel-main: #1f1f1a;
+  --panel-border: rgba(255,255,255,0.08);
+  --text-bright: #f0efe6;
+  --text-primary: #c4c2b8;
+  --text-secondary: #888;
+  --text-muted: #666;
+  --text-dim: #4a4940;
+  --text-ghost: #333229;
+  --border-hair: rgba(255,255,255,0.04);
+  --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08);
+  --border-2: rgba(255,255,255,0.12);
+  --green: #5cb85c;
+  --red: #d9534f;
+  --amber: #c8a832;
+  --gold: #c8a832;
+  --orange: #e8724a;
+  --blue: #5bc0de;
+  --teal: #5aafa5;
+
+  --line-soft: var(--border-hair);
+  --line-bright: var(--border-2);
+  --accent-gold: var(--gold);
+  --accent-teal: var(--teal);
+  --accent-green: var(--green);
+  --accent-rust: var(--orange);
+
+  --serif: 'IBM Plex Serif', Georgia, serif;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.45;
+  margin: 0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+body.aviation-operations * { box-sizing: border-box; }
+
+body.aviation-operations.light-mode {
+  --bg-0:        #faf9f5;
+  --bg-card:     #ffffff;
+  --bg-panel:    #faf9f5;
+  --text-bright: #1a1a17;
+  --text-primary:#2d2d28;
+  --text-muted:  #6a6660;
+  --line-soft:   #e8e7e0;
+  --line-bright: #e0dfd6;
+  --border-hair: #e8e7e0;
+  --border-2:    #e0dfd6;
+}
+
+.ao-page {
+  max-width: 1280px;
+  margin: 24px auto 64px;
+  padding: 0 32px;
+}
+
+.ao-section { margin-bottom: 32px; }
+.ao-section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  border-bottom: 1px solid var(--line-bright);
+  padding-bottom: 10px;
+  margin-bottom: 16px;
+}
+.ao-section-header h2 {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 500;
+  margin: 0;
+  color: var(--text-bright);
+  letter-spacing: -0.01em;
+}
+.ao-section-header h2 .num {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent-gold);
+  margin-right: 8px;
+  letter-spacing: 0.15em;
+}
+.ao-section-header .desc {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ── Hero stats ─────────────────────────────────────── */
+.ao-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--line-bright);
+  border: 1px solid var(--line-bright);
+}
+.ao-hero-stat {
+  background: var(--bg-card);
+  padding: 28px 28px 24px;
+  position: relative;
+  overflow: hidden;
+}
+.ao-hero-stat::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(to right, var(--accent-gold), transparent);
+}
+.ao-hero-stat[data-stat="capacity"]::before   { background: linear-gradient(to right, var(--accent-teal),  transparent); }
+.ao-hero-stat[data-stat="quality"]::before    { background: linear-gradient(to right, var(--accent-green), transparent); }
+.ao-hero-stat[data-stat="innovation"]::before { background: linear-gradient(to right, var(--accent-gold),  transparent); }
+.ao-hero-stat-eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent-gold);
+  margin-bottom: 8px;
+}
+.ao-hero-stat[data-stat="capacity"] .ao-hero-stat-eyebrow { color: var(--accent-teal); }
+.ao-hero-stat[data-stat="quality"]  .ao-hero-stat-eyebrow { color: var(--accent-green); }
+.ao-hero-stat-name {
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: 26px;
+  line-height: 1.05;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  letter-spacing: -0.015em;
+}
+.ao-hero-stat-value {
+  font-family: var(--serif);
+  font-size: 42px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text-bright);
+  font-variant-numeric: tabular-nums;
+}
+.ao-hero-stat-suffix {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* ── Two-up panels row (Designs + R&D) ─────────────────── */
+.ao-panels-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+.ao-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--line-bright);
+}
+.ao-panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line-bright);
+}
+.ao-panel-header h3 {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0;
+  color: var(--text-bright);
+  letter-spacing: -0.01em;
+}
+.ao-panel-header .desc {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.ao-panel-body { padding: 12px 0; }
+.ao-panel-empty {
+  padding: 22px 18px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+/* ── List rows (used inside panels) ─────────────────── */
+.ao-list-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: baseline;
+  padding: 8px 18px;
+  border-bottom: 1px dashed var(--line-soft);
+}
+.ao-list-row:last-child { border-bottom: 0; }
+.ao-list-primary {
+  font-family: var(--serif);
+  font-size: 14px;
+  color: var(--text-bright);
+  font-weight: 500;
+}
+.ao-list-secondary {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+.ao-list-tag {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border: 1px solid var(--line-bright);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.ao-list-tag.muted { color: var(--text-dim); border-color: var(--border-hair); }
+.ao-list-tag.green { color: var(--accent-green); border-color: var(--accent-green); }
+
+/* ── Wide empty-state block (used by Pressing Issues + Orders) ── */
+.ao-empty {
+  background: var(--bg-card);
+  border: 1px dashed var(--line-bright);
+  padding: 32px 24px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+}
+.ao-empty strong {
+  display: block;
+  font-family: var(--serif);
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+</style>
+</head>
+<body class="aviation-operations">
+<div id="corp-topbar"></div>
+
+<div class="ao-page">
+
+  <!-- I. Strategic Position -->
+  <section class="ao-section">
+    <div class="ao-section-header">
+      <h2><span class="num">I.</span>Strategic Position</h2>
+      <span class="desc">Production · Quality Control · Innovation</span>
+    </div>
+    <div class="ao-hero-stats">
+      <div class="ao-hero-stat" data-stat="capacity" title="Your corporation's ability to produce aircraft. A high production capacity allows you to build more aircraft, faster.">
+        <div class="ao-hero-stat-eyebrow">Production Capacity</div>
+        <div class="ao-hero-stat-name">Aircraft <em>output</em></div>
+        <div>
+          <span class="ao-hero-stat-value" id="am-stat-capacity">—</span>
+          <span class="ao-hero-stat-suffix">/ 10</span>
+        </div>
+      </div>
+      <div class="ao-hero-stat" data-stat="quality" title="Your standing with aviation safety regulators, airworthiness authorities, and international certification bodies (FAA / EASA / ICAO equivalents). High Quality Control means aircraft are trusted, approved for sale in major markets, and can fly anywhere. Low Quality Control means groundings, blocked sales, recalls, and the nightmare scenario every aviation manufacturer fears: a fatal crash traced back to a design flaw your firm signed off on.">
+        <div class="ao-hero-stat-eyebrow">Quality Control</div>
+        <div class="ao-hero-stat-name">Regulator <em>standing</em></div>
+        <div>
+          <span class="ao-hero-stat-value" id="am-stat-quality">—</span>
+          <span class="ao-hero-stat-suffix">/ 10</span>
+        </div>
+      </div>
+      <div class="ao-hero-stat" data-stat="innovation" title="Your firm's design throughput. Higher Innovation accelerates Research & Development, unlocks more advanced airframe blueprints, and lets you push the engineering envelope. Low Innovation traps you in derivative designs that compete on price alone.">
+        <div class="ao-hero-stat-eyebrow">Innovation</div>
+        <div class="ao-hero-stat-name">Design <em>throughput</em></div>
+        <div>
+          <span class="ao-hero-stat-value" id="am-stat-innovation">—</span>
+          <span class="ao-hero-stat-suffix">/ 10</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- II. Pressing Issues -->
+  <section class="ao-section">
+    <div class="ao-section-header">
+      <h2><span class="num">II.</span>Pressing Issues</h2>
+      <span class="desc">Items requiring attention</span>
+    </div>
+    <div class="ao-empty">
+      <strong>No pressing issues</strong>
+      Operations are running cleanly. Issues will surface here as they arise.
+    </div>
+  </section>
+
+  <!-- III. Designs + R&D (two-up) -->
+  <div class="ao-panels-row">
+    <div class="ao-panel">
+      <div class="ao-panel-header">
+        <h3>Current Designs</h3>
+        <span class="desc">Aircraft you can sell</span>
+      </div>
+      <div class="ao-panel-body" id="am-designs">
+        <div class="ao-panel-empty">No designs yet. Run R&amp;D to develop your first airframe.</div>
+      </div>
+    </div>
+    <div class="ao-panel">
+      <div class="ao-panel-header">
+        <h3>Research &amp; Development</h3>
+        <span class="desc">Active design programs</span>
+      </div>
+      <div class="ao-panel-body" id="am-rnd">
+        <div class="ao-panel-empty">No active R&amp;D. Allocate resources to begin developing a new design.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- IV. Orders -->
+  <section class="ao-section">
+    <div class="ao-section-header">
+      <h2><span class="num">IV.</span>Orders</h2>
+      <span class="desc">Aircraft commissions from airlines</span>
+    </div>
+    <div class="ao-empty" id="am-orders">
+      <strong>No orders yet</strong>
+      Once your designs are certified, airlines can commission aircraft from your firm.
+    </div>
+  </section>
+
+  <!-- V. Industrial Facilities -->
+  <section class="ao-section">
+    <div class="ao-section-header">
+      <h2><span class="num">V.</span>Industrial Facilities</h2>
+      <span class="desc">Production capacity assets</span>
+    </div>
+    <div class="ao-panel">
+      <div class="ao-panel-body" id="am-facilities">
+        <div class="ao-panel-empty">Loading…</div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script type="module">
+import { renderCorpTopBar } from './js/corp-topbar.js';
+import { _supabase } from './js/supabase-client.js';
+
+function escHtml(s) {
+    if (s == null) return '';
+    const d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
+}
+
+function fmtMoneyShort(n) {
+    const v = Number(n) || 0;
+    if (v >= 1_000_000_000) return '$' + (v / 1_000_000_000).toFixed(2) + 'B';
+    if (v >= 1_000_000)     return '$' + (v / 1_000_000).toFixed(1)  + 'M';
+    if (v >= 1_000)         return '$' + (v / 1_000).toFixed(1)      + 'k';
+    return '$' + Math.round(v);
+}
+
+const FACILITY_LABEL = {
+    light_industrial_facility: 'Light Industrial Facility',
+};
+
+async function loadFacilities(corpId) {
+    const el = document.getElementById('am-facilities');
+    if (!el) return;
+    const { data: rows, error } = await _supabase
+        .from('corp_properties')
+        .select('id, name, type, city, purchase_price, monthly_maintenance, condition, purchased_at_tick')
+        .eq('faction_id', corpId)
+        .eq('is_active', true)
+        .neq('type', 'national_hq')
+        .order('purchased_at_tick', { ascending: true });
+    if (error) {
+        console.warn('[aviation-ops] facilities fetch failed:', error.message);
+        el.innerHTML = '<div class="ao-panel-empty">Could not load facilities.</div>';
+        return;
+    }
+    if (!rows || rows.length === 0) {
+        el.innerHTML = '<div class="ao-panel-empty">No industrial facilities yet.</div>';
+        return;
+    }
+    el.innerHTML = rows.map(r => {
+        const label    = FACILITY_LABEL[r.type] || r.name || r.type;
+        const valueTxt = fmtMoneyShort(r.purchase_price);
+        const maintTxt = fmtMoneyShort(r.monthly_maintenance);
+        const cond     = Math.round(Number(r.condition) || 0);
+        const cityTxt  = r.city ? escHtml(r.city) : '—';
+        return `<div class="ao-list-row">
+            <div>
+                <div class="ao-list-primary">${escHtml(label)}</div>
+                <div class="ao-list-secondary">${cityTxt} · ${cond}% condition · ${maintTxt}/mo maint</div>
+            </div>
+            <div class="ao-list-tag green">${valueTxt}</div>
+        </div>`;
+    }).join('');
+}
+
+async function init() {
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) { window.location.href = 'login.html'; return; }
+
+    // Inspect-mode override mirrors the airline-operations pattern: ?faction_id=
+    // from the admin Nation Inspector wins over sessionStorage so the inspector
+    // can view any aviation corp's ops surface without a sector bounce.
+    const url = new URL(location.href);
+    const inspectFactionId = url.searchParams.get('faction_id');
+    const activeId = inspectFactionId
+        || sessionStorage.getItem('active_faction_id')
+        || user.id;
+
+    const [factionRes, shardRes] = await Promise.all([
+        _supabase.from('factions').select('*').eq('id', activeId).maybeSingle(),
+        _supabase.from('shard').select('current_tick, current_date, next_tick_at, tick_interval_hours').eq('name', 'Alpha Shard').single(),
+    ]);
+    if (factionRes.error || !factionRes.data) {
+        document.body.innerHTML = '<div style="padding:40px;font-family:monospace;color:#c85a3a;">Could not load corporation.</div>';
+        return;
+    }
+    const faction = factionRes.data;
+    const shard   = shardRes.data;
+
+    if (faction.faction_type !== 'corporation' || faction.corp_sector !== 'Aviation Manufacturing') {
+        const qs = inspectFactionId ? `?faction_id=${encodeURIComponent(inspectFactionId)}` : '';
+        window.location.href = 'corp-dashboard.html' + qs;
+        return;
+    }
+
+    const { data: allFactions } = await _supabase
+        .from('factions')
+        .select('id, faction_name, abbreviation, faction_type, linked_user_id')
+        .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+        .is('abandoned_at', null);
+
+    renderCorpTopBar(document.getElementById('corp-topbar'), {
+        activeTab: 'operations',
+        faction,
+        shard,
+        allUserFactions: allFactions || [],
+        supabase: _supabase,
+    });
+
+    document.getElementById('am-stat-capacity').textContent   = String(Number(faction.corp_production_capacity) || 0);
+    document.getElementById('am-stat-quality').textContent    = String(Number(faction.corp_quality_control)     || 0);
+    document.getElementById('am-stat-innovation').textContent = String(Math.round(Number(faction.corp_innovation) || 0));
+
+    await loadFacilities(faction.id);
+}
+
+init().catch(err => {
+    console.error('[aviation-ops] init failed:', err);
+    document.body.innerHTML = '<div style="padding:40px;font-family:monospace;color:#c85a3a;">Could not load aviation operations. Reload to try again.</div>';
+});
+</script>
+</body>
+</html>
