@@ -1851,9 +1851,10 @@ function renderActiveCard(contract) {
 
     // ── Crew display ────────────────────────────────────────────────
     // crews_committed is locked in at bid time (drives the price and
-    // timeline multipliers) and just shown here for context. The
-    // separate crews_assigned / Manage Crews flow was retired in
-    // 20261029 — progress no longer requires a deploy step.
+    // timeline multipliers). Surfaced as "Crews Working" on the
+    // active card because under the post-20261029 single-step model
+    // those crews are actually on the job — the separate
+    // crews_assigned / Manage Crews flow was retired then.
     const acceptedBid = _myBids.get(contract.id);
     const crewsCommitted = Number(acceptedBid?.crews_committed || 0);
     const crewsValue = crewsCommitted ? crewsCommitted.toFixed(0) : '—';
@@ -1881,7 +1882,7 @@ function renderActiveCard(contract) {
                 <div class="value green">${fmtMoney(budget)}</div>
             </div>
             <div>
-                <div class="label">Crews Committed</div>
+                <div class="label">Crews Working</div>
                 <div class="value">${crewsValue}</div>
             </div>
             <div>
