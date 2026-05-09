@@ -770,6 +770,10 @@ function renderPageShell(activeOrders) {
                 <span class="desc">Aircraft Commissions From Airlines</span>
             </div>
             <div class="co-contract-empty">No orders yet. Once your designs are certified, airlines can commission aircraft from your firm.</div>
+            <div class="co-panel-actions">
+                <button type="button" class="co-panel-action-btn" data-am-action="fulfill-order">+ Fulfill Order</button>
+                <button type="button" class="co-panel-action-btn" data-am-action="request-order">+ Request Order</button>
+            </div>
         </div>
 
         <!-- VI. INDUSTRIAL FACILITIES -->
@@ -780,6 +784,9 @@ function renderPageShell(activeOrders) {
             </div>
             <div class="co-contract-list" id="co-facilities-list">
                 <div class="co-contract-empty">Loading…</div>
+            </div>
+            <div class="co-panel-actions">
+                <button type="button" class="co-panel-action-btn" data-am-action="production-queue">+ Production Queue</button>
             </div>
         </div>
 
@@ -792,9 +799,12 @@ function renderPageShell(activeOrders) {
 }
 
 const PLANT_ACTION_LABELS = {
-    'design-engine':   'Engine design',
-    'design-aircraft': 'Aircraft design',
-    'new-research':    'New research program',
+    'design-engine':    'Engine design',
+    'design-aircraft':  'Aircraft design',
+    'new-research':     'New research program',
+    'fulfill-order':    'Order fulfillment',
+    'request-order':    'New order request',
+    'production-queue': 'Production queue management',
 };
 
 function bindPanelActionButtons() {
