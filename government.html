@@ -10459,6 +10459,7 @@ function renderCabinet(ministries, coalition) {
             const mgmtHtml = buildMgmtButtons(key, m, govContext);
             const requestListHtml = (govContext.isRuling && requests.length > 0) ? buildRequestList(requests) : '';
             const statsHtml = renderMinistryStatBreakdown(key, m);
+            const actionsHtml = buildMinistryActionRows(key, isMyMinistry);
             return `<div class="ministry-card">${headerHtml}
                 <div class="ministry-card__minister">
                     <div class="ministry-card__minister-name">${escapeHtml(m.minister_first_name || 'Unknown')} ${escapeHtml(m.minister_last_name || '')}</div>
@@ -10467,7 +10468,7 @@ function renderCabinet(ministries, coalition) {
                 <div class="ministry-card__pending">
                     <div class="ministry-card__pending-label" style="color:var(--amber);">ACTING MINISTER</div>
                 </div>
-                ${mgmtHtml}${statsHtml}${requestListHtml}
+                ${mgmtHtml}${statsHtml}${requestListHtml}${actionsHtml}
             </div>`;
         }
 
