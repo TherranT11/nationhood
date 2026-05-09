@@ -3532,6 +3532,82 @@ async function processShippingRoutes(supabase, currentTick) {
 //     to the corp's corp_route_risk on award (clamped 0..10) and
 //     reverted on contract completion / maturity.
 // ════════════════════════════════════════════════════════════════
+// AVIATION MANUFACTURING — DESIGN RESEARCH SWEEP
+// Per-tick advancement of every active engine / aircraft design
+// research project. Deducts research_cost_per_tick (default $1M) via
+// emit_corp_cash_event for the audit trail, decrements
+// research_ticks_remaining, and graduates the row to status='available'
+// when the counter hits zero. Insufficient cash pauses the project
+// without progress or cost — cash returns, progress resumes next tick.
+// ════════════════════════════════════════════════════════════════
+async function processAviationDesignResearch(supabase, currentTick) {
+    const { data: designs, error } = await supabase
+        .from('corp_aircraft_designs')
+        .select('id, corp_id, name, design_type, research_ticks_remaining, research_cost_per_tick, factions:corp_id(id, faction_name, corp_cash_reserves)')
+        .eq('status', 'researching')
+        .gt('research_ticks_remaining', 0);
+    if (error) {
+        console.warn('[AviationDesignResearch] fetch failed:', error.message);
+        return null;
+    }
+    if (!designs || designs.length === 0) return { advanced: 0, completed: 0, paused: 0 };
+
+    let advanced = 0;
+    let completed = 0;
+    let paused = 0;
+
+    for (const d of designs) {
+        const corp = d.factions || {};
+        const cash = Number(corp.corp_cash_reserves) || 0;
+        const cost = Number(d.research_cost_per_tick) || 0;
+
+        if (cash < cost) {
+            paused++;
+            continue;
+        }
+
+        // Cash deduction via the same audited path as every other
+        // corp P&L flow. category='research' surfaces R&D as its own
+        // line in the cash-events ledger.
+        try {
+            await supabase.rpc('emit_corp_cash_event', {
+                p_corp_id:  d.corp_id,
+                p_category: 'research',
+                p_label:    `R&D · ${d.name} ${d.design_type === 'engine' ? 'engine' : 'airframe'} design`,
+                p_delta:    -cost,
+                p_tick:     currentTick,
+            });
+        } catch (cashErr) {
+            console.warn(`[AviationDesignResearch] cash deduct failed for ${d.id}:`, cashErr?.message || cashErr);
+            paused++;
+            continue;
+        }
+
+        const newRemaining = (Number(d.research_ticks_remaining) || 0) - 1;
+        const willComplete = newRemaining <= 0;
+
+        const updatePayload = willComplete
+            ? { research_ticks_remaining: 0, status: 'available', completed_at_tick: currentTick }
+            : { research_ticks_remaining: newRemaining };
+
+        const { error: updErr } = await supabase
+            .from('corp_aircraft_designs')
+            .update(updatePayload)
+            .eq('id', d.id);
+        if (updErr) {
+            console.warn(`[AviationDesignResearch] update failed for ${d.id}:`, updErr.message);
+            continue;
+        }
+
+        if (willComplete) completed++;
+        else              advanced++;
+    }
+
+    return { advanced, completed, paused };
+}
+
+
+// ════════════════════════════════════════════════════════════════
 async function processTradeAgreementShipping(supabase, currentTick) {
     const results = {
         awarded: 0, completed: 0, paid: 0, polling: 0, renewed: 0,
@@ -5885,6 +5961,21 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
             || tradeShipResults.missed > 0) {
             summary.tradeAgreementShipping = tradeShipResults;
             console.log(`[TradeAgreementShipping] tick ${currentTick}: ${tradeShipResults.awarded} awarded (${tradeShipResults.bidsAccepted} bids accepted, ${tradeShipResults.bidsAutoRejected} auto-rejected), ${tradeShipResults.polling} polling for bids, ${tradeShipResults.completed} completed (${tradeShipResults.renewed} renewed), ${tradeShipResults.paid} paid, ${tradeShipResults.missed} skipped`);
+        }
+
+        // Aviation Manufacturing — design research advancement.
+        // Each researching design ticks one step closer to availability,
+        // costing $1M from the owner corp's cash reserves. Insufficient
+        // cash pauses (no progress, no charge); cash returns and progress
+        // resumes. On the final tick: status='available' + completed_at_tick.
+        try {
+            const designResearchResults = await processAviationDesignResearch(supabase, currentTick);
+            if (designResearchResults && (designResearchResults.advanced > 0 || designResearchResults.completed > 0 || designResearchResults.paused > 0)) {
+                summary.aviationDesignResearch = designResearchResults;
+                console.log(`[AviationDesignResearch] tick ${currentTick}: ${designResearchResults.advanced} advanced, ${designResearchResults.completed} completed, ${designResearchResults.paused} paused (insufficient cash)`);
+            }
+        } catch (designErr) {
+            console.error('[advance-corp-tick] Aviation design research failed (non-fatal):', designErr);
         }
     } catch (shipErr) {
         console.error('[advance-corp-tick] FAILED shipping route processor:', shipErr);
