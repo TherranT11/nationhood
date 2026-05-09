@@ -1856,9 +1856,7 @@ function renderActiveCard(contract) {
     // 20261029 — progress no longer requires a deploy step.
     const acceptedBid = _myBids.get(contract.id);
     const crewsCommitted = Number(acceptedBid?.crews_committed || 0);
-    const crewsLabel = 'Crews Committed';
     const crewsValue = crewsCommitted ? crewsCommitted.toFixed(0) : '—';
-    const crewsWarn  = '';
 
     // Margin = (budget − amount_spent) / budget × 100
     const budget = Number(contract.budget) || 0;
@@ -1883,8 +1881,8 @@ function renderActiveCard(contract) {
                 <div class="value green">${fmtMoney(budget)}</div>
             </div>
             <div>
-                <div class="label">${crewsLabel}</div>
-                <div class="value${crewsWarn}">${crewsValue}</div>
+                <div class="label">Crews Committed</div>
+                <div class="value">${crewsValue}</div>
             </div>
             <div>
                 <div class="label">Margin</div>

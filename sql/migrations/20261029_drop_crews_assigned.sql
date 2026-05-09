@@ -82,7 +82,13 @@ BEGIN
     IF v_user_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
     END IF;
-    SELECT * INTO v_bidder FROM factions WHERE id = p_bidder_faction_id;
+    -- Lock the bidder row for the duration of this bid so two parallel
+    -- place_construction_bid calls (different contracts, same bidder)
+    -- can't both pass the aggregate crew-cap before either commits.
+    -- Postgres serializes the second caller until the first transaction
+    -- ends; the second then sees the freshly-inserted bid in the cap
+    -- query and rejects if appropriate.
+    SELECT * INTO v_bidder FROM factions WHERE id = p_bidder_faction_id FOR UPDATE;
     IF v_bidder.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Bidder corporation not found');
     END IF;
@@ -120,16 +126,29 @@ BEGIN
 
     -- ── Aggregate crew-cap (replaces the per-tick assigned/committed
     --    gate retired in this migration). Sum crews_committed across
-    --    every pending or accepted bid for this corp on every OTHER
-    --    contract; reject if (other_committed + this_bid) exceeds the
-    --    corp's total Work Crews. The current contract is excluded so
-    --    re-bidding a contract you already bid on can adjust crews
-    --    without double-counting. ──
-    SELECT COALESCE(SUM(crews_committed), 0) INTO v_other_committed
-      FROM corp_contract_bids
-     WHERE faction_id = p_bidder_faction_id
-       AND contract_id <> p_contract_id
-       AND status IN ('pending', 'accepted');
+    --    every live bid for this corp on every OTHER contract; reject
+    --    if (other_committed + this_bid) exceeds the corp's total Work
+    --    Crews. The current contract is excluded so re-bidding a
+    --    contract you already bid on can adjust crews without double-
+    --    counting.
+    --
+    --    "Live" = pending bids on open contracts + accepted bids on
+    --    active contracts. The bid-status lifecycle never flips
+    --    accepted → completed when a contract finishes (the contract
+    --    row gains status='completed' but the bid row stays
+    --    'accepted'), so we have to gate on the CONTRACT's status to
+    --    free up crews when projects finish. Without the JOIN, a corp
+    --    that completed 5 jobs would still have those crews counted
+    --    against the cap forever. ──
+    SELECT COALESCE(SUM(b.crews_committed), 0) INTO v_other_committed
+      FROM corp_contract_bids b
+      JOIN corp_contracts      c ON c.id = b.contract_id
+     WHERE b.faction_id  = p_bidder_faction_id
+       AND b.contract_id <> p_contract_id
+       AND (
+              (b.status = 'pending'  AND c.status = 'open')
+           OR (b.status = 'accepted' AND c.status = 'active')
+           );
     IF v_other_committed + p_crews_committed > COALESCE(v_bidder.corp_work_crews, 0) THEN
         RETURN jsonb_build_object('success', false,
             'error', format('Crew capacity exhausted — you have committed %s crews across other live bids and this would push the total to %s, but you only own %s Work Crews. Free up capacity (lose, win-and-finish, or cancel a bid) before bidding again.',
