@@ -86,6 +86,11 @@ CREATE POLICY "corp_production_runs_read_all"
 COMMENT ON TABLE public.corp_production_runs IS
     'Aviation Manufacturing production runs. Inserted via queue_production_run RPC. Per-tick processor in advance-corp-tick (processProductionRuns) deducts cost_per_tick, decrements ticks_remaining, and at each cycle boundary delivers up to parallel_capacity units into the design''s inventory_on_hand. No cancellation; once queued, the run runs to completion.';
 
+COMMENT ON COLUMN public.corp_production_runs.engine_design_id IS
+    'For aircraft runs: snapshot of which engine design the run is consuming. Set at queue time, never re-read by the live tick processor today (engines are eagerly subtracted at queue time, not consumed per cycle). Reserved for the future cancellation/refund flow + audit trail.';
+COMMENT ON COLUMN public.corp_production_runs.engines_per_unit IS
+    'For aircraft runs: snapshot of design.engine_count at queue time. Currently only used by the queue RPC for the eager engine reservation; the live processor doesn''t reference it. Reserved for future refund logic.';
+
 
 -- ── corp_production_run_plants (assignment join) ────────────────
 CREATE TABLE IF NOT EXISTS public.corp_production_run_plants (

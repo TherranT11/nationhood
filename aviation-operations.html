@@ -2582,6 +2582,10 @@ const PLANT_SHORT_LABEL = {
     heavy_manufacturing_plant:  'Heavy Manufacturing',
     engine_assembly_plant:      'Engine Assembly',
 };
+// Mirror of the v_time_per_unit / volume-discount CASE ladders in
+// queue_production_run (sql/migrations/20261030_aviation_production_runs.sql).
+// Keep both sides in lockstep when tuning — the server is the source
+// of truth, the client uses these for the live cost/time preview.
 const TIME_PER_UNIT_BY_CLASS = {
     business: 6, regional: 8, narrowbody: 10, widebody: 12,
 };
@@ -2969,11 +2973,19 @@ function renderProductionQueueModal() {
     $('am-q-footer-ticks').textContent = totalTicks > 0 ? String(totalTicks) : '—';
 
     // ── Submit gating ──────────────────────────────────────────
+    // The "cross-corp engine" branch handles the case where an
+    // aircraft was designed against another corp's engine (the
+    // design modal allows any globally-Available engine, but the
+    // production RPC currently only supports own-corp engine
+    // sourcing). Without this branch the player would see a
+    // misleading "Need N engines (short N)" gate instead of an
+    // explanation of what's actually wrong.
     const submitBtn = $('am-q-modal-submit');
     let blockReason = null;
     if (!design) blockReason = 'Pick a design';
     else if (parallelCapacity === 0) blockReason = 'Assign at least one plant';
-    else if (design.design_type === 'aircraft' && !engineDesign) blockReason = 'Aircraft design has no engine reference';
+    else if (design.design_type === 'aircraft' && !design.engine_design_id) blockReason = 'Aircraft design has no engine reference';
+    else if (design.design_type === 'aircraft' && !engineDesign) blockReason = 'This aircraft was designed with another corp\'s engine. Cross-corp engine sourcing isn\'t supported yet — pick an aircraft built around one of your own engine designs.';
     else if (design.design_type === 'aircraft' && !stockSufficient) blockReason = `Need ${enginesNeeded} engines (short ${enginesNeeded - (Number(engineDesign?.inventory_on_hand) || 0)})`;
     else if (cash < costPerTick) blockReason = `Need ${fmtCostShort(costPerTick)} cash to start (you have ${fmtCostShort(cash)})`;
 

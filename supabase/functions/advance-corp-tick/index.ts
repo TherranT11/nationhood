@@ -3660,10 +3660,14 @@ async function processProductionRuns(supabase, currentTick) {
         const newCompleted    = Math.max(Number(r.completed_quantity) || 0, shouldBeDelivered);
         const newDeliveries   = newCompleted - (Number(r.completed_quantity) || 0);
 
+        // Inventory bump for any units crossing a cycle boundary this
+        // tick. If the bump fails we MUST refund the cash we just
+        // deducted and skip advancing the run row — otherwise the
+        // player paid for units they never received and the cycle
+        // math won't re-trigger them next tick (completed_quantity
+        // would have been advanced regardless).
+        let inventoryWriteFailed = false;
         if (newDeliveries > 0) {
-            // Increment the design's inventory_on_hand by however many
-            // units this tick delivered. Per-design counter; the run's
-            // completed_quantity is the local snapshot.
             const { data: design, error: dErr } = await supabase
                 .from('corp_aircraft_designs')
                 .select('inventory_on_hand')
@@ -3671,6 +3675,7 @@ async function processProductionRuns(supabase, currentTick) {
                 .single();
             if (dErr) {
                 console.warn(`[ProductionRuns] design fetch failed for ${r.id}:`, dErr.message);
+                inventoryWriteFailed = true;
             } else {
                 const newInv = (Number(design?.inventory_on_hand) || 0) + newDeliveries;
                 const { error: invErr } = await supabase
@@ -3679,10 +3684,30 @@ async function processProductionRuns(supabase, currentTick) {
                     .eq('id', r.design_id);
                 if (invErr) {
                     console.warn(`[ProductionRuns] inventory bump failed for ${r.id}:`, invErr.message);
+                    inventoryWriteFailed = true;
                 } else {
                     delivered += newDeliveries;
                 }
             }
+        }
+
+        if (inventoryWriteFailed) {
+            // Refund the tick's cost so the corp isn't charged for a
+            // tick that produced nothing. Don't advance the run; next
+            // tick will retry the same delivery batch.
+            try {
+                await supabase.rpc('emit_corp_cash_event', {
+                    p_corp_id:  r.corp_id,
+                    p_category: 'event_cost',
+                    p_label:    `Production refund · inventory write retry`,
+                    p_delta:    cost,
+                    p_tick:     currentTick,
+                });
+            } catch (refundErr) {
+                console.warn(`[ProductionRuns] cash refund failed for ${r.id}:`, refundErr?.message || refundErr);
+            }
+            paused++;
+            continue;
         }
 
         const willComplete = newRemaining <= 0;
