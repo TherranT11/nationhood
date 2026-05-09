@@ -1239,13 +1239,40 @@ export async function resolveReferendums(supabase, nation, currentTick) {
             }
         }
 
-        var govApproval = Number(nation.gov_approval ?? 50);
-        var civilUnrest = Number(nation.unrest ?? 30);
-        var polarization = 50;
-        var happiness = Number(nation.standard_of_living ?? 50);
-        var stability = Number(nation.control ?? 50);
-        var sol = Number(nation.standard_of_living ?? 50);
-        var gdpGrowth = Number(nation.gdp_growth ?? 0);
+        // ── Live nation stats (alpha-refactor canonical names) ─────
+        // Replaces the pre-alpha column names that were dropped in
+        // 20260430_alpha_stats_phase9 (stability/civil_unrest/polarization/
+        // happiness/control-as-stability) — those reads were silently
+        // falling to defaults so 4 of 9 sentiment terms contributed nothing.
+        var publicApproval     = Number(nation.public_approval ?? 50);
+        var unrest             = Number(nation.unrest ?? 50);
+        var stateApparatus     = Number(nation.control ?? 50);
+        var crownAuthority     = nation.crown_authority != null ? Number(nation.crown_authority) : null;
+        var budget             = Number(nation.budget ?? 50);
+        var debt               = Number(nation.debt ?? 50);
+        var sol                = Number(nation.standard_of_living ?? 50);
+        var costOfLiving       = Number(nation.cost_of_living ?? 50);
+        var gdpGrowth          = Number(nation.gdp_growth ?? 50);
+        var wages              = Number(nation.wages ?? 50);
+        var health             = Number(nation.health ?? 50);
+        var education          = Number(nation.education ?? 50);
+        var energy             = Number(nation.energy ?? 50);
+        var infrastructure     = Number(nation.infrastructure ?? 50);
+        var industry           = Number(nation.industry ?? 50);
+        var farmland           = Number(nation.farmland ?? 50);
+        var serviceSector      = Number(nation.service_sector ?? 50);
+        var minerals           = Number(nation.minerals ?? 50);
+        var globalImage        = Number(nation.global_image ?? 50);
+        var crime              = Number(nation.crime ?? 50);
+        var corruption         = Number(nation.corruption ?? 50);
+        var immigration        = Number(nation.immigration ?? 50);
+        var skilledWorkers     = Number(nation.skilled_workers ?? 50);
+        var unskilledWorkers   = Number(nation.unskilled_workers ?? 50);
+        // Tax stats are on the alpha 0-10 scale (down-scaled in
+        // 20260430_alpha_stats_phase8_5_1). Threshold is 5, not 50.
+        var incomeTax          = Number(nation.income_tax ?? 5);
+        var corporateTax       = Number(nation.corporate_tax ?? 5);
+        var workforceImbalance = Math.abs(skilledWorkers - unskilledWorkers);
 
         var crisisCount = 0;
         try {
@@ -1281,16 +1308,53 @@ export async function resolveReferendums(supabase, nation, currentTick) {
         } catch (_) {}
 
         var yesPct = 50;
-        yesPct += Math.max(0, (50 - govApproval)) * 0.3;
-        yesPct += Math.max(0, (civilUnrest - 50)) * 0.2;
+
+        // ── PUSH signals: citizens want change ────────────────────
+        // Public mood
+        yesPct += Math.max(0, 50 - publicApproval)  * 0.30;
+        yesPct += Math.max(0, unrest - 50)          * 0.25;
+        // Cost-of-living + fiscal pressure
+        yesPct += Math.max(0, costOfLiving - 50)    * 0.15;
+        yesPct += Math.max(0, debt - 50)            * 0.10;
+        // Institutional decay
+        yesPct += Math.max(0, crime - 50)           * 0.10;
+        yesPct += Math.max(0, corruption - 50)      * 0.10;
+        // Tax burden (0-10 scale, weight ×10 vs 0-100 stats)
+        yesPct += Math.max(0, incomeTax - 5)        * 0.50;
+        yesPct += Math.max(0, corporateTax - 5)     * 0.50;
+        // Quality-of-life deficits
+        yesPct += Math.max(0, 50 - sol)             * 0.15;
+        yesPct += Math.max(0, 50 - wages)           * 0.10;
+        yesPct += Math.max(0, 50 - health)          * 0.05;
+        yesPct += Math.max(0, 50 - education)       * 0.05;
+        yesPct += Math.max(0, 50 - energy)          * 0.05;
+        yesPct += Math.max(0, 50 - infrastructure)  * 0.05;
+        // Workforce + demographic pressure
+        yesPct += workforceImbalance                * 0.05;
+        yesPct += Math.max(0, immigration - 50)     * 0.03;
+        // External — proposer popularity, active crises
+        yesPct += (proposerApproval - 50)           * 0.20;
         yesPct += crisisCount * 5;
-        yesPct += Math.max(0, (polarization - 50)) * 0.15;
-        yesPct += Math.max(0, (50 - happiness)) * 0.15;
-        yesPct += (proposerApproval - 50) * 0.2;
-        yesPct -= Math.max(0, (stability - 50)) * 0.2;
-        yesPct -= Math.max(0, (sol - 50)) * 0.15;
-        // GDP growth: gdp_growth is 0-100 centered at 50. Growing economy resists change.
-        yesPct -= Math.max(0, (gdpGrowth - 50)) * 0.3;
+
+        // ── RESIST signals: status quo holds ──────────────────────
+        // Strong state apparatus + growing economy resist change
+        yesPct -= Math.max(0, stateApparatus - 50)  * 0.20;
+        yesPct -= Math.max(0, gdpGrowth - 50)       * 0.20;
+        // Monarchies: healthy crown authority resists. Null = not a
+        // monarchy, term skipped.
+        if (crownAuthority !== null) {
+            yesPct -= Math.max(0, crownAuthority - 50) * 0.15;
+        }
+        // Fiscal strength, prestige, prosperity
+        yesPct -= Math.max(0, budget - 50)          * 0.10;
+        yesPct -= Math.max(0, sol - 50)             * 0.10;
+        yesPct -= Math.max(0, globalImage - 50)     * 0.10;
+        // Economic sector strength
+        yesPct -= Math.max(0, industry - 50)        * 0.05;
+        yesPct -= Math.max(0, farmland - 50)        * 0.05;
+        yesPct -= Math.max(0, serviceSector - 50)   * 0.05;
+        yesPct -= Math.max(0, minerals - 50)        * 0.05;
+        // Recent referendum fatigue
         yesPct -= fatiguePenalty;
 
         yesPct = Math.max(15, Math.min(85, yesPct));
@@ -1298,10 +1362,14 @@ export async function resolveReferendums(supabase, nation, currentTick) {
         yesPct = Math.round(Math.max(5, Math.min(95, yesPct)) * 10) / 10;
         var noPct = Math.round((100 - yesPct) * 10) / 10;
 
+        // Turnout: unrest + dissatisfaction + active crises drive
+        // engagement. Polarization was dropped in alpha phase 9 so
+        // we use public_approval deficit as the closest live proxy
+        // for "people care enough to show up."
         var turnout = 30;
-        turnout += Math.max(0, (polarization - 50)) * 0.2;
+        turnout += Math.max(0, unrest - 50)            * 0.20;
         turnout += crisisCount * 3;
-        turnout += Math.max(0, (civilUnrest - 50)) * 0.1;
+        turnout += Math.max(0, 50 - publicApproval)    * 0.10;
         turnout = Math.max(20, Math.min(45, turnout));
         turnout = Math.round((turnout + (Math.random() - 0.5) * 4) * 10) / 10;
         turnout = Math.max(15, Math.min(50, turnout));

@@ -14,6 +14,7 @@
  */
 
 import { GAME_CONFIG } from './config.js';
+import { getFactionInactiveReason } from './factions.js';
 
 /**
  * Build the list of impeachment charges with availability flags.
@@ -35,10 +36,32 @@ export async function buildImpeachmentCharges(supabase, nation, president) {
         reason: abuseAvail ? '' : `Requires presidential overreach ≥ ${GAME_CONFIG.IMPEACHMENT_ABUSE_OVERREACH_THRESHOLD} (currently ${overreachCount})`,
     });
 
-    // 2. Gross Incompetence — gov_approval ≤ threshold for N consecutive ticks
+    // 2. Gross Incompetence — unlocks via either path:
+    //    (a) gov_approval ≤ threshold for N consecutive ticks (chronic
+    //        unpopularity), or
+    //    (b) the president's own party has gone inactive — abandoned,
+    //        detached from its nation, or banned. A head of state with
+    //        no functioning party machinery is structurally unfit to
+    //        govern; "incompetence" is the natural ground.
     const govApproval = nation.gov_approval ?? 40;
     const requiredTicks = GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_TICKS;
-    let incompAvail = false;
+
+    let partyInactive = false;
+    let partyInactiveDetail = '';
+    if (president && president.faction_id) {
+        const { data: prezParty } = await supabase
+            .from('factions')
+            .select('nation_id, abandoned_at, is_banned')
+            .eq('id', president.faction_id)
+            .maybeSingle();
+        const reason = getFactionInactiveReason(prezParty);
+        if (reason) {
+            partyInactive = true;
+            partyInactiveDetail = reason === 'unassigned' ? 'unassigned to any nation' : reason;
+        }
+    }
+
+    let approvalPath = false;
     let consecutiveCount = 0;
     if (govApproval <= GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD) {
         const { data: history } = await supabase
@@ -48,13 +71,24 @@ export async function buildImpeachmentCharges(supabase, nation, president) {
             .order('tick', { ascending: false })
             .limit(requiredTicks);
         consecutiveCount = (history || []).filter(h => h.gov_approval <= GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD).length;
-        incompAvail = history && history.length >= requiredTicks && consecutiveCount >= requiredTicks;
+        approvalPath = history && history.length >= requiredTicks && consecutiveCount >= requiredTicks;
+    }
+
+    const incompAvail = partyInactive || approvalPath;
+    let incompLabel = 'Gross Incompetence';
+    let incompReason = '';
+    if (incompAvail) {
+        if (partyInactive) {
+            incompLabel = `Gross Incompetence (party ${partyInactiveDetail})`;
+        }
+    } else {
+        incompReason = `Requires gov approval ≤ ${GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD} for ${requiredTicks} consecutive ticks (${consecutiveCount}/${requiredTicks} met, currently ${Math.round(govApproval)}), or the president's party to become inactive`;
     }
     charges.push({
         type: 'incompetence',
-        label: 'Gross Incompetence',
+        label: incompLabel,
         available: incompAvail,
-        reason: incompAvail ? '' : `Requires gov approval ≤ ${GAME_CONFIG.IMPEACHMENT_INCOMPETENCE_THRESHOLD} for ${requiredTicks} consecutive ticks (${consecutiveCount}/${requiredTicks} met, currently ${Math.round(govApproval)})`,
+        reason: incompReason,
     });
 
     // 3. Constitutional Violation — president has vetoed N+ bills with ⅔ support

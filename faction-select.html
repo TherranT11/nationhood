@@ -133,6 +133,7 @@ body {
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
+import { isFactionInactive } from './js/game/factions.js';
 
 async function init() {
   const { data: { user } } = await _supabase.auth.getUser();
@@ -140,9 +141,9 @@ async function init() {
 
   // Check if user already has an active party
   const { data: faction, error: partyErr } = await _supabase
-    .from('factions').select('id, nation_id, abandoned_at').eq('id', user.id).eq('faction_type', 'party').maybeSingle();
+    .from('factions').select('id, nation_id, abandoned_at, is_banned').eq('id', user.id).eq('faction_type', 'party').maybeSingle();
   if (partyErr) console.warn('Party check failed:', partyErr.message);
-  if (faction && faction.nation_id && !faction.abandoned_at) {
+  if (faction && !isFactionInactive(faction)) {
     window.location.href = 'dashboard.html';
     return;
   }
@@ -152,13 +153,13 @@ async function init() {
   const pendingType = sessionStorage.getItem('pending_faction_type');
   if (pendingType !== 'party') {
     const { data: corpFaction, error: corpErr } = await _supabase
-      .from('factions').select('id, nation_id, abandoned_at')
+      .from('factions').select('id, nation_id, abandoned_at, is_banned')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
       .eq('faction_type', 'corporation')
       .is('abandoned_at', null)
       .maybeSingle();
     if (corpErr) console.warn('Corp check failed:', corpErr.message);
-    if (corpFaction && corpFaction.nation_id) {
+    if (corpFaction && !isFactionInactive(corpFaction)) {
       window.location.href = 'corp-dashboard.html';
       return;
     }
