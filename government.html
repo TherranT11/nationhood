@@ -209,6 +209,10 @@ let _interiorInfrastructureInflight = false;
 
 async function openExpandInfrastructureModal() {
     if (_interiorInfrastructureInflight) return;
+    // Guard against double-open: rapid double-click on the action
+    // card would otherwise append a second overlay with the same
+    // id (only the first reachable via getElementById).
+    if (document.getElementById('expand-infra-overlay')) return;
     if (!_interiorInfrastructureTiers) {
         const { data, error } = await _supabase.rpc('interior_infrastructure_tiers');
         if (error) {

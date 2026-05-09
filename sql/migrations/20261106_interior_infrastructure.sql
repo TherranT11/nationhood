@@ -56,7 +56,7 @@ AS $$
             "timeline":      6,
             "spec_category": "Light Infrastructure",
             "stat_effects": [
-                {"stat": "standard_of_living", "delta": 0.5}
+                {"stat": "standard_of_living", "delta": 0.2}
             ]
         },
         "modest": {
@@ -67,7 +67,7 @@ AS $$
             "spec_category": "Heavy Infrastructure",
             "stat_effects": [
                 {"stat": "gdp_growth",         "delta": 1.0},
-                {"stat": "standard_of_living", "delta": 0.5}
+                {"stat": "standard_of_living", "delta": 0.4}
             ]
         },
         "extravagant": {
@@ -78,7 +78,7 @@ AS $$
             "spec_category": "Megaproject",
             "stat_effects": [
                 {"stat": "gdp_growth",         "delta": 1.5},
-                {"stat": "standard_of_living", "delta": 1.0},
+                {"stat": "standard_of_living", "delta": 1.5},
                 {"stat": "public_approval",    "delta": 0.5}
             ]
         }
@@ -120,6 +120,12 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Invalid tier: ' || COALESCE(p_size, 'NULL'));
     END IF;
 
+    -- Lock the ministry row so two parallel posts can't both pass
+    -- the affordability check + contract-cap check on a stale read
+    -- and then both debit off the same balance (free-money + cap-
+    -- broken race). Postgres serializes the second caller until
+    -- this transaction commits, after which it sees the updated
+    -- balance and any newly-inserted contract row.
     SELECT * INTO v_ministry FROM ministries
         WHERE ministry_key = 'interior' AND is_active = true
           AND EXISTS (
@@ -127,7 +133,8 @@ BEGIN
               WHERE f.id = ministries.party_id
                 AND (f.id = v_caller OR f.linked_user_id = v_caller)
           )
-        ORDER BY created_at DESC LIMIT 1;
+        ORDER BY created_at DESC LIMIT 1
+        FOR UPDATE;
     IF v_ministry.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Only the active Interior Minister can post this contract');
     END IF;
