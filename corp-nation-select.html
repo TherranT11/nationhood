@@ -463,7 +463,7 @@ import { escapeHtml } from './js/utils.js';
 import { getNationNames } from './js/game/political-actions.js';
 import { hasElectedPresident } from './js/game/government-types.js';
 import { generateExecutivePool, createCEORecord } from './js/game/corp-executives.js';
-import { nationalHqValue, nationalHqQuality } from './js/game/corp-valuation.js';
+import { nationalHqValue, nationalHqQuality, lightIndustrialFacilityValue } from './js/game/corp-valuation.js';
 
 const FLAG_URLS = {
     'Melizea': 'assets/flags/Melizea.png',
@@ -918,6 +918,26 @@ async function confirmNation() {
                 corp_routes:              0,
                 corp_op_safety:          10,
             };
+        } else if (corpSetup.sector === 'Aviation Manufacturing') {
+            // Aviation Manufacturing founding seeds. Cross-sector stats
+            // mirror Airline (alpha-gated startup; reputation unproven on
+            // day one, market_share = 1). corp_innovation is the SHARED
+            // cross-sector stat seeded to 1 (vs other sectors' 5) — the
+            // firm starts with low design throughput and earns it through
+            // R&D. corp_production_capacity / corp_quality_control are
+            // aviation-specific hero stats from
+            // 20261022_aviation_manufacturing_schema. Light Industrial
+            // Facility row is inserted below after the corp exists.
+            sectorSeeds = {
+                corp_assets:               2,
+                corp_market_share:         1,
+                corp_innovation:           1,
+                corp_reputation:           1,
+                corp_productivity:         5,
+                corp_employee_wages:       5,
+                corp_production_capacity:  1,
+                corp_quality_control:      3,
+            };
         }
 
         // Check if user already has a faction (party) — if so, create corp as linked faction
@@ -1099,6 +1119,40 @@ async function confirmNation() {
             ]);
             if (fleetErr) {
                 console.warn('[CorpCreate] starter aircraft insert failed:', fleetErr.message);
+            }
+        }
+
+        // Aviation Manufacturing founding building. Persisted as a
+        // corp_properties row (type='light_industrial_facility') so
+        // maintenance, valuation, expansion, and bankruptcy paths
+        // already-built for HQ + airline_terminal apply uniformly.
+        // Value formula and SoL curve live in corp-valuation.js
+        // (lightIndustrialFacilityValue) so any future caller can
+        // compute the same number without reimplementing the math.
+        if (corpSetup.sector === 'Aviation Manufacturing') {
+            try {
+                const facilityValue = lightIndustrialFacilityValue(nation.standard_of_living);
+                const facilityMaint = Math.round(facilityValue * 0.005);
+                const { error: facilityErr } = await _supabase.from('corp_properties').insert({
+                    faction_id:          corpId,
+                    nation_id:           nation.id,
+                    name:                corpName + ' Industrial Facility',
+                    type:                'light_industrial_facility',
+                    role:                'light_industrial_facility',
+                    style:               'Industrial',
+                    capacity:            0,
+                    purchase_price:      facilityValue,
+                    monthly_maintenance: facilityMaint,
+                    condition:           100,
+                    city:                nation.capital,
+                    purchased_at_tick:   currentTick,
+                    is_active:           true,
+                });
+                if (facilityErr) {
+                    console.warn('[CorpCreate] Light Industrial Facility insert failed:', facilityErr.message);
+                }
+            } catch (facEx) {
+                console.warn('[CorpCreate] Light Industrial Facility insert threw:', facEx?.message || facEx);
             }
         }
 
