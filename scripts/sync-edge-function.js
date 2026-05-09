@@ -64,8 +64,6 @@ const MODULE_FILES = [
     'lawsuits.js',
     'military-loyalty.js',
     'loan-math.js',
-    'subsidiary-services.js',
-    'subsidiary-payments.js',
 ];
 
 // Read and process each module

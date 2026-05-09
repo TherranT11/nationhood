@@ -1,9 +1,6 @@
 // Shared loan math — single source of truth for monthly interest,
 // principal portion, and collateral-recovery rates. Consumed by:
 //   * UI:               corp-operations-finance.html
-//                       js/corp-auto-services.js
-//   * Bundled edge fn:  js/game/subsidiary-payments.js (advance-tick
-//                       picks this up via scripts/sync-edge-function.js)
 //   * Hand-maintained:  supabase/functions/advance-corp-tick/index.ts
 //                       inlines a verbatim copy at the top of the file.
 //                       If you change a formula here, update that copy
@@ -82,14 +79,9 @@ export function collateralRecoveryRate(collateralType) {
     return typeof rate === 'number' ? rate : 0;
 }
 
-// Consecutive missed payments before a loan goes to 'defaulted'.
-// Applies to both tier-1 finance_active_loans and subsidiary
-// auto-loan policies — they used to diverge (4 vs 3) so identical
-// scenarios produced different outcomes by loan type. The escalation
-// ladder for tier-1 loans is:
+// Consecutive missed payments before a finance_active_loans row goes
+// to 'defaulted'. Escalation ladder:
 //   1 missed  -> late
 //   3 missed  -> delinquent
 //   4 missed  -> defaulted
-// Auto-loans don't surface late/delinquent as UI states, but they
-// still get the same 4-tick grace period before they default.
 export const DEFAULT_MISSED_THRESHOLD = 4;

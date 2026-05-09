@@ -835,10 +835,10 @@ async function lrLoadCollateral() {
 
     // National HQ is a real corp_properties row now
     // (20260711_persist_national_hq.sql), so the fetch above already
-    // includes it alongside any regional HQs / subsidiaries the player
-    // can pledge as collateral. Submit-time path that prevents the bank
-    // from actually seizing the HQ on default keys off role='national_hq'
-    // — see lrSubmitLoanRequest below for the sentinel handling.
+    // includes it alongside any regional HQs the player can pledge as
+    // collateral. Submit-time path that prevents the bank from actually
+    // seizing the HQ on default keys off role='national_hq' — see
+    // lrSubmitLoanRequest below for the sentinel handling.
     lrCollateralProps = data || [];
 }
 
@@ -1678,7 +1678,7 @@ async function actOpenDonation() {
     const cash = Number(faction?.corp_cash_reserves ?? 0);
 
     // Only parties in the nation where the National HQ is located.
-    // Subsidiaries / regional HQs in other nations do not unlock donations there.
+    // Regional HQs in other nations do not unlock donations there.
     const nationIds = [faction.nation_id];
 
     // Get user's own faction IDs (to block self-donation)

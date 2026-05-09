@@ -18,16 +18,13 @@ const path = require('path');
 const MIGRATIONS = [
   'sql/migrations/20260412_shipping_routes.sql',
   'sql/migrations/20260412_shipping_claims_fleet.sql',
-  'sql/migrations/20260413_subsidiary_sales.sql',
   'sql/migrations/20260414_shipping_applications.sql'
 ];
 
 const REQUIRED_TABLES = [
   'shipping_routes',
   'shipping_claims',
-  'shipping_applications',
-  'subsidiary_sales',
-  'subsidiary_bids'
+  'shipping_applications'
 ];
 
 function parseDotEnv(content) {
