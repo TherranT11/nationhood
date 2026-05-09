@@ -452,16 +452,17 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
 // ==================== SOVEREIGN DEFAULT — TICK-ONLY HELPERS ====================
 
 /**
- * Per-tick debt mechanics: update burden, deteriorate credit, check lockout,
- * and programmatically trigger a Sovereign Debt Crisis when conditions are met.
+ * Per-tick debt mechanics: update debt_service_burden and trigger a
+ * Sovereign Debt Crisis when the debt-to-budget ratio breaches the
+ * configured threshold. Credit-based gating was removed when the
+ * `nations.credit` column was dropped in the alpha refactor; the
+ * trigger is now ratio-only.
  */
 async function processSovereignDebtMechanics(supabase, nation, currentTick) {
     const ratio = getDebtToGDP(nation);
     if (!isFinite(ratio)) return null;
 
     const burden = calculateDebtServiceBurden(nation);
-    const creditDeterioration = calculateCreditDeterioration(nation);
-    const currentCredit = Number(nation.credit ?? 50);
     const cfg = SOVEREIGN_DEFAULT_CONFIG;
 
     const updates: any = {};
@@ -474,24 +475,6 @@ async function processSovereignDebtMechanics(supabase, nation, currentTick) {
         results.burdenChanged = true;
     }
 
-    // 2. Apply credit deterioration (per-tick penalty from high debt)
-    if (creditDeterioration > 0 && currentCredit > 0) {
-        const newCredit = Math.max(0, Math.round((currentCredit - creditDeterioration) * 10) / 10);
-        updates.credit = newCredit;
-        results.creditDeterioration = creditDeterioration;
-        results.creditBefore = currentCredit;
-        results.creditAfter = newCredit;
-    }
-
-    // 3. Check credit lockout (credit <= 5 means locked out of borrowing)
-    const effectiveCredit = updates.credit !== undefined ? updates.credit : currentCredit;
-    const wasLocked = Boolean(nation.credit_locked_out);
-    const shouldLock = effectiveCredit <= cfg.CREDIT_LOCKOUT_THRESHOLD;
-    if (shouldLock !== wasLocked) {
-        updates.credit_locked_out = shouldLock;
-        results.creditLockoutChanged = shouldLock;
-    }
-
     // Write updates
     if (Object.keys(updates).length > 0) {
         const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
@@ -502,9 +485,10 @@ async function processSovereignDebtMechanics(supabase, nation, currentTick) {
         Object.assign(nation, updates);
     }
 
-    // 4. Programmatically trigger Sovereign Debt Crisis when:
-    //    debt-to-GDP > 200% AND credit <= 15 AND no crisis already active
-    if (ratio >= cfg.DEBT_CRISIS_MIN_RATIO && effectiveCredit <= cfg.DEBT_CRISIS_MAX_CREDIT) {
+    // 2. Programmatically trigger Sovereign Debt Crisis when the
+    //    debt-to-budget ratio breaches DEBT_CRISIS_MIN_RATIO and no
+    //    crisis is already active.
+    if (ratio >= cfg.DEBT_CRISIS_MIN_RATIO) {
         const { data: existing } = await supabase
             .from('active_crises')
             .select('id')
@@ -520,11 +504,11 @@ async function processSovereignDebtMechanics(supabase, nation, currentTick) {
             });
             if (!insertErr) {
                 results.debtCrisisTriggered = true;
-                console.log(`[SovereignDebt] Debt Crisis triggered for ${nation.name} (ratio=${(ratio * 100).toFixed(0)}%, credit=${effectiveCredit})`);
+                console.log(`[SovereignDebt] Debt Crisis triggered for ${nation.name} (ratio=${(ratio * 100).toFixed(0)}%)`);
                 await supabase.from('event_log').insert({
                     nation_id: nation.id,
                     event_name: 'CRISIS_STARTED: Sovereign Debt Crisis',
-                    description_used: `Crushing debt (${(ratio * 100).toFixed(0)}% of GDP) and low creditworthiness have triggered a sovereign debt crisis.`,
+                    description_used: `Crushing debt (${(ratio * 100).toFixed(0)}% of GDP) has triggered a sovereign debt crisis.`,
                     category: 'crisis',
                     effects_applied: [],
                     fired_at_tick: currentTick
@@ -533,8 +517,8 @@ async function processSovereignDebtMechanics(supabase, nation, currentTick) {
         }
     }
 
-    if (results.burdenChanged || results.creditDeterioration || results.creditLockoutChanged || results.debtCrisisTriggered) {
-        console.log(`[SovereignDebt] ${nation.name}: ratio=${(ratio * 100).toFixed(0)}% burden=${burden.toFixed(3)} credit=${effectiveCredit}${shouldLock ? ' LOCKED' : ''}`);
+    if (results.burdenChanged || results.debtCrisisTriggered) {
+        console.log(`[SovereignDebt] ${nation.name}: ratio=${(ratio * 100).toFixed(0)}% burden=${burden.toFixed(3)}`);
     }
 
     return results;
@@ -2237,12 +2221,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             await syncMilitaryLoyaltyDefenseMinister(supabase, nation, currentTick);
         } catch (mlaErr) {
             console.error(`[advanceTick] MLA sync failed for ${nation.name} (non-fatal):`, mlaErr);
-        }
-
-        // Credit lockout auto-clear: if credit has recovered above threshold, unlock
-        if (nation.credit_locked_out && Number(nation.credit ?? 0) > 5) {
-            await supabase.from('nations').update({ credit_locked_out: false }).eq('id', nation.id);
-            nation.credit_locked_out = false;
         }
 
         // Re-fetch nation with post-effect values for remaining processors

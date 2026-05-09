@@ -117,7 +117,11 @@ export async function processTargetBasedPolicies(supabase, nation) {
         const current = Number(nation[statKey]);
         if (!Number.isFinite(current)) continue;
         const next = current + (equilibrium - current) * TARGET_CONVERGENCE_RATE;
-        const clamped = Math.max(0, Math.min(100, Math.round(next * 10) / 10));
+        // Round to integer — the canonical stat columns are smallint
+        // (writing a fractional value triggers an "invalid input syntax
+        // for type smallint" error). Convergence is gradual enough that
+        // the precision loss doesn't matter.
+        const clamped = Math.max(0, Math.min(100, Math.round(next)));
         if (clamped === current) continue;
         statUpdates[statKey] = clamped;
         summary.stats.push({
