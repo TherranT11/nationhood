@@ -3595,6 +3595,119 @@ async function processAviationDesignResearch(supabase, currentTick) {
 
 
 // ════════════════════════════════════════════════════════════════
+// Aviation Manufacturing — production runs.
+// Per active corp_production_runs row (status='active'):
+//   1. If corp cash < cost_per_tick, pause this tick (no progress,
+//      no charge). Cash returns → progress resumes next tick.
+//   2. Deduct cost_per_tick via emit_corp_cash_event.
+//   3. Decrement ticks_remaining by 1.
+//   4. Compute "should be delivered by now" =
+//        min(quantity, floor(ticks_elapsed / time_per_unit) × parallel_capacity)
+//      and deliver any new units (delta from completed_quantity) by
+//      bumping the design's inventory_on_hand.
+//   5. On ticks_remaining = 0: status='completed', stamp
+//      completed_at_tick. The plant join rows are kept (status filter
+//      excludes them from "occupied" lookups going forward).
+// ════════════════════════════════════════════════════════════════
+async function processProductionRuns(supabase, currentTick) {
+    const { data: runs, error } = await supabase
+        .from('corp_production_runs')
+        .select('id, corp_id, design_id, design_type, quantity, completed_quantity, cost_per_tick, time_per_unit, parallel_capacity, total_ticks, ticks_remaining, factions:corp_id(faction_name, corp_cash_reserves)')
+        .eq('status', 'active')
+        .gt('ticks_remaining', 0);
+    if (error) {
+        console.warn('[ProductionRuns] fetch failed:', error.message);
+        return null;
+    }
+    if (!runs || runs.length === 0) return { advanced: 0, delivered: 0, completed: 0, paused: 0 };
+
+    let advanced = 0;
+    let delivered = 0;
+    let completed = 0;
+    let paused = 0;
+
+    for (const r of runs) {
+        const corp = r.factions || {};
+        const cash = Number(corp.corp_cash_reserves) || 0;
+        const cost = Number(r.cost_per_tick) || 0;
+
+        if (cash < cost) {
+            paused++;
+            continue;
+        }
+
+        try {
+            await supabase.rpc('emit_corp_cash_event', {
+                p_corp_id:  r.corp_id,
+                p_category: 'event_cost',
+                p_label:    `Production · ${r.design_type === 'engine' ? 'Engine' : 'Aircraft'} build`,
+                p_delta:    -cost,
+                p_tick:     currentTick,
+            });
+        } catch (cashErr) {
+            console.warn(`[ProductionRuns] cash deduct failed for ${r.id}:`, cashErr?.message || cashErr);
+            paused++;
+            continue;
+        }
+
+        const totalTicks      = Number(r.total_ticks) || 1;
+        const newRemaining    = Math.max(0, (Number(r.ticks_remaining) || 0) - 1);
+        const ticksElapsed    = totalTicks - newRemaining;
+        const timePerUnit     = Math.max(1, Number(r.time_per_unit) || 1);
+        const parallelCap     = Math.max(1, Number(r.parallel_capacity) || 1);
+        const cyclesCompleted = Math.floor(ticksElapsed / timePerUnit);
+        const shouldBeDelivered = Math.min(Number(r.quantity) || 0, cyclesCompleted * parallelCap);
+        const newCompleted    = Math.max(Number(r.completed_quantity) || 0, shouldBeDelivered);
+        const newDeliveries   = newCompleted - (Number(r.completed_quantity) || 0);
+
+        if (newDeliveries > 0) {
+            // Increment the design's inventory_on_hand by however many
+            // units this tick delivered. Per-design counter; the run's
+            // completed_quantity is the local snapshot.
+            const { data: design, error: dErr } = await supabase
+                .from('corp_aircraft_designs')
+                .select('inventory_on_hand')
+                .eq('id', r.design_id)
+                .single();
+            if (dErr) {
+                console.warn(`[ProductionRuns] design fetch failed for ${r.id}:`, dErr.message);
+            } else {
+                const newInv = (Number(design?.inventory_on_hand) || 0) + newDeliveries;
+                const { error: invErr } = await supabase
+                    .from('corp_aircraft_designs')
+                    .update({ inventory_on_hand: newInv })
+                    .eq('id', r.design_id);
+                if (invErr) {
+                    console.warn(`[ProductionRuns] inventory bump failed for ${r.id}:`, invErr.message);
+                } else {
+                    delivered += newDeliveries;
+                }
+            }
+        }
+
+        const willComplete = newRemaining <= 0;
+        const updatePayload = willComplete
+            ? { ticks_remaining: 0, completed_quantity: newCompleted, status: 'completed', completed_at_tick: currentTick }
+            : { ticks_remaining: newRemaining, completed_quantity: newCompleted };
+
+        const { error: updErr } = await supabase
+            .from('corp_production_runs')
+            .update(updatePayload)
+            .eq('id', r.id);
+        if (updErr) {
+            console.warn(`[ProductionRuns] update failed for ${r.id}:`, updErr.message);
+            continue;
+        }
+
+        if (willComplete) completed++;
+        else              advanced++;
+    }
+
+    return { advanced, delivered, completed, paused };
+}
+
+
+// ════════════════════════════════════════════════════════════════
 async function processTradeAgreementShipping(supabase, currentTick) {
     const results = {
         awarded: 0, completed: 0, paid: 0, polling: 0, renewed: 0,
@@ -5963,6 +6076,20 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
             }
         } catch (designErr) {
             console.error('[advance-corp-tick] Aviation design research failed (non-fatal):', designErr);
+        }
+
+        // Aviation Manufacturing — production runs advancement.
+        // Each active run charges its cost_per_tick, decrements
+        // ticks_remaining, and bumps the design's inventory_on_hand
+        // for any units crossing a cycle boundary this tick.
+        try {
+            const productionResults = await processProductionRuns(supabase, currentTick);
+            if (productionResults && (productionResults.advanced > 0 || productionResults.completed > 0 || productionResults.delivered > 0 || productionResults.paused > 0)) {
+                summary.aviationProductionRuns = productionResults;
+                console.log(`[ProductionRuns] tick ${currentTick}: ${productionResults.advanced} advanced, ${productionResults.delivered} units delivered, ${productionResults.completed} runs completed, ${productionResults.paused} paused (insufficient cash)`);
+            }
+        } catch (prodErr) {
+            console.error('[advance-corp-tick] Aviation production runs failed (non-fatal):', prodErr);
         }
     } catch (shipErr) {
         console.error('[advance-corp-tick] FAILED shipping route processor:', shipErr);
