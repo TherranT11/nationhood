@@ -1,21 +1,20 @@
 -- ════════════════════════════════════════════════════════════════
--- corp_contracts.crews_working — re-introduce the deploy step
+-- corp_contracts.crews_working — the present-tense crew deployment
 --
--- 20261029 collapsed the two-step model (commit-at-bid +
--- deploy-after-win) into one because every player corp stalled
--- their first contract by missing the deploy step. That was the
--- right call for new corps but left legacy over-committed corps
--- (Hong Hua: 16 crews_committed across 8 active contracts on
--- 6 owned crews) silently progressing all jobs at full speed —
--- physics-of-the-world was wrong.
+-- 20261029 collapsed crew assignment into bid time on the theory
+-- that a separate deploy action was friction every new corp tripped
+-- on. That fixed the trip-up but left legacy over-committed corps
+-- (Hong Hua: 16 crews_committed across 8 active contracts on 6
+-- owned crews) silently progressing all jobs at full speed — the
+-- physics of the world was wrong.
 --
--- This migration brings deployment back, but with stricter rules
--- and clearer naming:
+-- This migration brings deployment back as a separate signal with
+-- stricter caps and clearer naming:
 --
 --   • crews_committed (corp_contract_bids) stays as the bid-time
 --     PROMISE that drives price + timeline multipliers.
 --   • crews_working (corp_contracts, NEW) is the present-tense
---     DEPLOYMENT. Defaults to 0 — the player must deploy after
+--     deployment. Defaults to 0 — the player must deploy after
 --     winning. The tick processor stalls any contract where
 --     crews_working = 0.
 --   • set_crews_working RPC enforces:
@@ -28,10 +27,10 @@
 --     squeeze through.
 --
 -- Backfill: every existing active corp_contract starts at
--- crews_working = 0. Players have to log in and deploy. This is
+-- crews_working = 0. Owners have to log in and deploy. This is
 -- the price of bringing the world back into physics consistency
 -- — Hong Hua's 8 contracts all stall until that corp's owner
--- assigns crews across them.
+-- spreads crews across them.
 -- ════════════════════════════════════════════════════════════════
 
 BEGIN;

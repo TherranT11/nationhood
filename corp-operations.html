@@ -1851,14 +1851,13 @@ function renderActiveCard(contract) {
         : 'No deadline set';
 
     // ── Crew display ────────────────────────────────────────────────
-    // Two-step model (re-introduced 20261101): crews_committed is the
-    // bid-time promise (drives the price/timeline multipliers);
-    // crews_working is the present-tense deployment (drives whether
-    // the contract advances each tick). Player must Manage Crews to
-    // bring crews_working > 0 after winning. Format: "N / M" with
-    // warn style when working < committed (under-deployed → progress
-    // is stalled or partial). The tick processor stalls progress
-    // entirely when crews_working = 0.
+    // crews_committed is the bid-time promise that drives the price
+    // and timeline multipliers. crews_working is the present-tense
+    // deployment — what's actually on the job site right now. After
+    // winning, the player deploys via Manage Crews. Format: "N / M"
+    // with warn style when working < committed (under-deployed →
+    // progress stalled or partial). The tick processor stalls
+    // progress entirely when crews_working = 0.
     const acceptedBid = _myBids.get(contract.id);
     const crewsCommitted = Number(acceptedBid?.crews_committed || 0);
     const crewsWorking   = Number(contract.crews_working || 0);
