@@ -8,14 +8,16 @@
 <link rel="stylesheet" href="css/corp-topbar.css">
 <link rel="stylesheet" href="css/corp-light-theme.css">
 <style>
-/* ══════════════════════════════════════════════════════════════
-   AVIATION MANUFACTURING OPERATIONS — Phase D scaffold.
-   Reuses the .ao-* class vocabulary established by airline-operations
-   so future shared-CSS extraction is straightforward. Mechanics
-   (Designs / R&D / Orders) ship in Phase F — today the containers are
-   placeholders reading the live corp row + Light Industrial Facility.
-   ══════════════════════════════════════════════════════════════ */
-body.aviation-operations {
+/* ──────────────────────────────────────────────────────────
+   AVIATION MANUFACTURING OPERATIONS
+   Mirrors the layout language of the Construction / Shipping /
+   Finance ops pages so the five Ops surfaces read as one
+   product family. .co-* class vocabulary matches its sibling
+   pages — the rules below are a focused subset of what
+   corp-operations.html ships, scoped to what this scaffold
+   actually renders.
+   ────────────────────────────────────────────────────────── */
+body.corp-operations-aviation {
   --bg-0: #0e0e0c;
   --bg-1: #1a1a1a;
   --bg-2: #1a1a17;
@@ -44,376 +46,446 @@ body.aviation-operations {
   --orange: #e8724a;
   --blue: #5bc0de;
   --teal: #5aafa5;
+  --font-mono:  'JetBrains Mono', monospace;
+  --font-sans:  'IBM Plex Sans', sans-serif;
+  --font-serif: 'IBM Plex Serif', serif;
 
-  --line-soft: var(--border-hair);
-  --line-bright: var(--border-2);
-  --accent-gold: var(--gold);
-  --accent-teal: var(--teal);
-  --accent-green: var(--green);
-  --accent-rust: var(--orange);
+  --co-bg-primary:    #0e0e0c;
+  --co-bg-secondary:  #1a1a17;
+  --co-bg-card:       #1a1a17;
+  --co-bg-elevated:   #252525;
+  --co-line:          rgba(255,255,255,0.06);
+  --co-line-bright:   rgba(255,255,255,0.12);
+  --co-text-primary:  #f0efe6;
+  --co-text-secondary:#c4c2b8;
+  --co-text-tertiary: #888;
+  --co-accent-gold:     #c8a832;
+  --co-accent-gold-dim: rgba(200,168,50,0.55);
+  --co-accent-red:      #d9534f;
+  --co-accent-green:    #5cb85c;
+  --co-accent-blue:     #5bc0de;
+  --co-accent-rust:     #e8724a;
+  --co-accent-teal:     #5aafa5;
+  --co-serif: 'IBM Plex Serif', Georgia, serif;
+  --co-sans:  'IBM Plex Sans', system-ui, sans-serif;
+  --co-mono:  'JetBrains Mono', monospace;
 
-  --serif: 'IBM Plex Serif', Georgia, serif;
-  --mono: 'JetBrains Mono', monospace;
-  --sans: 'IBM Plex Sans', system-ui, sans-serif;
-
-  background: var(--bg-0);
-  color: var(--text-primary);
-  font-family: var(--sans);
+  background: var(--co-bg-primary);
+  color: var(--co-text-secondary);
+  font-family: var(--co-sans);
   font-size: 14px;
   line-height: 1.45;
   margin: 0;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
 }
-body.aviation-operations * { box-sizing: border-box; }
+body.corp-operations-aviation * { box-sizing: border-box; }
 
-body.aviation-operations.light-mode {
-  --bg-0:        #faf9f5;
-  --bg-card:     #ffffff;
-  --bg-panel:    #faf9f5;
-  --text-bright: #1a1a17;
-  --text-primary:#2d2d28;
-  --text-muted:  #6a6660;
-  --line-soft:   #e8e7e0;
-  --line-bright: #e0dfd6;
-  --border-hair: #e8e7e0;
-  --border-2:    #e0dfd6;
+body.corp-operations-aviation.light-mode {
+  --co-bg-primary:    #faf9f5;
+  --co-bg-secondary:  #f8f7f2;
+  --co-bg-card:       #ffffff;
+  --co-bg-elevated:   #faf9f5;
+  --co-line:          #e8e7e0;
+  --co-line-bright:   #e0dfd6;
+  --co-text-primary:  #1a1a17;
+  --co-text-secondary:#2d2d28;
+  --co-text-tertiary: #6a6660;
 }
 
-.ao-page {
-  max-width: 1280px;
-  margin: 24px auto 64px;
-  padding: 0 32px;
+.co-loading {
+  font-family: var(--co-mono);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--co-text-tertiary);
+  text-align: center;
+  padding: 80px 20px;
 }
 
-.ao-section { margin-bottom: 32px; }
-.ao-section-header {
+.co-layout {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 24px 36px 60px;
+  position: relative;
+  z-index: 2;
+}
+
+/* ── PAGE HEADER ── */
+.co-page-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 40px;
+  align-items: end;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--co-line);
+  margin-bottom: 36px;
+}
+.co-page-title {
+  font-family: var(--co-serif);
+  font-weight: 500;
+  font-size: 56px;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+  color: var(--co-text-primary);
+  margin: 0;
+}
+.co-page-title em {
+  font-style: italic;
+  color: var(--co-accent-gold);
+}
+.co-page-stats {
+  display: flex;
+  gap: 28px;
+  text-align: right;
+}
+.co-page-stat-label {
+  font-family: var(--co-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--co-text-tertiary);
+  margin-bottom: 4px;
+}
+.co-page-stat-value {
+  font-family: var(--co-serif);
+  font-size: 28px;
+  font-weight: 400;
+  color: var(--co-text-primary);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── SECTION HEADERS ── */
+.co-section-header {
   display: flex;
   align-items: baseline;
-  gap: 16px;
-  border-bottom: 1px solid var(--line-bright);
-  padding-bottom: 10px;
-  margin-bottom: 16px;
+  justify-content: space-between;
+  margin-bottom: 18px;
 }
-.ao-section-header h2 {
-  font-family: var(--serif);
-  font-size: 22px;
+.co-section-header h2 {
+  font-family: var(--co-serif);
   font-weight: 500;
-  margin: 0;
-  color: var(--text-bright);
+  font-style: italic;
+  font-size: 28px;
+  color: var(--co-text-primary);
   letter-spacing: -0.01em;
+  margin: 0;
 }
-.ao-section-header h2 .num {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--accent-gold);
-  margin-right: 8px;
-  letter-spacing: 0.15em;
+.co-section-header h2 .num {
+  font-family: var(--co-mono);
+  font-style: normal;
+  font-size: 14px;
+  color: var(--co-accent-gold-dim);
+  margin-right: 12px;
+  letter-spacing: 0.1em;
+  vertical-align: middle;
 }
-.ao-section-header .desc {
-  font-family: var(--mono);
+.co-section-header .desc {
+  font-family: var(--co-mono);
   font-size: 10px;
-  color: var(--text-muted);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
+  color: var(--co-text-tertiary);
 }
 
-/* ── Hero stats ─────────────────────────────────────── */
-.ao-hero-stats {
+.co-section { margin-bottom: 48px; }
+
+/* ── HERO STATS ── */
+.co-hero-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1px;
-  background: var(--line-bright);
-  border: 1px solid var(--line-bright);
+  background: var(--co-line-bright);
+  border: 1px solid var(--co-line-bright);
 }
-.ao-hero-stat {
-  background: var(--bg-card);
-  padding: 28px 28px 24px;
+.co-hero-stat {
+  background: var(--co-bg-card);
+  padding: 32px 32px 28px;
   position: relative;
-  overflow: hidden;
 }
-.ao-hero-stat::before {
+.co-hero-stat::before {
   content: '';
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 3px;
-  background: linear-gradient(to right, var(--accent-gold), transparent);
+  background: linear-gradient(to right, var(--co-accent-gold-dim), transparent);
 }
-.ao-hero-stat[data-stat="capacity"]::before   { background: linear-gradient(to right, var(--accent-teal),  transparent); }
-.ao-hero-stat[data-stat="quality"]::before    { background: linear-gradient(to right, var(--accent-green), transparent); }
-.ao-hero-stat[data-stat="innovation"]::before { background: linear-gradient(to right, var(--accent-gold),  transparent); }
-.ao-hero-stat-eyebrow {
-  font-family: var(--mono);
+.co-hero-stat[data-stat="capacity"]::before    { background: linear-gradient(to right, var(--co-accent-teal),  transparent); }
+.co-hero-stat[data-stat="quality"]::before     { background: linear-gradient(to right, var(--co-accent-gold),  transparent); }
+.co-hero-stat[data-stat="innovation"]::before  { background: linear-gradient(to right, var(--co-accent-rust),  transparent); }
+
+.co-hero-stat-eyebrow {
+  font-family: var(--co-mono);
   font-size: 10px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--accent-gold);
-  margin-bottom: 8px;
+  color: var(--co-accent-gold-dim);
+  margin-bottom: 10px;
 }
-.ao-hero-stat[data-stat="capacity"] .ao-hero-stat-eyebrow { color: var(--accent-teal); }
-.ao-hero-stat[data-stat="quality"]  .ao-hero-stat-eyebrow { color: var(--accent-green); }
-.ao-hero-stat-name {
-  font-family: var(--serif);
+.co-hero-stat[data-stat="capacity"]   .co-hero-stat-eyebrow { color: var(--co-accent-teal); }
+.co-hero-stat[data-stat="quality"]    .co-hero-stat-eyebrow { color: var(--co-accent-gold-dim); }
+.co-hero-stat[data-stat="innovation"] .co-hero-stat-eyebrow { color: var(--co-accent-rust); }
+
+.co-hero-stat-name {
+  font-family: var(--co-serif);
   font-weight: 500;
-  font-size: 26px;
-  line-height: 1.05;
-  color: var(--text-primary);
-  margin-bottom: 16px;
+  font-size: 30px;
+  line-height: 1;
+  color: var(--co-text-primary);
+  margin-bottom: 18px;
   letter-spacing: -0.015em;
 }
-.ao-hero-stat-value {
-  font-family: var(--serif);
-  font-size: 42px;
-  font-weight: 500;
-  line-height: 1;
-  color: var(--text-bright);
-  font-variant-numeric: tabular-nums;
-}
-.ao-hero-stat-suffix {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-left: 8px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
+.co-hero-stat-name em { font-style: italic; }
 
-/* ── Two-up panels row (Designs + R&D) ─────────────────── */
-.ao-panels-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 32px;
+.co-hero-tip {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--co-line-bright);
+  border-radius: 50%;
+  color: var(--co-text-tertiary);
+  font-family: var(--co-mono, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  font-style: normal;
+  align-items: center;
+  justify-content: center;
+  margin-left: 10px;
+  cursor: help;
+  position: relative;
+  vertical-align: middle;
+  letter-spacing: 0;
+  transition: color 0.15s, border-color 0.15s;
 }
-.ao-panel {
-  background: var(--bg-card);
-  border: 1px solid var(--line-bright);
+.co-hero-tip:hover { color: var(--co-accent-gold); border-color: var(--co-accent-gold); }
+.co-hero-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  width: 280px;
+  background: var(--co-bg-card);
+  border: 1px solid var(--co-line-bright);
+  color: var(--co-text-primary);
+  padding: 11px 14px;
+  font-family: var(--co-sans, sans-serif);
+  font-weight: 400;
+  font-size: 11.5px;
+  line-height: 1.55;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  z-index: 100;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.35);
 }
-.ao-panel-header {
+.co-hero-tip:hover::after { opacity: 1; }
+
+.co-hero-stat-value-row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  padding: 14px 18px;
-  border-bottom: 1px solid var(--line-bright);
+  margin-bottom: 18px;
 }
-.ao-panel-header h3 {
-  font-family: var(--serif);
-  font-size: 16px;
-  font-weight: 500;
-  margin: 0;
-  color: var(--text-bright);
-  letter-spacing: -0.01em;
+.co-hero-stat-value {
+  font-family: var(--co-serif);
+  font-weight: 400;
+  font-size: 64px;
+  line-height: 0.9;
+  color: var(--co-text-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
 }
-.ao-panel-header .desc {
-  font-family: var(--mono);
-  font-size: 9px;
-  color: var(--text-muted);
+.co-hero-stat-value .co-max {
+  font-size: 26px;
+  color: var(--co-text-tertiary);
+  margin-left: 4px;
+}
+.co-hero-stat-trend {
+  font-family: var(--co-mono);
+  font-size: 11px;
+  padding: 4px 9px;
+  border: 1px solid var(--co-line-bright);
+  background: var(--co-bg-secondary);
+  color: var(--co-text-secondary);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.ao-panel-body { padding: 12px 0; }
-.ao-panel-empty {
-  padding: 22px 18px;
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--text-muted);
-  letter-spacing: 0.04em;
-  text-align: center;
+
+.co-hero-meter {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.co-hero-meter-cell {
+  flex: 1;
+  height: 14px;
+  background: var(--co-bg-secondary);
+  border: 1px solid var(--co-line-bright);
+}
+.co-hero-meter-cell.filled {
+  background: var(--co-accent-gold);
+  border-color: var(--co-accent-gold);
+  box-shadow: 0 0 6px rgba(201, 164, 73, 0.3);
+}
+.co-hero-meter-cell.filled.warn {
+  background: var(--co-accent-red);
+  border-color: var(--co-accent-red);
+  box-shadow: 0 0 6px rgba(200, 90, 58, 0.4);
+}
+.co-hero-meter-cell.filled.good {
+  background: var(--co-accent-green);
+  border-color: var(--co-accent-green);
+  box-shadow: 0 0 6px rgba(138, 166, 83, 0.4);
 }
 
-/* ── Panel footer actions (Design / R&D buttons) ───────────────── */
-.ao-panel-actions {
+.co-hero-stat-desc {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--co-text-secondary);
+  margin-bottom: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--co-line-bright);
+}
+.co-hero-stat-desc strong {
+  color: var(--co-text-primary);
+  font-weight: 500;
+}
+
+.co-hero-stat-impact {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  font-family: var(--co-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.co-hero-stat-impact > div { display: flex; flex-direction: column; gap: 3px; }
+.co-hero-stat-impact .label { color: var(--co-text-tertiary); font-size: 9px; }
+.co-hero-stat-impact .value { color: var(--co-text-primary); font-size: 12px; font-weight: 500; }
+.co-hero-stat-impact .value.warn { color: var(--co-accent-red); }
+.co-hero-stat-impact .value.rust { color: var(--co-accent-rust); }
+.co-hero-stat-impact .value.good { color: var(--co-accent-green); }
+
+/* ── CONTRACTS / DESIGNS / R&D / FACILITIES — list/card surface ── */
+.co-contracts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+  margin-bottom: 48px;
+}
+.co-contract-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.co-contract-empty {
+  background: var(--co-bg-card);
+  border: 1px solid var(--co-line);
+  padding: 32px 18px;
+  text-align: center;
+  font-family: var(--co-mono);
+  font-size: 10px;
+  color: var(--co-text-tertiary);
+  letter-spacing: 0.05em;
+  font-style: italic;
+}
+
+/* List rows for the Industrial Facilities section. */
+.co-asset-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 16px;
+  background: var(--co-bg-card);
+  border: 1px solid var(--co-line);
+  padding: 16px 22px;
+  transition: border-color 0.15s;
+}
+.co-asset-row:hover { border-color: var(--co-line-bright); }
+.co-asset-name {
+  font-family: var(--co-serif);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--co-text-primary);
+  margin-bottom: 4px;
+}
+.co-asset-meta {
+  font-family: var(--co-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--co-text-tertiary);
+}
+.co-asset-value {
+  font-family: var(--co-serif);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--co-accent-green);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* ── Panel-footer action buttons (Design Engine / etc.) ───────── */
+.co-panel-actions {
   display: flex;
   gap: 8px;
-  padding: 12px 18px 14px;
-  border-top: 1px solid var(--line-soft);
+  margin-top: 12px;
 }
-.ao-panel-action-btn {
+.co-panel-action-btn {
   flex: 1;
   padding: 10px 12px;
   background: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--line-bright);
+  color: var(--co-text-secondary);
+  border: 1px solid var(--co-line-bright);
   cursor: pointer;
-  font-family: var(--mono);
+  font-family: var(--co-mono);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
-.ao-panel-action-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-bright);
-  border-color: var(--accent-gold);
+.co-panel-action-btn:hover {
+  background: var(--co-bg-elevated);
+  color: var(--co-text-primary);
+  border-color: var(--co-accent-gold);
 }
-.ao-panel-action-btn:active { transform: translateY(1px); }
+.co-panel-action-btn:active { transform: translateY(1px); }
 
-/* ── List rows (used inside panels) ─────────────────── */
-.ao-list-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 12px;
-  align-items: baseline;
-  padding: 8px 18px;
-  border-bottom: 1px dashed var(--line-soft);
-}
-.ao-list-row:last-child { border-bottom: 0; }
-.ao-list-primary {
-  font-family: var(--serif);
-  font-size: 14px;
-  color: var(--text-bright);
-  font-weight: 500;
-}
-.ao-list-secondary {
-  font-family: var(--mono);
-  font-size: 9px;
-  color: var(--text-muted);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  margin-top: 2px;
-}
-.ao-list-tag {
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 2px 8px;
-  border: 1px solid var(--line-bright);
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-.ao-list-tag.muted { color: var(--text-dim); border-color: var(--border-hair); }
-.ao-list-tag.green { color: var(--accent-green); border-color: var(--accent-green); }
-
-/* ── Wide empty-state block (used by Pressing Issues + Orders) ── */
-.ao-empty {
-  background: var(--bg-card);
-  border: 1px dashed var(--line-bright);
-  padding: 32px 24px;
-  text-align: center;
-  font-family: var(--mono);
+/* ── FOOTER ── */
+.co-footer-strip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 24px;
+  border-top: 1px solid var(--co-line);
+  margin-top: 24px;
+  font-family: var(--co-mono);
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--co-text-tertiary);
   letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
-.ao-empty strong {
-  display: block;
-  font-family: var(--serif);
-  font-size: 14px;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-  font-weight: 500;
-  letter-spacing: 0;
-  text-transform: none;
+.co-footer-strip em { font-style: normal; color: var(--co-text-secondary); }
+
+@media (max-width: 1180px) {
+  .co-hero-stats { grid-template-columns: 1fr; }
+  .co-hero-stat-value { font-size: 52px; }
+  .co-hero-stat { padding: 24px 22px 22px; }
+  .co-contracts-grid { grid-template-columns: 1fr; }
 }
 </style>
 </head>
-<body class="aviation-operations">
+<body class="corp-operations-aviation">
 <div id="corp-topbar"></div>
 
-<div class="ao-page">
-
-  <!-- I. Strategic Position -->
-  <section class="ao-section">
-    <div class="ao-section-header">
-      <h2><span class="num">I.</span>Strategic Position</h2>
-      <span class="desc">Production · Quality Control · Innovation</span>
-    </div>
-    <div class="ao-hero-stats">
-      <div class="ao-hero-stat" data-stat="capacity" title="Your corporation's ability to produce aircraft. A high production capacity allows you to build more aircraft, faster.">
-        <div class="ao-hero-stat-eyebrow">Production Capacity</div>
-        <div class="ao-hero-stat-name">Aircraft <em>output</em></div>
-        <div>
-          <span class="ao-hero-stat-value" id="am-stat-capacity">—</span>
-          <span class="ao-hero-stat-suffix">/ 10</span>
-        </div>
-      </div>
-      <div class="ao-hero-stat" data-stat="quality" title="Your standing with aviation safety regulators, airworthiness authorities, and international certification bodies (FAA / EASA / ICAO equivalents). High Quality Control means aircraft are trusted, approved for sale in major markets, and can fly anywhere. Low Quality Control means groundings, blocked sales, recalls, and the nightmare scenario every aviation manufacturer fears: a fatal crash traced back to a design flaw your firm signed off on.">
-        <div class="ao-hero-stat-eyebrow">Quality Control</div>
-        <div class="ao-hero-stat-name">Regulator <em>standing</em></div>
-        <div>
-          <span class="ao-hero-stat-value" id="am-stat-quality">—</span>
-          <span class="ao-hero-stat-suffix">/ 10</span>
-        </div>
-      </div>
-      <div class="ao-hero-stat" data-stat="innovation" title="Your firm's design throughput. Higher Innovation accelerates Research & Development, unlocks more advanced airframe blueprints, and lets you push the engineering envelope. Low Innovation traps you in derivative designs that compete on price alone.">
-        <div class="ao-hero-stat-eyebrow">Innovation</div>
-        <div class="ao-hero-stat-name">Design <em>throughput</em></div>
-        <div>
-          <span class="ao-hero-stat-value" id="am-stat-innovation">—</span>
-          <span class="ao-hero-stat-suffix">/ 10</span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- II. Pressing Issues -->
-  <section class="ao-section">
-    <div class="ao-section-header">
-      <h2><span class="num">II.</span>Pressing Issues</h2>
-      <span class="desc">Items requiring attention</span>
-    </div>
-    <div class="ao-empty">
-      <strong>No pressing issues</strong>
-      Operations are running cleanly. Issues will surface here as they arise.
-    </div>
-  </section>
-
-  <!-- III. Designs + R&D (two-up) -->
-  <div class="ao-panels-row">
-    <div class="ao-panel">
-      <div class="ao-panel-header">
-        <h3>Current Designs</h3>
-        <span class="desc">Aircraft you can sell</span>
-      </div>
-      <div class="ao-panel-body" id="am-designs">
-        <div class="ao-panel-empty">No designs yet. Run R&amp;D to develop your first airframe.</div>
-      </div>
-      <div class="ao-panel-actions">
-        <button type="button" class="ao-panel-action-btn" data-am-action="design-engine">+ Design Engine</button>
-        <button type="button" class="ao-panel-action-btn" data-am-action="design-aircraft">+ Design Aircraft</button>
-      </div>
-    </div>
-    <div class="ao-panel">
-      <div class="ao-panel-header">
-        <h3>Research &amp; Development</h3>
-        <span class="desc">Active design programs</span>
-      </div>
-      <div class="ao-panel-body" id="am-rnd">
-        <div class="ao-panel-empty">No active R&amp;D. Allocate resources to begin developing a new design.</div>
-      </div>
-      <div class="ao-panel-actions">
-        <button type="button" class="ao-panel-action-btn" data-am-action="new-research">+ New Research</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- IV. Orders -->
-  <section class="ao-section">
-    <div class="ao-section-header">
-      <h2><span class="num">IV.</span>Orders</h2>
-      <span class="desc">Aircraft commissions from airlines</span>
-    </div>
-    <div class="ao-empty" id="am-orders">
-      <strong>No orders yet</strong>
-      Once your designs are certified, airlines can commission aircraft from your firm.
-    </div>
-  </section>
-
-  <!-- V. Industrial Facilities -->
-  <section class="ao-section">
-    <div class="ao-section-header">
-      <h2><span class="num">V.</span>Industrial Facilities</h2>
-      <span class="desc">Production capacity assets</span>
-    </div>
-    <div class="ao-panel">
-      <div class="ao-panel-body" id="am-facilities">
-        <div class="ao-panel-empty">Loading…</div>
-      </div>
-    </div>
-  </section>
-
+<div class="co-layout" id="co-layout">
+  <div class="co-loading">Loading aviation operations…</div>
 </div>
 
 <script type="module">
@@ -426,6 +498,7 @@ function escHtml(s) {
     d.textContent = String(s);
     return d.innerHTML;
 }
+function escAttr(s) { return escHtml(s).replace(/"/g, '&quot;'); }
 
 function fmtMoneyShort(n) {
     const v = Number(n) || 0;
@@ -435,12 +508,167 @@ function fmtMoneyShort(n) {
     return '$' + Math.round(v);
 }
 
+// Mirrors corp-operations.html scoreBand: good ≥7, mid 4-6, warn <4.
+function scoreBand(score) {
+    const n = Number(score) || 0;
+    if (n >= 7) return 'good';
+    if (n >= 4) return 'mid';
+    return 'warn';
+}
+
+// HERO_STATS — 3 aviation manufacturing sector stats. Each entry pairs
+// a column on factions with display copy + impact metrics keyed by
+// score band. Same shape as corp-operations.html so future cleanup
+// can extract a shared renderer if it's worth it.
+const HERO_STATS = [
+    {
+        key: 'capacity',
+        column: 'corp_production_capacity',
+        eyebrow: 'CAPACITY',
+        name: 'Production',
+        emName: 'Capacity',
+        tooltip: "Your corporation's ability to produce aircraft. A high production capacity allows you to build more aircraft, faster.",
+        blurb: {
+            good: '<strong>Multiple lines running at full tempo.</strong> Output ahead of demand; cycle time tight.',
+            mid:  '<strong>Adequate output.</strong> Lines running at workable pace, room to scale before next backlog window.',
+            warn: '<strong>Bottlenecked.</strong> Orders backing up; cycle time stretching as a single line absorbs everything.',
+        },
+        impacts: {
+            good: [
+                { label: 'Aircraft / Year', value: '6+',    tone: 'good' },
+                { label: 'Lead Time',       value: '−20%',  tone: 'good' },
+            ],
+            mid:  [
+                { label: 'Aircraft / Year', value: '3' },
+                { label: 'Lead Time',       value: 'Average' },
+            ],
+            warn: [
+                { label: 'Aircraft / Year', value: '1',     tone: 'warn' },
+                { label: 'Lead Time',       value: '+30%',  tone: 'warn' },
+            ],
+        },
+    },
+    {
+        key: 'quality',
+        column: 'corp_quality_control',
+        eyebrow: 'STANDING',
+        name: 'Quality',
+        emName: 'Control',
+        tooltip: "Your standing with aviation safety regulators, airworthiness authorities, and international certification bodies (FAA / EASA / ICAO equivalents). High Quality Control means aircraft are trusted, approved for sale in major markets, and can fly anywhere. Low Quality Control means groundings, blocked sales, recalls, and the nightmare scenario every aviation manufacturer fears: a fatal crash traced back to a design flaw your firm signed off on.",
+        blurb: {
+            good: '<strong>Trusted by global cert bodies.</strong> Aircraft approved everywhere; recalls rare; major markets open.',
+            mid:  '<strong>Average regulator standing.</strong> Approval at standard pace; the occasional review but no scandals.',
+            warn: '<strong>Groundings active.</strong> Recalls pending; major markets restricted; design flaws under investigation.',
+        },
+        impacts: {
+            good: [
+                { label: 'Cert Speed',  value: '+25%', tone: 'good' },
+                { label: 'Recall Risk', value: 'Low',  tone: 'good' },
+            ],
+            mid:  [
+                { label: 'Cert Speed',  value: 'Average' },
+                { label: 'Recall Risk', value: 'Standard' },
+            ],
+            warn: [
+                { label: 'Cert Speed',  value: '−30%', tone: 'warn' },
+                { label: 'Recall Risk', value: 'High', tone: 'warn' },
+            ],
+        },
+    },
+    {
+        key: 'innovation',
+        column: 'corp_innovation',
+        eyebrow: 'DESIGN',
+        name: 'Design',
+        emName: 'Throughput',
+        tooltip: "Your firm's design throughput. Higher Innovation accelerates Research & Development, unlocks more advanced airframe blueprints, and lets you push the engineering envelope (longer-range, more efficient, novel-class aircraft). Low Innovation traps you in derivative designs that compete on price alone.",
+        blurb: {
+            good: '<strong>Cutting edge.</strong> R&D pipeline producing next-generation airframes; competitors chasing your tier.',
+            mid:  '<strong>Adequate design throughput.</strong> Working on improvements; occasionally novel; market-fit refinements landing.',
+            warn: '<strong>Stagnating R&D.</strong> Competitors are pulling ahead; designs increasingly derivative.',
+        },
+        impacts: {
+            good: [
+                { label: 'R&D Speed', value: '+30%',     tone: 'good' },
+                { label: 'Tier Cap',  value: 'Advanced', tone: 'good' },
+            ],
+            mid:  [
+                { label: 'R&D Speed', value: 'Average' },
+                { label: 'Tier Cap',  value: 'Standard' },
+            ],
+            warn: [
+                { label: 'R&D Speed', value: '−25%',  tone: 'warn' },
+                { label: 'Tier Cap',  value: 'Basic', tone: 'warn' },
+            ],
+        },
+    },
+];
+
+let _faction = null;
+
+function renderHeroStats() {
+    const container = document.getElementById('co-hero-stats');
+    if (!container) return;
+    container.innerHTML = HERO_STATS.map(renderHeroStat).join('');
+}
+
+function renderHeroStat(stat) {
+    const score = Number(_faction[stat.column]) || 0;
+    const band  = scoreBand(score);
+    const display = Number.isInteger(score) ? String(score) : score.toFixed(1);
+
+    // Per-tick stat history isn't tracked yet — neutral trend tag.
+    const trendHtml = '<div class="co-hero-stat-trend">— Latest</div>';
+
+    const meterHtml = renderHeroMeter(score, band);
+    const blurb = stat.blurb[band] || '';
+    const impacts = stat.impacts[band] || [];
+    const impactsHtml = impacts.map(i =>
+        `<div>
+            <span class="label">${escHtml(i.label)}</span>
+            <span class="value ${i.tone || ''}">${escHtml(i.value)}</span>
+        </div>`
+    ).join('');
+
+    const tipHtml = stat.tooltip
+        ? `<span class="co-hero-tip" data-tip="${escAttr(stat.tooltip)}" aria-label="What is ${escAttr(stat.name + ' ' + (stat.emName || ''))}?">?</span>`
+        : '';
+
+    return `<div class="co-hero-stat" data-stat="${stat.key}">
+        <div class="co-hero-stat-eyebrow">${escHtml(stat.eyebrow)}</div>
+        <div class="co-hero-stat-name">${escHtml(stat.name)} <em>${escHtml(stat.emName)}</em>${tipHtml}</div>
+        <div class="co-hero-stat-value-row">
+            <div class="co-hero-stat-value">${escHtml(display)}<span class="co-max">/10</span></div>
+            ${trendHtml}
+        </div>
+        ${meterHtml}
+        <div class="co-hero-stat-desc">${blurb}</div>
+        <div class="co-hero-stat-impact">${impactsHtml}</div>
+    </div>`;
+}
+
+function renderHeroMeter(score, band) {
+    const filled = Math.max(0, Math.min(10, Math.round(Number(score) || 0)));
+    const fillClass = band === 'good' ? 'filled good'
+                    : band === 'warn' ? 'filled warn'
+                    : 'filled';
+    const cells = [];
+    for (let i = 0; i < 10; i++) {
+        cells.push(`<div class="co-hero-meter-cell${i < filled ? ' ' + fillClass : ''}"></div>`);
+    }
+    return `<div class="co-hero-meter">${cells.join('')}</div>`;
+}
+
 const FACILITY_LABEL = {
-    light_industrial_facility: 'Light Industrial Facility',
+    light_industrial_facility:  'Light Industrial Facility',
+    light_assembly_plant:       'Light Assembly Plant',
+    engine_assembly_plant:      'Engine Assembly Plant',
+    aircraft_assembly_facility: 'Aircraft Assembly Facility',
+    heavy_manufacturing_plant:  'Heavy Manufacturing Plant',
 };
 
 async function loadFacilities(corpId) {
-    const el = document.getElementById('am-facilities');
+    const el = document.getElementById('co-facilities-list');
     if (!el) return;
     const { data: rows, error } = await _supabase
         .from('corp_properties')
@@ -451,11 +679,11 @@ async function loadFacilities(corpId) {
         .order('purchased_at_tick', { ascending: true });
     if (error) {
         console.warn('[aviation-ops] facilities fetch failed:', error.message);
-        el.innerHTML = '<div class="ao-panel-empty">Could not load facilities.</div>';
+        el.innerHTML = '<div class="co-contract-empty">Could not load facilities.</div>';
         return;
     }
     if (!rows || rows.length === 0) {
-        el.innerHTML = '<div class="ao-panel-empty">No industrial facilities yet.</div>';
+        el.innerHTML = '<div class="co-contract-empty">No industrial facilities yet. Build one from the Expansion tab.</div>';
         return;
     }
     el.innerHTML = rows.map(r => {
@@ -464,23 +692,125 @@ async function loadFacilities(corpId) {
         const maintTxt = fmtMoneyShort(r.monthly_maintenance);
         const cond     = Math.round(Number(r.condition) || 0);
         const cityTxt  = r.city ? escHtml(r.city) : '—';
-        return `<div class="ao-list-row">
+        return `<div class="co-asset-row">
             <div>
-                <div class="ao-list-primary">${escHtml(label)}</div>
-                <div class="ao-list-secondary">${cityTxt} · ${cond}% condition · ${maintTxt}/mo maint</div>
+                <div class="co-asset-name">${escHtml(label)}</div>
+                <div class="co-asset-meta">${cityTxt} · ${cond}% condition · ${maintTxt}/mo maint</div>
             </div>
-            <div class="ao-list-tag green">${valueTxt}</div>
+            <div class="co-asset-value">${valueTxt}</div>
         </div>`;
     }).join('');
+}
+
+function renderPageShell(activeOrders) {
+    const layout = document.getElementById('co-layout');
+    layout.innerHTML = `
+        <!-- PAGE HEADER -->
+        <div class="co-page-header">
+            <h1 class="co-page-title">Operations<em>.</em></h1>
+            <div class="co-page-stats">
+                <div>
+                    <div class="co-page-stat-label">Active Orders</div>
+                    <div class="co-page-stat-value">${activeOrders}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- I. STRATEGIC POSITION -->
+        <div class="co-section">
+            <div class="co-section-header">
+                <h2><span class="num">I.</span>Strategic Position</h2>
+                <span class="desc">Industry-Specific Indicators ◊ Scored 0—10</span>
+            </div>
+            <div class="co-hero-stats" id="co-hero-stats"></div>
+        </div>
+
+        <!-- II. PRESSING ISSUES -->
+        <div class="co-section">
+            <div class="co-section-header">
+                <h2><span class="num">II.</span>Pressing Issues</h2>
+                <span class="desc">Time-Sensitive ◊ Decide Before Tick Resolves</span>
+            </div>
+            <div class="co-contract-empty">No pressing issues right now. Time-sensitive decisions will appear here when triggered.</div>
+        </div>
+
+        <!-- III + IV — DESIGNS / R&D -->
+        <div class="co-contracts-grid">
+            <div>
+                <div class="co-section-header">
+                    <h2><span class="num">III.</span>Current Designs</h2>
+                    <span class="desc">Aircraft You Can Sell</span>
+                </div>
+                <div class="co-contract-list" id="co-designs-list">
+                    <div class="co-contract-empty">No designs yet. Run R&amp;D to develop your first airframe.</div>
+                </div>
+                <div class="co-panel-actions">
+                    <button type="button" class="co-panel-action-btn" data-am-action="design-engine">+ Design Engine</button>
+                    <button type="button" class="co-panel-action-btn" data-am-action="design-aircraft">+ Design Aircraft</button>
+                </div>
+            </div>
+            <div>
+                <div class="co-section-header">
+                    <h2><span class="num">IV.</span>Research &amp; Development</h2>
+                    <span class="desc">Active Design Programs</span>
+                </div>
+                <div class="co-contract-list" id="co-rnd-list">
+                    <div class="co-contract-empty">No active R&amp;D. Allocate resources to begin developing a new design.</div>
+                </div>
+                <div class="co-panel-actions">
+                    <button type="button" class="co-panel-action-btn" data-am-action="new-research">+ New Research</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- V. ORDERS -->
+        <div class="co-section">
+            <div class="co-section-header">
+                <h2><span class="num">V.</span>Orders</h2>
+                <span class="desc">Aircraft Commissions From Airlines</span>
+            </div>
+            <div class="co-contract-empty">No orders yet. Once your designs are certified, airlines can commission aircraft from your firm.</div>
+        </div>
+
+        <!-- VI. INDUSTRIAL FACILITIES -->
+        <div class="co-section">
+            <div class="co-section-header">
+                <h2><span class="num">VI.</span>Industrial Facilities</h2>
+                <span class="desc">Production Capacity Assets</span>
+            </div>
+            <div class="co-contract-list" id="co-facilities-list">
+                <div class="co-contract-empty">Loading…</div>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="co-footer-strip">
+            <div>Operations updated <em id="co-footer-date">—</em></div>
+            <div><a href="corp-dashboard.html" style="color:inherit;text-decoration:none;border:1px solid var(--co-line-bright);padding:8px 14px;letter-spacing:0.08em;">← Dashboard</a></div>
+        </div>
+    `;
+}
+
+const PLANT_ACTION_LABELS = {
+    'design-engine':   'Engine design',
+    'design-aircraft': 'Aircraft design',
+    'new-research':    'New research program',
+};
+
+function bindPanelActionButtons() {
+    document.querySelectorAll('[data-am-action]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const action = btn.getAttribute('data-am-action');
+            const label  = PLANT_ACTION_LABELS[action] || 'This action';
+            alert(label + ' will be available when Aviation Manufacturing Phase F mechanics ship.');
+        });
+    });
 }
 
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
 
-    // Inspect-mode override mirrors the airline-operations pattern: ?faction_id=
-    // from the admin Nation Inspector wins over sessionStorage so the inspector
-    // can view any aviation corp's ops surface without a sector bounce.
     const url = new URL(location.href);
     const inspectFactionId = url.searchParams.get('faction_id');
     const activeId = inspectFactionId
@@ -497,6 +827,7 @@ async function init() {
     }
     const faction = factionRes.data;
     const shard   = shardRes.data;
+    _faction = faction;
 
     if (faction.faction_type !== 'corporation' || faction.corp_sector !== 'Aviation Manufacturing') {
         const qs = inspectFactionId ? `?faction_id=${encodeURIComponent(inspectFactionId)}` : '';
@@ -518,29 +849,21 @@ async function init() {
         supabase: _supabase,
     });
 
-    document.getElementById('am-stat-capacity').textContent   = String(Number(faction.corp_production_capacity) || 0);
-    document.getElementById('am-stat-quality').textContent    = String(Number(faction.corp_quality_control)     || 0);
-    document.getElementById('am-stat-innovation').textContent = String(Math.round(Number(faction.corp_innovation) || 0));
+    // Active Orders pill is hardcoded 0 — Phase F mechanics ship the
+    // real order pipeline; for now the slot is a placeholder so the
+    // page header layout matches the construction / shipping / finance
+    // pages where the active-contracts pill is the headline indicator.
+    renderPageShell(0);
+
+    renderHeroStats();
+    bindPanelActionButtons();
+
+    const footerEl = document.getElementById('co-footer-date');
+    if (footerEl && shard?.current_date) {
+        footerEl.textContent = String(shard.current_date);
+    }
 
     await loadFacilities(faction.id);
-
-    // Phase D placeholder wiring for Designs / R&D action buttons.
-    // The mechanics ship in Phase F; until then a click acknowledges
-    // the intent so the buttons feel real instead of dead. Replace
-    // each branch with the real action when the corresponding Phase F
-    // RPC lands (open-design-modal, start-research-program, etc.).
-    const PLANT_ACTION_LABELS = {
-        'design-engine':   'Engine design',
-        'design-aircraft': 'Aircraft design',
-        'new-research':    'New research program',
-    };
-    document.querySelectorAll('[data-am-action]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const action = btn.getAttribute('data-am-action');
-            const label  = PLANT_ACTION_LABELS[action] || 'This action';
-            alert(label + ' will be available when Aviation Manufacturing Phase F mechanics ship.');
-        });
-    });
 }
 
 init().catch(err => {
