@@ -2039,26 +2039,22 @@ async function getPermitComplianceSnapshot(supabase, { nationId, sector, faction
 //  joins to the winning corp_contract_bids row (status='accepted'), and:
 //    1. Idempotency gate: skip if c.progress_pct already matches the
 //       current-tick value (cron re-fire / replay → no double-charge).
-//    2. Crew gate: skip if crews_assigned < bid.crews_committed
-//       (understaffed → contract stalls, no cost, no progress).
-//    3. Deduct perTickCost = bid.bid_amount / timeline_months from the
+//    2. Deduct perTickCost = bid.bid_amount / timeline_months from the
 //       winning corp's cash, emit 'event_cost' cash event labelled
 //       "{contract.name} Construction Costs".
-//    4. Compute progress_pct = (currentTick − started_at_tick) / timeline_months
+//    3. Compute progress_pct = (currentTick − started_at_tick) / timeline_months
 //       × 100 (clamped 0..100), update progress_pct + amount_spent.
-//    5. On 100%, set status='completed', stamp completed_at_tick, and
+//    4. On 100%, set status='completed', stamp completed_at_tick, and
 //       pay out bid.bid_amount immediately via 'capital_in'
 //       "{name} · final payment". Synchronous payout keeps the
 //       contract on the dashboard until the status flips, so there's no
 //       "completed-but-invisible" window.
 //
-//  Behavioural simplification vs. legacy: stalled ticks don't extend
-//  the project (no stalled_ticks bookkeeping). Progress is purely
-//  wall-clock from started_at_tick; if the corp under-staffs for N
-//  ticks then re-assigns crews, progress jumps to (currentTick - start)
-//  but cost is only charged for the resume tick. Net effect: the corp
-//  gets a discount for stalling. Acceptable for v1; revisit if it
-//  becomes exploitable.
+//  The crews-assigned-vs-committed gate was removed in 20261029. Bids
+//  still carry crews_committed (drives price/timeline multipliers at
+//  bid time) but progress no longer requires a separate deploy step;
+//  bait-and-switch is now prevented at bid time via an aggregate
+//  crew-cap check in place_construction_bid.
 //
 //  Replaces the legacy processActiveProjects loop (deleted) which
 //  targeted the now-retired construction_contracts table and never
@@ -2068,7 +2064,7 @@ async function processCorpContracts(supabase, nationId, currentTick) {
 
     const { data: contracts, error: contractsErr } = await supabase
         .from('corp_contracts')
-        .select('id, name, started_at_tick, timeline_months, progress_pct, amount_spent, crews_assigned')
+        .select('id, name, started_at_tick, timeline_months, progress_pct, amount_spent')
         .eq('issuer_nation_id', nationId)
         .eq('status', 'active');
     if (contractsErr) {
@@ -2080,7 +2076,7 @@ async function processCorpContracts(supabase, nationId, currentTick) {
     const contractIds = contracts.map(c => c.id);
     const { data: bids, error: bidsErr } = await supabase
         .from('corp_contract_bids')
-        .select('contract_id, faction_id, bid_amount, crews_committed')
+        .select('contract_id, faction_id, bid_amount')
         .in('contract_id', contractIds)
         .eq('status', 'accepted');
     if (bidsErr) {
@@ -2111,15 +2107,6 @@ async function processCorpContracts(supabase, nationId, currentTick) {
         // double-deducting the per-tick cost.
         const newProgressPct = Math.min(100, Math.round((ticksElapsed / totalTicks) * 10000) / 100);
         if (Number(c.progress_pct || 0) >= newProgressPct) continue;
-
-        // Crew gate: stalls until the corp brings crews_assigned up
-        // to crews_committed via assign_construction_crews.
-        const crewsAssigned  = Number(c.crews_assigned || 0);
-        const crewsCommitted = Number(bid.crews_committed || 0);
-        if (crewsCommitted > 0 && crewsAssigned < crewsCommitted) {
-            console.log(`[CorpContracts] ${c.name}: STALLED — crews_assigned ${crewsAssigned} < crews_committed ${crewsCommitted}`);
-            continue;
-        }
 
         const totalBid = Number(bid.bid_amount || 0);
         const perTickCost = Math.round(totalBid / totalTicks);
