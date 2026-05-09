@@ -803,6 +803,22 @@ body.corp-expansion.light-mode {
         </div>
 
         <div class="ex-nation-table" id="ex-build-table"></div>
+
+        <!-- Aviation Manufacturing only — assembly plants. Visibility
+             gated in renderAll() based on faction.corp_sector. Picker
+             targets nations where the corp has a Regional HQ presence
+             (no home-nation, no per-nation limit). -->
+        <div class="ex-info ex-aviation-only" style="display:none;margin-top:24px;">
+          <h3>Build a Light Assembly Plant</h3>
+          <p>Assembles airframes for your certified designs. Cost is <strong>$175M base × the host nation's cost-of-living multiplier</strong> (clamped between ×0.5 and ×2.0). Requires an existing Regional HQ presence in the target nation. The plant becomes a standard property asset — same condition-adjusted resale as any other building.</p>
+        </div>
+        <div class="ex-nation-table ex-aviation-only" id="ex-build-table-light-assembly" style="display:none;"></div>
+
+        <div class="ex-info ex-aviation-only" style="display:none;margin-top:24px;">
+          <h3>Build an Engine Assembly Plant</h3>
+          <p>Builds the engines that power your aircraft. Cost is <strong>$225M base × the host nation's cost-of-living multiplier</strong> (clamped between ×0.5 and ×2.0). Requires an existing Regional HQ presence in the target nation. The plant becomes a standard property asset — same condition-adjusted resale as any other building.</p>
+        </div>
+        <div class="ex-nation-table ex-aviation-only" id="ex-build-table-engine-assembly" style="display:none;"></div>
       </div>
 
       <!-- BUY TAB -->
@@ -831,18 +847,29 @@ import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, hfFmtBig } from './js/utils.js';
 
 // ── CONSTANTS ──
-// Build cost: $300M base × clamp(SoL/50, 0.5, 2.0). At SoL 50 the
-// multiplier is exactly 1.0; below SoL 25 the floor (×0.5) kicks in,
-// above SoL 100 the ceiling (×2.0) caps it.
-const REGIONAL_HQ_BASE_COST = 300_000_000;
-const REGIONAL_HQ_CAPACITY  = 500;
+// Build cost shape (shared across every buildable property):
+// base × clamp(stat/50, 0.5, 2.0). At stat 50 the multiplier is
+// exactly 1.0; below stat 25 the floor (×0.5) kicks in, above stat
+// 100 the ceiling (×2.0) caps it. Regional HQ scales on
+// standard_of_living; aviation-manufacturing assembly plants scale
+// on cost_of_living. One source of truth — boundedCostMultiplier.
+const REGIONAL_HQ_BASE_COST     = 300_000_000;
+const REGIONAL_HQ_CAPACITY      = 500;
+const LIGHT_ASSEMBLY_BASE_COST  = 175_000_000;
+const ENGINE_ASSEMBLY_BASE_COST = 225_000_000;
 
-function regionalHqMultiplier(sol) {
-    const s = Math.max(0, Math.min(100, Number(sol) || 0));
+function boundedCostMultiplier(stat) {
+    const s = Math.max(0, Math.min(100, Number(stat) || 0));
     return Math.max(0.5, Math.min(2.0, s / 50));
 }
 function regionalHqCost(sol) {
-    return Math.round(REGIONAL_HQ_BASE_COST * regionalHqMultiplier(sol));
+    return Math.round(REGIONAL_HQ_BASE_COST * boundedCostMultiplier(sol));
+}
+function lightAssemblyCost(costOfLiving) {
+    return Math.round(LIGHT_ASSEMBLY_BASE_COST * boundedCostMultiplier(costOfLiving));
+}
+function engineAssemblyCost(costOfLiving) {
+    return Math.round(ENGINE_ASSEMBLY_BASE_COST * boundedCostMultiplier(costOfLiving));
 }
 
 // ── STATE ──
@@ -925,7 +952,7 @@ async function loadOwnedProperties() {
 async function loadAllNations() {
     const { data, error } = await _supabase
         .from('nations')
-        .select('id, name, capital, standard_of_living, gdp_growth, control')
+        .select('id, name, capital, standard_of_living, cost_of_living, gdp_growth, control')
         .order('name', { ascending: true });
     if (error) {
         console.warn('[Expansion] nations fetch failed:', error.message);
@@ -1124,7 +1151,7 @@ function renderBuildTable() {
     for (const n of _allNations) {
         const sol  = Number(n.standard_of_living ?? 50);
         const gdp  = Number(n.gdp_growth ?? 0);
-        const mult = regionalHqMultiplier(sol);
+        const mult = boundedCostMultiplier(sol);
         const cost = regionalHqCost(sol);
         const isHome  = n.id === homeNationId;
         const isOwned = ownedNationIds.has(n.id);
@@ -1164,6 +1191,81 @@ function renderBuildTable() {
     }
 
     root.innerHTML = rows.join('');
+}
+
+// Aviation Manufacturing assembly plants — shared shape. Picker
+// targets nations where the corp already has a Regional HQ presence
+// (no home, no per-nation limit). Cost scales on cost_of_living.
+//
+// kind:        'light_assembly' | 'engine_assembly'
+// rootId:      DOM id of the host .ex-nation-table div
+// costFn:      cost helper (lightAssemblyCost or engineAssemblyCost)
+// baseCostM:   integer in $M for the column header (175 or 225)
+// dataAction:  click-delegation key the table dispatches on
+function renderAssemblyTable(kind, rootId, costFn, baseCostM, dataAction) {
+    const root = document.getElementById(rootId);
+    if (!root) return;
+
+    const presenceNationIds = new Set(_ownedRegionalHqs.map(p => p.nation_id));
+    const cash = Number(faction?.corp_cash_reserves || 0);
+
+    const rows = [];
+    rows.push(`<div class="ex-nation-table-head">
+        <div>Nation</div>
+        <div>CoL</div>
+        <div class="ex-nation-cell gdp">GDP</div>
+        <div class="ex-nation-cell mult">Multiplier</div>
+        <div>Total Cost</div>
+        <div></div>
+    </div>`);
+
+    const eligible = _allNations.filter(n => presenceNationIds.has(n.id));
+    if (eligible.length === 0) {
+        rows.push('<div class="ex-nation-row empty">Build a Regional HQ first — assembly plants require existing presence in the nation.</div>');
+        root.innerHTML = rows.join('');
+        return;
+    }
+
+    for (const n of eligible) {
+        const col  = Number(n.cost_of_living ?? 50);
+        const gdp  = Number(n.gdp_growth ?? 0);
+        const mult = boundedCostMultiplier(col);
+        const cost = costFn(col);
+        const inflight = _buildInflight.has(`${kind}:${n.id}`);
+
+        let actionHtml;
+        let costClass = 'ex-nation-cell cost';
+        if (inflight) {
+            actionHtml = '<button class="ex-build-btn disabled" disabled>Building…</button>';
+        } else if (cash < cost) {
+            actionHtml = '<button class="ex-build-btn unaffordable" disabled>Insufficient</button>';
+            costClass += ' expensive';
+        } else {
+            actionHtml = `<button class="ex-build-btn" data-action="${dataAction}" data-id="${escapeHtml(n.id)}">Build ▸</button>`;
+        }
+
+        const gdpText = (gdp >= 0 ? '+' : '') + gdp.toFixed(1) + '%';
+
+        rows.push(`<div class="ex-nation-row">
+            <div class="ex-nation-name"><span class="flag">◊</span> ${escapeHtml(n.name || '—')}</div>
+            <div class="ex-nation-cell">CoL ${Math.round(col)}</div>
+            <div class="ex-nation-cell gdp">${escapeHtml(gdpText)}</div>
+            <div class="ex-nation-cell mult">×${mult.toFixed(2)}</div>
+            <div class="${costClass}">${escapeHtml(hfFmtBig(cost))}</div>
+            <div class="ex-nation-action">${actionHtml}</div>
+        </div>`);
+    }
+
+    root.innerHTML = rows.join('');
+}
+
+function renderLightAssemblyTable() {
+    renderAssemblyTable('light_assembly', 'ex-build-table-light-assembly',
+        lightAssemblyCost, 175, 'build-light-assembly');
+}
+function renderEngineAssemblyTable() {
+    renderAssemblyTable('engine_assembly', 'ex-build-table-engine-assembly',
+        engineAssemblyCost, 225, 'build-engine-assembly');
 }
 
 function renderBuyGrid() {
@@ -1241,7 +1343,7 @@ async function buildRegionalHQ(nationId) {
 
     if (!confirm(
         'Build Regional HQ in ' + target.name + '?\n\n' +
-        'Cost: ' + hfFmtBig(cost) + ' ($300M base × ' + regionalHqMultiplier(sol).toFixed(2) + 'x SoL)\n' +
+        'Cost: ' + hfFmtBig(cost) + ' ($300M base × ' + boundedCostMultiplier(sol).toFixed(2) + 'x SoL)\n' +
         'Capacity: ' + REGIONAL_HQ_CAPACITY + '\n\n' +
         'The HQ becomes a standard property asset. You can sell it later from your assets list (purchase price × current condition %).'
     )) return;
@@ -1313,6 +1415,106 @@ async function buildRegionalHQ(nationId) {
     } finally {
         _buildInflight.delete(nationId);
         renderBuildTable();
+    }
+}
+
+// Aviation Manufacturing assembly-plant build. Generic over Light /
+// Engine — they differ only in type string, label, and cost helper.
+// No per-nation limit (player can stack plants in the same host) and
+// no capacity (the column is set to 0 since the Aviation Manufacturing
+// production loop reads from facility count, not capacity scalar).
+async function buildAssemblyPlant(kind, nationId) {
+    if (!nationId) return;
+    const presenceNationIds = new Set(_ownedRegionalHqs.map(p => p.nation_id));
+    if (!presenceNationIds.has(nationId)) {
+        showToast('You need a Regional HQ in that nation to build an assembly plant.', 'error');
+        return;
+    }
+    const target = _allNations.find(n => n.id === nationId);
+    if (!target) return;
+
+    const inflightKey = `${kind}:${nationId}`;
+    if (_buildInflight.has(inflightKey)) return;
+
+    const spec = kind === 'light_assembly'
+        ? { type: 'light_assembly_plant',  label: 'Light Assembly Plant',  base: '$175M', costFn: lightAssemblyCost,  rerender: renderLightAssemblyTable }
+        : { type: 'engine_assembly_plant', label: 'Engine Assembly Plant', base: '$225M', costFn: engineAssemblyCost, rerender: renderEngineAssemblyTable };
+
+    const col  = Number(target.cost_of_living ?? 50);
+    const cost = spec.costFn(col);
+    const cash = Number(faction?.corp_cash_reserves || 0);
+    if (cash < cost) {
+        showToast('Insufficient cash reserves for ' + target.name + '.', 'error');
+        return;
+    }
+
+    if (!confirm(
+        'Build ' + spec.label + ' in ' + target.name + '?\n\n' +
+        'Cost: ' + hfFmtBig(cost) + ' (' + spec.base + ' base × ' + boundedCostMultiplier(col).toFixed(2) + 'x CoL)\n' +
+        '0.5%/mo maintenance · 85-100% starting condition\n\n' +
+        'The plant becomes a standard property asset. You can sell it later from your assets list (purchase price × current condition %).'
+    )) return;
+
+    _buildInflight.add(inflightKey);
+    spec.rerender();
+
+    try {
+        const currentTick = Number(shard?.current_tick) || 0;
+        const condition = 85 + Math.floor(Math.random() * 16);
+        const maint = Math.round(cost * 0.005);
+        const plantName = (faction.faction_name || 'Corp') + ' — ' + target.name + ' ' + spec.label;
+
+        const newCash = Math.max(0, cash - cost);
+        const { error: cashErr } = await _supabase.from('factions')
+            .update({ corp_cash_reserves: newCash }).eq('id', faction.id);
+        if (cashErr) {
+            showToast('Failed to deduct cash: ' + cashErr.message, 'error');
+            return;
+        }
+        faction.corp_cash_reserves = newCash;
+
+        const { error: propErr } = await _supabase.from('corp_properties').insert({
+            faction_id: faction.id,
+            nation_id: target.id,
+            name: plantName,
+            type: spec.type,
+            role: spec.type,
+            style: 'Industrial',
+            capacity: 0,
+            purchase_price: cost,
+            monthly_maintenance: maint,
+            condition: condition,
+            city: target.capital || target.name,
+            purchased_at_tick: currentTick,
+            is_active: true,
+        });
+        if (propErr) {
+            await _supabase.from('factions')
+                .update({ corp_cash_reserves: cash }).eq('id', faction.id);
+            faction.corp_cash_reserves = cash;
+            showToast('Failed to create property: ' + propErr.message + ' (cash refunded)', 'error');
+            return;
+        }
+
+        try {
+            await _supabase.from('event_log').insert({
+                nation_id: target.id,
+                event_name: `${faction.faction_name} — ${spec.label} Opened`,
+                category: 'corporate',
+                description_chosen: `${faction.faction_name} has invested ${hfFmtBig(cost)} to open a ${spec.label} in ${target.name}.`,
+                fired_at_tick: currentTick,
+            });
+        } catch (_) { /* non-blocking */ }
+
+        showToast(spec.label + ' built in ' + target.name + ' (' + condition + '% condition).', 'success');
+        await loadOwnedProperties();
+        renderAll();
+    } catch (err) {
+        console.error('[Expansion] assembly-plant build failed:', err);
+        showToast('Build failed: ' + (err?.message || 'unknown'), 'error');
+    } finally {
+        _buildInflight.delete(inflightKey);
+        spec.rerender();
     }
 }
 
@@ -1494,6 +1696,28 @@ function attachClickHandlers() {
             if (action === 'build' && id) buildRegionalHQ(id);
         });
     }
+    const lightTable = document.getElementById('ex-build-table-light-assembly');
+    if (lightTable && lightTable.dataset.boundEx !== '1') {
+        lightTable.dataset.boundEx = '1';
+        lightTable.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action]');
+            if (!btn || btn.disabled) return;
+            const action = btn.getAttribute('data-action');
+            const id = btn.getAttribute('data-id');
+            if (action === 'build-light-assembly' && id) buildAssemblyPlant('light_assembly', id);
+        });
+    }
+    const engineTable = document.getElementById('ex-build-table-engine-assembly');
+    if (engineTable && engineTable.dataset.boundEx !== '1') {
+        engineTable.dataset.boundEx = '1';
+        engineTable.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action]');
+            if (!btn || btn.disabled) return;
+            const action = btn.getAttribute('data-action');
+            const id = btn.getAttribute('data-id');
+            if (action === 'build-engine-assembly' && id) buildAssemblyPlant('engine_assembly', id);
+        });
+    }
     const buyGrid = document.getElementById('ex-buy-grid');
     if (buyGrid && buyGrid.dataset.boundEx !== '1') {
         buyGrid.dataset.boundEx = '1';
@@ -1524,6 +1748,19 @@ function renderAll() {
     renderAssets();
     renderBuildTable();
     renderBuyGrid();
+
+    // Aviation Manufacturing assembly-plant cards: visibility-gated
+    // by sector so other corp types don't see the assembly options.
+    // The gate runs on every renderAll so an admin-inspector switching
+    // between corps reveals/hides the cards correctly.
+    const isAviationMfg = faction?.corp_sector === 'Aviation Manufacturing';
+    document.querySelectorAll('.ex-aviation-only').forEach(el => {
+        el.style.display = isAviationMfg ? '' : 'none';
+    });
+    if (isAviationMfg) {
+        renderLightAssemblyTable();
+        renderEngineAssemblyTable();
+    }
 }
 
 // ── INIT ──
