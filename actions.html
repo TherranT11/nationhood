@@ -2214,6 +2214,51 @@ function closeExecSearch() {
     _execSearchSelected = -1;
 }
 
+// ── Manual pool refresh ─────────────────────────────────────────
+// The auto-regen at line ~2195 only fires when _execPool is fully
+// empty. That doesn't help when the role-specific filter
+// (specializations.includes(role)) returns 0 for an existing pool —
+// e.g. 18 candidates exist but none are Lobbyists. The Refresh Pool
+// button always appends 18 fresh candidates to the nation's
+// executive_pool, then reloads. Append (not replace) so any
+// already-displayed candidate the player was eyeing is preserved.
+let _execRefreshInflight = false;
+async function refreshExecPool() {
+    if (_execRefreshInflight) return;
+    if (!faction?.nation_id) return;
+    const btn = document.getElementById('exec-search-refresh');
+    _execRefreshInflight = true;
+    if (btn) {
+        btn.style.opacity = '0.5';
+        btn.style.cursor = 'wait';
+        btn.textContent = 'Refreshing…';
+    }
+    try {
+        const nationName = faction.nation || '';
+        const poolRows = generateExecutivePool(faction.nation_id, nationName);
+        const { error: insertErr } = await _supabase.from('executive_pool').insert(poolRows);
+        if (insertErr) {
+            console.warn('Failed to refresh executive pool:', insertErr.message);
+            return;
+        }
+        const { data: freshPool, error: reloadErr } = await _supabase.from('executive_pool')
+            .select('*').eq('nation_id', faction.nation_id).eq('status', 'available')
+            .order('skill', { ascending: false });
+        if (reloadErr) {
+            console.warn('Failed to reload executive pool after refresh:', reloadErr.message);
+            return;
+        }
+        _execPool = freshPool || [];
+        _execSearchSelected = -1;
+        renderExecSearchModal();
+    } finally {
+        _execRefreshInflight = false;
+        // renderExecSearchModal rebuilds the header so the button is
+        // re-created with default styling — no need to reset state on
+        // the existing element.
+    }
+}
+
 function getPoolCandidatesForRole(role) {
     return _execPool.filter(c =>
         c.status === 'available' &&
@@ -2300,7 +2345,10 @@ function renderExecSearchModal() {
                 <span style="font-size:10px;color:${meta.color};">&#9679;</span>
                 <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;letter-spacing:2px;color:#9e9a92;text-transform:uppercase;">Executive Search</span>
             </div>
-            <span onclick="closeExecSearch()" style="font-family:var(--font-mono);font-size:18px;color:#6a6660;cursor:pointer;">&#215;</span>
+            <div style="display:flex;align-items:center;gap:14px;">
+                <span onclick="refreshExecPool()" id="exec-search-refresh" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1.5px;color:#5a8aaa;border:1px solid rgba(90,138,170,0.4);background:rgba(90,138,170,0.08);padding:4px 10px;cursor:pointer;text-transform:uppercase;">Refresh Pool</span>
+                <span onclick="closeExecSearch()" style="font-family:var(--font-mono);font-size:18px;color:#6a6660;cursor:pointer;">&#215;</span>
+            </div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;margin-top:5px;">
             <span style="font-family:var(--font-mono);font-size:11px;color:#6a6660;">Hiring:</span>
@@ -2532,6 +2580,7 @@ window.lrSelectAllInMyNation = lrSelectAllInMyNation;
 window.lrSubmit = lrSubmit;
 window.openExecSearch = openExecSearch;
 window.closeExecSearch = closeExecSearch;
+window.refreshExecPool = refreshExecPool;
 window.esSelectCandidate = esSelectCandidate;
 window.esHireCandidate = esHireCandidate;
 
