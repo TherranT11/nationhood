@@ -2602,6 +2602,22 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // 4a-quater-bis. INTERIOR INFRASTRUCTURE COMPLETIONS — global pass.
+    // Marks active Interior Infrastructure contracts whose
+    // expected_finish_tick has arrived as completed; applies tier-
+    // specific stat bumps to the issuing nation; fires the "Interior
+    // Infrastructure Completed" event.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const intResult = await processInteriorInfrastructureCompletions(supabase, currentTick);
+        if (intResult?.completed) {
+            console.log(`[InteriorInfrastructure] ${intResult.completed} project(s) completed`);
+        }
+    } catch (intErr) {
+        console.error('[advanceTick] Interior infrastructure completion sweep failed (non-fatal):', intErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // 4a-quinque. VWC HOST BID RESOLUTION — global pass.
     // For every cup whose qualifier tick is current_tick (= cup_start
     // - 12), pick a host via the bid-score formula. Winner gets the

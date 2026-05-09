@@ -3615,6 +3615,49 @@ async function processAviationDesignResearch(supabase, currentTick) {
 //      completed_at_tick. The plant join rows are kept (status filter
 //      excludes them from "occupied" lookups going forward).
 // ════════════════════════════════════════════════════════════════
+// Aircraft RFP expiry sweep.
+// Closes RFPs whose expires_at_tick has passed without an
+// accepted bid: status open → expired, all pending bids on the
+// RFP → rejected. The award path (award_aircraft_rfp RPC) handles
+// the happy case; this is the "nobody bought it in time" path.
+// ════════════════════════════════════════════════════════════════
+async function processAircraftRfpExpiry(supabase, currentTick) {
+    const { data: due, error } = await supabase
+        .from('aircraft_rfps')
+        .select('id')
+        .eq('status', 'open')
+        .lte('expires_at_tick', currentTick);
+    if (error) {
+        console.warn('[AircraftRfpExpiry] fetch failed:', error.message);
+        return null;
+    }
+    if (!due || due.length === 0) return { expired: 0 };
+
+    const rfpIds = due.map(r => r.id);
+
+    const { error: rfpErr } = await supabase
+        .from('aircraft_rfps')
+        .update({ status: 'expired' })
+        .in('id', rfpIds);
+    if (rfpErr) {
+        console.warn('[AircraftRfpExpiry] RFP status update failed:', rfpErr.message);
+        return null;
+    }
+
+    const { error: bidErr } = await supabase
+        .from('aircraft_rfp_bids')
+        .update({ status: 'rejected' })
+        .in('rfp_id', rfpIds)
+        .eq('status', 'pending');
+    if (bidErr) {
+        console.warn('[AircraftRfpExpiry] bid status update failed:', bidErr.message);
+    }
+
+    return { expired: rfpIds.length };
+}
+
+
+// ════════════════════════════════════════════════════════════════
 async function processProductionRuns(supabase, currentTick) {
     const { data: runs, error } = await supabase
         .from('corp_production_runs')
@@ -6121,6 +6164,19 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
             }
         } catch (prodErr) {
             console.error('[advance-corp-tick] Aviation production runs failed (non-fatal):', prodErr);
+        }
+
+        // Aircraft RFP expiry — close any RFPs whose 6-tick window
+        // ran out without an acceptance. Reject all pending bids
+        // on those RFPs.
+        try {
+            const expiryResults = await processAircraftRfpExpiry(supabase, currentTick);
+            if (expiryResults && expiryResults.expired > 0) {
+                summary.aircraftRfpExpiry = expiryResults;
+                console.log(`[AircraftRfpExpiry] tick ${currentTick}: ${expiryResults.expired} RFP(s) expired`);
+            }
+        } catch (expErr) {
+            console.error('[advance-corp-tick] Aircraft RFP expiry failed (non-fatal):', expErr);
         }
     } catch (shipErr) {
         console.error('[advance-corp-tick] FAILED shipping route processor:', shipErr);

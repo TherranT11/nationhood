@@ -175,6 +175,164 @@ function renderSoeActionCard() {
     return renderDisabledActionCard(SOE_ACTION.name, SOE_ACTION.desc, SOE_ACTION.costLabel);
 }
 
+// ── Interior · Expand Infrastructure ───────────────────────────
+// Card opens openExpandInfrastructureModal which fetches tier
+// specs from interior_infrastructure_tiers() and posts via
+// post_interior_infrastructure(p_size).
+function renderInteriorInfrastructureCard(action, canUse) {
+    const btnLabel = canUse ? 'CHOOSE TIER' : 'NOT MINISTER';
+    const btnStyle = canUse
+        ? 'background:#5aafa5;border-color:#5aafa5;color:#0f0f0d;cursor:pointer;'
+        : 'background:#1e1e1a;border-color:rgba(255,255,255,0.07);color:#3a3a2e;cursor:not-allowed;';
+    const onclick = canUse
+        ? 'onclick="event.stopPropagation();openExpandInfrastructureModal()"'
+        : '';
+    return `<div class="ministry-action" style="cursor:default;">
+        <div class="ministry-action__top">
+            <span class="ministry-action__name">${escapeHtml(action.name)}</span>
+            <span class="ministry-action__ap-cost">3 TIERS</span>
+        </div>
+        <div class="ministry-action__desc">${escapeHtml(action.desc)}</div>
+        <div class="ministry-action__bottom">
+            <div class="ministry-action__tags">
+                <span class="tag tag--positive">+ STD OF LIVING</span>
+                <span class="tag tag--positive">+ GDP GROWTH</span>
+                <span class="tag tag--positive">+ PUBLIC APPROVAL</span>
+            </div>
+            <div><div ${onclick} style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;${btnStyle}padding:4px 9px;white-space:nowrap;">${btnLabel}</div></div>
+        </div>
+    </div>`;
+}
+
+let _interiorInfrastructureTiers = null;
+let _interiorInfrastructureInflight = false;
+
+async function openExpandInfrastructureModal() {
+    if (_interiorInfrastructureInflight) return;
+    // Guard against double-open: rapid double-click on the action
+    // card would otherwise append a second overlay with the same
+    // id (only the first reachable via getElementById).
+    if (document.getElementById('expand-infra-overlay')) return;
+    if (!_interiorInfrastructureTiers) {
+        const { data, error } = await _supabase.rpc('interior_infrastructure_tiers');
+        if (error) {
+            alert('Failed to load tiers: ' + error.message);
+            return;
+        }
+        _interiorInfrastructureTiers = data || {};
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'expand-infra-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeExpandInfrastructureModal(); });
+
+    const order = ['small', 'modest', 'extravagant'];
+    const tierLabel = { small: 'SMALL', modest: 'MODEST', extravagant: 'EXTRAVAGANT' };
+
+    // Current Interior ministry discretionary balance — used to
+    // disable cards the player can't afford to post.
+    const interiorMin = (typeof ministryData !== 'undefined' && Array.isArray(ministryData))
+        ? ministryData.find(m => m.ministry_key === 'interior')
+        : null;
+    const discretionary = Number(interiorMin?.discretionary_balance || 0);
+    const fmtM = (n) => '$' + (Number(n) / 1_000_000).toFixed(Number(n) % 1_000_000 === 0 ? 0 : 1) + 'M';
+
+    const cards = order.map(k => {
+        const t = _interiorInfrastructureTiers[k];
+        if (!t) return '';
+        const postFmt   = fmtM(t.post_cost);
+        const budgetFmt = fmtM(t.budget);
+        const affordable = discretionary >= Number(t.post_cost);
+        const effects = (t.stat_effects || []).map(e => {
+            const sign = Number(e.delta) >= 0 ? '+' : '';
+            const stat = e.stat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            return `<div style="font-family:var(--font-mono);font-size:11px;color:var(--green);letter-spacing:0.04em;">${sign}${e.delta} ${stat}</div>`;
+        }).join('');
+        const cardStyle = affordable
+            ? 'flex:1;border:1px solid rgba(255,255,255,0.1);background:#1a1a17;padding:18px;cursor:pointer;display:flex;flex-direction:column;gap:10px;transition:border-color 0.15s,background 0.15s;'
+            : 'flex:1;border:1px solid rgba(255,255,255,0.06);background:#15140f;padding:18px;cursor:not-allowed;display:flex;flex-direction:column;gap:10px;opacity:0.5;';
+        const dataAttr = affordable ? `data-tier="${k}"` : '';
+        const unaffordableNote = affordable ? '' : `<div style="font-family:var(--font-mono);font-size:10px;color:var(--accent-red,#d9534f);letter-spacing:0.04em;">Insufficient discretionary funds</div>`;
+        return `<div class="expand-infra-tier" ${dataAttr} style="${cardStyle}">
+            <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.16em;color:#9e9a92;">${tierLabel[k]}</div>
+            <div style="font-family:var(--font-serif,Georgia,serif);font-size:18px;font-weight:600;color:#f0efe6;line-height:1.15;">${escapeHtml(t.name)}</div>
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.04em;color:#9e9a92;">Post fee: <span style="color:var(--accent-rust,#a0633a);font-weight:600;">${postFmt}</span></div>
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.04em;color:#9e9a92;">Contract: <span style="color:var(--gold,#c8a832);font-weight:600;">${budgetFmt}</span> · ${t.timeline} ticks</div>
+            <div style="display:flex;flex-direction:column;gap:4px;margin-top:4px;">${effects}</div>
+            ${unaffordableNote}
+        </div>`;
+    }).join('');
+
+    const balLine = `<div style="font-family:var(--font-mono);font-size:11px;letter-spacing:0.04em;color:#9e9a92;">Ministry discretionary balance: <span style="color:${discretionary > 0 ? 'var(--green)' : 'var(--accent-red,#d9534f)'};font-weight:600;">${fmtM(discretionary)}</span></div>`;
+
+    overlay.innerHTML = `<div style="background:#0f0f0d;border:1px solid rgba(255,255,255,0.1);max-width:880px;width:100%;padding:24px;display:flex;flex-direction:column;gap:18px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-family:var(--font-serif,Georgia,serif);font-size:22px;font-weight:600;color:#f0efe6;">Expand Infrastructure</div>
+            <button id="expand-infra-close" style="background:transparent;border:1px solid rgba(255,255,255,0.15);color:#9e9a92;font-family:var(--font-mono);font-size:14px;width:30px;height:30px;cursor:pointer;">×</button>
+        </div>
+        <div style="font-family:var(--font-sans,sans-serif);font-size:13px;color:#9e9a92;line-height:1.5;">
+            Select a tier. The post fee is debited from the ministry's discretionary balance; the contract opens for bidding by construction corporations. The winning corp builds the project; on completion, your nation gains the listed stat boosts. One Interior Infrastructure contract open or active per nation.
+        </div>
+        ${balLine}
+        <div style="display:flex;gap:12px;">${cards}</div>
+        <div id="expand-infra-error" style="display:none;font-family:var(--font-mono);font-size:11px;color:#d9534f;padding:8px 12px;border:1px solid rgba(217,83,79,0.4);background:rgba(217,83,79,0.06);"></div>
+    </div>`;
+
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#expand-infra-close').addEventListener('click', closeExpandInfrastructureModal);
+    overlay.querySelectorAll('.expand-infra-tier').forEach(card => {
+        card.addEventListener('mouseenter', () => {
+            card.style.borderColor = 'var(--gold, #c8a832)';
+            card.style.background = '#1f1f1a';
+        });
+        card.addEventListener('mouseleave', () => {
+            card.style.borderColor = 'rgba(255,255,255,0.1)';
+            card.style.background = '#1a1a17';
+        });
+        card.addEventListener('click', () => submitExpandInfrastructure(card.dataset.tier));
+    });
+}
+
+function closeExpandInfrastructureModal() {
+    const overlay = document.getElementById('expand-infra-overlay');
+    if (overlay) overlay.remove();
+}
+
+async function submitExpandInfrastructure(size) {
+    if (_interiorInfrastructureInflight) return;
+    _interiorInfrastructureInflight = true;
+    const errEl = document.getElementById('expand-infra-error');
+    if (errEl) errEl.style.display = 'none';
+    document.querySelectorAll('.expand-infra-tier').forEach(c => { c.style.opacity = '0.5'; c.style.pointerEvents = 'none'; });
+
+    try {
+        const { data, error } = await _supabase.rpc('post_interior_infrastructure', { p_size: size });
+        if (error) {
+            if (errEl) { errEl.textContent = error.message; errEl.style.display = 'block'; }
+            return;
+        }
+        if (!data?.success) {
+            if (errEl) { errEl.textContent = data?.error || 'Failed to post contract'; errEl.style.display = 'block'; }
+            return;
+        }
+        closeExpandInfrastructureModal();
+        const postM = (Number(data.post_cost) / 1_000_000).toFixed(0);
+        const budgetM = (Number(data.budget) / 1_000_000).toFixed(0);
+        alert(`${data.name} posted. $${postM}M debited from discretionary. Contract budget $${budgetM}M, ${data.timeline} ticks, 6-tick bid window for corps.`);
+        // Refresh ministry data so the page reflects any state changes.
+        if (typeof loadGovData === 'function') loadGovData();
+    } catch (err) {
+        if (errEl) { errEl.textContent = err?.message || 'Unknown error'; errEl.style.display = 'block'; }
+    } finally {
+        _interiorInfrastructureInflight = false;
+        document.querySelectorAll('.expand-infra-tier').forEach(c => { c.style.opacity = '1'; c.style.pointerEvents = 'auto'; });
+    }
+}
+window.openExpandInfrastructureModal = openExpandInfrastructureModal;
+window.closeExpandInfrastructureModal = closeExpandInfrastructureModal;
+
 const MINISTRY_ACTIONS = {
     interior: {
         actions: [
@@ -245,6 +403,17 @@ const MINISTRY_ACTIONS = {
                     { stat_key: 'infrastructure',      direction: 'up',   rate: 1, scalable: false },
                     { stat_key: 'standard_of_living',  direction: 'down', rate: 1, scalable: false }
                 ]
+            },
+            {
+                // Special-cased contract-creating action. Renders as
+                // its own card via renderInteriorInfrastructureCard;
+                // clicking opens openExpandInfrastructureModal, which
+                // fetches tier specs from interior_infrastructure_tiers()
+                // and posts via post_interior_infrastructure(p_size).
+                id: 'expandInfrastructure',
+                name: 'Expand Infrastructure',
+                desc: 'Issue a public-works contract for a Local Municipal Complex, Civic Center, or Provincial Infrastructure project. Corporations bid; on completion your nation gains stat boosts.',
+                contractAction: 'interior_infrastructure',
             }
         ]
     },
@@ -7065,6 +7234,14 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
         // eventual cost while still being inert (e.g. SOE · $100K).
         if (action.comingSoon) {
             html += renderDisabledActionCard(action.name, action.desc, action.costLabel);
+            return;
+        }
+
+        // Contract-creating actions render their own card and open a
+        // tier-picker modal instead of going through the standard
+        // stat-tweak flow (apCosts / budgetPerCapita / decay / etc.).
+        if (action.contractAction === 'interior_infrastructure') {
+            html += renderInteriorInfrastructureCard(action, canUse);
             return;
         }
 

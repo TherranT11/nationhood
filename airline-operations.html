@@ -750,6 +750,63 @@ body.airline-operations.light-mode {
     </div>
   </div>
 
+  <!-- Aircraft RFPs panel -->
+  <div class="ao-panel" style="margin-top:14px;">
+    <div class="ao-panel-header" style="display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <h3>Aircraft Procurement</h3>
+        <span class="desc">RFPs you've posted to manufacturers</span>
+      </div>
+      <button type="button" id="ao-purchase-aircraft-btn" style="font-family:var(--ao-mono,monospace);font-size:11px;letter-spacing:0.14em;text-transform:uppercase;padding:8px 18px;background:var(--ao-gold,#c8a832);border:1px solid var(--ao-gold,#c8a832);color:#0f0f0d;cursor:pointer;font-weight:700;">+ Purchase Aircraft</button>
+    </div>
+    <div class="ao-panel-body" id="ao-rfps-list">
+      <div class="ao-panel-empty">Loading…</div>
+    </div>
+  </div>
+
+  <!-- Post RFP modal -->
+  <div class="ao-modal-overlay" id="ao-rfp-post-modal">
+    <div class="ao-modal">
+      <h3>Post Aircraft RFP</h3>
+      <div style="font-family:var(--ao-sans,sans-serif);font-size:13px;color:#9e9a92;line-height:1.5;margin-bottom:14px;">
+        Submit a request for proposals to Aviation Manufacturing corporations. They have 6 ticks to bid; you can accept any bid before then. After 6 ticks the RFP expires.
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <div style="font-family:var(--ao-mono,monospace);font-size:9px;letter-spacing:0.16em;text-transform:uppercase;color:#9e9a92;margin-bottom:6px;">Aircraft Class</div>
+          <div id="ao-rfp-class-buttons" style="display:flex;gap:6px;">
+            <button type="button" class="ao-rfp-class-btn" data-class="regional"   style="flex:1;padding:8px 12px;font-family:var(--ao-mono,monospace);font-size:11px;letter-spacing:0.1em;background:#1a1a17;border:1px solid rgba(255,255,255,0.1);color:#9e9a92;cursor:pointer;text-transform:uppercase;">Regional</button>
+            <button type="button" class="ao-rfp-class-btn" data-class="narrowbody" style="flex:1;padding:8px 12px;font-family:var(--ao-mono,monospace);font-size:11px;letter-spacing:0.1em;background:#1a1a17;border:1px solid rgba(255,255,255,0.1);color:#9e9a92;cursor:pointer;text-transform:uppercase;">Narrowbody</button>
+            <button type="button" class="ao-rfp-class-btn" data-class="widebody"   style="flex:1;padding:8px 12px;font-family:var(--ao-mono,monospace);font-size:11px;letter-spacing:0.1em;background:#1a1a17;border:1px solid rgba(255,255,255,0.1);color:#9e9a92;cursor:pointer;text-transform:uppercase;">Widebody</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-family:var(--ao-mono,monospace);font-size:9px;letter-spacing:0.16em;text-transform:uppercase;color:#9e9a92;margin-bottom:6px;">Quantity</div>
+          <input type="number" id="ao-rfp-qty" min="1" max="50" step="1" value="1" style="width:100%;padding:10px 12px;font-family:var(--ao-serif,serif);font-size:18px;background:#1a1a17;border:1px solid rgba(255,255,255,0.1);color:#f0efe6;" />
+        </div>
+      </div>
+      <div class="ao-modal-actions" style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end;">
+        <button type="button" class="ao-modal-btn" id="ao-rfp-post-cancel">Cancel</button>
+        <button type="button" class="ao-modal-btn ao-modal-btn--primary" id="ao-rfp-post-confirm">Post RFP</button>
+      </div>
+      <div class="ao-modal-error" id="ao-rfp-post-error"></div>
+    </div>
+  </div>
+
+  <!-- Bid acceptance modal -->
+  <div class="ao-modal-overlay" id="ao-rfp-bids-modal">
+    <div class="ao-modal ao-modal--wide">
+      <h3 id="ao-rfp-bids-title">Bids on RFP</h3>
+      <div class="ao-panel-body" id="ao-rfp-bids-list">
+        <div class="ao-panel-empty">Loading…</div>
+      </div>
+      <div class="ao-modal-actions" style="margin-top:14px;display:flex;justify-content:flex-end;">
+        <button type="button" class="ao-modal-btn" id="ao-rfp-bids-close">Close</button>
+      </div>
+      <div class="ao-modal-error" id="ao-rfp-bids-error"></div>
+    </div>
+  </div>
+
   <!-- Buy Terminal confirm modal -->
   <div class="ao-modal-overlay" id="ao-buy-modal">
     <div class="ao-modal">
@@ -1966,6 +2023,266 @@ function initSetUpRouteFlow(corpId, totalCityCount) {
     });
 }
 
+// ── Aircraft RFPs (airline side) ──────────────────────────────
+let _airlineRfpInflight = false;
+let _airlineRfpClass    = 'regional';
+let _airlineCurrentRfpId = null;
+let _airlineCorpId      = null;   // captured from init for use in handlers
+
+const AO_CLASS_LABEL = {
+    regional:   'Regional',
+    narrowbody: 'Narrowbody',
+    widebody:   'Widebody',
+};
+
+async function loadAircraftRfps(corpId) {
+    const el = document.getElementById('ao-rfps-list');
+    if (!el) return;
+
+    // Fetch tick + RFPs in parallel — tick used for "ticks remaining"
+    // expiry display.
+    const [shardRes, rfpsRes] = await Promise.all([
+        _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+        _supabase.from('aircraft_rfps')
+            .select('id, design_class, quantity, status, created_at_tick, expires_at_tick, awarded_at_tick')
+            .eq('airline_corp_id', corpId)
+            .order('created_at', { ascending: false })
+            .limit(20),
+    ]);
+    const currentTick = Number(shardRes.data?.current_tick) || 0;
+    const rfps = rfpsRes.data;
+    if (rfpsRes.error) {
+        console.warn('[airline-ops] RFP fetch failed:', rfpsRes.error.message);
+        el.innerHTML = '<div class="ao-panel-empty">Could not load RFPs.</div>';
+        return;
+    }
+    if (!rfps || rfps.length === 0) {
+        el.innerHTML = '<div class="ao-panel-empty">No RFPs posted. Click + Purchase Aircraft to post one.</div>';
+        return;
+    }
+
+    // Bid counts per RFP — one query, group client-side.
+    const rfpIds = rfps.map(r => r.id);
+    const { data: allBids } = await _supabase
+        .from('aircraft_rfp_bids')
+        .select('id, rfp_id, status')
+        .in('rfp_id', rfpIds);
+    const bidCount = {};
+    for (const b of (allBids || [])) {
+        bidCount[b.rfp_id] = (bidCount[b.rfp_id] || 0) + 1;
+    }
+
+    el.innerHTML = rfps.map(r => {
+        const bids = bidCount[r.id] || 0;
+        const statusColor = r.status === 'open' ? 'var(--ao-gold,#c8a832)' : r.status === 'awarded' ? 'var(--ao-green,#8aa653)' : '#6a6660';
+        const ticksLeft = r.status === 'open' ? Math.max(0, Number(r.expires_at_tick) - currentTick) : null;
+        const expiryText = r.status === 'open'
+            ? `${ticksLeft} tick${ticksLeft === 1 ? '' : 's'} remaining`
+            : r.status === 'awarded' ? 'awarded' : 'expired';
+        const clickAction = r.status === 'open' && bids > 0
+            ? `data-action="view-bids" data-rfp-id="${r.id}"`
+            : '';
+        const clickStyle = r.status === 'open' && bids > 0 ? 'cursor:pointer;' : 'cursor:default;';
+        return `<div class="ao-rfp-row" ${clickAction} style="display:grid;grid-template-columns:auto 1fr auto auto;gap:14px;align-items:center;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.06);${clickStyle}">
+            <span style="font-family:var(--ao-mono,monospace);font-size:9px;letter-spacing:0.16em;text-transform:uppercase;color:${statusColor};font-weight:700;">${escapeAo(r.status)}</span>
+            <div>
+                <div style="font-family:var(--ao-serif,serif);font-size:15px;color:#f0efe6;">${r.quantity}× ${escapeAo(AO_CLASS_LABEL[r.design_class] || r.design_class)}</div>
+                <div style="font-family:var(--ao-mono,monospace);font-size:10px;color:#9e9a92;letter-spacing:0.04em;">${expiryText}</div>
+            </div>
+            <span style="font-family:var(--ao-mono,monospace);font-size:11px;color:#9e9a92;">${bids} bid${bids === 1 ? '' : 's'}</span>
+            <span style="font-family:var(--ao-mono,monospace);font-size:10px;color:${bids > 0 && r.status === 'open' ? 'var(--ao-gold,#c8a832)' : '#3a3a2e'};letter-spacing:0.1em;text-transform:uppercase;">${bids > 0 && r.status === 'open' ? 'View Bids ▸' : ''}</span>
+        </div>`;
+    }).join('');
+
+    // Delegate click to the row.
+    el.addEventListener('click', _onRfpRowClick, { once: true });
+}
+
+function escapeAo(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function _onRfpRowClick(e) {
+    const row = e.target.closest('.ao-rfp-row[data-action="view-bids"]');
+    if (row) showRfpBids(row.dataset.rfpId);
+    // Re-bind for next refresh.
+    const el = document.getElementById('ao-rfps-list');
+    if (el) el.addEventListener('click', _onRfpRowClick, { once: true });
+}
+
+function initAircraftRfpFlow(corpId) {
+    _airlineCorpId = corpId;
+    document.getElementById('ao-purchase-aircraft-btn')?.addEventListener('click', () => {
+        document.getElementById('ao-rfp-post-modal').classList.add('open');
+        document.getElementById('ao-rfp-post-error').classList.remove('show');
+        document.getElementById('ao-rfp-qty').value = '1';
+        _airlineRfpClass = 'regional';
+        _refreshRfpClassButtons();
+    });
+    document.getElementById('ao-rfp-post-cancel')?.addEventListener('click', () => {
+        document.getElementById('ao-rfp-post-modal').classList.remove('open');
+    });
+    document.getElementById('ao-rfp-bids-close')?.addEventListener('click', () => {
+        document.getElementById('ao-rfp-bids-modal').classList.remove('open');
+        _airlineCurrentRfpId = null;
+    });
+    document.querySelectorAll('.ao-rfp-class-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            _airlineRfpClass = btn.dataset.class;
+            _refreshRfpClassButtons();
+        });
+    });
+    document.getElementById('ao-rfp-post-confirm')?.addEventListener('click', () => submitPostRfp(corpId));
+}
+
+function _refreshRfpClassButtons() {
+    document.querySelectorAll('.ao-rfp-class-btn').forEach(btn => {
+        const active = btn.dataset.class === _airlineRfpClass;
+        btn.style.background  = active ? 'rgba(201,168,50,0.1)' : '#1a1a17';
+        btn.style.borderColor = active ? 'var(--ao-gold,#c8a832)' : 'rgba(255,255,255,0.1)';
+        btn.style.color       = active ? 'var(--ao-gold,#c8a832)' : '#9e9a92';
+    });
+}
+
+async function submitPostRfp(corpId) {
+    if (_airlineRfpInflight) return;
+    const errEl = document.getElementById('ao-rfp-post-error');
+    errEl.classList.remove('show');
+    const qty = parseInt(document.getElementById('ao-rfp-qty').value, 10);
+    if (!Number.isInteger(qty) || qty < 1 || qty > 50) {
+        errEl.textContent = 'Quantity must be a whole number between 1 and 50.';
+        errEl.classList.add('show');
+        return;
+    }
+    _airlineRfpInflight = true;
+    const btn = document.getElementById('ao-rfp-post-confirm');
+    btn.disabled = true;
+    try {
+        const { data, error } = await _supabase.rpc('post_aircraft_rfp', {
+            p_design_class: _airlineRfpClass,
+            p_quantity:     qty,
+        });
+        if (error || !data?.success) {
+            errEl.textContent = error?.message || data?.error || 'Failed to post RFP.';
+            errEl.classList.add('show');
+            return;
+        }
+        document.getElementById('ao-rfp-post-modal').classList.remove('open');
+        await loadAircraftRfps(corpId);
+    } catch (err) {
+        errEl.textContent = err?.message || 'Unknown error.';
+        errEl.classList.add('show');
+    } finally {
+        _airlineRfpInflight = false;
+        btn.disabled = false;
+    }
+}
+
+async function showRfpBids(rfpId) {
+    _airlineCurrentRfpId = rfpId;
+    const modal = document.getElementById('ao-rfp-bids-modal');
+    const list  = document.getElementById('ao-rfp-bids-list');
+    const errEl = document.getElementById('ao-rfp-bids-error');
+    errEl.classList.remove('show');
+    modal.classList.add('open');
+    list.innerHTML = '<div class="ao-panel-empty">Loading bids…</div>';
+
+    const { data: rfp } = await _supabase.from('aircraft_rfps')
+        .select('id, design_class, quantity, status').eq('id', rfpId).maybeSingle();
+    document.getElementById('ao-rfp-bids-title').textContent =
+        rfp ? `Bids — ${rfp.quantity}× ${AO_CLASS_LABEL[rfp.design_class] || rfp.design_class}` : 'Bids on RFP';
+
+    const { data: bids, error } = await _supabase.from('aircraft_rfp_bids')
+        .select('id, manufacturer_corp_id, source_design_id, price_per_unit, status, created_at_tick')
+        .eq('rfp_id', rfpId).order('price_per_unit', { ascending: true });
+    if (error) {
+        list.innerHTML = `<div class="ao-panel-empty">Could not load bids: ${escapeAo(error.message)}</div>`;
+        return;
+    }
+    if (!bids || bids.length === 0) {
+        list.innerHTML = '<div class="ao-panel-empty">No bids yet. Manufacturers see open RFPs on their Aviation Operations page.</div>';
+        return;
+    }
+
+    const designIds = [...new Set(bids.map(b => b.source_design_id))];
+    const corpIds   = [...new Set(bids.map(b => b.manufacturer_corp_id))];
+    const [designsRes, corpsRes] = await Promise.all([
+        _supabase.from('corp_aircraft_designs')
+            .select('id, name, range_nm, passengers, demand_score, safety_score, quality, engine_count')
+            .in('id', designIds),
+        _supabase.from('factions').select('id, faction_name, abbreviation').in('id', corpIds),
+    ]);
+    const dById = new Map((designsRes.data || []).map(d => [d.id, d]));
+    const cById = new Map((corpsRes.data || []).map(c => [c.id, c]));
+
+    const qty = rfp?.quantity || 0;
+    const canAccept = rfp?.status === 'open';
+
+    list.innerHTML = bids.map(b => {
+        const d = dById.get(b.source_design_id) || {};
+        const c = cById.get(b.manufacturer_corp_id) || {};
+        const total = Number(b.price_per_unit) * qty;
+        const ppuFmt   = '$' + (Number(b.price_per_unit) / 1_000_000).toFixed(1) + 'M';
+        const totalFmt = '$' + (Number(total) / 1_000_000).toFixed(1) + 'M';
+        const accept   = canAccept && b.status === 'pending'
+            ? `<button class="ao-modal-btn ao-modal-btn--primary ao-rfp-accept-btn" data-bid-id="${b.id}" style="font-size:11px;">Accept</button>`
+            : `<span style="font-family:var(--ao-mono,monospace);font-size:10px;color:#6a6660;letter-spacing:0.1em;text-transform:uppercase;">${b.status}</span>`;
+        return `<div style="display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:center;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.06);">
+            <div>
+                <div style="font-family:var(--ao-serif,serif);font-size:16px;color:#f0efe6;">${escapeAo(d.name || '—')} <span style="font-size:11px;color:#6a6660;font-style:italic;">by ${escapeAo(c.abbreviation || c.faction_name || '—')}</span></div>
+                <div style="font-family:var(--ao-mono,monospace);font-size:10px;color:#9e9a92;letter-spacing:0.04em;margin-top:3px;">
+                    Range ${Number(d.range_nm || 0).toFixed(1)} · ${d.passengers || 0} pax · ${d.engine_count || 0} engines · Quality ${Number(d.quality || 0).toFixed(1)}
+                </div>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-family:var(--ao-serif,serif);font-size:16px;color:var(--ao-gold,#c8a832);font-weight:600;">${ppuFmt}/unit</div>
+                <div style="font-family:var(--ao-mono,monospace);font-size:10px;color:#9e9a92;">Total ${totalFmt}</div>
+            </div>
+            <div>${accept}</div>
+        </div>`;
+    }).join('');
+
+    list.querySelectorAll('.ao-rfp-accept-btn').forEach(btn => {
+        btn.addEventListener('click', () => acceptRfpBid(rfpId, btn.dataset.bidId));
+    });
+}
+
+async function acceptRfpBid(rfpId, bidId) {
+    if (_airlineRfpInflight) return;
+    const errEl = document.getElementById('ao-rfp-bids-error');
+    errEl.classList.remove('show');
+    _airlineRfpInflight = true;
+    document.querySelectorAll('.ao-rfp-accept-btn').forEach(b => { b.disabled = true; });
+    try {
+        const { data, error } = await _supabase.rpc('award_aircraft_rfp', {
+            p_rfp_id: rfpId,
+            p_bid_id: bidId,
+        });
+        if (error || !data?.success) {
+            errEl.textContent = error?.message || data?.error || 'Failed to accept bid.';
+            errEl.classList.add('show');
+            return;
+        }
+        document.getElementById('ao-rfp-bids-modal').classList.remove('open');
+        // Refresh both panels — fleet inventory + RFP list. shard
+        // is local to init(); fetch the current tick fresh so the
+        // refreshed fleet inventory shows accurate "months in
+        // service" timestamps for the just-purchased aircraft.
+        const { data: s } = await _supabase.from('shard')
+            .select('current_tick').eq('name', 'Alpha Shard').single();
+        const cur = Number(s?.current_tick) || 0;
+        await Promise.all([
+            loadAircraftRfps(_airlineCorpId),
+            loadFleetInventory(_airlineCorpId, cur),
+        ]);
+    } catch (err) {
+        errEl.textContent = err?.message || 'Unknown error.';
+        errEl.classList.add('show');
+    } finally {
+        _airlineRfpInflight = false;
+    }
+}
+
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
@@ -2060,6 +2377,7 @@ async function init() {
         loadAvailableRoutes(faction.id),
         loadActiveRoutes(faction.id),
         loadAviationIncidents(faction.id, currentTick),
+        loadAircraftRfps(faction.id),
     ]);
 
     // Wire the buy-confirm modal once. The Available Hubs renderer
@@ -2067,6 +2385,7 @@ async function init() {
     // off the panel body and identify the chosen city via data-city-id.
     initBuyTerminalFlow(faction.id, totalCities);
     initSetUpRouteFlow(faction.id, totalCities);
+    initAircraftRfpFlow(faction.id);
 }
 
 init().catch(err => {

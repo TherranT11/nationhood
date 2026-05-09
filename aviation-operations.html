@@ -1572,6 +1572,17 @@ function renderPageShell(activeOrders) {
             </div>
         </div>
 
+        <!-- VIII. AIRCRAFT RFPs (open marketplace from airlines) -->
+        <div class="co-section">
+            <div class="co-section-header">
+                <h2><span class="num">VIII.</span>Aircraft RFPs</h2>
+                <span class="desc">Airline Purchase Requests</span>
+            </div>
+            <div class="co-contract-list" id="co-rfps-list">
+                <div class="co-contract-empty">Loading…</div>
+            </div>
+        </div>
+
         <!-- FOOTER -->
         <div class="co-footer-strip">
             <div>Operations updated <em id="co-footer-date">—</em></div>
@@ -1618,28 +1629,32 @@ let _designEngineState = null;
 let _designAircraftState = null;
 let _availableEngineCatalog = [];
 
-// ── Aircraft module specs (Tier 1). Mirrors the server-side CASE
-//    ladders in start_aircraft_design_research so the modal preview
-//    and the persisted row agree on totals. Keep in lockstep with
-//    the migration when tuning. ──
-const AIRFRAMES = {
-    business:   { name: 'Business Jet', weight: 2,  pax: 3,  engMin: 1, engMax: 2, range: 5,  cost: 18000000, time: 6  },
-    regional:   { name: 'Regional',     weight: 3,  pax: 10, engMin: 2, engMax: 2, range: 3,  cost: 35000000, time: 8  },
-    narrowbody: { name: 'Narrowbody',   weight: 6,  pax: 25, engMin: 2, engMax: 2, range: 7,  cost: 60000000, time: 10 },
-    widebody:   { name: 'Widebody',     weight: 10, pax: 60, engMin: 2, engMax: 4, range: 10, cost: 75000000, time: 12 },
-};
-
-const MECHANICALS = {
-    'hydraulics':         { name: 'Standard Hydraulic Systems',  weight: 0.5, safety: 1, cost: 1000000 },
-    'blackbox':           { name: 'Black Box & Flight Recorders',weight: 0.3, safety: 2, cost: 1500000 },
-    'redundant-avionics': { name: 'Redundant Avionics Suite',    weight: 0.7, safety: 3, cost: 3000000 },
-};
-
-const OFFERINGS = {
-    'ife':              { name: 'In-Flight Entertainment',   weight: 0.3, demand: 1,  pax: 0, cost: 1500000 },
-    'premium-seating':  { name: 'Premium Seating',           weight: 0.4, demand: 2,  pax: 0, cost: 2000000 },
-    'high-density':     { name: 'High-Density Configuration',weight: 0.2, demand: -1, pax: 5, cost: 1000000 },
-};
+// ── Aircraft design specs (Tier 1) ─────────────────────────────
+// Single source of truth lives in SQL: aircraft_design_specs()
+// returns {airframes, mechanicals, offerings} from
+// aircraft_airframe_specs / aircraft_mechanical_specs /
+// aircraft_offering_specs. Fetched once per session and cached.
+// start_aircraft_design_research reads the same source so the
+// modal preview cannot drift from what the design RPC persists.
+//
+// Field names use snake_case (eng_min/eng_max) to match the source
+// JSONB shape directly — no transformation needed on read.
+let _aircraftDesignSpecs = null;   // {airframes, mechanicals, offerings}
+async function loadAircraftDesignSpecs() {
+    if (_aircraftDesignSpecs) return _aircraftDesignSpecs;
+    const { data, error } = await _supabase.rpc('aircraft_design_specs');
+    if (error) {
+        console.warn('[aviation-ops] aircraft_design_specs fetch failed:', error.message);
+        _aircraftDesignSpecs = { airframes: {}, mechanicals: {}, offerings: {} };
+        return _aircraftDesignSpecs;
+    }
+    _aircraftDesignSpecs = {
+        airframes:   data?.airframes   || {},
+        mechanicals: data?.mechanicals || {},
+        offerings:   data?.offerings   || {},
+    };
+    return _aircraftDesignSpecs;
+}
 
 function fmtCostShort(n) {
     const v = Number(n) || 0;
@@ -2068,7 +2083,7 @@ function engineCatalogSubtitleText() {
 }
 
 function renderAirframeCard(id, a, isSelected) {
-    const engineLabel = a.engMin === a.engMax ? String(a.engMin) : `${a.engMin} or ${a.engMax}`;
+    const engineLabel = a.eng_min === a.eng_max ? String(a.eng_min) : `${a.eng_min} or ${a.eng_max}`;
     return `<div class="am-airframe-card${isSelected ? ' selected' : ''}" data-airframe="${id}">
         <div class="am-airframe-head">
             <div class="am-airframe-radio"></div>
@@ -2106,8 +2121,9 @@ async function openDesignAircraftModal() {
     // (yours or anyone else's) surface without a page reload. On
     // transient fetch error loadAvailableEngineCatalog keeps the
     // prior cache rather than wiping, so we still proceed if it had
-    // any entries from init.
-    await loadAvailableEngineCatalog();
+    // any entries from init. Aircraft design specs are cached after
+    // the first fetch (immutable per session).
+    await Promise.all([loadAvailableEngineCatalog(), loadAircraftDesignSpecs()]);
 
     if (!_availableEngineCatalog.length) {
         alert('No engine designs are available yet. Design and complete at least one engine before designing an aircraft.');
@@ -2119,15 +2135,15 @@ async function openDesignAircraftModal() {
         const corpAbbr = (_faction.abbreviation || _faction.faction_name || 'AM').slice(0, 6);
         const innov    = Math.round(Number(_faction.corp_innovation) || 0);
 
-        const airframeCards = Object.entries(AIRFRAMES).map(([id, a]) =>
+        const airframeCards = Object.entries(_aircraftDesignSpecs.airframes).map(([id, a]) =>
             renderAirframeCard(id, a, id === 'regional')
         ).join('');
 
-        const mechCards = Object.entries(MECHANICALS).map(([id, m]) =>
+        const mechCards = Object.entries(_aircraftDesignSpecs.mechanicals).map(([id, m]) =>
             renderAircraftModuleCard('mechanical', id, m, false)
         ).join('');
 
-        const offerCards = Object.entries(OFFERINGS).map(([id, m]) =>
+        const offerCards = Object.entries(_aircraftDesignSpecs.offerings).map(([id, m]) =>
             renderAircraftModuleCard('offering', id, m, false)
         ).join('');
 
@@ -2302,9 +2318,9 @@ async function openDesignAircraftModal() {
                 overlay.querySelectorAll('.am-airframe-card').forEach(c => c.classList.remove('selected'));
                 card.classList.add('selected');
                 _designAircraftState.airframe = card.dataset.airframe;
-                const a = AIRFRAMES[_designAircraftState.airframe];
-                if (_designAircraftState.engineCount < a.engMin || _designAircraftState.engineCount > a.engMax) {
-                    _designAircraftState.engineCount = a.engMin;
+                const a = _aircraftDesignSpecs.airframes[_designAircraftState.airframe];
+                if (a && (_designAircraftState.engineCount < a.eng_min || _designAircraftState.engineCount > a.eng_max)) {
+                    _designAircraftState.engineCount = a.eng_min;
                 }
                 recalcDesignAircraft();
             });
@@ -2353,7 +2369,7 @@ async function openDesignAircraftModal() {
         name:         `${corpAbbr}-AC${existingAircraft + 1}`,
         airframe:     'regional',
         engineId:     _availableEngineCatalog[0]?.id || null,
-        engineCount:  AIRFRAMES.regional.engMin,
+        engineCount:  Number(_aircraftDesignSpecs.airframes.regional?.eng_min) || 2,
         mechanicals:  new Set(),
         offerings:    new Set(),
     };
@@ -2385,25 +2401,25 @@ function recalcDesignAircraft() {
     const overlay = document.getElementById('am-design-aircraft-modal');
     if (!overlay) return;
 
-    const airframe = AIRFRAMES[_designAircraftState.airframe];
+    const airframe = _aircraftDesignSpecs.airframes[_designAircraftState.airframe];
     const engine   = _availableEngineCatalog.find(e => e.id === _designAircraftState.engineId);
     if (!airframe || !engine) return;
 
     // Enforce engine count bounds for current airframe.
     overlay.querySelectorAll('.am-count-btn').forEach(btn => {
         const count = parseInt(btn.dataset.count, 10);
-        const valid = count >= airframe.engMin && count <= airframe.engMax;
+        const valid = count >= airframe.eng_min && count <= airframe.eng_max;
         btn.disabled = !valid;
         if (!valid && _designAircraftState.engineCount === count) {
-            _designAircraftState.engineCount = airframe.engMin;
+            _designAircraftState.engineCount = airframe.eng_min;
         }
     });
     overlay.querySelectorAll('.am-count-btn').forEach(btn => {
         btn.classList.toggle('selected', parseInt(btn.dataset.count, 10) === _designAircraftState.engineCount);
     });
 
-    const mechs  = Array.from(_designAircraftState.mechanicals).map(id => MECHANICALS[id]).filter(Boolean);
-    const offers = Array.from(_designAircraftState.offerings).map(id => OFFERINGS[id]).filter(Boolean);
+    const mechs  = Array.from(_designAircraftState.mechanicals).map(id => _aircraftDesignSpecs.mechanicals[id]).filter(Boolean);
+    const offers = Array.from(_designAircraftState.offerings).map(id => _aircraftDesignSpecs.offerings[id]).filter(Boolean);
 
     const totalThrust = engine.thrust * _designAircraftState.engineCount;
     const engineWeight = engine.weight * _designAircraftState.engineCount;
@@ -2582,25 +2598,72 @@ const PLANT_SHORT_LABEL = {
     heavy_manufacturing_plant:  'Heavy Manufacturing',
     engine_assembly_plant:      'Engine Assembly',
 };
-// Mirror of the v_time_per_unit / volume-discount CASE ladders in
-// queue_production_run (sql/migrations/20261030_aviation_production_runs.sql).
-// Keep both sides in lockstep when tuning — the server is the source
-// of truth, the client uses these for the live cost/time preview.
-const TIME_PER_UNIT_BY_CLASS = {
-    business: 6, regional: 8, narrowbody: 10, widebody: 12,
-};
 
 let _productionQueueState = null;
 let _ownDesignsCache = [];
 let _ownPlantsCache = [];
 let _plantOccupancyCache = {};   // property_id → in_use_slots
 
+// ── Volume discount tiers ────────────────────────────────────────
+// Single source of truth lives in SQL: public.volume_discount_tiers().
+// Fetched once per session, cached, and walked locally to drive the
+// modal preview. Server (queue_production_run) reads the same source
+// via volume_discount_for() so the preview cannot drift from the
+// committed cost.
+let _volumeDiscountTiers = null;   // [{min_qty, mult}] sorted ASC
+async function loadVolumeDiscountTiers() {
+    if (_volumeDiscountTiers) return _volumeDiscountTiers;
+    const { data, error } = await _supabase.rpc('volume_discount_tiers');
+    if (error) {
+        console.warn('[aviation-ops] volume_discount_tiers fetch failed:', error.message);
+        _volumeDiscountTiers = [{ min_qty: 1, mult: 1.00 }];
+        return _volumeDiscountTiers;
+    }
+    _volumeDiscountTiers = (data || []).slice().sort((a, b) => a.min_qty - b.min_qty);
+    return _volumeDiscountTiers;
+}
 function volumeDiscount(qty) {
-    if (qty >= 20) return 0.80;
-    if (qty >= 10) return 0.85;
-    if (qty >= 5)  return 0.90;
-    if (qty >= 2)  return 0.95;
-    return 1.00;
+    const tiers = _volumeDiscountTiers || [{ min_qty: 1, mult: 1.00 }];
+    let mult = 1.00;
+    for (const t of tiers) if (qty >= t.min_qty) mult = Number(t.mult);
+    return mult;
+}
+function tierLabel(tier, nextTier) {
+    if (!nextTier) return `${tier.min_qty}+ units`;
+    const top = nextTier.min_qty - 1;
+    if (top === tier.min_qty) return `${tier.min_qty} unit${tier.min_qty === 1 ? '' : 's'}`;
+    return `${tier.min_qty}-${top} units`;
+}
+function activeTierIndex(qty) {
+    const tiers = _volumeDiscountTiers || [];
+    let idx = 0;
+    for (let i = 0; i < tiers.length; i++) if (qty >= tiers[i].min_qty) idx = i;
+    return idx;
+}
+
+// ── Time-per-unit (build ticks) per design class ────────────────
+// Single source of truth: public.time_per_unit_tiers(). Returns a
+// flat key→ticks map (engine + the four airframe classes).
+// queue_production_run reads it via time_per_unit_for(); the client
+// fetches it once per session and walks locally for the live build-
+// time preview.
+let _timePerUnitTiers = null;
+async function loadTimePerUnitTiers() {
+    if (_timePerUnitTiers) return _timePerUnitTiers;
+    const { data, error } = await _supabase.rpc('time_per_unit_tiers');
+    if (error) {
+        console.warn('[aviation-ops] time_per_unit_tiers fetch failed:', error.message);
+        _timePerUnitTiers = {};
+        return _timePerUnitTiers;
+    }
+    _timePerUnitTiers = data || {};
+    return _timePerUnitTiers;
+}
+function timePerUnitFor(designType, airframeClass) {
+    const tiers = _timePerUnitTiers || {};
+    if (designType === 'engine')   return Number(tiers.engine) || 8;
+    if (designType === 'aircraft') return Number(tiers[airframeClass]) || 8;
+    return 8;
 }
 
 async function loadProductionQueueData(corpId) {
@@ -2656,7 +2719,11 @@ function isPlantEligibleFor(plant, design) {
 }
 
 async function openProductionQueueModal() {
-    await loadProductionQueueData(_faction.id);
+    await Promise.all([
+        loadProductionQueueData(_faction.id),
+        loadVolumeDiscountTiers(),
+        loadTimePerUnitTiers(),
+    ]);
     if (_ownDesignsCache.length === 0) {
         alert('No Available designs to produce. Complete an engine or aircraft design first.');
         return;
@@ -2711,11 +2778,7 @@ async function openProductionQueueModal() {
                             </div>
                             <div>
                                 <div style="font-family:var(--co-mono); font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:var(--co-text-tertiary); margin-bottom:8px;">Volume Discount Schedule</div>
-                                <div class="am-q-tier-row" data-tier="1"><span class="qty">1 unit</span><span class="pct">100%</span></div>
-                                <div class="am-q-tier-row" data-tier="2"><span class="qty">2-4 units</span><span class="pct">95%</span></div>
-                                <div class="am-q-tier-row" data-tier="5"><span class="qty">5-9 units</span><span class="pct">90%</span></div>
-                                <div class="am-q-tier-row" data-tier="10"><span class="qty">10-19 units</span><span class="pct">85%</span></div>
-                                <div class="am-q-tier-row" data-tier="20"><span class="qty">20+ units</span><span class="pct">80%</span></div>
+                                <div id="am-q-tier-list"></div>
                             </div>
                         </div>
                     </div>
@@ -2909,12 +2972,19 @@ function renderProductionQueueModal() {
     // ── Quantity tier highlight ────────────────────────────────
     const qty = _productionQueueState.quantity;
     $('am-q-qty').textContent = String(qty);
-    overlay.querySelectorAll('.am-q-tier-row').forEach(t => t.classList.remove('active'));
-    if (qty >= 20)      overlay.querySelector('.am-q-tier-row[data-tier="20"]').classList.add('active');
-    else if (qty >= 10) overlay.querySelector('.am-q-tier-row[data-tier="10"]').classList.add('active');
-    else if (qty >= 5)  overlay.querySelector('.am-q-tier-row[data-tier="5"]').classList.add('active');
-    else if (qty >= 2)  overlay.querySelector('.am-q-tier-row[data-tier="2"]').classList.add('active');
-    else                overlay.querySelector('.am-q-tier-row[data-tier="1"]').classList.add('active');
+
+    // Render the tier schedule from the cached single-source array
+    // and highlight the row matching the current quantity.
+    const tiers = _volumeDiscountTiers || [{ min_qty: 1, mult: 1.00 }];
+    const activeIdx = activeTierIndex(qty);
+    $('am-q-tier-list').innerHTML = tiers.map((t, i) => {
+        const next = tiers[i + 1] || null;
+        const pct = Math.round(Number(t.mult) * 100);
+        return `<div class="am-q-tier-row${i === activeIdx ? ' active' : ''}">
+            <span class="qty">${tierLabel(t, next)}</span>
+            <span class="pct">${pct}%</span>
+        </div>`;
+    }).join('');
 
     // ── Engine supply (aircraft only) ──────────────────────────
     const supplySection = $('am-q-supply-section');
@@ -2941,7 +3011,7 @@ function renderProductionQueueModal() {
     const assignedPlantIds = Array.from(_productionQueueState.assignedPlants);
     const parallelCapacity = assignedPlantIds.length;
     const timePerUnit = design
-        ? (design.design_type === 'engine' ? 4 : (TIME_PER_UNIT_BY_CLASS[design.airframe_class] || 8))
+        ? timePerUnitFor(design.design_type, design.airframe_class)
         : 0;
     const totalCycles = parallelCapacity > 0 && qty > 0 ? Math.ceil(qty / parallelCapacity) : 0;
     const totalTicks  = totalCycles * timePerUnit;
@@ -3091,6 +3161,253 @@ function renderProductionRunCard(r, designName) {
         <div class="am-q-run-stats"><strong>${remaining}</strong> ticks left<br><span style="color:var(--co-text-tertiary);">${progressPct.toFixed(0)}% complete</span></div>
         <div class="am-q-run-progress"><div class="am-q-run-progress-fill" style="width:${progressPct.toFixed(0)}%"></div></div>
     </div>`;
+}
+
+// ── Aircraft RFPs (manufacturer side) ──────────────────────────
+// Surfaces every open RFP in the world that this corp could fulfill
+// (i.e., the corp owns at least one Available aircraft design of
+// the right class with inventory_on_hand >= rfp.quantity). Click
+// "Submit Bid" to choose a design + price.
+const RFP_CLASS_LABEL = {
+    regional:   'Regional',
+    narrowbody: 'Narrowbody',
+    widebody:   'Widebody',
+};
+let _bidModalRfp = null;
+let _bidModalEligibleDesigns = [];
+let _bidModalInflight = false;
+
+async function loadAircraftRfpsForBidder(corpId) {
+    const el = document.getElementById('co-rfps-list');
+    if (!el) return;
+
+    // Pull this corp's Available aircraft designs first — used to
+    // filter the visible RFPs to ones we could fulfill.
+    const { data: myDesigns } = await _supabase
+        .from('corp_aircraft_designs')
+        .select('id, name, airframe_class, inventory_on_hand, range_nm, passengers, demand_score, safety_score, quality, cost_per_unit, engine_count')
+        .eq('corp_id', corpId)
+        .eq('design_type', 'aircraft')
+        .eq('status', 'available')
+        .eq('is_active', true);
+    const designsByClass = {};
+    for (const d of (myDesigns || [])) {
+        if (Number(d.inventory_on_hand) <= 0) continue;
+        if (!designsByClass[d.airframe_class]) designsByClass[d.airframe_class] = [];
+        designsByClass[d.airframe_class].push(d);
+    }
+
+    const [shardRes, rfpsRes, myBidsRes] = await Promise.all([
+        _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+        _supabase.from('aircraft_rfps')
+            .select('id, airline_corp_id, design_class, quantity, expires_at_tick, factions:airline_corp_id(faction_name, abbreviation)')
+            .eq('status', 'open')
+            .order('created_at', { ascending: false })
+            .limit(50),
+        _supabase.from('aircraft_rfp_bids')
+            .select('rfp_id, price_per_unit, source_design_id, status')
+            .eq('manufacturer_corp_id', corpId),
+    ]);
+    const currentTick = Number(shardRes.data?.current_tick) || 0;
+    if (rfpsRes.error) {
+        console.warn('[aviation-ops] RFP fetch failed:', rfpsRes.error.message);
+        el.innerHTML = '<div class="co-contract-empty">Could not load RFPs.</div>';
+        return;
+    }
+    const allRfps = rfpsRes.data || [];
+    const myBidByRfp = new Map((myBidsRes.data || []).map(b => [b.rfp_id, b]));
+
+    // Filter RFPs the bidder can fulfill (has matching class with
+    // inventory_on_hand >= qty on at least one design).
+    const fulfillable = allRfps.filter(r => {
+        const candidates = designsByClass[r.design_class] || [];
+        return candidates.some(d => Number(d.inventory_on_hand) >= Number(r.quantity));
+    });
+
+    if (fulfillable.length === 0) {
+        el.innerHTML = '<div class="co-contract-empty">No open RFPs match your aircraft inventory. RFPs surface here when an airline posts one whose class matches a design you can fulfill from inventory.</div>';
+        return;
+    }
+
+    el.innerHTML = fulfillable.map(r => {
+        const ticksLeft = Math.max(0, Number(r.expires_at_tick) - currentTick);
+        const airline = r.factions?.abbreviation || r.factions?.faction_name || '—';
+        const myBid = myBidByRfp.get(r.id);
+        const bidLabel = myBid
+            ? `Bid placed · ${fmtCostShort(myBid.price_per_unit)}/unit (${myBid.status})`
+            : 'No bid';
+        const btnLabel = myBid && myBid.status === 'pending' ? 'Update Bid' : 'Submit Bid';
+        return `<div class="am-q-run-card" style="grid-template-columns:1fr auto;align-items:center;">
+            <div>
+                <div class="am-q-run-name">${r.quantity}× ${escHtml(RFP_CLASS_LABEL[r.design_class] || r.design_class)}</div>
+                <div class="am-q-run-meta">FROM ${escHtml(airline)} ◊ ${ticksLeft} TICK${ticksLeft === 1 ? '' : 'S'} LEFT ◊ ${escHtml(bidLabel)}</div>
+            </div>
+            <button type="button" class="co-panel-action-btn co-rfp-bid-btn" data-rfp-id="${r.id}">${btnLabel}</button>
+        </div>`;
+    }).join('');
+
+    el.querySelectorAll('.co-rfp-bid-btn').forEach(btn => {
+        btn.addEventListener('click', () => openBidModal(btn.dataset.rfpId, designsByClass, allRfps));
+    });
+}
+
+function openBidModal(rfpId, designsByClass, allRfps) {
+    const rfp = allRfps.find(r => r.id === rfpId);
+    if (!rfp) return;
+    _bidModalRfp = rfp;
+    _bidModalEligibleDesigns = (designsByClass[rfp.design_class] || [])
+        .filter(d => Number(d.inventory_on_hand) >= Number(rfp.quantity));
+
+    let overlay = document.getElementById('am-rfp-bid-modal');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'am-rfp-bid-modal';
+        overlay.className = 'am-modal-overlay';
+        overlay.innerHTML = `
+            <div class="am-modal">
+                <div class="am-modal-header">
+                    <div>
+                        <div class="am-modal-eyebrow">— Aircraft RFP ◊ Submit Bid —</div>
+                        <h2 class="am-modal-title">Submit <em>Bid</em></h2>
+                        <div class="am-modal-subtitle" id="am-rfp-bid-subtitle"></div>
+                    </div>
+                    <button type="button" class="am-modal-close" aria-label="Close">×</button>
+                </div>
+                <div class="am-modal-body">
+                    <div class="am-form-section">
+                        <div class="am-form-section-header">
+                            <h3><span class="num">I.</span>Choose Design</h3>
+                            <span class="meta">Eligible Aircraft With Sufficient Inventory</span>
+                        </div>
+                        <div id="am-rfp-bid-designs" class="am-q-list"></div>
+                    </div>
+                    <div class="am-form-section">
+                        <div class="am-form-section-header">
+                            <h3><span class="num">II.</span>Price Per Unit</h3>
+                            <span class="meta">Total = Price × Quantity</span>
+                        </div>
+                        <div class="am-engine-block" style="display:flex;gap:14px;align-items:center;">
+                            <input type="number" id="am-rfp-bid-price" min="0" step="100000" value="0" style="flex:1;padding:10px 14px;font-family:var(--co-serif);font-size:18px;background:var(--co-bg-secondary);border:1px solid var(--co-line-bright);color:var(--co-text-primary);" />
+                            <div style="font-family:var(--co-mono);font-size:11px;color:var(--co-text-secondary);">Total: <span id="am-rfp-bid-total" style="color:var(--co-accent-gold);font-weight:600;">$0</span></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="am-modal-error" id="am-rfp-bid-error"></div>
+                <div class="am-modal-footer">
+                    <div class="am-modal-footer-summary"></div>
+                    <div class="am-modal-footer-actions">
+                        <button type="button" class="am-modal-btn" id="am-rfp-bid-cancel">Cancel</button>
+                        <button type="button" class="am-modal-btn primary" id="am-rfp-bid-submit">Submit Bid ▸</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        overlay.querySelector('.am-modal-close').addEventListener('click', closeBidModal);
+        overlay.querySelector('#am-rfp-bid-cancel').addEventListener('click', closeBidModal);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) closeBidModal(); });
+        overlay.querySelector('#am-rfp-bid-price').addEventListener('input', renderBidTotal);
+        overlay.querySelector('#am-rfp-bid-submit').addEventListener('click', submitBid);
+    }
+
+    overlay.querySelector('#am-rfp-bid-subtitle').textContent =
+        `${rfp.quantity}× ${RFP_CLASS_LABEL[rfp.design_class] || rfp.design_class} for ${rfp.factions?.abbreviation || rfp.factions?.faction_name || 'airline'}`;
+
+    overlay.querySelector('#am-rfp-bid-designs').innerHTML = _bidModalEligibleDesigns.map((d, i) => `
+        <div class="am-q-row${i === 0 ? ' selected' : ''}" data-design-id="${d.id}">
+            <div class="am-q-radio"></div>
+            <div class="am-q-row-info">
+                <div class="am-q-row-name">${escHtml(d.name)}</div>
+                <div class="am-q-row-meta">RANGE ${Number(d.range_nm || 0).toFixed(1)} ◊ ${d.passengers || 0} PAX ◊ QUALITY ${Number(d.quality || 0).toFixed(1)} ◊ INVENTORY ${d.inventory_on_hand}</div>
+            </div>
+            <div class="am-q-row-info" style="text-align:right;">
+                <div class="am-q-row-cost">${fmtCostShort(d.cost_per_unit)}</div>
+                <div class="am-q-row-meta" style="margin-top:2px;">PRODUCTION COST</div>
+            </div>
+        </div>
+    `).join('') || '<div class="am-q-empty">No eligible designs.</div>';
+
+    overlay.querySelectorAll('#am-rfp-bid-designs .am-q-row').forEach(row => {
+        row.addEventListener('click', () => {
+            overlay.querySelectorAll('#am-rfp-bid-designs .am-q-row').forEach(r => r.classList.remove('selected'));
+            row.classList.add('selected');
+        });
+    });
+
+    // Default suggested price = the design's cost_per_unit × 1.2 markup.
+    const firstDesign = _bidModalEligibleDesigns[0];
+    if (firstDesign) {
+        overlay.querySelector('#am-rfp-bid-price').value = Math.round(Number(firstDesign.cost_per_unit) * 1.2);
+        renderBidTotal();
+    }
+
+    overlay.querySelector('#am-rfp-bid-error').classList.remove('show');
+    overlay.querySelector('#am-rfp-bid-submit').disabled = false;
+    overlay.querySelector('#am-rfp-bid-submit').textContent = 'Submit Bid ▸';
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeBidModal() {
+    const overlay = document.getElementById('am-rfp-bid-modal');
+    if (overlay) overlay.classList.remove('open');
+    document.body.style.overflow = '';
+    _bidModalRfp = null;
+    _bidModalEligibleDesigns = [];
+}
+
+function renderBidTotal() {
+    const overlay = document.getElementById('am-rfp-bid-modal');
+    if (!overlay || !_bidModalRfp) return;
+    const ppu = parseInt(overlay.querySelector('#am-rfp-bid-price').value, 10) || 0;
+    const total = ppu * _bidModalRfp.quantity;
+    overlay.querySelector('#am-rfp-bid-total').textContent = fmtCostShort(total);
+}
+
+async function submitBid() {
+    if (_bidModalInflight || !_bidModalRfp) return;
+    const overlay = document.getElementById('am-rfp-bid-modal');
+    const errEl = overlay.querySelector('#am-rfp-bid-error');
+    errEl.classList.remove('show');
+
+    const selectedRow = overlay.querySelector('#am-rfp-bid-designs .am-q-row.selected');
+    if (!selectedRow) {
+        errEl.textContent = 'Pick a design.';
+        errEl.classList.add('show');
+        return;
+    }
+    const designId = selectedRow.dataset.designId;
+    const ppu = parseInt(overlay.querySelector('#am-rfp-bid-price').value, 10);
+    if (!Number.isInteger(ppu) || ppu < 0) {
+        errEl.textContent = 'Price must be a non-negative whole number.';
+        errEl.classList.add('show');
+        return;
+    }
+
+    _bidModalInflight = true;
+    const submit = overlay.querySelector('#am-rfp-bid-submit');
+    submit.disabled = true;
+    submit.textContent = 'Submitting…';
+    try {
+        const { data, error } = await _supabase.rpc('bid_on_aircraft_rfp', {
+            p_rfp_id:           _bidModalRfp.id,
+            p_source_design_id: designId,
+            p_price_per_unit:   ppu,
+        });
+        if (error || !data?.success) {
+            errEl.textContent = error?.message || data?.error || 'Failed to submit bid.';
+            errEl.classList.add('show');
+            return;
+        }
+        closeBidModal();
+        await loadAircraftRfpsForBidder(_faction.id);
+    } catch (err) {
+        errEl.textContent = err?.message || 'Unknown error.';
+        errEl.classList.add('show');
+    } finally {
+        _bidModalInflight = false;
+        submit.disabled = false;
+        submit.textContent = 'Submit Bid ▸';
+    }
 }
 
 // ── Live designs panels (R&D + Current Designs) ──────────────────
@@ -3262,7 +3579,11 @@ async function init() {
     }
 
     await loadAvailableEngineCatalog();
-    await Promise.all([loadDesigns(faction.id), loadProductionRuns(faction.id)]);
+    await Promise.all([
+        loadDesigns(faction.id),
+        loadProductionRuns(faction.id),
+        loadAircraftRfpsForBidder(faction.id),
+    ]);
 }
 
 init().catch(err => {
