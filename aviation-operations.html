@@ -2595,12 +2595,41 @@ let _ownDesignsCache = [];
 let _ownPlantsCache = [];
 let _plantOccupancyCache = {};   // property_id → in_use_slots
 
+// ── Volume discount tiers ────────────────────────────────────────
+// Single source of truth lives in SQL: public.volume_discount_tiers().
+// Fetched once per session, cached, and walked locally to drive the
+// modal preview. Server (queue_production_run) reads the same source
+// via volume_discount_for() so the preview cannot drift from the
+// committed cost.
+let _volumeDiscountTiers = null;   // [{min_qty, mult}] sorted ASC
+async function loadVolumeDiscountTiers() {
+    if (_volumeDiscountTiers) return _volumeDiscountTiers;
+    const { data, error } = await _supabase.rpc('volume_discount_tiers');
+    if (error) {
+        console.warn('[aviation-ops] volume_discount_tiers fetch failed:', error.message);
+        _volumeDiscountTiers = [{ min_qty: 1, mult: 1.00 }];
+        return _volumeDiscountTiers;
+    }
+    _volumeDiscountTiers = (data || []).slice().sort((a, b) => a.min_qty - b.min_qty);
+    return _volumeDiscountTiers;
+}
 function volumeDiscount(qty) {
-    if (qty >= 20) return 0.80;
-    if (qty >= 10) return 0.85;
-    if (qty >= 5)  return 0.90;
-    if (qty >= 2)  return 0.95;
-    return 1.00;
+    const tiers = _volumeDiscountTiers || [{ min_qty: 1, mult: 1.00 }];
+    let mult = 1.00;
+    for (const t of tiers) if (qty >= t.min_qty) mult = Number(t.mult);
+    return mult;
+}
+function tierLabel(tier, nextTier) {
+    if (!nextTier) return `${tier.min_qty}+ units`;
+    const top = nextTier.min_qty - 1;
+    if (top === tier.min_qty) return `${tier.min_qty} unit${tier.min_qty === 1 ? '' : 's'}`;
+    return `${tier.min_qty}-${top} units`;
+}
+function activeTierIndex(qty) {
+    const tiers = _volumeDiscountTiers || [];
+    let idx = 0;
+    for (let i = 0; i < tiers.length; i++) if (qty >= tiers[i].min_qty) idx = i;
+    return idx;
 }
 
 async function loadProductionQueueData(corpId) {
@@ -2656,7 +2685,7 @@ function isPlantEligibleFor(plant, design) {
 }
 
 async function openProductionQueueModal() {
-    await loadProductionQueueData(_faction.id);
+    await Promise.all([loadProductionQueueData(_faction.id), loadVolumeDiscountTiers()]);
     if (_ownDesignsCache.length === 0) {
         alert('No Available designs to produce. Complete an engine or aircraft design first.');
         return;
@@ -2711,11 +2740,7 @@ async function openProductionQueueModal() {
                             </div>
                             <div>
                                 <div style="font-family:var(--co-mono); font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:var(--co-text-tertiary); margin-bottom:8px;">Volume Discount Schedule</div>
-                                <div class="am-q-tier-row" data-tier="1"><span class="qty">1 unit</span><span class="pct">100%</span></div>
-                                <div class="am-q-tier-row" data-tier="2"><span class="qty">2-4 units</span><span class="pct">95%</span></div>
-                                <div class="am-q-tier-row" data-tier="5"><span class="qty">5-9 units</span><span class="pct">90%</span></div>
-                                <div class="am-q-tier-row" data-tier="10"><span class="qty">10-19 units</span><span class="pct">85%</span></div>
-                                <div class="am-q-tier-row" data-tier="20"><span class="qty">20+ units</span><span class="pct">80%</span></div>
+                                <div id="am-q-tier-list"></div>
                             </div>
                         </div>
                     </div>
@@ -2909,12 +2934,19 @@ function renderProductionQueueModal() {
     // ── Quantity tier highlight ────────────────────────────────
     const qty = _productionQueueState.quantity;
     $('am-q-qty').textContent = String(qty);
-    overlay.querySelectorAll('.am-q-tier-row').forEach(t => t.classList.remove('active'));
-    if (qty >= 20)      overlay.querySelector('.am-q-tier-row[data-tier="20"]').classList.add('active');
-    else if (qty >= 10) overlay.querySelector('.am-q-tier-row[data-tier="10"]').classList.add('active');
-    else if (qty >= 5)  overlay.querySelector('.am-q-tier-row[data-tier="5"]').classList.add('active');
-    else if (qty >= 2)  overlay.querySelector('.am-q-tier-row[data-tier="2"]').classList.add('active');
-    else                overlay.querySelector('.am-q-tier-row[data-tier="1"]').classList.add('active');
+
+    // Render the tier schedule from the cached single-source array
+    // and highlight the row matching the current quantity.
+    const tiers = _volumeDiscountTiers || [{ min_qty: 1, mult: 1.00 }];
+    const activeIdx = activeTierIndex(qty);
+    $('am-q-tier-list').innerHTML = tiers.map((t, i) => {
+        const next = tiers[i + 1] || null;
+        const pct = Math.round(Number(t.mult) * 100);
+        return `<div class="am-q-tier-row${i === activeIdx ? ' active' : ''}">
+            <span class="qty">${tierLabel(t, next)}</span>
+            <span class="pct">${pct}%</span>
+        </div>`;
+    }).join('');
 
     // ── Engine supply (aircraft only) ──────────────────────────
     const supplySection = $('am-q-supply-section');
