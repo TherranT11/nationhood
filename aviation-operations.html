@@ -1572,6 +1572,17 @@ function renderPageShell(activeOrders) {
             </div>
         </div>
 
+        <!-- VIII. AIRCRAFT RFPs (open marketplace from airlines) -->
+        <div class="co-section">
+            <div class="co-section-header">
+                <h2><span class="num">VIII.</span>Aircraft RFPs</h2>
+                <span class="desc">Airline Purchase Requests</span>
+            </div>
+            <div class="co-contract-list" id="co-rfps-list">
+                <div class="co-contract-empty">Loading…</div>
+            </div>
+        </div>
+
         <!-- FOOTER -->
         <div class="co-footer-strip">
             <div>Operations updated <em id="co-footer-date">—</em></div>
@@ -3152,6 +3163,253 @@ function renderProductionRunCard(r, designName) {
     </div>`;
 }
 
+// ── Aircraft RFPs (manufacturer side) ──────────────────────────
+// Surfaces every open RFP in the world that this corp could fulfill
+// (i.e., the corp owns at least one Available aircraft design of
+// the right class with inventory_on_hand >= rfp.quantity). Click
+// "Submit Bid" to choose a design + price.
+const RFP_CLASS_LABEL = {
+    regional:   'Regional',
+    narrowbody: 'Narrowbody',
+    widebody:   'Widebody',
+};
+let _bidModalRfp = null;
+let _bidModalEligibleDesigns = [];
+let _bidModalInflight = false;
+
+async function loadAircraftRfpsForBidder(corpId) {
+    const el = document.getElementById('co-rfps-list');
+    if (!el) return;
+
+    // Pull this corp's Available aircraft designs first — used to
+    // filter the visible RFPs to ones we could fulfill.
+    const { data: myDesigns } = await _supabase
+        .from('corp_aircraft_designs')
+        .select('id, name, airframe_class, inventory_on_hand, range_nm, passengers, demand_score, safety_score, quality, cost_per_unit, engine_count')
+        .eq('corp_id', corpId)
+        .eq('design_type', 'aircraft')
+        .eq('status', 'available')
+        .eq('is_active', true);
+    const designsByClass = {};
+    for (const d of (myDesigns || [])) {
+        if (Number(d.inventory_on_hand) <= 0) continue;
+        if (!designsByClass[d.airframe_class]) designsByClass[d.airframe_class] = [];
+        designsByClass[d.airframe_class].push(d);
+    }
+
+    const [shardRes, rfpsRes, myBidsRes] = await Promise.all([
+        _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+        _supabase.from('aircraft_rfps')
+            .select('id, airline_corp_id, design_class, quantity, expires_at_tick, factions:airline_corp_id(faction_name, abbreviation)')
+            .eq('status', 'open')
+            .order('created_at', { ascending: false })
+            .limit(50),
+        _supabase.from('aircraft_rfp_bids')
+            .select('rfp_id, price_per_unit, source_design_id, status')
+            .eq('manufacturer_corp_id', corpId),
+    ]);
+    const currentTick = Number(shardRes.data?.current_tick) || 0;
+    if (rfpsRes.error) {
+        console.warn('[aviation-ops] RFP fetch failed:', rfpsRes.error.message);
+        el.innerHTML = '<div class="co-contract-empty">Could not load RFPs.</div>';
+        return;
+    }
+    const allRfps = rfpsRes.data || [];
+    const myBidByRfp = new Map((myBidsRes.data || []).map(b => [b.rfp_id, b]));
+
+    // Filter RFPs the bidder can fulfill (has matching class with
+    // inventory_on_hand >= qty on at least one design).
+    const fulfillable = allRfps.filter(r => {
+        const candidates = designsByClass[r.design_class] || [];
+        return candidates.some(d => Number(d.inventory_on_hand) >= Number(r.quantity));
+    });
+
+    if (fulfillable.length === 0) {
+        el.innerHTML = '<div class="co-contract-empty">No open RFPs match your aircraft inventory. RFPs surface here when an airline posts one whose class matches a design you can fulfill from inventory.</div>';
+        return;
+    }
+
+    el.innerHTML = fulfillable.map(r => {
+        const ticksLeft = Math.max(0, Number(r.expires_at_tick) - currentTick);
+        const airline = r.factions?.abbreviation || r.factions?.faction_name || '—';
+        const myBid = myBidByRfp.get(r.id);
+        const bidLabel = myBid
+            ? `Bid placed · ${fmtCostShort(myBid.price_per_unit)}/unit (${myBid.status})`
+            : 'No bid';
+        const btnLabel = myBid && myBid.status === 'pending' ? 'Update Bid' : 'Submit Bid';
+        return `<div class="am-q-run-card" style="grid-template-columns:1fr auto;align-items:center;">
+            <div>
+                <div class="am-q-run-name">${r.quantity}× ${escHtml(RFP_CLASS_LABEL[r.design_class] || r.design_class)}</div>
+                <div class="am-q-run-meta">FROM ${escHtml(airline)} ◊ ${ticksLeft} TICK${ticksLeft === 1 ? '' : 'S'} LEFT ◊ ${escHtml(bidLabel)}</div>
+            </div>
+            <button type="button" class="co-panel-action-btn co-rfp-bid-btn" data-rfp-id="${r.id}">${btnLabel}</button>
+        </div>`;
+    }).join('');
+
+    el.querySelectorAll('.co-rfp-bid-btn').forEach(btn => {
+        btn.addEventListener('click', () => openBidModal(btn.dataset.rfpId, designsByClass, allRfps));
+    });
+}
+
+function openBidModal(rfpId, designsByClass, allRfps) {
+    const rfp = allRfps.find(r => r.id === rfpId);
+    if (!rfp) return;
+    _bidModalRfp = rfp;
+    _bidModalEligibleDesigns = (designsByClass[rfp.design_class] || [])
+        .filter(d => Number(d.inventory_on_hand) >= Number(rfp.quantity));
+
+    let overlay = document.getElementById('am-rfp-bid-modal');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'am-rfp-bid-modal';
+        overlay.className = 'am-modal-overlay';
+        overlay.innerHTML = `
+            <div class="am-modal">
+                <div class="am-modal-header">
+                    <div>
+                        <div class="am-modal-eyebrow">— Aircraft RFP ◊ Submit Bid —</div>
+                        <h2 class="am-modal-title">Submit <em>Bid</em></h2>
+                        <div class="am-modal-subtitle" id="am-rfp-bid-subtitle"></div>
+                    </div>
+                    <button type="button" class="am-modal-close" aria-label="Close">×</button>
+                </div>
+                <div class="am-modal-body">
+                    <div class="am-form-section">
+                        <div class="am-form-section-header">
+                            <h3><span class="num">I.</span>Choose Design</h3>
+                            <span class="meta">Eligible Aircraft With Sufficient Inventory</span>
+                        </div>
+                        <div id="am-rfp-bid-designs" class="am-q-list"></div>
+                    </div>
+                    <div class="am-form-section">
+                        <div class="am-form-section-header">
+                            <h3><span class="num">II.</span>Price Per Unit</h3>
+                            <span class="meta">Total = Price × Quantity</span>
+                        </div>
+                        <div class="am-engine-block" style="display:flex;gap:14px;align-items:center;">
+                            <input type="number" id="am-rfp-bid-price" min="0" step="100000" value="0" style="flex:1;padding:10px 14px;font-family:var(--co-serif);font-size:18px;background:var(--co-bg-secondary);border:1px solid var(--co-line-bright);color:var(--co-text-primary);" />
+                            <div style="font-family:var(--co-mono);font-size:11px;color:var(--co-text-secondary);">Total: <span id="am-rfp-bid-total" style="color:var(--co-accent-gold);font-weight:600;">$0</span></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="am-modal-error" id="am-rfp-bid-error"></div>
+                <div class="am-modal-footer">
+                    <div class="am-modal-footer-summary"></div>
+                    <div class="am-modal-footer-actions">
+                        <button type="button" class="am-modal-btn" id="am-rfp-bid-cancel">Cancel</button>
+                        <button type="button" class="am-modal-btn primary" id="am-rfp-bid-submit">Submit Bid ▸</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        overlay.querySelector('.am-modal-close').addEventListener('click', closeBidModal);
+        overlay.querySelector('#am-rfp-bid-cancel').addEventListener('click', closeBidModal);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) closeBidModal(); });
+        overlay.querySelector('#am-rfp-bid-price').addEventListener('input', renderBidTotal);
+        overlay.querySelector('#am-rfp-bid-submit').addEventListener('click', submitBid);
+    }
+
+    overlay.querySelector('#am-rfp-bid-subtitle').textContent =
+        `${rfp.quantity}× ${RFP_CLASS_LABEL[rfp.design_class] || rfp.design_class} for ${rfp.factions?.abbreviation || rfp.factions?.faction_name || 'airline'}`;
+
+    overlay.querySelector('#am-rfp-bid-designs').innerHTML = _bidModalEligibleDesigns.map((d, i) => `
+        <div class="am-q-row${i === 0 ? ' selected' : ''}" data-design-id="${d.id}">
+            <div class="am-q-radio"></div>
+            <div class="am-q-row-info">
+                <div class="am-q-row-name">${escHtml(d.name)}</div>
+                <div class="am-q-row-meta">RANGE ${Number(d.range_nm || 0).toFixed(1)} ◊ ${d.passengers || 0} PAX ◊ QUALITY ${Number(d.quality || 0).toFixed(1)} ◊ INVENTORY ${d.inventory_on_hand}</div>
+            </div>
+            <div class="am-q-row-info" style="text-align:right;">
+                <div class="am-q-row-cost">${fmtCostShort(d.cost_per_unit)}</div>
+                <div class="am-q-row-meta" style="margin-top:2px;">PRODUCTION COST</div>
+            </div>
+        </div>
+    `).join('') || '<div class="am-q-empty">No eligible designs.</div>';
+
+    overlay.querySelectorAll('#am-rfp-bid-designs .am-q-row').forEach(row => {
+        row.addEventListener('click', () => {
+            overlay.querySelectorAll('#am-rfp-bid-designs .am-q-row').forEach(r => r.classList.remove('selected'));
+            row.classList.add('selected');
+        });
+    });
+
+    // Default suggested price = the design's cost_per_unit × 1.2 markup.
+    const firstDesign = _bidModalEligibleDesigns[0];
+    if (firstDesign) {
+        overlay.querySelector('#am-rfp-bid-price').value = Math.round(Number(firstDesign.cost_per_unit) * 1.2);
+        renderBidTotal();
+    }
+
+    overlay.querySelector('#am-rfp-bid-error').classList.remove('show');
+    overlay.querySelector('#am-rfp-bid-submit').disabled = false;
+    overlay.querySelector('#am-rfp-bid-submit').textContent = 'Submit Bid ▸';
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeBidModal() {
+    const overlay = document.getElementById('am-rfp-bid-modal');
+    if (overlay) overlay.classList.remove('open');
+    document.body.style.overflow = '';
+    _bidModalRfp = null;
+    _bidModalEligibleDesigns = [];
+}
+
+function renderBidTotal() {
+    const overlay = document.getElementById('am-rfp-bid-modal');
+    if (!overlay || !_bidModalRfp) return;
+    const ppu = parseInt(overlay.querySelector('#am-rfp-bid-price').value, 10) || 0;
+    const total = ppu * _bidModalRfp.quantity;
+    overlay.querySelector('#am-rfp-bid-total').textContent = fmtCostShort(total);
+}
+
+async function submitBid() {
+    if (_bidModalInflight || !_bidModalRfp) return;
+    const overlay = document.getElementById('am-rfp-bid-modal');
+    const errEl = overlay.querySelector('#am-rfp-bid-error');
+    errEl.classList.remove('show');
+
+    const selectedRow = overlay.querySelector('#am-rfp-bid-designs .am-q-row.selected');
+    if (!selectedRow) {
+        errEl.textContent = 'Pick a design.';
+        errEl.classList.add('show');
+        return;
+    }
+    const designId = selectedRow.dataset.designId;
+    const ppu = parseInt(overlay.querySelector('#am-rfp-bid-price').value, 10);
+    if (!Number.isInteger(ppu) || ppu < 0) {
+        errEl.textContent = 'Price must be a non-negative whole number.';
+        errEl.classList.add('show');
+        return;
+    }
+
+    _bidModalInflight = true;
+    const submit = overlay.querySelector('#am-rfp-bid-submit');
+    submit.disabled = true;
+    submit.textContent = 'Submitting…';
+    try {
+        const { data, error } = await _supabase.rpc('bid_on_aircraft_rfp', {
+            p_rfp_id:           _bidModalRfp.id,
+            p_source_design_id: designId,
+            p_price_per_unit:   ppu,
+        });
+        if (error || !data?.success) {
+            errEl.textContent = error?.message || data?.error || 'Failed to submit bid.';
+            errEl.classList.add('show');
+            return;
+        }
+        closeBidModal();
+        await loadAircraftRfpsForBidder(_faction.id);
+    } catch (err) {
+        errEl.textContent = err?.message || 'Unknown error.';
+        errEl.classList.add('show');
+    } finally {
+        _bidModalInflight = false;
+        submit.disabled = false;
+        submit.textContent = 'Submit Bid ▸';
+    }
+}
+
 // ── Live designs panels (R&D + Current Designs) ──────────────────
 async function loadDesigns(corpId) {
     const designsEl = document.getElementById('co-designs-list');
@@ -3321,7 +3579,11 @@ async function init() {
     }
 
     await loadAvailableEngineCatalog();
-    await Promise.all([loadDesigns(faction.id), loadProductionRuns(faction.id)]);
+    await Promise.all([
+        loadDesigns(faction.id),
+        loadProductionRuns(faction.id),
+        loadAircraftRfpsForBidder(faction.id),
+    ]);
 }
 
 init().catch(err => {
