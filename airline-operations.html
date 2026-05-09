@@ -688,7 +688,7 @@ body.airline-operations.light-mode {
   <section class="ao-section">
     <div class="ao-section-header">
       <h2><span class="num">I.</span>Strategic Position</h2>
-      <span class="desc">Fleet · Routes · Safety</span>
+      <span class="desc">Fleet · Air Agreements · Safety</span>
     </div>
     <div class="ao-hero-stats">
       <div class="ao-hero-stat" data-stat="fleet">
@@ -700,12 +700,12 @@ body.airline-operations.light-mode {
         </div>
         <div class="ao-hero-stat-detail" id="ao-stat-fleet-detail"></div>
       </div>
-      <div class="ao-hero-stat" data-stat="routes">
-        <div class="ao-hero-stat-eyebrow">Routes</div>
-        <div class="ao-hero-stat-name">Active <em>operations</em></div>
+      <div class="ao-hero-stat" data-stat="routes" title="Air Agreements are the rights to fly over, land for refueling, and conduct business in foreign nations. These are the carrier permits proving the airline legally meets the requirements to operate in other nations.">
+        <div class="ao-hero-stat-eyebrow">Air Agreements</div>
+        <div class="ao-hero-stat-name">Carrier <em>permits</em></div>
         <div>
-          <span class="ao-hero-stat-value" id="ao-stat-routes">—</span>
-          <span class="ao-hero-stat-suffix">routes</span>
+          <span class="ao-hero-stat-value">0</span>
+          <span class="ao-hero-stat-suffix">agreements</span>
         </div>
       </div>
       <div class="ao-hero-stat" data-stat="safety">
@@ -1573,12 +1573,10 @@ async function loadActiveRoutes(corpId) {
                 return;
             }
             _expandedRouteIds.delete(routeId);
-            // Refresh routes list, available routes (lane is open again), and
-            // the hero stats card so corp_routes counter reflects the close.
+            // Refresh routes list and available routes (lane is open again).
             await Promise.all([
                 loadActiveRoutes(corpId),
                 loadAvailableRoutes(corpId),
-                _refreshHeroRoutesStat(corpId),
             ]);
         });
     });
@@ -1695,19 +1693,6 @@ function _renderRouteCard(r) {
     </div>`;
 }
 
-// Re-fetch the corp row's corp_routes after a mutation so the hero stat
-// reflects the trigger's update without a full page reload. Mirrors the
-// pattern used by the hero-stat init in the main init() function.
-async function _refreshHeroRoutesStat(corpId) {
-    const { data, error } = await _supabase
-        .from('factions')
-        .select('corp_routes')
-        .eq('id', corpId)
-        .maybeSingle();
-    if (error || !data) return;
-    const el = document.getElementById('ao-stat-routes');
-    if (el) el.textContent = String(Number(data.corp_routes) || 0);
-}
 
 // Lane-share weight: capital-paired lanes get CAPITAL_BONUS× weight,
 // scaled by the sum of the two city populations (population_pct).
@@ -1967,14 +1952,10 @@ function initSetUpRouteFlow(corpId, totalCityCount) {
             if (error) throw new Error(error.message);
             if (!data?.success) throw new Error(data?.error || 'Route setup failed.');
             closeModal();
-            // _refreshHeroRoutesStat picks up the trigger's corp_routes
-            // bump so the "Active operations" card increments without a
-            // full page reload.
             await Promise.all([
                 loadAvailableRoutes(corpId),
                 loadActiveRoutes(corpId),
                 loadFleetInventory(corpId, Number(shard?.current_tick) || 0),
-                _refreshHeroRoutesStat(corpId),
             ]);
         } catch (err) {
             errorEl.textContent = err?.message || 'Route setup failed.';
@@ -2034,9 +2015,9 @@ async function init() {
         supabase: _supabase,
     });
 
-    // Hero stats from the corp row.
+    // Hero stats from the corp row. Air Agreements is hardcoded to 0
+    // — mechanics for it ship later; the slot is a placeholder today.
     document.getElementById('ao-stat-fleet').textContent  = String(Number(faction.corp_fleet)  || 0);
-    document.getElementById('ao-stat-routes').textContent = String(Number(faction.corp_routes) || 0);
     const opSafety = Number(faction.corp_op_safety) || 0;
     document.getElementById('ao-stat-safety').textContent = opSafety.toFixed(opSafety % 1 === 0 ? 0 : 1);
 
