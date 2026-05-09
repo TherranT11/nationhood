@@ -1882,7 +1882,10 @@ function applyAircraftDesignGate(hasFacility) {
 
 // ── Engine catalog loader — pulls every Available engine design
 //    across every Aviation Manufacturing corp in the game. RLS
-//    permits SELECT on corp_aircraft_designs to all (read_all). ──
+//    permits SELECT on corp_aircraft_designs to all (read_all). On
+//    transient fetch error we keep the prior cache rather than
+//    wiping, so a single network blip can't lock the player out of
+//    the modal. ──
 async function loadAvailableEngineCatalog() {
     const { data, error } = await _supabase
         .from('corp_aircraft_designs')
@@ -1893,7 +1896,6 @@ async function loadAvailableEngineCatalog() {
         .order('quality', { ascending: false });
     if (error) {
         console.warn('[aviation-ops] engine catalog fetch failed:', error.message);
-        _availableEngineCatalog = [];
         return;
     }
     _availableEngineCatalog = (data || []).map(row => ({
@@ -1908,6 +1910,17 @@ async function loadAvailableEngineCatalog() {
         corpAbbr:     row.factions?.abbreviation || '',
         corpName:     row.factions?.faction_name || '',
     }));
+}
+
+function buildEngineDropdownOptions() {
+    return _availableEngineCatalog.map(e =>
+        `<option value="${e.id}">${escHtml(e.name)}${e.corpAbbr ? ' · ' + escHtml(e.corpAbbr) : ''} ◊ Quality ${e.quality.toFixed(1)}</option>`
+    ).join('');
+}
+
+function engineCatalogSubtitleText() {
+    const n = _availableEngineCatalog.length;
+    return `${n} Engine Design${n === 1 ? '' : 's'} Available`;
 }
 
 function renderAirframeCard(id, a, isSelected) {
@@ -1944,7 +1957,14 @@ function renderAircraftModuleCard(group, id, m, isSelected) {
     </div>`;
 }
 
-function openDesignAircraftModal() {
+async function openDesignAircraftModal() {
+    // Refresh the catalog on every open so newly-completed engines
+    // (yours or anyone else's) surface without a page reload. On
+    // transient fetch error loadAvailableEngineCatalog keeps the
+    // prior cache rather than wiping, so we still proceed if it had
+    // any entries from init.
+    await loadAvailableEngineCatalog();
+
     if (!_availableEngineCatalog.length) {
         alert('No engine designs are available yet. Design and complete at least one engine before designing an aircraft.');
         return;
@@ -1967,9 +1987,7 @@ function openDesignAircraftModal() {
             renderAircraftModuleCard('offering', id, m, false)
         ).join('');
 
-        const engineOptions = _availableEngineCatalog.map(e =>
-            `<option value="${e.id}">${escHtml(e.name)}${e.corpAbbr ? ' · ' + escHtml(e.corpAbbr) : ''} ◊ Quality ${e.quality.toFixed(1)}</option>`
-        ).join('');
+        const engineOptions = buildEngineDropdownOptions();
 
         overlay = document.createElement('div');
         overlay.id = 'am-design-aircraft-modal';
@@ -1980,7 +1998,7 @@ function openDesignAircraftModal() {
                     <div>
                         <div class="am-modal-eyebrow">— Aircraft Assembly ◊ New Aircraft Design —</div>
                         <h2 class="am-modal-title">Design <em>Aircraft</em></h2>
-                        <div class="am-modal-subtitle">Designing for: <strong>${escHtml(corpAbbr)}</strong> ${escHtml(_faction.faction_name || '')} ◊ Innovation: ${innov}/10 ◊ ${_availableEngineCatalog.length} Engine Design${_availableEngineCatalog.length === 1 ? '' : 's'} Available</div>
+                        <div class="am-modal-subtitle">Designing for: <strong>${escHtml(corpAbbr)}</strong> ${escHtml(_faction.faction_name || '')} ◊ Innovation: ${innov}/10 ◊ <span id="am-ac-catalog-count">${engineCatalogSubtitleText()}</span></div>
                     </div>
                     <button type="button" class="am-modal-close" aria-label="Close">×</button>
                 </div>
@@ -2176,12 +2194,12 @@ function openDesignAircraftModal() {
 
         overlay.querySelector('#am-ac-modal-submit').addEventListener('click', submitDesignAircraft);
     } else {
-        // Modal already constructed once. Repopulate the engine dropdown
-        // so any newly-completed engines surface without a page reload.
-        const sel = overlay.querySelector('#am-engine-select');
-        sel.innerHTML = _availableEngineCatalog.map(e =>
-            `<option value="${e.id}">${escHtml(e.name)}${e.corpAbbr ? ' · ' + escHtml(e.corpAbbr) : ''} ◊ Quality ${e.quality.toFixed(1)}</option>`
-        ).join('');
+        // Modal already constructed. Repopulate the engine dropdown
+        // and refresh the catalog count in the subtitle so the modal
+        // reflects the freshly-loaded catalog.
+        overlay.querySelector('#am-engine-select').innerHTML = buildEngineDropdownOptions();
+        const countEl = overlay.querySelector('#am-ac-catalog-count');
+        if (countEl) countEl.textContent = engineCatalogSubtitleText();
     }
 
     // Reset state to defaults each open.
