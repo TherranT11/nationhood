@@ -4055,7 +4055,7 @@ async function confirmConvertProperty(propId, cost, ticks) {
         if (cashErr) { alert('Conversion failed: ' + cashErr.message); return; }
         faction.corp_cash_reserves = newCash;
 
-        const { error: propErr } = await _supabase
+        const { data: updated, error: propErr } = await _supabase
             .from('corp_properties')
             .update({
                 type: _convertTargetType,
@@ -4063,17 +4063,18 @@ async function confirmConvertProperty(propId, cost, ticks) {
                 refurbish_until_tick: currentTick + ticks,
                 condition: 100,
             })
-            .eq('id', propId);
-        if (propErr) {
-            // Best-effort refund. If this also fails, the alert is loud
-            // enough that the player will notice the cash discrepancy and
-            // can flag it for an admin fix rather than silently absorbing it.
+            .eq('id', propId)
+            .select('id');
+        if (propErr || !updated || updated.length === 0) {
+            // Property update either errored or matched zero rows (stale
+            // render — row deleted between modal open and click). Refund.
             const { error: refundErr } = await _supabase
                 .from('factions')
                 .update({ corp_cash_reserves: cash })
                 .eq('id', faction.id);
             if (!refundErr) faction.corp_cash_reserves = cash;
-            alert('Conversion failed: ' + propErr.message + (refundErr ? ' (refund also failed — contact admin)' : ''));
+            const reason = propErr?.message || 'property no longer exists';
+            alert('Conversion failed: ' + reason + (refundErr ? ' (refund also failed — contact admin)' : ''));
             return;
         }
 

@@ -17204,7 +17204,11 @@ async function processTargetBasedPolicies(supabase, nation) {
         const current = Number(nation[statKey]);
         if (!Number.isFinite(current)) continue;
         const next = current + (equilibrium - current) * TARGET_CONVERGENCE_RATE;
-        const clamped = Math.max(0, Math.min(100, Math.round(next * 10) / 10));
+        // Round to integer — the canonical stat columns are smallint
+        // (writing a fractional value triggers an "invalid input syntax
+        // for type smallint" error). Convergence is gradual enough that
+        // the precision loss doesn't matter.
+        const clamped = Math.max(0, Math.min(100, Math.round(next)));
         if (clamped === current) continue;
         statUpdates[statKey] = clamped;
         summary.stats.push({
@@ -20074,7 +20078,7 @@ async function processStatDecay(supabase, nation, policyDecayAdjustments = null,
             newVal = Math.min(target, currentVal + speed);
         }
 
-        newVal = Math.round(Math.max(2, Math.min(98, newVal)) * 10) / 10;
+        newVal = Math.round(Math.max(2, Math.min(98, newVal)));
 
         if (newVal !== Math.round(currentVal * 10) / 10) {
             nationUpdates[statKey] = newVal;
@@ -20358,7 +20362,7 @@ async function processStatConnections(supabase, nation, currentTick, connections
         if (RAW_SCALING_DIVISORS[conn.target_stat]) {
             newVal = Math.max(0, newVal);
         } else {
-            newVal = Math.round(Math.max(2, Math.min(98, newVal)) * 10) / 10;
+            newVal = Math.round(Math.max(2, Math.min(98, newVal)));
         }
 
         if (newVal !== Math.round(targetVal * 10) / 10) {
@@ -20378,7 +20382,7 @@ async function processStatConnections(supabase, nation, currentTick, connections
                 const accumulated = targetVal + prevDelta + thisDelta;
                 nationUpdates[conn.target_stat] = RAW_SCALING_DIVISORS[conn.target_stat]
                     ? Math.max(0, accumulated)
-                    : Math.round(Math.max(0, Math.min(100, accumulated)) * 10) / 10;
+                    : Math.round(Math.max(0, Math.min(100, accumulated)));
             } else {
                 nationUpdates[conn.target_stat] = newVal;
             }
@@ -21351,7 +21355,7 @@ async function processStatEffects(supabase, nation, currentTick) {
                         newVal = Math.max(0, newVal);
                     } else {
                         // Clamp 0-100 scale stats to 2-98 floor/ceiling to prevent edge-case corruption
-                        newVal = Math.round(Math.max(2, Math.min(98, newVal)) * 10) / 10;
+                        newVal = Math.round(Math.max(2, Math.min(98, newVal)));
                     }
                     nationUpdates[statKey] = newVal;
                     anyEffectApplied = true;
@@ -21545,7 +21549,7 @@ async function processMinistryActions(supabase, nation, currentTick) {
                         if (RAW_SCALING_DIVISORS[statKey]) {
                             newVal = Math.max(0, newVal);
                         } else {
-                            newVal = Math.round(Math.max(2, Math.min(98, newVal)) * 10) / 10;
+                            newVal = Math.round(Math.max(2, Math.min(98, newVal)));
                         }
                         nationUpdates[statKey] = newVal;
                     }
@@ -26293,28 +26297,6 @@ function calculateDebtServiceBurden(nation) {
 function getSpendingEffectivenessMultiplier(nation) {
     const burden = Number(nation.debt_service_burden ?? 0);
     return 1.0 - Math.min(SOVEREIGN_DEFAULT_CONFIG.BURDEN_MAX, Math.max(0, burden));
-}
-
-/**
- * Calculate per-tick credit deterioration based on debt-to-GDP bracket.
- * Returns the amount to subtract from credit each tick.
- *
- * Brackets:
- *   100-150%: -0.3/tick (slow erosion)
- *   150-200%: -0.7/tick (accelerating)
- *   200-250%: -1.2/tick (serious deterioration)
- *   250%+:    -2.0/tick (freefall)
- *
- * @param {object} nation - Nation object
- * @returns {number} Credit penalty per tick (0 to 2.0)
- */
-function calculateCreditDeterioration(nation) {
-    const ratio = getDebtToGDP(nation);
-    if (!isFinite(ratio) || ratio <= 1.0) return 0;
-    if (ratio <= 1.5) return 0.3;
-    if (ratio <= 2.0) return 0.7;
-    if (ratio <= 2.5) return 1.2;
-    return 2.0;
 }
 
 /**
@@ -32282,16 +32264,17 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
 // ==================== SOVEREIGN DEFAULT — TICK-ONLY HELPERS ====================
 
 /**
- * Per-tick debt mechanics: update burden, deteriorate credit, check lockout,
- * and programmatically trigger a Sovereign Debt Crisis when conditions are met.
+ * Per-tick debt mechanics: update debt_service_burden and trigger a
+ * Sovereign Debt Crisis when the debt-to-budget ratio breaches the
+ * configured threshold. Credit-based gating was removed when the
+ * `nations.credit` column was dropped in the alpha refactor; the
+ * trigger is now ratio-only.
  */
 async function processSovereignDebtMechanics(supabase, nation, currentTick) {
     const ratio = getDebtToGDP(nation);
     if (!isFinite(ratio)) return null;
 
     const burden = calculateDebtServiceBurden(nation);
-    const creditDeterioration = calculateCreditDeterioration(nation);
-    const currentCredit = Number(nation.credit ?? 50);
     const cfg = SOVEREIGN_DEFAULT_CONFIG;
 
     const updates: any = {};
@@ -32304,24 +32287,6 @@ async function processSovereignDebtMechanics(supabase, nation, currentTick) {
         results.burdenChanged = true;
     }
 
-    // 2. Apply credit deterioration (per-tick penalty from high debt)
-    if (creditDeterioration > 0 && currentCredit > 0) {
-        const newCredit = Math.max(0, Math.round((currentCredit - creditDeterioration) * 10) / 10);
-        updates.credit = newCredit;
-        results.creditDeterioration = creditDeterioration;
-        results.creditBefore = currentCredit;
-        results.creditAfter = newCredit;
-    }
-
-    // 3. Check credit lockout (credit <= 5 means locked out of borrowing)
-    const effectiveCredit = updates.credit !== undefined ? updates.credit : currentCredit;
-    const wasLocked = Boolean(nation.credit_locked_out);
-    const shouldLock = effectiveCredit <= cfg.CREDIT_LOCKOUT_THRESHOLD;
-    if (shouldLock !== wasLocked) {
-        updates.credit_locked_out = shouldLock;
-        results.creditLockoutChanged = shouldLock;
-    }
-
     // Write updates
     if (Object.keys(updates).length > 0) {
         const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
@@ -32332,9 +32297,10 @@ async function processSovereignDebtMechanics(supabase, nation, currentTick) {
         Object.assign(nation, updates);
     }
 
-    // 4. Programmatically trigger Sovereign Debt Crisis when:
-    //    debt-to-GDP > 200% AND credit <= 15 AND no crisis already active
-    if (ratio >= cfg.DEBT_CRISIS_MIN_RATIO && effectiveCredit <= cfg.DEBT_CRISIS_MAX_CREDIT) {
+    // 2. Programmatically trigger Sovereign Debt Crisis when the
+    //    debt-to-budget ratio breaches DEBT_CRISIS_MIN_RATIO and no
+    //    crisis is already active.
+    if (ratio >= cfg.DEBT_CRISIS_MIN_RATIO) {
         const { data: existing } = await supabase
             .from('active_crises')
             .select('id')
@@ -32350,11 +32316,11 @@ async function processSovereignDebtMechanics(supabase, nation, currentTick) {
             });
             if (!insertErr) {
                 results.debtCrisisTriggered = true;
-                console.log(`[SovereignDebt] Debt Crisis triggered for ${nation.name} (ratio=${(ratio * 100).toFixed(0)}%, credit=${effectiveCredit})`);
+                console.log(`[SovereignDebt] Debt Crisis triggered for ${nation.name} (ratio=${(ratio * 100).toFixed(0)}%)`);
                 await supabase.from('event_log').insert({
                     nation_id: nation.id,
                     event_name: 'CRISIS_STARTED: Sovereign Debt Crisis',
-                    description_used: `Crushing debt (${(ratio * 100).toFixed(0)}% of GDP) and low creditworthiness have triggered a sovereign debt crisis.`,
+                    description_used: `Crushing debt (${(ratio * 100).toFixed(0)}% of GDP) has triggered a sovereign debt crisis.`,
                     category: 'crisis',
                     effects_applied: [],
                     fired_at_tick: currentTick
@@ -32363,8 +32329,8 @@ async function processSovereignDebtMechanics(supabase, nation, currentTick) {
         }
     }
 
-    if (results.burdenChanged || results.creditDeterioration || results.creditLockoutChanged || results.debtCrisisTriggered) {
-        console.log(`[SovereignDebt] ${nation.name}: ratio=${(ratio * 100).toFixed(0)}% burden=${burden.toFixed(3)} credit=${effectiveCredit}${shouldLock ? ' LOCKED' : ''}`);
+    if (results.burdenChanged || results.debtCrisisTriggered) {
+        console.log(`[SovereignDebt] ${nation.name}: ratio=${(ratio * 100).toFixed(0)}% burden=${burden.toFixed(3)}`);
     }
 
     return results;
@@ -34067,12 +34033,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             await syncMilitaryLoyaltyDefenseMinister(supabase, nation, currentTick);
         } catch (mlaErr) {
             console.error(`[advanceTick] MLA sync failed for ${nation.name} (non-fatal):`, mlaErr);
-        }
-
-        // Credit lockout auto-clear: if credit has recovered above threshold, unlock
-        if (nation.credit_locked_out && Number(nation.credit ?? 0) > 5) {
-            await supabase.from('nations').update({ credit_locked_out: false }).eq('id', nation.id);
-            nation.credit_locked_out = false;
         }
 
         // Re-fetch nation with post-effect values for remaining processors

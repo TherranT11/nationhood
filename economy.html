@@ -1760,15 +1760,15 @@ function renderIndustriesTab(nation) {
             var c = corps[i];
             var rev = revenueMap[c.id] || 0;
             var barW = maxRev > 0 ? Math.max(2, (rev / maxRev) * 100) : 0;
-            var isSub = foreignBranchIds.has(c.id);
+            var isForeign = foreignBranchIds.has(c.id);
             rows += '<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04);">';
             rows += '<div style="display:flex;justify-content:space-between;align-items:center;">';
             rows += '<div>';
             rows += '<div style="font-size:0.8rem;font-weight:700;color:var(--dtext-1);">' + (i + 1) + '. ' + escapeHtml(c.faction_name);
-            if (isSub) rows += ' <span style="font-size:0.55rem;padding:1px 5px;border-radius:3px;background:rgba(90,175,165,0.12);color:var(--teal);border:1px solid rgba(90,175,165,0.3);vertical-align:middle;">FOREIGN</span>';
+            if (isForeign) rows += ' <span style="font-size:0.55rem;padding:1px 5px;border-radius:3px;background:rgba(90,175,165,0.12);color:var(--teal);border:1px solid rgba(90,175,165,0.3);vertical-align:middle;">FOREIGN</span>';
             rows += '</div>';
             rows += '<div style="font-size:0.65rem;color:var(--dtext-3);">' + escapeHtml(c.corp_ticker || '') + ' · ' + escapeHtml(c.corp_company_type || 'Private') + ' · ' + escapeHtml(c.corp_subsector || 'General');
-            if (isSub) rows += ' <span style="font-style:italic;">· HQ: foreign</span>';
+            if (isForeign) rows += ' <span style="font-style:italic;">· HQ: foreign</span>';
             rows += '</div></div>';
             rows += '<div style="font-size:0.85rem;font-weight:700;color:var(--dgreen);">' + fmtIndustryMoney(rev) + '</div>';
             rows += '</div>';

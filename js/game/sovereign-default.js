@@ -176,28 +176,6 @@ export function getSpendingEffectivenessMultiplier(nation) {
 }
 
 /**
- * Calculate per-tick credit deterioration based on debt-to-GDP bracket.
- * Returns the amount to subtract from credit each tick.
- *
- * Brackets:
- *   100-150%: -0.3/tick (slow erosion)
- *   150-200%: -0.7/tick (accelerating)
- *   200-250%: -1.2/tick (serious deterioration)
- *   250%+:    -2.0/tick (freefall)
- *
- * @param {object} nation - Nation object
- * @returns {number} Credit penalty per tick (0 to 2.0)
- */
-export function calculateCreditDeterioration(nation) {
-    const ratio = getDebtToGDP(nation);
-    if (!isFinite(ratio) || ratio <= 1.0) return 0;
-    if (ratio <= 1.5) return 0.3;
-    if (ratio <= 2.0) return 0.7;
-    if (ratio <= 2.5) return 1.2;
-    return 2.0;
-}
-
-/**
  * Calculate penalty multiplier for default consequences.
  * Full default = 1.0 (100% of penalties).
  * Partial restructuring scales inversely with repayment rate:

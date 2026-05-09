@@ -492,7 +492,7 @@ export async function processStatDecay(supabase, nation, policyDecayAdjustments 
             newVal = Math.min(target, currentVal + speed);
         }
 
-        newVal = Math.round(Math.max(2, Math.min(98, newVal)) * 10) / 10;
+        newVal = Math.round(Math.max(2, Math.min(98, newVal)));
 
         if (newVal !== Math.round(currentVal * 10) / 10) {
             nationUpdates[statKey] = newVal;
@@ -776,7 +776,7 @@ export async function processStatConnections(supabase, nation, currentTick, conn
         if (RAW_SCALING_DIVISORS[conn.target_stat]) {
             newVal = Math.max(0, newVal);
         } else {
-            newVal = Math.round(Math.max(2, Math.min(98, newVal)) * 10) / 10;
+            newVal = Math.round(Math.max(2, Math.min(98, newVal)));
         }
 
         if (newVal !== Math.round(targetVal * 10) / 10) {
@@ -796,7 +796,7 @@ export async function processStatConnections(supabase, nation, currentTick, conn
                 const accumulated = targetVal + prevDelta + thisDelta;
                 nationUpdates[conn.target_stat] = RAW_SCALING_DIVISORS[conn.target_stat]
                     ? Math.max(0, accumulated)
-                    : Math.round(Math.max(0, Math.min(100, accumulated)) * 10) / 10;
+                    : Math.round(Math.max(0, Math.min(100, accumulated)));
             } else {
                 nationUpdates[conn.target_stat] = newVal;
             }
@@ -1769,7 +1769,7 @@ export async function processStatEffects(supabase, nation, currentTick) {
                         newVal = Math.max(0, newVal);
                     } else {
                         // Clamp 0-100 scale stats to 2-98 floor/ceiling to prevent edge-case corruption
-                        newVal = Math.round(Math.max(2, Math.min(98, newVal)) * 10) / 10;
+                        newVal = Math.round(Math.max(2, Math.min(98, newVal)));
                     }
                     nationUpdates[statKey] = newVal;
                     anyEffectApplied = true;
@@ -1963,7 +1963,7 @@ export async function processMinistryActions(supabase, nation, currentTick) {
                         if (RAW_SCALING_DIVISORS[statKey]) {
                             newVal = Math.max(0, newVal);
                         } else {
-                            newVal = Math.round(Math.max(2, Math.min(98, newVal)) * 10) / 10;
+                            newVal = Math.round(Math.max(2, Math.min(98, newVal)));
                         }
                         nationUpdates[statKey] = newVal;
                     }
