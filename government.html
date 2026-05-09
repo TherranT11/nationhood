@@ -356,7 +356,7 @@ const MINISTRY_ACTIONS = {
                 // scalable = false means penalty stays at 100% regardless of use count
                 baseEffects: [
                     { stat_key: 'unrest',              direction: 'down', rate: 2, scalable: true },
-                    { stat_key: 'control',             direction: 'up',   rate: 1, scalable: true },
+                    { stat_key: 'state_apparatus',     direction: 'up',   rate: 1, scalable: true },
                     { stat_key: 'standard_of_living',  direction: 'down', rate: 1, scalable: false }
                 ]
             },
@@ -378,7 +378,7 @@ const MINISTRY_ACTIONS = {
                 baseEffects: [
                     { stat_key: 'standard_of_living',  direction: 'up',   rate: 2, scalable: true },
                     { stat_key: 'unrest',              direction: 'down', rate: 1, scalable: true },
-                    { stat_key: 'control',             direction: 'up',   rate: 1, scalable: true }
+                    { stat_key: 'state_apparatus',     direction: 'up',   rate: 1, scalable: true }
                 ]
             },
             {
@@ -399,7 +399,7 @@ const MINISTRY_ACTIONS = {
                 ],
                 baseEffects: [
                     { stat_key: 'unrest',              direction: 'down', rate: 3, scalable: true },
-                    { stat_key: 'control',             direction: 'up',   rate: 2, scalable: false },
+                    { stat_key: 'state_apparatus',     direction: 'up',   rate: 2, scalable: false },
                     { stat_key: 'infrastructure',      direction: 'up',   rate: 1, scalable: false },
                     { stat_key: 'standard_of_living',  direction: 'down', rate: 1, scalable: false }
                 ]
@@ -1404,8 +1404,8 @@ function adm2RenderAdminCard() {
     // duration is the metric players actually want at a glance.
     const termValue = durationLabel || (startDate ? escapeHtml(startDate) : '—');
 
-    // Regime stat strip: control + authority + crown_authority (only render crown_authority if not null)
-    const controlVal = nation?.control;
+    // Regime stat strip: state_apparatus + public_approval + crown_authority (only render crown_authority if not null)
+    const controlVal = nation?.state_apparatus;
     const authorityVal = nation?.public_approval;
     const crownAuthVal = nation?.crown_authority;
     const fmtRegimeStat = (v) => (v == null ? '—' : Math.round(Number(v)) + '/100');
@@ -2665,7 +2665,7 @@ function _gbBuildCostRows(d) {
     // stats — a high state apparatus paying low wages costs less than
     // a smaller civil service paying market rates. Stats clamp 0-100
     // server-side; defensive ?? 0 handles missing rows.
-    const stateApparatus      = Number(currentNation?.control) || 0;
+    const stateApparatus      = Number(currentNation?.state_apparatus) || 0;
     const wagesStat           = Number(currentNation?.wages)   || 0;
     const publicSectorWagesAnnual = (stateApparatus * wagesStat) / 100 * GAME_CONFIG.TICKS_PER_YEAR;
     return [

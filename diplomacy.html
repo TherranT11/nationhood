@@ -2529,7 +2529,7 @@ function renderTradePartners() {
                             <span class="tr-badge" style="color:${n.embassy === 'Open' ? 'var(--accent)' : 'var(--text-dim)'};">EMBASSY ${n.embassy.toUpperCase()}</span>
                             ${matchType ? `<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.08);border-color:rgba(92,204,92,0.2);">MATCH</span>` : ''}
                         </div>
-                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:1px;">Pop: ${popLabel} \u00B7 Control: ${(n.control ?? 50).toFixed(1)}%</div>
+                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:1px;">Pop: ${popLabel} \u00B7 State Apparatus: ${(n.state_apparatus ?? 50).toFixed(1)}%</div>
                     </div>
                 </div>
                 <div style="display:flex;gap:12px;align-items:center;">
@@ -3320,11 +3320,11 @@ function renderNationHighlight(nation, state, relations, agreements, ambassadors
     // ── KEY STATS ──
     html += `<div class="world-highlight-section">KEY STATS</div>`;
 
-    const control = nation.control ?? 0;
-    const controlColor = control >= 50 ? 'var(--green)' : control >= 30 ? 'var(--amber)' : 'var(--red)';
+    const stateApparatus = nation.state_apparatus ?? 0;
+    const stateApparatusColor = stateApparatus >= 50 ? 'var(--green)' : stateApparatus >= 30 ? 'var(--amber)' : 'var(--red)';
     const stats = [
         { label: 'Population', value: popLabel },
-        { label: 'State Apparatus', value: control.toFixed(1), color: controlColor },
+        { label: 'State Apparatus', value: stateApparatus.toFixed(1), color: stateApparatusColor },
     ];
     html += stats.map(s => `<div class="world-highlight-stat-row">
         <span class="world-highlight-stat-label">${escapeHtml(s.label)}</span>
@@ -5477,7 +5477,7 @@ async function renderNationCardBody(nationId) {
                 </div>
                 <div class="info-row">
                     <span class="info-label">State Apparatus</span>
-                    <span class="info-value" style="color:${getStatColor(targetNation.control)}">${targetNation.control != null ? Number(targetNation.control).toFixed(1) : '—'}%</span>
+                    <span class="info-value" style="color:${getStatColor(targetNation.state_apparatus)}">${targetNation.state_apparatus != null ? Number(targetNation.state_apparatus).toFixed(1) : '—'}%</span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Unrest</span>

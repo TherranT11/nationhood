@@ -1119,8 +1119,8 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
                 p_tick: currentTick
             });
         }
-        const newStability = Math.min(100, Number(nationCheck?.control ?? 50) + 3);
-        await supabase.from('nations').update({ control: newStability }).eq('id', nationId);
+        const newStateApparatus = Math.min(100, Number(nationCheck?.state_apparatus ?? 50) + 3);
+        await supabase.from('nations').update({ state_apparatus: newStateApparatus }).eq('id', nationId);
     }
     // 35-50: no momentum or stability changes
 
@@ -1226,11 +1226,10 @@ export async function dissolveParliament(supabase, nationId, presidentFactionId)
     // Check if dissolving after a recent no-confidence vote (authoritarian overreach)
     const voncPenalty = nation.last_vonc_tick && (currentTick - nation.last_vonc_tick) <= 6;
 
-    // 1. Control -3 (+ authority -5 if post-vonc).
-    // Alpha refactor: stability → control, legitimacy → authority.
-    const newControl = Math.max(0, Number(nation.control ?? 50) - 3);
+    // 1. State Apparatus -3 (+ authority -5 if post-vonc).
+    const newStateApparatus = Math.max(0, Number(nation.state_apparatus ?? 50) - 3);
     const nationUpdate = {
-        control: newControl,
+        state_apparatus: newStateApparatus,
         last_dissolution_tick: currentTick
     };
     if (voncPenalty) {
@@ -3112,29 +3111,27 @@ export async function processPresidentialElectionResult(supabase, nation, comple
     // === WINNER/LOSER EFFECTS ===
     try {
         const { data: nationStats } = await supabase.from('nations')
-            .select('control, public_approval, standard_of_living, unrest')
+            .select('state_apparatus, public_approval, standard_of_living, unrest')
             .eq('id', nation.id).single();
 
         if (nationStats) {
             const updates = {};
             if (isIncumbentWin) {
-                // Incumbent wins: +3 legitimacy, +2 stability (mandate renewed)
-                updates.legitimacy = Math.min(100, Math.round(((nationStats.public_approval || 50) + 3) * 10) / 10);
-                updates.stability = Math.min(100, Math.round(((nationStats.control || 50) + 2) * 10) / 10);
-                console.log(`Incumbent win effects: +3 legitimacy, +2 stability (${nation.name})`);
+                // Incumbent wins: mandate renewed.
+                updates.public_approval = Math.min(100, Math.round((nationStats.public_approval || 50) + 3));
+                updates.state_apparatus = Math.min(100, Math.round((nationStats.state_apparatus || 50) + 2));
+                console.log(`Incumbent win effects: +3 public_approval, +2 state_apparatus (${nation.name})`);
             } else if (isChallengerWin && !wasRunoff) {
                 // Challenger wins (no runoff): transition effects
-                updates.stability = Math.max(0, Math.round(((nationStats.control || 50) - 2) * 10) / 10);
-                updates.civil_unrest = Math.min(100, Math.round(((nationStats.unrest || 0) + 3) * 10) / 10);
-                updates.happiness = Math.min(100, Math.round(((nationStats.standard_of_living || 50) + 1) * 10) / 10);
-                console.log(`Challenger win effects: -2 stability, +3 civil_unrest, +1 happiness (${nation.name})`);
+                updates.state_apparatus = Math.max(0, Math.round((nationStats.state_apparatus || 50) - 2));
+                updates.unrest = Math.min(100, Math.round((nationStats.unrest || 0) + 3));
+                console.log(`Challenger win effects: -2 state_apparatus, +3 unrest (${nation.name})`);
             } else if (isIncumbentRunoffLoss) {
                 // Incumbent loses in runoff: extra penalties (contested transition)
-                updates.stability = Math.max(0, Math.round(((nationStats.control || 50) - 4) * 10) / 10);
-                updates.legitimacy = Math.max(0, Math.round(((nationStats.public_approval || 50) - 2) * 10) / 10);
-                updates.civil_unrest = Math.min(100, Math.round(((nationStats.unrest || 0) + 5) * 10) / 10);
-                updates.happiness = Math.min(100, Math.round(((nationStats.standard_of_living || 50) + 2) * 10) / 10);
-                console.log(`Incumbent runoff loss effects: -4 stability, -2 legitimacy, +5 civil_unrest, +2 happiness (${nation.name})`);
+                updates.state_apparatus = Math.max(0, Math.round((nationStats.state_apparatus || 50) - 4));
+                updates.public_approval = Math.max(0, Math.round((nationStats.public_approval || 50) - 2));
+                updates.unrest = Math.min(100, Math.round((nationStats.unrest || 0) + 5));
+                console.log(`Incumbent runoff loss effects: -4 state_apparatus, -2 public_approval, +5 unrest (${nation.name})`);
             }
 
             if (Object.keys(updates).length > 0) {

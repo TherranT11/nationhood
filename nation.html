@@ -97,7 +97,7 @@ var STAT_CATEGORIES = [
     ]},
     { id: 'governance', label: 'Governance', icon: '\u{1F3DB}', blocs: ['Academics & Professionals', 'Ethnic Minorities', 'Urban Progressives'],
       stats: [
-        { name: 'State Apparatus', key: 'control', desc: 'Government control of territory' },
+        { name: 'State Apparatus', key: 'state_apparatus', desc: 'Government control of territory' },
         { name: 'Public Approval', key: 'public_approval', desc: 'Public approval of the government' },
         { name: 'Crown Authority', key: 'crown_authority', desc: 'Authority of the crown', conditional: function(nation){ return nation.crown_authority != null; } },
         { name: 'Corruption', key: 'corruption', desc: 'Bribery, graft, and abuse of office', inverted: true }

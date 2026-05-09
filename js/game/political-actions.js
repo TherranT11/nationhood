@@ -3152,11 +3152,11 @@ export async function processCrises(supabase, nation, currentTick) {
 
 export function _removedProcessRevolution() { return null; }
 export function formatStatName(stat) {
-    // 'control' renders as "State Apparatus" — a relabel without a
-    // schema rename. Every other stat falls through to the generic
-    // title-case path. If more relabels accumulate, promote this to
-    // a small lookup table.
-    if (stat === 'control') return 'State Apparatus';
+    // state_apparatus renders as "State Apparatus" (and the legacy
+    // 'control' key still translates to the same label for any
+    // pre-rename strings sitting in event_log / stat_effects JSON).
+    // Every other stat falls through to the generic title-case path.
+    if (stat === 'state_apparatus' || stat === 'control') return 'State Apparatus';
     return stat.charAt(0).toUpperCase() + stat.slice(1).replace(/_/g, ' ');
 }
 export function formatMinorSector(key) {
@@ -3930,15 +3930,15 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
 
     const { data: nation } = await supabase
         .from('nations')
-        .select('control')
+        .select('state_apparatus')
         .eq('id', nationId)
         .single();
 
     if (nation) {
-        const newStability = Math.max(0, (nation.control ?? 50) - 3);
+        const newStateApparatus = Math.max(0, (nation.state_apparatus ?? 50) - 3);
         await supabase
             .from('nations')
-            .update({ control: newStability })
+            .update({ state_apparatus: newStateApparatus })
             .eq('id', nationId);
     }
 

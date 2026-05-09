@@ -81,7 +81,7 @@ const STAT_CATEGORIES = [
         { id: 'cost_of_living', name: 'Cost of Living' },
     ]},
     { id: 'governance', name: 'Governance', stats: [
-        { id: 'control', name: 'State Apparatus' },
+        { id: 'state_apparatus', name: 'State Apparatus' },
         { id: 'public_approval', name: 'Public Approval' },
         { id: 'crown_authority', name: 'Crown Authority' },
         { id: 'corruption', name: 'Corruption' },

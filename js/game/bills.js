@@ -1240,7 +1240,7 @@ export async function resolveReferendums(supabase, nation, currentTick) {
         // falling to defaults so 4 of 9 sentiment terms contributed nothing.
         var publicApproval     = Number(nation.public_approval ?? 50);
         var unrest             = Number(nation.unrest ?? 50);
-        var stateApparatus     = Number(nation.control ?? 50);
+        var stateApparatus     = Number(nation.state_apparatus ?? 50);
         var crownAuthority     = nation.crown_authority != null ? Number(nation.crown_authority) : null;
         var budget             = Number(nation.budget ?? 50);
         var debt               = Number(nation.debt ?? 50);
@@ -1790,10 +1790,10 @@ export async function resolveImpeachmentConvictionBill(supabase, bill, ctx) {
         }
 
         // Stability recovers +3.
-        const { data: natRow } = await supabase.from('nations').select('control').eq('id', bill.nation_id).single();
+        const { data: natRow } = await supabase.from('nations').select('state_apparatus').eq('id', bill.nation_id).single();
         if (natRow) {
             await supabase.from('nations').update({
-                control: Math.min(100, Math.round(Number(natRow.control || 0) + 3)),
+                state_apparatus: Math.min(100, Math.round(Number(natRow.state_apparatus || 0) + 3)),
             }).eq('id', bill.nation_id);
         }
 
@@ -4276,13 +4276,13 @@ async function enactPresidentialTermLength(supabase, bill, currentTick) {
         console.log(`[enactFoundationalBill] Term shortened (polarization + political_engagement effects retired by alpha refactor)`);
     } else if (newTermTicks > oldTermTicks) {
         const newAuthority = Math.max(0, (nation?.public_approval || 50) - 3);
-        const newControl   = Math.min(100, (nation?.control || 50) + 2);
+        const newStateApparatus = Math.min(100, (nation?.state_apparatus || 50) + 2);
         const { error: extErr } = await supabase.from('nations').update({
             public_approval: newAuthority,
-            control:   newControl
+            state_apparatus: newStateApparatus
         }).eq('id', bill.nation_id);
         if (extErr) console.error(`[enactFoundationalBill] Term extended stat update failed:`, extErr.message);
-        else console.log(`[enactFoundationalBill] Term extended: authority -3, control +2`);
+        else console.log(`[enactFoundationalBill] Term extended: public_approval -3, state_apparatus +2`);
     }
 
     // If no imminent election, reschedule the next presidential election with the new term length
@@ -4367,10 +4367,10 @@ async function enactLegislativeTermLength(supabase, bill, currentTick) {
         console.log(`[enactFoundationalBill] Legislative term shortened (polarization + political_engagement effects retired by alpha refactor)`);
     } else if (newParlTermTicks > oldParlTermTicks) {
         const newAuthority = Math.max(0, (nation?.public_approval || 50) - 3);
-        const newControl   = Math.min(100, (nation?.control || 50) + 2);
+        const newStateApparatus = Math.min(100, (nation?.state_apparatus || 50) + 2);
         const { error: extErr } = await supabase.from('nations').update({
             public_approval: newAuthority,
-            control:   newControl
+            state_apparatus: newStateApparatus
         }).eq('id', bill.nation_id);
         if (extErr) console.error(`[enactFoundationalBill] Legislative term extended stat update failed:`, extErr.message);
         else console.log(`[enactFoundationalBill] Legislative term extended: authority -3, control +2`);
@@ -4734,7 +4734,7 @@ async function enactConstitutionalReform(supabase, bill, currentTick) {
     }
 
     // ── Stat effects based on target system ──
-    const stability = nation?.control || 50;
+    const stability = nation?.state_apparatus || 50;
     const legitimacy = nation?.public_approval || 50;
     const politicalEngagement = nation?.political_engagement || 50;
     const polarization = 0;
@@ -4828,12 +4828,11 @@ async function enactHosElectionMethod(supabase, bill, currentTick) {
     }
 
     // Apply mechanical effects based on method. Alpha refactor:
-    // stability → control, legitimacy → authority; polarization +
-    // political_engagement effects retired (columns gone).
+    // polarization + political_engagement effects retired (columns gone).
     if (newMethod === 'hereditary') {
-        const newControl   = Math.min(100, (nation?.control || 50) + 5);
+        const newStateApparatus = Math.min(100, (nation?.state_apparatus || 50) + 5);
         const newAuthority = Math.max(0, (nation?.public_approval || 50) - 5);
-        const statUpdate = { control: newControl, public_approval: newAuthority };
+        const statUpdate = { state_apparatus: newStateApparatus, public_approval: newAuthority };
 
         const { error: statErr } = await supabase.from('nations').update(statUpdate).eq('id', bill.nation_id);
         if (statErr) console.error(`[enactFoundationalBill] Hereditary stat update failed:`, statErr.message);

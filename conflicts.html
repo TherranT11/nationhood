@@ -621,10 +621,10 @@ async function renderCardBilateralIntel(issue) {
     }
 
     const ourApproval = Number(currentNation.gov_approval ?? 50);
-    const ourControl = Number(currentNation.control ?? 50);
+    const ourControl = Number(currentNation.state_apparatus ?? 50);
     const ourPower = Number(currentNation.global_image ?? 50);
     const theirApproval = Number(theirNation?.gov_approval ?? 50);
-    const theirControl = Number(theirNation?.control ?? 50);
+    const theirControl = Number(theirNation?.state_apparatus ?? 50);
     const theirPower = Number(theirNation?.power ?? 50);
 
     el.style.display = '';

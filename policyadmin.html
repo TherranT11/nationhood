@@ -181,7 +181,7 @@ const RAW_SCALING_INFO = {
 // `minimum_wage` and lives with the labor stats.
 const STAT_GROUPS = [
     { label: '💰 Fiscal', stats: ['budget','debt','gdp_growth','income_tax','corporate_tax'] },
-    { label: '🏛️ Governance', stats: ['control','public_approval','crown_authority','corruption'] },
+    { label: '🏛️ Governance', stats: ['state_apparatus','public_approval','crown_authority','corruption'] },
     { label: '🔥 Stability', stats: ['unrest','crime'] },
     { label: '👥 Population', stats: ['population','immigration'] },
     { label: '🏥 Wellbeing', stats: ['health','education','standard_of_living','cost_of_living','inequality'] },
@@ -208,7 +208,7 @@ const POLICY_STAT_KEY_ALIASES = {
     judicial_independence: 'public_approval',
     goods: 'service_sector',
     crime_rate: 'crime',
-    stability: 'control',
+    stability: 'state_apparatus',
     civil_unrest: 'unrest',
     terrorism: 'unrest',
     political_violence: 'unrest',
@@ -233,7 +233,7 @@ const POLICY_STAT_KEY_ALIASES = {
     tourism: 'power',
     trade_agreements: 'power',
     sanctions: 'power',
-    military_strength: 'control',
+    military_strength: 'state_apparatus',
     // Inverted alias: unemployment → workforce (direction flipped at apply)
     unemployment: 'workforce',
     // Deleted with no replacement — caller decides whether to drop
@@ -2125,7 +2125,7 @@ function resetBuilder() {
 // ==================== UTILITIES ====================
 function fmtStat(stat) {
     if (!stat) return '—';
-    if (stat === 'control') return 'State Apparatus';
+    if (stat === 'state_apparatus' || stat === 'control') return 'State Apparatus';
     return stat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
     function fmtCost(m) {

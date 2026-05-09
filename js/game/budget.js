@@ -153,7 +153,7 @@ export async function computePanelAnnualExpenditures(supabase, nation) {
     // annual = monthly × 12. Mirrors _gbBuildCostRows in government.html
     // exactly so the panel's monthly balance and the per-tick debt
     // change always agree.
-    const publicSectorWagesAnnual = (Number(nation?.control) || 0) * (Number(nation?.wages) || 0) / 100 * 12;
+    const publicSectorWagesAnnual = (Number(nation?.state_apparatus) || 0) * (Number(nation?.wages) || 0) / 100 * 12;
     return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost + publicSectorWagesAnnual;
 }
 

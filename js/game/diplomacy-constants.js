@@ -178,7 +178,7 @@ export const AID_CONDITION_STATS = [
     { key: 'health', label: 'Healthcare', default_operator: 'gte', category: 'Social' },
     { key: 'standard_of_living', label: 'Standard of Living', default_operator: 'gte', category: 'Social' },
     // Security
-    { key: 'control', label: 'State Apparatus', default_operator: 'gte', category: 'Security' },
+    { key: 'state_apparatus', label: 'State Apparatus', default_operator: 'gte', category: 'Security' },
     { key: 'unrest', label: 'Unrest', default_operator: 'lte', category: 'Security' },
     // International
     { key: 'global_image', label: 'Global Image', default_operator: 'gte', category: 'International' }
@@ -542,7 +542,7 @@ export const PROPOSAL_TYPES = {
         description: 'Binding commitment not to declare war for a set period.',
         stat_effects: [
             // alpha-19: stability → control; international_reputation → power.
-            { stat_key: 'control', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
+            { stat_key: 'state_apparatus', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
             { stat_key: 'global_image', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
@@ -552,7 +552,7 @@ export const PROPOSAL_TYPES = {
         description: 'Mutual defense pact — if one is attacked, the other must respond.',
         stat_effects: [
             // alpha-19: stability → control; international_reputation → power.
-            { stat_key: 'control', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 },
+            { stat_key: 'state_apparatus', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 },
             { stat_key: 'global_image', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
@@ -572,7 +572,7 @@ export const PROPOSAL_TYPES = {
         requires_war: true,
         stat_effects: [
             // alpha-19: stability → control; civil_unrest → unrest.
-            { stat_key: 'control', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 1 },
+            { stat_key: 'state_apparatus', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 1 },
             { stat_key: 'unrest', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
         ]
     },
