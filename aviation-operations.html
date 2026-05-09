@@ -1108,6 +1108,134 @@ body.corp-operations-aviation.light-mode {
   display: block; margin-top: 4px; text-transform: uppercase;
 }
 
+/* ── Production Queue modal (.am-q-*) ── */
+.am-q-tabs { display: flex; gap: 4px; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px dashed var(--co-line-bright); }
+.am-q-tab {
+  flex: 1;
+  background: var(--co-bg-secondary);
+  border: 1px solid var(--co-line-bright);
+  color: var(--co-text-secondary);
+  font-family: var(--co-mono); font-size: 11px;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  padding: 10px 14px; cursor: pointer;
+  transition: all 0.15s; font-weight: 500;
+}
+.am-q-tab:hover { color: var(--co-text-primary); }
+.am-q-tab.active {
+  background: rgba(201, 168, 50, 0.06);
+  border-color: var(--co-accent-gold);
+  color: var(--co-accent-gold);
+}
+.am-q-list { display: flex; flex-direction: column; gap: 6px; }
+.am-q-row {
+  display: grid; grid-template-columns: 18px auto 1fr auto; gap: 14px; align-items: center;
+  padding: 12px 14px;
+  background: var(--co-bg-secondary);
+  border: 1px solid var(--co-line-bright);
+  cursor: pointer; transition: all 0.15s;
+}
+.am-q-row:hover { background: var(--co-bg-elevated); }
+.am-q-row.selected {
+  border-color: var(--co-accent-gold);
+  background: rgba(201, 168, 50, 0.05);
+}
+.am-q-radio {
+  width: 14px; height: 14px;
+  border: 1px solid var(--co-line-bright);
+  background: var(--co-bg-card);
+  border-radius: 50%; position: relative;
+}
+.am-q-row.selected .am-q-radio { border-color: var(--co-accent-gold); }
+.am-q-row.selected .am-q-radio::after {
+  content: ''; position: absolute; inset: 3px;
+  background: var(--co-accent-gold); border-radius: 50%;
+}
+.am-q-row-info { min-width: 0; }
+.am-q-row-name { font-family: var(--co-serif); font-style: italic; font-weight: 500; font-size: 16px; color: var(--co-text-primary); margin-bottom: 3px; }
+.am-q-row-meta { font-family: var(--co-mono); font-size: 9px; color: var(--co-text-tertiary); letter-spacing: 0.1em; text-transform: uppercase; }
+.am-q-row-cost { font-family: var(--co-serif); font-weight: 500; font-size: 14px; color: var(--co-accent-gold); text-align: right; font-variant-numeric: tabular-nums; }
+.am-q-empty {
+  font-family: var(--co-serif); font-style: italic; font-size: 13px;
+  color: var(--co-text-tertiary); text-align: center; padding: 24px 16px;
+}
+
+.am-q-plant-row {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 14px; align-items: center;
+  padding: 12px 0; border-bottom: 1px dashed var(--co-line-bright);
+}
+.am-q-plant-row:last-child { border-bottom: none; }
+.am-q-plant-name { font-family: var(--co-serif); font-weight: 500; font-size: 14px; color: var(--co-text-primary); margin-bottom: 3px; }
+.am-q-plant-meta { font-family: var(--co-mono); font-size: 10px; color: var(--co-text-secondary); letter-spacing: 0.05em; }
+.am-q-plant-status {
+  font-family: var(--co-mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+  padding: 3px 8px; border: 1px solid; line-height: 1.4;
+}
+.am-q-plant-status.ok { color: #8aa653; border-color: rgba(138, 166, 83, 0.4); background: rgba(138, 166, 83, 0.06); }
+.am-q-plant-status.busy { color: #a0633a; border-color: rgba(160, 99, 58, 0.4); background: rgba(160, 99, 58, 0.06); }
+.am-q-plant-status.incompat { color: var(--co-text-tertiary); border-color: var(--co-line-bright); background: var(--co-bg-secondary); }
+.am-q-plant-toggle {
+  font-family: var(--co-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  padding: 7px 14px;
+  background: var(--co-bg-secondary); border: 1px solid var(--co-line-bright);
+  color: var(--co-text-secondary); cursor: pointer;
+  transition: all 0.15s; font-weight: 500; min-width: 88px;
+}
+.am-q-plant-toggle:hover:not(:disabled) { border-color: var(--co-accent-gold); color: var(--co-accent-gold); }
+.am-q-plant-toggle.assigned {
+  background: var(--co-accent-gold); border-color: var(--co-accent-gold);
+  color: var(--co-bg-primary); font-weight: 700;
+}
+.am-q-plant-toggle:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.am-q-quantity-block { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.am-q-qty-display { font-family: var(--co-serif); font-size: 36px; line-height: 1; color: var(--co-text-primary); font-variant-numeric: tabular-nums; }
+.am-q-qty-display .unit { font-family: var(--co-sans); font-size: 16px; color: var(--co-text-tertiary); margin-left: 4px; }
+.am-q-slider {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 4px;
+  background: var(--co-line-bright); border: 1px solid var(--co-line-bright);
+  outline: none; cursor: pointer; margin: 12px 0 4px;
+}
+.am-q-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px; height: 18px;
+  background: var(--co-accent-gold);
+  border: 2px solid var(--co-bg-card); cursor: pointer;
+  box-shadow: 0 0 0 1px var(--co-accent-gold);
+}
+.am-q-slider::-moz-range-thumb {
+  width: 18px; height: 18px;
+  background: var(--co-accent-gold);
+  border: 2px solid var(--co-bg-card); cursor: pointer;
+  box-shadow: 0 0 0 1px var(--co-accent-gold);
+}
+.am-q-tier-row { display: flex; justify-content: space-between; padding: 4px 0; font-family: var(--co-mono); font-size: 11px; }
+.am-q-tier-row .qty { color: var(--co-text-secondary); }
+.am-q-tier-row .pct { color: var(--co-text-primary); font-variant-numeric: tabular-nums; }
+.am-q-tier-row.active .qty, .am-q-tier-row.active .pct { color: var(--co-accent-gold); font-weight: 700; }
+
+.am-q-supply-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.am-q-supply-cell {
+  background: var(--co-bg-secondary); border: 1px solid var(--co-line);
+  padding: 10px 12px; text-align: center;
+}
+.am-q-supply-cell-label { font-family: var(--co-mono); font-size: 8px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--co-text-tertiary); margin-bottom: 6px; }
+.am-q-supply-cell-value { font-family: var(--co-serif); font-weight: 500; font-size: 22px; line-height: 1; color: var(--co-text-primary); font-variant-numeric: tabular-nums; }
+.am-q-supply-cell-value.green { color: #8aa653; }
+.am-q-supply-cell-value.bad { color: var(--co-accent-red); }
+
+.am-q-run-card {
+  background: var(--co-bg-card); border: 1px solid var(--co-line);
+  padding: 12px 14px;
+  display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;
+}
+.am-q-run-name { font-family: var(--co-serif); font-style: italic; font-weight: 500; font-size: 16px; color: var(--co-text-primary); }
+.am-q-run-meta { font-family: var(--co-mono); font-size: 9px; color: var(--co-text-tertiary); letter-spacing: 0.1em; text-transform: uppercase; }
+.am-q-run-progress { width: 100%; height: 4px; background: var(--co-line-bright); margin-top: 6px; grid-column: 1 / -1; position: relative; overflow: hidden; }
+.am-q-run-progress-fill { position: absolute; top: 0; left: 0; height: 100%; background: var(--co-accent-gold); transition: width 0.3s; }
+.am-q-run-stats { font-family: var(--co-mono); font-size: 10px; color: var(--co-text-secondary); text-align: right; letter-spacing: 0.05em; }
+.am-q-run-stats strong { color: var(--co-accent-gold); font-weight: 500; }
+
 @media (max-width: 880px) {
   .am-module-grid { grid-template-columns: 1fr; }
   .am-summary-stats-grid { grid-template-columns: 1fr 1fr; }
@@ -1119,6 +1247,8 @@ body.corp-operations-aviation.light-mode {
   .am-engine-row { grid-template-columns: 1fr; gap: 12px; }
   .am-physics-block { grid-template-columns: 1fr; gap: 10px; }
   .am-physics-display { text-align: left; }
+  .am-q-quantity-block { grid-template-columns: 1fr; }
+  .am-q-supply-grid { grid-template-columns: 1fr 1fr; }
 }
 </style>
 </head>
@@ -1431,6 +1561,17 @@ function renderPageShell(activeOrders) {
             </div>
         </div>
 
+        <!-- VII. ACTIVE PRODUCTION -->
+        <div class="co-section">
+            <div class="co-section-header">
+                <h2><span class="num">VII.</span>Active Production</h2>
+                <span class="desc">Runs In Progress</span>
+            </div>
+            <div class="co-contract-list" id="co-production-list">
+                <div class="co-contract-empty">No active production runs. Click + Production Queue to start one.</div>
+            </div>
+        </div>
+
         <!-- FOOTER -->
         <div class="co-footer-strip">
             <div>Operations updated <em id="co-footer-date">—</em></div>
@@ -1447,7 +1588,6 @@ const PLANT_ACTION_LABELS = {
     'new-research':     'New research program',
     'fulfill-order':    'Order fulfillment',
     'request-order':    'New order request',
-    'production-queue': 'Production queue management',
 };
 
 // ── Engine module specs (Tier 1). Mirrors the server-side CASE in
@@ -1520,6 +1660,10 @@ function bindPanelActionButtons() {
             if (action === 'design-aircraft') {
                 if (!_hasAircraftAssemblyFacility) return; // gate; disabled state already shown
                 openDesignAircraftModal();
+                return;
+            }
+            if (action === 'production-queue') {
+                openProductionQueueModal();
                 return;
             }
             const label = PLANT_ACTION_LABELS[action] || 'This action';
@@ -2416,6 +2560,539 @@ async function submitDesignAircraft() {
     }
 }
 
+// ════════════════════════════════════════════════════════════════
+// Production Queue modal
+// ════════════════════════════════════════════════════════════════
+
+const PLANT_TYPE_COMPAT = {
+    light_assembly_plant:        ['business', 'regional'],
+    aircraft_assembly_facility:  ['regional', 'narrowbody'],
+    heavy_manufacturing_plant:   ['widebody'],
+    engine_assembly_plant:       ['engine'],
+};
+const PLANT_SIMULTANEOUS_BUILDS = {
+    light_assembly_plant:       1,
+    aircraft_assembly_facility: 1,
+    heavy_manufacturing_plant:  1,
+    engine_assembly_plant:      2,
+};
+const PLANT_SHORT_LABEL = {
+    light_assembly_plant:       'Light Assembly',
+    aircraft_assembly_facility: 'Aircraft Assembly',
+    heavy_manufacturing_plant:  'Heavy Manufacturing',
+    engine_assembly_plant:      'Engine Assembly',
+};
+// Mirror of the v_time_per_unit / volume-discount CASE ladders in
+// queue_production_run (sql/migrations/20261030_aviation_production_runs.sql).
+// Keep both sides in lockstep when tuning — the server is the source
+// of truth, the client uses these for the live cost/time preview.
+const TIME_PER_UNIT_BY_CLASS = {
+    business: 6, regional: 8, narrowbody: 10, widebody: 12,
+};
+
+let _productionQueueState = null;
+let _ownDesignsCache = [];
+let _ownPlantsCache = [];
+let _plantOccupancyCache = {};   // property_id → in_use_slots
+
+function volumeDiscount(qty) {
+    if (qty >= 20) return 0.80;
+    if (qty >= 10) return 0.85;
+    if (qty >= 5)  return 0.90;
+    if (qty >= 2)  return 0.95;
+    return 1.00;
+}
+
+async function loadProductionQueueData(corpId) {
+    // Pull this corp's Available designs (engines + aircraft), this
+    // corp's industrial facilities, and current plant occupancy
+    // across all active runs (any corp's, since the property_id index
+    // is global).
+    const [designsRes, plantsRes, runsRes] = await Promise.all([
+        _supabase.from('corp_aircraft_designs')
+            .select('id, name, design_type, airframe_class, cost_per_unit, inventory_on_hand, engine_count, engine_design_id, thrust, weight, quality, passengers, range_nm')
+            .eq('corp_id', corpId)
+            .eq('status', 'available')
+            .eq('is_active', true)
+            .order('design_type', { ascending: false })
+            .order('name'),
+        _supabase.from('corp_properties')
+            .select('id, name, type, city, condition')
+            .eq('faction_id', corpId)
+            .eq('is_active', true)
+            .in('type', ['light_assembly_plant', 'aircraft_assembly_facility', 'heavy_manufacturing_plant', 'engine_assembly_plant']),
+        _supabase.from('corp_production_run_plants')
+            .select('property_id, corp_production_runs!inner(status)'),
+    ]);
+
+    if (designsRes.error) console.warn('[aviation-ops] designs fetch failed:', designsRes.error.message);
+    if (plantsRes.error)  console.warn('[aviation-ops] plants fetch failed:',  plantsRes.error.message);
+    if (runsRes.error)    console.warn('[aviation-ops] run-plants fetch failed:', runsRes.error.message);
+
+    _ownDesignsCache = designsRes.data || [];
+    _ownPlantsCache  = plantsRes.data || [];
+
+    const occ = {};
+    for (const row of (runsRes.data || [])) {
+        if (row.corp_production_runs?.status !== 'active') continue;
+        occ[row.property_id] = (occ[row.property_id] || 0) + 1;
+    }
+    _plantOccupancyCache = occ;
+}
+
+function plantHasFreeSlot(plant) {
+    const cap = PLANT_SIMULTANEOUS_BUILDS[plant.type] || 1;
+    const used = _plantOccupancyCache[plant.id] || 0;
+    return used < cap;
+}
+
+function isPlantEligibleFor(plant, design) {
+    if (!plant || !design) return false;
+    if (!plantHasFreeSlot(plant)) return false;
+    const allowed = PLANT_TYPE_COMPAT[plant.type] || [];
+    if (design.design_type === 'engine')  return allowed.includes('engine');
+    if (design.design_type === 'aircraft') return allowed.includes(design.airframe_class);
+    return false;
+}
+
+async function openProductionQueueModal() {
+    await loadProductionQueueData(_faction.id);
+    if (_ownDesignsCache.length === 0) {
+        alert('No Available designs to produce. Complete an engine or aircraft design first.');
+        return;
+    }
+
+    let overlay = document.getElementById('am-production-queue-modal');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'am-production-queue-modal';
+        overlay.className = 'am-modal-overlay';
+        overlay.innerHTML = `
+            <div class="am-modal">
+                <div class="am-modal-header">
+                    <div>
+                        <div class="am-modal-eyebrow">— Aviation Manufacturing ◊ Production Queue —</div>
+                        <h2 class="am-modal-title">Queue <em>Production</em></h2>
+                        <div class="am-modal-subtitle" id="am-q-subtitle"></div>
+                    </div>
+                    <button type="button" class="am-modal-close" aria-label="Close">×</button>
+                </div>
+                <div class="am-modal-body">
+                    <div class="am-form-section">
+                        <div class="am-form-section-header">
+                            <h3><span class="num">I.</span>Select Design</h3>
+                            <span class="meta">Choose 1 ◊ From Your Catalog</span>
+                        </div>
+                        <div class="am-q-tabs">
+                            <button type="button" class="am-q-tab active" data-q-tab="aircraft">Aircraft Designs</button>
+                            <button type="button" class="am-q-tab" data-q-tab="engine">Engine Designs</button>
+                        </div>
+                        <div class="am-q-list" id="am-q-design-list"></div>
+                    </div>
+
+                    <div class="am-form-section">
+                        <div class="am-form-section-header">
+                            <h3><span class="num">II.</span>Allocate Plants</h3>
+                            <span class="meta">Compatible Plants Only</span>
+                        </div>
+                        <div class="am-engine-block" id="am-q-plants-block"></div>
+                    </div>
+
+                    <div class="am-form-section">
+                        <div class="am-form-section-header">
+                            <h3><span class="num">III.</span>Production Quantity</h3>
+                            <span class="meta">Volume Discount Applies</span>
+                        </div>
+                        <div class="am-engine-block am-q-quantity-block">
+                            <div>
+                                <div class="am-q-qty-display"><span id="am-q-qty">5</span><span class="unit">units</span></div>
+                                <input type="range" min="1" max="20" step="1" value="5" class="am-q-slider" id="am-q-slider" />
+                                <div style="display:flex; justify-content:space-between; font-family:var(--co-mono); font-size:9px; color:var(--co-text-tertiary); letter-spacing:0.14em;"><span>1 UNIT</span><span>20 UNITS</span></div>
+                            </div>
+                            <div>
+                                <div style="font-family:var(--co-mono); font-size:9px; letter-spacing:0.16em; text-transform:uppercase; color:var(--co-text-tertiary); margin-bottom:8px;">Volume Discount Schedule</div>
+                                <div class="am-q-tier-row" data-tier="1"><span class="qty">1 unit</span><span class="pct">100%</span></div>
+                                <div class="am-q-tier-row" data-tier="2"><span class="qty">2-4 units</span><span class="pct">95%</span></div>
+                                <div class="am-q-tier-row" data-tier="5"><span class="qty">5-9 units</span><span class="pct">90%</span></div>
+                                <div class="am-q-tier-row" data-tier="10"><span class="qty">10-19 units</span><span class="pct">85%</span></div>
+                                <div class="am-q-tier-row" data-tier="20"><span class="qty">20+ units</span><span class="pct">80%</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="am-form-section" id="am-q-supply-section">
+                        <div class="am-form-section-header">
+                            <h3><span class="num">IV.</span>Engine Supply</h3>
+                            <span class="meta">Aircraft Builds Consume Engines</span>
+                        </div>
+                        <div class="am-engine-block">
+                            <div class="am-q-supply-grid">
+                                <div class="am-q-supply-cell"><div class="am-q-supply-cell-label">Engines Needed</div><div class="am-q-supply-cell-value" id="am-q-engines-need">—</div></div>
+                                <div class="am-q-supply-cell"><div class="am-q-supply-cell-label">In Inventory</div><div class="am-q-supply-cell-value green" id="am-q-engines-stock">—</div></div>
+                                <div class="am-q-supply-cell"><div class="am-q-supply-cell-label">After This Run</div><div class="am-q-supply-cell-value" id="am-q-engines-net">—</div></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="am-form-section">
+                        <div class="am-form-section-header">
+                            <h3><span class="num">V.</span>Production Schedule</h3>
+                            <span class="meta">Per-Tick Cost &amp; Total Timeline</span>
+                        </div>
+                        <div class="am-summary">
+                            <div class="am-summary-breakdown">
+                                <div>
+                                    <div class="am-breakdown-title">Cost Breakdown</div>
+                                    <div class="am-breakdown-line"><span class="label">Per Unit (after discount)</span><span class="value" id="am-q-c-perunit">—</span></div>
+                                    <div class="am-breakdown-line"><span class="label">Quantity</span><span class="value" id="am-q-c-qty">—</span></div>
+                                    <div class="am-breakdown-line total"><span class="label">Total Cost</span><span class="value" id="am-q-c-total">—</span></div>
+                                </div>
+                                <div>
+                                    <div class="am-breakdown-title">Timeline</div>
+                                    <div class="am-breakdown-line"><span class="label">Plants Assigned</span><span class="value" id="am-q-c-plants">—</span></div>
+                                    <div class="am-breakdown-line"><span class="label">Time / Unit</span><span class="value" id="am-q-c-tpu">—</span></div>
+                                    <div class="am-breakdown-line"><span class="label">Cost / Tick</span><span class="value" id="am-q-c-cpt">—</span></div>
+                                    <div class="am-breakdown-line total"><span class="label">Total Ticks</span><span class="value" id="am-q-c-total-ticks">—</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="am-modal-error" id="am-q-modal-error"></div>
+                <div class="am-modal-footer">
+                    <div class="am-modal-footer-summary">
+                        <div class="am-modal-footer-item"><span class="am-modal-footer-label">Total Cost</span><span class="am-modal-footer-value" id="am-q-footer-cost">—</span></div>
+                        <div class="am-modal-footer-item"><span class="am-modal-footer-label">Per Tick</span><span class="am-modal-footer-value" id="am-q-footer-cpt">—</span></div>
+                        <div class="am-modal-footer-item"><span class="am-modal-footer-label">Total Ticks</span><span class="am-modal-footer-value" id="am-q-footer-ticks">—</span></div>
+                    </div>
+                    <div class="am-modal-footer-actions">
+                        <button type="button" class="am-modal-btn" id="am-q-modal-cancel">Cancel</button>
+                        <button type="button" class="am-modal-btn primary" id="am-q-modal-submit">Begin Production ▸</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('.am-modal-close').addEventListener('click', closeProductionQueueModal);
+        overlay.querySelector('#am-q-modal-cancel').addEventListener('click', closeProductionQueueModal);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) closeProductionQueueModal(); });
+        overlay.querySelectorAll('.am-q-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                overlay.querySelectorAll('.am-q-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                _productionQueueState.tab = tab.dataset.qTab;
+                _productionQueueState.designId = null;
+                _productionQueueState.assignedPlants = new Set();
+                renderProductionQueueModal();
+            });
+        });
+        overlay.querySelector('#am-q-slider').addEventListener('input', () => {
+            _productionQueueState.quantity = parseInt(overlay.querySelector('#am-q-slider').value, 10) || 1;
+            renderProductionQueueModal();
+        });
+        overlay.querySelector('#am-q-modal-submit').addEventListener('click', submitProductionQueue);
+    }
+
+    // Default state.
+    const aircraftDesigns = _ownDesignsCache.filter(d => d.design_type === 'aircraft');
+    const engineDesigns   = _ownDesignsCache.filter(d => d.design_type === 'engine');
+    const initialTab = aircraftDesigns.length ? 'aircraft' : 'engine';
+    const initialList = initialTab === 'aircraft' ? aircraftDesigns : engineDesigns;
+    _productionQueueState = {
+        tab:            initialTab,
+        designId:       initialList[0]?.id || null,
+        quantity:       5,
+        assignedPlants: new Set(),
+    };
+
+    overlay.querySelector('#am-q-slider').value = '5';
+    overlay.querySelectorAll('.am-q-tab').forEach(t => t.classList.toggle('active', t.dataset.qTab === initialTab));
+    overlay.querySelector('#am-q-modal-error').classList.remove('show');
+    overlay.querySelector('#am-q-modal-submit').disabled = false;
+    overlay.querySelector('#am-q-modal-submit').textContent = 'Begin Production ▸';
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    renderProductionQueueModal();
+}
+
+function closeProductionQueueModal() {
+    const overlay = document.getElementById('am-production-queue-modal');
+    if (overlay) overlay.classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+function renderProductionQueueModal() {
+    const overlay = document.getElementById('am-production-queue-modal');
+    if (!overlay || !_productionQueueState) return;
+    const $ = (id) => overlay.querySelector('#' + id);
+
+    const corpAbbr = (_faction.abbreviation || _faction.faction_name || 'AM').slice(0, 6);
+    const cash = Math.round(Number(_faction.corp_cash_reserves) || 0);
+    const aircraftDesigns = _ownDesignsCache.filter(d => d.design_type === 'aircraft');
+    const engineDesigns   = _ownDesignsCache.filter(d => d.design_type === 'engine');
+    $('am-q-subtitle').innerHTML = `Filing as: <strong>${escHtml(corpAbbr)}</strong> ${escHtml(_faction.faction_name || '')} ◊ Cash on hand: ${fmtCostShort(cash)} ◊ Engine catalog: ${engineDesigns.length} ◊ Aircraft catalog: ${aircraftDesigns.length}`;
+
+    // ── Design list ─────────────────────────────────────────────
+    const list = _productionQueueState.tab === 'aircraft' ? aircraftDesigns : engineDesigns;
+    const listEl = $('am-q-design-list');
+    if (list.length === 0) {
+        listEl.innerHTML = `<div class="am-q-empty">No ${_productionQueueState.tab} designs available. Run R&amp;D first.</div>`;
+    } else {
+        listEl.innerHTML = list.map(d => {
+            const meta = d.design_type === 'aircraft'
+                ? `${(d.airframe_class || '').toUpperCase()} ◊ ${d.engine_count || 0} ENGINE${(d.engine_count || 0) === 1 ? '' : 'S'} ◊ ${d.passengers || 0} PAX`
+                : `QUALITY ${Number(d.quality || 0).toFixed(1)} ◊ THRUST ${Number(d.thrust || 0).toFixed(1)} ◊ WEIGHT ${Number(d.weight || 0).toFixed(1)}`;
+            return `<div class="am-q-row${d.id === _productionQueueState.designId ? ' selected' : ''}" data-design-id="${d.id}">
+                <div class="am-q-radio"></div>
+                <div class="am-q-row-info">
+                    <div class="am-q-row-name">${escHtml(d.name)}</div>
+                    <div class="am-q-row-meta">${meta}</div>
+                </div>
+                <div class="am-q-row-info" style="text-align:right;">
+                    <div class="am-q-row-cost">${fmtCostShort(d.cost_per_unit)}</div>
+                    <div class="am-q-row-meta" style="margin-top:2px;">INVENTORY: ${Number(d.inventory_on_hand) || 0}</div>
+                </div>
+            </div>`;
+        }).join('');
+        listEl.querySelectorAll('.am-q-row').forEach(row => {
+            row.addEventListener('click', () => {
+                _productionQueueState.designId = row.dataset.designId;
+                _productionQueueState.assignedPlants = new Set();  // re-eligibility forces re-pick
+                renderProductionQueueModal();
+            });
+        });
+    }
+
+    const design = _ownDesignsCache.find(d => d.id === _productionQueueState.designId);
+
+    // ── Plants ──────────────────────────────────────────────────
+    const plantsBlock = $('am-q-plants-block');
+    if (!design) {
+        plantsBlock.innerHTML = `<div class="am-q-empty">Pick a design above to see compatible plants.</div>`;
+    } else {
+        plantsBlock.innerHTML = (_ownPlantsCache.length === 0
+            ? `<div class="am-q-empty">No industrial facilities owned. Build one from the Expansion tab.</div>`
+            : _ownPlantsCache.map(p => {
+                const eligible  = isPlantEligibleFor(p, design);
+                const cap       = PLANT_SIMULTANEOUS_BUILDS[p.type] || 1;
+                const used      = _plantOccupancyCache[p.id] || 0;
+                const free      = cap - used;
+                const isFull    = !plantHasFreeSlot(p);
+                const isAssigned = _productionQueueState.assignedPlants.has(p.id);
+                let statusCls, statusTxt;
+                if (isFull && !isAssigned) { statusCls = 'busy'; statusTxt = `Full (${used}/${cap})`; }
+                else if (!eligible)        { statusCls = 'incompat'; statusTxt = 'Incompatible'; }
+                else                       { statusCls = 'ok'; statusTxt = `Free slot (${free}/${cap})`; }
+                return `<div class="am-q-plant-row" data-plant-id="${p.id}">
+                    <div>
+                        <div class="am-q-plant-name">${escHtml(p.name)} <span style="font-family:var(--co-mono); font-size:9px; color:var(--co-text-tertiary); letter-spacing:0.1em; text-transform:uppercase; margin-left:6px;">${PLANT_SHORT_LABEL[p.type] || p.type}</span></div>
+                        <div class="am-q-plant-meta">${escHtml(p.city || '')} ◊ ${Math.round(Number(p.condition || 0))}% CONDITION</div>
+                    </div>
+                    <span class="am-q-plant-status ${statusCls}">${statusTxt}</span>
+                    <button type="button" class="am-q-plant-toggle${isAssigned ? ' assigned' : ''}" data-plant-id="${p.id}" ${(eligible || isAssigned) ? '' : 'disabled'}>${isAssigned ? 'Assigned' : 'Assign'}</button>
+                </div>`;
+            }).join(''));
+        plantsBlock.querySelectorAll('.am-q-plant-toggle').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (btn.disabled) return;
+                const pid = btn.dataset.plantId;
+                if (_productionQueueState.assignedPlants.has(pid)) {
+                    _productionQueueState.assignedPlants.delete(pid);
+                } else {
+                    _productionQueueState.assignedPlants.add(pid);
+                }
+                renderProductionQueueModal();
+            });
+        });
+    }
+
+    // ── Quantity tier highlight ────────────────────────────────
+    const qty = _productionQueueState.quantity;
+    $('am-q-qty').textContent = String(qty);
+    overlay.querySelectorAll('.am-q-tier-row').forEach(t => t.classList.remove('active'));
+    if (qty >= 20)      overlay.querySelector('.am-q-tier-row[data-tier="20"]').classList.add('active');
+    else if (qty >= 10) overlay.querySelector('.am-q-tier-row[data-tier="10"]').classList.add('active');
+    else if (qty >= 5)  overlay.querySelector('.am-q-tier-row[data-tier="5"]').classList.add('active');
+    else if (qty >= 2)  overlay.querySelector('.am-q-tier-row[data-tier="2"]').classList.add('active');
+    else                overlay.querySelector('.am-q-tier-row[data-tier="1"]').classList.add('active');
+
+    // ── Engine supply (aircraft only) ──────────────────────────
+    const supplySection = $('am-q-supply-section');
+    let engineDesign = null;
+    let enginesNeeded = 0;
+    let stockSufficient = true;
+    if (design && design.design_type === 'aircraft') {
+        supplySection.style.display = '';
+        engineDesign = _ownDesignsCache.find(d => d.id === design.engine_design_id);
+        enginesNeeded = (Number(design.engine_count) || 0) * qty;
+        const stock = Number(engineDesign?.inventory_on_hand) || 0;
+        const after = stock - enginesNeeded;
+        stockSufficient = after >= 0;
+        $('am-q-engines-need').textContent = String(enginesNeeded);
+        $('am-q-engines-stock').textContent = `${stock}${engineDesign ? ' · ' + escHtml(engineDesign.name) : ''}`;
+        const netEl = $('am-q-engines-net');
+        netEl.textContent = stockSufficient ? `+${after}` : String(after);
+        netEl.className = 'am-q-supply-cell-value' + (stockSufficient ? ' green' : ' bad');
+    } else {
+        supplySection.style.display = 'none';
+    }
+
+    // ── Cost / time math ───────────────────────────────────────
+    const assignedPlantIds = Array.from(_productionQueueState.assignedPlants);
+    const parallelCapacity = assignedPlantIds.length;
+    const timePerUnit = design
+        ? (design.design_type === 'engine' ? 4 : (TIME_PER_UNIT_BY_CLASS[design.airframe_class] || 8))
+        : 0;
+    const totalCycles = parallelCapacity > 0 && qty > 0 ? Math.ceil(qty / parallelCapacity) : 0;
+    const totalTicks  = totalCycles * timePerUnit;
+
+    let perUnitCost = 0;
+    if (design) {
+        const designCost = Number(design.cost_per_unit) || 0;
+        if (design.design_type === 'aircraft' && engineDesign) {
+            const enginePart = (Number(design.engine_count) || 0) * (Number(engineDesign.cost_per_unit) || 0);
+            perUnitCost = Math.max(0, designCost - enginePart);  // engines pulled from inventory, not paid here
+        } else {
+            perUnitCost = designCost;
+        }
+    }
+    const discount = volumeDiscount(qty);
+    const finalPerUnit = Math.round(perUnitCost * discount);
+    const totalCost  = finalPerUnit * qty;
+    const costPerTick = totalTicks > 0 ? Math.round(totalCost / totalTicks) : 0;
+
+    $('am-q-c-perunit').textContent = design ? `${fmtCostShort(finalPerUnit)} (${Math.round(discount * 100)}%)` : '—';
+    $('am-q-c-qty').textContent     = `${qty} × ${fmtCostShort(finalPerUnit)}`;
+    $('am-q-c-total').textContent   = fmtCostShort(totalCost);
+    $('am-q-c-plants').textContent  = parallelCapacity > 0 ? `${parallelCapacity} (parallel: ${parallelCapacity}/cycle)` : '—';
+    $('am-q-c-tpu').textContent     = timePerUnit > 0 ? `${timePerUnit} ticks` : '—';
+    $('am-q-c-cpt').textContent     = totalTicks > 0 ? `${fmtCostShort(costPerTick)}/tick` : '—';
+    $('am-q-c-total-ticks').textContent = totalTicks > 0 ? `${totalTicks} ticks` : '—';
+    $('am-q-footer-cost').textContent  = fmtCostShort(totalCost);
+    $('am-q-footer-cpt').textContent   = totalTicks > 0 ? fmtCostShort(costPerTick) : '—';
+    $('am-q-footer-ticks').textContent = totalTicks > 0 ? String(totalTicks) : '—';
+
+    // ── Submit gating ──────────────────────────────────────────
+    // The "cross-corp engine" branch handles the case where an
+    // aircraft was designed against another corp's engine (the
+    // design modal allows any globally-Available engine, but the
+    // production RPC currently only supports own-corp engine
+    // sourcing). Without this branch the player would see a
+    // misleading "Need N engines (short N)" gate instead of an
+    // explanation of what's actually wrong.
+    const submitBtn = $('am-q-modal-submit');
+    let blockReason = null;
+    if (!design) blockReason = 'Pick a design';
+    else if (parallelCapacity === 0) blockReason = 'Assign at least one plant';
+    else if (design.design_type === 'aircraft' && !design.engine_design_id) blockReason = 'Aircraft design has no engine reference';
+    else if (design.design_type === 'aircraft' && !engineDesign) blockReason = 'This aircraft was designed with another corp\'s engine. Cross-corp engine sourcing isn\'t supported yet — pick an aircraft built around one of your own engine designs.';
+    else if (design.design_type === 'aircraft' && !stockSufficient) blockReason = `Need ${enginesNeeded} engines (short ${enginesNeeded - (Number(engineDesign?.inventory_on_hand) || 0)})`;
+    else if (cash < costPerTick) blockReason = `Need ${fmtCostShort(costPerTick)} cash to start (you have ${fmtCostShort(cash)})`;
+
+    submitBtn.disabled = !!blockReason;
+    submitBtn.textContent = blockReason || 'Begin Production ▸';
+}
+
+async function submitProductionQueue() {
+    if (!_productionQueueState) return;
+    const overlay = document.getElementById('am-production-queue-modal');
+    const submitBtn = overlay.querySelector('#am-q-modal-submit');
+    const errEl = overlay.querySelector('#am-q-modal-error');
+    if (submitBtn.disabled) return;
+
+    const design = _ownDesignsCache.find(d => d.id === _productionQueueState.designId);
+    if (!design) return;
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting…';
+    errEl.classList.remove('show');
+
+    try {
+        const { data, error } = await _supabase.rpc('queue_production_run', {
+            p_corp_id:            _faction.id,
+            p_design_id:          _productionQueueState.designId,
+            p_engine_design_id:   design.design_type === 'aircraft' ? design.engine_design_id : null,
+            p_quantity:           _productionQueueState.quantity,
+            p_plant_property_ids: Array.from(_productionQueueState.assignedPlants),
+        });
+        if (error) {
+            errEl.textContent = error.message;
+            errEl.classList.add('show');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Begin Production ▸';
+            return;
+        }
+        if (!data?.success) {
+            errEl.textContent = data?.error || 'Could not queue production.';
+            errEl.classList.add('show');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Begin Production ▸';
+            return;
+        }
+        closeProductionQueueModal();
+        await Promise.all([loadDesigns(_faction.id), loadProductionRuns(_faction.id)]);
+    } catch (err) {
+        errEl.textContent = err?.message || 'Unknown error.';
+        errEl.classList.add('show');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Begin Production ▸';
+    }
+}
+
+// ── Active production runs panel ────────────────────────────────
+// Two-step fetch: corp_production_runs has two FKs to
+// corp_aircraft_designs (design_id + engine_design_id) which makes
+// PostgREST embeds ambiguous. Resolving the design name by hand-join.
+async function loadProductionRuns(corpId) {
+    const el = document.getElementById('co-production-list');
+    if (!el) return;
+    const { data, error } = await _supabase
+        .from('corp_production_runs')
+        .select('id, design_id, design_type, quantity, completed_quantity, total_ticks, ticks_remaining, cost_per_tick, status')
+        .eq('corp_id', corpId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false });
+    if (error) {
+        console.warn('[aviation-ops] production runs fetch failed:', error.message);
+        el.innerHTML = '<div class="co-contract-empty">Could not load production runs.</div>';
+        return;
+    }
+    const rows = data || [];
+    if (rows.length === 0) {
+        el.innerHTML = '<div class="co-contract-empty">No active production runs. Click + Production Queue to start one.</div>';
+        return;
+    }
+
+    // Resolve design names with one batched query.
+    const designIds = [...new Set(rows.map(r => r.design_id).filter(Boolean))];
+    let nameById = {};
+    if (designIds.length > 0) {
+        const { data: designs, error: dErr } = await _supabase
+            .from('corp_aircraft_designs')
+            .select('id, name')
+            .in('id', designIds);
+        if (dErr) console.warn('[aviation-ops] design name lookup failed:', dErr.message);
+        for (const d of (designs || [])) nameById[d.id] = d.name;
+    }
+
+    el.innerHTML = rows.map(r => renderProductionRunCard(r, nameById[r.design_id] || '—')).join('');
+}
+
+function renderProductionRunCard(r, designName) {
+    const total = Number(r.total_ticks) || 1;
+    const remaining = Number(r.ticks_remaining) || 0;
+    const progressPct = Math.max(0, Math.min(100, ((total - remaining) / total) * 100));
+    const meta = `${r.design_type === 'engine' ? 'Engine' : 'Aircraft'} ◊ ${r.completed_quantity || 0} / ${r.quantity || 0} delivered ◊ ${fmtCostShort(r.cost_per_tick)}/tick`;
+    return `<div class="am-q-run-card">
+        <div>
+            <div class="am-q-run-name">${escHtml(designName)}</div>
+            <div class="am-q-run-meta">${meta}</div>
+        </div>
+        <div class="am-q-run-stats"><strong>${remaining}</strong> ticks left<br><span style="color:var(--co-text-tertiary);">${progressPct.toFixed(0)}% complete</span></div>
+        <div class="am-q-run-progress"><div class="am-q-run-progress-fill" style="width:${progressPct.toFixed(0)}%"></div></div>
+    </div>`;
+}
+
 // ── Live designs panels (R&D + Current Designs) ──────────────────
 async function loadDesigns(corpId) {
     const designsEl = document.getElementById('co-designs-list');
@@ -2585,7 +3262,7 @@ async function init() {
     }
 
     await loadAvailableEngineCatalog();
-    await loadDesigns(faction.id);
+    await Promise.all([loadDesigns(faction.id), loadProductionRuns(faction.id)]);
 }
 
 init().catch(err => {
