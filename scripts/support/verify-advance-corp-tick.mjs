@@ -26,8 +26,24 @@ async function request(url, { method = 'GET', headers = {}, body } = {}) {
   return json;
 }
 
+function resultRows(result) {
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.data)) return result.data;
+  if (Array.isArray(result?.result)) return result.result;
+  if (Array.isArray(result?.rows)) return result.rows;
+  return [];
+}
+
+function assertSqlText(sql) {
+  const firstLine = sql.trimStart().split('\n')[0];
+  if (/^(?:diff --git|@@|@ -\d+,\d+ \+\d+,\d+ @@)/.test(firstLine)) {
+    fail('SQL payload appears to be a git diff hunk, not a SQL statement. Run only the select statements or script, without diff header lines.');
+  }
+}
+
 async function sqlQuery(sql) {
   if (!ACCESS_TOKEN) fail('SUPABASE_ACCESS_TOKEN is required for SQL checks via Supabase Management API.');
+  assertSqlText(sql);
   const url = `https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query`;
   return request(url, {
     method: 'POST',
@@ -40,17 +56,48 @@ async function sqlQuery(sql) {
 }
 
 async function getCronJob() {
-  const rows = await sqlQuery(`
+  const rows = resultRows(await sqlQuery(`
     select jobid, jobname, active, command
     from cron.job
     where jobname = 'advance-corp-tick'
     limit 1;
-  `);
-  return Array.isArray(rows) ? rows[0] : rows?.[0];
+  `));
+  return rows[0];
 }
 
 function commandLooksCorrect(commandText) {
   return typeof commandText === 'string' && commandText.includes('/functions/v1/advance-corp-tick');
+}
+
+async function preflightCorpTickMarker() {
+  info('Checking corp_last_processed_tick schema preflight...');
+  const columnRows = resultRows(await sqlQuery(`
+    select column_name
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'shard'
+      and column_name = 'corp_last_processed_tick';
+  `));
+
+  if (columnRows.length === 0) {
+    fail('Missing public.shard.corp_last_processed_tick. Apply supabase/migrations/20260402_corp_last_processed_tick.sql before running this verification.');
+  }
+
+  ok('public.shard.corp_last_processed_tick column exists.');
+
+  const shardRows = resultRows(await sqlQuery(`
+    select name, current_tick, corp_last_processed_tick
+    from public.shard
+    where name = 'Alpha Shard';
+  `));
+  const alphaShard = shardRows[0];
+
+  if (!alphaShard) {
+    fail('Alpha Shard was not found in public.shard; cannot confirm corp_last_processed_tick marker.');
+  }
+
+  info(`Alpha Shard current_tick=${alphaShard.current_tick}; corp_last_processed_tick=${alphaShard.corp_last_processed_tick ?? 'null'}`);
+  info('Confirm the marker value before continuing: if corp_last_processed_tick already matches the next target tick, the next corp tick may skip processing.');
 }
 
 async function ensureCronJob() {
@@ -149,6 +196,7 @@ async function validateCashHistoryGrowth() {
 
 (async function main() {
   info(`Project ref: ${PROJECT_REF}`);
+  await preflightCorpTickMarker();
   await ensureCronJob();
   deployFunction();
   await validateCashHistoryGrowth();
