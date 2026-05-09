@@ -1881,6 +1881,7 @@ body.h2-page .val-card { display: none !important; }
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
+import { isFactionInactive } from './js/game/factions.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { initMessaging } from './js/messaging.js';
 import { calculateTotalMaintenance } from './js/game/equipment.js';
@@ -1941,7 +1942,7 @@ async function init() {
         .select('*')
         .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
 
-    allUserFactions = (allFactions || []).filter(f => f.nation_id && !f.abandoned_at);
+    allUserFactions = (allFactions || []).filter(f => !isFactionInactive(f));
 
     // Pick active faction — prefer sessionStorage, then first corp, then first
     const activeFactionId = sessionStorage.getItem('active_faction_id');

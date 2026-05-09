@@ -10,6 +10,7 @@
 import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
 import { hasActiveGovernment } from './game/government-structure.js';
+import { isFactionInactive } from './game/factions.js';
 import { SECTOR_OPS_PAGE } from './corp-topbar.js';
 import { escapeHtml } from './utils.js';
 
@@ -235,7 +236,7 @@ export async function loadGameState(requireFaction = true) {
                     const { data: allFactions } = await _supabase
                         .from('factions').select('*')
                         .or(`id.eq.${userId},linked_user_id.eq.${userId}`);
-                    _userFactions = (allFactions || []).filter(f => f.nation_id && !f.abandoned_at);
+                    _userFactions = (allFactions || []).filter(f => !isFactionInactive(f));
                     // Shard reset guard: cached faction no longer exists in DB
                     if (_userFactions.length === 0) {
                         console.log('Cached faction deleted (shard reset?) — clearing cache');
@@ -291,7 +292,7 @@ export async function loadGameState(requireFaction = true) {
             .from('factions').select('*')
             .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
 
-        const ownedFactions = (allFactions || []).filter(f => f.nation_id && !f.abandoned_at);
+        const ownedFactions = (allFactions || []).filter(f => !isFactionInactive(f));
         // Store all factions for the dropdown switcher
         _userFactions = ownedFactions;
 

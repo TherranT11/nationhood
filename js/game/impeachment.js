@@ -14,6 +14,7 @@
  */
 
 import { GAME_CONFIG } from './config.js';
+import { getFactionInactiveReason } from './factions.js';
 
 /**
  * Build the list of impeachment charges with availability flags.
@@ -53,10 +54,10 @@ export async function buildImpeachmentCharges(supabase, nation, president) {
             .select('nation_id, abandoned_at, is_banned')
             .eq('id', president.faction_id)
             .maybeSingle();
-        if (prezParty) {
-            if (prezParty.abandoned_at)      { partyInactive = true; partyInactiveDetail = 'abandoned'; }
-            else if (!prezParty.nation_id)   { partyInactive = true; partyInactiveDetail = 'unassigned to any nation'; }
-            else if (prezParty.is_banned)    { partyInactive = true; partyInactiveDetail = 'banned'; }
+        const reason = getFactionInactiveReason(prezParty);
+        if (reason) {
+            partyInactive = true;
+            partyInactiveDetail = reason === 'unassigned' ? 'unassigned to any nation' : reason;
         }
     }
 
