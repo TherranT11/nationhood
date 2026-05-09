@@ -39,10 +39,14 @@ CREATE POLICY "impeachment_proceedings_read_all"
     FOR SELECT
     USING (true);
 
--- Only the initiating faction can insert. Match auth.uid() against
--- the faction row referenced by initiated_by_faction_id (covers both
--- direct ownership and corp-style linked_user_id, even though
--- impeachment is currently a party-only action).
+-- Only the initiating faction can insert, AND the faction must be
+-- from the SAME nation as the proceeding. The faction-ownership
+-- gate alone would let a player in Nation X file an impeachment
+-- against the President of Nation Y. The UI never exposes that, but
+-- belt-and-suspenders the RLS check.
+--
+-- linked_user_id covers the corp-faction pattern for symmetry, even
+-- though impeachment is currently a party-only action.
 CREATE POLICY "impeachment_proceedings_initiator_insert"
     ON public.impeachment_proceedings
     FOR INSERT
@@ -50,14 +54,16 @@ CREATE POLICY "impeachment_proceedings_initiator_insert"
     WITH CHECK (
         initiated_by_faction_id IN (
             SELECT id FROM public.factions
-             WHERE id = auth.uid()
-                OR linked_user_id = auth.uid()
+             WHERE (id = auth.uid() OR linked_user_id = auth.uid())
+               AND nation_id = impeachment_proceedings.nation_id
         )
     );
 
 -- Only the initiating faction can update (sets motion_bill_id right
 -- after the INSERT in impeachment.js). All phase/result transitions
--- happen tick-side via service role and bypass RLS.
+-- happen tick-side via service role and bypass RLS. Same nation
+-- gate as INSERT — the WITH CHECK also blocks moving a proceeding
+-- into a different nation_id.
 CREATE POLICY "impeachment_proceedings_initiator_update"
     ON public.impeachment_proceedings
     FOR UPDATE
@@ -65,15 +71,15 @@ CREATE POLICY "impeachment_proceedings_initiator_update"
     USING (
         initiated_by_faction_id IN (
             SELECT id FROM public.factions
-             WHERE id = auth.uid()
-                OR linked_user_id = auth.uid()
+             WHERE (id = auth.uid() OR linked_user_id = auth.uid())
+               AND nation_id = impeachment_proceedings.nation_id
         )
     )
     WITH CHECK (
         initiated_by_faction_id IN (
             SELECT id FROM public.factions
-             WHERE id = auth.uid()
-                OR linked_user_id = auth.uid()
+             WHERE (id = auth.uid() OR linked_user_id = auth.uid())
+               AND nation_id = impeachment_proceedings.nation_id
         )
     );
 
@@ -86,8 +92,8 @@ CREATE POLICY "impeachment_proceedings_initiator_delete"
     USING (
         initiated_by_faction_id IN (
             SELECT id FROM public.factions
-             WHERE id = auth.uid()
-                OR linked_user_id = auth.uid()
+             WHERE (id = auth.uid() OR linked_user_id = auth.uid())
+               AND nation_id = impeachment_proceedings.nation_id
         )
     );
 
