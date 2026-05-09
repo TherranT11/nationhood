@@ -29,18 +29,31 @@ export function computeIncomeTaxRevenue(nation, rateOverride) {
     return Math.max(0, rev);
 }
 
+// Flat per-tick contribution to corporate tax revenue for every
+// active corporation HQ'd in the nation. $2/tick × 12 ticks = $24/yr
+// per corp, independent of the corporate_tax rate or corruption.
+export const CORP_TAX_PER_CORP_PER_TICK = 2;
+
+export function computeCorporateTaxPerCorp(activeCorpCount) {
+    return CORP_TAX_PER_CORP_PER_TICK * Number(activeCorpCount || 0);
+}
+
 /**
  * Per-tick corporate tax revenue.
- *   (service_sector + industry) / 10 × corporate_tax × (1 − corruption/100)
+ *   ((service_sector + industry) / 10) × corporate_tax × (1 − corruption/100)
+ *   + 2 × activeCorpCount      ($24/yr per active corp HQ'd here)
  * Pass a rateOverride to preview revenue at a hypothetical rate.
+ * activeCorpCount defaults to 0; callers without a count get the
+ * rate-only figure (used by economy.html rate-delta projections
+ * where the per-corp adder cancels out).
  */
-export function computeCorporateTaxRevenue(nation, rateOverride) {
+export function computeCorporateTaxRevenue(nation, rateOverride, activeCorpCount = 0) {
     const svc = Number(nation.service_sector || 0);
     const ind = Number(nation.industry || 0);
     const rate = rateOverride !== undefined ? Number(rateOverride) : Number(nation.corporate_tax || 0);
     const corruption = Number(nation.corruption || 0);
-    const rev = ((svc + ind) / 10) * rate * (1 - corruption / 100);
-    return Math.max(0, rev);
+    const rateRev = ((svc + ind) / 10) * rate * (1 - corruption / 100);
+    return Math.max(0, rateRev) + computeCorporateTaxPerCorp(activeCorpCount);
 }
 
 export function calculateNationalBudget(nation, opts = {}) {
@@ -53,7 +66,7 @@ export function calculateNationalBudget(nation, opts = {}) {
     const grossRevenue = Number(nation.budget ?? 0);
 
     const incomeRevenue = computeIncomeTaxRevenue(nation);
-    const corpRevenue = computeCorporateTaxRevenue(nation);
+    const corpRevenue = computeCorporateTaxRevenue(nation, undefined, opts.activeCorpCount || 0);
 
     // Debt service: prefer the actual sum of bond coupon obligations from
     // the tick processor; fall back to a flat 5% annual interest rate.

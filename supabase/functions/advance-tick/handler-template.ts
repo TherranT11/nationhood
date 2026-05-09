@@ -2165,8 +2165,21 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // balance; income + corporate tax revenue accumulate into it
         // each tick. Formulas live in budget.js.
         try {
+            // Active corp count for the per-corp footprint adder in
+            // computeCorporateTaxRevenue ($2/tick per active corp HQ'd
+            // here). Mirrors government.html's loadBudgetData fetch.
+            let activeCorpCount = 0;
+            try {
+                const { count } = await supabase.from('factions')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('faction_type', 'corporation')
+                    .eq('nation_id', nation.id)
+                    .is('abandoned_at', null);
+                activeCorpCount = count || 0;
+            } catch (_) { /* fall back to 0 → no per-corp adder this tick */ }
+
             const incomeRev = computeIncomeTaxRevenue(nation);
-            const corpRev = computeCorporateTaxRevenue(nation);
+            const corpRev = computeCorporateTaxRevenue(nation, undefined, activeCorpCount);
             const totalRev = incomeRev + corpRev;
             if (totalRev > 0) {
                 const newBudget = Math.max(0, Number(nation.budget || 0) + totalRev);
