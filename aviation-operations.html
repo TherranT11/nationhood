@@ -479,6 +479,480 @@ body.corp-operations-aviation.light-mode {
   .co-hero-stat { padding: 24px 22px 22px; }
   .co-contracts-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Engine-design modal ────────────────────────────────────────
+   Opens from the [+ Design Engine] button; .am-* prefix scopes it
+   inside the .co-* page so future shared extraction is clean. */
+.am-modal-gate-note {
+  font-family: var(--co-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--co-accent-rust);
+  padding: 8px 12px;
+  border: 1px dashed rgba(232, 114, 74, 0.4);
+  background: rgba(232, 114, 74, 0.05);
+  text-align: center;
+}
+.co-panel-action-btn:disabled,
+.co-panel-action-btn.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: var(--co-line);
+}
+.co-panel-action-btn:disabled:hover,
+.co-panel-action-btn.disabled:hover {
+  background: transparent;
+  color: var(--co-text-secondary);
+  border-color: var(--co-line);
+}
+
+.am-modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(5, 6, 4, 0.85);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 30px 24px;
+  overflow-y: auto;
+}
+.am-modal-overlay.open { display: flex; }
+.am-modal {
+  width: 100%;
+  max-width: 1040px;
+  background: var(--co-bg-secondary);
+  border: 1px solid var(--co-line-bright);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+  position: relative;
+}
+
+.am-modal-header {
+  padding: 26px 32px 22px;
+  border-bottom: 1px solid var(--co-line);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.am-modal-eyebrow {
+  font-family: var(--co-mono); font-size: 10px;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--co-accent-gold-dim); margin-bottom: 6px;
+}
+.am-modal-title {
+  font-family: var(--co-serif); font-weight: 500;
+  font-size: 36px; line-height: 1;
+  letter-spacing: -0.02em; color: var(--co-text-primary);
+  font-style: italic;
+}
+.am-modal-title em { color: var(--co-accent-gold); }
+.am-modal-subtitle {
+  font-family: var(--co-mono); font-size: 11px;
+  letter-spacing: 0.1em; color: var(--co-text-tertiary);
+  margin-top: 8px;
+}
+.am-modal-subtitle strong { color: var(--co-accent-gold); font-weight: 500; }
+.am-modal-close {
+  background: transparent;
+  border: 1px solid var(--co-line-bright);
+  color: var(--co-text-tertiary);
+  font-family: var(--co-mono); font-size: 14px;
+  width: 32px; height: 32px;
+  cursor: pointer; transition: all 0.15s;
+}
+.am-modal-close:hover { border-color: var(--co-accent-red); color: var(--co-accent-red); }
+
+.am-modal-body { padding: 26px 32px; }
+
+.am-form-section { margin-bottom: 26px; }
+.am-form-section:last-child { margin-bottom: 0; }
+.am-form-section-header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 14px; padding-bottom: 10px;
+  border-bottom: 1px dashed var(--co-line-bright);
+}
+.am-form-section-header h3 {
+  font-family: var(--co-serif); font-style: italic; font-weight: 500;
+  font-size: 18px; color: var(--co-text-primary); letter-spacing: -0.01em;
+}
+.am-form-section-header h3 .num {
+  font-family: var(--co-mono); font-style: normal; font-size: 11px;
+  color: var(--co-accent-gold-dim); margin-right: 10px;
+  letter-spacing: 0.1em;
+}
+.am-form-section-header .meta {
+  font-family: var(--co-mono); font-size: 9px;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--co-text-tertiary);
+}
+
+.am-identity-block {
+  background: var(--co-bg-card);
+  border: 1px solid var(--co-line);
+  padding: 16px 22px;
+}
+.am-identity-label {
+  font-family: var(--co-mono); font-size: 9px;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--co-text-tertiary); margin-bottom: 8px;
+}
+.am-identity-input {
+  width: 100%;
+  background: var(--co-bg-secondary);
+  border: 1px solid var(--co-line-bright);
+  color: var(--co-text-primary);
+  font-family: var(--co-serif); font-size: 24px;
+  font-weight: 500; padding: 10px 14px;
+  letter-spacing: -0.01em;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.am-identity-input:focus { border-color: var(--co-accent-gold); }
+.am-identity-input::placeholder { color: var(--co-text-tertiary); font-style: italic; }
+
+.am-module-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.am-module-card {
+  background: var(--co-bg-card);
+  border: 1px solid var(--co-line);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.am-module-card:hover { border-color: var(--co-line-bright); background: var(--co-bg-elevated); }
+.am-module-card.selected {
+  border-color: var(--co-accent-gold);
+  background: rgba(201, 168, 50, 0.05);
+}
+.am-module-card.selected::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--co-accent-gold);
+}
+.am-module-card-header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 10px;
+}
+.am-module-name-block {
+  display: flex; align-items: flex-start; gap: 8px;
+  min-width: 0;
+}
+.am-module-radio {
+  width: 13px; height: 13px;
+  border: 1px solid var(--co-line-bright);
+  background: var(--co-bg-secondary);
+  border-radius: 50%;
+  position: relative;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+.am-module-card.selected .am-module-radio { border-color: var(--co-accent-gold); }
+.am-module-card.selected .am-module-radio::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  background: var(--co-accent-gold);
+  border-radius: 50%;
+}
+.am-module-name {
+  font-family: var(--co-serif);
+  font-weight: 500;
+  font-size: 13.5px;
+  color: var(--co-text-primary);
+  line-height: 1.25;
+}
+.am-module-tier-tag {
+  font-family: var(--co-mono);
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--co-accent-gold-dim);
+  padding: 2px 5px;
+  border: 1px solid rgba(201, 168, 50, 0.25);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.am-module-stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+.am-module-stat {
+  text-align: center;
+  padding: 5px 4px;
+  background: var(--co-bg-secondary);
+  border: 1px solid var(--co-line);
+}
+.am-module-stat-label {
+  font-family: var(--co-mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--co-text-tertiary);
+  margin-bottom: 2px;
+}
+.am-module-stat-value {
+  font-family: var(--co-serif);
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.am-module-stat-value.positive  { color: var(--co-accent-green); }
+.am-module-stat-value.negative  { color: var(--co-accent-red); }
+.am-module-stat-value.zero      { color: var(--co-text-tertiary); }
+.am-module-stat-value.weight    { color: var(--co-accent-rust); }
+.am-module-cost {
+  font-family: var(--co-mono);
+  font-size: 10px;
+  color: var(--co-text-secondary);
+  letter-spacing: 0.05em;
+  text-align: right;
+}
+.am-module-cost strong { color: var(--co-accent-gold); font-weight: 500; }
+
+.am-summary {
+  background: var(--co-bg-elevated);
+  border: 1px solid var(--co-line-bright);
+  padding: 22px 26px;
+}
+.am-summary-header-line {
+  font-family: var(--co-mono); font-size: 10px;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--co-text-tertiary); margin-bottom: 16px;
+}
+.am-summary-name-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 18px; margin-bottom: 6px;
+}
+.am-summary-name {
+  font-family: var(--co-serif); font-style: italic; font-weight: 500;
+  font-size: 28px; color: var(--co-accent-gold);
+  letter-spacing: -0.015em;
+}
+.am-summary-tier-line {
+  font-family: var(--co-mono); font-size: 10px;
+  color: var(--co-text-tertiary); letter-spacing: 0.14em;
+  text-transform: uppercase; margin-bottom: 22px;
+}
+.am-summary-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.am-summary-stat-card {
+  background: var(--co-bg-secondary);
+  border: 1px solid var(--co-line-bright);
+  padding: 14px 12px;
+  text-align: center;
+}
+.am-summary-stat-card-label {
+  font-family: var(--co-mono); font-size: 9px;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--co-text-tertiary); margin-bottom: 8px;
+}
+.am-summary-stat-card-value {
+  font-family: var(--co-serif); font-weight: 500;
+  font-size: 28px; line-height: 1;
+  color: var(--co-text-primary); font-variant-numeric: tabular-nums;
+}
+.am-summary-stat-card-value.weight-stat { color: var(--co-accent-rust); }
+.am-summary-stat-card-value .max {
+  font-size: 13px; color: var(--co-text-tertiary); margin-left: 2px;
+}
+.am-summary-stat-card-bar {
+  height: 3px; background: var(--co-line);
+  margin-top: 10px; position: relative; overflow: hidden;
+}
+.am-summary-stat-card-bar-fill {
+  position: absolute; top: 0; left: 0; height: 100%;
+  background: var(--co-accent-gold);
+  transition: width 0.2s;
+}
+.am-summary-stat-card-bar-fill.weight-bar { background: var(--co-accent-rust); }
+
+.am-quality-row {
+  display: grid; grid-template-columns: 1fr auto;
+  gap: 18px; align-items: center;
+  margin-bottom: 22px;
+  padding: 14px 18px;
+  background: var(--co-bg-secondary);
+  border: 1px solid var(--co-accent-gold-dim);
+}
+.am-quality-name {
+  font-family: var(--co-serif); font-style: italic; font-weight: 500;
+  font-size: 16px; color: var(--co-text-primary);
+}
+.am-quality-name .desc {
+  display: block;
+  font-family: var(--co-mono); font-style: normal;
+  font-size: 9px; color: var(--co-text-tertiary);
+  letter-spacing: 0.12em; text-transform: uppercase;
+  margin-top: 4px;
+}
+.am-quality-value {
+  font-family: var(--co-serif); font-weight: 500;
+  font-size: 30px; color: var(--co-accent-gold);
+  line-height: 1; font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.am-quality-value .max-num {
+  font-family: var(--co-mono); font-size: 14px;
+  color: var(--co-text-tertiary); margin-left: 2px;
+}
+
+.am-summary-breakdown {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.am-breakdown-title {
+  font-family: var(--co-mono); font-size: 10px;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--co-text-tertiary); margin-bottom: 10px;
+}
+.am-breakdown-line {
+  display: flex; justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--co-line);
+  font-family: var(--co-mono); font-size: 12px;
+}
+.am-breakdown-line:last-of-type { border-bottom: none; }
+.am-breakdown-line .label { color: var(--co-text-secondary); }
+.am-breakdown-line .value { color: var(--co-text-primary); font-weight: 500; font-variant-numeric: tabular-nums; }
+.am-breakdown-line.total {
+  margin-top: 6px; padding-top: 12px;
+  border-top: 1px solid var(--co-line-bright);
+  border-bottom: none;
+}
+.am-breakdown-line.total .label {
+  font-family: var(--co-serif); font-style: italic;
+  font-size: 14px; color: var(--co-text-primary);
+}
+.am-breakdown-line.total .value {
+  font-family: var(--co-serif); font-size: 18px; font-weight: 500;
+  color: var(--co-accent-gold);
+}
+
+.am-modal-footer {
+  padding: 16px 32px;
+  border-top: 1px solid var(--co-line);
+  background: var(--co-bg-primary);
+  display: flex; justify-content: space-between; align-items: center; gap: 24px;
+}
+.am-modal-footer-summary { display: flex; gap: 22px; }
+.am-modal-footer-item { display: flex; flex-direction: column; gap: 2px; }
+.am-modal-footer-label {
+  font-family: var(--co-mono); font-size: 9px;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--co-text-tertiary);
+}
+.am-modal-footer-value {
+  font-family: var(--co-serif); font-weight: 500;
+  font-size: 17px; color: var(--co-text-primary);
+  line-height: 1; font-variant-numeric: tabular-nums;
+}
+.am-modal-footer-actions { display: flex; gap: 8px; }
+.am-modal-btn {
+  font-family: var(--co-mono); font-size: 11px;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  padding: 11px 22px;
+  background: transparent;
+  border: 1px solid var(--co-line-bright);
+  color: var(--co-text-secondary);
+  cursor: pointer; transition: all 0.15s;
+  font-weight: 500;
+}
+.am-modal-btn:hover { border-color: var(--co-accent-gold); color: var(--co-accent-gold); }
+.am-modal-btn.primary {
+  background: var(--co-accent-gold);
+  border-color: var(--co-accent-gold);
+  color: var(--co-bg-primary);
+  font-weight: 700;
+}
+.am-modal-btn.primary:hover { background: var(--co-text-primary); border-color: var(--co-text-primary); }
+.am-modal-btn.primary:disabled,
+.am-modal-btn.primary.disabled {
+  background: var(--co-bg-secondary);
+  border-color: var(--co-line-bright);
+  color: var(--co-text-tertiary);
+  cursor: not-allowed;
+}
+.am-modal-error {
+  font-family: var(--co-mono); font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--co-accent-red);
+  padding: 0 32px 14px;
+  display: none;
+}
+.am-modal-error.show { display: block; }
+
+/* R&D + Current Designs panel cards */
+.am-design-card {
+  background: var(--co-bg-card);
+  border: 1px solid var(--co-line);
+  padding: 14px 18px;
+  display: grid;
+  gap: 8px;
+}
+.am-design-card-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 12px;
+}
+.am-design-name {
+  font-family: var(--co-serif); font-weight: 500; font-size: 16px;
+  color: var(--co-text-primary); letter-spacing: -0.005em;
+}
+.am-design-meta {
+  font-family: var(--co-mono); font-size: 9px;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--co-text-tertiary);
+}
+.am-design-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  font-family: var(--co-mono); font-size: 10px;
+}
+.am-design-stats > div { display: flex; flex-direction: column; gap: 2px; }
+.am-design-stats .label { color: var(--co-text-tertiary); font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; }
+.am-design-stats .value { color: var(--co-text-primary); font-family: var(--co-serif); font-size: 14px; font-weight: 500; }
+.am-design-progress {
+  height: 4px;
+  background: var(--co-line);
+  position: relative; overflow: hidden;
+  margin-top: 4px;
+}
+.am-design-progress-fill {
+  position: absolute; top: 0; left: 0; height: 100%;
+  background: var(--co-accent-gold);
+  transition: width 0.3s;
+}
+.am-design-countdown {
+  font-family: var(--co-mono); font-size: 10px;
+  color: var(--co-accent-gold);
+  letter-spacing: 0.08em; text-transform: uppercase;
+}
+
+@media (max-width: 880px) {
+  .am-module-grid { grid-template-columns: 1fr; }
+  .am-summary-stats-grid { grid-template-columns: 1fr 1fr; }
+  .am-summary-breakdown { grid-template-columns: 1fr; }
+  .am-modal-footer { flex-direction: column; align-items: stretch; gap: 14px; }
+  .am-modal-footer-actions { flex-direction: column; }
+  .am-modal-btn { width: 100%; }
+}
 </style>
 </head>
 <body class="corp-operations-aviation">
@@ -798,8 +1272,10 @@ function renderPageShell(activeOrders) {
     `;
 }
 
+// Placeholder labels for the buttons whose mechanics still ship in
+// later Phase F slices. Engine design is wired (start_engine_design_research)
+// — the rest still alert.
 const PLANT_ACTION_LABELS = {
-    'design-engine':    'Engine design',
     'design-aircraft':  'Aircraft design',
     'new-research':     'New research program',
     'fulfill-order':    'Order fulfillment',
@@ -807,14 +1283,437 @@ const PLANT_ACTION_LABELS = {
     'production-queue': 'Production queue management',
 };
 
+// ── Engine module specs (Tier 1). Mirrors the server-side CASE in
+//    start_engine_design_research so the modal preview matches what
+//    the RPC will persist. Keep in lockstep with the migration. ──
+const ENGINE_MODULES = {
+    combustion: {
+        'single-stage':  { name: 'Single-Stage Compressor',  thrust: 2,   weight: 0.5, eff: 30, rel: 0,  cost: 1500000 },
+        'twin-spool':    { name: 'Twin-Spool Configuration', thrust: 3,   weight: 0.8, eff: 40, rel: 0,  cost: 2500000 },
+        'high-pressure': { name: 'High-Pressure Core',       thrust: 4,   weight: 1.2, eff: 25, rel: -5, cost: 4000000 },
+    },
+    frame: {
+        'steel-casting':       { name: 'Steel Casting',        thrust: 0,   weight: 1.5, eff: 0,  rel: 20, cost: 1000000 },
+        'aluminum-alloy':      { name: 'Aluminum Alloy Frame', thrust: 0,   weight: 0.8, eff: 5,  rel: 15, cost: 1800000 },
+        'magnesium-composite': { name: 'Magnesium Composite',  thrust: 0.5, weight: 0.4, eff: 10, rel: 10, cost: 3000000 },
+    },
+    control: {
+        'mechanical-governor': { name: 'Mechanical Governor',      thrust: 0,   weight: 0.2, eff: 10, rel: 25, cost: 800000 },
+        'hydraulic-control':   { name: 'Hydraulic Control Unit',   thrust: 0.5, weight: 0.4, eff: 20, rel: 30, cost: 1500000 },
+        'early-electronic':    { name: 'Early Electronic Controls',thrust: 1,   weight: 0.3, eff: 30, rel: 35, cost: 2500000 },
+    },
+};
+const ENGINE_BASE_ASSEMBLY_COST = 1000000; // +$1M base on every engine
+
+let _hasEngineAssemblyPlant = false;
+let _designEngineState = null;
+
+function fmtCostShort(n) {
+    const v = Number(n) || 0;
+    if (v >= 1_000_000) return '$' + (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (v >= 1_000)     return '$' + (v / 1_000).toFixed(0) + 'k';
+    return '$' + Math.round(v);
+}
+
 function bindPanelActionButtons() {
     document.querySelectorAll('[data-am-action]').forEach(btn => {
         btn.addEventListener('click', () => {
             const action = btn.getAttribute('data-am-action');
-            const label  = PLANT_ACTION_LABELS[action] || 'This action';
+            if (action === 'design-engine') {
+                if (!_hasEngineAssemblyPlant) return; // gate; disabled state already shown
+                openDesignEngineModal();
+                return;
+            }
+            const label = PLANT_ACTION_LABELS[action] || 'This action';
             alert(label + ' will be available when Aviation Manufacturing Phase F mechanics ship.');
         });
     });
+}
+
+// ── Engine Assembly Plant gate. Read once after facilities load;
+//    disables the [+ Design Engine] button and surfaces a small
+//    "Requires an Engine Assembly Plant" notice in its place when
+//    the corp doesn't own one. ──
+function applyEngineDesignGate(hasPlant) {
+    _hasEngineAssemblyPlant = !!hasPlant;
+    const btn = document.querySelector('[data-am-action="design-engine"]');
+    if (!btn) return;
+    if (hasPlant) {
+        btn.disabled = false;
+        btn.classList.remove('disabled');
+        btn.textContent = '+ Design Engine';
+        const note = document.getElementById('co-design-engine-gate');
+        if (note) note.remove();
+    } else {
+        btn.disabled = true;
+        btn.classList.add('disabled');
+        btn.textContent = '+ Design Engine';
+        if (!document.getElementById('co-design-engine-gate')) {
+            const note = document.createElement('div');
+            note.id = 'co-design-engine-gate';
+            note.className = 'am-modal-gate-note';
+            note.style.flexBasis = '100%';
+            note.style.order = '-1';
+            note.textContent = 'Requires an Engine Assembly Plant';
+            btn.parentElement.insertBefore(note, btn.parentElement.firstChild);
+            // Allow the .co-panel-actions row to wrap so the note sits above.
+            btn.parentElement.style.flexWrap = 'wrap';
+        }
+    }
+}
+
+// ── Design Engine modal ────────────────────────────────────────
+function renderEngineModuleCard(moduleKey, optionId, opt, isSelected) {
+    const cls = (n) => n > 0 ? 'positive' : (n < 0 ? 'negative' : 'zero');
+    const sign = (n) => (n > 0 ? '+' : '') + (Number.isInteger(n) ? n : n.toFixed(1));
+    return `
+        <div class="am-module-card${isSelected ? ' selected' : ''}" data-module="${moduleKey}" data-id="${optionId}">
+            <div class="am-module-card-header">
+                <div class="am-module-name-block">
+                    <div class="am-module-radio"></div>
+                    <div class="am-module-name">${escHtml(opt.name)}</div>
+                </div>
+                <span class="am-module-tier-tag">TIER 1</span>
+            </div>
+            <div class="am-module-stats-row">
+                <div class="am-module-stat"><div class="am-module-stat-label">Thrust</div><div class="am-module-stat-value ${cls(opt.thrust)}">${opt.thrust === 0 ? '0' : sign(opt.thrust)}</div></div>
+                <div class="am-module-stat"><div class="am-module-stat-label">Weight</div><div class="am-module-stat-value weight">+${opt.weight}</div></div>
+                <div class="am-module-stat"><div class="am-module-stat-label">Eff</div><div class="am-module-stat-value ${cls(opt.eff)}">${opt.eff === 0 ? '0' : sign(opt.eff)}</div></div>
+                <div class="am-module-stat"><div class="am-module-stat-label">Rel</div><div class="am-module-stat-value ${cls(opt.rel)}">${opt.rel === 0 ? '0' : sign(opt.rel)}</div></div>
+            </div>
+            <div class="am-module-cost"><strong>${fmtCostShort(opt.cost)}</strong> per unit</div>
+        </div>`;
+}
+
+function openDesignEngineModal() {
+    let overlay = document.getElementById('am-design-engine-modal');
+    if (!overlay) {
+        const corpAbbr = (_faction.abbreviation || _faction.faction_name || 'AM').slice(0, 6);
+        const innov    = Math.round(Number(_faction.corp_innovation) || 0);
+
+        const buildSection = (numeral, title, meta, moduleKey, defaultId) => {
+            const opts = ENGINE_MODULES[moduleKey];
+            const cards = Object.entries(opts).map(([id, opt]) =>
+                renderEngineModuleCard(moduleKey, id, opt, id === defaultId)
+            ).join('');
+            return `
+                <div class="am-form-section">
+                    <div class="am-form-section-header">
+                        <h3><span class="num">${numeral}.</span>${title}</h3>
+                        <span class="meta">${meta}</span>
+                    </div>
+                    <div class="am-module-grid">${cards}</div>
+                </div>`;
+        };
+
+        overlay = document.createElement('div');
+        overlay.id = 'am-design-engine-modal';
+        overlay.className = 'am-modal-overlay';
+        overlay.innerHTML = `
+            <div class="am-modal">
+                <div class="am-modal-header">
+                    <div>
+                        <div class="am-modal-eyebrow">— Engine Assembly Plant ◊ New Engine Design —</div>
+                        <h2 class="am-modal-title">Design <em>Engine</em></h2>
+                        <div class="am-modal-subtitle">Designing for: <strong>${escHtml(corpAbbr)}</strong> ${escHtml(_faction.faction_name || '')} ◊ Innovation: ${innov}/10 ◊ Tier 1 Modules Available</div>
+                    </div>
+                    <button type="button" class="am-modal-close" aria-label="Close">×</button>
+                </div>
+                <div class="am-modal-body">
+                    <div class="am-form-section">
+                        <div class="am-form-section-header">
+                            <h3><span class="num">I.</span>Identity</h3>
+                            <span class="meta">Name Your Engine</span>
+                        </div>
+                        <div class="am-identity-block">
+                            <div class="am-identity-label">Engine Name</div>
+                            <input type="text" class="am-identity-input" id="am-engine-name" maxlength="60" placeholder="e.g., Hjalmar-1" />
+                        </div>
+                    </div>
+                    ${buildSection('II',  'Combustion Core',     'Choose 1 ◊ Primary Driver of Thrust',           'combustion', 'single-stage')}
+                    ${buildSection('III', 'Frame &amp; Materials','Choose 1 ◊ Determines Weight &amp; Durability', 'frame',      'steel-casting')}
+                    ${buildSection('IV',  'Control Systems',     'Choose 1 ◊ Drives Reliability &amp; Efficiency','control',    'mechanical-governor')}
+
+                    <div class="am-form-section">
+                        <div class="am-form-section-header">
+                            <h3><span class="num">V.</span>Engine Summary</h3>
+                            <span class="meta">Live Preview ◊ Final Stats &amp; Costs</span>
+                        </div>
+                        <div class="am-summary">
+                            <div class="am-summary-header-line">— Final Engine Specifications —</div>
+                            <div class="am-summary-name-row">
+                                <div class="am-summary-name" id="am-summary-name">—</div>
+                            </div>
+                            <div class="am-summary-tier-line" id="am-summary-modules"></div>
+                            <div class="am-summary-stats-grid">
+                                <div class="am-summary-stat-card">
+                                    <div class="am-summary-stat-card-label">Thrust</div>
+                                    <div class="am-summary-stat-card-value"><span id="am-stat-thrust">—</span><span class="max">/10</span></div>
+                                    <div class="am-summary-stat-card-bar"><div class="am-summary-stat-card-bar-fill" id="am-bar-thrust"></div></div>
+                                </div>
+                                <div class="am-summary-stat-card">
+                                    <div class="am-summary-stat-card-label">Weight</div>
+                                    <div class="am-summary-stat-card-value weight-stat"><span id="am-stat-weight">—</span><span class="max">/10</span></div>
+                                    <div class="am-summary-stat-card-bar"><div class="am-summary-stat-card-bar-fill weight-bar" id="am-bar-weight"></div></div>
+                                </div>
+                                <div class="am-summary-stat-card">
+                                    <div class="am-summary-stat-card-label">Efficiency</div>
+                                    <div class="am-summary-stat-card-value"><span id="am-stat-eff">—</span><span class="max">/100</span></div>
+                                    <div class="am-summary-stat-card-bar"><div class="am-summary-stat-card-bar-fill" id="am-bar-eff"></div></div>
+                                </div>
+                                <div class="am-summary-stat-card">
+                                    <div class="am-summary-stat-card-label">Reliability</div>
+                                    <div class="am-summary-stat-card-value"><span id="am-stat-rel">—</span><span class="max">/100</span></div>
+                                    <div class="am-summary-stat-card-bar"><div class="am-summary-stat-card-bar-fill" id="am-bar-rel"></div></div>
+                                </div>
+                            </div>
+                            <div class="am-quality-row">
+                                <div class="am-quality-name">
+                                    <em>Quality</em> <span style="color:var(--co-text-tertiary); font-style:normal;">— Average of 4 Stats</span>
+                                    <span class="desc">Quality rewards balanced engineering. Min-maxing one stat lowers overall quality.</span>
+                                </div>
+                                <div class="am-quality-value">
+                                    <span id="am-quality-value">—</span>
+                                    <span class="max-num">/10</span>
+                                </div>
+                            </div>
+                            <div class="am-summary-breakdown">
+                                <div>
+                                    <div class="am-breakdown-title">Cost Breakdown</div>
+                                    <div class="am-breakdown-line"><span class="label">Combustion</span><span class="value" id="am-cost-combustion">—</span></div>
+                                    <div class="am-breakdown-line"><span class="label">Frame</span><span class="value" id="am-cost-frame">—</span></div>
+                                    <div class="am-breakdown-line"><span class="label">Control</span><span class="value" id="am-cost-control">—</span></div>
+                                    <div class="am-breakdown-line"><span class="label">Base Assembly</span><span class="value">$1M</span></div>
+                                    <div class="am-breakdown-line total"><span class="label">Cost per Engine Unit</span><span class="value" id="am-cost-total">—</span></div>
+                                </div>
+                                <div>
+                                    <div class="am-breakdown-title">Research</div>
+                                    <div class="am-breakdown-line"><span class="label">Research Time</span><span class="value">8—13 ticks</span></div>
+                                    <div class="am-breakdown-line"><span class="label">Cost per Tick</span><span class="value">$1M</span></div>
+                                    <div class="am-breakdown-line"><span class="label">Research Investment</span><span class="value">$8—$13M</span></div>
+                                    <div class="am-breakdown-line total"><span class="label">Begin Research</span><span class="value">7 + 1d6 ticks</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="am-modal-error" id="am-modal-error"></div>
+                <div class="am-modal-footer">
+                    <div class="am-modal-footer-summary">
+                        <div class="am-modal-footer-item">
+                            <span class="am-modal-footer-label">Cost / Unit</span>
+                            <span class="am-modal-footer-value" id="am-footer-cost">—</span>
+                        </div>
+                        <div class="am-modal-footer-item">
+                            <span class="am-modal-footer-label">Quality</span>
+                            <span class="am-modal-footer-value" id="am-footer-quality">—</span>
+                        </div>
+                    </div>
+                    <div class="am-modal-footer-actions">
+                        <button type="button" class="am-modal-btn" id="am-modal-cancel">Cancel</button>
+                        <button type="button" class="am-modal-btn primary" id="am-modal-submit">Begin Research ▸</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+
+        // Wire interactions once.
+        overlay.querySelector('.am-modal-close').addEventListener('click', closeDesignEngineModal);
+        overlay.querySelector('#am-modal-cancel').addEventListener('click', closeDesignEngineModal);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDesignEngineModal(); });
+        overlay.querySelector('#am-engine-name').addEventListener('input', () => {
+            _designEngineState.name = overlay.querySelector('#am-engine-name').value || '';
+            recalcDesignEngine();
+        });
+        overlay.querySelectorAll('.am-module-card').forEach(card => {
+            card.addEventListener('click', () => {
+                const moduleKey = card.dataset.module;
+                const id = card.dataset.id;
+                overlay.querySelectorAll(`.am-module-card[data-module="${moduleKey}"]`).forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                _designEngineState[moduleKey] = id;
+                recalcDesignEngine();
+            });
+        });
+        overlay.querySelector('#am-modal-submit').addEventListener('click', submitDesignEngine);
+    }
+
+    // Reset state to defaults each open.
+    const existingDesigns = document.querySelectorAll('#co-designs-list .am-design-card, #co-rnd-list .am-design-card').length;
+    const corpAbbr = (_faction.abbreviation || _faction.faction_name || 'AM').slice(0, 6);
+    _designEngineState = {
+        name:       `${corpAbbr}-${existingDesigns + 1}`,
+        combustion: 'single-stage',
+        frame:      'steel-casting',
+        control:    'mechanical-governor',
+    };
+    overlay.querySelector('#am-engine-name').value = _designEngineState.name;
+    overlay.querySelectorAll('.am-module-card').forEach(c => c.classList.remove('selected'));
+    overlay.querySelector('.am-module-card[data-module="combustion"][data-id="single-stage"]').classList.add('selected');
+    overlay.querySelector('.am-module-card[data-module="frame"][data-id="steel-casting"]').classList.add('selected');
+    overlay.querySelector('.am-module-card[data-module="control"][data-id="mechanical-governor"]').classList.add('selected');
+    overlay.querySelector('#am-modal-error').classList.remove('show');
+    overlay.querySelector('#am-modal-submit').disabled = false;
+    overlay.querySelector('#am-modal-submit').textContent = 'Begin Research ▸';
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    recalcDesignEngine();
+}
+
+function closeDesignEngineModal() {
+    const overlay = document.getElementById('am-design-engine-modal');
+    if (overlay) overlay.classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+function recalcDesignEngine() {
+    if (!_designEngineState) return;
+    const c = ENGINE_MODULES.combustion[_designEngineState.combustion];
+    const f = ENGINE_MODULES.frame[_designEngineState.frame];
+    const ctrl = ENGINE_MODULES.control[_designEngineState.control];
+
+    const thrust = +(c.thrust + f.thrust + ctrl.thrust).toFixed(2);
+    const weight = +(c.weight + f.weight + ctrl.weight).toFixed(2);
+    const eff = Math.min(100, Math.max(0, c.eff + f.eff + ctrl.eff));
+    const rel = Math.min(100, Math.max(0, c.rel + f.rel + ctrl.rel));
+    const quality = +(((Math.min(100, thrust * 10) + Math.max(0, (10 - weight) * 10) + eff + rel) / 4 / 10).toFixed(1));
+    const costPerUnit = c.cost + f.cost + ctrl.cost + ENGINE_BASE_ASSEMBLY_COST;
+
+    const $ = (id) => document.getElementById(id);
+    $('am-summary-name').textContent = _designEngineState.name || 'Untitled Engine';
+    $('am-summary-modules').textContent = `${c.name.toUpperCase()} ◊ ${f.name.toUpperCase()} ◊ ${ctrl.name.toUpperCase()}`;
+    $('am-stat-thrust').textContent = thrust.toFixed(1);
+    $('am-stat-weight').textContent = weight.toFixed(1);
+    $('am-stat-eff').textContent    = eff;
+    $('am-stat-rel').textContent    = rel;
+    $('am-bar-thrust').style.width = Math.min(100, thrust * 10) + '%';
+    $('am-bar-weight').style.width = Math.min(100, weight * 10) + '%';
+    $('am-bar-eff').style.width    = eff + '%';
+    $('am-bar-rel').style.width    = rel + '%';
+    $('am-quality-value').textContent = quality.toFixed(1);
+    $('am-cost-combustion').textContent = fmtCostShort(c.cost);
+    $('am-cost-frame').textContent      = fmtCostShort(f.cost);
+    $('am-cost-control').textContent    = fmtCostShort(ctrl.cost);
+    $('am-cost-total').textContent      = fmtCostShort(costPerUnit);
+    $('am-footer-cost').textContent     = fmtCostShort(costPerUnit);
+    $('am-footer-quality').textContent  = quality.toFixed(1);
+}
+
+async function submitDesignEngine() {
+    if (!_designEngineState) return;
+    const overlay = document.getElementById('am-design-engine-modal');
+    const submitBtn = overlay.querySelector('#am-modal-submit');
+    const errEl = overlay.querySelector('#am-modal-error');
+    const name = (overlay.querySelector('#am-engine-name').value || '').trim();
+    if (!name) {
+        errEl.textContent = 'Engine name required.';
+        errEl.classList.add('show');
+        return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting…';
+    errEl.classList.remove('show');
+
+    try {
+        const { data, error } = await _supabase.rpc('start_engine_design_research', {
+            p_corp_id:    _faction.id,
+            p_name:       name,
+            p_combustion: _designEngineState.combustion,
+            p_frame:      _designEngineState.frame,
+            p_control:    _designEngineState.control,
+        });
+        if (error) {
+            errEl.textContent = error.message;
+            errEl.classList.add('show');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Begin Research ▸';
+            return;
+        }
+        if (!data?.success) {
+            errEl.textContent = data?.error || 'Could not start research.';
+            errEl.classList.add('show');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Begin Research ▸';
+            return;
+        }
+        closeDesignEngineModal();
+        await loadDesigns(_faction.id);
+    } catch (err) {
+        errEl.textContent = err?.message || 'Unknown error.';
+        errEl.classList.add('show');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Begin Research ▸';
+    }
+}
+
+// ── Live designs panels (R&D + Current Designs) ──────────────────
+async function loadDesigns(corpId) {
+    const designsEl = document.getElementById('co-designs-list');
+    const rndEl     = document.getElementById('co-rnd-list');
+    if (!designsEl || !rndEl) return;
+
+    const { data: rows, error } = await _supabase
+        .from('corp_aircraft_designs')
+        .select('id, name, design_type, thrust, weight, efficiency, reliability, quality, cost_per_unit, inventory_on_hand, status, research_ticks_total, research_ticks_remaining, completed_at_tick')
+        .eq('corp_id', corpId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+    if (error) {
+        console.warn('[aviation-ops] designs fetch failed:', error.message);
+        designsEl.innerHTML = '<div class="co-contract-empty">Could not load designs.</div>';
+        rndEl.innerHTML     = '<div class="co-contract-empty">Could not load R&amp;D.</div>';
+        return;
+    }
+    const all = rows || [];
+    const researching = all.filter(r => r.status === 'researching');
+    const available   = all.filter(r => r.status === 'available');
+
+    rndEl.innerHTML = researching.length
+        ? researching.map(renderDesignResearchCard).join('')
+        : '<div class="co-contract-empty">No active R&amp;D. Allocate resources to begin developing a new design.</div>';
+
+    designsEl.innerHTML = available.length
+        ? available.map(renderAvailableDesignCard).join('')
+        : '<div class="co-contract-empty">No designs yet. Run R&amp;D to develop your first airframe.</div>';
+}
+
+function renderDesignResearchCard(d) {
+    const total = Number(d.research_ticks_total) || 1;
+    const remaining = Number(d.research_ticks_remaining) || 0;
+    const progressPct = Math.max(0, Math.min(100, ((total - remaining) / total) * 100));
+    const typeLabel = d.design_type === 'engine' ? 'Engine' : 'Airframe';
+    return `<div class="am-design-card">
+        <div class="am-design-card-head">
+            <div class="am-design-name">${escHtml(d.name)}</div>
+            <span class="am-design-meta">${typeLabel} · Tier 1</span>
+        </div>
+        <div class="am-design-stats">
+            <div><span class="label">Thrust</span><span class="value">${Number(d.thrust ?? 0).toFixed(1)}</span></div>
+            <div><span class="label">Weight</span><span class="value">${Number(d.weight ?? 0).toFixed(1)}</span></div>
+            <div><span class="label">Eff</span><span class="value">${Number(d.efficiency ?? 0)}</span></div>
+            <div><span class="label">Rel</span><span class="value">${Number(d.reliability ?? 0)}</span></div>
+        </div>
+        <div class="am-design-progress"><div class="am-design-progress-fill" style="width:${progressPct.toFixed(0)}%"></div></div>
+        <div class="am-design-countdown">${remaining} month${remaining === 1 ? '' : 's'} left · ${progressPct.toFixed(0)}% complete</div>
+    </div>`;
+}
+
+function renderAvailableDesignCard(d) {
+    const typeLabel = d.design_type === 'engine' ? 'Engine' : 'Airframe';
+    const cost = fmtCostShort(d.cost_per_unit);
+    return `<div class="am-design-card">
+        <div class="am-design-card-head">
+            <div class="am-design-name">${escHtml(d.name)}</div>
+            <span class="am-design-meta">${typeLabel} · Quality ${Number(d.quality ?? 0).toFixed(1)}/10</span>
+        </div>
+        <div class="am-design-stats">
+            <div><span class="label">Thrust</span><span class="value">${Number(d.thrust ?? 0).toFixed(1)}</span></div>
+            <div><span class="label">Weight</span><span class="value">${Number(d.weight ?? 0).toFixed(1)}</span></div>
+            <div><span class="label">Cost / Unit</span><span class="value">${cost}</span></div>
+            <div><span class="label">Inventory</span><span class="value">${Number(d.inventory_on_hand ?? 0)}</span></div>
+        </div>
+    </div>`;
 }
 
 async function init() {
@@ -874,6 +1773,26 @@ async function init() {
     }
 
     await loadFacilities(faction.id);
+
+    // Engine Assembly Plant gate — toggles the [+ Design Engine] button
+    // and surfaces a "Requires an Engine Assembly Plant" notice when
+    // the corp doesn't yet own one. Mirrors the server-side check in
+    // start_engine_design_research so a stale UI can't bypass the gate.
+    try {
+        const { data: plants } = await _supabase
+            .from('corp_properties')
+            .select('id')
+            .eq('faction_id', faction.id)
+            .eq('type', 'engine_assembly_plant')
+            .eq('is_active', true)
+            .limit(1);
+        applyEngineDesignGate((plants || []).length > 0);
+    } catch (gateErr) {
+        console.warn('[aviation-ops] engine assembly plant gate check failed:', gateErr?.message || gateErr);
+        applyEngineDesignGate(false);
+    }
+
+    await loadDesigns(faction.id);
 }
 
 init().catch(err => {
