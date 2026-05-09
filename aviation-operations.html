@@ -1618,28 +1618,32 @@ let _designEngineState = null;
 let _designAircraftState = null;
 let _availableEngineCatalog = [];
 
-// ── Aircraft module specs (Tier 1). Mirrors the server-side CASE
-//    ladders in start_aircraft_design_research so the modal preview
-//    and the persisted row agree on totals. Keep in lockstep with
-//    the migration when tuning. ──
-const AIRFRAMES = {
-    business:   { name: 'Business Jet', weight: 2,  pax: 3,  engMin: 1, engMax: 2, range: 5,  cost: 18000000, time: 6  },
-    regional:   { name: 'Regional',     weight: 3,  pax: 10, engMin: 2, engMax: 2, range: 3,  cost: 35000000, time: 8  },
-    narrowbody: { name: 'Narrowbody',   weight: 6,  pax: 25, engMin: 2, engMax: 2, range: 7,  cost: 60000000, time: 10 },
-    widebody:   { name: 'Widebody',     weight: 10, pax: 60, engMin: 2, engMax: 4, range: 10, cost: 75000000, time: 12 },
-};
-
-const MECHANICALS = {
-    'hydraulics':         { name: 'Standard Hydraulic Systems',  weight: 0.5, safety: 1, cost: 1000000 },
-    'blackbox':           { name: 'Black Box & Flight Recorders',weight: 0.3, safety: 2, cost: 1500000 },
-    'redundant-avionics': { name: 'Redundant Avionics Suite',    weight: 0.7, safety: 3, cost: 3000000 },
-};
-
-const OFFERINGS = {
-    'ife':              { name: 'In-Flight Entertainment',   weight: 0.3, demand: 1,  pax: 0, cost: 1500000 },
-    'premium-seating':  { name: 'Premium Seating',           weight: 0.4, demand: 2,  pax: 0, cost: 2000000 },
-    'high-density':     { name: 'High-Density Configuration',weight: 0.2, demand: -1, pax: 5, cost: 1000000 },
-};
+// ── Aircraft design specs (Tier 1) ─────────────────────────────
+// Single source of truth lives in SQL: aircraft_design_specs()
+// returns {airframes, mechanicals, offerings} from
+// aircraft_airframe_specs / aircraft_mechanical_specs /
+// aircraft_offering_specs. Fetched once per session and cached.
+// start_aircraft_design_research reads the same source so the
+// modal preview cannot drift from what the design RPC persists.
+//
+// Field names use snake_case (eng_min/eng_max) to match the source
+// JSONB shape directly — no transformation needed on read.
+let _aircraftDesignSpecs = null;   // {airframes, mechanicals, offerings}
+async function loadAircraftDesignSpecs() {
+    if (_aircraftDesignSpecs) return _aircraftDesignSpecs;
+    const { data, error } = await _supabase.rpc('aircraft_design_specs');
+    if (error) {
+        console.warn('[aviation-ops] aircraft_design_specs fetch failed:', error.message);
+        _aircraftDesignSpecs = { airframes: {}, mechanicals: {}, offerings: {} };
+        return _aircraftDesignSpecs;
+    }
+    _aircraftDesignSpecs = {
+        airframes:   data?.airframes   || {},
+        mechanicals: data?.mechanicals || {},
+        offerings:   data?.offerings   || {},
+    };
+    return _aircraftDesignSpecs;
+}
 
 function fmtCostShort(n) {
     const v = Number(n) || 0;
@@ -2068,7 +2072,7 @@ function engineCatalogSubtitleText() {
 }
 
 function renderAirframeCard(id, a, isSelected) {
-    const engineLabel = a.engMin === a.engMax ? String(a.engMin) : `${a.engMin} or ${a.engMax}`;
+    const engineLabel = a.eng_min === a.eng_max ? String(a.eng_min) : `${a.eng_min} or ${a.eng_max}`;
     return `<div class="am-airframe-card${isSelected ? ' selected' : ''}" data-airframe="${id}">
         <div class="am-airframe-head">
             <div class="am-airframe-radio"></div>
@@ -2106,8 +2110,9 @@ async function openDesignAircraftModal() {
     // (yours or anyone else's) surface without a page reload. On
     // transient fetch error loadAvailableEngineCatalog keeps the
     // prior cache rather than wiping, so we still proceed if it had
-    // any entries from init.
-    await loadAvailableEngineCatalog();
+    // any entries from init. Aircraft design specs are cached after
+    // the first fetch (immutable per session).
+    await Promise.all([loadAvailableEngineCatalog(), loadAircraftDesignSpecs()]);
 
     if (!_availableEngineCatalog.length) {
         alert('No engine designs are available yet. Design and complete at least one engine before designing an aircraft.');
@@ -2119,15 +2124,15 @@ async function openDesignAircraftModal() {
         const corpAbbr = (_faction.abbreviation || _faction.faction_name || 'AM').slice(0, 6);
         const innov    = Math.round(Number(_faction.corp_innovation) || 0);
 
-        const airframeCards = Object.entries(AIRFRAMES).map(([id, a]) =>
+        const airframeCards = Object.entries(_aircraftDesignSpecs.airframes).map(([id, a]) =>
             renderAirframeCard(id, a, id === 'regional')
         ).join('');
 
-        const mechCards = Object.entries(MECHANICALS).map(([id, m]) =>
+        const mechCards = Object.entries(_aircraftDesignSpecs.mechanicals).map(([id, m]) =>
             renderAircraftModuleCard('mechanical', id, m, false)
         ).join('');
 
-        const offerCards = Object.entries(OFFERINGS).map(([id, m]) =>
+        const offerCards = Object.entries(_aircraftDesignSpecs.offerings).map(([id, m]) =>
             renderAircraftModuleCard('offering', id, m, false)
         ).join('');
 
@@ -2302,9 +2307,9 @@ async function openDesignAircraftModal() {
                 overlay.querySelectorAll('.am-airframe-card').forEach(c => c.classList.remove('selected'));
                 card.classList.add('selected');
                 _designAircraftState.airframe = card.dataset.airframe;
-                const a = AIRFRAMES[_designAircraftState.airframe];
-                if (_designAircraftState.engineCount < a.engMin || _designAircraftState.engineCount > a.engMax) {
-                    _designAircraftState.engineCount = a.engMin;
+                const a = _aircraftDesignSpecs.airframes[_designAircraftState.airframe];
+                if (a && (_designAircraftState.engineCount < a.eng_min || _designAircraftState.engineCount > a.eng_max)) {
+                    _designAircraftState.engineCount = a.eng_min;
                 }
                 recalcDesignAircraft();
             });
@@ -2353,7 +2358,7 @@ async function openDesignAircraftModal() {
         name:         `${corpAbbr}-AC${existingAircraft + 1}`,
         airframe:     'regional',
         engineId:     _availableEngineCatalog[0]?.id || null,
-        engineCount:  AIRFRAMES.regional.engMin,
+        engineCount:  Number(_aircraftDesignSpecs.airframes.regional?.eng_min) || 2,
         mechanicals:  new Set(),
         offerings:    new Set(),
     };
@@ -2385,25 +2390,25 @@ function recalcDesignAircraft() {
     const overlay = document.getElementById('am-design-aircraft-modal');
     if (!overlay) return;
 
-    const airframe = AIRFRAMES[_designAircraftState.airframe];
+    const airframe = _aircraftDesignSpecs.airframes[_designAircraftState.airframe];
     const engine   = _availableEngineCatalog.find(e => e.id === _designAircraftState.engineId);
     if (!airframe || !engine) return;
 
     // Enforce engine count bounds for current airframe.
     overlay.querySelectorAll('.am-count-btn').forEach(btn => {
         const count = parseInt(btn.dataset.count, 10);
-        const valid = count >= airframe.engMin && count <= airframe.engMax;
+        const valid = count >= airframe.eng_min && count <= airframe.eng_max;
         btn.disabled = !valid;
         if (!valid && _designAircraftState.engineCount === count) {
-            _designAircraftState.engineCount = airframe.engMin;
+            _designAircraftState.engineCount = airframe.eng_min;
         }
     });
     overlay.querySelectorAll('.am-count-btn').forEach(btn => {
         btn.classList.toggle('selected', parseInt(btn.dataset.count, 10) === _designAircraftState.engineCount);
     });
 
-    const mechs  = Array.from(_designAircraftState.mechanicals).map(id => MECHANICALS[id]).filter(Boolean);
-    const offers = Array.from(_designAircraftState.offerings).map(id => OFFERINGS[id]).filter(Boolean);
+    const mechs  = Array.from(_designAircraftState.mechanicals).map(id => _aircraftDesignSpecs.mechanicals[id]).filter(Boolean);
+    const offers = Array.from(_designAircraftState.offerings).map(id => _aircraftDesignSpecs.offerings[id]).filter(Boolean);
 
     const totalThrust = engine.thrust * _designAircraftState.engineCount;
     const engineWeight = engine.weight * _designAircraftState.engineCount;
