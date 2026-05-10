@@ -25152,6 +25152,18 @@ async function processVolaPlacementMatches(supabase, currentTick) {
             console.error('[VolaPlacement] settle failed for cup', cupNumber, err);
         }
         if (!settled) continue;
+        // VWC ranking refresh — fire once here, immediately after the
+        // qualifier resolves and before the group draw reads
+        // vwc_ranking. This is the only per-cycle write to
+        // nations.vwc_ranking (the prior per-tick recompute was
+        // removed); it stays frozen for the next ~24 ticks until the
+        // next cup's qualifier ends. Failure is non-fatal — the draw
+        // falls back to prowess via _seedCompare's 0-rank handler.
+        try {
+            await recomputeVwcRankings(supabase);
+        } catch (vwcErr) {
+            console.error('[VolaPlacement] VWC ranking recompute failed (non-fatal):', vwcErr);
+        }
         let drawn = false;
         try {
             await generateVolaCupGroupDraw(supabase, cupNumber, currentTick);
@@ -34615,18 +34627,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] History snapshot FAILED for ${nation.id} (${nation.name}):`, snapErr);
         }
       }
-    }
-
-    // ══════════════════════════════════════════════════════════════════
-    // 4a-bis. VWC RANKINGS — global pass after all nations processed.
-    // Sorts every nation by (national_vola_culture + random ±5 delta);
-    // top 12 get vwc_ranking 1..12, others 0. Skipped silently on
-    // fetch error.
-    // ══════════════════════════════════════════════════════════════════
-    try {
-        await recomputeVwcRankings(supabase);
-    } catch (vwcErr) {
-        console.error('[advanceTick] VWC ranking recompute failed (non-fatal):', vwcErr);
     }
 
     // ══════════════════════════════════════════════════════════════════
