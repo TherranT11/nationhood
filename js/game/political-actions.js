@@ -5658,7 +5658,7 @@ export async function seedVolaCupKnockout(supabase, cupNumber, currentTick) {
     if (existing) return null;
 
     const { data: gmatches, error: gErr } = await supabase.from('vola_cup_group_matches')
-        .select('group_letter, team_a_nation_id, team_b_nation_id, team_a_score, team_b_score, winner_nation_id, resolved_at_tick')
+        .select('group_letter, team_a_nation_id, team_b_nation_id, team_a_score, team_b_score, winner_nation_id, resolved_at_tick, scheduled_tick')
         .eq('cup_number', cupNumber);
     if (gErr) {
         console.warn('[VolaKnockout] group match fetch failed:', gErr.message);
@@ -5736,8 +5736,15 @@ export async function seedVolaCupKnockout(supabase, cupNumber, currentTick) {
     if (seeded.length !== 8) return null;
     const bySeed = new Map(seeded.map(t => [t.seed, t]));
 
-    // Cup schedule (canonical: cup 1 starts at tick 84, period 24).
-    const cupStartTick = 84 + 24 * (cupNumber - 1);
+    // Cup schedule — derive from the group matches we already fetched.
+    // generateVolaCupGroupSchedule writes Round 1 at cupStart+0, R2 at
+    // +1, R3 at +2, so the min scheduled_tick across the 18 rows IS
+    // cupStart. Doing it this way (instead of the old canonical
+    // 84 + 24*(N-1) formula) keeps QF/SF/F in lock-step with whatever
+    // cupStart the placement post-settle handler chose — currently
+    // qualifier_tick + 12, which can drift from the canonical cadence
+    // if the placement round itself fired late.
+    const cupStartTick = Math.min(...gmatches.map(m => Number(m.scheduled_tick)));
     const qfTick = cupStartTick + 3;
     const sfTick = cupStartTick + 4;
     const fTick  = cupStartTick + 5;
