@@ -33927,6 +33927,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 const ref = party.last_seen_tick ?? party.founded_tick ?? 0;
                 const ticksInactive = newTick - ref;
 
+                // Any party past the drain threshold blocks the post-loop
+                // seat rebalance — even if THIS tick is a no-op (party at
+                // floor seats=1, or already at 0 from prior drain). Without
+                // this signal, a party stuck at the floor would let
+                // rebalanceVacantSeats redistribute their prior-drained
+                // vacancies back to active parties, violating the spec
+                // that drained seats stay vacant until the next election.
+                if (ticksInactive >= INACTIVITY_DRAIN_THRESHOLD) {
+                    inactivityChanged = true;
+                }
+
                 if (ticksInactive >= INACTIVITY_DISBAND_THRESHOLD) {
                     // Absolute Monarchy: if this is the monarch's faction, trigger succession instead of disband
                     const isMonarchFaction = nation.monarch_faction_id === party.id
