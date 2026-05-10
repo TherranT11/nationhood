@@ -2367,7 +2367,7 @@ function checkSovereigntyConstraints(activeProposals, policySector) {
 // STAT_KEY_ALIASES routes or null-filters them at apply time so the
 // effect pipeline keeps working until Phase 3 rewrites every call site.
 const NATION_STAT_COLUMNS = [
-    'gdp_growth', 'debt', 'immigration', 'standard_of_living', 'cost_of_living',
+    'gdp', 'gdp_growth', 'debt', 'immigration', 'standard_of_living', 'cost_of_living',
     'budget',
     'state_apparatus', 'unrest', 'public_approval', 'crown_authority',
     'energy', 'health', 'education', 'global_image',
@@ -3917,6 +3917,39 @@ async function activateEconomicCollapse(supabase, nation, currentTick) {
     } catch (err) {
         // Non-fatal — GDP is already clamped at floor by caller
     }
+}
+
+/**
+ * Per-tick GDP drift driven by the gdp_growth stat.
+ *   gdp_growth ∈ [0,100], 50 = 0%/month, 100 = +1%/month, 0 = −1%/month.
+ *   monthlyPct = ((gdp_growth − 50) / 50) × 1.0
+ *   newGdp     = oldGdp × (1 + monthlyPct / 100)
+ *
+ * nation.gdp is stored in $B abstract units (e.g. 358.6 = $358.6B).
+ * Floor at 0 (no negative GDP). UPDATE returns silently if no row
+ * matches; non-fatal on error per the budget tick's broader contract.
+ */
+async function applyGdpGrowthDrift(supabase, nation) {
+    const gdp = Number(nation?.gdp);
+    if (!isFinite(gdp) || gdp <= 0) return null;
+    const growthStat = Number(nation?.gdp_growth);
+    if (!isFinite(growthStat)) return null;
+
+    const monthlyPct = ((growthStat - 50) / 50) * 1.0;     // ±1% range
+    if (monthlyPct === 0) return null;                      // exact 0 → no write
+
+    const newGdp = Math.max(0, Math.round(gdp * (1 + monthlyPct / 100) * 10) / 10); // 1dp
+    if (newGdp === gdp) return null;                        // sub-0.1 drift → skip write
+
+    const { error } = await supabase.from('nations')
+        .update({ gdp: newGdp })
+        .eq('id', nation.id);
+    if (error) {
+        console.warn(`[applyGdpGrowthDrift] update failed for ${nation.name}:`, error.message);
+        return null;
+    }
+    nation.gdp = newGdp;
+    return { before: gdp, after: newGdp, monthlyPct };
 }
 
 // ────────── government-structure ──────────
@@ -15819,14 +15852,21 @@ async function computeEngagementScores(supabase, nation, factions, coalitionPart
  *
  * Seat-loss model:
  *   ticksInactive < DRAIN          → no penalty
- *   DRAIN ≤ ticksInactive < DISBAND → lose 20% of seats per tick (min 1)
- *   ticksInactive ≥ DISBAND        → auto-disband (monarchies → succession)
+ *   DRAIN ≤ ticksInactive < DISBAND → lose 5% of seats per tick (min 1
+ *                                      lost; floor at 1 seat remaining)
+ *   ticksInactive ≥ DISBAND        → hard-disband (party row DELETEd;
+ *                                      monarchies trigger succession)
  *
  * Vacated seats are NOT redistributed to remaining parties — they sit
- * empty until the next election re-allocates the chamber.
+ * empty until the next election re-allocates the chamber. Hard-delete
+ * at the disband threshold (vs the soft-delete used by manual disband
+ * and no-confidence cascade) wipes the party entirely: seats, cash,
+ * standing, audit trail. FK cascades take care of related rows.
  */
-const INACTIVITY_DRAIN_THRESHOLD = 10;
+const INACTIVITY_DRAIN_THRESHOLD   = 9;
 const INACTIVITY_DISBAND_THRESHOLD = 14;
+const INACTIVITY_DRAIN_RATE        = 0.05; // 5%/tick of current seats
+const INACTIVITY_DRAIN_FLOOR       = 1;    // never drain below 1 seat
 
 /**
  * The 8 core issues tracked by the electorate engine.
@@ -23706,9 +23746,15 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
  *   to the remaining parties via rebalanceVacantSeats. When false (used by
  *   the inactivity auto-disband path) the seats stay vacant until the next
  *   election re-allocates the chamber.
+ * @param {boolean} [opts.hardDelete=false] - When true (inactivity auto-
+ *   disband only) the party row is physically DELETEd at the end of
+ *   housekeeping instead of being soft-marked with abandoned_at. FK
+ *   cascades wipe related state (forum posts, ap ledger, executive
+ *   orders, etc.). Manual disband / no-confidence cascade keep the
+ *   default soft-delete so the disband cooldown semantics still apply.
  */
 async function disbandParty(supabase, nationId, factionId, currentTick, opts = {}) {
-    const { redistribute = true } = opts;
+    const { redistribute = true, hardDelete = false } = opts;
     // Guard: never disband corporations
     const { data: faction } = await supabase
         .from('factions')
@@ -24013,6 +24059,18 @@ async function disbandParty(supabase, nationId, factionId, currentTick, opts = {
     await supabase.from('group_chat_members').delete().eq('faction_id', factionId);
     // Remove electoral standing from old nation
     await supabase.from('faction_electoral_standing').delete().eq('faction_id', factionId);
+
+    // Hard-delete: physically remove the row after all housekeeping. FK
+    // cascades take care of any remaining references. Used only by the
+    // inactivity auto-disband path; manual disband leaves the row as a
+    // tombstone so the 24-tick disband cooldown can prevent immediate
+    // re-creation. Note: the campaign_actions audit row inserted above
+    // will CASCADE-delete with this — by design (full wipe per spec).
+    if (hardDelete) {
+        const { error: delErr } = await supabase.from('factions').delete().eq('id', factionId);
+        if (delErr) throw new Error('Failed to hard-delete party: ' + delErr.message);
+        return { result: 'disbanded', hardDeleted: true };
+    }
 
     return { result: 'disbanded' };
 }
@@ -33902,6 +33960,17 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 const ref = party.last_seen_tick ?? party.founded_tick ?? 0;
                 const ticksInactive = newTick - ref;
 
+                // Any party past the drain threshold blocks the post-loop
+                // seat rebalance — even if THIS tick is a no-op (party at
+                // floor seats=1, or already at 0 from prior drain). Without
+                // this signal, a party stuck at the floor would let
+                // rebalanceVacantSeats redistribute their prior-drained
+                // vacancies back to active parties, violating the spec
+                // that drained seats stay vacant until the next election.
+                if (ticksInactive >= INACTIVITY_DRAIN_THRESHOLD) {
+                    inactivityChanged = true;
+                }
+
                 if (ticksInactive >= INACTIVITY_DISBAND_THRESHOLD) {
                     // Absolute Monarchy: if this is the monarch's faction, trigger succession instead of disband
                     const isMonarchFaction = nation.monarch_faction_id === party.id
@@ -33957,29 +34026,36 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         }
                     } else {
                     // Auto-disband: full cleanup via existing disbandParty(),
-                    // but pass redistribute=false so the disbanded seats stay
-                    // empty rather than getting rebalanced to remaining parties.
+                    // hardDelete=true physically removes the row + FK cascades
+                    // wipe related state. redistribute=false so seats stay
+                    // vacant rather than getting rebalanced to other parties.
                     try {
-                        await disbandParty(supabase, nation.id, party.id, newTick, { redistribute: false });
+                        await disbandParty(supabase, nation.id, party.id, newTick, { redistribute: false, hardDelete: true });
                         inactivityChanged = true;
-                        console.log(`[Inactivity] Auto-disbanded ${party.faction_name} in ${nation.name} (${ticksInactive} ticks inactive, seats left vacant)`);
+                        console.log(`[Inactivity] Hard-deleted ${party.faction_name} in ${nation.name} (${ticksInactive} ticks inactive, seats left vacant)`);
                     } catch (disbandErr) {
-                        console.error(`[Inactivity] Auto-disband failed for ${party.faction_name}: ${disbandErr.message}`);
+                        console.error(`[Inactivity] Hard-delete failed for ${party.faction_name}: ${disbandErr.message}`);
                     }
                     }
                 } else if (ticksInactive >= INACTIVITY_DRAIN_THRESHOLD && (party.seats || 0) > 0) {
-                    // Seat drain: lose 20% of seats per tick (minimum 1).
+                    // Seat drain: lose INACTIVITY_DRAIN_RATE of current seats
+                    // per tick (min 1 lost), floored at INACTIVITY_DRAIN_FLOOR.
                     // Drained seats stay vacant — the post-loop rebalance is
-                    // skipped when inactivityChanged is true.
+                    // skipped when inactivityChanged is true. A party already
+                    // sitting at the floor produces no UPDATE (no-op skip).
                     const currentSeats = party.seats || 0;
-                    const seatsLost = Math.max(1, Math.floor(currentSeats * 0.2));
-                    const newSeats = Math.max(0, currentSeats - seatsLost);
-                    const { error: drainErr } = await supabase.from('factions').update({ seats: newSeats }).eq('id', party.id);
-                    if (drainErr) {
-                        console.error(`[Inactivity] Seat drain failed for ${party.faction_name}: ${drainErr.message}`);
+                    const seatsLost = Math.max(1, Math.floor(currentSeats * INACTIVITY_DRAIN_RATE));
+                    const newSeats = Math.max(INACTIVITY_DRAIN_FLOOR, currentSeats - seatsLost);
+                    if (newSeats === currentSeats) {
+                        // Already at floor; nothing to do this tick.
                     } else {
-                        inactivityChanged = true;
-                        console.log(`[Inactivity] ${party.faction_name} in ${nation.name}: ${currentSeats} → ${newSeats} seats (${ticksInactive} ticks inactive, -${seatsLost} vacant)`);
+                        const { error: drainErr } = await supabase.from('factions').update({ seats: newSeats }).eq('id', party.id);
+                        if (drainErr) {
+                            console.error(`[Inactivity] Seat drain failed for ${party.faction_name}: ${drainErr.message}`);
+                        } else {
+                            inactivityChanged = true;
+                            console.log(`[Inactivity] ${party.faction_name} in ${nation.name}: ${currentSeats} → ${newSeats} seats (${ticksInactive} ticks inactive, -${currentSeats - newSeats} vacant)`);
+                        }
                     }
                 }
             }
@@ -34110,6 +34186,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (taxErr) {
             console.error(`[advanceTick] Tax revenue tick failed for ${nation.name} (non-fatal):`, taxErr);
+        }
+
+        // Per-tick GDP drift. Applies ((gdp_growth − 50) / 50) × 1% to
+        // nation.gdp each tick. SoT: applyGdpGrowthDrift in budget.js
+        // (formula and floor live there).
+        try {
+            await applyGdpGrowthDrift(supabase, nation);
+        } catch (gdpErr) {
+            console.error(`[advanceTick] GDP drift failed for ${nation.name} (non-fatal):`, gdpErr);
         }
 
         // Surplus/deficit connectors (require budget calculation, can't be stat_connections rows)
