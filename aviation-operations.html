@@ -3503,15 +3503,34 @@ async function init() {
         _supabase.from('factions').select('*').eq('id', activeId).maybeSingle(),
         _supabase.from('shard').select('current_tick, current_date, next_tick_at, tick_interval_hours').eq('name', 'Alpha Shard').single(),
     ]);
-    if (factionRes.error || !factionRes.data) {
+    if (factionRes.error) {
         document.body.innerHTML = '<div style="padding:40px;font-family:monospace;color:#c85a3a;">Could not load corporation.</div>';
         return;
     }
-    const faction = factionRes.data;
-    const shard   = shardRes.data;
+
+    // Fallback: fresh tab where sessionStorage is empty and user.id
+    // mapped to the user's party row. Look up the user's Aviation
+    // Manufacturing corp directly before bouncing.
+    let faction = factionRes.data;
+    if (!inspectFactionId && (!faction || faction.faction_type !== 'corporation' || faction.corp_sector !== 'Aviation Manufacturing')) {
+        const { data: owned } = await _supabase
+            .from('factions')
+            .select('*')
+            .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+            .eq('faction_type', 'corporation')
+            .eq('corp_sector', 'Aviation Manufacturing')
+            .is('abandoned_at', null)
+            .limit(1)
+            .maybeSingle();
+        if (owned) {
+            faction = owned;
+            sessionStorage.setItem('active_faction_id', owned.id);
+        }
+    }
+    const shard = shardRes.data;
     _faction = faction;
 
-    if (faction.faction_type !== 'corporation' || faction.corp_sector !== 'Aviation Manufacturing') {
+    if (!faction || faction.faction_type !== 'corporation' || faction.corp_sector !== 'Aviation Manufacturing') {
         const qs = inspectFactionId ? `?faction_id=${encodeURIComponent(inspectFactionId)}` : '';
         window.location.href = 'corp-dashboard.html' + qs;
         return;

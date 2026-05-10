@@ -2294,22 +2294,42 @@ async function init() {
     // bounces back to corp-dashboard.html.
     const url = new URL(location.href);
     const inspectFactionId = url.searchParams.get('faction_id');
-    const activeId = inspectFactionId
+    let activeId = inspectFactionId
         || sessionStorage.getItem('active_faction_id')
         || user.id;
 
-    const [factionRes, shardRes] = await Promise.all([
+    let [factionRes, shardRes] = await Promise.all([
         _supabase.from('factions').select('*').eq('id', activeId).maybeSingle(),
         _supabase.from('shard').select('current_tick, current_date, next_tick_at, tick_interval_hours').eq('name', 'Alpha Shard').single(),
     ]);
-    if (factionRes.error || !factionRes.data) {
+    if (factionRes.error) {
         document.body.innerHTML = '<div style="padding:40px;font-family:monospace;color:#c85a3a;">Could not load corporation.</div>';
         return;
     }
-    const faction = factionRes.data;
-    const shard   = shardRes.data;
 
-    if (faction.faction_type !== 'corporation' || faction.corp_sector !== 'Airline') {
+    // Fallback: if the resolved faction isn't this page's sector
+    // (e.g., fresh tab where sessionStorage is empty and user.id
+    // mapped to the party row), look up the user's Airline corp
+    // directly before giving up and bouncing.
+    let faction = factionRes.data;
+    if (!inspectFactionId && (!faction || faction.faction_type !== 'corporation' || faction.corp_sector !== 'Airline')) {
+        const { data: owned } = await _supabase
+            .from('factions')
+            .select('*')
+            .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+            .eq('faction_type', 'corporation')
+            .eq('corp_sector', 'Airline')
+            .is('abandoned_at', null)
+            .limit(1)
+            .maybeSingle();
+        if (owned) {
+            faction = owned;
+            sessionStorage.setItem('active_faction_id', owned.id);
+        }
+    }
+    const shard = shardRes.data;
+
+    if (!faction || faction.faction_type !== 'corporation' || faction.corp_sector !== 'Airline') {
         // Preserve the inspect query string when bouncing — otherwise an
         // inspector viewing a non-Airline corp lands on the operator's own
         // dashboard instead of the inspected corp's dashboard.
