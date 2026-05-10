@@ -7,7 +7,7 @@
  * acquires a database lock, and processes the full game tick.
  *
  * AUTO-GENERATED — do not edit index.ts directly.
- * Game-logic source of truth lives in js/game/*.js (especially political-actions.js).
+ * Game-logic source of truth lives in js/game/*.js (especially political-actions).
  * Source: js/game/*.js + supabase/functions/advance-tick/handler-template.ts
  * Regenerate with: node scripts/sync-edge-function.js
  */
@@ -471,7 +471,7 @@ function getConstitutionalSystemDescription(system) {
 // ────────── trade-constants ──────────
 
 /**
- * trade-constants.js — Goods-trade economy (Phase 10A: WIPED for rebuild)
+ * trade-constants — Goods-trade economy (Phase 10A: WIPED for rebuild)
  *
  * The full goods-trade math (export capacity, import demand, food
  * allocation, tariff dampening, route distribution) was retired in
@@ -2445,7 +2445,7 @@ const STAT_KEY_ALIASES = {
     // ── Phase 8.5.1 renames ──
     authority:                  'public_approval',
     legitimacy:                 'public_approval',  // legitimacy already aliased to authority pre-8.5; cascade to new name
-    judicial_independence:      'public_approval',  // collapsed into public_approval per Phase 7H bills.js block
+    judicial_independence:      'public_approval',  // collapsed into public_approval per Phase 7H bills block
     goods:                      'service_sector',
     crime_rate:                 'crime',
 
@@ -2598,9 +2598,9 @@ const DECAY_SPEED = { CRAWL: 0.15, VERY_SLOW: 0.5, SLOW: 1, MEDIUM: 2, FAST: 3 }
  * Stats not listed are persistent — they hold value indefinitely.
  *
  * Canonical 25-stat schema. budget + debt are flow-based and not in here
- * (managed by budget.js / debt.js). crown_authority decays only when
+ * (managed by budget / debt.js). crown_authority decays only when
  * the column is non-NULL — processStatDecay's null-guard at
- * political-actions.js:110 skips non-monarchies cleanly.
+ * political-actions:110 skips non-monarchies cleanly.
  *
  * Canonical-stats Phase 2: power and workforce removed (replaced by
  * global_image and unskilled_workers + skilled_workers). The four new
@@ -2980,7 +2980,7 @@ function snapshotNationStats(nation) {
 // ────────── momentum ──────────
 
 /**
- * momentum.js — Electorate engine helpers for party_approval, credibility, and gov_approval_events.
+ * momentum — Electorate engine helpers for party_approval, credibility, and gov_approval_events.
  * Originally housed the legacy momentum system; now provides shared helpers used across game modules.
  */
 
@@ -3006,8 +3006,8 @@ async function adjustMomentumAll(supabase, nationId, source, delta, reason) {
     return;
 }
 
-// adjustCredibility is defined in electorate.js. Re-export here so
-// existing imports from momentum.js keep working.
+// adjustCredibility is defined in electorate. Re-export here so
+// existing imports from momentum keep working.
 /**
  * Apply a one-time event modifier to the government approval event modifier.
  * The modifier decays 10% per tick, so transient shocks fade naturally.
@@ -4103,7 +4103,7 @@ async function fetchActiveCoalition(supabase, nationId) {
     // === PARLIAMENTARY DEMOCRACY ===
     // Single source of truth: government_formations. Caretaker status is
     // set EXCLUSIVELY by Snap Election / VoNC / Presidential dissolve / PM
-    // resignation — see js/game/elections.js + political-actions.js.
+    // resignation — see js/game/elections + political-actions.
 
     // Only return formed or caretaker governments — 'active' means a proposal
     // that hasn't been finalized. Returning proposals here causes the UI to
@@ -4232,7 +4232,7 @@ function getCompatiblePolicies(sector, allPolicies, faction, excludePolicyIds = 
 // ────────── repeal-helper ──────────
 
 /**
- * repeal-helper.js — shared repeal target resolution + reverse/delete executor
+ * repeal-helper — shared repeal target resolution + reverse/delete executor
  */
 
 function resolveRepealTargetLawId({ bill, article } = {}) {
@@ -4414,7 +4414,7 @@ function _summarizeOptionTransitions(bill) {
 
 /**
  * Fire a bill-related system event (bill_passed / bill_failed / quorum_failed etc).
- * Wraps the common try/catch + placeholder boilerplate used 20+ times in bills.js & presidential.js.
+ * Wraps the common try/catch + placeholder boilerplate used 20+ times in bills & presidential.
  *
  * @param {object} supabase   - Supabase client
  * @param {string} triggerKey - e.g. 'bill_passed', 'bill_failed', 'quorum_failed'
@@ -4532,7 +4532,7 @@ async function fireBilateralEvent(supabase, triggerKey, nationIdA, nationIdB, cu
 // Shared corporation-valuation math.
 // Single source of truth for: bankruptcy (corp-operations.html,
 // corp-operations-shipping.html), Government Bailout authoring
-// (laws.html), and bill enactment (bills.js).
+// (laws.html), and bill enactment (bills).
 //
 // The matching server-side copy lives in supabase/functions/advance-tick/
 // index.ts — kept inline there because the Deno edge runtime does not
@@ -4638,7 +4638,7 @@ function computeCorpValuation({ cash, loans, properties, propertyValue, vessels,
 
 // ────────── tax-articles ──────────
 
-// js/game/tax-articles.js — Tax Article SSoT (RETIRED by alpha refactor)
+// js/game/tax-articles — Tax Article SSoT (RETIRED by alpha refactor)
 //
 // PHASE 7e (alpha stats refactor):
 //   The four tax columns (income_tax, corporate_tax, sales_tax,
@@ -4650,7 +4650,7 @@ function computeCorpValuation({ cash, loans, properties, propertyValue, vessels,
 //   delta) loses its underlying mechanism.
 //
 //   The module is preserved as a stub so that callers in
-//   bill.html, laws.html, and js/game/bills.js keep importing without
+//   bill.html, laws.html, and js/game/bills keep importing without
 //   ReferenceError. Every function returns a safe no-op:
 //
 //     getValidNewRates           → []  (no rate changes available)
@@ -4702,7 +4702,7 @@ function validateTaxArticlePayload(_taxKey, _oldRate, _newRate) {
 // ────────── sectors ──────────
 
 /**
- * sectors.js — pure calculation module for the per-nation voter sector system
+ * sectors — pure calculation module for the per-nation voter sector system
  *
  * Phase 1 of the sectors rollout. Every function in this file is a pure JS
  * function: it operates on plain data and returns plain data. No DB calls,
@@ -5057,7 +5057,7 @@ function computeSectorShifts({ effects, voters, sponsorId, result }) {
     if (result === 'passed') {
         // Snapshot voters and force the sponsor to YES so callers don't have
         // to remember to pre-merge. Matches the existing processIdeologyShifts
-        // pattern (bills.js:432-433).
+        // pattern (bills:432-433).
         const stances = new Map(voters || []);
         if (sponsorId) stances.set(sponsorId, 'yes');
 
@@ -5738,7 +5738,7 @@ function computeBillCostTotals(bill, nation) {
 
         // (1b) Tax Article — projected revenue change. Cuts are an ongoing
         // cost to the budget (revenue forgone); hikes are an ongoing relief.
-        // SSoT for the math is computeTaxArticleOngoingCost in tax-articles.js,
+        // SSoT for the math is computeTaxArticleOngoingCost in tax-articles,
         // which derives the delta from calculateNationalBudget.
         const ed = art.effect_data;
         if (ed && (ed.type === 'TAX_CHANGE' || ed.type === 'INCOME_TAX_CHANGE')) {
@@ -5923,7 +5923,7 @@ async function ensureBlocApprovals(supabase, factionId, nationId) {
  *
  * Mirrors processIdeologyShifts in shape: load bills with bill_articles,
  * policies, and bill_support; build voter stance map; delegate the math to
- * the pure helpers in sectors.js (computeSectorShifts + sumSectorEffects);
+ * the pure helpers in sectors (computeSectorShifts + sumSectorEffects);
  * aggregate per (faction, sector); upsert with 0..100 clamp.
  *
  * Sector lookup is per-nation: a bill's effects reference sector_key, but
@@ -7223,7 +7223,7 @@ async function resolveAmbassadorConfirmationBill(supabase, bill, ctx) {
 
 /**
  * Resolve a passed/failed no_confidence bill. Thin wrapper around the
- * elections.js domain handler (resolveNoConfidence) plus the standard
+ * elections domain handler (resolveNoConfidence) plus the standard
  * bills.update / failBill + result-entry bookkeeping.
  */
 async function resolveNoConfidenceBill(supabase, bill, ctx) {
@@ -7876,7 +7876,7 @@ async function resolveTradeRatificationBill(supabase, bill, ctx) {
                         if (data.transfer_type === 'recurring') continue;
                         if (data.executed_at_tick != null) continue; // idempotent
                         // Endpoint resolution is shared across callsites
-                        // (see js/game/diplomacy-constants.js).
+                        // (see js/game/diplomacy-constants).
                         const endpoints = resolveTransferEndpoints(article, agreementForResolve);
                         if (!endpoints) {
                             if (article?.type === 'transfer' || article?.article_type === 'transfer') {
@@ -7889,7 +7889,7 @@ async function resolveTradeRatificationBill(supabase, bill, ctx) {
                         // The agreement is binding: receiver always gets the
                         // full amount. Sender pays from treasury first; any
                         // shortfall becomes debt (matches the discretionary-
-                        // grant pattern at bills.js#3543 — money has to come
+                        // grant pattern at bills#3543 — money has to come
                         // from somewhere).
                         //
                         // Unit boundary: nation.budget is abstract (1 = $1B),
@@ -9843,7 +9843,7 @@ async function reversePolicy(supabase, nation, policy, passedTick, currentTick) 
     if (reversalEffects.length === 0) return;
 
     // FK references are already cleared by repealActiveLaw() before calling this.
-    // For the opposed-policy auto-reversal path (bills.js:2369), the original
+    // For the opposed-policy auto-reversal path (bills:2369), the original
     // active_law row is replaced by upsert so no FK cleanup is needed there either.
     const { error: reversalInsertError } = await supabase.from('active_laws')
         .upsert({
@@ -12633,7 +12633,7 @@ async function processGovernmentVacancy(supabase, nation, currentTick) {
     // is forced, so the deadlock breaker can't become permanent rule
     // by a plurality party that simply refuses to negotiate further.
     // Dissolving the formation here also clears the -20% YES penalty
-    // that bills.js applies via formation_type='emergency_minority'.
+    // that bills applies via formation_type='emergency_minority'.
     if (coalition?.formation_type === 'emergency_minority'
         && coalition.status === 'formed'
         && coalition.formed_at_tick != null) {
@@ -15819,7 +15819,7 @@ async function computeEngagementScores(supabase, nation, factions, coalitionPart
 // ────────── electorate ──────────
 
 /**
- * electorate.js — Electorate engine
+ * electorate — Electorate engine
  *
  * Replaces the old voter_blocs + faction_bloc_approval system with a
  * continuous electorate model. The electorate is represented by a single
@@ -15845,7 +15845,7 @@ async function computeEngagementScores(supabase, nation, factions, coalitionPart
  * Inactivity-driven seat penalties.
  *
  * Single source of truth for both browser-side filters (politics.js
- * forecast, elections.js candidate eligibility) and the per-tick seat
+ * forecast, elections candidate eligibility) and the per-tick seat
  * drain / auto-disband loop in advance-tick. The edge function bundle
  * mirrors these constants locally — see handler-template.ts for the
  * "must match" comment.
@@ -17010,7 +17010,7 @@ function computePlatformAppeal(stances, issueStateMap, ideo, alignment) {
 // PHASE 4: CAMPAIGN ACTION HELPERS
 // ============================================================================
 // These functions are called by the existing campaign action implementations
-// in political-actions.js to update the new electorate tables in parallel
+// in political-actions to update the new electorate tables in parallel
 // with the legacy faction_bloc_approval writes.
 
 /**
@@ -17233,7 +17233,7 @@ async function logActivity(supabase, factionId, nationId, actionType, actionLabe
 // ────────── policies ──────────
 
 /**
- * policies.js — Target-based policy engine
+ * policies — Target-based policy engine
  *
  * Per-tick processor for the target-based policy model introduced in the
  * Target-Based Policies Phase 1–4 work. Reads active_laws joined to
@@ -17245,7 +17245,7 @@ async function logActivity(supabase, factionId, nationId, actionType, actionLabe
  * per-tick accumulator on the proposing faction, but that produced
  * runaway popularity (every law eventually pinned every party at 0 or
  * max). The model is now a one-shot delta to YES voters at bill-pass
- * time, applied by applyOptionRapportToYesVoters() in bills.js. See
+ * time, applied by applyOptionRapportToYesVoters() in bills. See
  * enactBill().
  *
  * Coexists with the legacy rate/duration model in
@@ -17253,7 +17253,7 @@ async function logActivity(supabase, factionId, nationId, actionType, actionLabe
  * is_target_based flag is TRUE hit this path. Legacy options pass through
  * the existing pipeline unchanged.
  *
- * The edge-function bundler concatenates this module after stats.js
+ * The edge-function bundler concatenates this module after stats
  * (which exports normalizeNationStatKey, NATION_STAT_COLUMN_SET,
  * STAT_PROCESSOR_SKIP), so those symbols are in scope at sync time.
  * Imports declared here are stripped by scripts/sync-edge-function.js.
@@ -17375,7 +17375,7 @@ async function processTargetBasedPolicies(supabase, nation) {
 // ────────── party-leadership ──────────
 
 /**
- * party-leadership.js — Party Leadership: Leader
+ * party-leadership — Party Leadership: Leader
  * Trait-based candidate generation, electability, AP cost calculation
  */
 
@@ -17994,7 +17994,7 @@ async function executeLeaderStepDown(supabase, nationId, factionId, currentTick,
 // ────────── protest ──────────
 
 /**
- * protest.js — Organise a Protest: game logic + execute functions
+ * protest — Organise a Protest: game logic + execute functions
  *
  * Phase 1: AP cost scaling, protest fatigue, condition score, turnout roll,
  * tier resolution, escalation path, grievance scoring, tier effects.
@@ -21221,7 +21221,7 @@ async function _adjustCredibility() { return; }
  * redistribute the vacant seats across the remaining factions.
  *
  * Uses the Largest Remainder method (same as allocateSeatsByVotes in
- * election-simulation.js) with existing seat counts as weights.
+ * election-simulation) with existing seat counts as weights.
  */
 async function rebalanceVacantSeats(supabase, nation) {
     const totalSeats = nation.total_seats || GAME_CONFIG.TOTAL_SEATS;
@@ -23037,7 +23037,7 @@ const FEMALE_NAMES = new Set([
     // surnames (Chen, Lin, Han) in the FIRST_NAMES slot and given names
     // (Mei-ling, Kuo-yu) in LAST_NAMES — but isFemaleName() tests the
     // FIRST_NAMES slot only, so adding female given names here would
-    // never match. Gender-aware titles (Queen/King in bills.js:4480 and
+    // never match. Gender-aware titles (Queen/King in bills:4480 and
     // 4579) only fire for monarchies, which Danwei isn't, so the gap
     // is currently inert. If a future change wants gendered titles for
     // Danwei, the fix is to make isFemaleName nation-aware (check the
@@ -25895,7 +25895,7 @@ async function _applyAllSectorPopularityBoost(supabase, nationId, factionId, del
 // ────────── election-simulation ──────────
 
 /**
- * election-simulation.js — Largest-remainder seat allocation + sector-based
+ * election-simulation — Largest-remainder seat allocation + sector-based
  * client-side election preview.
  */
 
@@ -26177,7 +26177,7 @@ async function runPresidentialElectionPreview(supabase, nationId) {
 // ────────── energy ──────────
 
 /**
- * energy.js — Strategic Oil Reserve tick processing
+ * energy — Strategic Oil Reserve tick processing
  *
  * Processes active oil build cycles each tick:
  *   - Accumulates reserve based on (oil_and_gas + manufacturing_output) / 2
@@ -26305,7 +26305,7 @@ async function processEnergyOilBuildCycles(supabase, nation, currentTick) {
 // ────────── sovereign-default ──────────
 
 /**
- * sovereign-default.js — Sovereign Default system utilities and constants
+ * sovereign-default — Sovereign Default system utilities and constants
  *
  * Provides shared functions for debt-to-GDP calculations, debt service burden,
  * credit deterioration, default consequence previews, and validation.
@@ -26738,7 +26738,7 @@ function formatDebtToGDP(ratio) {
 // ────────── shipping ──────────
 
 /**
- * shipping.js — Shipping route mechanics + helpers
+ * shipping — Shipping route mechanics + helpers
  *
  * Generation hooks (generateShippingRoutes, generateOrganicRoutes) were
  * stubbed in Phase 10A when the goods-trade engine was wiped. The
@@ -30867,7 +30867,7 @@ async function resolveIncident(supabase, incident, nationA, nationB, currentTick
 // ────────── platforms ──────────
 
 /**
- * platforms.js — Party platform definitions.
+ * platforms — Party platform definitions.
  * 16 platforms a party can adopt (up to 3 simultaneously, 6-tick cooldown between).
  * Each defines promised stat improvements, likely side effects, and a political tradeoff.
  */
@@ -31121,7 +31121,7 @@ function platformMomentumInfo(existingCount) {
 // ────────── platform-promises ──────────
 
 /**
- * platform-promises.js — Platform promise tracking & evaluation.
+ * platform-promises — Platform promise tracking & evaluation.
  *
  * When a party adopts a platform, stat baselines are locked. If the party
  * enters government, they have 24 ticks to move each promised "improve" stat
@@ -31374,7 +31374,7 @@ function getPromiseProgress(myPlatforms, nation) {
 // ────────── lawsuits ──────────
 
 /**
- * lawsuits.js — File Lawsuit logic.
+ * lawsuits — File Lawsuit logic.
  *
  * Handles:
  *   - Corruption growth calculation
@@ -31760,7 +31760,7 @@ async function resolveLawsuits(supabase, nationId, currentTick, govPmPartyId) {
 // ────────── military-loyalty ──────────
 
 /**
- * military-loyalty.js — Military Loyalty Act (MLA) behavior.
+ * military-loyalty — Military Loyalty Act (MLA) behavior.
  *
  * While this structural policy is active in a nation, the Defense Minister
  * row in the ministries table is force-synced each tick to match the sitting
@@ -31769,8 +31769,8 @@ async function resolveLawsuits(supabase, nationId, currentTick, govPmPartyId) {
  *
  * Single source of truth for MLA logic — used by:
  *   - advance-tick handler (per-tick sync)
- *   - js/game/bills.js       (enact hook: cancels pending defense confirmations)
- *   - js/game/repeal-helper.js (repeal hook: vacates defense ministry)
+ *   - js/game/bills       (enact hook: cancels pending defense confirmations)
+ *   - js/game/repeal-helper (repeal hook: vacates defense ministry)
  *   - government.html        (fireMinister gate)
  */
 
@@ -32141,7 +32141,7 @@ async function processTariffRelationsPenalty(supabase, nation) {
 //   immigration = 100 →  +0.5% population per tick
 //
 // Eligible voters is no longer stored — derived as population × 0.65
-// at read time (elections.js getEligibleVoters).
+// at read time (elections getEligibleVoters).
 
 async function processPopulationGrowth(supabase: any, nation: any) {
     const imm = Number(nation.immigration ?? 50);
@@ -32566,7 +32566,7 @@ async function enactSovereignDefault(supabase, bill, currentTick) {
     // Alpha Phase 9 dropped credit / currency_strength / foreign_investment /
     // international_reputation / interest_rates / inflation / trade_balance /
     // happiness columns from `nations`. SOVEREIGN_DEFAULT_CONFIG (see
-    // js/game/sovereign-default.js:50-61) consolidates the legacy economic +
+    // js/game/sovereign-default:50-61) consolidates the legacy economic +
     // reputational damage onto the surviving canonical stats:
     //   FULL_DEFAULT_POWER_HIT             → global_image
     //   FULL_DEFAULT_INDUSTRY_HIT          → industry
@@ -33097,7 +33097,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 if (d.transfer_type !== 'recurring') continue;
                 if (d.last_paid_at_tick === newTick) continue;
                 // Endpoint resolution is shared across callsites
-                // (see js/game/diplomacy-constants.js → resolveTransferEndpoints).
+                // (see js/game/diplomacy-constants → resolveTransferEndpoints).
                 const endpoints = resolveTransferEndpoints(art, agreement);
                 if (!endpoints) {
                     if (art?.type === 'transfer' || art?.article_type === 'transfer') {
@@ -33419,7 +33419,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // AFTER decay / commodities / connections so the convergence
         // step uses the post-settled stat as its starting point. Skipped
         // silently if no active_laws on this nation are target-based.
-        // Implementation lives in js/game/policies.js.
+        // Implementation lives in js/game/policies.
         try {
             const tbResult = await processTargetBasedPolicies(supabase, nation);
             if (tbResult.stats.length > 0) {
@@ -33977,7 +33977,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // internal rebalance call is also bypassed.
         //
         // INACTIVITY_DRAIN_THRESHOLD / INACTIVITY_DISBAND_THRESHOLD are
-        // exported from js/game/electorate.js; the sync script
+        // exported from js/game/electorate; the sync script
         // concatenates that module ahead of this footer so the constants
         // are in scope here without re-declaration.
         let inactivityChanged = false;
@@ -34018,7 +34018,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                             const monarchTitle = nation.monarch_title || 'King';
 
                             // Generate a new heir name. getNationNames is
-                            // bundled directly from political-actions.js by
+                            // bundled directly from political-actions by
                             // sync-edge-function.js, so it's already in scope.
                             // (Earlier code used a dynamic import of the
                             // source path — Supabase CLI flagged that with
@@ -34193,7 +34193,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Phase 8.5.4: Per-tick tax revenue. nation.budget is a cash
         // balance; income + corporate tax revenue accumulate into it
-        // each tick. Formulas live in budget.js.
+        // each tick. Formulas live in budget.
         try {
             // Active corp count for the per-corp footprint adder in
             // computeCorporateTaxRevenue ($2/tick per active corp HQ'd
@@ -34227,7 +34227,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // Per-tick GDP drift. Applies ((gdp_growth − 50) / 50) × 1% to
-        // nation.gdp each tick. SoT: applyGdpGrowthDrift in budget.js
+        // nation.gdp each tick. SoT: applyGdpGrowthDrift in budget
         // (formula and floor live there).
         try {
             await applyGdpGrowthDrift(supabase, nation);
