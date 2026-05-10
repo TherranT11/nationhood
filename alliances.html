@@ -2654,6 +2654,7 @@ function renderAivModal() {
                 </div>
                 <div class="al-aiv-actions">
                     ${isInitiator ? `<button class="btn-withdraw" id="al-aiv-withdraw-btn" ${s.busy ? 'disabled' : ''}>Withdraw Vote</button>` : ''}
+                    ${(isMember && v.pending_resolve_at_tick != null) ? `<button class="btn-submit" id="al-aiv-finalize-btn" ${s.busy ? 'disabled' : ''}>Finalize Now</button>` : ''}
                     ${isMember ? `<button class="btn-submit" id="al-aiv-submit-btn" ${canVote ? '' : 'disabled'}>${myBallot ? 'Update Vote' : 'Submit Vote'}</button>` : ''}
                     <button class="btn-close" id="al-aiv-close-btn">Close</button>
                 </div>
@@ -2730,6 +2731,7 @@ function renderAivModal() {
 
     document.getElementById('al-aiv-submit-btn')?.addEventListener('click', aivSubmitVote);
     document.getElementById('al-aiv-withdraw-btn')?.addEventListener('click', aivWithdrawVote);
+    document.getElementById('al-aiv-finalize-btn')?.addEventListener('click', aivFinalizeVote);
     document.getElementById('al-aiv-start-btn')?.addEventListener('click', aivStartVote);
 
     const chatInput = document.getElementById('al-aiv-chat-input');
@@ -2784,6 +2786,32 @@ async function aivWithdrawVote() {
         const { data, error } = await _supabase.rpc('withdraw_alliance_interest_vote', { p_vote_id: _aivState.vote.id });
         if (error)         _aivState.error = error.message;
         else if (!data?.success) _aivState.error = `Withdraw failed: ${data?.reason || 'unknown'}`;
+    } catch (err) {
+        _aivState.error = err?.message || String(err);
+    } finally {
+        _aivState.busy = false;
+        await refreshAivState();
+    }
+}
+
+// Manual finalize for an alliance interest rate vote that's already
+// crossed the >50% threshold on both axes (pending_resolve_at_tick
+// set by the per-tick sweep). Without this button, players had to
+// wait for the next tick for the sweep's Pass A to apply the band.
+// Any alliance member can press it.
+async function aivFinalizeVote() {
+    if (!_aivState || !_aivState.vote || _aivState.busy) return;
+    if (_aivState.vote.pending_resolve_at_tick == null) {
+        _aivState.error = 'Majority not yet reached — cannot finalize.';
+        renderAivModal();
+        return;
+    }
+    if (!confirm('Finalize the Interest Rate vote now? The band locks in immediately.')) return;
+    _aivState.busy = true; _aivState.error = null; renderAivModal();
+    try {
+        const { data, error } = await _supabase.rpc('finalize_alliance_interest_vote', { p_vote_id: _aivState.vote.id });
+        if (error)               _aivState.error = error.message;
+        else if (!data?.success) _aivState.error = `Finalize failed: ${data?.reason || 'unknown'}`;
     } catch (err) {
         _aivState.error = err?.message || String(err);
     } finally {
