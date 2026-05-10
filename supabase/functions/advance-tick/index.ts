@@ -8290,25 +8290,63 @@ async function resolveVetoOverrideBill(supabase, bill, ctx) {
  */
 async function resolveFoundationalBill(supabase, bill, ctx) {
     const { passed, currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
+
+    // Vote failed → mark + fire generic bill_failed.
+    if (!passed) {
+        await failBill(supabase, bill);
+        await fireBillEvent(supabase, 'bill_failed', bill, {
+            currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain,
+            articleCount: 0,
+        });
+        return {
+            billId: bill.id, billName: bill.bill_name, result: 'failed',
+            votesFor, votesAgainst, type: 'foundational',
+            earlyResolution: bill.early_resolution_status || null,
+        };
+    }
+
+    // Vote passed — try to enact. Wrap in try/catch so a thrown
+    // exception still produces a clean failed_enactment outcome
+    // (mirrors resolveOrdinaryBill's parliamentary branch).
     let enacted = false;
-    if (passed) {
+    let enactError = null;
+    try {
         enacted = await enactFoundationalBill(supabase, bill, currentTick);
+    } catch (enactErr) {
+        console.error(`[resolveFoundationalBill] enactFoundationalBill threw for bill ${bill.id} ("${bill.bill_name}"):`, enactErr);
+        enactError = `enactFoundationalBill threw: ${enactErr?.message || enactErr}`;
+        enacted = false;
     }
-    if (!passed || !enacted) {
-        if (!enacted && passed) {
-            console.warn(`[resolveFoundationalBill] Foundational bill ${bill.id} had enough votes but enactment failed.`);
-        } else {
-            await failBill(supabase, bill);
-        }
+
+    if (enacted) {
+        await fireBillEvent(supabase, 'bill_passed', bill, {
+            currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain,
+            articleCount: 0,
+        });
+        return {
+            billId: bill.id, billName: bill.bill_name, result: 'passed',
+            votesFor, votesAgainst, type: 'foundational',
+            earlyResolution: bill.early_resolution_status || null,
+        };
     }
-    await fireBillEvent(supabase, enacted ? 'bill_passed' : 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+
+    // Vote passed but enactment failed. Mark bill failed with a clear
+    // status so /bills filtering works, and fire bill_failed with an
+    // override label so the news feed says "X (enactment failed)"
+    // instead of the misleading plain "Bill Failed". Each enactor
+    // already console.warn/console.error's the specific reason; the
+    // edge-function logs are the next debug surface.
+    console.warn(`[resolveFoundationalBill] Foundational bill ${bill.id} ("${bill.bill_name}") had enough votes but enactment failed.${enactError ? ' ' + enactError : ''}`);
+    await markBillEnactmentFailed(supabase, bill, currentTick, enactError || 'Enactor returned false');
+    await fireBillEvent(supabase, 'bill_failed', bill, {
+        currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain,
+        articleCount: 0,
+        billNameOverride: `${bill.bill_name} (enactment failed)`,
+    });
     return {
-        billId: bill.id,
-        billName: bill.bill_name,
-        result: enacted ? 'passed' : 'failed',
-        votesFor,
-        votesAgainst,
-        type: 'foundational',
+        billId: bill.id, billName: bill.bill_name, result: 'failed_enactment',
+        votesFor, votesAgainst, type: 'foundational',
+        error: enactError,
         earlyResolution: bill.early_resolution_status || null,
     };
 }
