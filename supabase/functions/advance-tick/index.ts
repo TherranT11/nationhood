@@ -9354,6 +9354,26 @@ async function enactBill(supabase, bill, currentTick) {
                 policyName: policy.policy_name
             });
 
+            // Forced Corporate Exodus hook — if the new option is the
+            // State Apparatus → State Run Economy combo, flag every corp
+            // HQ'd in this nation as displaced (Pressing Issue + trigger
+            // block until they relocate). Implementation lives in SQL
+            // (sql/migrations/20261122_state_run_economy_corp_exodus.sql);
+            // this RPC is a name-match no-op for every other policy or
+            // option, so it's safe to call unconditionally.
+            if (art.selected_option_id) {
+                try {
+                    const { error: sreErr } = await supabase.rpc('maybe_trigger_state_run_economy_exodus', {
+                        p_nation_id: bill.nation_id,
+                        p_policy_id: policy.id,
+                        p_option_id: art.selected_option_id,
+                    });
+                    if (sreErr) console.warn('[enactBill] State Run Economy exodus hook failed (non-fatal):', sreErr.message);
+                } catch (sreEx) {
+                    console.warn('[enactBill] State Run Economy exodus hook threw (non-fatal):', sreEx);
+                }
+            }
+
             // Phase 4.2-fix: revert the OLD option's sector_effects against
             // the bill sponsor only after the active_law upsert has actually
             // landed. If the upsert had failed, the early-return above would
