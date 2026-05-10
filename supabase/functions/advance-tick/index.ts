@@ -25152,6 +25152,27 @@ async function processVolaPlacementMatches(supabase, currentTick) {
             console.error('[VolaPlacement] settle failed for cup', cupNumber, err);
         }
         if (!settled) continue;
+        // VWC ranking refresh — fires here at qualifier-end so the
+        // group draw (next call in this loop) reads a fresh culture+
+        // random ±5 seeding. nations.vwc_ranking has a sequenced
+        // dual-writer pattern by design:
+        //
+        //   T(qualifier-end)      recompute  → drives THIS cycle's
+        //                                       group draw via _seedCompare
+        //   T(qualifier + 17 = F) settle     → drives NEXT cycle's
+        //                                       placement bottom-3 via
+        //                                       _pickBottomThree
+        //   T(next qualifier-end) recompute  → cycle repeats
+        //
+        // Each write has a single downstream reader before the next
+        // write overwrites it, so there's no contention. Failure here
+        // is non-fatal — the draw falls back to prowess via
+        // _seedCompare's 0-rank handler.
+        try {
+            await recomputeVwcRankings(supabase);
+        } catch (vwcErr) {
+            console.error('[VolaPlacement] VWC ranking recompute failed (non-fatal):', vwcErr);
+        }
         let drawn = false;
         try {
             await generateVolaCupGroupDraw(supabase, cupNumber, currentTick);
@@ -25408,7 +25429,7 @@ async function seedVolaCupKnockout(supabase, cupNumber, currentTick) {
     if (existing) return null;
 
     const { data: gmatches, error: gErr } = await supabase.from('vola_cup_group_matches')
-        .select('group_letter, team_a_nation_id, team_b_nation_id, team_a_score, team_b_score, winner_nation_id, resolved_at_tick')
+        .select('group_letter, team_a_nation_id, team_b_nation_id, team_a_score, team_b_score, winner_nation_id, resolved_at_tick, scheduled_tick')
         .eq('cup_number', cupNumber);
     if (gErr) {
         console.warn('[VolaKnockout] group match fetch failed:', gErr.message);
@@ -25486,8 +25507,15 @@ async function seedVolaCupKnockout(supabase, cupNumber, currentTick) {
     if (seeded.length !== 8) return null;
     const bySeed = new Map(seeded.map(t => [t.seed, t]));
 
-    // Cup schedule (canonical: cup 1 starts at tick 84, period 24).
-    const cupStartTick = 84 + 24 * (cupNumber - 1);
+    // Cup schedule — derive from the group matches we already fetched.
+    // generateVolaCupGroupSchedule writes Round 1 at cupStart+0, R2 at
+    // +1, R3 at +2, so the min scheduled_tick across the 18 rows IS
+    // cupStart. Doing it this way (instead of the old canonical
+    // 84 + 24*(N-1) formula) keeps QF/SF/F in lock-step with whatever
+    // cupStart the placement post-settle handler chose — currently
+    // qualifier_tick + 12, which can drift from the canonical cadence
+    // if the placement round itself fired late.
+    const cupStartTick = Math.min(...gmatches.map(m => Number(m.scheduled_tick)));
     const qfTick = cupStartTick + 3;
     const sfTick = cupStartTick + 4;
     const fTick  = cupStartTick + 5;
@@ -25788,8 +25816,12 @@ async function settleVolaCupChampionship(supabase, cupNumber, currentTick) {
         return null;
     }
 
-    // Write back into nations.vwc_ranking so seedVolaCupKnockout's
-    // seed-by-ranking uses the latest results next cycle.
+    // Write final positions (1..13) back into nations.vwc_ranking.
+    // The downstream consumer is _pickBottomThree in the NEXT cycle's
+    // generateVolaPlacementSchedule at T(this F + 5) — it picks the 3
+    // worst-ranked nations to play placement. This is one half of the
+    // dual-writer pattern documented in processVolaPlacementMatches:
+    // recompute drives the group draw, settle drives the next placement.
     for (const p of positions) {
         const { error: rErr } = await supabase.from('nations')
             .update({ vwc_ranking: p.position })
@@ -34608,18 +34640,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] History snapshot FAILED for ${nation.id} (${nation.name}):`, snapErr);
         }
       }
-    }
-
-    // ══════════════════════════════════════════════════════════════════
-    // 4a-bis. VWC RANKINGS — global pass after all nations processed.
-    // Sorts every nation by (national_vola_culture + random ±5 delta);
-    // top 12 get vwc_ranking 1..12, others 0. Skipped silently on
-    // fetch error.
-    // ══════════════════════════════════════════════════════════════════
-    try {
-        await recomputeVwcRankings(supabase);
-    } catch (vwcErr) {
-        console.error('[advanceTick] VWC ranking recompute failed (non-fatal):', vwcErr);
     }
 
     // ══════════════════════════════════════════════════════════════════
