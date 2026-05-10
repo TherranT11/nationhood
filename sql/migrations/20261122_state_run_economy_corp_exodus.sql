@@ -298,7 +298,8 @@ DECLARE
     v_fee          CONSTANT NUMERIC := 5000000;
     v_actual_debit NUMERIC;
     v_shortfall    NUMERIC;
-    v_old_nation   UUID;
+    v_old_nation      UUID;
+    v_old_nation_name TEXT;
     v_new_nation_name TEXT;
     v_bids_killed  INTEGER := 0;
     v_props_killed INTEGER := 0;
@@ -327,6 +328,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'invalid_target_nation');
     END IF;
 
+    SELECT name INTO v_old_nation_name FROM nations WHERE id = v_old_nation;
     SELECT name INTO v_new_nation_name FROM nations WHERE id = p_new_nation_id;
     IF v_new_nation_name IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'target_nation_not_found');
@@ -442,7 +444,9 @@ BEGIN
         ) VALUES (
             v_old_nation, NULL, 'Press Wire',
             v_corp.faction_name || ' relocates HQ amid State Run Economy',
-            'Due to mass nationalization efforts in the economy, '
+            'Due to mass nationalization efforts in the economy of '
+                || COALESCE(v_old_nation_name, 'its former home')
+                || ', '
                 || v_corp.faction_name
                 || ' has relocated its operations to '
                 || v_new_nation_name
