@@ -1602,6 +1602,14 @@ async function openRelocateModal() {
         alert('Failed to load nations: ' + nationsRes.error.message);
         return;
     }
+    // Hard-fail on the SRE filter rather than degrading silently —
+    // an empty set would let the player relocate INTO an SRE nation,
+    // which the server-side relocate_corp_hq guard would reject anyway,
+    // but only after the user picked one. Better to surface the error.
+    if (sreRes.error) {
+        alert('Failed to load State Run Economy filter: ' + sreRes.error.message);
+        return;
+    }
     const sreSet = new Set((sreRes.data || []).map(r => r.nation_id));
     const eligible = (nationsRes.data || []).filter(n =>
         n.id !== faction.displaced_from_nation_id && !sreSet.has(n.id)

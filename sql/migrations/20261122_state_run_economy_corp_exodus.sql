@@ -345,8 +345,13 @@ BEGIN
     -- ── Fee handling ──
     -- Try to deduct $5M from cash. If short, defer the shortfall to
     -- corp_loans (so the existing debt mechanics handle paydown).
+    -- GREATEST(0, ...) clamp: if corp is already in the red
+    -- (corp_cash_reserves < 0), debit zero from cash and defer the
+    -- entire fee as debt. Without the clamp, LEAST(-X, fee) = -X,
+    -- which would over-charge corp_loans by |X| via the shortfall
+    -- calc below.
     v_cash := COALESCE(v_corp.corp_cash_reserves, 0);
-    v_actual_debit := LEAST(v_cash, v_fee);
+    v_actual_debit := GREATEST(0, LEAST(v_cash, v_fee));
     v_shortfall    := v_fee - v_actual_debit;
 
     IF v_actual_debit > 0 THEN
@@ -401,10 +406,13 @@ BEGIN
     )
     SELECT COUNT(*) INTO v_bids_killed FROM withdrawn;
 
-    -- Single emission surfaced in three corp event containers:
-    -- old nation's local feed, new nation's local feed, and the
-    -- world feed (NULL nation_id). All three rows share the same
-    -- body so the political news reads consistently everywhere.
+    -- Two rows, both with the same body. event_log.nation_id is
+    -- NOT NULL so we can't write a single "world" row; instead the
+    -- corp-dashboard's world scope query (.neq('nation_id', self))
+    -- surfaces these to every other player. Net result: old nation
+    -- player sees the old-nation row in their local feed, new
+    -- nation player sees the new-nation row in their local feed,
+    -- and every third-party player sees both in their world feed.
     v_body := 'Due to mass nationalization efforts in the economy of '
               || COALESCE(v_old_nation_name, 'its former home')
               || ', '
@@ -418,8 +426,7 @@ BEGIN
         category, trigger_key, fired_at_tick
     ) VALUES
         (v_old_nation,    v_corp.id, 'HQ Relocated', v_body, 'business', 'corp_hq_relocated', v_tick),
-        (p_new_nation_id, v_corp.id, 'HQ Relocated', v_body, 'business', 'corp_hq_relocated', v_tick),
-        (NULL,            v_corp.id, 'HQ Relocated', v_body, 'business', 'corp_hq_relocated', v_tick);
+        (p_new_nation_id, v_corp.id, 'HQ Relocated', v_body, 'business', 'corp_hq_relocated', v_tick);
 
     RETURN jsonb_build_object(
         'success',         true,

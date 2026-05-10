@@ -541,6 +541,13 @@ async function init() {
 
     allNations = nationsRes.data || [];
     const corps = corpsRes.data || [];
+    // Warn loudly on SRE filter failure — an empty set would let the
+    // player pick an SRE nation as a brand-new HQ, which would then
+    // fail or trigger the displaced flag immediately.
+    if (sreRes.error) {
+        console.error('[corp-nation-select] SRE filter RPC failed:', sreRes.error.message);
+        alert('Failed to load State Run Economy filter. Some nations may be incorrectly available.\n\n' + sreRes.error.message);
+    }
     sreNationSet = new Set((sreRes.data || []).map(r => r.nation_id));
 
     corpsByNation = {};
