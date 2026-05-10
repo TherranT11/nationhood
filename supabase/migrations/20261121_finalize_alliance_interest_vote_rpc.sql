@@ -41,7 +41,14 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
     END IF;
 
-    SELECT * INTO v_vote FROM alliance_interest_votes WHERE id = p_vote_id;
+    -- FOR UPDATE locks the row for the duration of this txn. Without
+    -- it, the per-tick sweep_alliance_interest_votes could finalize
+    -- between this SELECT and the writes below, leading to a
+    -- duplicate chat-message INSERT (data is idempotent otherwise,
+    -- but the chat row would double-post). The lock serialises the
+    -- two paths: whichever commits first wins; the other sees
+    -- status <> 'open' and exits cleanly.
+    SELECT * INTO v_vote FROM alliance_interest_votes WHERE id = p_vote_id FOR UPDATE;
     IF NOT FOUND THEN
         RETURN jsonb_build_object('success', false, 'reason', 'vote_not_found');
     END IF;
