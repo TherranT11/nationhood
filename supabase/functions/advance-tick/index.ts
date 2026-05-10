@@ -25152,13 +25152,22 @@ async function processVolaPlacementMatches(supabase, currentTick) {
             console.error('[VolaPlacement] settle failed for cup', cupNumber, err);
         }
         if (!settled) continue;
-        // VWC ranking refresh — fire once here, immediately after the
-        // qualifier resolves and before the group draw reads
-        // vwc_ranking. This is the only per-cycle write to
-        // nations.vwc_ranking (the prior per-tick recompute was
-        // removed); it stays frozen for the next ~24 ticks until the
-        // next cup's qualifier ends. Failure is non-fatal — the draw
-        // falls back to prowess via _seedCompare's 0-rank handler.
+        // VWC ranking refresh — fires here at qualifier-end so the
+        // group draw (next call in this loop) reads a fresh culture+
+        // random ±5 seeding. nations.vwc_ranking has a sequenced
+        // dual-writer pattern by design:
+        //
+        //   T(qualifier-end)      recompute  → drives THIS cycle's
+        //                                       group draw via _seedCompare
+        //   T(qualifier + 17 = F) settle     → drives NEXT cycle's
+        //                                       placement bottom-3 via
+        //                                       _pickBottomThree
+        //   T(next qualifier-end) recompute  → cycle repeats
+        //
+        // Each write has a single downstream reader before the next
+        // write overwrites it, so there's no contention. Failure here
+        // is non-fatal — the draw falls back to prowess via
+        // _seedCompare's 0-rank handler.
         try {
             await recomputeVwcRankings(supabase);
         } catch (vwcErr) {
@@ -25807,8 +25816,12 @@ async function settleVolaCupChampionship(supabase, cupNumber, currentTick) {
         return null;
     }
 
-    // Write back into nations.vwc_ranking so seedVolaCupKnockout's
-    // seed-by-ranking uses the latest results next cycle.
+    // Write final positions (1..13) back into nations.vwc_ranking.
+    // The downstream consumer is _pickBottomThree in the NEXT cycle's
+    // generateVolaPlacementSchedule at T(this F + 5) — it picks the 3
+    // worst-ranked nations to play placement. This is one half of the
+    // dual-writer pattern documented in processVolaPlacementMatches:
+    // recompute drives the group draw, settle drives the next placement.
     for (const p of positions) {
         const { error: rErr } = await supabase.from('nations')
             .update({ vwc_ranking: p.position })
