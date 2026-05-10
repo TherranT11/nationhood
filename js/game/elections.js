@@ -1030,7 +1030,7 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
     // Presidential systems cannot call early elections.
     // Absolute monarchy: parliament does not run elections — the Monarch
     // controls government composition via the Appoint PM royal action.
-    const { data: nationCheck } = await supabase.from('nations').select('government_type, hos_election_method, gov_approval, control').eq('id', nationId).single();
+    const { data: nationCheck } = await supabase.from('nations').select('government_type, hos_election_method, gov_approval, state_apparatus').eq('id', nationId).single();
     if (!hasParliamentaryPM(nationCheck)) return { success: false, error: 'Presidential systems cannot call early elections' };
     if (isAbsoluteMonarchy(nationCheck)) return { success: false, error: 'Elections are not held under absolute monarchy.' };
 
@@ -1189,7 +1189,7 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
  */
 export async function dissolveParliament(supabase, nationId, presidentFactionId) {
     const { data: nation } = await supabase.from('nations')
-        .select('name, government_type, control, public_approval, last_dissolution_tick, parliament_formed_tick, last_vonc_tick')
+        .select('name, government_type, state_apparatus, public_approval, last_dissolution_tick, parliament_formed_tick, last_vonc_tick')
         .eq('id', nationId).single();
 
     if (!isSemiPresidential(nation)) throw new Error('Dissolve Parliament is only available in Semi-Presidential systems');

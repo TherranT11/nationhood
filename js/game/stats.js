@@ -364,7 +364,7 @@ export const STAT_DECAY_CONFIG = {
     // ── Equilibrium (drift back to midpoint) ──
     gdp_growth:        { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     immigration:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    control:           { type: 'equilibrium', target: 45, speed: DECAY_SPEED.CRAWL },
+    state_apparatus:   { type: 'equilibrium', target: 45, speed: DECAY_SPEED.CRAWL },
     unrest:            { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
     public_approval:   { type: 'equilibrium', target: 40, speed: DECAY_SPEED.CRAWL },
     crown_authority:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },

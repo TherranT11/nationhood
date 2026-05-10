@@ -2613,7 +2613,7 @@ const STAT_DECAY_CONFIG = {
     // ── Equilibrium (drift back to midpoint) ──
     gdp_growth:        { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
     immigration:       { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
-    control:           { type: 'equilibrium', target: 45, speed: DECAY_SPEED.CRAWL },
+    state_apparatus:   { type: 'equilibrium', target: 45, speed: DECAY_SPEED.CRAWL },
     unrest:            { type: 'equilibrium', target: 20, speed: DECAY_SPEED.CRAWL },
     public_approval:   { type: 'equilibrium', target: 40, speed: DECAY_SPEED.CRAWL },
     crown_authority:   { type: 'equilibrium', target: 50, speed: DECAY_SPEED.CRAWL },
@@ -12285,7 +12285,7 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
     // Presidential systems cannot call early elections.
     // Absolute monarchy: parliament does not run elections — the Monarch
     // controls government composition via the Appoint PM royal action.
-    const { data: nationCheck } = await supabase.from('nations').select('government_type, hos_election_method, gov_approval, control').eq('id', nationId).single();
+    const { data: nationCheck } = await supabase.from('nations').select('government_type, hos_election_method, gov_approval, state_apparatus').eq('id', nationId).single();
     if (!hasParliamentaryPM(nationCheck)) return { success: false, error: 'Presidential systems cannot call early elections' };
     if (isAbsoluteMonarchy(nationCheck)) return { success: false, error: 'Elections are not held under absolute monarchy.' };
 
@@ -12444,7 +12444,7 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
  */
 async function dissolveParliament(supabase, nationId, presidentFactionId) {
     const { data: nation } = await supabase.from('nations')
-        .select('name, government_type, control, public_approval, last_dissolution_tick, parliament_formed_tick, last_vonc_tick')
+        .select('name, government_type, state_apparatus, public_approval, last_dissolution_tick, parliament_formed_tick, last_vonc_tick')
         .eq('id', nationId).single();
 
     if (!isSemiPresidential(nation)) throw new Error('Dissolve Parliament is only available in Semi-Presidential systems');
@@ -20719,7 +20719,7 @@ async function executeRally(supabase, factionId, nationId, blocId, currentTick) 
     let targetBloc = { id: null, bloc_name: 'General Public', population_weight: 100 };
 
     const { data: nation } = await supabase
-        .from('nations').select('unrest, control').eq('id', nationId).single();
+        .from('nations').select('unrest').eq('id', nationId).single();
     const { count: crisisCount } = await supabase
         .from('active_crises').select('id', { count: 'exact', head: true }).eq('nation_id', nationId);
 
@@ -32547,24 +32547,38 @@ async function enactSovereignDefault(supabase, bill, currentTick) {
         ? 0
         : Math.round(currentDebt * (resolution.repayment_rate || 0.5));
 
-    // 5. Apply immediate stat penalties
-    const clamp = (val, delta) => Math.max(0, Math.min(100, Math.round((val + delta) * 10) / 10));
+    // 5. Apply immediate stat penalties.
+    // Integer rounding (was Math.round(x*10)/10 which produced .5
+    // values that smallint columns reject — same trap d500f7b fixed
+    // in processTargetBasedPolicies + the connection accumulator).
+    const clamp = (val, delta) => Math.max(0, Math.min(100, Math.round(val + delta)));
 
+    // Alpha Phase 9 dropped credit / currency_strength / foreign_investment /
+    // international_reputation / interest_rates / inflation / trade_balance /
+    // happiness columns from `nations`. SOVEREIGN_DEFAULT_CONFIG (see
+    // js/game/sovereign-default.js:50-61) consolidates the legacy economic +
+    // reputational damage onto the surviving canonical stats:
+    //   FULL_DEFAULT_POWER_HIT             → global_image
+    //   FULL_DEFAULT_INDUSTRY_HIT          → industry
+    //   FULL_DEFAULT_COST_OF_LIVING_SPIKE  → cost_of_living
+    //   FULL_DEFAULT_SOL_HIT               → standard_of_living
+    //   FULL_DEFAULT_UNREST_SPIKE          → unrest
+    //   FULL_DEFAULT_GOV_APPROVAL_HIT      → public_approval
+    // Bloc-level approval hits (worker / nationalist) are applied elsewhere,
+    // not in nationUpdates.
     const nationUpdates: any = {
         debt: debtAfter,
         last_default_tick: currentTick,
-        credit: clamp(Number(nation.credit ?? 50), cfg.FULL_DEFAULT_CREDIT_HIT * discountedMultiplier),
-        currency_strength: clamp(Number(nation.currency_strength ?? 50), cfg.FULL_DEFAULT_CURRENCY_HIT * multiplier),
-        foreign_investment: clamp(Number(nation.foreign_investment ?? 50), cfg.FULL_DEFAULT_FOREIGN_INV_HIT * discountedMultiplier),
-        international_reputation: clamp(Number(nation.international_reputation ?? 50), cfg.FULL_DEFAULT_INTL_REP_HIT * discountedMultiplier),
-        interest_rates: clamp(Number(nation.interest_rates ?? 50), cfg.FULL_DEFAULT_INTEREST_SPIKE * multiplier),
-        inflation: clamp(Number(nation.inflation ?? 50), cfg.FULL_DEFAULT_INFLATION_SPIKE * multiplier),
-        trade_balance: clamp(Number(nation.trade_balance ?? 50), cfg.FULL_DEFAULT_TRADE_HIT * multiplier),
-        standard_of_living: clamp(Number(nation.standard_of_living ?? 50), cfg.FULL_DEFAULT_SOL_HIT * multiplier),
-        happiness: clamp(Number(nation.happiness ?? 50), cfg.FULL_DEFAULT_HAPPINESS_HIT * multiplier),
+        global_image:       clamp(Number(nation.global_image       ?? 50), cfg.FULL_DEFAULT_POWER_HIT            * discountedMultiplier),
+        industry:           clamp(Number(nation.industry           ?? 50), cfg.FULL_DEFAULT_INDUSTRY_HIT         * multiplier),
+        cost_of_living:     clamp(Number(nation.cost_of_living     ?? 50), cfg.FULL_DEFAULT_COST_OF_LIVING_SPIKE * multiplier),
+        standard_of_living: clamp(Number(nation.standard_of_living ?? 50), cfg.FULL_DEFAULT_SOL_HIT              * multiplier),
+        unrest:             clamp(Number(nation.unrest             ?? 50), cfg.FULL_DEFAULT_UNREST_SPIKE         * multiplier),
+        public_approval:    clamp(Number(nation.public_approval    ?? 50), cfg.FULL_DEFAULT_GOV_APPROVAL_HIT     * multiplier),
     };
 
-    // Re-derive debt_service_burden and credit lockout from new values
+    // Re-derive debt_service_burden from the new debt value. Credit
+    // lockout was tied to the dropped credit column — removed.
     nationUpdates.debt_service_burden = (() => {
         const gdp = Number(nation.gdp ?? 0);
         if (gdp <= 0 || debtAfter <= 0) return 0;
@@ -32572,7 +32586,6 @@ async function enactSovereignDefault(supabase, bill, currentTick) {
         if (newRatio <= cfg.BURDEN_THRESHOLD) return 0;
         return Math.round(Math.min(cfg.BURDEN_MAX, (newRatio - cfg.BURDEN_THRESHOLD) * cfg.BURDEN_SCALE) * 1000) / 1000;
     })();
-    nationUpdates.credit_locked_out = nationUpdates.credit <= cfg.CREDIT_LOCKOUT_THRESHOLD;
 
     const { error: updateErr } = await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
     if (updateErr) {
@@ -33994,8 +34007,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                             const dynastyName = nation.dynasty_name || 'Unknown';
                             const monarchTitle = nation.monarch_title || 'King';
 
-                            // Generate a new heir name
-                            const { getNationNames } = await import('../../js/game/political-actions.js');
+                            // Generate a new heir name. getNationNames is
+                            // bundled directly from political-actions.js by
+                            // sync-edge-function.js, so it's already in scope.
+                            // (Earlier code used a dynamic import of the
+                            // source path — Supabase CLI flagged that with
+                            // a deploy WARN and Deno would have thrown at
+                            // runtime since the bundle is self-contained.)
                             const names = getNationNames(nation.name);
                             const newHeirFirst = (names.firstNames || ['Alexander'])[Math.floor(Math.random() * (names.firstNames || ['Alexander']).length)];
                             const newHeirAge = 14 + Math.floor(Math.random() * 8); // 14-21
