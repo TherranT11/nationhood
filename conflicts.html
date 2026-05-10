@@ -587,7 +587,7 @@ async function renderCardBilateralIntel(issue) {
     const theirName = issue.nation_a_id === ourNationId ? (issue.nation_b?.name || 'Unknown') : (issue.nation_a?.name || 'Unknown');
 
     const [theirRes, ourHogRes, theirHogRes, ourCrisesRes, theirCrisesRes] = await Promise.allSettled([
-        _supabase.from('nations').select('gov_approval, control, power').eq('id', theirNationId).single(),
+        _supabase.from('nations').select('gov_approval, state_apparatus, power').eq('id', theirNationId).single(),
         _supabase.from('head_of_government').select('first_name, last_name, factions:faction_id(faction_name, abbreviation)').eq('nation_id', ourNationId).eq('active', true).maybeSingle(),
         _supabase.from('head_of_government').select('first_name, last_name, factions:faction_id(faction_name, abbreviation)').eq('nation_id', theirNationId).eq('active', true).maybeSingle(),
         _supabase.from('active_crises').select('id, crisis_templates(name)').eq('nation_id', ourNationId),
