@@ -12285,7 +12285,7 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
     // Presidential systems cannot call early elections.
     // Absolute monarchy: parliament does not run elections — the Monarch
     // controls government composition via the Appoint PM royal action.
-    const { data: nationCheck } = await supabase.from('nations').select('government_type, hos_election_method, gov_approval, control').eq('id', nationId).single();
+    const { data: nationCheck } = await supabase.from('nations').select('government_type, hos_election_method, gov_approval, state_apparatus').eq('id', nationId).single();
     if (!hasParliamentaryPM(nationCheck)) return { success: false, error: 'Presidential systems cannot call early elections' };
     if (isAbsoluteMonarchy(nationCheck)) return { success: false, error: 'Elections are not held under absolute monarchy.' };
 
@@ -12444,7 +12444,7 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
  */
 async function dissolveParliament(supabase, nationId, presidentFactionId) {
     const { data: nation } = await supabase.from('nations')
-        .select('name, government_type, control, public_approval, last_dissolution_tick, parliament_formed_tick, last_vonc_tick')
+        .select('name, government_type, state_apparatus, public_approval, last_dissolution_tick, parliament_formed_tick, last_vonc_tick')
         .eq('id', nationId).single();
 
     if (!isSemiPresidential(nation)) throw new Error('Dissolve Parliament is only available in Semi-Presidential systems');
@@ -20719,7 +20719,7 @@ async function executeRally(supabase, factionId, nationId, blocId, currentTick) 
     let targetBloc = { id: null, bloc_name: 'General Public', population_weight: 100 };
 
     const { data: nation } = await supabase
-        .from('nations').select('unrest, control').eq('id', nationId).single();
+        .from('nations').select('unrest').eq('id', nationId).single();
     const { count: crisisCount } = await supabase
         .from('active_crises').select('id', { count: 'exact', head: true }).eq('nation_id', nationId);
 

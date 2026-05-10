@@ -989,7 +989,7 @@ export async function executeRally(supabase, factionId, nationId, blocId, curren
     let targetBloc = { id: null, bloc_name: 'General Public', population_weight: 100 };
 
     const { data: nation } = await supabase
-        .from('nations').select('unrest, control').eq('id', nationId).single();
+        .from('nations').select('unrest').eq('id', nationId).single();
     const { count: crisisCount } = await supabase
         .from('active_crises').select('id', { count: 'exact', head: true }).eq('nation_id', nationId);
 
