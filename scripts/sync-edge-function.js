@@ -25,7 +25,12 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const GAME_DIR = path.join(ROOT, 'js', 'game');
-const TEMPLATE_PATH = path.join(ROOT, 'supabase', 'functions', 'advance-tick', 'handler-template.ts');
+// Template lives in scripts/ (build-time input), NOT in
+// supabase/functions/advance-tick/. Keeping it in the function dir
+// caused Supabase CLI's deploy-time path scanner to read the
+// template's doc comments and warn on every "see js/game/X.js"
+// reference. Moved 2026-05-10.
+const TEMPLATE_PATH = path.join(ROOT, 'scripts', 'advance-tick-handler-template.ts');
 const OUTPUT_PATH = path.join(ROOT, 'supabase', 'functions', 'advance-tick', 'index.ts');
 const MARKER = '// __GAME_COMMON_JS__';
 
