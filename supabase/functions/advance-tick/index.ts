@@ -2367,7 +2367,7 @@ function checkSovereigntyConstraints(activeProposals, policySector) {
 // STAT_KEY_ALIASES routes or null-filters them at apply time so the
 // effect pipeline keeps working until Phase 3 rewrites every call site.
 const NATION_STAT_COLUMNS = [
-    'gdp_growth', 'debt', 'immigration', 'standard_of_living', 'cost_of_living',
+    'gdp', 'gdp_growth', 'debt', 'immigration', 'standard_of_living', 'cost_of_living',
     'budget',
     'state_apparatus', 'unrest', 'public_approval', 'crown_authority',
     'energy', 'health', 'education', 'global_image',
