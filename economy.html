@@ -231,7 +231,7 @@ async function loadAllNationsData() {
     if (cached) { allNations = cached; return; }
 
     var res = await _supabase.from('nations')
-        .select('id, name, gdp, population, gdp_growth, immigration, standard_of_living, cost_of_living, debt, budget, control, unrest, public_approval, crown_authority, energy, health, education, power, infrastructure, industry, farmland, service_sector, workforce');
+        .select('id, name, gdp, population, gdp_growth, immigration, standard_of_living, cost_of_living, debt, budget, unrest, public_approval, crown_authority, energy, health, education, power, infrastructure, industry, farmland, service_sector, workforce');
 
     if (res.data) {
         allNations = res.data;

@@ -972,7 +972,7 @@ async function loadOwnedProperties() {
 async function loadAllNations() {
     const { data, error } = await _supabase
         .from('nations')
-        .select('id, name, capital, standard_of_living, cost_of_living, gdp_growth, control')
+        .select('id, name, capital, standard_of_living, cost_of_living, gdp_growth')
         .order('name', { ascending: true });
     if (error) {
         console.warn('[Expansion] nations fetch failed:', error.message);
