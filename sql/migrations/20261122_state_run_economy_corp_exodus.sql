@@ -303,6 +303,7 @@ DECLARE
     v_new_nation_name TEXT;
     v_bids_killed  INTEGER := 0;
     v_props_killed INTEGER := 0;
+    v_body         TEXT;
 BEGIN
     IF v_caller IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
@@ -400,63 +401,25 @@ BEGIN
     )
     SELECT COUNT(*) INTO v_bids_killed FROM withdrawn;
 
+    -- Single emission surfaced in three corp event containers:
+    -- old nation's local feed, new nation's local feed, and the
+    -- world feed (NULL nation_id). All three rows share the same
+    -- body so the political news reads consistently everywhere.
+    v_body := 'Due to mass nationalization efforts in the economy of '
+              || COALESCE(v_old_nation_name, 'its former home')
+              || ', '
+              || v_corp.faction_name
+              || ' has relocated its operations to '
+              || v_new_nation_name
+              || '.';
+
     INSERT INTO event_log (
         nation_id, faction_id, event_name, description_used,
         category, trigger_key, fired_at_tick
-    ) VALUES (
-        p_new_nation_id, v_corp.id,
-        'HQ Relocated',
-        format(
-            '%s has completed its forced relocation. New HQ: %s. Fee paid: $%s%s. Properties dissolved: %s. Bids withdrawn: %s.',
-            v_corp.faction_name,
-            v_new_nation_name,
-            to_char(v_actual_debit, 'FM999,999,999'),
-            CASE WHEN v_shortfall > 0
-                 THEN ' (with $' || to_char(v_shortfall, 'FM999,999,999') || ' deferred as debt)'
-                 ELSE '' END,
-            v_props_killed,
-            v_bids_killed
-        ),
-        'business',
-        'corp_hq_relocated',
-        v_tick
-    );
-
-    -- Public news article tagged to the OLD nation (the one whose
-    -- nationalization caused the exodus). Appears in:
-    --   - World view (no nation filter applied)
-    --   - Politics tab
-    --   - Old nation's local news feed
-    -- author_name is required NOT NULL; system-emitted articles use
-    -- 'Press Wire' as the byline by convention. status='published' so
-    -- it surfaces immediately (default would be 'draft').
-    --
-    -- Wrapped in an exception block: a failed article INSERT (RLS
-    -- denial, constraint shift, etc.) MUST NOT roll back the whole
-    -- relocation. The cash, HQ move, property dissolution, and bid
-    -- withdrawals are already committed against the corp's state by
-    -- this point. A missing news article is a UX miss, not a data
-    -- integrity issue.
-    BEGIN
-        INSERT INTO player_articles (
-            nation_id, author_faction_id, author_name,
-            headline, body, category, status, published_tick
-        ) VALUES (
-            v_old_nation, NULL, 'Press Wire',
-            v_corp.faction_name || ' relocates HQ amid State Run Economy',
-            'Due to mass nationalization efforts in the economy of '
-                || COALESCE(v_old_nation_name, 'its former home')
-                || ', '
-                || v_corp.faction_name
-                || ' has relocated its operations to '
-                || v_new_nation_name
-                || '.',
-            'politics', 'published', v_tick
-        );
-    EXCEPTION WHEN OTHERS THEN
-        RAISE WARNING '[relocate_corp_hq] news article insert failed for corp %: %',
-            v_corp.id, SQLERRM;
-    END;
+    ) VALUES
+        (v_old_nation,    v_corp.id, 'HQ Relocated', v_body, 'business', 'corp_hq_relocated', v_tick),
+        (p_new_nation_id, v_corp.id, 'HQ Relocated', v_body, 'business', 'corp_hq_relocated', v_tick),
+        (NULL,            v_corp.id, 'HQ Relocated', v_body, 'business', 'corp_hq_relocated', v_tick);
 
     RETURN jsonb_build_object(
         'success',         true,
