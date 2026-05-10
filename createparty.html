@@ -528,7 +528,7 @@ textarea {
 import { _supabase } from './js/supabase-client.js';
 import { PARTY_ICONS, PARTY_COLOR_PALETTE, DEFAULT_PARTY_ICON, getPartyIconSVG, getDefaultPartyColor } from './js/party-icons.js';
 import { escapeHtml } from './js/utils.js';
-import { ARCHETYPES, STRONGHOLD_POPULARITY } from './js/game/archetypes.js';
+import { ARCHETYPES, STRONGHOLD_POPULARITY_TIERS } from './js/game/archetypes.js';
 
 let selectedArchetype = null; // archetype object from ARCHETYPES, or null
 
@@ -990,14 +990,16 @@ async function proceed() {
 
     // Apply archetype: sets factions.archetype + boosts initial sector popularity.
     // The faction insert above triggered trg_backfill_faction_popularity which
-    // already created 3.0 baseline rows for every active sector; this RPC
-    // raises three of them to STRONGHOLD_POPULARITY (= 5.0 displayed).
+    // already created 1.0 baseline rows for every active sector; this RPC
+    // raises the three strongholds with a primary→secondary→tertiary curve
+    // (4.0 / 3.5 / 3.0 displayed) by passing parallel arrays — the order in
+    // selectedArchetype.strongholds maps positionally to STRONGHOLD_POPULARITY_TIERS.
     if (selectedArchetype) {
         const { error: archetypeErr } = await _supabase.rpc('apply_party_archetype', {
             p_faction_id:     partyId,
             p_archetype_name: selectedArchetype.name,
             p_sector_keys:    selectedArchetype.strongholds,
-            p_popularity:     STRONGHOLD_POPULARITY,
+            p_popularities:   STRONGHOLD_POPULARITY_TIERS,
         });
         if (archetypeErr) {
             console.error('[CreateParty] apply_party_archetype failed:', archetypeErr.message);
