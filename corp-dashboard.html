@@ -1083,7 +1083,7 @@ async function init() {
             .eq('name', 'Alpha Shard').single(),
         faction.nation_id
             ? _supabase.from('nations')
-                .select('id, name, capital, standard_of_living')
+                .select('id, name, capital')
                 .eq('id', faction.nation_id).single()
             : Promise.resolve({ data: null, error: null }),
         // Pull category + label so the expandable Revenue / Costs cards can
