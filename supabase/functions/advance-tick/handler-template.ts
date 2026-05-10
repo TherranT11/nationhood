@@ -2010,8 +2010,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                             const dynastyName = nation.dynasty_name || 'Unknown';
                             const monarchTitle = nation.monarch_title || 'King';
 
-                            // Generate a new heir name
-                            const { getNationNames } = await import('../../js/game/political-actions.js');
+                            // Generate a new heir name. getNationNames is
+                            // bundled directly from political-actions.js by
+                            // sync-edge-function.js, so it's already in scope.
+                            // (Earlier code used a dynamic import of the
+                            // source path — Supabase CLI flagged that with
+                            // a deploy WARN and Deno would have thrown at
+                            // runtime since the bundle is self-contained.)
                             const names = getNationNames(nation.name);
                             const newHeirFirst = (names.firstNames || ['Alexander'])[Math.floor(Math.random() * (names.firstNames || ['Alexander']).length)];
                             const newHeirAge = 14 + Math.floor(Math.random() * 8); // 14-21
