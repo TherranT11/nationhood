@@ -116,7 +116,34 @@ const header = template.substring(0, markerIndex);
 const footer = template.substring(markerIndex + MARKER.length);
 
 // Assemble output
-const output = header + gameLogic + footer;
+let output = header + gameLogic + footer;
+
+// Sanitize comment-only module-name references that trigger Supabase
+// CLI's deploy-time dependency scanner. Doc comments across the
+// bundle say things like "see js/game/political-actions.js" or
+// "bills.js:432" — the CLI scans bundle text for path-like strings
+// and tries to resolve them, warning on each miss (e.g.
+// "WARN: failed to read file: open supabase/js/game/political-actions.js").
+//
+// The bundle is self-contained — these strings are documentation,
+// not imports. Strip the .js suffix from bare references to any of
+// our bundled module names so the path-scanner heuristic stops
+// matching. Source files keep their full paths for readability;
+// only the deployed artifact is sanitized.
+//
+// config.js is excluded because it IS a real co-deployed sibling
+// import at `await import('./config.js')` (line 28000-ish). Stripping
+// it would break the runtime import path.
+//
+// Confirmed safe via a sweep on 2026-05-10: every <module>.js
+// occurrence in the assembled bundle outside of `await import(...)`
+// is inside a comment.
+const stripModuleNames = MODULE_FILES
+    .filter(m => m !== 'config.js')
+    .map(m => m.replace(/\.js$/, ''))
+    .map(m => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')); // regex-escape (defensive)
+const stripRegex = new RegExp(`\\b(${stripModuleNames.join('|')})\\.js\\b`, 'g');
+output = output.replace(stripRegex, '$1');
 
 // Write
 fs.writeFileSync(OUTPUT_PATH, output, 'utf8');

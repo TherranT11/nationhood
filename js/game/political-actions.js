@@ -5792,9 +5792,19 @@ export async function seedVolaCupKnockout(supabase, cupNumber, currentTick) {
  * crowning + VWC ranking rewards are deliberately out of scope (Phase 5).
  */
 export async function processVolaCupKnockoutMatches(supabase, currentTick) {
+    // .lte (not .eq) so any unresolved row scheduled at OR BEFORE
+    // currentTick gets caught up — covers missed-cron and late-insert
+    // cases. Knockout has feeder dependencies (SF needs QF winners,
+    // F needs SF winners), but Step 2's `playable` filter at line ~5853
+    // excludes rows with null teams from the play batch, so an overdue
+    // SF whose QF is also overdue stays null on this tick (Step 1 fill
+    // sees QF.winner_nation_id is still NULL since QF hasn't played
+    // yet) and gets played on the next tick after QF resolves. Cup
+    // catches up one round per tick. Don't tighten this back to .eq
+    // without also auditing the late-insert + missed-cron failure modes.
     const { data: due, error } = await supabase.from('vola_cup_knockout')
         .select('id, cup_number, round, match_number, team_a_nation_id, team_b_nation_id, feeder_a_match, feeder_b_match')
-        .eq('scheduled_tick', currentTick)
+        .lte('scheduled_tick', currentTick)
         .is('resolved_at_tick', null);
     if (error) {
         console.warn('[VolaKnockout] due fetch failed:', error.message);
