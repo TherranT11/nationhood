@@ -420,6 +420,40 @@ BEGIN
         v_tick
     );
 
+    -- Public news article tagged to the OLD nation (the one whose
+    -- nationalization caused the exodus). Appears in:
+    --   - World view (no nation filter applied)
+    --   - Politics tab
+    --   - Old nation's local news feed
+    -- author_name is required NOT NULL; system-emitted articles use
+    -- 'Press Wire' as the byline by convention. status='published' so
+    -- it surfaces immediately (default would be 'draft').
+    --
+    -- Wrapped in an exception block: a failed article INSERT (RLS
+    -- denial, constraint shift, etc.) MUST NOT roll back the whole
+    -- relocation. The cash, HQ move, property dissolution, and bid
+    -- withdrawals are already committed against the corp's state by
+    -- this point. A missing news article is a UX miss, not a data
+    -- integrity issue.
+    BEGIN
+        INSERT INTO player_articles (
+            nation_id, author_faction_id, author_name,
+            headline, body, category, status, published_tick
+        ) VALUES (
+            v_old_nation, NULL, 'Press Wire',
+            v_corp.faction_name || ' relocates HQ amid State Run Economy',
+            'Due to mass nationalization efforts in the economy, '
+                || v_corp.faction_name
+                || ' has relocated its operations to '
+                || v_new_nation_name
+                || '.',
+            'politics', 'published', v_tick
+        );
+    EXCEPTION WHEN OTHERS THEN
+        RAISE WARNING '[relocate_corp_hq] news article insert failed for corp %: %',
+            v_corp.id, SQLERRM;
+    END;
+
     RETURN jsonb_build_object(
         'success',         true,
         'corp_id',         v_corp.id,
