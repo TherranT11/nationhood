@@ -2614,7 +2614,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     // replacement at current culture, recomputes national_team_prowess.
     // ══════════════════════════════════════════════════════════════════
     try {
-        const teamRes = await processVolaTeamLifecycle(supabase, currentTick);
+        const teamRes = await processVolaTeamLifecycle(supabase, newTick);
         if (teamRes?.replaced) {
             console.log(`[VolaTeam] replaced ${teamRes.replaced} player(s) across ${teamRes.nationsAffected} nation(s)`);
         }
@@ -2629,7 +2629,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     // the host nation; fires the "Stadium opened" event.
     // ══════════════════════════════════════════════════════════════════
     try {
-        const stadResult = await processVolaStadiumCompletions(supabase, currentTick);
+        const stadResult = await processVolaStadiumCompletions(supabase, newTick);
         if (stadResult?.completed) {
             console.log(`[VolaStadiumCompletion] ${stadResult.completed} stadium(s) opened`);
         }
@@ -2645,7 +2645,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     // Infrastructure Completed" event.
     // ══════════════════════════════════════════════════════════════════
     try {
-        const intResult = await processInteriorInfrastructureCompletions(supabase, currentTick);
+        const intResult = await processInteriorInfrastructureCompletions(supabase, newTick);
         if (intResult?.completed) {
             console.log(`[InteriorInfrastructure] ${intResult.completed} project(s) completed`);
         }
@@ -2661,7 +2661,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     // a small PA penalty.
     // ══════════════════════════════════════════════════════════════════
     try {
-        const hostResult = await resolveVolaCupBids(supabase, currentTick);
+        const hostResult = await resolveVolaCupBids(supabase, newTick);
         if (hostResult?.resolved) {
             console.log(`[VWCHost] resolved ${hostResult.resolved}/${hostResult.cups} cup host bid(s)`);
         }
@@ -2671,19 +2671,19 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
     // ══════════════════════════════════════════════════════════════════
     // 4a-sex. VWC PLACEMENT SCHEDULE GENERATION — global pass.
-    // If currentTick is the qualifier tick for an upcoming cup that
+    // If newTick is the qualifier tick for an upcoming cup that
     // doesn't yet have placement matches scheduled, build the bottom-3
     // round-robin (3 matches over 3 ticks starting now). Cup_start =
     // qualifier_tick + 12, so the cup table tells us which cup is
     // approaching.
     // ══════════════════════════════════════════════════════════════════
     try {
-        // qualifier tick → cup_start = currentTick + 12, cup_number from
-        // (currentTick + 12 - 84) / 24 + 1 (clean on-cadence ticks only).
-        const candidateCupStart = currentTick + 12;
+        // qualifier tick → cup_start = newTick + 12, cup_number from
+        // (newTick + 12 - 84) / 24 + 1 (clean on-cadence ticks only).
+        const candidateCupStart = newTick + 12;
         if (candidateCupStart >= 84 && (candidateCupStart - 84) % 24 === 0) {
             const cupNumber = ((candidateCupStart - 84) / 24) + 1;
-            await generateVolaPlacementSchedule(supabase, cupNumber, currentTick);
+            await generateVolaPlacementSchedule(supabase, cupNumber, newTick);
         }
     } catch (placeGenErr) {
         console.error('[advanceTick] Vola placement schedule failed (non-fatal):', placeGenErr);
@@ -2691,12 +2691,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
     // ══════════════════════════════════════════════════════════════════
     // 4a-septem. VWC PLACEMENT MATCH RESOLUTION — global pass.
-    // Plays out any placement matches scheduled for currentTick. After
+    // Plays out any placement matches scheduled for newTick. After
     // a cup's Match 3 resolves, settles standings + applies the -1
     // global_image penalty to the bottom 1 + flips is_vola_aspirant.
     // ══════════════════════════════════════════════════════════════════
     try {
-        const placeRes = await processVolaPlacementMatches(supabase, currentTick);
+        const placeRes = await processVolaPlacementMatches(supabase, newTick);
         if (placeRes?.resolved) {
             console.log(`[VolaPlacement] resolved ${placeRes.resolved} match(es); settled ${placeRes.cupsSettled} cup(s)`);
         }
@@ -2706,15 +2706,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
     // ══════════════════════════════════════════════════════════════════
     // 4a-octo. VWC GROUP STAGE MATCH RESOLUTION — global pass.
-    // Plays out any group-stage matches scheduled for currentTick
+    // Plays out any group-stage matches scheduled for newTick
     // (cup_start + 0/1/2). 6 matches per round × 3 groups = 18 per
     // cup, spread across 3 ticks. Independent from placement so
     // cups in different stages can co-exist if cycles overlap.
     // ══════════════════════════════════════════════════════════════════
     try {
-        const groupRes = await processVolaCupGroupMatches(supabase, currentTick);
+        const groupRes = await processVolaCupGroupMatches(supabase, newTick);
         if (groupRes?.resolved) {
-            console.log(`[VolaCupGroup] resolved ${groupRes.resolved} match(es) at tick ${currentTick}`);
+            console.log(`[VolaCupGroup] resolved ${groupRes.resolved} match(es) at tick ${newTick}`);
         }
     } catch (groupErr) {
         console.error('[advanceTick] Vola group match resolution failed (non-fatal):', groupErr);
@@ -2729,9 +2729,9 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     // Phase 5.
     // ══════════════════════════════════════════════════════════════════
     try {
-        const koRes = await processVolaCupKnockoutMatches(supabase, currentTick);
+        const koRes = await processVolaCupKnockoutMatches(supabase, newTick);
         if (koRes?.resolved) {
-            console.log(`[VolaKnockout] resolved ${koRes.resolved} match(es) at tick ${currentTick}`);
+            console.log(`[VolaKnockout] resolved ${koRes.resolved} match(es) at tick ${newTick}`);
         }
     } catch (koErr) {
         console.error('[advanceTick] Vola knockout match resolution failed (non-fatal):', koErr);
@@ -2740,13 +2740,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     // ══════════════════════════════════════════════════════════════════
     // 4a-tris. LEADERSHIP CHALLENGES — global pass.
     // Resolves every leadership_challenges row with claimed_at_tick <
-    // currentTick that hasn't been marked yet. Per nation: re-checks
+    // newTick that hasn't been marked yet. Per nation: re-checks
     // vacancy + coalition + faction validity, picks highest-seats /
     // earliest-claim winner, installs them as PM, applies popularity
     // boost (with 12-tick same-party PM cooldown).
     // ══════════════════════════════════════════════════════════════════
     try {
-        const lcResult = await resolveLeadershipChallenges(supabase, currentTick);
+        const lcResult = await resolveLeadershipChallenges(supabase, newTick);
         if (lcResult?.installedCount) {
             console.log(`[LeadershipChallenge] installed ${lcResult.installedCount} PM(s) across ${lcResult.totalNations} nation(s)`);
         }
