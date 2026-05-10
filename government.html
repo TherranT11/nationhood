@@ -80,7 +80,7 @@ import { EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinis
 import { PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game/protest.js';
 import { POSITIVE_TRAITS } from './js/game/party-leadership.js';
 import { calculateBillSupport, computeBillCostTotals, enactBill, evaluateBillVote } from './js/game/bills.js';
-import { calculateNationalBudget, computeIncomeTaxRevenue, computeCorporateTaxPerCorp } from './js/game/budget.js';
+import { calculateNationalBudget, computeIncomeTaxRevenue, computeCorporateTaxPerCorp, computeInteriorInfraAnnualCost } from './js/game/budget.js';
 import { RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './js/game/diplomacy-constants.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
@@ -2454,6 +2454,11 @@ async function loadBudgetData() {
         activeCorpCount = count || 0;
     } catch (_) { /* fall back to 0 */ }
 
+    // Interior Infrastructure upkeep — completed contracts grouped by
+    // tier × tier.upkeep_per_year. Same SoT helper computePanelAnnualExpenditures
+    // calls so the row total here matches what processNationDebtTick charges.
+    const interiorInfra = await computeInteriorInfraAnnualCost(_supabase, nation);
+
     // 1. Revenue — the calculator does the heavy lifting. Apply the real
     //    capped tariff override if a trade_summary row exists (same rule
     //    the Economy page uses so the two pages can't disagree).
@@ -2554,6 +2559,7 @@ async function loadBudgetData() {
         isMonarchy: isAbsoluteMonarchy(nation),
         activeLaws,
         activeCorpCount,
+        interiorInfra,
     };
 }
 
@@ -2683,7 +2689,7 @@ function _gbBuildCostRows(d) {
         { key: 'procurement_capital',  name: 'Procurement & Capital',   yr: 0,                          descKey: 'procurementCapital'   },
         { key: 'subsidies_industry',   name: 'Subsidies & Industry Support', yr: subsidiesIndustryAnnual, descKey: 'subsidiesIndustry'   },
         { key: 'defense_security',     name: 'Defense & Security',      yr: 0,                          descKey: 'defenseSecurity'      },
-        { key: 'national_infra',       name: 'National Infrastructure', yr: royalHoldingsAnnual,        descKey: 'nationalInfrastructure' },
+        { key: 'national_infra',       name: 'National Infrastructure', yr: royalHoldingsAnnual + Number(d.interiorInfra?.totalAnnual || 0), descKey: 'nationalInfrastructure' },
         { key: 'sports_culture',       name: 'Sports & Culture',        yr: sportsCultureAnnual,        descKey: 'sportsAndCulture'     },
         { key: 'foreign_aid',          name: 'Foreign Aid & Diplomacy', yr: 0,                          descKey: 'foreignAid'           },
         { key: 'discretionary',        name: 'Discretionary Programs',  yr: 0,                          descKey: 'discretionary'        },
@@ -2910,7 +2916,7 @@ const _GB_DEEP_COPY = {
     procurementCapital:     { desc: 'Government purchases of goods, services, and capital equipment — IT, vehicles, materials, contracted services. The lumpy, one-shot side of public spending.' },
     subsidiesIndustry:      { desc: 'Direct support to private firms and sectors — agricultural subsidies, industrial credits, R&D grants, strategic-industry bailouts. Distinct from welfare, which targets households.' },
     defenseSecurity:        { desc: 'Standing military pay, materiel, intelligence services, and internal security forces. Scales with force structure and active doctrine.' },
-    nationalInfrastructure: { desc: 'Capital and operating costs for the government\'s permanent footprint — administrative offices, crown property in monarchies, state-owned enterprises, healthcare facilities, education campuses, military bases, transportation networks, and the strategic arsenal. Click for the per-sector breakdown.' },
+    nationalInfrastructure: { desc: 'Capital and operating costs for the government\'s permanent footprint — administrative offices, crown property in monarchies, state-owned enterprises, healthcare facilities, education campuses, military bases, transportation networks, the strategic arsenal, and per-tier upkeep on every completed Interior Ministry public works project (Local Municipal Complex $1/yr, Civic Center $2/yr, Provincial Infrastructure $4/yr).' },
     sportsAndCulture:       { desc: 'Recurring cultural and sporting upkeep — primarily Vola stadium maintenance once venues are completed. Each tier carries a fixed annual cost (small $0.5, modest $1, extravagant $2). Click-through surfaces the running total of stadium upkeep.' },
     foreignAid:             { desc: 'Non-trade-agreement foreign disbursements: development aid, humanitarian relief, soft-power grants. Trade-agreement aid lives under Trade Agreements on the income side instead.' },
     discretionary:          { desc: 'Catch-all for short-cycle programs and one-off initiatives that don’t fit a permanent ministry budget — pilots, commissions, special funds.' },
@@ -3090,6 +3096,15 @@ async function _gbSelectCategory(container, row, kind) {
         subRows.push({ k: 'Military Bases',                      v: 0 });
         subRows.push({ k: 'Transportation',                      v: 0 });
         subRows.push({ k: 'Nuclear Arsenal',                     v: 0 });
+        // Interior Infrastructure upkeep — one row per tier with at
+        // least one completed build. Source: _budgetData.interiorInfra
+        // populated by computeInteriorInfraAnnualCost in budget.js.
+        for (const t of (_budgetData?.interiorInfra?.byTier || [])) {
+            subRows.push({
+                k: `${t.name} × ${t.count} [Interior Ministry]`,
+                v: t.annual,
+            });
+        }
     }
 
     // Sports & Culture: today the only sub-line is Sport Stadiums &
@@ -10459,6 +10474,7 @@ function renderCabinet(ministries, coalition) {
             const mgmtHtml = buildMgmtButtons(key, m, govContext);
             const requestListHtml = (govContext.isRuling && requests.length > 0) ? buildRequestList(requests) : '';
             const statsHtml = renderMinistryStatBreakdown(key, m);
+            const actionsHtml = buildMinistryActionRows(key, isMyMinistry);
             return `<div class="ministry-card">${headerHtml}
                 <div class="ministry-card__minister">
                     <div class="ministry-card__minister-name">${escapeHtml(m.minister_first_name || 'Unknown')} ${escapeHtml(m.minister_last_name || '')}</div>
@@ -10467,7 +10483,7 @@ function renderCabinet(ministries, coalition) {
                 <div class="ministry-card__pending">
                     <div class="ministry-card__pending-label" style="color:var(--amber);">ACTING MINISTER</div>
                 </div>
-                ${mgmtHtml}${statsHtml}${requestListHtml}
+                ${mgmtHtml}${statsHtml}${requestListHtml}${actionsHtml}
             </div>`;
         }
 

@@ -3165,17 +3165,77 @@ function calculateNationalBudget(nation, opts = {}) {
 const _RAW_PER_ABSTRACT = 1e9;
 
 /**
+ * Per-nation Interior Infrastructure upkeep. Single source of truth
+ * for both the panel display and processNationDebtTick. Reads
+ * completed Interior Infrastructure contracts (status='completed',
+ * project_subtype='Interior Infrastructure') for the nation, joins
+ * each spec_category to its tier in interior_infrastructure_tiers(),
+ * and sums upkeep_per_year × count.
+ *
+ * Returns { totalAnnual, byTier: [{ key, name, count, annual }] }.
+ * byTier is sorted small → modest → extravagant for stable display
+ * order; tiers with zero builds are dropped.
+ */
+const _INTERIOR_TIER_ORDER = ['small', 'modest', 'extravagant'];
+
+async function computeInteriorInfraAnnualCost(supabase, nation) {
+    const empty = { totalAnnual: 0, byTier: [] };
+    if (!nation?.id) return empty;
+    let tiers = {};
+    try {
+        const { data } = await supabase.rpc('interior_infrastructure_tiers');
+        tiers = data || {};
+    } catch (_) { return empty; }
+
+    let builds = [];
+    try {
+        const { data, error } = await supabase.from('corp_contracts')
+            .select('spec_category')
+            .eq('issuer_nation_id', nation.id)
+            .eq('project_subtype', 'Interior Infrastructure')
+            .eq('status', 'completed');
+        if (error) return empty;
+        builds = data || [];
+    } catch (_) { return empty; }
+
+    const countsBySpec = {};
+    for (const b of builds) {
+        const k = b.spec_category;
+        if (!k) continue;
+        countsBySpec[k] = (countsBySpec[k] || 0) + 1;
+    }
+
+    const byTier = [];
+    let totalAnnual = 0;
+    for (const key of _INTERIOR_TIER_ORDER) {
+        const t = tiers[key];
+        if (!t) continue;
+        const count = countsBySpec[t.spec_category] || 0;
+        if (count === 0) continue;
+        const upkeep = Number(t.upkeep_per_year) || 0;
+        const annual = count * upkeep;
+        totalAnnual += annual;
+        byTier.push({ key, name: t.name, count, annual });
+    }
+    return { totalAnnual, byTier };
+}
+
+/**
  * Panel-accurate annual expenditures. Mirrors _gbBuildCostRows in
  * government.html so the tick processor's debt math agrees with what
  * the Government Budget panel shows the player.
  *
- * Four line items, all in abstract units:
+ * Five line items, all in abstract units:
  *   - Interest on Debt        = debtService (raw $) / 1e9
  *   - Royal Holdings          = $36/yr if monarchy, else 0
  *   - Active-law ongoing      = sum(active_laws.selected_option.ongoing_base_cost) × 12
  *   - Sports & Culture (Vola) = nations.vola_stadium_annual_cost
  *                               (sum of every completed stadium's tier annual cost
  *                               — small $0.5 / modest $1 / extravagant $2)
+ *   - Interior Infrastructure = sum over completed Interior Infrastructure
+ *                               contracts of tier.upkeep_per_year
+ *                               (small $1 / modest $2 / extravagant $4)
+ *   - Public Sector Wages     = (state_apparatus × wages) / 100 × 12
  *
  * Single source of truth: processNationDebtTick in this file +
  * _gbBuildCostRows in government.html both depend on this returning
@@ -3208,12 +3268,13 @@ async function computePanelAnnualExpenditures(supabase, nation) {
         console.warn(`[Budget] active_laws threw for ${nation.name}:`, err?.message || err);
     }
     const stadiumAnnualCost = Number(nation.vola_stadium_annual_cost) || 0;
+    const interiorInfra = await computeInteriorInfraAnnualCost(supabase, nation);
     // Public Sector Wages: monthly = (state_apparatus × wages) / 100,
     // annual = monthly × 12. Mirrors _gbBuildCostRows in government.html
     // exactly so the panel's monthly balance and the per-tick debt
     // change always agree.
     const publicSectorWagesAnnual = (Number(nation?.state_apparatus) || 0) * (Number(nation?.wages) || 0) / 100 * 12;
-    return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost + publicSectorWagesAnnual;
+    return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost + interiorInfra.totalAnnual + publicSectorWagesAnnual;
 }
 
 async function processNationDebtTick(supabase, nation) {
@@ -8229,25 +8290,63 @@ async function resolveVetoOverrideBill(supabase, bill, ctx) {
  */
 async function resolveFoundationalBill(supabase, bill, ctx) {
     const { passed, currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
+
+    // Vote failed → mark + fire generic bill_failed.
+    if (!passed) {
+        await failBill(supabase, bill);
+        await fireBillEvent(supabase, 'bill_failed', bill, {
+            currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain,
+            articleCount: 0,
+        });
+        return {
+            billId: bill.id, billName: bill.bill_name, result: 'failed',
+            votesFor, votesAgainst, type: 'foundational',
+            earlyResolution: bill.early_resolution_status || null,
+        };
+    }
+
+    // Vote passed — try to enact. Wrap in try/catch so a thrown
+    // exception still produces a clean failed_enactment outcome
+    // (mirrors resolveOrdinaryBill's parliamentary branch).
     let enacted = false;
-    if (passed) {
+    let enactError = null;
+    try {
         enacted = await enactFoundationalBill(supabase, bill, currentTick);
+    } catch (enactErr) {
+        console.error(`[resolveFoundationalBill] enactFoundationalBill threw for bill ${bill.id} ("${bill.bill_name}"):`, enactErr);
+        enactError = `enactFoundationalBill threw: ${enactErr?.message || enactErr}`;
+        enacted = false;
     }
-    if (!passed || !enacted) {
-        if (!enacted && passed) {
-            console.warn(`[resolveFoundationalBill] Foundational bill ${bill.id} had enough votes but enactment failed.`);
-        } else {
-            await failBill(supabase, bill);
-        }
+
+    if (enacted) {
+        await fireBillEvent(supabase, 'bill_passed', bill, {
+            currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain,
+            articleCount: 0,
+        });
+        return {
+            billId: bill.id, billName: bill.bill_name, result: 'passed',
+            votesFor, votesAgainst, type: 'foundational',
+            earlyResolution: bill.early_resolution_status || null,
+        };
     }
-    await fireBillEvent(supabase, enacted ? 'bill_passed' : 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
+
+    // Vote passed but enactment failed. Mark bill failed with a clear
+    // status so /bills filtering works, and fire bill_failed with an
+    // override label so the news feed says "X (enactment failed)"
+    // instead of the misleading plain "Bill Failed". Each enactor
+    // already console.warn/console.error's the specific reason; the
+    // edge-function logs are the next debug surface.
+    console.warn(`[resolveFoundationalBill] Foundational bill ${bill.id} ("${bill.bill_name}") had enough votes but enactment failed.${enactError ? ' ' + enactError : ''}`);
+    await markBillEnactmentFailed(supabase, bill, currentTick, enactError || 'Enactor returned false');
+    await fireBillEvent(supabase, 'bill_failed', bill, {
+        currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain,
+        articleCount: 0,
+        billNameOverride: `${bill.bill_name} (enactment failed)`,
+    });
     return {
-        billId: bill.id,
-        billName: bill.bill_name,
-        result: enacted ? 'passed' : 'failed',
-        votesFor,
-        votesAgainst,
-        type: 'foundational',
+        billId: bill.id, billName: bill.bill_name, result: 'failed_enactment',
+        votesFor, votesAgainst, type: 'foundational',
+        error: enactError,
         earlyResolution: bill.early_resolution_status || null,
     };
 }
