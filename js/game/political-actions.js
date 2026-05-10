@@ -4016,9 +4016,15 @@ export async function resignPM(supabase, nationId, factionId, currentTick) {
  *   to the remaining parties via rebalanceVacantSeats. When false (used by
  *   the inactivity auto-disband path) the seats stay vacant until the next
  *   election re-allocates the chamber.
+ * @param {boolean} [opts.hardDelete=false] - When true (inactivity auto-
+ *   disband only) the party row is physically DELETEd at the end of
+ *   housekeeping instead of being soft-marked with abandoned_at. FK
+ *   cascades wipe related state (forum posts, ap ledger, executive
+ *   orders, etc.). Manual disband / no-confidence cascade keep the
+ *   default soft-delete so the disband cooldown semantics still apply.
  */
 export async function disbandParty(supabase, nationId, factionId, currentTick, opts = {}) {
-    const { redistribute = true } = opts;
+    const { redistribute = true, hardDelete = false } = opts;
     // Guard: never disband corporations
     const { data: faction } = await supabase
         .from('factions')
@@ -4323,6 +4329,18 @@ export async function disbandParty(supabase, nationId, factionId, currentTick, o
     await supabase.from('group_chat_members').delete().eq('faction_id', factionId);
     // Remove electoral standing from old nation
     await supabase.from('faction_electoral_standing').delete().eq('faction_id', factionId);
+
+    // Hard-delete: physically remove the row after all housekeeping. FK
+    // cascades take care of any remaining references. Used only by the
+    // inactivity auto-disband path; manual disband leaves the row as a
+    // tombstone so the 24-tick disband cooldown can prevent immediate
+    // re-creation. Note: the campaign_actions audit row inserted above
+    // will CASCADE-delete with this — by design (full wipe per spec).
+    if (hardDelete) {
+        const { error: delErr } = await supabase.from('factions').delete().eq('id', factionId);
+        if (delErr) throw new Error('Failed to hard-delete party: ' + delErr.message);
+        return { result: 'disbanded', hardDeleted: true };
+    }
 
     return { result: 'disbanded' };
 }

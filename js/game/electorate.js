@@ -37,14 +37,21 @@ import { computeEngagementScores } from './engagement.js';
  *
  * Seat-loss model:
  *   ticksInactive < DRAIN          → no penalty
- *   DRAIN ≤ ticksInactive < DISBAND → lose 20% of seats per tick (min 1)
- *   ticksInactive ≥ DISBAND        → auto-disband (monarchies → succession)
+ *   DRAIN ≤ ticksInactive < DISBAND → lose 5% of seats per tick (min 1
+ *                                      lost; floor at 1 seat remaining)
+ *   ticksInactive ≥ DISBAND        → hard-disband (party row DELETEd;
+ *                                      monarchies trigger succession)
  *
  * Vacated seats are NOT redistributed to remaining parties — they sit
- * empty until the next election re-allocates the chamber.
+ * empty until the next election re-allocates the chamber. Hard-delete
+ * at the disband threshold (vs the soft-delete used by manual disband
+ * and no-confidence cascade) wipes the party entirely: seats, cash,
+ * standing, audit trail. FK cascades take care of related rows.
  */
-export const INACTIVITY_DRAIN_THRESHOLD = 10;
+export const INACTIVITY_DRAIN_THRESHOLD   = 9;
 export const INACTIVITY_DISBAND_THRESHOLD = 14;
+export const INACTIVITY_DRAIN_RATE        = 0.05; // 5%/tick of current seats
+export const INACTIVITY_DRAIN_FLOOR       = 1;    // never drain below 1 seat
 
 /**
  * The 8 core issues tracked by the electorate engine.

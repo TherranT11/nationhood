@@ -2041,29 +2041,36 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         }
                     } else {
                     // Auto-disband: full cleanup via existing disbandParty(),
-                    // but pass redistribute=false so the disbanded seats stay
-                    // empty rather than getting rebalanced to remaining parties.
+                    // hardDelete=true physically removes the row + FK cascades
+                    // wipe related state. redistribute=false so seats stay
+                    // vacant rather than getting rebalanced to other parties.
                     try {
-                        await disbandParty(supabase, nation.id, party.id, newTick, { redistribute: false });
+                        await disbandParty(supabase, nation.id, party.id, newTick, { redistribute: false, hardDelete: true });
                         inactivityChanged = true;
-                        console.log(`[Inactivity] Auto-disbanded ${party.faction_name} in ${nation.name} (${ticksInactive} ticks inactive, seats left vacant)`);
+                        console.log(`[Inactivity] Hard-deleted ${party.faction_name} in ${nation.name} (${ticksInactive} ticks inactive, seats left vacant)`);
                     } catch (disbandErr) {
-                        console.error(`[Inactivity] Auto-disband failed for ${party.faction_name}: ${disbandErr.message}`);
+                        console.error(`[Inactivity] Hard-delete failed for ${party.faction_name}: ${disbandErr.message}`);
                     }
                     }
                 } else if (ticksInactive >= INACTIVITY_DRAIN_THRESHOLD && (party.seats || 0) > 0) {
-                    // Seat drain: lose 20% of seats per tick (minimum 1).
+                    // Seat drain: lose INACTIVITY_DRAIN_RATE of current seats
+                    // per tick (min 1 lost), floored at INACTIVITY_DRAIN_FLOOR.
                     // Drained seats stay vacant — the post-loop rebalance is
-                    // skipped when inactivityChanged is true.
+                    // skipped when inactivityChanged is true. A party already
+                    // sitting at the floor produces no UPDATE (no-op skip).
                     const currentSeats = party.seats || 0;
-                    const seatsLost = Math.max(1, Math.floor(currentSeats * 0.2));
-                    const newSeats = Math.max(0, currentSeats - seatsLost);
-                    const { error: drainErr } = await supabase.from('factions').update({ seats: newSeats }).eq('id', party.id);
-                    if (drainErr) {
-                        console.error(`[Inactivity] Seat drain failed for ${party.faction_name}: ${drainErr.message}`);
+                    const seatsLost = Math.max(1, Math.floor(currentSeats * INACTIVITY_DRAIN_RATE));
+                    const newSeats = Math.max(INACTIVITY_DRAIN_FLOOR, currentSeats - seatsLost);
+                    if (newSeats === currentSeats) {
+                        // Already at floor; nothing to do this tick.
                     } else {
-                        inactivityChanged = true;
-                        console.log(`[Inactivity] ${party.faction_name} in ${nation.name}: ${currentSeats} → ${newSeats} seats (${ticksInactive} ticks inactive, -${seatsLost} vacant)`);
+                        const { error: drainErr } = await supabase.from('factions').update({ seats: newSeats }).eq('id', party.id);
+                        if (drainErr) {
+                            console.error(`[Inactivity] Seat drain failed for ${party.faction_name}: ${drainErr.message}`);
+                        } else {
+                            inactivityChanged = true;
+                            console.log(`[Inactivity] ${party.faction_name} in ${nation.name}: ${currentSeats} → ${newSeats} seats (${ticksInactive} ticks inactive, -${currentSeats - newSeats} vacant)`);
+                        }
                     }
                 }
             }

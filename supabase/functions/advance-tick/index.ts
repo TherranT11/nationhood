@@ -15819,14 +15819,21 @@ async function computeEngagementScores(supabase, nation, factions, coalitionPart
  *
  * Seat-loss model:
  *   ticksInactive < DRAIN          → no penalty
- *   DRAIN ≤ ticksInactive < DISBAND → lose 20% of seats per tick (min 1)
- *   ticksInactive ≥ DISBAND        → auto-disband (monarchies → succession)
+ *   DRAIN ≤ ticksInactive < DISBAND → lose 5% of seats per tick (min 1
+ *                                      lost; floor at 1 seat remaining)
+ *   ticksInactive ≥ DISBAND        → hard-disband (party row DELETEd;
+ *                                      monarchies trigger succession)
  *
  * Vacated seats are NOT redistributed to remaining parties — they sit
- * empty until the next election re-allocates the chamber.
+ * empty until the next election re-allocates the chamber. Hard-delete
+ * at the disband threshold (vs the soft-delete used by manual disband
+ * and no-confidence cascade) wipes the party entirely: seats, cash,
+ * standing, audit trail. FK cascades take care of related rows.
  */
-const INACTIVITY_DRAIN_THRESHOLD = 10;
+const INACTIVITY_DRAIN_THRESHOLD   = 9;
 const INACTIVITY_DISBAND_THRESHOLD = 14;
+const INACTIVITY_DRAIN_RATE        = 0.05; // 5%/tick of current seats
+const INACTIVITY_DRAIN_FLOOR       = 1;    // never drain below 1 seat
 
 /**
  * The 8 core issues tracked by the electorate engine.
@@ -23706,9 +23713,15 @@ async function resignPM(supabase, nationId, factionId, currentTick) {
  *   to the remaining parties via rebalanceVacantSeats. When false (used by
  *   the inactivity auto-disband path) the seats stay vacant until the next
  *   election re-allocates the chamber.
+ * @param {boolean} [opts.hardDelete=false] - When true (inactivity auto-
+ *   disband only) the party row is physically DELETEd at the end of
+ *   housekeeping instead of being soft-marked with abandoned_at. FK
+ *   cascades wipe related state (forum posts, ap ledger, executive
+ *   orders, etc.). Manual disband / no-confidence cascade keep the
+ *   default soft-delete so the disband cooldown semantics still apply.
  */
 async function disbandParty(supabase, nationId, factionId, currentTick, opts = {}) {
-    const { redistribute = true } = opts;
+    const { redistribute = true, hardDelete = false } = opts;
     // Guard: never disband corporations
     const { data: faction } = await supabase
         .from('factions')
@@ -24013,6 +24026,18 @@ async function disbandParty(supabase, nationId, factionId, currentTick, opts = {
     await supabase.from('group_chat_members').delete().eq('faction_id', factionId);
     // Remove electoral standing from old nation
     await supabase.from('faction_electoral_standing').delete().eq('faction_id', factionId);
+
+    // Hard-delete: physically remove the row after all housekeeping. FK
+    // cascades take care of any remaining references. Used only by the
+    // inactivity auto-disband path; manual disband leaves the row as a
+    // tombstone so the 24-tick disband cooldown can prevent immediate
+    // re-creation. Note: the campaign_actions audit row inserted above
+    // will CASCADE-delete with this — by design (full wipe per spec).
+    if (hardDelete) {
+        const { error: delErr } = await supabase.from('factions').delete().eq('id', factionId);
+        if (delErr) throw new Error('Failed to hard-delete party: ' + delErr.message);
+        return { result: 'disbanded', hardDeleted: true };
+    }
 
     return { result: 'disbanded' };
 }
@@ -33957,29 +33982,36 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         }
                     } else {
                     // Auto-disband: full cleanup via existing disbandParty(),
-                    // but pass redistribute=false so the disbanded seats stay
-                    // empty rather than getting rebalanced to remaining parties.
+                    // hardDelete=true physically removes the row + FK cascades
+                    // wipe related state. redistribute=false so seats stay
+                    // vacant rather than getting rebalanced to other parties.
                     try {
-                        await disbandParty(supabase, nation.id, party.id, newTick, { redistribute: false });
+                        await disbandParty(supabase, nation.id, party.id, newTick, { redistribute: false, hardDelete: true });
                         inactivityChanged = true;
-                        console.log(`[Inactivity] Auto-disbanded ${party.faction_name} in ${nation.name} (${ticksInactive} ticks inactive, seats left vacant)`);
+                        console.log(`[Inactivity] Hard-deleted ${party.faction_name} in ${nation.name} (${ticksInactive} ticks inactive, seats left vacant)`);
                     } catch (disbandErr) {
-                        console.error(`[Inactivity] Auto-disband failed for ${party.faction_name}: ${disbandErr.message}`);
+                        console.error(`[Inactivity] Hard-delete failed for ${party.faction_name}: ${disbandErr.message}`);
                     }
                     }
                 } else if (ticksInactive >= INACTIVITY_DRAIN_THRESHOLD && (party.seats || 0) > 0) {
-                    // Seat drain: lose 20% of seats per tick (minimum 1).
+                    // Seat drain: lose INACTIVITY_DRAIN_RATE of current seats
+                    // per tick (min 1 lost), floored at INACTIVITY_DRAIN_FLOOR.
                     // Drained seats stay vacant — the post-loop rebalance is
-                    // skipped when inactivityChanged is true.
+                    // skipped when inactivityChanged is true. A party already
+                    // sitting at the floor produces no UPDATE (no-op skip).
                     const currentSeats = party.seats || 0;
-                    const seatsLost = Math.max(1, Math.floor(currentSeats * 0.2));
-                    const newSeats = Math.max(0, currentSeats - seatsLost);
-                    const { error: drainErr } = await supabase.from('factions').update({ seats: newSeats }).eq('id', party.id);
-                    if (drainErr) {
-                        console.error(`[Inactivity] Seat drain failed for ${party.faction_name}: ${drainErr.message}`);
+                    const seatsLost = Math.max(1, Math.floor(currentSeats * INACTIVITY_DRAIN_RATE));
+                    const newSeats = Math.max(INACTIVITY_DRAIN_FLOOR, currentSeats - seatsLost);
+                    if (newSeats === currentSeats) {
+                        // Already at floor; nothing to do this tick.
                     } else {
-                        inactivityChanged = true;
-                        console.log(`[Inactivity] ${party.faction_name} in ${nation.name}: ${currentSeats} → ${newSeats} seats (${ticksInactive} ticks inactive, -${seatsLost} vacant)`);
+                        const { error: drainErr } = await supabase.from('factions').update({ seats: newSeats }).eq('id', party.id);
+                        if (drainErr) {
+                            console.error(`[Inactivity] Seat drain failed for ${party.faction_name}: ${drainErr.message}`);
+                        } else {
+                            inactivityChanged = true;
+                            console.log(`[Inactivity] ${party.faction_name} in ${nation.name}: ${currentSeats} → ${newSeats} seats (${ticksInactive} ticks inactive, -${currentSeats - newSeats} vacant)`);
+                        }
                     }
                 }
             }
