@@ -5362,9 +5362,16 @@ export async function generateVolaPlacementSchedule(supabase, cupNumber, qualifi
  * to the bottom 1.
  */
 export async function processVolaPlacementMatches(supabase, currentTick) {
+    // .lte (not .eq) so any unresolved row scheduled at OR BEFORE
+    // currentTick gets caught up — covers the case where the schedule
+    // was inserted late, the cron skipped a tick, or rows were
+    // regenerated mid-cycle. Round-robin matches have no inter-match
+    // dependency so multiple resolves in one tick batch are safe.
+    // Don't tighten this back to .eq without also auditing the
+    // late-insert + missed-cron failure modes.
     const { data: due, error } = await supabase.from('vola_placement_matches')
         .select('id, cup_number, match_number, team_a_nation_id, team_b_nation_id')
-        .eq('scheduled_tick', currentTick)
+        .lte('scheduled_tick', currentTick)
         .is('resolved_at_tick', null);
     if (error) {
         console.warn('[VolaPlacement] due fetch failed:', error.message);
@@ -5597,9 +5604,12 @@ export async function generateVolaCupGroupSchedule(supabase, cupNumber, cupStart
  * and the upcoming knockout rounds — _resolveMatchScores is shared.
  */
 export async function processVolaCupGroupMatches(supabase, currentTick) {
+    // .lte (not .eq) so overdue rows catch up — same rationale as
+    // processVolaPlacementMatches above. Group matches have no
+    // inter-match dependency so multiple resolves per tick are safe.
     const { data: due, error } = await supabase.from('vola_cup_group_matches')
         .select('id, cup_number, group_letter, round_number, team_a_nation_id, team_b_nation_id')
-        .eq('scheduled_tick', currentTick)
+        .lte('scheduled_tick', currentTick)
         .is('resolved_at_tick', null);
     if (error) {
         console.warn('[VolaCupGroup] due fetch failed:', error.message);
