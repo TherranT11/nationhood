@@ -873,3 +873,36 @@ async function activateEconomicCollapse(supabase, nation, currentTick) {
         // Non-fatal — GDP is already clamped at floor by caller
     }
 }
+
+/**
+ * Per-tick GDP drift driven by the gdp_growth stat.
+ *   gdp_growth ∈ [0,100], 50 = 0%/month, 100 = +1%/month, 0 = −1%/month.
+ *   monthlyPct = ((gdp_growth − 50) / 50) × 1.0
+ *   newGdp     = oldGdp × (1 + monthlyPct / 100)
+ *
+ * nation.gdp is stored in $B abstract units (e.g. 358.6 = $358.6B).
+ * Floor at 0 (no negative GDP). UPDATE returns silently if no row
+ * matches; non-fatal on error per the budget tick's broader contract.
+ */
+export async function applyGdpGrowthDrift(supabase, nation) {
+    const gdp = Number(nation?.gdp);
+    if (!isFinite(gdp) || gdp <= 0) return null;
+    const growthStat = Number(nation?.gdp_growth);
+    if (!isFinite(growthStat)) return null;
+
+    const monthlyPct = ((growthStat - 50) / 50) * 1.0;     // ±1% range
+    if (monthlyPct === 0) return null;                      // exact 0 → no write
+
+    const newGdp = Math.max(0, Math.round(gdp * (1 + monthlyPct / 100) * 10) / 10); // 1dp
+    if (newGdp === gdp) return null;                        // sub-0.1 drift → skip write
+
+    const { error } = await supabase.from('nations')
+        .update({ gdp: newGdp })
+        .eq('id', nation.id);
+    if (error) {
+        console.warn(`[applyGdpGrowthDrift] update failed for ${nation.name}:`, error.message);
+        return null;
+    }
+    nation.gdp = newGdp;
+    return { before: gdp, after: newGdp, monthlyPct };
+}

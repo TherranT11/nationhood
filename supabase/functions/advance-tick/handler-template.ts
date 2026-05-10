@@ -2214,6 +2214,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Tax revenue tick failed for ${nation.name} (non-fatal):`, taxErr);
         }
 
+        // Per-tick GDP drift. Applies ((gdp_growth − 50) / 50) × 1% to
+        // nation.gdp each tick. SoT: applyGdpGrowthDrift in budget.js
+        // (formula and floor live there).
+        try {
+            await applyGdpGrowthDrift(supabase, nation);
+        } catch (gdpErr) {
+            console.error(`[advanceTick] GDP drift failed for ${nation.name} (non-fatal):`, gdpErr);
+        }
+
         // Surplus/deficit connectors (require budget calculation, can't be stat_connections rows)
         try {
             await processSurplusConnectors(supabase, nation);
