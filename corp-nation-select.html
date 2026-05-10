@@ -499,6 +499,7 @@ const NATION_CULTURE = {
 let currentUser = null;
 let corpSetup = null;
 let allNations = [];
+let sreNationSet = new Set();  // nations under State Run Economy — picker-disabled
 let corpsByNation = {};  // nation_id → array of corp factions in this sector
 let selectedNationId = null;
 let activeContinent = 'Crucera';
@@ -526,17 +527,28 @@ async function init() {
     renderCorpSummary();
 
     // Load nations + count corps per nation in this sector (used for the
-    // "Industry Demand" badge — fewer competitors = higher demand).
-    const [nationsRes, corpsRes] = await Promise.all([
+    // "Industry Demand" badge — fewer competitors = higher demand) +
+    // the State-Run-Economy filter set so we can disable nations that
+    // forbid new private corps.
+    const [nationsRes, corpsRes, sreRes] = await Promise.all([
         _supabase.from('nations').select('*, nation_profiles(flag_url)').order('name'),
         _supabase.from('factions')
             .select('id, nation_id, corp_sector')
             .eq('faction_type', 'corporation')
             .eq('corp_sector', corpSetup.sector),
+        _supabase.rpc('list_state_run_economy_nations'),
     ]);
 
     allNations = nationsRes.data || [];
     const corps = corpsRes.data || [];
+    // Warn loudly on SRE filter failure — an empty set would let the
+    // player pick an SRE nation as a brand-new HQ, which would then
+    // fail or trigger the displaced flag immediately.
+    if (sreRes.error) {
+        console.error('[corp-nation-select] SRE filter RPC failed:', sreRes.error.message);
+        alert('Failed to load State Run Economy filter. Some nations may be incorrectly available.\n\n' + sreRes.error.message);
+    }
+    sreNationSet = new Set((sreRes.data || []).map(r => r.nation_id));
 
     corpsByNation = {};
     for (const c of corps) {
@@ -607,9 +619,11 @@ function renderNations() {
         const isShippingBlocked = corpSetup && corpSetup.sector === 'Shipping' && isLandlocked;
         const isAirlineBlocked = corpSetup && corpSetup.sector === 'Airline'
             && !AIRLINE_ALLOWED_NATIONS.includes(nation.name);
-        const isBlocked = isShippingBlocked || isAirlineBlocked;
+        const isStateRunBlocked = sreNationSet.has(nation.id);
+        const isBlocked = isShippingBlocked || isAirlineBlocked || isStateRunBlocked;
         const blockedBadge = isShippingBlocked ? 'Landlocked'
-            : (isAirlineBlocked ? 'Unavailable' : '');
+            : (isAirlineBlocked ? 'Unavailable'
+            : (isStateRunBlocked ? 'Nationalized' : ''));
 
         const pop = nation.population ? nation.population.toLocaleString() : '—';
         const ctrl = nation.state_apparatus != null ? Math.round(nation.state_apparatus) : '—';

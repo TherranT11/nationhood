@@ -1445,12 +1445,14 @@ function renderPressingIssues() {
 
     const lawsuitCount = _lawsuitCtl?.getCount?.() ?? 0;
     const taxCount     = _corpTaxCtl?.getCount?.() ?? 0;
-    const total = _pressingIssues.length + _receivedOffers.length + lawsuitCount + taxCount;
+    const relocateCount = faction?.displaced_from_nation_id ? 1 : 0;
+    const total = _pressingIssues.length + _receivedOffers.length + lawsuitCount + taxCount + relocateCount;
     meta.textContent = total === 0
         ? 'Time-Sensitive ◊ Decide Before Tick Resolves'
         : `${total} OPEN ◊ DECIDE BEFORE TICK RESOLVES`;
 
-    if (_pressingIssues.length === 0 && _receivedOffers.length === 0) {
+    const isDisplaced = !!faction?.displaced_from_nation_id;
+    if (_pressingIssues.length === 0 && _receivedOffers.length === 0 && !isDisplaced) {
         // Lawsuit + tax cards (if any) render into their own hosts
         // above #co-issues-list — so the empty copy here only applies
         // to the event/offer stack, not the section as a whole.
@@ -1505,6 +1507,32 @@ function renderPressingIssues() {
         </div>`;
     });
 
+    // Forced Corporate Exodus card — appears when this corp has been
+    // displaced by a State Run Economy enactment. Sits at the top of
+    // the Pressing Issues stack because every other corp action is
+    // blocked server-side until relocation completes (BEFORE INSERT
+    // triggers in 20261122). Clears as soon as relocate_corp_hq runs.
+    const relocateCard = (faction?.displaced_from_nation_id) ? `
+        <div class="co-issue-card sev-critical kind-relocate">
+            <div class="co-contract-meta-row">
+                <span class="co-issue-tag" style="background:rgba(217,83,79,0.15);color:var(--co-accent-red);">FORCED RELOCATION</span>
+                <span class="co-contract-deadline">Required</span>
+            </div>
+            <div class="co-contract-name">Your headquarters nation has nationalized industry</div>
+            <div class="co-contract-client">— State Run Economy enacted. Select a new home nation to resume operations.</div>
+            <div class="co-issue-terms">
+                <span><span class="label">RELOCATION FEE</span><span class="value">$5M</span></span>
+                <span><span class="label">SHORTFALL</span><span class="value">Deferred as debt</span></span>
+                <span><span class="label">PROPERTIES</span><span class="value">Dissolved</span></span>
+                <span><span class="label">OPEN BIDS</span><span class="value">Withdrawn</span></span>
+            </div>
+            <div class="co-contract-actions">
+                <button class="co-contract-btn primary" data-action="open-relocate">
+                    Choose New HQ Nation ▸
+                </button>
+            </div>
+        </div>` : '';
+
     const eventCards = _pressingIssues.map(ev => {
         const expiresText = formatExpiresIn(ev.expires_at_tick, currentTick);
         const sev = severityClass(ev.severity);
@@ -1539,12 +1567,124 @@ function renderPressingIssues() {
         </div>`;
     });
 
-    list.innerHTML = offerCards
+    // Relocation card goes first (most consequential — blocks every
+    // other corp action server-side via BEFORE INSERT triggers).
+    list.innerHTML = (relocateCard ? [relocateCard] : [])
+        .concat(offerCards)
         .concat(eventCards)
         .join('');
 }
 
 let _ackInflight = new Set();
+
+// ════════════════════ FORCED RELOCATION MODAL ════════════════════
+// Mounted when the corp is `displaced_from_nation_id` non-null and
+// the player clicks "Choose New HQ Nation" on the Pressing Issue.
+// Fetches every nation and the State-Run-Economy filter list in
+// parallel, renders a list of legal destinations, and on confirm
+// calls relocate_corp_hq which atomically: pays $5M (or defers as
+// debt), flips nation_id + national_hq, dissolves other properties,
+// withdraws bids on old-nation contracts, posts event_log.
+
+let _relocateInflight = false;
+
+async function openRelocateModal() {
+    if (_relocateInflight) return;
+    if (!faction?.displaced_from_nation_id) return;
+    if (document.getElementById('co-relocate-overlay')) return;
+
+    // Fetch all nations + the SRE filter list in parallel.
+    const [nationsRes, sreRes] = await Promise.all([
+        _supabase.from('nations').select('id, name, capital, gdp, standard_of_living').order('name'),
+        _supabase.rpc('list_state_run_economy_nations'),
+    ]);
+    if (nationsRes.error) {
+        alert('Failed to load nations: ' + nationsRes.error.message);
+        return;
+    }
+    // Hard-fail on the SRE filter rather than degrading silently —
+    // an empty set would let the player relocate INTO an SRE nation,
+    // which the server-side relocate_corp_hq guard would reject anyway,
+    // but only after the user picked one. Better to surface the error.
+    if (sreRes.error) {
+        alert('Failed to load State Run Economy filter: ' + sreRes.error.message);
+        return;
+    }
+    const sreSet = new Set((sreRes.data || []).map(r => r.nation_id));
+    const eligible = (nationsRes.data || []).filter(n =>
+        n.id !== faction.displaced_from_nation_id && !sreSet.has(n.id)
+    );
+
+    const overlay = document.createElement('div');
+    overlay.id = 'co-relocate-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeRelocateModal(); });
+
+    const cards = eligible.length === 0
+        ? `<div style="padding:24px;text-align:center;color:var(--co-text-tertiary);font-family:var(--font-mono);font-size:11px;">No eligible nations available. Every other nation is also under State Run Economy.</div>`
+        : eligible.map(n => `
+            <div class="co-relocate-card" data-nation-id="${escapeHtml(n.id)}"
+                style="border:1px solid rgba(255,255,255,0.1);background:#1a1a17;padding:14px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:border-color 0.15s,background 0.15s;">
+                <div>
+                    <div style="font-family:var(--font-serif,Georgia,serif);font-size:16px;font-weight:600;color:#f0efe6;">${escapeHtml(n.name)}</div>
+                    <div style="font-family:var(--font-mono);font-size:10px;color:#9e9a92;letter-spacing:0.04em;margin-top:2px;">Capital: ${escapeHtml(n.capital || '—')}</div>
+                </div>
+                <div style="text-align:right;font-family:var(--font-mono);font-size:10px;color:#9e9a92;">
+                    <div>SoL ${n.standard_of_living != null ? Math.round(n.standard_of_living) : '—'}</div>
+                </div>
+            </div>`).join('');
+
+    overlay.innerHTML = `
+        <div style="background:#0f0f0d;border:1px solid rgba(255,255,255,0.1);max-width:640px;width:100%;max-height:80vh;display:flex;flex-direction:column;">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid rgba(255,255,255,0.08);">
+                <div>
+                    <div style="font-family:var(--font-serif,Georgia,serif);font-size:20px;font-weight:600;color:#f0efe6;">Relocate Headquarters</div>
+                    <div style="font-family:var(--font-mono);font-size:10px;color:#9e9a92;letter-spacing:0.06em;margin-top:4px;">$5M FEE · DEFERRED AS DEBT IF CASH SHORT · OPEN BIDS WITHDRAWN · NON-HQ PROPERTIES DISSOLVED</div>
+                </div>
+                <button id="co-relocate-x" style="background:transparent;border:1px solid rgba(255,255,255,0.15);color:#9e9a92;font-family:var(--font-mono);font-size:14px;width:30px;height:30px;cursor:pointer;">×</button>
+            </div>
+            <div id="co-relocate-list" style="overflow-y:auto;padding:16px 22px;display:flex;flex-direction:column;gap:8px;">${cards}</div>
+            <div id="co-relocate-error" style="display:none;font-family:var(--font-mono);font-size:11px;color:#d9534f;padding:10px 22px;border-top:1px solid rgba(217,83,79,0.4);background:rgba(217,83,79,0.06);"></div>
+        </div>`;
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#co-relocate-x')?.addEventListener('click', closeRelocateModal);
+    overlay.querySelectorAll('.co-relocate-card').forEach(card => {
+        card.addEventListener('mouseenter', () => { card.style.borderColor = 'var(--co-accent-gold,#c8a832)'; card.style.background = '#1f1f1a'; });
+        card.addEventListener('mouseleave', () => { card.style.borderColor = 'rgba(255,255,255,0.1)'; card.style.background = '#1a1a17'; });
+        card.addEventListener('click', () => confirmRelocate(card.dataset.nationId));
+    });
+}
+
+function closeRelocateModal() {
+    document.getElementById('co-relocate-overlay')?.remove();
+}
+
+async function confirmRelocate(nationId) {
+    if (_relocateInflight || !nationId) return;
+    if (!confirm('Relocate HQ to this nation? The $5M fee is deducted now (or deferred as debt if cash is short). All properties in the old nation are dissolved and open bids withdrawn. This cannot be undone.')) return;
+    _relocateInflight = true;
+    const errEl = document.getElementById('co-relocate-error');
+    if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+    try {
+        const { data, error } = await _supabase.rpc('relocate_corp_hq', { p_new_nation_id: nationId });
+        if (error) {
+            if (errEl) { errEl.textContent = error.message; errEl.style.display = 'block'; }
+            return;
+        }
+        if (!data?.success) {
+            if (errEl) { errEl.textContent = `Relocate failed: ${data?.reason || 'unknown'}`; errEl.style.display = 'block'; }
+            return;
+        }
+        closeRelocateModal();
+        // Refresh the page so all downstream state reloads cleanly.
+        location.reload();
+    } catch (err) {
+        if (errEl) { errEl.textContent = err?.message || String(err); errEl.style.display = 'block'; }
+    } finally {
+        _relocateInflight = false;
+    }
+}
 
 async function acknowledgeIssue(eventId) {
     if (_ackInflight.has(eventId)) return;
@@ -1943,6 +2083,8 @@ function bindContractActions() {
         const btn = e.target.closest('[data-action]');
         if (!btn || btn.disabled) return;
         const action = btn.getAttribute('data-action');
+        // Relocation card has no data-id — handle before the id guard.
+        if (action === 'open-relocate') return openRelocateModal();
         const id = btn.getAttribute('data-id');
         if (!id) return;
         if (action === 'ack-issue')     return acknowledgeIssue(id);
