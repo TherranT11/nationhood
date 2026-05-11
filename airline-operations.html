@@ -2788,8 +2788,10 @@ function initAircraftRfpFlow(faction) {
     document.getElementById('pa-submit')?.addEventListener('click', _paSubmit);
 
     // Bid acceptance modal close (carried over from old flow).
+    // ao-modal-overlay's display rule is keyed on .active, not .open
+    // — keep both add/remove in sync with that class.
     document.getElementById('ao-rfp-bids-close')?.addEventListener('click', () => {
-        document.getElementById('ao-rfp-bids-modal').classList.remove('open');
+        document.getElementById('ao-rfp-bids-modal').classList.remove('active');
         _airlineCurrentRfpId = null;
     });
 }
@@ -2952,7 +2954,7 @@ async function showRfpBids(rfpId) {
     const list  = document.getElementById('ao-rfp-bids-list');
     const errEl = document.getElementById('ao-rfp-bids-error');
     errEl.classList.remove('show');
-    modal.classList.add('open');
+    modal.classList.add('active');
     list.innerHTML = '<div class="ao-panel-empty">Loading bids…</div>';
 
     const { data: rfp } = await _supabase.from('aircraft_rfps')
@@ -3031,7 +3033,7 @@ async function acceptRfpBid(rfpId, bidId) {
             errEl.classList.add('show');
             return;
         }
-        document.getElementById('ao-rfp-bids-modal').classList.remove('open');
+        document.getElementById('ao-rfp-bids-modal').classList.remove('active');
         // Refresh both panels — fleet inventory + RFP list. shard
         // is local to init(); fetch the current tick fresh so the
         // refreshed fleet inventory shows accurate "months in
