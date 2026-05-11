@@ -1106,6 +1106,39 @@ function foundationalArticleLabel(bill) {
     if (bill.proposed_constitutional_amendment_streamlining) {
         return '📜 Constitutional Amendment Streamlining';
     }
+    if (bill.proposed_judicial_appointment_politicization) {
+        return '⚖️ Judicial Appointment Politicization';
+    }
+    if (bill.proposed_electoral_commission_reform) {
+        return '🗳 Electoral Commission Reform';
+    }
+    if (bill.proposed_party_registration_threshold != null) {
+        return '🏷 Party Registration Threshold — Proposed: ' + bill.proposed_party_registration_threshold + '%';
+    }
+    if (bill.proposed_legislative_quorum_override != null) {
+        return '🪑 Legislative Quorum Override — Proposed: ' + bill.proposed_legislative_quorum_override + '%';
+    }
+    if (bill.proposed_monarchy_reform) {
+        var MR_LABELS = {
+            freedom_of_press:        '📰 Freedom of the Press Act',
+            right_of_assembly:       '✊ Right of Assembly Act',
+            independent_judiciary:   '⚖️ Independent Judiciary Act',
+            parliamentary_inquiry:   '🔍 Parliamentary Inquiry Act',
+            civil_liberties_charter: '📜 Civil Liberties Charter',
+            electoral_reform:        '🗳 Electoral Reform Act',
+            parliamentary_supremacy: '🏛 Parliamentary Supremacy Act',
+            act_of_abdication:       '👑 Act of Abdication'
+        };
+        return MR_LABELS[bill.proposed_monarchy_reform] || '👑 Monarchy Reform';
+    }
+    if (bill.proposed_hos_election_method) {
+        var METHODS = {
+            direct_vote: 'Direct Popular Vote',
+            appointed:   'Appointed by Parliament',
+            hereditary:  'Constitutional Monarchy'
+        };
+        return '🗳 HoS Election Method — Proposed: ' + (METHODS[bill.proposed_hos_election_method] || bill.proposed_hos_election_method);
+    }
     if (bill.proposed_seats != null) {
         return '🗳 Electoral Makeup — Proposed: ' + bill.proposed_seats + ' seats';
     }
