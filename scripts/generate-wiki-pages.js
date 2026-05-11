@@ -115,7 +115,7 @@ ${ogImage ? `<meta property="og:image" content="${escapeHtml(ogImage)}">` : ''}
             <h1>${escapeHtml(title)}</h1>
         </header>
         ${attribution}
-        <div class="wiki-page-body">
+        <div class="wiki-body-content">
             ${infoboxHtml}
             ${bodyHtml}
         </div>

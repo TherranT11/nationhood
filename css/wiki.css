@@ -118,16 +118,6 @@ body:has(.wiki-container) #top-bar .hamburger-btn {
     color: #202122;
 }
 
-/* The infobox floats right inside the article column, so the page
-   layout is just a regular block. */
-.wiki-page-layout {
-    display: block;
-}
-
-.wiki-body-col {
-    /* no flex container needed once the infobox floats */
-}
-
 /* ---------- PAGE HEADER (title + actions) ---------- */
 .wiki-page-header {
     display: flex;
@@ -216,8 +206,7 @@ body:has(.wiki-container) #top-bar .hamburger-btn {
 }
 
 /* ---------- BODY CONTENT (article body) ---------- */
-.wiki-body-content,
-.wiki-page-body {
+.wiki-body-content {
     background: transparent;
     border: none;
     border-radius: 0;
@@ -228,22 +217,20 @@ body:has(.wiki-container) #top-bar .hamburger-btn {
     font-size: 15px;
 }
 
-.wiki-body-content::after,
-.wiki-page-body::after {
+.wiki-body-content::after {
     content: '';
     display: block;
     clear: both;
 }
 
-.wiki-body-content p,
-.wiki-page-body p {
+.wiki-body-content p {
     margin: 0 0 12px 0;
 }
 
-.wiki-body-content h1, .wiki-page-body h1,
-.wiki-body-content h2, .wiki-page-body h2,
-.wiki-body-content h3, .wiki-page-body h3,
-.wiki-body-content h4, .wiki-page-body h4 {
+.wiki-body-content h1,
+.wiki-body-content h2,
+.wiki-body-content h3,
+.wiki-body-content h4 {
     font-family: var(--font-serif);
     font-weight: 400;
     color: #000000;
@@ -251,44 +238,43 @@ body:has(.wiki-container) #top-bar .hamburger-btn {
     line-height: 1.3;
 }
 
-.wiki-body-content h1, .wiki-page-body h1 {
+.wiki-body-content h1 {
     font-size: 24px;
     border-bottom: 1px solid #a2a9b1;
     padding-bottom: 4px;
 }
 
-.wiki-body-content h2, .wiki-page-body h2 {
+.wiki-body-content h2 {
     font-size: 20px;
     border-bottom: 1px solid #a2a9b1;
     padding-bottom: 3px;
 }
 
-.wiki-body-content h3, .wiki-page-body h3 {
+.wiki-body-content h3 {
     font-size: 17px;
 }
 
-.wiki-body-content h4, .wiki-page-body h4 {
+.wiki-body-content h4 {
     font-size: 14px;
     font-weight: 700;
 }
 
-.wiki-body-content img, .wiki-page-body img {
+.wiki-body-content img {
     max-width: 100%;
     border: 1px solid #c8ccd1;
     margin: 8px 0;
 }
 
-.wiki-body-content ul, .wiki-page-body ul,
-.wiki-body-content ol, .wiki-page-body ol {
+.wiki-body-content ul,
+.wiki-body-content ol {
     margin: 0 0 12px 24px;
 }
 
-.wiki-body-content li, .wiki-page-body li {
+.wiki-body-content li {
     margin-bottom: 4px;
 }
 
 .wiki-body-content a,
-.wiki-page-body a,
 .wiki-infobox a,
 .wiki-backlinks a {
     color: #3366cc;
@@ -296,14 +282,12 @@ body:has(.wiki-container) #top-bar .hamburger-btn {
 }
 
 .wiki-body-content a:hover,
-.wiki-page-body a:hover,
 .wiki-infobox a:hover,
 .wiki-backlinks a:hover {
     text-decoration: underline;
 }
 
-.wiki-body-content a:visited,
-.wiki-page-body a:visited {
+.wiki-body-content a:visited {
     color: #6b4ba1;
 }
 
@@ -316,16 +300,14 @@ a.wiki-link-missing:hover {
     text-decoration: underline;
 }
 
-.wiki-body-content blockquote,
-.wiki-page-body blockquote {
+.wiki-body-content blockquote {
     margin: 12px 0;
     padding: 4px 12px;
     border-left: 3px solid #c8ccd1;
     color: #54595d;
 }
 
-.wiki-body-content code,
-.wiki-page-body code {
+.wiki-body-content code {
     background: #f8f9fa;
     border: 1px solid #eaecf0;
     border-radius: 2px;
