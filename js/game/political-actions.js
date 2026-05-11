@@ -4053,9 +4053,14 @@ export async function disbandParty(supabase, nationId, factionId, currentTick, o
         throw new Error('Corporations cannot be disbanded.');
     }
 
-    // 1. Cooldown check
-
-    if (faction?.disband_cooldown_until_tick && faction.disband_cooldown_until_tick > currentTick) {
+    // 1. Cooldown check — only applies to player-initiated soft
+    // disbands. The inactivity sweep + admin tools pass hardDelete:true
+    // and should bypass the cooldown; the whole point of the
+    // inactivity reaper is "this party has been dormant for N ticks,
+    // remove it now" — a player-facing rate-limit can't gate that.
+    if (!hardDelete
+        && faction?.disband_cooldown_until_tick
+        && faction.disband_cooldown_until_tick > currentTick) {
         const remaining = faction.disband_cooldown_until_tick - currentTick;
         throw new Error(`Disband is on cooldown for ${remaining} more tick${remaining !== 1 ? 's' : ''}.`);
     }
