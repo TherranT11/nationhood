@@ -3751,10 +3751,10 @@ function renderDraftArticles() {
             const fd = art.fundingData;
             const dAmt = Number(fd.discretionary || 0);
             const summaryParts = [];
-            if (dAmt) summaryParts.push(dAmt > 0 ? `Allocate: +$${dAmt}M` : `Withdraw: -$${Math.abs(dAmt)}M`);
+            if (dAmt) summaryParts.push(dAmt > 0 ? `Allocate: +$${dAmt}` : `Withdraw: -$${Math.abs(dAmt)}`);
             const borderColor = dAmt < 0 ? 'var(--red)' : dAmt > 0 ? 'var(--green)' : 'var(--blue)';
             const upfrontCost = _calculateFundingArticleUpfrontCost(fd);
-            const oneTimeText = `${upfrontCost > 0 ? '+' : ''}$${Math.round(upfrontCost)}M`;
+            const oneTimeText = `${upfrontCost > 0 ? '+' : ''}$${Math.round(upfrontCost)}`;
             const budgetImpact = `<div style="margin-top:4px;font-size:0.8rem;color:var(--text-primary);font-weight:600;">One-time: ${oneTimeText}</div>`;
             return `<div class="draft-article-card" style="border-left:3px solid ${borderColor};">
                 <div class="draft-article-info">
