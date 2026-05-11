@@ -3486,9 +3486,32 @@ async function loadDesigns(corpId) {
         ? researching.map(renderDesignResearchCard).join('')
         : '<div class="co-contract-empty">No active R&amp;D. Allocate resources to begin developing a new design.</div>';
 
+    rndEl.querySelectorAll('.am-design-cancel-btn').forEach(btn => {
+        btn.addEventListener('click', () => cancelDesignResearch(btn.dataset.designId, corpId));
+    });
+
     designsEl.innerHTML = available.length
         ? available.map(renderAvailableDesignCard).join('')
         : '<div class="co-contract-empty">No designs yet. Run R&amp;D to develop your first airframe.</div>';
+}
+
+let _cancelDesignInflight = false;
+async function cancelDesignResearch(designId, corpId) {
+    if (_cancelDesignInflight) return;
+    if (!window.confirm('Cancel this design? Money spent so far on research is NOT refunded. This cannot be undone.')) return;
+    _cancelDesignInflight = true;
+    try {
+        const { data, error } = await _supabase.rpc('cancel_design_research', { p_design_id: designId });
+        if (error || !data?.success) {
+            window.alert(error?.message || data?.error || 'Failed to cancel design.');
+            return;
+        }
+        await loadDesigns(corpId);
+    } catch (err) {
+        window.alert(err?.message || 'Unknown error.');
+    } finally {
+        _cancelDesignInflight = false;
+    }
 }
 
 function renderDesignResearchCard(d) {
@@ -3513,7 +3536,10 @@ function renderDesignResearchCard(d) {
         </div>
         <div class="am-design-stats">${stats}</div>
         <div class="am-design-progress"><div class="am-design-progress-fill" style="width:${progressPct.toFixed(0)}%"></div></div>
-        <div class="am-design-countdown">${remaining} month${remaining === 1 ? '' : 's'} left · ${progressPct.toFixed(0)}% complete</div>
+        <div class="am-design-countdown" style="display:flex;justify-content:space-between;align-items:center;gap:14px;">
+            <span>${remaining} month${remaining === 1 ? '' : 's'} left · ${progressPct.toFixed(0)}% complete</span>
+            <button type="button" class="am-design-cancel-btn" data-design-id="${d.id}" style="background:transparent;border:1px solid rgba(217,83,79,0.4);color:var(--co-accent-rust,#d9534f);font-family:var(--co-mono);font-size:9px;letter-spacing:0.14em;text-transform:uppercase;padding:4px 10px;cursor:pointer;">Cancel Design</button>
+        </div>
     </div>`;
 }
 
