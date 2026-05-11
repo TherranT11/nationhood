@@ -24759,7 +24759,14 @@ async function resolveVolaCupBids(supabase, currentTick) {
     let resolved = 0;
     for (const [cupNumber, bids] of byCup) {
         try {
-            const did = await _resolveOneCup(supabase, cupNumber, bids, targetCupStart, currentTick);
+            // Use the bid row's own cup_start_tick — under the .eq filter
+            // this always equaled targetCupStart, but .lte means they
+            // can differ for orphan bids being resolved on a later
+            // tick. Passing targetCupStart would write the wrong
+            // cup_start_tick into vola_cup_hosts and the wrong year
+            // into the host-announcement event log.
+            const cupStartTick = Number(bids[0]?.cup_start_tick) || targetCupStart;
+            const did = await _resolveOneCup(supabase, cupNumber, bids, cupStartTick, currentTick);
             if (did) resolved++;
         } catch (err) {
             console.error('[VWCHost] resolve failed for cup', cupNumber, err);
