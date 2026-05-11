@@ -1,12 +1,25 @@
-// Shared corporation-valuation math.
-// Single source of truth for: bankruptcy (corp-operations.html,
-// corp-operations-shipping.html), Government Bailout authoring
-// (laws.html), and bill enactment (bills.js).
+// Shared corporation-valuation and property-cost math. Single source of
+// truth for two distinct surfaces:
 //
-// The matching server-side copy lives in supabase/functions/advance-tick/
-// index.ts — kept inline there because the Deno edge runtime does not
-// share the browser module graph. Keep that copy in sync if the formula
-// changes here.
+//   1. Valuation pipeline — computePropertyValue / computeEquipmentValue
+//      / computeFinanceReceivableValue / computeCorpValuationBreakdown
+//      / computeCorpValuation. Used by bankruptcy (corp-operations.html,
+//      corp-operations-shipping.html), Government Bailout authoring
+//      (laws.html), bill enactment (bills.js), and the tick processor.
+//      The tick processor cannot import this module (Deno edge runtime
+//      doesn't share the browser graph), so the valuation chain is
+//      mirrored inline in supabase/functions/advance-tick/index.ts —
+//      keep that copy in sync if the formulas below change.
+//
+//   2. Property-cost helpers — nationalHqValue / nationalHqQuality and
+//      the four assembly-plant value functions (lightAssemblyPlantValue
+//      / engineAssemblyPlantValue / aircraftAssemblyFacilityValue /
+//      heavyManufacturingPlantValue) plus boundedCostMultiplier. These
+//      are client-only paths: corp-nation-select.html reads them at
+//      corp founding, expansion.html reads them for the Build tables.
+//      The tick processor never recomputes these (purchase_price is
+//      persisted on the corp_properties row at creation), so no
+//      server-side mirror is required.
 
 // National HQ value/quality formulas. The HQ is now persisted as a
 // real corp_properties row at corp founding (see corp-nation-select.html)
