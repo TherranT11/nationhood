@@ -632,7 +632,7 @@ function renderVolaCup(currentTick) {
                     <span class="vola-cup-group-team"></span>
                     <span class="vola-cup-group-stat-label">W-L</span>
                     <span class="vola-cup-group-stat-label">PTS</span>
-                    <span class="vola-cup-group-stat-label">PROW</span>
+                    <span class="vola-cup-group-stat-label">RANK</span>
                 </div>
                 <div class="vola-cup-group-rows">
                     ${[1,2,3,4].map(blankRow).join('')}
@@ -835,16 +835,16 @@ async function loadAndRenderVolaPlacement(cupNum) {
 }
 
 // Phase 1+2 of the VWC pipeline: fill the 3 group cards with the
-// team names + flags drawn into each group, plus live W-L / PTS / PROW
+// team names + flags drawn into each group, plus live W-L / PTS / RANK
 // standings derived from vola_cup_group_matches. Rows reorder as wins
-// accumulate (wins DESC, points DESC, prowess DESC, name ASC).
+// accumulate (wins DESC, points DESC, vwc_ranking ASC, name ASC).
 async function loadAndRenderVolaGroups(cupNum) {
     const cards = document.querySelectorAll(`.vola-cup-group[data-cup-num="${cupNum}"]`);
     if (!cards.length) return;
 
     const [drawRes, matchRes] = await Promise.all([
         _supabase.from('vola_cup_groups')
-            .select('group_letter, seed_rank, qualified_via, nation:nation_id(id, name, flag_url, national_team_prowess)')
+            .select('group_letter, seed_rank, qualified_via, nation:nation_id(id, name, flag_url, vwc_ranking)')
             .eq('cup_number', cupNum),
         _supabase.from('vola_cup_group_matches')
             .select('group_letter, team_a_nation_id, team_b_nation_id, team_a_score, team_b_score, winner_nation_id, resolved_at_tick')
@@ -864,7 +864,8 @@ async function loadAndRenderVolaGroups(cupNum) {
     if (draw.length === 0) return; // Draw hasn't fired yet — leave placeholders.
 
     // Per-team standings: wins, losses, points (sum of own scores in
-    // resolved matches). PROW is static team prowess from the draw join.
+    // resolved matches). RANK is the static vwc_ranking from the draw
+    // join — lower is better, 0/null means unranked (treated as worst).
     const stats = new Map();
     const ensure = (id) => {
         if (!stats.has(id)) stats.set(id, { wins: 0, losses: 0, points: 0, played: 0 });
@@ -894,7 +895,7 @@ async function loadAndRenderVolaGroups(cupNum) {
             losses: s ? s.losses : 0,
             points: s ? s.points : 0,
             played: s ? s.played : 0,
-            prowess: Number(row.nation?.national_team_prowess) || 0,
+            ranking: Number(row.nation?.vwc_ranking) || 0,
         });
     }
 
@@ -905,14 +906,18 @@ async function loadAndRenderVolaGroups(cupNum) {
         const teams = (byGroup[letter] || []).slice();
         if (teams.length === 0) return;
 
-        // Sort: wins DESC, points DESC, prowess DESC, name ASC. Final
-        // tiebreaker is name to match seedVolaCupKnockout's server-side
-        // comparator — keeps the displayed group order identical to the
-        // bracket-seed order in the rare all-stats-tied case.
+        // Sort: wins DESC, points DESC, ranking ASC (lower rank wins),
+        // name ASC. Unranked nations (0/null) get treated as worst.
+        // Final tiebreaker is name to match seedVolaCupKnockout's
+        // server-side comparator so the displayed group order stays
+        // identical to the bracket-seed order in the rare all-stats-
+        // tied case.
+        const sortRank = r => r > 0 ? r : Number.POSITIVE_INFINITY;
         teams.sort((a, b) => {
             if (b.wins !== a.wins) return b.wins - a.wins;
             if (b.points !== a.points) return b.points - a.points;
-            if (b.prowess !== a.prowess) return b.prowess - a.prowess;
+            const ar = sortRank(a.ranking), br = sortRank(b.ranking);
+            if (ar !== br) return ar - br;
             const an = a.nation?.name || '';
             const bn = b.nation?.name || '';
             return an.localeCompare(bn);
@@ -932,14 +937,14 @@ async function loadAndRenderVolaGroups(cupNum) {
             const pts = row.played > 0
                 ? String(row.points)
                 : '<span class="vola-cup-group-stat--blank">&mdash;</span>';
-            const prow = row.prowess > 0 ? String(row.prowess) : '<span class="vola-cup-group-stat--blank">&mdash;</span>';
+            const rank = row.ranking > 0 ? String(row.ranking) : '<span class="vola-cup-group-stat--blank">&mdash;</span>';
             return `
                 <div class="vola-cup-group-row">
                     <span class="vola-cup-group-rank">${i + 1}.</span>
                     <span class="vola-cup-group-team" style="color:${color};">${flagImg}${escapeHtml(name)}${viaTag}</span>
                     <span class="vola-cup-group-stat">${wl}</span>
                     <span class="vola-cup-group-stat">${pts}</span>
-                    <span class="vola-cup-group-stat">${prow}</span>
+                    <span class="vola-cup-group-stat">${rank}</span>
                 </div>
             `;
         }).join('');
