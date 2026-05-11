@@ -857,39 +857,25 @@ body.corp-expansion.light-mode {
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, hfFmtBig } from './js/utils.js';
+import {
+    boundedCostMultiplier,
+    lightAssemblyPlantValue as lightAssemblyCost,
+    engineAssemblyPlantValue as engineAssemblyCost,
+    aircraftAssemblyFacilityValue as aircraftAssemblyCost,
+    heavyManufacturingPlantValue as heavyManufacturingCost,
+} from './js/game/corp-valuation.js';
 
 // ── CONSTANTS ──
-// Build cost shape (shared across every buildable property):
-// base × clamp(stat/50, 0.5, 2.0). At stat 50 the multiplier is
-// exactly 1.0; below stat 25 the floor (×0.5) kicks in, above stat
-// 100 the ceiling (×2.0) caps it. Regional HQ scales on
-// standard_of_living; aviation-manufacturing assembly plants scale
-// on cost_of_living. One source of truth — boundedCostMultiplier.
+// Regional HQ is the only buildable property whose cost lives here;
+// the four aviation-manufacturing plant costs are imported from
+// corp-valuation.js so corp-nation-select.html (founding Light Assembly
+// Plant) and this file share the same base-cost numbers and the same
+// boundedCostMultiplier shape.
 const REGIONAL_HQ_BASE_COST         = 300_000_000;
 const REGIONAL_HQ_CAPACITY          = 500;
-const LIGHT_ASSEMBLY_BASE_COST      = 175_000_000;
-const ENGINE_ASSEMBLY_BASE_COST     = 225_000_000;
-const AIRCRAFT_ASSEMBLY_BASE_COST   = 225_000_000;
-const HEAVY_MANUFACTURING_BASE_COST = 375_000_000;
 
-function boundedCostMultiplier(stat) {
-    const s = Math.max(0, Math.min(100, Number(stat) || 0));
-    return Math.max(0.5, Math.min(2.0, s / 50));
-}
 function regionalHqCost(sol) {
     return Math.round(REGIONAL_HQ_BASE_COST * boundedCostMultiplier(sol));
-}
-function lightAssemblyCost(costOfLiving) {
-    return Math.round(LIGHT_ASSEMBLY_BASE_COST * boundedCostMultiplier(costOfLiving));
-}
-function engineAssemblyCost(costOfLiving) {
-    return Math.round(ENGINE_ASSEMBLY_BASE_COST * boundedCostMultiplier(costOfLiving));
-}
-function aircraftAssemblyCost(costOfLiving) {
-    return Math.round(AIRCRAFT_ASSEMBLY_BASE_COST * boundedCostMultiplier(costOfLiving));
-}
-function heavyManufacturingCost(costOfLiving) {
-    return Math.round(HEAVY_MANUFACTURING_BASE_COST * boundedCostMultiplier(costOfLiving));
 }
 
 // ── STATE ──
