@@ -551,8 +551,14 @@ async function deleteCrisis(id) {
     if (!confirm('Delete this crisis and all its data? This cannot be undone.')) return;
     try {
         await _supabase.from('active_crises').delete().eq('crisis_id', id);
-        var r = await _supabase.from('crisis_templates').delete().eq('id', id);
+        // .select() after delete so we see how many rows actually went.
+        // RLS misconfig returns success with zero rows; without the
+        // .select() check, the user gets a misleading "deleted" toast.
+        var r = await _supabase.from('crisis_templates').delete().eq('id', id).select();
         if (r.error) throw r.error;
+        if (!r.data || r.data.length === 0) {
+            throw new Error('No rows deleted. The DELETE policy on crisis_templates is probably missing — run the SQL fix in Supabase (see crisisadmin notes).');
+        }
         alert('Crisis deleted.');
         await loadAllCrises();
         renderListView();
@@ -893,8 +899,11 @@ async function deleteMC(id) {
     if (!confirm('Delete this ministry crisis? This cannot be undone.')) return;
     try {
         await _supabase.from('active_crises').delete().eq('crisis_id', id);
-        var r = await _supabase.from('crisis_templates').delete().eq('id', id);
+        var r = await _supabase.from('crisis_templates').delete().eq('id', id).select();
         if (r.error) throw r.error;
+        if (!r.data || r.data.length === 0) {
+            throw new Error('No rows deleted. The DELETE policy on crisis_templates is probably missing — run the SQL fix in Supabase (see crisisadmin notes).');
+        }
         alert('Ministry crisis deleted.');
         await loadAllCrises();
         renderMCListView();
