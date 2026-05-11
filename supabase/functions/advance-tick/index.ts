@@ -61,7 +61,12 @@ const GAME_CONFIG = {
     IMPEACHMENT_TRIAL_TICKS: 3,            // trial period (conviction vote window)
     IMPEACHMENT_MOTION_COOLDOWN_TICKS: 10, // cooldown after failed motion
     IMPEACHMENT_ACQUITTAL_COOLDOWN_TICKS: 20, // cooldown after acquittal
-    IMPEACHMENT_EMERGENCY_ELECTION_TICKS: 6,  // ticks until emergency presidential election
+    // IMPEACHMENT_EMERGENCY_ELECTION_TICKS removed 20261203 — the
+    // snap-election delay is now a hardcoded +1 in advance-tick
+    // (impeachment conviction handler) because the value cannot be
+    // tuned: registration's lookahead requires election_tick to be
+    // strictly greater than currentTick, so the minimum legal value
+    // is 1 and any larger value contradicts the "instant" spec.
     // Charge precondition thresholds.
     // Alpha refactor: IMPEACHMENT_CORRUPTION_THRESHOLD and the two
     // IMPEACHMENT_CRIMINAL_* thresholds were removed by Phase 3a's
