@@ -17329,8 +17329,6 @@ const TARGET_CONVERGENCE_RATE = 0.10;
 // Stats whose column values are raw (population, debt, budget) don't map
 // onto a 0–10 target. The policy builder lets admins pick them anyway;
 // engine silently skips so nothing weird happens at apply time.
-// (Tax columns also need skipping but are handled by STAT_PROCESSOR_SKIP
-// at the top of the file, which the target processor checks first.)
 const TARGET_BASED_STAT_SKIP = new Set([
     'population', 'eligible_voters', 'debt', 'budget'
 ]);
@@ -32134,7 +32132,6 @@ async function adjustFactionMomentum(supabase: any, factionId: string, nationId:
 // currency nudge). Function + call site removed in 20261202; see
 // git history for the previous implementation.
 
-
 // ==================== TARIFF → RELATIONS PENALTY ====================
 // Nations with tariffs > 25% lose -0.5 relations/tick with ALL other nations (floor 10)
 
@@ -32750,7 +32747,7 @@ async function handleFailedDefaultResolution(supabase, bill, currentTick) {
         fired_at_tick: currentTick
     });
 
-    console.log(`[handleFailedDefaultResolution] ${nation.name}: resolution failed, market partial recovery applied`);
+    console.log(`[handleFailedDefaultResolution] ${nation.name}: resolution failed`);
 }
 
 /**

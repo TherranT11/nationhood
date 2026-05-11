@@ -44,65 +44,14 @@ async function adjustFactionMomentum(supabase: any, factionId: string, nationId:
     }
 }
 
-// ==================== SURPLUS/DEFICIT CONNECTORS ====================
-// These require budget calculation and can't be expressed as simple
-// stat_connections rows. Simple threshold connectors (unemployment→happiness,
-// crime→investment, etc.) are in the stat_connections table via admin panel.
-
-async function processSurplusConnectors(supabase: any, nation: any) {
-    const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v * 10) / 10));
-    const capDelta = (d: number) => Math.max(-2, Math.min(2, d));
-    const gdp = Number(nation.gdp ?? 0);
-    if (gdp <= 0) return;
-
-    const efficiency = Number(nation.efficiency ?? 50);
-    const inflation = Number(nation.inflation ?? 38);
-    const currencyStrength = Number(nation.currency_strength ?? 50);
-
-    // Calculate surplus ratio from budget formula
-    let surplusRatio = 0;
-    try {
-        const budget = calculateNationalBudget(nation);
-        const baseExpenditure = gdp * 0.12 * (1 + (100 - efficiency) / 200);
-        const surplus = budget.grossRevenue - baseExpenditure;
-        surplusRatio = (surplus / gdp) * 100;
-    } catch (_) {
-        return;
-    }
-
-    const updates: any = {};
-    let changed = false;
-
-    // ── Surplus → Inflation ──
-    if (surplusRatio > 5) {
-        const delta = capDelta((surplusRatio - 5) * 0.1);
-        updates.inflation = clamp(inflation + delta);
-        changed = true;
-    }
-    // Deficit → inflation was previously handled here with a heuristic.
-    // Bond/print system retired (2026-05); per-tick balance now applies
-    // directly to debt via processNationDebtTick. No inflation cascade.
-
-    // ── Surplus → Currency Strength ──
-    if (surplusRatio > 3) {
-        const delta = capDelta((surplusRatio - 3) * 0.08);
-        updates.currency_strength = clamp(currencyStrength + delta);
-        changed = true;
-    }
-    // Deficit → currency was previously a direct hit here. Removed for
-    // the same SSoT reason — currency_strength now cascades from
-    // inflation via the trade subsystem (fuel cost → import cost → trade
-    // balance → currency nudge) plus the stat_connections_negative_feedback
-    // cascade at currency<25. One causal chain, not two parallel writers.
-
-    if (changed) {
-        const { error } = await supabase.from('nations').update(updates).eq('id', nation.id);
-        if (error) {
-            console.error(`[SurplusConnectors] Update failed for ${nation.name}:`, error.message);
-        }
-        Object.assign(nation, updates);
-    }
-}
+// SURPLUS/DEFICIT CONNECTORS — retired 2026-05.
+// Original purpose: cascade budget surplus into nations.inflation +
+// nations.currency_strength. Both target columns were dropped from
+// the schema; the bond/print system was replaced by
+// processNationDebtTick, and currency cascades through the trade
+// subsystem now (fuel cost → import cost → trade balance →
+// currency nudge). Function + call site removed in 20261202; see
+// git history for the previous implementation.
 
 // ==================== TARIFF → RELATIONS PENALTY ====================
 // Nations with tariffs > 25% lose -0.5 relations/tick with ALL other nations (floor 10)
@@ -686,22 +635,19 @@ async function handleFailedDefaultResolution(supabase, bill, currentTick) {
     // 2. Fetch nation
     const { data: nation } = await supabase
         .from('nations')
-        .select('id, name, currency_strength, foreign_investment, international_reputation')
+        .select('id, name')
         .eq('id', bill.nation_id)
         .single();
     if (!nation) return;
 
-    // 3. Apply failure consequences: partial market recovery from filing shock,
-    //    but PM takes an approval hit for the failed political gambit
-    const clamp = (val, delta) => Math.max(0, Math.min(100, Math.round((val + delta) * 10) / 10));
-
-    const updates: any = {
-        currency_strength: clamp(Number(nation.currency_strength ?? 50), cfg.FAILURE_CURRENCY_RECOVERY),
-        foreign_investment: clamp(Number(nation.foreign_investment ?? 50), cfg.FAILURE_FOREIGN_INV_RECOVERY),
-        international_reputation: clamp(Number(nation.international_reputation ?? 50), cfg.FAILURE_INTL_REP_HIT),
-    };
-
-    await supabase.from('nations').update(updates).eq('id', nation.id);
+    // 3. Apply failure consequences. The market-shock columns
+    //    (currency_strength, foreign_investment, international_reputation)
+    //    were retired in alpha-19 — currency_strength + international_reputation
+    //    consolidated into `power`, foreign_investment dropped. The PM
+    //    approval hit + audit log are still meaningful and stay.
+    //    TODO: re-introduce a market-shock effect via `power` once the
+    //    sovereign-default penalty curve is redesigned for the new
+    //    schema.
     await adjustGovernmentApprovalEvent(supabase, nation.id, cfg.FAILURE_PM_APPROVAL_HIT, 'sovereign_default:failed');
 
     // 4. Update resolution status
@@ -714,17 +660,15 @@ async function handleFailedDefaultResolution(supabase, bill, currentTick) {
     await supabase.from('event_log').insert({
         nation_id: nation.id,
         event_name: 'Default Resolution Failed',
-        description_used: `Parliament rejected the sovereign default resolution. Markets show cautious relief, but the government's credibility has taken a hit.`,
+        description_used: `Parliament rejected the sovereign default resolution. The government's credibility has taken a hit.`,
         category: 'economy',
         effects_applied: [
-            { stat: 'currency_strength', change: cfg.FAILURE_CURRENCY_RECOVERY },
-            { stat: 'foreign_investment', change: cfg.FAILURE_FOREIGN_INV_RECOVERY },
-            { stat: 'international_reputation', change: cfg.FAILURE_INTL_REP_HIT }
+            { stat: 'gov_approval', change: cfg.FAILURE_PM_APPROVAL_HIT }
         ],
         fired_at_tick: currentTick
     });
 
-    console.log(`[handleFailedDefaultResolution] ${nation.name}: resolution failed, market partial recovery applied`);
+    console.log(`[handleFailedDefaultResolution] ${nation.name}: resolution failed`);
 }
 
 /**
@@ -2239,13 +2183,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             await applyGdpGrowthDrift(supabase, nation);
         } catch (gdpErr) {
             console.error(`[advanceTick] GDP drift failed for ${nation.name} (non-fatal):`, gdpErr);
-        }
-
-        // Surplus/deficit connectors (require budget calculation, can't be stat_connections rows)
-        try {
-            await processSurplusConnectors(supabase, nation);
-        } catch (connErr) {
-            console.error(`[advanceTick] Surplus connectors failed for ${nation.name} (non-fatal):`, connErr);
         }
 
         // Tariff → relations penalty (tariffs > 25% degrade relations with all nations)

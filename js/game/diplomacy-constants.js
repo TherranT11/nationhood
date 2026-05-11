@@ -720,6 +720,17 @@ export const RAW_SCALING_DIVISORS = {
 // Any policy/event/crisis/connection targeting these keys will be silently skipped.
 export const STAT_PROCESSOR_SKIP = new Set(['debt']);
 
+// Nation stat columns with a CHECK constraint narrower than the
+// generic 0–100 stat scale. Used by stat processors so a policy
+// target / connection nudge can't push the column past its DB
+// constraint and abort the whole tick update. Defaults to 100 when
+// no entry exists.
+export const NATION_STAT_CAP = {
+    income_tax:    10,
+    corporate_tax: 10,
+};
+export function nationStatCap(key) { return NATION_STAT_CAP[key] ?? 100; }
+
 // ==================== MINOR DIPLOMATIC INITIATIVE ====================
 
 /**
