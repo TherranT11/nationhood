@@ -1,12 +1,25 @@
-// Shared corporation-valuation math.
-// Single source of truth for: bankruptcy (corp-operations.html,
-// corp-operations-shipping.html), Government Bailout authoring
-// (laws.html), and bill enactment (bills.js).
+// Shared corporation-valuation and property-cost math. Single source of
+// truth for two distinct surfaces:
 //
-// The matching server-side copy lives in supabase/functions/advance-tick/
-// index.ts — kept inline there because the Deno edge runtime does not
-// share the browser module graph. Keep that copy in sync if the formula
-// changes here.
+//   1. Valuation pipeline — computePropertyValue / computeEquipmentValue
+//      / computeFinanceReceivableValue / computeCorpValuationBreakdown
+//      / computeCorpValuation. Used by bankruptcy (corp-operations.html,
+//      corp-operations-shipping.html), Government Bailout authoring
+//      (laws.html), bill enactment (bills.js), and the tick processor.
+//      The tick processor cannot import this module (Deno edge runtime
+//      doesn't share the browser graph), so the valuation chain is
+//      mirrored inline in supabase/functions/advance-tick/index.ts —
+//      keep that copy in sync if the formulas below change.
+//
+//   2. Property-cost helpers — nationalHqValue / nationalHqQuality and
+//      the four assembly-plant value functions (lightAssemblyPlantValue
+//      / engineAssemblyPlantValue / aircraftAssemblyFacilityValue /
+//      heavyManufacturingPlantValue) plus boundedCostMultiplier. These
+//      are client-only paths: corp-nation-select.html reads them at
+//      corp founding, expansion.html reads them for the Build tables.
+//      The tick processor never recomputes these (purchase_price is
+//      persisted on the corp_properties row at creation), so no
+//      server-side mirror is required.
 
 // National HQ value/quality formulas. The HQ is now persisted as a
 // real corp_properties row at corp founding (see corp-nation-select.html)
@@ -24,14 +37,37 @@ export function nationalHqQuality(control) {
     return Math.round(70 + c * 0.3);
 }
 
-// Light Industrial Facility — the founding building for an Aviation
-// Manufacturing corp. Bounded SoL curve: $75M baseline at SoL=50,
-// $37.5M at SoL=0, $112.5M at SoL=100. Same curve shape as Airline
-// starting cash and Construction starting cash for parity across the
-// "scaled by host nation prosperity" sectors.
-export function lightIndustrialFacilityValue(sol) {
-    const s = Math.max(0, Math.min(100, Number(sol) || 0));
-    return Math.round(75_000_000 * (0.5 + s / 100));
+// Light Assembly Plant — the founding building for an Aviation
+// Manufacturing corp, and the cheapest tier purchasable on
+// Expansion. Cost scales on the host nation's cost_of_living via
+// boundedCostMultiplier (same shape used by Regional HQ + the other
+// three assembly tiers). Single source of truth: corp-nation-select.html
+// uses it at corp founding, expansion.html uses it for the Build
+// Light Assembly table cost column.
+export const LIGHT_ASSEMBLY_BASE_COST      = 175_000_000;
+export const ENGINE_ASSEMBLY_BASE_COST     = 225_000_000;
+export const AIRCRAFT_ASSEMBLY_BASE_COST   = 225_000_000;
+export const HEAVY_MANUFACTURING_BASE_COST = 375_000_000;
+
+// base × clamp(stat/50, 0.5, 2.0). At stat 50 multiplier is exactly 1.0;
+// below stat 25 the floor (×0.5) kicks in, above stat 100 the ceiling
+// (×2.0) caps it. Used by every "buildable property" cost helper.
+export function boundedCostMultiplier(stat) {
+    const s = Math.max(0, Math.min(100, Number(stat) || 0));
+    return Math.max(0.5, Math.min(2.0, s / 50));
+}
+
+export function lightAssemblyPlantValue(costOfLiving) {
+    return Math.round(LIGHT_ASSEMBLY_BASE_COST * boundedCostMultiplier(costOfLiving));
+}
+export function engineAssemblyPlantValue(costOfLiving) {
+    return Math.round(ENGINE_ASSEMBLY_BASE_COST * boundedCostMultiplier(costOfLiving));
+}
+export function aircraftAssemblyFacilityValue(costOfLiving) {
+    return Math.round(AIRCRAFT_ASSEMBLY_BASE_COST * boundedCostMultiplier(costOfLiving));
+}
+export function heavyManufacturingPlantValue(costOfLiving) {
+    return Math.round(HEAVY_MANUFACTURING_BASE_COST * boundedCostMultiplier(costOfLiving));
 }
 
 export function computePropertyValue(properties) {
