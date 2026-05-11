@@ -545,8 +545,12 @@ function formatFundingImpact(ongoingCost) {
 }
 
 function formatFundingUpfront(upfrontCost) {
+    // Funding articles show the dollar amount without the trailing "M" —
+    // the bill is small enough that the suffix adds noise. formatCurrency
+    // returns "$6M" / "$1.2B"; strip trailing M only (B is rare here and
+    // worth keeping if it ever appears).
     const prefix = upfrontCost > 0 ? '+' : '';
-    return `<span class="cost-value">${prefix}${formatCurrency(upfrontCost)}</span>`;
+    return `<span class="cost-value">${prefix}${formatCurrency(upfrontCost).replace(/M$/, '')}</span>`;
 }
 
 function renderBill() {
@@ -1537,7 +1541,7 @@ function renderArticles() {
                 if (dAmt) {
                     const dLabel = dAmt > 0 ? 'Allocate: +' : 'Withdraw: -';
                     const dColor = dAmt > 0 ? 'var(--blue)' : 'var(--green, #5cb85c)';
-                    bodyHTML = '<div style="padding:4px 0;font-size:0.8rem;color:' + dColor + ';">' + dLabel + formatCurrency(Math.abs(dAmt)).replace(/^[+-]/, '') + '</div>';
+                    bodyHTML = '<div style="padding:4px 0;font-size:0.8rem;color:' + dColor + ';">' + dLabel + formatCurrency(Math.abs(dAmt)).replace(/^[+-]/, '').replace(/M$/, '') + '</div>';
                 }
                 return '<div class="article" style="border-left:3px solid ' + borderColor + ';">' +
                     '<div class="article-number">Article ' + art.article_number + ' <span style="color:' + borderColor + ';font-size:0.7rem;">' + tagLabel + '</span></div>' +
