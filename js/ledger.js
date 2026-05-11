@@ -46,11 +46,17 @@ function fmtVal(val, statId) {
     if (typeof val === 'string') return val;
     if (CURRENCY_STATS.has(statId)) {
         const abs = Math.abs(val);
-        if (abs >= 1e12) return '$' + (val / 1e12).toFixed(1) + 'T';
-        if (abs >= 1e9) return '$' + (val / 1e9).toFixed(1) + 'B';
-        if (abs >= 1e6) return '$' + (val / 1e6).toFixed(1) + 'M';
-        if (abs >= 1e3) return '$' + Math.round(val / 1e3) + 'k';
-        return '$' + val;
+        // Budget is stored as raw $M and the design calls for whole-
+        // number display ("Budgets in the ledger do not have decimals").
+        // Debt keeps one decimal of precision because the absolute
+        // numbers are large enough that a single decimal still reads
+        // cleanly and the round-trip loss is meaningful.
+        const isBudget = statId === 'budget';
+        if (abs >= 1e12) return '$' + (val / 1e12).toFixed(isBudget ? 0 : 1) + 'T';
+        if (abs >= 1e9)  return '$' + (val / 1e9).toFixed(isBudget ? 0 : 1)  + 'B';
+        if (abs >= 1e6)  return '$' + (val / 1e6).toFixed(isBudget ? 0 : 1)  + 'M';
+        if (abs >= 1e3)  return '$' + Math.round(val / 1e3) + 'k';
+        return '$' + (isBudget ? Math.round(val) : val);
     }
     return val.toFixed(1);
 }
