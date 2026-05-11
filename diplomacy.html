@@ -472,6 +472,9 @@ function renderSportsTab() {
             loadAndRenderVolaGroups(cupForPlacement.cupNum).catch(err =>
                 console.warn('[Sports] group render failed:', err?.message || err)
             );
+            loadAndRenderVolaHost(cupForPlacement.cupNum).catch(err =>
+                console.warn('[Sports] host render failed:', err?.message || err)
+            );
             loadAndRenderVolaKnockout(cupForPlacement.cupNum).catch(err =>
                 console.warn('[Sports] knockout render failed:', err?.message || err)
             );
@@ -752,6 +755,28 @@ function _volaFlagImg(nation, className) {
     const url = nation.flag_url || FLAG_URLS[name] || (name ? `assets/flags/${name}.png` : '');
     if (!url) return '';
     return `<img class="${className}" src="${escapeHtml(url)}" alt="" loading="lazy" onerror="this.style.display='none'">`;
+}
+
+// Fetch the host for this cup and patch the [NO HOST] placeholder. The
+// initial renderVolaCup call ships the placeholder synchronously; this
+// updates it once vola_cup_hosts comes back. Leaving the placeholder
+// when no host has been awarded yet is the expected fallback.
+async function loadAndRenderVolaHost(cupNum) {
+    const hostEl = document.querySelector('.vola-cup-meta-host');
+    if (!hostEl) return;
+
+    const { data, error } = await _supabase
+        .from('vola_cup_hosts')
+        .select('host_nation_id, nations:host_nation_id(name)')
+        .eq('cup_number', cupNum)
+        .maybeSingle();
+
+    if (error) {
+        console.warn('[Sports] host fetch failed:', error.message);
+        return;
+    }
+    const name = data?.nations?.name;
+    if (name) hostEl.textContent = name.toUpperCase();
 }
 
 // Fetch placement matches for the active/next cup and render them into
