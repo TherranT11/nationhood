@@ -1349,8 +1349,12 @@ const RAW_SCALING_DIVISORS = {
 // Debt is driven exclusively by the budget system (surplus/deficit).
 // alpha-19 / Phase 7f: gdp column dropped, so it's no longer in the skip set.
 // debt remains here because it's flow-managed, not stat-decay-managed.
+// income_tax / corporate_tax are player-set levers on a 0–10 scale
+// (nations_tax_rates_range); any 0–100 clamp from a generic stat
+// processor would push them out of range and abort the update with a
+// constraint violation. Routed exclusively through TAX_CHANGE events.
 // Any policy/event/crisis/connection targeting these keys will be silently skipped.
-const STAT_PROCESSOR_SKIP = new Set(['debt']);
+const STAT_PROCESSOR_SKIP = new Set(['debt', 'income_tax', 'corporate_tax']);
 
 // ==================== MINOR DIPLOMATIC INITIATIVE ====================
 
@@ -17318,6 +17322,8 @@ const TARGET_CONVERGENCE_RATE = 0.10;
 // Stats whose column values are raw (population, debt, budget) don't map
 // onto a 0–10 target. The policy builder lets admins pick them anyway;
 // engine silently skips so nothing weird happens at apply time.
+// (Tax columns also need skipping but are handled by STAT_PROCESSOR_SKIP
+// at the top of the file, which the target processor checks first.)
 const TARGET_BASED_STAT_SKIP = new Set([
     'population', 'eligible_voters', 'debt', 'budget'
 ]);
