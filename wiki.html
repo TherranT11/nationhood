@@ -303,14 +303,10 @@ import { initWikiPage, renderWikiSearchBar, fetchPage, fetchPageList, fetchExist
             </div>
         </div>
         ${metaHtml}
-        <div class="wiki-page-layout">
-            <div class="wiki-body-col">
-                <div class="wiki-body-content">${bodyHtml}</div>
-                ${tagsHtml}
-                ${backlinksHtml}
-            </div>
-            ${infoboxHtml}
-        </div>
+        ${infoboxHtml}
+        <div class="wiki-body-content">${bodyHtml}</div>
+        ${tagsHtml}
+        ${backlinksHtml}
     `;
 
     await renderWikiSearchBar(root);

@@ -111,15 +111,15 @@ ${ogImage ? `<meta property="og:image" content="${escapeHtml(ogImage)}">` : ''}
 </div>
 <div class="wiki-container">
     <article class="wiki-page">
-        ${infoboxHtml}
         <header class="wiki-page-header">
             <h1>${escapeHtml(title)}</h1>
-            ${tagsHtml}
-            ${attribution}
         </header>
-        <div class="wiki-page-body">
+        ${attribution}
+        <div class="wiki-body-content">
+            ${infoboxHtml}
             ${bodyHtml}
         </div>
+        ${tagsHtml}
         <footer class="wiki-page-footer">
             <a href="wiki.html?slug=${encodeURIComponent(page.slug)}" class="wiki-btn">View / Edit Live</a>
             <a href="wiki-list.html" class="wiki-btn">All Pages</a>
