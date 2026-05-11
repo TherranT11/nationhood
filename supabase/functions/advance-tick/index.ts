@@ -1349,12 +1349,19 @@ const RAW_SCALING_DIVISORS = {
 // Debt is driven exclusively by the budget system (surplus/deficit).
 // alpha-19 / Phase 7f: gdp column dropped, so it's no longer in the skip set.
 // debt remains here because it's flow-managed, not stat-decay-managed.
-// income_tax / corporate_tax are player-set levers on a 0–10 scale
-// (nations_tax_rates_range); any 0–100 clamp from a generic stat
-// processor would push them out of range and abort the update with a
-// constraint violation. Routed exclusively through TAX_CHANGE events.
 // Any policy/event/crisis/connection targeting these keys will be silently skipped.
-const STAT_PROCESSOR_SKIP = new Set(['debt', 'income_tax', 'corporate_tax']);
+const STAT_PROCESSOR_SKIP = new Set(['debt']);
+
+// Nation stat columns with a CHECK constraint narrower than the
+// generic 0–100 stat scale. Used by stat processors so a policy
+// target / connection nudge can't push the column past its DB
+// constraint and abort the whole tick update. Defaults to 100 when
+// no entry exists.
+const NATION_STAT_CAP = {
+    income_tax:    10,
+    corporate_tax: 10,
+};
+function nationStatCap(key) { return NATION_STAT_CAP[key] ?? 100; }
 
 // ==================== MINOR DIPLOMATIC INITIATIVE ====================
 
@@ -17368,7 +17375,12 @@ async function processTargetBasedPolicies(supabase, nation) {
     const statUpdates = {};
     for (const [statKey, agg] of Object.entries(perStat)) {
         if (agg.sumPull <= 0) continue;
-        const equilibrium = Math.max(0, Math.min(100,
+        // cap respects per-column CHECK constraints — tax columns are
+        // 0–10, everything else 0–100. Without this, a tax target
+        // authored on the 0–100 scale would crash the whole update
+        // with a constraint violation.
+        const cap = nationStatCap(statKey);
+        const equilibrium = Math.max(0, Math.min(cap,
             agg.sumTargetWeighted / agg.sumPull
         ));
         const current = Number(nation[statKey]);
@@ -17378,7 +17390,7 @@ async function processTargetBasedPolicies(supabase, nation) {
         // (writing a fractional value triggers an "invalid input syntax
         // for type smallint" error). Convergence is gradual enough that
         // the precision loss doesn't matter.
-        const clamped = Math.max(0, Math.min(100, Math.round(next)));
+        const clamped = Math.max(0, Math.min(cap, Math.round(next)));
         if (clamped === current) continue;
         statUpdates[statKey] = clamped;
         summary.stats.push({
