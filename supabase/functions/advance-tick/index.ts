@@ -33869,14 +33869,16 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     if (cb.impeachment_id) {
                         await supabase.from('impeachment_proceedings').update({ phase: 'motion_floor' }).eq('id', cb.impeachment_id);
                     }
-                    // Calculate caucus dispositions at floor entry so players can see/whip during voting
-                    try {
-                        const { data: arts } = await supabase.from('bill_articles').select('*, policies(*)').eq('bill_id', cb.id);
-                        await calculateCaucusDispositions(supabase, cb.id, nation.id, arts || []);
-                        await calculateCaucusVoteAdjustment(supabase, cb.id);
-                    } catch (caucusErr) {
-                        console.error(`[Impeachment] Caucus disposition calc failed for ${cb.id} (non-fatal):`, caucusErr);
-                    }
+                    // Note: a pre-tick caucus-disposition calculation was
+                    // planned here so players could see / whip parties
+                    // during the motion-vote window. The two intended
+                    // helpers (calculateCaucusDispositions +
+                    // calculateCaucusVoteAdjustment) were never
+                    // implemented — the calls existed but the function
+                    // definitions did not, so the try/catch logged a
+                    // [non-fatal] ReferenceError on every transition.
+                    // Removed 20261203 to stop the noise; restore here
+                    // when the disposition system actually ships.
                     console.log(`[Impeachment] Motion ${cb.id} auto-transitioned from committee to floor`);
                 }
 
