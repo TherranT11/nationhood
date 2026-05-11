@@ -24731,10 +24731,17 @@ async function bidToHostVwc(supabase, cupNumber, nationId) {
 async function resolveVolaCupBids(supabase, currentTick) {
     const targetCupStart = Number(currentTick) + 12;
 
+    // Self-healing: catch any pending bid whose cup_start_tick is at or
+    // before targetCupStart (originally .eq, but that meant a single
+    // missed orchestrator pass at the exact resolution tick orphaned
+    // the bids forever). .lte preserves normal-case behaviour — the
+    // first tick where cup_start_tick reaches the window still
+    // resolves on that tick — and additionally re-attempts on every
+    // subsequent tick until the cup actually gets its host row.
     const { data: pending, error } = await supabase
         .from('vola_host_bids')
         .select('id, nation_id, cup_number, cup_start_tick')
-        .eq('cup_start_tick', targetCupStart)
+        .lte('cup_start_tick', targetCupStart)
         .is('resolved_at_tick', null);
     if (error) {
         console.warn('[VWCHost] pending fetch failed:', error.message);
@@ -25160,15 +25167,15 @@ async function processVolaPlacementMatches(supabase, currentTick) {
         console.warn('[VolaPlacement] due fetch failed:', error.message);
         return null;
     }
-    if (!due || due.length === 0) return null;
 
     // Track which cups had a Match-3 row scheduled this tick — settlement
     // runs for those after the play batch (idempotent, so it's safe even
-    // if a particular Match-3 row failed to update).
+    // if a particular Match-3 row failed to update). Empty `due` still
+    // falls through so the orphan-recovery pass at the bottom can run.
     const cupsThatJustFinished = new Set(
-        due.filter(m => m.match_number === 3).map(m => m.cup_number)
+        (due || []).filter(m => m.match_number === 3).map(m => m.cup_number)
     );
-    const resolved = await _playMatchBatch(supabase, 'vola_placement_matches', due, currentTick, 'VolaPlacement');
+    const resolved = await _playMatchBatch(supabase, 'vola_placement_matches', due || [], currentTick, 'VolaPlacement');
 
     // Final standings — runs once per cup whose Match 3 just resolved.
     // Group draw chains right after settlement: by this point the
@@ -25225,7 +25232,72 @@ async function processVolaPlacementMatches(supabase, currentTick) {
         }
     }
 
-    return { resolved, cupsSettled: cupsThatJustFinished.size };
+    // ── Self-heal: orphaned cups ────────────────────────────────────
+    // A cup is "orphaned" when its placement matches are all resolved
+    // (settled normally) but vola_cup_groups has zero rows — i.e. the
+    // group-draw step of the post-Match-3 chain didn't run, usually
+    // because the target table didn't exist on that tick or some
+    // transient failure killed the chain mid-flight. The original
+    // cupsThatJustFinished loop only fires when Match 3 resolves on
+    // THIS tick, so without this pass an orphan stays orphaned forever.
+    //
+    // _settleVolaPlacement is NOT idempotent (applies the −1
+    // global_image penalty and inserts an event log row) so we
+    // deliberately skip it for orphans — settlement already happened
+    // on the original tick. We just run the remaining chain links:
+    // VWC ranking recompute → group draw → group schedule.
+    //
+    // cup_start_tick = max(resolved_at_tick across the 3 matches) + 10
+    //   (= qualifier_tick + 2 + 10 = qualifier_tick + 12, the
+    //    canonical cup-start formula).
+    let orphanCups = 0;
+    try {
+        const { data: settledRows } = await supabase.from('vola_placement_matches')
+            .select('cup_number, resolved_at_tick')
+            .not('resolved_at_tick', 'is', null);
+        if (settledRows && settledRows.length > 0) {
+            const byCup = new Map();
+            for (const m of settledRows) {
+                if (!byCup.has(m.cup_number)) byCup.set(m.cup_number, { matches: 0, lastResolved: 0 });
+                const c = byCup.get(m.cup_number);
+                c.matches++;
+                c.lastResolved = Math.max(c.lastResolved, Number(m.resolved_at_tick) || 0);
+            }
+            for (const [cupNumber, info] of byCup) {
+                if (info.matches < 3) continue;
+                if (cupsThatJustFinished.has(cupNumber)) continue; // already handled
+                const { data: existingDraw } = await supabase.from('vola_cup_groups')
+                    .select('id').eq('cup_number', cupNumber).limit(1).maybeSingle();
+                if (existingDraw) continue;
+
+                console.log(`[VolaPlacement] self-healing orphan cup ${cupNumber} (settled at tick ${info.lastResolved}, no group draw)`);
+
+                try { await recomputeVwcRankings(supabase); }
+                catch (vwcErr) { console.error('[VolaPlacement] orphan VWC recompute failed (non-fatal):', vwcErr); }
+
+                let drawn = false;
+                try {
+                    await generateVolaCupGroupDraw(supabase, cupNumber, currentTick);
+                    drawn = true;
+                } catch (err) {
+                    console.error('[VolaCupGroups] orphan draw failed for cup', cupNumber, err);
+                }
+                if (!drawn) continue;
+
+                try {
+                    const cupStartTick = info.lastResolved + 10;
+                    await generateVolaCupGroupSchedule(supabase, cupNumber, cupStartTick);
+                    orphanCups++;
+                } catch (err) {
+                    console.error('[VolaCupGroupSchedule] orphan schedule failed for cup', cupNumber, err);
+                }
+            }
+        }
+    } catch (orphanErr) {
+        console.error('[VolaPlacement] orphan recovery pass failed (non-fatal):', orphanErr);
+    }
+
+    return { resolved, cupsSettled: cupsThatJustFinished.size, orphansHealed: orphanCups };
 }
 
 /**
