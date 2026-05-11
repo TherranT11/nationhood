@@ -2135,9 +2135,17 @@ async function openDesignAircraftModal() {
         const corpAbbr = (_faction.abbreviation || _faction.faction_name || 'AM').slice(0, 6);
         const innov    = Math.round(Number(_faction.corp_innovation) || 0);
 
-        const airframeCards = Object.entries(_aircraftDesignSpecs.airframes).map(([id, a]) =>
-            renderAirframeCard(id, a, id === 'regional')
-        ).join('');
+        // Airframe cards rendered in canonical order (smallest → largest).
+        // The SQL spec function returns JSONB which Postgres stores in a
+        // length-then-lex key order (business, regional, widebody,
+        // narrowbody) — not the desired display order. Iterate an
+        // explicit list instead so the UI stays predictable regardless
+        // of how PostgreSQL chooses to lay out the bytes.
+        const AIRFRAME_ORDER = ['business', 'regional', 'narrowbody', 'widebody'];
+        const airframeCards = AIRFRAME_ORDER
+            .filter(id => _aircraftDesignSpecs.airframes[id])
+            .map(id => renderAirframeCard(id, _aircraftDesignSpecs.airframes[id], id === 'regional'))
+            .join('');
 
         const mechCards = Object.entries(_aircraftDesignSpecs.mechanicals).map(([id, m]) =>
             renderAircraftModuleCard('mechanical', id, m, false)
@@ -3234,42 +3242,55 @@ async function loadAircraftRfpsForBidder(corpId) {
     const allRfps = rfpsRes.data || [];
     const myBidByRfp = new Map((myBidsRes.data || []).map(b => [b.rfp_id, b]));
 
-    // Filter RFPs the bidder can fulfill (has matching class with
-    // inventory_on_hand >= qty on at least one design).
-    const fulfillable = allRfps.filter(r => {
-        const candidates = designsByClass[r.design_class] || [];
-        return candidates.some(d => Number(d.inventory_on_hand) >= Number(r.quantity));
-    });
-
-    if (fulfillable.length === 0) {
-        el.innerHTML = '<div class="co-contract-empty">No open RFPs match your aircraft inventory. RFPs surface here when an airline posts one whose class matches a design you can fulfill from inventory.</div>';
+    if (allRfps.length === 0) {
+        el.innerHTML = '<div class="co-contract-empty">No open RFPs right now. They\'ll surface here when airlines post purchase requests.</div>';
         return;
     }
 
-    el.innerHTML = fulfillable.map(r => {
+    // Track the best matching design (by inventory) per class so the
+    // "can\'t fulfill" reason can be specific about what\'s missing.
+    function bestStock(designClass) {
+        const candidates = designsByClass[designClass] || [];
+        return candidates.reduce((m, d) => Math.max(m, Number(d.inventory_on_hand) || 0), 0);
+    }
+
+    el.innerHTML = allRfps.map(r => {
         const ticksLeft = Math.max(0, Number(r.expires_at_tick) - currentTick);
         const airline = r.factions?.abbreviation || r.factions?.faction_name || '—';
         const myBid = myBidByRfp.get(r.id);
         const bidLabel = myBid
             ? `Bid placed · ${fmtCostShort(myBid.price_per_unit)}/unit (${myBid.status})`
             : 'No bid';
-        const btnLabel = myBid && myBid.status === 'pending' ? 'Update Bid' : 'Submit Bid';
         const classLabel = `${r.quantity}× ${escHtml(RFP_CLASS_LABEL[r.design_class] || r.design_class)}`;
         const headline = r.name
             ? `${escHtml(r.name)} — ${classLabel}`
             : classLabel;
         const priorityLine = _formatRfpPriorities(r.priorities);
+
+        // Can we fulfill? Need at least one Available aircraft design of
+        // the requested class with inventory_on_hand >= rfp.quantity.
+        const candidates = designsByClass[r.design_class] || [];
+        const canFulfill = candidates.some(d => Number(d.inventory_on_hand) >= Number(r.quantity));
+        const btnLabel = !canFulfill
+            ? 'Cannot Fulfill'
+            : (myBid && myBid.status === 'pending' ? 'Update Bid' : 'Submit Bid');
+        const btnExtra = !canFulfill ? ' disabled style="opacity:0.5;cursor:not-allowed;"' : '';
+        const fulfillNote = canFulfill
+            ? ''
+            : `<div class="am-q-run-meta" style="margin-top:2px;color:var(--co-accent-rust,#d97757);">NEED ${r.quantity} ${escHtml(RFP_CLASS_LABEL[r.design_class] || r.design_class).toUpperCase()} IN INVENTORY ◊ YOU HAVE ${bestStock(r.design_class)}</div>`;
+
         return `<div class="am-q-run-card" style="grid-template-columns:1fr auto;align-items:center;">
             <div>
                 <div class="am-q-run-name">${headline}</div>
                 <div class="am-q-run-meta">FROM ${escHtml(airline)} ◊ ${ticksLeft} TICK${ticksLeft === 1 ? '' : 'S'} LEFT ◊ ${escHtml(bidLabel)}</div>
                 ${priorityLine ? `<div class="am-q-run-meta" style="margin-top:2px;">PRIORITIES: ${priorityLine}</div>` : ''}
+                ${fulfillNote}
             </div>
-            <button type="button" class="co-panel-action-btn co-rfp-bid-btn" data-rfp-id="${r.id}">${btnLabel}</button>
+            <button type="button" class="co-panel-action-btn co-rfp-bid-btn" data-rfp-id="${r.id}"${btnExtra}>${btnLabel}</button>
         </div>`;
     }).join('');
 
-    el.querySelectorAll('.co-rfp-bid-btn').forEach(btn => {
+    el.querySelectorAll('.co-rfp-bid-btn:not([disabled])').forEach(btn => {
         btn.addEventListener('click', () => openBidModal(btn.dataset.rfpId, designsByClass, allRfps));
     });
 }
