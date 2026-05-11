@@ -26,7 +26,7 @@
  */
 
 import { normalizeNationStatKey, NATION_STAT_COLUMN_SET } from './stats.js';
-import { STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
+import { STAT_PROCESSOR_SKIP, nationStatCap } from './diplomacy-constants.js';
 
 // ════════════════════════════════════════════════════════════════
 // Target-based policies — per-tick processor.
@@ -111,7 +111,12 @@ export async function processTargetBasedPolicies(supabase, nation) {
     const statUpdates = {};
     for (const [statKey, agg] of Object.entries(perStat)) {
         if (agg.sumPull <= 0) continue;
-        const equilibrium = Math.max(0, Math.min(100,
+        // cap respects per-column CHECK constraints — tax columns are
+        // 0–10, everything else 0–100. Without this, a tax target
+        // authored on the 0–100 scale would crash the whole update
+        // with a constraint violation.
+        const cap = nationStatCap(statKey);
+        const equilibrium = Math.max(0, Math.min(cap,
             agg.sumTargetWeighted / agg.sumPull
         ));
         const current = Number(nation[statKey]);
@@ -121,7 +126,7 @@ export async function processTargetBasedPolicies(supabase, nation) {
         // (writing a fractional value triggers an "invalid input syntax
         // for type smallint" error). Convergence is gradual enough that
         // the precision loss doesn't matter.
-        const clamped = Math.max(0, Math.min(100, Math.round(next)));
+        const clamped = Math.max(0, Math.min(cap, Math.round(next)));
         if (clamped === current) continue;
         statUpdates[statKey] = clamped;
         summary.stats.push({
