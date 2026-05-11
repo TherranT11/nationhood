@@ -22207,19 +22207,36 @@ async function processOngoingCosts(supabase, nation, currentTick) {
     return { totalCost, details };
 }
 
-// All columns that nations_history tracks (must match the DB table schema).
-// Phase 9 trimmed NATION_STAT_COLUMNS to alpha-23. Phase 9b dropped
-// eligible_voters (derived from population × 0.65 at read time).
-const HISTORY_SNAPSHOT_COLUMNS = [
+// Fallback for the very first snapshot call before the RPC has been
+// hit (or if the RPC fails). nation_history_columns() in SQL is the
+// canonical source — see 20261133_nations_history_self_describing.sql.
+// This list only kicks in if the function isn't reachable.
+const HISTORY_SNAPSHOT_FALLBACK = [
     ...NATION_STAT_COLUMNS,
     'gov_approval',
     'population',
 ];
+let _historyColumnsCache = null;
+
+// Pull the canonical column list from the SQL function on first use,
+// cache for the rest of the process. The list refreshes naturally on
+// each cold-start of the edge function (or on manual cache bust).
+async function getHistorySnapshotColumns(supabase) {
+    if (_historyColumnsCache) return _historyColumnsCache;
+    const { data, error } = await supabase.rpc('nation_history_columns');
+    if (error || !Array.isArray(data) || data.length === 0) {
+        console.warn('[snapshotNationHistory] nation_history_columns RPC unavailable, falling back to in-code list:', error?.message || 'empty result');
+        return HISTORY_SNAPSHOT_FALLBACK;
+    }
+    _historyColumnsCache = data;
+    return _historyColumnsCache;
+}
 
 async function snapshotNationHistory(supabase, nation, currentTick) {
+    const columns = await getHistorySnapshotColumns(supabase);
     const snapshot = { nation_id: nation.id, tick: currentTick };
 
-    for (const key of HISTORY_SNAPSHOT_COLUMNS) {
+    for (const key of columns) {
         if (nation[key] !== undefined && nation[key] !== null) {
             snapshot[key] = Number(nation[key]);
         }
