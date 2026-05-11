@@ -61,7 +61,12 @@ const GAME_CONFIG = {
     IMPEACHMENT_TRIAL_TICKS: 3,            // trial period (conviction vote window)
     IMPEACHMENT_MOTION_COOLDOWN_TICKS: 10, // cooldown after failed motion
     IMPEACHMENT_ACQUITTAL_COOLDOWN_TICKS: 20, // cooldown after acquittal
-    IMPEACHMENT_EMERGENCY_ELECTION_TICKS: 6,  // ticks until emergency presidential election
+    // IMPEACHMENT_EMERGENCY_ELECTION_TICKS removed 20261203 — the
+    // snap-election delay is now a hardcoded +1 in advance-tick
+    // (impeachment conviction handler) because the value cannot be
+    // tuned: registration's lookahead requires election_tick to be
+    // strictly greater than currentTick, so the minimum legal value
+    // is 1 and any larger value contradicts the "instant" spec.
     // Charge precondition thresholds.
     // Alpha refactor: IMPEACHMENT_CORRUPTION_THRESHOLD and the two
     // IMPEACHMENT_CRIMINAL_* thresholds were removed by Phase 3a's
@@ -15219,7 +15224,7 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
     const targetTick = currentTick + leadTicks;
     const { data: upcomingElection } = await supabase
         .from('elections')
-        .select('id, election_tick')
+        .select('id, election_tick, excluded_faction_id')
         .eq('nation_id', nation.id)
         .eq('status', 'scheduled')
         .eq('election_type', 'presidential')
@@ -15262,8 +15267,18 @@ async function triggerPresidentialCandidateSelection(supabase, nation, currentTi
     if (!allParties || allParties.length === 0) return;
 
     const termLimit = getPresidentialTermLimit(nation);
+    const excludedFactionId = upcomingElection.excluded_faction_id || null;
 
     for (const party of allParties) {
+        // Snap-election exclusion (impeachment): the convicted president's
+        // party is barred from fielding a candidate in THIS election only.
+        // excluded_faction_id is set on the elections row by the
+        // conviction processor in advance-tick-handler-template; lives
+        // and dies with that row.
+        if (excludedFactionId && party.id === excludedFactionId) {
+            console.log(`[PresElect] Skipping excluded party ${party.faction_name} (${party.id}) for impeachment snap election in ${nation.name}`);
+            continue;
+        }
         try {
             const isIncumbentParty = incumbentPresident && party.id === incumbentPresident.faction_id;
             const isTermLimited = termLimit !== null && isIncumbentParty && (incumbentPresident.terms_served || 1) >= termLimit;
@@ -23855,9 +23870,14 @@ async function disbandParty(supabase, nationId, factionId, currentTick, opts = {
         throw new Error('Corporations cannot be disbanded.');
     }
 
-    // 1. Cooldown check
-
-    if (faction?.disband_cooldown_until_tick && faction.disband_cooldown_until_tick > currentTick) {
+    // 1. Cooldown check — only applies to player-initiated soft
+    // disbands. The inactivity sweep + admin tools pass hardDelete:true
+    // and should bypass the cooldown; the whole point of the
+    // inactivity reaper is "this party has been dormant for N ticks,
+    // remove it now" — a player-facing rate-limit can't gate that.
+    if (!hardDelete
+        && faction?.disband_cooldown_until_tick
+        && faction.disband_cooldown_until_tick > currentTick) {
         const remaining = faction.disband_cooldown_until_tick - currentTick;
         throw new Error(`Disband is on cooldown for ${remaining} more tick${remaining !== 1 ? 's' : ''}.`);
     }
@@ -33885,14 +33905,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     if (cb.impeachment_id) {
                         await supabase.from('impeachment_proceedings').update({ phase: 'motion_floor' }).eq('id', cb.impeachment_id);
                     }
-                    // Calculate caucus dispositions at floor entry so players can see/whip during voting
-                    try {
-                        const { data: arts } = await supabase.from('bill_articles').select('*, policies(*)').eq('bill_id', cb.id);
-                        await calculateCaucusDispositions(supabase, cb.id, nation.id, arts || []);
-                        await calculateCaucusVoteAdjustment(supabase, cb.id);
-                    } catch (caucusErr) {
-                        console.error(`[Impeachment] Caucus disposition calc failed for ${cb.id} (non-fatal):`, caucusErr);
-                    }
                     console.log(`[Impeachment] Motion ${cb.id} auto-transitioned from committee to floor`);
                 }
 
@@ -33934,7 +33946,9 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         .select('*').eq('id', proc.president_id).single();
                     if (!president || !president.is_active) continue;
 
-                    // Deactivate president
+                    // Deactivate president — the seat goes vacant.
+                    // No VP succession: per the impeachment spec, the
+                    // presidency is empty until the snap election resolves.
                     await supabase.from('presidents').update({
                         is_active: false,
                         removal_reason: 'impeached'
@@ -33963,29 +33977,20 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         await closeAdministration(supabase, nation.id, nation, 'impeachment', newTick, shard?.current_date || '', null);
                     } catch (adminErr) { console.warn('Could not close administration on impeachment:', adminErr); }
 
-                    // Generate new VP name as acting president
-                    const { firstNames: vpFirstPool, lastNames: vpLastPool } = getNationNames(nation.name);
-                    const vpFirst = vpFirstPool[Math.floor(Math.random() * vpFirstPool.length)];
-                    const vpLast = vpLastPool[Math.floor(Math.random() * vpLastPool.length)];
-
-                    // Create new president record (VP succession — same party, serves out remainder)
-                    const remainingTicks = Math.max(1, (president.term_ends_tick || newTick) - newTick);
-                    await supabase.from('presidents').insert({
-                        nation_id: nation.id,
-                        faction_id: president.faction_id,
-                        first_name: vpFirst,
-                        last_name: vpLast,
-                        age: 45 + Math.floor(Math.random() * 20),
-                        ideology: president.ideology,
-                        elected_tick: newTick,
-                        term_ends_tick: president.term_ends_tick || (newTick + remainingTicks),
-                        is_active: true,
-                        terms_served: 0
-                    });
-
-                    // Schedule emergency presidential election
-                    const emergencyElectionTick = newTick + GAME_CONFIG.IMPEACHMENT_EMERGENCY_ELECTION_TICKS;
-                    // Cancel existing scheduled presidential elections
+                    // Schedule the snap presidential election for the next
+                    // tick — effectively "instant" but offset by 1 so the
+                    // existing triggerPresidentialCandidateSelection lookahead
+                    // (gt('election_tick', currentTick)) sees it on the
+                    // following tick and registers the per-party candidates.
+                    //
+                    // excluded_faction_id locks the impeached president's
+                    // party out of fielding a candidate for THIS election
+                    // only. The candidate-registration loop in
+                    // presidential skips the excluded faction. The column
+                    // dies with the election row when it resolves, so the
+                    // party returns to normal eligibility for the next
+                    // regular cycle automatically.
+                    const emergencyElectionTick = newTick + 1;
                     await supabase.from('elections').delete()
                         .eq('nation_id', nation.id)
                         .eq('election_type', 'presidential')
@@ -33994,7 +33999,8 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         nation_id: nation.id,
                         election_tick: emergencyElectionTick,
                         election_type: 'presidential',
-                        status: 'scheduled'
+                        status: 'scheduled',
+                        excluded_faction_id: president.faction_id
                     });
 
                     // Cancel any pending bills on president's desk
@@ -34008,19 +34014,20 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                         event_name: 'PRESIDENT REMOVED FROM OFFICE',
                         event_type: 'impeachment',
                         category: 'government',
-                        description_chosen: `President ${president.first_name} ${president.last_name} has been convicted and removed from office. Vice President ${vpFirst} ${vpLast} assumes the presidency. An emergency presidential election is scheduled.`,
+                        description_chosen: `President ${president.first_name} ${president.last_name} has been convicted and removed from office. The presidency is vacant pending an immediate snap election. The impeached party is barred from fielding a candidate in this election.`,
                         fired_at_tick: newTick,
                         effects_applied: {
                             removed_president: `${president.first_name} ${president.last_name}`,
-                            acting_president: `${vpFirst} ${vpLast}`,
+                            acting_president: null,
                             emergency_election_tick: emergencyElectionTick,
+                            excluded_faction_id: president.faction_id,
                             stability_hit: -3,
                             reputation_hit: -3,
                             party_approval_hit: -10
                         }
                     });
 
-                    console.log(`[Impeachment] President ${president.first_name} ${president.last_name} removed. VP ${vpFirst} ${vpLast} takes over. Emergency election at tick ${emergencyElectionTick}`);
+                    console.log(`[Impeachment] President ${president.first_name} ${president.last_name} removed; seat vacant. Snap election at tick ${emergencyElectionTick}, party ${president.faction_id} excluded.`);
                 }
 
                 // 4. Dismiss impeachment if president's term ended during proceedings
