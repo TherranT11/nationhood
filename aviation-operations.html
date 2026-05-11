@@ -1505,11 +1505,22 @@ function renderPageShell(activeOrders) {
             <div class="co-contract-empty">No pressing issues right now. Time-sensitive decisions will appear here when triggered.</div>
         </div>
 
-        <!-- III + IV — DESIGNS / R&D -->
+        <!-- III. AIRCRAFT RFPs (open marketplace from airlines) -->
+        <div class="co-section">
+            <div class="co-section-header">
+                <h2><span class="num">III.</span>Aircraft RFPs</h2>
+                <span class="desc">Airline Purchase Requests</span>
+            </div>
+            <div class="co-contract-list" id="co-rfps-list">
+                <div class="co-contract-empty">Loading…</div>
+            </div>
+        </div>
+
+        <!-- IV + V — DESIGNS / R&D -->
         <div class="co-contracts-grid">
             <div>
                 <div class="co-section-header">
-                    <h2><span class="num">III.</span>Current Designs</h2>
+                    <h2><span class="num">IV.</span>Current Designs</h2>
                     <span class="desc">Aircraft You Can Sell</span>
                 </div>
                 <div class="co-contract-list" id="co-designs-list">
@@ -1522,7 +1533,7 @@ function renderPageShell(activeOrders) {
             </div>
             <div>
                 <div class="co-section-header">
-                    <h2><span class="num">IV.</span>Research &amp; Development</h2>
+                    <h2><span class="num">V.</span>Research &amp; Development</h2>
                     <span class="desc">Active Design Programs</span>
                 </div>
                 <div class="co-contract-list" id="co-rnd-list">
@@ -1534,10 +1545,10 @@ function renderPageShell(activeOrders) {
             </div>
         </div>
 
-        <!-- V. ORDERS -->
+        <!-- VI. ORDERS -->
         <div class="co-section">
             <div class="co-section-header">
-                <h2><span class="num">V.</span>Orders</h2>
+                <h2><span class="num">VI.</span>Orders</h2>
                 <span class="desc">Aircraft Commissions From Airlines</span>
             </div>
             <div class="co-contract-empty">No orders yet. Once your designs are certified, airlines can commission aircraft from your firm.</div>
@@ -1547,10 +1558,10 @@ function renderPageShell(activeOrders) {
             </div>
         </div>
 
-        <!-- VI. INDUSTRIAL FACILITIES -->
+        <!-- VII. INDUSTRIAL FACILITIES -->
         <div class="co-section">
             <div class="co-section-header">
-                <h2><span class="num">VI.</span>Industrial Facilities</h2>
+                <h2><span class="num">VII.</span>Industrial Facilities</h2>
                 <span class="desc">Production Capacity Assets</span>
             </div>
             <div class="co-contract-list" id="co-facilities-list">
@@ -1561,25 +1572,14 @@ function renderPageShell(activeOrders) {
             </div>
         </div>
 
-        <!-- VII. ACTIVE PRODUCTION -->
+        <!-- VIII. ACTIVE PRODUCTION -->
         <div class="co-section">
             <div class="co-section-header">
-                <h2><span class="num">VII.</span>Active Production</h2>
+                <h2><span class="num">VIII.</span>Active Production</h2>
                 <span class="desc">Runs In Progress</span>
             </div>
             <div class="co-contract-list" id="co-production-list">
                 <div class="co-contract-empty">No active production runs. Click + Production Queue to start one.</div>
-            </div>
-        </div>
-
-        <!-- VIII. AIRCRAFT RFPs (open marketplace from airlines) -->
-        <div class="co-section">
-            <div class="co-section-header">
-                <h2><span class="num">VIII.</span>Aircraft RFPs</h2>
-                <span class="desc">Airline Purchase Requests</span>
-            </div>
-            <div class="co-contract-list" id="co-rfps-list">
-                <div class="co-contract-empty">Loading…</div>
             </div>
         </div>
 
@@ -3173,6 +3173,23 @@ const RFP_CLASS_LABEL = {
     narrowbody: 'Narrowbody',
     widebody:   'Widebody',
 };
+const RFP_PRIORITY_LABEL = {
+    range:    'RANGE',
+    price:    'PRICE',
+    quality:  'QUALITY',
+    offering: 'OFFERING',
+};
+// Render priorities JSONB ({range:1,price:2,...}) as a chevron-
+// separated list ordered by rank. Returns '' when priorities are
+// missing or malformed so the caller can omit the line entirely.
+function _formatRfpPriorities(priorities) {
+    if (!priorities || typeof priorities !== 'object') return '';
+    const entries = Object.entries(priorities)
+        .filter(([k, v]) => RFP_PRIORITY_LABEL[k] && Number.isFinite(Number(v)))
+        .sort((a, b) => Number(a[1]) - Number(b[1]))
+        .map(([k]) => RFP_PRIORITY_LABEL[k]);
+    return entries.length === 4 ? entries.join(' &gt; ') : '';
+}
 let _bidModalRfp = null;
 let _bidModalEligibleDesigns = [];
 let _bidModalInflight = false;
@@ -3200,7 +3217,7 @@ async function loadAircraftRfpsForBidder(corpId) {
     const [shardRes, rfpsRes, myBidsRes] = await Promise.all([
         _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
         _supabase.from('aircraft_rfps')
-            .select('id, airline_corp_id, design_class, quantity, expires_at_tick, factions:airline_corp_id(faction_name, abbreviation)')
+            .select('id, airline_corp_id, design_class, quantity, expires_at_tick, name, priorities, factions:airline_corp_id(faction_name, abbreviation)')
             .eq('status', 'open')
             .order('created_at', { ascending: false })
             .limit(50),
@@ -3237,10 +3254,16 @@ async function loadAircraftRfpsForBidder(corpId) {
             ? `Bid placed · ${fmtCostShort(myBid.price_per_unit)}/unit (${myBid.status})`
             : 'No bid';
         const btnLabel = myBid && myBid.status === 'pending' ? 'Update Bid' : 'Submit Bid';
+        const classLabel = `${r.quantity}× ${escHtml(RFP_CLASS_LABEL[r.design_class] || r.design_class)}`;
+        const headline = r.name
+            ? `${escHtml(r.name)} — ${classLabel}`
+            : classLabel;
+        const priorityLine = _formatRfpPriorities(r.priorities);
         return `<div class="am-q-run-card" style="grid-template-columns:1fr auto;align-items:center;">
             <div>
-                <div class="am-q-run-name">${r.quantity}× ${escHtml(RFP_CLASS_LABEL[r.design_class] || r.design_class)}</div>
+                <div class="am-q-run-name">${headline}</div>
                 <div class="am-q-run-meta">FROM ${escHtml(airline)} ◊ ${ticksLeft} TICK${ticksLeft === 1 ? '' : 'S'} LEFT ◊ ${escHtml(bidLabel)}</div>
+                ${priorityLine ? `<div class="am-q-run-meta" style="margin-top:2px;">PRIORITIES: ${priorityLine}</div>` : ''}
             </div>
             <button type="button" class="co-panel-action-btn co-rfp-bid-btn" data-rfp-id="${r.id}">${btnLabel}</button>
         </div>`;
@@ -3309,8 +3332,14 @@ function openBidModal(rfpId, designsByClass, allRfps) {
         overlay.querySelector('#am-rfp-bid-submit').addEventListener('click', submitBid);
     }
 
-    overlay.querySelector('#am-rfp-bid-subtitle').textContent =
-        `${rfp.quantity}× ${RFP_CLASS_LABEL[rfp.design_class] || rfp.design_class} for ${rfp.factions?.abbreviation || rfp.factions?.faction_name || 'airline'}`;
+    const sublineCore = `${rfp.quantity}× ${RFP_CLASS_LABEL[rfp.design_class] || rfp.design_class} for ${rfp.factions?.abbreviation || rfp.factions?.faction_name || 'airline'}`;
+    const namePrefix = rfp.name ? `${rfp.name} ◊ ` : '';
+    const priorityLine = _formatRfpPriorities(rfp.priorities);
+    const subtitleEl = overlay.querySelector('#am-rfp-bid-subtitle');
+    // Use innerHTML so the &gt; entity in priorityLine renders as ">".
+    subtitleEl.innerHTML = priorityLine
+        ? `${escHtml(namePrefix)}${escHtml(sublineCore)} <span style="color:var(--co-text-tertiary);">◊ Priorities: ${priorityLine}</span>`
+        : `${escHtml(namePrefix)}${escHtml(sublineCore)}`;
 
     overlay.querySelector('#am-rfp-bid-designs').innerHTML = _bidModalEligibleDesigns.map((d, i) => `
         <div class="am-q-row${i === 0 ? ' selected' : ''}" data-design-id="${d.id}">
