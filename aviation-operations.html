@@ -2135,9 +2135,17 @@ async function openDesignAircraftModal() {
         const corpAbbr = (_faction.abbreviation || _faction.faction_name || 'AM').slice(0, 6);
         const innov    = Math.round(Number(_faction.corp_innovation) || 0);
 
-        const airframeCards = Object.entries(_aircraftDesignSpecs.airframes).map(([id, a]) =>
-            renderAirframeCard(id, a, id === 'regional')
-        ).join('');
+        // Airframe cards rendered in canonical order (smallest → largest).
+        // The SQL spec function returns JSONB which Postgres stores in a
+        // length-then-lex key order (business, regional, widebody,
+        // narrowbody) — not the desired display order. Iterate an
+        // explicit list instead so the UI stays predictable regardless
+        // of how PostgreSQL chooses to lay out the bytes.
+        const AIRFRAME_ORDER = ['business', 'regional', 'narrowbody', 'widebody'];
+        const airframeCards = AIRFRAME_ORDER
+            .filter(id => _aircraftDesignSpecs.airframes[id])
+            .map(id => renderAirframeCard(id, _aircraftDesignSpecs.airframes[id], id === 'regional'))
+            .join('');
 
         const mechCards = Object.entries(_aircraftDesignSpecs.mechanicals).map(([id, m]) =>
             renderAircraftModuleCard('mechanical', id, m, false)
