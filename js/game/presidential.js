@@ -420,7 +420,7 @@ export async function triggerPresidentialCandidateSelection(supabase, nation, cu
     const targetTick = currentTick + leadTicks;
     const { data: upcomingElection } = await supabase
         .from('elections')
-        .select('id, election_tick')
+        .select('id, election_tick, excluded_faction_id')
         .eq('nation_id', nation.id)
         .eq('status', 'scheduled')
         .eq('election_type', 'presidential')
@@ -463,8 +463,18 @@ export async function triggerPresidentialCandidateSelection(supabase, nation, cu
     if (!allParties || allParties.length === 0) return;
 
     const termLimit = getPresidentialTermLimit(nation);
+    const excludedFactionId = upcomingElection.excluded_faction_id || null;
 
     for (const party of allParties) {
+        // Snap-election exclusion (impeachment): the convicted president's
+        // party is barred from fielding a candidate in THIS election only.
+        // excluded_faction_id is set on the elections row by the
+        // conviction processor in advance-tick-handler-template; lives
+        // and dies with that row.
+        if (excludedFactionId && party.id === excludedFactionId) {
+            console.log(`[PresElect] Skipping excluded party ${party.faction_name} (${party.id}) for impeachment snap election in ${nation.name}`);
+            continue;
+        }
         try {
             const isIncumbentParty = incumbentPresident && party.id === incumbentPresident.faction_id;
             const isTermLimited = termLimit !== null && isIncumbentParty && (incumbentPresident.terms_served || 1) >= termLimit;
