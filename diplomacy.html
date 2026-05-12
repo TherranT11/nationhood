@@ -10577,7 +10577,7 @@ async function renderActionsBox() {
 
     // Helper: render a single action item (enabled or disabled)
     function actionHtml(a, enabled, role) {
-        const isDisabled = !enabled || a.comingSoon;
+        const isDisabled = !enabled;
         const disabledClass = isDisabled ? ' action-disabled' : '';
         // Bilateral talks discount: -1 AP on non-state-visit actions (state visit has its own cost calc)
         const discounted = _btDiscount && a.ap > 0 && a.key !== 'state_visit';
@@ -10601,17 +10601,12 @@ async function renderActionsBox() {
     [
         { key: 'issue_statement', label: 'Issue Statement', ap: 1, type: 'amb' },
         { key: 'minor_initiative', label: 'Minor Diplomatic Initiative', ap: 2, type: 'amb' },
-        { key: 'foreign_aid', label: 'Foreign Aid Proposal', ap: 4, type: 'amb', comingSoon: true },
-        { key: 'formal_protest', label: 'Formal Protest', ap: 2, type: 'amb', comingSoon: true },
         { key: 'send_message', label: 'Send Message', ap: 0, type: 'amb', badge: totalUnreadMessages > 0 ? totalUnreadMessages : 0 }
     ].forEach(a => { html += actionHtml(a, hasAmb, 'amb'); });
 
     // Head of Government
     html += '<div class="role-header role-header-hog' + (hasHoG ? '' : ' role-disabled') + '">Head of Government</div>';
     [
-        { key: 'declare_war', label: 'Declare War', ap: 8, type: 'hog', comingSoon: true },
-        { key: 'call_ceasefire', label: 'Call for Ceasefire', ap: 4, type: 'hog', comingSoon: true },
-        { key: 'sign_alliance', label: 'Sign Alliance', ap: 6, type: 'hog', comingSoon: true },
         { key: 'state_visit', label: 'State Visit', ap: DIPLOMACY_CONFIG.STATE_VISIT_AP || 4, type: 'hog' }
     ].forEach(a => { html += actionHtml(a, hasHoG, 'hog'); });
 
