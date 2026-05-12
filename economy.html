@@ -1392,16 +1392,14 @@ var TRADE_IMPORT_HINTS = {
 
 
 // ==================== BUDGET HELPERS ====================
+// Budget, debt, revenue, and expenditure values are now stored on the
+// unified abstract integer scale (migrations 20261206 + 20261207). No
+// K/M/B/T suffixes — just the integer with thousands separator.
 function formatBudgetCurrency(val) {
     if (val == null) return '$0';
-    val = Number(val);
-    var sign = val < 0 ? '-' : '';
-    var abs = Math.abs(val);
-    if (abs >= 1e12) return sign + '$' + (abs / 1e12).toFixed(1) + ' Trillion';
-    if (abs >= 1e9)  return sign + '$' + (abs / 1e9).toFixed(1) + ' Billion';
-    if (abs >= 1e6)  return sign + '$' + (abs / 1e6).toFixed(1) + ' Million';
-    if (abs >= 1e3)  return sign + '$' + (abs / 1e3).toFixed(1) + 'K';
-    return sign + '$' + Math.round(abs).toLocaleString();
+    var v = Number(val);
+    var sign = v < 0 ? '-' : '';
+    return sign + '$' + Math.round(Math.abs(v)).toLocaleString();
 }
 
 /**
