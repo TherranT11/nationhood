@@ -507,7 +507,17 @@ async function loadBillData() {
             const { data: amb } = await _supabase.from('ambassadors').select('faction_id').eq('id', bill.ambassador_id).maybeSingle();
             nominatedFactionId = amb?.faction_id || null;
         } else if (bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
-            const { data: min } = await _supabase.from('ministries').select('pending_minister').eq('nation_id', bill.nation_id).eq('ministry_key', bill.ministry_key).eq('is_active', true).maybeSingle();
+            // Drop is_active filter on the lookup — minister_confirmation
+            // bills can land on a row that's briefly inactive (e.g., during
+            // a coalition shuffle between nomination and confirmation).
+            // The (nation_id, ministry_key) pair is unique regardless of
+            // is_active. Defensive: keeps the bill UI rendering the
+            // pending nominee even if the row's is_active drifts.
+            const { data: min } = await _supabase.from('ministries')
+                .select('pending_minister')
+                .eq('nation_id', bill.nation_id)
+                .eq('ministry_key', bill.ministry_key)
+                .maybeSingle();
             nominatedFactionId = min?.pending_minister?.party_id || null;
         }
 
