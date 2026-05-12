@@ -2128,23 +2128,25 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Gov collapse check failed for ${nation.name} (non-fatal):`, collapseErr);
         }
 
+        // Active corp count for the per-corp footprint adder in
+        // computeCorporateTaxRevenue ($2/tick per active corp HQ'd
+        // here). Lifted out of the tax-revenue try so the debt tick
+        // further down can also pass it into processNationDebtTick.
+        // Mirrors government.html's loadBudgetData fetch.
+        let activeCorpCount = 0;
+        try {
+            const { count } = await supabase.from('factions')
+                .select('id', { count: 'exact', head: true })
+                .eq('faction_type', 'corporation')
+                .eq('nation_id', nation.id)
+                .is('abandoned_at', null);
+            activeCorpCount = count || 0;
+        } catch (_) { /* fall back to 0 → no per-corp adder this tick */ }
+
         // Phase 8.5.4: Per-tick tax revenue. nation.budget is a cash
         // balance; income + corporate tax revenue accumulate into it
         // each tick. Formulas live in budget.js.
         try {
-            // Active corp count for the per-corp footprint adder in
-            // computeCorporateTaxRevenue ($2/tick per active corp HQ'd
-            // here). Mirrors government.html's loadBudgetData fetch.
-            let activeCorpCount = 0;
-            try {
-                const { count } = await supabase.from('factions')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('faction_type', 'corporation')
-                    .eq('nation_id', nation.id)
-                    .is('abandoned_at', null);
-                activeCorpCount = count || 0;
-            } catch (_) { /* fall back to 0 → no per-corp adder this tick */ }
-
             const incomeRev = computeIncomeTaxRevenue(nation);
             const corpRev = computeCorporateTaxRevenue(nation, undefined, activeCorpCount);
             const totalRev = incomeRev + corpRev;
@@ -2185,7 +2187,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         //   deficit → debt up, treasury unchanged (implicit borrow)
         // No bond offers, no coupon payments, no printing.
         try {
-            const result = await processNationDebtTick(supabase, nation);
+            const result = await processNationDebtTick(supabase, nation, activeCorpCount);
             if (result) {
                 console.log(
                     `[Debt] ${nation.name}: mode=${result.mode}` +
