@@ -1,7 +1,7 @@
 // js/corp-topbar.js — Shared top bar for all corporation pages
 // Renders a unified top bar with logo, tick info, faction switcher, nav tabs.
 
-const CORP_VERSION = 'Alpha 2.4.6.0';
+const CORP_VERSION = 'Alpha 2.4.9.6';
 const THEME_STORAGE_KEY = 'corpThemePref';
 
 // One-shot flag: messaging.js initMessaging is called at most once per

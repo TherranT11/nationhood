@@ -1337,18 +1337,23 @@ function renderAdministrationTab(container) {
 function adm2RenderAdminCard() {
     const el = document.getElementById('adm2-admin-card');
     if (!el || !_govData) return;
-    const { coalition, hog, admin, parties, president, coalitionAvgApproval } = _govData;
+    const { coalition, hog, admin, parties, president } = _govData;
     const nation = currentNation;
 
-    // Headline approval = average party_approval across all parties in the
-    // governing coalition (sourced from faction_electoral_standing, which
-    // is fed by the sector-popularity engine). Falls back to "—" when the
-    // coalition has no parties or none of them have a standings row yet.
-    const approvalKnown = Number.isFinite(coalitionAvgApproval);
-    const approvalText  = approvalKnown ? `${coalitionAvgApproval.toFixed(1)}%` : '—';
-    const approvalColor = !approvalKnown ? 'var(--text-muted)'
-        : coalitionAvgApproval >= 55 ? 'var(--green)'
-        : coalitionAvgApproval >= 40 ? 'var(--amber)'
+    // Headline approval is the nation's public_approval stat, rendered
+    // as a percentage. Replaces the previous coalition-average display
+    // — they read the same conceptual value (how the population feels
+    // about the government) so showing both was redundant. The
+    // sector-popularity / party-approval chain still drives
+    // public_approval upstream; this is just the single canonical
+    // surface for it on the admin card.
+    const publicApprovalRaw = nation?.public_approval;
+    const publicApprovalKnown = publicApprovalRaw != null && Number.isFinite(Number(publicApprovalRaw));
+    const publicApprovalNum = publicApprovalKnown ? Number(publicApprovalRaw) : null;
+    const approvalText = publicApprovalKnown ? `${Math.round(publicApprovalNum)}%` : '—';
+    const approvalColor = !publicApprovalKnown ? 'var(--text-muted)'
+        : publicApprovalNum >= 55 ? 'var(--green)'
+        : publicApprovalNum >= 40 ? 'var(--amber)'
         : 'var(--red)';
 
     const adminName = admin?.admin_name || (hog ? (hog.last_name || 'Interim') + ' Administration' : 'No Government');
@@ -1404,9 +1409,11 @@ function adm2RenderAdminCard() {
     // duration is the metric players actually want at a glance.
     const termValue = durationLabel || (startDate ? escapeHtml(startDate) : '—');
 
-    // Regime stat strip: state_apparatus + public_approval + crown_authority (only render crown_authority if not null)
+    // Regime stat strip: state_apparatus + (optional) crown_authority.
+    // public_approval moved up to the headline approval strip; showing
+    // it twice was confusing players who couldn't tell which number to
+    // trust.
     const controlVal = nation?.state_apparatus;
-    const authorityVal = nation?.public_approval;
     const crownAuthVal = nation?.crown_authority;
     const fmtRegimeStat = (v) => (v == null ? '—' : Math.round(Number(v)) + '/100');
     const regimeStatColor = (v) => {
@@ -1414,8 +1421,7 @@ function adm2RenderAdminCard() {
         const n = Number(v);
         return n >= 60 ? 'var(--green)' : n >= 35 ? 'var(--amber)' : 'var(--red)';
     };
-    let regimeStatsHtml = `<div style="display:flex;flex-direction:column;"><span style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">State Apparatus</span><span style="color:${regimeStatColor(controlVal)};font-weight:700;">${fmtRegimeStat(controlVal)}</span></div>`
-        + `<div style="display:flex;flex-direction:column;"><span style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Public Approval</span><span style="color:${regimeStatColor(authorityVal)};font-weight:700;">${fmtRegimeStat(authorityVal)}</span></div>`;
+    let regimeStatsHtml = `<div style="display:flex;flex-direction:column;"><span style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">State Apparatus</span><span style="color:${regimeStatColor(controlVal)};font-weight:700;">${fmtRegimeStat(controlVal)}</span></div>`;
     if (crownAuthVal != null) {
         regimeStatsHtml += `<div style="display:flex;flex-direction:column;"><span style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Crown Auth.</span><span style="color:${regimeStatColor(crownAuthVal)};font-weight:700;">${fmtRegimeStat(crownAuthVal)}</span></div>`;
     }
@@ -1430,7 +1436,7 @@ function adm2RenderAdminCard() {
             <div class="row"><span class="k">Coalition</span><span class="v">${coalitionHtml}</span></div>
         </div>
         <div class="adm2-approval-strip">
-            <span class="lbl">Approval</span>
+            <span class="lbl">Public Approval</span>
             <span class="val" style="color:${approvalColor};">${approvalText}</span>
         </div>
         <div class="adm2-regime-strip" style="display:flex;gap:18px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-hair);font-family:var(--font-mono);">
@@ -4642,31 +4648,6 @@ async function loadGovData() {
             }
         }
 
-        // Coalition-average party approval — replaces the legacy
-        // nation.gov_approval as the headline approval number on the
-        // admin card. Same source of truth used elsewhere in this file
-        // (faction_electoral_standing.party_approval, derived from the
-        // sector-popularity engine).
-        let coalitionAvgApproval = null;
-        const coalitionPartyIds = coalition?.party_ids || [];
-        if (coalitionPartyIds.length > 0) {
-            const { data: coalitionStandings, error: standingsErr } = await _supabase
-                .from('faction_electoral_standing')
-                .select('faction_id, party_approval')
-                .eq('nation_id', currentNation.id)
-                .in('faction_id', coalitionPartyIds);
-            if (standingsErr) {
-                console.warn('[Government] coalition approval fetch error:', standingsErr.message);
-            } else if (coalitionStandings && coalitionStandings.length > 0) {
-                const vals = coalitionStandings
-                    .map(s => Number(s.party_approval))
-                    .filter(v => Number.isFinite(v));
-                if (vals.length > 0) {
-                    coalitionAvgApproval = vals.reduce((a, b) => a + b, 0) / vals.length;
-                }
-            }
-        }
-
         _govData = {
             coalition,
             ministries: ministryData,
@@ -4674,7 +4655,6 @@ async function loadGovData() {
             hog,
             president,
             admin: reconciledAdmin,
-            coalitionAvgApproval,
         };
     } catch (err) {
         console.error('[Government] loadGovData failed:', err);
