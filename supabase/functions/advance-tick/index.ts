@@ -7082,9 +7082,15 @@ async function resolveMinisterConfirmationBill(supabase, bill, ctx) {
     // Fetch the (possibly absent) ministry row — used to know whether to
     // UPDATE or INSERT, and to preserve is_acting for the failed-bill restore
     // path. Never the source of truth for the nominee.
+    // Look up without filtering on is_active — see the comment in
+    // presidential nominateMinister for the rationale (same fix
+    // pattern as 20261119_finalize_formation_drop_is_active_filter).
+    // The update path below sets is_active = true so an inactive row
+    // gets reactivated in place; the insert path only fires for true
+    // first-time rows.
     const { data: ministry } = await supabase.from('ministries')
         .select('id, is_acting')
-        .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
+        .eq('nation_id', bill.nation_id).eq('ministry_key', mKey)
         .maybeSingle();
 
     if (!pm) {
@@ -7104,6 +7110,7 @@ async function resolveMinisterConfirmationBill(supabase, bill, ctx) {
 
         const { data: fullNation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
         const ministryFields = {
+            is_active: true,
             party_id: pm.party_id,
             minister_first_name: pm.first_name,
             minister_last_name: pm.last_name,
@@ -14921,10 +14928,17 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
         }
     }
 
-    // Validate: no existing pending confirmation for this slot
+    // Validate: no existing pending confirmation for this slot.
+    // Look up the ministry row WITHOUT filtering on is_active —
+    // ministries_nation_ministry_unique is on (nation_id, ministry_key)
+    // regardless of is_active. If a prior administration left an
+    // inactive row at this key, filtering it out here would push us
+    // into the INSERT branch and trigger a duplicate-key violation.
+    // Matching it instead lets us reactivate in place. Same fix
+    // pattern as 20261119_finalize_formation_drop_is_active_filter.sql.
     const { data: existingMinistry } = await supabase.from('ministries')
         .select('id, confirmation_status')
-        .eq('nation_id', nationId).eq('ministry_key', ministryKey).eq('is_active', true)
+        .eq('nation_id', nationId).eq('ministry_key', ministryKey)
         .maybeSingle();
 
     if (existingMinistry?.confirmation_status === 'pending') {
@@ -14947,6 +14961,7 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
 
     if (existingMinistry) {
         const { error: updErr } = await supabase.from('ministries').update({
+            is_active: true,
             confirmation_status: 'pending',
             pending_minister: pendingData
         }).eq('id', existingMinistry.id);
@@ -23484,10 +23499,16 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
     // leader_changes event below for the historical record.
     const pmFullName = `${faction.leader_first_name} ${faction.leader_last_name}`;
 
-    // Update/create PM ministry row
+    // Update/create PM ministry row.
+    // Look up the row WITHOUT filtering on is_active — the
+    // ministries_nation_ministry_unique constraint is on
+    // (nation_id, ministry_key) regardless of is_active. If a prior
+    // administration left an inactive PM row, filtering it out here
+    // would push us into the INSERT branch and trigger a duplicate-
+    // key violation. Matching it instead lets us reactivate in place.
     const { data: pmMinistry } = await supabase.from('ministries')
         .select('id').eq('nation_id', nationId)
-        .eq('ministry_key', 'prime_minister').eq('is_active', true)
+        .eq('ministry_key', 'prime_minister')
         .maybeSingle();
 
     const { data: nationForBaseline } = await supabase.from('nations').select('*').eq('id', nationId).single();
@@ -23495,6 +23516,7 @@ async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, current
 
     if (pmMinistry) {
         await supabase.from('ministries').update({
+            is_active: true,
             party_id: factionId,
             minister_first_name: faction.leader_first_name,
             minister_last_name: faction.leader_last_name,
