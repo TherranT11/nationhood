@@ -2689,10 +2689,17 @@ async function openDebtPaymentModal(root, faction) {
     const overlay = document.getElementById('pa-debt-payment-modal');
     if (!overlay) return;
 
+    // Raw dollars → unified $1 = $1M abstract scale, used for display
+    // and bounds. Math.floor (not round) so we never promise a payment
+    // the discretionary balance can't actually cover.
+    const toAbstract = (raw) => Math.floor((Number(raw) || 0) / 1_000_000);
+    const FEE_ABSTRACT = 2;
+
     // Re-fetch ministry + nation rows so the modal reflects current
     // discretionary balance and debt rather than a cached descriptor —
     // funding bills / tick effects can move both between renders.
-    const [{ data: mRow }, { data: nRow }] = await Promise.all([
+    let loadError = '';
+    const [mResp, nResp] = await Promise.all([
         _supabase.from('ministries')
             .select('id, party_id, discretionary_balance')
             .eq('nation_id', _state.nation.id)
@@ -2704,18 +2711,17 @@ async function openDebtPaymentModal(root, faction) {
             .eq('id', _state.nation.id)
             .maybeSingle(),
     ]);
-
-    const balanceRaw = Number(mRow?.discretionary_balance) || 0;
-    const debtRaw    = Number(nRow?.debt) || 0;
-    const balanceAbstract = Math.floor(balanceRaw / 1_000_000);   // unified $1 = $1M scale
-    const debtAbstract    = Math.floor(debtRaw    / 1_000_000);
-    const FEE_ABSTRACT = 2;
+    if (mResp.error || nResp.error) {
+        loadError = (mResp.error || nResp.error).message || 'Could not load ministry / nation data.';
+    }
+    const balanceAbstract = toAbstract(mResp.data?.discretionary_balance);
+    const debtAbstract    = toAbstract(nResp.data?.debt);
     const maxPayment = Math.max(0, balanceAbstract - FEE_ABSTRACT);
 
     let submitting = false;
     let result = null;    // populated on success: { payment, fee, newBalance, newDebt }
     let inputValue = '';  // controlled input as string so empty / partial entries render cleanly
-    let errorMsg = '';
+    let errorMsg = loadError;
 
     function parseInput() {
         const n = parseInt(inputValue, 10);
@@ -2739,7 +2745,7 @@ async function openDebtPaymentModal(root, faction) {
                 <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;margin-bottom:4px;">Payment applied</div>
                 <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">
                     $${result.payment} paid against debt · $${result.fee} transaction fee<br>
-                    Discretionary: <strong>$${Math.floor(Number(result.newBalance) / 1_000_000)}</strong> · Debt: <strong>$${Math.floor(Number(result.newDebt) / 1_000_000)}</strong>
+                    Discretionary: <strong>$${toAbstract(result.newBalance)}</strong> · Debt: <strong>$${toAbstract(result.newDebt)}</strong>
                 </div>
             </div>
         ` : '';
@@ -2789,7 +2795,7 @@ async function openDebtPaymentModal(root, faction) {
                 </div>
                 <div class="pa-modal-footer">
                     <button class="pa-modal-btn pa-modal-btn--cancel" id="pa-dp-cancel">${result ? 'Close' : 'Cancel'}</button>
-                    <button class="pa-modal-btn pa-modal-btn--submit" id="pa-dp-pay" ${!valid || submitting || result ? 'disabled' : ''}>${submitting ? 'Paying…' : 'Pay'}</button>
+                    <button class="pa-modal-btn pa-modal-btn--submit" id="pa-dp-pay" ${!valid || submitting || result || loadError ? 'disabled' : ''}>${submitting ? 'Paying…' : 'Pay'}</button>
                 </div>
             </div>
         `;
