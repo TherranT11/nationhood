@@ -52,7 +52,11 @@ export function computeCorporateTaxRevenue(nation, rateOverride, activeCorpCount
     const ind = Number(nation.industry || 0);
     const rate = rateOverride !== undefined ? Number(rateOverride) : Number(nation.corporate_tax || 0);
     const corruption = Number(nation.corruption || 0);
-    const rateRev = ((svc + ind) / 10) * rate * (1 - corruption / 100);
+    // rate is the % effective corporate tax rate under the unified 0-100
+    // scale (migration 20261209). Mirror the income_tax pattern: divide by
+    // 100 so "rate=50" means 50% of the taxable base. Pre-fix the formula
+    // multiplied by raw rate, inflating revenue 100× under the new scale.
+    const rateRev = (svc + ind) * (rate / 100) * (1 - corruption / 100);
     return Math.max(0, rateRev) + computeCorporateTaxPerCorp(activeCorpCount);
 }
 
