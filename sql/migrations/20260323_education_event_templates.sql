@@ -7,7 +7,14 @@
 -- (text, uuid, int, jsonb) that PostgREST cannot disambiguate from the
 -- canonical (uuid, text, int, jsonb), producing PGRST203 at runtime.
 
+-- Drop all known signatures before recreating so this migration is
+-- idempotent regardless of the function's current return type or param
+-- order. CREATE OR REPLACE cannot change the return type of an existing
+-- function (Postgres 42P13), so a hard DROP is required when re-running
+-- the chain against a DB where 20260330 has already promoted the return
+-- type to UUID.
 DROP FUNCTION IF EXISTS fire_system_event(text, uuid, integer, jsonb);
+DROP FUNCTION IF EXISTS fire_system_event(uuid, text, integer, jsonb);
 
 CREATE OR REPLACE FUNCTION fire_system_event(
     p_nation_id    UUID,

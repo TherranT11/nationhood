@@ -2,6 +2,12 @@
 -- crisis fizzle) so they display properly in the Events container.
 -- Also update the category mapping to include the new trigger keys.
 
+-- This migration changes the return type from void to UUID, which
+-- CREATE OR REPLACE cannot do (Postgres 42P13). Hard-drop any prior
+-- signatures first so the chain stays idempotent on every re-run.
+DROP FUNCTION IF EXISTS fire_system_event(text, uuid, integer, jsonb);
+DROP FUNCTION IF EXISTS fire_system_event(uuid, text, integer, jsonb);
+
 CREATE OR REPLACE FUNCTION fire_system_event(
     p_nation_id UUID,
     p_trigger_key TEXT,
