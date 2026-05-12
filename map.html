@@ -187,7 +187,7 @@ if (!faction) {
                 // Format numbers
                 const formatNumber = (num) => {
                     if (num === null || num === undefined) return 'N/A';
-                    return num.toLocaleString();
+                    return num.toLocaleString('en-US');
                 };
                 const formatCurrency = (val) => {
                     if (val == null) return 'N/A';
@@ -195,7 +195,7 @@ if (!faction) {
                     if (val >= 1e12) return '$' + (val / 1e12).toFixed(1) + ' Trillion';
                     if (val >= 1e9) return '$' + (val / 1e9).toFixed(1) + ' Billion';
                     if (val >= 1e6) return '$' + (val / 1e6).toFixed(1) + ' Million';
-                    return '$' + val.toLocaleString();
+                    return '$' + val.toLocaleString('en-US');
                 };
                 
                 // GDP is now on the $B abstract integer scale (migration
@@ -223,12 +223,12 @@ if (!faction) {
                         
                         <div style="background: #1a1a1a; padding: 10px; border-radius: 4px; border-left: 3px solid #5b9bd5;">
                             <div style="font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 5px;">GDP</div>
-                            <div style="font-size: 1.1rem; color: #fff; font-weight: bold;">$${Math.round(Number(nation.gdp || 0)).toLocaleString()}B</div>
+                            <div style="font-size: 1.1rem; color: #fff; font-weight: bold;">$${Math.round(Number(nation.gdp || 0)).toLocaleString('en-US')}B</div>
                         </div>
 
                         <div style="background: #1a1a1a; padding: 10px; border-radius: 4px; border-left: 3px solid #d48a3c;">
                             <div style="font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 5px;">National Debt</div>
-                            <div style="font-size: 1.1rem; color: #fff; font-weight: bold;">$${Math.round(Number(nation.debt || 0)).toLocaleString()}</div>
+                            <div style="font-size: 1.1rem; color: #fff; font-weight: bold;">$${Math.round(Number(nation.debt || 0)).toLocaleString('en-US')}</div>
                         </div>
                         
                         <div style="background: #1a1a1a; padding: 10px; border-radius: 4px; border-left: 3px solid #9c27b0;">

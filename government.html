@@ -1052,8 +1052,8 @@ async function handleLaborPolicyConflict(newDirection) {
 function formatUpfrontCost(cost) {
     if (cost <= 0) return 'No Fund Draw';
     if (cost >= 1_000_000_000) return '$' + (cost / 1_000_000_000).toFixed(1) + 'B';
-    if (cost >= 1_000_000) return '$' + Math.round(cost / 1_000_000).toLocaleString() + 'M';
-    return '$' + Math.round(cost).toLocaleString();
+    if (cost >= 1_000_000) return '$' + Math.round(cost / 1_000_000).toLocaleString('en-US') + 'M';
+    return '$' + Math.round(cost).toLocaleString('en-US');
 }
 
 // Track selected pharmaceutical direction: null, 'increase', or 'decrease'
@@ -2426,8 +2426,8 @@ let _budgetSelectGen = 0;       // monotonic counter — prevents an earlier
 function _gbFmtCurrency(val) {
     if (val == null || !isFinite(val)) return '$0';
     const v = Math.round(Number(val));
-    if (v < 0) return '-$' + (-v).toLocaleString();
-    return '$' + v.toLocaleString();
+    if (v < 0) return '-$' + (-v).toLocaleString('en-US');
+    return '$' + v.toLocaleString('en-US');
 }
 
 // GDP-specific formatter. nation.gdp is stored in $B abstract units
@@ -3947,8 +3947,8 @@ function renderBillEffectChips(bill, withLabel = true) {
 function formatCostCompact(n) {
     if (!n || n <= 0) return '$0';
     if (n >= 1_000_000_000) return '$' + (n / 1_000_000_000).toFixed(1) + 'B';
-    if (n >= 1_000_000) return '$' + Math.round(n / 1_000_000).toLocaleString() + 'M';
-    return '$' + Math.round(n).toLocaleString();
+    if (n >= 1_000_000) return '$' + Math.round(n / 1_000_000).toLocaleString('en-US') + 'M';
+    return '$' + Math.round(n).toLocaleString('en-US');
 }
 
 function renderBillVoteButtons(bill) {
@@ -7267,7 +7267,7 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
         ? '$' + (discretionaryBalance / 1000000000).toFixed(1) + 'B'
         : discretionaryBalance >= 1000000
         ? '$' + (discretionaryBalance / 1000000).toFixed(1) + 'M'
-        : discretionaryBalance > 0 ? '$' + Math.round(discretionaryBalance).toLocaleString() : '$0';
+        : discretionaryBalance > 0 ? '$' + Math.round(discretionaryBalance).toLocaleString('en-US') : '$0';
     const balCls = discretionaryBalance > 0 ? 'color:var(--green)' : 'color:var(--red)';
 
     let html = `<div class="ministry-card__actions-label" style="display:flex;justify-content:space-between;align-items:center;">
@@ -7303,7 +7303,7 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
         let budgetTagHtml = '';
         if (action.oneTimeCostPerMillion && !action.budgetPerCapita) {
             const otCost = calculateOneTimeCost(action, pop);
-            const otFmt = otCost >= 1e9 ? '$' + (otCost / 1e9).toFixed(1) + 'B' : otCost >= 1e6 ? '$' + (otCost / 1e6).toFixed(0) + 'M' : '$' + Math.round(otCost).toLocaleString();
+            const otFmt = otCost >= 1e9 ? '$' + (otCost / 1e9).toFixed(1) + 'B' : otCost >= 1e6 ? '$' + (otCost / 1e6).toFixed(0) + 'M' : '$' + Math.round(otCost).toLocaleString('en-US');
             budgetTagHtml = `<span class="tag tag--budget">${otFmt} UPFRONT</span>`;
         } else if (action.budgetSavesPerCapita) {
             const saves = formatBudgetDraw(action.budgetSavesPerCapita, pop);
@@ -7543,7 +7543,7 @@ function buildEducationActionRows(isMyMinistry) {
         ? '$' + (discretionaryBalance / 1000000000).toFixed(1) + 'B'
         : discretionaryBalance >= 1000000
         ? '$' + (discretionaryBalance / 1000000).toFixed(1) + 'M'
-        : discretionaryBalance > 0 ? '$' + Math.round(discretionaryBalance).toLocaleString() : '$0';
+        : discretionaryBalance > 0 ? '$' + Math.round(discretionaryBalance).toLocaleString('en-US') : '$0';
     const balCls = discretionaryBalance > 0 ? 'color:var(--green)' : 'color:var(--red)';
 
     let html = `<div class="ministry-card__actions-label" style="display:flex;justify-content:space-between;align-items:center;">
@@ -9933,7 +9933,7 @@ function ministryActionSelect(actionId) {
             const cCountKey = cMinKey + ':' + cActId;
             const cUseCount = ministryActionUseCounts[cCountKey] || 0;
             const cApCost = cAction.apCosts[Math.min(cUseCount, 3)];
-            const cFmt = cCost >= 1e9 ? '$' + (cCost/1e9).toFixed(1) + 'B' : cCost >= 1e6 ? '$' + Math.round(cCost/1e6) + 'M' : '$' + Math.round(cCost).toLocaleString();
+            const cFmt = cCost >= 1e9 ? '$' + (cCost/1e9).toFixed(1) + 'B' : cCost >= 1e6 ? '$' + Math.round(cCost/1e6) + 'M' : '$' + Math.round(cCost).toLocaleString('en-US');
             confirmLabel = `✓ ${cFmt}`;
         }
         btns.innerHTML = `<div style="display:flex;gap:4px;">
@@ -10076,7 +10076,7 @@ async function ministryActionConfirm(actionId) {
         const bal = Number(mData?.discretionary_balance || 0);
         if (oneTimeCost > bal) {
             _ministryActionConfirming = false;
-            const fmtAmt = (n) => n >= 1e9 ? '$' + (n/1e9).toFixed(1) + 'B' : n >= 1e6 ? '$' + (n/1e6).toFixed(0) + 'M' : '$' + Math.round(n).toLocaleString();
+            const fmtAmt = (n) => n >= 1e9 ? '$' + (n/1e9).toFixed(1) + 'B' : n >= 1e6 ? '$' + (n/1e6).toFixed(0) + 'M' : '$' + Math.round(n).toLocaleString('en-US');
             alert('Insufficient discretionary funds. Need ' + fmtAmt(oneTimeCost) + ', have ' + fmtAmt(bal) + '.');
             ministryActionDeselect(actionId);
             return;
