@@ -729,10 +729,10 @@ function getDisplayValue(stat, nation) {
     if (format === 'currency' && stat.key === 'gdp') {
         // gdp stored as $B abstract integer (migration 20261210). Append "B"
         // so the player sees "$908B" not "$908".
-        return '$' + Math.round(Number(raw)).toLocaleString() + 'B';
+        return '$' + Math.round(Number(raw)).toLocaleString('en-US') + 'B';
     }
     if (format === 'currency' && ABSTRACT_INTEGER_KEYS[stat.key]) {
-        return '$' + Math.round(Number(raw)).toLocaleString();
+        return '$' + Math.round(Number(raw)).toLocaleString('en-US');
     }
     if (format === 'currency') {
         assertRawEconomicValue(raw, stat.key);
@@ -935,7 +935,7 @@ function renderFeaturedDebt(nation) {
     var debtRaw = nation.debt ?? 0;
     // nation.debt is now stored on the abstract integer scale
     // (migration 20261207). No B/M/T suffix — just the integer.
-    var debtVal = '$' + Math.round(Number(debtRaw)).toLocaleString();
+    var debtVal = '$' + Math.round(Number(debtRaw)).toLocaleString('en-US');
     var debtUnit = '';
 
     // Debt is inverted: higher = worse → red

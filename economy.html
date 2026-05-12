@@ -1392,7 +1392,7 @@ function formatBudgetCurrency(val) {
     if (val == null) return '$0';
     var v = Number(val);
     var sign = v < 0 ? '-' : '';
-    return sign + '$' + Math.round(Math.abs(v)).toLocaleString();
+    return sign + '$' + Math.round(Math.abs(v)).toLocaleString('en-US');
 }
 
 /**
@@ -1897,7 +1897,7 @@ function renderIndustriesTab(nation) {
             var mk = materialKeys[mi];
             h += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;padding:4px 0;">';
             h += '<span style="color:var(--teal);text-transform:capitalize;">' + escapeHtml(mk.replace(/_/g, ' ')) + '</span>';
-            h += '<span style="color:var(--dtext-1);font-weight:700;">' + materialTotals[mk].toLocaleString() + ' units</span>';
+            h += '<span style="color:var(--dtext-1);font-weight:700;">' + materialTotals[mk].toLocaleString('en-US') + ' units</span>';
             h += '</div>';
         }
     }

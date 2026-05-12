@@ -186,14 +186,14 @@ let userCanEdit = false;
 let isEditing = false;
 
 // ---------- Formatters ----------
-function fmt(n) { return (n == null) ? 'N/A' : Number(n).toLocaleString(); }
+function fmt(n) { return (n == null) ? 'N/A' : Number(n).toLocaleString('en-US'); }
 function fmtCur(val) {
     if (val == null) return 'N/A';
     val = Number(val);
     if (val >= 1e12) return '$' + (val / 1e12).toFixed(1) + 'T';
     if (val >= 1e9) return '$' + (val / 1e9).toFixed(1) + 'B';
     if (val >= 1e6) return '$' + (val / 1e6).toFixed(1) + 'M';
-    return '$' + val.toLocaleString();
+    return '$' + val.toLocaleString('en-US');
 }
 function roundDelta(v) { return Math.abs(v) >= 1 ? Math.round(v).toString() : v.toFixed(1); }
 
@@ -255,7 +255,7 @@ function statCard(label, key, val, desc, format, inverted, displayVal) {
     if (typeof dv === 'string') shown = dv;
     else if (format === 'gdp' || key === 'gdp') {
         // gdp stored as $B abstract integer (migration 20261210).
-        shown = '$' + Math.round(Number(dv)).toLocaleString() + 'B';
+        shown = '$' + Math.round(Number(dv)).toLocaleString('en-US') + 'B';
     }
     else if ((format === 'currency' || format === 'gdp') && isMisscaledMonetary(key, dv)) {
         shown = '$' + Math.round(Number(dv));
