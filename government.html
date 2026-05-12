@@ -2720,7 +2720,7 @@ function _gbBuildCostRows(d) {
         { key: 'regulatory_agencies',  name: 'Regulatory Agencies',     yr: 0,                          descKey: 'regulatoryAgencies'   },
         { key: 'other_programs',       name: 'Other Programs',          yr: otherProgramsAnnual,        descKey: 'otherPrograms'        },
         { key: 'trade_obligations',    name: 'Trade Agreement Obligations', yr: tradeObligationsAnnual, descKey: 'tradeObligations'     },
-        { key: 'debt_interest',        name: 'Interest on Debt',        yr: _gbToAbstract(d.debtService), descKey: 'debtInterest'   },
+        { key: 'debt_interest',        name: 'Interest on Debt',        yr: Number(d.debtService) || 0, descKey: 'debtInterest'   },
     ];
 }
 
@@ -2789,11 +2789,10 @@ function renderBudgetTab(container) {
     const gdpYearlySign  = gdpYearlyPct  >= 0 ? '+' : '';
     const gdpGrowthColor = gdpMonthlyPct >= 0 ? '#9ac89e' : '#d88d82';
 
-    // Debt card pre-converted to abstract scale so the formatter call
-    // doesn't need to know about the unit. Same divisor used by every
-    // raw→abstract path on this page (1e9, see _gbToAbstract).
-    const debtAbstract = _gbToAbstract(debtAmount);
-    const surplusAbstract = _gbToAbstract(surplusReserves);
+    // nation.debt is now stored as abstract integers (migration 20261207),
+    // matching nation.budget. Pass through directly — no /1e9 conversion.
+    const debtAbstract = debtAmount;
+    const surplusAbstract = surplusReserves;
 
     container.innerHTML = `
         <div class="gb-page">

@@ -3261,7 +3261,10 @@ async function computeInteriorInfraAnnualCost(supabase, nation) {
  */
 async function computePanelAnnualExpenditures(supabase, nation) {
     const budget = calculateNationalBudget(nation);
-    const debtServiceAbstract = (Number(budget.debtService || 0)) / _RAW_PER_ABSTRACT;
+    // nation.debt is now stored as abstract integers (migration 20261207),
+    // so debtService (= debt × FLAT_ANNUAL_INTEREST) is already on the
+    // unified abstract scale — no _RAW_PER_ABSTRACT division needed.
+    const debtServiceAbstract = Number(budget.debtService || 0);
     const royalHoldingsAnnual = isAbsoluteMonarchy(nation) ? 36 : 0;
     let activeLawAnnual = 0;
     try {
@@ -3294,46 +3297,51 @@ async function computePanelAnnualExpenditures(supabase, nation) {
     return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost + interiorInfra.totalAnnual + publicSectorWagesAnnual;
 }
 
-async function processNationDebtTick(supabase, nation) {
-    const budget = calculateNationalBudget(nation);
-    const annualRevenue = Number(budget.grossRevenue || 0);
+async function processNationDebtTick(supabase, nation, activeCorpCount = 0) {
+    // Annual revenue from the actual tax flow — same formulas that drive
+    // the Revenue card in the budget panel. Previously this read
+    // budget.grossRevenue which is aliased to nation.budget (treasury),
+    // producing a perTickBalance based on stockpile vs flow — wrong unit.
+    const incomeAnnual = computeIncomeTaxRevenue(nation) * 12;
+    const corpAnnual   = computeCorporateTaxRevenue(nation, undefined, activeCorpCount) * 12;
+    const annualRevenue = incomeAnnual + corpAnnual;
     const annualExpenditures = await computePanelAnnualExpenditures(supabase, nation);
     const perTickBalance = (annualRevenue - annualExpenditures) / 12;
 
     if (perTickBalance === 0) return null;
 
-    const debtRaw = Number(nation?.debt) || 0;
-    const treasury = Number(nation?.budget) || 0;
+    // nation.debt and nation.budget are both stored as abstract integers
+    // post-migrations 20261206 + 20261207 — no _RAW_PER_ABSTRACT bridging
+    // needed inside this function. perTickBalance is also abstract.
+    const currentDebt    = Number(nation?.debt) || 0;
+    const currentTreasury = Number(nation?.budget) || 0;
 
     if (perTickBalance > 0) {
         // Surplus → pay down debt first; any leftover accumulates in
         // treasury (stockpile). When debt is already 0, the entire
-        // surplus goes straight to treasury. Combining both branches
-        // into one Math.min lets the overshoot case (balance > debt)
-        // split cleanly: pay off what's owed, bank the rest.
-        const balanceRaw       = perTickBalance * _RAW_PER_ABSTRACT;
-        const debtPaydownRaw   = Math.min(balanceRaw, Math.max(0, debtRaw));
-        const newDebtRaw       = Math.max(0, debtRaw - debtPaydownRaw);
-        const leftoverAbstract = (balanceRaw - debtPaydownRaw) / _RAW_PER_ABSTRACT;
-        const newBudget        = treasury + leftoverAbstract;
+        // surplus goes straight to treasury.
+        const debtPaydown  = Math.min(perTickBalance, Math.max(0, currentDebt));
+        const newDebt      = Math.max(0, currentDebt - debtPaydown);
+        const leftover     = perTickBalance - debtPaydown;
+        const newBudget    = currentTreasury + leftover;
 
-        if (newDebtRaw === debtRaw && newBudget === treasury) return null;
+        if (newDebt === currentDebt && newBudget === currentTreasury) return null;
 
         const { error } = await supabase.from('nations')
-            .update({ debt: newDebtRaw, budget: newBudget })
+            .update({ debt: newDebt, budget: newBudget })
             .eq('id', nation.id);
         if (error) {
             console.warn(`[Debt] surplus update failed for ${nation.name}:`, error.message);
             return null;
         }
-        nation.debt = newDebtRaw;
+        nation.debt = newDebt;
         nation.budget = newBudget;
         return {
-            mode: debtRaw > 0 && newDebtRaw === 0 && leftoverAbstract > 0
+            mode: currentDebt > 0 && newDebt === 0 && leftover > 0
                 ? 'surplus_split'
-                : (debtRaw > 0 ? 'surplus_paydown' : 'surplus_to_treasury'),
+                : (currentDebt > 0 ? 'surplus_paydown' : 'surplus_to_treasury'),
             perTickBalance,
-            newDebtRaw,
+            newDebtRaw: newDebt,
             newBudget,
         };
     }
@@ -3342,15 +3350,15 @@ async function processNationDebtTick(supabase, nation) {
     // is unchanged (implicit borrow — the shortfall is now on the books
     // as more debt rather than a cash drain).
     const deficit = -perTickBalance;
-    const newDebtRaw = debtRaw + deficit * _RAW_PER_ABSTRACT;
+    const newDebt = currentDebt + deficit;
     const { error } = await supabase.from('nations')
-        .update({ debt: newDebtRaw }).eq('id', nation.id);
+        .update({ debt: newDebt }).eq('id', nation.id);
     if (error) {
         console.warn(`[Debt] deficit update failed for ${nation.name}:`, error.message);
         return null;
     }
-    nation.debt = newDebtRaw;
-    return { mode: 'deficit', perTickBalance: -deficit, newDebtRaw };
+    nation.debt = newDebt;
+    return { mode: 'deficit', perTickBalance: -deficit, newDebtRaw: newDebt };
 }
 
 /**
@@ -34329,23 +34337,25 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Gov collapse check failed for ${nation.name} (non-fatal):`, collapseErr);
         }
 
+        // Active corp count for the per-corp footprint adder in
+        // computeCorporateTaxRevenue ($2/tick per active corp HQ'd
+        // here). Lifted out of the tax-revenue try so the debt tick
+        // further down can also pass it into processNationDebtTick.
+        // Mirrors government.html's loadBudgetData fetch.
+        let activeCorpCount = 0;
+        try {
+            const { count } = await supabase.from('factions')
+                .select('id', { count: 'exact', head: true })
+                .eq('faction_type', 'corporation')
+                .eq('nation_id', nation.id)
+                .is('abandoned_at', null);
+            activeCorpCount = count || 0;
+        } catch (_) { /* fall back to 0 → no per-corp adder this tick */ }
+
         // Phase 8.5.4: Per-tick tax revenue. nation.budget is a cash
         // balance; income + corporate tax revenue accumulate into it
         // each tick. Formulas live in budget.
         try {
-            // Active corp count for the per-corp footprint adder in
-            // computeCorporateTaxRevenue ($2/tick per active corp HQ'd
-            // here). Mirrors government.html's loadBudgetData fetch.
-            let activeCorpCount = 0;
-            try {
-                const { count } = await supabase.from('factions')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('faction_type', 'corporation')
-                    .eq('nation_id', nation.id)
-                    .is('abandoned_at', null);
-                activeCorpCount = count || 0;
-            } catch (_) { /* fall back to 0 → no per-corp adder this tick */ }
-
             const incomeRev = computeIncomeTaxRevenue(nation);
             const corpRev = computeCorporateTaxRevenue(nation, undefined, activeCorpCount);
             const totalRev = incomeRev + corpRev;
@@ -34386,7 +34396,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         //   deficit → debt up, treasury unchanged (implicit borrow)
         // No bond offers, no coupon payments, no printing.
         try {
-            const result = await processNationDebtTick(supabase, nation);
+            const result = await processNationDebtTick(supabase, nation, activeCorpCount);
             if (result) {
                 console.log(
                     `[Debt] ${nation.name}: mode=${result.mode}` +
