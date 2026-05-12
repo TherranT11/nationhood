@@ -1180,6 +1180,7 @@ function renderPage(root) {
             <div class="pa-modal-overlay" id="pa-vola-invest-modal"></div>
             <div class="pa-modal-overlay" id="pa-vola-stadium-modal"></div>
             <div class="pa-modal-overlay" id="pa-vola-host-bid-modal"></div>
+            <div class="pa-modal-overlay" id="pa-debt-payment-modal"></div>
         `,
     });
 
@@ -1242,6 +1243,8 @@ function renderPage(root) {
             openInviteToBlocModal(root);
         } else if (actionId === 'impeach_president') {
             triggerImpeachPresident();
+        } else if (actionId === 'debt_payment') {
+            openDebtPaymentModal(root, faction);
         } else if (actionId === 'invest_in_sports_culture') {
             openVolaInvestmentModal(root, faction);
         } else if (actionId === 'expand_stadium_infrastructure') {
@@ -1528,7 +1531,17 @@ const _MINISTRY_ACTION_REGISTRY = {
     president: [],
     defense:        [_SOE_ACTION_ENTRY],
     transportation: [_SOE_ACTION_ENTRY],
-    finance:        [_SOE_ACTION_ENTRY],
+    finance: [
+        {
+            id: 'debt_payment',
+            name: 'Debt Payment',
+            desc: 'Move cash from the Finance Ministry discretionary budget to the national debt. Reduces debt principal and future interest service. $2 transaction fee plus the principal you choose. 1 tick cooldown.',
+            cost: '$2 + payment',
+            costColor: '#c8a832',
+            tags: ['FINANCE', 'COSTS BUDGET'],
+        },
+        _SOE_ACTION_ENTRY,
+    ],
     energy:         [_SOE_ACTION_ENTRY],
     healthcare:     [_SOE_ACTION_ENTRY],
     justice:        [_SOE_ACTION_ENTRY],
@@ -1611,6 +1624,16 @@ function ministryActionLockReason(actionId, faction, roleDescriptor) {
     // greyed state and makes the panel-level click handler skip it.
     if (actionId === 'stateOwnedEnterprise') {
         return 'Coming soon — backend not yet wired.';
+    }
+    if (actionId === 'debt_payment') {
+        const balance = Number(roleDescriptor?.discretionaryBalance ?? 0);
+        if (balance < 3_000_000) {
+            return 'Finance Ministry discretionary budget is below $3 — need at least $2 fee + $1 minimum payment.';
+        }
+        const debtRaw = Number(_state?.nation?.debt ?? 0);
+        if (debtRaw <= 0) {
+            return 'No national debt to pay down.';
+        }
     }
     if (actionId === 'invest_in_sports_culture') {
         // Cheapest tier (Low = $2M). If the discretionary budget can't
@@ -2650,6 +2673,195 @@ async function openVolaInvestmentModal(root, faction) {
                 render();
             }
         });
+    }
+
+    overlay.classList.add('active');
+    render();
+}
+
+// ════════════════════════ DEBT PAYMENT (Finance) ════════════════════════
+// Pulls cash from the Finance Ministry's discretionary balance and applies
+// it to nation.debt. $2 flat transaction fee + variable principal. Server
+// (pay_down_national_debt RPC) re-validates everything; this modal is just
+// the data-entry surface.
+
+async function openDebtPaymentModal(root, faction) {
+    const overlay = document.getElementById('pa-debt-payment-modal');
+    if (!overlay) return;
+
+    // Re-fetch ministry + nation rows so the modal reflects current
+    // discretionary balance and debt rather than a cached descriptor —
+    // funding bills / tick effects can move both between renders.
+    const [{ data: mRow }, { data: nRow }] = await Promise.all([
+        _supabase.from('ministries')
+            .select('id, party_id, discretionary_balance')
+            .eq('nation_id', _state.nation.id)
+            .eq('ministry_key', 'finance')
+            .eq('is_active', true)
+            .maybeSingle(),
+        _supabase.from('nations')
+            .select('debt')
+            .eq('id', _state.nation.id)
+            .maybeSingle(),
+    ]);
+
+    const balanceRaw = Number(mRow?.discretionary_balance) || 0;
+    const debtRaw    = Number(nRow?.debt) || 0;
+    const balanceAbstract = Math.floor(balanceRaw / 1_000_000);   // unified $1 = $1M scale
+    const debtAbstract    = Math.floor(debtRaw    / 1_000_000);
+    const FEE_ABSTRACT = 2;
+    const maxPayment = Math.max(0, balanceAbstract - FEE_ABSTRACT);
+
+    let submitting = false;
+    let result = null;    // populated on success: { payment, fee, newBalance, newDebt }
+    let inputValue = '';  // controlled input as string so empty / partial entries render cleanly
+    let errorMsg = '';
+
+    function parseInput() {
+        const n = parseInt(inputValue, 10);
+        if (!Number.isFinite(n)) return null;
+        return n;
+    }
+    function isValid() {
+        const n = parseInput();
+        return n != null && n >= 1 && n <= maxPayment;
+    }
+
+    function render() {
+        const payment = parseInput();
+        const totalCost = (payment != null && payment >= 1) ? (payment + FEE_ABSTRACT) : null;
+        const projectedBalance = totalCost != null ? balanceAbstract - totalCost : balanceAbstract;
+        const projectedDebt    = (payment != null && payment >= 1) ? Math.max(0, debtAbstract - payment) : debtAbstract;
+        const valid = isValid();
+
+        const resultHtml = result ? `
+            <div style="padding:12px;background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.22);margin-top:12px;">
+                <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;margin-bottom:4px;">Payment applied</div>
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">
+                    $${result.payment} paid against debt · $${result.fee} transaction fee<br>
+                    Discretionary: <strong>$${Math.floor(Number(result.newBalance) / 1_000_000)}</strong> · Debt: <strong>$${Math.floor(Number(result.newDebt) / 1_000_000)}</strong>
+                </div>
+            </div>
+        ` : '';
+
+        const errorHtml = errorMsg ? `<div style="font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:6px;">${esc(errorMsg)}</div>` : '';
+
+        overlay.innerHTML = `
+            <div class="pa-modal" style="width:480px;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:#c8a832;"></div>
+                        <span class="pa-modal-title">Debt Payment</span>
+                    </div>
+                    <button class="pa-modal-close" id="pa-dp-close">&times;</button>
+                </div>
+                <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                    Pay down the national debt from the Finance Ministry's discretionary budget.
+                    $${FEE_ABSTRACT} transaction fee + the principal you choose. 1 tick cooldown.
+                </div>
+                <div class="pa-modal-body" style="gap:10px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                        <div>
+                            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.04em;">DISCRETIONARY</div>
+                            <div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:${balanceAbstract > 0 ? 'var(--green)' : 'var(--red)'};">$${balanceAbstract}</div>
+                        </div>
+                        <div>
+                            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.04em;">NATIONAL DEBT</div>
+                            <div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:var(--text-bright);">$${debtAbstract}</div>
+                        </div>
+                    </div>
+
+                    <div class="pa-modal-step-label">Payment Amount (whole dollars, 1 – ${maxPayment})</div>
+                    <input id="pa-dp-input" class="pa-modal-input" type="number" min="1" max="${maxPayment}" step="1" placeholder="0" value="${esc(inputValue)}" ${result || submitting ? 'disabled' : ''} style="font-family:var(--font-mono);font-size:14px;">
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-top:4px;">
+                        <div>
+                            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.04em;">AFTER · DISCRETIONARY</div>
+                            <div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:${projectedBalance >= 0 ? 'var(--text-bright)' : 'var(--red)'};">$${projectedBalance}</div>
+                        </div>
+                        <div>
+                            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.04em;">AFTER · DEBT</div>
+                            <div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--text-bright);">$${projectedDebt}</div>
+                        </div>
+                    </div>
+                    ${errorHtml}
+                    ${resultHtml}
+                </div>
+                <div class="pa-modal-footer">
+                    <button class="pa-modal-btn pa-modal-btn--cancel" id="pa-dp-cancel">${result ? 'Close' : 'Cancel'}</button>
+                    <button class="pa-modal-btn pa-modal-btn--submit" id="pa-dp-pay" ${!valid || submitting || result ? 'disabled' : ''}>${submitting ? 'Paying…' : 'Pay'}</button>
+                </div>
+            </div>
+        `;
+
+        const close = () => { overlay.classList.remove('active'); if (result) renderPage(root); };
+        document.getElementById('pa-dp-close')?.addEventListener('click', close);
+        document.getElementById('pa-dp-cancel')?.addEventListener('click', close);
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+        const input = document.getElementById('pa-dp-input');
+        if (input) {
+            input.addEventListener('input', (e) => {
+                // Strip anything that isn't an integer so paste-from-spreadsheet
+                // junk doesn't break the parser.
+                inputValue = (e.target.value || '').replace(/[^0-9]/g, '');
+                errorMsg = '';
+                render();
+                const refocus = document.getElementById('pa-dp-input');
+                if (refocus) {
+                    refocus.focus();
+                    refocus.setSelectionRange(refocus.value.length, refocus.value.length);
+                }
+            });
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && isValid() && !submitting && !result) {
+                    e.preventDefault();
+                    submit();
+                }
+            });
+        }
+
+        document.getElementById('pa-dp-pay')?.addEventListener('click', submit);
+    }
+
+    async function submit() {
+        if (submitting || result) return;
+        const payment = parseInput();
+        if (!isValid()) {
+            errorMsg = `Enter an integer between 1 and ${maxPayment}.`;
+            render();
+            return;
+        }
+        submitting = true;
+        errorMsg = '';
+        render();
+        try {
+            const { data, error } = await _supabase.rpc('pay_down_national_debt', { p_payment: payment });
+            if (error) {
+                errorMsg = error.message || 'Payment failed.';
+            } else if (!data?.success) {
+                errorMsg = humanizeReason(data?.reason) || 'Payment failed.';
+            } else {
+                result = data;
+            }
+        } catch (e) {
+            errorMsg = e?.message || 'Network error.';
+        } finally {
+            submitting = false;
+            render();
+        }
+    }
+
+    function humanizeReason(reason) {
+        switch (reason) {
+            case 'invalid_payment':       return 'Enter an integer of at least $1.';
+            case 'not_minister':          return 'Only the Finance Minister can fire this action.';
+            case 'no_shard':              return 'Shard not initialized.';
+            case 'cooldown':              return 'Already used this tick. Try again next tick.';
+            case 'insufficient_balance':  return 'Not enough discretionary budget for fee + payment.';
+            case 'no_debt':               return 'There is no national debt to pay down.';
+            default:                      return reason || '';
+        }
     }
 
     overlay.classList.add('active');
