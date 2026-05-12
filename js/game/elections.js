@@ -1180,6 +1180,24 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
         }
     });
 
+    // Immediate fire: invoke advance-tick with the per-nation election flag so
+    // the scheduled election (election_tick = currentTick) runs synchronously
+    // and the player sees results in seconds instead of waiting on pg_cron.
+    // Failure is non-fatal — the row stays scheduled, tick processor catches
+    // it on the next beat.
+    try {
+        const { data: fireResult, error: fireErr } = await supabase.functions.invoke('advance-tick', {
+            body: { fire_elections_for_nation: nationId },
+        });
+        if (fireErr) {
+            console.warn('[callEarlyElections] Immediate fire failed; election will run on next tick:', fireErr.message || fireErr);
+        } else {
+            console.log('[callEarlyElections] Election fired immediately:', fireResult);
+        }
+    } catch (err) {
+        console.warn('[callEarlyElections] Immediate fire threw; election will run on next tick:', err?.message || err);
+    }
+
     return { success: true, electionTick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS };
 }
 
