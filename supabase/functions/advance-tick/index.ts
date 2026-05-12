@@ -6131,7 +6131,11 @@ async function chargePolicyUpfrontCost(supabase, nationId, option) {
     const dollars = Math.round(scaledM * 1_000_000); // option.upfront_cost is stored in $M
     if (dollars === 0) return;
 
-    const RAW_PER_ABSTRACT = 1_000_000_000;
+    // Unit bridge: dollars is raw ($M base × 1M). nation.budget + nation.debt
+    // are both abstract integers post-20261206/20261207 where 1 = $1M raw.
+    // Multiply abstract by RAW_PER_ABSTRACT to compare, divide the resulting
+    // debt portion back the same way so we don't mix scales.
+    const RAW_PER_ABSTRACT = 1_000_000;
     const budgetAbstract = Number(nation.budget || 0);
     const budgetRaw = budgetAbstract * RAW_PER_ABSTRACT;
     const debt = Number(nation.debt || 0);
@@ -6141,7 +6145,7 @@ async function chargePolicyUpfrontCost(supabase, nationId, option) {
         const drawBudget = Math.max(0, Math.min(dollars, budgetRaw));
         const drawDebt   = dollars - drawBudget;
         const newBudget  = Math.max(0, budgetRaw - drawBudget) / RAW_PER_ABSTRACT;
-        const newDebt    = Math.max(0, Math.round(debt + drawDebt));
+        const newDebt    = Math.max(0, Math.round(debt + drawDebt / RAW_PER_ABSTRACT));
         const { error } = await supabase
             .from('nations')
             .update({ budget: newBudget, debt: newDebt })
@@ -7923,15 +7927,17 @@ async function resolveTradeRatificationBill(supabase, bill, ctx) {
                         // grant pattern at bills#3543 — money has to come
                         // from somewhere).
                         //
-                        // Unit boundary: nation.budget is abstract (1 = $1B),
-                        // `amount` and nation.debt are raw dollars. Convert
-                        // through 1e9 at the arithmetic boundary so the
-                        // comparison + floor land in raw.
-                        const RAW_PER_ABSTRACT = 1_000_000_000;
+                        // Unit boundary: nation.budget and nation.debt are
+                        // abstract integers (post-20261206/20261207, 1 = $1M
+                        // raw). `amount` is raw dollars. Bridge through
+                        // RAW_PER_ABSTRACT = 1e6 to keep comparisons honest
+                        // and convert the shortfall back before adding to
+                        // the abstract debt column.
+                        const RAW_PER_ABSTRACT = 1_000_000;
                         const { data: rows } = await supabase.from('nations')
                             .select('id, budget, debt').in('id', [fromNation, toNation]);
                         const budgets = {};   // abstract
-                        const debts = {};     // raw
+                        const debts = {};     // abstract
                         for (const r of (rows || [])) {
                             budgets[r.id] = Number(r.budget || 0);
                             debts[r.id]   = Number(r.debt   || 0);
@@ -7940,7 +7946,7 @@ async function resolveTradeRatificationBill(supabase, bill, ctx) {
                         const fromAfter     = Math.max(0, fromBudgetRaw - amount) / RAW_PER_ABSTRACT;
                         const shortfall     = Math.max(0, amount - fromBudgetRaw);
                         const toAfter       = (budgets[toNation] ?? 0) + (amount / RAW_PER_ABSTRACT);
-                        const fromDebtAfter = (debts[fromNation] ?? 0) + shortfall;
+                        const fromDebtAfter = (debts[fromNation] ?? 0) + (shortfall / RAW_PER_ABSTRACT);
 
                         const { error: fromErr } = await supabase.from('nations')
                             .update({ budget: fromAfter, debt: fromDebtAfter }).eq('id', fromNation);
@@ -9535,10 +9541,12 @@ async function enactBill(supabase, bill, currentTick) {
                     const cap = Math.max(0, 3 * valuation);
                     const payout = Math.min(requested, cap);
                     if (payout > 0) {
-                        // Pay out from nation.budget (treasury, abstract,
-                        // 1 = $1B); overflow becomes raw debt. Same
-                        // unit-boundary pattern as chargePolicyUpfrontCost.
-                        const RAW_PER_ABSTRACT = 1_000_000_000;
+                        // Pay out from nation.budget; overflow becomes debt.
+                        // budget + debt are both abstract integers (1 = $1M)
+                        // post-20261206/20261207. `payout` is raw dollars.
+                        // Same RAW_PER_ABSTRACT = 1e6 bridge as
+                        // chargePolicyUpfrontCost.
+                        const RAW_PER_ABSTRACT = 1_000_000;
                         const { data: nation } = await supabase.from('nations')
                             .select('budget, debt, gdp_growth').eq('id', bill.nation_id).single();
                         const budgetAbstract = Number(nation?.budget || 0);
@@ -9549,7 +9557,7 @@ async function enactBill(supabase, bill, currentTick) {
                         const newGdp = Math.round(Math.max(0, Math.min(100, currentGdp + 0.1)) * 10) / 10;
                         await supabase.from('nations').update({
                             budget: Math.max(0, budgetRaw - drawBudget) / RAW_PER_ABSTRACT,
-                            debt:   Math.round(Number(nation?.debt || 0) + drawDebt),
+                            debt:   Math.round(Number(nation?.debt || 0) + drawDebt / RAW_PER_ABSTRACT),
                             gdp_growth: newGdp,
                         }).eq('id', bill.nation_id);
                         // Bailout payout flows through the SSoT helper so
@@ -33270,10 +33278,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 // Skip on read failure — without correct baselines the UPDATEs
                 // below would overwrite values with garbage.
                 //
-                // Unit boundary: nation.budget is abstract (1 = $1B), `amount`
-                // and nation.debt are raw dollars. Convert through 1e9 at the
-                // arithmetic boundary so the comparison + floor land in raw.
-                const RAW_PER_ABSTRACT = 1_000_000_000;
+                // Unit boundary: nation.budget and nation.debt are abstract
+                // integers (post-20261206/20261207, 1 = $1M raw). `amount`
+                // is raw dollars. Bridge through RAW_PER_ABSTRACT = 1e6 so
+                // the comparison happens in raw and the shortfall is
+                // converted back before being added to the abstract debt
+                // column.
+                const RAW_PER_ABSTRACT = 1_000_000;
                 const { data: rows, error: readErr } = await supabase.from('nations')
                     .select('id, budget, debt')
                     .in('id', [fromNation, toNation]);
@@ -33283,7 +33294,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     continue;
                 }
                 const budgets: Record<string, number> = {};   // abstract
-                const debts: Record<string, number> = {};     // raw
+                const debts: Record<string, number> = {};     // abstract
                 for (const r of rows) {
                     budgets[r.id] = Number(r.budget || 0);
                     debts[r.id]   = Number(r.debt   || 0);
@@ -33292,7 +33303,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 const fromAfter     = Math.max(0, fromBudgetRaw - amount) / RAW_PER_ABSTRACT;
                 const shortfall     = Math.max(0, amount - fromBudgetRaw);
                 const toAfter       = (budgets[toNation] ?? 0) + (amount / RAW_PER_ABSTRACT);
-                const fromDebtAfter = (debts[fromNation] ?? 0) + shortfall;
+                const fromDebtAfter = (debts[fromNation] ?? 0) + (shortfall / RAW_PER_ABSTRACT);
 
                 const { error: fromErr } = await supabase.from('nations')
                     .update({ budget: fromAfter, debt: fromDebtAfter }).eq('id', fromNation);

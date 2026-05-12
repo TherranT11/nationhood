@@ -4055,10 +4055,10 @@ async function processTradeAgreementShipping(supabase, currentTick) {
 
         // Buyer nation pays. Skip if treasury can't cover (Phase 5 will
         // add late-payment / contract-default handling).
-        // Unit boundary: nation.budget is abstract (1 = $1B); revenue is
-        // raw dollars. Convert through 1e9 so the comparison + debit
-        // math stays in raw.
-        const RAW_PER_ABSTRACT = 1_000_000_000;
+        // Unit boundary: nation.budget is abstract integers (1 = $1M raw
+        // post-20261206); revenue is raw dollars from the contract.
+        // RAW_PER_ABSTRACT bridges the comparison + the debit back.
+        const RAW_PER_ABSTRACT = 1_000_000;
         const { data: buyer, error: bErr } = await supabase.from('nations')
             .select('budget').eq('id', contract.nation_id).single();
         if (bErr || !buyer) {
