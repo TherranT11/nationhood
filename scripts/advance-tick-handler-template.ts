@@ -1063,12 +1063,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 // below would overwrite values with garbage.
                 //
                 // Unit boundary: nation.budget and nation.debt are abstract
-                // integers (post-20261206/20261207, 1 = $1M raw). `amount`
-                // is raw dollars. Bridge through RAW_PER_ABSTRACT = 1e6 so
-                // the comparison happens in raw and the shortfall is
-                // converted back before being added to the abstract debt
-                // column.
-                const RAW_PER_ABSTRACT = 1_000_000;
+                // integers (1 = $1M raw). `amount` is raw dollars. Bridge
+                // via RAW_PER_ABSTRACT (declared in budget.js earlier in
+                // the bundle) so comparisons land in raw and the shortfall
+                // lands in the abstract debt column.
                 const { data: rows, error: readErr } = await supabase.from('nations')
                     .select('id, budget, debt')
                     .in('id', [fromNation, toNation]);
