@@ -3263,9 +3263,10 @@ Deno.serve(async (req) => {
     try {
         // 0. Startup checks (AP preflight removed — Phase A of AP deprecation)
 
-        // 1. Check for force/reprocess parameters (admin manual trigger)
+        // 1. Check for force/reprocess parameters + per-nation election fire
         let force = false;
         let reprocess = false;
+        let fireElectionsForNation: string | null = null;
         try {
             const body = await Promise.race([
                 req.json(),
@@ -3273,10 +3274,44 @@ Deno.serve(async (req) => {
             ]);
             force = body?.force === true;
             reprocess = body?.reprocess === true;
+            // Snap-election immediate-fire path. The schedule_snap_election RPC
+            // already validated that the caller is the PM of this nation, so by
+            // the time we get here the scheduled row in `elections` exists at
+            // current_tick. Run processElections for just this nation so the
+            // player sees results in seconds instead of waiting on pg_cron.
+            if (body?.fire_elections_for_nation && typeof body.fire_elections_for_nation === 'string') {
+                fireElectionsForNation = body.fire_elections_for_nation;
+            }
         } catch (_) {
             // No body, invalid JSON, or timeout — not forced
         }
-        console.log(`[advance-tick] Step 1: force=${force}, reprocess=${reprocess}`);
+        console.log(`[advance-tick] Step 1: force=${force}, reprocess=${reprocess}, fireElectionsForNation=${fireElectionsForNation ?? 'none'}`);
+
+        // Per-nation election fire — bypass full tick processing entirely.
+        // Returns immediately after running processElections + the post-election
+        // formation auto-attempt is handled by the regular tick cycle that
+        // follows. Auth: the scheduled election row required a PM-authorized
+        // schedule_snap_election call, so this endpoint only fires elections
+        // that were already legitimately queued.
+        if (fireElectionsForNation) {
+            try {
+                const { data: nation, error: nErr } = await supabase
+                    .from('nations')
+                    .select('*')
+                    .eq('id', fireElectionsForNation)
+                    .single();
+                if (nErr || !nation) {
+                    return new Response(JSON.stringify({ success: false, error: 'nation_not_found' }), { status: 404, headers: corsHeaders });
+                }
+                const { data: shardRow } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+                const tick = Number(shardRow?.current_tick ?? 0);
+                const results = await processElections(supabase, nation, tick);
+                return new Response(JSON.stringify({ success: true, tick, nation: nation.name, results }), { headers: corsHeaders });
+            } catch (err) {
+                console.error('[advance-tick] fire_elections_for_nation failed:', err);
+                return new Response(JSON.stringify({ success: false, error: String((err as Error)?.message || err) }), { status: 500, headers: corsHeaders });
+            }
+        }
 
         // 2. Check if tick is due (skip check if force=true)
         console.log("[advance-tick] Step 2: Querying shard...");
