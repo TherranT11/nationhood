@@ -7,20 +7,10 @@
 
 export const DIPLOMACY_CONFIG = {
     // Ambassador actions
-    FORMAL_PROTEST_AP: 2,
     PROPOSE_INITIATIVE_AP: 2,
-    COVERT_OP_AP: 4,
 
     // Foreign Minister actions
     RECALL_AMBASSADOR_AP: 1,
-    IMPOSE_EMBARGO_AP: 5,
-    FOREIGN_AID_AP: 4,
-    ISSUE_ULTIMATUM_AP: 3,
-
-    // Head of Government actions
-    DECLARE_WAR_AP: 8,
-    SUE_FOR_PEACE_AP: 4,
-    SIGN_ALLIANCE_AP: 6,
 
     // Timing
     FM_REVIEW_EXPIRY_TICKS: 3,
