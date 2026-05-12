@@ -1062,10 +1062,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 // Skip on read failure — without correct baselines the UPDATEs
                 // below would overwrite values with garbage.
                 //
-                // Unit boundary: nation.budget is abstract (1 = $1B), `amount`
-                // and nation.debt are raw dollars. Convert through 1e9 at the
-                // arithmetic boundary so the comparison + floor land in raw.
-                const RAW_PER_ABSTRACT = 1_000_000_000;
+                // Unit boundary: nation.budget and nation.debt are abstract
+                // integers (post-20261206/20261207, 1 = $1M raw). `amount`
+                // is raw dollars. Bridge through RAW_PER_ABSTRACT = 1e6 so
+                // the comparison happens in raw and the shortfall is
+                // converted back before being added to the abstract debt
+                // column.
+                const RAW_PER_ABSTRACT = 1_000_000;
                 const { data: rows, error: readErr } = await supabase.from('nations')
                     .select('id, budget, debt')
                     .in('id', [fromNation, toNation]);
@@ -1075,7 +1078,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     continue;
                 }
                 const budgets: Record<string, number> = {};   // abstract
-                const debts: Record<string, number> = {};     // raw
+                const debts: Record<string, number> = {};     // abstract
                 for (const r of rows) {
                     budgets[r.id] = Number(r.budget || 0);
                     debts[r.id]   = Number(r.debt   || 0);
@@ -1084,7 +1087,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 const fromAfter     = Math.max(0, fromBudgetRaw - amount) / RAW_PER_ABSTRACT;
                 const shortfall     = Math.max(0, amount - fromBudgetRaw);
                 const toAfter       = (budgets[toNation] ?? 0) + (amount / RAW_PER_ABSTRACT);
-                const fromDebtAfter = (debts[fromNation] ?? 0) + shortfall;
+                const fromDebtAfter = (debts[fromNation] ?? 0) + (shortfall / RAW_PER_ABSTRACT);
 
                 const { error: fromErr } = await supabase.from('nations')
                     .update({ budget: fromAfter, debt: fromDebtAfter }).eq('id', fromNation);
