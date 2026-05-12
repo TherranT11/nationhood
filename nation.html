@@ -712,11 +712,11 @@ function formatTradeBalance(rawValue) {
     return expPct + '% Exp / ' + impPct + '% Imp';
 }
 
-// Detect budget/debt stored as 0-100 stat scores instead of raw dollars
-var RAW_DOLLAR_KEYS = { budget: true, debt: true };
-function isMisscaledMonetary(key, val) {
-    return RAW_DOLLAR_KEYS[key] && val != null && Number(val) >= 0 && Number(val) <= 100000;
-}
+// budget and debt are stored on the unified abstract integer scale
+// (migrations 20261206 + 20261207). gdp is still raw dollars. Skip the
+// 0-100-stat shape detector for the abstract pair and route them to the
+// plain integer formatter.
+var ABSTRACT_INTEGER_KEYS = { budget: true, debt: true };
 
 function formatUnemploymentPct(stat) {
     return (0.7 + (stat - 1) * 34.3 / 99).toFixed(1) + '%';
@@ -726,14 +726,14 @@ function getDisplayValue(stat, nation) {
     var raw = nation[stat.key];
     var format = stat.format;
     if (raw === null || raw === undefined) return 'N/A';
+    if (format === 'currency' && ABSTRACT_INTEGER_KEYS[stat.key]) {
+        return '$' + Math.round(Number(raw)).toLocaleString();
+    }
     if (format === 'currency') {
         assertRawEconomicValue(raw, stat.key);
-    }
-    if (format === 'currency' && isMisscaledMonetary(stat.key, raw)) {
-        return '$' + Math.round(Number(raw));
+        return formatCurrencyShort(scaleRawToDollars(raw));
     }
     if (format === 'count') return formatNumber(raw);
-    if (format === 'currency') return formatCurrencyShort(scaleRawToDollars(raw));
     if (format === 'gdpgrowth') return formatGdpGrowth(raw);
     return Math.round(Number(raw) * 10) / 10;
 }
@@ -928,11 +928,10 @@ function renderFeaturedGDPGrowth(nation) {
 
 function renderFeaturedDebt(nation) {
     var debtRaw = nation.debt ?? 0;
-    var debtDisplay = formatCurrencyShort(scaleRawToDollars(debtRaw));
-    // Split "$81.0 Billion" into value + unit
-    var parts = debtDisplay.match(/^(\$[\d,.]+)\s*(.*)$/);
-    var debtVal = parts ? parts[1] : debtDisplay;
-    var debtUnit = parts ? parts[2] : '';
+    // nation.debt is now stored on the abstract integer scale
+    // (migration 20261207). No B/M/T suffix — just the integer.
+    var debtVal = '$' + Math.round(Number(debtRaw)).toLocaleString();
+    var debtUnit = '';
 
     // Debt is inverted: higher = worse → red
     var hcRaw = getCSSColor('--n-red');

@@ -23,7 +23,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { initPage, qCache, qCacheSet, formatCurrency, assertRawEconomicValue } from './js/common.js';
+import { initPage, qCache, qCacheSet } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
 import { GAME_CONFIG, deductAP } from './js/game/config.js';
 import { hasElectedPresident } from './js/game/government-types.js';
@@ -668,24 +668,17 @@ function renderOverviewCard(label, value, colorClass, subHtml) {
 function renderRankings(nation) {
     if (!allNations || allNations.length === 0) return '';
 
-    // Detect GDP/debt stored as 0-100 stat scores instead of raw dollars
-    function fmtMonetary(key) {
-        return function(v) {
-            assertRawEconomicValue(v, key);
-            if (v >= 0 && v <= 100000) {
-                return '$' + Math.round(v);
-            }
-            return formatBudgetCurrency(v);
-        };
-    }
+    // budget + debt are abstract integers (migrations 20261206/20261207);
+    // formatBudgetCurrency renders them as bare integers with thousands
+    // separators, identical handling for both.
     var metrics = [
-        { key: 'budget', label: 'Budget', higher: true, fmt: fmtMonetary('budget') },
+        { key: 'budget', label: 'Budget', higher: true, fmt: formatBudgetCurrency },
         { key: 'gdp_growth', label: 'GDP Growth', higher: true, fmt: function(v) { var p = ((v - 50) / 50) * 1; return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; } },
         { key: 'standard_of_living', label: 'Std of Living', higher: true, fmt: function(v) { return Math.round(v); } },
         { key: 'unskilled_workers', label: 'Unskilled Workers', higher: true, fmt: function(v) { return Math.round(v); } },
         { key: 'skilled_workers', label: 'Skilled Workers', higher: true, fmt: function(v) { return Math.round(v); } },
         { key: 'wages', label: 'Wages', higher: true, fmt: function(v) { return Math.round(v); } },
-        { key: 'debt', label: 'National Debt', higher: false, fmt: fmtMonetary('debt') }
+        { key: 'debt', label: 'National Debt', higher: false, fmt: formatBudgetCurrency }
     ];
 
     var h = '<div class="econ-section">';
@@ -1392,16 +1385,14 @@ var TRADE_IMPORT_HINTS = {
 
 
 // ==================== BUDGET HELPERS ====================
+// Budget, debt, revenue, and expenditure values are now stored on the
+// unified abstract integer scale (migrations 20261206 + 20261207). No
+// K/M/B/T suffixes — just the integer with thousands separator.
 function formatBudgetCurrency(val) {
     if (val == null) return '$0';
-    val = Number(val);
-    var sign = val < 0 ? '-' : '';
-    var abs = Math.abs(val);
-    if (abs >= 1e12) return sign + '$' + (abs / 1e12).toFixed(1) + ' Trillion';
-    if (abs >= 1e9)  return sign + '$' + (abs / 1e9).toFixed(1) + ' Billion';
-    if (abs >= 1e6)  return sign + '$' + (abs / 1e6).toFixed(1) + ' Million';
-    if (abs >= 1e3)  return sign + '$' + (abs / 1e3).toFixed(1) + 'K';
-    return sign + '$' + Math.round(abs).toLocaleString();
+    var v = Number(val);
+    var sign = v < 0 ? '-' : '';
+    return sign + '$' + Math.round(Math.abs(v)).toLocaleString();
 }
 
 /**

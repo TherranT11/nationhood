@@ -101,23 +101,22 @@ export function calculateNationalBudget(nation, opts = {}) {
 // Mirrors the Government Budget panel's monthly-balance math so
 // what the player sees on the cards is what gets applied each tick.
 //
-// Unit handling: nation.budget is "abstract" (small number,
-// displayed directly), nation.debt is raw dollars (1 abstract =
-// 1e9 raw, divided by 1e9 to display). _RAW_PER_ABSTRACT bridges
-// the two when applying the abstract delta to the raw debt column.
+// Unit handling: nation.budget AND nation.debt are both stored as
+// abstract integers (migrations 20261206 + 20261207). The unified
+// scale means processNationDebtTick can compute deltas without any
+// raw↔abstract conversion. Other code paths in the repo still bridge
+// via inline RAW_PER_ABSTRACT = 1e9 constants (corp tax credits,
+// trade transfers); those are tracked follow-ups, not blockers for
+// the debt-accumulation rule defined here.
 //
-// KNOWN PRE-EXISTING FLAW (Phase 8.5.4 half-finished migration):
-// calculateNationalBudget aliases nation.budget (treasury) as
-// `grossRevenue`, and the Government Budget panel reads it as the
-// "Tax Revenue" headline. Per-tick taxes are added to nation.budget
-// at advance-tick.ts (search "Per-tick tax revenue"), so treasury
-// also grows from that path — and the panel's Tax Revenue display
-// climbs over time as a side effect. Properly fixing this means
-// decoupling treasury from grossRevenue (compute headline revenue
-// per-tick from the tax functions, leave treasury as a pure
-// stockpile). Out of scope for the debt fix.
+// REMAINING SCOPE-FLAG: calculateNationalBudget still aliases
+// nation.budget (treasury) as `grossRevenue` for back-compat. The
+// Government Budget panel + processNationDebtTick now compute real
+// revenue via computeIncomeTaxRevenue + computeCorporateTaxRevenue,
+// so they no longer see the aliasing flaw. economy.html still reads
+// budget.grossRevenue directly and will display treasury as revenue
+// until separately patched.
 // ════════════════════════════════════════════════════════════════
-const _RAW_PER_ABSTRACT = 1e9;
 
 /**
  * Per-nation Interior Infrastructure upkeep. Single source of truth
