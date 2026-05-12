@@ -2672,12 +2672,12 @@ function _gbBuildCostRows(d) {
     // sub-rows, so the row total here always matches the breakdown.
     const pensionAnnual          = _gbAnnualLawCostFor(d.activeLaws, 'pension');
     const subsidiesIndustryAnnual = _gbAnnualLawCostFor(d.activeLaws, 'subsidiesIndustry');
-    // Prisons: pull the active Prison Policy (law_category = 'Prison') so the
-    // row label reflects the selected option (Mass Incarceration, etc.).
-    // Multi-option-spectrum policies have at most one active option per nation.
-    const prisonLaw = _gbLawsForDescKey(d.activeLaws, 'prisons')[0] || null;
-    const prisonOptionName = prisonLaw?.selected_option?.option_name || 'No Policy Set';
-    const prisonsAnnual = prisonLaw ? _gbAnnualLawCost(prisonLaw) : 0;
+    // Prisons: row label reflects the active Prison Policy's selected option
+    // (Mass Incarceration, etc.). Cost sums every matching active law via the
+    // same helper pension/subsidies use so the panel total matches the
+    // per-tick processor even if a second Prison-category policy ever lands.
+    const prisonsAnnual = _gbAnnualLawCostFor(d.activeLaws, 'prisons');
+    const prisonOptionName = _gbLawsForDescKey(d.activeLaws, 'prisons')[0]?.selected_option?.option_name || 'No Policy Set';
     // Catch-all for active laws whose law_category doesn't match any
     // existing descKey regex. Without this row, those costs were
     // silently deducted by the per-tick processor but invisible in
