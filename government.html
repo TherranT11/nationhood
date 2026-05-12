@@ -1895,13 +1895,9 @@ function adm2RenderCabinet() {
         const isAligned = party && coalitionIds.has(party.id);
         const cls = isEmpty ? 'vacant' : (isAligned ? 'aligned' : 'opp');
         const initials = name ? name.split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase() : '—';
-        // Real columns on ministries: minister_approval (int), funding_level (numeric 0-1+).
-        // There is no per-minister approval history table yet, so the drawer
-        // sparkline is rendered as a flat neutral placeholder — honest over
-        // fake-random data.
         const approval = isEmpty ? 0 : Math.max(0, Math.min(100, Math.round(Number(m.minister_approval ?? 50))));
-        const fundingPct = (m.funding_level != null) ? Math.round(Number(m.funding_level) * 100) : null;
-        const budgetLabel = isEmpty ? '—' : (fundingPct != null ? `${fundingPct}%` : '—');
+        const funds = formatDiscretionaryBalance(m.discretionary_balance);
+        const fundsLabel = isEmpty ? '—' : `<span style="${funds.cls};">${funds.fmt}</span>`;
 
         // Action buttons — reuse the existing buildMgmtButtons so the
         // Appoint/Nominate/Resign/Dismiss rules + AP gating + caretaker
@@ -1926,7 +1922,7 @@ function adm2RenderCabinet() {
             <div class="adm2-drawer-party ${cls}"><span class="pdot" style="background:${partyColor};"></span>${escapeHtml(partyName || 'No party assigned')}</div>
             <div class="adm2-drawer-stats">
                 <div class="s"><span class="k">Approval</span><span class="v">${isEmpty ? '—' : approval + '%'}</span></div>
-                <div class="s"><span class="k">Funding</span><span class="v">${budgetLabel}</span></div>
+                <div class="s"><span class="k">Funds</span><span class="v">${fundsLabel}</span></div>
                 <div class="s"><span class="k">Party</span><span class="v" style="font-family:var(--font-ui);font-size:11px;">${escapeHtml(partyName || '—')}</span></div>
             </div>
             ${actionBtns ? `<div class="adm2-drawer-actions">${actionBtns}</div>` : ''}
@@ -2628,6 +2624,7 @@ const _GB_ROYAL_HOLDINGS_MONTHLY = 3;
 const _GB_DESCKEY_TO_LAW_CATEGORY_REGEX = {
     pension:           /pension/i,
     subsidiesIndustry: /industr/i,
+    prisons:           /^prison$/i,
 };
 
 // Annualize an active law's per-tick ongoing cost. The only live
@@ -2675,6 +2672,12 @@ function _gbBuildCostRows(d) {
     // sub-rows, so the row total here always matches the breakdown.
     const pensionAnnual          = _gbAnnualLawCostFor(d.activeLaws, 'pension');
     const subsidiesIndustryAnnual = _gbAnnualLawCostFor(d.activeLaws, 'subsidiesIndustry');
+    // Prisons: row label reflects the active Prison Policy's selected option
+    // (Mass Incarceration, etc.). Cost sums every matching active law via the
+    // same helper pension/subsidies use so the panel total matches the
+    // per-tick processor even if a second Prison-category policy ever lands.
+    const prisonsAnnual = _gbAnnualLawCostFor(d.activeLaws, 'prisons');
+    const prisonOptionName = _gbLawsForDescKey(d.activeLaws, 'prisons')[0]?.selected_option?.option_name || 'No Policy Set';
     // Catch-all for active laws whose law_category doesn't match any
     // existing descKey regex. Without this row, those costs were
     // silently deducted by the per-tick processor but invisible in
@@ -2711,6 +2714,7 @@ function _gbBuildCostRows(d) {
         { key: 'procurement_capital',  name: 'Procurement & Capital',   yr: 0,                          descKey: 'procurementCapital'   },
         { key: 'subsidies_industry',   name: 'Subsidies & Industry Support', yr: subsidiesIndustryAnnual, descKey: 'subsidiesIndustry'   },
         { key: 'defense_security',     name: 'Defense & Security',      yr: 0,                          descKey: 'defenseSecurity'      },
+        { key: 'prisons',              name: `Prisons — ${prisonOptionName}`, yr: prisonsAnnual,         descKey: 'prisons'              },
         { key: 'national_infra',       name: 'National Infrastructure', yr: royalHoldingsAnnual + Number(d.interiorInfra?.totalAnnual || 0), descKey: 'nationalInfrastructure' },
         { key: 'sports_culture',       name: 'Sports & Culture',        yr: sportsCultureAnnual,        descKey: 'sportsAndCulture'     },
         { key: 'foreign_aid',          name: 'Foreign Aid & Diplomacy', yr: 0,                          descKey: 'foreignAid'           },
@@ -2938,6 +2942,7 @@ const _GB_DEEP_COPY = {
     procurementCapital:     { desc: 'Government purchases of goods, services, and capital equipment — IT, vehicles, materials, contracted services. The lumpy, one-shot side of public spending.' },
     subsidiesIndustry:      { desc: 'Direct support to private firms and sectors — agricultural subsidies, industrial credits, R&D grants, strategic-industry bailouts. Distinct from welfare, which targets households.' },
     defenseSecurity:        { desc: 'Standing military pay, materiel, intelligence services, and internal security forces. Scales with force structure and active doctrine.' },
+    prisons:                { desc: 'Annual cost of operating the corrections system under the currently active Prison Policy. Row label shows the selected option (Mass Incarceration, etc.); click for the per-law breakdown.' },
     nationalInfrastructure: { desc: 'Capital and operating costs for the government\'s permanent footprint — administrative offices, crown property in monarchies, state-owned enterprises, healthcare facilities, education campuses, military bases, transportation networks, the strategic arsenal, and per-tier upkeep on every completed Interior Ministry public works project (Local Municipal Complex $1/yr, Civic Center $2/yr, Provincial Infrastructure $4/yr).' },
     sportsAndCulture:       { desc: 'Recurring cultural and sporting upkeep — primarily Vola stadium maintenance once venues are completed. Each tier carries a fixed annual cost (small $0.5, modest $1, extravagant $2). Click-through surfaces the running total of stadium upkeep.' },
     foreignAid:             { desc: 'Non-trade-agreement foreign disbursements: development aid, humanitarian relief, soft-power grants. Trade-agreement aid lives under Trade Agreements on the income side instead.' },

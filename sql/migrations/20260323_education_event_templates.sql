@@ -1,10 +1,25 @@
 -- Add Education ministry trigger keys to the fire_system_event RPC
 -- This replaces the function with updated CASE statements.
+--
+-- Param order: (p_nation_id, p_trigger_key, p_tick, p_placeholders) — matches
+-- the canonical signature defined in 20260318_create_fire_system_event.sql.
+-- Declaring them in any other order creates a positional overload
+-- (text, uuid, int, jsonb) that PostgREST cannot disambiguate from the
+-- canonical (uuid, text, int, jsonb), producing PGRST203 at runtime.
+
+-- Drop all known signatures before recreating so this migration is
+-- idempotent regardless of the function's current return type or param
+-- order. CREATE OR REPLACE cannot change the return type of an existing
+-- function (Postgres 42P13), so a hard DROP is required when re-running
+-- the chain against a DB where 20260330 has already promoted the return
+-- type to UUID.
+DROP FUNCTION IF EXISTS fire_system_event(text, uuid, integer, jsonb);
+DROP FUNCTION IF EXISTS fire_system_event(uuid, text, integer, jsonb);
 
 CREATE OR REPLACE FUNCTION fire_system_event(
-    p_trigger_key TEXT,
-    p_nation_id UUID,
-    p_tick INT,
+    p_nation_id    UUID,
+    p_trigger_key  TEXT,
+    p_tick         INT,
     p_placeholders JSONB DEFAULT '{}'
 ) RETURNS void
 LANGUAGE plpgsql
