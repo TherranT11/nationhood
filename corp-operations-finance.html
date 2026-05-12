@@ -1810,6 +1810,10 @@ function openLoanReviewModal(requestId) {
             <div class="fo-review-section">
                 <div class="fo-review-section-title">III. Pledged Collateral</div>
                 ${(() => {
+                    // ⚠ SoT mirror: the same math (totalPledged + coverage%)
+                    // is also computed in js/loan-negotiation-modal.js
+                    // renderCollateralSection. Keep both in sync if the
+                    // coverage formula or per-item display ever changes.
                     const collateral = Array.isArray(req.collateral) ? req.collateral : [];
                     if (collateral.length === 0) {
                         return '<div class="fo-review-collateral-empty">Unsecured ◊ No collateral pledged</div>';
