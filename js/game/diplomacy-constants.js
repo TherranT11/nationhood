@@ -617,6 +617,7 @@ export const MAJOR_SECTORS = [
     { key: 'ENERGY',         label: 'Energy',               icon: '⚡' },
     { key: 'HEALTHCARE',     label: 'Healthcare',           icon: '🏥' },
     { key: 'SOCIAL',         label: 'Social',               icon: '🤝' },
+    { key: 'JUSTICE',        label: 'Justice',              icon: '⚖️' },
     { key: 'DEFENSE',        label: 'Defense',              icon: '🛡️' },
     { key: 'MILITARY',       label: 'Military & Security',  icon: '⚔️' },
     { key: 'TRANSPORTATION', label: 'Transportation',       icon: '🚄' },
