@@ -23,7 +23,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { initPage, qCache, qCacheSet, formatCurrency, assertRawEconomicValue } from './js/common.js';
+import { initPage, qCache, qCacheSet } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
 import { GAME_CONFIG, deductAP } from './js/game/config.js';
 import { hasElectedPresident } from './js/game/government-types.js';
@@ -668,24 +668,17 @@ function renderOverviewCard(label, value, colorClass, subHtml) {
 function renderRankings(nation) {
     if (!allNations || allNations.length === 0) return '';
 
-    // Detect GDP/debt stored as 0-100 stat scores instead of raw dollars
-    function fmtMonetary(key) {
-        return function(v) {
-            assertRawEconomicValue(v, key);
-            if (v >= 0 && v <= 100000) {
-                return '$' + Math.round(v);
-            }
-            return formatBudgetCurrency(v);
-        };
-    }
+    // budget + debt are abstract integers (migrations 20261206/20261207);
+    // formatBudgetCurrency renders them as bare integers with thousands
+    // separators, identical handling for both.
     var metrics = [
-        { key: 'budget', label: 'Budget', higher: true, fmt: fmtMonetary('budget') },
+        { key: 'budget', label: 'Budget', higher: true, fmt: formatBudgetCurrency },
         { key: 'gdp_growth', label: 'GDP Growth', higher: true, fmt: function(v) { var p = ((v - 50) / 50) * 1; return (p >= 0 ? '+' : '') + p.toFixed(2) + '%'; } },
         { key: 'standard_of_living', label: 'Std of Living', higher: true, fmt: function(v) { return Math.round(v); } },
         { key: 'unskilled_workers', label: 'Unskilled Workers', higher: true, fmt: function(v) { return Math.round(v); } },
         { key: 'skilled_workers', label: 'Skilled Workers', higher: true, fmt: function(v) { return Math.round(v); } },
         { key: 'wages', label: 'Wages', higher: true, fmt: function(v) { return Math.round(v); } },
-        { key: 'debt', label: 'National Debt', higher: false, fmt: fmtMonetary('debt') }
+        { key: 'debt', label: 'National Debt', higher: false, fmt: formatBudgetCurrency }
     ];
 
     var h = '<div class="econ-section">';
