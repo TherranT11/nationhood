@@ -2624,7 +2624,7 @@ const _GB_ROYAL_HOLDINGS_MONTHLY = 3;
 const _GB_DESCKEY_TO_LAW_CATEGORY_REGEX = {
     pension:           /pension/i,
     subsidiesIndustry: /industr/i,
-    prisons:           /^prison$/i,
+    defenseSecurity:   /^prison$/i,
 };
 
 // Annualize an active law's per-tick ongoing cost. The only live
@@ -2672,12 +2672,11 @@ function _gbBuildCostRows(d) {
     // sub-rows, so the row total here always matches the breakdown.
     const pensionAnnual          = _gbAnnualLawCostFor(d.activeLaws, 'pension');
     const subsidiesIndustryAnnual = _gbAnnualLawCostFor(d.activeLaws, 'subsidiesIndustry');
-    // Prisons: row label reflects the active Prison Policy's selected option
-    // (Mass Incarceration, etc.). Cost sums every matching active law via the
-    // same helper pension/subsidies use so the panel total matches the
-    // per-tick processor even if a second Prison-category policy ever lands.
-    const prisonsAnnual = _gbAnnualLawCostFor(d.activeLaws, 'prisons');
-    const prisonOptionName = _gbLawsForDescKey(d.activeLaws, 'prisons')[0]?.selected_option?.option_name || 'No Policy Set';
+    // Defense & Security: today the only matching law_category is 'Prison',
+    // but the descKey is generic so future military / intelligence categories
+    // can OR into the same regex. Deep-dive auto-renders each active law as
+    // "<Policy> — <Option>" sub-row via _gbSelectCategory.
+    const defenseSecurityAnnual = _gbAnnualLawCostFor(d.activeLaws, 'defenseSecurity');
     // Catch-all for active laws whose law_category doesn't match any
     // existing descKey regex. Without this row, those costs were
     // silently deducted by the per-tick processor but invisible in
@@ -2713,8 +2712,7 @@ function _gbBuildCostRows(d) {
         { key: 'pension',              name: 'Pension',                 yr: pensionAnnual,              descKey: 'pension'              },
         { key: 'procurement_capital',  name: 'Procurement & Capital',   yr: 0,                          descKey: 'procurementCapital'   },
         { key: 'subsidies_industry',   name: 'Subsidies & Industry Support', yr: subsidiesIndustryAnnual, descKey: 'subsidiesIndustry'   },
-        { key: 'defense_security',     name: 'Defense & Security',      yr: 0,                          descKey: 'defenseSecurity'      },
-        { key: 'prisons',              name: `Prisons — ${prisonOptionName}`, yr: prisonsAnnual,         descKey: 'prisons'              },
+        { key: 'defense_security',     name: 'Defense & Security',      yr: defenseSecurityAnnual,      descKey: 'defenseSecurity'      },
         { key: 'national_infra',       name: 'National Infrastructure', yr: royalHoldingsAnnual + Number(d.interiorInfra?.totalAnnual || 0), descKey: 'nationalInfrastructure' },
         { key: 'sports_culture',       name: 'Sports & Culture',        yr: sportsCultureAnnual,        descKey: 'sportsAndCulture'     },
         { key: 'foreign_aid',          name: 'Foreign Aid & Diplomacy', yr: 0,                          descKey: 'foreignAid'           },
@@ -2941,8 +2939,7 @@ const _GB_DEEP_COPY = {
     pension:                { desc: 'Old-age income support paid out of the state pension system. Click-through surfaces the currently active pension policy option and its per-tick ongoing cost.' },
     procurementCapital:     { desc: 'Government purchases of goods, services, and capital equipment — IT, vehicles, materials, contracted services. The lumpy, one-shot side of public spending.' },
     subsidiesIndustry:      { desc: 'Direct support to private firms and sectors — agricultural subsidies, industrial credits, R&D grants, strategic-industry bailouts. Distinct from welfare, which targets households.' },
-    defenseSecurity:        { desc: 'Standing military pay, materiel, intelligence services, and internal security forces. Scales with force structure and active doctrine.' },
-    prisons:                { desc: 'Annual cost of operating the corrections system under the currently active Prison Policy. Row label shows the selected option (Mass Incarceration, etc.); click for the per-law breakdown.' },
+    defenseSecurity:        { desc: 'Standing military pay, materiel, intelligence services, internal security forces, and the corrections system under the active Prison Policy. Click for the per-law breakdown.' },
     nationalInfrastructure: { desc: 'Capital and operating costs for the government\'s permanent footprint — administrative offices, crown property in monarchies, state-owned enterprises, healthcare facilities, education campuses, military bases, transportation networks, the strategic arsenal, and per-tier upkeep on every completed Interior Ministry public works project (Local Municipal Complex $1/yr, Civic Center $2/yr, Provincial Infrastructure $4/yr).' },
     sportsAndCulture:       { desc: 'Recurring cultural and sporting upkeep — primarily Vola stadium maintenance once venues are completed. Each tier carries a fixed annual cost (small $0.5, modest $1, extravagant $2). Click-through surfaces the running total of stadium upkeep.' },
     foreignAid:             { desc: 'Non-trade-agreement foreign disbursements: development aid, humanitarian relief, soft-power grants. Trade-agreement aid lives under Trade Agreements on the income side instead.' },
@@ -2982,10 +2979,10 @@ async function _gbSelectCategory(container, row, kind) {
     // buildFundingPctMap + getInstFundingPct just to keep the
     // unreachable code compiling.)
 
-    // Active-law roll-up: any descKey in _GB_DESCKEY_TO_LAW_CATEGORY_REGEX
-    // (currently 'pension' and 'subsidiesIndustry') gets a per-law
-    // sub-row showing the policy/option name + its annualized ongoing
-    // cost. Reads from the pre-fetched _budgetData.activeLaws — same
+    // Active-law roll-up: any descKey present in
+    // _GB_DESCKEY_TO_LAW_CATEGORY_REGEX gets a per-law sub-row showing
+    // the policy/option name + its annualized ongoing cost. Reads from
+    // the pre-fetched _budgetData.activeLaws — same
     // source the row total in _gbBuildCostRows aggregated. So clicking
     // a categorized row always shows the breakdown that produced its
     // total. Falls through silently for non-categorized descKeys.
