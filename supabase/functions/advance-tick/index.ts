@@ -17436,7 +17436,16 @@ async function processTargetBasedPolicies(supabase, nation) {
         // (writing a fractional value triggers an "invalid input syntax
         // for type smallint" error). Convergence is gradual enough that
         // the precision loss doesn't matter.
-        const clamped = Math.max(0, Math.min(cap, Math.round(next)));
+        let clamped = Math.max(0, Math.min(cap, Math.round(next)));
+        // Small-gap rescue: at 10% convergence any gap < 5 rounds back
+        // to current, pinning the stat. If the rounded equilibrium sits
+        // in a different integer bucket, take a 1-step nudge toward it
+        // so multi-tick convergence still happens for fine targets.
+        if (clamped === current) {
+            const rounded = Math.round(equilibrium);
+            if      (rounded > current) clamped = Math.min(cap, current + 1);
+            else if (rounded < current) clamped = Math.max(0, current - 1);
+        }
         if (clamped === current) continue;
         statUpdates[statKey] = clamped;
         summary.stats.push({
