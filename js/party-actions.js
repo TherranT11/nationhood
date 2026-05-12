@@ -2811,7 +2811,9 @@ async function openDebtPaymentModal(root, faction) {
                 // Strip anything that isn't an integer so paste-from-spreadsheet
                 // junk doesn't break the parser.
                 inputValue = (e.target.value || '').replace(/[^0-9]/g, '');
-                errorMsg = '';
+                // Reset to loadError (not empty) so a persistent fetch failure
+                // stays visible across keystrokes. Validation errors clear naturally.
+                errorMsg = loadError;
                 render();
                 const refocus = document.getElementById('pa-dp-input');
                 if (refocus) {
@@ -2820,7 +2822,7 @@ async function openDebtPaymentModal(root, faction) {
                 }
             });
             input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' && isValid() && !submitting && !result) {
+                if (e.key === 'Enter' && isValid() && !submitting && !result && !loadError) {
                     e.preventDefault();
                     submit();
                 }
@@ -2831,7 +2833,7 @@ async function openDebtPaymentModal(root, faction) {
     }
 
     async function submit() {
-        if (submitting || result) return;
+        if (submitting || result || loadError) return;
         const payment = parseInput();
         if (!isValid()) {
             errorMsg = `Enter an integer between 1 and ${maxPayment}.`;
