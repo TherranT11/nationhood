@@ -3702,10 +3702,16 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
     // leader_changes event below for the historical record.
     const pmFullName = `${faction.leader_first_name} ${faction.leader_last_name}`;
 
-    // Update/create PM ministry row
+    // Update/create PM ministry row.
+    // Look up the row WITHOUT filtering on is_active — the
+    // ministries_nation_ministry_unique constraint is on
+    // (nation_id, ministry_key) regardless of is_active. If a prior
+    // administration left an inactive PM row, filtering it out here
+    // would push us into the INSERT branch and trigger a duplicate-
+    // key violation. Matching it instead lets us reactivate in place.
     const { data: pmMinistry } = await supabase.from('ministries')
         .select('id').eq('nation_id', nationId)
-        .eq('ministry_key', 'prime_minister').eq('is_active', true)
+        .eq('ministry_key', 'prime_minister')
         .maybeSingle();
 
     const { data: nationForBaseline } = await supabase.from('nations').select('*').eq('id', nationId).single();
@@ -3713,6 +3719,7 @@ export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, 
 
     if (pmMinistry) {
         await supabase.from('ministries').update({
+            is_active: true,
             party_id: factionId,
             minister_first_name: faction.leader_first_name,
             minister_last_name: faction.leader_last_name,

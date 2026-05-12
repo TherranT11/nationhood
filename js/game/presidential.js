@@ -152,10 +152,17 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
         }
     }
 
-    // Validate: no existing pending confirmation for this slot
+    // Validate: no existing pending confirmation for this slot.
+    // Look up the ministry row WITHOUT filtering on is_active —
+    // ministries_nation_ministry_unique is on (nation_id, ministry_key)
+    // regardless of is_active. If a prior administration left an
+    // inactive row at this key, filtering it out here would push us
+    // into the INSERT branch and trigger a duplicate-key violation.
+    // Matching it instead lets us reactivate in place. Same fix
+    // pattern as 20261119_finalize_formation_drop_is_active_filter.sql.
     const { data: existingMinistry } = await supabase.from('ministries')
         .select('id, confirmation_status')
-        .eq('nation_id', nationId).eq('ministry_key', ministryKey).eq('is_active', true)
+        .eq('nation_id', nationId).eq('ministry_key', ministryKey)
         .maybeSingle();
 
     if (existingMinistry?.confirmation_status === 'pending') {
@@ -178,6 +185,7 @@ export async function nominateMinister(supabase, nationId, presidentFactionId, m
 
     if (existingMinistry) {
         const { error: updErr } = await supabase.from('ministries').update({
+            is_active: true,
             confirmation_status: 'pending',
             pending_minister: pendingData
         }).eq('id', existingMinistry.id);

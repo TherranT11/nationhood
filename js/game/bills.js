@@ -1430,9 +1430,15 @@ export async function resolveMinisterConfirmationBill(supabase, bill, ctx) {
     // Fetch the (possibly absent) ministry row — used to know whether to
     // UPDATE or INSERT, and to preserve is_acting for the failed-bill restore
     // path. Never the source of truth for the nominee.
+    // Look up without filtering on is_active — see the comment in
+    // presidential.js nominateMinister for the rationale (same fix
+    // pattern as 20261119_finalize_formation_drop_is_active_filter).
+    // The update path below sets is_active = true so an inactive row
+    // gets reactivated in place; the insert path only fires for true
+    // first-time rows.
     const { data: ministry } = await supabase.from('ministries')
         .select('id, is_acting')
-        .eq('nation_id', bill.nation_id).eq('ministry_key', mKey).eq('is_active', true)
+        .eq('nation_id', bill.nation_id).eq('ministry_key', mKey)
         .maybeSingle();
 
     if (!pm) {
@@ -1452,6 +1458,7 @@ export async function resolveMinisterConfirmationBill(supabase, bill, ctx) {
 
         const { data: fullNation } = await supabase.from('nations').select('*').eq('id', bill.nation_id).single();
         const ministryFields = {
+            is_active: true,
             party_id: pm.party_id,
             minister_first_name: pm.first_name,
             minister_last_name: pm.last_name,
