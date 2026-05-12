@@ -52,7 +52,7 @@ var defaultOpen = { economic: true, labor: true, infrastructure: true, social: t
 var STAT_CATEGORIES = [
     { id: 'economic', label: 'Economic', icon: '\u{1F4B0}', blocs: ['Business Owners', 'Urban Workers'],
       stats: [
-        { name: 'GDP', key: 'gdp', desc: 'Total economic output' },
+        { name: 'GDP', key: 'gdp', desc: 'Total economic output', format: 'currency' },
         { name: 'GDP Growth', key: 'gdp_growth', desc: 'Monthly economic growth rate', format: 'gdpgrowth' },
         { name: 'Budget', key: 'budget', desc: 'Government budget', format: 'currency', noHealth: true },
         { name: 'National Debt', key: 'debt', desc: 'Government debt obligations', format: 'currency', inverted: true, noHealth: true },
@@ -726,6 +726,11 @@ function getDisplayValue(stat, nation) {
     var raw = nation[stat.key];
     var format = stat.format;
     if (raw === null || raw === undefined) return 'N/A';
+    if (format === 'currency' && stat.key === 'gdp') {
+        // gdp stored as $B abstract integer (migration 20261210). Append "B"
+        // so the player sees "$908B" not "$908".
+        return '$' + Math.round(Number(raw)).toLocaleString() + 'B';
+    }
     if (format === 'currency' && ABSTRACT_INTEGER_KEYS[stat.key]) {
         return '$' + Math.round(Number(raw)).toLocaleString();
     }

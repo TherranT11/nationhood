@@ -198,10 +198,10 @@ if (!faction) {
                     return '$' + val.toLocaleString();
                 };
                 
-                // Validate GDP is still a raw dollar value. nation.debt was
-                // rescaled to the abstract integer scale (20261207), so the
-                // 0-100-stat shape detector would false-positive on it now.
-                assertRawEconomicValue(nation.gdp, 'gdp');
+                // GDP is now on the $B abstract integer scale (migration
+                // 20261210), matching budget + debt as integers. The 0-100
+                // stat-shape detector would false-positive on small abstract
+                // values, so the runtime assert is dropped.
 
                 // Display nation stats
                 document.getElementById('details').innerHTML = `
@@ -223,7 +223,7 @@ if (!faction) {
                         
                         <div style="background: #1a1a1a; padding: 10px; border-radius: 4px; border-left: 3px solid #5b9bd5;">
                             <div style="font-size: 0.75rem; color: #888; text-transform: uppercase; margin-bottom: 5px;">GDP</div>
-                            <div style="font-size: 1.1rem; color: #fff; font-weight: bold;">${formatCurrency(scaleRawToDollars(nation.gdp))}</div>
+                            <div style="font-size: 1.1rem; color: #fff; font-weight: bold;">$${Math.round(Number(nation.gdp || 0)).toLocaleString()}B</div>
                         </div>
 
                         <div style="background: #1a1a1a; padding: 10px; border-radius: 4px; border-left: 3px solid #d48a3c;">
