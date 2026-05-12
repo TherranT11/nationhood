@@ -2979,10 +2979,10 @@ async function _gbSelectCategory(container, row, kind) {
     // buildFundingPctMap + getInstFundingPct just to keep the
     // unreachable code compiling.)
 
-    // Active-law roll-up: any descKey in _GB_DESCKEY_TO_LAW_CATEGORY_REGEX
-    // (currently 'pension' and 'subsidiesIndustry') gets a per-law
-    // sub-row showing the policy/option name + its annualized ongoing
-    // cost. Reads from the pre-fetched _budgetData.activeLaws — same
+    // Active-law roll-up: any descKey present in
+    // _GB_DESCKEY_TO_LAW_CATEGORY_REGEX gets a per-law sub-row showing
+    // the policy/option name + its annualized ongoing cost. Reads from
+    // the pre-fetched _budgetData.activeLaws — same
     // source the row total in _gbBuildCostRows aggregated. So clicking
     // a categorized row always shows the breakdown that produced its
     // total. Falls through silently for non-categorized descKeys.
