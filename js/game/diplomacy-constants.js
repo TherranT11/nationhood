@@ -726,10 +726,14 @@ export const STAT_PROCESSOR_SKIP = new Set(['debt']);
 // target / connection nudge can't push the column past its DB
 // constraint and abort the whole tick update. Defaults to 100 when
 // no entry exists.
-export const NATION_STAT_CAP = {
-    income_tax:    10,
-    corporate_tax: 10,
-};
+//
+// income_tax + corporate_tax were 0-10 historically; migration 20261209
+// widened those columns to 0-100 to unify with the admin slider scale
+// + the revenue formula's /100 expectation. The map now has no special
+// cases — every stat caps at 100 — but kept as an empty object so
+// future per-column caps have a home and nationStatCap() keeps its
+// signature.
+export const NATION_STAT_CAP = {};
 export function nationStatCap(key) { return NATION_STAT_CAP[key] ?? 100; }
 
 // ==================== MINOR DIPLOMATIC INITIATIVE ====================
