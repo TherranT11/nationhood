@@ -246,10 +246,17 @@ function scaleGDP(raw) { return raw; }
 function statCard(label, key, val, desc, format, inverted, displayVal) {
     var dv = displayVal !== undefined ? displayVal : val;
     var shown;
-    if (format === 'currency' || format === 'gdp') {
+    // gdp is on the $B abstract integer scale (20261210); skip the 0-100
+    // stat-shape detector for it (would false-positive on small abstract
+    // values). Other currency stats still get checked.
+    if ((format === 'currency' || format === 'gdp') && key !== 'gdp' && !RAW_DOLLAR_KEYS[key]) {
         assertRawEconomicValue(dv, key);
     }
     if (typeof dv === 'string') shown = dv;
+    else if (format === 'gdp' || key === 'gdp') {
+        // gdp stored as $B abstract integer (migration 20261210).
+        shown = '$' + Math.round(Number(dv)).toLocaleString() + 'B';
+    }
     else if ((format === 'currency' || format === 'gdp') && isMisscaledMonetary(key, dv)) {
         shown = '$' + Math.round(Number(dv));
     } else if (format === 'currency' || format === 'gdp') shown = fmtCur(dv);
