@@ -3166,10 +3166,11 @@ function calculateNationalBudget(nation, opts = {}) {
 // Unit handling: nation.budget AND nation.debt are both stored as
 // abstract integers (migrations 20261206 + 20261207). The unified
 // scale means processNationDebtTick can compute deltas without any
-// raw↔abstract conversion. Other code paths in the repo still bridge
-// via inline RAW_PER_ABSTRACT = 1e9 constants (corp tax credits,
-// trade transfers); those are tracked follow-ups, not blockers for
-// the debt-accumulation rule defined here.
+// raw↔abstract conversion. Other tick-math paths (chargePolicyUpfrontCost,
+// resolveTradeRatificationBill, bailout payouts, recurring trade
+// transfers, corp shipping payments) bridge through the exported
+// RAW_PER_ABSTRACT constant below when comparing raw-dollar `amount` /
+// `revenue` / `dollars` fields against the abstract columns.
 //
 // REMAINING SCOPE-FLAG: calculateNationalBudget still aliases
 // nation.budget (treasury) as `grossRevenue` for back-compat. The
@@ -3179,6 +3180,12 @@ function calculateNationalBudget(nation, opts = {}) {
 // budget.grossRevenue directly and will display treasury as revenue
 // until separately patched.
 // ════════════════════════════════════════════════════════════════
+
+// Single source of truth for the raw-dollar ↔ abstract-integer bridge.
+// abstract × RAW_PER_ABSTRACT = raw dollars. Used by every tick-math
+// path that compares raw transfer / payment amounts against the abstract
+// nation.budget / nation.debt columns.
+const RAW_PER_ABSTRACT = 1_000_000;
 
 /**
  * Per-nation Interior Infrastructure upkeep. Single source of truth
@@ -6132,10 +6139,8 @@ async function chargePolicyUpfrontCost(supabase, nationId, option) {
     if (dollars === 0) return;
 
     // Unit bridge: dollars is raw ($M base × 1M). nation.budget + nation.debt
-    // are both abstract integers post-20261206/20261207 where 1 = $1M raw.
-    // Multiply abstract by RAW_PER_ABSTRACT to compare, divide the resulting
-    // debt portion back the same way so we don't mix scales.
-    const RAW_PER_ABSTRACT = 1_000_000;
+    // are both abstract integers (1 = $1M raw). RAW_PER_ABSTRACT imported
+    // from budget is the single source of truth.
     const budgetAbstract = Number(nation.budget || 0);
     const budgetRaw = budgetAbstract * RAW_PER_ABSTRACT;
     const debt = Number(nation.debt || 0);
@@ -7928,12 +7933,11 @@ async function resolveTradeRatificationBill(supabase, bill, ctx) {
                         // from somewhere).
                         //
                         // Unit boundary: nation.budget and nation.debt are
-                        // abstract integers (post-20261206/20261207, 1 = $1M
-                        // raw). `amount` is raw dollars. Bridge through
-                        // RAW_PER_ABSTRACT = 1e6 to keep comparisons honest
-                        // and convert the shortfall back before adding to
-                        // the abstract debt column.
-                        const RAW_PER_ABSTRACT = 1_000_000;
+                        // abstract integers (1 = $1M raw). `amount` is raw
+                        // dollars. Bridge through the imported
+                        // RAW_PER_ABSTRACT so comparisons land in raw and
+                        // the shortfall lands back in the abstract debt
+                        // column.
                         const { data: rows } = await supabase.from('nations')
                             .select('id, budget, debt').in('id', [fromNation, toNation]);
                         const budgets = {};   // abstract
@@ -9542,11 +9546,9 @@ async function enactBill(supabase, bill, currentTick) {
                     const payout = Math.min(requested, cap);
                     if (payout > 0) {
                         // Pay out from nation.budget; overflow becomes debt.
-                        // budget + debt are both abstract integers (1 = $1M)
-                        // post-20261206/20261207. `payout` is raw dollars.
-                        // Same RAW_PER_ABSTRACT = 1e6 bridge as
-                        // chargePolicyUpfrontCost.
-                        const RAW_PER_ABSTRACT = 1_000_000;
+                        // budget + debt are abstract integers (1 = $1M);
+                        // payout is raw dollars. Imported RAW_PER_ABSTRACT
+                        // bridges, same pattern as chargePolicyUpfrontCost.
                         const { data: nation } = await supabase.from('nations')
                             .select('budget, debt, gdp_growth').eq('id', bill.nation_id).single();
                         const budgetAbstract = Number(nation?.budget || 0);
@@ -33279,12 +33281,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 // below would overwrite values with garbage.
                 //
                 // Unit boundary: nation.budget and nation.debt are abstract
-                // integers (post-20261206/20261207, 1 = $1M raw). `amount`
-                // is raw dollars. Bridge through RAW_PER_ABSTRACT = 1e6 so
-                // the comparison happens in raw and the shortfall is
-                // converted back before being added to the abstract debt
-                // column.
-                const RAW_PER_ABSTRACT = 1_000_000;
+                // integers (1 = $1M raw). `amount` is raw dollars. Bridge
+                // via RAW_PER_ABSTRACT (declared in budget earlier in
+                // the bundle) so comparisons land in raw and the shortfall
+                // lands in the abstract debt column.
                 const { data: rows, error: readErr } = await supabase.from('nations')
                     .select('id, budget, debt')
                     .in('id', [fromNation, toNation]);

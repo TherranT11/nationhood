@@ -104,10 +104,11 @@ export function calculateNationalBudget(nation, opts = {}) {
 // Unit handling: nation.budget AND nation.debt are both stored as
 // abstract integers (migrations 20261206 + 20261207). The unified
 // scale means processNationDebtTick can compute deltas without any
-// raw↔abstract conversion. Other code paths in the repo still bridge
-// via inline RAW_PER_ABSTRACT = 1e9 constants (corp tax credits,
-// trade transfers); those are tracked follow-ups, not blockers for
-// the debt-accumulation rule defined here.
+// raw↔abstract conversion. Other tick-math paths (chargePolicyUpfrontCost,
+// resolveTradeRatificationBill, bailout payouts, recurring trade
+// transfers, corp shipping payments) bridge through the exported
+// RAW_PER_ABSTRACT constant below when comparing raw-dollar `amount` /
+// `revenue` / `dollars` fields against the abstract columns.
 //
 // REMAINING SCOPE-FLAG: calculateNationalBudget still aliases
 // nation.budget (treasury) as `grossRevenue` for back-compat. The
@@ -117,6 +118,12 @@ export function calculateNationalBudget(nation, opts = {}) {
 // budget.grossRevenue directly and will display treasury as revenue
 // until separately patched.
 // ════════════════════════════════════════════════════════════════
+
+// Single source of truth for the raw-dollar ↔ abstract-integer bridge.
+// abstract × RAW_PER_ABSTRACT = raw dollars. Used by every tick-math
+// path that compares raw transfer / payment amounts against the abstract
+// nation.budget / nation.debt columns.
+export const RAW_PER_ABSTRACT = 1_000_000;
 
 /**
  * Per-nation Interior Infrastructure upkeep. Single source of truth
