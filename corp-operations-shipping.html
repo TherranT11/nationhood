@@ -1522,6 +1522,9 @@ body.corp-operations-shipping.light-mode {
         <h2><span class="num">II.</span>Pressing Issues</h2>
         <span class="desc" id="pi-count">— Open</span>
       </div>
+      <!-- Loan negotiations (this corp is the borrower) render into a
+           dedicated host owned by js/loan-pressing-issues.js. -->
+      <div id="so-loan-pressing"></div>
       <!-- Lawsuit cards (defendant + plaintiff settle-review) render
            into a dedicated host owned by js/lawsuit-pressing-issues.js
            — same module the other sector ops pages mount. -->
@@ -1581,6 +1584,7 @@ body.corp-operations-shipping.light-mode {
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, hfFmtBig } from './js/utils.js';
 import { mountLawsuitPressingIssues } from './js/lawsuit-pressing-issues.js';
+import { mountLoanPressingIssues } from './js/loan-pressing-issues.js';
 import { SECTOR_OPS_PAGE } from './js/corp-topbar.js';
 
 // ── HERO STATS (Section I) ──
@@ -1747,6 +1751,9 @@ let _loanOfferInflight = new Set();
 // Lawsuit cards (defendant + plaintiff settle-review) are owned by
 // js/lawsuit-pressing-issues.js — mounted to its own host below.
 let _lawsuitCtl = null;
+// Loan negotiations (new unified flow) are owned by
+// js/loan-pressing-issues.js — separate host above.
+let _loanCtl = null;
 
 // Routes state.
 let _availableContracts = [];   // status='open', includes my-bid annotation
@@ -1845,7 +1852,8 @@ function renderPressingIssues() {
     if (!list) return;
 
     const lawsuitCount = _lawsuitCtl?.getCount?.() ?? 0;
-    const total = _pressingIssues.length + _receivedOffers.length + lawsuitCount;
+    const loanCount    = _loanCtl?.getCount?.()    ?? 0;
+    const total = _pressingIssues.length + _receivedOffers.length + lawsuitCount + loanCount;
     if (count) count.textContent = `${total} OPEN`;
 
     if (_pressingIssues.length === 0 && _receivedOffers.length === 0) {
@@ -3209,6 +3217,20 @@ async function init() {
     attachContractsHandlers();
     attachStrategicActionsHandlers();
     attachModalDismissHandlers();
+
+    // New unified loan-negotiation flow (Phase 6). The legacy
+    // bank_loan_offers fetch + render in loadPressingIssues / pi-list
+    // is kept for any in-flight offers on the old schema; mount the
+    // new module here so shipping borrowers also see negotiations on
+    // the unified path. onChange re-renders the local pi-count so the
+    // section header total includes loan-negotiation cards.
+    _loanCtl = mountLoanPressingIssues({
+        supabase: _supabase,
+        faction,
+        host: document.getElementById('so-loan-pressing'),
+        showEmpty: false,
+        onChange: () => renderPressingIssues(),
+    });
 
     _lawsuitCtl = mountLawsuitPressingIssues({
         supabase: _supabase,
