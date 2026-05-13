@@ -2020,8 +2020,6 @@ function renderRatificationBill() {
 
     document.getElementById('bill-articles').innerHTML = html;
 
-    let ongoingMonthly = 0;
-
     const upEl = document.getElementById('total-upfront');
     upEl.textContent = totalFiscal !== 0 ? formatCurrency(Math.abs(totalFiscal)) : '$0';
     upEl.style.color = totalFiscal < 0 ? 'var(--red)' : totalFiscal > 0 ? 'var(--green)' : '';
@@ -2029,21 +2027,9 @@ function renderRatificationBill() {
 
     const onEl = document.getElementById('total-ongoing');
     const onLabel = document.getElementById('total-ongoing-label');
-    if (ongoingMonthly < 0) {
-        // Relief/revenue for recipient
-        onEl.textContent = `${formatCurrency(Math.abs(ongoingMonthly))} / mo (${formatCurrency(Math.abs(ongoingMonthly) * 12)} / yr)`;
-        onEl.style.color = 'var(--green)';
-        onLabel.textContent = 'Total Ongoing Relief';
-    } else if (ongoingMonthly > 0) {
-        // Cost for donor
-        onEl.textContent = `${formatCurrency(ongoingMonthly)} / mo (${formatCurrency(ongoingMonthly * 12)} / yr)`;
-        onEl.style.color = 'var(--red)';
-        onLabel.textContent = 'Total Ongoing Cost';
-    } else {
-        onEl.textContent = '$0/mo';
-        onEl.style.color = '';
-        onLabel.textContent = 'Total Ongoing Cost';
-    }
+    onEl.textContent = '$0/mo';
+    onEl.style.color = '';
+    onLabel.textContent = 'Total Ongoing Cost';
 }
 
 // ==================== IDEOLOGY AWARENESS (PHASE 4) ====================
