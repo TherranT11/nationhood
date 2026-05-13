@@ -136,8 +136,8 @@ export function generateAgitatorPool(nationId, nationName) {
 
 /**
  * Determines a party's political role relative to the current government.
- * Single source of truth for GOVERNING / OPPOSITION / LOYAL / DISSIDENT
- * labels across every UI that shows party status.
+ * Single source of truth for GOVERNING / OPPOSITION labels across
+ * every UI that shows party status.
  *
  * Rules:
  *   Parliamentary Democracy : in coalition OR PM party → GOVERNING
@@ -172,7 +172,6 @@ export async function getGoverningStatus(supabase, nationId, factionId) {
     if (isAbsoluteMonarchy(nation)) {
         return computeGoverningFromInputs({
             partyId: factionId,
-            partySeats: null,
             admin: null,
             ministryHolder: false,
             nation,
@@ -271,7 +270,6 @@ export async function getGoverningStatus(supabase, nationId, factionId) {
 
     return computeGoverningFromInputs({
         partyId: factionId,
-        partySeats: null,
         admin,
         ministryHolder,
         nation,
@@ -283,7 +281,7 @@ export async function getGoverningStatus(supabase, nationId, factionId) {
  * data loaded. Shares `computeGoverningFromInputs` with the async version
  * so the rules only live in one place.
  *
- * @param {object} party             must have id, seats
+ * @param {object} party             must have id
  * @param {object|null} admin        active administrations row (or null)
  * @param {Set<string>} ministryPartyIds  party ids holding an active ministry
  * @param {object} nation            must have government_type;
@@ -293,7 +291,6 @@ export async function getGoverningStatus(supabase, nationId, factionId) {
 export function getGoverningStatusFor(party, admin, ministryPartyIds, nation) {
     return computeGoverningFromInputs({
         partyId: party?.id,
-        partySeats: party?.seats,
         admin,
         ministryHolder: ministryPartyIds ? ministryPartyIds.has(party?.id) : false,
         nation,
@@ -303,7 +300,7 @@ export function getGoverningStatusFor(party, admin, ministryPartyIds, nation) {
 // Rule implementation shared by both getGoverningStatus (async DB fetch)
 // and getGoverningStatusFor (sync pre-loaded data). Single source of truth
 // for who counts as "governing" — do not duplicate this logic elsewhere.
-function computeGoverningFromInputs({ partyId, partySeats, admin, ministryHolder, nation }) {
+function computeGoverningFromInputs({ partyId, admin, ministryHolder, nation }) {
     if (isAbsoluteMonarchy(nation)) {
         var monarchFactionId = nation?.monarch_faction_id || null;
         var monarchyGoverning = !!(monarchFactionId && partyId && monarchFactionId === partyId);
