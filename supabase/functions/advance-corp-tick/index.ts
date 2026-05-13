@@ -4480,83 +4480,51 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     // wrong project / silent failure). Bump the date suffix on each
     // intentional redeploy so we can distinguish stale invocations
     // from new ones in the function logs.
-    console.log('[advance-corp-tick] BUILD_MARKER 2026-05-07-a (run-now-sync-visible)');
+    console.log('[advance-corp-tick] BUILD_MARKER 2026-05-13-a (claim-corp-tick-rpc)');
 
-    // 1. Read shard to get current tick and scheduling info
-    const { data: shard, error: shardErr } = await supabase
-        .from('shard')
-        .select('current_tick, current_date, next_tick_at, tick_interval_hours, corp_last_processed_tick')
-        .eq('name', 'Alpha Shard')
-        .single();
+    // 1+2+3. Read + idempotency + time-gating + atomic claim, all in
+    //        one RPC. SECURITY DEFINER pl/pgsql bypasses PostgREST's
+    //        per-column schema cache — which was the recurring root
+    //        cause of the "column shard.corp_last_processed_tick does
+    //        not exist" failure even after the column was confirmed
+    //        present in PostgreSQL. The RPC also serializes concurrent
+    //        cron fires via its conditional UPDATE: only one tick
+    //        instance can move the marker forward; every other returns
+    //        already_claimed and exits cleanly.
+    const { data: claim, error: claimErr } = await supabase.rpc('claim_corp_tick', {
+        p_force: force,
+        p_run_now: runNow,
+    });
 
-    if (shardErr || !shard) {
-        throw new Error(`Shard not found: ${shardErr?.message}`);
-    }
-
-    const currentTick = shard.current_tick || 0;
-
-    // 2. Idempotency check — use DB-persisted corp_last_processed_tick (not in-memory,
-    //    because Deno edge functions cold-start frequently, resetting in-memory state)
-    const corpLastTick = shard.corp_last_processed_tick ?? -1;
-    if (!force && currentTick <= corpLastTick) {
-        return { status: 'already_processed', tick: currentTick };
-    }
-
-    // 3. Time-based gating — only run at the midpoint of the tick interval
-    //    (e.g. 4 hours after tick advance for an 8-hour interval)
-    if (!force && !runNow && shard.next_tick_at) {
-        const now = Date.now();
-        const nextTickAt = new Date(shard.next_tick_at).getTime();
-        const intervalMs = (shard.tick_interval_hours || 8) * 60 * 60 * 1000;
-        const lastAdvanceAt = nextTickAt - intervalMs;
-        const corpDueAt = lastAdvanceAt + (intervalMs / 2);
-
-        if (now < corpDueAt) {
-            const remainMs = corpDueAt - now;
-            console.log(`[advance-corp-tick] Not due — tick ${currentTick}, corp due in ${Math.round(remainMs / 1000)}s`);
-            return { status: 'not_due', tick: currentTick, corp_due_in_ms: remainMs };
-        }
-    }
-
-    // 3a. Atomic tick claim. The read-side check above is a fast path
-    //     for the common case but can't stop concurrent cron fires
-    //     (both pass the read, both begin to run) or recover from a
-    //     timeout between flushCashEvents and the end-of-tick guard
-    //     write (events insert commits, guard never updates, next cron
-    //     fire re-runs and double-emits). Both modes were observed at
-    //     tick 56 with 3× duplicate rows.
-    //
-    //     The fix is to UPDATE corp_last_processed_tick at the START
-    //     of the tick. In normal mode the .or() filter makes the write
-    //     conditional — Postgres serializes concurrent UPDATEs on the
-    //     same row, so exactly one instance's WHERE matches and every
-    //     other instance sees 0 affected rows and exits. With
-    //     force=true the filter is omitted, so a manual debug rerun
-    //     unconditionally re-stamps the guard (otherwise the next cron
-    //     fire would think the forced run never happened).
-    //
-    //     Tradeoff: if the tick fails partway through, the events
-    //     ledger may miss this tick's rows. corp_cash_reserves is
-    //     written authoritatively during the tick (direct UPDATEs +
-    //     emit_corp_cash_event SQL helper), so the cash trajectory
-    //     stays correct. Losing one tick's events ledger is
-    //     recoverable; re-running the whole tick is not.
-    let claimQuery = supabase
-        .from('shard')
-        .update({ corp_last_processed_tick: currentTick })
-        .eq('name', 'Alpha Shard');
-    if (!force) {
-        claimQuery = claimQuery.or(`corp_last_processed_tick.lt.${currentTick},corp_last_processed_tick.is.null`);
-    }
-    const { data: claimed, error: claimErr } = await claimQuery.select('id');
     if (claimErr) {
-        console.error('[advance-corp-tick] Tick claim failed:', claimErr.message);
-        return { status: 'claim_error', tick: currentTick, error: claimErr.message };
+        console.error('[advance-corp-tick] claim_corp_tick RPC failed:', claimErr.message);
+        return { status: 'claim_error', error: claimErr.message };
     }
-    if (!force && (!claimed || claimed.length === 0)) {
-        console.log(`[advance-corp-tick] Tick ${currentTick} already claimed by a concurrent run — exiting.`);
-        return { status: 'already_claimed', tick: currentTick };
+    if (!claim) {
+        throw new Error('claim_corp_tick returned no payload');
     }
+    if (claim.status === 'shard_not_found') {
+        throw new Error('Shard not found');
+    }
+    if (claim.status === 'already_processed') {
+        return { status: 'already_processed', tick: claim.tick };
+    }
+    if (claim.status === 'not_due') {
+        const remainMs = claim.corp_due_in_ms ?? 0;
+        console.log(`[advance-corp-tick] Not due — tick ${claim.tick}, corp due in ${Math.round(remainMs / 1000)}s`);
+        return { status: 'not_due', tick: claim.tick, corp_due_in_ms: remainMs };
+    }
+    if (claim.status === 'already_claimed') {
+        console.log(`[advance-corp-tick] Tick ${claim.tick} already claimed by a concurrent run — exiting.`);
+        return { status: 'already_claimed', tick: claim.tick };
+    }
+    // claim.status === 'claimed' — proceed with tick processing.
+
+    const currentTick = claim.tick;
+    const shard = {
+        current_tick: currentTick,
+        current_date: claim.current_date,
+    };
 
     console.log(`[advance-corp-tick] Processing tick ${currentTick} (${shard.current_date})`);
 
