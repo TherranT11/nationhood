@@ -644,73 +644,14 @@ function shippingNeedFor(_exporterNation, _importerNation, _borderTypes) { retur
  * Extracted from game-common.js.
  */
 
-// ==================== DIPLOMACY CONSTANTS ====================
-
 const DIPLOMACY_CONFIG = {
-    // Ambassador actions
-    PROPOSE_INITIATIVE_AP: 2,
-
-    // Foreign Minister actions
-    RECALL_AMBASSADOR_AP: 1,
-
-    // Timing
-    FM_REVIEW_EXPIRY_TICKS: 3,
-    ULTIMATUM_DEADLINE_TICKS: 3,
-    STATE_VISIT_AP: 4,
-    STATE_VISIT_ACCEPT_WINDOW: 3,
-    STATE_VISIT_COOLDOWN: 30,
-    STATE_VISIT_REP_BOOST: 3,
-    STATE_VISIT_STABILITY_BOOST: 2,
-    STATE_VISIT_RELATION_BOOST: 7,
-    STATE_VISIT_IO_REP_BONUS: 3,
-    STATE_VISIT_HIGH_REL_GDP_BONUS: 5,
-    STATE_VISIT_FIRST_CONTROL: 1,
-    STATE_VISIT_AUTOCRACY_DIE: 12,
-    STATE_VISIT_AUTOCRACY_THRESHOLD: 6,
-    STATE_VISIT_AUTOCRACY_CHANGE: 3,
-    STATE_VISIT_AUTOCRACY_REGIME_DIE: 10,
-    TREATY_RATIFICATION_VOTING_TICKS: 6,
+    // Ambassador lifecycle (consumed by bills + advance-tick processor).
     AMBASSADOR_CONFIRMATION_VOTING_TICKS: 6,
     AMBASSADOR_TERM_LENGTH: 60,
     AMBASSADOR_RETIREMENT_WARNING: 3,
 
-    // War stat penalties (per tick)
-    WAR_STABILITY_DRAIN: 2,
-    WAR_CIVIL_UNREST_GAIN: 3,
-    WAR_TRADE_DRAIN: 2,
-    WAR_REPUTATION_DRAIN: 1,
-
-    // Reputation costs
-    WAR_WITH_JUSTIFICATION_REP_COST: 3,
-    WAR_WITHOUT_JUSTIFICATION_REP_COST: 10,
-    FORMAL_PROTEST_TARGET_REP_COST: 1,
-
-    // Covert operation success thresholds
-    COVERT_INTEL_THRESHOLD: 0.45,
-    COVERT_PROPAGANDA_THRESHOLD: 0.55,
-    COVERT_BRIBE_THRESHOLD: 0.60,
-
-    // Trade negotiation AP costs
-    PROPOSE_TRADE_NEGOTIATION_AP: 2,
-    ACCEPT_TRADE_NEGOTIATION_AP: 1,
-    JOIN_NEGOTIATION_PM_AP: 2,
-    JOIN_NEGOTIATION_FM_AP: 1,
-    JOIN_NEGOTIATION_MOT_AP: 2,
-    HOG_DRAFT_INITIATIVE_AP: 3,
-    MOT_JOIN_DEADLINE_TICKS: 4,
-
-    // Trade negotiation timing
-    NEGOTIATION_DEFAULT_DURATION: 4,
-    NEGOTIATION_EXTENSION_TICKS: 12,
-    NEGOTIATION_MAX_EXTENSIONS: 3,
-    TRADE_RATIFICATION_VOTING_TICKS: 6,
-
-    // Economic Aid
+    // Economic Aid (consumed by budget + bills aid-ratification path).
     AID_MAX_GDP_PCT: 25,
-    AID_MIN_AMOUNT: 1000000000,
-    AID_DURATION_MIN_TICKS: 12,
-    AID_DURATION_MAX_TICKS: 120,
-    AID_MAX_CONDITIONS: 5,
     AID_ANNUAL_REVIEW_INTERVAL: 12,
     AID_RELATION_BONUS: 8
 };
@@ -1042,99 +983,6 @@ const TRADE_ARTICLE_TYPES = {
     }
 };
 
-/**
- * Diplomatic proposal types with tier classification.
- * Tier 1 = Minor (ambassador approves directly)
- * Tier 2 = FM approval needed (no bill)
- * Tier 3 = Requires Parliament ratification bill
- */
-const PROPOSAL_TYPES = {
-    cultural_exchange: {
-        tier: 1,
-        label: 'Cultural Exchange',
-        description: 'Establish cultural exchange programs between nations.',
-        stat_effects: [
-            { stat_key: 'global_image', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
-        ]
-    },
-    visa_agreement: {
-        tier: 1,
-        label: 'Visa Agreement',
-        description: 'Simplify visa requirements for travel between nations.',
-        stat_effects: [
-            { stat_key: 'global_image', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
-            { stat_key: 'immigration', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
-        ]
-    },
-    joint_statement: {
-        tier: 1,
-        label: 'Joint Statement',
-        description: 'Issue a joint diplomatic statement signaling cooperation.',
-        stat_effects: []
-    },
-    student_exchange: {
-        tier: 1,
-        label: 'Student Exchange',
-        description: 'Create student exchange programs to boost education.',
-        stat_effects: [
-            { stat_key: 'education', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
-        ]
-    },
-
-    non_aggression_pact: {
-        tier: 3,
-        label: 'Non-Aggression Pact',
-        description: 'Binding commitment not to declare war for a set period.',
-        stat_effects: [
-            { stat_key: 'state_apparatus', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 },
-            { stat_key: 'global_image', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
-        ]
-    },
-    military_alliance: {
-        tier: 3,
-        label: 'Military Alliance',
-        description: 'Mutual defense pact — if one is attacked, the other must respond.',
-        stat_effects: [
-            { stat_key: 'state_apparatus', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 0 },
-            { stat_key: 'global_image', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 1 }
-        ]
-    },
-    embargo: {
-        tier: 3,
-        label: 'Embargo/Sanctions',
-        description: 'Economic warfare — tanks target trade stats, also hurts your own.',
-        stat_effects: [
-            { stat_key: 'global_image', direction: 'down', rate: 3, delay_ticks: 0, duration_ticks: 0 }
-        ]
-    },
-    ceasefire: {
-        tier: 3,
-        label: 'Ceasefire',
-        description: 'Stop active conflict between warring nations.',
-        requires_war: true,
-        stat_effects: [
-            { stat_key: 'state_apparatus', direction: 'up', rate: 2, delay_ticks: 0, duration_ticks: 1 },
-            { stat_key: 'unrest', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
-        ]
-    },
-    open_borders: {
-        tier: 3,
-        label: 'Open Borders',
-        description: 'Major immigration and security implications — open borders between nations.',
-        stat_effects: [
-            { stat_key: 'immigration', direction: 'up', rate: 3, delay_ticks: 0, duration_ticks: 0 }
-        ]
-    },
-    close_embassy: {
-        tier: 3,
-        label: 'Close Embassy',
-        description: 'Shut down diplomatic presence in the target nation.',
-        stat_effects: [
-            { stat_key: 'global_image', direction: 'down', rate: 2, delay_ticks: 0, duration_ticks: 1 }
-        ]
-    }
-};
-
 // Keep keys + labels in sync with policyadmin.html's #b-sector dropdown.
 // The bill modal's sector picker filters this list by which keys have at
 // least one policy, so any sector the policy admin can save under has to
@@ -1175,111 +1023,6 @@ const STAT_PROCESSOR_SKIP = new Set(['debt']);
 // generic 0–100 stat scale. Defaults to 100 when no entry exists.
 const NATION_STAT_CAP = {};
 function nationStatCap(key) { return NATION_STAT_CAP[key] ?? 100; }
-
-/**
- * Article type definitions for Minor Diplomatic Initiative.
- * Consumed by bill.html for label/description lookup on ratification renders.
- */
-const INITIATIVE_ARTICLE_TYPES = {
-    visa_agreement: {
-        key: 'visa_agreement',
-        label: 'Visa Agreement',
-        description: 'Establishes visa-free travel between nations.',
-        max_per_initiative: 1,
-        has_config: true,
-        default_config: {
-            duration: 90,
-            scope: 'tourism',
-            direction: 'reciprocal',
-            excludes: ['work_permits', 'diplomatic_staff']
-        }
-    },
-    cultural_exchange: {
-        key: 'cultural_exchange',
-        label: 'Cultural Exchange',
-        description: 'Establishes cultural programmes between nations. Builds soft power over time.',
-        max_per_initiative: null,
-        has_config: true,
-        default_config: {
-            programmes: ['artist_exchange'],
-            duration: 24,
-            funding: '50_50'
-        }
-    },
-    student_exchange: {
-        key: 'student_exchange',
-        label: 'Student Exchange Program',
-        description: 'University exchange programme. Cheap, builds long-term soft power and education.',
-        max_per_initiative: null,
-        has_config: true,
-        default_config: {
-            seats: 200,
-            level: 'undergraduate',
-            duration: 'full_year',
-            funding: 'split',
-            fields: ['sciences']
-        }
-    },
-    joint_statement: {
-        key: 'joint_statement',
-        label: 'Joint Statement',
-        description: 'Public or private declaration. No mechanical effect.',
-        max_per_initiative: null,
-        has_config: true,
-        default_config: {
-            text: '',
-            visibility: 'public'
-        }
-    }
-};
-
-// Article type table for Major Diplomatic Initiative ratification renders.
-// All previously defined article types (open_borders, mutual_extradition,
-// environmental_accord) were tied to wizard UIs that were culled along with
-// the rest of the diplomacy dashboard. Kept as an empty object so the
-// defensive lookup in bill.html's article renderer still works.
-const MAJOR_INITIATIVE_ARTICLE_TYPES = {};
-
-// Maps active Major Initiative article types to domestic policy sectors that
-// become restricted while the treaty is active. Currently empty because the
-// article types that drove these constraints (open_borders, mutual_extradition,
-// environmental_accord) were retired. checkSovereigntyConstraints() is kept
-// alive so laws.html doesn't have to short-circuit its policy-sector check.
-const SOVEREIGNTY_CONSTRAINTS = {};
-
-/**
- * Check if a policy's major_sector conflicts with any active Major Initiative sovereignty constraints.
- * @param {Array} activeProposals - Active tier-3 proposals involving this nation
- * @param {string} policySector - The major_sector of the policy being proposed
- * @returns {{ blocked: boolean, message: string|null, initiative_name: string|null }}
- */
-function checkSovereigntyConstraints(activeProposals, policySector) {
-    if (!activeProposals || !policySector) return { blocked: false, message: null, initiative_name: null };
-
-    for (const proposal of activeProposals) {
-        const pd = proposal.proposal_data || {};
-        const articles = pd.articles || [];
-
-        for (const art of articles) {
-            if (art.status === 'struck' || art.suspended) continue;
-
-            const constraints = SOVEREIGNTY_CONSTRAINTS[art.type];
-            if (!constraints) continue;
-
-            for (const constraint of constraints) {
-                if (constraint.blocked_sectors.includes(policySector) && constraint.condition(art.config || {})) {
-                    return {
-                        blocked: true,
-                        message: constraint.message,
-                        initiative_name: pd.name || 'Major Diplomatic Initiative'
-                    };
-                }
-            }
-        }
-    }
-
-    return { blocked: false, message: null, initiative_name: null };
-}
 
 // ────────── stats ──────────
 

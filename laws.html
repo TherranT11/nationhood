@@ -397,7 +397,7 @@ import { isGovernmentPresidential, hasElectedPresident, getCurrentConstitutional
 import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies } from './js/game/government-structure.js';
 import { calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, getRequiredSeats, evaluateBillVote } from './js/game/bills.js';
 import { formatStatName, formatMinorSector } from './js/game/political-actions.js';
-import { MAJOR_SECTORS, RAW_SCALING_DIVISORS, checkSovereigntyConstraints } from './js/game/diplomacy-constants.js';
+import { MAJOR_SECTORS, RAW_SCALING_DIVISORS } from './js/game/diplomacy-constants.js';
 import { signPresidentialBill, vetoPresidentialBill } from './js/game/presidential.js';
 import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost } from './js/game/budget.js';
 import { SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS } from './js/game/sovereign-default.js';
@@ -4230,28 +4230,6 @@ async function submitToCommittee() {
         }
     }
 
-    // Check sovereignty constraints from active Major Diplomatic Initiatives
-    if (!isFoundationalBill) {
-        const { data: activeInitiatives } = await _supabase
-            .from('diplomatic_proposals')
-            .select('proposal_data')
-            .eq('status', 'active')
-            .eq('proposal_tier', 3)
-            .or(`proposing_nation_id.eq.${currentNation.id},target_nation_id.eq.${currentNation.id}`);
-
-        if (activeInitiatives && activeInitiatives.length > 0) {
-            for (const art of draftArticles) {
-                if (!art.policy || !art.policy.major_sector) continue;
-                const check = checkSovereigntyConstraints(activeInitiatives, art.policy.major_sector);
-                if (check.blocked) {
-                    alert(`Cannot propose this bill: "${art.policy.policy_name}" conflicts with active treaty "${check.initiative_name}".\n\n${check.message}`);
-                    isSubmitting = false;
-                    document.getElementById('submit-bill-btn').disabled = draftArticles.length === 0;
-                    return;
-                }
-            }
-        }
-    }
 
     // Flat $50k to propose a bill, regardless of article count.
     const billCost = 50000;

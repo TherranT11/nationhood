@@ -2720,15 +2720,6 @@ function renderIPOLogo(org, cssClass, extraClass) {
     return `<span class="${cls}">${escapeHtml(org.logo_symbol)} ${escapeHtml(org.logo_text)}</span>`;
 }
 
-// Legacy INITIATIVE_TYPES kept for backward compat with existing proposals.
-// New proposals use INITIATIVE_ARTICLE_TYPES from diplomacy-constants.js.
-const INITIATIVE_TYPES = {
-    visa_agreement:    { label: 'Visa Agreement',           classification: 'MINOR', relations: 6,  money: 12000000 },
-    cultural_exchange: { label: 'Cultural Exchange',        classification: 'MINOR', relations: 4,  money: -35000000 },
-    student_exchange:  { label: 'Student Exchange Program', classification: 'MINOR', relations: 3,  money: -6000000 },
-    joint_statement:   { label: 'Joint Statement',          classification: 'MINOR', relations: 0,  money: 0 }
-};
-
 // Trade type icon map
 const TRADE_TYPE_ICONS = {
     handshake: '&#129309;',  // handshake emoji
