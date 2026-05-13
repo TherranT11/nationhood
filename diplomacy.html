@@ -307,6 +307,31 @@ function ordinalSuffix(n) {
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
+// Cup-stage display helpers. SSoT for the two ladders that turn a
+// (stage, isActive) pair into header text + tab states. Used by
+// renderVolaCup (theoretical schedule placeholder) AND by
+// loadAndRenderVolaSchedule (actual scheduled_tick from the DB) so
+// the two never drift.
+//   stage = currentTick - cupStart  (-∞..-1 upcoming; 0..2 group; 3 QF;
+//                                    4 SF; 5 F; 6+ complete)
+//   isActive = stage >= 0 && stage <= 5
+function _volaStatusForStage(stage, isActive) {
+    if (!isActive && stage < 0) return 'UPCOMING';
+    if (stage <= 2)              return `GROUP STAGE — ROUND ${stage + 1} IN PROGRESS`;
+    if (stage === 3)             return 'QUARTERFINALS IN PROGRESS';
+    if (stage === 4)             return 'SEMIFINALS IN PROGRESS';
+    if (stage === 5)             return 'FINAL IN PROGRESS';
+    return 'COMPLETE';
+}
+function _volaTabStateForStage(idx, stage, isActive) {
+    if (!isActive && stage < 0) return 'pending';
+    if (idx === 0) return 'done';                                  // placement always done by GS1
+    if (idx === 1) return stage <= 2 ? 'active' : 'done';
+    if (idx === 2) return stage <= 2 ? 'pending' : (stage <= 4 ? 'active' : 'done');
+    if (idx === 3) return stage === 5 ? 'active' : 'pending';
+    return 'pending';
+}
+
 // Returns the cup currently being played, or the next upcoming cup if
 // there's no active one. Each cup spans 6 ticks (GS1..F). The window
 // closes the tick AFTER F passes — i.e. tick > cupStart+5 rolls forward.
@@ -592,25 +617,11 @@ function renderVolaCup(currentTick) {
         ? `<span class="vola-cup-live">&bullet; LIVE</span>`
         : '';
 
-    let statusText;
-    if (!cup.isActive)         statusText = 'UPCOMING';
-    else if (cup.stage <= 2)   statusText = `GROUP STAGE — ROUND ${cup.stage + 1} IN PROGRESS`;
-    else if (cup.stage === 3)  statusText = 'QUARTERFINALS IN PROGRESS';
-    else if (cup.stage === 4)  statusText = 'SEMIFINALS IN PROGRESS';
-    else                       statusText = 'FINAL IN PROGRESS';
+    const statusText = _volaStatusForStage(cup.stage, cup.isActive);
 
-    // Tab state: 0=PLACEMENT, 1=GROUP STAGE, 2=KNOCKOUT, 3=FINAL
-    const tabState = (idx) => {
-        if (!cup.isActive) return 'pending';
-        if (idx === 0) return 'done';                            // placement always done by GS1
-        if (idx === 1) return cup.stage <= 2 ? 'active' : 'done';
-        if (idx === 2) return cup.stage <= 2 ? 'pending' : (cup.stage <= 4 ? 'active' : 'done');
-        if (idx === 3) return cup.stage === 5 ? 'active' : 'pending';
-        return 'pending';
-    };
     const tabIcon = (state) => state === 'done' ? '&check;' : state === 'active' ? '&times;' : '&#9675;';
     const tabHtml = (idx, label) => {
-        const state = tabState(idx);
+        const state = _volaTabStateForStage(idx, cup.stage, cup.isActive);
         return `<div class="vola-cup-tab vola-cup-tab--${state}">
             <span class="vola-cup-tab-icon">${tabIcon(state)}</span> ${label}
         </div>`;
@@ -820,36 +831,19 @@ async function loadAndRenderVolaSchedule(cupNum, currentTick) {
     setText('bracket-sf',  `SEMIFINALS · ${tickToDate(sf)}`);
     setText('bracket-f',   `FINAL · ${tickToDate(f)}`);
 
-    // Status + tabs. Stage = currentTick - actualCupStart, mirrored to the
-    // status-text and tab-state ladder in renderVolaCup but resolved from
-    // actual scheduled ticks. Anything < 0 reverts to UPCOMING regardless
-    // of what the theoretical formula said.
+    // Status + tabs. Stage / isActive derived from actual cup_start;
+    // strings + tab states come from the shared SSoT helpers so this
+    // can't drift from renderVolaCup.
     const tick = Number(currentTick) || 0;
     const stage = tick - actualCupStart;
     const isActive = stage >= 0 && stage <= 5;
-    let statusText;
-    if (!isActive && stage < 0)  statusText = 'UPCOMING';
-    else if (stage <= 2)         statusText = `GROUP STAGE — ROUND ${stage + 1} IN PROGRESS`;
-    else if (stage === 3)        statusText = 'QUARTERFINALS IN PROGRESS';
-    else if (stage === 4)        statusText = 'SEMIFINALS IN PROGRESS';
-    else if (stage === 5)        statusText = 'FINAL IN PROGRESS';
-    else                         statusText = 'COMPLETE';
-    setText('status', statusText);
+    setText('status', _volaStatusForStage(stage, isActive));
 
     const tabsEl = document.querySelector('[data-cup-sched="tabs"]');
     if (tabsEl) {
-        const tabState = (idx) => {
-            if (!isActive && stage < 0) return 'pending';
-            if (idx === 0) return 'done';
-            if (idx === 1) return stage <= 2 ? 'active' : 'done';
-            if (idx === 2) return stage <= 2 ? 'pending' : (stage <= 4 ? 'active' : 'done');
-            if (idx === 3) return stage === 5 ? 'active' : 'pending';
-            return 'pending';
-        };
         const tabIcon = (s) => s === 'done' ? '✓' : s === 'active' ? '×' : '○';
-        const tabs = tabsEl.querySelectorAll('.vola-cup-tab');
-        tabs.forEach((el, idx) => {
-            const s = tabState(idx);
+        tabsEl.querySelectorAll('.vola-cup-tab').forEach((el, idx) => {
+            const s = _volaTabStateForStage(idx, stage, isActive);
             el.className = `vola-cup-tab vola-cup-tab--${s}`;
             const iconEl = el.querySelector('.vola-cup-tab-icon');
             if (iconEl) iconEl.textContent = tabIcon(s);
