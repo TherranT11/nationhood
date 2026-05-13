@@ -3203,7 +3203,7 @@ async function openExpandInfrastructureModal(root, faction) {
         const balance = Number(mRow?.discretionary_balance) || 0;
 
         const { data: open } = await _supabase.from('corp_contracts')
-            .select('id, name, description, spec_category, budget, timeline_months, expires_at_tick, created_at_tick')
+            .select('id, name, description, spec_category, budget, timeline_months, status, expires_at_tick, created_at_tick')
             .eq('issuer_nation_id', _state.nation.id)
             .eq('project_subtype', 'Interior Infrastructure')
             .in('status', ['open', 'active'])
@@ -3221,23 +3221,29 @@ async function openExpandInfrastructureModal(root, faction) {
         }
 
         if (!tiers) {
-            const { data: tData } = await _supabase.rpc('interior_infrastructure_tiers');
-            tiers = tData || {};
+            const { data: tData, error: tErr } = await _supabase.rpc('interior_infrastructure_tiers');
+            if (tErr) {
+                lastError = 'Could not load tier specs: ' + tErr.message;
+                tiers = {};
+            } else {
+                tiers = tData || {};
+            }
         }
 
-        return { balance, hasMinister: !!mRow, isMinister: mRow?.party_id === faction.id };
+        return { balance, isMinister: !!mRow && mRow.party_id === faction.id };
     }
 
     async function render() {
-        const { balance, hasMinister, isMinister } = await refreshState();
+        const { balance, isMinister } = await refreshState();
         const balanceColor = balance > 0 ? 'var(--green)' : 'var(--red)';
         const fmtM = (n) => '$' + (Number(n) / 1_000_000).toFixed(Number(n) % 1_000_000 === 0 ? 0 : 1) + 'M';
+        const isActive = bidsContract?.status === 'active';
 
         let bodyHtml = '';
 
         if (bidsContract) {
-            // Existing-contract view — bid window auto-awards via cron.
-            const isActive = bidsContract.status === 'active';
+            // Existing-contract view — bid window auto-awards via cron
+            // using composite score (cost, timeline, reputation).
             bodyHtml += `
                 <div class="pa-modal-step-label">${isActive ? 'Active Infrastructure Contract' : 'Open Infrastructure Contract'}</div>
                 <div class="pa-action-item" style="cursor:default;">
@@ -3278,7 +3284,7 @@ async function openExpandInfrastructureModal(root, faction) {
                         </div>`;
                     }).join('');
                 }
-                bodyHtml += `<div style="margin-top:10px;padding:8px 10px;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.08);">Auto-awarded to the lowest qualified bidder when the bid window closes.</div>`;
+                bodyHtml += `<div style="margin-top:10px;padding:8px 10px;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.08);">Auto-awarded to the best-scoring bid (cost, timeline, reputation) when the bid window closes.</div>`;
             }
         } else {
             // Tier-picking view.
@@ -3331,8 +3337,8 @@ async function openExpandInfrastructureModal(root, faction) {
                     <button class="pa-modal-close" id="expand-infra-x">&times;</button>
                 </div>
                 <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
-                    ${hasMinister && isMinister
-                        ? `Post fee pulls from the Interior Ministry's discretionary budget — <strong style="color:${balanceColor};">${fmtDiscretionaryBalance(balance)}</strong> available. Construction corps bid; the lowest qualified bid auto-wins when the bid window closes. Stat boosts apply on completion.`
+                    ${isMinister
+                        ? `Post fee pulls from the Interior Ministry's discretionary budget — <strong style="color:${balanceColor};">${fmtDiscretionaryBalance(balance)}</strong> available. Construction corps bid; the best-scoring bid (cost, timeline, reputation) auto-wins when the bid window closes. Stat boosts apply on completion.`
                         : '<span style="color:var(--red);">You are no longer the active Interior Minister.</span>'}
                 </div>
                 <div class="pa-modal-body" style="gap:6px;">
