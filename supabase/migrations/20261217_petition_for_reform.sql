@@ -138,15 +138,18 @@ BEGIN
     END IF;
 
     -- ── Petition strength ─────────────────────────────────────
-    -- All three sector rapport values default to 50 (neutral 0-100 ⇒ 5.0
-    -- displayed) when missing, matching the rest of the rapport stack.
-    SELECT COALESCE(popularity, 50) INTO v_pop_up FROM faction_sector_popularity fsp
+    -- Three sector rapport values. faction_sector_popularity.popularity
+    -- is NOT NULL (CHECK 0-100), so the only way these come back NULL is
+    -- if the row doesn't exist for this faction/sector pair — in which
+    -- case plpgsql leaves the target variable at its prior value (NULL).
+    -- We default missing rows to 50 (neutral 5.0 displayed) below.
+    SELECT popularity INTO v_pop_up FROM faction_sector_popularity fsp
         JOIN sectors s ON s.id = fsp.sector_id
         WHERE fsp.faction_id = v_faction.id AND s.sector_key = 'URBAN_PROFESSIONALS';
-    SELECT COALESCE(popularity, 50) INTO v_pop_cp FROM faction_sector_popularity fsp
+    SELECT popularity INTO v_pop_cp FROM faction_sector_popularity fsp
         JOIN sectors s ON s.id = fsp.sector_id
         WHERE fsp.faction_id = v_faction.id AND s.sector_key = 'CULTURAL_PRODUCERS';
-    SELECT COALESCE(popularity, 50) INTO v_pop_rc FROM faction_sector_popularity fsp
+    SELECT popularity INTO v_pop_rc FROM faction_sector_popularity fsp
         JOIN sectors s ON s.id = fsp.sector_id
         WHERE fsp.faction_id = v_faction.id AND s.sector_key = 'RELIGIOUS_CONSERVATIVES';
     v_pop_up := COALESCE(v_pop_up, 50);

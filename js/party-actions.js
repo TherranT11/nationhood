@@ -4492,10 +4492,13 @@ async function triggerPetitionForReform() {
     const faction = _state.faction;
     if (!faction) return;
 
+    const action = AGITATOR_ACTIONS.find(a => a.id === 'petition_for_reform');
+    if (!action) return;
+
     if (!confirm(
         'File a Petition for Reform?\n\n' +
-        'Cost: $0.1 (party funds)\n' +
-        '6-tick cooldown after use.\n\n' +
+        `Cost: ${action.cost} (party funds)\n` +
+        `${action.cooldownTicks}-tick cooldown after use.\n\n` +
         'Outcome is rolled 1d100 + petition strength. ' +
         'Result fires a public event in your nation.'
     )) return;
@@ -4514,7 +4517,7 @@ async function triggerPetitionForReform() {
 
         // Local state refresh: deduct the cost + stamp the cooldown so the
         // action card immediately reflects the new state without a round-trip.
-        faction.party_funds = Math.max(0, (Number(faction.party_funds) || 0) - 100000);
+        faction.party_funds = Math.max(0, (Number(faction.party_funds) || 0) - action.moneyCost);
         faction.last_petition_for_reform_tick = Number(_state?.shard?.current_tick) || 0;
 
         const outcomeLabel = data.outcome === 'ignored'    ? 'Ignored'
@@ -4528,9 +4531,11 @@ async function triggerPetitionForReform() {
         );
 
         // Re-render the agitator panel so the cooldown lock + funds line
-        // visually update.
+        // visually update. renderActionsPanel dispatches by _selectedRole,
+        // which is still 'agitator' at this point; leaderName / partyColor
+        // are ignored on the agitator path so we pass nulls.
         const panel = document.getElementById('pa-actions-panel');
-        if (panel) panel.innerHTML = renderActionsPanel(_state?.faction?.faction_name, '#d44a4a', _state.faction);
+        if (panel) panel.innerHTML = renderActionsPanel(null, null, faction);
     } catch (err) {
         alert('Petition failed: ' + (err?.message || err));
     } finally {
