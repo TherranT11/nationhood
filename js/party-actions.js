@@ -466,7 +466,7 @@ export async function initPartyActions(supabase, state) {
     // here so every render in this module reads live state.
     try {
         const { data: freshFaction } = await _supabase.from('factions')
-            .select('momentum, party_funds, seats, action_points, bloc_id')
+            .select('momentum, party_funds, seats, action_points, bloc_id, last_petition_for_reform_tick')
             .eq('id', faction.id)
             .single();
         if (freshFaction) {
@@ -475,6 +475,7 @@ export async function initPartyActions(supabase, state) {
             faction.seats = freshFaction.seats ?? faction.seats;
             faction.action_points = freshFaction.action_points ?? faction.action_points;
             faction.bloc_id = freshFaction.bloc_id ?? null;
+            faction.last_petition_for_reform_tick = freshFaction.last_petition_for_reform_tick ?? null;
         }
     } catch (err) {
         console.warn('[PartyActions] faction refresh failed, using cached state:', err);
@@ -1220,6 +1221,8 @@ function renderPage(root) {
             openPlatformModal(root);
         } else if (actionId === 'file_lawsuit') {
             openLawsuitModal(root);
+        } else if (actionId === 'petition_for_reform') {
+            triggerPetitionForReform();
         } else if (actionId === 'appoint_pm') {
             openAppointPMModal(root);
         } else if (actionId === 'modernize') {
@@ -4286,6 +4289,21 @@ const AGITATOR_ACTIONS = [
         tags: ['LEGAL', 'OFFENSIVE'],
         locked: false,
     },
+    {
+        // Petition for Reform — monarchy-only. The agitator-panel
+        // gate already enforces opposition + hired-agitator, so the
+        // additional filter applied below is just the monarchy check.
+        id: 'petition_for_reform',
+        name: 'Petition for Reform',
+        desc: 'Organize a popular petition for political reform. Roll 1d100 + petition strength (education, professional/cultural/religious rapport, inequality, low SoL, crown authority). 0-40 ignored; 41-69 grants minor reform; 70+ forces major reform.',
+        cost: '$0.1',
+        costColor: '#c8a832',
+        moneyCost: 100000,
+        tags: ['POLITICAL', 'MONARCHY'],
+        locked: false,
+        monarchyOnly: true,
+        cooldownTicks: 6,
+    },
 ];
 
 function renderAgitatorActionsPanel(role) {
@@ -4296,12 +4314,35 @@ function renderAgitatorActionsPanel(role) {
         ? '<span style="color:#5cc55c;margin-left:6px;">\u2713 IN OPPOSITION</span>'
         : '<span style="color:#c84;margin-left:6px;">\u26A0 IN GOVERNMENT (actions limited)</span>';
 
-    const actionsHtml = AGITATOR_ACTIONS.map(action => {
+    // Monarchy-only actions (e.g. Petition for Reform) drop out of the
+    // list entirely for non-monarchy nations. Cooldown-locked actions
+    // stay visible but with a lock state + a reason line.
+    const _isMonarchyNation = isAbsoluteMonarchy(_state?.nation);
+    const _currentTick = Number(_state?.shard?.current_tick) || 0;
+    const _factionForCooldown = _state?.faction;
+    const _eligibleActions = AGITATOR_ACTIONS.filter(a => !a.monarchyOnly || _isMonarchyNation);
+
+    const actionsHtml = _eligibleActions.map(action => {
+        let lockReason = null;
+        if (action.id === 'petition_for_reform' && action.cooldownTicks) {
+            const last = Number(_factionForCooldown?.last_petition_for_reform_tick);
+            if (Number.isFinite(last) && last > 0) {
+                const readyAt = last + action.cooldownTicks;
+                if (_currentTick < readyAt) {
+                    lockReason = `Cooldown — ready at tick ${readyAt}.`;
+                }
+            }
+            const funds = Number(_factionForCooldown?.party_funds) || 0;
+            if (!lockReason && funds < action.moneyCost) {
+                lockReason = 'Insufficient party funds.';
+            }
+        }
+        const isLocked = action.locked || !!lockReason;
         const tagsHtml = action.tags.map(t =>
             `<span class="pa-action-tag" style="color:${TAG_COLORS[t] || 'var(--text-dim)'};">${t}</span>`
         ).join('');
         return `
-            <div class="pa-action-item ${action.locked ? 'locked' : ''}" data-action-id="${action.id}">
+            <div class="pa-action-item ${isLocked ? 'locked' : ''}" data-action-id="${action.id}">
                 <div class="pa-action-top">
                     <div style="display:flex;align-items:center;gap:8px;">
                         <span class="pa-action-name">${esc(action.name)}</span>
@@ -4312,7 +4353,7 @@ function renderAgitatorActionsPanel(role) {
                     </div>
                 </div>
                 <div class="pa-action-desc">${esc(action.desc)}</div>
-                ${action.locked && action.lockReason ? `<div style="margin-top:4px;font-family:var(--font-mono);font-size:7px;color:var(--orange);display:flex;align-items:center;gap:4px;"><span>\u2298</span><span>${esc(action.lockReason)}</span></div>` : ''}
+                ${(lockReason || (action.locked && action.lockReason)) ? `<div style="margin-top:4px;font-family:var(--font-mono);font-size:7px;color:var(--orange);display:flex;align-items:center;gap:4px;"><span>\u2298</span><span>${esc(lockReason || action.lockReason)}</span></div>` : ''}
             </div>
         `;
     }).join('');
@@ -4437,6 +4478,69 @@ function renderLawsuitsSection() {
             ${lawsuitsHtml}
         </div>
     `;
+}
+
+// ════════════════════════ PETITION FOR REFORM ════════════════════════
+// Monarchy-only Agitator action. RPC does all the work (auth, eligibility,
+// dice roll, stat writes, event_log). This wrapper just confirms, calls,
+// and surfaces the result to the player.
+let _petitionInflight = false;
+
+async function triggerPetitionForReform() {
+    if (_petitionInflight) return;
+
+    const faction = _state.faction;
+    if (!faction) return;
+
+    const action = AGITATOR_ACTIONS.find(a => a.id === 'petition_for_reform');
+    if (!action) return;
+
+    if (!confirm(
+        'File a Petition for Reform?\n\n' +
+        `Cost: ${action.cost} (party funds)\n` +
+        `${action.cooldownTicks}-tick cooldown after use.\n\n` +
+        'Outcome is rolled 1d100 + petition strength. ' +
+        'Result fires a public event in your nation.'
+    )) return;
+
+    _petitionInflight = true;
+    try {
+        const { data, error } = await _supabase.rpc('petition_for_reform');
+        if (error) {
+            alert('Petition failed: ' + error.message);
+            return;
+        }
+        if (!data?.success) {
+            alert('Could not file petition: ' + (data?.reason || 'unknown error'));
+            return;
+        }
+
+        // Local state refresh: deduct the cost + stamp the cooldown so the
+        // action card immediately reflects the new state without a round-trip.
+        faction.party_funds = Math.max(0, (Number(faction.party_funds) || 0) - action.moneyCost);
+        faction.last_petition_for_reform_tick = Number(_state?.shard?.current_tick) || 0;
+
+        const outcomeLabel = data.outcome === 'ignored'    ? 'Ignored'
+                           : data.outcome === 'accepted'   ? 'Accepted (minor reform)'
+                           : data.outcome === 'major'      ? 'Signed (major reform)'
+                           : data.outcome;
+        alert(
+            'Petition for Reform — ' + outcomeLabel + '\n\n' +
+            'd100: ' + data.d100 + ' + strength ' + data.strength + ' = ' + data.total + '\n\n' +
+            data.description
+        );
+
+        // Re-render the agitator panel so the cooldown lock + funds line
+        // visually update. renderActionsPanel dispatches by _selectedRole,
+        // which is still 'agitator' at this point; leaderName / partyColor
+        // are ignored on the agitator path so we pass nulls.
+        const panel = document.getElementById('pa-actions-panel');
+        if (panel) panel.innerHTML = renderActionsPanel(null, null, faction);
+    } catch (err) {
+        alert('Petition failed: ' + (err?.message || err));
+    } finally {
+        _petitionInflight = false;
+    }
 }
 
 // ════════════════════════ HIRE AGITATOR MODAL ════════════════════════
