@@ -477,6 +477,9 @@ function renderSportsTab() {
             loadAndRenderVolaKnockout(cupForPlacement.cupNum).catch(err =>
                 console.warn('[Sports] knockout render failed:', err?.message || err)
             );
+            loadAndRenderVolaSchedule(cupForPlacement.cupNum, tick).catch(err =>
+                console.warn('[Sports] schedule render failed:', err?.message || err)
+            );
         }
     }
 
@@ -662,16 +665,16 @@ function renderVolaCup(currentTick) {
                 </div>
             </div>
             <div class="vola-cup-header-right">
-                <div class="vola-cup-status">${statusText}</div>
+                <div class="vola-cup-status" data-cup-sched="status">${statusText}</div>
                 <div class="vola-cup-schedule">
-                    <div>${tickToDate(cup.qf)} &mdash; Quarterfinals begin</div>
-                    <div>${tickToDate(cup.sf)} &mdash; Semifinals</div>
-                    <div>${tickToDate(cup.f)} &mdash; Final</div>
+                    <div data-cup-sched="qf">${tickToDate(cup.qf)} &mdash; Quarterfinals begin</div>
+                    <div data-cup-sched="sf">${tickToDate(cup.sf)} &mdash; Semifinals</div>
+                    <div data-cup-sched="f">${tickToDate(cup.f)} &mdash; Final</div>
                 </div>
             </div>
         </div>
 
-        <div class="vola-cup-tabs">
+        <div class="vola-cup-tabs" data-cup-sched="tabs">
             ${tabHtml(0, 'PLACEMENT MATCHES')}
             ${tabHtml(1, 'GROUP STAGE')}
             ${tabHtml(2, 'KNOCKOUT ROUND')}
@@ -692,19 +695,19 @@ function renderVolaCup(currentTick) {
         </div>
         <div class="vola-cup-bracket" data-cup-num="${cup.cupNum}">
             <div class="vola-cup-bracket-col">
-                <div class="vola-cup-bracket-col-label">QUARTERFINALS &middot; ${tickToDate(cup.qf)}</div>
+                <div class="vola-cup-bracket-col-label" data-cup-sched="bracket-qf">QUARTERFINALS &middot; ${tickToDate(cup.qf)}</div>
                 ${matchSlot('QF', 1)}
                 ${matchSlot('QF', 2)}
                 ${matchSlot('QF', 3)}
                 ${matchSlot('QF', 4)}
             </div>
             <div class="vola-cup-bracket-col">
-                <div class="vola-cup-bracket-col-label">SEMIFINALS &middot; ${tickToDate(cup.sf)}</div>
+                <div class="vola-cup-bracket-col-label" data-cup-sched="bracket-sf">SEMIFINALS &middot; ${tickToDate(cup.sf)}</div>
                 ${matchSlot('SF', 1, 'Winner QF1', 'Winner QF2')}
                 ${matchSlot('SF', 2, 'Winner QF3', 'Winner QF4')}
             </div>
             <div class="vola-cup-bracket-col">
-                <div class="vola-cup-bracket-col-label">FINAL &middot; ${tickToDate(cup.f)}</div>
+                <div class="vola-cup-bracket-col-label" data-cup-sched="bracket-f">FINAL &middot; ${tickToDate(cup.f)}</div>
                 ${matchSlot('F', 1, 'Winner SF1', 'Winner SF2')}
                 <div class="vola-cup-champion">
                     <div class="vola-cup-champion-icon">&#x1F3C6;</div>
@@ -776,6 +779,82 @@ async function loadAndRenderVolaHost(cupNum) {
     }
     const name = data?.nations?.name;
     if (name) hostEl.textContent = name.toUpperCase();
+}
+
+// SSoT: actual cup_start = MIN(scheduled_tick) on vola_cup_group_matches
+// for this cup. The synchronous renderVolaCup uses the theoretical
+// formula (cup_start = 84 + 24×(n-1)) as a placeholder; if the placement
+// matches caught up late, the draw inserts ticks that diverge from the
+// formula and the schedule header / bracket labels / status / tabs
+// rendered above are stale.
+//
+// This hydrator queries the actual ticks and updates the [data-cup-sched]
+// nodes in place. If the DB rows haven't landed yet (pre-draw window),
+// the function no-ops and the placeholder stays.
+async function loadAndRenderVolaSchedule(cupNum, currentTick) {
+    const { data: groupMatches, error } = await _supabase
+        .from('vola_cup_group_matches')
+        .select('scheduled_tick')
+        .eq('cup_number', cupNum)
+        .eq('round_number', 1)
+        .order('scheduled_tick', { ascending: true })
+        .limit(1);
+    if (error) {
+        console.warn('[Sports] schedule fetch failed:', error.message || error);
+        return;
+    }
+    if (!groupMatches || groupMatches.length === 0) return;
+    const actualCupStart = Number(groupMatches[0].scheduled_tick);
+    if (!Number.isFinite(actualCupStart)) return;
+
+    const qf = actualCupStart + 3, sf = actualCupStart + 4, f = actualCupStart + 5;
+
+    const setText = (sel, txt) => {
+        const el = document.querySelector(`[data-cup-sched="${sel}"]`);
+        if (el) el.textContent = txt;
+    };
+    setText('qf',          `${tickToDate(qf)} — Quarterfinals begin`);
+    setText('sf',          `${tickToDate(sf)} — Semifinals`);
+    setText('f',           `${tickToDate(f)} — Final`);
+    setText('bracket-qf',  `QUARTERFINALS · ${tickToDate(qf)}`);
+    setText('bracket-sf',  `SEMIFINALS · ${tickToDate(sf)}`);
+    setText('bracket-f',   `FINAL · ${tickToDate(f)}`);
+
+    // Status + tabs. Stage = currentTick - actualCupStart, mirrored to the
+    // status-text and tab-state ladder in renderVolaCup but resolved from
+    // actual scheduled ticks. Anything < 0 reverts to UPCOMING regardless
+    // of what the theoretical formula said.
+    const tick = Number(currentTick) || 0;
+    const stage = tick - actualCupStart;
+    const isActive = stage >= 0 && stage <= 5;
+    let statusText;
+    if (!isActive && stage < 0)  statusText = 'UPCOMING';
+    else if (stage <= 2)         statusText = `GROUP STAGE — ROUND ${stage + 1} IN PROGRESS`;
+    else if (stage === 3)        statusText = 'QUARTERFINALS IN PROGRESS';
+    else if (stage === 4)        statusText = 'SEMIFINALS IN PROGRESS';
+    else if (stage === 5)        statusText = 'FINAL IN PROGRESS';
+    else                         statusText = 'COMPLETE';
+    setText('status', statusText);
+
+    const tabsEl = document.querySelector('[data-cup-sched="tabs"]');
+    if (tabsEl) {
+        const tabState = (idx) => {
+            if (!isActive && stage < 0) return 'pending';
+            if (idx === 0) return 'done';
+            if (idx === 1) return stage <= 2 ? 'active' : 'done';
+            if (idx === 2) return stage <= 2 ? 'pending' : (stage <= 4 ? 'active' : 'done');
+            if (idx === 3) return stage === 5 ? 'active' : 'pending';
+            return 'pending';
+        };
+        const tabIcon = (s) => s === 'done' ? '✓' : s === 'active' ? '×' : '○';
+        const tabs = tabsEl.querySelectorAll('.vola-cup-tab');
+        tabs.forEach((el, idx) => {
+            const s = tabState(idx);
+            el.className = `vola-cup-tab vola-cup-tab--${s}`;
+            const iconEl = el.querySelector('.vola-cup-tab-icon');
+            if (iconEl) iconEl.textContent = tabIcon(s);
+        });
+    }
 }
 
 // Fetch placement matches for the active/next cup and render them into
