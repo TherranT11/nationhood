@@ -3998,9 +3998,13 @@ let _propConverting = false;
 
 function showConvertModal(propId, propName, purchasePrice) {
     const subsector = (faction?.corp_subsector || '').toLowerCase();
+    // Insurance subsector retired — its conversion targets (claims_office,
+    // insurance_office) are no longer offered because insurance is no
+    // longer a gameplay mechanic. Existing properties of those types
+    // still render in Global Assets via the generic catch-all on
+    // expansion.html; this modal just won't offer to CREATE new ones.
     const options = subsector === 'banking' ? [['branch_office', 'Branch Office']]
         : subsector === 'investment' ? [['trading_floor', 'Trading Floor']]
-        : subsector === 'insurance' ? [['claims_office', 'Claims Office'], ['insurance_office', 'Insurance Office']]
         : [];
     if (options.length === 0) return;
     _convertTargetType = options[0][0];

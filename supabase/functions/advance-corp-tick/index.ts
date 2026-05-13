@@ -1544,9 +1544,8 @@ async function processCorpContracts(supabase, nationId, currentTick) {
 //      "Industrial" / "Megaproject" (display form). The event catalog's
 //      appliesTo uses 'civil_engineering' / 'industrial' / 'mega_project'
 //      (snake_case keys). projectTypeToSectorKey() bridges them.
-//    - resolveExpiredCorpContractEvents has no insurance integration
-//      (dead finance_active_loans pipeline). Insurance will be re-added
-//      when the new bank_loans pipeline grows insurance products.
+//    - resolveExpiredCorpContractEvents has no insurance integration —
+//      insurance was retired as a gameplay mechanic (2026-05-13).
 //
 //  Within this function, the "build response array + insert event row"
 //  pattern repeats across three branches (main template / permit-compliance
@@ -1950,9 +1949,9 @@ async function resolveExpiredCorpContractEvents(supabase, nationId, currentTick)
         // column to apply it to. If quality lands as a contract column
         // later, re-add the read+write here.
 
-        // Apply cash cost directly to the corp. No insurance integration in
-        // this phase — when the new bank_loans pipeline grows insurance,
-        // this is where the lookup goes.
+        // Apply cash cost directly to the corp. Insurance was retired
+        // as a gameplay mechanic (2026-05-13) so corps eat the full
+        // incident cost — no premium discount lookup.
         // Known race: read-modify-write on corp_cash_reserves; concurrent
         // debits between SELECT and UPDATE would be lost. Same pattern as
         // legacy resolveExpiredEvents. Low-frequency path; safe to live
@@ -3653,7 +3652,9 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             .eq('status', 'pending');
     }
 
-    // 2. Process active loan/bond/insurance payments (1 tick = 1 month)
+    // 2. Process active loan/bond payments (1 tick = 1 month).
+    //    Insurance rows (request_type='insurance') are inert — see the
+    //    early-continue below.
     const { data: activeLoans } = await supabase
         .from('finance_active_loans')
         .select('*, finance_loan_requests!inner(request_type, issuer_nation_id)')
@@ -3669,74 +3670,13 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
 
         const requestType = loan.finance_loan_requests?.request_type || 'loan';
 
-        // Insurance: collect premium from policyholder, credit to insurer
-        if (requestType === 'insurance') {
-            // Term expiry: policy ends at term_months regardless of project status.
-            const termMonths = Number(loan.term_months) || 0;
-            if (termMonths > 0 && Number(loan.payments_made || 0) >= termMonths) {
-                const { error: expErr } = await supabase.from('finance_active_loans').update({
-                    status: 'repaid',
-                    completed_tick: currentTick,
-                }).eq('id', loan.id);
-                if (expErr) console.warn('[Insurance] Term expiry update failed:', expErr.message);
-                continue;
-            }
-
-            const premium = Number(loan.monthly_payment) || 0;
-            if (premium <= 0) continue;
-
-            // Deduct premium from policyholder (borrower) only when full premium is affordable.
-            const { data: holder } = await supabase.from('factions')
-                .select('corp_cash_reserves').eq('id', loan.borrower_faction_id).single();
-            const holderCash = Number(holder?.corp_cash_reserves || 0);
-
-            if (holderCash >= premium) {
-                var { error: holderErr } = await supabase.from('factions').update({
-                    corp_cash_reserves: holderCash - premium,
-                }).eq('id', loan.borrower_faction_id);
-                if (holderErr) {
-                    console.warn('[Insurance] Premium deduction failed:', holderErr.message);
-                } else {
-                    logCashEvent(loan.borrower_faction_id, 'event_cost', 'Insurance premium', -premium);
-                }
-
-                // Credit premium to insurer (lender)
-                const { data: insurer } = await supabase.from('factions')
-                    .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
-                if (insurer) {
-                    var { error: insurerErr } = await supabase.from('factions').update({
-                        corp_cash_reserves: Number(insurer.corp_cash_reserves || 0) + premium,
-                    }).eq('id', loan.lender_faction_id);
-                    if (insurerErr) {
-                        console.warn('[Insurance] Premium credit failed:', insurerErr.message);
-                    } else {
-                        logCashEvent(loan.lender_faction_id, 'revenue_finance', 'Insurance premium received', premium);
-                    }
-                }
-
-                // Update payment tracking (once per tick).
-                var { error: trackErr } = await supabase.from('finance_active_loans').update({
-                    payments_made: (loan.payments_made || 0) + 1,
-                    total_paid: (Number(loan.total_paid) || 0) + premium,
-                    total_interest_paid: (Number(loan.total_interest_paid) || 0) + premium,
-                    payments_missed: 0,
-                    status: 'current',
-                    last_payment_tick: currentTick,
-                }).eq('id', loan.id);
-                if (trackErr) console.warn('[Insurance] Payment tracking update failed:', trackErr.message);
-
-                results.payments++;
-            } else {
-                const newMissed = (loan.payments_missed || 0) + 1;
-                const newStatus = newMissed >= 3 ? 'delinquent' : 'late';
-                const { error: missErr } = await supabase.from('finance_active_loans').update({
-                    payments_missed: newMissed,
-                    status: newStatus,
-                }).eq('id', loan.id);
-                if (missErr) console.warn('[Insurance] Missed premium update failed:', missErr.message);
-            }
-            continue;
-        }
+        // Insurance (request_type='insurance') was a gameplay mechanic
+        // and is no longer ticked. Any legacy finance_active_loans row
+        // with this type stays inert. Skip explicitly so we don't fall
+        // through to the default loan-processing path at the bottom of
+        // this loop, which would emit 'Loan interest paid' events for
+        // what's actually an old insurance premium row.
+        if (requestType === 'insurance') continue;
 
         // Equity dividend processing for finance_active_loans rows with
         // request_type='equity' was removed in 20261008. The new equity
@@ -3948,7 +3888,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     // wrong project / silent failure). Bump the date suffix on each
     // intentional redeploy so we can distinguish stale invocations
     // from new ones in the function logs.
-    console.log('[advance-corp-tick] BUILD_MARKER 2026-05-13-b (strip-health-insurance)');
+    console.log('[advance-corp-tick] BUILD_MARKER 2026-05-13-c (strip-insurance-full)');
 
     // 1+2+3. Read + idempotency + time-gating + atomic claim, all in
     //        one RPC. SECURITY DEFINER pl/pgsql bypasses PostgREST's
@@ -5079,7 +5019,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
                                         faction_id:         corp.id,
                                         event_name:         `${corp.faction_name || 'A corporation'}: ${inc.type.replace(/_/g, ' ')} on ${v.vessel_name}`,
                                         category:           'corporate',
-                                        description_chosen: inc.description + ' If the vessel is insured, the owning corporation can file a claim from their Shipping Operations view.',
+                                        description_chosen: inc.description + '',
                                         fired_at_tick:      currentTick,
                                     });
                                 } catch (evErr) {
@@ -5106,7 +5046,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
 
                                 // Release the shipping claim, zero out the revenue going forward,
                                 // and free the fleet slot so the corp doesn't keep earning from a
-                                // lost ship. Insurance (below) is the only remaining cashflow.
+                                // lost ship.
                                 if (v.active_claim_id) {
                                     const { error: relErr } = await supabase.from('shipping_claims').update({
                                         status: 'released',
@@ -5129,10 +5069,9 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
                                     await supabase.from('factions').update({ shipping_fleet_deployed: fleetNow }).eq('id', corp.id);
                                 }
 
-                                // Record a claim-eligible incident and fire a news-ticker event.
-                                // The corp decides from their Shipping Operations view whether to
-                                // FILE CLAIM (spawns an insurance_claims row) or DISMISS the
-                                // incident. No auto-file.
+                                // Record the incident and fire a news-ticker event.
+                                // Insurance was retired as a gameplay mechanic; incidents
+                                // are now informational only — the corp eats the loss.
                                 const strandNationId = resolveIncidentNationId(v, corp.nation_id, claimRouteMap);
                                 const strandDescription = `Vessel ${v.vessel_name} stranded at sea — fuel depleted mid-transit.`;
                                 try {
@@ -5155,7 +5094,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
                                         faction_id:         corp.id,
                                         event_name:         `${corp.faction_name || 'A corporation'} vessel stranded at sea`,
                                         category:           'corporate',
-                                        description_chosen: strandDescription + ' If the vessel is insured, the owning corporation can file a claim from their Shipping Operations view.',
+                                        description_chosen: strandDescription + '',
                                         fired_at_tick:      currentTick,
                                     });
                                 } catch (evErr) {
@@ -5213,7 +5152,11 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
 
             // ── Specialty Building Effects ────────────────────────────────
             try {
-                const SPECIALTY_TYPES = ['branch_office', 'trading_floor', 'claims_office'];
+                // claims_office removed alongside the insurance strip —
+                // it gave reputation bonus to Insurance-subsector corps.
+                // Legacy rows can stay in corp_properties; they just
+                // don't earn the bonus anymore.
+                const SPECIALTY_TYPES = ['branch_office', 'trading_floor'];
                 const { data: specialtyProps } = await supabase
                     .from('corp_properties')
                     .select('faction_id, type, capacity')
