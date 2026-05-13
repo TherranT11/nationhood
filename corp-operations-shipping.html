@@ -1581,6 +1581,7 @@ body.corp-operations-shipping.light-mode {
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, hfFmtBig } from './js/utils.js';
 import { mountLawsuitPressingIssues } from './js/lawsuit-pressing-issues.js';
+import { SECTOR_OPS_PAGE } from './js/corp-topbar.js';
 
 // ── HERO STATS (Section I) ──
 // Score-band lookup powers per-card blurbs and impact metrics.
@@ -3126,12 +3127,9 @@ async function submitShippingAction(card, opt) {
 }
 
 // ── INIT ──
-// Keep this map in sync with corp-topbar.js's canonical SECTOR_OPS_PAGE.
-const SECTOR_OPS_PAGE = {
-    Construction: 'corp-operations.html',
-    Finance:      'corp-operations-finance.html',
-    Airline:      'airline-operations.html',
-};
+// SECTOR_OPS_PAGE imported from js/corp-topbar.js — single source of truth.
+// Used to live as a local duplicate; drift here silently bounced Aviation
+// Manufacturing corps to the dashboard when the key was missing.
 
 async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
