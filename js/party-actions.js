@@ -5757,12 +5757,12 @@ function renderFundraiseDetail(body, sectorStates, root) {
     const hostBlocked = !host;
     const oppMissing = !opp;
 
-    // Projection only — the SQL is canonical (sql/migrations/20260805).
+    // Projection only — the SQL is canonical (sql/migrations/20261215).
     // If the yield equation changes there, mirror it here too.
     // Corporate Gala is positioning-only (corps already donate via lobbyist actions).
     const yieldsCash = ev.event_key !== 'corporate_gala';
     const projectedYield = (yieldsCash && host)
-        ? 2500 * (host.popularity_tenths || 0) * Math.max(1, host.weight || 1)
+        ? 1250 * (host.popularity_tenths || 0) * Math.max(1, host.weight || 1)
         : 0;
 
     detail.innerHTML = `
