@@ -619,7 +619,7 @@ async function getDiploBadgeRoles(faction, nation) {
     return roles;
 }
 
-// ===== DIPLOMACY BADGE (unread messages + pending proposals, single red badge) =====
+// ===== DIPLOMACY BADGE (open trade negotiations + pending shipping apps) =====
 
 async function updateDiplomacyBadge(faction, nation, roles) {
     const badge = document.getElementById('diplomacy-badge');
@@ -635,39 +635,7 @@ async function updateDiplomacyBadge(faction, nation, roles) {
 
         let count = 0;
 
-        // 1. Unread diplomatic messages (FM only)
-        if (roles.isFM) {
-            const { data: msgs } = await _supabase
-                .from('diplomatic_messages')
-                .select('id, read_by_factions')
-                .eq('to_nation_id', nation.id)
-                .neq('from_nation_id', nation.id);
-
-            for (const msg of (msgs || [])) {
-                const readBy = msg.read_by_factions || [];
-                if (!readBy.includes(faction.id)) count++;
-            }
-        }
-
-        // 2. Incoming diplomatic proposals needing attention (FM only)
-        if (roles.isFM) {
-            const { data: proposals } = await _supabase
-                .from('diplomatic_proposals')
-                .select('status, proposal_data')
-                .in('status', ['proposed', 'revised'])
-                .eq('target_nation_id', nation.id);
-
-            for (const p of (proposals || [])) {
-                if (p.status === 'proposed') {
-                    count++;
-                } else if (p.status === 'revised') {
-                    const pd = p.proposal_data || {};
-                    if (pd.revised_by_nation_id !== nation.id) count++;
-                }
-            }
-        }
-
-        // 3. Open trade negotiations (FM or MoT)
+        // Open trade negotiations (FM or MoT)
         const { data: tradeNegs } = await _supabase
             .from('trade_negotiations')
             .select('nation_a_id, nation_b_id, initiated_by_nation, status')
@@ -677,7 +645,7 @@ async function updateDiplomacyBadge(faction, nation, roles) {
 
         count += (tradeNegs || []).length;
 
-        // 4. Pending shipping applications — Minister of Trade only.
+        // Pending shipping applications — Minister of Trade only.
         // Amber-pulse the whole badge when these contribute; flags the MoT
         // that a corporation is waiting on their ministerial decision.
         let shippingAppsCount = 0;

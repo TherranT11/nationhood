@@ -1,7 +1,6 @@
 // scripts/test-resolve-ratifications.mjs
 //
-// Phase R6: resolver-level tests for the four ratification variants
-//   - resolveDiplomaticRatificationBill       (proposal-tier, bilateral/unilateral)
+// Phase R6: resolver-level tests for the three ratification variants
 //   - resolveTradeRatificationBill            (trade-negotiation, bilateral)
 //   - resolveRetaliatoryTariffRatificationBill (unilateral sanctions)
 //   - resolveEmbargoRatificationBill          (unilateral sanctions)
@@ -10,7 +9,6 @@
 
 import assert from 'node:assert/strict';
 import {
-    resolveDiplomaticRatificationBill,
     resolveTradeRatificationBill,
     resolveRetaliatoryTariffRatificationBill,
     resolveEmbargoRatificationBill,
@@ -27,18 +25,6 @@ const BASE_CTX = {
     votesAbstain: 5,
 };
 
-function diplomaticBill(overrides = {}) {
-    return {
-        id: 'bill-dip',
-        nation_id: 'nation-1',
-        bill_name: 'Ratify Diplomatic Proposal',
-        bill_type: 'ratification',
-        diplomatic_proposal_id: 'dip-1',
-        bill_support: [],
-        early_resolution_status: null,
-        ...overrides,
-    };
-}
 function tradeNegBill(overrides = {}) {
     return {
         id: 'bill-tn',
@@ -109,105 +95,6 @@ function suite(name, fn) {
         console.log(`    ${ran} test${ran !== 1 ? 's' : ''}`);
     });
 }
-
-// ─── resolveDiplomaticRatificationBill ─────────────────────────────────────
-await suite('resolveDiplomaticRatificationBill', async () => {
-    await test('unilateral passed: activates proposal + applies relation bump', async () => {
-        const supabase = createSupabaseMock({
-            'diplomatic_proposals.select': {
-                data: {
-                    id: 'dip-1',
-                    proposal_tier: 1, // unilateral (not tier 3)
-                    proposal_type: 'non_aggression',
-                    proposing_nation_id: 'nation-1',
-                    target_nation_id: 'nation-2',
-                    proposal_data: { articles: [{ relations: 10 }] },
-                },
-                error: null,
-            },
-            'diplomatic_relations.select': { data: { id: 'rel-1', relation_score: 50, active_treaties: [] }, error: null },
-        });
-        const entry = await resolveDiplomaticRatificationBill(supabase, diplomaticBill(), { ...BASE_CTX });
-
-        assert.equal(entry.result, 'passed');
-        assert.equal(entry.type, 'ratification');
-
-        // proposal activated
-        const dpUpds = callsFor(supabase, 'diplomatic_proposals', 'update');
-        assert.ok(dpUpds.some(c => c.chain[0].args[0].status === 'active'),
-            'expected proposal activated');
-
-        // relations updated with +10 bonus (50 → 60)
-        const relUpds = callsFor(supabase, 'diplomatic_relations', 'update');
-        assert.ok(relUpds.some(c => c.chain[0].args[0].relation_score === 60),
-            'expected diplomatic_relations relation_score=60');
-    });
-
-    await test('bilateral passed, other side still pending: marks own side passed + waits', async () => {
-        const supabase = createSupabaseMock({
-            'diplomatic_proposals.select': {
-                data: {
-                    id: 'dip-1',
-                    proposal_tier: 3,
-                    proposing_bill_id: 'bill-dip',  // THIS bill is the proposer
-                    target_bill_id: 'other-bill',
-                    proposal_data: { pipeline: {}, articles: [] },
-                },
-                error: null,
-            },
-            'bills.select': { data: { status: 'floor' }, error: null }, // other side not yet passed
-        });
-        const entry = await resolveDiplomaticRatificationBill(supabase, diplomaticBill(), { ...BASE_CTX });
-
-        assert.equal(entry.result, 'passed');
-
-        // proposal_data.pipeline updated with proposer_result=passed, but status NOT set to 'active'
-        const dpUpds = callsFor(supabase, 'diplomatic_proposals', 'update');
-        assert.ok(!dpUpds.some(c => c.chain[0].args[0].status === 'active'),
-            'proposal should NOT be activated yet — only one side ratified');
-        assert.ok(dpUpds.some(c => c.chain[0].args[0].proposal_data?.pipeline?.proposer_result === 'passed'),
-            'expected pipeline.proposer_result=passed');
-    });
-
-    await test('unilateral failed: marks proposal ratification_failed', async () => {
-        const supabase = createSupabaseMock({
-            'diplomatic_proposals.select': {
-                data: { proposal_tier: 1, proposing_bill_id: null, target_bill_id: null },
-                error: null,
-            },
-        });
-        const entry = await resolveDiplomaticRatificationBill(supabase, diplomaticBill(), { ...BASE_CTX, passed: false });
-
-        assert.equal(entry.result, 'failed');
-        const dpUpds = callsFor(supabase, 'diplomatic_proposals', 'update');
-        assert.ok(dpUpds.some(c => c.chain[0].args[0].status === 'ratification_failed'),
-            'expected proposal marked ratification_failed');
-    });
-
-    await test('bilateral failed: cancels the other side\'s open ratification bill', async () => {
-        const supabase = createSupabaseMock({
-            'diplomatic_proposals.select': {
-                data: {
-                    proposal_tier: 3,
-                    proposing_bill_id: 'bill-dip',
-                    target_bill_id: 'other-bill',
-                    proposal_data: { pipeline: {}, name: 'Initiative X' },
-                    proposing_nation_id: 'nation-1',
-                    target_nation_id: 'nation-2',
-                },
-                error: null,
-            },
-            'bills.select': { data: { status: 'floor', preamble: 'Ratify the initiative.' }, error: null },
-        });
-        const entry = await resolveDiplomaticRatificationBill(supabase, diplomaticBill(), { ...BASE_CTX, passed: false });
-
-        assert.equal(entry.result, 'failed');
-        // other bill cancelled
-        const billUpds = callsFor(supabase, 'bills', 'update');
-        assert.ok(billUpds.some(c => c.chain[0].args[0].status === 'failed' && (c.chain[0].args[0].preamble || '').includes('Automatically cancelled')),
-            'expected other bill cancelled with explanatory preamble');
-    });
-});
 
 // ─── resolveTradeRatificationBill ───────────────────────────────────────────
 await suite('resolveTradeRatificationBill', async () => {

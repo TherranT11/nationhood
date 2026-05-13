@@ -16,7 +16,6 @@ import {
     resolveNoConfidenceBill,
     resolveImpeachmentMotionBill,
     resolveImpeachmentConvictionBill,
-    resolveDiplomaticRatificationBill,
     resolveTradeRatificationBill,
     resolveRetaliatoryTariffRatificationBill,
     resolveEmbargoRatificationBill,
@@ -95,13 +94,7 @@ suite('sub-keyed dispatch — bill_type plus secondary field', () => {
 });
 
 // ─── Ratification variants (four sub-paths on one bill_type) ────────────────
-suite('ratification variants — bill_type=ratification picks from four', () => {
-    test('diplomatic_proposal_id → resolveDiplomaticRatificationBill', () => {
-        assert.equal(
-            selectBillResolver({ bill_type: 'ratification', diplomatic_proposal_id: 'dip-1' }),
-            resolveDiplomaticRatificationBill
-        );
-    });
+suite('ratification variants — bill_type=ratification picks from three', () => {
     test('trade_negotiation_id → resolveTradeRatificationBill', () => {
         assert.equal(
             selectBillResolver({ bill_type: 'ratification', trade_negotiation_id: 'tr-1' }),
@@ -130,17 +123,6 @@ suite('ratification variants — bill_type=ratification picks from four', () => 
         assert.equal(
             selectBillResolver({ bill_type: 'ratification' }),
             resolveOrdinaryBill
-        );
-    });
-    test('diplomatic_proposal_id wins over trade_negotiation_id (chain precedence)', () => {
-        // Characterization: the if/else-if chain checked diplomatic first.
-        assert.equal(
-            selectBillResolver({
-                bill_type: 'ratification',
-                diplomatic_proposal_id: 'dip-1',
-                trade_negotiation_id: 'tr-1',
-            }),
-            resolveDiplomaticRatificationBill
         );
     });
 });
@@ -172,7 +154,6 @@ suite('partition invariant — every resolver is reachable, no duplicates', () =
             [{ bill_type: 'veto_override', original_bill_id: 'x' },               resolveVetoOverrideBill],
             [{ bill_type: 'impeachment_motion', impeachment_id: 'x' },            resolveImpeachmentMotionBill],
             [{ bill_type: 'impeachment_conviction', impeachment_id: 'x' },        resolveImpeachmentConvictionBill],
-            [{ bill_type: 'ratification', diplomatic_proposal_id: 'x' },          resolveDiplomaticRatificationBill],
             [{ bill_type: 'ratification', trade_negotiation_id: 'x' },            resolveTradeRatificationBill],
             [{ bill_type: 'ratification', trade_agreement_data: { type: 'retaliatory_tariff' } }, resolveRetaliatoryTariffRatificationBill],
             [{ bill_type: 'ratification', trade_agreement_data: { type: 'impose_embargo' } },     resolveEmbargoRatificationBill],
