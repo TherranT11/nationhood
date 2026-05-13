@@ -1275,8 +1275,14 @@ function renderBuildTable() {
 }
 
 // Aviation Manufacturing assembly plants — shared shape. Picker
-// targets nations where the corp already has a Regional HQ presence
-// (no home, no per-nation limit). Cost scales on cost_of_living.
+// targets nations where the corp has presence — either its home
+// (National HQ) or any nation with a Regional HQ. No per-nation
+// limit. Cost scales on cost_of_living.
+function _assemblyPlantPresenceNationIds() {
+    const ids = new Set(_ownedRegionalHqs.map(p => p.nation_id));
+    if (faction?.nation_id) ids.add(faction.nation_id);
+    return ids;
+}
 //
 // kind:        'light_assembly' | 'engine_assembly'
 // rootId:      DOM id of the host .ex-nation-table div
@@ -1287,7 +1293,7 @@ function renderAssemblyTable(kind, rootId, costFn, baseCostM, dataAction) {
     const root = document.getElementById(rootId);
     if (!root) return;
 
-    const presenceNationIds = new Set(_ownedRegionalHqs.map(p => p.nation_id));
+    const presenceNationIds = _assemblyPlantPresenceNationIds();
     const cash = Number(faction?.corp_cash_reserves || 0);
 
     const rows = [];
@@ -1302,7 +1308,7 @@ function renderAssemblyTable(kind, rootId, costFn, baseCostM, dataAction) {
 
     const eligible = _allNations.filter(n => presenceNationIds.has(n.id));
     if (eligible.length === 0) {
-        rows.push('<div class="ex-nation-row empty">Build a Regional HQ first — assembly plants require existing presence in the nation.</div>');
+        rows.push('<div class="ex-nation-row empty">No eligible nations — assembly plants require presence (your home nation or a Regional HQ).</div>');
         root.innerHTML = rows.join('');
         return;
     }
@@ -1552,9 +1558,9 @@ const ASSEMBLY_PLANT_SPECS = {
 
 async function buildAssemblyPlant(kind, nationId) {
     if (!nationId) return;
-    const presenceNationIds = new Set(_ownedRegionalHqs.map(p => p.nation_id));
+    const presenceNationIds = _assemblyPlantPresenceNationIds();
     if (!presenceNationIds.has(nationId)) {
-        showToast('You need a Regional HQ in that nation to build an assembly plant.', 'error');
+        showToast('You need presence in that nation (home or a Regional HQ) to build an assembly plant.', 'error');
         return;
     }
     const target = _allNations.find(n => n.id === nationId);
