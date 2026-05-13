@@ -22,7 +22,7 @@ let _state = null;
 // All fetched data stored here for rendering phases
 export let _overview = {
     isGoverning: false,
-    statusLabel: 'OPPOSITION',  // GOVERNING | OPPOSITION | LOYAL | DISSIDENT
+    statusLabel: 'OPPOSITION',  // GOVERNING | OPPOSITION
     administration: null,       // active administration row
     ticksInPower: 0,
     myFaction: null,
