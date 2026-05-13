@@ -7,7 +7,7 @@ import { GAME_CONFIG, initGameConfigForNation, getPresidentialTermTicks, getPres
 import { hasElectedPresident, getCurrentConstitutionalSystem, isAbsoluteMonarchy, MINISTRY_OFFICE_NAMES } from './government-types.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './diplomacy-constants.js';
 import { TRADE_SECTOR_MAP } from './trade-constants.js';
-import { adjustGovernmentApprovalEvent, adjustCredibility, round2 } from './momentum.js';
+import { adjustGovernmentApprovalEvent, adjustCredibility } from './momentum.js';
 import { computeCorpValuation } from './corp-valuation.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
