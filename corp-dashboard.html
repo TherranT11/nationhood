@@ -929,6 +929,10 @@ import { escapeHtml, escapeAttr, tickToDate } from './js/utils.js';
 import { computeCorpValuation } from './js/game/corp-valuation.js';
 import { amortizedMonthlyPayment } from './js/game/loan-math.js';
 
+// Balance-sheet categories excluded from P&L per the corp_cash_events
+// schema. SSoT: sql/migrations/20260701_corp_cash_events_table.sql:36-38.
+const CAPITAL_CATEGORIES = new Set(['capital_in', 'capital_out', 'debt_principal']);
+
 let faction = null;
 let nation = null;
 let _ownedProperties = [];
@@ -1143,16 +1147,21 @@ async function init() {
         console.error('[corp-dashboard] bank_loans fetch error:', debtRes.error.message);
     }
     const activeLoans = debtRes?.data || [];
-    // Aggregate cash events into per-tick {profit, events} buckets. profit
-    // is the signed sum of every delta (positive revenue + negative costs)
-    // — the same number shown on the Net Profit card and used for that
-    // card's grouped Revenue/Costs drill-down.
+    // Aggregate cash events into per-tick {profit, events} buckets.
+    // profit = signed sum of P&L-only deltas. Balance-sheet flows
+    // (CAPITAL_CATEGORIES) are excluded from the profit total per the
+    // corp_cash_events schema comment
+    // (sql/migrations/20260701_corp_cash_events_table.sql:36-38) but are
+    // retained in the events array so renderProfitExpansion can list them
+    // under their own Capital Movements group.
     const byTick = new Map();
     for (const e of (eventsRes?.data || [])) {
         const t = Number(e.tick);
         const d = Number(e.delta) || 0;
         const bucket = byTick.get(t) || { profit: 0, events: [] };
-        bucket.profit += d;
+        if (!CAPITAL_CATEGORIES.has(e.category)) {
+            bucket.profit += d;
+        }
         bucket.events.push({ category: e.category, label: e.label, delta: d });
         byTick.set(t, bucket);
     }
@@ -1389,35 +1398,48 @@ function renderFinancialRow(history, activeLoans) {
     };
 }
 
-// Net Profit drill-down: one tick, two groups (Revenue / Costs), each
-// with its own subtotal header and sorted-by-magnitude rows.
+// Net Profit drill-down: one tick, three groups (Revenue / Costs /
+// Capital Movements). Revenue + Costs are P&L; Capital Movements
+// surfaces balance-sheet flows (loan principal in/out, equity moves)
+// so a +$61M loan repayment received shows up as its own line even
+// though it doesn't move P&L.
 function renderProfitExpansion(settled) {
     if (!settled || (settled.events || []).length === 0) {
         return `<div class="cr-fin-card-expansion-empty">No movements last tick.</div>`;
     }
-    const revenue = settled.events.filter(e => Number(e.delta) > 0);
-    const costs   = settled.events.filter(e => Number(e.delta) < 0);
+    const pnlEvents     = settled.events.filter(e => !CAPITAL_CATEGORIES.has(e.category));
+    const capitalEvents = settled.events.filter(e =>  CAPITAL_CATEGORIES.has(e.category));
+    const revenue = pnlEvents.filter(e => Number(e.delta) > 0);
+    const costs   = pnlEvents.filter(e => Number(e.delta) < 0);
     const revenueTotal = revenue.reduce((s, e) => s + Number(e.delta), 0);
     const costsTotal   = costs.reduce((s, e) => s + Number(e.delta), 0);
+    const capitalTotal = capitalEvents.reduce((s, e) => s + Number(e.delta), 0);
 
-    const groupHtml = (title, items, total, color) => {
+    const rowColor = (delta) => Number(delta) >= 0 ? 'var(--green)' : 'var(--red)';
+
+    const groupHtml = (title, items, total, color, opts = {}) => {
         if (items.length === 0) return '';
         const sortedRows = items
             .slice()
             .sort((a, b) => Math.abs(Number(b.delta)) - Math.abs(Number(a.delta)))
             .map(e => {
                 const d = Number(e.delta);
-                const sign = d > 0 ? '+' : '-';
+                const sign = d >= 0 ? '+' : '-';
+                // Mixed-sign groups (Capital Movements) color each row by
+                // its own sign; single-sign groups (Revenue / Costs) use
+                // the group's color.
+                const rc = opts.mixedSigns ? rowColor(d) : color;
                 return `<div class="cr-fin-card-expansion-row">
                     <span style="color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(e.label || e.category || '?')}</span>
-                    <span style="color:${color};font-weight:700;font-variant-numeric:tabular-nums;">${sign}${fmtMoney(Math.abs(d))}</span>
+                    <span style="color:${rc};font-weight:700;font-variant-numeric:tabular-nums;">${sign}${fmtMoney(Math.abs(d))}</span>
                 </div>`;
             }).join('');
+        const headColor = opts.mixedSigns ? rowColor(total) : color;
         const sign = total >= 0 ? '+' : '-';
         return `<div class="cr-fin-card-expansion-group">
             <div class="cr-fin-card-expansion-group-head">
                 <span>${title}</span>
-                <span style="color:${color};font-weight:700;font-variant-numeric:tabular-nums;">${sign}${fmtMoney(Math.abs(total))}</span>
+                <span style="color:${headColor};font-weight:700;font-variant-numeric:tabular-nums;">${sign}${fmtMoney(Math.abs(total))}</span>
             </div>
             ${sortedRows}
         </div>`;
@@ -1425,8 +1447,9 @@ function renderProfitExpansion(settled) {
 
     return `<div class="cr-fin-card-expansion-tick">
         <div class="cr-fin-card-expansion-tick-label">Tick ${settled.tick}</div>
-        ${groupHtml('Revenue', revenue, revenueTotal, 'var(--green)')}
-        ${groupHtml('Costs',   costs,   costsTotal,   'var(--red)')}
+        ${groupHtml('Revenue',           revenue,        revenueTotal, 'var(--green)')}
+        ${groupHtml('Costs',             costs,          costsTotal,   'var(--red)')}
+        ${groupHtml('Capital Movements', capitalEvents,  capitalTotal, null, { mixedSigns: true })}
     </div>`;
 }
 
