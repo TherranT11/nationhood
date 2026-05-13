@@ -3660,16 +3660,20 @@ export async function enactBill(supabase, bill, currentTick) {
             }
             console.log(`[enactBill] discretionary: ${fd.ministry_key} balance ${curBalance} → ${newBalance} (${grantAmountM > 0 ? '+' : ''}${grantAmountM}M)`);
 
-            // Positive grants add to national debt (the money has to come from somewhere)
-            // grantAmountM is in $M, nation.debt is in raw dollars — convert
+            // Positive grants add to national debt (the money has to come from somewhere).
+            // grantAmountM is in $M abstract units; nation.debt is also stored as
+            // $M abstract integers after migration 20261207, so we add the
+            // abstract value directly — NOT the raw-dollar multiplication.
+            // Pre-rescale this path multiplied grantAmountM by 1_000_000 and
+            // wrote the raw value to nation.debt; that's now wrong and was
+            // dumping millions of abstract units into the debt column on every
+            // funding bill (Hajjara 220 → 2,000,202 from one $2M allocation).
             if (grantAmountM > 0) {
-                const grantDollars = grantAmountM * 1_000_000;
-                const newDebt = (Number(nation.debt) || 0) + grantDollars;
+                const newDebt = (Number(nation.debt) || 0) + grantAmountM;
                 console.log('[enactBill] stage=update_debt_for_grant attempt', {
                     ...logContext,
                     ministryKey: fd.ministry_key,
                     grantAmount: grantAmountM,
-                    grantDollars,
                     newDebt
                 });
                 await supabase.from('nations').update({ debt: newDebt }).eq('id', bill.nation_id);
@@ -3681,10 +3685,9 @@ export async function enactBill(supabase, bill, currentTick) {
                     newDebt
                 });
             }
-            // Negative grants (withdrawals) reduce debt if possible
+            // Negative grants (withdrawals) reduce debt if possible.
             if (grantAmountM < 0) {
-                const absAmountDollars = Math.abs(grantAmountM) * 1_000_000;
-                const newDebt = Math.max(0, (Number(nation.debt) || 0) - absAmountDollars);
+                const newDebt = Math.max(0, (Number(nation.debt) || 0) - Math.abs(grantAmountM));
                 await supabase.from('nations').update({ debt: newDebt }).eq('id', bill.nation_id);
                 nation.debt = newDebt;
                 console.log(`[enactBill] discretionary withdrawal: debt reduced by $${Math.abs(grantAmountM)}M → ${newDebt}`);
