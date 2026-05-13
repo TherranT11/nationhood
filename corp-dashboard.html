@@ -1147,21 +1147,19 @@ async function init() {
         console.error('[corp-dashboard] bank_loans fetch error:', debtRes.error.message);
     }
     const activeLoans = debtRes?.data || [];
-    // Aggregate cash events into per-tick {profit, capital, events} buckets.
-    // profit = signed sum of P&L-only deltas (operating cash flow).
-    // capital = signed sum of balance-sheet deltas (loan principal, capital
-    //   moves) — excluded from P&L per the corp_cash_events schema comment
-    //   (sql/migrations/20260701_corp_cash_events_table.sql:36-38).
-    // events keeps category + label so the drill-down can re-split into
-    // Revenue / Costs / Capital Movements groups without re-querying.
+    // Aggregate cash events into per-tick {profit, events} buckets.
+    // profit = signed sum of P&L-only deltas. Balance-sheet flows
+    // (CAPITAL_CATEGORIES) are excluded from the profit total per the
+    // corp_cash_events schema comment
+    // (sql/migrations/20260701_corp_cash_events_table.sql:36-38) but are
+    // retained in the events array so renderProfitExpansion can list them
+    // under their own Capital Movements group.
     const byTick = new Map();
     for (const e of (eventsRes?.data || [])) {
         const t = Number(e.tick);
         const d = Number(e.delta) || 0;
-        const bucket = byTick.get(t) || { profit: 0, capital: 0, events: [] };
-        if (CAPITAL_CATEGORIES.has(e.category)) {
-            bucket.capital += d;
-        } else {
+        const bucket = byTick.get(t) || { profit: 0, events: [] };
+        if (!CAPITAL_CATEGORIES.has(e.category)) {
             bucket.profit += d;
         }
         bucket.events.push({ category: e.category, label: e.label, delta: d });
@@ -1169,17 +1167,16 @@ async function init() {
     }
     const cashByTick = new Map((cashHistRes?.data || []).map(r => [Number(r.tick), Number(r.cash_end)]));
 
-    // Build oldest-first {tick, profit, capital, events, cash_end} array. Use
-    // the union of ticks present in either source so quiet ticks (cash but no
-    // events, or events but no cash snapshot) still appear with the missing
-    // fields filled in as 0 / null / [].
+    // Build oldest-first {tick, profit, events, cash_end} array. Use the
+    // union of ticks present in either source so quiet ticks (cash but no
+    // events, or events but no cash snapshot) still appear with the
+    // missing fields filled in as 0 / null / [].
     const allTicks = new Set([...byTick.keys(), ...cashByTick.keys()]);
     const pnlHistory = [...allTicks].sort((a, b) => a - b).map(t => ({
         tick:     t,
-        profit:   byTick.get(t)?.profit  ?? 0,
-        capital:  byTick.get(t)?.capital ?? 0,
-        events:   byTick.get(t)?.events  ?? [],
-        cash_end: cashByTick.get(t)      ?? null,
+        profit:   byTick.get(t)?.profit ?? 0,
+        events:   byTick.get(t)?.events ?? [],
+        cash_end: cashByTick.get(t)     ?? null,
     }));
     const ownership = ownershipRes?.data || [];
 
