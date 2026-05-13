@@ -794,7 +794,7 @@ const BILL_TYPE_SPECS = Object.freeze({
 
 /**
  * Look up the threshold spec for a bill type. Unlisted types return
- * { threshold: 'simple' } — covers ordinary, ratification, confirmation,
+ * { threshold: 'simple' } — covers ordinary, ratification,
  * minister_confirmation, etc.
  */
 export function getBillTypeSpec(billType) {

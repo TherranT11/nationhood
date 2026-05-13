@@ -595,7 +595,7 @@ function renderPassedBillsFeed(o) {
     // Skip the political-process bill types that carry no sector effects —
     // matches the legislative filter inside processSectorShifts.
     const legislative = bills.filter(b =>
-        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override']
+        !['no_confidence', 'minister_confirmation', 'foundational', 'veto_override']
             .includes(b.bill_type)
     );
 

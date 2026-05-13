@@ -186,8 +186,7 @@ suite('partition invariant — every resolver is reachable, no duplicates', () =
     test('returned value is ALWAYS a function (no null/undefined escapes)', () => {
         const shapes = [
             {}, { bill_type: null }, { bill_type: 'ratification' },
-            { bill_type: 'confirmation' }, { bill_type: 'veto_override' },
-            { bill_type: 'made_up' },
+            { bill_type: 'veto_override' }, { bill_type: 'made_up' },
         ];
         for (const bill of shapes) {
             const r = selectBillResolver(bill);
