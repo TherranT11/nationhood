@@ -899,6 +899,7 @@ let shard = null;
 let allUserFactions = [];
 let _ownedRegionalHqs = [];    // corp_properties type='regional_hq' is_active=true
 let _ownedTerminals  = [];     // corp_properties type='airline_terminal' is_active=true (Phase 4)
+let _ownedOther      = [];     // every other operational asset (insurance_office, fuel_depot, office, etc.)
 let _nationalHq = null;        // corp_properties role='national_hq' (one row per corp; null if backfill hasn't run)
 let _allNations = [];          // every nation (for Build tab)
 let _marketProperties = [];    // available_properties for home nation (for Buy tab)
@@ -942,6 +943,7 @@ async function loadOwnedProperties() {
     if (!faction?.id) {
         _ownedRegionalHqs = [];
         _ownedTerminals  = [];
+        _ownedOther      = [];
         _nationalHq      = null;
         return;
     }
@@ -950,6 +952,12 @@ async function loadOwnedProperties() {
     // 20260711_persist_national_hq.sql); regional HQs are user-built
     // marketplace acquisitions; airline_terminal rows land via
     // buy_airline_terminal in 20260716_airline_terminal_marketplace.
+    // Every other operational property type (insurance_office,
+    // fuel_depot, office, factory, etc. — purchased via the property
+    // marketplace) lands in _ownedOther and renders with a generic
+    // asset card. Previously these types were dropped on the floor
+    // and the corp couldn't see their new purchase even though the
+    // row was in the DB.
     const { data, error } = await _supabase
         .from('corp_properties')
         .select('id, nation_id, name, type, role, style, catalog_id, condition, purchase_price, monthly_maintenance, city, capacity, nations:nation_id(name)')
@@ -960,6 +968,7 @@ async function loadOwnedProperties() {
         console.warn('[Expansion] property fetch failed:', error.message);
         _ownedRegionalHqs = [];
         _ownedTerminals  = [];
+        _ownedOther      = [];
         _nationalHq      = null;
         return;
     }
@@ -967,6 +976,11 @@ async function loadOwnedProperties() {
     _nationalHq      = rows.find(p => p.role === 'national_hq') || null;
     _ownedRegionalHqs = rows.filter(p => p.type === 'regional_hq');
     _ownedTerminals   = rows.filter(p => p.type === 'airline_terminal');
+    _ownedOther       = rows.filter(p =>
+        p.role !== 'national_hq' &&
+        p.type !== 'regional_hq' &&
+        p.type !== 'airline_terminal'
+    );
 }
 
 async function loadAllNations() {
@@ -1005,12 +1019,15 @@ function renderHeader() {
 
     const hasNhq = !!_nationalHq;
     const foreignNationIds = new Set(
-        [..._ownedRegionalHqs, ..._ownedTerminals]
+        [..._ownedRegionalHqs, ..._ownedTerminals, ..._ownedOther]
             .map(p => p.nation_id)
             .filter(id => id && id !== faction?.nation_id)
     );
     const ownedNationCount = (hasNhq ? 1 : 0) + foreignNationIds.size;
-    const propertyCount    = (hasNhq ? 1 : 0) + _ownedRegionalHqs.length + _ownedTerminals.length;
+    const propertyCount    = (hasNhq ? 1 : 0)
+        + _ownedRegionalHqs.length
+        + _ownedTerminals.length
+        + _ownedOther.length;
 
     const sumValueMaint = (acc, p) => ({
         value: acc.value + (Number(p.purchase_price)      || 0),
@@ -1020,7 +1037,7 @@ function renderHeader() {
         value: hasNhq ? Number(_nationalHq.purchase_price)      || 0 : 0,
         maint: hasNhq ? Number(_nationalHq.monthly_maintenance) || 0 : 0,
     };
-    const totals = [..._ownedRegionalHqs, ..._ownedTerminals].reduce(sumValueMaint, seed);
+    const totals = [..._ownedRegionalHqs, ..._ownedTerminals, ..._ownedOther].reduce(sumValueMaint, seed);
     const totalValue = totals.value;
     const totalMaint = totals.maint;
 
@@ -1138,6 +1155,50 @@ function renderAssets() {
                 </div>
             </div>
             <div class="ex-asset-note">Hub Operation ◊ Cannot Be Sold</div>
+        </div>`);
+    }
+
+    // Operational properties — every other corp_properties row that
+    // isn't a national HQ, regional HQ, or airline terminal. Bought
+    // from the Buy Property marketplace; includes insurance offices,
+    // fuel depots, office buildings, factories, etc. Generic card +
+    // Sell button. The tag label is derived from the row's role
+    // (snake_case → Title Case) so new property types appear here
+    // automatically — no hard-coded type list to drift out of sync.
+    for (const p of _ownedOther) {
+        const inflight = _sellInflight.has(p.id);
+        const quality = Math.round(Number(p.condition) || 0);
+        const value   = Number(p.purchase_price)        || 0;
+        const maint   = Number(p.monthly_maintenance)   || 0;
+        const natName = p.nations?.name || '—';
+        const city    = p.city || '';
+        const roleKey = String(p.role || p.type || 'property').toLowerCase();
+        const label   = roleKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        cards.push(`<div class="ex-asset-card">
+            <div class="ex-asset-meta-row">
+                <span class="ex-asset-tag">${escapeHtml(label)}</span>
+            </div>
+            <div class="ex-asset-name">${escapeHtml(p.name || label)}</div>
+            <div class="ex-asset-location"><span class="flag">◊</span> ${escapeHtml(natName.toUpperCase())}${city ? ' ◊ ' + escapeHtml(String(city).toUpperCase()) : ''}</div>
+            <div class="ex-asset-stats">
+                <div>
+                    <div class="label">Quality</div>
+                    <div class="value ${qualityToneClass(quality)}">${quality}<span class="unit">%</span></div>
+                </div>
+                <div>
+                    <div class="label">Value</div>
+                    <div class="value">${hfFmtBig(value)}</div>
+                </div>
+                <div>
+                    <div class="label">Maint/Tick</div>
+                    <div class="value">${hfFmtBig(maint)}</div>
+                </div>
+            </div>
+            <div class="ex-asset-actions">
+                <button class="ex-asset-btn danger" data-action="sell" data-id="${escapeHtml(p.id)}" ${inflight ? 'disabled' : ''}>
+                    ${inflight ? 'Selling…' : 'Sell'}
+                </button>
+            </div>
         </div>`);
     }
 
@@ -1591,7 +1652,8 @@ async function buildAssemblyPlant(kind, nationId) {
 
 async function sellProperty(propId) {
     if (!propId || _sellInflight.has(propId)) return;
-    const prop = _ownedRegionalHqs.find(p => p.id === propId);
+    const prop = _ownedRegionalHqs.find(p => p.id === propId)
+              || _ownedOther.find(p => p.id === propId);
     if (!prop) return;
 
     const conditionFactor = Math.max(0, Math.min(1, (Number(prop.condition) || 50) / 100));
