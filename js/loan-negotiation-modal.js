@@ -560,6 +560,12 @@ function renderError(modalEl, message) {
 // Collateral section. Borrower viewer + status='open' → editable
 // picker with all owned assets. Lender or terminal status → read-only
 // summary of currently-pledged items from neg.collateral.
+//
+// ⚠ SoT mirror: the bank's loan-offer review modal in
+// corp-operations-finance.html (openLoanReviewModal → "Pledged
+// Collateral" section) replays the same totalPledged + coverage% math
+// against bank_loan_requests.collateral. Keep both in sync if the
+// formula ever changes.
 function renderCollateralSection(neg, viewerRole, pendingCollateral, collateralOptions) {
     const isOpen   = neg.status === 'open';
     const isBorrower = viewerRole === 'borrower';

@@ -2274,8 +2274,8 @@ async function loadRolesForNation(nationId) {
     container.innerHTML = '<span style="color:var(--text-dim);font-size:10px;">Loading roles...</span>';
 
     try {
-        // Load ministries (FM, MoT), coalition (PM), ambassadors, and ruling faction
-        const [minRes, coalRes, natRes, ambRes] = await Promise.all([
+        // Load ministries (FM, MoT, PM), coalition, and ruling faction
+        const [minRes, coalRes, natRes] = await Promise.all([
             _supabase.from('ministries')
                 .select('ministry_key, party_id, factions(id, faction_name, abbreviation, party_color)')
                 .eq('nation_id', nationId)
@@ -2288,12 +2288,7 @@ async function loadRolesForNation(nationId) {
                 .order('created_at', { ascending: false })
                 .limit(1)
                 .maybeSingle(),
-            _supabase.from('nations').select('ruling_faction_id').eq('id', nationId).single(),
-            _supabase.from('ambassadors')
-                .select('faction_id, target_nation_id, factions(id, faction_name, abbreviation, party_color), nations!ambassadors_target_nation_id_fkey(name)')
-                .eq('nation_id', nationId)
-                .eq('is_active', true)
-                .eq('status', 'active')
+            _supabase.from('nations').select('ruling_faction_id').eq('id', nationId).single()
         ]);
 
         const roles = [];
@@ -2317,14 +2312,6 @@ async function loadRolesForNation(nationId) {
         // Minister of Trade
         const motEntry = (minRes.data || []).find(m => m.ministry_key === 'trade');
         if (motEntry?.factions) roles.push({ role: 'Minister of Trade', faction: motEntry.factions });
-
-        // Ambassadors
-        for (const amb of (ambRes.data || [])) {
-            if (amb.factions) {
-                const targetName = amb.nations?.name || 'Unknown';
-                roles.push({ role: 'Ambassador to ' + targetName, faction: amb.factions });
-            }
-        }
 
         if (roles.length === 0) {
             container.innerHTML = '<span style="color:var(--text-dim);font-size:10px;">No diplomatic roles found for this nation.</span>';

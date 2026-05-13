@@ -256,7 +256,7 @@ import { GAME_CONFIG, initGameConfigForNation, deductAP } from './js/game/config
 import { isGovernmentPresidential, hasElectedPresident } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies } from './js/game/government-structure.js';
 import { calculateBillSupport, syncVoteTallies, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, computeBillCostTotals } from './js/game/bills.js';
-import { POLICY_STANCES, MAJOR_SECTORS, RAW_SCALING_DIVISORS, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP, PROPOSAL_TYPES, INITIATIVE_ARTICLE_TYPES, MAJOR_INITIATIVE_ARTICLE_TYPES } from './js/game/diplomacy-constants.js';
+import { MAJOR_SECTORS, RAW_SCALING_DIVISORS, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP } from './js/game/diplomacy-constants.js';
 import { signPresidentialBill, vetoPresidentialBill, rejectOwnNomination } from './js/game/presidential.js';
 import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost } from './js/game/budget.js';
 import { advanceBillEmergency, EO_CONFIG } from './js/game/executive-orders.js';
@@ -273,7 +273,7 @@ function scalePolicyCost(baseCost, scalingStat, nation) {
 // Bill types that bypass the committee co-sponsor expectation. Procedural /
 // ratification motions are inherently party-neutral and never carry the
 // -2 Momentum solo-send penalty.
-const AUTO_FLOOR_BILL_TYPES = ['ratification', 'no_confidence', 'impeachment_motion', 'veto_override', 'impeachment_conviction', 'minister_confirmation', 'confirmation'];
+const AUTO_FLOOR_BILL_TYPES = ['ratification', 'no_confidence', 'impeachment_motion', 'veto_override', 'impeachment_conviction', 'minister_confirmation'];
 
 // Does this bill have at least one co-sponsor? A co-sponsor is any faction
 // other than the proposer whose stance is 'accept'. Shared between the
@@ -325,7 +325,7 @@ let editingArticleId = null;
 let sponsorSelectedPolicy = null;
 let selectedRepealLaw = null; // Active law selected for repeal article
 // Repeal bills can have additional articles added in committee, so 'repeal' is NOT in this list
-const SPECIAL_BILL_TYPES = ['no_confidence', 'confirmation', 'minister_confirmation', 'veto_override', 'impeachment_motion', 'impeachment_conviction'];
+const SPECIAL_BILL_TYPES = ['no_confidence', 'minister_confirmation', 'veto_override', 'impeachment_motion', 'impeachment_conviction'];
 let _billArticleLock = false; // Prevents double-fire on async article operations
 
 const urlParams = new URLSearchParams(window.location.search);
@@ -404,53 +404,26 @@ async function loadBillData() {
 
         // Fetch linked agreement data for ratification bills
         ratificationData = null;
-        if (bill.bill_type === 'ratification') {
-            if (bill.diplomatic_proposal_id) {
-                const { data: proposal } = await _supabase
-                    .from('diplomatic_proposals')
-                    .select('*')
-                    .eq('id', bill.diplomatic_proposal_id).single();
-                if (proposal) {
-                    const { data: propNation } = await _supabase.from('nations').select('id, name').eq('id', proposal.proposing_nation_id).single();
-                    const { data: targNation } = await _supabase.from('nations').select('id, name').eq('id', proposal.target_nation_id).single();
-                    const isNationA = bill.nation_id === proposal.proposing_nation_id;
-                    ratificationData = {
-                        kind: 'diplomatic',
-                        proposal,
-                        proposerName: propNation?.name || 'Unknown',
-                        targetName: targNation?.name || 'Unknown',
-                        nationA: propNation,
-                        nationB: targNation,
-                        isNationA
-                    };
+        if (bill.bill_type === 'ratification' && bill.trade_negotiation_id) {
+            const { data: neg } = await _supabase
+                .from('trade_negotiations')
+                .select('*')
+                .eq('id', bill.trade_negotiation_id).single();
+            if (neg) {
+                const { data: nationA } = await _supabase.from('nations').select('id, name').eq('id', neg.nation_a_id).single();
+                const { data: nationB } = await _supabase.from('nations').select('id, name').eq('id', neg.nation_b_id).single();
+                const isNationA = bill.nation_id === neg.nation_a_id;
+                const otherBillId = isNationA ? neg.bill_b_id : neg.bill_a_id;
+                let otherBillStatus = null;
+                if (otherBillId) {
+                    const { data: otherBill } = await _supabase.from('bills').select('status').eq('id', otherBillId).single();
+                    otherBillStatus = otherBill?.status || null;
                 }
-            } else if (bill.trade_negotiation_id) {
-                const { data: neg } = await _supabase
-                    .from('trade_negotiations')
-                    .select('*')
-                    .eq('id', bill.trade_negotiation_id).single();
-                if (neg) {
-                    const { data: nationA } = await _supabase.from('nations').select('id, name').eq('id', neg.nation_a_id).single();
-                    const { data: nationB } = await _supabase.from('nations').select('id, name').eq('id', neg.nation_b_id).single();
-                    const isNationA = bill.nation_id === neg.nation_a_id;
-                    const otherBillId = isNationA ? neg.bill_b_id : neg.bill_a_id;
-                    let otherBillStatus = null;
-                    if (otherBillId) {
-                        const { data: otherBill } = await _supabase.from('bills').select('status').eq('id', otherBillId).single();
-                        otherBillStatus = otherBill?.status || null;
-                    }
-                    // Determine article author (drafter) — direction fields are from their perspective
-                    let authorNationId = null;
-                    if (neg.participants && neg.participants.length > 0) {
-                        authorNationId = neg.participants[0].nation_id;
-                    }
-                    if (!authorNationId && neg.initiating_proposal_id) {
-                        const { data: prop } = await _supabase.from('diplomatic_proposals')
-                            .select('proposing_nation_id').eq('id', neg.initiating_proposal_id).single();
-                        authorNationId = prop?.proposing_nation_id || null;
-                    }
-                    ratificationData = { kind: 'trade', neg, nationA, nationB, otherBillStatus, isNationA, authorNationId };
-                }
+                // Determine article author (drafter) — direction fields are from their perspective
+                const authorNationId = (neg.participants && neg.participants.length > 0)
+                    ? neg.participants[0].nation_id
+                    : null;
+                ratificationData = { kind: 'trade', neg, nationA, nationB, otherBillStatus, isNationA, authorNationId };
             }
         }
 
@@ -503,10 +476,7 @@ async function loadBillData() {
 
         // Load nominated faction ID for confirmation bills
         nominatedFactionId = null;
-        if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
-            const { data: amb } = await _supabase.from('ambassadors').select('faction_id').eq('id', bill.ambassador_id).maybeSingle();
-            nominatedFactionId = amb?.faction_id || null;
-        } else if (bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
+        if (bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
             // Drop is_active filter on the lookup — minister_confirmation
             // bills can land on a row that's briefly inactive (e.g., during
             // a coalition shuffle between nomination and confirmation).
@@ -584,8 +554,6 @@ function renderBill() {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal">⚠ Repeal</span>';
     } else if (bill.bill_type === 'foundational') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--purple);">🏛 Foundational</span>';
-    } else if (bill.bill_type === 'confirmation') {
-        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--blue);">🏛 Confirmation</span>';
     } else if (bill.bill_type === 'minister_confirmation') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--orange);">🏛 Cabinet Confirmation</span>';
     } else if (bill.bill_type === 'veto_override') {
@@ -1925,119 +1893,7 @@ function renderRatificationBill() {
     let html = '';
     let totalFiscal = 0;
 
-    if (rd.kind === 'diplomatic') {
-        // === DIPLOMATIC INITIATIVE RATIFICATION ===
-        const proposal = rd.proposal;
-        const pd = proposal.proposal_data || {};
-        const articles = pd.articles || [];
-        const struck = new Set(pd.struck_articles || []);
-        const typeInfo = PROPOSAL_TYPES[pd.agreement_type] || {};
-        const classification = pd.classification || typeInfo.classification || 'MAJOR';
-
-        // Section 1: Preamble
-        html += '<div class="article preamble" style="border-left-color:var(--blue);">' +
-            '<div class="article-number" style="color:var(--blue);">DIPLOMATIC RATIFICATION</div>' +
-            '<div class="article-title">' + escapeHtml(pd.name || bill.bill_name || 'Diplomatic Agreement') + '</div>' +
-            '<div class="article-description">' +
-                '<strong>Type:</strong> ' + escapeHtml(typeInfo.label || pd.agreement_type || 'Diplomatic Initiative') +
-                    ' <span class="ratification-classification ' + classification.toLowerCase() + '">' + classification + '</span><br>' +
-                '<strong>Parties:</strong> ' + escapeHtml(rd.proposerName) + ' and ' + escapeHtml(rd.targetName) + '<br>' +
-                '<strong>Duration:</strong> ' + (pd.duration_years ? pd.duration_years + ' year(s)' : 'Unspecified') + '<br>' +
-                (pd.proposer_ambassador_name ? '<strong>Proposed by:</strong> ' + escapeHtml(pd.proposer_ambassador_name) : '') +
-            '</div>' +
-        '</div>';
-
-        // Section 2: Terms & Provisions
-        if (articles.length > 0) {
-            html += '<div class="ratification-section">' +
-                '<div class="ratification-section-header">Terms &amp; Provisions</div>';
-            articles.forEach((art, i) => {
-                const isStruck = struck.has(i);
-                const numeral = ROMAN[i] || (i + 1);
-                const isStructuredTradeArticle = !!(art && art.type && art.data && typeof art.data === 'object');
-                const isInitiativeArticle = !!(art && art.type && (INITIATIVE_ARTICLE_TYPES?.[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES?.[art.type]));
-                const artTypeInfo = isStructuredTradeArticle ? (TRADE_ARTICLE_TYPES[art.type] || {})
-                    : isInitiativeArticle ? (INITIATIVE_ARTICLE_TYPES[art.type] || MAJOR_INITIATIVE_ARTICLE_TYPES[art.type] || {}) : {};
-                const typeLabel = artTypeInfo.label || (isStructuredTradeArticle || isInitiativeArticle ? (art.type || 'Provision') : '');
-
-                let descriptionHtml;
-                if (isStructuredTradeArticle) {
-                    descriptionHtml = renderTradeArticleDescription(art, rd);
-                } else if (isInitiativeArticle) {
-                    // Render initiative article with description + config summary + effects
-                    let initHtml = '';
-                    if (artTypeInfo.description && !isStruck) {
-                        initHtml += '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">' + escapeHtml(artTypeInfo.description) + '</div>';
-                    }
-                    if (art.config && !isStruck) {
-                        const cfgParts = [];
-                        for (const [k, v] of Object.entries(art.config)) {
-                            if (v != null && v !== '' && v !== false) {
-                                const label = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-                                cfgParts.push('<strong>' + escapeHtml(label) + ':</strong> ' + escapeHtml(String(v)));
-                            }
-                        }
-                        if (cfgParts.length > 0) initHtml += '<div style="font-size:11px;color:var(--text-muted);line-height:1.5;">' + cfgParts.join(' &middot; ') + '</div>';
-                    }
-                    if (art.effects && !isStruck) {
-                        const effectParts = [];
-                        for (const [k, v] of Object.entries(art.effects)) {
-                            if (v && v !== 0) {
-                                const sign = typeof v === 'number' && v > 0 ? '+' : '';
-                                const label = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-                                effectParts.push('<span style="font-family:var(--font-mono);font-size:10px;font-weight:600;padding:1px 5px;background:rgba(90,175,165,0.08);border:1px solid rgba(90,175,165,0.2);color:var(--teal);border-radius:2px;">' + sign + v + ' ' + escapeHtml(label) + '</span>');
-                            }
-                        }
-                        if (effectParts.length > 0) initHtml += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">' + effectParts.join('') + '</div>';
-                    }
-                    descriptionHtml = initHtml || escapeHtml(art.text || 'Initiative provision.');
-                } else {
-                    descriptionHtml = escapeHtml(art.text || '');
-                }
-                html += '<div class="article' + (isStruck ? ' struck-article' : '') + '">' +
-                    '<div class="article-number">Article ' + numeral +
-                        (typeLabel ? ' <span style="color:var(--blue);font-size:0.7rem;">' + escapeHtml(typeLabel.toUpperCase()) + '</span>' : '') +
-                        (isStruck ? ' <span style="color:var(--red);font-size:0.7rem;">STRUCK</span>' : '') +
-                    '</div>' +
-                    '<div class="article-description"' + (isStructuredTradeArticle ? '' : ' style="white-space:pre-wrap;"') + '>' + descriptionHtml + '</div>';
-                // Show per-article impact if available
-                const impactParts = [];
-                if (art.relations && art.relations !== 0) impactParts.push('Relations: ' + (art.relations > 0 ? '+' : '') + art.relations);
-                if (art.money && art.money !== 0) impactParts.push('Fiscal: ' + formatCurrency(art.money));
-                if (impactParts.length > 0 && !isStruck) {
-                    html += '<div class="article-stat-effect">' + impactParts.join(' &middot; ') + '</div>';
-                }
-                html += '</div>';
-                if (!isStruck && art.money) totalFiscal += art.money;
-            });
-            html += '</div>';
-        }
-
-        // Section 3: Stat Impact Projections
-        const statEffects = typeInfo.stat_effects || [];
-        if (statEffects.length > 0) {
-            html += '<div class="ratification-section">' +
-                '<div class="ratification-section-header">Projected Stat Effects</div>' +
-                '<div class="ratification-stats">';
-            statEffects.forEach(e => {
-                const dir = e.direction === 'up' ? '↑' : '↓';
-                const cls = e.direction === 'up' ? 'stat-up' : 'stat-down';
-                const label = (e.stat_key || '').replace(/_/g, ' ');
-                html += '<div class="ratification-stat-row"><span class="' + cls + '">' + dir + ' ' + label + '</span>' +
-                    '<span class="ratification-stat-note">(' + (e.rate || 1) + 'x rate' +
-                    (e.delay_ticks ? ', ' + e.delay_ticks + ' month delay' : '') +
-                    (e.duration_ticks ? ', ' + e.duration_ticks + ' month duration' : ', ongoing') + ')</span></div>';
-            });
-            html += '</div></div>';
-        }
-
-        // Section 4: Counterparty Note
-        html += '<div class="ratification-section">' +
-            '<div class="ratification-section-header">Counterparty</div>' +
-            '<div class="counterparty-note">This agreement was accepted through diplomatic channels by <strong>' + escapeHtml(rd.targetName) + '</strong>. Only your legislature\'s ratification is required.</div>' +
-        '</div>';
-
-    } else if (rd.kind === 'trade') {
+    if (rd.kind === 'trade') {
         // === TRADE AGREEMENT RATIFICATION ===
         const neg = rd.neg;
         const articles = neg.draft_articles || [];
@@ -2137,25 +1993,7 @@ function renderRatificationBill() {
             html += '</div>';
         }
 
-        // Section 3: Stat Impact Projections
-        const tradeStatEffects = (PROPOSAL_TYPES.trade_agreement || {}).stat_effects || [];
-        if (tradeStatEffects.length > 0) {
-            html += '<div class="ratification-section">' +
-                '<div class="ratification-section-header">Projected Stat Effects</div>' +
-                '<div class="ratification-stats">';
-            tradeStatEffects.forEach(e => {
-                const dir = e.direction === 'up' ? '↑' : '↓';
-                const cls = e.direction === 'up' ? 'stat-up' : 'stat-down';
-                const label = (e.stat_key || '').replace(/_/g, ' ');
-                html += '<div class="ratification-stat-row"><span class="' + cls + '">' + dir + ' ' + label + '</span>' +
-                    '<span class="ratification-stat-note">(' + (e.rate || 1) + 'x rate' +
-                    (e.delay_ticks ? ', ' + e.delay_ticks + ' month delay' : '') +
-                    (e.duration_ticks ? ', ' + e.duration_ticks + ' month duration' : ', ongoing') + ')</span></div>';
-            });
-            html += '</div></div>';
-        }
-
-        // Section 4: Counterparty Status
+        // Section 3: Counterparty Status
         const otherName = theirName;
         let statusLabel, statusClass;
         switch (rd.otherBillStatus) {
@@ -2177,27 +2015,6 @@ function renderRatificationBill() {
 
     document.getElementById('bill-articles').innerHTML = html;
 
-    // Update fiscal totals for ratification bills
-    // For economic_aid: the aid_terms article has annual_amount field
-    // Recipient nation gets this as ongoing relief (revenue)
-    let ongoingMonthly = 0;
-    if (rd.kind === 'diplomatic' && rd.proposal) {
-        const pdArt = (rd.proposal.proposal_data?.articles || []);
-        for (const art of pdArt) {
-            if (art.type === 'aid_terms' && art.data) {
-                const annualAmt = Number(art.data.annual_amount || 0);
-                if (annualAmt > 0) {
-                    // Determine if we are the donor or recipient
-                    const donorIsA = art.data.donor_nation_id === rd.nationA?.id;
-                    const weAreRecipient = donorIsA ? !rd.isNationA : rd.isNationA;
-                    // Convert raw dollars to $M for formatCurrency, then sign for recipient/donor
-                    const monthlyM = (annualAmt / 12) / 1e6;
-                    ongoingMonthly = weAreRecipient ? -monthlyM : monthlyM;
-                }
-            }
-        }
-    }
-
     const upEl = document.getElementById('total-upfront');
     upEl.textContent = totalFiscal !== 0 ? formatCurrency(Math.abs(totalFiscal)) : '$0';
     upEl.style.color = totalFiscal < 0 ? 'var(--red)' : totalFiscal > 0 ? 'var(--green)' : '';
@@ -2205,21 +2022,9 @@ function renderRatificationBill() {
 
     const onEl = document.getElementById('total-ongoing');
     const onLabel = document.getElementById('total-ongoing-label');
-    if (ongoingMonthly < 0) {
-        // Relief/revenue for recipient
-        onEl.textContent = `${formatCurrency(Math.abs(ongoingMonthly))} / mo (${formatCurrency(Math.abs(ongoingMonthly) * 12)} / yr)`;
-        onEl.style.color = 'var(--green)';
-        onLabel.textContent = 'Total Ongoing Relief';
-    } else if (ongoingMonthly > 0) {
-        // Cost for donor
-        onEl.textContent = `${formatCurrency(ongoingMonthly)} / mo (${formatCurrency(ongoingMonthly * 12)} / yr)`;
-        onEl.style.color = 'var(--red)';
-        onLabel.textContent = 'Total Ongoing Cost';
-    } else {
-        onEl.textContent = '$0/mo';
-        onEl.style.color = '';
-        onLabel.textContent = 'Total Ongoing Cost';
-    }
+    onEl.textContent = '$0/mo';
+    onEl.style.color = '';
+    onLabel.textContent = 'Total Ongoing Cost';
 }
 
 // ==================== IDEOLOGY AWARENESS (PHASE 4) ====================
@@ -2310,7 +2115,7 @@ async function renderSidebar() {
                 </div>` : (!isSponsor ? `<div class="support-box-header" style="border-top:1px solid var(--border-main);"><div class="support-box-title">Conditional Support</div></div><div class="no-amendments">No conditional support offers</div>` : '')}
             ${(() => {
                 const myLocked2 = currentFaction && billSupport.find(s => s.faction_id === currentFaction.id)?.locked;
-                const canAmend = !isSponsor && !myLocked2 && bill.bill_type !== 'foundational' && bill.bill_type !== 'confirmation' && bill.bill_type !== 'minister_confirmation' && bill.bill_type !== 'veto_override';
+                const canAmend = !isSponsor && !myLocked2 && bill.bill_type !== 'foundational' && bill.bill_type !== 'minister_confirmation' && bill.bill_type !== 'veto_override';
                 return canAmend ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button><button class="add-strike-btn" onclick="openStrikeAmendmentModal()">✂ Strike Article</button></div>` : '';
             })()}
         </div>`;

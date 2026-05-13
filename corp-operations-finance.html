@@ -822,6 +822,55 @@ body.corp-operations-finance.light-mode {
   text-align: center;
 }
 
+/* Pledged collateral list — mirrors the negotiation modal layout */
+.fo-review-collateral-summary {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--fo-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--fo-text-secondary);
+  padding: 8px 12px;
+  border: 1px solid var(--fo-line);
+  margin-bottom: 8px;
+}
+.fo-review-collateral-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fo-review-collateral-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--fo-line);
+  background: var(--fo-bg-elevated, transparent);
+}
+.fo-review-collateral-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fo-review-collateral-name {
+  font-family: var(--fo-serif, serif);
+  font-size: 13px;
+  color: var(--fo-text-primary);
+}
+.fo-review-collateral-kind {
+  font-family: var(--fo-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fo-text-tertiary);
+}
+.fo-review-collateral-value {
+  font-family: var(--fo-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--amber, #c8a832);
+}
+
 /* APR slider */
 .fo-offer-rate-block { margin-bottom: 18px; }
 .fo-offer-rate-display {
@@ -1518,7 +1567,7 @@ async function loadAvailableLoanRequests() {
     const { data: requests, error: reqErr } = await _supabase
         .from('bank_loan_requests')
         .select(`
-            id, principal, term_ticks, risk_grade, purpose, expires_at_tick,
+            id, principal, term_ticks, risk_grade, purpose, expires_at_tick, collateral,
             requesting_faction:factions!requesting_faction_id (
                 faction_name, corp_ticker, corp_sector,
                 corp_cash_reserves, corp_debt, corp_reputation
@@ -1760,7 +1809,39 @@ function openLoanReviewModal(requestId) {
 
             <div class="fo-review-section">
                 <div class="fo-review-section-title">III. Pledged Collateral</div>
-                <div class="fo-review-collateral-empty">Unsecured ◊ No collateral pledged</div>
+                ${(() => {
+                    // ⚠ SoT mirror: the same math (totalPledged + coverage%)
+                    // is also computed in js/loan-negotiation-modal.js
+                    // renderCollateralSection. Keep both in sync if the
+                    // coverage formula or per-item display ever changes.
+                    const collateral = Array.isArray(req.collateral) ? req.collateral : [];
+                    if (collateral.length === 0) {
+                        return '<div class="fo-review-collateral-empty">Unsecured ◊ No collateral pledged</div>';
+                    }
+                    const totalPledged = collateral.reduce((s, c) => s + (Number(c.value) || 0), 0);
+                    const coveragePct = principal > 0 ? Math.round((totalPledged / principal) * 100) : 0;
+                    const totalM = totalPledged / 1_000_000;
+                    const coverageColor = coveragePct >= 100 ? 'var(--green, #5cb85c)' : coveragePct >= 50 ? 'var(--amber, #c8a832)' : 'var(--accent-rust, #d48a3c)';
+                    const items = collateral.map(c => {
+                        const valM = (Number(c.value) || 0) / 1_000_000;
+                        return `
+                            <div class="fo-review-collateral-item">
+                                <div class="fo-review-collateral-meta">
+                                    <div class="fo-review-collateral-name">${escapeHtml(c.name || '?')}</div>
+                                    <div class="fo-review-collateral-kind">${escapeHtml(c.kind || '?')}</div>
+                                </div>
+                                <div class="fo-review-collateral-value">$${valM.toFixed(valM >= 10 ? 1 : 2)}M</div>
+                            </div>
+                        `;
+                    }).join('');
+                    return `
+                        <div class="fo-review-collateral-summary">
+                            <span>Total pledged: <strong>$${totalM.toFixed(totalM >= 10 ? 1 : 2)}M</strong></span>
+                            <span>Coverage: <strong style="color:${coverageColor};">${coveragePct}%</strong></span>
+                        </div>
+                        <div class="fo-review-collateral-list">${items}</div>
+                    `;
+                })()}
             </div>
 
             <div class="fo-review-section">

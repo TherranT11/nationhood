@@ -1185,24 +1185,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Aid agreement safety net failed (non-fatal):', aidFixErr);
     }
 
-    // 3.7 Expire pending state visit proposals past their accept window
-    try {
-        const { data: expiredVisits, error: svErr } = await supabase
-            .from('diplomatic_proposals')
-            .update({ status: 'expired' })
-            .eq('proposal_type', 'state_visit')
-            .eq('status', 'proposed')
-            .lte('fm_review_expires_tick', newTick)
-            .select('id');
-        if (!svErr && expiredVisits && expiredVisits.length > 0) {
-            summary.expiredStateVisits = expiredVisits.length;
-            console.log(`[advanceTick] Expired ${expiredVisits.length} state visit proposal(s)`);
-        }
-    } catch (svExpErr) {
-        console.error('[advanceTick] State visit expiration check failed (non-fatal):', svExpErr);
-    }
-
-    // 3.8 Diplomatic relations decay — all relation scores drift toward 0 (neutral)
+    // 3.7 Diplomatic relations decay — all relation scores drift toward 0 (neutral)
     try {
         const RELATION_DECAY_BASE = 0.1;
         const RELATION_DECAY_ISOLATIONIST = 0.15;
@@ -2256,17 +2239,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (aidErr) {
             console.error(`[advanceTick] Aid condition review failed for ${nation.name} (non-fatal):`, aidErr);
-        }
-
-        // Ambassador term limits (retirements + warnings)
-        try {
-            const retirementResults = await processAmbassadorRetirements(supabase, freshNation || nation, newTick);
-            if (retirementResults.length > 0) {
-                summary.ambassadorRetirements = summary.ambassadorRetirements || [];
-                summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
-            }
-        } catch (retireErr) {
-            console.error(`[advanceTick] Ambassador retirements failed for ${nation.name} (non-fatal):`, retireErr);
         }
 
         // ── Monarch succession by natural death ──

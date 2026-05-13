@@ -13,11 +13,9 @@ import assert from 'node:assert/strict';
 import {
     selectBillResolver,
     resolveMinisterConfirmationBill,
-    resolveAmbassadorConfirmationBill,
     resolveNoConfidenceBill,
     resolveImpeachmentMotionBill,
     resolveImpeachmentConvictionBill,
-    resolveDiplomaticRatificationBill,
     resolveTradeRatificationBill,
     resolveRetaliatoryTariffRatificationBill,
     resolveEmbargoRatificationBill,
@@ -57,18 +55,6 @@ suite('direct dispatch — one bill_type → one resolver', () => {
 
 // ─── Sub-keyed dispatch (bill_type + secondary field) ───────────────────────
 suite('sub-keyed dispatch — bill_type plus secondary field', () => {
-    test('confirmation + ambassador_id → resolveAmbassadorConfirmationBill', () => {
-        assert.equal(
-            selectBillResolver({ bill_type: 'confirmation', ambassador_id: 'amb-1' }),
-            resolveAmbassadorConfirmationBill
-        );
-    });
-    test('confirmation without ambassador_id → ordinary fallback', () => {
-        assert.equal(
-            selectBillResolver({ bill_type: 'confirmation' }),
-            resolveOrdinaryBill
-        );
-    });
     test('minister_confirmation + ministry_key → resolveMinisterConfirmationBill', () => {
         assert.equal(
             selectBillResolver({ bill_type: 'minister_confirmation', ministry_key: 'defense' }),
@@ -108,13 +94,7 @@ suite('sub-keyed dispatch — bill_type plus secondary field', () => {
 });
 
 // ─── Ratification variants (four sub-paths on one bill_type) ────────────────
-suite('ratification variants — bill_type=ratification picks from four', () => {
-    test('diplomatic_proposal_id → resolveDiplomaticRatificationBill', () => {
-        assert.equal(
-            selectBillResolver({ bill_type: 'ratification', diplomatic_proposal_id: 'dip-1' }),
-            resolveDiplomaticRatificationBill
-        );
-    });
+suite('ratification variants — bill_type=ratification picks from three', () => {
     test('trade_negotiation_id → resolveTradeRatificationBill', () => {
         assert.equal(
             selectBillResolver({ bill_type: 'ratification', trade_negotiation_id: 'tr-1' }),
@@ -145,17 +125,6 @@ suite('ratification variants — bill_type=ratification picks from four', () => 
             resolveOrdinaryBill
         );
     });
-    test('diplomatic_proposal_id wins over trade_negotiation_id (chain precedence)', () => {
-        // Characterization: the if/else-if chain checked diplomatic first.
-        assert.equal(
-            selectBillResolver({
-                bill_type: 'ratification',
-                diplomatic_proposal_id: 'dip-1',
-                trade_negotiation_id: 'tr-1',
-            }),
-            resolveDiplomaticRatificationBill
-        );
-    });
 });
 
 // ─── Fallback path ──────────────────────────────────────────────────────────
@@ -181,12 +150,10 @@ suite('partition invariant — every resolver is reachable, no duplicates', () =
             [{ bill_type: 'no_confidence' },                                      resolveNoConfidenceBill],
             [{ bill_type: 'foundational' },                                       resolveFoundationalBill],
             [{ bill_type: 'default_resolution' },                                 resolveDefaultResolutionBill],
-            [{ bill_type: 'confirmation', ambassador_id: 'x' },                   resolveAmbassadorConfirmationBill],
             [{ bill_type: 'minister_confirmation', ministry_key: 'x' },           resolveMinisterConfirmationBill],
             [{ bill_type: 'veto_override', original_bill_id: 'x' },               resolveVetoOverrideBill],
             [{ bill_type: 'impeachment_motion', impeachment_id: 'x' },            resolveImpeachmentMotionBill],
             [{ bill_type: 'impeachment_conviction', impeachment_id: 'x' },        resolveImpeachmentConvictionBill],
-            [{ bill_type: 'ratification', diplomatic_proposal_id: 'x' },          resolveDiplomaticRatificationBill],
             [{ bill_type: 'ratification', trade_negotiation_id: 'x' },            resolveTradeRatificationBill],
             [{ bill_type: 'ratification', trade_agreement_data: { type: 'retaliatory_tariff' } }, resolveRetaliatoryTariffRatificationBill],
             [{ bill_type: 'ratification', trade_agreement_data: { type: 'impose_embargo' } },     resolveEmbargoRatificationBill],
@@ -200,8 +167,7 @@ suite('partition invariant — every resolver is reachable, no duplicates', () =
     test('returned value is ALWAYS a function (no null/undefined escapes)', () => {
         const shapes = [
             {}, { bill_type: null }, { bill_type: 'ratification' },
-            { bill_type: 'confirmation' }, { bill_type: 'veto_override' },
-            { bill_type: 'made_up' },
+            { bill_type: 'veto_override' }, { bill_type: 'made_up' },
         ];
         for (const bill of shapes) {
             const r = selectBillResolver(bill);

@@ -1147,7 +1147,6 @@ let isRulingFaction = false;
 let rulingFactionId = null;
 let ministryActionUseCounts = {}; // { 'interior:enforcePublicOrder': 2, ... }
 let activeMinistryActions = {};   // { 'interior-enforcePublicOrder': true } — currently running
-let missingAmbassadorCount = 0; // pre-fetched for Foreign Minister performance panel
 let _energyBuildCycles = [];     // active oil build cycles from energy_oil_build_cycles table
 let _energyBuildUseCount = 0;    // number of build activations for AP cost scaling
 let _energyBuildConfirming = false; // double-fire lock
@@ -4991,14 +4990,6 @@ async function renderGovernmentPage() {
             .limit(8);
         currentNation._govApprovalEvents = govApprovalEvents || [];
 
-        // Pre-fetch missing ambassador count for Foreign Minister performance panel
-        const [{ count: totalOtherNations }, { count: activeAmbs }] = await Promise.all([
-            _supabase.from('nations').select('id', { count: 'exact', head: true }).neq('id', currentNation.id),
-            _supabase.from('ambassadors').select('id', { count: 'exact', head: true })
-                .eq('nation_id', currentNation.id).eq('is_active', true).eq('status', 'active')
-        ]);
-        missingAmbassadorCount = (totalOtherNations || 0) - (activeAmbs || 0);
-
         // Fetch ministry action use counts and active actions for AP cost scaling
         try {
             const { data: actionLogs } = await _supabase
@@ -7059,21 +7050,6 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
             + '</div>';
     }
 
-    // Foreign Minister: show missing ambassador penalty
-    let ambassadorPenalty = 0;
-    if (ministryKey === 'foreign' && missingAmbassadorCount > 0) {
-        ambassadorPenalty = missingAmbassadorCount * -0.25;
-        const penaltyStr = ambassadorPenalty.toFixed(2);
-        rows += '<div class="ministry-stat-row" title="' + missingAmbassadorCount + ' nation(s) without an ambassador appointed from your side">'
-            + '<span class="stat-name">Missing ambassadors</span>'
-            + '<span class="stat-appointed">—</span>'
-            + '<span class="stat-val">' + missingAmbassadorCount + '</span>'
-            + '<span class="stat-delta bad">↓' + missingAmbassadorCount + '</span>'
-            + '<span class="stat-effect bad">' + penaltyStr + '</span>'
-            + '<span class="stat-dot bad">●</span>'
-            + '</div>';
-    }
-
     // Overall trend line with total per-tick effect
     let trendText = 'No data';
     let trendCls = 'flat';
@@ -7083,7 +7059,7 @@ function renderMinistryStatBreakdown(ministryKey, ministry) {
         // Baselines are permanent (appointment snapshot), so cap cumulative delta to ±5
         const clampedDelta = Math.max(-5, Math.min(5, avgDelta));
         const deltaEffect = Math.abs(clampedDelta) >= 0.5 ? clampedDelta * DELTA_SENSITIVITY : 0;
-        const totalEffect = BASELINE_DECAY + deltaEffect + ambassadorPenalty;
+        const totalEffect = BASELINE_DECAY + deltaEffect;
         const absTotal = Math.abs(totalEffect);
         const effectLabel = absTotal >= 0.01
             ? ' (' + (totalEffect > 0 ? '+' : '-') + (Math.round(absTotal * 100) / 100).toFixed(2) + '/tick)'

@@ -306,10 +306,6 @@ async function loadFactionRoles() {
                 _currentRoles.add(keyMap[m.ministry_key]);
             }
         }
-        // Check ambassador (for any nation)
-        const { data: amb } = await _supabase.from('ambassadors')
-            .select('id').eq('faction_id', currentFaction.id).eq('nation_id', currentNation.id).eq('status', 'active').limit(1);
-        if (amb && amb.length > 0) _currentRoles.add('ambassador');
     } catch (e) { /* non-fatal — items will show without role gating */ }
 }
 
@@ -753,7 +749,7 @@ function renderCardActiveCard(issue, myHand, cardDefMap, mySide, isMyTurn) {
     };
     const tc = typeColors[cd.card_type] || typeColors.unilateral;
 
-    const roleLabels = { head_of_government: 'HoG', foreign_minister: 'FM', ambassador: 'Amb', minister_of_defense: 'MoD', minister_of_finance: 'MoF' };
+    const roleLabels = { head_of_government: 'HoG', foreign_minister: 'FM', minister_of_defense: 'MoD', minister_of_finance: 'MoF' };
 
     // My option = option matching my side, their option = the other
     const myOption = mySide === 'a' ? { label: cd.option_a_label, title: cd.option_a_title, text: cd.option_a_text, effects: cd.option_a_effects }
@@ -1042,7 +1038,7 @@ function renderCardHand(issue, myHand, cardDefMap, mySide, isMyTurn) {
         a: { color: 'var(--red)', bg: 'rgba(166,93,93,0.06)', border: 'rgba(166,93,93,0.2)' },
         s: { color: '#a88bc4', bg: 'rgba(168,139,196,0.08)', border: 'rgba(168,139,196,0.2)' },
     };
-    const roleShort = { head_of_government: 'HoG', foreign_minister: 'FM', ambassador: 'Amb', minister_of_defense: 'MoD', minister_of_finance: 'MoF' };
+    const roleShort = { head_of_government: 'HoG', foreign_minister: 'FM', minister_of_defense: 'MoD', minister_of_finance: 'MoF' };
 
     const cardsHtml = myHand.map(cn => {
         const cd = cardDefMap[cn];
@@ -2182,7 +2178,7 @@ let _publicChatChannel = null;
 
 /**
  * Determine public chat role. Involved nations: HoG, FM, MoD.
- * Third-party nations: FM or Ambassador.
+ * Third-party nations: FM only.
  */
 async function determinePublicChatRole(incident) {
     if (!currentFaction || !currentNation) return null;
@@ -2197,7 +2193,7 @@ async function determinePublicChatRole(incident) {
         .maybeSingle();
     if (hog && hog.faction_id === currentFaction.id) return 'HoG';
 
-    // Check FM, MoD, Ambassador
+    // Check FM, MoD
     const { data: ministries } = await _supabase
         .from('ministries')
         .select('ministry_key, party_id')
@@ -2209,18 +2205,6 @@ async function determinePublicChatRole(incident) {
         if (m.party_id !== currentFaction.id) continue;
         if (m.ministry_key === 'foreign') return 'FM';
         if (m.ministry_key === 'defense' && isInvolved) return 'MoD';
-    }
-
-    // Third-party: check if ambassador to either involved nation
-    if (!isInvolved) {
-        const { data: ambassadors } = await _supabase
-            .from('ambassadors')
-            .select('target_nation_id')
-            .eq('nation_id', currentNation.id)
-            .eq('faction_id', currentFaction.id)
-            .eq('is_active', true)
-            .in('target_nation_id', [incident.nation_a_id, incident.nation_b_id]);
-        if (ambassadors && ambassadors.length > 0) return 'Ambassador';
     }
 
     return null;

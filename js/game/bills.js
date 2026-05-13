@@ -7,7 +7,7 @@ import { GAME_CONFIG, initGameConfigForNation, getPresidentialTermTicks, getPres
 import { hasElectedPresident, getCurrentConstitutionalSystem, isAbsoluteMonarchy, MINISTRY_OFFICE_NAMES } from './government-types.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './diplomacy-constants.js';
 import { TRADE_SECTOR_MAP } from './trade-constants.js';
-import { adjustGovernmentApprovalEvent, adjustCredibility, round2 } from './momentum.js';
+import { adjustGovernmentApprovalEvent, adjustCredibility } from './momentum.js';
 import { computeCorpValuation } from './corp-valuation.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
@@ -332,7 +332,7 @@ export async function processSectorShifts(supabase, nationId, resolutions) {
     // override) are political-process votes, not policy outcomes — they
     // don't carry sector effects.
     const legislative = bills.filter(b =>
-        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override'].includes(b.bill_type)
+        !['no_confidence', 'minister_confirmation', 'foundational', 'veto_override'].includes(b.bill_type)
     );
     if (legislative.length === 0) return;
 
@@ -794,7 +794,7 @@ const BILL_TYPE_SPECS = Object.freeze({
 
 /**
  * Look up the threshold spec for a bill type. Unlisted types return
- * { threshold: 'simple' } — covers ordinary, ratification, confirmation,
+ * { threshold: 'simple' } — covers ordinary, ratification,
  * minister_confirmation, etc.
  */
 export function getBillTypeSpec(billType) {
@@ -1545,58 +1545,6 @@ export async function resolveMinisterConfirmationBill(supabase, bill, ctx) {
 }
 
 /**
- * Resolve a passed/failed ambassador confirmation bill.
- *
- * Force-fails (overrides ctx.passed) when the nominee's own party voted NO.
- * On pass: activates the ambassador row (status='active', is_active=true,
- * appointed_at_tick).
- * On fail: rejects the ambassador row (status='rejected', is_active=false).
- */
-export async function resolveAmbassadorConfirmationBill(supabase, bill, ctx) {
-    const { currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
-    let passed = ctx.passed;
-
-    // Resolve the nominee's party for the auto-fail vote check.
-    const { data: ambRow } = await supabase.from('ambassadors')
-        .select('faction_id')
-        .eq('id', bill.ambassador_id)
-        .maybeSingle();
-    const ambNomineeId = ambRow?.faction_id;
-    const nomineeVotedNo = ambNomineeId && (bill.bill_support || []).some(s => {
-        const st = s.stance === 'reject' ? 'no' : s.stance;
-        return s.faction_id === ambNomineeId && st === 'no';
-    });
-    if (nomineeVotedNo) passed = false;
-
-    if (passed) {
-        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-        await supabase.from('ambassadors').update({
-            status: 'active',
-            is_active: true,
-            appointed_at_tick: currentTick,
-        }).eq('id', bill.ambassador_id);
-        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
-    } else {
-        await failBill(supabase, bill);
-        await supabase.from('ambassadors').update({
-            status: 'rejected',
-            is_active: false,
-        }).eq('id', bill.ambassador_id);
-        await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
-    }
-
-    return {
-        billId: bill.id,
-        billName: bill.bill_name,
-        result: passed ? 'passed' : 'failed',
-        votesFor,
-        votesAgainst,
-        type: 'confirmation',
-        earlyResolution: bill.early_resolution_status || null,
-    };
-}
-
-/**
  * Resolve a passed/failed no_confidence bill. Thin wrapper around the
  * elections.js domain handler (resolveNoConfidence) plus the standard
  * bills.update / failBill + result-entry bookkeeping.
@@ -1842,343 +1790,6 @@ export async function resolveImpeachmentConvictionBill(supabase, bill, ctx) {
     };
 }
 
-/**
- * Resolve a passed/failed diplomatic_proposal ratification bill.
- *
- * Two sub-paths:
- *   - Bilateral (proposal_tier === 3 with both proposing_bill_id and target_bill_id):
- *     waits for the OTHER nation's twin bill; once both sides pass, activates
- *     the proposal, applies one-time relation bump + unrest spike, and for
- *     trade agreements creates the trade_agreements + aid_agreement_state
- *     rows so the tick processor can apply economic effects.
- *   - Unilateral: activates immediately, same side-effects.
- *
- * On fail:
- *   - Bilateral: marks pipeline side failed, cancels the other side's
- *     still-open ratification bill, fires failure news to both nations.
- *   - Unilateral: marks proposal ratification_failed so the FM can retry.
- */
-export async function resolveDiplomaticRatificationBill(supabase, bill, ctx) {
-    const { passed, currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
-
-    if (passed) {
-        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-        const { data: proposal } = await supabase.from('diplomatic_proposals')
-            .select('*').eq('id', bill.diplomatic_proposal_id).single();
-        if (proposal) {
-            const pd = proposal.proposal_data || {};
-            const isBilateral = proposal.proposal_tier === 3 && proposal.proposing_bill_id && proposal.target_bill_id;
-
-            if (isBilateral) {
-                // ── BILATERAL RATIFICATION (Major Diplomatic Initiative) ──
-                const isProposerBill = bill.id === proposal.proposing_bill_id;
-                const otherBillId = isProposerBill ? proposal.target_bill_id : proposal.proposing_bill_id;
-
-                let otherPassed = false;
-                if (otherBillId) {
-                    const { data: otherBill } = await supabase.from('bills')
-                        .select('status').eq('id', otherBillId).single();
-                    otherPassed = otherBill?.status === 'passed';
-                }
-
-                const pipeline = pd.pipeline || {};
-                if (isProposerBill) pipeline.proposer_result = 'passed';
-                else pipeline.target_result = 'passed';
-                pd.pipeline = pipeline;
-
-                if (otherPassed) {
-                    // BOTH parliaments have ratified — activate the initiative
-                    pipeline.proposer_result = 'passed';
-                    pipeline.target_result = 'passed';
-                    pipeline.ratified_at = currentTick;
-                    pd.pipeline = pipeline;
-
-                    const articles = pd.articles || [];
-                    const activeArticles = articles.filter(a => a.status !== 'struck');
-                    const activeEffects = { proposer: {}, target: {} };
-                    let totalRel = 0;
-
-                    for (const art of activeArticles) {
-                        const effects = art.proposer_effects || art.effects || {};
-                        const targetEffects = art.target_effects || art.effects || {};
-                        totalRel += (effects.relations || 0);
-
-                        art.active_effects = { proposer: {}, target: {} };
-
-                        for (const [key, val] of Object.entries(effects)) {
-                            if (key === 'relations' || key === 'civil_unrest') continue;
-                            if (typeof val === 'number' && val !== 0) {
-                                activeEffects.proposer[key] = (activeEffects.proposer[key] || 0) + val;
-                                art.active_effects.proposer[key] = (art.active_effects.proposer[key] || 0) + val;
-                            }
-                        }
-                        for (const [key, val] of Object.entries(targetEffects)) {
-                            if (key === 'relations' || key === 'civil_unrest') continue;
-                            if (typeof val === 'number' && val !== 0) {
-                                activeEffects.target[key] = (activeEffects.target[key] || 0) + val;
-                                art.active_effects.target[key] = (art.active_effects.target[key] || 0) + val;
-                            }
-                        }
-                    }
-                    pd.active_effects = activeEffects;
-
-                    const { error: activateErr } = await supabase.from('diplomatic_proposals')
-                        .update({ status: 'active', activated_at_tick: currentTick, proposal_data: pd })
-                        .eq('id', bill.diplomatic_proposal_id);
-                    if (activateErr) console.error('[bilateral] Failed to activate proposal:', activateErr.message);
-
-                    if (totalRel !== 0) {
-                        const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
-                        const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
-                        const { data: rel } = await supabase.from('diplomatic_relations')
-                            .select('id, relation_score, active_treaties')
-                            .eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
-                        if (rel) {
-                            const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + totalRel));
-                            const treaties = Array.isArray(rel.active_treaties) ? [...rel.active_treaties, proposal.id] : [proposal.id];
-                            await supabase.from('diplomatic_relations')
-                                .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
-                        }
-                    }
-
-                    let totalUnrestSpike = 0;
-                    for (const art of activeArticles) {
-                        totalUnrestSpike += (art.effects?.civil_unrest || 0);
-                    }
-                    if (totalUnrestSpike > 0) {
-                        for (const nId of [proposal.proposing_nation_id, proposal.target_nation_id]) {
-                            const { data: n } = await supabase.from('nations').select('unrest').eq('id', nId).single();
-                            if (n) {
-                                const newVal = Math.max(0, Math.min(100, (n.unrest || 0) + totalUnrestSpike));
-                                await supabase.from('nations').update({ unrest: newVal }).eq('id', nId);
-                            }
-                        }
-                    }
-
-                    if (proposal.proposal_type === 'trade_agreement' && pd.agreement_type) {
-                        const durationArt = activeArticles.find(a => a.type === 'duration');
-                        const dt = durationArt?.data || {};
-                        const durationTicks = dt.duration_type === 'permanent' ? null : (dt.duration_ticks || 480);
-                        const expiresAt = durationTicks ? currentTick + durationTicks : null;
-
-                        const taNationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
-                        const taNationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
-
-                        const { data: newTA, error: taErr } = await supabase.from('trade_agreements').insert({
-                            nation_a_id: taNationA,
-                            nation_b_id: taNationB,
-                            agreement_type: pd.agreement_type,
-                            agreement_name: pd.agreement_name || pd.name || 'Trade Agreement',
-                            articles: activeArticles,
-                            status: 'active',
-                            enacted_at_tick: currentTick,
-                            expires_at_tick: expiresAt,
-                            auto_renew: dt.auto_renew || false,
-                            withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
-                            negotiation_id: null,
-                        }).select('id').single();
-
-                        if (taErr) {
-                            console.error('[bilateral] trade_agreements insert failed:', taErr.message);
-                        } else if (newTA) {
-                            await supabase.from('diplomatic_proposals')
-                                .update({ status: 'enacted' })
-                                .eq('id', bill.diplomatic_proposal_id);
-                            if (pd.agreement_type === 'economic_aid') {
-                                const aidArt = activeArticles.find(a => a.type === 'aid_terms');
-                                if (aidArt) {
-                                    const donorId = aidArt.data?.donor_nation_id;
-                                    const annualAmount = Number(aidArt.data?.annual_amount || 0);
-                                    if (donorId && annualAmount > 0) {
-                                        const recipientId = donorId === proposal.proposing_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
-                                        const { error: aidErr } = await supabase.from('aid_agreement_state').insert({
-                                            agreement_id: newTA.id,
-                                            donor_nation_id: donorId,
-                                            recipient_nation_id: recipientId,
-                                            current_annual_amount: annualAmount,
-                                            original_annual_amount: annualAmount,
-                                            next_review_tick: currentTick + (DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL || 12),
-                                            condition_failures: {},
-                                        });
-                                        if (aidErr) console.error('[bilateral] aid_agreement_state insert failed:', aidErr.message);
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: activeArticles.length });
-
-                    try {
-                        for (const nId of [proposal.proposing_nation_id, proposal.target_nation_id]) {
-                            await supabase.rpc('insert_news_event', {
-                                p_nation_id: nId,
-                                p_trigger_key: 'major_initiative_ratified',
-                                p_tick: currentTick,
-                                p_placeholders: {
-                                    nation_a: pd.proposer_nation_name || 'Unknown',
-                                    nation_b: pd.target_nation_name || 'Unknown',
-                                    initiative_name: pd.name || 'Diplomatic Initiative',
-                                    article_count: String(activeArticles.length),
-                                },
-                            });
-                        }
-                    } catch (newsErr) { console.error('News event error:', newsErr); }
-                } else {
-                    // Only one side ratified so far — wait for the other
-                    await supabase.from('diplomatic_proposals')
-                        .update({ proposal_data: pd })
-                        .eq('id', bill.diplomatic_proposal_id);
-                    await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
-                }
-            } else {
-                // ── UNILATERAL RATIFICATION ──
-                const updatedPipeline = { ...(pd.pipeline || {}), ratified_at: currentTick };
-                pd.pipeline = updatedPipeline;
-                await supabase.from('diplomatic_proposals')
-                    .update({ status: 'active', activated_at_tick: currentTick, proposal_data: pd })
-                    .eq('id', bill.diplomatic_proposal_id);
-                const articles = pd.articles || [];
-                const struckIndices = new Set(pd.struck_articles || []);
-                let totalRel = 0;
-                articles.forEach((art, i) => {
-                    if (!struckIndices.has(i)) totalRel += art.relations || 0;
-                });
-                if (totalRel !== 0) {
-                    const nationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
-                    const nationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
-                    const { data: rel } = await supabase.from('diplomatic_relations')
-                        .select('id, relation_score, active_treaties')
-                        .eq('nation_a_id', nationA).eq('nation_b_id', nationB).maybeSingle();
-                    if (rel) {
-                        const newScore = Math.max(-100, Math.min(100, (rel.relation_score || 0) + totalRel));
-                        const treaties = Array.isArray(rel.active_treaties) ? [...rel.active_treaties, proposal.id] : [proposal.id];
-                        await supabase.from('diplomatic_relations')
-                            .update({ relation_score: newScore, active_treaties: treaties }).eq('id', rel.id);
-                    }
-                }
-
-                if (proposal.proposal_type === 'trade_agreement' && pd.agreement_type) {
-                    const activeArticles = articles.filter((_, i) => !struckIndices.has(i));
-                    const addedArticles = pd.added_articles || [];
-                    if (addedArticles.length > 0) activeArticles.push(...addedArticles);
-
-                    const durationArt = activeArticles.find(a => a.type === 'duration');
-                    const dt = durationArt?.data || {};
-                    const durationTicks = dt.duration_type === 'permanent' ? null : (dt.duration_ticks || 480);
-                    const expiresAt = durationTicks ? currentTick + durationTicks : null;
-
-                    const taNationA = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.proposing_nation_id : proposal.target_nation_id;
-                    const taNationB = proposal.proposing_nation_id < proposal.target_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
-
-                    await supabase.from('trade_agreements').insert({
-                        nation_a_id: taNationA,
-                        nation_b_id: taNationB,
-                        agreement_type: pd.agreement_type,
-                        agreement_name: pd.agreement_name || pd.name || 'Trade Agreement',
-                        articles: activeArticles,
-                        status: 'active',
-                        enacted_at_tick: currentTick,
-                        expires_at_tick: expiresAt,
-                        auto_renew: dt.auto_renew || false,
-                        withdrawal_notice_ticks: dt.withdrawal_notice_ticks || 3,
-                        negotiation_id: null,
-                    }).select('id').single().then(async ({ data: newTA, error: taErr }) => {
-                        if (taErr) { console.error('[ratification] trade_agreements insert failed:', taErr.message); return; }
-                        await supabase.from('diplomatic_proposals')
-                            .update({ status: 'enacted' })
-                            .eq('id', proposal.id);
-                        if (pd.agreement_type === 'economic_aid' && newTA) {
-                            const aidArt = activeArticles.find(a => a.type === 'aid_terms');
-                            if (aidArt) {
-                                const donorId = aidArt.data?.donor_nation_id;
-                                const annualAmount = Number(aidArt.data?.annual_amount || 0);
-                                if (donorId && annualAmount > 0) {
-                                    const recipientId = donorId === proposal.proposing_nation_id ? proposal.target_nation_id : proposal.proposing_nation_id;
-                                    const { error: aidErr } = await supabase.from('aid_agreement_state').insert({
-                                        agreement_id: newTA.id,
-                                        donor_nation_id: donorId,
-                                        recipient_nation_id: recipientId,
-                                        current_annual_amount: annualAmount,
-                                        original_annual_amount: annualAmount,
-                                        next_review_tick: currentTick + (DIPLOMACY_CONFIG.AID_ANNUAL_REVIEW_INTERVAL || 12),
-                                        condition_failures: {},
-                                    });
-                                    if (aidErr) console.error('[ratification] aid_agreement_state insert failed:', aidErr.message);
-                                    else console.log(`[ratification] Aid state created: donor=${donorId}, recipient=${recipientId}, amount=$${(annualAmount/1e9).toFixed(1)}B/yr`);
-                                }
-                            }
-                        }
-                    });
-                }
-
-                await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, articleCount: 0 });
-            }
-        }
-    } else {
-        await failBill(supabase, bill);
-        const { data: failedProposal } = await supabase.from('diplomatic_proposals')
-            .select('proposal_tier, proposing_bill_id, target_bill_id, proposal_data, proposing_nation_id, target_nation_id')
-            .eq('id', bill.diplomatic_proposal_id).single();
-        const isBilateral = failedProposal?.proposal_tier === 3 && failedProposal?.proposing_bill_id && failedProposal?.target_bill_id;
-
-        if (isBilateral) {
-            const fpd = failedProposal.proposal_data || {};
-            const pipeline = fpd.pipeline || {};
-            const isProposerBill = bill.id === failedProposal.proposing_bill_id;
-            if (isProposerBill) pipeline.proposer_result = 'failed';
-            else pipeline.target_result = 'failed';
-            fpd.pipeline = pipeline;
-
-            await supabase.from('diplomatic_proposals')
-                .update({ status: 'ratification_failed', proposal_data: fpd })
-                .eq('id', bill.diplomatic_proposal_id);
-
-            const otherBillId = isProposerBill ? failedProposal.target_bill_id : failedProposal.proposing_bill_id;
-            if (otherBillId) {
-                const { data: otherBill } = await supabase.from('bills')
-                    .select('status, preamble').eq('id', otherBillId).single();
-                if (otherBill && !['passed', 'failed', 'enacted'].includes(otherBill.status)) {
-                    const cancelNote = '\n\nAutomatically cancelled — ratification failed in the other nation\'s parliament.';
-                    await supabase.from('bills')
-                        .update({ status: 'failed', preamble: (otherBill.preamble || '') + cancelNote })
-                        .eq('id', otherBillId);
-                }
-            }
-
-            try {
-                if (failedProposal.proposing_nation_id && failedProposal.target_nation_id) {
-                    for (const nId of [failedProposal.proposing_nation_id, failedProposal.target_nation_id]) {
-                        await supabase.rpc('insert_news_event', {
-                            p_nation_id: nId,
-                            p_trigger_key: 'major_initiative_ratification_failed',
-                            p_tick: currentTick,
-                            p_placeholders: {
-                                initiative_name: fpd.name || 'Diplomatic Initiative',
-                                failed_in: isProposerBill ? (fpd.proposer_nation_name || 'Proposer') : (fpd.target_nation_name || 'Target'),
-                            },
-                        });
-                    }
-                }
-            } catch (newsErr) { console.error('News event error:', newsErr); }
-        } else {
-            await supabase.from('diplomatic_proposals')
-                .update({ status: 'ratification_failed' })
-                .eq('id', bill.diplomatic_proposal_id);
-        }
-        await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
-    }
-
-    return {
-        billId: bill.id,
-        billName: bill.bill_name,
-        result: passed ? 'passed' : 'failed',
-        votesFor,
-        votesAgainst,
-        type: 'ratification',
-        earlyResolution: bill.early_resolution_status || null,
-    };
-}
 
 /**
  * Resolve a passed/failed trade-negotiation ratification bill. Bilateral:
@@ -2859,13 +2470,11 @@ const BILL_RESOLVERS = Object.freeze({
     no_confidence:          ()  => resolveNoConfidenceBill,
     foundational:           ()  => resolveFoundationalBill,
     default_resolution:     ()  => resolveDefaultResolutionBill,
-    confirmation:           (b) => b.ambassador_id      ? resolveAmbassadorConfirmationBill : null,
     minister_confirmation:  (b) => b.ministry_key       ? resolveMinisterConfirmationBill   : null,
     veto_override:          (b) => b.original_bill_id   ? resolveVetoOverrideBill           : null,
     impeachment_motion:     (b) => b.impeachment_id     ? resolveImpeachmentMotionBill      : null,
     impeachment_conviction: (b) => b.impeachment_id     ? resolveImpeachmentConvictionBill  : null,
     ratification:           (b) => {
-        if (b.diplomatic_proposal_id)                              return resolveDiplomaticRatificationBill;
         if (b.trade_negotiation_id)                                return resolveTradeRatificationBill;
         if (b.trade_agreement_data?.type === 'retaliatory_tariff') return resolveRetaliatoryTariffRatificationBill;
         if (b.trade_agreement_data?.type === 'impose_embargo')     return resolveEmbargoRatificationBill;
@@ -3015,7 +2624,6 @@ export async function resolveExpiredVotes(supabase, nationId) {
         if (resolution === 'failed_no_quorum') {
             await failBill(supabase, bill);
             await syncFailedMinisterConfirmationBill(supabase, bill);
-            await syncFailedAmbassadorConfirmationBill(supabase, bill);
             const quorumThreshold = Math.ceil(totalSeats * effectiveQuorumPct);
             const participating = votesFor + votesAgainst + votesAbstain;
             await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, extra: { reason: `quorum not met after two attempts (${participating}/${quorumThreshold} participating)` } });
@@ -3077,7 +2685,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
         // NO voters: +2/article on fail. Abstain: nothing.
         // Skip momentum for special bill types and presidential desk (not yet enacted)
         const lastResult = results[results.length - 1];
-        const skipMomentum = ['no_confidence', 'confirmation', 'minister_confirmation', 'impeachment_conviction'].includes(bill.bill_type)
+        const skipMomentum = ['no_confidence', 'minister_confirmation', 'impeachment_conviction'].includes(bill.bill_type)
             || lastResult?.result === 'president_desk';
         if (!skipMomentum) {
             try {
@@ -3378,7 +2986,7 @@ export async function resolveStuckFloorBills(supabase, nationId) {
         constitutional_amendment_streamlining: !!nation?.constitutional_amendment_streamlining
     };
 
-    const specialTypes = new Set(['no_confidence', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation', 'ambassador_confirmation']);
+    const specialTypes = new Set(['no_confidence', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation']);
     const results = [];
 
     for (const bill of stuckBills) {
@@ -5451,50 +5059,6 @@ export async function failBill(supabase, bill) {
     }
 }
 
-/**
- * Ensure ambassador rows stay in sync when confirmation bills are failed
- * through bulk/force-fail paths that bypass resolveExpiredVotes.
- */
-export async function syncAmbassadorsForFailedConfirmationBills(supabase, failedBills) {
-    if (!Array.isArray(failedBills) || failedBills.length === 0) return;
-
-    const ambassadorIds = [...new Set(
-        failedBills
-            .filter(b => b?.bill_type === 'confirmation' && b?.ambassador_id)
-            .map(b => b.ambassador_id)
-    )];
-
-    if (ambassadorIds.length === 0) return;
-
-    const { error } = await supabase
-        .from('ambassadors')
-        .update({
-            status: 'rejected',
-            is_active: false
-        })
-        .in('id', ambassadorIds);
-
-    if (error) {
-        console.warn('[syncAmbassadorsForFailedConfirmationBills] Failed to reject ambassadors:', error.message);
-    }
-}
-
-async function syncFailedAmbassadorConfirmationBill(supabase, bill) {
-    if (!bill || bill.bill_type !== 'confirmation' || !bill.ambassador_id) return;
-
-    const { error } = await supabase
-        .from('ambassadors')
-        .update({
-            status: 'rejected',
-            is_active: false
-        })
-        .eq('id', bill.ambassador_id);
-
-    if (error) {
-        console.warn('[syncFailedAmbassadorConfirmationBill] Failed to reject ambassador:', error.message);
-    }
-}
-
 async function syncFailedMinisterConfirmationBill(supabase, bill) {
     if (!bill || bill.bill_type !== 'minister_confirmation' || !bill.ministry_key) return;
 
@@ -5532,144 +5096,4 @@ export async function syncMinistriesForFailedConfirmationBills(supabase, failedB
     for (const bill of failedBills) {
         await syncFailedMinisterConfirmationBill(supabase, bill);
     }
-}
-
-
-// ==================== AMBASSADOR TERM LIMITS ====================
-
-/**
- * Process ambassador retirements and warnings for a single nation.
- * Called once per nation per tick inside the advanceTick loop.
- *
- * 1. Retire ambassadors whose term has expired (current_tick - appointed_at_tick >= term_length).
- * 2. Cancel in-progress diplomatic proposals involving the retiring ambassador's nation pair.
- * 3. Fire event log entries for retirements and lapsed negotiations.
- * 4. Show retirement warning at (term_length - AMBASSADOR_RETIREMENT_WARNING) ticks.
- *
- * Note: Retired ambassadorships remain vacant until a nomination vote is put forth.
- */
-async function processAmbassadorRetirements(supabase, nation, currentTick) {
-    const results = [];
-
-    // Fetch all active ambassadors for this nation
-    const { data: ambassadors, error: fetchErr } = await supabase
-        .from('ambassadors')
-        .select('id, nation_id, target_nation_id, faction_id, ambassador_first_name, ambassador_last_name, ambassador_age, appointed_at_tick, term_length, retirement_warning_shown')
-        .eq('nation_id', nation.id)
-        .eq('is_active', true)
-        .eq('status', 'active');
-
-    if (fetchErr || !ambassadors || ambassadors.length === 0) return results;
-
-    // Load target nation names for event messages
-    const targetNationIds = [...new Set(ambassadors.map(a => a.target_nation_id))];
-    const { data: targetNations } = await supabase
-        .from('nations')
-        .select('id, name')
-        .in('id', targetNationIds);
-    const nationNameMap = {};
-    if (targetNations) targetNations.forEach(n => { nationNameMap[n.id] = n.name; });
-
-    for (const amb of ambassadors) {
-      try {
-        const appointedTick = amb.appointed_at_tick;
-        if (appointedTick == null) continue; // No term tracking — skip
-
-        const termLength = amb.term_length || DIPLOMACY_CONFIG.AMBASSADOR_TERM_LENGTH;
-        const ticksServed = currentTick - appointedTick;
-        const ticksRemaining = termLength - ticksServed;
-        const targetNationName = nationNameMap[amb.target_nation_id] || 'Unknown';
-        const ambName = ((amb.ambassador_first_name || '') + ' ' + (amb.ambassador_last_name || '')).trim();
-
-        // ---- RETIREMENT ----
-        if (ticksServed >= termLength) {
-            const yearsServed = Math.floor(ticksServed / 12);
-
-            // 1. Retire the ambassador
-            const { error: retireErr } = await supabase.from('ambassadors').update({
-                status: 'recalled',
-                is_active: false,
-                recalled_at_tick: currentTick
-            }).eq('id', amb.id);
-            if (retireErr) {
-                console.error(`[processAmbassadorRetirements] Failed to retire ${ambName}:`, retireErr);
-                continue;
-            }
-
-            // 2. Cancel in-progress diplomatic proposals involving this nation pair
-            const cancelStatuses = ['proposed', 'fm_review', 'ratification'];
-            const { data: lapsedProposals } = await supabase
-                .from('diplomatic_proposals')
-                .select('id, proposal_type, proposal_data, proposing_nation_id, target_nation_id, proposing_bill_id, target_bill_id')
-                .in('status', cancelStatuses)
-                .or(`and(proposing_nation_id.eq.${nation.id},target_nation_id.eq.${amb.target_nation_id}),and(proposing_nation_id.eq.${amb.target_nation_id},target_nation_id.eq.${nation.id})`);
-
-            if (lapsedProposals && lapsedProposals.length > 0) {
-                const lapsedIds = lapsedProposals.map(p => p.id);
-                await supabase.from('diplomatic_proposals')
-                    .update({ status: 'expired', terminated_at_tick: currentTick })
-                    .in('id', lapsedIds);
-
-                // Cancel any linked ratification bills
-                for (const lp of lapsedProposals) {
-                    if (lp.proposing_bill_id) {
-                        await supabase.from('bills')
-                            .update({ status: 'failed' })
-                            .eq('id', lp.proposing_bill_id)
-                            .in('status', ['floor', 'committee']);
-                    }
-                    if (lp.target_bill_id) {
-                        await supabase.from('bills')
-                            .update({ status: 'failed' })
-                            .eq('id', lp.target_bill_id)
-                            .in('status', ['floor', 'committee']);
-                    }
-                }
-
-                // Fire lapsed negotiation event for the OTHER nation
-                await supabase.from('event_log').insert({
-                    nation_id: amb.target_nation_id,
-                    event_name: 'Diplomatic Negotiations Lapsed',
-                    trigger_key: 'diplomatic_initiative_rejected',
-                    category: 'Diplomatic',
-                    description_chosen: `${nation.name}'s ambassador has retired. ${lapsedProposals.length} pending negotiation(s) have lapsed. A new ambassador must be nominated before negotiations can resume.`,
-                    fired_at_tick: currentTick
-                });
-            }
-
-            // 3. Fire retirement event — ambassadorship remains vacant until nomination vote
-            await supabase.from('event_log').insert({
-                nation_id: nation.id,
-                event_name: 'Ambassador Retired',
-                category: 'Diplomatic',
-                description_chosen: `${ambName} has retired after ${yearsServed} year${yearsServed !== 1 ? 's' : ''} of service as Ambassador to ${targetNationName}. The post is now vacant until a replacement is nominated and confirmed.`,
-                fired_at_tick: currentTick
-            });
-
-            results.push({ ambassadorId: amb.id, name: ambName, target: targetNationName, action: 'retired' });
-            console.log(`[processAmbassadorRetirements] ${ambName} retired from ${nation.name} → ${targetNationName}. Post is now vacant.`);
-
-        // ---- RETIREMENT WARNING (3 ticks before) ----
-        } else if (ticksRemaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && !amb.retirement_warning_shown) {
-            await supabase.from('ambassadors')
-                .update({ retirement_warning_shown: true })
-                .eq('id', amb.id);
-
-            await supabase.from('event_log').insert({
-                nation_id: nation.id,
-                event_name: 'Ambassador Retirement Approaching',
-                category: 'Diplomatic',
-                description_chosen: `Ambassador ${ambName} to ${targetNationName} will retire in ${ticksRemaining} tick${ticksRemaining !== 1 ? 's' : ''}. Conclude any active negotiations and prepare a nomination for their replacement.`,
-                fired_at_tick: currentTick
-            });
-
-            results.push({ ambassadorId: amb.id, name: ambName, target: targetNationName, action: 'warning' });
-            console.log(`[processAmbassadorRetirements] Retirement warning for ${ambName} (${nation.name} → ${targetNationName}): ${ticksRemaining} ticks remaining.`);
-        }
-      } catch (ambErr) {
-        console.error(`[processAmbassadorRetirements] Error processing ambassador ${amb.id}:`, ambErr);
-      }
-    }
-
-    return results;
 }

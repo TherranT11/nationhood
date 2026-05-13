@@ -2158,25 +2158,6 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
             newApproval += clampedDelta * cfg.DELTA_SENSITIVITY;
         }
 
-        // Foreign Minister penalty: -0.25/tick per nation without an outgoing ambassador
-        let missingAmbassadorCount = 0;
-        if (ministry.ministry_key === 'foreign') {
-            const { count: totalNations } = await supabase
-                .from('nations')
-                .select('id', { count: 'exact', head: true })
-                .neq('id', nation.id);
-            const { count: activeAmbassadors } = await supabase
-                .from('ambassadors')
-                .select('id', { count: 'exact', head: true })
-                .eq('nation_id', nation.id)
-                .eq('is_active', true)
-                .eq('status', 'active');
-            missingAmbassadorCount = (totalNations || 0) - (activeAmbassadors || 0);
-            if (missingAmbassadorCount > 0) {
-                newApproval += missingAmbassadorCount * cfg.MISSING_AMBASSADOR_PENALTY;
-            }
-        }
-
         // PM approval capped at 70 — broad stat ownership makes 100% too easy
         const approvalCeiling = ministry.ministry_key === 'prime_minister' ? 70 : 100;
         // minister_approval is an integer column — round to whole number
@@ -4227,17 +4208,13 @@ export async function disbandParty(supabase, nationId, factionId, currentTick, o
     // 8. Fail any open bills proposed by this faction (they lose their sponsor)
     const { data: orphanedBills } = await supabase
         .from('bills')
-        .select('id, bill_name, bill_type, ambassador_id')
+        .select('id, bill_name')
         .eq('nation_id', nationId)
         .eq('proposed_by', factionId)
         .in('status', ['committee', 'floor']);
     if (orphanedBills && orphanedBills.length > 0) {
         for (const bill of orphanedBills) {
             await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
-            // Reject any pending ambassadors from failed confirmation bills
-            if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
-                await supabase.from('ambassadors').update({ status: 'rejected', is_active: false }).eq('id', bill.ambassador_id);
-            }
             console.log(`[disbandParty] Failed orphaned bill "${bill.bill_name}" (proposed by disbanded faction)`);
         }
     }
@@ -4726,31 +4703,56 @@ export async function processVolaStadiumCompletions(supabase, currentTick) {
                          : c.spec_category === 'Megaproject'          ? 2.0
                          : 0;
 
-        // Mark contract complete first (defensive — if a downstream
-        // step fails we don't double-apply on the next tick).
-        const { error: updErr } = await supabase.from('corp_contracts').update({
+        // Order matters: read + write the host BEFORE flipping the
+        // contract's status flag. If either step fails we leave the
+        // contract at 'active' so the next tick retries. (Previous
+        // ordering marked the contract completed first; when a schema
+        // drift caused the host SELECT to error, the side-effects were
+        // silently lost forever — the missing-column bug hidden behind
+        // the empty UI counts.)
+        const { data: host, error: hostErr } = await supabase.from('nations')
+            .select('id, name, vola_stadiums, vola_culture_floor, vola_stadium_annual_cost')
+            .eq('id', c.issuer_nation_id).single();
+        if (hostErr || !host) {
+            console.error(
+                `[VolaStadiumCompletion] host fetch failed for contract ${c.id} (nation ${c.issuer_nation_id}); leaving contract active for retry:`,
+                hostErr?.message || 'no row returned'
+            );
+            continue;
+        }
+
+        const newCount      = (Number(host.vola_stadiums) || 0) + 1;
+        const newFloor      = Math.min(100, _roundCulture((Number(host.vola_culture_floor) || 0) + floor));
+        const newAnnualCost = Math.round(((Number(host.vola_stadium_annual_cost) || 0) + annualCost) * 10) / 10;
+        const { error: hostUpdErr } = await supabase.from('nations').update({
+            vola_stadiums:            newCount,
+            vola_culture_floor:       newFloor,
+            vola_stadium_annual_cost: newAnnualCost,
+        }).eq('id', host.id);
+        if (hostUpdErr) {
+            console.error(
+                `[VolaStadiumCompletion] host update failed for contract ${c.id} (nation ${host.name}); leaving contract active for retry:`,
+                hostUpdErr.message
+            );
+            continue;
+        }
+
+        // Host columns are committed — now advance the contract flag.
+        // The .eq('status', 'active') guard keeps this idempotent in
+        // the (extremely unlikely) case another worker raced us.
+        const { error: contractErr } = await supabase.from('corp_contracts').update({
             status: 'completed',
             completed_at_tick: currentTick,
             payout_tick: currentTick + 3,
         }).eq('id', c.id).eq('status', 'active');
-        if (updErr) {
-            console.warn('[VolaStadiumCompletion] mark-complete failed for', c.id, ':', updErr.message);
-            continue;
-        }
-
-        // Pull the host nation's current sport-related counters.
-        const { data: host } = await supabase.from('nations')
-            .select('id, name, vola_stadiums, vola_culture_floor, vola_stadium_annual_cost')
-            .eq('id', c.issuer_nation_id).single();
-        if (host) {
-            const newCount      = (Number(host.vola_stadiums) || 0) + 1;
-            const newFloor      = Math.min(100, _roundCulture((Number(host.vola_culture_floor) || 0) + floor));
-            const newAnnualCost = Math.round(((Number(host.vola_stadium_annual_cost) || 0) + annualCost) * 10) / 10;
-            await supabase.from('nations').update({
-                vola_stadiums:            newCount,
-                vola_culture_floor:       newFloor,
-                vola_stadium_annual_cost: newAnnualCost,
-            }).eq('id', host.id);
+        if (contractErr) {
+            console.error(
+                `[VolaStadiumCompletion] mark-complete failed for contract ${c.id} AFTER host update succeeded — host now has a double-count risk if this contract is reprocessed; manual reconciliation may be required:`,
+                contractErr.message
+            );
+            // Don't skip the rest — the host columns are correct for
+            // this stadium; the GDP bonus + event log should still fire
+            // so the operator sees the partial-state in the timeline.
         }
 
         // Construction GDP bonus — host nation gains +0.1 gdp_growth on
@@ -4766,7 +4768,7 @@ export async function processVolaStadiumCompletions(supabase, currentTick) {
         // Event log — "Coastal Vola Park opened · floor +7 · home of Coastal Tide".
         const teamLabel = (c.description || '').replace(/^Home of:\s*/i, '').trim();
         const desc = `${c.name} opened · floor +${floor}` + (teamLabel ? ` · home of ${teamLabel}` : '');
-        await supabase.from('event_log').insert({
+        const { error: evErr } = await supabase.from('event_log').insert({
             nation_id:          c.issuer_nation_id,
             event_name:         'Vola Stadium Opened',
             category:           'political',
@@ -4774,6 +4776,9 @@ export async function processVolaStadiumCompletions(supabase, currentTick) {
             description_chosen: desc,
             fired_at_tick:      currentTick,
         });
+        if (evErr) {
+            console.warn('[VolaStadiumCompletion] event_log insert failed for', c.id, ':', evErr.message);
+        }
 
         completed++;
     }

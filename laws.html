@@ -397,7 +397,7 @@ import { isGovernmentPresidential, hasElectedPresident, getCurrentConstitutional
 import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies } from './js/game/government-structure.js';
 import { calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, getRequiredSeats, evaluateBillVote } from './js/game/bills.js';
 import { formatStatName, formatMinorSector } from './js/game/political-actions.js';
-import { MAJOR_SECTORS, RAW_SCALING_DIVISORS, checkSovereigntyConstraints } from './js/game/diplomacy-constants.js';
+import { MAJOR_SECTORS, RAW_SCALING_DIVISORS } from './js/game/diplomacy-constants.js';
 import { signPresidentialBill, vetoPresidentialBill } from './js/game/presidential.js';
 import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost } from './js/game/budget.js';
 import { SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS } from './js/game/sovereign-default.js';
@@ -1157,7 +1157,6 @@ function renderFloorBill(bill, isVetoed) {
     if (bill.bill_type === 'no_confidence') typeBadge = ' <span style="background:var(--red);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚡ No Confidence</span>';
     else if (bill.bill_type === 'repeal') typeBadge = ' <span style="background:var(--red);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">Repeal</span>';
     else if (bill.bill_type === 'foundational') typeBadge = ' <span style="background:var(--purple);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Foundational</span>';
-    else if (bill.bill_type === 'confirmation') typeBadge = ' <span style="background:var(--blue);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Confirmation</span>';
     else if (bill.bill_type === 'minister_confirmation') typeBadge = ' <span style="background:var(--orange);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🏛 Cabinet Confirmation</span>';
     else if (bill.bill_type === 'veto_override') typeBadge = ' <span style="background:var(--red);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">⚖ Veto Override</span>';
     else if (bill.bill_type === 'ratification') typeBadge = ' <span style="background:var(--green);color:#fff;padding:2px 8px;border-radius:3px;font-size:0.65rem;font-weight:bold;text-transform:uppercase;margin-left:6px;">🌐 Ratification</span>';
@@ -1195,7 +1194,6 @@ function renderFloorBill(bill, isVetoed) {
             </div>
             <div class="bill-articles">
                 ${bill.bill_type === 'no_confidence' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">⚡ Motion to dissolve the current government</span><div class="article-desc">Requires absolute majority (' + GAME_CONFIG.MAJORITY_SEATS + ' of ' + GAME_CONFIG.TOTAL_SEATS + ' seats) to pass.</div></div></div>' :
-                (bill.bill_type === 'confirmation' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--blue);">🏛 Ambassador Confirmation Vote</span><div class="article-desc">Requires quorum (50%) + simple majority to confirm.</div></div></div>' :
                 (bill.bill_type === 'minister_confirmation' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--orange);">🏛 Cabinet Confirmation Vote</span><div class="article-desc">Requires quorum (50%) + simple majority to confirm.</div></div></div>' :
                 (bill.bill_type === 'veto_override' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--red);">⚖ Veto Override Vote</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.VETO_OVERRIDE_THRESHOLD) + ' seats) to override presidential veto.</div></div></div>' :
                 (bill.bill_type === 'foundational' ? '<div class="bill-article-item"><div class="article-info"><span class="article-title" style="color:var(--purple);">' + foundationalArticleLabel(bill) + '</span><div class="article-desc">Requires 2/3 supermajority (' + Math.ceil(GAME_CONFIG.TOTAL_SEATS * GAME_CONFIG.SUPERMAJORITY_THRESHOLD) + ' seats) to pass.</div></div></div>' :
@@ -1357,8 +1355,6 @@ function renderArchiveBill(bill) {
         : bill.bill_type === 'veto_override' ? ' <span class="archive-type-badge" style="background:var(--red);">Veto Override</span>'
         : bill.bill_type === 'ratification' ? ' <span class="archive-type-badge" style="background:var(--green);">Ratification</span>'
         : bill.bill_type === 'minister_confirmation' ? ' <span class="archive-type-badge" style="background:var(--orange);">Cabinet Confirmation</span>'
-        : bill.bill_type === 'confirmation' ? ' <span class="archive-type-badge" style="background:var(--blue);">Confirmation</span>'
-
         : bill.bill_type === 'default_resolution' ? ' <span class="archive-type-badge" style="background:var(--red);">Default Resolution</span>'
         : bill.bill_type === 'impeachment_motion' ? ' <span class="archive-type-badge" style="background:var(--red);">Impeachment</span>'
         : bill.bill_type === 'impeachment_conviction' ? ' <span class="archive-type-badge" style="background:var(--red);">Impeachment Trial</span>'
@@ -4230,28 +4226,6 @@ async function submitToCommittee() {
         }
     }
 
-    // Check sovereignty constraints from active Major Diplomatic Initiatives
-    if (!isFoundationalBill) {
-        const { data: activeInitiatives } = await _supabase
-            .from('diplomatic_proposals')
-            .select('proposal_data')
-            .eq('status', 'active')
-            .eq('proposal_tier', 3)
-            .or(`proposing_nation_id.eq.${currentNation.id},target_nation_id.eq.${currentNation.id}`);
-
-        if (activeInitiatives && activeInitiatives.length > 0) {
-            for (const art of draftArticles) {
-                if (!art.policy || !art.policy.major_sector) continue;
-                const check = checkSovereigntyConstraints(activeInitiatives, art.policy.major_sector);
-                if (check.blocked) {
-                    alert(`Cannot propose this bill: "${art.policy.policy_name}" conflicts with active treaty "${check.initiative_name}".\n\n${check.message}`);
-                    isSubmitting = false;
-                    document.getElementById('submit-bill-btn').disabled = draftArticles.length === 0;
-                    return;
-                }
-            }
-        }
-    }
 
     // Flat $50k to propose a bill, regardless of article count.
     const billCost = 50000;

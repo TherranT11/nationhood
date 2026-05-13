@@ -58,7 +58,6 @@ suite('getBillTypeSpec', () => {
     test('ordinary → simple', () => assert.equal(getBillTypeSpec('ordinary').threshold, 'simple'));
     test('ratification → simple', () => assert.equal(getBillTypeSpec('ratification').threshold, 'simple'));
     test('minister_confirmation → simple', () => assert.equal(getBillTypeSpec('minister_confirmation').threshold, 'simple'));
-    test('confirmation → simple', () => assert.equal(getBillTypeSpec('confirmation').threshold, 'simple'));
     test('unknown type → simple (safe default)', () => assert.equal(getBillTypeSpec('fake_type_xyz').threshold, 'simple'));
     test('undefined/null → simple (safe default)', () => {
         assert.equal(getBillTypeSpec(undefined).threshold, 'simple');
@@ -93,8 +92,7 @@ suite('predicate partition (exactly one of the three is true)', () => {
     const types = [
         'foundational', 'default_resolution', 'veto_override', 'impeachment_conviction',
         'no_confidence', 'impeachment_motion',
-        'ordinary', 'ratification', 'confirmation', 'minister_confirmation',
-        'ambassador_confirmation', 'fake_type',
+        'ordinary', 'ratification', 'minister_confirmation', 'fake_type',
     ];
     for (const t of types) {
         test(`${t}: exactly one of super/absolute/simple`, () => {
@@ -108,7 +106,6 @@ suite('predicate partition (exactly one of the three is true)', () => {
 // ─── isSimpleMajorityBill ───────────────────────────────────────────────────
 suite('isSimpleMajorityBill', () => {
     test('ordinary is simple majority', () => assert.equal(isSimpleMajorityBill('ordinary'), true));
-    test('confirmation is simple majority', () => assert.equal(isSimpleMajorityBill('confirmation'), true));
     test('minister_confirmation is simple majority', () => assert.equal(isSimpleMajorityBill('minister_confirmation'), true));
     test('ratification is simple majority', () => assert.equal(isSimpleMajorityBill('ratification'), true));
     test('foundational is NOT simple majority', () => assert.equal(isSimpleMajorityBill('foundational'), false));

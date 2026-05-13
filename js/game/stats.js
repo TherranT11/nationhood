@@ -698,9 +698,6 @@ export const MINISTER_APPROVAL_CONFIG = {
     FIRE_MINISTER_AP_COST: 1,
     FIRE_GOV_APPROVAL_BONUS: 3,
 
-    // Foreign Minister: -0.25 approval/tick per nation without an outgoing ambassador
-    MISSING_AMBASSADOR_PENALTY: -0.25,
-
     // Government approval: -0.1 per vacant ministry per tick
     VACANCY_PENALTY: -0.1,
 
