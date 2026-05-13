@@ -27,6 +27,8 @@
  *   // ctl.getCount()  — current open-item count
  */
 
+import { escapeHtml, hfFmtBig } from './utils.js';
+
 const STYLE_ID = 'loan-pi-pressing-styles';
 
 const CSS = `
@@ -137,20 +139,6 @@ function injectStylesOnce() {
     document.head.appendChild(style);
 }
 
-function escapeHtml(s) {
-    return String(s == null ? '' : s)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function fmtMoney(n) {
-    const v = Number(n) || 0;
-    if (Math.abs(v) >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
-    if (Math.abs(v) >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
-    if (Math.abs(v) >= 1e3) return `$${Math.round(v / 1e3)}k`;
-    return `$${v}`;
-}
-
 function activityLabel(lastActivity) {
     if (!lastActivity) return '—';
     const t = new Date(lastActivity).getTime();
@@ -202,7 +190,7 @@ function renderCard(neg) {
         <div class="loan-pi-name">${escapeHtml(bankTicker)} — ${escapeHtml(bankName)}</div>
         ${purpose ? `<div class="loan-pi-purpose">— ${escapeHtml(purpose)}</div>` : ''}
         <div class="loan-pi-terms">
-            <span><span class="label">Principal</span><span class="value">${escapeHtml(fmtMoney(principal))}</span></span>
+            <span><span class="label">Principal</span><span class="value">${escapeHtml(hfFmtBig(principal))}</span></span>
             <span><span class="label">APR</span><span class="value">${apr.toFixed(1)}%</span></span>
             <span><span class="label">Term</span><span class="value">${term} ticks</span></span>
             <span><span class="label">Agreement</span><span class="value">${tally}/2</span></span>

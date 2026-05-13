@@ -1751,6 +1751,9 @@ let _loanOfferInflight = new Set();
 // Lawsuit cards (defendant + plaintiff settle-review) are owned by
 // js/lawsuit-pressing-issues.js — mounted to its own host below.
 let _lawsuitCtl = null;
+// Loan negotiations (new unified flow) are owned by
+// js/loan-pressing-issues.js — separate host above.
+let _loanCtl = null;
 
 // Routes state.
 let _availableContracts = [];   // status='open', includes my-bid annotation
@@ -1849,7 +1852,8 @@ function renderPressingIssues() {
     if (!list) return;
 
     const lawsuitCount = _lawsuitCtl?.getCount?.() ?? 0;
-    const total = _pressingIssues.length + _receivedOffers.length + lawsuitCount;
+    const loanCount    = _loanCtl?.getCount?.()    ?? 0;
+    const total = _pressingIssues.length + _receivedOffers.length + lawsuitCount + loanCount;
     if (count) count.textContent = `${total} OPEN`;
 
     if (_pressingIssues.length === 0 && _receivedOffers.length === 0) {
@@ -3218,12 +3222,14 @@ async function init() {
     // bank_loan_offers fetch + render in loadPressingIssues / pi-list
     // is kept for any in-flight offers on the old schema; mount the
     // new module here so shipping borrowers also see negotiations on
-    // the unified path.
-    mountLoanPressingIssues({
+    // the unified path. onChange re-renders the local pi-count so the
+    // section header total includes loan-negotiation cards.
+    _loanCtl = mountLoanPressingIssues({
         supabase: _supabase,
         faction,
         host: document.getElementById('so-loan-pressing'),
         showEmpty: false,
+        onChange: () => renderPressingIssues(),
     });
 
     _lawsuitCtl = mountLawsuitPressingIssues({
