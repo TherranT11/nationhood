@@ -1371,15 +1371,12 @@ body.corp-operations-finance.light-mode {
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { mountLawsuitPressingIssues } from './js/lawsuit-pressing-issues.js';
+import { SECTOR_OPS_PAGE } from './js/corp-topbar.js';
 
 // Operations pages are sector-gated. Finance stays here; every other
-// sector has its own page. Keep this map in sync with corp-topbar.js's
-// canonical SECTOR_OPS_PAGE.
-const SECTOR_OPS_PAGE = {
-    Construction: 'corp-operations.html',
-    Shipping:     'corp-operations-shipping.html',
-    Airline:      'airline-operations.html',
-};
+// sector has its own page. SECTOR_OPS_PAGE imported from corp-topbar.js
+// — single source of truth shared with every other ops page and the
+// corp top-bar nav.
 
 // ── HERO STATS (Section I) ──
 // Score-band lookup powers per-card blurbs and impact metrics. Same

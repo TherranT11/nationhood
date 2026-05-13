@@ -1207,16 +1207,14 @@ import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, escapeAttr, tickToDate } from './js/utils.js';
 import { mountLawsuitPressingIssues } from './js/lawsuit-pressing-issues.js';
 import { mountCorporateTaxPressingIssues } from './js/corp-tax-pressing-issues.js';
+import { SECTOR_OPS_PAGE } from './js/corp-topbar.js';
 
 // Operations pages are sector-gated. Construction stays here; every other
-// sector has its own page. Keep this map in sync with corp-topbar.js's
-// canonical SECTOR_OPS_PAGE — drift here is what causes Airline corps to
-// silently bounce to the dashboard.
-const SECTOR_OPS_PAGE = {
-    Finance:  'corp-operations-finance.html',
-    Shipping: 'corp-operations-shipping.html',
-    Airline:  'airline-operations.html',
-};
+// sector has its own page. Map imported from corp-topbar.js — the single
+// source of truth shared with the corp top-bar nav, common.js, and every
+// other consumer. Used to live as a local duplicate; drift between the
+// two copies silently bounced Airline (and later Aviation Manufacturing)
+// corps to the dashboard when their sector key was missing here.
 
 // ── HERO STATS (Section I) ──
 // Score-band lookup powers per-card blurbs and impact metrics. Same
