@@ -1181,6 +1181,7 @@ function renderPage(root) {
             <div class="pa-modal-overlay" id="pa-vola-stadium-modal"></div>
             <div class="pa-modal-overlay" id="pa-vola-host-bid-modal"></div>
             <div class="pa-modal-overlay" id="pa-debt-payment-modal"></div>
+            <div class="pa-modal-overlay" id="pa-expand-infra-modal"></div>
         `,
     });
 
@@ -1249,6 +1250,8 @@ function renderPage(root) {
             openVolaInvestmentModal(root, faction);
         } else if (actionId === 'expand_stadium_infrastructure') {
             openVolaStadiumModal(root, faction);
+        } else if (actionId === 'expand_infrastructure') {
+            openExpandInfrastructureModal(root, faction);
         } else if (actionId === 'bid_to_host_vwc') {
             openVolaHostBidModal(root, faction);
         } else if (actionId === 'leadership_challenge') {
@@ -1543,6 +1546,17 @@ const _MINISTRY_ACTION_REGISTRY = {
         _SOE_ACTION_ENTRY,
     ],
     energy:         [_SOE_ACTION_ENTRY],
+    interior: [
+        {
+            id: 'expand_infrastructure',
+            name: 'Expand Infrastructure',
+            desc: 'Post a public-works construction contract — Local Municipal Complex, Civic Center, or Provincial Infrastructure. Construction corps bid; the lowest qualified bid auto-wins. On completion your nation gains permanent stat boosts (Std of Living, GDP growth, Public Approval).',
+            cost: '$2 – $12',
+            costColor: '#5aafa5',
+            tags: ['INTERIOR', 'CONSTRUCTION'],
+        },
+        _SOE_ACTION_ENTRY,
+    ],
     healthcare:     [_SOE_ACTION_ENTRY],
     justice:        [_SOE_ACTION_ENTRY],
     education:      [_SOE_ACTION_ENTRY],
@@ -1641,6 +1655,16 @@ function ministryActionLockReason(actionId, faction, roleDescriptor) {
         const balance = Number(roleDescriptor?.discretionaryBalance ?? 0);
         if (balance < 2_000_000) {
             return 'Sports Ministry discretionary budget is below $2M — pass a funding bill first.';
+        }
+    }
+    if (actionId === 'expand_infrastructure') {
+        // Cheapest tier (small = $2M post fee). The post-RPC also
+        // enforces a one-open-or-active cap, but we can't see that
+        // without a query — fall through and let the modal surface
+        // the existing contract.
+        const balance = Number(roleDescriptor?.discretionaryBalance ?? 0);
+        if (balance < 2_000_000) {
+            return 'Interior Ministry discretionary budget is below $2 — pass a funding bill first.';
         }
     }
     if (actionId === 'call_early_elections' || actionId === 'resign_as_pm') {
@@ -3146,6 +3170,209 @@ async function openVolaStadiumModal(root, faction) {
             insert_failed:        'Could not post the contract. Try again in a moment.',
         };
         return map[reason];
+    }
+
+    overlay.classList.add('active');
+    await render();
+}
+
+// ════════════════════ EXPAND INFRASTRUCTURE ════════════════════
+// Minister of the Interior's contract-creating action. Mirrors the
+// Vola Stadium modal: tier picker view when no open contract exists,
+// open-contract view with pending bids list (read-only — interior
+// contracts auto-award via the construction cron when the bid window
+// expires, no minister pick). RPCs used:
+//   interior_infrastructure_tiers()   — tier specs JSONB
+//   post_interior_infrastructure(p_size) — posts the contract
+async function openExpandInfrastructureModal(root, faction) {
+    const overlay = document.getElementById('pa-expand-infra-modal');
+    if (!overlay) return;
+
+    let tiers = null;              // loaded once from RPC
+    let selectedSize = null;
+    let submitting = false;
+    let bidsContract = null;       // open contract row, if any
+    let bids = [];                 // pending bids on the open contract
+    let lastError = null;
+
+    async function refreshState() {
+        const { data: mRow } = await _supabase.from('ministries')
+            .select('id, party_id, discretionary_balance')
+            .eq('nation_id', _state.nation.id)
+            .eq('ministry_key', 'interior').eq('is_active', true).maybeSingle();
+        const balance = Number(mRow?.discretionary_balance) || 0;
+
+        const { data: open } = await _supabase.from('corp_contracts')
+            .select('id, name, description, spec_category, budget, timeline_months, expires_at_tick, created_at_tick')
+            .eq('issuer_nation_id', _state.nation.id)
+            .eq('project_subtype', 'Interior Infrastructure')
+            .in('status', ['open', 'active'])
+            .order('created_at_tick', { ascending: false }).limit(1).maybeSingle();
+        bidsContract = open || null;
+
+        bids = [];
+        if (bidsContract && bidsContract.status !== 'active') {
+            const { data: bidRows } = await _supabase.from('corp_contract_bids')
+                .select('id, faction_id, bid_amount, quoted_timeline_months, status, created_at_tick, factions:faction_id(id, faction_name, nation_id, nations:nation_id(name))')
+                .eq('contract_id', bidsContract.id)
+                .eq('status', 'pending')
+                .order('bid_amount', { ascending: true });
+            bids = bidRows || [];
+        }
+
+        if (!tiers) {
+            const { data: tData } = await _supabase.rpc('interior_infrastructure_tiers');
+            tiers = tData || {};
+        }
+
+        return { balance, hasMinister: !!mRow, isMinister: mRow?.party_id === faction.id };
+    }
+
+    async function render() {
+        const { balance, hasMinister, isMinister } = await refreshState();
+        const balanceColor = balance > 0 ? 'var(--green)' : 'var(--red)';
+        const fmtM = (n) => '$' + (Number(n) / 1_000_000).toFixed(Number(n) % 1_000_000 === 0 ? 0 : 1) + 'M';
+
+        let bodyHtml = '';
+
+        if (bidsContract) {
+            // Existing-contract view — bid window auto-awards via cron.
+            const isActive = bidsContract.status === 'active';
+            bodyHtml += `
+                <div class="pa-modal-step-label">${isActive ? 'Active Infrastructure Contract' : 'Open Infrastructure Contract'}</div>
+                <div class="pa-action-item" style="cursor:default;">
+                    <div class="pa-action-top">
+                        <span style="font-size:13px;font-weight:700;color:var(--text-bright);">${esc(bidsContract.name)}</span>
+                        <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#5aafa5;">${fmtM(bidsContract.budget)}</span>
+                    </div>
+                    <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">
+                        ${esc(bidsContract.spec_category)} · Timeline ${bidsContract.timeline_months} ticks${isActive ? '' : ` · Bidding closes tick ${bidsContract.expires_at_tick}`}
+                    </div>
+                </div>
+            `;
+
+            if (isActive) {
+                bodyHtml += `<div style="margin-top:10px;padding:10px 12px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);background:rgba(90,175,165,0.06);border:1px solid rgba(90,175,165,0.2);">Construction is underway. Stat boosts apply on completion.</div>`;
+            } else {
+                bodyHtml += `<div class="pa-modal-step-label" style="margin-top:14px;">Pending Bids ${bids.length ? '· ' + bids.length : ''}</div>`;
+                if (bids.length === 0) {
+                    bodyHtml += `<div style="padding:14px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;text-align:center;">Awaiting construction corporation bids…</div>`;
+                } else {
+                    bodyHtml += bids.map(b => {
+                        const corpName = b.factions?.faction_name || 'Unknown Corp';
+                        const hqNation = b.factions?.nations?.name || '—';
+                        const price    = Number(b.bid_amount || 0);
+                        const priceLabel = price >= 1e9 ? '$' + (price / 1e9).toFixed(2) + 'B'
+                                         : price >= 1e6 ? '$' + (price / 1e6).toFixed(1) + 'M'
+                                         : '$' + Math.round(price).toLocaleString();
+                        const timeline = Number(b.quoted_timeline_months || 0);
+                        return `<div class="pa-action-item" style="cursor:default;">
+                            <div class="pa-action-top">
+                                <div>
+                                    <div style="font-size:13px;font-weight:700;color:var(--text-bright);">${esc(corpName)}</div>
+                                    <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">
+                                        HQ ${esc(hqNation)} · Bid ${priceLabel} · Timeline ${timeline} ticks
+                                    </div>
+                                </div>
+                            </div>
+                        </div>`;
+                    }).join('');
+                }
+                bodyHtml += `<div style="margin-top:10px;padding:8px 10px;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.08);">Auto-awarded to the lowest qualified bidder when the bid window closes.</div>`;
+            }
+        } else {
+            // Tier-picking view.
+            const order = ['small', 'modest', 'extravagant'];
+            const tierLabel = { small: 'SMALL', modest: 'MODEST', extravagant: 'EXTRAVAGANT' };
+            const tiersHtml = order.map(k => {
+                const t = tiers?.[k];
+                if (!t) return '';
+                const postCost = Number(t.post_cost || 0);
+                const budget   = Number(t.budget || 0);
+                const canAfford = balance >= postCost;
+                const isSel = selectedSize === k;
+                const effects = (t.stat_effects || []).map(e => {
+                    const sign = Number(e.delta) >= 0 ? '+' : '';
+                    const stat = String(e.stat).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    return `<span class="pa-action-tag" style="color:var(--green);">${sign}${e.delta} ${stat}</span>`;
+                }).join(' ');
+                return `<div class="pa-action-item ${!canAfford || submitting ? 'locked' : ''} ${isSel ? 'selected' : ''}" data-size="${k}" style="cursor:${canAfford && !submitting ? 'pointer' : 'not-allowed'};${isSel ? 'border-color:#5aafa5;background:rgba(90,175,165,0.06);' : ''}">
+                    <div class="pa-action-top">
+                        <span style="font-size:13px;font-weight:700;color:${isSel ? '#5aafa5' : 'var(--text-bright)'};">${esc(t.name || tierLabel[k])}</span>
+                        <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#5aafa5;">${tierLabel[k]}</span>
+                    </div>
+                    <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">
+                        Post fee ${fmtM(postCost)} · Contract budget ${fmtM(budget)} · Timeline ${t.timeline} ticks
+                    </div>
+                    ${effects ? `<div class="pa-action-tags" style="margin-top:4px;">${effects}</div>` : ''}
+                    ${!canAfford ? `<div style="font-family:var(--font-mono);font-size:8px;color:var(--red);margin-top:4px;">Insufficient discretionary — need ${fmtM(postCost)}</div>` : ''}
+                </div>`;
+            }).join('');
+
+            bodyHtml = `
+                <div class="pa-modal-step-label">Choose Tier</div>
+                <div id="expand-infra-tiers">${tiersHtml}</div>
+                ${lastError ? `<div style="margin-top:10px;padding:8px 10px;background:rgba(200,80,80,0.08);border:1px solid rgba(200,80,80,0.2);font-family:var(--font-mono);font-size:10px;color:var(--red);">${esc(lastError)}</div>` : ''}
+            `;
+        }
+
+        const footerHtml = bidsContract
+            ? `<button class="pa-modal-btn" id="expand-infra-close" style="background:var(--bg-card);">Close</button>`
+            : `<button class="pa-modal-btn pa-modal-btn--cancel" id="expand-infra-close">Cancel</button>
+               <button class="pa-modal-btn pa-modal-btn--submit" id="expand-infra-post" ${(!selectedSize || submitting) ? 'disabled' : ''} style="background:#5aafa5;">Post Infrastructure Contract</button>`;
+
+        overlay.innerHTML = `
+            <div class="pa-modal" style="width:560px;max-height:85vh;overflow-y:auto;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:#5aafa5;"></div>
+                        <span class="pa-modal-title">Expand Infrastructure</span>
+                    </div>
+                    <button class="pa-modal-close" id="expand-infra-x">&times;</button>
+                </div>
+                <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                    ${hasMinister && isMinister
+                        ? `Post fee pulls from the Interior Ministry's discretionary budget — <strong style="color:${balanceColor};">${fmtDiscretionaryBalance(balance)}</strong> available. Construction corps bid; the lowest qualified bid auto-wins when the bid window closes. Stat boosts apply on completion.`
+                        : '<span style="color:var(--red);">You are no longer the active Interior Minister.</span>'}
+                </div>
+                <div class="pa-modal-body" style="gap:6px;">
+                    ${bodyHtml}
+                </div>
+                <div class="pa-modal-footer">${footerHtml}</div>
+            </div>
+        `;
+
+        const close = () => overlay.classList.remove('active');
+        document.getElementById('expand-infra-x')?.addEventListener('click', close);
+        document.getElementById('expand-infra-close')?.addEventListener('click', close);
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+        document.getElementById('expand-infra-tiers')?.addEventListener('click', (e) => {
+            const item = e.target.closest('[data-size]');
+            if (!item || item.classList.contains('locked') || submitting) return;
+            selectedSize = item.dataset.size;
+            render();
+        });
+
+        document.getElementById('expand-infra-post')?.addEventListener('click', async () => {
+            if (submitting || !selectedSize) return;
+            submitting = true; lastError = null; render();
+            try {
+                const { data, error } = await _supabase.rpc('post_interior_infrastructure', { p_size: selectedSize });
+                if (error) {
+                    lastError = error.message || 'Post failed';
+                } else if (!data?.success) {
+                    lastError = data?.error || 'Could not post contract';
+                } else {
+                    selectedSize = null;
+                }
+            } catch (err) {
+                lastError = 'Posting failed: ' + (err?.message || err);
+            } finally {
+                submitting = false;
+                render();
+            }
+        });
     }
 
     overlay.classList.add('active');
