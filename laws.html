@@ -1219,7 +1219,7 @@ function renderFloorBill(bill, isVetoed) {
                     const _isRepeal = !!art.repeal_active_law_id;
                     const _repealBadge = _isRepeal ? ' <span style="background:var(--red);color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;margin-left:4px;">REPEAL</span>' : '';
                     return `<div class="bill-article-item"><div class="article-info"><span class="article-title">Art. ${art.article_number}. ${_isRepeal ? 'Repeal: ' : ''}${articleNameHtml(art)}${_repealBadge}</span><div class="article-desc">${articleDescriptionHtml(art)}</div>${articleTargetEffectsHtml(art)}</div></div>`;
-                }).join(''))))))))))}
+                }).join('')))))))))}
             </div>
             ${isVetoed ? `<div class="vetoed-stamp">${isPresidential ? '⛔ VETOED BY PRESIDENT' : '⛔ VETOED BY HEAD FACTION'}</div>` : `
                 <div class="floor-votes"><span class="votes-for">✓ ${bill.votes_for || 0} For</span><span class="votes-against">✗ ${bill.votes_against || 0} Against</span>${(bill.votes_abstain || 0) > 0 ? `<span style="color:var(--text-secondary);font-size:0.75rem;margin-left:8px;">— ${bill.votes_abstain} Abstain</span>` : ''}<span style="color:var(--text-secondary);font-size:0.75rem;margin-left:8px;">${Math.max(0, Math.min(GAME_CONFIG.TOTAL_SEATS, Object.values(allPartySeats).reduce((s,v)=>s+(v||0),0)) - (bill.votes_for || 0) - (bill.votes_against || 0) - (bill.votes_abstain || 0))} undeclared</span></div>
