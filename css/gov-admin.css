@@ -453,10 +453,63 @@
 }
 
 /* Middle column — timeline */
+/* Middle-column wrapper — stacks Pressing Issues above the Executive
+   Timeline. The wrapper owns the total middle-column height so the
+   pair stays bottom-aligned with the cabinet on the right. Timeline
+   takes whatever's left after Pressing Issues' fixed slot. */
+.adm2-center {
+    display: flex; flex-direction: column; gap: 14px;
+    min-height: calc(100vh - 220px); min-width: 0;
+}
+
+/* Pressing Issues — fixed-height container above the timeline.
+   Visual chrome matches .adm2-timeline (header bar + scrollable
+   body). Empty state mirrors the corp-ops pressing-issue panel
+   copy so the player sees one consistent affordance. Currently
+   visual-only — when a future module wires real cards, drop the
+   .adm2-pressing-empty <div> and mount into .adm2-pressing-body. */
+.adm2-pressing {
+    background: var(--bg-panel); border: 1px solid var(--border-main);
+    border-radius: 4px; overflow: hidden;
+    flex: 0 0 180px;
+    display: flex; flex-direction: column;
+}
+.adm2-pressing-head {
+    padding: 12px 14px; border-bottom: 1px solid var(--border-main);
+    background: var(--bg-card);
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap;
+}
+.adm2-pressing-head .title {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    letter-spacing: 0.22em; text-transform: uppercase; color: var(--text-bright);
+}
+.adm2-pressing-head .title .sq {
+    width: 8px; height: 8px; background: var(--red);
+    box-shadow: 0 0 8px rgba(217,83,79,0.4); flex: none;
+}
+.adm2-pressing-head .desc {
+    font-family: var(--font-mono); font-size: 9px;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-muted);
+}
+.adm2-pressing-body {
+    flex: 1; overflow-y: auto;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px 16px;
+}
+.adm2-pressing-empty {
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--text-dim); font-style: italic;
+    text-align: center; max-width: 360px; line-height: 1.6;
+}
+
 .adm2-timeline {
     background: var(--bg-panel); border: 1px solid var(--border-main);
     border-radius: 4px; overflow: hidden;
-    display: flex; flex-direction: column; min-height: calc(100vh - 220px);
+    display: flex; flex-direction: column;
+    flex: 1; min-height: 0;
 }
 .adm2-tl-head {
     padding: 12px 14px; border-bottom: 1px solid var(--border-main);
@@ -487,7 +540,7 @@
     color: var(--text-bright); border-color: var(--border-strong);
     background: var(--bg-hover);
 }
-.adm2-tl-list { padding: 6px 0; overflow-y: auto; flex: 1; max-height: calc(100vh - 280px); }
+.adm2-tl-list { padding: 6px 0; overflow-y: auto; flex: 1; min-height: 0; }
 .adm2-tl-item {
     display: grid; grid-template-columns: 22px 1fr auto; gap: 14px;
     padding: 12px 16px 12px 14px; border-bottom: 1px solid var(--border-light);

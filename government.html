@@ -1304,13 +1304,24 @@ function renderAdministrationTab(container) {
             <div id="adm2-hog-card"></div>
             <div id="adm2-nation-card"></div>
         </div>
-        <section class="adm2-timeline">
-            <div class="adm2-tl-head">
-                <div class="title"><span class="sq"></span>Executive Timeline</div>
-                <div class="adm2-tl-filters" id="adm2-tl-filters"></div>
-            </div>
-            <div class="adm2-tl-list" id="adm2-tl-list"></div>
-        </section>
+        <div class="adm2-center">
+            <section class="adm2-pressing">
+                <div class="adm2-pressing-head">
+                    <div class="title"><span class="sq"></span>Pressing Issues</div>
+                    <div class="desc">Time-Sensitive ◊ Decide Before Tick Resolves</div>
+                </div>
+                <div class="adm2-pressing-body">
+                    <div class="adm2-pressing-empty">No pressing issues right now. Time-sensitive decisions will appear here when triggered.</div>
+                </div>
+            </section>
+            <section class="adm2-timeline">
+                <div class="adm2-tl-head">
+                    <div class="title"><span class="sq"></span>Executive Timeline</div>
+                    <div class="adm2-tl-filters" id="adm2-tl-filters"></div>
+                </div>
+                <div class="adm2-tl-list" id="adm2-tl-list"></div>
+            </section>
+        </div>
         <section class="adm2-cabinet">
             <div class="adm2-panel-head adm2-cab-head">
                 <div class="title" style="display:flex;align-items:center;gap:10px;"><span class="sq"></span><span id="adm2-cab-title">Cabinet</span></div>
