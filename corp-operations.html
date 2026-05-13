@@ -1136,6 +1136,12 @@ body.corp-operations-construction.light-mode {
         <h2><span class="num">II.</span>Pressing Issues</h2>
         <span class="desc" id="co-issues-meta">Time-Sensitive ◊ Decide Before Tick Resolves</span>
       </div>
+      <!-- Loan negotiations (this corp is the borrower) render into a
+           dedicated host owned by js/loan-pressing-issues.js. Sits at
+           the top of the stack: direct money implications + accept-
+           one-auto-rejects-rest semantics make these the most
+           consequential decisions in the section. -->
+      <div id="co-loan-pressing"></div>
       <!-- Lawsuit cards (defendant + plaintiff settle-review) render
            into a dedicated host owned by js/lawsuit-pressing-issues.js
            — same module the other sector ops pages mount. -->
@@ -1207,6 +1213,7 @@ import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, escapeAttr, tickToDate } from './js/utils.js';
 import { mountLawsuitPressingIssues } from './js/lawsuit-pressing-issues.js';
 import { mountCorporateTaxPressingIssues } from './js/corp-tax-pressing-issues.js';
+import { mountLoanPressingIssues } from './js/loan-pressing-issues.js';
 import { SECTOR_OPS_PAGE } from './js/corp-topbar.js';
 
 // Operations pages are sector-gated. Construction stays here; every other
@@ -1370,51 +1377,27 @@ function renderHeroMeter(score, band) {
 // ── PRESSING ISSUES (Section II) ──
 
 let _pressingIssues = [];
-// Received bank_loan_offers (status='pending') on requests this corp
-// opened. Surfaced as Pressing Issues so the borrower can accept the
-// best offer or reject individuals — siblings auto-reject on accept.
-let _receivedOffers = [];
-// Lawsuit cards (defendant + plaintiff settle-review) are owned by
-// js/lawsuit-pressing-issues.js — mounted to its own host below.
+// Lawsuit cards, corp tax bills, and loan negotiations are each
+// owned by their own dedicated module and render into their own
+// hosts above #co-issues-list. We keep references so the section
+// header's count can include them in the total.
 let _lawsuitCtl = null;
 let _corpTaxCtl = null;
+let _loanCtl    = null;
 
 async function loadPressingIssues() {
     if (!faction?.id) return;
-    const [eventsRes, offersRes] = await Promise.all([
-        _supabase
-            .from('corp_contract_events')
-            .select('id, contract_id, type, severity, title, description, impact, responses, expires_at_tick, corp_contracts:contract_id(name)')
-            .eq('faction_id', faction.id)
-            .eq('status', 'ACTIVE')
-            .order('expires_at_tick', { ascending: true }),
-        // Phase 6 unification: borrowers see active negotiations
-        // (auction-spawned + any orphan ones) instead of bank_loan_offers.
-        // Each negotiation appears as a Pressing Issue with an
-        // "Open Negotiation" CTA that mounts the bilateral modal.
-        _supabase
-            .from('loan_negotiations')
-            .select(`
-                id, principal, apr, term_ticks, purpose,
-                borrower_agreed, lender_agreed,
-                last_activity_at, last_seen_at_borrower,
-                lender:lender_faction_id ( faction_name, corp_ticker )
-            `)
-            .eq('borrower_faction_id', faction.id)
-            .eq('status', 'open')
-            .order('last_activity_at', { ascending: false }),
-    ]);
-    if (eventsRes.error) {
-        console.warn('[corp-operations] Pressing Issues fetch failed:', eventsRes.error.message);
+    const { data, error } = await _supabase
+        .from('corp_contract_events')
+        .select('id, contract_id, type, severity, title, description, impact, responses, expires_at_tick, corp_contracts:contract_id(name)')
+        .eq('faction_id', faction.id)
+        .eq('status', 'ACTIVE')
+        .order('expires_at_tick', { ascending: true });
+    if (error) {
+        console.warn('[corp-operations] Pressing Issues fetch failed:', error.message);
         _pressingIssues = [];
     } else {
-        _pressingIssues = eventsRes.data || [];
-    }
-    if (offersRes.error) {
-        console.warn('[corp-operations] Loan offers fetch failed:', offersRes.error.message);
-        _receivedOffers = [];
-    } else {
-        _receivedOffers = offersRes.data || [];
+        _pressingIssues = data || [];
     }
     renderPressingIssues();
 }
@@ -1443,67 +1426,25 @@ function renderPressingIssues() {
 
     const lawsuitCount = _lawsuitCtl?.getCount?.() ?? 0;
     const taxCount     = _corpTaxCtl?.getCount?.() ?? 0;
+    const loanCount    = _loanCtl?.getCount?.()    ?? 0;
     const relocateCount = faction?.displaced_from_nation_id ? 1 : 0;
-    const total = _pressingIssues.length + _receivedOffers.length + lawsuitCount + taxCount + relocateCount;
+    const total = _pressingIssues.length + loanCount + lawsuitCount + taxCount + relocateCount;
     meta.textContent = total === 0
         ? 'Time-Sensitive ◊ Decide Before Tick Resolves'
         : `${total} OPEN ◊ DECIDE BEFORE TICK RESOLVES`;
 
     const isDisplaced = !!faction?.displaced_from_nation_id;
-    if (_pressingIssues.length === 0 && _receivedOffers.length === 0 && !isDisplaced) {
-        // Lawsuit + tax cards (if any) render into their own hosts
-        // above #co-issues-list — so the empty copy here only applies
-        // to the event/offer stack, not the section as a whole.
-        list.innerHTML = (lawsuitCount === 0 && taxCount === 0)
+    if (_pressingIssues.length === 0 && !isDisplaced) {
+        // Loan / lawsuit / tax cards (if any) render into their own
+        // hosts above #co-issues-list — so the empty copy here only
+        // applies to the event stack, not the section as a whole.
+        list.innerHTML = (lawsuitCount === 0 && taxCount === 0 && loanCount === 0)
             ? '<div class="co-contract-empty">No pressing issues right now. Time-sensitive decisions will appear here when triggered.</div>'
             : '';
         return;
     }
 
     const currentTick = Number(shard?.current_tick) || 0;
-
-    // Loan offers render first — direct money implications and the
-    // borrower's accept-one-auto-rejects-rest semantics make them the
-    // most consequential decisions in the stack.
-    const offerCards = _receivedOffers.map(neg => {
-        const lender     = neg.lender || {};
-        const bankTicker = lender.corp_ticker || '—';
-        const bankName   = lender.faction_name || 'Lender';
-        const apr        = Number(neg.apr) || 0;
-        const term       = Number(neg.term_ticks) || 0;
-        const principal  = Number(neg.principal) || 0;
-        const purpose    = neg.purpose ? String(neg.purpose).trim() : '';
-        const tally      = (neg.borrower_agreed ? 1 : 0) + (neg.lender_agreed ? 1 : 0);
-        const lastActivity = neg.last_activity_at ? new Date(neg.last_activity_at) : null;
-        const dSec  = lastActivity ? Math.max(0, Math.floor((Date.now() - lastActivity.getTime()) / 1000)) : 0;
-        const activityText = !lastActivity ? '—'
-            : dSec < 60   ? dSec + 's ago'
-            : dSec < 3600 ? Math.floor(dSec / 60) + 'm ago'
-            : dSec < 86400 ? Math.floor(dSec / 3600) + 'h ago'
-            : Math.floor(dSec / 86400) + 'd ago';
-        const unread = !neg.last_seen_at_borrower
-            || (lastActivity && new Date(neg.last_seen_at_borrower).getTime() < lastActivity.getTime());
-
-        return `<div class="co-issue-card kind-loan-offer">
-            <div class="co-contract-meta-row">
-                <span class="co-issue-tag kind-loan-offer">${unread ? 'NEGOTIATION ◊ UNREAD' : 'NEGOTIATION'}</span>
-                <span class="co-contract-deadline">${escapeHtml(activityText)}</span>
-            </div>
-            <div class="co-contract-name">${escapeHtml(bankTicker)} — ${escapeHtml(bankName)}</div>
-            ${purpose ? `<div class="co-contract-client">— ${escapeHtml(purpose)}</div>` : ''}
-            <div class="co-issue-terms">
-                <span><span class="label">PRINCIPAL</span><span class="value">${escapeHtml(fmtMoney(principal))}</span></span>
-                <span><span class="label">APR</span><span class="value">${apr.toFixed(1)}%</span></span>
-                <span><span class="label">TERM</span><span class="value">${term} TICKS</span></span>
-                <span><span class="label">AGREEMENT</span><span class="value">${tally}/2</span></span>
-            </div>
-            <div class="co-contract-actions">
-                <button class="co-contract-btn primary" data-action="open-negotiation" data-id="${escapeHtml(neg.id)}">
-                    Open Negotiation ▸
-                </button>
-            </div>
-        </div>`;
-    });
 
     // Forced Corporate Exodus card — appears when this corp has been
     // displaced by a State Run Economy enactment. Sits at the top of
@@ -1566,9 +1507,10 @@ function renderPressingIssues() {
     });
 
     // Relocation card goes first (most consequential — blocks every
-    // other corp action server-side via BEFORE INSERT triggers).
+    // other corp action server-side via BEFORE INSERT triggers). Loan
+    // negotiations render above this list in their own host (the
+    // loan-pressing-issues module owns its own ordering and CSS).
     list.innerHTML = (relocateCard ? [relocateCard] : [])
-        .concat(offerCards)
         .concat(eventCards)
         .join('');
 }
@@ -2073,9 +2015,9 @@ function bindContractActions() {
     document.getElementById('co-active-list')?.addEventListener('click', handleContractClick);
 
     // Pressing Issues delegation. Routes by data-action: ack-issue
-    // for project events, open-negotiation for inbound bilateral
-    // loan negotiations (Phase 6 unification — replaces accept/reject
-    // on bank_loan_offers). Lawsuit cards live in their own host and
+    // for project events. Loan negotiations are owned by
+    // js/loan-pressing-issues.js (mounted into #co-loan-pressing);
+    // lawsuit cards live in their own host and
     // are wired by js/lawsuit-pressing-issues.js.
     document.getElementById('co-issues-list')?.addEventListener('click', async (e) => {
         const btn = e.target.closest('[data-action]');
@@ -2086,20 +2028,9 @@ function bindContractActions() {
         const id = btn.getAttribute('data-id');
         if (!id) return;
         if (action === 'ack-issue')     return acknowledgeIssue(id);
-        if (action === 'open-negotiation') {
-            try {
-                const lnm = await import('./js/loan-negotiation-modal.js');
-                await lnm.mountLoanNegotiationModal({
-                    supabase: _supabase,
-                    negotiationId: id,
-                    onClose: () => loadPressingIssues(),
-                    onFired: () => loadPressingIssues(),
-                });
-            } catch (err) {
-                console.warn('[corp-operations] negotiation modal mount failed:', err?.message || err);
-            }
-            return;
-        }
+        // open-negotiation is owned by js/loan-pressing-issues.js
+        // (mounted into the co-loan-pressing host above this list);
+        // no handler needed here.
     });
 
     // Modal background / close-button click → dismiss.
@@ -2892,6 +2823,13 @@ async function init() {
     }, 30000);
     window.addEventListener('beforeunload', () => clearInterval(_tickPoll));
 
+    _loanCtl = mountLoanPressingIssues({
+        supabase: _supabase,
+        faction,
+        host: document.getElementById('co-loan-pressing'),
+        showEmpty: false,
+        onChange: () => renderPressingIssues(),
+    });
     _lawsuitCtl = mountLawsuitPressingIssues({
         supabase: _supabase,
         faction,

@@ -1299,6 +1299,12 @@ body.corp-operations-finance.light-mode {
         <h2><span class="num">II.</span>Pressing Issues</h2>
         <span class="desc">Time-Sensitive ◊ Decide Before Tick Resolves</span>
       </div>
+      <!-- Owned by js/loan-pressing-issues.js — fills with one card
+           per open loan negotiation where this Finance corp is itself
+           the borrower (rare but possible — banks can borrow from
+           each other). Empty render is suppressed here so the lawsuit
+           module below owns the section's single empty-state line. -->
+      <div id="fo-loan-pressing"></div>
       <!-- Owned by js/lawsuit-pressing-issues.js — fills with
            lawsuit cards when this corp is a defendant or has a pending
            settle offer awaiting their answer. -->
@@ -1371,6 +1377,7 @@ body.corp-operations-finance.light-mode {
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { mountLawsuitPressingIssues } from './js/lawsuit-pressing-issues.js';
+import { mountLoanPressingIssues } from './js/loan-pressing-issues.js';
 import { SECTOR_OPS_PAGE } from './js/corp-topbar.js';
 
 // Operations pages are sector-gated. Finance stays here; every other
@@ -2639,6 +2646,13 @@ async function init() {
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = '';
+
+    mountLoanPressingIssues({
+        supabase: _supabase,
+        faction,
+        host: document.getElementById('fo-loan-pressing'),
+        showEmpty: false,  // lawsuit module owns the section empty state
+    });
 
     mountLawsuitPressingIssues({
         supabase: _supabase,

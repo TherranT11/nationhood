@@ -1262,6 +1262,7 @@ body.corp-operations-aviation.light-mode {
 <script type="module">
 import { renderCorpTopBar } from './js/corp-topbar.js';
 import { _supabase } from './js/supabase-client.js';
+import { mountLoanPressingIssues } from './js/loan-pressing-issues.js';
 
 function escHtml(s) {
     if (s == null) return '';
@@ -1502,7 +1503,11 @@ function renderPageShell(activeOrders) {
                 <h2><span class="num">II.</span>Pressing Issues</h2>
                 <span class="desc">Time-Sensitive ◊ Decide Before Tick Resolves</span>
             </div>
-            <div class="co-contract-empty">No pressing issues right now. Time-sensitive decisions will appear here when triggered.</div>
+            <!-- Owned by js/loan-pressing-issues.js — renders one card per
+                 open loan negotiation where this corp is the borrower.
+                 Empty state ('No pressing issues right now') comes from the
+                 module itself; no static fallback needed. -->
+            <div id="co-loan-pressing"></div>
         </div>
 
         <!-- III. AIRCRAFT RFPs (open marketplace from airlines) -->
@@ -3631,6 +3636,15 @@ async function init() {
     // page header layout matches the construction / shipping / finance
     // pages where the active-contracts pill is the headline indicator.
     renderPageShell(0);
+
+    // Wire the borrower-side loan negotiations into Pressing Issues.
+    // Mount AFTER renderPageShell paints the section so the host div
+    // exists. Self-contained CSS via the module's own injectStyles.
+    mountLoanPressingIssues({
+        supabase: _supabase,
+        faction,
+        host: document.getElementById('co-loan-pressing'),
+    });
 
     renderHeroStats();
     bindPanelActionButtons();
