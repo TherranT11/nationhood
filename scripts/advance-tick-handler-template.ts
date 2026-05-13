@@ -2258,17 +2258,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Aid condition review failed for ${nation.name} (non-fatal):`, aidErr);
         }
 
-        // Ambassador term limits (retirements + warnings)
-        try {
-            const retirementResults = await processAmbassadorRetirements(supabase, freshNation || nation, newTick);
-            if (retirementResults.length > 0) {
-                summary.ambassadorRetirements = summary.ambassadorRetirements || [];
-                summary.ambassadorRetirements.push({ nation: nation.name, retirements: retirementResults });
-            }
-        } catch (retireErr) {
-            console.error(`[advanceTick] Ambassador retirements failed for ${nation.name} (non-fatal):`, retireErr);
-        }
-
         // ── Monarch succession by natural death ──
         // Fires when the current tick hits the secret reign-end roll set at
         // coronation. Rolls a new monarch from the nation's name pool and a

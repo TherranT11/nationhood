@@ -373,13 +373,11 @@ async function loadPage() {
         document.getElementById('gov-type').textContent = nation.hos_election_method === 'hereditary' ? 'Constitutional Monarchy' : (nation.government_type || '');
 
         // Parallel: profile, previous tick, factions, relations, user faction check
-        var [profileRes, shardRes, factionsRes, relationsRes, ambFromRes, ambToRes, electionRes, userFactionRes] = await Promise.all([
+        var [profileRes, shardRes, factionsRes, relationsRes, electionRes, userFactionRes] = await Promise.all([
             _supabase.from('nation_profiles').select('*').eq('nation_id', nation.id).limit(1),
             _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
             _supabase.from('factions').select('*').eq('nation_id', nation.id).eq('faction_type', 'party'),
             _supabase.from('diplomatic_relations').select('*, nation_a:nations!diplomatic_relations_nation_a_id_fkey(id,name), nation_b:nations!diplomatic_relations_nation_b_id_fkey(id,name)').or('nation_a_id.eq.' + nation.id + ',nation_b_id.eq.' + nation.id),
-            _supabase.from('ambassadors').select('target_nation_id').eq('nation_id', nation.id).eq('is_active', true).eq('status', 'active'),
-            _supabase.from('ambassadors').select('nation_id').eq('target_nation_id', nation.id).eq('is_active', true).eq('status', 'active'),
             _supabase.from('elections').select('results').eq('nation_id', nation.id).eq('status', 'completed').eq('election_type', 'parliamentary').order('election_tick', { ascending: false }).limit(1).maybeSingle(),
             _supabase.from('factions').select('nation_id').eq('id', userRes.data.user.id).eq('nation_id', nation.id).eq('faction_type', 'party').limit(1)
         ]);
@@ -396,7 +394,7 @@ async function loadPage() {
             historyFetchFailed = histState.historyFetchFailed;
         }
 
-        render(factionsRes.data || [], relationsRes.data || [], ambFromRes.data || [], ambToRes.data || [], electionRes.data);
+        render(factionsRes.data || [], relationsRes.data || [], electionRes.data);
     } catch (err) {
         console.error('Load error:', err);
         document.getElementById('loading').innerHTML = '<div style="color:#ff5555;">Error: ' + err.message + '</div>';
@@ -404,7 +402,7 @@ async function loadPage() {
 }
 
 // ---------- Render ----------
-function render(factions, relations, ambFrom, ambTo, latestElection) {
+function render(factions, relations, latestElection) {
     // Flag from profile, fallback to assets/flags/{name}.png
     const flagEl = document.getElementById('nation-flag');
     const flagSrc = profile.flag_url || `assets/flags/${nation.name}.png`;
@@ -426,7 +424,7 @@ function render(factions, relations, ambFrom, ambTo, latestElection) {
     renderGovernment(factions, latestElection);
 
     // Relations
-    renderRelations(relations, ambFrom, ambTo);
+    renderRelations(relations);
 
     // Stats
     renderStats();
@@ -519,7 +517,7 @@ function renderGovernment(factions, latestElection) {
 }
 
 // ---------- Relations ----------
-function renderRelations(relations, ambFrom, ambTo) {
+function renderRelations(relations) {
     if (!relations || relations.length === 0) {
         document.getElementById('relations-section').innerHTML = '<div style="color:#666;font-style:italic;">No diplomatic relations established.</div>';
         return;
@@ -529,15 +527,10 @@ function renderRelations(relations, ambFrom, ambTo) {
         var r = relations[i];
         var other = (r.nation_a && r.nation_a.id === nation.id) ? r.nation_b : r.nation_a;
         if (!other) continue;
-        // Embassy open only if both nations have an active ambassador to each other
-        var hasOurAmb = ambFrom.some(function(a) { return a.target_nation_id === other.id; });
-        var hasTheirAmb = ambTo.some(function(a) { return a.nation_id === other.id; });
-        var embStatus = (hasOurAmb && hasTheirAmb) ? 'open' : 'closed';
         h += '<div class="relation-card">';
         h += '<div class="relation-nation">' + escapeHtml(other.name) + '</div>';
         h += '<span class="relation-type ' + (r.relation_type || 'neutral') + '">' + (r.relation_type || 'neutral') + '</span>';
         h += '<div class="relation-score">Score: ' + (r.relation_score != null ? r.relation_score : '?') + ' / 100</div>';
-        h += '<div class="relation-embassy">Embassy: ' + embStatus + '</div>';
         h += '</div>';
     }
     h += '</div>';

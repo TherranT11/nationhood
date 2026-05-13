@@ -9,7 +9,7 @@ import { snapshotNationStats } from './stats.js';
 import { adjustCredibility, adjustGovernmentApprovalEvent, round2 } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
 import { INACTIVITY_DRAIN_THRESHOLD } from './electorate.js';
-import { syncAmbassadorsForFailedConfirmationBills, syncMinistriesForFailedConfirmationBills } from './bills.js';
+import { syncMinistriesForFailedConfirmationBills } from './bills.js';
 import { autoSelectPresidentialCandidates, registerPartyLeaderAsCandidate } from './presidential.js';
 import {
     rollIndependents,
@@ -1787,8 +1787,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
         .update({ status: 'failed' })
         .eq('nation_id', nation.id)
         .in('status', ['committee', 'floor', 'frozen'])
-        .select('id, nation_id, bill_type, ambassador_id, ministry_key');
-    await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
+        .select('id, nation_id, bill_type, ministry_key');
     await syncMinistriesForFailedConfirmationBills(supabase, dissolvedBills);
 
     if (isPresidential && normalizedElectionType === 'presidential') {
@@ -1797,8 +1796,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
             .eq('status', 'president_desk')
-            .select('id, nation_id, bill_type, ambassador_id, ministry_key');
-        await syncAmbassadorsForFailedConfirmationBills(supabase, deskBills);
+            .select('id, nation_id, bill_type, ministry_key');
         await syncMinistriesForFailedConfirmationBills(supabase, deskBills);
         await processPresidentialElectionResult(supabase, nation, completedElection, currentTick, completedElection.id);
     } else {
@@ -1808,8 +1806,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
             .eq('status', 'frozen')
-            .select('id, nation_id, bill_type, ambassador_id, ministry_key');
-        await syncAmbassadorsForFailedConfirmationBills(supabase, frozenBills);
+            .select('id, nation_id, bill_type, ministry_key');
         await syncMinistriesForFailedConfirmationBills(supabase, frozenBills);
 
         let existingGov = null;
@@ -2706,9 +2703,8 @@ export async function processElections(supabase, nation, currentTick) {
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
             .in('status', ['committee', 'floor', 'frozen'])
-            .select('id, nation_id, bill_type, ambassador_id, ministry_key');
+            .select('id, nation_id, bill_type, ministry_key');
 
-        await syncAmbassadorsForFailedConfirmationBills(supabase, dissolvedBills);
         await syncMinistriesForFailedConfirmationBills(supabase, dissolvedBills);
 
         if (dissolvedBills?.length > 0) {
@@ -2722,8 +2718,7 @@ export async function processElections(supabase, nation, currentTick) {
                 .update({ status: 'failed' })
                 .eq('nation_id', nation.id)
                 .eq('status', 'president_desk')
-                .select('id, nation_id, bill_type, ambassador_id, ministry_key');
-            await syncAmbassadorsForFailedConfirmationBills(supabase, deskBills);
+                .select('id, nation_id, bill_type, ministry_key');
             await syncMinistriesForFailedConfirmationBills(supabase, deskBills);
             if (deskBills?.length > 0) {
                 console.log(`Failed ${deskBills.length} bill(s) on president's desk after presidential election for ${nation.name}`);
@@ -2753,9 +2748,8 @@ export async function processElections(supabase, nation, currentTick) {
                 .update({ status: 'failed' })
                 .eq('nation_id', nation.id)
                 .eq('status', 'frozen')
-                .select('id, nation_id, bill_type, ambassador_id, ministry_key');
+                .select('id, nation_id, bill_type, ministry_key');
 
-            await syncAmbassadorsForFailedConfirmationBills(supabase, frozenBills);
             await syncMinistriesForFailedConfirmationBills(supabase, frozenBills);
 
             if (existingGov) {

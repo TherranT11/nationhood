@@ -273,7 +273,7 @@ function scalePolicyCost(baseCost, scalingStat, nation) {
 // Bill types that bypass the committee co-sponsor expectation. Procedural /
 // ratification motions are inherently party-neutral and never carry the
 // -2 Momentum solo-send penalty.
-const AUTO_FLOOR_BILL_TYPES = ['ratification', 'no_confidence', 'impeachment_motion', 'veto_override', 'impeachment_conviction', 'minister_confirmation', 'confirmation'];
+const AUTO_FLOOR_BILL_TYPES = ['ratification', 'no_confidence', 'impeachment_motion', 'veto_override', 'impeachment_conviction', 'minister_confirmation'];
 
 // Does this bill have at least one co-sponsor? A co-sponsor is any faction
 // other than the proposer whose stance is 'accept'. Shared between the
@@ -325,7 +325,7 @@ let editingArticleId = null;
 let sponsorSelectedPolicy = null;
 let selectedRepealLaw = null; // Active law selected for repeal article
 // Repeal bills can have additional articles added in committee, so 'repeal' is NOT in this list
-const SPECIAL_BILL_TYPES = ['no_confidence', 'confirmation', 'minister_confirmation', 'veto_override', 'impeachment_motion', 'impeachment_conviction'];
+const SPECIAL_BILL_TYPES = ['no_confidence', 'minister_confirmation', 'veto_override', 'impeachment_motion', 'impeachment_conviction'];
 let _billArticleLock = false; // Prevents double-fire on async article operations
 
 const urlParams = new URLSearchParams(window.location.search);
@@ -476,10 +476,7 @@ async function loadBillData() {
 
         // Load nominated faction ID for confirmation bills
         nominatedFactionId = null;
-        if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
-            const { data: amb } = await _supabase.from('ambassadors').select('faction_id').eq('id', bill.ambassador_id).maybeSingle();
-            nominatedFactionId = amb?.faction_id || null;
-        } else if (bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
+        if (bill.bill_type === 'minister_confirmation' && bill.ministry_key) {
             // Drop is_active filter on the lookup — minister_confirmation
             // bills can land on a row that's briefly inactive (e.g., during
             // a coalition shuffle between nomination and confirmation).
@@ -557,8 +554,6 @@ function renderBill() {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal">⚠ Repeal</span>';
     } else if (bill.bill_type === 'foundational') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--purple);">🏛 Foundational</span>';
-    } else if (bill.bill_type === 'confirmation') {
-        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--blue);">🏛 Confirmation</span>';
     } else if (bill.bill_type === 'minister_confirmation') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--orange);">🏛 Cabinet Confirmation</span>';
     } else if (bill.bill_type === 'veto_override') {
@@ -2120,7 +2115,7 @@ async function renderSidebar() {
                 </div>` : (!isSponsor ? `<div class="support-box-header" style="border-top:1px solid var(--border-main);"><div class="support-box-title">Conditional Support</div></div><div class="no-amendments">No conditional support offers</div>` : '')}
             ${(() => {
                 const myLocked2 = currentFaction && billSupport.find(s => s.faction_id === currentFaction.id)?.locked;
-                const canAmend = !isSponsor && !myLocked2 && bill.bill_type !== 'foundational' && bill.bill_type !== 'confirmation' && bill.bill_type !== 'minister_confirmation' && bill.bill_type !== 'veto_override';
+                const canAmend = !isSponsor && !myLocked2 && bill.bill_type !== 'foundational' && bill.bill_type !== 'minister_confirmation' && bill.bill_type !== 'veto_override';
                 return canAmend ? `<div class="add-amendment-section"><button class="add-amendment-btn" onclick="openAmendmentModal()">+ Propose Conditional Support</button><button class="add-text-amendment-btn" onclick="openTextAmendmentModal()">+ Text Article</button><button class="add-strike-btn" onclick="openStrikeAmendmentModal()">✂ Strike Article</button></div>` : '';
             })()}
         </div>`;

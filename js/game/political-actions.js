@@ -2158,25 +2158,6 @@ export async function updateMinisterApprovals(supabase, nation, currentTick) {
             newApproval += clampedDelta * cfg.DELTA_SENSITIVITY;
         }
 
-        // Foreign Minister penalty: -0.25/tick per nation without an outgoing ambassador
-        let missingAmbassadorCount = 0;
-        if (ministry.ministry_key === 'foreign') {
-            const { count: totalNations } = await supabase
-                .from('nations')
-                .select('id', { count: 'exact', head: true })
-                .neq('id', nation.id);
-            const { count: activeAmbassadors } = await supabase
-                .from('ambassadors')
-                .select('id', { count: 'exact', head: true })
-                .eq('nation_id', nation.id)
-                .eq('is_active', true)
-                .eq('status', 'active');
-            missingAmbassadorCount = (totalNations || 0) - (activeAmbassadors || 0);
-            if (missingAmbassadorCount > 0) {
-                newApproval += missingAmbassadorCount * cfg.MISSING_AMBASSADOR_PENALTY;
-            }
-        }
-
         // PM approval capped at 70 — broad stat ownership makes 100% too easy
         const approvalCeiling = ministry.ministry_key === 'prime_minister' ? 70 : 100;
         // minister_approval is an integer column — round to whole number
@@ -4227,17 +4208,13 @@ export async function disbandParty(supabase, nationId, factionId, currentTick, o
     // 8. Fail any open bills proposed by this faction (they lose their sponsor)
     const { data: orphanedBills } = await supabase
         .from('bills')
-        .select('id, bill_name, bill_type, ambassador_id')
+        .select('id, bill_name')
         .eq('nation_id', nationId)
         .eq('proposed_by', factionId)
         .in('status', ['committee', 'floor']);
     if (orphanedBills && orphanedBills.length > 0) {
         for (const bill of orphanedBills) {
             await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
-            // Reject any pending ambassadors from failed confirmation bills
-            if (bill.bill_type === 'confirmation' && bill.ambassador_id) {
-                await supabase.from('ambassadors').update({ status: 'rejected', is_active: false }).eq('id', bill.ambassador_id);
-            }
             console.log(`[disbandParty] Failed orphaned bill "${bill.bill_name}" (proposed by disbanded faction)`);
         }
     }

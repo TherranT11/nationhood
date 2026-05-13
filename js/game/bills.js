@@ -332,7 +332,7 @@ export async function processSectorShifts(supabase, nationId, resolutions) {
     // override) are political-process votes, not policy outcomes — they
     // don't carry sector effects.
     const legislative = bills.filter(b =>
-        !['no_confidence', 'confirmation', 'minister_confirmation', 'foundational', 'veto_override'].includes(b.bill_type)
+        !['no_confidence', 'minister_confirmation', 'foundational', 'veto_override'].includes(b.bill_type)
     );
     if (legislative.length === 0) return;
 
@@ -1540,58 +1540,6 @@ export async function resolveMinisterConfirmationBill(supabase, bill, ctx) {
         votesFor,
         votesAgainst,
         type: 'minister_confirmation',
-        earlyResolution: bill.early_resolution_status || null,
-    };
-}
-
-/**
- * Resolve a passed/failed ambassador confirmation bill.
- *
- * Force-fails (overrides ctx.passed) when the nominee's own party voted NO.
- * On pass: activates the ambassador row (status='active', is_active=true,
- * appointed_at_tick).
- * On fail: rejects the ambassador row (status='rejected', is_active=false).
- */
-export async function resolveAmbassadorConfirmationBill(supabase, bill, ctx) {
-    const { currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
-    let passed = ctx.passed;
-
-    // Resolve the nominee's party for the auto-fail vote check.
-    const { data: ambRow } = await supabase.from('ambassadors')
-        .select('faction_id')
-        .eq('id', bill.ambassador_id)
-        .maybeSingle();
-    const ambNomineeId = ambRow?.faction_id;
-    const nomineeVotedNo = ambNomineeId && (bill.bill_support || []).some(s => {
-        const st = s.stance === 'reject' ? 'no' : s.stance;
-        return s.faction_id === ambNomineeId && st === 'no';
-    });
-    if (nomineeVotedNo) passed = false;
-
-    if (passed) {
-        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-        await supabase.from('ambassadors').update({
-            status: 'active',
-            is_active: true,
-            appointed_at_tick: currentTick,
-        }).eq('id', bill.ambassador_id);
-        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
-    } else {
-        await failBill(supabase, bill);
-        await supabase.from('ambassadors').update({
-            status: 'rejected',
-            is_active: false,
-        }).eq('id', bill.ambassador_id);
-        await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
-    }
-
-    return {
-        billId: bill.id,
-        billName: bill.bill_name,
-        result: passed ? 'passed' : 'failed',
-        votesFor,
-        votesAgainst,
-        type: 'confirmation',
         earlyResolution: bill.early_resolution_status || null,
     };
 }
@@ -2859,7 +2807,6 @@ const BILL_RESOLVERS = Object.freeze({
     no_confidence:          ()  => resolveNoConfidenceBill,
     foundational:           ()  => resolveFoundationalBill,
     default_resolution:     ()  => resolveDefaultResolutionBill,
-    confirmation:           (b) => b.ambassador_id      ? resolveAmbassadorConfirmationBill : null,
     minister_confirmation:  (b) => b.ministry_key       ? resolveMinisterConfirmationBill   : null,
     veto_override:          (b) => b.original_bill_id   ? resolveVetoOverrideBill           : null,
     impeachment_motion:     (b) => b.impeachment_id     ? resolveImpeachmentMotionBill      : null,
@@ -3015,7 +2962,6 @@ export async function resolveExpiredVotes(supabase, nationId) {
         if (resolution === 'failed_no_quorum') {
             await failBill(supabase, bill);
             await syncFailedMinisterConfirmationBill(supabase, bill);
-            await syncFailedAmbassadorConfirmationBill(supabase, bill);
             const quorumThreshold = Math.ceil(totalSeats * effectiveQuorumPct);
             const participating = votesFor + votesAgainst + votesAbstain;
             await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain, extra: { reason: `quorum not met after two attempts (${participating}/${quorumThreshold} participating)` } });
@@ -3077,7 +3023,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
         // NO voters: +2/article on fail. Abstain: nothing.
         // Skip momentum for special bill types and presidential desk (not yet enacted)
         const lastResult = results[results.length - 1];
-        const skipMomentum = ['no_confidence', 'confirmation', 'minister_confirmation', 'impeachment_conviction'].includes(bill.bill_type)
+        const skipMomentum = ['no_confidence', 'minister_confirmation', 'impeachment_conviction'].includes(bill.bill_type)
             || lastResult?.result === 'president_desk';
         if (!skipMomentum) {
             try {
@@ -3378,7 +3324,7 @@ export async function resolveStuckFloorBills(supabase, nationId) {
         constitutional_amendment_streamlining: !!nation?.constitutional_amendment_streamlining
     };
 
-    const specialTypes = new Set(['no_confidence', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation', 'ambassador_confirmation']);
+    const specialTypes = new Set(['no_confidence', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation']);
     const results = [];
 
     for (const bill of stuckBills) {
@@ -5451,50 +5397,6 @@ export async function failBill(supabase, bill) {
     }
 }
 
-/**
- * Ensure ambassador rows stay in sync when confirmation bills are failed
- * through bulk/force-fail paths that bypass resolveExpiredVotes.
- */
-export async function syncAmbassadorsForFailedConfirmationBills(supabase, failedBills) {
-    if (!Array.isArray(failedBills) || failedBills.length === 0) return;
-
-    const ambassadorIds = [...new Set(
-        failedBills
-            .filter(b => b?.bill_type === 'confirmation' && b?.ambassador_id)
-            .map(b => b.ambassador_id)
-    )];
-
-    if (ambassadorIds.length === 0) return;
-
-    const { error } = await supabase
-        .from('ambassadors')
-        .update({
-            status: 'rejected',
-            is_active: false
-        })
-        .in('id', ambassadorIds);
-
-    if (error) {
-        console.warn('[syncAmbassadorsForFailedConfirmationBills] Failed to reject ambassadors:', error.message);
-    }
-}
-
-async function syncFailedAmbassadorConfirmationBill(supabase, bill) {
-    if (!bill || bill.bill_type !== 'confirmation' || !bill.ambassador_id) return;
-
-    const { error } = await supabase
-        .from('ambassadors')
-        .update({
-            status: 'rejected',
-            is_active: false
-        })
-        .eq('id', bill.ambassador_id);
-
-    if (error) {
-        console.warn('[syncFailedAmbassadorConfirmationBill] Failed to reject ambassador:', error.message);
-    }
-}
-
 async function syncFailedMinisterConfirmationBill(supabase, bill) {
     if (!bill || bill.bill_type !== 'minister_confirmation' || !bill.ministry_key) return;
 
@@ -5532,144 +5434,4 @@ export async function syncMinistriesForFailedConfirmationBills(supabase, failedB
     for (const bill of failedBills) {
         await syncFailedMinisterConfirmationBill(supabase, bill);
     }
-}
-
-
-// ==================== AMBASSADOR TERM LIMITS ====================
-
-/**
- * Process ambassador retirements and warnings for a single nation.
- * Called once per nation per tick inside the advanceTick loop.
- *
- * 1. Retire ambassadors whose term has expired (current_tick - appointed_at_tick >= term_length).
- * 2. Cancel in-progress diplomatic proposals involving the retiring ambassador's nation pair.
- * 3. Fire event log entries for retirements and lapsed negotiations.
- * 4. Show retirement warning at (term_length - AMBASSADOR_RETIREMENT_WARNING) ticks.
- *
- * Note: Retired ambassadorships remain vacant until a nomination vote is put forth.
- */
-async function processAmbassadorRetirements(supabase, nation, currentTick) {
-    const results = [];
-
-    // Fetch all active ambassadors for this nation
-    const { data: ambassadors, error: fetchErr } = await supabase
-        .from('ambassadors')
-        .select('id, nation_id, target_nation_id, faction_id, ambassador_first_name, ambassador_last_name, ambassador_age, appointed_at_tick, term_length, retirement_warning_shown')
-        .eq('nation_id', nation.id)
-        .eq('is_active', true)
-        .eq('status', 'active');
-
-    if (fetchErr || !ambassadors || ambassadors.length === 0) return results;
-
-    // Load target nation names for event messages
-    const targetNationIds = [...new Set(ambassadors.map(a => a.target_nation_id))];
-    const { data: targetNations } = await supabase
-        .from('nations')
-        .select('id, name')
-        .in('id', targetNationIds);
-    const nationNameMap = {};
-    if (targetNations) targetNations.forEach(n => { nationNameMap[n.id] = n.name; });
-
-    for (const amb of ambassadors) {
-      try {
-        const appointedTick = amb.appointed_at_tick;
-        if (appointedTick == null) continue; // No term tracking — skip
-
-        const termLength = amb.term_length || DIPLOMACY_CONFIG.AMBASSADOR_TERM_LENGTH;
-        const ticksServed = currentTick - appointedTick;
-        const ticksRemaining = termLength - ticksServed;
-        const targetNationName = nationNameMap[amb.target_nation_id] || 'Unknown';
-        const ambName = ((amb.ambassador_first_name || '') + ' ' + (amb.ambassador_last_name || '')).trim();
-
-        // ---- RETIREMENT ----
-        if (ticksServed >= termLength) {
-            const yearsServed = Math.floor(ticksServed / 12);
-
-            // 1. Retire the ambassador
-            const { error: retireErr } = await supabase.from('ambassadors').update({
-                status: 'recalled',
-                is_active: false,
-                recalled_at_tick: currentTick
-            }).eq('id', amb.id);
-            if (retireErr) {
-                console.error(`[processAmbassadorRetirements] Failed to retire ${ambName}:`, retireErr);
-                continue;
-            }
-
-            // 2. Cancel in-progress diplomatic proposals involving this nation pair
-            const cancelStatuses = ['proposed', 'fm_review', 'ratification'];
-            const { data: lapsedProposals } = await supabase
-                .from('diplomatic_proposals')
-                .select('id, proposal_type, proposal_data, proposing_nation_id, target_nation_id, proposing_bill_id, target_bill_id')
-                .in('status', cancelStatuses)
-                .or(`and(proposing_nation_id.eq.${nation.id},target_nation_id.eq.${amb.target_nation_id}),and(proposing_nation_id.eq.${amb.target_nation_id},target_nation_id.eq.${nation.id})`);
-
-            if (lapsedProposals && lapsedProposals.length > 0) {
-                const lapsedIds = lapsedProposals.map(p => p.id);
-                await supabase.from('diplomatic_proposals')
-                    .update({ status: 'expired', terminated_at_tick: currentTick })
-                    .in('id', lapsedIds);
-
-                // Cancel any linked ratification bills
-                for (const lp of lapsedProposals) {
-                    if (lp.proposing_bill_id) {
-                        await supabase.from('bills')
-                            .update({ status: 'failed' })
-                            .eq('id', lp.proposing_bill_id)
-                            .in('status', ['floor', 'committee']);
-                    }
-                    if (lp.target_bill_id) {
-                        await supabase.from('bills')
-                            .update({ status: 'failed' })
-                            .eq('id', lp.target_bill_id)
-                            .in('status', ['floor', 'committee']);
-                    }
-                }
-
-                // Fire lapsed negotiation event for the OTHER nation
-                await supabase.from('event_log').insert({
-                    nation_id: amb.target_nation_id,
-                    event_name: 'Diplomatic Negotiations Lapsed',
-                    trigger_key: 'diplomatic_initiative_rejected',
-                    category: 'Diplomatic',
-                    description_chosen: `${nation.name}'s ambassador has retired. ${lapsedProposals.length} pending negotiation(s) have lapsed. A new ambassador must be nominated before negotiations can resume.`,
-                    fired_at_tick: currentTick
-                });
-            }
-
-            // 3. Fire retirement event — ambassadorship remains vacant until nomination vote
-            await supabase.from('event_log').insert({
-                nation_id: nation.id,
-                event_name: 'Ambassador Retired',
-                category: 'Diplomatic',
-                description_chosen: `${ambName} has retired after ${yearsServed} year${yearsServed !== 1 ? 's' : ''} of service as Ambassador to ${targetNationName}. The post is now vacant until a replacement is nominated and confirmed.`,
-                fired_at_tick: currentTick
-            });
-
-            results.push({ ambassadorId: amb.id, name: ambName, target: targetNationName, action: 'retired' });
-            console.log(`[processAmbassadorRetirements] ${ambName} retired from ${nation.name} → ${targetNationName}. Post is now vacant.`);
-
-        // ---- RETIREMENT WARNING (3 ticks before) ----
-        } else if (ticksRemaining <= DIPLOMACY_CONFIG.AMBASSADOR_RETIREMENT_WARNING && !amb.retirement_warning_shown) {
-            await supabase.from('ambassadors')
-                .update({ retirement_warning_shown: true })
-                .eq('id', amb.id);
-
-            await supabase.from('event_log').insert({
-                nation_id: nation.id,
-                event_name: 'Ambassador Retirement Approaching',
-                category: 'Diplomatic',
-                description_chosen: `Ambassador ${ambName} to ${targetNationName} will retire in ${ticksRemaining} tick${ticksRemaining !== 1 ? 's' : ''}. Conclude any active negotiations and prepare a nomination for their replacement.`,
-                fired_at_tick: currentTick
-            });
-
-            results.push({ ambassadorId: amb.id, name: ambName, target: targetNationName, action: 'warning' });
-            console.log(`[processAmbassadorRetirements] Retirement warning for ${ambName} (${nation.name} → ${targetNationName}): ${ticksRemaining} ticks remaining.`);
-        }
-      } catch (ambErr) {
-        console.error(`[processAmbassadorRetirements] Error processing ambassador ${amb.id}:`, ambErr);
-      }
-    }
-
-    return results;
 }

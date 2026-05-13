@@ -1192,14 +1192,12 @@ async function initTradeTab() {
     // Ensure diplomatic data is cached (same as World tab uses)
     if (!_worldRelations) {
         try {
-            const [relRes, agreeRes, ambRes] = await Promise.all([
+            const [relRes, agreeRes] = await Promise.all([
                 _supabase.from('diplomatic_relations').select('*'),
                 _supabase.from('trade_agreements').select('*').eq('status', 'active'),
-                _supabase.from('ambassadors').select('*').eq('status', 'active'),
             ]);
             _worldRelations = relRes.data || [];
             _worldAgreements = agreeRes.data || [];
-            _worldAmbassadors = ambRes.data || [];
         } catch (_) {}
     }
 
@@ -2461,7 +2459,6 @@ function renderTradePartners() {
 
     const nations = (_worldAllNations || []).filter(n => n.id !== myNationId);
     const relations = _worldRelations || [];
-    const ambassadors = _worldAmbassadors || [];
 
     // Compute compatibility for each nation
     const partnerData = nations.map(n => {
@@ -2479,18 +2476,7 @@ function renderTradePartners() {
         else if (relScore >= -40) relLabel = 'Cold';
         else relLabel = 'Hostile';
 
-        // Embassy
-        const ourAmb = ambassadors.find(am => am.home_nation_id === myNationId && am.host_nation_id === n.id);
-        const embassy = ourAmb ? 'Open' : 'Closed';
-
-        // Bilateral trade volume
-        const myFlows = _allNationFlows[myNationId] || {};
-        // Approximate from trade_partners if available, else 0
-        let tradeVol = 0;
-        // We can approximate from the bilateral trade fetch used in the world tab
-        // For now, show compatibility-based estimate
-
-        return { ...n, compat, relLabel, relScore, embassy, tradeVol };
+        return { ...n, compat, relLabel, relScore };
     });
 
     // Sort
@@ -2556,7 +2542,6 @@ function renderTradePartners() {
                         <div style="display:flex;align-items:center;gap:6px;">
                             <span style="font-size:13px;font-weight:700;color:var(--text-bright);">${escapeHtml(n.name)}</span>
                             <span class="tr-badge" style="color:${relColor};background:${relColor}0a;border-color:${relColor}25;">${n.relLabel.toUpperCase()}</span>
-                            <span class="tr-badge" style="color:${n.embassy === 'Open' ? 'var(--accent)' : 'var(--text-dim)'};">EMBASSY ${n.embassy.toUpperCase()}</span>
                             ${matchType ? `<span class="tr-badge" style="color:var(--green);background:rgba(92,204,92,0.08);border-color:rgba(92,204,92,0.2);">MATCH</span>` : ''}
                         </div>
                         <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);margin-top:1px;">Pop: ${popLabel} \u00B7 State Apparatus: ${(n.state_apparatus ?? 50).toFixed(1)}%</div>
@@ -3008,20 +2993,18 @@ async function selectWorldNation(nationId) {
 
     // Fetch diplomatic data if not cached
     if (!_worldRelations) {
-        const [relResult, agreeResult, ambResult] = await Promise.all([
+        const [relResult, agreeResult] = await Promise.all([
             _supabase.from('diplomatic_relations').select('*'),
             _supabase.from('trade_agreements').select('*').eq('status', 'active'),
-            _supabase.from('ambassadors').select('*').eq('status', 'active'),
         ]);
         _worldRelations = relResult.data || [];
         _worldAgreements = agreeResult.data || [];
-        _worldAmbassadors = ambResult.data || [];
     }
 
     // Fetch government + crisis data for the selected nation
     const govData = await fetchNationGovernmentData(nation.id);
     const extraData = { gov: govData, tradeData: null };
-    renderNationHighlight(nation, _worldState, _worldRelations, _worldAgreements, _worldAmbassadors, extraData);
+    renderNationHighlight(nation, _worldState, _worldRelations, _worldAgreements, extraData);
 
     // Fetch bilateral trade data async, then patch just the trade section
     if (!isYou && myNationId) {
@@ -3116,8 +3099,6 @@ async function fetchNationGovernmentData(nationId) {
         return { leader: null, leaderParty: null, coalitionParties: [], crises: [] };
     }
 }
-
-let _worldAmbassadors = [];
 
 /**
  * Fetch bilateral trade data between two nations for the latest tick.
@@ -3232,7 +3213,7 @@ function buildTradeHTML(tradeData) {
     return h;
 }
 
-function renderNationHighlight(nation, state, relations, agreements, ambassadors, extraData) {
+function renderNationHighlight(nation, state, relations, agreements, extraData) {
     const body = document.getElementById('world-highlight-body');
     if (!body) return;
 
@@ -3320,9 +3301,6 @@ function renderNationHighlight(nation, state, relations, agreements, ambassadors
         }
     }
 
-    const ourAmbassador = !isYou ? (ambassadors || []).find(a => a.home_nation_id === myNationId && a.host_nation_id === nation.id) : null;
-    const theirAmbassador = !isYou ? (ambassadors || []).find(a => a.home_nation_id === nation.id && a.host_nation_id === myNationId) : null;
-
     if (!isYou && relScore !== null) {
         let relLabel = '', relColor = 'var(--text-dim)';
         if (relScore >= 60) { relLabel = 'FRIENDLY'; relColor = 'var(--green)'; }
@@ -3342,14 +3320,6 @@ function renderNationHighlight(nation, state, relations, agreements, ambassadors
                 <span class="world-highlight-stat-value">${proximity}</span>
             </div>`;
         }
-        html += `<div class="world-highlight-stat-row">
-            <span class="world-highlight-stat-label">Our Ambassador</span>
-            <span class="world-highlight-stat-value" style="color:${ourAmbassador ? 'var(--green)' : 'var(--text-dim)'};">${ourAmbassador ? 'Posted' : 'None'}</span>
-        </div>`;
-        html += `<div class="world-highlight-stat-row">
-            <span class="world-highlight-stat-label">Their Ambassador</span>
-            <span class="world-highlight-stat-value" style="color:${theirAmbassador ? 'var(--green)' : 'var(--text-dim)'};">${theirAmbassador ? 'Posted' : 'None'}</span>
-        </div>`;
     }
 
     // ── AGREEMENTS ──
@@ -8618,7 +8588,7 @@ window.submitIPOExpel = submitIPOExpel;
 let _activeNegModal = null;
 let _negChatChannel = null;
 
-// Priority: Minister of Trade > PM > Ambassador
+// Priority: Minister of Trade > PM
 
 async function resolveNegotiationChatRole(partnerNationId) {
     const faction = _worldState?.faction;
@@ -8652,23 +8622,6 @@ async function resolveNegotiationChatRole(partnerNationId) {
     if (isPM) {
         const name = ((nation.head_of_state_first_name || '') + ' ' + (nation.head_of_state_last_name || '')).trim() || 'PM';
         return { canChat: true, role: 'prime_minister', displayName: name + ' (PM)' };
-    }
-
-    // Check Ambassador to the partner nation
-    const { data: ambEntries } = await _supabase.from('ambassadors')
-        .select('ambassador_first_name, ambassador_last_name, target_nation_id')
-        .eq('nation_id', nation.id)
-        .eq('faction_id', faction.id)
-        .eq('target_nation_id', partnerNationId)
-        .eq('is_active', true)
-        .eq('status', 'active')
-        .limit(1);
-
-    if (ambEntries && ambEntries.length > 0) {
-        const amb = ambEntries[0];
-        const name = ((amb.ambassador_first_name || '') + ' ' + (amb.ambassador_last_name || '')).trim() || 'Ambassador';
-        const partnerName = (_worldAllNations || []).find(n => n.id === partnerNationId)?.name || 'Unknown';
-        return { canChat: true, role: 'ambassador', displayName: name + ' (Ambassador to ' + partnerName + ')' };
     }
 
     return { canChat: false, role: null, displayName: null };
@@ -8882,7 +8835,7 @@ async function negChatLoad(negotiationId) {
             : `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;padding:20px;">
                 <div style="color:var(--text-dim);font-family:var(--font-mono);font-size:10px;text-align:center;">No messages yet.</div>
                 <div style="color:var(--text-ghost);font-family:var(--font-mono);font-size:9px;text-align:center;line-height:1.5;max-width:220px;">
-                    You need to hold the position of PM, Minister of Trade, or Ambassador to ${escapeHtml(partnerName)} to participate in this chat.
+                    You need to hold the position of PM or Minister of Trade to participate in this chat.
                 </div>
             </div>`;
         return;
@@ -10341,8 +10294,7 @@ async function withdrawFromNegotiations() {
     // 3. Build event text — always attribute to Minister of Trade in the event
     const withdrawerName = chatRole.displayName.split(' (')[0];
     const roleSuffix = chatRole.role === 'trade_minister' ? 'Minister of Trade '
-        : chatRole.role === 'prime_minister' ? 'Prime Minister '
-        : 'Ambassador ';
+        : 'Prime Minister ';
     const eventText = roleSuffix + withdrawerName + ' has decided to end trade negotiations with ' + partnerName + '.';
 
     // 4. Log events for BOTH nations (visible on Nation Local, Nation World, Executive Timeline)

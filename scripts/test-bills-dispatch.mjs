@@ -13,7 +13,6 @@ import assert from 'node:assert/strict';
 import {
     selectBillResolver,
     resolveMinisterConfirmationBill,
-    resolveAmbassadorConfirmationBill,
     resolveNoConfidenceBill,
     resolveImpeachmentMotionBill,
     resolveImpeachmentConvictionBill,
@@ -57,18 +56,6 @@ suite('direct dispatch — one bill_type → one resolver', () => {
 
 // ─── Sub-keyed dispatch (bill_type + secondary field) ───────────────────────
 suite('sub-keyed dispatch — bill_type plus secondary field', () => {
-    test('confirmation + ambassador_id → resolveAmbassadorConfirmationBill', () => {
-        assert.equal(
-            selectBillResolver({ bill_type: 'confirmation', ambassador_id: 'amb-1' }),
-            resolveAmbassadorConfirmationBill
-        );
-    });
-    test('confirmation without ambassador_id → ordinary fallback', () => {
-        assert.equal(
-            selectBillResolver({ bill_type: 'confirmation' }),
-            resolveOrdinaryBill
-        );
-    });
     test('minister_confirmation + ministry_key → resolveMinisterConfirmationBill', () => {
         assert.equal(
             selectBillResolver({ bill_type: 'minister_confirmation', ministry_key: 'defense' }),
@@ -181,7 +168,6 @@ suite('partition invariant — every resolver is reachable, no duplicates', () =
             [{ bill_type: 'no_confidence' },                                      resolveNoConfidenceBill],
             [{ bill_type: 'foundational' },                                       resolveFoundationalBill],
             [{ bill_type: 'default_resolution' },                                 resolveDefaultResolutionBill],
-            [{ bill_type: 'confirmation', ambassador_id: 'x' },                   resolveAmbassadorConfirmationBill],
             [{ bill_type: 'minister_confirmation', ministry_key: 'x' },           resolveMinisterConfirmationBill],
             [{ bill_type: 'veto_override', original_bill_id: 'x' },               resolveVetoOverrideBill],
             [{ bill_type: 'impeachment_motion', impeachment_id: 'x' },            resolveImpeachmentMotionBill],

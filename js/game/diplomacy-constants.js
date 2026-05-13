@@ -4,11 +4,6 @@
  */
 
 export const DIPLOMACY_CONFIG = {
-    // Ambassador lifecycle (consumed by bills.js + advance-tick processor).
-    AMBASSADOR_CONFIRMATION_VOTING_TICKS: 6,
-    AMBASSADOR_TERM_LENGTH: 60,
-    AMBASSADOR_RETIREMENT_WARNING: 3,
-
     // Economic Aid (consumed by budget.js + bills.js aid-ratification path).
     AID_MAX_GDP_PCT: 25,
     AID_ANNUAL_REVIEW_INTERVAL: 12,
