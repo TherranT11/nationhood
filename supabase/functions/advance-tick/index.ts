@@ -32112,8 +32112,18 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] resolveStuckRatifications failed for ${nation.name} (non-fatal):`, ratErr);
         }
 
-        // ── Impeachment processing (Presidential systems) ──
-        if (isPresidentialRepublic(nation)) {
+        // ── Impeachment processing (Presidential + Semi-Presidential) ──
+        // Gate is hasElectedPresident, not isPresidentialRepublic — Semi-
+        // Presidential nations also have an elected president and the
+        // impeachment action's own eligibility rule (party-actions.js:2230)
+        // already includes them. Before this fix the entire block —
+        // committee→floor auto-transition, per-tick trial effects, the
+        // conviction-removes-president-and-schedules-snap-election handler,
+        // and the stale-proceedings cleanup — silently skipped every
+        // Semi-Presidential nation, so passed impeachment bills sat in the
+        // DB marked 'convicted' but never removed the president or fired
+        // an election.
+        if (hasElectedPresident(nation)) {
             try {
                 // 1. Auto-transition committee impeachment bills to floor
                 const { data: committeeImpeach } = await supabase
@@ -32159,14 +32169,34 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     console.log(`[Impeachment] Trial effects applied for ${nation.name}: stability=${stab}, unrest=${unrest}`);
                 }
 
-                // 3. Process conviction (president removal) — runs after resolveExpiredVotes set conviction_result
+                // 3. Process conviction (president removal). Runs after
+                // resolveExpiredVotes set conviction_result.
+                //
+                // We sweep ALL convicted-but-not-yet-removed presidents,
+                // not just ones resolved on newTick. The old filter
+                // (.eq('resolved_at_tick', newTick)) was an off-by-one
+                // trap: resolveExpiredVotes reads shard.current_tick from
+                // the DB, which during the per-nation loop is still the
+                // OLD tick (shard.current_tick is committed at line ~3222,
+                // long after this block runs). So the resolver writes
+                // resolved_at_tick = oldTick = newTick - 1, but this block
+                // queried resolved_at_tick = newTick. They never matched,
+                // so no convicted president was ever removed and no snap
+                // election was ever scheduled — convictions accumulated
+                // in the DB with phase=resolved, conviction_result=convicted,
+                // but the president stayed in office indefinitely.
+                //
+                // Dropping the tick filter makes the block idempotent
+                // (the !president.is_active guard below short-circuits
+                // any conviction whose president has already been removed)
+                // and catches stale convictions that have been stuck
+                // through the bug above.
                 const { data: convictions } = await supabase
                     .from('impeachment_proceedings')
                     .select('id, president_id, initiated_by_faction_id, charges')
                     .eq('nation_id', nation.id)
                     .eq('phase', 'resolved')
-                    .eq('conviction_result', 'convicted')
-                    .eq('resolved_at_tick', newTick);  // only process on the tick it was resolved
+                    .eq('conviction_result', 'convicted');
 
                 for (const proc of (convictions || [])) {
                     // Get president data
