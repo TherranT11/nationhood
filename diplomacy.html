@@ -1466,25 +1466,31 @@ function renderTradeEconomy() {
     const left = document.getElementById('trade-left');
     if (!left) return;
 
-    // Build commodity rows from the shared stat-based helper. Energy is
-    // the only commodity with live trade-agreement plumbing today
-    // (getEnergyTradingVolume); the rest carry trading=0 until that
-    // lands. statBased=true tells the formatter to render integers
-    // instead of dollar amounts.
+    // Build commodity rows from the shared stat-based helper +
+    // the shared trading-volumes helper (single source of truth for
+    // signed import/export deltas across MY active trade agreements).
+    // Both the Trade tab and the negotiation modal's Your Economy
+    // panel pull from the same trading map so the net column matches
+    // on both surfaces. statBased=true tells the formatter to render
+    // integers instead of dollar amounts.
     const _n = _worldState?.nation || {};
-    const commodities = _computeStatCommodities(_n).map(c => ({
-        key:    c.key,
-        icon:   c.icon,
-        name:   c.name,
-        production:     c.prod,
-        potential:      c.potential,
-        domesticDemand: c.dem,
-        demand:         0,
-        trading:        c.key === 'energy' ? getEnergyTradingVolume() : 0,
-        netFlow:        c.prod - c.dem + (c.key === 'energy' ? getEnergyTradingVolume() : 0),
-        selfSufficiencyBalance: null,
-        statBased: true,
-    }));
+    const trading = getTradingVolumesByCommodity();
+    const commodities = _computeStatCommodities(_n).map(c => {
+        const tradingDelta = Number(trading[c.key]) || 0;
+        return {
+            key:    c.key,
+            icon:   c.icon,
+            name:   c.name,
+            production:     c.prod,
+            potential:      c.potential,
+            domesticDemand: c.dem,
+            demand:         0,
+            trading:        tradingDelta,
+            netFlow:        c.prod - c.dem + tradingDelta,
+            selfSufficiencyBalance: null,
+            statBased: true,
+        };
+    });
 
     for (const [sector, flow] of Object.entries(_tradeFlows)) {
         // Skip parent food_agriculture if subsectors exist
@@ -1956,9 +1962,9 @@ async function loadTradeAgreements() {
     _tradeNegUnreadById = unread;
 
     // Phase 4: cache awarded trade-agreement-spawned shipping contracts
-    // and their winning bids so getEnergyTradingVolume can recognize
-    // shipping-in-place and read actual delivered_energy/tick instead
-    // of the agreement's stated volume.
+    // and their winning bids so getTradingVolumesByCommodity can
+    // recognize shipping-in-place and read actual delivered energy/tick
+    // instead of the agreement's stated volume.
     await loadAgreementShippingContracts();
 }
 
@@ -2364,19 +2370,30 @@ function computeCompatibility(myNationId, theirNationId) {
     return Math.min(99, Math.round((matchScore / totalVol) * 200));
 }
 
-// Sum the signed Energy volume from this nation's active trade
-// agreements (positive = net importing, negative = net exporting).
-// Only counts trade_flow articles where:
-//   - article_type === 'trade_flow' and data.commodity === 'energy'
-//   - the agreement has shipping in place: either both parties share a
-//     land border / one is landlocked (no shipping needed), or a
-//     shipping corp is actively servicing the agreement's routes.
-// Returns 0 when there are no qualifying agreements.
-function getEnergyTradingVolume() {
+// Signed trading volumes per commodity, from MY nation's perspective.
+//   positive = net importer of this commodity from active agreements
+//   negative = net exporter
+//
+// Used by both the Trade-tab commodity table and the negotiation modal's
+// "Your Economy" panel so net = prod − dem + trading is computed from
+// the same source on both surfaces. Previously only Energy had a helper
+// (getEnergyTradingVolume), and the modal didn't apply trading at all
+// — Energy net could disagree between the two screens, and no other
+// commodity ever reflected its trade agreements.
+//
+// Returns a plain object keyed by commodity (same keys as
+// _computeStatCommodities: energy / minerals / food / consumer_goods /
+// luxury_goods). Missing keys default to 0.
+//
+// Energy keeps the Phase-4 shipping-contract delivered-volume override
+// (winning bid's energy_per_tick wins over the agreement's stated
+// volume). Other commodities use the article's stated volume directly
+// — they have no per-commodity logistics override today.
+function getTradingVolumesByCommodity() {
+    const out = { energy: 0, minerals: 0, food: 0, consumer_goods: 0, luxury_goods: 0 };
     const myId = _worldState?.nation?.id;
-    if (!myId) return 0;
+    if (!myId) return out;
     const active = (_tradeAgreementsList || []).filter(a => a.status === 'active');
-    let total = 0;
     for (const ag of active) {
         const partnerId = ag.nation_a_id === myId ? ag.nation_b_id : ag.nation_a_id;
         if (!partnerId) continue;
@@ -2397,17 +2414,21 @@ function getEnergyTradingVolume() {
         for (const art of (ag.articles || [])) {
             if (art.article_type !== 'trade_flow') continue;
             const d = art.data || {};
-            if (d.commodity !== 'energy') continue;
+            const commodity = d.commodity;
+            if (!commodity || !(commodity in out)) continue;
+
             const statedVolume = Number(d.volume) || 0;
             if (statedVolume <= 0) continue;
 
-            // Phase 4: prefer the WINNING BID's actual delivered
-            // energy/tick over the agreement's stated volume. The bid
-            // can deliver less if the corp under-allocated freighters,
-            // or the same if fully covered. Falls back to stated volume
-            // when no Phase 4 contract exists yet (e.g., legacy routes).
-            const phase4Energy = phase4Contracts.reduce((s, c) => s + (Number(c.energy_per_tick) || 0), 0);
-            const volume = hasPhase4Logistics ? phase4Energy : statedVolume;
+            // Phase 4 shipping contracts only override Energy volume
+            // (their delivered figure lives in energy_per_tick). Other
+            // commodities use the article's stated volume directly —
+            // they have no per-commodity logistics override surface
+            // today.
+            let volume = statedVolume;
+            if (commodity === 'energy' && hasPhase4Logistics) {
+                volume = phase4Contracts.reduce((s, c) => s + (Number(c.energy_per_tick) || 0), 0);
+            }
             if (volume <= 0) continue;
 
             // Resolve buyer/seller relative to MY nation. direction is
@@ -2417,11 +2438,11 @@ function getEnergyTradingVolume() {
                 : (ag.nation_a_id === myId);
             const partyAId = authorIsMe ? myId : partnerId;
             const buyerNationId = d.direction === 'a_buys_b' ? partyAId : (authorIsMe ? partnerId : myId);
-            if (buyerNationId === myId) total += volume;
-            else                        total -= volume;
+            if (buyerNationId === myId) out[commodity] += volume;
+            else                        out[commodity] -= volume;
         }
     }
-    return total;
+    return out;
 }
 
 // Compute a nation's Energy production / demand / net using the same
@@ -9041,11 +9062,24 @@ function negEconomyRender() {
 }
 
 function _negRenderMyEconomyHtml() {
-    // Same shared helper the Trade tab uses, so the modal's Your Economy
+    // Same shared helpers the Trade tab uses, so the modal's Your Economy
     // panel matches the Trade page's commodity table exactly. Stat units
     // (small integers), not dollars — render as plain Math.round.
+    //
+    // Bal = prod − dem + trading. The trading term is the signed
+    // import/export delta from MY active trade agreements (positive =
+    // net importer, negative = net exporter). Critical for negotiation
+    // UX: a surplus that's already committed to another partner isn't
+    // available to offer here. Previously this panel ignored trading
+    // entirely and showed a phantom surplus.
+    const trading = getTradingVolumesByCommodity();
     const rows = _computeStatCommodities(_worldState?.nation)
-        .sort((a, b) => Math.abs(b.prod - b.dem) - Math.abs(a.prod - a.dem));
+        .map(c => ({ ...c, tradingDelta: Number(trading[c.key]) || 0 }))
+        .sort((a, b) => {
+            const balA = Math.abs(a.prod - a.dem + a.tradingDelta);
+            const balB = Math.abs(b.prod - b.dem + b.tradingDelta);
+            return balB - balA;
+        });
 
     const fmt = (v) => Math.round(Number(v) || 0).toString();
     const fmtBal = (v) => {
@@ -9064,7 +9098,7 @@ function _negRenderMyEconomyHtml() {
         html += `<div class="trade-neg-econ__empty">No flow data yet.</div>`;
     } else {
         for (const r of rows) {
-            const bal = r.prod - r.dem;
+            const bal = r.prod - r.dem + r.tradingDelta;
             const bclass = bal > 0.5 ? 'trade-neg-econ__bal--pos'
                          : bal < -0.5 ? 'trade-neg-econ__bal--neg'
                          : 'trade-neg-econ__bal--neu';
