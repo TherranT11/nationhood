@@ -2086,6 +2086,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         }
 
+        // Debt-to-GDP band crises: maintain the Strained/Crisis/Collapse
+        // active_crises row for this nation BEFORE processCrises runs, so
+        // any newly-active band's effects apply in the same tick.
+        try {
+            await processDebtToGdpBands(supabase, nation, newTick);
+        } catch (debtBandErr) {
+            console.error(`[advanceTick] Debt-to-GDP band processing failed for ${nation.name} (non-fatal):`, debtBandErr);
+        }
+
         // Crises (persistent negative events that apply effects every tick)
         // Runs BEFORE approval calculations so crisis stat/event effects propagate in the same tick.
         try {
