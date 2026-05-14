@@ -1728,14 +1728,34 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                     console.log(`[Impeachment] Trial effects applied for ${nation.name}: stability=${stab}, unrest=${unrest}`);
                 }
 
-                // 3. Process conviction (president removal) — runs after resolveExpiredVotes set conviction_result
+                // 3. Process conviction (president removal). Runs after
+                // resolveExpiredVotes set conviction_result.
+                //
+                // We sweep ALL convicted-but-not-yet-removed presidents,
+                // not just ones resolved on newTick. The old filter
+                // (.eq('resolved_at_tick', newTick)) was an off-by-one
+                // trap: resolveExpiredVotes reads shard.current_tick from
+                // the DB, which during the per-nation loop is still the
+                // OLD tick (shard.current_tick is committed at line ~3222,
+                // long after this block runs). So the resolver writes
+                // resolved_at_tick = oldTick = newTick - 1, but this block
+                // queried resolved_at_tick = newTick. They never matched,
+                // so no convicted president was ever removed and no snap
+                // election was ever scheduled — convictions accumulated
+                // in the DB with phase=resolved, conviction_result=convicted,
+                // but the president stayed in office indefinitely.
+                //
+                // Dropping the tick filter makes the block idempotent
+                // (the !president.is_active guard below short-circuits
+                // any conviction whose president has already been removed)
+                // and catches stale convictions that have been stuck
+                // through the bug above.
                 const { data: convictions } = await supabase
                     .from('impeachment_proceedings')
                     .select('id, president_id, initiated_by_faction_id, charges')
                     .eq('nation_id', nation.id)
                     .eq('phase', 'resolved')
-                    .eq('conviction_result', 'convicted')
-                    .eq('resolved_at_tick', newTick);  // only process on the tick it was resolved
+                    .eq('conviction_result', 'convicted');
 
                 for (const proc of (convictions || [])) {
                     // Get president data
