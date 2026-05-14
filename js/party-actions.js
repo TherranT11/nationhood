@@ -481,6 +481,21 @@ export async function initPartyActions(supabase, state) {
         console.warn('[PartyActions] faction refresh failed, using cached state:', err);
     }
 
+    // Pending-petition flag drives the action-card lock for the
+    // Petition for Reform card. Cheap one-row check; the partial unique
+    // index uq_petitions_one_pending_per_nation guarantees ≤1 row.
+    try {
+        const nationId = state.nation?.id;
+        if (nationId) {
+            const { data: pendingRow } = await _supabase.from('petitions')
+                .select('id').eq('nation_id', nationId).eq('status', 'pending').maybeSingle();
+            faction._petitionPending = !!pendingRow;
+        }
+    } catch (err) {
+        console.warn('[PartyActions] petition-pending check failed:', err?.message || err);
+        faction._petitionPending = false;
+    }
+
     // Fetch platforms + agitator + opposition status + electoral standing +
     // fundraise count + active coalition (for caretaker gating on PM actions)
     const [myPlat, nationPlat, agitatorResult, oppositionResult, standingResult, coalition] = await Promise.all([
@@ -4325,11 +4340,21 @@ function renderAgitatorActionsPanel(role) {
     const actionsHtml = _eligibleActions.map(action => {
         let lockReason = null;
         if (action.id === 'petition_for_reform' && action.cooldownTicks) {
-            const last = Number(_factionForCooldown?.last_petition_for_reform_tick);
-            if (Number.isFinite(last) && last > 0) {
-                const readyAt = last + action.cooldownTicks;
-                if (_currentTick < readyAt) {
-                    lockReason = `Cooldown — ready at tick ${readyAt}.`;
+            // Three lock reasons in priority order:
+            //   1. A petition is already pending in the nation (DB-enforced
+            //      "one pending per nation" + local optimistic flag).
+            //   2. This faction is on cooldown from a recent petition.
+            //   3. Insufficient party funds.
+            if (_factionForCooldown?._petitionPending) {
+                lockReason = 'A petition is already pending in this nation.';
+            }
+            if (!lockReason) {
+                const last = Number(_factionForCooldown?.last_petition_for_reform_tick);
+                if (Number.isFinite(last) && last > 0) {
+                    const readyAt = last + action.cooldownTicks;
+                    if (_currentTick < readyAt) {
+                        lockReason = `Cooldown — ready at tick ${readyAt}.`;
+                    }
                 }
             }
             const funds = Number(_factionForCooldown?.party_funds) || 0;
@@ -4481,9 +4506,11 @@ function renderLawsuitsSection() {
 }
 
 // ════════════════════════ PETITION FOR REFORM ════════════════════════
-// Monarchy-only Agitator action. RPC does all the work (auth, eligibility,
-// dice roll, stat writes, event_log). This wrapper just confirms, calls,
-// and surfaces the result to the player.
+// Monarchy-only Agitator action. The RPC files a pending petition and
+// writes the public "PETITION FOR REFORM" event_log row; the monarch
+// then resolves it from the Pressing Issues panel on government.html.
+// This wrapper confirms, calls, and acknowledges that the petition is
+// now in the monarch's hands.
 let _petitionInflight = false;
 
 async function triggerPetitionForReform() {
@@ -4499,8 +4526,8 @@ async function triggerPetitionForReform() {
         'File a Petition for Reform?\n\n' +
         `Cost: ${action.cost} (party funds)\n` +
         `${action.cooldownTicks}-tick cooldown after use.\n\n` +
-        'Outcome is rolled 1d100 + petition strength. ' +
-        'Result fires a public event in your nation.'
+        'The monarch has 3 ticks to respond. ' +
+        'If they don\'t, the petition is accepted by default.'
     )) return;
 
     _petitionInflight = true;
@@ -4519,23 +4546,25 @@ async function triggerPetitionForReform() {
         // action card immediately reflects the new state without a round-trip.
         faction.party_funds = Math.max(0, (Number(faction.party_funds) || 0) - action.moneyCost);
         faction.last_petition_for_reform_tick = Number(_state?.shard?.current_tick) || 0;
+        // Local pending flag drives the action-card lock until a fresh
+        // refresh confirms the resolution status.
+        faction._petitionPending = true;
 
-        const outcomeLabel = data.outcome === 'ignored'    ? 'Ignored'
-                           : data.outcome === 'accepted'   ? 'Accepted (minor reform)'
-                           : data.outcome === 'major'      ? 'Signed (major reform)'
-                           : data.outcome;
         alert(
-            'Petition for Reform — ' + outcomeLabel + '\n\n' +
-            'd100: ' + data.d100 + ' + strength ' + data.strength + ' = ' + data.total + '\n\n' +
-            data.description
+            'Petition filed. The nation now waits for the throne\'s response.\n\n' +
+            'Track the petition in Government → Administrative → Pressing Issues.'
         );
 
-        // Re-render the agitator panel so the cooldown lock + funds line
-        // visually update. renderActionsPanel dispatches by _selectedRole,
-        // which is still 'agitator' at this point; leaderName / partyColor
-        // are ignored on the agitator path so we pass nulls.
+        // Re-render the agitator panel so the action-card lock state
+        // updates. renderActionsPanel dispatches by _selectedRole, which
+        // is still 'agitator' at this point; leaderName / partyColor are
+        // ignored on the agitator path so we pass nulls.
         const panel = document.getElementById('pa-actions-panel');
         if (panel) panel.innerHTML = renderActionsPanel(null, null, faction);
+
+        // Notify the rest of the app so the pressing-issue mount + the
+        // notification bell pick up the new petition without a reload.
+        window.dispatchEvent(new CustomEvent('petition:filed', { detail: { petitionId: data.petition_id } }));
     } catch (err) {
         alert('Petition failed: ' + (err?.message || err));
     } finally {

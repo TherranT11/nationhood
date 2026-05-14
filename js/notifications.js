@@ -490,6 +490,69 @@ async function checkTradeNegotiationMessages(faction, nation, isPM, isTradeMin) 
     }];
 }
 
+async function checkPetitionForReform(faction, nation, shard) {
+    // Two notifications:
+    //   1. Monarch-on-file: a petition is pending and you are the monarch.
+    //   2. Petitioner-on-resolve: a petition you filed has been resolved
+    //      within the last 6 ticks (matches the petition cooldown window
+    //      so it disappears around when the next petition becomes filable).
+    if (!faction?.id || !nation?.id) return [];
+
+    const out = [];
+
+    // Pending petition in this nation. Cheap select; one row max
+    // (DB-enforced via uq_petitions_one_pending_per_nation).
+    const { data: pending, error: pendErr } = await _supabase
+        .from('petitions')
+        .select('id, faction_id, monarch_faction_id, auto_accept_at_tick, bucket')
+        .eq('nation_id', nation.id)
+        .eq('status', 'pending')
+        .maybeSingle();
+    if (pendErr) {
+        console.warn('[notifications] petition pending check failed:', pendErr.message);
+    } else if (pending) {
+        const isMonarch = nation.monarch_faction_id && nation.monarch_faction_id === faction.id;
+        if (isMonarch) {
+            out.push({
+                title: 'Petition for Reform awaiting your decision',
+                sub:   'Government → Administrative → Pressing Issues',
+                href:  'government.html',
+            });
+        }
+    }
+
+    // Resolved-mine: petitions YOU filed that resolved within the cooldown
+    // window. Filter by status, not pending; cap to recent ticks.
+    const ctxTick = Number(shard?.current_tick) || 0;
+    const minTick = Math.max(0, ctxTick - 6);
+    const { data: resolvedMine, error: resErr } = await _supabase
+        .from('petitions')
+        .select('id, status, resolved_at_tick')
+        .eq('nation_id', nation.id)
+        .eq('faction_id', faction.id)
+        .in('status', ['dismissed', 'partial', 'accepted', 'auto_accepted'])
+        .gte('resolved_at_tick', minTick)
+        .order('resolved_at_tick', { ascending: false })
+        .limit(1);
+    if (resErr) {
+        console.warn('[notifications] petition resolved check failed:', resErr.message);
+    } else if (resolvedMine && resolvedMine.length > 0) {
+        const row = resolvedMine[0];
+        const label = row.status === 'dismissed'    ? 'dismissed'
+                    : row.status === 'partial'      ? 'partially accepted'
+                    : row.status === 'auto_accepted' ? 'accepted by default'
+                    : 'accepted';
+        out.push({
+            id:    'petition-resolved-' + row.id,
+            title: `Your Petition for Reform was ${label}`,
+            sub:   'Politics → Timeline',
+            href:  'government.html',
+        });
+    }
+
+    return out;
+}
+
 async function checkLawsuits(nation, isJusticeMin) {
     if (!isJusticeMin) return [];
     // Pending + reviewing lawsuits filed in this nation. Scoped to the
@@ -690,6 +753,7 @@ async function refreshNotifications() {
                 checkChatUnread(faction),
                 checkTradeNegotiationMessages(faction, nation, isPM, isTradeMin),
                 checkLawsuits(nation, isJusticeMin),
+                checkPetitionForReform(faction, nation, shard),
             ];
         }
 
