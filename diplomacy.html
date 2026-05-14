@@ -78,6 +78,13 @@
 </div>
 </div><!-- /subtab-world -->
 
+<!-- ===== DIPLOMACY SUBTAB ===== -->
+<div id="subtab-diplomacy" class="diplo-subtab-content" style="display:none;">
+    <div style="padding:40px 12px;text-align:center;color:var(--text-bright);font-family:var(--font-mono);font-size:14px;">
+        Diplomacy coming soon!
+    </div>
+</div>
+
 <!-- ===== TRADE SUBTAB ===== -->
 <div id="subtab-trade" class="diplo-subtab-content" style="display:none;">
     <div id="trade-page" style="padding:0 12px 12px;">
@@ -176,10 +183,11 @@ import { clampServiceRate, computeServiceRateCeiling, revenueTierMultiplier } fr
 // ═══════════════════════════════════════════════════
 
 const DIPLO_SUBTABS = [
-    { id: 'world',  label: 'WORLD'  },
-    { id: 'trade',  label: 'TRADE'  },
-    { id: 'ipo',    label: 'IPO'    },
-    { id: 'sports', label: 'SPORTS' },
+    { id: 'world',     label: 'WORLD'     },
+    { id: 'diplomacy', label: 'DIPLOMACY' },
+    { id: 'trade',     label: 'TRADE'     },
+    { id: 'ipo',       label: 'IPO'       },
+    { id: 'sports',    label: 'SPORTS'    },
 ];
 let _diploActiveSubtab = 'world';
 let _tradeInitialized = false;
@@ -250,16 +258,18 @@ async function checkTradeNotifications() {
 }
 
 function showDiploSubtab() {
-    const worldEl  = document.getElementById('subtab-world');
-    const tradeEl  = document.getElementById('subtab-trade');
-    const ipoEl    = document.getElementById('subtab-ipo');
-    const sportsEl = document.getElementById('subtab-sports');
-    if (!worldEl || !tradeEl || !ipoEl || !sportsEl) return;
+    const worldEl     = document.getElementById('subtab-world');
+    const diplomacyEl = document.getElementById('subtab-diplomacy');
+    const tradeEl     = document.getElementById('subtab-trade');
+    const ipoEl       = document.getElementById('subtab-ipo');
+    const sportsEl    = document.getElementById('subtab-sports');
+    if (!worldEl || !diplomacyEl || !tradeEl || !ipoEl || !sportsEl) return;
 
-    worldEl.style.display  = (_diploActiveSubtab === 'world')  ? '' : 'none';
-    tradeEl.style.display  = (_diploActiveSubtab === 'trade')  ? '' : 'none';
-    ipoEl.style.display    = (_diploActiveSubtab === 'ipo')    ? '' : 'none';
-    sportsEl.style.display = (_diploActiveSubtab === 'sports') ? '' : 'none';
+    worldEl.style.display     = (_diploActiveSubtab === 'world')     ? '' : 'none';
+    diplomacyEl.style.display = (_diploActiveSubtab === 'diplomacy') ? '' : 'none';
+    tradeEl.style.display     = (_diploActiveSubtab === 'trade')     ? '' : 'none';
+    ipoEl.style.display       = (_diploActiveSubtab === 'ipo')       ? '' : 'none';
+    sportsEl.style.display    = (_diploActiveSubtab === 'sports')    ? '' : 'none';
 
     if (_diploActiveSubtab === 'trade' && !_tradeInitialized) {
         _tradeInitialized = true;
