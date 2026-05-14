@@ -20695,6 +20695,96 @@ async function processEvents(supabase, nation, currentTick) {
 }
 
 
+// ==================== DEBT-TO-GDP BAND CRISES ====================
+
+// Programmatic activation for the three debt-band crisis templates
+// seeded by migration 20261230. Mirrors stat-triggered crises, but
+// the trigger is a computed ratio (debt / gdp) which the generic
+// crisis_triggers system can't express.
+//
+// Storage: post-migrations 20261206 + 20261207, both nation.debt and
+// nation.gdp are abstract integers in $B. So ratio = debt / gdp
+// directly. A nation with debt=768, gdp=443.4 → 173% → Crisis band.
+//
+// Bands are mutually exclusive — only one row exists for a nation at
+// a time. processCrises (below) then applies the band's crisis_effects
+// rows like any other crisis. Templates are is_active=false so
+// processCrises doesn't try to auto-activate them.
+const DEBT_BAND_TEMPLATES = [
+    { id: '00000000-0000-0000-0000-000000000040', name: 'Public Debt Warning',  minPct: 100 },
+    { id: '00000000-0000-0000-0000-000000000041', name: 'Debt Crisis',          minPct: 200 },
+    { id: '00000000-0000-0000-0000-000000000042', name: 'Sovereign Collapse',   minPct: 300 },
+];
+const DEBT_BAND_IDS = DEBT_BAND_TEMPLATES.map(b => b.id);
+
+async function processDebtToGdpBands(supabase, nation, currentTick) {
+    const debt = Number(nation?.debt) || 0;
+    const gdp  = Number(nation?.gdp)  || 0;
+    // Can't compute a ratio without GDP. Treat as no-band (delete any
+    // existing band rows so the state is consistent).
+    const pct = gdp > 0 ? (debt / gdp) * 100 : 0;
+
+    // Pick the highest band whose threshold is crossed.
+    let targetBand = null;
+    for (const band of DEBT_BAND_TEMPLATES) {
+        if (pct >= band.minPct) targetBand = band;
+    }
+    const targetId = targetBand?.id || null;
+
+    // Read any existing debt-band rows for this nation.
+    const { data: existing, error: readErr } = await supabase
+        .from('active_crises')
+        .select('id, crisis_id')
+        .eq('nation_id', nation.id)
+        .in('crisis_id', DEBT_BAND_IDS);
+    if (readErr) {
+        console.warn(`[DebtBands] read failed for ${nation.name}: ${readErr.message}`);
+        return;
+    }
+    const rows = existing || [];
+    const alreadyActive = rows.some(r => r.crisis_id === targetId);
+
+    // Delete any band rows that don't match the current target.
+    const stale = rows.filter(r => r.crisis_id !== targetId);
+    if (stale.length > 0) {
+        const { error: delErr } = await supabase
+            .from('active_crises')
+            .delete()
+            .in('id', stale.map(r => r.id));
+        if (delErr) {
+            console.warn(`[DebtBands] delete failed for ${nation.name}: ${delErr.message}`);
+        }
+    }
+
+    // Insert the new band row + fire a one-time event_log entry for
+    // the threshold crossing. Only fires on a NEW band — staying in
+    // the same band tick-over-tick doesn't re-fire.
+    if (targetId && !alreadyActive) {
+        const { error: insErr } = await supabase
+            .from('active_crises')
+            .insert({
+                crisis_id: targetId,
+                nation_id: nation.id,
+                started_at_tick: currentTick,
+                effects_applied_log: [],
+            });
+        if (insErr) {
+            console.warn(`[DebtBands] insert failed for ${nation.name}: ${insErr.message}`);
+            return;
+        }
+        await supabase.from('event_log').insert({
+            nation_id: nation.id,
+            event_name: 'CRISIS_STARTED: ' + targetBand.name,
+            trigger_key: 'debt_band_crossing',
+            description_used: `Debt-to-GDP at ${pct.toFixed(0)}% — ${targetBand.name}.`,
+            category: 'crisis',
+            effects_applied: [],
+            fired_at_tick: currentTick,
+        });
+        console.log(`[DebtBands] ${nation.name} → ${targetBand.name} (${pct.toFixed(1)}%)`);
+    }
+}
+
 // ==================== CRISIS TICK PROCESSOR ====================
 
 /**
@@ -32525,6 +32615,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             } catch (seatErr) {
                 console.error(`[advanceTick] Seat rebalancing failed for ${nation.name} (non-fatal):`, seatErr);
             }
+        }
+
+        // Debt-to-GDP band crises: maintain the Strained/Crisis/Collapse
+        // active_crises row for this nation BEFORE processCrises runs, so
+        // any newly-active band's effects apply in the same tick.
+        try {
+            await processDebtToGdpBands(supabase, nation, newTick);
+        } catch (debtBandErr) {
+            console.error(`[advanceTick] Debt-to-GDP band processing failed for ${nation.name} (non-fatal):`, debtBandErr);
         }
 
         // Crises (persistent negative events that apply effects every tick)
