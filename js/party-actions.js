@@ -4713,10 +4713,19 @@ async function patchGeologicalSurveyCard() {
     const nationId = _state?.nation?.id;
     if (!nationId) return;
 
-    const [costRes, cdRes] = await Promise.all([
-        _supabase.rpc('geological_survey_minerals_next_cost',      { p_nation_id: nationId }),
-        _supabase.rpc('geological_survey_minerals_cooldown_until', { p_nation_id: nationId }),
-    ]);
+    // RPC responses surface logical errors on `.error`, but network /
+    // auth failures throw — catch them so the placeholder persists
+    // visibly instead of becoming an unhandled rejection.
+    let costRes, cdRes;
+    try {
+        [costRes, cdRes] = await Promise.all([
+            _supabase.rpc('geological_survey_minerals_next_cost',      { p_nation_id: nationId }),
+            _supabase.rpc('geological_survey_minerals_cooldown_until', { p_nation_id: nationId }),
+        ]);
+    } catch (err) {
+        console.warn('[GeologicalSurvey] RPC fetch threw:', err?.message || err);
+        return;
+    }
     if (costRes.error) console.warn('[GeologicalSurvey] next_cost RPC failed:', costRes.error.message);
     if (cdRes.error)   console.warn('[GeologicalSurvey] cooldown_until RPC failed:', cdRes.error.message);
 
