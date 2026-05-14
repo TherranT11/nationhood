@@ -59,6 +59,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCacheBust, loadBlocMap, blocTagHtml } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
+import { mountPetitionPressingIssues } from './js/petition-pressing-issues.js';
 import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS, deductAP } from './js/game/config.js';
 import { fileNoConfidenceMotion } from './js/game/no-confidence.js';
 import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, isPresidentialRepublic, isPresidentialDomainMinistry, getMinistryDomain, isCohabitation, isAbsoluteMonarchy, PRESIDENTIAL_DOMAIN_MINISTRIES, CANONICAL_GOVERNMENT_TYPES } from './js/game/government-types.js';
@@ -1337,10 +1338,31 @@ function renderAdministrationTab(container) {
     adm2RenderNationCard();
     adm2RenderTimeline();
     adm2RenderCabinet();
+    adm2MountPetitionPressingIssue();
 
     if (contextKey && !_timelineCache.has(contextKey)) {
         loadTimelineData().then(() => adm2RenderTimeline());
     }
+}
+
+// Petition for Reform Pressing Issue. Rendered into the existing
+// .adm2-pressing-body container so the empty-state placeholder is
+// preserved when no petition is pending. Re-mounting on every admin
+// render is cheap (one Supabase select) and keeps the controller
+// scoped to the current admin subtab session.
+let _adm2PetitionCtl = null;
+function adm2MountPetitionPressingIssue() {
+    const host = document.querySelector('.adm2-pressing-body');
+    if (!host) return;
+    _adm2PetitionCtl = mountPetitionPressingIssues({
+        supabase: _supabase,
+        faction:  currentFaction,
+        nation:   currentNation,
+        host,
+        currentTick: () => Number(currentTick) || 0,
+        emptyMessage: 'No pressing issues right now. Time-sensitive decisions will appear here when triggered.',
+        emptyClass:   'adm2-pressing-empty',
+    });
 }
 
 // ── Admin card ──────────────────────────────────────────────────────
