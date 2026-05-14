@@ -28,9 +28,10 @@
 -- Same bug class as the bloc-RPC fix (20261228), the
 -- petition_for_reform fix (20261221), the impeachment Semi-
 -- Presidential fix (5171495), and the agitator-in-monarchy fix.
--- Inline the corrected check rather than calling the
--- _caller_owns_faction helper from 20261228 so this migration has
--- no ordering dependency.
+-- The bloc fix introduced _caller_owns_faction(p_faction_id) as
+-- the SoT helper for this check. Reusing it here. (Migration
+-- 20261228 < 20261229 in timestamp order, so the helper is
+-- guaranteed to exist by the time this runs.)
 
 CREATE OR REPLACE FUNCTION schedule_snap_election(
     p_nation_id UUID,
@@ -65,18 +66,14 @@ BEGIN
          ORDER BY formed_at DESC NULLS LAST
          LIMIT 1;
 
-        IF v_pm_party_id IS NULL THEN
-            RAISE EXCEPTION 'Only the PM party can schedule a snap election';
-        END IF;
-
-        -- Support modern faction ownership via linked_user_id. The
-        -- previous (id = v_caller) check only worked for legacy
-        -- single-faction users.
-        IF NOT EXISTS (
-            SELECT 1 FROM factions
-            WHERE id = v_pm_party_id
-              AND (id = v_caller OR linked_user_id = v_caller)
-        ) THEN
+        -- Caller must own the PM party. _caller_owns_faction
+        -- (introduced in 20261228) handles both legacy (id=caller)
+        -- and modern (linked_user_id=caller) ownership. The previous
+        -- inline check only worked for the legacy single-faction
+        -- pattern, so any modern-flow PM hit "Only the PM party can
+        -- schedule a snap election" even when they actually were the
+        -- PM party.
+        IF v_pm_party_id IS NULL OR NOT _caller_owns_faction(v_pm_party_id) THEN
             RAISE EXCEPTION 'Only the PM party can schedule a snap election';
         END IF;
     END IF;
