@@ -1901,16 +1901,17 @@ function adm2RenderCabinet() {
     // only in the hog table. Accept either source as proof of an active PM.
     const pmFilled = !!hog
         || !!(pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name);
-    const pmFactionIdLocal = hog?.faction_id || pmMinistry?.party_id || null;
-    const isPMPartyLocal = !!(currentFaction && pmFactionIdLocal && currentFaction.id === pmFactionIdLocal);
+    // Single-source PM check (was a 2-source variant inline; now the
+    // canonical 4-source resolver via the shared helper).
+    const pmState = getCurrentFactionPMState(coalition, ministries, hog);
     let govType = 'parliamentary';
     if (isPresidential && isSemiPresidential(currentNation)) govType = 'semi-presidential';
     else if (isPresidential) govType = 'presidential';
     const baseCtx = {
         type: govType,
         isRuling: isRulingFaction,
-        canAppoint: isPMPartyLocal && pmFilled && !isCaretaker,
-        isPMParty: isPMPartyLocal || isPMParty,
+        canAppoint: pmState.strict && pmFilled && !isCaretaker,
+        isPMParty: pmState.withFallback,
         isPresidentParty,
         isCaretaker,
         requests: [],
@@ -10370,6 +10371,36 @@ function getPMFactionIdFromContext(coalition, ministries, hog) {
         || null;
 }
 
+// Single source of truth for "is the current player's faction the PM
+// party?" — replaces the three near-duplicates that used to live at
+// the admin-subtab cabinet renderer (line ~1904), the legacy cabinet
+// renderer (line ~10408), and the fireMinister click gate (commit
+// 1bee861). Two of those used the full 4-source resolver above; the
+// admin subtab used a stripped 2-source variant, which is the latent
+// reason render-vs-click could disagree in edge cases.
+//
+// Returns three fields so each caller can pick the right one:
+//   pmFactionId   — resolved id (or null), useful for diagnostics
+//   strict        — currentFaction.id === pmFactionId, with no fallback.
+//                   Used for canAppoint where over-permissive would be
+//                   harmful (lets non-PM appoint).
+//   withFallback  — strict || module-level isPMParty. Used for the
+//                   render-time DISMISS button gate and the matching
+//                   click gate. The fallback exists to bridge transient
+//                   resolver gaps (e.g. _govData.hog not yet repopulated
+//                   on refresh); removing it re-introduces the original
+//                   "button renders, click silently fails" bug fixed in
+//                   commit 1bee861.
+function getCurrentFactionPMState(coalition, ministries, hog) {
+    const pmFactionId = getPMFactionIdFromContext(coalition, ministries, hog);
+    const strict = !!(currentFaction && pmFactionId && currentFaction.id === pmFactionId);
+    return {
+        pmFactionId,
+        strict,
+        withFallback: strict || isPMParty,
+    };
+}
+
 // --- Vacant ministry alert (PM/President only) ---
 function renderVacantMinistryAlert(ministries, coalition) {
     // Determine if current player is PM or President
@@ -10405,9 +10436,8 @@ function renderCabinet(ministries, coalition) {
     const pmMinistry = ministries?.find(m => m.ministry_key === 'prime_minister');
     const pmFilled = pmMinistry && pmMinistry.minister_first_name && pmMinistry.minister_last_name;
     const allocations = getCoalitionAllocations(coalition);
-    const pmFactionIdLocal = getPMFactionIdFromContext(coalition, ministries, _govData?.hog);
-    const isPMPartyLocal = !!(currentFaction && pmFactionIdLocal && currentFaction.id === pmFactionIdLocal);
-    const canAppoint = isPMPartyLocal && pmFilled && !isCaretaker;
+    const pmState = getCurrentFactionPMState(coalition, ministries, _govData?.hog);
+    const canAppoint = pmState.strict && pmFilled && !isCaretaker;
 
     let govType = 'parliamentary';
     if (isPresidential && isSemiPresidential(currentNation)) govType = 'semi-presidential';
@@ -10450,8 +10480,8 @@ function renderCabinet(ministries, coalition) {
             type: govType,
             isRuling: isRulingFaction,
             isMyMinistry,
-            canAppoint: isPMPartyLocal && pmFilled && !isCaretaker,
-            isPMParty: isPMPartyLocal || isPMParty,
+            canAppoint: pmState.strict && pmFilled && !isCaretaker,
+            isPMParty: pmState.withFallback,
             isPresidentParty: typeof isPresidentParty !== 'undefined' ? isPresidentParty : false,
             isCaretaker,
             requests,
@@ -12238,40 +12268,26 @@ async function refreshGovernmentUI() {
         return;
     }
 
-    // Permission check: PM party (parliamentary) or President party (presidential).
-    //
-    // Two gates, must stay in sync with the render-time check that
-    // gates whether the DISMISS button appears at all
-    // (adm2RenderCabinet line ~1913, renderCabinet line ~10409):
-    //   render:  isPMParty: isPMPartyLocal || isPMParty
-    //   click:   was strict-only — broke when the render-time
-    //            module-level isPMParty was true but the click-time
-    //            recompute came back false. The button rendered, the
-    //            click silently failed with "Only the head of
-    //            government can dismiss ministers."
-    //
-    // Aligning the click gate with the render gate's OR fallback.
-    // The render path is already canonical for "should this button
-    // appear" — if it appeared, the click should be honored.
-    const pmFactionIdLocal = getPMFactionIdFromContext(coalitionData, ministryData, _govData?.hog);
-    const isPMPartyStrict  = !!(currentFaction && pmFactionIdLocal && currentFaction.id === pmFactionIdLocal);
-    const canFire = isPresidential
-        ? isPresidentParty
-        : (isPMPartyStrict || isPMParty);
+    // Permission check via the shared helper. `withFallback` mirrors
+    // the render-time DISMISS-button gate so if the button appeared,
+    // the click is honored. See getCurrentFactionPMState comment for
+    // the rationale on the module-level isPMParty fallback.
+    const pmState = getCurrentFactionPMState(coalitionData, ministryData, _govData?.hog);
+    const canFire = isPresidential ? isPresidentParty : pmState.withFallback;
     if (!canFire) {
-        // Diagnostic surface — if a player ever sees this with the OR
-        // fallback now in place, the actual values are visible without
+        // Diagnostic surface — if a player ever sees this denial with
+        // the fallback in place, the actual values are visible without
         // needing console access.
         console.warn('[fireMinister] permission denied', {
             currentFactionId: currentFaction?.id,
-            pmFactionIdLocal,
-            isPMPartyStrict,
-            isPMPartyModule: isPMParty,
-            hogFactionId:    _govData?.hog?.faction_id,
+            pmFactionId:      pmState.pmFactionId,
+            isPMPartyStrict:  pmState.strict,
+            isPMPartyModule:  isPMParty,
+            hogFactionId:     _govData?.hog?.faction_id,
         });
         alert('Only the head of government can dismiss ministers.\n\n' +
               '(currentFaction=' + (currentFaction?.id || 'null') +
-              ', resolved PM=' + (pmFactionIdLocal || 'null') + ')');
+              ', resolved PM=' + (pmState.pmFactionId || 'null') + ')');
         return;
     }
 
