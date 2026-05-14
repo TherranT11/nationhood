@@ -38,6 +38,7 @@ let _hogActive = null;         // active head_of_government row, or null when se
 let _activeCoalition = null;    // canonical government_formations / virtual coalition state
 let _leadershipChallengeClaimed = false; // true after the player clicks the action this tick
 let _geologicalSurveyNextCost = null;    // raw dollars; doubles every survey, pre-loaded in initPartyActions
+let _geologicalSurveyCooldownUntil = null; // tick at which the next survey may fire (NULL = no cooldown active)
 let _geologicalSurveyInflight = false;   // double-fire guard for the survey action
 let _activePresident = null;   // active presidents row (Presidential / Semi-Pres only); null otherwise
 
@@ -505,12 +506,17 @@ export async function initPartyActions(supabase, state) {
     try {
         const nationId = state.nation?.id;
         if (nationId) {
-            const { data, error } = await _supabase.rpc('geological_survey_minerals_next_cost', { p_nation_id: nationId });
-            if (!error) _geologicalSurveyNextCost = Number(data) || null;
+            const [costRes, cdRes] = await Promise.all([
+                _supabase.rpc('geological_survey_minerals_next_cost',       { p_nation_id: nationId }),
+                _supabase.rpc('geological_survey_minerals_cooldown_until',  { p_nation_id: nationId }),
+            ]);
+            if (!costRes.error) _geologicalSurveyNextCost      = Number(costRes.data) || null;
+            if (!cdRes.error)   _geologicalSurveyCooldownUntil = cdRes.data != null ? Number(cdRes.data) : null;
         }
     } catch (err) {
-        console.warn('[PartyActions] geological survey next-cost fetch failed:', err?.message || err);
-        _geologicalSurveyNextCost = null;
+        console.warn('[PartyActions] geological survey pre-load failed:', err?.message || err);
+        _geologicalSurveyNextCost      = null;
+        _geologicalSurveyCooldownUntil = null;
     }
 
     // Fetch platforms + agitator + opposition status + electoral standing +
@@ -1600,7 +1606,7 @@ const _MINISTRY_ACTION_REGISTRY = {
             // cost cache populates.
             id: 'geological_survey_minerals',
             name: 'Geological Survey — Minerals',
-            desc: 'Commission a national geological survey. Roll 1d100 + (Minerals × 0.5): ≤30 finds nothing; 31-60 small (+2-4); 61-85 moderate (+4-11); 86+ major (+4-18). Higher current Minerals improves odds. Cost doubles every use — no cooldown, pace yourself.',
+            desc: 'Commission a national geological survey. Roll 1d100 + (Minerals × 0.5): ≤30 finds nothing; 31-60 small (+2-4); 61-85 moderate (+4-11); 86+ major (+4-18). Higher current Minerals improves odds. Cost doubles every use. 12-tick cooldown.',
             cost: '$8',
             costColor: '#a87f4a',
             tags: ['INTERIOR', 'COSTS BUDGET'],
@@ -1718,11 +1724,19 @@ function ministryActionLockReason(actionId, faction, roleDescriptor) {
         }
     }
     if (actionId === 'geological_survey_minerals') {
+        // Cooldown check wins over budget check — if the player is on
+        // cooldown they can't fire even with infinite money. Mirrors the
+        // server-side gate order in geological_survey_minerals().
+        const currentTick = Number(_state?.shard?.current_tick) || 0;
+        const readyAt     = Number(_geologicalSurveyCooldownUntil);
+        if (Number.isFinite(readyAt) && readyAt > currentTick) {
+            return `Cooldown — next survey ready at tick ${readyAt} (${readyAt - currentTick} tick${readyAt - currentTick === 1 ? '' : 's'} away).`;
+        }
         const balance  = Number(roleDescriptor?.discretionaryBalance ?? 0);
         const nextCost = Number(_geologicalSurveyNextCost ?? 8_000_000);
         if (balance < nextCost) {
-            const abstract = Math.round(nextCost / 1_000_000);
-            return `Interior Ministry discretionary budget is below $${abstract} — next survey cost has outgrown the budget.`;
+            const displayed = Math.round(nextCost / 1_000_000);
+            return `Interior Ministry discretionary budget is below $${displayed} — next survey cost has outgrown the budget.`;
         }
     }
     if (actionId === 'call_early_elections' || actionId === 'resign_as_pm') {
@@ -4644,7 +4658,7 @@ async function triggerGeologicalSurvey(faction) {
     if (!confirm(
         `Commission a Geological Survey?\n\n` +
         `Cost: $${abstract} (charged from Interior Ministry discretionary budget).\n` +
-        `Cost doubles every use. No cooldown.\n\n` +
+        `Cost doubles every use. 12-tick cooldown after firing.\n\n` +
         `Higher current Minerals improves your odds of a meaningful find.`
     )) return;
 
@@ -4657,9 +4671,15 @@ async function triggerGeologicalSurvey(faction) {
         }
         if (!data?.success) {
             const reason = data?.reason || 'unknown error';
-            const detail = data?.reason === 'insufficient_balance' && data?.cost
-                ? `\n\n(needed $${Math.round(Number(data.cost) / 1_000_000)}, have $${Math.round(Number(data.balance) / 1_000_000)})`
-                : '';
+            let detail = '';
+            if (data?.reason === 'insufficient_balance' && data?.cost) {
+                detail = `\n\n(needed $${Math.round(Number(data.cost) / 1_000_000)}, have $${Math.round(Number(data.balance) / 1_000_000)})`;
+            } else if (data?.reason === 'cooldown' && data?.ready_at_tick) {
+                detail = `\n\nNext survey ready at tick ${data.ready_at_tick}.`;
+                // Sync local cache so the lock state lines up with the
+                // server-truth on the next render.
+                _geologicalSurveyCooldownUntil = Number(data.ready_at_tick);
+            }
             alert('Could not run survey: ' + reason + detail);
             return;
         }
@@ -4678,10 +4698,11 @@ async function triggerGeologicalSurvey(faction) {
         );
 
         // Local state refresh so the next render reflects the new minerals
-        // value, the debited ministry balance, and the next cost without a
-        // round-trip.
+        // value, the debited ministry balance, the next cost, and the new
+        // cooldown without a round-trip.
         if (_state?.nation) _state.nation.minerals = Number(data.minerals_after);
-        _geologicalSurveyNextCost = Number(data.next_cost) || _geologicalSurveyNextCost;
+        _geologicalSurveyNextCost      = Number(data.next_cost)      || _geologicalSurveyNextCost;
+        _geologicalSurveyCooldownUntil = Number(data.cooldown_until) || _geologicalSurveyCooldownUntil;
         const m = (_heldMinistries || []).find(x => x.ministry_key === 'interior');
         if (m) {
             const paid = Number(data.cost_paid) || 0;
