@@ -12238,10 +12238,42 @@ async function refreshGovernmentUI() {
         return;
     }
 
-    // Permission check: PM party (parliamentary) or President party (presidential)
+    // Permission check: PM party (parliamentary) or President party (presidential).
+    //
+    // Two gates, must stay in sync with the render-time check that
+    // gates whether the DISMISS button appears at all
+    // (adm2RenderCabinet line ~1913, renderCabinet line ~10409):
+    //   render:  isPMParty: isPMPartyLocal || isPMParty
+    //   click:   was strict-only — broke when the render-time
+    //            module-level isPMParty was true but the click-time
+    //            recompute came back false. The button rendered, the
+    //            click silently failed with "Only the head of
+    //            government can dismiss ministers."
+    //
+    // Aligning the click gate with the render gate's OR fallback.
+    // The render path is already canonical for "should this button
+    // appear" — if it appeared, the click should be honored.
     const pmFactionIdLocal = getPMFactionIdFromContext(coalitionData, ministryData, _govData?.hog);
-    const canFire = isPresidential ? isPresidentParty : (currentFaction.id === pmFactionIdLocal);
-    if (!canFire) { alert('Only the head of government can dismiss ministers.'); return; }
+    const isPMPartyStrict  = !!(currentFaction && pmFactionIdLocal && currentFaction.id === pmFactionIdLocal);
+    const canFire = isPresidential
+        ? isPresidentParty
+        : (isPMPartyStrict || isPMParty);
+    if (!canFire) {
+        // Diagnostic surface — if a player ever sees this with the OR
+        // fallback now in place, the actual values are visible without
+        // needing console access.
+        console.warn('[fireMinister] permission denied', {
+            currentFactionId: currentFaction?.id,
+            pmFactionIdLocal,
+            isPMPartyStrict,
+            isPMPartyModule: isPMParty,
+            hogFactionId:    _govData?.hog?.faction_id,
+        });
+        alert('Only the head of government can dismiss ministers.\n\n' +
+              '(currentFaction=' + (currentFaction?.id || 'null') +
+              ', resolved PM=' + (pmFactionIdLocal || 'null') + ')');
+        return;
+    }
 
     const ministerName = ministry.minister_first_name + ' ' + ministry.minister_last_name;
     const ministryName = MINISTRY_NAMES[ministryKey] || ministry.ministry_name || ministryKey;
