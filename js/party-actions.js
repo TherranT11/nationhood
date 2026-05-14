@@ -4538,7 +4538,15 @@ async function triggerPetitionForReform() {
             return;
         }
         if (!data?.success) {
-            alert('Could not file petition: ' + (data?.reason || 'unknown error'));
+            // Surface the diagnostic field on the not_monarchy branch —
+            // the RPC includes the actual stored government_type so we
+            // can tell whether we're hitting a stale RPC or a stored
+            // value the ILIKE pattern doesn't cover.
+            const reason = data?.reason || 'unknown error';
+            const detail = data?.got_government_type
+                ? `\n\n(government_type in DB: "${data.got_government_type}")`
+                : '';
+            alert('Could not file petition: ' + reason + detail);
             return;
         }
 
