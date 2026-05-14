@@ -4359,7 +4359,7 @@ const AGITATOR_ACTIONS = [
         id: 'petition_for_reform',
         name: 'Petition for Reform',
         desc: 'Organize a popular petition for political reform. Roll 1d100 + petition strength (education, professional/cultural/religious rapport, inequality, low SoL, crown authority). 0-40 ignored; 41-69 grants minor reform; 70+ forces major reform.',
-        cost: '$0.1',
+        cost: '$100k',
         costColor: '#c8a832',
         moneyCost: 100000,
         tags: ['POLITICAL', 'MONARCHY'],
