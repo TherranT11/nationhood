@@ -20772,7 +20772,7 @@ async function processDebtToGdpBands(supabase, nation, currentTick) {
             console.warn(`[DebtBands] insert failed for ${nation.name}: ${insErr.message}`);
             return;
         }
-        await supabase.from('event_log').insert({
+        const { error: logErr } = await supabase.from('event_log').insert({
             nation_id: nation.id,
             event_name: 'CRISIS_STARTED: ' + targetBand.name,
             trigger_key: 'debt_band_crossing',
@@ -20781,6 +20781,9 @@ async function processDebtToGdpBands(supabase, nation, currentTick) {
             effects_applied: [],
             fired_at_tick: currentTick,
         });
+        if (logErr) {
+            console.warn(`[DebtBands] event_log insert failed for ${nation.name}: ${logErr.message}`);
+        }
         console.log(`[DebtBands] ${nation.name} → ${targetBand.name} (${pct.toFixed(1)}%)`);
     }
 }
