@@ -37,6 +37,8 @@ let _seatTxInProgress = false; // module-level lock for Grant/Revoke Seats actio
 let _hogActive = null;         // active head_of_government row, or null when seat is vacant
 let _activeCoalition = null;    // canonical government_formations / virtual coalition state
 let _leadershipChallengeClaimed = false; // true after the player clicks the action this tick
+let _geologicalSurveyNextCost = null;    // raw dollars; doubles every survey, pre-loaded in initPartyActions
+let _geologicalSurveyInflight = false;   // double-fire guard for the survey action
 let _activePresident = null;   // active presidents row (Presidential / Semi-Pres only); null otherwise
 
 // ===== BLOCS (Phase 1: formation & membership) =====
@@ -494,6 +496,21 @@ export async function initPartyActions(supabase, state) {
     } catch (err) {
         console.warn('[PartyActions] petition-pending check failed:', err?.message || err);
         faction._petitionPending = false;
+    }
+
+    // Geological Survey next-cost. The cost doubles every use (no cooldown),
+    // so the card must show the actual upcoming cost. Single round-trip on
+    // load; the post-action refresh updates the cached value from the RPC's
+    // return payload without a re-query.
+    try {
+        const nationId = state.nation?.id;
+        if (nationId) {
+            const { data, error } = await _supabase.rpc('geological_survey_minerals_next_cost', { p_nation_id: nationId });
+            if (!error) _geologicalSurveyNextCost = Number(data) || null;
+        }
+    } catch (err) {
+        console.warn('[PartyActions] geological survey next-cost fetch failed:', err?.message || err);
+        _geologicalSurveyNextCost = null;
     }
 
     // Fetch platforms + agitator + opposition status + electoral standing +
@@ -1270,6 +1287,8 @@ function renderPage(root) {
             openVolaStadiumModal(root, faction);
         } else if (actionId === 'expand_infrastructure') {
             openExpandInfrastructureModal(root, faction);
+        } else if (actionId === 'geological_survey_minerals') {
+            triggerGeologicalSurvey(faction);
         } else if (actionId === 'bid_to_host_vwc') {
             openVolaHostBidModal(root, faction);
         } else if (actionId === 'leadership_challenge') {
@@ -1573,6 +1592,19 @@ const _MINISTRY_ACTION_REGISTRY = {
             costColor: '#5aafa5',
             tags: ['INTERIOR', 'CONSTRUCTION'],
         },
+        {
+            // Cost is dynamic ($8 base, doubles per use). The displayed
+            // value is overridden in renderMinistryDetail using
+            // _geologicalSurveyNextCost (pre-loaded in initPartyActions);
+            // the static '$8' here is the first-use fallback before the
+            // cost cache populates.
+            id: 'geological_survey_minerals',
+            name: 'Geological Survey — Minerals',
+            desc: 'Commission a national geological survey. Roll 1d100 + (Minerals × 0.5): ≤30 finds nothing; 31-60 small (+2-4); 61-85 moderate (+4-11); 86+ major (+4-18). Higher current Minerals improves odds. Cost doubles every use — no cooldown, pace yourself.',
+            cost: '$8',
+            costColor: '#a87f4a',
+            tags: ['INTERIOR', 'COSTS BUDGET'],
+        },
         _SOE_ACTION_ENTRY,
     ],
     healthcare:     [_SOE_ACTION_ENTRY],
@@ -1685,6 +1717,14 @@ function ministryActionLockReason(actionId, faction, roleDescriptor) {
             return 'Interior Ministry discretionary budget is below $2 — pass a funding bill first.';
         }
     }
+    if (actionId === 'geological_survey_minerals') {
+        const balance  = Number(roleDescriptor?.discretionaryBalance ?? 0);
+        const nextCost = Number(_geologicalSurveyNextCost ?? 8_000_000);
+        if (balance < nextCost) {
+            const abstract = Math.round(nextCost / 1_000_000);
+            return `Interior Ministry discretionary budget is below $${abstract} — next survey cost has outgrown the budget.`;
+        }
+    }
     if (actionId === 'call_early_elections' || actionId === 'resign_as_pm') {
         // Reachable only inside the PM detail panel (renderMinistryDetail
         // is gated on classifyHeadOfGovernment.isPM), so the PM-only /
@@ -1718,6 +1758,14 @@ function renderMinistryDetail(faction, partyColor) {
     const actionsHtml = (r.actions || []).map(a => {
         const lockReason = ministryActionLockReason(a.id, faction, r);
         const isDisabled = !!lockReason;
+        // Dynamic-cost overrides — for actions whose cost varies with
+        // state (e.g. Geological Survey doubles every use). Static
+        // a.cost is used as a fallback when the cached value isn't
+        // ready yet.
+        let displayCost = a.cost || '';
+        if (a.id === 'geological_survey_minerals' && _geologicalSurveyNextCost != null) {
+            displayCost = '$' + Math.round(_geologicalSurveyNextCost / 1_000_000);
+        }
         const tagsHtml = (a.tags || []).map(t =>
             `<span class="pa-action-tag" style="color:${TAG_COLORS[t] || 'var(--text-dim)'};">${esc(t)}</span>`
         ).join('');
@@ -1729,7 +1777,7 @@ function renderMinistryDetail(faction, partyColor) {
                         <div class="pa-action-tags">${tagsHtml}</div>
                     </div>
                     <div class="pa-action-right">
-                        <span class="pa-action-cost" style="color:${a.costColor || 'var(--text-dim)'};">${esc(a.cost || '')}</span>
+                        <span class="pa-action-cost" style="color:${a.costColor || 'var(--text-dim)'};">${esc(displayCost)}</span>
                     </div>
                 </div>
                 <div class="pa-action-desc">${esc(a.desc)}</div>
@@ -4577,6 +4625,78 @@ async function triggerPetitionForReform() {
         alert('Petition failed: ' + (err?.message || err));
     } finally {
         _petitionInflight = false;
+    }
+}
+
+// ════════════════════════ GEOLOGICAL SURVEY (MINERALS) ════════════════════════
+// Minister of Interior action. RPC handles auth (caller-holds-Interior),
+// cost ($8 abstract doubling per use, charged from ministry discretionary),
+// the roll (1d100 + minerals*0.5), and stat write (clamped at 100). This
+// wrapper confirms, calls, and surfaces the flavor + delta.
+
+async function triggerGeologicalSurvey(faction) {
+    if (_geologicalSurveyInflight) return;
+    if (!faction) return;
+
+    const nextCostRaw = Number(_geologicalSurveyNextCost) || 8_000_000;
+    const abstract    = Math.round(nextCostRaw / 1_000_000);
+
+    if (!confirm(
+        `Commission a Geological Survey?\n\n` +
+        `Cost: $${abstract} (charged from Interior Ministry discretionary budget).\n` +
+        `Cost doubles every use. No cooldown.\n\n` +
+        `Higher current Minerals improves your odds of a meaningful find.`
+    )) return;
+
+    _geologicalSurveyInflight = true;
+    try {
+        const { data, error } = await _supabase.rpc('geological_survey_minerals');
+        if (error) {
+            alert('Survey failed: ' + error.message);
+            return;
+        }
+        if (!data?.success) {
+            const reason = data?.reason || 'unknown error';
+            const detail = data?.reason === 'insufficient_balance' && data?.cost
+                ? `\n\n(needed $${Math.round(Number(data.cost) / 1_000_000)}, have $${Math.round(Number(data.balance) / 1_000_000)})`
+                : '';
+            alert('Could not run survey: ' + reason + detail);
+            return;
+        }
+
+        const bucketLabel = data.bucket === 'none'     ? 'No Findings'
+                          : data.bucket === 'small'    ? 'Small Find'
+                          : data.bucket === 'moderate' ? 'Moderate Find'
+                          :                              'Major Discovery';
+        const bonus = (Number(data.total) - Number(data.d100)).toFixed(1);
+        alert(
+            'Geological Survey — ' + bucketLabel + '\n\n' +
+            'Roll: ' + data.d100 + ' + ' + bonus + ' (minerals bonus) = ' + data.total + '\n' +
+            'Minerals: ' + data.minerals_before + ' → ' + data.minerals_after +
+                (data.delta > 0 ? ' (+' + data.delta + ')' : '') + '\n\n' +
+            (data.description || '')
+        );
+
+        // Local state refresh so the next render reflects the new minerals
+        // value, the debited ministry balance, and the next cost without a
+        // round-trip.
+        if (_state?.nation) _state.nation.minerals = Number(data.minerals_after);
+        _geologicalSurveyNextCost = Number(data.next_cost) || _geologicalSurveyNextCost;
+        const m = (_heldMinistries || []).find(x => x.ministry_key === 'interior');
+        if (m) {
+            const paid = Number(data.cost_paid) || 0;
+            m.discretionary_balance = Math.max(0, Number(m.discretionary_balance || 0) - paid);
+        }
+
+        // Re-render the ministry detail panel. renderActionsPanel dispatches
+        // by _selectedRole, which is still 'ministry:interior' at this
+        // point; leaderName / partyColor are ignored on the ministry path.
+        const panel = document.getElementById('pa-actions-panel');
+        if (panel) panel.innerHTML = renderActionsPanel(null, null, faction);
+    } catch (err) {
+        alert('Survey failed: ' + (err?.message || err));
+    } finally {
+        _geologicalSurveyInflight = false;
     }
 }
 
