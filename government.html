@@ -1348,13 +1348,13 @@ function renderAdministrationTab(container) {
 // Petition for Reform Pressing Issue. Rendered into the existing
 // .adm2-pressing-body container so the empty-state placeholder is
 // preserved when no petition is pending. Re-mounting on every admin
-// render is cheap (one Supabase select) and keeps the controller
-// scoped to the current admin subtab session.
-let _adm2PetitionCtl = null;
+// render is cheap (one Supabase select); the controller is scoped to
+// the current admin subtab session and refreshes itself on the
+// 'petition:filed' / 'petition:resolved' window events.
 function adm2MountPetitionPressingIssue() {
     const host = document.querySelector('.adm2-pressing-body');
     if (!host) return;
-    _adm2PetitionCtl = mountPetitionPressingIssues({
+    mountPetitionPressingIssues({
         supabase: _supabase,
         faction:  currentFaction,
         nation:   currentNation,
