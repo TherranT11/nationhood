@@ -59,7 +59,7 @@ AS $$
 $$;
 
 GRANT EXECUTE ON FUNCTION public._caller_owns_faction(UUID)
-    TO authenticated, anon, service_role;
+    TO authenticated, service_role;
 
 
 -- ══════════════════════ create_bloc ══════════════════════
