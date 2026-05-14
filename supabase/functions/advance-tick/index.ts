@@ -31579,6 +31579,23 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Agreement expiration check failed (non-fatal):', expErr);
     }
 
+    // 3.6c Auto-accept any Petition for Reform whose 3-tick deadline has
+    // elapsed without a monarch decision. Runs every tick — the RPC is a
+    // no-op when there's nothing due, and SKIP LOCKED keeps it safe
+    // against concurrent monarch responses.
+    try {
+        const { data: petitionResult, error: petitionErr } =
+            await supabase.rpc('process_expired_petitions', { p_tick: newTick });
+        if (petitionErr) {
+            console.error('[advanceTick] process_expired_petitions failed:', petitionErr.message);
+        } else if (petitionResult?.processed > 0) {
+            summary.autoAcceptedPetitions = petitionResult.processed;
+            console.log(`[advanceTick] Auto-accepted ${petitionResult.processed} petition(s)`);
+        }
+    } catch (petErr) {
+        console.error('[advanceTick] Petition auto-accept failed (non-fatal):', petErr);
+    }
+
     // 3.6b Safety net: catch economic aid agreements missing their aid_agreement_state row
     // Runs every 5 ticks to reduce CPU load — orphaned rows are rare, no urgency
     if (newTick % 5 === 0) try {
