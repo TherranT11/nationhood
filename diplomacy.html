@@ -2360,14 +2360,6 @@ function computeCompatibility(myNationId, theirNationId) {
     return Math.min(99, Math.round((matchScore / totalVol) * 200));
 }
 
-// Sum the signed Energy volume from this nation's active trade
-// agreements (positive = net importing, negative = net exporting).
-// Only counts trade_flow articles where:
-//   - article_type === 'trade_flow' and data.commodity === 'energy'
-//   - the agreement has shipping in place: either both parties share a
-//     land border / one is landlocked (no shipping needed), or a
-//     shipping corp is actively servicing the agreement's routes.
-// Returns 0 when there are no qualifying agreements.
 // Signed trading volumes per commodity, from MY nation's perspective.
 //   positive = net importer of this commodity from active agreements
 //   negative = net exporter
