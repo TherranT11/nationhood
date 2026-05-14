@@ -37,8 +37,6 @@ let _seatTxInProgress = false; // module-level lock for Grant/Revoke Seats actio
 let _hogActive = null;         // active head_of_government row, or null when seat is vacant
 let _activeCoalition = null;    // canonical government_formations / virtual coalition state
 let _leadershipChallengeClaimed = false; // true after the player clicks the action this tick
-let _geologicalSurveyNextCost = null;    // raw dollars; doubles every survey, pre-loaded in initPartyActions
-let _geologicalSurveyCooldownUntil = null; // tick at which the next survey may fire (NULL = no cooldown active)
 let _geologicalSurveyInflight = false;   // double-fire guard for the survey action
 let _activePresident = null;   // active presidents row (Presidential / Semi-Pres only); null otherwise
 
@@ -499,25 +497,10 @@ export async function initPartyActions(supabase, state) {
         faction._petitionPending = false;
     }
 
-    // Geological Survey next-cost. The cost doubles every use (no cooldown),
-    // so the card must show the actual upcoming cost. Single round-trip on
-    // load; the post-action refresh updates the cached value from the RPC's
-    // return payload without a re-query.
-    try {
-        const nationId = state.nation?.id;
-        if (nationId) {
-            const [costRes, cdRes] = await Promise.all([
-                _supabase.rpc('geological_survey_minerals_next_cost',       { p_nation_id: nationId }),
-                _supabase.rpc('geological_survey_minerals_cooldown_until',  { p_nation_id: nationId }),
-            ]);
-            if (!costRes.error) _geologicalSurveyNextCost      = Number(costRes.data) || null;
-            if (!cdRes.error)   _geologicalSurveyCooldownUntil = cdRes.data != null ? Number(cdRes.data) : null;
-        }
-    } catch (err) {
-        console.warn('[PartyActions] geological survey pre-load failed:', err?.message || err);
-        _geologicalSurveyNextCost      = null;
-        _geologicalSurveyCooldownUntil = null;
-    }
+    // Geological Survey cost + cooldown are owned by the server. The card
+    // renders with a placeholder ("$…") and patchGeologicalSurveyCard()
+    // fills in live values after each ministry-detail render. No module-
+    // level cache — eliminates the silent-stale-display class of bugs.
 
     // Fetch platforms + agitator + opposition status + electoral standing +
     // fundraise count + active coalition (for caretaker gating on PM actions)
@@ -1226,6 +1209,7 @@ function renderPage(root) {
 
     document.getElementById('pa-leaders').innerHTML = renderLeaderCards(leaderName, partyColor, faction);
     document.getElementById('pa-actions-panel').innerHTML = renderActionsPanel(leaderName, partyColor, faction);
+    patchGeologicalSurveyCard();
 
     // Bind card clicks. Cabinet ministry / PM / President cards reuse
     // the same `.pa-leader-card` shell + `data-role` mechanism as the
@@ -1599,15 +1583,14 @@ const _MINISTRY_ACTION_REGISTRY = {
             tags: ['INTERIOR', 'CONSTRUCTION'],
         },
         {
-            // Cost is dynamic ($8 base, doubles per use). The displayed
-            // value is overridden in renderMinistryDetail using
-            // _geologicalSurveyNextCost (pre-loaded in initPartyActions);
-            // the static '$8' here is the first-use fallback before the
-            // cost cache populates.
+            // Cost is dynamic ($8 base, doubles per use). The card paints
+            // with this placeholder, then patchGeologicalSurveyCard reads
+            // the live cost + cooldown from the server and patches the
+            // DOM cell + lock state. Server is the only source of truth.
             id: 'geological_survey_minerals',
             name: 'Geological Survey — Minerals',
             desc: 'Commission a national geological survey. Roll 1d100 + (Minerals × 0.5): ≤30 finds nothing; 31-60 small (+2-4); 61-85 moderate (+4-11); 86+ major (+4-18). Higher current Minerals improves odds. Cost doubles every use. 12-tick cooldown.',
-            cost: '$8',
+            cost: '$…',
             costColor: '#a87f4a',
             tags: ['INTERIOR', 'COSTS BUDGET'],
         },
@@ -1723,22 +1706,10 @@ function ministryActionLockReason(actionId, faction, roleDescriptor) {
             return 'Interior Ministry discretionary budget is below $2 — pass a funding bill first.';
         }
     }
-    if (actionId === 'geological_survey_minerals') {
-        // Cooldown check wins over budget check — if the player is on
-        // cooldown they can't fire even with infinite money. Mirrors the
-        // server-side gate order in geological_survey_minerals().
-        const currentTick = Number(_state?.shard?.current_tick) || 0;
-        const readyAt     = Number(_geologicalSurveyCooldownUntil);
-        if (Number.isFinite(readyAt) && readyAt > currentTick) {
-            return `Cooldown — next survey ready at tick ${readyAt} (${readyAt - currentTick} tick${readyAt - currentTick === 1 ? '' : 's'} away).`;
-        }
-        const balance  = Number(roleDescriptor?.discretionaryBalance ?? 0);
-        const nextCost = Number(_geologicalSurveyNextCost ?? 8_000_000);
-        if (balance < nextCost) {
-            const displayed = Math.round(nextCost / 1_000_000);
-            return `Interior Ministry discretionary budget is below $${displayed} — next survey cost has outgrown the budget.`;
-        }
-    }
+    // geological_survey_minerals: lock state is owned by
+    // patchGeologicalSurveyCard, which reads the live server cost +
+    // cooldown after render. Returning '' here means the card paints
+    // unlocked first; the patch downgrades it to locked if needed.
     if (actionId === 'call_early_elections' || actionId === 'resign_as_pm') {
         // Reachable only inside the PM detail panel (renderMinistryDetail
         // is gated on classifyHeadOfGovernment.isPM), so the PM-only /
@@ -1772,14 +1743,11 @@ function renderMinistryDetail(faction, partyColor) {
     const actionsHtml = (r.actions || []).map(a => {
         const lockReason = ministryActionLockReason(a.id, faction, r);
         const isDisabled = !!lockReason;
-        // Dynamic-cost overrides — for actions whose cost varies with
-        // state (e.g. Geological Survey doubles every use). Static
-        // a.cost is used as a fallback when the cached value isn't
-        // ready yet.
-        let displayCost = a.cost || '';
-        if (a.id === 'geological_survey_minerals' && _geologicalSurveyNextCost != null) {
-            displayCost = '$' + Math.round(_geologicalSurveyNextCost / 1_000_000);
-        }
+        // Dynamic costs (e.g. Geological Survey doubles every use) paint
+        // their action-def value first, then get patched in-place by a
+        // post-render fetch (patchGeologicalSurveyCard). The static value
+        // is a placeholder until the patch lands.
+        const displayCost = a.cost || '';
         const tagsHtml = (a.tags || []).map(t =>
             `<span class="pa-action-tag" style="color:${TAG_COLORS[t] || 'var(--text-dim)'};">${esc(t)}</span>`
         ).join('');
@@ -4652,12 +4620,21 @@ async function triggerGeologicalSurvey(faction) {
     if (_geologicalSurveyInflight) return;
     if (!faction) return;
 
-    const nextCostRaw = Number(_geologicalSurveyNextCost) || 8_000_000;
-    const abstract    = Math.round(nextCostRaw / 1_000_000);
+    // Read live cost off the DOM cell. patchGeologicalSurveyCard fills
+    // it after every render; if the patch hasn't run yet, the cell still
+    // reads as the "$…" placeholder and we skip the specific number in
+    // the dialog. The server is the source of truth — it'll reject with
+    // insufficient_balance + the actual figure if we ask too cheaply.
+    const costCellText = document.querySelector(
+        '.pa-action-item[data-action-id="geological_survey_minerals"] .pa-action-cost'
+    )?.textContent?.trim() || '';
+    const costLine = /^\$\d/.test(costCellText)
+        ? `Cost: ${costCellText} (charged from Interior Ministry discretionary budget).\n`
+        : `Cost is charged from Interior Ministry discretionary budget.\n`;
 
     if (!confirm(
         `Commission a Geological Survey?\n\n` +
-        `Cost: $${abstract} (charged from Interior Ministry discretionary budget).\n` +
+        costLine +
         `Cost doubles every use. 12-tick cooldown after firing.\n\n` +
         `Higher current Minerals improves your odds of a meaningful find.`
     )) return;
@@ -4676,11 +4653,11 @@ async function triggerGeologicalSurvey(faction) {
                 detail = `\n\n(needed $${Math.round(Number(data.cost) / 1_000_000)}, have $${Math.round(Number(data.balance) / 1_000_000)})`;
             } else if (data?.reason === 'cooldown' && data?.ready_at_tick) {
                 detail = `\n\nNext survey ready at tick ${data.ready_at_tick}.`;
-                // Sync local cache so the lock state lines up with the
-                // server-truth on the next render.
-                _geologicalSurveyCooldownUntil = Number(data.ready_at_tick);
             }
             alert('Could not run survey: ' + reason + detail);
+            // Re-patch so the card reflects whatever state caused the
+            // rejection (cooldown locked, budget too low, etc).
+            patchGeologicalSurveyCard();
             return;
         }
 
@@ -4697,27 +4674,105 @@ async function triggerGeologicalSurvey(faction) {
             (data.description || '')
         );
 
-        // Local state refresh so the next render reflects the new minerals
-        // value, the debited ministry balance, the next cost, and the new
-        // cooldown without a round-trip.
+        // Local state refresh: minerals + debited ministry balance.
+        // The next_cost + cooldown_until come from the server on the
+        // patch fetch below, not from this RPC return — same code path
+        // as every other render, no special case.
         if (_state?.nation) _state.nation.minerals = Number(data.minerals_after);
-        _geologicalSurveyNextCost      = Number(data.next_cost)      || _geologicalSurveyNextCost;
-        _geologicalSurveyCooldownUntil = Number(data.cooldown_until) || _geologicalSurveyCooldownUntil;
         const m = (_heldMinistries || []).find(x => x.ministry_key === 'interior');
         if (m) {
             const paid = Number(data.cost_paid) || 0;
             m.discretionary_balance = Math.max(0, Number(m.discretionary_balance || 0) - paid);
         }
 
-        // Re-render the ministry detail panel. renderActionsPanel dispatches
-        // by _selectedRole, which is still 'ministry:interior' at this
-        // point; leaderName / partyColor are ignored on the ministry path.
+        // Re-render the ministry detail panel + re-patch the card with
+        // the new server-side cost + cooldown. renderActionsPanel
+        // dispatches by _selectedRole, which is still 'ministry:interior'.
         const panel = document.getElementById('pa-actions-panel');
         if (panel) panel.innerHTML = renderActionsPanel(null, null, faction);
+        patchGeologicalSurveyCard();
     } catch (err) {
         alert('Survey failed: ' + (err?.message || err));
     } finally {
         _geologicalSurveyInflight = false;
+    }
+}
+
+// ─── Geological Survey card patch ──────────────────────────────────
+// Server owns the cost (doubles per use) and the cooldown (12 ticks).
+// After every render of the Interior ministry detail, this function
+// fetches both, replaces the cost text in-place, and applies/removes
+// the locked state. No module-level cache — display drift from a stale
+// cache was the root cause of an earlier silent-failure bug class.
+async function patchGeologicalSurveyCard() {
+    const card = document.querySelector(
+        '.pa-action-item[data-action-id="geological_survey_minerals"]'
+    );
+    if (!card) return; // Interior detail not on screen — nothing to do.
+
+    const nationId = _state?.nation?.id;
+    if (!nationId) return;
+
+    // RPC responses surface logical errors on `.error`, but network /
+    // auth failures throw — catch them so the placeholder persists
+    // visibly instead of becoming an unhandled rejection.
+    let costRes, cdRes;
+    try {
+        [costRes, cdRes] = await Promise.all([
+            _supabase.rpc('geological_survey_minerals_next_cost',      { p_nation_id: nationId }),
+            _supabase.rpc('geological_survey_minerals_cooldown_until', { p_nation_id: nationId }),
+        ]);
+    } catch (err) {
+        console.warn('[GeologicalSurvey] RPC fetch threw:', err?.message || err);
+        return;
+    }
+    if (costRes.error) console.warn('[GeologicalSurvey] next_cost RPC failed:', costRes.error.message);
+    if (cdRes.error)   console.warn('[GeologicalSurvey] cooldown_until RPC failed:', cdRes.error.message);
+
+    const nextCostRaw  = Number(costRes.data);
+    const cooldownUntil = cdRes.data != null ? Number(cdRes.data) : null;
+
+    // 1. Patch the cost cell. Skip on failure so the placeholder
+    //    persists rather than overwriting with garbage.
+    const costCell = card.querySelector('.pa-action-cost');
+    if (costCell && Number.isFinite(nextCostRaw) && nextCostRaw > 0) {
+        costCell.textContent = '$' + Math.round(nextCostRaw / 1_000_000);
+    }
+
+    // 2. Compute lock reason. Cooldown wins over budget — mirrors the
+    //    server-side gate order in geological_survey_minerals().
+    const currentTick = Number(_state?.shard?.current_tick) || 0;
+    const interior    = (_heldMinistries || []).find(m => m.ministry_key === 'interior');
+    const balance     = Number(interior?.discretionary_balance ?? 0);
+
+    let lockReason = '';
+    if (Number.isFinite(cooldownUntil) && cooldownUntil > currentTick) {
+        const away = cooldownUntil - currentTick;
+        lockReason = `Cooldown — next survey ready at tick ${cooldownUntil} (${away} tick${away === 1 ? '' : 's'} away).`;
+    } else if (Number.isFinite(nextCostRaw) && balance < nextCostRaw) {
+        const displayed = Math.round(nextCostRaw / 1_000_000);
+        lockReason = `Interior Ministry discretionary budget is below $${displayed} — next survey cost has outgrown the budget.`;
+    }
+
+    // 3. Apply / remove the lock visuals.
+    const existingLockLine = card.querySelector('.pa-gs-lock-line');
+    if (lockReason) {
+        card.classList.add('locked');
+        if (existingLockLine) {
+            const span = existingLockLine.querySelector('span:last-child');
+            if (span) span.textContent = lockReason;
+        } else {
+            const div = document.createElement('div');
+            div.className = 'pa-gs-lock-line';
+            div.style.cssText = 'margin-top:4px;font-family:var(--font-mono);font-size:7px;color:var(--orange);display:flex;align-items:center;gap:4px;';
+            const icon = document.createElement('span'); icon.textContent = '⊘';
+            const txt  = document.createElement('span'); txt.textContent = lockReason;
+            div.appendChild(icon); div.appendChild(txt);
+            card.appendChild(div);
+        }
+    } else {
+        card.classList.remove('locked');
+        if (existingLockLine) existingLockLine.remove();
     }
 }
 
