@@ -2454,13 +2454,38 @@ let _currentSectorPolicies = [];
 let _committeeSectorPolicies = [];
 
 function _getStatEffectsFromPolicy(policy) {
-    if (policy.stat_effects && Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
-        return policy.stat_effects;
+    // Three layers, in order of historical schema evolution:
+    //
+    //   1. policy.stat_effects (top-level) — original schema. Some
+    //      legacy policies still have this populated.
+    //   2. policy.target_stat / stat_direction — even older schema,
+    //      single-stat policies.
+    //   3. policy.policy_options[*].stat_effects — the canonical
+    //      post-multi-option-refactor location (migration 20260428).
+    //      Almost every policy in production now stores its effects
+    //      here. The previous version of this helper never looked
+    //      here, so the bill-drafter's "Search by Stat" dropdown
+    //      came back empty for every multi-option policy.
+    //
+    // Returns the union — any stat that ANY option (or the legacy
+    // top-level field) can affect. Callers ask "does this policy
+    // affect stat X?" and the answer should be yes if any option
+    // does.
+    const out = [];
+    if (Array.isArray(policy.stat_effects) && policy.stat_effects.length > 0) {
+        out.push(...policy.stat_effects);
     }
     if (policy.target_stat) {
-        return [{ stat_key: policy.target_stat, direction: (policy.stat_direction || 'UP').toLowerCase() }];
+        out.push({ stat_key: policy.target_stat, direction: (policy.stat_direction || 'UP').toLowerCase() });
     }
-    return [];
+    if (Array.isArray(policy.policy_options)) {
+        for (const opt of policy.policy_options) {
+            if (Array.isArray(opt?.stat_effects) && opt.stat_effects.length > 0) {
+                out.push(...opt.stat_effects);
+            }
+        }
+    }
+    return out;
 }
 
 function _populateStatFilter(policies, selectId, groupId) {
