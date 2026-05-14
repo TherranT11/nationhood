@@ -12273,7 +12273,18 @@ async function refreshGovernmentUI() {
     // the click is honored. See getCurrentFactionPMState comment for
     // the rationale on the module-level isPMParty fallback.
     const pmState = getCurrentFactionPMState(coalitionData, ministryData, _govData?.hog);
-    const canFire = isPresidential ? isPresidentParty : pmState.withFallback;
+    // Match the render-side 3-way split (buildMgmtButtons ~7180):
+    //   parliamentary      → PM party can dismiss
+    //   semi-presidential  → PM party can dismiss  (PM owns parliamentary cabinet)
+    //   pure presidential  → president's party can dismiss
+    // Previously the click gate collapsed the first two into "isPresidential
+    // ? isPresidentParty : pmCheck", which routed semi-presidential to the
+    // president check — so the PM party saw the DISMISS button (render gave
+    // it to them) but the click handler rejected the click. Same kind of
+    // render-vs-click inconsistency as commit 1bee861 / b893214, just for
+    // the semi-presidential branch.
+    const isPurePresidential = isPresidential && !isSemiPresidential(currentNation);
+    const canFire = isPurePresidential ? isPresidentParty : pmState.withFallback;
     if (!canFire) {
         // Diagnostic surface — if a player ever sees this denial with
         // the fallback in place, the actual values are visible without
