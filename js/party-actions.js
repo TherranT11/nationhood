@@ -39,6 +39,7 @@ let _activeCoalition = null;    // canonical government_formations / virtual coa
 let _leadershipChallengeClaimed = false; // true after the player clicks the action this tick
 let _geologicalSurveyInflight = false;   // double-fire guard for the survey action
 let _energySurveyInflight = false;       // double-fire guard for the energy survey action
+let _agriculturalExpansionInflight = false; // double-fire guard for agricultural expansion
 let _activePresident = null;   // active presidents row (Presidential / Semi-Pres only); null otherwise
 
 // ===== BLOCS (Phase 1: formation & membership) =====
@@ -1212,6 +1213,7 @@ function renderPage(root) {
     document.getElementById('pa-actions-panel').innerHTML = renderActionsPanel(leaderName, partyColor, faction);
     patchGeologicalSurveyCard();
     patchEnergySurveyCard();
+    patchAgriculturalExpansionCard();
 
     // Bind card clicks. Cabinet ministry / PM / President cards reuse
     // the same `.pa-leader-card` shell + `data-role` mechanism as the
@@ -1283,6 +1285,8 @@ function renderPage(root) {
             triggerGeologicalSurvey(faction);
         } else if (actionId === 'national_energy_survey') {
             triggerEnergySurvey(faction);
+        } else if (actionId === 'agricultural_expansion') {
+            triggerAgriculturalExpansion(faction);
         } else if (actionId === 'bid_to_host_vwc') {
             openVolaHostBidModal(root, faction);
         } else if (actionId === 'leadership_challenge') {
@@ -1609,6 +1613,16 @@ const _MINISTRY_ACTION_REGISTRY = {
             id: 'geological_survey_minerals',
             name: 'Geological Survey — Minerals',
             desc: 'Commission a national geological survey. Roll 1d100 + (Minerals × 0.5): ≤30 finds nothing; 31-60 small (+2-4); 61-85 moderate (+4-11); 86+ major (+4-18). Higher current Minerals improves odds. Cost doubles every use. 12-tick cooldown.',
+            cost: '$…',
+            costColor: '#a87f4a',
+            tags: ['INTERIOR', 'COSTS BUDGET'],
+        },
+        {
+            // Same dynamic-cost pattern as geological survey. Lock state
+            // and live cost owned by patchAgriculturalExpansionCard.
+            id: 'agricultural_expansion',
+            name: 'Agricultural Expansion',
+            desc: 'Commission an agricultural expansion. Roll 1d100 + ((100 − Farmland) × 0.5): ≤30 nothing; 31-60 small (+2-4); 61-85 moderate (+4-11); 86+ major (+4-18, with -4-9 industry). Lower current Farmland improves odds. Cost doubles every use. 12-tick cooldown.',
             cost: '$…',
             costColor: '#a87f4a',
             tags: ['INTERIOR', 'COSTS BUDGET'],
@@ -4931,6 +4945,156 @@ async function patchEnergySurveyCard() {
         } else {
             const div = document.createElement('div');
             div.className = 'pa-es-lock-line';
+            div.style.cssText = 'margin-top:4px;font-family:var(--font-mono);font-size:7px;color:var(--orange);display:flex;align-items:center;gap:4px;';
+            const icon = document.createElement('span'); icon.textContent = '⊘';
+            const txt  = document.createElement('span'); txt.textContent = lockReason;
+            div.appendChild(icon); div.appendChild(txt);
+            card.appendChild(div);
+        }
+    } else {
+        card.classList.remove('locked');
+        if (existingLockLine) existingLockLine.remove();
+    }
+}
+
+// ════════════════════════ AGRICULTURAL EXPANSION ═════════════════════
+// Third workhorse survey, on the Interior minister. Server owns cost
+// ($8M base, doubles per use), cooldown (12 ticks), the roll, and the
+// dual-stat update (farmland always; industry only on Major). This
+// wrapper confirms, calls, and surfaces the result.
+
+async function triggerAgriculturalExpansion(faction) {
+    if (_agriculturalExpansionInflight) return;
+    if (!faction) return;
+
+    const costCellText = document.querySelector(
+        '.pa-action-item[data-action-id="agricultural_expansion"] .pa-action-cost'
+    )?.textContent?.trim() || '';
+    const costLine = /^\$\d/.test(costCellText)
+        ? `Cost: ${costCellText} (charged from Interior Ministry discretionary budget).\n`
+        : `Cost is charged from Interior Ministry discretionary budget.\n`;
+
+    if (!confirm(
+        `Commission an Agricultural Expansion?\n\n` +
+        costLine +
+        `Cost doubles every use. 12-tick cooldown after firing.\n\n` +
+        `Lower current Farmland improves your odds. A Major result also displaces industry.`
+    )) return;
+
+    _agriculturalExpansionInflight = true;
+    try {
+        const { data, error } = await _supabase.rpc('agricultural_expansion');
+        if (error) {
+            alert('Expansion failed: ' + error.message);
+            return;
+        }
+        if (!data?.success) {
+            const reason = data?.reason || 'unknown error';
+            let detail = '';
+            if (data?.reason === 'insufficient_balance' && data?.cost) {
+                detail = `\n\n(needed $${Math.round(Number(data.cost) / 1_000_000)}, have $${Math.round(Number(data.balance) / 1_000_000)})`;
+            } else if (data?.reason === 'cooldown' && data?.ready_at_tick) {
+                detail = `\n\nNext expansion ready at tick ${data.ready_at_tick}.`;
+            }
+            alert('Could not run expansion: ' + reason + detail);
+            patchAgriculturalExpansionCard();
+            return;
+        }
+
+        const bucketLabel = data.bucket === 'none'     ? 'No Viable Zones'
+                          : data.bucket === 'small'    ? 'Modest Reclamation'
+                          : data.bucket === 'moderate' ? 'Regional Reclamation Program'
+                          :                              'Sweeping Land-Use Reform';
+        const bonus = (Number(data.total) - Number(data.d100)).toFixed(1);
+        const industryLine = Number(data.industry_delta) > 0
+            ? 'Industry: ' + data.industry_before + ' → ' + data.industry_after + ' (-' + data.industry_delta + ')\n'
+            : '';
+        alert(
+            'Agricultural Expansion — ' + bucketLabel + '\n\n' +
+            'Roll: ' + data.d100 + ' + ' + bonus + ' (land-use bonus) = ' + data.total + '\n' +
+            'Farmland: ' + data.farmland_before + ' → ' + data.farmland_after +
+                (data.delta > 0 ? ' (+' + data.delta + ')' : '') + '\n' +
+            industryLine + '\n' +
+            (data.description || '')
+        );
+
+        // Local state refresh: both stats + debited interior balance.
+        if (_state?.nation) {
+            _state.nation.farmland = Number(data.farmland_after);
+            _state.nation.industry = Number(data.industry_after);
+        }
+        const m = (_heldMinistries || []).find(x => x.ministry_key === 'interior');
+        if (m) {
+            const paid = Number(data.cost_paid) || 0;
+            m.discretionary_balance = Math.max(0, Number(m.discretionary_balance || 0) - paid);
+        }
+
+        const panel = document.getElementById('pa-actions-panel');
+        if (panel) panel.innerHTML = renderActionsPanel(null, null, faction);
+        patchAgriculturalExpansionCard();
+    } catch (err) {
+        alert('Expansion failed: ' + (err?.message || err));
+    } finally {
+        _agriculturalExpansionInflight = false;
+    }
+}
+
+// Mirror of patchGeologicalSurveyCard / patchEnergySurveyCard, scoped to
+// the agricultural expansion card. Distinct lock-line class so the
+// three cards never fight for the same DOM node.
+async function patchAgriculturalExpansionCard() {
+    const card = document.querySelector(
+        '.pa-action-item[data-action-id="agricultural_expansion"]'
+    );
+    if (!card) return; // Interior detail not on screen — nothing to do.
+
+    const nationId = _state?.nation?.id;
+    if (!nationId) return;
+
+    let costRes, cdRes;
+    try {
+        [costRes, cdRes] = await Promise.all([
+            _supabase.rpc('agricultural_expansion_next_cost',      { p_nation_id: nationId }),
+            _supabase.rpc('agricultural_expansion_cooldown_until', { p_nation_id: nationId }),
+        ]);
+    } catch (err) {
+        console.warn('[AgriculturalExpansion] RPC fetch threw:', err?.message || err);
+        return;
+    }
+    if (costRes.error) console.warn('[AgriculturalExpansion] next_cost RPC failed:', costRes.error.message);
+    if (cdRes.error)   console.warn('[AgriculturalExpansion] cooldown_until RPC failed:', cdRes.error.message);
+
+    const nextCostRaw   = Number(costRes.data);
+    const cooldownUntil = cdRes.data != null ? Number(cdRes.data) : null;
+
+    const costCell = card.querySelector('.pa-action-cost');
+    if (costCell && Number.isFinite(nextCostRaw) && nextCostRaw > 0) {
+        costCell.textContent = '$' + Math.round(nextCostRaw / 1_000_000);
+    }
+
+    // Cooldown wins over budget — mirrors the server-side gate order.
+    const currentTick = Number(_state?.shard?.current_tick) || 0;
+    const interior    = (_heldMinistries || []).find(m => m.ministry_key === 'interior');
+    const balance     = Number(interior?.discretionary_balance ?? 0);
+
+    let lockReason = '';
+    if (Number.isFinite(cooldownUntil) && cooldownUntil > currentTick) {
+        const away = cooldownUntil - currentTick;
+        lockReason = `Cooldown — next expansion ready at tick ${cooldownUntil} (${away} tick${away === 1 ? '' : 's'} away).`;
+    } else if (Number.isFinite(nextCostRaw) && balance < nextCostRaw) {
+        const displayed = Math.round(nextCostRaw / 1_000_000);
+        lockReason = `Interior Ministry discretionary budget is below $${displayed} — next expansion cost has outgrown the budget.`;
+    }
+
+    const existingLockLine = card.querySelector('.pa-ae-lock-line');
+    if (lockReason) {
+        card.classList.add('locked');
+        if (existingLockLine) {
+            const span = existingLockLine.querySelector('span:last-child');
+            if (span) span.textContent = lockReason;
+        } else {
+            const div = document.createElement('div');
+            div.className = 'pa-ae-lock-line';
             div.style.cssText = 'margin-top:4px;font-family:var(--font-mono);font-size:7px;color:var(--orange);display:flex;align-items:center;gap:4px;';
             const icon = document.createElement('span'); icon.textContent = '⊘';
             const txt  = document.createElement('span'); txt.textContent = lockReason;
