@@ -120,12 +120,18 @@ body {
       </div>
       <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Control wealth, trade, and economic power to influence the nation.</div>
     </div>
-    <div style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;opacity:0.3;cursor:not-allowed;">
+    <div id="opt-military" onclick="selectFactionOption('military')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--red-border)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.06em;">Military Branch</span>
-        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--text-dim);background:var(--bg-3);border:1px solid var(--border-1);padding:1px 6px;letter-spacing:0.06em;">COMING SOON</span>
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--amber);background:var(--amber-faint);border:1px solid var(--amber-border);padding:1px 6px;letter-spacing:0.06em;">ALPHA</span>
       </div>
       <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Command armies, defend borders, and project military force to protect or conquer.</div>
+    </div>
+    <div id="military-alpha-gate" style="display:none;background:var(--bg-2);border:1px solid var(--red-border);padding:16px;margin-bottom:8px;">
+      <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;">Alpha Access Required</div>
+      <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;margin-bottom:10px;">Enter the alpha tester code to proceed.</div>
+      <input id="military-alpha-input" type="text" placeholder="Alpha code" autocomplete="off" style="width:100%;padding:10px;font-family:var(--font-mono);font-size:12px;background:var(--bg-1);border:1px solid var(--border-1);color:var(--text-bright);outline:none;">
+      <div id="military-alpha-error" style="display:none;font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:8px;"></div>
     </div>
     <button id="btn-confirm-faction" onclick="confirmFactionChoice()" disabled style="width:100%;padding:12px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:var(--bg-3);border:1px solid var(--border-0);color:var(--text-dim);cursor:not-allowed;transition:all 0.15s;">CONFIRM</button>
   </div>
@@ -139,19 +145,23 @@ async function init() {
   const { data: { user } } = await _supabase.auth.getUser();
   if (!user) { window.location.href = 'login.html'; return; }
 
-  // Check if user already has an active party
-  const { data: faction, error: partyErr } = await _supabase
-    .from('factions').select('id, nation_id, abandoned_at, is_banned').eq('id', user.id).eq('faction_type', 'party').maybeSingle();
-  if (partyErr) console.warn('Party check failed:', partyErr.message);
-  if (faction && !isFactionInactive(faction)) {
-    window.location.href = 'dashboard.html';
-    return;
+  const pendingType = sessionStorage.getItem('pending_faction_type');
+
+  // Check if user already has an active party. Skip the auto-redirect when
+  // the user is explicitly here to add a different faction type (military).
+  if (pendingType !== 'military') {
+    const { data: faction, error: partyErr } = await _supabase
+      .from('factions').select('id, nation_id, abandoned_at, is_banned').eq('id', user.id).eq('faction_type', 'party').maybeSingle();
+    if (partyErr) console.warn('Party check failed:', partyErr.message);
+    if (faction && !isFactionInactive(faction)) {
+      window.location.href = 'dashboard.html';
+      return;
+    }
   }
 
   // Check if user has an active corporation — only redirect if they're NOT
-  // explicitly trying to found a party (pending_faction_type === 'party')
-  const pendingType = sessionStorage.getItem('pending_faction_type');
-  if (pendingType !== 'party') {
+  // explicitly trying to found a party or join a military faction
+  if (pendingType !== 'party' && pendingType !== 'military') {
     const { data: corpFaction, error: corpErr } = await _supabase
       .from('factions').select('id, nation_id, abandoned_at, is_banned')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
@@ -165,23 +175,31 @@ async function init() {
     }
   }
 
-  // Load pending nation from sessionStorage (set by select-nation.html)
+  // Load pending nation from sessionStorage (set by select-nation.html).
+  // Only auto-skip to party creation when we're actually in the party flow —
+  // a stale nation in storage shouldn't hijack the military or chooser flow.
   const raw = sessionStorage.getItem('nationhood_pending_nation');
-  if (!raw || !JSON.parse(raw).id) {
-    // No nation selected yet — show faction type chooser first
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('faction-chooser').style.display = 'flex';
+  const hasNation = raw && JSON.parse(raw).id;
+  if (hasNation && (pendingType === 'party' || !pendingType)) {
+    // Nation selected → straight to party creation. The old ideology-picker
+    // step was removed in Phase 5C-4 (sectors replaced ideology axes).
+    window.location.href = 'createparty.html';
     return;
   }
-  // Nation selected → straight to party creation. The old ideology-picker
-  // step was removed in Phase 5C-4 (sectors replaced ideology axes).
-  window.location.href = 'createparty.html';
+  // No nation selected (or wrong flow) — show faction type chooser
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('faction-chooser').style.display = 'flex';
 }
+
+const MILITARY_ALPHA_CODE = 'Commander1';
 
 function chooseFactionType(type) {
   if (type === 'corporation') {
     sessionStorage.setItem('pending_faction_type', 'corp');
     window.location.href = 'corp-setup.html';
+  } else if (type === 'military') {
+    sessionStorage.setItem('pending_faction_type', 'military');
+    window.location.href = 'select-nation.html';
   } else {
     sessionStorage.setItem('pending_faction_type', 'party');
     // Party flow: pick nation, then ideology
@@ -195,13 +213,16 @@ function selectFactionOption(type) {
   selectedFaction = type;
   const optParty = document.getElementById('opt-party');
   const optCorp = document.getElementById('opt-corp');
+  const optMil = document.getElementById('opt-military');
+  const milGate = document.getElementById('military-alpha-gate');
+  const milError = document.getElementById('military-alpha-error');
   const confirmBtn = document.getElementById('btn-confirm-faction');
 
-  // Reset both
-  optParty.classList.remove('fs-selected');
-  optParty.style.borderColor = 'var(--border-0)';
-  optCorp.classList.remove('fs-selected');
-  optCorp.style.borderColor = 'var(--border-0)';
+  // Reset all three cards
+  for (const [opt, border] of [[optParty, 'var(--blue-border)'], [optCorp, 'var(--green-border)'], [optMil, 'var(--red-border)']]) {
+    opt.classList.remove('fs-selected');
+    opt.style.borderColor = 'var(--border-0)';
+  }
 
   if (type === 'party') {
     optParty.classList.add('fs-selected');
@@ -209,6 +230,17 @@ function selectFactionOption(type) {
   } else if (type === 'corporation') {
     optCorp.classList.add('fs-selected');
     optCorp.style.borderColor = 'var(--green-border)';
+  } else if (type === 'military') {
+    optMil.classList.add('fs-selected');
+    optMil.style.borderColor = 'var(--red-border)';
+  }
+
+  // Show/hide the alpha code gate for military
+  if (type === 'military') {
+    milGate.style.display = 'block';
+    milError.style.display = 'none';
+  } else {
+    milGate.style.display = 'none';
   }
 
   // Enable confirm button
@@ -221,6 +253,18 @@ function selectFactionOption(type) {
 
 function confirmFactionChoice() {
   if (!selectedFaction) return;
+  if (selectedFaction === 'military') {
+    const input = document.getElementById('military-alpha-input');
+    const errEl = document.getElementById('military-alpha-error');
+    const entered = (input?.value || '').trim();
+    if (entered !== MILITARY_ALPHA_CODE) {
+      errEl.textContent = entered ? 'Invalid alpha code.' : 'Please enter the alpha code.';
+      errEl.style.display = 'block';
+      input?.focus();
+      return;
+    }
+    errEl.style.display = 'none';
+  }
   chooseFactionType(selectedFaction);
 }
 

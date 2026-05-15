@@ -878,8 +878,12 @@ export function updateTopBarInfo(faction, shard, nation) {
         let html = '';
         for (const f of _userFactions) {
             const isActive = faction && f.id === faction.id;
-            const typeLabel = f.faction_type === 'corporation' ? 'CORP' : 'PARTY';
-            const typeColor = f.faction_type === 'corporation' ? 'var(--teal)' : 'var(--amber)';
+            const typeLabel = f.faction_type === 'corporation' ? 'CORP'
+                : f.faction_type === 'military' ? 'MIL'
+                : 'PARTY';
+            const typeColor = f.faction_type === 'corporation' ? 'var(--teal)'
+                : f.faction_type === 'military' ? 'var(--red)'
+                : 'var(--amber)';
             html += `<div class="faction-dropdown__item${isActive ? ' active' : ''}" onclick="handleFactionSwitch('${f.id}', '${f.faction_type}')">
                 <span class="faction-dropdown__type" style="color:${typeColor}">${typeLabel}</span>
                 <span class="faction-dropdown__name">${f.faction_name || 'Unnamed'}</span>
@@ -900,6 +904,14 @@ export function updateTopBarInfo(faction, shard, nation) {
             html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="sessionStorage.setItem('pending_faction_type','party'); window.location.href='select-nation.html'">
                 <span class="faction-dropdown__type" style="color:var(--amber)">+</span>
                 <span class="faction-dropdown__name">Found a Political Party</span>
+            </div>`;
+        }
+        // "Join a Military Faction" option if no military faction exists
+        const hasMilitary = _userFactions.some(f => f.faction_type === 'military');
+        if (!hasMilitary) {
+            html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="sessionStorage.setItem('pending_faction_type','military'); window.location.href='faction-select.html'">
+                <span class="faction-dropdown__type" style="color:var(--red)">+</span>
+                <span class="faction-dropdown__name">Join a Military Faction</span>
             </div>`;
         }
         dropdown.innerHTML = html;
