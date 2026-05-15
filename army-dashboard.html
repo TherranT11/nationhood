@@ -134,15 +134,13 @@ async function init() {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
 
-    // Find this user's military faction (primary or linked). Phase 0 has no
-    // branch column on `factions`, so any active military faction counts as
-    // eligible to view this page. Phase 1 will narrow this to branch='army'
-    // once the schema lands.
+    // Find this user's army faction (primary or linked).
     const { data: faction, error: factionErr } = await _supabase
       .from('factions')
-      .select('id, faction_type, faction_name, nation_id, abandoned_at, is_banned')
+      .select('id, faction_type, faction_name, nation_id, abandoned_at, is_banned, branch')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
       .eq('faction_type', 'military')
+      .eq('branch', 'army')
       .is('abandoned_at', null)
       .maybeSingle();
 

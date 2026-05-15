@@ -10,7 +10,7 @@
 import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
 import { hasActiveGovernment } from './game/government-structure.js';
-import { isFactionInactive } from './game/factions.js';
+import { isFactionInactive, BRANCH_DASHBOARDS } from './game/factions.js';
 import { SECTOR_OPS_PAGE } from './corp-topbar.js';
 import { escapeHtml } from './utils.js';
 
@@ -1391,6 +1391,12 @@ function handleFactionSwitch(factionId, factionType) {
     // Route to the right dashboard
     if (factionType === 'corporation') {
         window.location.href = 'corp-dashboard.html';
+    } else if (factionType === 'military') {
+        const mil = _userFactions.find(f => f.id === factionId);
+        const dash = mil && BRANCH_DASHBOARDS[mil.branch];
+        // Branches without a dashboard yet (navy, air_force) fall back to
+        // the chooser so the player can navigate elsewhere.
+        window.location.href = dash || 'faction-select.html';
     } else {
         window.location.href = 'dashboard.html';
     }

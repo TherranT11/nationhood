@@ -34,3 +34,12 @@ export function getFactionInactiveReason(f) {
 export function isFactionInactive(f) {
     return getFactionInactiveReason(f) !== null;
 }
+
+/**
+ * Branch → dashboard URL for military factions. Add entries as new
+ * branch dashboards land. Importers should look up by faction.branch
+ * and fall back gracefully if the entry is missing.
+ */
+export const BRANCH_DASHBOARDS = {
+    army: 'army-dashboard.html',
+};
