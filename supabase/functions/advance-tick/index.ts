@@ -19001,6 +19001,19 @@ function rollRallyOutcome(weights) {
  * clamp on conflict (faction_id,sector_id).
  *
  * Returns { success, outcomeId, outcomeName, headline, effects, newFunds }
+ *
+ * KNOWN ISSUE (blocking — pending decision): this function is invoked
+ * client-side (js/politics.js). The faction_sector_popularity table is
+ * admin/service-role-write-only (RLS: "Admin writes" USING is_admin();
+ * see 20260426_sectors_phase0.sql), so the upsert below is rejected for
+ * normal players and every rally returns "Rally failed to apply." The
+ * abort-before-charge ordering means no funds are lost, but the action is
+ * non-functional. The codebase pattern for a player-initiated sector-
+ * popularity shift is a SECURITY DEFINER RPC (petition_for_reform(),
+ * adopt_platform(), the energy/agriculture surveys) that also gates auth +
+ * cooldown + cost atomically — which additionally closes the non-atomic
+ * double-fire / stale-read gaps in steps 2 and 7. Fix = move this mutation
+ * into such an RPC; deferred for explicit approval (large structural change).
  */
 async function executeRally(supabase, factionId, nationId, sectorId, currentTick) {
     if (!sectorId) return { success: false, error: 'Pick a sector to rally.' };
