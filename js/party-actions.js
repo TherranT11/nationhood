@@ -4815,7 +4815,25 @@ async function triggerSurvey(actionKey, faction) {
 
         const panel = document.getElementById('pa-actions-panel');
         if (panel) panel.innerHTML = renderActionsPanel(null, null, faction);
-        patchSurveyCard(actionKey);
+
+        // Apply server-authoritative next_cost + cooldown directly from the
+        // survey RPC's response. Earlier this called patchSurveyCard, which
+        // re-fetches via the read-only helper RPCs — that path can race
+        // against the just-committed action_log row's visibility to
+        // PostgREST (especially on mobile / high-latency links) and
+        // silently paint a stale cost over the freshly-rendered card. The
+        // values we need are already in `data`; use them directly.
+        const newCard = document.querySelector(
+            `.pa-action-item[data-action-id="${actionKey}"]`
+        );
+        if (newCard) {
+            _renderSurveyCardState(
+                newCard,
+                cfg,
+                Number(data.next_cost),
+                data.cooldown_until != null ? Number(data.cooldown_until) : null,
+            );
+        }
     } catch (err) {
         alert(`${cfg.actionLabel} failed: ${err?.message || err}`);
     } finally {
@@ -4823,38 +4841,14 @@ async function triggerSurvey(actionKey, faction) {
     }
 }
 
-// Server owns the cost (escalates per use) and the cooldown. After every
-// render of the relevant ministry detail, this fetches both, replaces the
-// cost text in-place, and applies/removes the locked state. No module-
-// level cache — display drift from a stale cache was the root cause of an
-// earlier silent-failure bug class.
-async function patchSurveyCard(actionKey) {
-    const cfg = SURVEY_CONFIG[actionKey];
-    if (!cfg) return;
-    const card = document.querySelector(
-        `.pa-action-item[data-action-id="${actionKey}"]`
-    );
-    if (!card) return; // The relevant ministry detail isn't on screen — no-op.
-
-    const nationId = _state?.nation?.id;
-    if (!nationId) return;
-
-    let costRes, cdRes;
-    try {
-        [costRes, cdRes] = await Promise.all([
-            _supabase.rpc(cfg.nextCostRpc,  { p_nation_id: nationId }),
-            _supabase.rpc(cfg.cooldownRpc,  { p_nation_id: nationId }),
-        ]);
-    } catch (err) {
-        console.warn(`[${cfg.actionLabel}] RPC fetch threw:`, err?.message || err);
-        return;
-    }
-    if (costRes.error) console.warn(`[${cfg.actionLabel}] next_cost RPC failed:`, costRes.error.message);
-    if (cdRes.error)   console.warn(`[${cfg.actionLabel}] cooldown_until RPC failed:`, cdRes.error.message);
-
-    const nextCostRaw   = Number(costRes.data);
-    const cooldownUntil = cdRes.data != null ? Number(cdRes.data) : null;
-
+// Pure DOM update for a survey card given the latest cost + cooldown.
+// Shared by patchSurveyCard (which reads the values via the read-only
+// helper RPCs) and triggerSurvey's success path (which already has
+// them in the action RPC's response — applying directly there avoids
+// a race where the follow-up read-RPC can fire before the just-
+// committed action_log row is visible to PostgREST, which would
+// silently paint a stale cost over the new HTML).
+function _renderSurveyCardState(card, cfg, nextCostRaw, cooldownUntil) {
     const costCell = card.querySelector('.pa-action-cost');
     if (costCell && Number.isFinite(nextCostRaw) && nextCostRaw > 0) {
         costCell.textContent = '$' + Math.round(nextCostRaw / 1_000_000);
@@ -4894,6 +4888,41 @@ async function patchSurveyCard(actionKey) {
         card.classList.remove('locked');
         if (existingLockLine) existingLockLine.remove();
     }
+}
+
+// Server owns the cost (escalates per use) and the cooldown. After every
+// render of the relevant ministry detail, this fetches both, replaces the
+// cost text in-place, and applies/removes the locked state. No module-
+// level cache — display drift from a stale cache was the root cause of an
+// earlier silent-failure bug class.
+async function patchSurveyCard(actionKey) {
+    const cfg = SURVEY_CONFIG[actionKey];
+    if (!cfg) return;
+    const card = document.querySelector(
+        `.pa-action-item[data-action-id="${actionKey}"]`
+    );
+    if (!card) return; // The relevant ministry detail isn't on screen — no-op.
+
+    const nationId = _state?.nation?.id;
+    if (!nationId) return;
+
+    let costRes, cdRes;
+    try {
+        [costRes, cdRes] = await Promise.all([
+            _supabase.rpc(cfg.nextCostRpc,  { p_nation_id: nationId }),
+            _supabase.rpc(cfg.cooldownRpc,  { p_nation_id: nationId }),
+        ]);
+    } catch (err) {
+        console.warn(`[${cfg.actionLabel}] RPC fetch threw:`, err?.message || err);
+        return;
+    }
+    if (costRes.error) console.warn(`[${cfg.actionLabel}] next_cost RPC failed:`, costRes.error.message);
+    if (cdRes.error)   console.warn(`[${cfg.actionLabel}] cooldown_until RPC failed:`, cdRes.error.message);
+
+    const nextCostRaw   = Number(costRes.data);
+    const cooldownUntil = cdRes.data != null ? Number(cdRes.data) : null;
+
+    _renderSurveyCardState(card, cfg, nextCostRaw, cooldownUntil);
 }
 
 // ════════════════════════ HIRE AGITATOR MODAL ════════════════════════
