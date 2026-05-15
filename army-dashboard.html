@@ -659,10 +659,11 @@ const ARMY_MODIFIERS = [
     { key: 'army_supplies',       name: 'Supplies',          desc0: '<strong>Empty depots.</strong> Sustained combat is impossible.' },
 ];
 
-// Tier-aware descriptor. For Phase 1 every stat sits at 0 so we only need
-// the floor copy; future tiers ('Adequate', 'Professional', 'World-class'…)
-// land alongside the actions that move the stat up.
-function modifierDesc(stat /* , score */) {
+// Floor-state descriptor. Every stat sits at 0 for Phase 1, so this only
+// returns desc0. When the actions that move stats up land, add `score` back
+// as a second arg and branch on tier ('Adequate' / 'Professional' /
+// 'World-class' etc.) — until then keep the signature minimal.
+function modifierDesc(stat) {
     return stat.desc0;
 }
 
@@ -688,7 +689,7 @@ function renderOperatingModifiers(faction) {
                 <span class="om-card__value">${score}<span class="om-max">/100</span></span>
             </div>
             <div class="om-meter">${cells}</div>
-            <div class="om-card__desc">${modifierDesc(stat, score)}</div>
+            <div class="om-card__desc">${modifierDesc(stat)}</div>
         </div>`;
     }).join('');
 }
