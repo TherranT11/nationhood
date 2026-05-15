@@ -219,7 +219,7 @@ function selectFactionOption(type) {
   const confirmBtn = document.getElementById('btn-confirm-faction');
 
   // Reset all three cards
-  for (const [opt, border] of [[optParty, 'var(--blue-border)'], [optCorp, 'var(--green-border)'], [optMil, 'var(--red-border)']]) {
+  for (const opt of [optParty, optCorp, optMil]) {
     opt.classList.remove('fs-selected');
     opt.style.borderColor = 'var(--border-0)';
   }

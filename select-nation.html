@@ -784,7 +784,6 @@ let selectedNationId = null;
 let activeContinent = 'Crucera';
 let cachedPartiesByNation = {};
 let cachedCrisesByNation = {};
-let cachedMilitaryByNation = {};
 let pendingFactionType = null;
 
 // Nations that require an alpha tester code to join
@@ -852,21 +851,18 @@ function switchContinent(continent) {
 }
 
 async function loadNations() {
-  const [nationsRes, partiesRes, crisesRes, militaryRes] = await Promise.all([
+  const [nationsRes, partiesRes, crisesRes] = await Promise.all([
     _supabase.from('nations').select('*, nation_profiles(flag_url)'),
     _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, seats, nation_id, party_color').eq('faction_type', 'party'),
     _supabase.from('active_crises').select('nation_id, crisis_id, crisis_templates(name)'),
-    _supabase.from('factions').select('id, faction_type, faction_name, nation_id').eq('faction_type', 'military'),
   ]);
 
   const nations = nationsRes.data || [];
   const parties = partiesRes.data || [];
   const crises = crisesRes.data || [];
-  const military = militaryRes.data || [];
 
   cachedPartiesByNation = {};
   cachedCrisesByNation = {};
-  cachedMilitaryByNation = {};
 
   for (const p of parties) {
     if (!cachedPartiesByNation[p.nation_id]) cachedPartiesByNation[p.nation_id] = [];
@@ -875,10 +871,6 @@ async function loadNations() {
   for (const c of crises) {
     if (!cachedCrisesByNation[c.nation_id]) cachedCrisesByNation[c.nation_id] = [];
     cachedCrisesByNation[c.nation_id].push(c);
-  }
-  for (const m of military) {
-    if (!cachedMilitaryByNation[m.nation_id]) cachedMilitaryByNation[m.nation_id] = [];
-    cachedMilitaryByNation[m.nation_id].push(m);
   }
 
   allNations = nations;
@@ -1025,18 +1017,13 @@ function renderNations(nations, partiesByNation, crisesByNation) {
   }).join('');
 }
 
-function getBranchOccupant(nationId, branchKey) {
-  // Phase 0 scaffold: no military faction data model yet, so every branch
-  // reads as Open. Once Phase 1 lands a branch column on `factions`, match
-  // against cachedMilitaryByNation[nationId] here.
-  return null;
-}
-
 function renderMilitaryNationCard(nation, flagUrl, govClass, govLabel, needsAlphaCode) {
+  // Phase 0 has no military faction data model — no branch column exists on
+  // `factions`, so there is nothing to query against. Every branch renders
+  // as Open. Phase 1 will introduce the schema and a real occupancy lookup.
   const branchRows = MILITARY_BRANCHES.map(b => {
-    const taken = !!getBranchOccupant(nation.id, b.key);
-    const statusLabel = taken ? 'Taken' : 'Open';
-    const statusColor = taken ? 'var(--red)' : 'var(--green)';
+    const statusLabel = 'Open';
+    const statusColor = 'var(--green)';
     return `
       <div style="opacity:0.45;border:1px solid var(--border-0);background:var(--bg-1);padding:10px 12px;margin-top:8px;cursor:not-allowed;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
