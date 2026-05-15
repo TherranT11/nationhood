@@ -3465,7 +3465,7 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, tick) {
     let result;
     try {
         if (sel.id === 'rally') {
-            result = await executeRally(_supabase, f.id, n.id, _caRallySectorId, tick);
+            result = await executeRally(_supabase, _caRallySectorId);
         } else if (sel.id === 'attack') {
             result = await executeAttack(_supabase, f.id, n.id, _caRival, _caVector, tick);
         } else if (sel.id === 'protest') {
