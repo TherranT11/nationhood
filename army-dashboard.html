@@ -133,30 +133,72 @@ body {
   border-bottom-color: var(--red);
 }
 
-/* Coming-soon body (unchanged) */
-.coming-soon {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 20px;
-  text-align: center;
+/* ── Force Composition section ── */
+.force-comp {
+  padding: 32px 22px 40px;
 }
-.coming-soon__label {
+.force-comp__header {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.force-comp__title {
+  font-family: 'IBM Plex Serif', Georgia, serif;
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--text-bright);
+}
+.force-comp__title em {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--amber);
+}
+.force-comp__grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+.fc-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border-0);
+  padding: 16px 18px;
+}
+.fc-card__label {
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 700;
+  letter-spacing: 0.12em;
   color: var(--text-dim);
-  letter-spacing: 0.2em;
   text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.fc-card__value {
+  font-family: 'IBM Plex Serif', Georgia, serif;
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--text-bright);
+  line-height: 1;
   margin-bottom: 10px;
 }
-.coming-soon__title {
+.fc-card__unit {
   font-family: var(--font-ui);
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--text-bright);
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-dim);
+  margin-left: 6px;
+}
+.fc-card__desc {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+@media (max-width: 1024px) {
+  .force-comp__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .force-comp__grid { grid-template-columns: 1fr; }
 }
 
 /* ── Army masthead (matches the corp-dashboard masthead in size + serif) ── */
@@ -229,10 +271,38 @@ body {
     </div>
   </div>
 
-  <div class="coming-soon">
-    <div class="coming-soon__label">Branch HQ</div>
-    <div class="coming-soon__title">Coming soon</div>
-  </div>
+  <section class="force-comp">
+    <div class="force-comp__header">
+      <h2 class="force-comp__title">Force <em>Composition</em></h2>
+    </div>
+    <div class="force-comp__grid">
+      <div class="fc-card">
+        <div class="fc-card__label">Personnel</div>
+        <div class="fc-card__value">0</div>
+        <div class="fc-card__desc">— soldiers under arms</div>
+      </div>
+      <div class="fc-card">
+        <div class="fc-card__label">Order of Battle</div>
+        <div class="fc-card__value">0<span class="fc-card__unit">brigades</span></div>
+        <div class="fc-card__desc">— combat formations</div>
+      </div>
+      <div class="fc-card">
+        <div class="fc-card__label">Active Deployments</div>
+        <div class="fc-card__value">0</div>
+        <div class="fc-card__desc">— operations in theater</div>
+      </div>
+      <div class="fc-card">
+        <div class="fc-card__label">Available Budget</div>
+        <div class="fc-card__value">$0</div>
+        <div class="fc-card__desc">— discretionary funds</div>
+      </div>
+      <div class="fc-card">
+        <div class="fc-card__label">Expenditures</div>
+        <div class="fc-card__value">$0</div>
+        <div class="fc-card__desc">— last tick</div>
+      </div>
+    </div>
+  </section>
 </div>
 
 <script type="module">
