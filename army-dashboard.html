@@ -158,6 +158,55 @@ body {
   font-weight: 700;
   color: var(--text-bright);
 }
+
+/* ── Army masthead (matches the corp-dashboard masthead in size + serif) ── */
+.army-masthead {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 32px 22px 24px;
+  border-bottom: 1px solid var(--border-0);
+}
+.army-masthead__kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.army-masthead__title {
+  font-family: 'IBM Plex Serif', Georgia, serif;
+  font-size: 52px;
+  font-weight: 500;
+  line-height: 1.05;
+  color: var(--text-bright);
+  margin-bottom: 16px;
+}
+.army-masthead__title em {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--amber);
+}
+.army-masthead__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 28px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
+.army-masthead__meta-label {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  margin-right: 6px;
+}
+.army-masthead__meta-value {
+  color: var(--text-bright);
+  font-weight: 600;
+}
 </style>
 </head>
 <body>
@@ -166,6 +215,21 @@ body {
 
 <div id="page" style="display:none; flex-direction:column; flex:1;">
   <div id="mil-topbar-host"></div>
+
+  <div class="army-masthead">
+    <div class="army-masthead__kicker">— Army —</div>
+    <div class="army-masthead__title" id="army-masthead-title">Army of <em>—</em></div>
+    <div class="army-masthead__meta">
+      <div>
+        <span class="army-masthead__meta-label">Headquarters</span>
+        <span class="army-masthead__meta-value" id="army-masthead-hq">—</span>
+      </div>
+      <div>
+        <span class="army-masthead__meta-label">Chief of the Army</span>
+        <span class="army-masthead__meta-value" id="army-masthead-chief">—</span>
+      </div>
+    </div>
+  </div>
 
   <div class="coming-soon">
     <div class="coming-soon__label">Branch HQ</div>
@@ -177,16 +241,19 @@ body {
 import { _supabase } from './js/supabase-client.js';
 import { isFactionInactive } from './js/game/factions.js';
 import { renderMilitaryTopBar } from './js/military-topbar.js';
+import { escapeHtml } from './js/utils.js';
 
 async function init() {
   try {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
 
-    // Find this user's army faction (primary or linked).
+    // Find this user's army faction (primary or linked). leader_* columns
+    // hold the Chief of the Army — generated at join time, persisted, and
+    // read here as the single source of truth for the masthead.
     const { data: faction, error: factionErr } = await _supabase
       .from('factions')
-      .select('id, faction_type, faction_name, abbreviation, nation_id, abandoned_at, is_banned, branch')
+      .select('id, faction_type, faction_name, abbreviation, nation_id, abandoned_at, is_banned, branch, leader_first_name, leader_last_name, leader_age')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
       .eq('faction_type', 'military')
       .eq('branch', 'army')
@@ -203,12 +270,12 @@ async function init() {
       return;
     }
 
-    // Parallel fetch: nation (name + flag), shard (game date), and every
-    // other faction the user owns (for the switcher dropdown).
+    // Parallel fetch: nation (name + capital + flag), shard (game date),
+    // and every other faction the user owns (for the switcher dropdown).
     const [nationRes, shardRes, allFactionsRes] = await Promise.all([
       _supabase
         .from('nations')
-        .select('name, flag_url, nation_profiles(flag_url)')
+        .select('name, capital, flag_url, nation_profiles(flag_url)')
         .eq('id', faction.nation_id)
         .maybeSingle(),
       _supabase
@@ -243,6 +310,22 @@ async function init() {
       activeTab: 'home',
       flagUrl,
     });
+
+    // Masthead: nation name + capital + chief. Values come straight from
+    // the faction / nation rows — no client-side derivation.
+    const capital = nation?.capital || '—';
+    const chiefFirst = faction.leader_first_name || '';
+    const chiefLast  = faction.leader_last_name  || '';
+    const chiefAge   = faction.leader_age;
+    const chiefName  = (chiefFirst + ' ' + chiefLast).trim();
+    const chiefLine  = chiefName
+      ? (chiefAge != null ? `${chiefName}, ${chiefAge}` : chiefName)
+      : '—';
+
+    document.getElementById('army-masthead-title').innerHTML =
+      'Army of <em>' + escapeHtml(nationName) + '</em>';
+    document.getElementById('army-masthead-hq').textContent    = capital;
+    document.getElementById('army-masthead-chief').textContent = chiefLine;
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page').style.display = 'flex';
