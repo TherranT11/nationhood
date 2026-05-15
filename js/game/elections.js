@@ -1810,13 +1810,21 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
         await syncMinistriesForFailedConfirmationBills(supabase, frozenBills);
 
         let existingGov = null;
-        const { data: govFormation } = await supabase
+        // Fetch ALL active/formed/caretaker rows (newest first), not
+        // .maybeSingle() — after an early election there can legitimately
+        // be >1 (the just-flipped caretaker plus a leftover from a prior
+        // cycle), and .maybeSingle() THROWS on multiple rows. That error
+        // silently skipped the dissolve block below, leaving an orphaned
+        // caretaker row that read as "stuck in caretaker" forever. The
+        // dissolve UPDATE already uses .in(status,[...]) so it clears
+        // every stale row; we only need [0] for the existence check.
+        const { data: govFormations } = await supabase
             .from('government_formations')
             .select('id, status')
             .eq('nation_id', nation.id)
             .in('status', ['formed', 'active', 'caretaker'])
-            .maybeSingle();
-        if (govFormation) existingGov = govFormation;
+            .order('formed_at', { ascending: false });
+        if (govFormations && govFormations.length > 0) existingGov = govFormations[0];
 
         if (existingGov) {
             console.log(`Dissolving government after manual election for ${nation.name}`);
@@ -2733,13 +2741,19 @@ export async function processElections(supabase, nation, currentTick) {
             // must be dissolved so that processGovernmentVacancy can apply -2 approval
             // penalties until a new coalition is formed.
             let existingGov = null;
-            const { data: govFormation } = await supabase
+            // See the manual-election path above: .maybeSingle() throws on
+            // multiple rows, which after an early election is a legitimate
+            // state (stale caretaker + prior-cycle leftover). The throw
+            // skipped the dissolve and stranded the caretaker row. Fetch
+            // all matching rows; the dissolve UPDATE below already clears
+            // every one via .in(status,[...]).
+            const { data: govFormations } = await supabase
                 .from('government_formations')
                 .select('id, status')
                 .eq('nation_id', nation.id)
                 .in('status', ['formed', 'active', 'caretaker'])
-                .maybeSingle();
-            if (govFormation) existingGov = govFormation;
+                .order('formed_at', { ascending: false });
+            if (govFormations && govFormations.length > 0) existingGov = govFormations[0];
 
             // Fail all frozen bills (from caretaker period) regardless of whether
             // an existing government row was found — bills may have been frozen by
