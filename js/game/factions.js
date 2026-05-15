@@ -45,6 +45,18 @@ export const BRANCH_DASHBOARDS = {
 };
 
 /**
+ * Branch key → uppercase display label for badges and headers
+ * ("army" → "ARMY", "air_force" → "AIR FORCE"). Fallback handles any
+ * future branch keys by upper-casing and converting underscores.
+ */
+export function getBranchDisplayLabel(branch) {
+    if (branch === 'army')      return 'ARMY';
+    if (branch === 'navy')      return 'NAVY';
+    if (branch === 'air_force') return 'AIR FORCE';
+    return (branch || '').toUpperCase().replace(/_/g, ' ');
+}
+
+/**
  * Badge label + color for a faction_type, used by the faction switcher
  * dropdowns in every topbar. Single source so adding or renaming a type
  * doesn't require touching every renderer.

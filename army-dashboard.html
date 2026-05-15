@@ -15,9 +15,11 @@
   --text-dim: #4a4940;
   --border-0: rgba(255,255,255,0.06);
   --border-1: rgba(255,255,255,0.08);
+  --amber: #c8a64e;
   --red: #d9534f;
   --red-faint: rgba(217,83,79,0.08);
   --red-border: rgba(217,83,79,0.18);
+  --teal: #5aafa5;
   --font-mono: 'JetBrains Mono', monospace;
   --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
 }
@@ -42,46 +44,96 @@ body {
   padding: 80px 20px;
 }
 
-.army-topbar {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 22px;
-  background: var(--bg-2);
-  border-bottom: 1px solid var(--border-0);
+/* ── Military top bar (mirrors corp-topbar.css proportions) ── */
+.mil-topbar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 9px 22px; height: 53px;
+  background: var(--bg-2); border-bottom: 1px solid var(--border-0);
 }
-.army-topbar__flag {
-  width: 36px;
-  height: 24px;
-  object-fit: cover;
+.mil-topbar__left { display: flex; align-items: center; gap: 0; }
+.mil-topbar__sep {
+  width: 1px; height: 31px; background: var(--border-1);
+  margin: 0 16px; flex-shrink: 0;
+}
+.mil-topbar__badge { display: flex; align-items: center; gap: 10px; }
+.mil-topbar__flag {
+  width: 36px; height: 24px; object-fit: cover;
   border: 1px solid var(--border-1);
 }
-.army-topbar__flag-fallback {
-  width: 36px;
-  height: 24px;
-  background: var(--bg-3);
-  border: 1px solid var(--border-1);
+.mil-topbar__flag-fallback {
+  width: 36px; height: 24px;
+  background: var(--bg-3); border: 1px solid var(--border-1);
 }
-.army-topbar__title {
-  font-family: var(--font-ui);
-  font-size: 16px;
-  font-weight: 700;
+.mil-topbar__name {
+  font-family: var(--font-ui); font-size: 14px; font-weight: 700;
   color: var(--text-bright);
-  letter-spacing: 0.01em;
 }
-.army-topbar__type {
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  font-weight: 700;
-  color: var(--red);
+.mil-topbar__ticks { display: flex; gap: 20px; }
+.mil-topbar__tick { display: flex; flex-direction: column; gap: 1px; }
+.mil-topbar__tick-label {
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 600;
+  letter-spacing: 0.8px; text-transform: uppercase; color: #7a7868;
+}
+.mil-topbar__tick-value {
+  font-family: var(--font-mono); font-size: 13px; font-weight: 500;
+  color: var(--text-bright);
+}
+.mil-topbar__version {
+  font-family: var(--font-mono); font-size: 10px;
+  color: #f0efe6; letter-spacing: 0.5px; opacity: 0.8;
+}
+.mil-topbar__right { display: flex; align-items: center; gap: 10px; }
+.mil-topbar__switcher { position: relative; }
+.mil-topbar__badge-btn {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 700;
+  color: var(--red); padding: 4px 10px; cursor: pointer;
   background: var(--red-faint);
   border: 1px solid var(--red-border);
-  padding: 3px 8px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  margin-left: auto;
+}
+.mil-topbar__dropdown {
+  display: none; position: absolute; top: 100%; right: 0;
+  min-width: 260px; max-height: 60vh; overflow-y: auto;
+  background: var(--bg-2); border: 1px solid var(--border-0);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 100; margin-top: 4px;
+}
+.mil-topbar__dropdown.open { display: block; }
+.mil-dd-item {
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+  cursor: pointer; border-bottom: 1px solid var(--border-0);
+  font-family: var(--font-mono); font-size: 11px;
+}
+.mil-dd-item:hover { background: rgba(255,255,255,0.04); }
+.mil-dd-item.active { background: rgba(217,83,79,0.06); }
+.mil-dd-item--create { border-top: 1px solid var(--border-0); }
+.mil-dd-type { font-size: 8px; font-weight: 700; letter-spacing: 0.5px; min-width: 32px; }
+.mil-dd-name { color: var(--text-bright); flex: 1; }
+.mil-dd-abbr { color: var(--text-dim); font-size: 9px; }
+.mil-topbar__btn {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.5px; padding: 5px 14px; cursor: pointer;
+  background: transparent; border: 1px solid var(--border-0);
+  color: var(--text-dim); transition: all 0.15s;
+}
+.mil-topbar__btn:hover { color: var(--text-bright); border-color: var(--text-dim); }
+.mil-topbar__btn--logout:hover { color: var(--red); border-color: var(--red); }
+
+.mil-topbar__nav {
+  display: flex; gap: 0; padding: 0 22px;
+  background: var(--bg-2); border-bottom: 1px solid var(--border-0);
+}
+.mil-nav-tab {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 1px; padding: 8px 16px; color: var(--text-dim);
+  border-bottom: 2px solid transparent; transition: all 0.15s;
+  text-transform: uppercase; text-decoration: none;
+}
+.mil-nav-tab:hover { color: var(--text-bright); }
+.mil-nav-tab.active {
+  color: var(--text-bright);
+  border-bottom-color: var(--red);
 }
 
+/* Coming-soon body (unchanged) */
 .coming-soon {
   flex: 1;
   display: flex;
@@ -113,11 +165,7 @@ body {
 <div id="loading" class="loading-msg">LOADING ARMY DASHBOARD...</div>
 
 <div id="page" style="display:none; flex-direction:column; flex:1;">
-  <div class="army-topbar">
-    <img class="army-topbar__flag" id="army-flag" alt="" onerror="this.outerHTML='<div class=&quot;army-topbar__flag-fallback&quot;></div>'">
-    <div class="army-topbar__title" id="army-title">Army</div>
-    <div class="army-topbar__type">Military</div>
-  </div>
+  <div id="mil-topbar-host"></div>
 
   <div class="coming-soon">
     <div class="coming-soon__label">Branch HQ</div>
@@ -128,6 +176,7 @@ body {
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { isFactionInactive } from './js/game/factions.js';
+import { renderMilitaryTopBar } from './js/military-topbar.js';
 
 async function init() {
   try {
@@ -137,7 +186,7 @@ async function init() {
     // Find this user's army faction (primary or linked).
     const { data: faction, error: factionErr } = await _supabase
       .from('factions')
-      .select('id, faction_type, faction_name, nation_id, abandoned_at, is_banned, branch')
+      .select('id, faction_type, faction_name, abbreviation, nation_id, abandoned_at, is_banned, branch')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
       .eq('faction_type', 'military')
       .eq('branch', 'army')
@@ -154,20 +203,47 @@ async function init() {
       return;
     }
 
-    const { data: nation, error: nationErr } = await _supabase
-      .from('nations')
-      .select('name, flag_url, nation_profiles(flag_url)')
-      .eq('id', faction.nation_id)
-      .maybeSingle();
-    if (nationErr) console.warn('Nation lookup failed:', nationErr.message);
+    // Parallel fetch: nation (name + flag), shard (game date), and every
+    // other faction the user owns (for the switcher dropdown).
+    const [nationRes, shardRes, allFactionsRes] = await Promise.all([
+      _supabase
+        .from('nations')
+        .select('name, flag_url, nation_profiles(flag_url)')
+        .eq('id', faction.nation_id)
+        .maybeSingle(),
+      _supabase
+        .from('shard')
+        .select('current_date, current_tick')
+        .eq('name', 'Alpha Shard')
+        .maybeSingle(),
+      _supabase
+        .from('factions')
+        .select('id, faction_type, faction_name, abbreviation, branch, abandoned_at, is_banned, nation_id, linked_user_id')
+        .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
+    ]);
+
+    if (nationRes.error) console.warn('Nation lookup failed:', nationRes.error.message);
+    if (shardRes.error)  console.warn('Shard lookup failed:',  shardRes.error.message);
+    if (allFactionsRes.error) console.warn('Factions lookup failed:', allFactionsRes.error.message);
+
+    const nation = nationRes.data || null;
+    const shard  = shardRes.data  || null;
+    const allUserFactions = (allFactionsRes.data || []).filter(f => !isFactionInactive(f));
 
     const nationName = nation?.name || 'Unknown Nation';
     const np = nation?.nation_profiles;
     const profileFlag = Array.isArray(np) ? np[0]?.flag_url : np?.flag_url;
     const flagUrl = profileFlag || nation?.flag_url || `assets/flags/${nationName}.png`;
 
-    document.getElementById('army-flag').src = flagUrl;
-    document.getElementById('army-title').textContent = 'Army of ' + nationName;
+    renderMilitaryTopBar(document.getElementById('mil-topbar-host'), {
+      faction,
+      nation,
+      shard,
+      allUserFactions,
+      activeTab: 'home',
+      flagUrl,
+    });
+
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page').style.display = 'flex';
   } catch (err) {
