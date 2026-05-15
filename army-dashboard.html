@@ -28,6 +28,7 @@
   --red-faint: rgba(217,83,79,0.08);
   --red-border: rgba(217,83,79,0.18);
   --teal: #5aafa5;
+  --green: #5cb85c;
   --font-mono: 'JetBrains Mono', monospace;
   --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
   --font-serif: 'IBM Plex Serif', Georgia, serif;
@@ -438,6 +439,107 @@ body {
   letter-spacing: 0.04em;
   list-style: none;
 }
+
+/* ── Operating Modifiers section (mirrors corp's Operating Indicators) ── */
+.op-modifiers {
+  padding-top: 18px;
+}
+.op-modifiers__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.op-modifiers__title {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--text-bright);
+}
+.op-modifiers__title em {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--amber);
+}
+.op-modifiers__scale {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-dim);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.op-modifiers__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--border-1);
+  border: 1px solid var(--border-1);
+}
+@media (max-width: 700px) {
+  .op-modifiers__grid { grid-template-columns: 1fr; }
+}
+.om-card {
+  background: var(--bg-card);
+  padding: 18px 20px;
+}
+.om-card__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.om-card__name {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: 16px;
+  color: var(--text-bright);
+  letter-spacing: -0.005em;
+}
+.om-card__value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 19px;
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
+}
+.om-card__value .om-max {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 400;
+}
+.om-meter {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+.om-meter__cell {
+  flex: 1;
+  height: 7px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-1);
+}
+.om-meter__cell.filled {
+  background: var(--amber);
+  border-color: var(--amber);
+}
+.om-meter__cell.filled.warn {
+  background: var(--red);
+  border-color: var(--red);
+}
+.om-meter__cell.filled.good {
+  background: var(--green);
+  border-color: var(--green);
+}
+.om-card__desc {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.om-card__desc strong {
+  color: var(--text-bright);
+  font-weight: 500;
+}
 </style>
 </head>
 <body>
@@ -521,6 +623,16 @@ body {
           </div>
         </div>
       </section>
+
+      <section class="op-modifiers">
+        <div class="op-modifiers__header">
+          <h2 class="op-modifiers__title">Operating <em>Modifiers</em></h2>
+          <span class="op-modifiers__scale">Scored 0 — 100</span>
+        </div>
+        <div class="op-modifiers__grid" id="om-grid">
+          <!-- Populated by renderOperatingModifiers() -->
+        </div>
+      </section>
     </main>
 
   </div>
@@ -531,6 +643,56 @@ import { _supabase } from './js/supabase-client.js';
 import { isFactionInactive } from './js/game/factions.js';
 import { renderMilitaryTopBar } from './js/military-topbar.js';
 import { escapeHtml, escapeAttr } from './js/utils.js';
+
+// ─── OPERATING MODIFIERS — the army's eight 0–100 stats ───
+// Single source of truth: each entry's `key` matches the column on the
+// factions row populated by the 20270104 migration. Adding a ninth stat
+// is one entry here + one column there.
+const ARMY_MODIFIERS = [
+    { key: 'army_manpower',       name: 'Manpower',          desc0: '<strong>No standing force.</strong> Recruitment required before any deployment.' },
+    { key: 'army_training',       name: 'Training',          desc0: '<strong>Untrained.</strong> Conscripts and militias break easily under fire.' },
+    { key: 'army_equipment',      name: 'Equipment Quality', desc0: '<strong>Obsolete kit.</strong> Outdated arms and gear put soldiers at a critical disadvantage.' },
+    { key: 'army_armor',          name: 'Armor',             desc0: '<strong>Unarmored.</strong> Few or obsolete vehicles, vulnerable to modern anti-tank fire.' },
+    { key: 'army_artillery',      name: 'Artillery',         desc0: '<strong>No fire support.</strong> Infantry engages without artillery cover.' },
+    { key: 'army_logistics',      name: 'Logistics',         desc0: '<strong>No supply chain.</strong> Forces cannot operate beyond home territory.' },
+    { key: 'army_special_forces', name: 'Special Forces',    desc0: '<strong>No elite units.</strong> Limited to conventional operations.' },
+    { key: 'army_supplies',       name: 'Supplies',          desc0: '<strong>Empty depots.</strong> Sustained combat is impossible.' },
+];
+
+// Floor-state descriptor. Every stat sits at 0 for Phase 1, so this only
+// returns desc0. When the actions that move stats up land, add `score` back
+// as a second arg and branch on tier ('Adequate' / 'Professional' /
+// 'World-class' etc.) — until then keep the signature minimal.
+function modifierDesc(stat) {
+    return stat.desc0;
+}
+
+function renderOperatingModifiers(faction) {
+    const grid = document.getElementById('om-grid');
+    if (!grid) return;
+    grid.innerHTML = ARMY_MODIFIERS.map(stat => {
+        const raw   = Number(faction?.[stat.key]);
+        const score = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : 0;
+        const filledCells = Math.round(score / 10); // 10 segments, 10 pts each
+        // Color tiers: 0-30 = warn (red), 31-69 = neutral (amber),
+        // 70-100 = good (green). Matches the corp Operating Indicators
+        // warn/good classes so a green filled bar reads the same across
+        // the two dashboards.
+        const tierClass = score <= 30 ? 'warn' : score >= 70 ? 'good' : '';
+        const cells = Array.from({ length: 10 }, (_, i) => {
+            const klass = i < filledCells ? `filled ${tierClass}`.trim() : '';
+            return `<span class="om-meter__cell${klass ? ' ' + klass : ''}"></span>`;
+        }).join('');
+        return `<div class="om-card">
+            <div class="om-card__header">
+                <span class="om-card__name">${escapeHtml(stat.name)}</span>
+                <span class="om-card__value">${score}<span class="om-max">/100</span></span>
+            </div>
+            <div class="om-meter">${cells}</div>
+            <div class="om-card__desc">${modifierDesc(stat)}</div>
+        </div>`;
+    }).join('');
+}
 
 // ─── DISPATCHES FEED — ported verbatim from corp-dashboard.html ───
 // Same data model, same look. event_log.category has many values
@@ -684,7 +846,7 @@ async function init() {
     // read here as the single source of truth for the masthead.
     const { data: faction, error: factionErr } = await _supabase
       .from('factions')
-      .select('id, faction_type, faction_name, abbreviation, nation_id, abandoned_at, is_banned, branch, leader_first_name, leader_last_name, leader_age')
+      .select('id, faction_type, faction_name, abbreviation, nation_id, abandoned_at, is_banned, branch, leader_first_name, leader_last_name, leader_age, army_manpower, army_training, army_equipment, army_armor, army_artillery, army_logistics, army_special_forces, army_supplies')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
       .eq('faction_type', 'military')
       .eq('branch', 'army')
@@ -757,6 +919,9 @@ async function init() {
       'Army of <em>' + escapeHtml(nationName) + '</em>';
     document.getElementById('army-masthead-hq').textContent    = capital;
     document.getElementById('army-masthead-chief').textContent = chiefLine;
+
+    // Operating Modifiers — render the 8 stat cards from the faction row.
+    renderOperatingModifiers(faction);
 
     // Dispatches feed — wire the tabs and kick off the first fetch.
     _factionForDispatches = faction;
