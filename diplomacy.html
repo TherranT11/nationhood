@@ -338,7 +338,11 @@ function _volaTabStateForStage(idx, stage, isActive) {
     if (idx === 0) return 'done';                                  // placement always done by GS1
     if (idx === 1) return stage <= 2 ? 'active' : 'done';
     if (idx === 2) return stage <= 2 ? 'pending' : (stage <= 4 ? 'active' : 'done');
-    if (idx === 3) return stage === 5 ? 'active' : 'pending';
+    // FINAL tab: 'active' during the final tick (stage 5), 'done' once
+    // the cup is complete (stage 6+). Earlier this returned 'pending'
+    // for everything except stage===5, which made completed cups
+    // render the FINAL tab as if it hadn't happened.
+    if (idx === 3) return stage === 5 ? 'active' : (stage > 5 ? 'done' : 'pending');
     return 'pending';
 }
 
@@ -347,28 +351,43 @@ function _volaTabStateForStage(idx, stage, isActive) {
 // closes the tick AFTER F passes — i.e. tick > cupStart+5 rolls forward.
 function computeActiveOrNextCup(currentTick) {
     const tick = Number(currentTick) || 0;
-    let n = 0;
-    while (n < 1000) {
+
+    // Prefer the most recently started cup over the next upcoming one.
+    // Earlier this function returned the NEXT cup as soon as the
+    // current one ended (tick > cupEnd), which made an entire just-
+    // completed cup's standings + bracket evaporate on the next tick
+    // — bad UX, especially since the next cup is two in-game years
+    // away. Now: walk to the latest cup whose start tick is ≤ current
+    // tick (active OR completed) and return that; fall back to the
+    // first upcoming cup only when no cup has started yet.
+    let lastStartedN = -1;
+    for (let n = 0; n < 1000; n++) {
         const cupStart = VOLA_CUP_FIRST_TICK + VOLA_CUP_PERIOD * n;
-        const cupEnd   = cupStart + 5; // F at +5
-        if (tick <= cupEnd) {
-            const isActive = tick >= cupStart;
-            return {
-                cupNum: n + 1,
-                cupStart, cupEnd,
-                isActive,
-                stage: isActive ? (tick - cupStart) : -1, // 0..5 active, -1 upcoming
-                gs1: cupStart,
-                gs2: cupStart + 1,
-                gs3: cupStart + 2,
-                qf:  cupStart + 3,
-                sf:  cupStart + 4,
-                f:   cupStart + 5,
-            };
-        }
-        n++;
+        if (cupStart > tick) break;
+        lastStartedN = n;
     }
-    return null;
+
+    const buildCup = (n) => {
+        const cupStart = VOLA_CUP_FIRST_TICK + VOLA_CUP_PERIOD * n;
+        const cupEnd   = cupStart + 5;
+        const stage    = tick < cupStart ? -1 : (tick - cupStart);
+        const isActive = stage >= 0 && stage <= 5;
+        return {
+            cupNum: n + 1,
+            cupStart, cupEnd,
+            isActive,
+            stage, // -1 upcoming, 0..5 active, 6+ complete
+            gs1: cupStart,
+            gs2: cupStart + 1,
+            gs3: cupStart + 2,
+            qf:  cupStart + 3,
+            sf:  cupStart + 4,
+            f:   cupStart + 5,
+        };
+    };
+
+    if (lastStartedN >= 0) return buildCup(lastStartedN);
+    return buildCup(0); // pre-first-cup: show cup 1 as upcoming
 }
 
 function renderSportsTab() {
@@ -619,9 +638,13 @@ function renderVolaCup(currentTick) {
     const cup = computeActiveOrNextCup(currentTick);
     if (!cup) return '';
 
-    const titleHtml = cup.isActive
-        ? `${ordinalSuffix(cup.cupNum)} World <span class="vola-cup-title-accent">Vola</span> Cup`
-        : `Next World Cup &mdash; <span class="vola-cup-title-date">${tickToDate(cup.gs1)}</span>`;
+    // Title differs only for a true upcoming cup (stage < 0). An active
+    // or completed cup both read as "{nth} World Vola Cup"; the status
+    // pill below tells the player which one (LIVE / COMPLETE / a stage).
+    const isUpcoming = cup.stage < 0;
+    const titleHtml = isUpcoming
+        ? `Next World Cup &mdash; <span class="vola-cup-title-date">${tickToDate(cup.gs1)}</span>`
+        : `${ordinalSuffix(cup.cupNum)} World <span class="vola-cup-title-accent">Vola</span> Cup`;
 
     const livePill = cup.isActive
         ? `<span class="vola-cup-live">&bullet; LIVE</span>`
