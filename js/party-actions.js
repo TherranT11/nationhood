@@ -1964,21 +1964,30 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             // Greyed when an active coalition is already in place
             // (status formed/active/caretaker — i.e. anything fetchActiveCoalition
             // returned non-null). Available whenever there's a vacancy.
-            // Parliamentary-only; presidential systems install via election.
+            // Parliamentary-only; presidential and semi-presidential
+            // systems install via election / presidential nomination.
             const nation = _state.nation;
             const govType = (nation?.government_type || '').toLowerCase();
-            const isAM   = govType.includes('absolute monarchy');
-            const isPres = govType.includes('presidential') && !govType.includes('semi');
-            const isParliamentaryLike = !isAM && !isPres
-                && (govType.includes('parliamentary') || govType.includes('semi-presidential') ||
-                    govType.includes('semi_presidential') || nation?.hos_election_method === 'hereditary');
+            const isAM        = govType.includes('absolute monarchy');
+            const isPres      = govType.includes('presidential') && !govType.includes('semi');
+            const isSemiPres  = isSemiPresidential(nation);
+            // Semi-presidential explicitly excluded — its PM comes from
+            // a presidential nomination, not coalition negotiation.
+            // Leaving it in isParliamentaryLike was the bug that let
+            // players click Form Coalition and bounce to the Election
+            // subtab's "No coalition formation required" dead-end.
+            const isParliamentaryLike = !isAM && !isPres && !isSemiPres
+                && (govType.includes('parliamentary') || nation?.hos_election_method === 'hereditary');
             const hasCoalitionRow = !!_activeCoalition;
             const hasSeatedPm = !!_hogActive;
             const coalitionPartyIds = Array.isArray(_activeCoalition?.party_ids) ? _activeCoalition.party_ids : [];
             const inCoalition = coalitionPartyIds.includes(faction.id);
             const noSeats = !faction.seats || faction.seats <= 0;
 
-            if (!isParliamentaryLike) {
+            if (isSemiPres) {
+                isDisabled = true;
+                action.lockReason = 'Coalition formation does not apply in semi-presidential systems — the President nominates the Prime Minister directly.';
+            } else if (!isParliamentaryLike) {
                 isDisabled = true;
                 action.lockReason = 'Coalition formation only applies to parliamentary systems.';
             } else if (hasCoalitionRow && hasSeatedPm) {
