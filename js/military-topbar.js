@@ -16,17 +16,9 @@ import {
     getFactionDashboardUrl,
     getBranchDisplayLabel,
 } from './game/factions.js';
+import { escapeHtml as escHtml } from './utils.js';
 
 const VERSION = 'Alpha 2.6.0.0';
-
-function escHtml(s) {
-    return String(s ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
 
 export function renderMilitaryTopBar(container, opts = {}) {
     const {
