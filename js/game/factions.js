@@ -43,3 +43,32 @@ export function isFactionInactive(f) {
 export const BRANCH_DASHBOARDS = {
     army: 'army-dashboard.html',
 };
+
+/**
+ * Badge label + color for a faction_type, used by the faction switcher
+ * dropdowns in every topbar. Single source so adding or renaming a type
+ * doesn't require touching every renderer.
+ */
+export function getFactionTypeBadge(factionType) {
+    if (factionType === 'corporation') return { label: 'CORP',  color: 'var(--teal)'  };
+    if (factionType === 'military')    return { label: 'MIL',   color: 'var(--red)'   };
+    return                                    { label: 'PARTY', color: 'var(--amber)' };
+}
+
+/**
+ * Dashboard URL for a faction the player is switching INTO from a faction
+ * switcher dropdown. Returns null for unknown types so each caller can
+ * apply its own home-page fallback (party pages default to dashboard.html,
+ * corp pages to corp-dashboard.html). Military factions whose branch has
+ * no dashboard yet (navy, air_force) route to faction-select.html so the
+ * player isn't stranded.
+ */
+export function getFactionDashboardUrl(faction) {
+    if (!faction) return null;
+    if (faction.faction_type === 'corporation') return 'corp-dashboard.html';
+    if (faction.faction_type === 'party')       return 'dashboard.html';
+    if (faction.faction_type === 'military') {
+        return BRANCH_DASHBOARDS[faction.branch] || 'faction-select.html';
+    }
+    return null;
+}
