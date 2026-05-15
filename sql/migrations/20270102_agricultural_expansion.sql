@@ -189,10 +189,15 @@ BEGIN
     v_new_farmland := LEAST(100, v_farmland + v_delta);
 
     -- ── Apply ────────────────────────────────────────────────────
-    UPDATE nations
-       SET farmland = v_new_farmland,
-           industry = v_new_industry
-     WHERE id = v_nation.id;
+    -- Only write industry when the roll actually moved it (Major bucket
+    -- with non-zero effective delta). Without this guard a Small or
+    -- Moderate survey on a nation whose industry was NULL would silently
+    -- coerce it to the COALESCE default (50), violating the "clean win
+    -- under Major" contract.
+    UPDATE nations SET farmland = v_new_farmland WHERE id = v_nation.id;
+    IF v_industry_delta > 0 THEN
+        UPDATE nations SET industry = v_new_industry WHERE id = v_nation.id;
+    END IF;
 
     UPDATE ministries
        SET discretionary_balance = v_balance - v_cost

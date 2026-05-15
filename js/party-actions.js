@@ -4699,11 +4699,15 @@ async function triggerGeologicalSurvey(faction) {
                           : data.bucket === 'moderate' ? 'Moderate Find'
                           :                              'Major Discovery';
         const bonus = (Number(data.total) - Number(data.d100)).toFixed(1);
+        // Effective delta = the visible before→after change. data.delta is
+        // the rolled value, which can overstate the change when the stat
+        // clipped at 100 (e.g. 98→100 on a +5 roll).
+        const effectiveDelta = Number(data.minerals_after) - Number(data.minerals_before);
         alert(
             'Geological Survey — ' + bucketLabel + '\n\n' +
             'Roll: ' + data.d100 + ' + ' + bonus + ' (minerals bonus) = ' + data.total + '\n' +
             'Minerals: ' + data.minerals_before + ' → ' + data.minerals_after +
-                (data.delta > 0 ? ' (+' + data.delta + ')' : '') + '\n\n' +
+                (effectiveDelta > 0 ? ' (+' + effectiveDelta + ')' : '') + '\n\n' +
             (data.description || '')
         );
 
@@ -4862,11 +4866,14 @@ async function triggerEnergySurvey(faction) {
                           : data.bucket === 'modest' ? 'Workable Opportunity'
                           :                            'Transformative Discovery';
         const bonus = (Number(data.total) - Number(data.d100)).toFixed(1);
+        // See triggerGeologicalSurvey: data.delta is the rolled value;
+        // (after - before) is the visible change after the cap clip.
+        const effectiveDelta = Number(data.energy_after) - Number(data.energy_before);
         alert(
             'National Energy Survey — ' + bucketLabel + '\n\n' +
             'Roll: ' + data.d100 + ' + ' + bonus + ' (energy headroom bonus) = ' + data.total + '\n' +
             'Energy: ' + data.energy_before + ' → ' + data.energy_after +
-                (data.delta > 0 ? ' (+' + data.delta + ')' : '') + '\n\n' +
+                (effectiveDelta > 0 ? ' (+' + effectiveDelta + ')' : '') + '\n\n' +
             (data.description || '')
         );
 
@@ -5006,6 +5013,11 @@ async function triggerAgriculturalExpansion(faction) {
                           : data.bucket === 'moderate' ? 'Regional Reclamation Program'
                           :                              'Sweeping Land-Use Reform';
         const bonus = (Number(data.total) - Number(data.d100)).toFixed(1);
+        // See triggerGeologicalSurvey: data.delta is the rolled value;
+        // (after - before) is the visible change after the cap clip.
+        // industry_delta is already the effective value (computed
+        // post-floor in the RPC), so no recompute needed there.
+        const effectiveDelta = Number(data.farmland_after) - Number(data.farmland_before);
         const industryLine = Number(data.industry_delta) > 0
             ? 'Industry: ' + data.industry_before + ' → ' + data.industry_after + ' (-' + data.industry_delta + ')\n'
             : '';
@@ -5013,7 +5025,7 @@ async function triggerAgriculturalExpansion(faction) {
             'Agricultural Expansion — ' + bucketLabel + '\n\n' +
             'Roll: ' + data.d100 + ' + ' + bonus + ' (land-use bonus) = ' + data.total + '\n' +
             'Farmland: ' + data.farmland_before + ' → ' + data.farmland_after +
-                (data.delta > 0 ? ' (+' + data.delta + ')' : '') + '\n' +
+                (effectiveDelta > 0 ? ' (+' + effectiveDelta + ')' : '') + '\n' +
             industryLine + '\n' +
             (data.description || '')
         );
