@@ -1279,51 +1279,6 @@ export async function adjustCredibility(supabase, factionId, nationId, delta, su
 // ============================================================================
 
 /**
- * Hook called after executeRally() to update electorate tables.
- *
- * Rally boosts visibility. Outcome quality determines boost size.
- * Rousing = big boost, gaffe/counter = no boost (or penalty).
- *
- * @param {object} supabase
- * @param {string} factionId
- * @param {string} nationId
- * @param {string} outcomeId - Rally outcome (rousing, solid, low, gaffe, divisive, counter)
- * @param {number} currentTick
- */
-export async function onRally(supabase, factionId, nationId, outcomeId, currentTick) {
-    const visBoost = {
-        rousing: 3,
-        solid: 2,
-        low: 1,
-        gaffe: -1,
-        divisive: -3,
-        counter: -3,
-    }[outcomeId] ?? 0;
-
-    if (visBoost !== 0) {
-        await boostVisibility(supabase, factionId, nationId, visBoost);
-    }
-
-    // Approval penalties for bad outcomes
-    const approvalHit = {
-        gaffe: -3,
-        divisive: -2,
-        counter: -3,
-    }[outcomeId] ?? 0;
-    if (approvalHit !== 0) {
-        await supabase.rpc('adjust_momentum', { p_faction_id: factionId, p_delta: approvalHit, p_label: `Rally outcome (${approvalHit > 0 ? '+' : ''}${approvalHit})`, p_tick: currentTick });
-    }
-
-    await logActivity(supabase, factionId, nationId, 'rally',
-        'Rally', `Rally — ${outcomeId}`,
-        outcomeId === 'gaffe' || outcomeId === 'counter' || outcomeId === 'divisive' ? 'failure' : 'success',
-        3, currentTick
-    );
-
-    return { visBoost, approvalHit };
-}
-
-/**
  * Hook called after executeAttack() to update electorate tables.
  *
  * Attack damages target's credibility (on success) or attacker's (on backfire).
