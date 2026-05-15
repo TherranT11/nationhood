@@ -6800,13 +6800,13 @@ function openPlatformModal(root) {
             return `<div class="pa-plat-card ${isSel ? 'selected' : ''} ${isAdopted ? 'adopted' : ''}" data-plat="${p.id}">
                 ${isAdopted ? '<div class="pa-plat-active-badge">ACTIVE</div>' : ''}
                 <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-                    <span style="font-size:14px;">${p.icon}</span>
-                    <span style="font-size:10px;font-weight:700;color:${isAdopted ? partyColor : isSel ? 'var(--text-bright)' : 'var(--text-secondary)'};line-height:1.2;">${esc(p.name)}</span>
+                    <span style="font-size:17px;">${p.icon}</span>
+                    <span style="font-size:12px;font-weight:700;color:${isAdopted ? partyColor : isSel ? 'var(--text-bright)' : 'var(--text-secondary)'};line-height:1.2;">${esc(p.name)}</span>
                 </div>
-                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);line-height:1.4;margin-bottom:6px;">${esc(p.tagline)}</div>
+                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);line-height:1.4;margin-bottom:6px;">${esc(p.tagline)}</div>
                 <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:${mi.color};">${mi.label}</span>
-                    ${count > 0 ? `<span style="font-family:var(--font-mono);font-size:6px;font-weight:700;padding:1px 3px;color:var(--text-dim);border:1px solid var(--border-mid);">${count} rival${count > 1 ? 's' : ''}</span>` : ''}
+                    <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${mi.color};">${mi.label}</span>
+                    ${count > 0 ? `<span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:1px 3px;color:var(--text-dim);border:1px solid var(--border-mid);">${count} rival${count > 1 ? 's' : ''}</span>` : ''}
                 </div>
             </div>`;
         }).join('');
@@ -6816,20 +6816,20 @@ function openPlatformModal(root) {
         if (!selected) {
             detailHtml = `<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:40px;">
                 <div style="text-align:center;">
-                    <div style="font-family:var(--font-mono);font-size:24px;color:var(--border-mid);margin-bottom:8px;">\u2190</div>
-                    <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Select a platform to review</div>
-                    <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-top:4px;">16 platforms available</div>
+                    <div style="font-family:var(--font-mono);font-size:28px;color:var(--border-mid);margin-bottom:8px;">\u2190</div>
+                    <div style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim);">Select a platform to review</div>
+                    <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:4px;">16 platforms available</div>
                 </div>
             </div>`;
         } else {
             // Stat pills
             const improvePills = selected.improve.map(s => {
                 const d = statDirection(s, 'improve');
-                return `<span style="display:inline-flex;align-items:center;gap:3px;font-family:var(--font-mono);font-size:8px;padding:2px 6px;background:rgba(92,204,92,0.05);border:1px solid rgba(92,204,92,0.15);color:${d.color};white-space:nowrap;">${d.arrow} ${STAT_NAMES[s] || s}</span>`;
+                return `<span style="display:inline-flex;align-items:center;gap:3px;font-family:var(--font-mono);font-size:10px;padding:2px 6px;background:rgba(92,204,92,0.05);border:1px solid rgba(92,204,92,0.15);color:${d.color};white-space:nowrap;">${d.arrow} ${STAT_NAMES[s] || s}</span>`;
             }).join('');
             const worsenPills = selected.worsen.map(s => {
                 const d = statDirection(s, 'worsen');
-                return `<span style="display:inline-flex;align-items:center;gap:3px;font-family:var(--font-mono);font-size:8px;padding:2px 6px;background:rgba(204,85,85,0.05);border:1px solid rgba(204,85,85,0.15);color:${d.color};white-space:nowrap;">${d.arrow} ${STAT_NAMES[s] || s}</span>`;
+                return `<span style="display:inline-flex;align-items:center;gap:3px;font-family:var(--font-mono);font-size:10px;padding:2px 6px;background:rgba(204,85,85,0.05);border:1px solid rgba(204,85,85,0.15);color:${d.color};white-space:nowrap;">${d.arrow} ${STAT_NAMES[s] || s}</span>`;
             }).join('');
 
             const isAlreadyAdopted = myPlatformKeys.has(selected.id);
@@ -6838,12 +6838,12 @@ function openPlatformModal(root) {
             // Action bar
             let actionBarHtml;
             if (isAlreadyAdopted) {
-                actionBarHtml = `<div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${partyColor};display:flex;align-items:center;gap:6px;">\u2713 CURRENT PLATFORM</div>`;
+                actionBarHtml = `<div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${partyColor};display:flex;align-items:center;gap:6px;">\u2713 CURRENT PLATFORM</div>`;
             } else if (slotsUsed >= 3) {
-                actionBarHtml = `<div style="font-family:var(--font-mono);font-size:9px;color:var(--red);">All 3 platform slots are full.</div>`;
+                actionBarHtml = `<div style="font-family:var(--font-mono);font-size:11px;color:var(--red);">All 3 platform slots are full.</div>`;
             } else if (confirming) {
                 actionBarHtml = `<div style="display:flex;align-items:center;gap:8px;">
-                    <span style="font-family:var(--font-mono);font-size:9px;color:#ca5;font-weight:700;">\u26A0 Confirm: Adopt ${esc(selected.name)}?</span>
+                    <span style="font-family:var(--font-mono);font-size:11px;color:#ca5;font-weight:700;">\u26A0 Confirm: Adopt ${esc(selected.name)}?</span>
                     <div style="display:flex;gap:6px;">
                         <button class="pa-modal-btn pa-modal-btn--cancel" id="pa-plat-conf-cancel">Cancel</button>
                         <button class="pa-modal-btn pa-modal-btn--submit" id="pa-plat-conf-yes">Confirm</button>
@@ -6851,7 +6851,7 @@ function openPlatformModal(root) {
                 </div>`;
             } else {
                 actionBarHtml = `<div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
-                    <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">Costs 2 AP. Stats locked at current values. 6-tick cooldown.</span>
+                    <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Stats locked at current values. 6-tick cooldown.</span>
                     <button class="pa-modal-btn pa-modal-btn--submit" id="pa-plat-adopt" style="background:${partyColor};">Adopt Platform</button>
                 </div>`;
             }
@@ -6859,47 +6859,47 @@ function openPlatformModal(root) {
             detailHtml = `
                 <div style="padding:16px 20px 12px;border-bottom:1px solid var(--border-main);">
                     <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-                        <span style="font-size:22px;">${selected.icon}</span>
+                        <span style="font-size:26px;">${selected.icon}</span>
                         <div>
-                            <div style="font-size:16px;font-weight:700;color:var(--text-bright);">${esc(selected.name)}</div>
-                            <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.04em;margin-top:1px;">${esc(selected.tagline.toUpperCase())}</div>
+                            <div style="font-size:19px;font-weight:700;color:var(--text-bright);">${esc(selected.name)}</div>
+                            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);letter-spacing:0.04em;margin-top:1px;">${esc(selected.tagline.toUpperCase())}</div>
                         </div>
                     </div>
-                    <div style="font-size:11px;color:var(--text-secondary);line-height:1.6;">${esc(selected.desc)}</div>
+                    <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">${esc(selected.desc)}</div>
                 </div>
                 <div style="padding:10px 20px;border-bottom:1px solid var(--border-main);background:var(--bg-card);">
                     <div style="display:flex;justify-content:space-between;align-items:center;">
                         <div>
-                            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:3px;">MOMENTUM GAIN</div>
+                            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:3px;">MOMENTUM GAIN</div>
                             <div style="display:flex;align-items:baseline;gap:6px;">
-                                <span style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:${mInfo.color};">${mInfo.label}</span>
-                                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);">${esc(mInfo.note)}</span>
+                                <span style="font-family:var(--font-mono);font-size:24px;font-weight:700;color:${mInfo.color};">${mInfo.label}</span>
+                                <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">${esc(mInfo.note)}</span>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div style="flex:1;padding:12px 20px;overflow-y:auto;">
                     <div style="margin-bottom:14px;">
-                        <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:0.1em;color:var(--green);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                        <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--green);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                             <span style="width:10px;height:1px;background:var(--green);display:inline-block;"></span>
                             PROMISES TO IMPROVE <span style="font-weight:400;color:var(--text-dim);">(${selected.improve.length} stats, +${PROMISE_DELTA} target)</span>
                         </div>
                         <div style="display:flex;flex-wrap:wrap;gap:4px;">${improvePills}</div>
                     </div>
                     <div style="margin-bottom:14px;">
-                        <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;letter-spacing:0.1em;color:var(--red);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+                        <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--red);margin-bottom:6px;display:flex;align-items:center;gap:6px;">
                             <span style="width:10px;height:1px;background:var(--red);display:inline-block;"></span>
                             LIKELY SIDE EFFECTS <span style="font-weight:400;color:var(--text-dim);">(${selected.worsen.length} stats)</span>
                         </div>
                         <div style="display:flex;flex-wrap:wrap;gap:4px;">${worsenPills}</div>
                     </div>
                     <div style="padding:10px 12px;background:rgba(200,168,50,0.04);border:1px solid rgba(200,168,50,0.15);">
-                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:#ca5;letter-spacing:0.06em;margin-bottom:4px;">\u26A0 TRADEOFF</div>
-                        <div style="font-size:10px;color:var(--text-secondary);line-height:1.5;">${esc(selected.tradeoff)}</div>
+                        <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#ca5;letter-spacing:0.06em;margin-bottom:4px;">\u26A0 TRADEOFF</div>
+                        <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;">${esc(selected.tradeoff)}</div>
                     </div>
                     <div style="margin-top:12px;padding:8px 12px;background:var(--bg-card);border:1px solid var(--border-main);">
-                        <div style="font-family:var(--font-mono);font-size:7px;font-weight:700;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:4px;">PROMISE RULES</div>
-                        <div style="font-size:9px;color:var(--text-dim);line-height:1.5;">
+                        <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:4px;">PROMISE RULES</div>
+                        <div style="font-size:11px;color:var(--text-dim);line-height:1.5;">
                             Stats are locked at current values when adopted. If your party enters government, you have <strong style="color:var(--text-bright);">24 ticks</strong> to move each promised stat by <strong style="color:var(--text-bright);">+${PROMISE_DELTA}</strong>. Failure: <strong style="color:var(--red);">popularity boosts revert</strong> with the constituencies you wooed (the alienated stay alienated). If you don't enter government, the promise abates.
                         </div>
                     </div>
@@ -6915,11 +6915,10 @@ function openPlatformModal(root) {
                 <div style="padding:14px 20px;border-bottom:1px solid var(--border-main);display:flex;justify-content:space-between;align-items:center;">
                     <div>
                         <div style="display:flex;align-items:center;gap:8px;">
-                            <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;letter-spacing:0.12em;color:${partyColor};">SET PARTY PLATFORM</span>
-                            <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:2px 6px;color:var(--green);background:var(--green-faint);border:1px solid var(--green-border);">2 AP</span>
-                            <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:2px 6px;color:var(--text-secondary);background:var(--bg-card);border:1px solid var(--border-mid);">CD: 6 TICKS</span>
+                            <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;letter-spacing:0.12em;color:${partyColor};">SET PARTY PLATFORM</span>
+                            <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;padding:2px 6px;color:var(--text-secondary);background:var(--bg-card);border:1px solid var(--border-mid);">CD: 6 TICKS</span>
                         </div>
-                        <div style="font-size:10px;color:var(--text-secondary);margin-top:3px;">Choose your party's focus. Defines which stats you promise to change.</div>
+                        <div style="font-size:12px;color:var(--text-secondary);margin-top:3px;">Choose your party's focus. Defines which stats you promise to change.</div>
                     </div>
                     <button class="pa-modal-close" id="pa-plat-close">&times;</button>
                 </div>
@@ -7032,9 +7031,6 @@ async function submitPlatformAdoption(root, platformKey) {
         if (faction && data?.momentum_gained) {
             faction.momentum = (faction.momentum || 0) + data.momentum_gained;
         }
-        // AP was deducted server-side by deduct_ap() inside the RPC.
-        // Estimate locally (server is source of truth, will refresh on next page load).
-        if (faction) faction.action_points = Math.max(0, (faction.action_points || 0) - 2);
 
         overlay?.classList.remove('active');
         renderPage(root);
