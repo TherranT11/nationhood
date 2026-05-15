@@ -762,6 +762,7 @@ body {
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, countEligibleParties } from './js/utils.js';
 import { BRANCH_DASHBOARDS } from './js/game/factions.js';
+import { getNationNames } from './js/game/political-actions.js';
 
 // Flag file lookup — some filenames don't match nation names exactly
 const FLAG_URLS = {
@@ -1217,6 +1218,16 @@ async function confirmMilitaryJoin() {
     const factionId = isLinked ? crypto.randomUUID() : currentUser.id;
     const factionName = MILITARY_BRANCHES.find(b => b.key === 'army').label + ' of ' + nation.name;
 
+    // Generate the Chief of the Army from the nation's name pool. Stored
+    // in the existing leader_* columns (same polymorphic field used for
+    // party leaders and corp CEOs). These columns are the one source of
+    // truth — every place that displays the chief reads from here, never
+    // re-derives. Age range 50–75 per the design spec.
+    const { firstNames, lastNames } = getNationNames(nation.name);
+    const chiefFirst = firstNames[Math.floor(Math.random() * firstNames.length)];
+    const chiefLast  = lastNames[Math.floor(Math.random() * lastNames.length)];
+    const chiefAge   = 50 + Math.floor(Math.random() * 26); // 50..75 inclusive
+
     const row = {
       id: factionId,
       faction_type: 'military',
@@ -1227,6 +1238,9 @@ async function confirmMilitaryJoin() {
       seats: 0,
       action_points: 0,
       abandoned_at: null,
+      leader_first_name: chiefFirst,
+      leader_last_name:  chiefLast,
+      leader_age:        chiefAge,
     };
     if (isLinked) row.linked_user_id = currentUser.id;
 
