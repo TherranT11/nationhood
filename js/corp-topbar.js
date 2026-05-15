@@ -1,6 +1,8 @@
 // js/corp-topbar.js — Shared top bar for all corporation pages
 // Renders a unified top bar with logo, tick info, faction switcher, nav tabs.
 
+import { BRANCH_DASHBOARDS, getFactionTypeBadge } from './game/factions.js';
+
 const CORP_VERSION = 'Alpha 2.4.9.6';
 const THEME_STORAGE_KEY = 'corpThemePref';
 
@@ -121,10 +123,9 @@ export function renderCorpTopBar(container, opts = {}) {
     if (allUserFactions && allUserFactions.length > 0) {
         dropdownHtml = allUserFactions.map(f => {
             const isActive = faction && f.id === faction.id;
-            const typeLabel = f.faction_type === 'corporation' ? 'CORP' : 'PARTY';
-            const typeColor = f.faction_type === 'corporation' ? 'var(--teal)' : 'var(--amber)';
+            const { label, color } = getFactionTypeBadge(f.faction_type);
             return `<div class="corp-dd-item${isActive ? ' active' : ''}" data-faction-id="${f.id}" data-faction-type="${f.faction_type}">
-                <span class="corp-dd-type" style="color:${typeColor}">${typeLabel}</span>
+                <span class="corp-dd-type" style="color:${color}">${label}</span>
                 <span class="corp-dd-name">${escHtml(f.faction_name || 'Unnamed')}</span>
                 <span class="corp-dd-abbr">[${escHtml(f.abbreviation || '—')}]</span>
             </div>`;
@@ -135,6 +136,13 @@ export function renderCorpTopBar(container, opts = {}) {
         dropdownHtml += `<div class="corp-dd-item" data-action="found-party" style="border-top:1px solid var(--border-0, rgba(255,255,255,0.06));cursor:pointer;">
             <span class="corp-dd-type" style="color:var(--amber)">+</span>
             <span class="corp-dd-name">Found a Political Party</span>
+        </div>`;
+    }
+    const hasMilitary = (allUserFactions || []).some(f => f.faction_type === 'military');
+    if (!hasMilitary) {
+        dropdownHtml += `<div class="corp-dd-item" data-action="join-military" style="border-top:1px solid var(--border-0, rgba(255,255,255,0.06));cursor:pointer;">
+            <span class="corp-dd-type" style="color:var(--red)">+</span>
+            <span class="corp-dd-name">Join a Military Branch</span>
         </div>`;
     }
 
@@ -220,11 +228,21 @@ export function renderCorpTopBar(container, opts = {}) {
                 window.location.href = 'select-nation.html';
                 return;
             }
+            if (item.dataset.action === 'join-military') {
+                sessionStorage.setItem('pending_faction_type', 'military');
+                window.location.href = 'faction-select.html';
+                return;
+            }
             const fid = item.dataset.factionId;
             const ftype = item.dataset.factionType;
             sessionStorage.setItem('active_faction_id', fid);
             if (ftype === 'party') {
                 window.location.href = 'dashboard.html';
+            } else if (ftype === 'military') {
+                const mil = (allUserFactions || []).find(f => f.id === fid);
+                const dash = mil && BRANCH_DASHBOARDS[mil.branch];
+                // Branches without a dashboard yet fall back to the chooser
+                window.location.href = dash || 'faction-select.html';
             } else {
                 window.location.href = 'corp-dashboard.html';
             }

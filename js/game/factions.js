@@ -43,3 +43,14 @@ export function isFactionInactive(f) {
 export const BRANCH_DASHBOARDS = {
     army: 'army-dashboard.html',
 };
+
+/**
+ * Badge label + color for a faction_type, used by the faction switcher
+ * dropdowns in every topbar. Single source so adding or renaming a type
+ * doesn't require touching every renderer.
+ */
+export function getFactionTypeBadge(factionType) {
+    if (factionType === 'corporation') return { label: 'CORP',  color: 'var(--teal)'  };
+    if (factionType === 'military')    return { label: 'MIL',   color: 'var(--red)'   };
+    return                                    { label: 'PARTY', color: 'var(--amber)' };
+}
