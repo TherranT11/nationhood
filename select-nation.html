@@ -739,9 +739,29 @@ body {
   </div>
 </div>
 
+<div class="modal-overlay" id="military-modal-overlay">
+  <div class="modal">
+    <div class="modal__header">
+      <div class="modal__dot" style="background:var(--red);"></div>
+      <span class="modal__title">Take Command</span>
+    </div>
+    <div class="modal__body">
+      <div class="modal__text">You are about to take command of:</div>
+      <div class="modal__nation-name" id="military-modal-name"></div>
+      <div class="modal__text" style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-top:4px;line-height:1.5;">A military faction cannot share a nation with a political party or corporation you already hold.</div>
+      <div id="military-modal-error" style="display:none;font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:8px;line-height:1.5;"></div>
+      <div class="modal__actions">
+        <button class="modal__btn modal__btn--cancel" onclick="closeMilitaryModal()">CANCEL</button>
+        <button class="modal__btn modal__btn--confirm" id="military-modal-confirm-btn" onclick="confirmMilitaryJoin()">JOIN</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, countEligibleParties } from './js/utils.js';
+import { BRANCH_DASHBOARDS } from './js/game/factions.js';
 
 // Flag file lookup — some filenames don't match nation names exactly
 const FLAG_URLS = {
@@ -784,9 +804,21 @@ let selectedNationId = null;
 let activeContinent = 'Crucera';
 let cachedPartiesByNation = {};
 let cachedCrisesByNation = {};
+let cachedMilitaryByNation = {};
+let pendingFactionType = null;
+let pendingMilitaryNationId = null;
+let militaryJoinInFlight = false;
 
 // Nations that require an alpha tester code to join
 const ALPHA_CODE_NATIONS = new Set();
+
+// Branches currently open for player recruitment. Navy and Air Force are
+// scaffolded but disabled until their dashboards land.
+const MILITARY_BRANCHES = [
+  { key: 'army',      label: 'Army',      color: 'var(--red)',    enabled: true,  description: 'Command infantry, hold territory, and decide wars where boots meet ground.' },
+  { key: 'navy',      label: 'Navy',      color: 'var(--blue)',   enabled: false, description: 'Rule the seas, blockade trade routes, and project power along every coast.' },
+  { key: 'air_force', label: 'Air Force', color: 'var(--purple)', enabled: false, description: 'Dominate the skies, strike at distance, and shield your nation from above.' },
+];
 
 async function init() {
   try {
@@ -794,19 +826,33 @@ async function init() {
     if (!user) { window.location.href = 'login.html'; return; }
     currentUser = user;
 
+    pendingFactionType = sessionStorage.getItem('pending_faction_type');
+
     // Corporation flow — redirect to corp setup if pending
-    if (sessionStorage.getItem('pending_faction_type') === 'corp') {
+    if (pendingFactionType === 'corp') {
       window.location.href = 'corp-setup.html';
       return;
     }
 
-    // Check if user already has a faction — but allow corp users founding a party to proceed
-    const pendingParty = sessionStorage.getItem('pending_faction_type') === 'party';
+    // Check if user already has a faction. Allow:
+    //  - corp users founding a party (pending_faction_type === 'party')
+    //  - users adding a military faction (pending_faction_type === 'military')
+    const pendingParty = pendingFactionType === 'party';
+    const pendingMilitary = pendingFactionType === 'military';
     const { data: faction } = await _supabase
       .from('factions').select('id, nation_id, faction_type').eq('id', user.id).maybeSingle();
-    if (faction && faction.nation_id && !(pendingParty && faction.faction_type === 'corporation')) {
+    if (faction && faction.nation_id
+        && !(pendingParty && faction.faction_type === 'corporation')
+        && !pendingMilitary) {
       window.location.href = 'dashboard.html';
       return;
+    }
+
+    if (pendingMilitary) {
+      const titleEl = document.querySelector('.page-header .title');
+      const subEl = document.querySelector('.page-header .subtitle');
+      if (titleEl) titleEl.textContent = 'Choose a Nation to Defend';
+      if (subEl) subEl.textContent = 'Pick a nation to view its military branches. Each nation has three branches — Army, Navy, and Air Force — and each can be commanded by only one player.';
     }
 
     await loadNations();
@@ -830,18 +876,21 @@ function switchContinent(continent) {
 }
 
 async function loadNations() {
-  const [nationsRes, partiesRes, crisesRes] = await Promise.all([
+  const [nationsRes, partiesRes, crisesRes, militaryRes] = await Promise.all([
     _supabase.from('nations').select('*, nation_profiles(flag_url)'),
     _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, seats, nation_id, party_color').eq('faction_type', 'party'),
     _supabase.from('active_crises').select('nation_id, crisis_id, crisis_templates(name)'),
+    _supabase.from('factions').select('id, nation_id, branch').eq('faction_type', 'military').is('abandoned_at', null),
   ]);
 
   const nations = nationsRes.data || [];
   const parties = partiesRes.data || [];
   const crises = crisesRes.data || [];
+  const military = militaryRes.data || [];
 
   cachedPartiesByNation = {};
   cachedCrisesByNation = {};
+  cachedMilitaryByNation = {};
 
   for (const p of parties) {
     if (!cachedPartiesByNation[p.nation_id]) cachedPartiesByNation[p.nation_id] = [];
@@ -850,6 +899,10 @@ async function loadNations() {
   for (const c of crises) {
     if (!cachedCrisesByNation[c.nation_id]) cachedCrisesByNation[c.nation_id] = [];
     cachedCrisesByNation[c.nation_id].push(c);
+  }
+  for (const m of military) {
+    if (!cachedMilitaryByNation[m.nation_id]) cachedMilitaryByNation[m.nation_id] = {};
+    if (m.branch) cachedMilitaryByNation[m.nation_id][m.branch] = m;
   }
 
   allNations = nations;
@@ -938,6 +991,10 @@ function renderNations(nations, partiesByNation, crisesByNation) {
       `).join('')
       : '<div class="no-crisis">No active crises</div>';
 
+    if (pendingFactionType === 'military') {
+      return renderMilitaryNationCard(nation, flagUrl, govClass, govLabel, needsAlphaCode);
+    }
+
     return `
       <div class="nation-card ${isFull ? 'disabled' : ''}" data-nation-id="${nation.id}" onclick="${isFull ? '' : 'selectNation(\'' + nation.id + '\')'}">
         <div class="nation-card__header">
@@ -992,6 +1049,52 @@ function renderNations(nations, partiesByNation, crisesByNation) {
   }).join('');
 }
 
+function renderMilitaryNationCard(nation, flagUrl, govClass, govLabel, needsAlphaCode) {
+  const branchRows = MILITARY_BRANCHES.map(b => {
+    const taken = !!(cachedMilitaryByNation[nation.id] && cachedMilitaryByNation[nation.id][b.key]);
+    const clickable = b.enabled && !taken;
+    let statusLabel, statusColor;
+    if (!b.enabled) { statusLabel = 'Coming Soon'; statusColor = 'var(--text-dim)'; }
+    else if (taken) { statusLabel = 'Taken'; statusColor = 'var(--red)'; }
+    else { statusLabel = 'Open'; statusColor = 'var(--green)'; }
+
+    const rowStyle = clickable
+      ? 'border:1px solid var(--border-1);background:var(--bg-3);padding:10px 12px;margin-top:8px;cursor:pointer;transition:border-color 0.15s,background 0.15s;'
+      : 'opacity:0.45;border:1px solid var(--border-0);background:var(--bg-1);padding:10px 12px;margin-top:8px;cursor:not-allowed;';
+    const rowHover = clickable
+      ? `onmouseover="this.style.borderColor='${b.color}'" onmouseout="this.style.borderColor='var(--border-1)'"`
+      : '';
+    const rowClick = clickable
+      ? `onclick="openMilitaryJoin('${nation.id}','${b.key}')"`
+      : '';
+
+    return `
+      <div style="${rowStyle}" ${rowHover} ${rowClick}>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+          <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${b.color};text-transform:uppercase;letter-spacing:0.06em;">${b.label}</span>
+          <span style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:${statusColor};text-transform:uppercase;letter-spacing:0.08em;">${b.label}: ${statusLabel}</span>
+        </div>
+        <div style="font-family:var(--font-ui);font-size:10.5px;color:var(--text-muted);line-height:1.5;">${b.description}</div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="nation-card" data-nation-id="${nation.id}" style="cursor:default;">
+      <div class="nation-card__header">
+        ${flagUrl ? `<img class="nation-card__flag" src="${flagUrl}" alt="${escapeHtml(nation.name)}" onerror="this.style.display='none'">` : ''}
+        <span class="nation-card__name">${escapeHtml(nation.name)}${needsAlphaCode ? '<span class="alpha-badge">Alpha</span>' : ''}</span>
+        <span class="nation-card__gov-type ${govClass}">${govLabel}</span>
+      </div>
+      <div class="nation-card__body">
+        ${NATION_DESCRIPTIONS[nation.name] ? `<div style="font-size:10px;color:var(--text-dim);line-height:1.5;margin-bottom:8px;font-style:italic;">${escapeHtml(NATION_DESCRIPTIONS[nation.name])}</div>` : ''}
+        <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;">Military Branches</div>
+        ${branchRows}
+      </div>
+    </div>
+  `;
+}
+
 function selectNation(nationId) {
   selectedNationId = nationId;
   const nation = allNations.find(n => n.id === nationId);
@@ -1019,6 +1122,144 @@ function selectNation(nationId) {
 
   document.getElementById('modal-overlay').classList.add('active');
   if (needsCode) alphaInput.focus();
+}
+
+function openMilitaryJoin(nationId, branch) {
+  if (branch !== 'army') return; // Phase 1 only enables Army
+  const nation = allNations.find(n => n.id === nationId);
+  if (!nation) return;
+  // Re-check Taken: another player could have claimed the slot since the
+  // page rendered. The unique index will also enforce this server-side.
+  if (cachedMilitaryByNation[nationId] && cachedMilitaryByNation[nationId][branch]) return;
+
+  pendingMilitaryNationId = nationId;
+  document.getElementById('military-modal-name').textContent = MILITARY_BRANCHES.find(b => b.key === branch).label + ' of ' + nation.name;
+  document.getElementById('military-modal-error').style.display = 'none';
+  const btn = document.getElementById('military-modal-confirm-btn');
+  btn.disabled = false;
+  btn.textContent = 'JOIN';
+  document.getElementById('military-modal-overlay').classList.add('active');
+}
+
+function closeMilitaryModal() {
+  document.getElementById('military-modal-overlay').classList.remove('active');
+  pendingMilitaryNationId = null;
+  militaryJoinInFlight = false;
+}
+
+async function confirmMilitaryJoin() {
+  if (militaryJoinInFlight) return;
+  if (!pendingMilitaryNationId) return;
+  const nation = allNations.find(n => n.id === pendingMilitaryNationId);
+  if (!nation) return;
+
+  militaryJoinInFlight = true;
+  const errEl = document.getElementById('military-modal-error');
+  const btn = document.getElementById('military-modal-confirm-btn');
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'JOINING...';
+
+  try {
+    // Block if user already holds a party or corp in this nation. The
+    // primary record is keyed on user.id; linked secondary factions
+    // (e.g. corp as a linked faction for a party player) use
+    // linked_user_id. Match both.
+    const { data: conflictRow, error: conflictErr } = await _supabase
+      .from('factions')
+      .select('faction_type, faction_name')
+      .or(`id.eq.${currentUser.id},linked_user_id.eq.${currentUser.id}`)
+      .in('faction_type', ['party', 'corporation'])
+      .eq('nation_id', pendingMilitaryNationId)
+      .is('abandoned_at', null)
+      .maybeSingle();
+    if (conflictErr) throw conflictErr;
+    if (conflictRow) {
+      const label = conflictRow.faction_type === 'corporation' ? 'corporation' : 'political party';
+      errEl.textContent = `Your ${label} "${conflictRow.faction_name}" is already in ${nation.name}. A military faction cannot share a nation with your other factions.`;
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'JOIN';
+      militaryJoinInFlight = false;
+      return;
+    }
+
+    // Block if user already has any military faction (one per player).
+    const { data: existingMilitary, error: existingErr } = await _supabase
+      .from('factions')
+      .select('id, faction_name, nation_id')
+      .or(`id.eq.${currentUser.id},linked_user_id.eq.${currentUser.id}`)
+      .eq('faction_type', 'military')
+      .is('abandoned_at', null)
+      .maybeSingle();
+    if (existingErr) throw existingErr;
+    if (existingMilitary) {
+      errEl.textContent = 'You already command a military faction. Abandon it before joining another.';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'JOIN';
+      militaryJoinInFlight = false;
+      return;
+    }
+
+    // Determine whether this row goes in as the user's primary faction
+    // (id = user.id) or as a linked secondary (new uuid, linked_user_id).
+    // Mirrors the corp creation logic in corp-nation-select.html.
+    const { data: primary, error: primaryErr } = await _supabase
+      .from('factions')
+      .select('id')
+      .eq('id', currentUser.id)
+      .is('abandoned_at', null)
+      .maybeSingle();
+    if (primaryErr) throw primaryErr;
+
+    const isLinked = !!primary;
+    const factionId = isLinked ? crypto.randomUUID() : currentUser.id;
+    const factionName = MILITARY_BRANCHES.find(b => b.key === 'army').label + ' of ' + nation.name;
+
+    const row = {
+      id: factionId,
+      faction_type: 'military',
+      branch: 'army',
+      faction_name: factionName,
+      nation_id: nation.id,
+      nation: nation.name,
+      seats: 0,
+      action_points: 0,
+      abandoned_at: null,
+    };
+    if (isLinked) row.linked_user_id = currentUser.id;
+
+    const op = isLinked
+      ? _supabase.from('factions').insert(row)
+      : _supabase.from('factions').upsert(row);
+    const { error: writeErr } = await op;
+    if (writeErr) {
+      // Unique-index collision means another player claimed the slot
+      // between the open and the confirm. Surface a clear message.
+      if (writeErr.code === '23505') {
+        errEl.textContent = 'That branch was just claimed by another player. Please choose a different nation.';
+      } else {
+        errEl.textContent = 'Could not join: ' + (writeErr.message || 'unknown error');
+      }
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'JOIN';
+      militaryJoinInFlight = false;
+      return;
+    }
+
+    sessionStorage.setItem('active_faction_id', factionId);
+    sessionStorage.removeItem('pending_faction_type');
+    sessionStorage.removeItem('nationhood_pending_nation');
+    window.location.href = BRANCH_DASHBOARDS.army;
+  } catch (err) {
+    errEl.textContent = 'Failed to join: ' + (err?.message || 'unknown error');
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'JOIN';
+    militaryJoinInFlight = false;
+  }
 }
 
 function closeModal() {
@@ -1142,6 +1383,9 @@ init();
 window.selectNation = selectNation;
 window.closeModal = closeModal;
 window.confirmNation = confirmNation;
+window.openMilitaryJoin = openMilitaryJoin;
+window.closeMilitaryModal = closeMilitaryModal;
+window.confirmMilitaryJoin = confirmMilitaryJoin;
 
 async function logoutUser() {
     await _supabase.auth.signOut();
