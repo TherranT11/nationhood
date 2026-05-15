@@ -1,7 +1,7 @@
 // js/corp-topbar.js — Shared top bar for all corporation pages
 // Renders a unified top bar with logo, tick info, faction switcher, nav tabs.
 
-import { BRANCH_DASHBOARDS, getFactionTypeBadge } from './game/factions.js';
+import { getFactionTypeBadge, getFactionDashboardUrl } from './game/factions.js';
 
 const CORP_VERSION = 'Alpha 2.4.9.6';
 const THEME_STORAGE_KEY = 'corpThemePref';
@@ -124,7 +124,7 @@ export function renderCorpTopBar(container, opts = {}) {
         dropdownHtml = allUserFactions.map(f => {
             const isActive = faction && f.id === faction.id;
             const { label, color } = getFactionTypeBadge(f.faction_type);
-            return `<div class="corp-dd-item${isActive ? ' active' : ''}" data-faction-id="${f.id}" data-faction-type="${f.faction_type}">
+            return `<div class="corp-dd-item${isActive ? ' active' : ''}" data-faction-id="${f.id}">
                 <span class="corp-dd-type" style="color:${color}">${label}</span>
                 <span class="corp-dd-name">${escHtml(f.faction_name || 'Unnamed')}</span>
                 <span class="corp-dd-abbr">[${escHtml(f.abbreviation || '—')}]</span>
@@ -234,18 +234,9 @@ export function renderCorpTopBar(container, opts = {}) {
                 return;
             }
             const fid = item.dataset.factionId;
-            const ftype = item.dataset.factionType;
             sessionStorage.setItem('active_faction_id', fid);
-            if (ftype === 'party') {
-                window.location.href = 'dashboard.html';
-            } else if (ftype === 'military') {
-                const mil = (allUserFactions || []).find(f => f.id === fid);
-                const dash = mil && BRANCH_DASHBOARDS[mil.branch];
-                // Branches without a dashboard yet fall back to the chooser
-                window.location.href = dash || 'faction-select.html';
-            } else {
-                window.location.href = 'corp-dashboard.html';
-            }
+            const target = (allUserFactions || []).find(f => f.id === fid);
+            window.location.href = getFactionDashboardUrl(target) || 'corp-dashboard.html';
         });
     }
 
