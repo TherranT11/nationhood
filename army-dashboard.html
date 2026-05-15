@@ -8,15 +8,11 @@
 <style>
 :root {
   --bg-0: #0e0e0c;
-  --bg-1: #1a1a1a;
   --bg-2: #1a1a17;
   --bg-3: #252525;
   --text-bright: #f0efe6;
   --text-primary: #c4c2b8;
-  --text-secondary: #888;
-  --text-muted: #666;
   --text-dim: #4a4940;
-  --border-hair: rgba(255,255,255,0.04);
   --border-0: rgba(255,255,255,0.06);
   --border-1: rgba(255,255,255,0.08);
   --red: #d9534f;
@@ -118,7 +114,7 @@ body {
 
 <div id="page" style="display:none; flex-direction:column; flex:1;">
   <div class="army-topbar">
-    <img class="army-topbar__flag" id="army-flag" src="" alt="" onerror="this.outerHTML='<div class=&quot;army-topbar__flag-fallback&quot;></div>'">
+    <img class="army-topbar__flag" id="army-flag" alt="" onerror="this.outerHTML='<div class=&quot;army-topbar__flag-fallback&quot;></div>'">
     <div class="army-topbar__title" id="army-title">Army</div>
     <div class="army-topbar__type">Military</div>
   </div>
@@ -132,14 +128,6 @@ body {
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { isFactionInactive } from './js/game/factions.js';
-
-// Fallback flag paths for the legacy nations whose asset filenames don't
-// match nation.name exactly. Mirrors select-nation.html so a player whose
-// nation_profiles row hasn't been populated still sees their flag.
-const FLAG_URLS = {
-  'Sangreza': 'assets/flags/sangreza.png',
-  'San Estrella': 'assets/flags/sanestrella.png',
-};
 
 async function init() {
   try {
@@ -178,7 +166,7 @@ async function init() {
     const nationName = nation?.name || 'Unknown Nation';
     const np = nation?.nation_profiles;
     const profileFlag = Array.isArray(np) ? np[0]?.flag_url : np?.flag_url;
-    const flagUrl = profileFlag || nation?.flag_url || FLAG_URLS[nationName] || `assets/flags/${nationName}.png`;
+    const flagUrl = profileFlag || nation?.flag_url || `assets/flags/${nationName}.png`;
 
     document.getElementById('army-flag').src = flagUrl;
     document.getElementById('army-title').textContent = 'Army of ' + nationName;
