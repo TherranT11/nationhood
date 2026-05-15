@@ -3,7 +3,7 @@
 
 import { getFactionTypeBadge, getFactionDashboardUrl } from './game/factions.js';
 
-const CORP_VERSION = 'Alpha 2.4.9.6';
+const CORP_VERSION = 'Alpha 2.6.0.0';
 const THEME_STORAGE_KEY = 'corpThemePref';
 
 // One-shot flag: messaging.js initMessaging is called at most once per
