@@ -1,4 +1,4 @@
--- adopt_platform: drop the AP cost.
+-- adopt_platform: drop the AP cost + restore the auth gate.
 --
 -- The original RPC (20260413, wrapped by 20260727) charged 2 AP via
 -- deduct_ap() before recording the adoption. Per UX revision the action
@@ -6,6 +6,15 @@
 -- "2 AP" badge and "Costs 2 AP." hint removed alongside this. Keeping
 -- the server deduction would be a silent gotcha (action looks free,
 -- secretly spends AP), so drop it here too.
+--
+-- IMPORTANT: deduct_ap was also the de-facto auth check — it returns
+-- -1 if `p_faction_id != auth.uid()`, which gated cross-faction
+-- adoption. Removing it bare would let any authenticated user adopt
+-- platforms on any faction. This migration adds an explicit
+-- ownership check up front (matching the pattern used by the
+-- ministry survey RPCs), supporting both primary
+-- (factions.id = auth.uid()) and linked
+-- (factions.linked_user_id = auth.uid()) faction ownership.
 --
 -- All other gates and side effects preserved: existence check, slot
 -- cap (max 3), 6-tick cooldown, momentum award + rival penalties,
@@ -30,6 +39,7 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
+    v_caller UUID := auth.uid();
     v_next_slot INT;
     v_last_adopted_tick INT;
     v_existing_count INT;
@@ -39,6 +49,19 @@ DECLARE
     v_cooldown_ticks INT := 6;
     v_pop_result JSONB;
 BEGIN
+    -- Auth gate. Previously implicit via deduct_ap; now explicit since
+    -- the action no longer costs AP. Supports linked factions.
+    IF v_caller IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated.');
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM factions
+        WHERE id = p_faction_id
+          AND (id = v_caller OR linked_user_id = v_caller)
+    ) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'You do not own this faction.');
+    END IF;
+
     IF EXISTS (SELECT 1 FROM faction_platforms WHERE faction_id = p_faction_id AND platform_key = p_platform_key) THEN
         RETURN jsonb_build_object('success', false, 'error', 'You have already adopted this platform.');
     END IF;
