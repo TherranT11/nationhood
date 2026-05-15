@@ -10,12 +10,20 @@
   --bg-0: #0e0e0c;
   --bg-2: #1a1a17;
   --bg-3: #252525;
+  --bg-card: #1a1a17;
   --text-bright: #f0efe6;
   --text-primary: #c4c2b8;
+  --text-secondary: #888;
+  --text-muted: #666;
   --text-dim: #4a4940;
   --border-0: rgba(255,255,255,0.06);
   --border-1: rgba(255,255,255,0.08);
+  --border-hair: rgba(255,255,255,0.04);
   --amber: #c8a64e;
+  --amber-faint: rgba(200,168,50,0.08);
+  --amber-border: rgba(200,168,50,0.20);
+  --gold: #c8a832;
+  --blue: #5bc0de;
   --red: #d9534f;
   --red-faint: rgba(217,83,79,0.08);
   --red-border: rgba(217,83,79,0.18);
@@ -136,7 +144,7 @@ body {
 
 /* ── Force Composition section ── */
 .force-comp {
-  padding: 32px 22px 40px;
+  padding-bottom: 18px;
 }
 .force-comp__header {
   display: flex;
@@ -157,7 +165,7 @@ body {
 }
 .force-comp__grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 12px;
 }
 .fc-card {
@@ -194,12 +202,6 @@ body {
   font-size: 10px;
   color: var(--text-dim);
   letter-spacing: 0.02em;
-}
-@media (max-width: 1024px) {
-  .force-comp__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 600px) {
-  .force-comp__grid { grid-template-columns: 1fr; }
 }
 
 /* ── Army masthead (matches the corp-dashboard masthead in size + serif) ── */
@@ -248,6 +250,194 @@ body {
   color: var(--text-bright);
   font-weight: 600;
 }
+
+/* ── Two-column body grid (Dispatches sidebar + main content) ── */
+.army-body-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 22px;
+  padding: 22px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .army-body-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Dispatches panel (lifted from corp-dashboard.html — same look, same logic) ── */
+.cr-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-1);
+  display: flex;
+  flex-direction: column;
+}
+.cr-event-panel-header {
+  background: var(--bg-3);
+  border-bottom: 1px solid var(--border-hair);
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.cr-panel-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cr-panel-title::before {
+  content: '●';
+  font-size: 8px;
+  color: var(--gold);
+}
+.cr-panel-meta {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.cr-event-tab-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-hair);
+  flex-wrap: wrap;
+}
+.cr-event-tab-bar { display: flex; gap: 0; }
+.cr-event-tab {
+  background: transparent;
+  border: 1px solid var(--border-1);
+  padding: 4px 9px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  border-right: none;
+}
+.cr-event-tab:last-child { border-right: 1px solid var(--border-1); }
+.cr-event-tab:hover:not(.active) {
+  color: var(--text-secondary);
+  background: var(--bg-3);
+}
+.cr-event-tab.active {
+  color: var(--bg-0);
+  background: var(--gold);
+  border-color: var(--gold);
+}
+.cr-event-tab.active + .cr-event-tab { border-left-color: var(--gold); }
+.cr-event-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 14px;
+  display: flex;
+  flex-direction: column;
+  max-height: 720px;
+  overflow-y: auto;
+}
+.cr-event-list::-webkit-scrollbar { width: 4px; }
+.cr-event-list::-webkit-scrollbar-track { background: transparent; }
+.cr-event-list::-webkit-scrollbar-thumb { background: var(--border-1); border-radius: 2px; }
+.cr-event-item {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-hair);
+  position: relative;
+}
+.cr-event-item:last-child { border-bottom: none; }
+.cr-event-item::before {
+  content: '';
+  position: absolute;
+  left: -14px; top: 0; bottom: 0;
+  width: 2px;
+  background: transparent;
+}
+.cr-event-item.cat-politics::before  { background: var(--blue);  opacity: 0.6; }
+.cr-event-item.cat-corporate::before { background: var(--gold);  opacity: 0.6; }
+.cr-event-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  gap: 8px;
+}
+.cr-event-tag {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border: 1px solid var(--border-1);
+  color: var(--text-muted);
+  background: var(--bg-3);
+}
+.cr-event-tag.tag-politics {
+  color: var(--blue);
+  border-color: rgba(91,192,222,0.35);
+  background: rgba(91,192,222,0.08);
+}
+.cr-event-tag.tag-corporate {
+  color: var(--gold);
+  border-color: var(--amber-border);
+  background: var(--amber-faint);
+}
+.cr-event-nation {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.cr-event-flag {
+  width: 14px;
+  height: 9px;
+  object-fit: cover;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+.cr-event-time {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+  margin-left: auto;
+}
+.cr-event-headline {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--text-bright);
+  margin-bottom: 5px;
+  letter-spacing: -0.005em;
+}
+.cr-event-body {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.cr-event-empty {
+  padding: 24px 0;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  font-style: italic;
+  letter-spacing: 0.04em;
+  list-style: none;
+}
 </style>
 </head>
 <body>
@@ -272,45 +462,217 @@ body {
     </div>
   </div>
 
-  <section class="force-comp">
-    <div class="force-comp__header">
-      <h2 class="force-comp__title">Force <em>Composition</em></h2>
-    </div>
-    <div class="force-comp__grid">
-      <div class="fc-card">
-        <div class="fc-card__label">Personnel</div>
-        <div class="fc-card__value">0</div>
-        <div class="fc-card__desc">— soldiers under arms</div>
+  <div class="army-body-grid">
+
+    <!-- LEFT: Dispatches feed (lifted from corp-dashboard.html) -->
+    <aside>
+      <div class="cr-panel">
+        <div class="cr-event-panel-header">
+          <div class="cr-panel-title">Dispatches</div>
+          <div class="cr-panel-meta" id="cr-event-count">—</div>
+        </div>
+        <div class="cr-event-tab-row">
+          <div class="cr-event-tab-bar" data-tab-axis="category">
+            <button class="cr-event-tab active" data-category="politics">Politics</button>
+            <button class="cr-event-tab" data-category="corporate">Corporate</button>
+          </div>
+          <div class="cr-event-tab-bar" data-tab-axis="scope">
+            <button class="cr-event-tab active" data-scope="nation">Nation</button>
+            <button class="cr-event-tab" data-scope="world">World</button>
+          </div>
+        </div>
+        <ul class="cr-event-list" id="cr-event-list">
+          <li class="cr-event-empty">Loading…</li>
+        </ul>
       </div>
-      <div class="fc-card">
-        <div class="fc-card__label">Order of Battle</div>
-        <div class="fc-card__value">0<span class="fc-card__unit">brigades</span></div>
-        <div class="fc-card__desc">— combat formations</div>
-      </div>
-      <div class="fc-card">
-        <div class="fc-card__label">Active Deployments</div>
-        <div class="fc-card__value">0</div>
-        <div class="fc-card__desc">— operations in theater</div>
-      </div>
-      <div class="fc-card">
-        <div class="fc-card__label">Available Budget</div>
-        <div class="fc-card__value">$0</div>
-        <div class="fc-card__desc">— discretionary funds</div>
-      </div>
-      <div class="fc-card">
-        <div class="fc-card__label">Expenditures</div>
-        <div class="fc-card__value">$0</div>
-        <div class="fc-card__desc">— last tick</div>
-      </div>
-    </div>
-  </section>
+    </aside>
+
+    <!-- RIGHT: Force Composition (and future army stats) -->
+    <main>
+      <section class="force-comp">
+        <div class="force-comp__header">
+          <h2 class="force-comp__title">Force <em>Composition</em></h2>
+        </div>
+        <div class="force-comp__grid">
+          <div class="fc-card">
+            <div class="fc-card__label">Personnel</div>
+            <div class="fc-card__value">0</div>
+            <div class="fc-card__desc">— soldiers under arms</div>
+          </div>
+          <div class="fc-card">
+            <div class="fc-card__label">Order of Battle</div>
+            <div class="fc-card__value">0<span class="fc-card__unit">brigades</span></div>
+            <div class="fc-card__desc">— combat formations</div>
+          </div>
+          <div class="fc-card">
+            <div class="fc-card__label">Active Deployments</div>
+            <div class="fc-card__value">0</div>
+            <div class="fc-card__desc">— operations in theater</div>
+          </div>
+          <div class="fc-card">
+            <div class="fc-card__label">Available Budget</div>
+            <div class="fc-card__value">$0</div>
+            <div class="fc-card__desc">— discretionary funds</div>
+          </div>
+          <div class="fc-card">
+            <div class="fc-card__label">Expenditures</div>
+            <div class="fc-card__value">$0</div>
+            <div class="fc-card__desc">— last tick</div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+  </div>
 </div>
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { isFactionInactive } from './js/game/factions.js';
 import { renderMilitaryTopBar } from './js/military-topbar.js';
-import { escapeHtml } from './js/utils.js';
+import { escapeHtml, escapeAttr } from './js/utils.js';
+
+// ─── DISPATCHES FEED — ported verbatim from corp-dashboard.html ───
+// Same data model, same look. event_log.category has many values
+// across the codebase; we bucket into Politics vs Corporate so the
+// player sees a clean two-tab read.
+const POLITICS_CATEGORIES = [
+    'politics', 'political', 'government', 'crisis',
+    'diplomatic', 'diplomacy', 'international', 'economy',
+    'military', 'executive_order', 'protest', 'bill', 'new_party',
+];
+const CORPORATE_CATEGORIES = ['corporate', 'business', 'trade'];
+function dispatchBucketFor(category) {
+    const c = (category || '').toLowerCase();
+    if (CORPORATE_CATEGORIES.includes(c)) return 'corporate';
+    if (POLITICS_CATEGORIES.includes(c))  return 'politics';
+    return null;
+}
+function formatEventName(raw) {
+    if (!raw) return '';
+    return String(raw).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// Module-level state read by loadDispatches / renderDispatchList.
+// Populated in init() once the faction + shard are loaded.
+let _factionForDispatches = null;
+let _shardForDispatches   = null;
+const _eventState = {
+    category: 'politics',  // 'politics' | 'corporate'
+    scope:    'nation',    // 'nation'   | 'world'
+    cache:    {},          // key = `${category}:${scope}` → rows
+    inflight: null,        // current fetch's key, to ignore stale resolutions
+};
+
+function bindDispatchTabs() {
+    document.querySelectorAll('.cr-event-tab-bar').forEach(bar => {
+        bar.addEventListener('click', (e) => {
+            const btn = e.target.closest('.cr-event-tab');
+            if (!btn || btn.classList.contains('active')) return;
+            const axis = bar.getAttribute('data-tab-axis');
+            bar.querySelectorAll('.cr-event-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            if (axis === 'category') _eventState.category = btn.getAttribute('data-category');
+            else if (axis === 'scope') _eventState.scope = btn.getAttribute('data-scope');
+            loadDispatches();
+        });
+    });
+}
+
+async function loadDispatches() {
+    const key = `${_eventState.category}:${_eventState.scope}`;
+    const listEl  = document.getElementById('cr-event-list');
+    const countEl = document.getElementById('cr-event-count');
+    if (!listEl) return;
+
+    if (_eventState.cache[key]) {
+        renderDispatchList(_eventState.cache[key]);
+        return;
+    }
+    listEl.innerHTML = '<li class="cr-event-empty">Loading…</li>';
+    if (countEl) countEl.textContent = '—';
+
+    _eventState.inflight = key;
+    const myNationId = _factionForDispatches?.nation_id;
+
+    let q = _supabase.from('event_log')
+        .select('id, event_name, description_used, description_chosen, category, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
+        .not('category', 'is', null)
+        .order('fired_at_tick', { ascending: false })
+        .limit(120);
+
+    if (_eventState.scope === 'nation') {
+        if (!myNationId) { renderDispatchList([]); return; }
+        q = q.eq('nation_id', myNationId);
+    } else {
+        if (myNationId) q = q.neq('nation_id', myNationId);
+    }
+
+    const { data, error } = await q;
+    if (_eventState.inflight !== key) return; // superseded
+
+    if (error) {
+        console.warn('[army-dashboard] event_log fetch error:', error.message);
+        listEl.innerHTML = '<li class="cr-event-empty">Failed to load dispatches.</li>';
+        return;
+    }
+
+    const wantBucket = _eventState.category;
+    const rows = (data || [])
+        .filter(r => dispatchBucketFor(r.category) === wantBucket)
+        .slice(0, 30);
+    _eventState.cache[key] = rows;
+    renderDispatchList(rows);
+}
+
+function renderDispatchList(rows) {
+    const listEl  = document.getElementById('cr-event-list');
+    const countEl = document.getElementById('cr-event-count');
+    if (!listEl) return;
+
+    if (countEl) {
+        countEl.textContent = rows.length === 0 ? 'NONE' : `${rows.length} ITEM${rows.length === 1 ? '' : 'S'}`;
+    }
+    if (rows.length === 0) {
+        listEl.innerHTML = `<li class="cr-event-empty">No ${escapeHtml(_eventState.category)} dispatches in ${_eventState.scope === 'nation' ? 'your nation' : 'the world'} yet.</li>`;
+        return;
+    }
+
+    const currentTick = Number(_shardForDispatches?.current_tick) || 0;
+    const showNation  = _eventState.scope === 'world';
+    const bucket      = _eventState.category;
+    const tagClass    = bucket === 'politics' ? 'tag-politics' : 'tag-corporate';
+    const itemClass   = bucket === 'politics' ? 'cat-politics' : 'cat-corporate';
+
+    listEl.innerHTML = rows.map(row => {
+        const cat = row.category || bucket;
+        const ticksAgo = Math.max(0, currentTick - (Number(row.fired_at_tick) || 0));
+        const timeStr  = ticksAgo === 0 ? 'JUST NOW'
+                       : ticksAgo === 1 ? '1 TICK AGO'
+                       : `${ticksAgo} TICKS AGO`;
+
+        const nationName = row.nations?.name || row.nation || null;
+        const np = row.nations?.nation_profiles;
+        const flagUrl = (Array.isArray(np) ? np[0]?.flag_url : np?.flag_url) || null;
+        const flagImg = flagUrl ? `<img class="cr-event-flag" src="${escapeAttr(flagUrl)}" alt="" />` : '';
+        const nationBadge = (showNation && nationName)
+            ? `<span class="cr-event-nation">${flagImg}${escapeHtml(nationName)}</span>`
+            : '';
+
+        const headlineRaw = formatEventName(row.event_name) || 'Untitled dispatch';
+        const body = (row.description_chosen || row.description_used || '').trim();
+
+        return `<li class="cr-event-item ${itemClass}">
+            <div class="cr-event-meta">
+                <span class="cr-event-tag ${tagClass}">${escapeHtml(cat)}</span>
+                ${nationBadge}
+                <span class="cr-event-time">${timeStr}</span>
+            </div>
+            <div class="cr-event-headline">${escapeHtml(headlineRaw)}</div>
+            ${body ? `<div class="cr-event-body">${escapeHtml(body)}</div>` : ''}
+        </li>`;
+    }).join('');
+}
 
 async function init() {
   try {
@@ -395,6 +757,12 @@ async function init() {
       'Army of <em>' + escapeHtml(nationName) + '</em>';
     document.getElementById('army-masthead-hq').textContent    = capital;
     document.getElementById('army-masthead-chief').textContent = chiefLine;
+
+    // Dispatches feed — wire the tabs and kick off the first fetch.
+    _factionForDispatches = faction;
+    _shardForDispatches   = shard;
+    bindDispatchTabs();
+    loadDispatches();
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page').style.display = 'flex';
