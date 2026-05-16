@@ -8,7 +8,7 @@
 
 import { renderRoleActionsShell } from './role-actions.js';
 import { hfFmtBig, tickToDate } from './utils.js';
-import { PLATFORMS, STAT_NAMES, BAD_STATS, statDirection, platformMomentumInfo } from './game/platforms.js';
+import { PLATFORMS, STAT_NAMES, BAD_STATS, statDirection, PLATFORM_POPULARITY } from './game/platforms.js';
 import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, getGoverningStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
 import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsuit, fetchActiveLawsuits } from './game/lawsuits.js';
@@ -6823,16 +6823,16 @@ function openPlatformModal(root) {
 
     function render() {
         const selected = PLATFORMS.find(p => p.id === selectedPlatformId);
-        const mInfo = selected ? platformMomentumInfo(claimCounts[selected.id] || 0) : null;
+        // Flat popularity reward, same for every platform (momentum retired).
+        const popLabel = `+${(PLATFORM_POPULARITY.adoptTenths / 10).toFixed(1)}`;
+        const popFailLabel = (PLATFORM_POPULARITY.failTenths / 10).toFixed(1);
+        const popColor = '#5cc55c';
 
-        // Claim info for selected
-        const claimants = selected ? _nationPlatforms.filter(fp => fp.platform_key === selected.id && fp.faction_id !== faction?.id) : [];
 
         // Platform grid
         const gridHtml = PLATFORMS.map(p => {
             const isSel = selectedPlatformId === p.id;
             const isAdopted = myPlatformKeys.has(p.id);
-            const mi = platformMomentumInfo(claimCounts[p.id] || 0);
             const count = claimCounts[p.id] || 0;
 
             return `<div class="pa-plat-card ${isSel ? 'selected' : ''} ${isAdopted ? 'adopted' : ''}" data-plat="${p.id}">
@@ -6843,7 +6843,7 @@ function openPlatformModal(root) {
                 </div>
                 <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);line-height:1.4;margin-bottom:6px;">${esc(p.tagline)}</div>
                 <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${mi.color};">${mi.label}</span>
+                    <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${popColor};">${popLabel}</span>
                     ${count > 0 ? `<span style="font-family:var(--font-mono);font-size:8px;font-weight:700;padding:1px 3px;color:var(--text-dim);border:1px solid var(--border-mid);">${count} rival${count > 1 ? 's' : ''}</span>` : ''}
                 </div>
             </div>`;
@@ -6908,10 +6908,10 @@ function openPlatformModal(root) {
                 <div style="padding:10px 20px;border-bottom:1px solid var(--border-main);background:var(--bg-card);">
                     <div style="display:flex;justify-content:space-between;align-items:center;">
                         <div>
-                            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:3px;">MOMENTUM GAIN</div>
+                            <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:3px;">POPULARITY</div>
                             <div style="display:flex;align-items:baseline;gap:6px;">
-                                <span style="font-family:var(--font-mono);font-size:24px;font-weight:700;color:${mInfo.color};">${mInfo.label}</span>
-                                <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">${esc(mInfo.note)}</span>
+                                <span style="font-family:var(--font-mono);font-size:24px;font-weight:700;color:${popColor};">${popLabel}</span>
+                                <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">all sectors on adopt — per-sector boosts also apply</span>
                             </div>
                         </div>
                     </div>
@@ -6938,7 +6938,7 @@ function openPlatformModal(root) {
                     <div style="margin-top:12px;padding:8px 12px;background:var(--bg-card);border:1px solid var(--border-main);">
                         <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:4px;">PROMISE RULES</div>
                         <div style="font-size:11px;color:var(--text-dim);line-height:1.5;">
-                            Stats are locked at current values when adopted. If your party enters government, you have <strong style="color:var(--text-bright);">24 ticks</strong> to move each promised stat by <strong style="color:var(--text-bright);">+${PROMISE_DELTA}</strong>. Failure: <strong style="color:var(--red);">popularity boosts revert</strong> with the constituencies you wooed (the alienated stay alienated). If you don't enter government, the promise abates.
+                            Stats are locked at current values when adopted. If your party enters government, you have <strong style="color:var(--text-bright);">24 ticks</strong> to move each promised stat by <strong style="color:var(--text-bright);">+${PROMISE_DELTA}</strong>. Failure: <strong style="color:var(--red);">${popFailLabel} popularity all sectors</strong> and the per-sector boosts revert with the constituencies you wooed (the alienated stay alienated). If you don't enter government, the promise abates.
                         </div>
                     </div>
                 </div>
@@ -7065,10 +7065,6 @@ async function submitPlatformAdoption(root, platformKey) {
             status: 'active',
         });
         _nationPlatforms.push(_myPlatforms[_myPlatforms.length - 1]);
-
-        if (faction && data?.momentum_gained) {
-            faction.momentum = (faction.momentum || 0) + data.momentum_gained;
-        }
 
         overlay?.classList.remove('active');
         renderPage(root);

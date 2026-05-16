@@ -17,7 +17,7 @@
  *   - getPromiseProgress() — UI helper for displaying progress bars
  */
 
-import { PLATFORMS, BAD_STATS } from './platforms.js';
+import { PLATFORMS, BAD_STATS, PLATFORM_POPULARITY } from './platforms.js';
 
 // Halved from 20 in 20260727 — sector-popularity bumps are now the
 // headline reward; the stat-promise grind is a lighter secondary.
@@ -187,6 +187,19 @@ export async function evaluatePromises(supabase, nation, currentTick, governingF
                 });
                 if (revertErr) {
                     console.warn('[platform-promises] popularity-revert RPC failed for', fp.platform_key, ':', revertErr.message);
+                }
+
+                // Flat headline penalty mirroring the +0.3 adopt reward:
+                // -0.5 popularity across every active sector. Gated on
+                // popularity_applied alongside the revert so pre-system
+                // platforms are unaffected.
+                const { error: flatErr } = await supabase.rpc('_apply_flat_sector_popularity', {
+                    p_faction_id:   fp.faction_id,
+                    p_nation_id:    fp.nation_id,
+                    p_delta_tenths: PLATFORM_POPULARITY.failTenths,
+                });
+                if (flatErr) {
+                    console.warn('[platform-promises] flat popularity penalty RPC failed for', fp.platform_key, ':', flatErr.message);
                 }
             }
 

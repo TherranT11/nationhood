@@ -29359,18 +29359,17 @@ function statDirection(stat, direction) {
 }
 
 /**
- * Calculate momentum gain for adopting a platform based on existing claim count.
- * @param {number} existingCount - how many other parties in the nation have this platform
- * @returns {{ momentum: number, penalty: number, label: string, color: string, note: string }}
+ * Flat sector-popularity effect of adopting / failing a platform, in
+ * integer tenths (10 = 1.0 displayed). Single JS source of truth;
+ * mirrors the SQL: adopt_platform PERFORMs
+ * _apply_flat_sector_popularity(adoptTenths) and platform-promises
+ * applies failTenths on a failed promise. Keep in sync with
+ * 20270108_platform_popularity_swap_momentum.sql.
  */
-function platformMomentumInfo(existingCount) {
-    switch (existingCount) {
-        case 0: return { momentum: 12, penalty: 0, label: '+12', color: '#5cc55c', note: 'Unclaimed — full momentum' };
-        case 1: return { momentum: 6, penalty: 6, label: '+6', color: '#ca5', note: 'Contested by 1 rival — reduced momentum' };
-        case 2: return { momentum: 4, penalty: 4, label: '+4', color: '#c84', note: 'Crowded (2 rivals) — minimal momentum' };
-        default: return { momentum: 2, penalty: 2, label: '+2', color: '#c84', note: `Crowded (${existingCount} rivals) — minimal momentum` };
-    }
-}
+const PLATFORM_POPULARITY = {
+    adoptTenths: 3,   // +0.3 to every active sector on adopt
+    failTenths: -5,   // -0.5 to every active sector if promises unmet
+};
 
 // ────────── platform-promises ──────────
 
@@ -29561,6 +29560,19 @@ async function evaluatePromises(supabase, nation, currentTick, governingFactionI
                 });
                 if (revertErr) {
                     console.warn('[platform-promises] popularity-revert RPC failed for', fp.platform_key, ':', revertErr.message);
+                }
+
+                // Flat headline penalty mirroring the +0.3 adopt reward:
+                // -0.5 popularity across every active sector. Gated on
+                // popularity_applied alongside the revert so pre-system
+                // platforms are unaffected.
+                const { error: flatErr } = await supabase.rpc('_apply_flat_sector_popularity', {
+                    p_faction_id:   fp.faction_id,
+                    p_nation_id:    fp.nation_id,
+                    p_delta_tenths: PLATFORM_POPULARITY.failTenths,
+                });
+                if (flatErr) {
+                    console.warn('[platform-promises] flat popularity penalty RPC failed for', fp.platform_key, ':', flatErr.message);
                 }
             }
 
