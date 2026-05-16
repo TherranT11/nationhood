@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Army Procurement | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-0: #0e0e0c; --bg-2: #1a1a17; --bg-card: #1a1a17;
+  --text-bright: #f0efe6; --text-primary: #c4c2b8; --text-secondary: #888;
+  --text-dim: #4a4940; --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08); --army: #b6533f;
+  --font-mono: 'JetBrains Mono', monospace; --font-sans: 'IBM Plex Sans', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg-0); color: var(--text-primary); font-family: var(--font-sans); }
+.ap-wrap { max-width: 1160px; margin: 0 auto; padding: 22px 24px 60px; }
+.ap-head { padding-bottom: 14px; border-bottom: 1px solid var(--border-1); margin-bottom: 22px; }
+.ap-head__eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.22em;
+  color: var(--army); font-weight: 700; text-transform: uppercase; }
+.ap-head__title { font-size: 24px; font-weight: 700; color: var(--text-bright); margin-top: 6px; }
+.ap-head__faction { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); margin-top: 6px; }
+.ap-section { margin-bottom: 30px; }
+.ap-section__head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding-bottom: 10px; border-bottom: 1px solid var(--border-0); margin-bottom: 14px; }
+.ap-section__num { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--army); }
+.ap-section__title { font-size: 15px; font-weight: 600; color: var(--text-bright);
+  text-transform: uppercase; letter-spacing: 0.04em; }
+.ap-section__meta { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em;
+  color: var(--text-dim); text-transform: uppercase; margin-left: auto; }
+.ap-cat { background: var(--bg-card); border: 1px solid var(--border-0); }
+.ap-cat__row { display: grid; grid-template-columns: 1fr 120px 150px 110px 120px;
+  align-items: center; gap: 14px; padding: 16px 18px; width: 100%; text-align: left;
+  background: none; border: 0; color: inherit; font: inherit; cursor: pointer;
+  transition: background .12s; }
+.ap-cat__row:hover { background: rgba(255,255,255,0.02); }
+.ap-cat__name { font-size: 15px; font-weight: 700; color: var(--text-bright);
+  letter-spacing: 0.02em; }
+.ap-cat__sub { font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary);
+  margin-top: 3px; text-transform: uppercase; letter-spacing: 0.08em; }
+.ap-stat__label { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.12em;
+  color: var(--text-dim); text-transform: uppercase; }
+.ap-stat__value { font-size: 16px; font-weight: 600; color: var(--text-primary); margin-top: 3px; }
+.ap-stat__value.is-dim { color: var(--text-dim); }
+.ap-pill { justify-self: end; font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; padding: 5px 10px; border: 1px solid;
+  border-radius: 2px; }
+.ap-pill--none { color: var(--text-dim); border-color: var(--border-1); }
+.ap-cat__chev { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);
+  transition: transform .15s; }
+.ap-cat.is-open .ap-cat__chev { transform: rotate(90deg); }
+.ap-cat__body { display: none; border-top: 1px solid var(--border-0);
+  padding: 16px 18px; }
+.ap-cat.is-open .ap-cat__body { display: block; }
+.ap-variant { display: grid; grid-template-columns: 1fr 120px 1fr;
+  align-items: center; gap: 14px; padding: 10px 0; border-bottom: 1px solid var(--border-0); }
+.ap-variant:last-child { border-bottom: 0; }
+.ap-variant__name { font-size: 13px; font-weight: 600; color: var(--text-bright); }
+.ap-variant__tag { font-family: var(--font-mono); font-size: 9px; color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
+.ap-variant__qty { font-family: var(--font-mono); font-size: 13px; color: var(--text-primary); }
+.ap-qbar { height: 6px; background: rgba(255,255,255,0.05); position: relative; }
+.ap-qbar__fill { position: absolute; inset: 0 auto 0 0; background: var(--army); }
+.ap-empty { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim);
+  padding: 22px; text-align: center; background: var(--bg-card);
+  border: 1px solid var(--border-0); }
+.ap-loading { padding: 60px; text-align: center; font-family: var(--font-mono);
+  font-size: 12px; color: var(--text-dim); }
+</style>
+</head>
+<body>
+  <div id="mil-topbar-host"></div>
+  <div class="ap-wrap" id="ap-root">
+    <div class="ap-loading">Loading procurement…</div>
+  </div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { isFactionInactive } from './js/game/factions.js';
+import { renderMilitaryTopBar } from './js/military-topbar.js';
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// Inventory categories. Rifles is the only unit at launch and every army
+// starts with zero — there is no inventory store yet, so this is the
+// zero-state shell. Each category's totals derive from its `variants`
+// array (empty for now); pushing variants later lights the card up with
+// no layout change. Active Orders / RFPs are intentionally empty.
+const CATEGORIES = [
+  { key: 'rifles', name: 'Rifles', sub: 'Infantry Small Arms', variants: [] },
+];
+
+function catTotals(cat) {
+  const qty = cat.variants.reduce((s, v) => s + (v.qty || 0), 0);
+  const qualities = cat.variants.filter(v => v.qty > 0).map(v => v.quality).sort((a, b) => a - b);
+  const median = qualities.length
+    ? qualities[Math.floor((qualities.length - 1) / 2)]
+    : null;
+  return { qty, median, variantCount: cat.variants.length };
+}
+
+function inventorySectionHtml() {
+  const cards = CATEGORIES.map(cat => {
+    const { qty, median, variantCount } = catTotals(cat);
+    const variantsHtml = cat.variants.length
+      ? cat.variants.map(v => `
+          <div class="ap-variant">
+            <div>
+              <div class="ap-variant__name">${esc(v.name)}</div>
+              <div class="ap-variant__tag">${esc(v.tag)}</div>
+            </div>
+            <div class="ap-variant__qty">QTY ${v.qty.toLocaleString()}</div>
+            <div>
+              <div class="ap-qbar"><div class="ap-qbar__fill" style="width:${Math.max(0, Math.min(100, v.quality))}%"></div></div>
+            </div>
+          </div>`).join('')
+      : `<div class="ap-empty">This army holds no ${esc(cat.name.toLowerCase())}. Procurement orders will populate this category.</div>`;
+    return `
+      <div class="ap-cat" data-cat="${esc(cat.key)}">
+        <button class="ap-cat__row" data-cat-toggle="${esc(cat.key)}">
+          <div>
+            <div class="ap-cat__name">${esc(cat.name.toUpperCase())}</div>
+            <div class="ap-cat__sub">${esc(cat.sub)}</div>
+          </div>
+          <div>
+            <div class="ap-stat__label">Quantity</div>
+            <div class="ap-stat__value${qty ? '' : ' is-dim'}">${qty.toLocaleString()}</div>
+          </div>
+          <div>
+            <div class="ap-stat__label">Median Quality</div>
+            <div class="ap-stat__value${median == null ? ' is-dim' : ''}">${median == null ? '—' : esc(median) + '/100'}</div>
+          </div>
+          <div>
+            <div class="ap-stat__label">Variants</div>
+            <div class="ap-stat__value${variantCount ? '' : ' is-dim'}">${variantCount}</div>
+          </div>
+          <span class="ap-pill ap-pill--none">None</span>
+        </button>
+        <div class="ap-cat__body">${variantsHtml}</div>
+      </div>`;
+  }).join('');
+
+  const n = CATEGORIES.length;
+  return `
+    <div class="ap-section">
+      <div class="ap-section__head">
+        <span class="ap-section__num">I.</span>
+        <span class="ap-section__title">Current Inventory</span>
+        <span class="ap-section__meta">${n} ${n === 1 ? 'Category' : 'Categories'} · Click to expand</span>
+      </div>
+      ${cards}
+    </div>`;
+}
+
+function render() {
+  const root = document.getElementById('ap-root');
+  if (!root) return;
+  const nationName = _faction.__nation_name || '';
+
+  root.innerHTML = `
+    <div class="ap-head">
+      <div class="ap-head__eyebrow">— Equipment —</div>
+      <div class="ap-head__title">Procurement &amp; Inventory</div>
+      <div class="ap-head__faction">${esc(_faction.faction_name || 'Army')}${nationName ? ' · ' + esc(nationName) : ''}</div>
+    </div>
+    ${inventorySectionHtml()}
+    <div class="ap-section">
+      <div class="ap-section__head">
+        <span class="ap-section__num">II.</span>
+        <span class="ap-section__title">Active Orders</span>
+      </div>
+      <div class="ap-empty">No active procurement orders.</div>
+    </div>
+    <div class="ap-section">
+      <div class="ap-section__head">
+        <span class="ap-section__num">III.</span>
+        <span class="ap-section__title">RFPs</span>
+      </div>
+      <div class="ap-empty">No open requests for proposals.</div>
+    </div>`;
+
+  root.querySelectorAll('[data-cat-toggle]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const card = btn.closest('.ap-cat');
+      if (card) card.classList.toggle('is-open');
+    });
+  });
+}
+
+let _faction = null;
+
+async function init() {
+  const { data: { user } } = await _supabase.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  const { data: faction, error: factionErr } = await _supabase
+    .from('factions')
+    .select('id, faction_type, faction_name, nation_id, abandoned_at, is_banned, branch')
+    .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+    .eq('faction_type', 'military')
+    .eq('branch', 'army')
+    .is('abandoned_at', null)
+    .maybeSingle();
+
+  if (factionErr) { console.warn('Army faction lookup failed:', factionErr.message); window.location.href = 'dashboard.html'; return; }
+  if (!faction || isFactionInactive(faction)) { window.location.href = 'dashboard.html'; return; }
+  _faction = faction;
+
+  const [nationRes, shardRes, allFactionsRes] = await Promise.all([
+    _supabase.from('nations').select('name, capital, flag_url, nation_profiles(flag_url)').eq('id', faction.nation_id).maybeSingle(),
+    _supabase.from('shard').select('current_date, current_tick').eq('name', 'Alpha Shard').maybeSingle(),
+    _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, branch, abandoned_at, is_banned, nation_id, linked_user_id').or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
+  ]);
+  if (nationRes.error)      console.warn('Nation lookup failed:', nationRes.error.message);
+  if (shardRes.error)       console.warn('Shard lookup failed:', shardRes.error.message);
+  if (allFactionsRes.error) console.warn('Factions lookup failed:', allFactionsRes.error.message);
+  const nation = nationRes.data || null;
+  _faction.__nation_name = nation?.name || '';
+
+  const np = nation?.nation_profiles;
+  const profileFlag = Array.isArray(np) ? np[0]?.flag_url : np?.flag_url;
+  const flagUrl = profileFlag || nation?.flag_url || (nation?.name ? `assets/flags/${nation.name}.png` : '');
+  renderMilitaryTopBar(document.getElementById('mil-topbar-host'), {
+    faction,
+    nation,
+    shard: shardRes.data || null,
+    allUserFactions: (allFactionsRes.data || []).filter(f => !isFactionInactive(f)),
+    activeTab: 'procurement',
+    flagUrl,
+  });
+
+  render();
+}
+
+init().catch(err => {
+  console.error('army-procurement init failed:', err);
+  const root = document.getElementById('ap-root');
+  if (root) root.innerHTML = '<div class="ap-loading">Failed to load procurement.</div>';
+});
+</script>
+</body>
+</html>

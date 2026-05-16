@@ -187,8 +187,9 @@ export function renderMilitaryTopBar(container, opts = {}) {
     // army-actions.html is army-only (Phase 1). When navy/air-force pages
     // land this becomes a per-branch map like BRANCH_DASHBOARDS.
     const TABS = [
-        { id: 'home',    label: 'Home',    href: homeUrl },
-        { id: 'actions', label: 'Actions', href: 'army-actions.html' },
+        { id: 'home',        label: 'Home',        href: homeUrl },
+        { id: 'actions',     label: 'Actions',     href: 'army-actions.html' },
+        { id: 'procurement', label: 'Procurement', href: 'army-procurement.html' },
     ];
     const tabsHtml = TABS.map(t => {
         const isActive = t.id === activeTab;
