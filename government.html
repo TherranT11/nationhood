@@ -81,7 +81,7 @@ import { EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinis
 import { PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game/protest.js';
 import { POSITIVE_TRAITS } from './js/game/party-leadership.js';
 import { calculateBillSupport, computeBillCostTotals, enactBill, evaluateBillVote } from './js/game/bills.js';
-import { calculateNationalBudget, computeIncomeTaxRevenue, computeCorporateTaxPerCorp, computeInteriorInfraAnnualCost } from './js/game/budget.js';
+import { calculateNationalBudget, computeIncomeTaxRevenue, computeCorporateTaxPerCorp, computeInteriorInfraAnnualCost, computePublicSectorWagesAnnual } from './js/game/budget.js';
 import { RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './js/game/diplomacy-constants.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
@@ -2731,14 +2731,7 @@ function _gbBuildCostRows(d) {
     // headline Balance would over-state by the transfer amount. Stored
     // raw → /1e9 to abstract for display alongside the other rows.
     const tradeObligationsAnnual = _gbToAbstract(d.recurringSentAnnual || 0);
-    // Public Sector Wages: monthly = (state_apparatus × wages) / 100,
-    // annual = monthly × TICKS_PER_YEAR. Scales linearly with both
-    // stats — a high state apparatus paying low wages costs less than
-    // a smaller civil service paying market rates. Stats clamp 0-100
-    // server-side; defensive ?? 0 handles missing rows.
-    const stateApparatus      = Number(currentNation?.state_apparatus) || 0;
-    const wagesStat           = Number(currentNation?.wages)   || 0;
-    const publicSectorWagesAnnual = (stateApparatus * wagesStat) / 100 * GAME_CONFIG.TICKS_PER_YEAR;
+    const publicSectorWagesAnnual = computePublicSectorWagesAnnual(currentNation);
     return [
         { key: 'public_sector_wages',  name: 'Public Sector Wages',     yr: publicSectorWagesAnnual,    descKey: 'publicSectorWages'    },
         { key: 'welfare_benefits',     name: 'Welfare Benefits',        yr: 0,                          descKey: 'welfareBenefits'      },
@@ -3174,6 +3167,28 @@ async function _gbSelectCategory(container, row, kind) {
                 k: 'Sport Stadiums & Infrastructure',
                 v: stadiumCost,
             });
+        }
+    }
+
+    // Public Sector Wages: not an aggregation of sub-costs — it's a
+    // formula on two stats (monthly = state_apparatus × wages ÷ 100).
+    // Surface the literal math plus the enacted State Apparatus policy,
+    // which shapes the state_apparatus stat that drives this line. No
+    // $-sub-rows: the law isn't itself a cost, so the composition bar is
+    // intentionally omitted for this row.
+    if (row.descKey === 'publicSectorWages' && currentNation) {
+        const sa = Math.round(Number(currentNation.state_apparatus) || 0);
+        const wg = Math.round(Number(currentNation.wages) || 0);
+        desc += ` Formula: State Apparatus ${sa} × Wages ${wg} ÷ 100 = ${_gbFmtCurrency(mo)} / mo · ${_gbFmtCurrency(row.yr)} / yr.`;
+        const saLaw = (_budgetData?.activeLaws || []).find(al =>
+            /state\s*apparatus/i.test(al?.policies?.law_category || '')
+            || /state\s*apparatus/i.test(al?.policies?.policy_name || '')
+        );
+        if (saLaw) {
+            const policyName = saLaw.policies?.policy_name || 'State Apparatus';
+            const optionName = saLaw.selected_option?.option_name;
+            const label = optionName ? `${policyName} — ${optionName}` : policyName;
+            desc += ` Current State Apparatus policy: ${label} — it shapes your State Apparatus stat over time, which in turn sets this cost.`;
         }
     }
 
