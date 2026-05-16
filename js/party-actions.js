@@ -3030,7 +3030,7 @@ async function openAllocateFundsModal(root) {
             .or('is_banned.is.null,is_banned.eq.false')
             .order('created_at', { ascending: true })
             .limit(1)
-            .maybeSingle();
+            .maybeSingle(),
     ]);
     if (mResp.error) loadError = mResp.error.message || 'Could not load ministry data.';
     // aResp "no rows" is a valid state (no army established), not an error;
