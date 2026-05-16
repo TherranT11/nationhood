@@ -81,7 +81,7 @@ import { EO_CONFIG, canIssueExecutiveOrder, getOverreachStatus, issueActingMinis
 import { PROTEST_CONFIG, executePublicAddress, executeEPOOnCrisis, executeNationalEmergencyOnProtest } from './js/game/protest.js';
 import { POSITIVE_TRAITS } from './js/game/party-leadership.js';
 import { calculateBillSupport, computeBillCostTotals, enactBill, evaluateBillVote } from './js/game/bills.js';
-import { calculateNationalBudget, computeIncomeTaxRevenue, computeCorporateTaxPerCorp, computeInteriorInfraAnnualCost } from './js/game/budget.js';
+import { calculateNationalBudget, computeIncomeTaxRevenue, computeCorporateTaxPerCorp, computeInteriorInfraAnnualCost, computePublicSectorWagesAnnual } from './js/game/budget.js';
 import { RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './js/game/diplomacy-constants.js';
 import { getPartyIconSVG, getPartyLogoHTML } from './js/party-icons.js';
 import { DOCTRINES, DOCTRINE_SECTORS, DOCTRINE_SECTOR_LABELS, DOCTRINE_COHESION_MAX, DOCTRINE_RENOUNCE_COOLDOWN, NUCLEAR_SECTOR, DOCTRINE_EVENTS, buildDoctrineEventText, getDoctrinesBySector, canAnnounceNuclearDoctrine } from './js/game/defense-doctrines.js';
@@ -2731,14 +2731,7 @@ function _gbBuildCostRows(d) {
     // headline Balance would over-state by the transfer amount. Stored
     // raw → /1e9 to abstract for display alongside the other rows.
     const tradeObligationsAnnual = _gbToAbstract(d.recurringSentAnnual || 0);
-    // Public Sector Wages: monthly = (state_apparatus × wages) / 100,
-    // annual = monthly × TICKS_PER_YEAR. Scales linearly with both
-    // stats — a high state apparatus paying low wages costs less than
-    // a smaller civil service paying market rates. Stats clamp 0-100
-    // server-side; defensive ?? 0 handles missing rows.
-    const stateApparatus      = Number(currentNation?.state_apparatus) || 0;
-    const wagesStat           = Number(currentNation?.wages)   || 0;
-    const publicSectorWagesAnnual = (stateApparatus * wagesStat) / 100 * GAME_CONFIG.TICKS_PER_YEAR;
+    const publicSectorWagesAnnual = computePublicSectorWagesAnnual(currentNation);
     return [
         { key: 'public_sector_wages',  name: 'Public Sector Wages',     yr: publicSectorWagesAnnual,    descKey: 'publicSectorWages'    },
         { key: 'welfare_benefits',     name: 'Welfare Benefits',        yr: 0,                          descKey: 'welfareBenefits'      },

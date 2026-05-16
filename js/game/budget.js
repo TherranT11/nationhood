@@ -60,6 +60,18 @@ export function computeCorporateTaxRevenue(nation, rateOverride, activeCorpCount
     return Math.max(0, rateRev) + computeCorporateTaxPerCorp(activeCorpCount);
 }
 
+/**
+ * Annual Public Sector Wages cost: monthly = (state_apparatus × wages) / 100,
+ * annual = monthly × ticks/year. Single source of truth — read by
+ * computePanelAnnualExpenditures (server per-tick debt) and
+ * _gbBuildCostRows in government.html (the displayed Costs panel) so the
+ * panel balance and the per-tick debt change can never diverge.
+ */
+export function computePublicSectorWagesAnnual(nation) {
+    return (Number(nation?.state_apparatus) || 0) * (Number(nation?.wages) || 0)
+        / 100 * GAME_CONFIG.TICKS_PER_YEAR;
+}
+
 export function calculateNationalBudget(nation, opts = {}) {
     // Phase 8.5.4: nation.budget is a cash balance. Each tick, the engine
     // adds computeIncomeTaxRevenue + computeCorporateTaxRevenue to it via
@@ -237,11 +249,7 @@ export async function computePanelAnnualExpenditures(supabase, nation) {
     }
     const stadiumAnnualCost = Number(nation.vola_stadium_annual_cost) || 0;
     const interiorInfra = await computeInteriorInfraAnnualCost(supabase, nation);
-    // Public Sector Wages: monthly = (state_apparatus × wages) / 100,
-    // annual = monthly × 12. Mirrors _gbBuildCostRows in government.html
-    // exactly so the panel's monthly balance and the per-tick debt
-    // change always agree.
-    const publicSectorWagesAnnual = (Number(nation?.state_apparatus) || 0) * (Number(nation?.wages) || 0) / 100 * 12;
+    const publicSectorWagesAnnual = computePublicSectorWagesAnnual(nation);
     return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost + interiorInfra.totalAnnual + publicSectorWagesAnnual;
 }
 
