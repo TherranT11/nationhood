@@ -31944,8 +31944,14 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // Safety net: catch any floor bills that resolveExpiredVotes missed
         // (e.g. due to complex query failure or thrown error). Uses simple queries per-bill.
+        // Hoisted so the resolutions it produces are merged into the sector-shift
+        // input below — same reasoning as deskResults / royalResults. A bill that
+        // only ever resolves via this path (resolveExpiredVotes threw for the
+        // nation) still enacts, so without this its sector popularity silently
+        // never moves.
+        let stuckResults = [];
         try {
-            const stuckResults = await resolveStuckFloorBills(supabase, nation.id);
+            stuckResults = await resolveStuckFloorBills(supabase, nation.id);
             if (stuckResults.length > 0) {
                 summary.resolutions.push({ nation: nation.name, bills: stuckResults, safetyNet: true });
             }
@@ -32202,12 +32208,16 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // in presidential systems first go to president_desk (resolveExpiredVotes
         // emits result: 'president_desk', filtered out by normalizeResult) and
         // are auto-signed N ticks later by processPresidentDesk. Same flow for
-        // monarchies via processRoyalAssent. Without folding those results
-        // back in, every auto-passed bill silently skipped its sector shifts.
+        // monarchies via processRoyalAssent. Same for stuckResults: a bill the
+        // main resolver missed (its complex query threw for the nation) is still
+        // enacted by the safety net, so its shifts must fold back in too.
+        // Without folding these results back in, every auto-passed / safety-net
+        // bill silently skipped its sector shifts.
         const mergedResolutions = [
             ...resolutions,
             ...(deskResults || []).filter(r => r && r.billId && r.result),
             ...(royalResults || []).filter(r => r && r.billId && r.result),
+            ...(stuckResults || []).filter(r => r && r.billId && r.result),
         ];
         try {
             await processSectorShifts(supabase, nation.id, mergedResolutions);
