@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Army Actions | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-0: #0e0e0c; --bg-2: #1a1a17; --bg-card: #1a1a17;
+  --text-bright: #f0efe6; --text-primary: #c4c2b8; --text-secondary: #888;
+  --text-dim: #4a4940; --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08); --army: #b6533f;
+  --font-mono: 'JetBrains Mono', monospace; --font-sans: 'IBM Plex Sans', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg-0); color: var(--text-primary); font-family: var(--font-sans); }
+.aa-wrap { max-width: 1160px; margin: 0 auto; padding: 22px 24px 60px; }
+.aa-head { display: flex; align-items: baseline; gap: 12px; padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-1); margin-bottom: 18px; }
+.aa-head__eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.16em;
+  color: var(--army); font-weight: 700; text-transform: uppercase; }
+.aa-head__faction { font-size: 13px; color: var(--text-secondary); }
+.aa-grid { display: grid; grid-template-columns: 280px 1fr; gap: 18px; }
+.aa-rail { display: flex; flex-direction: column; gap: 8px; }
+.aa-officer { text-align: left; background: var(--bg-card); border: 1px solid var(--border-0);
+  border-left: 2px solid var(--border-1); padding: 12px 14px; cursor: pointer; color: inherit;
+  font: inherit; transition: border-color .12s, background .12s; }
+.aa-officer:hover { border-color: var(--border-1); }
+.aa-officer.is-sel { border-left-color: var(--army); background: rgba(182,83,63,0.05); }
+.aa-officer__role { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.12em;
+  color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; }
+.aa-officer__name { font-size: 14px; font-weight: 600; color: var(--text-bright); }
+.aa-officer__meta { font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary); margin-top: 2px; }
+.aa-panel { background: var(--bg-card); border: 1px solid var(--border-0); padding: 24px 26px; min-height: 320px; }
+.aa-panel__top { display: flex; align-items: center; gap: 16px; padding-bottom: 18px;
+  border-bottom: 1px solid var(--border-0); margin-bottom: 18px; }
+.aa-avatar { width: 54px; height: 54px; flex: none; border: 1px solid var(--border-1);
+  display: flex; align-items: center; justify-content: center; font-family: var(--font-mono);
+  font-size: 18px; font-weight: 700; color: var(--army); }
+.aa-panel__role { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
+  color: var(--army); text-transform: uppercase; font-weight: 700; }
+.aa-panel__name { font-size: 22px; font-weight: 700; color: var(--text-bright); margin-top: 3px; }
+.aa-panel__sub { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+.aa-panel__desc { font-size: 13px; line-height: 1.6; color: var(--text-primary); }
+.aa-loading { padding: 60px; text-align: center; font-family: var(--font-mono);
+  font-size: 12px; color: var(--text-dim); }
+</style>
+  <script type="module" crossorigin src="/assets/army-actions-CDZLE1Qn.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
+  <link rel="modulepreload" crossorigin href="/assets/factions-1eoRseVF.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-oN1e812_.js">
+  <link rel="modulepreload" crossorigin href="/assets/military-topbar-CguCpjoQ.js">
+  <link rel="modulepreload" crossorigin href="/assets/config-BdOpHGNJ.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-types-BeJIFjWQ.js">
+  <link rel="modulepreload" crossorigin href="/assets/stats-CBT3qQox.js">
+  <link rel="modulepreload" crossorigin href="/assets/political-actions-DwPhF52h.js">
+</head>
+<body>
+  <div id="mil-topbar-host"></div>
+  <div class="aa-wrap" id="aa-root">
+    <div class="aa-loading">Loading army command…</div>
+  </div>
+
+</body>
+</html>
