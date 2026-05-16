@@ -1274,7 +1274,7 @@ function renderPage(root) {
         } else if (actionId === 'debt_payment') {
             openDebtPaymentModal(root, faction);
         } else if (actionId === 'allocate_funds') {
-            openAllocateFundsModal(root, faction);
+            openAllocateFundsModal(root);
         } else if (actionId === 'invest_in_sports_culture') {
             openVolaInvestmentModal(root, faction);
         } else if (actionId === 'expand_stadium_infrastructure') {
@@ -3002,7 +3002,7 @@ async function openDebtPaymentModal(root, faction) {
 
 // ════════════════════════ ALLOCATE FUNDS (Minister of Defense) ════════════════════════
 
-async function openAllocateFundsModal(root, faction) {
+async function openAllocateFundsModal(root) {
     const overlay = document.getElementById('pa-allocate-funds-modal');
     if (!overlay) return;
 
@@ -3016,13 +3016,13 @@ async function openAllocateFundsModal(root, faction) {
     let loadError = '';
     const [mResp, aResp] = await Promise.all([
         _supabase.from('ministries')
-            .select('id, party_id, discretionary_balance')
+            .select('discretionary_balance')
             .eq('nation_id', _state.nation.id)
             .eq('ministry_key', 'defense')
             .eq('is_active', true)
             .maybeSingle(),
         _supabase.from('factions')
-            .select('id, faction_name, party_funds')
+            .select('party_funds')
             .eq('nation_id', _state.nation.id)
             .eq('faction_type', 'military')
             .eq('branch', 'army')
