@@ -1378,7 +1378,7 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
     // schedule one if none exists. Healthy short caretakers (election
     // within the formation window) are untouched — no behaviour change.
     if (coalition && coalition.status === 'caretaker') {
-        const { data: soonest } = await supabase
+        const { data: soonest, error: soonestErr } = await supabase
             .from('elections')
             .select('id, election_tick')
             .eq('nation_id', nation.id)
@@ -1386,6 +1386,15 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
             .order('election_tick', { ascending: true })
             .limit(1)
             .maybeSingle();
+
+        // A failed read must NOT be treated as "no election exists" — that
+        // would fire a spurious snap election. Bail to no-action this tick
+        // (a caretaker waiting one more tick is harmless; the next tick
+        // retries) — matches the codebase's transient-DB-error discipline.
+        if (soonestErr) {
+            console.warn(`Safety net: scheduled-election lookup failed for ${nation.name} (skipping this tick):`, soonestErr.message);
+            return null;
+        }
 
         if (!soonest) {
             // Caretaker with no resolving election at all — schedule one.
