@@ -1367,28 +1367,58 @@ export async function processGovernmentVacancy(supabase, nation, currentTick) {
     // Check for active coalition
     const coalition = await fetchActiveCoalition(supabase, nation.id);
 
-    // Safety net: detect stale caretaker government with overdue election
+    // Safety net: self-heal a STUCK caretaker. A healthy caretaker
+    // resolves via a snap election scheduled ~FORMATION_DEADLINE_TICKS
+    // out. The stuck-forever class (Dravka, Avelia) is a caretaker whose
+    // soonest scheduled election is overdue, pathologically far out, or
+    // missing entirely — the old net only handled the overdue case
+    // (.lte election_tick currentTick), so a future-dated election
+    // (tick 112 vs cur 92) left the caretaker frozen indefinitely.
+    // Generalized: also pull a far-future election forward, and
+    // schedule one if none exists. Healthy short caretakers (election
+    // within the formation window) are untouched — no behaviour change.
     if (coalition && coalition.status === 'caretaker') {
-        const { data: overdueElection } = await supabase
+        const { data: soonest, error: soonestErr } = await supabase
             .from('elections')
             .select('id, election_tick')
             .eq('nation_id', nation.id)
             .eq('status', 'scheduled')
-            .lte('election_tick', currentTick)
             .order('election_tick', { ascending: true })
             .limit(1)
             .maybeSingle();
 
-        if (overdueElection) {
-            const overdueBy = currentTick - overdueElection.election_tick;
-            if (overdueBy >= 2) {
+        // A failed read must NOT be treated as "no election exists" — that
+        // would fire a spurious snap election. Bail to no-action this tick
+        // (a caretaker waiting one more tick is harmless; the next tick
+        // retries) — matches the codebase's transient-DB-error discipline.
+        if (soonestErr) {
+            console.warn(`Safety net: scheduled-election lookup failed for ${nation.name} (skipping this tick):`, soonestErr.message);
+            return null;
+        }
+
+        if (!soonest) {
+            // Caretaker with no resolving election at all — schedule one.
+            await supabase.rpc('schedule_snap_election', {
+                p_nation_id: nation.id,
+                p_election_tick: currentTick + 1,
+                p_preserve_presidential: false,
+            }).then(({ error }) => {
+                if (error) console.warn(`Safety net: schedule_snap_election failed for ${nation.name}:`, error.message);
+            });
+            console.log(`Safety net: caretaker ${nation.name} had no scheduled election — scheduled one at tick ${currentTick + 1}`);
+        } else {
+            const ticksUntil = soonest.election_tick - currentTick;
+            if (ticksUntil < 0 || ticksUntil > FORMATION_DEADLINE_TICKS) {
                 await supabase.from('elections')
                     .update({ election_tick: currentTick + 1 })
-                    .eq('id', overdueElection.id);
-                console.log(`Safety net: rescheduled stale caretaker election ${overdueElection.id} to tick ${currentTick + 1} (was overdue by ${overdueBy} ticks)`);
+                    .eq('id', soonest.id)
+                    .then(({ error }) => {
+                        if (error) console.warn(`Safety net: reschedule failed for ${nation.name}:`, error.message);
+                    });
+                console.log(`Safety net: caretaker ${nation.name} election was ${ticksUntil} ticks out — pulled to tick ${currentTick + 1}`);
             }
         }
-        return null; // Caretaker is a valid government state
+        return null; // Caretaker remains valid until the election resolves
     }
 
     // Emergency minority government auto-snap timer. A player-formed
