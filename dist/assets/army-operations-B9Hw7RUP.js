@@ -1,0 +1,7 @@
+import"./supabase-client-CiYoFhIh.js";import{b as c}from"./army-page-YIBkV7Iz.js";import"./factions-1eoRseVF.js";import"./military-topbar-D-x6nJfr.js";import"./utils-oN1e812_.js";function a(t){return String(t??"").replace(/[&<>"']/g,e=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[e])}const i=[{key:"oob",label:"Order of Battle",titlePlain:"Order of ",titleAccent:"Battle",empty:"No order of battle established yet."},{key:"conflict",label:"Conflict",titlePlain:"",titleAccent:"Conflict",empty:"No active conflicts."}];let n="oob";function l(){const t=document.getElementById("ao-root");if(!t)return;const e=i.find(o=>o.key===n)||i[0],s=i.map(o=>`<button class="ao-subtab${o.key===n?" is-sel":""}" data-subtab="${a(o.key)}">${a(o.label)}</button>`).join("");t.innerHTML=`
+    <div class="ao-subtabs">${s}</div>
+    <div class="ao-head">
+      <div class="ao-head__eyebrow">— Operations —</div>
+      <div class="ao-head__title">${a(e.titlePlain)}<em>${a(e.titleAccent)}</em></div>
+    </div>
+    <div class="ao-empty">${a(e.empty)}</div>`,t.querySelectorAll("[data-subtab]").forEach(o=>{o.addEventListener("click",()=>{n=o.getAttribute("data-subtab"),l()})})}async function r(){await c({activeTab:"operations"})&&l()}r().catch(t=>{console.error("army-operations init failed:",t);const e=document.getElementById("ao-root");e&&(e.innerHTML='<div class="ao-loading">Failed to load operations.</div>')});
