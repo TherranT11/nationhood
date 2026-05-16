@@ -190,6 +190,7 @@ export function renderMilitaryTopBar(container, opts = {}) {
         { id: 'home',        label: 'Home',        href: homeUrl },
         { id: 'actions',     label: 'Actions',     href: 'army-actions.html' },
         { id: 'procurement', label: 'Procurement', href: 'army-procurement.html' },
+        { id: 'operations',  label: 'Operations',  href: 'army-operations.html' },
     ];
     const tabsHtml = TABS.map(t => {
         const isActive = t.id === activeTab;
