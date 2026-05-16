@@ -2673,7 +2673,11 @@ const _GB_DESCKEY_TO_LAW_CATEGORY_REGEX = {
 // deducted server-side but NOT shown in this cost panel (the displayed
 // Balance would over-state by that amount). Keep tax options at $0
 // ongoing, or revisit this exclusion.
-const _GB_INCOME_SIDE_LAW_CATEGORY = /tax/i;
+//
+// Word-boundary match (not a bare substring) so a program category that
+// merely contains the letters "tax" (e.g. "Syntax") isn't silently
+// dropped from the cost panel. Matches Tax / Taxes / Taxation.
+const _GB_INCOME_SIDE_LAW_CATEGORY = /\btax(es|ation)?\b/i;
 
 // Annualize an active law's per-tick ongoing cost. The only live
 // cost column is policy_options.ongoing_base_cost — both
