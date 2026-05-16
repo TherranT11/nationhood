@@ -1922,13 +1922,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // main resolver missed (its complex query threw for the nation) is still
         // enacted by the safety net, so its shifts must fold back in too.
         // Without folding these results back in, every auto-passed / safety-net
-        // bill silently skipped its sector shifts.
+        // bill silently skipped its sector shifts. One filter for all sources:
+        // processSectorShifts re-filters internally, so this only needs to drop
+        // null/shapeless entries before it maps over them.
         const mergedResolutions = [
             ...resolutions,
-            ...(deskResults || []).filter(r => r && r.billId && r.result),
-            ...(royalResults || []).filter(r => r && r.billId && r.result),
-            ...(stuckResults || []).filter(r => r && r.billId && r.result),
-        ];
+            ...(deskResults || []),
+            ...(royalResults || []),
+            ...(stuckResults || []),
+        ].filter(r => r && r.billId && r.result);
         try {
             await processSectorShifts(supabase, nation.id, mergedResolutions);
         } catch (sectorErr) {
