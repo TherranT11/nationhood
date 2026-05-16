@@ -1859,7 +1859,7 @@ const AIRCRAFT_RANGE_KM      = { regional: 800,   narrowbody: 4000,  widebody: 1
 const AIRCRAFT_LABEL         = { regional: 'Regional', narrowbody: 'Narrowbody', widebody: 'Widebody' };
 const MAINT_TIER_ANNUAL      = { basic: 12000, standard: 30000, premium: 48000 };
 const TICKS_PER_YEAR         = 12;
-const FLIGHTS_PER_TICK       = 30; // 1 round-trip per day, fluff narrative on per-tick (per-month) data
+const FLIGHTS_PER_TICK       = 30; // round-trips per tick (≈1/day for a month). Multiplies per-plane capacity, lane demand & competitor capacity. MUST match v_flights_per_tick in process_airline_route_tick (20270109_airline_flights_per_tick_scaling.sql).
 const CAPITAL_BONUS          = 2;
 
 let _availableRoutesCache = [];   // [{cityA, cityB, nation, range}]
@@ -2270,7 +2270,7 @@ function _renderRouteCard(r) {
         <div class="ao-route-section-mini">
           <div class="ao-route-section-mini-h">Performance ${r.last_processed_tick != null ? '<span class="ao-route-ac-meta">(as of tick ' + r.last_processed_tick + ')</span>' : '<span class="ao-route-ac-meta">(awaiting first corp tick)</span>'}</div>
           <div class="ao-route-ac-row">
-            <div>Daily flights <span class="ao-route-ac-meta">(${totalPlanes} plane${totalPlanes === 1 ? '' : 's'} × 1/day)</span></div>
+            <div>Flights / tick <span class="ao-route-ac-meta">(${totalPlanes} plane${totalPlanes === 1 ? '' : 's'} × ${FLIGHTS_PER_TICK}/tick)</span></div>
             <div><strong>${dailyFlights.toLocaleString()}</strong></div>
           </div>
           <div class="ao-route-ac-row">
@@ -2361,7 +2361,9 @@ async function _hydrateRouteModalCtx(corpId, pair) {
             }
         }
     }
-    const laneShare = totalWeight > 0 ? pool * (myWeight / totalWeight) : 0;
+    // ×FLIGHTS_PER_TICK: a tick is FLIGHTS_PER_TICK round-trips' worth
+    // of demand. Mirrors v_lane_share in process_airline_route_tick.
+    const laneShare = (totalWeight > 0 ? pool * (myWeight / totalWeight) : 0) * FLIGHTS_PER_TICK;
 
     // Competitor seats on this lane (sum of OTHER airlines' assigned
     // seats; my own won't show because I have no active route here yet).
@@ -2372,6 +2374,9 @@ async function _hydrateRouteModalCtx(corpId, pair) {
                          + (r.aircraft_narrowbody || 0) * AIRCRAFT_SEATS.narrowbody
                          + (r.aircraft_widebody   || 0) * AIRCRAFT_SEATS.widebody;
     }
+    // Competitors fly the same FLIGHTS_PER_TICK schedule; scale to
+    // monthly capacity so unmet demand stays consistent with laneShare.
+    competitorSeats *= FLIGHTS_PER_TICK;
 
     // Idle aircraft per class.
     const idle = { regional: 0, narrowbody: 0, widebody: 0 };
@@ -2406,7 +2411,9 @@ function _routeModalRecompute() {
     if (n !== nC) document.getElementById('ao-ac-narrowbody').value = nC;
     if (w !== wC) document.getElementById('ao-ac-widebody').value   = wC;
 
-    const totalSeats = rC * AIRCRAFT_SEATS.regional + nC * AIRCRAFT_SEATS.narrowbody + wC * AIRCRAFT_SEATS.widebody;
+    // ×FLIGHTS_PER_TICK: per-plane seats are one flight; a tick is
+    // FLIGHTS_PER_TICK round-trips. Mirrors v_my_seats server-side.
+    const totalSeats = (rC * AIRCRAFT_SEATS.regional + nC * AIRCRAFT_SEATS.narrowbody + wC * AIRCRAFT_SEATS.widebody) * FLIGHTS_PER_TICK;
     const totalCount = rC + nC + wC;
 
     // Demand → pax → revenue → costs → profit.
