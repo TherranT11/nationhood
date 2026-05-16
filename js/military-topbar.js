@@ -71,7 +71,12 @@ export function renderMilitaryTopBar(container, opts = {}) {
     // Nav tabs — only Home for now. Active tab dashboard URL is read off
     // BRANCH_DASHBOARDS so adding navy/air-force pages later is one entry.
     const homeUrl = BRANCH_DASHBOARDS[faction?.branch] || 'army-dashboard.html';
-    const TABS = [{ id: 'home', label: 'Home', href: homeUrl }];
+    // army-actions.html is army-only (Phase 1). When navy/air-force pages
+    // land this becomes a per-branch map like BRANCH_DASHBOARDS.
+    const TABS = [
+        { id: 'home',    label: 'Home',    href: homeUrl },
+        { id: 'actions', label: 'Actions', href: 'army-actions.html' },
+    ];
     const tabsHtml = TABS.map(t => {
         const isActive = t.id === activeTab;
         return `<a href="${t.href}" class="mil-nav-tab${isActive ? ' active' : ''}">${escHtml(t.label)}</a>`;

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Army Actions | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-0: #0e0e0c; --bg-2: #1a1a17; --bg-card: #1a1a17;
+  --text-bright: #f0efe6; --text-primary: #c4c2b8; --text-secondary: #888;
+  --text-dim: #4a4940; --border-0: rgba(255,255,255,0.06);
+  --border-1: rgba(255,255,255,0.08); --army: #b6533f;
+  --font-mono: 'JetBrains Mono', monospace; --font-sans: 'IBM Plex Sans', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg-0); color: var(--text-primary); font-family: var(--font-sans); }
+.aa-wrap { max-width: 1160px; margin: 0 auto; padding: 22px 24px 60px; }
+.aa-head { display: flex; align-items: baseline; gap: 12px; padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-1); margin-bottom: 18px; }
+.aa-head__eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.16em;
+  color: var(--army); font-weight: 700; text-transform: uppercase; }
+.aa-head__faction { font-size: 13px; color: var(--text-secondary); }
+.aa-grid { display: grid; grid-template-columns: 280px 1fr; gap: 18px; }
+.aa-rail { display: flex; flex-direction: column; gap: 8px; }
+.aa-officer { text-align: left; background: var(--bg-card); border: 1px solid var(--border-0);
+  border-left: 2px solid var(--border-1); padding: 12px 14px; cursor: pointer; color: inherit;
+  font: inherit; transition: border-color .12s, background .12s; }
+.aa-officer:hover { border-color: var(--border-1); }
+.aa-officer.is-sel { border-left-color: var(--army); background: rgba(182,83,63,0.05); }
+.aa-officer__role { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.12em;
+  color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; }
+.aa-officer__name { font-size: 14px; font-weight: 600; color: var(--text-bright); }
+.aa-officer__meta { font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary); margin-top: 2px; }
+.aa-panel { background: var(--bg-card); border: 1px solid var(--border-0); padding: 24px 26px; min-height: 320px; }
+.aa-panel__top { display: flex; align-items: center; gap: 16px; padding-bottom: 18px;
+  border-bottom: 1px solid var(--border-0); margin-bottom: 18px; }
+.aa-avatar { width: 54px; height: 54px; flex: none; border: 1px solid var(--border-1);
+  display: flex; align-items: center; justify-content: center; font-family: var(--font-mono);
+  font-size: 18px; font-weight: 700; color: var(--army); }
+.aa-panel__role { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
+  color: var(--army); text-transform: uppercase; font-weight: 700; }
+.aa-panel__name { font-size: 22px; font-weight: 700; color: var(--text-bright); margin-top: 3px; }
+.aa-panel__sub { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+.aa-panel__desc { font-size: 13px; line-height: 1.6; color: var(--text-primary); }
+.aa-loading { padding: 60px; text-align: center; font-family: var(--font-mono);
+  font-size: 12px; color: var(--text-dim); }
+</style>
+</head>
+<body>
+  <div id="mil-topbar-host"></div>
+  <div class="aa-wrap" id="aa-root">
+    <div class="aa-loading">Loading army command…</div>
+  </div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { isFactionInactive } from './js/game/factions.js';
+import { renderMilitaryTopBar } from './js/military-topbar.js';
+import { getNationNames } from './js/game/political-actions.js';
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// Officer roster definition. Chief of Staff is the army faction's
+// leader_* (single source, generated at army-join — never regenerated
+// here). The other three are auto-generated + locked in on first load.
+const ROSTER = [
+  { key: 'cos',   role: 'Chief of Staff',
+    desc: 'Principal military advisor; heads the army’s command structure.' },
+  { key: 'qm',    role: 'Quartermaster General', col: 'army_qm',
+    desc: 'Logistics, supply lines, and matériel.' },
+  { key: 'intel', role: 'Director of Intelligence', col: 'army_intel',
+    desc: 'Reconnaissance, counter-intelligence, and threat assessment.' },
+  { key: 'cmd',   role: 'Commanding General', col: 'army_cmd',
+    desc: 'Field command of deployed forces.' },
+];
+
+let _faction = null;
+let _selected = 'cos';
+
+function officerName(o) {
+  if (o.key === 'cos') {
+    return { first: _faction.leader_first_name, last: _faction.leader_last_name, age: _faction.leader_age };
+  }
+  return {
+    first: _faction[`${o.col}_first_name`],
+    last:  _faction[`${o.col}_last_name`],
+    age:   _faction[`${o.col}_age`],
+  };
+}
+
+function render() {
+  const root = document.getElementById('aa-root');
+  if (!root) return;
+  const railHtml = ROSTER.map(o => {
+    const n = officerName(o);
+    const full = (n.first && n.last) ? `${n.first} ${n.last}` : '—';
+    return `<button class="aa-officer${_selected === o.key ? ' is-sel' : ''}" data-officer="${o.key}">
+      <div class="aa-officer__role">${esc(o.role)}</div>
+      <div class="aa-officer__name">${esc(full)}</div>
+      <div class="aa-officer__meta">${n.age ? 'Age ' + esc(n.age) : 'Unassigned'}</div>
+    </button>`;
+  }).join('');
+
+  const sel = ROSTER.find(o => o.key === _selected) || ROSTER[0];
+  const sn = officerName(sel);
+  const selFull = (sn.first && sn.last) ? `${sn.first} ${sn.last}` : '—';
+  const initials = (sn.first && sn.last) ? (sn.first[0] + sn.last[0]).toUpperCase() : '—';
+  const nationName = _faction.__nation_name || '';
+
+  root.innerHTML = `
+    <div class="aa-head">
+      <span class="aa-head__eyebrow">Army Command</span>
+      <span class="aa-head__faction">${esc(_faction.faction_name || 'Army')}${nationName ? ' · ' + esc(nationName) : ''}</span>
+    </div>
+    <div class="aa-grid">
+      <div class="aa-rail">${railHtml}</div>
+      <div class="aa-panel">
+        <div class="aa-panel__top">
+          <div class="aa-avatar">${esc(initials)}</div>
+          <div>
+            <div class="aa-panel__role">${esc(sel.role)}</div>
+            <div class="aa-panel__name">${esc(selFull)}</div>
+            <div class="aa-panel__sub">${sn.age ? 'Age ' + esc(sn.age) : 'Unassigned'}${nationName ? ' · ' + esc(nationName) : ''}</div>
+          </div>
+        </div>
+        <p class="aa-panel__desc">${esc(sel.desc)}</p>
+      </div>
+    </div>`;
+
+  root.querySelectorAll('[data-officer]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _selected = btn.getAttribute('data-officer');
+      render();
+    });
+  });
+}
+
+async function init() {
+  const { data: { user } } = await _supabase.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  const { data: faction, error: factionErr } = await _supabase
+    .from('factions')
+    .select('id, faction_type, faction_name, nation_id, abandoned_at, is_banned, branch, leader_first_name, leader_last_name, leader_age, army_qm_first_name, army_qm_last_name, army_qm_age, army_intel_first_name, army_intel_last_name, army_intel_age, army_cmd_first_name, army_cmd_last_name, army_cmd_age')
+    .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+    .eq('faction_type', 'military')
+    .eq('branch', 'army')
+    .is('abandoned_at', null)
+    .maybeSingle();
+
+  if (factionErr) { console.warn('Army faction lookup failed:', factionErr.message); window.location.href = 'dashboard.html'; return; }
+  if (!faction || isFactionInactive(faction)) { window.location.href = 'dashboard.html'; return; }
+  _faction = faction;
+
+  const [nationRes, shardRes, allFactionsRes] = await Promise.all([
+    _supabase.from('nations').select('name, capital, flag_url, nation_profiles(flag_url)').eq('id', faction.nation_id).maybeSingle(),
+    _supabase.from('shard').select('current_date, current_tick').eq('name', 'Alpha Shard').maybeSingle(),
+    _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, branch, abandoned_at, is_banned, nation_id, linked_user_id').or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
+  ]);
+  if (nationRes.error) console.warn('Nation lookup failed:', nationRes.error.message);
+  const nation = nationRes.data || null;
+  _faction.__nation_name = nation?.name || '';
+
+  // Lazy-generate + lock in any missing officer (QM / Intel / Cmd).
+  // The Chief of Staff (leader_*) was generated at army-join and is
+  // never regenerated here. Generation needs the nation's name pool;
+  // if the nation lookup failed we render placeholders and let the
+  // next load try again rather than write garbage names.
+  if (nation?.name) {
+    const { firstNames, lastNames } = getNationNames(nation.name);
+    const updates = {};
+    for (const o of ROSTER) {
+      if (o.key === 'cos') continue;
+      if (!_faction[`${o.col}_first_name`]) {
+        const f = firstNames[Math.floor(Math.random() * firstNames.length)];
+        const l = lastNames[Math.floor(Math.random() * lastNames.length)];
+        const a = 50 + Math.floor(Math.random() * 26); // 50..75, same band as the Chief
+        updates[`${o.col}_first_name`] = f;
+        updates[`${o.col}_last_name`]  = l;
+        updates[`${o.col}_age`]        = a;
+        _faction[`${o.col}_first_name`] = f;
+        _faction[`${o.col}_last_name`]  = l;
+        _faction[`${o.col}_age`]        = a;
+      }
+    }
+    if (Object.keys(updates).length > 0) {
+      await _supabase.from('factions').update(updates).eq('id', _faction.id)
+        .then(({ error }) => {
+          if (error) console.warn('Army officer lock-in failed (will retry next load):', error.message);
+        });
+    }
+  }
+
+  const np = nation?.nation_profiles;
+  const profileFlag = Array.isArray(np) ? np[0]?.flag_url : np?.flag_url;
+  const flagUrl = profileFlag || nation?.flag_url || (nation?.name ? `assets/flags/${nation.name}.png` : '');
+  renderMilitaryTopBar(document.getElementById('mil-topbar-host'), {
+    faction,
+    nation,
+    shard: shardRes.data || null,
+    allUserFactions: (allFactionsRes.data || []).filter(f => !isFactionInactive(f)),
+    activeTab: 'actions',
+    flagUrl,
+  });
+
+  render();
+}
+
+init().catch(err => {
+  console.error('army-actions init failed:', err);
+  const root = document.getElementById('aa-root');
+  if (root) root.innerHTML = '<div class="aa-loading">Failed to load army command.</div>';
+});
+</script>
+</body>
+</html>
