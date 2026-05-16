@@ -1205,6 +1205,7 @@ function renderPage(root) {
             <div class="pa-modal-overlay" id="pa-vola-host-bid-modal"></div>
             <div class="pa-modal-overlay" id="pa-debt-payment-modal"></div>
             <div class="pa-modal-overlay" id="pa-expand-infra-modal"></div>
+            <div class="pa-modal-overlay" id="pa-allocate-funds-modal"></div>
         `,
     });
 
@@ -1272,6 +1273,8 @@ function renderPage(root) {
             triggerImpeachPresident();
         } else if (actionId === 'debt_payment') {
             openDebtPaymentModal(root, faction);
+        } else if (actionId === 'allocate_funds') {
+            openAllocateFundsModal(root, faction);
         } else if (actionId === 'invest_in_sports_culture') {
             openVolaInvestmentModal(root, faction);
         } else if (actionId === 'expand_stadium_infrastructure') {
@@ -1540,6 +1543,19 @@ const _SOE_ACTION_ENTRY = {
     tags: [],
 };
 
+// Minister of Defense → distribute discretionary budget to a military
+// branch faction's treasury (factions.party_funds), 1:1. Army only for
+// now; Navy / Air Force are shown greyed out in the modal. Backed by
+// the allocate_defense_funds RPC.
+const _ALLOCATE_FUNDS_ENTRY = {
+    id: 'allocate_funds',
+    name: 'Allocate Funds',
+    desc: 'Distribute the Defense Ministry discretionary budget to a military branch. Funds move 1:1 into that branch faction’s treasury. Army only for now — Navy and Air Force are not yet established.',
+    cost: 'From budget',
+    costColor: '#c8a832',
+    tags: ['MILITARY', 'COSTS BUDGET'],
+};
+
 const _MINISTRY_ACTION_REGISTRY = {
     prime_minister: [
         {
@@ -1560,7 +1576,7 @@ const _MINISTRY_ACTION_REGISTRY = {
         },
     ],
     president: [],
-    defense:        [_SOE_ACTION_ENTRY],
+    defense:        [_ALLOCATE_FUNDS_ENTRY, _SOE_ACTION_ENTRY],
     transportation: [_SOE_ACTION_ENTRY],
     finance: [
         {
@@ -1707,6 +1723,12 @@ function ministryActionLockReason(actionId, faction, roleDescriptor) {
         const debtRaw = Number(_state?.nation?.debt ?? 0);
         if (debtRaw <= 0) {
             return 'No national debt to pay down.';
+        }
+    }
+    if (actionId === 'allocate_funds') {
+        const balance = Number(roleDescriptor?.discretionaryBalance ?? 0);
+        if (balance < 1_000_000) {
+            return 'Defense Ministry discretionary budget is $0 — pass a funding bill first.';
         }
     }
     if (actionId === 'invest_in_sports_culture') {
@@ -2971,6 +2993,207 @@ async function openDebtPaymentModal(root, faction) {
             case 'insufficient_balance':  return 'Not enough discretionary budget for fee + payment.';
             case 'no_debt':               return 'There is no national debt to pay down.';
             default:                      return reason || '';
+        }
+    }
+
+    overlay.classList.add('active');
+    render();
+}
+
+// ════════════════════════ ALLOCATE FUNDS (Minister of Defense) ════════════════════════
+
+async function openAllocateFundsModal(root, faction) {
+    const overlay = document.getElementById('pa-allocate-funds-modal');
+    if (!overlay) return;
+
+    // Raw dollars → unified $1 = $1M abstract scale (same convention as
+    // the debt modal / fmtDiscretionaryBalance / allocate_defense_funds).
+    const toAbstract = (raw) => Math.floor((Number(raw) || 0) / 1_000_000);
+    const nationName = _state?.nation?.name || 'the Nation';
+
+    // Fresh ministry + army-faction rows so the modal reflects current
+    // balances rather than a cached descriptor.
+    let loadError = '';
+    const [mResp, aResp] = await Promise.all([
+        _supabase.from('ministries')
+            .select('id, party_id, discretionary_balance')
+            .eq('nation_id', _state.nation.id)
+            .eq('ministry_key', 'defense')
+            .eq('is_active', true)
+            .maybeSingle(),
+        _supabase.from('factions')
+            .select('id, faction_name, party_funds')
+            .eq('nation_id', _state.nation.id)
+            .eq('faction_type', 'military')
+            .eq('branch', 'army')
+            .is('abandoned_at', null)
+            .or('is_banned.is.null,is_banned.eq.false')
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+    ]);
+    if (mResp.error) loadError = mResp.error.message || 'Could not load ministry data.';
+    // aResp "no rows" is a valid state (no army established), not an error;
+    // only a real query failure counts.
+    if (aResp.error && aResp.error.code !== 'PGRST116') {
+        loadError = loadError || aResp.error.message || 'Could not load army faction.';
+    }
+
+    const balanceAbstract = toAbstract(mResp.data?.discretionary_balance);
+    const armyRow         = aResp.data || null;
+    const armyExists      = !!armyRow;
+    const armyBudget      = toAbstract(armyRow?.party_funds);
+    const maxAlloc        = Math.max(0, balanceAbstract);
+
+    let submitting = false;
+    let result = null;     // { allocated, newBalance, newArmyFunds }
+    let inputValue = '';
+    let errorMsg = loadError;
+
+    function parseInput() {
+        const n = parseInt(inputValue, 10);
+        return Number.isFinite(n) ? n : null;
+    }
+    function isValid() {
+        const n = parseInput();
+        return armyExists && n != null && n >= 1 && n <= maxAlloc;
+    }
+
+    function branchBlock(label, opts) {
+        // opts: { enabled, brigades, budget, note }
+        const dim = opts.enabled ? '' : 'opacity:0.45;';
+        return `
+            <div style="border:1px solid var(--border-main);padding:10px 12px;${dim}">
+                <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--text-bright);letter-spacing:0.04em;">${esc(label)}</div>
+                ${opts.note
+                    ? `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:4px;">${esc(opts.note)}</div>`
+                    : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+                        <div><div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.06em;">CURRENT BRIGADES</div><div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--text-secondary);">${opts.brigades}</div></div>
+                        <div><div style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);letter-spacing:0.06em;">CURRENT BUDGET</div><div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--text-bright);">$${opts.budget}</div></div>
+                    </div>`}
+            </div>`;
+    }
+
+    function render() {
+        const amt = parseInput();
+        const valid = isValid();
+        const projBalance = (amt != null && amt >= 1) ? balanceAbstract - amt : balanceAbstract;
+        const projArmy    = (amt != null && amt >= 1) ? armyBudget + amt : armyBudget;
+
+        const resultHtml = result ? `
+            <div style="padding:12px;background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.22);margin-top:12px;">
+                <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;margin-bottom:4px;">Funds allocated</div>
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">
+                    $${result.allocated} → Army of ${esc(nationName)}<br>
+                    Discretionary: <strong>$${toAbstract(result.newBalance)}</strong> · Army budget: <strong>$${toAbstract(result.newArmyFunds)}</strong>
+                </div>
+            </div>` : '';
+        const errorHtml = errorMsg ? `<div style="font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:6px;">${esc(errorMsg)}</div>` : '';
+
+        overlay.innerHTML = `
+            <div class="pa-modal" style="width:500px;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:#c8a832;"></div>
+                        <span class="pa-modal-title">Allocate Funds</span>
+                    </div>
+                    <button class="pa-modal-close" id="pa-af-close">&times;</button>
+                </div>
+                <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                    Distribute the Defense Ministry's discretionary budget to a military branch. Funds move 1:1 into that branch's treasury.
+                </div>
+                <div class="pa-modal-body" style="gap:10px;">
+                    <div>
+                        <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.04em;">YOUR MINISTRY'S DISCRETIONARY FUNDS</div>
+                        <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:${balanceAbstract > 0 ? 'var(--green)' : 'var(--red)'};">$${balanceAbstract}</div>
+                    </div>
+
+                    ${branchBlock(`Army of ${nationName}`, armyExists
+                        ? { enabled: true, brigades: 0, budget: armyBudget }
+                        : { enabled: false, note: 'No army established.' })}
+
+                    ${armyExists ? `
+                        <div class="pa-modal-step-label">Allocate to Army (whole dollars, 1 – ${maxAlloc})</div>
+                        <input id="pa-af-input" class="pa-modal-input" type="number" min="1" max="${maxAlloc}" step="1" placeholder="0" value="${esc(inputValue)}" ${result || submitting ? 'disabled' : ''} style="font-family:var(--font-mono);font-size:14px;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-top:4px;">
+                            <div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.04em;">AFTER · DISCRETIONARY</div><div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:${projBalance >= 0 ? 'var(--text-bright)' : 'var(--red)'};">$${projBalance}</div></div>
+                            <div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.04em;">AFTER · ARMY BUDGET</div><div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--text-bright);">$${projArmy}</div></div>
+                        </div>
+                    ` : ''}
+
+                    ${branchBlock(`Navy of ${nationName}`,      { enabled: false, note: 'Not yet established.' })}
+                    ${branchBlock(`Air Force of ${nationName}`, { enabled: false, note: 'Not yet established.' })}
+                    ${errorHtml}
+                    ${resultHtml}
+                </div>
+                <div class="pa-modal-footer">
+                    <button class="pa-modal-btn pa-modal-btn--cancel" id="pa-af-cancel">${result ? 'Close' : 'Cancel'}</button>
+                    <button class="pa-modal-btn pa-modal-btn--submit" id="pa-af-submit" ${!valid || submitting || result || loadError ? 'disabled' : ''}>${submitting ? 'Allocating…' : 'Allocate'}</button>
+                </div>
+            </div>
+        `;
+
+        const close = () => { overlay.classList.remove('active'); if (result) renderPage(root); };
+        document.getElementById('pa-af-close')?.addEventListener('click', close);
+        document.getElementById('pa-af-cancel')?.addEventListener('click', close);
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+        const input = document.getElementById('pa-af-input');
+        if (input) {
+            input.addEventListener('input', (e) => {
+                inputValue = (e.target.value || '').replace(/[^0-9]/g, '');
+                errorMsg = loadError;
+                render();
+                const refocus = document.getElementById('pa-af-input');
+                if (refocus) { refocus.focus(); refocus.setSelectionRange(refocus.value.length, refocus.value.length); }
+            });
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && isValid() && !submitting && !result && !loadError) {
+                    e.preventDefault();
+                    submit();
+                }
+            });
+        }
+        document.getElementById('pa-af-submit')?.addEventListener('click', submit);
+    }
+
+    async function submit() {
+        if (submitting || result || loadError) return;
+        if (!isValid()) {
+            errorMsg = `Enter an integer between 1 and ${maxAlloc}.`;
+            render();
+            return;
+        }
+        const amount = parseInput();
+        submitting = true;
+        errorMsg = '';
+        render();
+        try {
+            const { data, error } = await _supabase.rpc('allocate_defense_funds', { p_branch: 'army', p_amount: amount });
+            if (error) {
+                errorMsg = error.message || 'Allocation failed.';
+            } else if (!data?.success) {
+                errorMsg = humanizeReason(data?.reason) || 'Allocation failed.';
+            } else {
+                result = data;
+            }
+        } catch (e) {
+            errorMsg = e?.message || 'Network error.';
+        } finally {
+            submitting = false;
+            render();
+        }
+    }
+
+    function humanizeReason(reason) {
+        switch (reason) {
+            case 'not_authenticated':  return 'You are not signed in.';
+            case 'branch_unavailable': return 'Only the Army can receive funds right now.';
+            case 'invalid_amount':     return 'Enter an integer of at least $1.';
+            case 'not_minister':       return 'Only the Minister of Defense can allocate funds.';
+            case 'insufficient_funds': return 'Not enough discretionary budget for that allocation.';
+            case 'no_army_faction':    return 'No army has been established for this nation yet.';
+            default:                   return reason || '';
         }
     }
 
