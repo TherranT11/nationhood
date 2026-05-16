@@ -699,7 +699,7 @@ function renderQuickInfoCards() {
         <div class="po-card" style="flex:1;padding:8px 10px;">
             <div style="font-family:var(--font-mono);font-size:6px;color:var(--text-dim);letter-spacing:0.06em;text-transform:uppercase;">CAMPAIGN ACTIONS</div>
             <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);margin-top:3px;line-height:1.5;">
-                <span style="color:var(--text-bright);font-weight:700;">Rally</span> (1 AP) \u2014 Moderate, reliable momentum gain.
+                <span style="color:var(--text-bright);font-weight:700;">Rally</span> \u2014 Spend party funds to shift your popularity in one voter sector.
             </div>
             <div style="font-family:var(--font-mono);font-size:8px;color:var(--text-secondary);margin-top:1px;line-height:1.5;">
                 <span style="color:var(--text-bright);font-weight:700;">Press Conf.</span> (1 AP) \u2014 Reactive narrative control.

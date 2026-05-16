@@ -1,7 +1,7 @@
 import { _supabase } from './supabase-client.js';
 import { initPage, refreshAP, loadBlocMap, blocTagHtml } from './common.js';
 import { getPartyIconSVG, getPartyLogoHTML, PARTY_ICONS, PARTY_COLOR_PALETTE } from './party-icons.js';
-import { tickToDate } from './utils.js';
+import { tickToDate, formatCurrencyShort } from './utils.js';
 
 import { fetchActiveCoalition, loadSeats } from './game/government-structure.js';
 import { INACTIVITY_DRAIN_THRESHOLD } from './game/electorate.js';
@@ -10,7 +10,7 @@ import { initGameConfigForNation, switchPartyEndorsement } from './game/config.j
 import { RALLY_CONFIG, executeRally, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, disbandParty, getNationNames } from './game/political-actions.js';
 import { PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress } from './game/protest.js';
 import { ISSUE_DEFS, ISSUE_IDS } from './game/electorate.js';
-import { getStrongholdSectors } from './game/sectors.js';
+import { getStrongholdSectors, formatPopularity } from './game/sectors.js';
 import { isGovernmentPresidential, getGovDisplayLabel } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { getElectabilityTier, getTraitAPModifier } from './game/party-leadership.js';
@@ -2237,6 +2237,8 @@ function escapeHtml(str) {
 let _caSelected = null;   // 'rally' | 'attack' | 'protest'
 let _caRival = null;      // selected rival faction id
 let _caVector = null;     // attack vector id
+let _caRallySectorId = null;  // selected sector id for Hold a Rally
+let _caSectors = [];      // [{ id, sector_key, name, popularity }] active sectors + player popularity
 let _caResult = null;     // last action result for display
 
 let _caAttackVectors = null;  // cached built vectors
@@ -2265,9 +2267,9 @@ const CA_ACTION_CATEGORIES = [
 
 const CA_ACTIONS = [
     // MOMENTUM
-    { id: 'rally', name: 'Hold a Rally', ap: RALLY_CONFIG.AP_COST, color: '#f97316', icon: '★',
-      category: 'momentum', affects: 'Momentum',
-      desc: 'Rally your supporters in a public show of strength. Random outcome that directly affects your Momentum score. A rousing success builds momentum; a gaffe costs it.' },
+    { id: 'rally', name: 'Hold a Rally', money: true, color: '#f97316', icon: '★',
+      category: 'momentum', affects: 'Sector Popularity',
+      desc: 'Spend party funds to rally one voter sector. Random outcome shifts your popularity in that sector — a rousing success builds it, a gaffe costs it. A divisive or disrupted rally also bleeds support from your other sectors.' },
     { id: 'press_conference', name: 'Press Conference', ap: 1, color: '#fbbf24', icon: '🎤',
       category: 'momentum', affects: 'Momentum',
       desc: 'Hold a press conference to make a public statement. Base roll: -2 to +2 Momentum. Opposition parties get +1 bonus. High-approval governing parties get +2 bonus.' },
@@ -2284,6 +2286,7 @@ let _caPressEscalation = 0;    // press conference cost escalation: +1 per use, 
 
 function caReset() {
     _caRival = null; _caVector = null;
+    _caRallySectorId = null;
     _caAttackVectors = null;
     _protestTab = 'minister'; _protestTarget = null;
     _protestCachedMinisters = null; _protestCachedCrises = null; _protestCachedStats = null;
@@ -2291,7 +2294,7 @@ function caReset() {
 }
 
 function caIsReady() {
-    if (_caSelected === 'rally') return true;
+    if (_caSelected === 'rally') return !!_caRallySectorId;
     if (_caSelected === 'attack') return !!_caRival && !!_caVector;
     if (_caSelected === 'protest') return !!_protestTarget;
     if (_caSelected === 'press_conference') return true;
@@ -2306,9 +2309,7 @@ function caGetCost() {
         return getProtestCost(decayed);
     }
     if (_caSelected === 'rally') {
-        const _fr = _currentFaction;
-        const _tr = _currentShard?.current_tick || 0;
-        return Math.max(1, RALLY_CONFIG.AP_COST + (_caRallyEscalation || 0) + (_fr ? getTraitAPModifier('rally', _fr, _tr) : 0));
+        return RALLY_CONFIG.BASE_COST + (_caRallyEscalation || 0) * RALLY_CONFIG.ESCALATION_STEP;
     }
     if (_caSelected === 'press_conference') {
         const _f2 = _currentFaction;
@@ -2349,6 +2350,23 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
         f.last_action_tick = freshF.last_action_tick;
     }
     const ap = f.action_points ?? 0;
+
+    // Load active sectors + this faction's popularity (for the Rally picker)
+    const [caSectorsRes, caPopRes] = await Promise.all([
+        _supabase.from('sectors')
+            .select('id, sector_key, name, is_active')
+            .eq('nation_id', n.id)
+            .eq('is_active', true),
+        _supabase.from('faction_sector_popularity')
+            .select('sector_id, popularity')
+            .eq('faction_id', f.id),
+    ]);
+    const _caPopBySector = new Map((caPopRes.data || []).map(r => [r.sector_id, Number(r.popularity) || 0]));
+    _caSectors = (caSectorsRes.data || []).map(s => ({
+        id: s.id, sector_key: s.sector_key, name: s.name,
+        popularity: _caPopBySector.get(s.id) ?? 0,
+    }));
+    if (_caRallySectorId && !_caSectors.some(s => s.id === _caRallySectorId)) _caRallySectorId = null;
 
     // Check if faction is in government (ruling party or coalition member)
     const coalition = await fetchActiveCoalition(_supabase, n.id);
@@ -2547,21 +2565,24 @@ function renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck,
                 continue;
             }
 
-            let displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'rally' ? (RALLY_CONFIG.AP_COST + (_caRallyEscalation || 0)) : act.id === 'press_conference' ? (1 + (_caPressEscalation || 0)) : act.ap;
-            // Apply leader trait modifiers to displayed cost
-            if (['press_conference', 'rally', 'attack'].includes(act.id) && f.leader_positive_traits) {
+            const isMoneyAct = act.id === 'rally';
+            let displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'rally' ? (RALLY_CONFIG.BASE_COST + (_caRallyEscalation || 0) * RALLY_CONFIG.ESCALATION_STEP) : act.id === 'press_conference' ? (1 + (_caPressEscalation || 0)) : act.ap;
+            // Apply leader trait modifiers to displayed AP cost (money actions exempt)
+            if (['press_conference', 'attack'].includes(act.id) && f.leader_positive_traits) {
                 displayCost = Math.max(1, displayCost + getTraitAPModifier(act.id, f, tick));
             }
+            const costLabel = isMoneyAct ? formatCurrencyShort(displayCost) : `${displayCost} AP`;
             const dbActionType = act.id;
             const cdRemaining = _caCooldowns[dbActionType] || 0;
             const onCooldown = cdRemaining > 0;
             const usedThisTick = !!_caUsedThisTick[dbActionType];
-            const ok = ap >= displayCost && !onCooldown && !usedThisTick;
+            const canAfford = isMoneyAct ? (f.party_funds || 0) >= displayCost : ap >= displayCost;
+            const ok = canAfford && !onCooldown && !usedThisTick;
             const borderColor = isSel ? act.color : ok ? act.color + '55' : 'var(--dtext-3)';
             const bgStyle = isSel ? `background:${act.color}08;` : '';
             const borderStyle = isSel ? `border-color:${act.color}33;` : '';
             const nameColor = isSel ? act.color : 'var(--dtext-0)';
-            const affectsColor = act.affects === 'Momentum' ? '#f97316' : '#6b7280';
+            const affectsColor = (act.affects === 'Momentum' || act.affects === 'Sector Popularity') ? '#f97316' : '#6b7280';
             const usedLabel = usedThisTick ? `${act.name} already used this turn` : '';
             const statusBadge = usedThisTick
                 ? `<span class="ca-used-badge">USED</span>`
@@ -2575,7 +2596,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck,
                         <span class="ca-item-name" style="color:${nameColor}">${escapeHtml(act.name)}</span>
                         ${statusBadge}
                     </div>
-                    <span class="ca-item-ap">${usedThisTick ? 'USED' : onCooldown ? `${cdRemaining} TICK CD` : `${displayCost} AP`}</span>
+                    <span class="ca-item-ap">${usedThisTick ? 'USED' : onCooldown ? `${cdRemaining} TICK CD` : costLabel}</span>
                 </div>
                 <div class="ca-item-desc">${escapeHtml(act.desc)}</div>
                 ${usedThisTick ? `<div class="ca-item-used-msg">${escapeHtml(usedLabel)}</div>` : `<div class="ca-item-affects" style="color:${affectsColor}">This action affects ${act.affects}</div>`}
@@ -2604,8 +2625,11 @@ function renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck,
             // Confirm button
             const cost = caGetCost();
             const ready = caIsReady();
-            const canConfirm = ap >= cost && ready;
-            panelHtml += `<div class="ca-confirm-row"><div class="ca-confirm-btn${canConfirm ? '' : ' disabled'}" style="background:${canConfirm ? sel.color : 'var(--dtext-3)'}" id="ca-confirm-btn">Confirm — ${cost} AP</div></div>`;
+            const isMoneyAct = !!sel.money;
+            const canAfford = isMoneyAct ? (f.party_funds || 0) >= cost : ap >= cost;
+            const canConfirm = canAfford && ready;
+            const costLabel = isMoneyAct ? formatCurrencyShort(cost) : `${cost} AP`;
+            panelHtml += `<div class="ca-confirm-row"><div class="ca-confirm-btn${canConfirm ? '' : ' disabled'}" style="background:${canConfirm ? sel.color : 'var(--dtext-3)'}" id="ca-confirm-btn">Confirm — ${costLabel}</div></div>`;
         }
         panelHtml += `</div>`;
     }
@@ -2677,7 +2701,21 @@ function renderActionConfig(sel, otherParties, nation, ap, tick) {
 // ── RALLY CONFIG ──
 
 function renderRallyConfig() {
-    return `<div class="ca-info-box">Hold a rally to energize your base. Random outcome that directly affects your Momentum — can boost or backfire.</div>`;
+    const cost = caGetCost();
+    let html = `<div class="ca-info-box">Spend ${formatCurrencyShort(cost)} to rally one voter sector. The outcome shifts your popularity in that sector — a rousing success builds it, a gaffe costs it. A divisive or disrupted rally also bleeds support from your other sectors. Repeat rallies cost more and pay less.</div>`;
+    if (!_caSectors || _caSectors.length === 0) {
+        html += `<div class="ca-info-box" style="color:#ef4444">This nation has no voter sectors yet.</div>`;
+        return html;
+    }
+    html += `<div class="ca-subtitle">Select a sector to rally</div>`;
+    for (const s of _caSectors) {
+        const isSel = _caRallySectorId === s.id;
+        html += `<div class="ca-rival-card${isSel ? ' selected' : ''}" data-sector-id="${s.id}" style="display:flex;justify-content:space-between;align-items:center;border-left-color:${isSel ? '#f97316' : '#888'};${isSel ? 'border-color:rgba(249,115,22,0.2);background:rgba(249,115,22,0.03)' : ''}">
+            <span class="ca-rival-name" style="color:${isSel ? '#f97316' : 'var(--dtext-0)'}">${escapeHtml(s.name)}</span>
+            <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-3)">Pop ${formatPopularity(s.popularity)}</span>
+        </div>`;
+    }
+    return html;
 }
 
 // ── ATTACK CONFIG ──
@@ -3259,6 +3297,15 @@ function renderProtestResolvingPanel() {
 function wireCampaignConfig(container, f, n, ap, otherParties, tick, protestCheck, protestApCost) {
     const rerender = () => renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck, protestApCost);
 
+    // Sector selection (rally)
+    container.querySelectorAll('[data-sector-id]').forEach(el => {
+        el.addEventListener('click', () => {
+            const sectorId = el.dataset.sectorId;
+            _caRallySectorId = _caRallySectorId === sectorId ? null : sectorId;
+            rerender();
+        });
+    });
+
     // Rival selection (attack)
     container.querySelectorAll('[data-rival-id]').forEach(el => {
         el.addEventListener('click', async () => {
@@ -3407,7 +3454,10 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, tick) {
         || (_caSelected === 'protest' ? { id: 'protest', name: 'Organise a Protest', ap: caGetCost(), color: '#d9534f' } : null);
     if (!sel) return;
     const cost = caGetCost();
-    if (ap < cost || !caIsReady()) return;
+    const isMoneyAct = !!sel.money;
+    const costLabel = isMoneyAct ? formatCurrencyShort(cost) : `${cost} AP`;
+    const affordable = isMoneyAct ? (f.party_funds || 0) >= cost : ap >= cost;
+    if (!affordable || !caIsReady()) return;
 
     const btn = document.getElementById('ca-confirm-btn');
     if (btn) { btn.classList.add('disabled'); btn.textContent = 'EXECUTING...'; }
@@ -3415,7 +3465,7 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, tick) {
     let result;
     try {
         if (sel.id === 'rally') {
-            result = await executeRally(_supabase, f.id, n.id, null, tick);
+            result = await executeRally(_supabase, _caRallySectorId);
         } else if (sel.id === 'attack') {
             result = await executeAttack(_supabase, f.id, n.id, _caRival, _caVector, tick);
         } else if (sel.id === 'protest') {
@@ -3463,20 +3513,24 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, tick) {
     } catch (err) {
         console.error('Campaign action error:', err);
         _showToast('Action failed: ' + err.message);
-        if (btn) { btn.classList.remove('disabled'); btn.textContent = `Confirm — ${cost} AP`; }
+        if (btn) { btn.classList.remove('disabled'); btn.textContent = `Confirm — ${costLabel}`; }
         return;
     }
 
     if (!result || !result.success) {
         _showToast(result?.message || result?.error || 'Action failed.');
-        if (btn) { btn.classList.remove('disabled'); btn.textContent = `Confirm — ${cost} AP`; }
+        if (btn) { btn.classList.remove('disabled'); btn.textContent = `Confirm — ${costLabel}`; }
         return;
     }
 
-    // Update local AP and refresh from server
-    f.action_points = result.newAp ?? ((f.action_points ?? 0) - cost);
-    const freshAp = await refreshAP(f.id);
-    if (freshAp !== undefined) f.action_points = freshAp;
+    // Update local cost resource and refresh from server
+    if (isMoneyAct) {
+        f.party_funds = result.newFunds ?? ((f.party_funds ?? 0) - cost);
+    } else {
+        f.action_points = result.newAp ?? ((f.action_points ?? 0) - cost);
+        const freshAp = await refreshAP(f.id);
+        if (freshAp !== undefined) f.action_points = freshAp;
+    }
 
     // Show result
     _caResult = result;
@@ -3756,7 +3810,7 @@ async function renderElectionsTab(faction, currentTick, nextElection) {
             <div class="elec-explainer-section">
                 <div class="elec-explainer-heading">Campaign Actions:</div>
                 <ul>
-                    <li><strong>Rally</strong> (1 AP) — Moderate, reliable momentum gain.</li>
+                    <li><strong>Rally</strong> — Spend party funds to shift your popularity in one voter sector.</li>
                     <li>Other campaign actions like stances, public addresses, and media campaigns also contribute.</li>
                 </ul>
             </div>

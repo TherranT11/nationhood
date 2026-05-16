@@ -11353,13 +11353,21 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
         await syncMinistriesForFailedConfirmationBills(supabase, frozenBills);
 
         let existingGov = null;
-        const { data: govFormation } = await supabase
+        // Fetch ALL active/formed/caretaker rows (newest first), not
+        // .maybeSingle() — after an early election there can legitimately
+        // be >1 (the just-flipped caretaker plus a leftover from a prior
+        // cycle), and .maybeSingle() THROWS on multiple rows. That error
+        // silently skipped the dissolve block below, leaving an orphaned
+        // caretaker row that read as "stuck in caretaker" forever. The
+        // dissolve UPDATE already uses .in(status,[...]) so it clears
+        // every stale row; we only need [0] for the existence check.
+        const { data: govFormations } = await supabase
             .from('government_formations')
             .select('id, status')
             .eq('nation_id', nation.id)
             .in('status', ['formed', 'active', 'caretaker'])
-            .maybeSingle();
-        if (govFormation) existingGov = govFormation;
+            .order('formed_at', { ascending: false });
+        if (govFormations && govFormations.length > 0) existingGov = govFormations[0];
 
         if (existingGov) {
             console.log(`Dissolving government after manual election for ${nation.name}`);
@@ -12276,13 +12284,19 @@ async function processElections(supabase, nation, currentTick) {
             // must be dissolved so that processGovernmentVacancy can apply -2 approval
             // penalties until a new coalition is formed.
             let existingGov = null;
-            const { data: govFormation } = await supabase
+            // See the manual-election path above: .maybeSingle() throws on
+            // multiple rows, which after an early election is a legitimate
+            // state (stale caretaker + prior-cycle leftover). The throw
+            // skipped the dissolve and stranded the caretaker row. Fetch
+            // all matching rows; the dissolve UPDATE below already clears
+            // every one via .in(status,[...]).
+            const { data: govFormations } = await supabase
                 .from('government_formations')
                 .select('id, status')
                 .eq('nation_id', nation.id)
                 .in('status', ['formed', 'active', 'caretaker'])
-                .maybeSingle();
-            if (govFormation) existingGov = govFormation;
+                .order('formed_at', { ascending: false });
+            if (govFormations && govFormations.length > 0) existingGov = govFormations[0];
 
             // Fail all frozen bills (from caretaker period) regardless of whether
             // an existing government row was found — bills may have been frozen by
@@ -15411,51 +15425,6 @@ async function adjustCredibility(supabase, factionId, nationId, delta, suspendRe
 // ============================================================================
 
 /**
- * Hook called after executeRally() to update electorate tables.
- *
- * Rally boosts visibility. Outcome quality determines boost size.
- * Rousing = big boost, gaffe/counter = no boost (or penalty).
- *
- * @param {object} supabase
- * @param {string} factionId
- * @param {string} nationId
- * @param {string} outcomeId - Rally outcome (rousing, solid, low, gaffe, divisive, counter)
- * @param {number} currentTick
- */
-async function onRally(supabase, factionId, nationId, outcomeId, currentTick) {
-    const visBoost = {
-        rousing: 3,
-        solid: 2,
-        low: 1,
-        gaffe: -1,
-        divisive: -3,
-        counter: -3,
-    }[outcomeId] ?? 0;
-
-    if (visBoost !== 0) {
-        await boostVisibility(supabase, factionId, nationId, visBoost);
-    }
-
-    // Approval penalties for bad outcomes
-    const approvalHit = {
-        gaffe: -3,
-        divisive: -2,
-        counter: -3,
-    }[outcomeId] ?? 0;
-    if (approvalHit !== 0) {
-        await supabase.rpc('adjust_momentum', { p_faction_id: factionId, p_delta: approvalHit, p_label: `Rally outcome (${approvalHit > 0 ? '+' : ''}${approvalHit})`, p_tick: currentTick });
-    }
-
-    await logActivity(supabase, factionId, nationId, 'rally',
-        'Rally', `Rally — ${outcomeId}`,
-        outcomeId === 'gaffe' || outcomeId === 'counter' || outcomeId === 'divisive' ? 'failure' : 'success',
-        3, currentTick
-    );
-
-    return { visBoost, approvalHit };
-}
-
-/**
  * Hook called after executeAttack() to update electorate tables.
  *
  * Attack damages target's credibility (on success) or attacker's (on backfire).
@@ -15880,74 +15849,6 @@ function getTraitAPModifier(actionType, faction, currentTick) {
     }
 
     return mod;
-}
-
-/**
- * Modify rally outcome weights based on leader traits.
- * Mutates the weights object in place.
- * @param {object} weights - { rousing, solid, low, gaffe, divisive, counter }
- * @param {object} faction - Faction row with leader_positive_traits, leader_negative_traits
- */
-function applyRallyTraitModifiers(weights, faction) {
-    const pos = faction.leader_positive_traits || [];
-    const neg = faction.leader_negative_traits || [];
-
-    // crowd_pleaser: Rally turnout +8% → boost rousing and solid weights
-    if (pos.includes('crowd_pleaser')) {
-        weights.rousing += 8;
-        weights.solid += 4;
-    }
-
-    // wooden_speaker: Rally turnout -5%, message -30% → worse outcomes
-    if (neg.includes('wooden_speaker')) {
-        weights.gaffe += 5;
-        weights.rousing -= 8;
-        weights.low += 5;
-    }
-}
-
-/**
- * Compute the approval multiplier for rally gains based on leader traits.
- * @param {object} faction - Faction row with leader_positive_traits, leader_negative_traits
- * @param {string} actionType - 'rally'
- * @param {string} blocDisposition - 'BASE' | 'LEAN' | 'SWING' | 'SKEPTICAL' | 'HOSTILE'
- * @returns {number} Multiplier to apply to approval gain (e.g. 1.3 for telegenic, 0.5 for divisive_figure non-BASE)
- */
-function getTraitApprovalMultiplier(faction, actionType, blocDisposition) {
-    const pos = faction.leader_positive_traits || [];
-    const neg = faction.leader_negative_traits || [];
-    let mult = 1.0;
-
-    // telegenic: Campaign message effectiveness +30%
-    if (pos.includes('telegenic') && ['rally'].includes(actionType)) {
-        mult *= 1.3;
-    }
-
-    // crowd_pleaser: Rally momentum gains +30%
-    if (pos.includes('crowd_pleaser') && actionType === 'rally') {
-        mult *= 1.3;
-    }
-
-    return mult;
-}
-
-/**
- * Get the effective bloc disposition after applying leader traits.
- * populist_touch: SKEPTICAL → SWING
- * elitist: SKEPTICAL → HOSTILE
- * @param {string} disposition - Original disposition
- * @param {object} faction - Faction row with leader_positive_traits, leader_negative_traits
- * @returns {string} Effective disposition
- */
-function getEffectiveBlocDisposition(disposition, faction) {
-    const pos = faction.leader_positive_traits || [];
-    const neg = faction.leader_negative_traits || [];
-
-    if (disposition === 'SKEPTICAL') {
-        if (pos.includes('populist_touch')) return 'SWING';
-        if (neg.includes('elitist')) return 'HOSTILE';
-    }
-    return disposition;
 }
 
 // ═══════════════════════════════════════
@@ -18900,278 +18801,55 @@ async function processStatConnections(supabase, nation, currentTick, connections
 
 // ==================== RALLY SYSTEM ====================
 
+// Client-side cost mirror for the Rally action. The authoritative gate,
+// escalation and charge live in the hold_rally() SQL RPC
+// (20270106_hold_rally_rpc.sql); these constants exist only so
+// politics.js can show the cost before the player commits. Keep in sync
+// with v_base / v_step there.
 const RALLY_CONFIG = {
-    AP_COST: 3,
-    COOLDOWN_WINDOW: 5,   // ticks to look back for rallied_recently count
+    BASE_COST: 50000,        // $ from party_funds for the first rally
+    ESCALATION_STEP: 25000,  // added per escalation level (repeat-use penalty)
 };
 
-const RALLY_OUTCOMES = [
-    {
-        id: 'rousing', name: 'Rousing Success',
-        targetMin: 6, targetMax: 8, spillover: 2, spilloverScope: 'adjacent',
-        headline: bloc => `Massive turnout at ${bloc} rally — supporters overflow venue`,
-    },
-    {
-        id: 'solid', name: 'Solid Turnout',
-        targetMin: 3, targetMax: 5, spillover: 0, spilloverScope: 'none',
-        headline: bloc => `Party rally draws steady crowd in ${bloc} district — a strong showing`,
-    },
-    {
-        id: 'low', name: 'Low Turnout',
-        targetMin: 1, targetMax: 2, spillover: 0, spilloverScope: 'none',
-        headline: bloc => `Sparse attendance at ${bloc} rally raises questions about grassroots support`,
-    },
-    {
-        id: 'gaffe', name: 'Gaffe',
-        targetMin: -3, targetMax: -2, spillover: -1, spilloverScope: 'random_adjacent',
-        headline: bloc => `Party leader's remarks draw swift backlash at ${bloc} event`,
-    },
-    {
-        id: 'divisive', name: 'Divisive Speech',
-        targetMin: 5, targetMax: 7, spillover: -2, spilloverScope: 'all_others',
-        headline: bloc => `Fiery rally speech energizes ${bloc} base but draws condemnation from opposition`,
-    },
-    {
-        id: 'counter', name: 'Counter-Protest',
-        targetMin: -1, targetMax: -1, spillover: -2, spilloverScope: 'all',
-        headline: bloc => `${bloc} rally disrupted by counter-protesters — police intervene as tensions escalate`,
-    },
-];
+// The rally mechanic — auth + one-per-tick + escalating-cost gate, the
+// weighted 1-of-6 outcome roll, the sector-popularity shift, the funds
+// debit and the campaign_actions log — lives entirely in the
+// hold_rally() SECURITY DEFINER RPC (20270106_hold_rally_rpc.sql).
+// faction_sector_popularity is admin/service-role write-only, so it
+// cannot run from the client. That RPC is the single source of truth;
+// the outcome table, weights and trait modifiers live only there.
+
+const _RALLY_REASON_MESSAGES = {
+    not_authenticated:         'You are not signed in.',
+    no_sector:                 'Pick a sector to rally.',
+    invalid_sector:            'That sector is not available in this nation.',
+    no_faction:                'Rally is unavailable right now.',
+    no_nation:                 'Rally is unavailable right now.',
+    no_shard:                  'Rally is unavailable right now.',
+    already_rallied_this_tick: 'Already held a rally this tick.',
+};
 
 /**
- * Compute outcome weights for a rally targeting a voter bloc.
- * Weights shift based on approval, crises, unrest, and recent rallies.
- * Alpha refactor: polarization branch retired (column deleted; the
- * divisive/counter swing it triggered is functionally absorbed by the
- * existing high-unrest branch below).
+ * Hold a Rally — thin client for the hold_rally() RPC. Returns the RPC
+ * payload on success ({ success, outcomeId, outcomeName, headline,
+ * effects, weights, newFunds, cost_paid }) or { success:false, error }
+ * with a user-facing message for the politics.js result panel.
  */
-function getRallyOutcomeWeights(blocApproval, ralliedRecently, nationState) {
-    const weights = { rousing: 20, solid: 38, low: 15, gaffe: 12, divisive: 8, counter: 5 };
+async function executeRally(supabase, sectorId) {
+    if (!sectorId) return { success: false, error: 'Pick a sector to rally.' };
 
-    // High approval → more rousing (thresholds calibrated for 45/55 pillar weights)
-    if (blocApproval > 45) {
-        weights.rousing += 12; weights.low -= 5; weights.gaffe -= 4;
-    } else if (blocApproval < 20) {
-        weights.rousing -= 10; weights.low += 10; weights.gaffe += 8;
+    const { data, error } = await supabase.rpc('hold_rally', { p_sector_id: sectorId });
+    if (error) {
+        console.error('[Rally] hold_rally RPC failed:', error.message);
+        return { success: false, error: 'Rally failed. Please try again.' };
     }
-
-    // Active crises
-    if (nationState.crisisCount > 0) {
-        weights.gaffe += 6; weights.divisive += 4; weights.counter += 10;
-        weights.rousing -= 8; weights.solid -= 6;
-    }
-
-    // Rallied recently → stale material
-    if (ralliedRecently >= 1) {
-        weights.gaffe += 5 * ralliedRecently;
-        weights.rousing -= 3 * ralliedRecently;
-        weights.low += 3 * ralliedRecently;
-    }
-
-    // High civil unrest
-    if (nationState.civilUnrest > 40) {
-        weights.counter += 8; weights.rousing -= 4;
-    }
-
-    // Clamp to minimum 1
-    for (const k of Object.keys(weights)) weights[k] = Math.max(1, weights[k]);
-
-    // Normalize to percentages
-    const total = Object.values(weights).reduce((s, v) => s + v, 0);
-    for (const k of Object.keys(weights)) weights[k] = Math.round((weights[k] / total) * 100);
-
-    return weights;
-}
-
-/**
- * Get a risk assessment label from outcome weights.
- */
-function getRallyRiskLevel(weights) {
-    const badPct = (weights.gaffe || 0) + (weights.divisive || 0) + (weights.counter || 0);
-    if (badPct >= 40) return 'dangerous';
-    if (badPct >= 25) return 'risky';
-    if (badPct >= 15) return 'moderate';
-    return 'safe';
-}
-
-/**
- * Pick an outcome from weighted distribution.
- */
-function rollRallyOutcome(weights) {
-    const ids = ['rousing', 'solid', 'low', 'gaffe', 'divisive', 'counter'];
-    let sum = 0;
-    const cumulative = [];
-    for (const id of ids) {
-        sum += (weights[id] || 0);
-        cumulative.push({ id, threshold: sum });
-    }
-    const roll = Math.random() * sum;
-    return (cumulative.find(c => roll <= c.threshold) || cumulative[cumulative.length - 1]).id;
-}
-
-/**
- * Execute a rally targeting a specific voter bloc.
- * Returns { success, outcomeId, outcomeName, headline, effects, newAp }
- */
-async function executeRally(supabase, factionId, nationId, blocId, currentTick) {
-    // ── 1. Validate AP (with leader trait modifiers + escalation) ──
-    const { data: faction } = await supabase
-        .from('factions').select('action_points, leader_positive_traits, leader_negative_traits, last_action_tick').eq('id', factionId).single();
-    if (!faction) return { success: false, error: 'Faction not found.' };
-
-    // ── 2. Check cooldown (one rally per tick) + compute escalation ──
-    const { data: recentRallies } = await supabase
-        .from('campaign_actions')
-        .select('tick_performed, result')
-        .eq('party_id', factionId)
-        .eq('action_type', 'rally')
-        .gte('tick_performed', currentTick - 10)
-        .order('tick_performed', { ascending: false });
-
-    if ((recentRallies || []).some(r => r.tick_performed === currentTick))
-        return { success: false, error: 'Already held a rally this tick.' };
-
-    // Escalating cost: +1 per recent use, -1 per tick since last use
-    let rallyEscalation = 0;
-    if (recentRallies && recentRallies.length > 0) {
-        const lastRallyTick = Math.max(...recentRallies.map(r => r.tick_performed));
-        rallyEscalation = Math.max(0, recentRallies.length - (currentTick - lastRallyTick));
-    }
-
-    const rallyApMod = getTraitAPModifier('rally', faction, currentTick);
-    const effectiveRallyCost = Math.max(1, RALLY_CONFIG.AP_COST + rallyEscalation + rallyApMod);
-    if ((faction.action_points || 0) < effectiveRallyCost)
-        return { success: false, error: `Not enough AP. Need ${effectiveRallyCost}.` };
-
-    // Count how many times this specific bloc was rallied recently (within cooldown window)
-    const ralliedRecently = (recentRallies || []).filter(r => r.result?.blocId === blocId && r.tick_performed >= currentTick - RALLY_CONFIG.COOLDOWN_WINDOW).length;
-
-    // ── 3. Load target bloc (optional) + nation stats ──
-    // (voter_blocs table removed; default to General Public)
-    let targetBloc = { id: null, bloc_name: 'General Public', population_weight: 100 };
-
-    const { data: nation } = await supabase
-        .from('nations').select('unrest').eq('id', nationId).single();
-    const { count: crisisCount } = await supabase
-        .from('active_crises').select('id', { count: 'exact', head: true }).eq('nation_id', nationId);
-
-    // ── 4. Target approval (legacy bloc-approval removed; default to 50) ──
-    const targetApproval = 50;
-
-    // ── 5. Compute weights and roll outcome ──
-    // Alpha refactor: polarization + stability fields dropped from
-    // nationState — polarization column gone, stability was set but
-    // never read. civilUnrest reads from `nation.unrest` (alpha-19
-    // equivalent of the legacy civil_unrest column).
-    const nationState = {
-        civilUnrest: nation?.unrest || 0,
-        crisisCount: crisisCount || 0,
-    };
-    const weights = getRallyOutcomeWeights(targetApproval, ralliedRecently, nationState);
-    // Apply leader trait modifiers to rally weights (crowd_pleaser, wooden_speaker)
-    applyRallyTraitModifiers(weights, faction);
-    // Re-clamp after trait modifiers
-    for (const k of Object.keys(weights)) weights[k] = Math.max(1, weights[k]);
-    const total = Object.values(weights).reduce((s, v) => s + v, 0);
-    for (const k of Object.keys(weights)) weights[k] = Math.round((weights[k] / total) * 100);
-
-    const outcomeId = rollRallyOutcome(weights);
-    const outcome = RALLY_OUTCOMES.find(o => o.id === outcomeId);
-
-    // ── 6. Roll specific target effect (with telegenic multiplier + diminishing returns) ──
-    let targetDelta = outcome.targetMin + Math.floor(Math.random() * (outcome.targetMax - outcome.targetMin + 1));
-    if (targetDelta > 0) {
-        const mult = getTraitApprovalMultiplier(faction, 'rally', 'SWING'); // generic multiplier for rally
-        targetDelta = Math.round(targetDelta * mult);
-    }
-    // Diminishing returns: reduce effect by 25% per escalation level (min 25% of original)
-    if (rallyEscalation > 0 && targetDelta !== 0) {
-        const sign = targetDelta > 0 ? 1 : -1;
-        const diminish = Math.max(0.25, 1 - rallyEscalation * 0.25);
-        targetDelta = Math.round(targetDelta * diminish);
-        if (targetDelta === 0) targetDelta = sign; // preserve direction even at minimum
-    }
-
-    // Crowd Pleaser: +2 bonus momentum from rallies
-    if ((faction.leader_positive_traits || []).includes('crowd_pleaser')) {
-        targetDelta += 2;
-    }
-
-    // ── 7. Apply momentum from rally outcome ──
-    const effects = [];
-    const momSign = targetDelta >= 0 ? '+' : '';
-    const { error: momErr } = await supabase.rpc('adjust_momentum', {
-        p_faction_id: factionId, p_delta: targetDelta,
-        p_label: `Rally: ${outcome.name} (${momSign}${targetDelta})`, p_tick: currentTick
-    });
-    if (momErr) console.warn('[Rally] Momentum RPC failed:', momErr.message);
-    effects.push({ stat: 'Momentum', value: targetDelta });
-
-    // ── 8. Deduct AP + track last_action_tick ──
-    // KNOWN ISSUE: AP deducted after effects applied. Early check (step 1) prevents common case.
-    // Atomic RPC prevents DB over-spending. Race condition is acceptable for alpha.
-    const rallyDetail = 'Hold a Rally' + (rallyApMod !== 0 ? ' (trait ' + (rallyApMod > 0 ? '+' : '') + rallyApMod + ')' : '');
-    const apResult = await deductAP(supabase, factionId, effectiveRallyCost, { reason: 'rally', detail: rallyDetail, tick: currentTick });
-    await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Rally] last_action_tick update failed:', error.message); });
-
-    // ── 9. Log ──
-    const headline = outcome.headline(targetBloc.bloc_name);
-    await supabase.from('campaign_actions').insert({
-        party_id: factionId,
-        nation_id: nationId,
-        action_type: 'rally',
-        ap_cost: effectiveRallyCost,
-        money_cost: 0,
-        tick_performed: currentTick,
-        result: {
-            blocId, blocName: targetBloc.bloc_name,
-            outcomeId, outcomeName: outcome.name,
-            headline, effects, weights, ralliedRecently,
-            // Keep tags for promise compatibility — derive from bloc axes
-            tags: _deriveBlocTags(targetBloc),
+    if (!data || data.success !== true) {
+        if (data?.reason === 'insufficient_funds' && data?.need != null) {
+            return { success: false, error: `Not enough party funds. Need $${Number(data.need).toLocaleString()}.` };
         }
-    });
-
-    // Electorate engine: update visibility + activity log
-    try {
-        const rallyResult = await onRally(supabase, factionId, nationId, outcomeId, currentTick);
-        if (rallyResult?.visBoost !== 0) {
-            effects.push({ stat: 'Visibility', value: rallyResult.visBoost });
-        }
-        if (rallyResult?.approvalHit != null && rallyResult.approvalHit !== 0) {
-            effects.push({ stat: 'Party Approval', value: rallyResult.approvalHit });
-        }
-    } catch (e) {
-        console.error('[Rally] Electorate hook failed (non-fatal):', e.message);
+        return { success: false, error: _RALLY_REASON_MESSAGES[data?.reason] || 'Rally failed.' };
     }
-
-    return {
-        success: true,
-        outcomeId,
-        outcomeName: outcome.name,
-        headline,
-        effects,
-        weights,
-        newAp: apResult.newAp ?? ((faction.action_points || 0) - effectiveRallyCost),
-    };
-}
-
-/** Derive ideology tags from a bloc's axis leanings (for promise compatibility). */
-function _deriveBlocTags(bloc) {
-    const AXIS_MAP = [
-        { key: 'axis_liberty_equality', left: 'LIBERTY', right: 'EQUALITY' },
-        { key: 'axis_tradition_progress', left: 'TRADITION', right: 'PROGRESS' },
-        { key: 'axis_security_freedom', left: 'SECURITY', right: 'FREEDOM' },
-        { key: 'axis_globalism_nationalism', left: 'GLOBALISM', right: 'NATIONALISM' },
-        { key: 'axis_individualism_collectivism', left: 'INDIVIDUALISM', right: 'COLLECTIVISM' },
-    ];
-    const tags = [];
-    for (const ax of AXIS_MAP) {
-        const val = bloc[ax.key] ?? 50;
-        if (val < 40) tags.push(ax.left);
-        else if (val > 60) tags.push(ax.right);
-    }
-    return tags;
+    return data;
 }
 
 
