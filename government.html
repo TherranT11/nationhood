@@ -2660,6 +2660,21 @@ const _GB_DESCKEY_TO_LAW_CATEGORY_REGEX = {
     defenseSecurity:   /^prison$/i,
 };
 
+// Income-side policies (income/corporate/sales tax) have their own
+// Income-panel rows; listing them under the cost-side "Other Programs"
+// catch-all would read as bogus spending programs. Excluded from
+// _gbLawsNotMatchingAnyDescKey.
+//
+// INVARIANT (flagged, not a silent landmine): tax policy_options are
+// revenue levers and are expected to carry $0 ongoing_base_cost — every
+// one currently does. The server (computePanelAnnualExpenditures) sums
+// ongoing cost over ALL active_laws regardless of category, so if a tax
+// option were ever authored with a nonzero ongoing cost it would be
+// deducted server-side but NOT shown in this cost panel (the displayed
+// Balance would over-state by that amount). Keep tax options at $0
+// ongoing, or revisit this exclusion.
+const _GB_INCOME_SIDE_LAW_CATEGORY = /tax/i;
+
 // Annualize an active law's per-tick ongoing cost. The only live
 // cost column is policy_options.ongoing_base_cost — both
 // policies.ongoing_base_cost and policies.ongoing_cost_per_tick that
@@ -2684,16 +2699,19 @@ function _gbAnnualLawCostFor(activeLaws, descKey) {
     return _gbLawsForDescKey(activeLaws, descKey).reduce((s, l) => s + _gbAnnualLawCost(l), 0);
 }
 
-// Active laws whose category doesn't match ANY descKey regex above.
-// These were silently being deducted server-side
-// (computePanelAnnualExpenditures sums ALL active_laws regardless of
-// category) but were invisible in the UI total — players saw a
-// Balance that lied. Surface them here under the "Other Programs"
-// catch-all row so display + server-side debt math agree.
+// Active laws whose category doesn't match ANY descKey regex above
+// and aren't income-side tax policies. These were silently being
+// deducted server-side (computePanelAnnualExpenditures sums ALL
+// active_laws regardless of category) but were invisible in the UI
+// total — players saw a Balance that lied. Surface them under the
+// "Other Programs" catch-all row so display + server-side debt math
+// agree. In-force laws with $0 ongoing cost are included (shown as $0)
+// so the panel reflects every active framework law, not just costed ones.
 function _gbLawsNotMatchingAnyDescKey(activeLaws) {
     const regexes = Object.values(_GB_DESCKEY_TO_LAW_CATEGORY_REGEX);
     return (activeLaws || []).filter(al => {
         const cat = al?.policies?.law_category || '';
+        if (_GB_INCOME_SIDE_LAW_CATEGORY.test(cat)) return false;
         return !regexes.some(re => re.test(cat));
     });
 }
@@ -2970,7 +2988,7 @@ const _GB_DEEP_COPY = {
     foreignAid:             { desc: 'Non-trade-agreement foreign disbursements: development aid, humanitarian relief, soft-power grants. Trade-agreement aid lives under Trade Agreements on the income side instead.' },
     discretionary:          { desc: 'Catch-all for short-cycle programs and one-off initiatives that don’t fit a permanent ministry budget — pilots, commissions, special funds.' },
     regulatoryAgencies:     { desc: 'Funding for sector-specific regulatory bodies that enforce licensing, safety standards, and ongoing compliance. Each enforcement arm scales with the number of regulated entities and the staffing budget approved for it. Click to see the per-sector breakdown.' },
-    otherPrograms:          { desc: 'Ongoing administrative costs of active laws not bucketed into a specific category — religious establishment, healthcare framework, education framework, citizenship rules, labor relations, press regulation, family law, and similar regulatory programs. Click for the per-law breakdown.' },
+    otherPrograms:          { desc: 'Ongoing administrative costs of active laws not bucketed into a specific category — religious establishment, healthcare framework, education framework, citizenship rules, labor relations, press regulation, family law, and similar regulatory programs. Every in-force law is listed; ones with no ongoing cost show $0. Click for the per-law breakdown.' },
     tradeObligations:       { desc: 'Outgoing recurring financial transfers under accepted trade agreements. Annualized as per-tick amount × ticks-per-year and drained from the Treasury Cash Balance each tick (overflowing to debt only when treasury hits zero). Mirrors inbound transfers on the Revenue side.' },
 };
 
@@ -3028,8 +3046,9 @@ async function _gbSelectCategory(container, row, kind) {
     // identically.
     if (row.descKey === 'otherPrograms' && _budgetData?.activeLaws) {
         for (const law of _gbLawsNotMatchingAnyDescKey(_budgetData.activeLaws)) {
+            // $0 in-force laws are listed too (shown as $0) so every
+            // active framework law is visible, not just costed ones.
             const annual = _gbAnnualLawCost(law);
-            if (annual <= 0) continue;
             const policyName = law.policies?.policy_name || 'Active law';
             const optionName = law.selected_option?.option_name;
             const label = optionName ? `${policyName} — ${optionName}` : policyName;
