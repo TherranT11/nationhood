@@ -21,10 +21,17 @@
 --      signatory (category 'politics' ⇒ Politics tab; Nation feed per
 --      nation, World feed = same rows unfiltered). Mirrors the
 --      ratification 'trade_agreement_signed' shape.
---   3. Pressing Issue for every shipping corp that held an awarded
---      contract under the agreement (status ACTIVE + an Acknowledge
---      response; long expiry so it persists until the corp
---      acknowledges via the existing ack-issue RPC).
+--
+-- DEFERRED — shipping-corp "Pressing Issue" notice: NOT done here.
+-- The Pressing Issues feed (corp-operations.html) reads only
+-- corp_contract_events, whose contract_id is NOT NULL and FK'd to
+-- corp_contracts(id). A shipping_contracts id can never satisfy that
+-- FK, and there is no shipping-events surface in the schema. Writing
+-- the notice here would FK-violate and roll back the whole
+-- withdrawal. The corp notification needs a design decision (relax
+-- corp_contract_events.contract_id — shared-table blast radius — vs a
+-- new shipping-notice surface) and is tracked separately. The core
+-- withdrawal + shipping stop + Politics dispatch are unaffected.
 --
 -- Single-fire by construction: the UPDATE is guarded on
 -- status='active' and ROW_COUNT; a second call (or double-click) finds
@@ -95,27 +102,11 @@ BEGIN
       FROM (VALUES (v_a), (v_b)) AS s(nid)
      WHERE nid IS NOT NULL;
 
-    -- Pressing Issue per shipping corp that held an awarded contract.
-    INSERT INTO corp_contract_events
-        (contract_id, faction_id, nation_id, event_key, type, severity,
-         title, description, impact, responses, status,
-         fired_at_tick, expires_at_tick)
-    SELECT sc.id,
-           sc.winner_faction_id,
-           sc.nation_id,
-           'trade_agreement_cancelled',
-           'Trade',
-           'MODERATE',
-           'Trade Agreement Cancelled',
-           v_actor || ' has canceled ' || v_name || '.',
-           'Recurring shipping revenue from this route has ended.',
-           '[{"key":"acknowledge","label":"Acknowledge","tag":null,"detail":null,"cost":0,"delay":0,"qualityImpact":0}]'::jsonb,
-           'ACTIVE',
-           v_tick,
-           v_tick + 1000
-      FROM shipping_contracts sc
-     WHERE sc.trade_agreement_id = p_agreement_id
-       AND sc.winner_faction_id IS NOT NULL;
+    -- Shipping-corp Pressing Issue is intentionally NOT written here —
+    -- see the DEFERRED note in the header. corp_contract_events.
+    -- contract_id is NOT NULL FK→corp_contracts(id); a shipping_contracts
+    -- id would FK-violate and roll back this whole RPC. The notice
+    -- needs a separate surface / schema decision before it can land.
 
     RETURN jsonb_build_object('success', true);
 END;
