@@ -52,9 +52,6 @@ export async function declareBankruptcy() {
         'This action CANNOT be undone.'
     )) return;
 
-    const typed = prompt('Type "BANKRUPT" to confirm bankruptcy of ' + corpName + ':');
-    if (typed !== 'BANKRUPT') { alert('Bankruptcy cancelled.'); return; }
-
     _declaring = true;
     try {
         // One call. The RPC is atomic — cooldown check, valuation, loan
