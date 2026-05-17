@@ -1010,7 +1010,7 @@ async function auLoad() {
   try {
     const { data: units, error: uErr } = await _supabase
       .from('army_units')
-      .select('id,name,brigades,total_manpower,construction_cost,status,forming_until_tick,created_at_tick,section')
+      .select('id,name,brigades,total_manpower,status,forming_until_tick')
       .eq('faction_id', _auFaction.id)
       .neq('status', 'Decommissioned')
       .order('created_at', { ascending: true });
