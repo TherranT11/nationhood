@@ -393,7 +393,7 @@ function buildNationMap() {
     <style>
       .cf-nm-wrap { margin: 14px 0 0; }
       .cf-nm-r { position: absolute; opacity: 0; pointer-events: none; }
-      .cf-nm-boxes { display: flex; gap: 10px; margin-bottom: 10px; }
+      .cf-nm-boxes { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 10px; }
       .cf-nm-box { font-family: var(--font-mono, monospace); font-size: 12px;
         font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
         color: var(--text-secondary, #888); border: 1px solid var(--border-1, rgba(255,255,255,0.08));
