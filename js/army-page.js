@@ -51,5 +51,14 @@ export async function bootstrapArmyPage({ activeTab, factionSelect = DEFAULT_FAC
     faction, nation, shard, allUserFactions, activeTab, flagUrl,
   });
 
+  // Messaging bubble — same lazy mount Party (common.js) and Corp
+  // (corp-topbar.js) use; covers army-actions / army-procurement /
+  // army-operations, which all bootstrap through here.
+  (typeof requestIdleCallback === 'function' ? requestIdleCallback : setTimeout)(() => {
+    import('./messaging.js')
+      .then(m => m.initMessaging(faction, nation, shard))
+      .catch(err => console.warn('[army-page] messaging init failed:', err));
+  });
+
   return { faction, nation, shard, allUserFactions };
 }
