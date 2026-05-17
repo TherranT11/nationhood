@@ -1286,6 +1286,14 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Stat effects failed for ${nation.name} (non-fatal):`, statEffErr);
         }
 
+        // Army Composition: materialize the army's manpower share onto the
+        // army faction (Σ active-law manpower_pct × population × 70%).
+        try {
+            await processArmyManpower(supabase, nation);
+        } catch (manpowerErr) {
+            console.error(`[advanceTick] Army manpower failed for ${nation.name} (non-fatal):`, manpowerErr);
+        }
+
         // Ministry action effects
         try {
             const ministryResults = await processMinistryActions(supabase, nation, newTick);

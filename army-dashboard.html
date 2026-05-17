@@ -587,6 +587,17 @@ function renderOperatingModifiers(faction) {
     if (!grid) return;
     grid.innerHTML = ARMY_MODIFIERS.map(stat => {
         const raw   = Number(faction?.[stat.key]);
+        // Manpower is a raw soldier headcount (set by Army Composition),
+        // not a 0-100 modifier — show the formatted count, no /100 or meter.
+        if (stat.key === 'army_manpower') {
+            const n = Number.isFinite(raw) && raw > 0 ? Math.round(raw) : 0;
+            return `<div class="om-card">
+            <div class="om-card__header">
+                <span class="om-card__name">${escapeHtml(stat.name)}</span>
+                <span class="om-card__value">${n.toLocaleString()}<span class="om-max"> soldiers</span></span>
+            </div>
+        </div>`;
+        }
         const score = Number.isFinite(raw) ? Math.max(0, Math.min(100, raw)) : 0;
         const filledCells = Math.round(score / 10); // 10 segments, 10 pts each
         // Color tiers: 0-30 = warn (red), 31-69 = neutral (amber),

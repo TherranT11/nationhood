@@ -292,6 +292,7 @@ function createEmptyOption() {
         upfront_scaling_stat: '',
         ongoing_base_cost: 0,
         ongoing_scaling_stat: '',
+        manpower_pct: 0,      // Army Composition only — % of population mobilized
         fiscal_category: '',
         starting_nations: new Set(),
         // Target-based policy fields (Phase 2). Coexist with legacy
@@ -713,6 +714,7 @@ async function loadPolicyIntoBuilder(p) {
             opt.upfront_scaling_stat = row.upfront_scaling_stat || '';
             opt.ongoing_base_cost    = row.ongoing_base_cost  ?? 0;
             opt.ongoing_scaling_stat = row.ongoing_scaling_stat || '';
+            opt.manpower_pct         = row.manpower_pct       ?? 0;
 
             const rawStat = Array.isArray(row.stat_effects) ? row.stat_effects : [];
             opt.stat_effects = rawStat
@@ -917,6 +919,10 @@ function renderOptionCard(idx) {
                     </div>
                 </div>
                 <div class="formula-preview" id="cost-preview-${idx}" style="display:none;"></div>
+                <div class="form-field" style="margin-top:14px;">
+                    <label>Manpower % <span style="font-size:0.7rem;color:var(--text-dim);">Army Composition only — % of population mobilized; 70% to the army faction, navy/air 30% discarded. 0 for every other policy.</span></label>
+                    <input type="number" id="b-manpower-${idx}" value="${Number(opt.manpower_pct) || 0}" min="0" step="0.1" oninput="syncOptionField(${idx}, 'manpower_pct', parseFloat(this.value) || 0)">
+                </div>
             </div>
 
             <div style="${subDivider}">
@@ -989,6 +995,10 @@ function renderOptionCard(idx) {
                     </div>
                 </div>
                 <div class="formula-preview" id="cost-preview-${idx}" style="display:none;"></div>
+                <div class="form-field" style="margin-top:14px;">
+                    <label>Manpower % <span style="font-size:0.7rem;color:var(--text-dim);">Army Composition only — % of population mobilized; 70% to the army faction, navy/air 30% discarded. 0 for every other policy.</span></label>
+                    <input type="number" id="b-manpower-${idx}" value="${Number(opt.manpower_pct) || 0}" min="0" step="0.1" oninput="syncOptionField(${idx}, 'manpower_pct', parseFloat(this.value) || 0)">
+                </div>
             </div>
 
             <div style="${subDivider}">
@@ -1062,6 +1072,10 @@ function renderNationChecks(optIdx) {
 
 // Toggling a nation in one option flips the grey-out state for the same
 // nation in every other option, so we re-render every nation-checks panel.
+// KNOWN: when editing an existing policy these toggles still update the
+// in-memory set but savePolicy gates starting-law seeding behind
+// isNewPolicy, so they have no effect on save (by design — edit =
+// definition only). Starting nations are meaningful at creation only.
 function toggleStartingNation(optIdx, id, checked) {
     const opt = options[optIdx];
     if (!opt) return;
@@ -1869,6 +1883,7 @@ async function savePolicy() {
                     ongoing_base_cost: Number.isFinite(Number(o.ongoing_base_cost)) ? Number(o.ongoing_base_cost) : 0,
                     ongoing_scaling_stat: o.ongoing_scaling_stat || null,
                     fiscal_category: o.fiscal_category || null,
+                    manpower_pct: Number.isFinite(Number(o.manpower_pct)) ? Number(o.manpower_pct) : 0,
                     // Legacy fields stay empty for target-based options.
                     sector_effects: [],
                     stat_effects: [],
@@ -1914,6 +1929,7 @@ async function savePolicy() {
                 ongoing_base_cost: Number.isFinite(Number(o.ongoing_base_cost)) ? Number(o.ongoing_base_cost) : 0,
                 ongoing_scaling_stat: o.ongoing_scaling_stat || null,
                 fiscal_category: o.fiscal_category || null,
+                manpower_pct: Number.isFinite(Number(o.manpower_pct)) ? Number(o.manpower_pct) : 0,
                 sector_effects: o.sector_effects
                     .filter(e => e.sector_key && Number.isFinite(Number(e.change_tenths)) && Number(e.change_tenths) !== 0)
                     .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) })),
@@ -1967,6 +1983,12 @@ async function savePolicy() {
 
     try {
         let policyId;
+        // Editing an existing (potentially in-play) policy must touch the
+        // definition only — policies + policy_options. Starting-law seeding
+        // (active_laws / nation_policies) runs ONLY on creation, where there
+        // is no live state to destroy. Re-seeding on edit would wipe every
+        // nation's gameplay-enacted law back to the starting assignment.
+        const isNewPolicy = !editingPolicyId;
         if (editingPolicyId) {
             const { error } = await _supabase.from('policies').update(policyData).eq('id', editingPolicyId);
             if (error) throw error;
@@ -2029,12 +2051,13 @@ async function savePolicy() {
             }
         }
 
-        // Sync nation_policies AND active_laws for every option: wipe
-        // existing rows for this option, then re-insert from the option's
-        // starting_nations Set. nation_policies tracks per-option metadata
-        // for Phase 4's effects engine; active_laws is the table laws.html
-        // and other display sites query, so a starting-status assignment
-        // belongs in both. A failure here surfaces to the surrounding catch.
+        // Seed nation_policies AND active_laws from each option's
+        // starting_nations Set — CREATION ONLY. On an existing policy these
+        // tables are live game state (bills mutate active_laws every tick);
+        // wiping + reseeding here would revert every nation's enacted law
+        // back to the starting assignment, so an edit must never run this.
+        // A failure here surfaces to the surrounding catch.
+        if (isNewPolicy) {
         for (const payload of optionPayloads) {
             const optId = payload.stateRef.id;
 
@@ -2087,6 +2110,7 @@ async function savePolicy() {
                 .upsert(alRecords, { onConflict: 'nation_id,policy_id' });
             if (insAlErr) throw insAlErr;
         }
+        } // end if (isNewPolicy) — edits never reseed live laws
 
         editingPolicyId = null;
         await loadPolicies();
