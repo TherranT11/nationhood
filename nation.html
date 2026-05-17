@@ -30,7 +30,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, refreshGameState, qCache, qCacheSet, qCacheBust, formatNumber, scaleRawToDollars, assertRawEconomicValue } from './js/common.js';
 import { formatCurrencyShort, escapeHtml } from './js/utils.js';
 import { CANONICAL_GOVERNMENT_TYPES, hasElectedPresident } from './js/game/government-types.js';
-import { normalizeNationStatKey, STAT_DECAY_CONFIG } from './js/game/stats.js';
+import { normalizeNationStatKey, translateStatEffect, STAT_DECAY_CONFIG } from './js/game/stats.js';
 /**
  * Nation Page - Comprehensive Stats Display
  * With Rankings and Trend Arrows
@@ -464,28 +464,38 @@ function parsePolicyEffects(laws, map, currentTick) {
                 var dur = Number(eff.duration_ticks) || 12;
                 // Skip effects that haven't started yet or have expired
                 if (ticksSince <= delay || ticksSince > delay + dur) continue;
-                var dir = (eff.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
+                // Route through the engine's transform so the panel shows
+                // exactly what processStatEffects applies: canonical stat
+                // key, inverted-alias direction flip (e.g. unemployment up
+                // → unskilled_workers down), and dead/unknown stats dropped
+                // rather than rendered as phantom contributions.
+                var tr = translateStatEffect(eff);
+                if (!tr) continue;
+                var dir = (tr.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
                 // Reversal laws flip the effect direction
                 if (law.is_reversal) dir = (dir === 'up') ? 'down' : 'up';
-                var rate = Number(eff.rate);
+                var rate = Number(tr.rate);
                 if (!Number.isFinite(rate)) rate = Number(policy.stat_change_per_tick);
                 if (!Number.isFinite(rate)) rate = 1;
                 var remaining = (delay + dur) - ticksSince;
-                addEffectToMap(map, eff.stat_key, label, dir, 'Policy', rate, remaining);
+                addEffectToMap(map, tr.stat_key, label, dir, 'Policy', rate, remaining);
             }
             continue;
         }
 
-        // Legacy policy fallback when stat_effects JSON is missing
+        // Legacy policy fallback when stat_effects JSON is missing —
+        // same engine transform so it can't show a dead/aliased stat.
         if (!policy.target_stat) continue;
+        var legacyTr = translateStatEffect({ stat_key: policy.target_stat, direction: policy.stat_direction || 'up' });
+        if (!legacyTr) continue;
         var legacyDur = Number(policy.duration_months) || 12;
         if (ticksSince <= 0 || ticksSince > legacyDur) continue;
-        var legacyDir = (policy.stat_direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
+        var legacyDir = (legacyTr.direction || 'up').toLowerCase() === 'up' ? 'up' : 'down';
         if (law.is_reversal) legacyDir = (legacyDir === 'up') ? 'down' : 'up';
         var legacyRate = Number(policy.stat_change_per_tick);
         if (!Number.isFinite(legacyRate)) legacyRate = 1;
         var legacyRemaining = legacyDur - ticksSince;
-        addEffectToMap(map, policy.target_stat, label, legacyDir, 'Policy', legacyRate, legacyRemaining);
+        addEffectToMap(map, legacyTr.stat_key, label, legacyDir, 'Policy', legacyRate, legacyRemaining);
     }
 }
 
