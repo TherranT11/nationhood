@@ -1387,18 +1387,26 @@ let _loanCtl    = null;
 
 async function loadPressingIssues() {
     if (!faction?.id) return;
-    const { data, error } = await _supabase
-        .from('corp_contract_events')
-        .select('id, contract_id, type, severity, title, description, impact, responses, expires_at_tick, corp_contracts:contract_id(name)')
-        .eq('faction_id', faction.id)
-        .eq('status', 'ACTIVE')
-        .order('expires_at_tick', { ascending: true });
-    if (error) {
-        console.warn('[corp-operations] Pressing Issues fetch failed:', error.message);
-        _pressingIssues = [];
-    } else {
-        _pressingIssues = data || [];
-    }
+    // Two surfaces feed Pressing Issues: corp_contract_events (project
+    // pipeline) and shipping_contract_events (trade-route notices, e.g.
+    // a withdrawn trade agreement). Same row shape + Acknowledge flow;
+    // _src tags which table so acknowledgeIssue resolves the right one.
+    const [corpRes, shipRes] = await Promise.all([
+        _supabase.from('corp_contract_events')
+            .select('id, contract_id, type, severity, title, description, impact, responses, expires_at_tick, corp_contracts:contract_id(name)')
+            .eq('faction_id', faction.id)
+            .eq('status', 'ACTIVE'),
+        _supabase.from('shipping_contract_events')
+            .select('id, contract_id, type, severity, title, description, impact, responses, expires_at_tick')
+            .eq('faction_id', faction.id)
+            .eq('status', 'ACTIVE'),
+    ]);
+    if (corpRes.error) console.warn('[corp-operations] Pressing Issues (corp) fetch failed:', corpRes.error.message);
+    if (shipRes.error) console.warn('[corp-operations] Pressing Issues (shipping) fetch failed:', shipRes.error.message);
+    const corpRows = (corpRes.data || []).map(r => ({ ...r, _src: 'corp' }));
+    const shipRows = (shipRes.data || []).map(r => ({ ...r, _src: 'shipping', corp_contracts: { name: 'Trade Route' } }));
+    _pressingIssues = [...corpRows, ...shipRows]
+        .sort((a, b) => (a.expires_at_tick || 0) - (b.expires_at_tick || 0));
     renderPressingIssues();
 }
 
@@ -1630,7 +1638,11 @@ async function acknowledgeIssue(eventId) {
     if (_ackInflight.has(eventId)) return;
     _ackInflight.add(eventId);
     try {
-        const { data, error } = await _supabase.rpc('acknowledge_corp_contract_event', {
+        const issue = (_pressingIssues || []).find(e => e.id === eventId);
+        const rpcName = issue?._src === 'shipping'
+            ? 'acknowledge_shipping_contract_event'
+            : 'acknowledge_corp_contract_event';
+        const { data, error } = await _supabase.rpc(rpcName, {
             p_event_id: eventId,
             p_response_key: null,
         });
