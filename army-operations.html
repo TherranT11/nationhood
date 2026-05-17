@@ -45,6 +45,10 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 
 <script type="module">
 import { bootstrapArmyPage } from './js/army-page.js';
+import { renderOrderOfBattle } from './js/create-unit.js';
+
+const OPS_FACTION_COLS = 'id, faction_type, faction_name, nation_id, abandoned_at, is_banned, branch, army_manpower';
+let _faction = null, _shard = null;
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c =>
@@ -78,7 +82,7 @@ function render() {
       <div class="ao-head__eyebrow">— Operations —</div>
       <div class="ao-head__title">${esc(sel.titlePlain)}<em>${esc(sel.titleAccent)}</em></div>
     </div>
-    <div class="ao-empty">${esc(sel.empty)}</div>`;
+    ${sel.key === 'oob' ? '<div id="oob-host"></div>' : `<div class="ao-empty">${esc(sel.empty)}</div>`}`;
 
   root.querySelectorAll('[data-subtab]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -86,11 +90,17 @@ function render() {
       render();
     });
   });
+
+  if (_subtab === 'oob') {
+    renderOrderOfBattle(_faction, _shard, document.getElementById('oob-host'));
+  }
 }
 
 async function init() {
-  const ctx = await bootstrapArmyPage({ activeTab: 'operations' });
+  const ctx = await bootstrapArmyPage({ activeTab: 'operations', factionSelect: OPS_FACTION_COLS });
   if (!ctx) return; // bootstrap already redirected
+  _faction = ctx.faction;
+  _shard = ctx.shard;
   render();
 }
 
