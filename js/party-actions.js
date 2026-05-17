@@ -6382,9 +6382,6 @@ async function triggerDisbandParty() {
         'This action CANNOT be undone.'
     )) return;
 
-    const typed = prompt('Type "DISBAND" to confirm dissolution of ' + partyName + ':');
-    if (typed !== 'DISBAND') { alert('Disband cancelled.'); return; }
-
     _disbandPartySubmitting = true;
     try {
         const { data, error } = await _supabase.rpc('disband_party', {
