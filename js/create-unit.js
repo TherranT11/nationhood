@@ -116,15 +116,15 @@ async function loadUnitsAndFunds(faction) {
     if (uErr) console.warn('[create-unit] units load failed:', uErr.message);
     else units = u || [];
 
-    const { data: m, error: mErr } = await _supabase
-      .from('ministries')
-      .select('discretionary_balance')
-      .eq('nation_id', faction.nation_id)
-      .eq('ministry_key', 'defense')
-      .eq('is_active', true)
+    // The army faction's own treasury — the single pot that
+    // allocate_defense_funds fills and create_unit charges.
+    const { data: f, error: fErr } = await _supabase
+      .from('factions')
+      .select('party_funds')
+      .eq('id', faction.id)
       .maybeSingle();
-    if (mErr) console.warn('[create-unit] defense funds load failed:', mErr.message);
-    funds = Number(m?.discretionary_balance) || 0;
+    if (fErr) console.warn('[create-unit] army funds load failed:', fErr.message);
+    funds = Number(f?.party_funds) || 0;
   } catch (e) {
     console.warn('[create-unit] load failed:', e?.message || e);
   }
