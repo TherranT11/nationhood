@@ -16,8 +16,10 @@ for (const file of htmlFiles) {
 export default defineConfig(({ mode }) => ({
   // Load .env.work when mode is 'work', otherwise .env.main
   envFile: `.env.${mode === 'work' ? 'work' : 'main'}`,
-  // Serve assets/ as static files — copies to dist/ root on build
-  // Flag images are referenced as assets/flags/NationName.png
+  // No Vite public dir. The copy-static-assets plugin below explicitly
+  // copies assets/flags/* and loose top-level assets/*.png into
+  // dist/assets/ (referenced at runtime as assets/flags/X.png and
+  // assets/{Nation} Whole.png etc.).
   publicDir: false,
   build: {
     rollupOptions: {
@@ -26,17 +28,33 @@ export default defineConfig(({ mode }) => ({
     copyPublicDir: false,
   },
   plugins: [{
-    name: 'copy-flags',
+    name: 'copy-static-assets',
     writeBundle() {
-      // Copy flag images to dist after build
       const fs = require('fs');
       const path = require('path');
-      const src = path.resolve(__dirname, 'assets/flags');
-      const dest = path.resolve(__dirname, 'dist/assets/flags');
-      if (fs.existsSync(src)) {
-        fs.mkdirSync(dest, { recursive: true });
-        for (const file of fs.readdirSync(src)) {
-          fs.copyFileSync(path.join(src, file), path.join(dest, file));
+      const assetsRoot = path.resolve(__dirname, 'assets');
+      const distAssets = path.resolve(__dirname, 'dist/assets');
+
+      // Flag images: assets/flags/* → dist/assets/flags/*
+      const flagSrc = path.join(assetsRoot, 'flags');
+      const flagDest = path.join(distAssets, 'flags');
+      if (fs.existsSync(flagSrc)) {
+        fs.mkdirSync(flagDest, { recursive: true });
+        for (const file of fs.readdirSync(flagSrc)) {
+          fs.copyFileSync(path.join(flagSrc, file), path.join(flagDest, file));
+        }
+      }
+
+      // Loose top-level map images: assets/*.png → dist/assets/*.png
+      // (e.g. "Avelia Whole.png", "Avelia Valeranza.png"). Files only —
+      // subdirectories (flags/, etc.) are not recursed.
+      if (fs.existsSync(assetsRoot)) {
+        fs.mkdirSync(distAssets, { recursive: true });
+        for (const file of fs.readdirSync(assetsRoot)) {
+          if (!file.toLowerCase().endsWith('.png')) continue;
+          const sp = path.join(assetsRoot, file);
+          if (!fs.statSync(sp).isFile()) continue;
+          fs.copyFileSync(sp, path.join(distAssets, file));
         }
       }
     }
