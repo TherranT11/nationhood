@@ -2617,6 +2617,21 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // 4a-quater-ter. ARMY UNITS — FORMING → ACTIVE — global pass.
+    // Flips army_units whose 2-tick forming window has elapsed
+    // (forming_until_tick <= current tick) from 'Forming' to 'Active'.
+    // Single set-based update; idempotent.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const formRes = await processFormingUnits(supabase, newTick);
+        if (formRes?.activated) {
+            console.log(`[ArmyUnits] ${formRes.activated} unit(s) activated`);
+        }
+    } catch (formErr) {
+        console.error('[advanceTick] Army units forming sweep failed (non-fatal):', formErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // 4a-quinque. VWC HOST BID RESOLUTION — global pass.
     // For every cup whose qualifier tick is current_tick (= cup_start
     // - 12), pick a host via the bid-score formula. Winner gets the

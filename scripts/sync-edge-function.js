@@ -68,6 +68,7 @@ const MODULE_FILES = [
     'platform-promises.js',
     'lawsuits.js',
     'military-loyalty.js',
+    'military-units.js',
     'loan-math.js',
 ];
 

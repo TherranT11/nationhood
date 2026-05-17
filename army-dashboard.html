@@ -509,16 +509,17 @@ body {
       <section class="force-comp">
         <div class="force-comp__header">
           <h2 class="force-comp__title">Force <em>Composition</em></h2>
+          <span id="cu-open-btn" style="display:none;cursor:pointer;font-family:var(--font-mono,monospace);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#d4b87a;border:1px solid rgba(212,184,122,0.4);background:rgba(212,184,122,0.08);padding:6px 16px;">+ Create Unit</span>
         </div>
         <div class="force-comp__grid">
           <div class="fc-card">
             <div class="fc-card__label">Personnel</div>
-            <div class="fc-card__value">0</div>
-            <div class="fc-card__desc">— soldiers under arms</div>
+            <div class="fc-card__value" id="fc-personnel">0</div>
+            <div class="fc-card__desc">— committed of pool</div>
           </div>
           <div class="fc-card">
             <div class="fc-card__label">Order of Battle</div>
-            <div class="fc-card__value">0<span class="fc-card__unit">brigades</span></div>
+            <div class="fc-card__value"><span id="fc-oob">0</span><span class="fc-card__unit">brigades</span></div>
             <div class="fc-card__desc">— combat formations</div>
           </div>
           <div class="fc-card">
@@ -528,7 +529,7 @@ body {
           </div>
           <div class="fc-card">
             <div class="fc-card__label">Available Budget</div>
-            <div class="fc-card__value">$0</div>
+            <div class="fc-card__value" id="fc-budget">$0</div>
             <div class="fc-card__desc">— discretionary funds</div>
           </div>
           <div class="fc-card">
@@ -537,6 +538,13 @@ body {
             <div class="fc-card__desc">— last tick</div>
           </div>
         </div>
+      </section>
+
+      <section class="force-comp" style="margin-top:18px;">
+        <div class="force-comp__header">
+          <h2 class="force-comp__title">Order of <em>Battle</em></h2>
+        </div>
+        <div id="oob-list" style="margin-top:10px;"></div>
       </section>
 
       <section class="op-modifiers">
@@ -553,6 +561,72 @@ body {
   </div>
 </div>
 
+<style>
+  .cu-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:600; display:flex; align-items:center; justify-content:center; padding:30px; }
+  .cu-modal { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.12); border-radius:6px; width:100%; max-width:880px; max-height:92vh; display:flex; flex-direction:column; overflow:hidden; font-family:var(--font-mono,monospace); }
+  .cu-head { display:flex; align-items:center; gap:14px; padding:16px 22px; border-bottom:0.5px solid rgba(255,255,255,0.08); background:#0c0c0c; }
+  .cu-eyebrow { color:#d4b87a; font-size:10px; letter-spacing:0.15em; }
+  .cu-title { font-size:20px; color:#fff; margin-top:2px; }
+  .cu-title em { color:#d4b87a; font-style:italic; }
+  .cu-head-right { margin-left:auto; display:flex; align-items:center; gap:18px; }
+  .cu-stat { text-align:right; }
+  .cu-stat .l { color:#666; font-size:9px; letter-spacing:0.12em; }
+  .cu-stat .v { font-size:13px; margin-top:2px; color:#d4d4d4; }
+  .cu-stat .v.gold { color:#d4b87a; font-weight:600; }
+  .cu-x { border:0.5px solid rgba(255,255,255,0.15); color:#888; width:26px; height:26px; border-radius:3px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; }
+  .cu-body { flex:1; overflow-y:auto; padding:20px 22px; }
+  .cu-sec { font-size:12px; letter-spacing:0.12em; color:#888; text-transform:uppercase; margin:18px 0 10px; }
+  .cu-sec:first-child { margin-top:0; }
+  .cu-sec .c { color:#666; margin-left:auto; font-size:10px; }
+  .cu-sec-row { display:flex; align-items:baseline; }
+  .cu-name { width:100%; background:transparent; border:none; border-bottom:1px solid rgba(212,184,122,0.35); color:#fff; font-size:20px; font-weight:600; outline:none; padding:4px 0; font-family:inherit; }
+  .cu-name::placeholder { color:#444; font-style:italic; }
+  .cu-hint { font-size:10px; color:#666; margin-top:6px; font-style:italic; }
+  .cu-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .cu-slot { background:#121212; border:0.5px dashed rgba(255,255,255,0.14); border-radius:4px; min-height:96px; padding:12px; cursor:pointer; display:flex; flex-direction:column; }
+  .cu-slot.empty { align-items:center; justify-content:center; color:#555; font-size:11px; letter-spacing:0.08em; }
+  .cu-slot.filled { border-style:solid; cursor:default; }
+  .cu-slot .sn { font-size:9px; letter-spacing:0.12em; color:#555; display:flex; justify-content:space-between; }
+  .cu-slot .sx { color:#777; cursor:pointer; }
+  .cu-slot .st { font-size:13px; font-weight:600; color:#fff; margin-top:6px; }
+  .cu-slot .sm { font-size:11px; color:#888; margin-top:2px; }
+  .cu-slot .sc { color:#d4b87a; font-size:12px; font-weight:600; margin-top:auto; }
+  .cu-pick { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-top:10px; }
+  .cu-opt { background:#141414; border:0.5px solid rgba(255,255,255,0.12); border-radius:3px; padding:10px 12px; cursor:pointer; }
+  .cu-opt:hover { border-color:rgba(212,184,122,0.4); }
+  .cu-opt .on { font-size:13px; font-weight:600; color:#fff; display:flex; justify-content:space-between; }
+  .cu-opt .om { font-size:10px; color:#888; margin-top:4px; }
+  .cu-sum { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; background:#0f0f0f; border:0.5px solid rgba(212,184,122,0.2); border-radius:4px; padding:16px 18px; }
+  .cu-sum .l { font-size:9px; color:#666; letter-spacing:0.12em; }
+  .cu-sum .v { font-size:20px; font-weight:600; color:#fff; margin-top:4px; }
+  .cu-sum .v.gold { color:#d4b87a; }
+  .cu-sum .v.warn { color:#c47a7a; }
+  .cu-sum .s { font-size:10px; color:#888; margin-top:3px; }
+  .cu-foot { display:flex; align-items:center; gap:16px; padding:14px 22px; border-top:0.5px solid rgba(255,255,255,0.08); background:#0d0d0d; }
+  .cu-foot .fm { font-size:10px; letter-spacing:0.08em; color:#666; }
+  .cu-foot .fm .gold { color:#d4b87a; font-weight:600; }
+  .cu-foot .fm .warn { color:#c47a7a; font-weight:600; }
+  .cu-foot .fm .ok { color:#9eb87a; font-weight:600; }
+  .cu-acts { margin-left:auto; display:flex; gap:8px; }
+  .cu-btn { padding:9px 18px; font-size:11px; letter-spacing:0.06em; border-radius:3px; cursor:pointer; font-family:inherit; }
+  .cu-btn.sec { border:0.5px solid rgba(255,255,255,0.15); color:#888; background:transparent; }
+  .cu-btn.pri { background:#3a2f1a; border:0.5px solid #d4b87a; color:#d4b87a; font-weight:600; }
+  .cu-btn.pri.off { opacity:0.4; pointer-events:none; }
+  .oob-unit { background:#101010; border:0.5px solid rgba(255,255,255,0.08); border-left:2px solid #555; border-radius:4px; padding:12px 16px; margin-bottom:8px; font-family:var(--font-mono,monospace); }
+  .oob-unit.forming { border-left-color:#d4a23a; }
+  .oob-unit.active { border-left-color:#7a9aab; }
+  .oob-top { display:flex; align-items:center; gap:12px; cursor:pointer; }
+  .oob-name { font-size:14px; font-weight:600; color:#fff; }
+  .oob-sub { font-size:10px; color:#888; letter-spacing:0.06em; }
+  .oob-pill { font-size:9px; font-weight:700; letter-spacing:0.1em; padding:3px 8px; border-radius:2px; text-transform:uppercase; }
+  .oob-pill.forming { color:#d4a23a; background:rgba(212,162,58,0.12); }
+  .oob-pill.active { color:#9eb87a; background:rgba(158,184,122,0.12); }
+  .oob-brigs { margin-top:8px; padding-top:8px; border-top:0.5px solid rgba(255,255,255,0.06); display:none; }
+  .oob-brigs.open { display:block; }
+  .oob-brig { font-size:11px; color:#aaa; padding:3px 0; display:flex; gap:10px; }
+  .oob-empty { font-size:11px; color:#666; font-style:italic; padding:8px 2px; }
+</style>
+<div id="cu-overlay" class="cu-overlay" style="display:none;"></div>
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { isFactionInactive } from './js/game/factions.js';
@@ -849,6 +923,9 @@ async function init() {
     // Operating Modifiers — render the 8 stat cards from the faction row.
     renderOperatingModifiers(faction);
 
+    // Create Unit + Order of Battle (Phase 1).
+    armyUnitsInit(faction, shard);
+
     // Dispatches feed — wire the tabs and kick off the first fetch.
     _factionForDispatches = faction;
     _shardForDispatches   = shard;
@@ -864,6 +941,271 @@ async function init() {
 }
 
 init();
+// ─── Create Unit + Order of Battle (Phase 1) ───────────────────────
+// Brigade specs are DISPLAY-ONLY here; the create_unit RPC
+// (20270121) is the single authority that computes & charges. These
+// numbers MUST stay in sync with that RPC's brigade table.
+const AU_BRIGADES = {
+  light_infantry: { name: 'Light Infantry', mp: 2000, cost: 1000000 },
+  infantry:       { name: 'Infantry',       mp: 3000, cost: 2000000 },
+  mechanized:     { name: 'Mechanized',     mp: 1000, cost: 3000000 },
+  armor:          { name: 'Armor',          mp:  500, cost: 5000000 },
+  artillery:      { name: 'Artillery',      mp: 1000, cost: 2000000 },
+  support:        { name: 'Support',        mp: 2000, cost: 2000000 },
+};
+const AU_ORDER = ['light_infantry','infantry','mechanized','armor','artillery','support'];
+const AU_FEE = 2000000;
+
+let _auFaction = null, _auShard = null;
+let _auUnits = [], _auFunds = 0;
+let _auBrigades = [], _auPicking = false, _auCreating = false;
+const _auOpenUnits = new Set();
+
+function auMoney(raw) {
+  const n = Number(raw) || 0;
+  return '$' + (n / 1e6).toFixed(1) + 'M';
+}
+function auPool()      { return Math.max(0, Math.round(Number(_auFaction?.army_manpower) || 0)); }
+function auCommitted() { return _auUnits.reduce((s, u) => s + (Number(u.total_manpower) || 0), 0); }
+function auTick()      { return Number(_auShard?.current_tick) || 0; }
+
+async function armyUnitsInit(faction, shard) {
+  _auFaction = faction; _auShard = shard;
+  const btn = document.getElementById('cu-open-btn');
+  if (btn) { btn.style.display = 'inline-block'; btn.onclick = openCU; }
+
+  const overlay = document.getElementById('cu-overlay');
+  if (overlay) {
+    overlay.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-cu]');
+      if (!el) { if (e.target === overlay) closeCU(); return; }
+      const a = el.getAttribute('data-cu');
+      if (a === 'close' || a === 'cancel') return closeCU();
+      if (a === 'addslot') { _auPicking = true; return renderCUBody(); }
+      if (a.startsWith('pick:')) {
+        if (_auBrigades.length < 6) _auBrigades.push(a.slice(5));
+        _auPicking = false; return renderCUBody();
+      }
+      if (a.startsWith('rm:')) {
+        _auBrigades.splice(Number(a.slice(3)), 1); return renderCUBody();
+      }
+      if (a === 'create') return submitCU();
+    });
+  }
+  const oob = document.getElementById('oob-list');
+  if (oob) oob.addEventListener('click', (e) => {
+    const top = e.target.closest('[data-uid]');
+    if (!top) return;
+    const id = top.getAttribute('data-uid');
+    if (_auOpenUnits.has(id)) _auOpenUnits.delete(id); else _auOpenUnits.add(id);
+    renderOoB();
+  });
+
+  await auLoad();
+  renderForceComp();
+  renderOoB();
+}
+
+async function auLoad() {
+  try {
+    const { data: units, error: uErr } = await _supabase
+      .from('army_units')
+      .select('id,name,brigades,total_manpower,construction_cost,status,forming_until_tick,created_at_tick,section')
+      .eq('faction_id', _auFaction.id)
+      .neq('status', 'Decommissioned')
+      .order('created_at', { ascending: true });
+    if (uErr) { console.warn('[army-units] units load failed:', uErr.message); _auUnits = []; }
+    else _auUnits = units || [];
+
+    const { data: m, error: mErr } = await _supabase
+      .from('ministries')
+      .select('discretionary_balance')
+      .eq('nation_id', _auFaction.nation_id)
+      .eq('ministry_key', 'defense')
+      .eq('is_active', true)
+      .maybeSingle();
+    if (mErr) console.warn('[army-units] defense funds load failed:', mErr.message);
+    _auFunds = Number(m?.discretionary_balance) || 0;
+  } catch (e) {
+    console.warn('[army-units] load failed:', e?.message || e);
+    _auUnits = []; _auFunds = 0;
+  }
+}
+
+function renderForceComp() {
+  const p = document.getElementById('fc-personnel');
+  if (p) p.innerHTML = auCommitted().toLocaleString()
+    + ` <span class="fc-card__unit">of ${auPool().toLocaleString()}</span>`;
+  const o = document.getElementById('fc-oob');
+  if (o) o.textContent = String(_auUnits.reduce(
+    (s, u) => s + (Array.isArray(u.brigades) ? u.brigades.length : 0), 0));
+  const b = document.getElementById('fc-budget');
+  if (b) b.textContent = auMoney(_auFunds);
+}
+
+function auInitials(name) {
+  const w = String(name || '?').trim().split(/\s+/).filter(Boolean);
+  return ((w[0]?.[0] || '?') + (w[1]?.[0] || '')).toUpperCase();
+}
+
+function renderOoB() {
+  const host = document.getElementById('oob-list');
+  if (!host) return;
+  if (_auUnits.length === 0) {
+    host.innerHTML = '<div class="oob-empty">No units yet. Use Create Unit to commission your first formation.</div>';
+    return;
+  }
+  const tick = auTick();
+  let html = '<div class="cu-sec">Regular Army</div>';
+  for (const u of _auUnits) {
+    const brigs = Array.isArray(u.brigades) ? u.brigades : [];
+    const forming = u.status === 'Forming';
+    const left = Math.max(0, (Number(u.forming_until_tick) || 0) - tick);
+    const open = _auOpenUnits.has(u.id);
+    const composition = AU_ORDER
+      .filter(k => brigs.includes(k))
+      .map(k => `${brigs.filter(x => x === k).length}× ${AU_BRIGADES[k].name}`)
+      .join(' · ') || '—';
+    const pill = forming
+      ? `<span class="oob-pill forming">Forming · Ready in ${left} tick${left === 1 ? '' : 's'}</span>`
+      : `<span class="oob-pill active">Active</span>`;
+    html += `<div class="oob-unit ${forming ? 'forming' : 'active'}">
+      <div class="oob-top" data-uid="${escapeAttr(u.id)}">
+        <span class="oob-pill" style="background:#222;color:#bbb;">${escapeHtml(auInitials(u.name))}</span>
+        <div style="flex:1;">
+          <div class="oob-name">${escapeHtml(u.name)}</div>
+          <div class="oob-sub">${brigs.length} BRIGADE${brigs.length === 1 ? '' : 'S'} · ${(Number(u.total_manpower)||0).toLocaleString()} PERSONNEL</div>
+        </div>
+        ${pill}
+        <span style="color:#666;">${open ? '▾' : '▸'}</span>
+      </div>
+      <div class="oob-brigs ${open ? 'open' : ''}">
+        <div class="oob-sub" style="margin-bottom:4px;">${escapeHtml(composition)}</div>
+        ${brigs.map((k, i) => {
+          const sp = AU_BRIGADES[k];
+          return `<div class="oob-brig"><span style="color:#666;">${i + 1}/${brigs.length}</span><span style="color:#fff;">${sp ? escapeHtml(sp.name) : escapeHtml(k)}</span><span>${sp ? sp.mp.toLocaleString() : '0'} manpower</span></div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }
+  host.innerHTML = html;
+}
+
+function openCU() {
+  _auBrigades = []; _auPicking = false;
+  const o = document.getElementById('cu-overlay');
+  if (!o) return;
+  o.style.display = 'flex';
+  o.innerHTML = `<div class="cu-modal">
+    <div class="cu-head">
+      <div>
+        <div class="cu-eyebrow">— ARMY ACTION —</div>
+        <div class="cu-title">Create <em>Unit</em></div>
+      </div>
+      <div class="cu-head-right">
+        <div class="cu-stat"><div class="l">ACTION COST</div><div class="v gold">${auMoney(AU_FEE)}</div></div>
+        <div class="cu-stat"><div class="l">ARMY FUNDS</div><div class="v">${auMoney(_auFunds)}</div></div>
+        <div class="cu-x" data-cu="close">×</div>
+      </div>
+    </div>
+    <div class="cu-body">
+      <div class="cu-sec">I. Unit Designation</div>
+      <input class="cu-name" id="cu-name" maxlength="80" placeholder="e.g. 4th Mechanized Division" />
+      <div class="cu-hint">Names are public — they appear on the Order of Battle and in records.</div>
+      <div id="cu-dyn"></div>
+    </div>
+  </div>`;
+  renderCUBody();
+}
+function closeCU() {
+  const o = document.getElementById('cu-overlay');
+  if (o) o.style.display = 'none';
+}
+
+function renderCUBody() {
+  const host = document.getElementById('cu-dyn');
+  if (!host) return;
+  const mp = _auBrigades.reduce((s, k) => s + (AU_BRIGADES[k]?.mp || 0), 0);
+  const cost = _auBrigades.reduce((s, k) => s + (AU_BRIGADES[k]?.cost || 0), 0);
+  const outlay = cost + AU_FEE;
+  const available = auPool() - auCommitted();
+  const enoughMp = mp <= available;
+  const enoughFunds = outlay <= _auFunds;
+  const hasBrig = _auBrigades.length >= 1;
+  const canCreate = hasBrig && enoughMp && enoughFunds;
+
+  let slots = '';
+  for (let i = 0; i < 6; i++) {
+    const k = _auBrigades[i];
+    if (k) {
+      const sp = AU_BRIGADES[k];
+      slots += `<div class="cu-slot filled" style="border-color:rgba(212,184,122,0.35);background:#161412;">
+        <div class="sn"><span>SLOT ${i + 1}</span><span class="sx" data-cu="rm:${i}">×</span></div>
+        <div class="st">${escapeHtml(sp.name)}</div>
+        <div class="sm">${sp.mp.toLocaleString()} manpower</div>
+        <div class="sc">${auMoney(sp.cost)}</div>
+      </div>`;
+    } else if (_auBrigades.length === i) {
+      slots += `<div class="cu-slot empty" data-cu="addslot"><div style="font-size:20px;color:#444;">+</div><div>SLOT ${i + 1}${i === 5 ? ' — OPTIONAL' : ' — ADD BRIGADE'}</div></div>`;
+    } else {
+      slots += `<div class="cu-slot empty" style="opacity:0.35;cursor:default;"><div>SLOT ${i + 1}</div></div>`;
+    }
+  }
+  let picker = '';
+  if (_auPicking && _auBrigades.length < 6) {
+    picker = '<div class="cu-pick">' + AU_ORDER.map(k => {
+      const sp = AU_BRIGADES[k];
+      return `<div class="cu-opt" data-cu="pick:${k}">
+        <div class="on"><span>${escapeHtml(sp.name)}</span><span style="color:#d4b87a;">${auMoney(sp.cost)}</span></div>
+        <div class="om">${sp.mp.toLocaleString()} manpower${k === 'support' ? ' · HQ / logistics / medical' : ''}</div>
+      </div>`;
+    }).join('') + '</div>';
+  }
+
+  host.innerHTML = `
+    <div class="cu-sec-row"><span class="cu-sec">II. Brigade Composition</span><span class="cu-sec c">${_auBrigades.length} OF 6 SLOTS FILLED</span></div>
+    <div class="cu-grid">${slots}</div>
+    ${picker}
+    <div class="cu-sec">III. Unit Summary</div>
+    <div class="cu-sum">
+      <div><div class="l">TOTAL MANPOWER</div><div class="v ${enoughMp ? '' : 'warn'}">${mp.toLocaleString()}</div><div class="s">${available.toLocaleString()} available</div></div>
+      <div><div class="l">CONSTRUCTION</div><div class="v gold">${auMoney(cost)}</div><div class="s">+ ${auMoney(AU_FEE)} action fee</div></div>
+      <div><div class="l">TOTAL OUTLAY</div><div class="v ${enoughFunds ? 'gold' : 'warn'}">${auMoney(outlay)}</div><div class="s">of ${auMoney(_auFunds)} available</div></div>
+    </div>
+    <div class="cu-foot" style="margin:18px -22px -20px;">
+      <div class="fm">STATUS: <span class="${hasBrig ? 'gold' : 'warn'}">${hasBrig ? 'READY TO COMMISSION' : 'ADD AT LEAST ONE BRIGADE'}</span></div>
+      <div class="fm">MANPOWER: <span class="${enoughMp ? 'ok' : 'warn'}">${enoughMp ? 'SUFFICIENT' : 'INSUFFICIENT'}</span></div>
+      <div class="cu-acts">
+        <div class="cu-btn sec" data-cu="cancel">CANCEL</div>
+        <div class="cu-btn pri ${canCreate ? '' : 'off'}" data-cu="create">CREATE UNIT — ${auMoney(outlay)} →</div>
+      </div>
+    </div>`;
+}
+
+async function submitCU() {
+  if (_auCreating) return;
+  const nameEl = document.getElementById('cu-name');
+  const name = (nameEl?.value || '').trim();
+  if (!name) { alert('Enter a unit name.'); return; }
+  if (_auBrigades.length < 1) { alert('Add at least one brigade.'); return; }
+  _auCreating = true;
+  try {
+    const { data, error } = await _supabase.rpc('create_unit', {
+      p_faction_id: _auFaction.id,
+      p_name: name,
+      p_brigades: _auBrigades,
+    });
+    if (error) { alert('Failed to create unit: ' + error.message); return; }
+    if (data && data.success === false) { alert(data.error || 'Could not create unit.'); return; }
+    closeCU();
+    alert(`${name} commissioned — Forming, ready in 2 ticks.`);
+    await auLoad();
+    renderForceComp();
+    renderOoB();
+  } finally {
+    _auCreating = false;
+  }
+}
 </script>
 </body>
 </html>
