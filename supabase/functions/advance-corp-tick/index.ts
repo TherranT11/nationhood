@@ -1485,14 +1485,15 @@ async function processCorpContracts(supabase, nationId, currentTick) {
         };
 
         if (newProgressPct >= 100) {
-            updates.status = 'completed';
-            updates.completed_at_tick = currentTick;
-
-            // Pay out the bid amount immediately. Doing it synchronously
-            // (no payout_tick scheduling) keeps the contract visible in
-            // the dashboard's active panel until it leaves with the
-            // status flip, so there's no "completed, awaiting payment"
-            // gap window where the contract is invisible to the player.
+            // Pay out the bid amount immediately, then ONLY finalize
+            // the contract if the corp was actually credited. If the
+            // payout can't happen (bid_amount missing/0, fetch/update
+            // error) we must NOT flip status='completed': that would
+            // drop the contract from the active pool forever with no
+            // retry, completing it for free. Instead keep it active and
+            // hold progress just under 100 so the deterministic
+            // idempotency gate lets the next tick retry the payout.
+            let paid = false;
             if (totalBid > 0) {
                 const { data: corp, error: corpErr } = await supabase
                     .from('factions')
@@ -1511,10 +1512,24 @@ async function processCorpContracts(supabase, nationId, currentTick) {
                     } else {
                         logCashEvent(bid.faction_id, 'capital_in',
                             `${c.name || 'Project'} · final payment`, totalBid);
+                        paid = true;
                     }
                 }
             }
-            results.push({ contract: c.name, completed: true, paid: totalBid });
+
+            if (paid) {
+                updates.status = 'completed';
+                updates.completed_at_tick = currentTick;
+                results.push({ contract: c.name, completed: true, paid: totalBid });
+            } else {
+                // Not paid → don't finalize. Cap progress below 100 so
+                // the idempotency gate (progress_pct >= newProgressPct)
+                // doesn't wedge it; the next tick recomputes 100 and
+                // retries the payout. Self-heals once bid_amount is set.
+                updates.progress_pct = Math.min(Number(newProgressPct), 99.99);
+                console.warn(`[CorpContracts] ${c.name}: COMPLETION DEFERRED — payout not credited (totalBid=${totalBid}); contract stays active, will retry next tick`);
+                results.push({ contract: c.name, completed: false, deferred: true });
+            }
         }
 
         const { error: updErr } = await supabase.from('corp_contracts')
