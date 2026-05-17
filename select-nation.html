@@ -762,7 +762,7 @@ body {
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, countEligibleParties } from './js/utils.js';
 import { BRANCH_DASHBOARDS } from './js/game/factions.js';
-import { getNationNames } from './js/game/political-actions.js';
+import { getNationNames, processArmyManpower } from './js/game/political-actions.js';
 
 // Flag file lookup — some filenames don't match nation names exactly
 const FLAG_URLS = {
@@ -1261,6 +1261,20 @@ async function confirmMilitaryJoin() {
       btn.textContent = 'JOIN';
       militaryJoinInFlight = false;
       return;
+    }
+
+    // Materialize the army's manpower share now (Σ active-law
+    // manpower_pct × population × 70%) via the SAME single-source
+    // function the tick runs, so the new Chief sees manpower
+    // immediately instead of waiting one tick. `nation` is from
+    // nations.select('*') so it carries .population/.id. Own swallowing
+    // try/catch — non-fatal: the per-tick processArmyManpower is the
+    // safety net, and the join already succeeded, so this must never
+    // trip the outer "Failed to join" catch.
+    try {
+      await processArmyManpower(_supabase, nation);
+    } catch (mpErr) {
+      console.warn('Army manpower materialize on join failed (non-fatal):', mpErr?.message || mpErr);
     }
 
     // Public "command appointed" dispatch — Politics, scoped to the

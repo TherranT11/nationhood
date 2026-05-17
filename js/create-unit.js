@@ -23,7 +23,9 @@ export const AU_ORDER = ['light_infantry','infantry','mechanized','armor','artil
 export const AU_FEE = 2000000;
 
 export function auMoney(raw) {
-  return '$' + ((Number(raw) || 0) / 1e6).toFixed(1) + 'M';
+  // Whole millions render as "$2" / "$12"; a fractional balance keeps
+  // one decimal ("$28.4"). No "M" suffix.
+  return '$' + ((Number(raw) || 0) / 1e6).toFixed(1).replace(/\.0$/, '');
 }
 
 const CU_CSS = `
