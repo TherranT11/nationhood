@@ -61,9 +61,12 @@ export function mountCosReportPressingIssues({
     const minister = r.minister_name
       ? `Defense Minister <span class="nm">${escapeHtml(r.minister_name)}</span>`
       : 'the Defense Minister';
+    // faction_name already encodes "{branch} of {nation}" (e.g.
+    // "Army of Avelia"), so it is NOT followed by " of {nation_name}"
+    // — that produced "Army of Avelia of Avelia". Consistent with the
+    // join/resign events, which also use faction_name alone.
     const headline = `The <span class="nm">${escapeHtml(r.chief_name || 'Chief of Staff')}</span> of `
-      + `<span class="nm">${escapeHtml(r.faction_name || 'the Army')}</span> of `
-      + `<span class="nm">${escapeHtml(r.nation_name || 'the nation')}</span> has filed a report for `
+      + `<span class="nm">${escapeHtml(r.faction_name || 'the Army')}</span> has filed a report for `
       + `${escapeHtml(String(r.report_year || ''))} to ${minister}.`;
     const badge = r.is_public
       ? `<span class="cosr-badge pub">Public</span>`
