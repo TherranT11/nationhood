@@ -368,6 +368,10 @@ function renderActionsRightPanel() {
             <div style="font-family:var(--font-mono);font-size:13px;color:var(--text-dim);margin-bottom:14px;">${escapeHtml(meta.fullTitle)}</div>
             <div style="font-size:16px;color:var(--text-muted);margin-bottom:20px;">This position is vacant. Hire an executive to unlock actions.</div>
             <div onclick="openExecSearch('${role}')" style="display:inline-block;padding:8px 24px;font-family:var(--font-mono);font-size:13px;font-weight:700;letter-spacing:1px;color:#000;background:#5a8aaa;cursor:pointer;">EXECUTIVE SEARCH</div>
+            ${role === 'CEO' ? `<div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border-0,rgba(255,255,255,0.06));">
+                <div style="font-family:var(--font-mono);font-size:11px;color:#6a6660;margin-bottom:10px;line-height:1.5;">Insolvent with no CEO to recover? The board can still file for bankruptcy.</div>
+                <div onclick="actExecute('bankruptcy','CEO')" style="display:inline-block;padding:8px 24px;font-family:var(--font-mono);font-size:13px;font-weight:700;letter-spacing:1px;color:#000;background:#c55;cursor:pointer;">DECLARE BANKRUPTCY</div>
+            </div>` : ''}
         </div>`;
         return;
     }
