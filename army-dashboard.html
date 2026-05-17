@@ -830,6 +830,15 @@ async function init() {
       flagUrl,
     });
 
+    // Messaging bubble — army-dashboard has its own init() (it does not
+    // bootstrap through army-page.js); mirror the same lazy mount as
+    // Party (common.js) / Corp (corp-topbar.js) so it appears here too.
+    (typeof requestIdleCallback === 'function' ? requestIdleCallback : setTimeout)(() => {
+      import('./js/messaging.js')
+        .then(m => m.initMessaging(faction, nation, shard))
+        .catch(err => console.warn('[army-dashboard] messaging init failed:', err));
+    });
+
     // Masthead: nation name + capital + chief. Values come straight from
     // the faction / nation rows — no client-side derivation.
     const capital = nation?.capital || '—';

@@ -374,6 +374,53 @@ function buildElectoralMakeup() {
     </div>`;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Nation map — a labelled [Nation] box + [Valeranza] box that toggle one
+// image beneath them: {Nation} Whole.png ↔ {Nation} Valeranza.png. Pure
+// CSS (hidden radios + :checked sibling combinator) so it survives the
+// innerHTML rebuilds and needs no JS/delegation; a rebuild resets to the
+// Whole view, which is exactly "clicking [Nation] pulls it back to Whole".
+// Asset path is derived from nation.name (one source); missing art hides
+// itself via onerror. Scoped <style> lives inside root.innerHTML so it is
+// replaced — never accumulated — on re-render.
+// ═══════════════════════════════════════════════════════════════════════════
+function buildNationMap() {
+    const nm = _state?.nation?.name;
+    if (!nm) return '';
+    const whole = encodeURI(`assets/${nm} Whole.png`);
+    const val   = encodeURI(`assets/${nm} Valeranza.png`);
+    return `
+    <style>
+      .cf-nm-wrap { margin: 14px 0 0; }
+      .cf-nm-r { position: absolute; opacity: 0; pointer-events: none; }
+      .cf-nm-boxes { display: flex; gap: 10px; margin-bottom: 10px; }
+      .cf-nm-box { font-family: var(--font-mono, monospace); font-size: 12px;
+        font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+        color: var(--text-secondary, #888); border: 1px solid var(--border-1, rgba(255,255,255,0.08));
+        background: var(--bg-2, #1a1a17); padding: 9px 18px; cursor: pointer; user-select: none; }
+      .cf-nm-box:hover { color: var(--text-bright, #f0efe6); }
+      #cf-nm-whole:checked ~ .cf-nm-boxes label[for="cf-nm-whole"],
+      #cf-nm-val:checked ~ .cf-nm-boxes label[for="cf-nm-val"] {
+        color: var(--accent, #d4b87a); border-color: var(--accent, #d4b87a); }
+      .cf-nm-stage img { display: none; max-width: 100%; height: auto;
+        border: 1px solid var(--border-0, rgba(255,255,255,0.06)); }
+      #cf-nm-whole:checked ~ .cf-nm-stage .cf-nm-whole-img { display: block; }
+      #cf-nm-val:checked ~ .cf-nm-stage .cf-nm-val-img { display: block; }
+    </style>
+    <div class="cf-nm-wrap">
+      <input type="radio" name="cf-nm" id="cf-nm-whole" class="cf-nm-r" checked>
+      <input type="radio" name="cf-nm" id="cf-nm-val" class="cf-nm-r">
+      <div class="cf-nm-boxes">
+        <label class="cf-nm-box" for="cf-nm-whole">${esc(nm)}</label>
+        <label class="cf-nm-box" for="cf-nm-val">Valeranza</label>
+      </div>
+      <div class="cf-nm-stage">
+        <img class="cf-nm-whole-img" src="${whole}" alt="${esc(nm)} map" onerror="this.style.display='none'">
+        <img class="cf-nm-val-img" src="${val}" alt="${esc(nm)} Valeranza map" onerror="this.style.display='none'">
+      </div>
+    </div>`;
+}
+
 export async function renderFormationTab(root) {
     if (!root) return;
 
@@ -396,12 +443,12 @@ export async function renderFormationTab(root) {
     // Electoral Makeup sits inside a 2-col grid: left slot reserved for
     // Campaign Events (not yet built), right slot shows the makeup bar.
     const makeup = buildElectoralMakeup();
-    const makeupRow = makeup
+    const makeupRow = (makeup
         ? `<div class="cf-makeup-row">
                <div class="cf-makeup-left"></div>
                <div class="cf-makeup-right">${makeup}</div>
            </div>`
-        : '';
+        : '') + buildNationMap();
 
     // Presidential systems — no coalition formation
     if (hasElectedPresident(_state.nation)) {

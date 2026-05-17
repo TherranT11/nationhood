@@ -1263,6 +1263,28 @@ async function confirmMilitaryJoin() {
       return;
     }
 
+    // Public "command appointed" dispatch — Politics, scoped to the
+    // player's nation (category 'government' + this nation_id). Wrapped
+    // in its own swallowing try/catch: confirmMilitaryJoin's outer
+    // catch surfaces "Failed to join", so a dispatch failure must never
+    // abort a join that already succeeded.
+    try {
+      const { data: shardRow } = await _supabase
+        .from('shard').select('current_tick').eq('name', 'Alpha Shard').maybeSingle();
+      const { error: evErr } = await _supabase.from('event_log').insert({
+        nation_id: nation.id,
+        faction_id: factionId,
+        event_name: `General ${chiefFirst} ${chiefLast} Appointed`,
+        description_chosen: `General ${chiefFirst} ${chiefLast} has been appointed to lead the ${factionName}. He is ${chiefAge} old.`,
+        category: 'government',
+        trigger_key: 'military_command_appointed',
+        fired_at_tick: Number(shardRow?.current_tick) || 0,
+      });
+      if (evErr) console.warn('Military appointment dispatch failed (non-fatal):', evErr.message);
+    } catch (evErr) {
+      console.warn('Military appointment dispatch failed (non-fatal):', evErr?.message || evErr);
+    }
+
     sessionStorage.setItem('active_faction_id', factionId);
     sessionStorage.removeItem('pending_faction_type');
     sessionStorage.removeItem('nationhood_pending_nation');
