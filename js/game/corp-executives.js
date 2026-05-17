@@ -61,6 +61,7 @@ export var EXEC_ROLE_META = {
 
 // Which roles each candidate can fill (randomly assigned 1-3 specializations)
 var ROLE_GROUPS = [
+    ['CEO'],
     ['CFO'],
     ['COO'],
     ['CTO'],
