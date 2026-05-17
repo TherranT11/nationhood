@@ -55,6 +55,8 @@ const RD_CSS = `
 .rd-ta::placeholder { color:#445; font-style:italic; }
 .rd-count { font-size:9px; color:#555; text-align:right; margin-top:6px; letter-spacing:0.06em; }
 .rd-count.over { color:#c47a7a; }
+.rd-pub { display:flex; align-items:center; gap:8px; margin-top:14px; font-size:11px; color:#aab8c0; cursor:pointer; user-select:none; }
+.rd-pub input { accent-color:#7a9aab; width:14px; height:14px; }
 .rd-foot { display:flex; align-items:center; gap:16px; padding:14px 22px; border-top:0.5px solid rgba(255,255,255,0.08); background:#0d0d0d; }
 .rd-foot .fm { font-size:10px; letter-spacing:0.08em; color:#666; }
 .rd-foot .fm .steel { color:#7a9aab; font-weight:600; }
@@ -164,9 +166,10 @@ export function openReportModal(faction) {
         <div class="rd-sec">Confidential briefing</div>
         <textarea class="rd-ta" id="rd-body" maxlength="${BODY_LIMIT}" placeholder="Write privately to the Defense Minister. Only the party that controls the Defense ministry can read this; every other party sees only the headline."></textarea>
         <div class="rd-count" id="rd-count">0 / ${BODY_LIMIT}</div>
+        <label class="rd-pub"><input type="checkbox" id="rd-public"> Make report public — every party can read the full report (default: only the Defense Minister's party)</label>
       </div>
       <div class="rd-foot">
-        <div class="fm">VISIBILITY: <span class="steel">DEFENSE MINISTER'S PARTY ONLY</span></div>
+        <div class="fm">VISIBILITY: <span class="steel" id="rd-vis">DEFENSE MINISTER'S PARTY ONLY</span></div>
         <div class="rd-acts">
           <div class="rd-btn sec" data-rd="cancel">CANCEL</div>
           <div class="rd-btn pri off" id="rd-file" data-rd="file">FILE BRIEFING — $1 →</div>
@@ -177,6 +180,11 @@ export function openReportModal(faction) {
     const ta = overlay.querySelector('#rd-body');
     const cnt = overlay.querySelector('#rd-count');
     const fileBtn = overlay.querySelector('#rd-file');
+    const pub = overlay.querySelector('#rd-public');
+    const vis = overlay.querySelector('#rd-vis');
+    if (pub && vis) pub.onchange = () => {
+      vis.textContent = pub.checked ? 'ALL PARTIES (PUBLIC)' : "DEFENSE MINISTER'S PARTY ONLY";
+    };
     overlay.oninput = () => {
       const n = ta.value.length;
       cnt.textContent = `${n} / ${BODY_LIMIT}`;
@@ -197,6 +205,7 @@ export function openReportModal(faction) {
       const { data, error } = await _supabase.rpc('file_chief_of_staff_report', {
         p_faction_id: faction.id,
         p_body: body,
+        p_public: !!overlay.querySelector('#rd-public')?.checked,
       });
       if (error) { alert('Failed to file: ' + error.message); return; }
       if (data && data.success === false) {
