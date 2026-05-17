@@ -1062,6 +1062,10 @@ function renderNationChecks(optIdx) {
 
 // Toggling a nation in one option flips the grey-out state for the same
 // nation in every other option, so we re-render every nation-checks panel.
+// KNOWN: when editing an existing policy these toggles still update the
+// in-memory set but savePolicy gates starting-law seeding behind
+// isNewPolicy, so they have no effect on save (by design — edit =
+// definition only). Starting nations are meaningful at creation only.
 function toggleStartingNation(optIdx, id, checked) {
     const opt = options[optIdx];
     if (!opt) return;
