@@ -528,7 +528,7 @@ body {
           </div>
           <div class="fc-card">
             <div class="fc-card__label">Available Budget</div>
-            <div class="fc-card__value">$0</div>
+            <div class="fc-card__value" id="fc-avail-budget">$0</div>
             <div class="fc-card__desc">— discretionary funds</div>
           </div>
           <div class="fc-card">
@@ -772,7 +772,7 @@ async function init() {
     // read here as the single source of truth for the masthead.
     const { data: faction, error: factionErr } = await _supabase
       .from('factions')
-      .select('id, faction_type, faction_name, abbreviation, nation_id, abandoned_at, is_banned, branch, leader_first_name, leader_last_name, leader_age, army_manpower, army_training, army_equipment, army_armor, army_artillery, army_logistics, army_loyalty, army_supplies')
+      .select('id, faction_type, faction_name, abbreviation, nation_id, abandoned_at, is_banned, branch, party_funds, leader_first_name, leader_last_name, leader_age, army_manpower, army_training, army_equipment, army_armor, army_artillery, army_logistics, army_loyalty, army_supplies')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
       .eq('faction_type', 'military')
       .eq('branch', 'army')
@@ -854,6 +854,14 @@ async function init() {
       'Army of <em>' + escapeHtml(nationName) + '</em>';
     document.getElementById('army-masthead-hq').textContent    = capital;
     document.getElementById('army-masthead-chief').textContent = chiefLine;
+
+    // Available Budget — the army faction's own treasury (party_funds),
+    // the single pot allocate_defense_funds fills and Create Unit charges.
+    const _budgetEl = document.getElementById('fc-avail-budget');
+    if (_budgetEl) {
+      _budgetEl.textContent = '$' + ((Number(faction.party_funds) || 0) / 1e6)
+        .toFixed(1).replace(/\.0$/, '');
+    }
 
     // Operating Modifiers — render the 8 stat cards from the faction row.
     renderOperatingModifiers(faction);
