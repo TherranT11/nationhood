@@ -125,7 +125,7 @@ export const NATION_STAT_COLUMNS = [
     'infrastructure', 'industry', 'farmland',
     'service_sector', 'unskilled_workers', 'skilled_workers', 'wages',
     'income_tax', 'corporate_tax', 'crime', 'corruption',
-    'inequality',
+    'inequality', 'minerals',
 ];
 
 export const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
@@ -214,8 +214,7 @@ export const STAT_KEY_ALIASES = {
     happiness:                  null,
     polarization:               null,
     freedom_index:              null,
-    gdp:                        null,
-    GDP:                        null,
+    GDP:                        'gdp',   // legacy uppercase key → canonical gdp column
     inflation:                  null,
     foreign_investment:         null,
     tariffs:                    null,
