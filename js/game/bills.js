@@ -3660,17 +3660,35 @@ export async function enactBill(supabase, bill, currentTick) {
             }
             console.log(`[enactBill] discretionary: ${fd.ministry_key} balance ${curBalance} → ${newBalance} (${grantAmountM > 0 ? '+' : ''}${grantAmountM}M)`);
 
-            // grantAmountM and nation.debt are both abstract $M integers
-            // (post-migration 20261207). Positive grant → +debt; negative
-            // grant → -debt clamped at 0. Single path covers both signs.
-            const newDebt = Math.max(0, (Number(nation.debt) || 0) + grantAmountM);
-            const { error: debtUpdErr } = await supabase.from('nations')
-                .update({ debt: newDebt }).eq('id', bill.nation_id);
-            if (debtUpdErr) {
-                console.error(`[enactBill] debt update failed for ${fd.ministry_key} grant ${grantAmountM}M:`, debtUpdErr.message);
+            // Fund the grant from the treasury first; only the shortfall
+            // becomes debt. Mirrors chargePolicyUpfrontCost ("Cost: pull
+            // from treasury, overflow to debt") and the trade-transfer
+            // pattern at bills.js:1877 so every money path moves funds the
+            // same way. nation.budget, nation.debt and grantAmountM are all
+            // abstract $M (1 = $1M raw) — no unit bridge needed here.
+            const curBudget = Number(nation.budget) || 0;
+            const curDebt   = Number(nation.debt)   || 0;
+            let newBudget, newDebt;
+            if (grantAmountM > 0) {
+                const fromBudget = Math.max(0, Math.min(grantAmountM, curBudget));
+                const fromDebt   = grantAmountM - fromBudget;
+                newBudget = Math.max(0, curBudget - fromBudget);
+                newDebt   = Math.max(0, Math.round(curDebt + fromDebt));
             } else {
-                nation.debt = newDebt;
-                console.log(`[enactBill] discretionary ${grantAmountM > 0 ? 'grant' : 'withdrawal'}: ${fd.ministry_key} debt ${grantAmountM > 0 ? '+' : ''}${grantAmountM}M → ${newDebt}`);
+                // Withdrawal: funds return to the treasury (symmetric with
+                // the funding path, so a fund→withdraw cycle conserves money
+                // and can't mint debt relief out of nothing).
+                newBudget = curBudget + Math.abs(grantAmountM);
+                newDebt   = curDebt;
+            }
+            const { error: debtUpdErr } = await supabase.from('nations')
+                .update({ budget: newBudget, debt: newDebt }).eq('id', bill.nation_id);
+            if (debtUpdErr) {
+                console.error(`[enactBill] budget/debt update failed for ${fd.ministry_key} grant ${grantAmountM}M:`, debtUpdErr.message);
+            } else {
+                nation.budget = newBudget;
+                nation.debt   = newDebt;
+                console.log(`[enactBill] discretionary ${grantAmountM > 0 ? 'grant' : 'withdrawal'}: ${fd.ministry_key} ${grantAmountM > 0 ? '+' : ''}${grantAmountM}M → budget ${curBudget}→${newBudget}, debt ${curDebt}→${newDebt}`);
             }
         }
     }
