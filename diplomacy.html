@@ -2341,6 +2341,12 @@ function renderTradeAgreements() {
                 html += `</div>`;
             }
 
+            if (ag.status === 'active' && nationId && (ag.nation_a_id === nationId || ag.nation_b_id === nationId)) {
+                html += `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-main);text-align:right;">
+                    <button data-action="withdraw-ag" data-ag-id="${ag.id}" style="font-family:var(--font-mono);font-size:10px;font-weight:700;letter-spacing:1px;color:#c55;background:rgba(197,85,85,0.08);border:1px solid rgba(197,85,85,0.35);padding:6px 16px;cursor:pointer;text-transform:uppercase;">Withdraw</button>
+                </div>`;
+            }
+
             html += `</div>`;
         }
 
@@ -2351,14 +2357,58 @@ function renderTradeAgreements() {
 
     left.innerHTML = html;
 
-    // Click handler for expand/collapse
+    // Click handler for expand/collapse + withdraw
     left.onclick = (e) => {
+        const wbtn = e.target.closest('[data-action="withdraw-ag"]');
+        if (wbtn) {
+            e.stopPropagation();
+            withdrawTradeAgreement(wbtn.dataset.agId);
+            return;
+        }
         const row = e.target.closest('.tr-agreement-row');
         if (!row) return;
         const agId = row.dataset.agId;
         _tradeExpandedAgreement = _tradeExpandedAgreement === agId ? null : agId;
         renderTradeAgreements();
     };
+}
+
+// Withdraw from an active trade agreement. The cancel_trade_agreement
+// RPC (SECURITY DEFINER) sets status='withdrawn' (the 20260621 trigger
+// then cancels the spawned shipping contracts), emits the Politics
+// Nation/World dispatch, and files the shipping corp's Pressing Issue
+// — atomically. Single source of truth: all consequence logic lives
+// in the RPC; this only gates + calls + refreshes.
+let _withdrawAgInflight = false;
+async function withdrawTradeAgreement(agId) {
+    if (_withdrawAgInflight) return;
+    const ag = (_tradeAgreementsList || []).find(a => a.id === agId);
+    if (!ag) return;
+    const actingId = _worldState?.nation?.id;
+    if (ag.status !== 'active') { alert('This agreement is no longer active.'); return; }
+    if (!actingId || (ag.nation_a_id !== actingId && ag.nation_b_id !== actingId)) {
+        alert('Only a signatory nation can withdraw from this agreement.');
+        return;
+    }
+    const agName = ag.agreement_name || 'this trade agreement';
+    if (!confirm(`Withdraw from "${agName}"?\n\nThis ends the agreement immediately and stops trading these resources. Shipping contracts under it are cancelled. This cannot be undone.`)) return;
+
+    _withdrawAgInflight = true;
+    try {
+        const { data, error } = await _supabase.rpc('cancel_trade_agreement', {
+            p_agreement_id: agId,
+            p_by_nation_id: actingId,
+        });
+        if (error) { alert('Failed to withdraw: ' + error.message); return; }
+        if (data && data.success === false) {
+            alert(data.error || 'Failed to withdraw from this agreement.');
+        } else {
+            alert(`Withdrawn from "${agName}".`);
+        }
+        loadTradeAgreements().then(() => { renderTradeAgreements(); renderTradePartners(); }).catch(() => {});
+    } finally {
+        _withdrawAgInflight = false;
+    }
 }
 
 // ── All-nations trade flow data for partner analysis ──
