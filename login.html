@@ -45,7 +45,7 @@
 </div>
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { isFactionInactive } from './js/game/factions.js';
+import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
 
     // On page load, check if user is already logged in
     (async () => {
@@ -99,7 +99,7 @@ import { isFactionInactive } from './js/game/factions.js';
             // Load all factions owned by this user (primary + linked)
             const { data: allFactions } = await _supabase
                 .from('factions')
-                .select('id, faction_type, nation_id, abandoned_at, is_banned')
+                .select('id, faction_type, branch, nation_id, abandoned_at, is_banned')
                 .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
 
             // Filter out dissolved/abandoned/banned factions
@@ -114,11 +114,11 @@ import { isFactionInactive } from './js/game/factions.js';
             const activeFactionId = sessionStorage.getItem('active_faction_id');
             const activeFaction = ownedFactions.find(f => f.id === activeFactionId) || ownedFactions[0];
 
-            if (activeFaction.faction_type === 'corporation') {
-                window.location.href = 'corp-dashboard.html';
-            } else {
-                window.location.href = 'dashboard.html';
-            }
+            // Single-source router (js/game/factions.js): corp →
+            // corp-dashboard, party → dashboard, army → army-dashboard,
+            // branch-less military → faction-select. Fallback covers
+            // any unknown type.
+            window.location.href = getFactionDashboardUrl(activeFaction) || 'dashboard.html';
         } catch (error) {
             console.error('Faction check error:', error);
             window.location.href = 'faction-select.html';
