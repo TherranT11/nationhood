@@ -486,7 +486,9 @@ function parsePolicyEffects(laws, map, currentTick) {
         // Legacy policy fallback when stat_effects JSON is missing —
         // same engine transform so it can't show a dead/aliased stat.
         if (!policy.target_stat) continue;
-        var legacyTr = translateStatEffect({ stat_key: policy.target_stat, direction: policy.stat_direction || 'up' });
+        // Lowercase before translateStatEffect (its inverted-alias flip is
+        // case-sensitive) — mirrors the engine's legacy synthesis exactly.
+        var legacyTr = translateStatEffect({ stat_key: policy.target_stat, direction: (policy.stat_direction || 'up').toLowerCase() });
         if (!legacyTr) continue;
         var legacyDur = Number(policy.duration_months) || 12;
         if (ticksSince <= 0 || ticksSince > legacyDur) continue;
