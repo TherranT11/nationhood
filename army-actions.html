@@ -57,6 +57,7 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 import { _supabase } from './js/supabase-client.js';
 import { getNationNames } from './js/game/political-actions.js';
 import { bootstrapArmyPage } from './js/army-page.js';
+import { openCreateUnitModal } from './js/create-unit.js';
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c =>
@@ -127,6 +128,11 @@ function render() {
           </div>
         </div>
         <p class="aa-panel__desc">${esc(sel.desc)}</p>
+        ${sel.key === 'cos' ? `<div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border-0);">
+          <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.14em;color:var(--text-secondary);text-transform:uppercase;margin-bottom:10px;">Actions</div>
+          <button id="cu-action-btn" style="cursor:pointer;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#d4b87a;border:1px solid rgba(212,184,122,0.4);background:rgba(212,184,122,0.08);padding:9px 18px;">+ Create Unit</button>
+          <div style="font-size:11px;color:var(--text-secondary);margin-top:8px;line-height:1.5;">Commission a new combat formation — $2.0M action fee plus construction cost from the defense budget.</div>
+        </div>` : ''}
       </div>
     </div>`;
 
@@ -136,9 +142,12 @@ function render() {
       render();
     });
   });
+
+  const cuBtn = document.getElementById('cu-action-btn');
+  if (cuBtn) cuBtn.onclick = () => openCreateUnitModal(_faction);
 }
 
-const ACTIONS_FACTION_COLS = 'id, faction_type, faction_name, nation_id, abandoned_at, is_banned, branch, leader_first_name, leader_last_name, leader_age, army_qm_first_name, army_qm_last_name, army_qm_age, army_intel_first_name, army_intel_last_name, army_intel_age, army_cmd_first_name, army_cmd_last_name, army_cmd_age';
+const ACTIONS_FACTION_COLS = 'id, faction_type, faction_name, nation_id, abandoned_at, is_banned, branch, army_manpower, leader_first_name, leader_last_name, leader_age, army_qm_first_name, army_qm_last_name, army_qm_age, army_intel_first_name, army_intel_last_name, army_intel_age, army_cmd_first_name, army_cmd_last_name, army_cmd_age';
 
 async function init() {
   const ctx = await bootstrapArmyPage({ activeTab: 'actions', factionSelect: ACTIONS_FACTION_COLS });
