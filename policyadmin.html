@@ -1967,6 +1967,12 @@ async function savePolicy() {
 
     try {
         let policyId;
+        // Editing an existing (potentially in-play) policy must touch the
+        // definition only — policies + policy_options. Starting-law seeding
+        // (active_laws / nation_policies) runs ONLY on creation, where there
+        // is no live state to destroy. Re-seeding on edit would wipe every
+        // nation's gameplay-enacted law back to the starting assignment.
+        const isNewPolicy = !editingPolicyId;
         if (editingPolicyId) {
             const { error } = await _supabase.from('policies').update(policyData).eq('id', editingPolicyId);
             if (error) throw error;
@@ -2029,12 +2035,13 @@ async function savePolicy() {
             }
         }
 
-        // Sync nation_policies AND active_laws for every option: wipe
-        // existing rows for this option, then re-insert from the option's
-        // starting_nations Set. nation_policies tracks per-option metadata
-        // for Phase 4's effects engine; active_laws is the table laws.html
-        // and other display sites query, so a starting-status assignment
-        // belongs in both. A failure here surfaces to the surrounding catch.
+        // Seed nation_policies AND active_laws from each option's
+        // starting_nations Set — CREATION ONLY. On an existing policy these
+        // tables are live game state (bills mutate active_laws every tick);
+        // wiping + reseeding here would revert every nation's enacted law
+        // back to the starting assignment, so an edit must never run this.
+        // A failure here surfaces to the surrounding catch.
+        if (isNewPolicy) {
         for (const payload of optionPayloads) {
             const optId = payload.stateRef.id;
 
@@ -2087,6 +2094,7 @@ async function savePolicy() {
                 .upsert(alRecords, { onConflict: 'nation_id,policy_id' });
             if (insAlErr) throw insAlErr;
         }
+        } // end if (isNewPolicy) — edits never reseed live laws
 
         editingPolicyId = null;
         await loadPolicies();
