@@ -82,6 +82,7 @@ import { getNationNames } from './js/game/political-actions.js';
 import { bootstrapArmyPage } from './js/army-page.js';
 import { openCreateUnitModal } from './js/create-unit.js';
 import { openReportModal } from './js/report-defense.js';
+import { openForeignOfficerExchangeModal } from './js/foreign-officer-exchange.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
 
 function esc(s) {
@@ -142,9 +143,11 @@ function render() {
   const initials = has ? (sn.first[0] + sn.last[0]).toUpperCase() : '–';
   const nationName = _faction.__nation_name || '';
 
-  // Only the Chief of Staff has actions in Phase 1; the other offices
-  // show their remit until their actions are built out.
-  const body = sel.key === 'cos' ? `
+  // Chief of Staff + Commanding General have actions; the other
+  // offices show their remit until their actions are built out.
+  let body;
+  if (sel.key === 'cos') {
+    body = `
         <div class="aa-act" data-act="create-unit">
           <div class="aa-act__head">
             <div class="aa-act__title"><span class="aa-act__name">Create Unit</span></div>
@@ -165,7 +168,19 @@ function render() {
             <span class="aa-act__cost aa-act__cost--warn">−1 APPROVAL</span>
           </div>
           <div class="aa-act__desc">Resign your commission as Chief of Staff and head into a peaceful retirement. Removes your command of this army.</div>
-        </div>` : `<div class="aa-empty">${esc(sel.desc)}<br><br>No actions available for this office yet.</div>`;
+        </div>`;
+  } else if (sel.key === 'cmd') {
+    body = `
+        <div class="aa-act" data-act="foreign-officer-exchange">
+          <div class="aa-act__head">
+            <div class="aa-act__title"><span class="aa-act__name">Foreign Officer Exchange Program</span></div>
+            <span class="aa-act__cost">$12</span>
+          </div>
+          <div class="aa-act__desc">Send select officers abroad to study at foreign military academies and embed with allied units. Returning officers bring back modern doctrine, professional standards, and international networks. 24-tick cooldown.</div>
+        </div>`;
+  } else {
+    body = `<div class="aa-empty">${esc(sel.desc)}<br><br>No actions available for this office yet.</div>`;
+  }
 
   root.innerHTML = `
     <div class="aa-head">
@@ -199,6 +214,8 @@ function render() {
   if (rs) rs.onclick = () => triggerResign(_faction);
   const rd = root.querySelector('[data-act="report-defense"]');
   if (rd) rd.onclick = () => openReportModal(_faction);
+  const fo = root.querySelector('[data-act="foreign-officer-exchange"]');
+  if (fo) fo.onclick = () => openForeignOfficerExchangeModal(_faction);
 }
 
 let _resigning = false;
