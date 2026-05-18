@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Entrepreneur — Home</title>
 <style>
+  /* Accent vars for getFactionTypeBadge() in the faction switcher.
+     This is a bespoke standalone page, so the shared theme's vars
+     aren't in scope — define them (predominant app values) or the
+     badge colours silently fall back to default text. */
+  :root { --teal: #5b9a8b; --amber: #b09a5b; --purple: #8b7ec8; --red: #a65d5d; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     background: #050505;
@@ -64,7 +69,7 @@
   .top-bar .faction-dd {
     position: absolute; right: 0; top: calc(100% + 8px);
     background: #0f0f0f; border: 0.5px solid rgba(255,255,255,0.15);
-    border-radius: 4px; min-width: 240px; display: none; z-index: 100; overflow: hidden;
+    border-radius: 4px; min-width: 240px; max-width: 340px; display: none; z-index: 100; overflow: hidden;
   }
   .top-bar .faction-dd.open { display: block; }
   .top-bar .fdd-item {
@@ -76,7 +81,7 @@
   .top-bar .fdd-item:hover { background: #1a1a17; }
   .top-bar .fdd-item.create { color: #888; }
   .top-bar .fdd-badge { font-size: 9px; letter-spacing: 0.06em; min-width: 40px; }
-  .top-bar .fdd-name { flex: 1; color: #fff; }
+  .top-bar .fdd-name { flex: 1; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .top-bar .fdd-item.create .fdd-name { color: #888; }
   .top-bar .util-link { color: #666; font-size: 11px; cursor: pointer; }
   .top-bar .util-link:hover { color: #d4d4d4; }
