@@ -1526,6 +1526,14 @@ async function processCorpContracts(supabase, nationId, currentTick) {
                 // the idempotency gate (progress_pct >= newProgressPct)
                 // doesn't wedge it; the next tick recomputes 100 and
                 // retries the payout. Self-heals once bid_amount is set.
+                // KNOWN TRADEOFF: the per-tick cost block above already
+                // ran this tick, so each deferral/retry tick re-incurs
+                // perTickCost. Accepted: deferral is now an exceptional
+                // transient-error path only (the award guard +
+                // 20270130 backfill eliminate broken-bid contracts, so
+                // it normally pays within one retry), and the
+                // alternative — silently completing the contract unpaid
+                // — was the catastrophic bug this fix removes.
                 updates.progress_pct = Math.min(Number(newProgressPct), 99.99);
                 console.warn(`[CorpContracts] ${c.name}: COMPLETION DEFERRED — payout not credited (totalBid=${totalBid}); contract stays active, will retry next tick`);
                 results.push({ contract: c.name, completed: false, deferred: true });
