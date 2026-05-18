@@ -1790,7 +1790,7 @@ async function loadDispatches() {
         return;
     }
 
-    const wantBucket = _eventState.category; // 'politics' | 'corporate'
+    const wantBucket = _eventState.category; // 'politics' | 'corporate' | 'military'
     const rows = (data || [])
         .filter(r => dispatchBucketForRow(r) === wantBucket)
         .slice(0, 30);
