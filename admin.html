@@ -1750,7 +1750,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         provinceList.forEach(p => {
             html += `<th style="padding:8px; text-align:center; border-bottom:1px solid #444; width:110px;">
                         ${escHtml(p.name)}
-                        <button title="Delete province" onclick="deleteProvince('${p.id}')"
+                        <button title="Delete province" onclick="deleteProvince('${p.id}', this)"
                           style="display:block; margin:4px auto 0; padding:2px 8px; font-size:0.7rem; background:transparent; color:#ef5350; border:1px solid #442222; cursor:pointer; border-radius:2px;">Delete</button>
                      </th>`;
         });
@@ -1844,18 +1844,20 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         });
     }
 
-    async function deleteProvince(provinceId) {
+    async function deleteProvince(provinceId, btn) {
         const p = provinceList.find(x => x.id === provinceId);
         const pName = p ? p.name : 'this province';
         if (!confirm(`Delete "${pName}"?\n\nIts per-sector weights are removed permanently. Any sector it contributed to will become unbalanced until you re-partition and Save.`)) return;
-        try {
-            const { error } = await _supabase.from('provinces').delete().eq('id', provinceId);
-            if (error) throw error;
-            await loadProvincesForNation(provinceNationId);
-        } catch (err) {
-            console.error('deleteProvince failed', err);
-            alert('Delete failed: ' + (err.message || String(err)));
-        }
+        await withButtonLock(btn, async () => {
+            try {
+                const { error } = await _supabase.from('provinces').delete().eq('id', provinceId);
+                if (error) throw error;
+                await loadProvincesForNation(provinceNationId);
+            } catch (err) {
+                console.error('deleteProvince failed', err);
+                alert('Delete failed: ' + (err.message || String(err)));
+            }
+        });
     }
 
     async function saveProvinceWeights(btn) {
@@ -4526,11 +4528,11 @@ document.addEventListener('admin-panel-loaded', () => {
 });
 
 // ==================== MODERATION TAB (Phase 5c) ====================
-// Surfaces the message_reports queue + lets admins wipe messages and
-// mute / ban chat members per channel. Reads and writes assume the
-// caller is an admin (RLS enforces that on every table).
+// Lets admins mute / ban chat members per channel. Player message
+// reporting was removed, so there is no reports queue. Reads and writes
+// assume the caller is an admin (RLS enforces that on every table).
 
-let _modView = 'reports';
+let _modView = 'muted';
 
 function showModView(view) {
     _modView = view;
@@ -4539,112 +4541,21 @@ function showModView(view) {
     if (btn) btn.classList.add('active');
     const status = document.getElementById('mod-status');
     if (status) status.textContent = 'Loading...';
-    if (view === 'reports') renderModReports();
-    else if (view === 'muted') renderModMutedBanned();
+    if (view === 'muted') renderModMutedBanned();
     else if (view === 'actions') renderModManualActions();
-}
-window.showModView = showModView;
-
-async function renderModReports() {
-    const container = document.getElementById('mod-content');
-    const status = document.getElementById('mod-status');
-    if (!container) return;
-
-    try {
-        const { data: reports, error } = await _supabase
-            .from('message_reports')
-            .select('id, message_kind, message_id, chat_id, reporter_faction_id, reason, created_at, resolved_at')
-            .is('resolved_at', null)
-            .order('created_at', { ascending: false })
-            .limit(50);
-        if (error) throw error;
-
-        if (!reports || reports.length === 0) {
-            container.innerHTML = `<div style="color:#888;padding:20px;text-align:center;">No open reports.</div>`;
-            if (status) status.textContent = '';
-            return;
-        }
-
-        // Collect ids for batched hydration of message + reporter.
-        const groupIds = reports.filter(r => r.message_kind === 'group').map(r => r.message_id);
-        const dmIds    = reports.filter(r => r.message_kind === 'dm').map(r => r.message_id);
-        const factionIds = [...new Set(reports.map(r => r.reporter_faction_id).filter(Boolean))];
-
-        const [groupMsgs, dmMsgs, factions] = await Promise.all([
-            groupIds.length
-                ? _supabase.from('group_chat_messages').select('id, chat_id, sender_id, message_text, created_at, deleted_at').in('id', groupIds)
-                : Promise.resolve({ data: [] }),
-            dmIds.length
-                ? _supabase.from('direct_messages').select('id, sender_id, receiver_id, message_text, created_at, deleted_at').in('id', dmIds)
-                : Promise.resolve({ data: [] }),
-            factionIds.length
-                ? _supabase.from('factions').select('id, faction_name, abbreviation').in('id', factionIds)
-                : Promise.resolve({ data: [] }),
-        ]);
-
-        const msgMap = {};
-        for (const m of (groupMsgs.data || [])) msgMap[m.id] = { kind: 'group', ...m };
-        for (const m of (dmMsgs.data || [])) msgMap[m.id] = { kind: 'dm', ...m };
-        const factionMap = {};
-        for (const f of (factions.data || [])) factionMap[f.id] = f;
-
-        container.innerHTML = reports.map(r => {
-            const m = msgMap[r.message_id];
-            const reporter = factionMap[r.reporter_faction_id];
-            const reporterName = reporter?.faction_name || '(unknown)';
-            const msgText = m ? (m.deleted_at ? '<em>[already deleted]</em>' : escapeHtml(m.message_text || '').slice(0, 500)) : '<em>[message not found]</em>';
-            const senderId = m?.sender_id || '';
-            const chatId = m?.chat_id || r.chat_id || '';
-            const deleteBtn = m && !m.deleted_at
-                ? `<button class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;" onclick="modWipeMessage('${escapeAttr(r.message_kind)}','${escapeAttr(r.message_id)}','${escapeAttr(r.id)}')">Wipe</button>`
-                : '';
-            const muteCtrl = (r.message_kind === 'group' && senderId && chatId)
-                ? `<button class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;margin-left:6px;" onclick="modMute('${escapeAttr(chatId)}','${escapeAttr(senderId)}', 60)">Mute 1h</button>
-                   <button class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;margin-left:6px;" onclick="modBan('${escapeAttr(chatId)}','${escapeAttr(senderId)}')">Ban</button>`
-                : '';
-            return `<div style="background:#1f1f1c;border:1px solid #333;border-radius:4px;padding:12px;margin-bottom:10px;">
-                <div style="font-size:0.75rem;color:#888;margin-bottom:4px;">
-                    ${new Date(r.created_at).toLocaleString()} &middot;
-                    reported by <strong>${escapeHtml(reporterName)}</strong> &middot;
-                    ${escapeHtml(r.message_kind)} ${senderId ? 'from sender ' + senderId.slice(0,8) : ''}
-                </div>
-                <div style="color:#e0dbc8;margin-bottom:6px;">${msgText}</div>
-                <div style="color:#c8a64e;font-size:0.8rem;font-style:italic;margin-bottom:8px;">Reason: ${escapeHtml(r.reason || '')}</div>
-                <div>
-                    ${deleteBtn}
-                    ${muteCtrl}
-                    <button class="btn btn-secondary" style="padding:4px 10px;font-size:0.75rem;margin-left:6px;" onclick="modDismissReport('${escapeAttr(r.id)}')">Dismiss</button>
-                </div>
-            </div>`;
-        }).join('');
-        if (status) status.textContent = `${reports.length} open report${reports.length === 1 ? '' : 's'}.`;
-    } catch (err) {
-        console.error('[Mod] reports load failed:', err);
-        container.innerHTML = `<div style="color:#d9534f;padding:20px;">Failed to load reports: ${err.message || err}</div>`;
+    else {
+        // The panel markup still carries an "Open Reports" button;
+        // player reporting is gone, so it degrades to a notice.
+        const c = document.getElementById('mod-content');
+        if (c) c.innerHTML = `<div style="color:#888;padding:20px;text-align:center;">Player message reporting has been removed.</div>`;
+        if (status) status.textContent = '';
     }
 }
+window.showModView = showModView;
 
 // Supabase update returns success with 0 rows affected when no row
 // matches — without a .select() round-trip the admin thinks the action
 // worked. All mod mutations below verify the affected row set.
-async function modWipeMessage(kind, messageId, reportId) {
-    if (!confirm('Wipe this message? It will be replaced with a tombstone for all viewers.')) return;
-    const table = kind === 'dm' ? 'direct_messages' : 'group_chat_messages';
-    try {
-        const { data, error } = await _supabase.from(table)
-            .update({ deleted_at: new Date().toISOString() })
-            .eq('id', messageId)
-            .select('id');
-        if (error) throw error;
-        if (!data || data.length === 0) { alert('Wipe failed: message not found.'); return; }
-        if (reportId) await modDismissReport(reportId, true);
-        else renderModReports();
-    } catch (err) {
-        alert('Wipe failed: ' + (err.message || err));
-    }
-}
-window.modWipeMessage = modWipeMessage;
-
 async function modMute(chatId, factionId, minutes) {
     const mins = parseInt(minutes, 10);
     if (!mins || mins < 1) { alert('Invalid mute duration.'); return; }
@@ -4691,20 +4602,6 @@ async function modUnmute(chatId, factionId) {
     } catch (err) { alert('Unmute failed: ' + (err.message || err)); }
 }
 window.modUnmute = modUnmute;
-
-async function modDismissReport(reportId, skipReload) {
-    try {
-        const { data: { user } } = await _supabase.auth.getUser();
-        const { error } = await _supabase.from('message_reports')
-            .update({ resolved_at: new Date().toISOString(), resolved_by: user?.id || null })
-            .eq('id', reportId);
-        if (error) throw error;
-        if (!skipReload) renderModReports();
-    } catch (err) {
-        alert('Dismiss failed: ' + (err.message || err));
-    }
-}
-window.modDismissReport = modDismissReport;
 
 async function renderModMutedBanned() {
     const container = document.getElementById('mod-content');
@@ -4829,11 +4726,11 @@ async function modFactionLookup() {
 }
 window.modFactionLookup = modFactionLookup;
 
-// Auto-load reports whenever the Moderation tab is opened.
+// Auto-load the mutes/bans view whenever the Moderation tab is opened.
 var _prevShowTabMod = showTab;
 showTab = function(tabName) {
     _prevShowTabMod(tabName);
-    if (tabName === 'moderation') showModView(_modView || 'reports');
+    if (tabName === 'moderation') showModView(_modView || 'muted');
 };
 window.showTab = showTab;
 

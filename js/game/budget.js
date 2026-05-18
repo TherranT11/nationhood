@@ -4,6 +4,7 @@
  */
 
 import { GAME_CONFIG } from './config.js';
+import { unitUpkeepPerTick } from './military-units.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS } from './diplomacy-constants.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
@@ -257,8 +258,7 @@ export async function computeUnitMaintenanceAnnual(supabase, nation) {
             console.warn(`[Budget] army_units fetch failed for ${nation.name}:`, error.message);
         } else {
             for (const u of (units || [])) {
-                const cc = Number(u?.construction_cost) || 0;
-                perTick += Math.max(1, Math.floor(cc / 1_000_000 * 0.25)); // ≥ $1/unit/tick, rounded down
+                perTick += unitUpkeepPerTick(u?.construction_cost);
             }
         }
     } catch (err) {
