@@ -2010,21 +2010,21 @@ async function computeInteriorInfraAnnualCost(supabase, nation) {
 
 // Military unit maintenance — annual abstract $ for the nation's
 // active (non-Decommissioned) units. Per-tick upkeep = 25% of a
-// unit's stored construction_cost, ROUNDED DOWN to whole abstract
-// dollars per unit ($8 unit → $2/tick → $24/yr; a $1–$3 unit floors
-// to $0/tick). construction_cost is stored on the army /1e6 scale
-// (create_unit / party_funds), distinct from the /1e9 trade-debt
-// abstraction — the "$8 create → $2 tick" spec pins this. The
+// unit's stored construction_cost, ROUNDED DOWN, with a HARD FLOOR
+// of $1/tick per unit (every unit always costs ≥ $1; an $8 unit →
+// $2/tick → $24/yr). construction_cost is stored on the army /1e6
+// scale (create_unit / party_funds), distinct from the /1e9 trade-
+// debt abstraction — the "$8 create → $2 tick" spec pins this. The
 // status <> 'Decommissioned' filter is the SAME committed-unit rule
 // create_unit uses for manpower (one definition).
 //
 // Single source of truth: the client mirror is the army_units fetch
 // in loadBudgetData + the Defense & Security deep-dive rows in
 // government.html — both must compute this identically or the panel
-// Balance lies (same contract as activeLawAnnual).
+// Balance lies (same contract as activeLawAnnual). Returns the
+// annual scalar (the only value the expenditures sum consumes).
 async function computeUnitMaintenanceAnnual(supabase, nation) {
-    let armyAnnual = 0;
-    let armyCount = 0;
+    let perTick = 0;
     try {
         const { data: units, error } = await supabase
             .from('army_units')
@@ -2036,15 +2036,13 @@ async function computeUnitMaintenanceAnnual(supabase, nation) {
         } else {
             for (const u of (units || [])) {
                 const cc = Number(u?.construction_cost) || 0;
-                armyAnnual += Math.floor(cc / 1_000_000 * 0.25); // whole abstract $/tick, rounded down
-                armyCount++;
+                perTick += Math.max(1, Math.floor(cc / 1_000_000 * 0.25)); // ≥ $1/unit/tick, rounded down
             }
         }
     } catch (err) {
         console.warn(`[Budget] army_units threw for ${nation.name}:`, err?.message || err);
     }
-    armyAnnual *= GAME_CONFIG.TICKS_PER_YEAR; // per-tick → annual
-    return { totalAnnual: armyAnnual, armyAnnual, armyCount };
+    return perTick * GAME_CONFIG.TICKS_PER_YEAR; // per-tick → annual abstract $
 }
 
 /**
@@ -2063,7 +2061,7 @@ async function computeUnitMaintenanceAnnual(supabase, nation) {
  *                               contracts of tier.upkeep_per_year
  *                               (small $1 / modest $2 / extravagant $4)
  *   - Public Sector Wages     = (state_apparatus × wages) / 100 × 12
- *   - Unit Maintenance        = Σ floor(unit.construction_cost/1e6 × 0.25)
+ *   - Unit Maintenance        = Σ max(1, floor(construction_cost/1e6 × 0.25))
  *                               over non-Decommissioned army_units × 12
  *
  * Single source of truth: processNationDebtTick in this file +
@@ -2102,8 +2100,8 @@ async function computePanelAnnualExpenditures(supabase, nation) {
     const stadiumAnnualCost = Number(nation.vola_stadium_annual_cost) || 0;
     const interiorInfra = await computeInteriorInfraAnnualCost(supabase, nation);
     const publicSectorWagesAnnual = computePublicSectorWagesAnnual(nation);
-    const unitMaint = await computeUnitMaintenanceAnnual(supabase, nation);
-    return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost + interiorInfra.totalAnnual + publicSectorWagesAnnual + unitMaint.totalAnnual;
+    const unitMaintenanceAnnual = await computeUnitMaintenanceAnnual(supabase, nation);
+    return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost + interiorInfra.totalAnnual + publicSectorWagesAnnual + unitMaintenanceAnnual;
 }
 
 async function processNationDebtTick(supabase, nation, activeCorpCount = 0) {
