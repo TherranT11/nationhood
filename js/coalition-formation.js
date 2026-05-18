@@ -375,48 +375,64 @@ function buildElectoralMakeup() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Nation map — a labelled [Nation] box + [Valeranza] box that toggle one
-// image beneath them: {Nation} Whole.png ↔ {Nation} Valeranza.png. Pure
-// CSS (hidden radios + :checked sibling combinator) so it survives the
-// innerHTML rebuilds and needs no JS/delegation; a rebuild resets to the
-// Whole view, which is exactly "clicking [Nation] pulls it back to Whole".
-// Asset path is derived from nation.name (one source); missing art hides
-// itself via onerror. Scoped <style> lives inside root.innerHTML so it is
-// replaced — never accumulated — on re-render.
+// Nation map — a labelled [Nation] box (→ "{Nation} Whole.png") plus one box
+// per province (→ "{Nation} {Province}.png"), toggling one image beneath
+// them. Province set is per-nation (single source: NATION_MAP_PROVINCES);
+// nations not listed show just the Whole box. Pure CSS (hidden radios +
+// :checked sibling combinator) so it survives innerHTML rebuilds and needs
+// no JS/delegation; a rebuild resets to Whole — exactly "clicking [Nation]
+// pulls it back to Whole". Missing art hides itself via onerror.
 // ═══════════════════════════════════════════════════════════════════════════
+const NATION_MAP_PROVINCES = {
+    Avelia:  ['Valeranza'],
+    Calveth: ['Auplandet', 'Borastadt', 'Cousheim', 'Folenberg'],
+};
+
 function buildNationMap() {
     const nm = _state?.nation?.name;
     if (!nm) return '';
-    const whole = encodeURI(`assets/${nm} Whole.png`);
-    const val   = encodeURI(`assets/${nm} Valeranza.png`);
+    // Whole first (checked default) + one option per configured province.
+    const opts = [{ key: 'whole', label: nm, file: `${nm} Whole.png` }].concat(
+        (NATION_MAP_PROVINCES[nm] || []).map(p => ({
+            key: p.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+            label: p,
+            file: `${nm} ${p}.png`,
+        }))
+    );
+    const activeRules = opts.map(o =>
+        `#cf-nm-${o.key}:checked ~ .cf-nm-boxes label[for="cf-nm-${o.key}"]`).join(',\n      ');
+    const showRules = opts.map(o =>
+        `#cf-nm-${o.key}:checked ~ .cf-nm-stage .cf-nm-img-${o.key} { display: block; }`).join('\n      ');
+    const radios = opts.map((o, i) =>
+        `<input type="radio" name="cf-nm" id="cf-nm-${o.key}" class="cf-nm-r"${i === 0 ? ' checked' : ''}>`).join('\n      ');
+    const boxes = opts.map(o =>
+        `<label class="cf-nm-box" for="cf-nm-${o.key}">${esc(o.label)}</label>`).join('\n        ');
+    const imgs = opts.map(o =>
+        `<img class="cf-nm-img-${o.key}" src="${encodeURI(`assets/${o.file}`)}" alt="${esc(o.label)} map" onerror="this.style.display='none'">`).join('\n        ');
     return `
     <style>
       .cf-nm-wrap { margin: 14px 0 0; }
       .cf-nm-r { position: absolute; opacity: 0; pointer-events: none; }
-      .cf-nm-boxes { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 10px; }
+      .cf-nm-boxes { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-bottom: 10px; }
       .cf-nm-box { font-family: var(--font-mono, monospace); font-size: 12px;
         font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
         color: var(--text-secondary, #888); border: 1px solid var(--border-1, rgba(255,255,255,0.08));
         background: var(--bg-2, #1a1a17); padding: 9px 18px; cursor: pointer; user-select: none; }
       .cf-nm-box:hover { color: var(--text-bright, #f0efe6); }
-      #cf-nm-whole:checked ~ .cf-nm-boxes label[for="cf-nm-whole"],
-      #cf-nm-val:checked ~ .cf-nm-boxes label[for="cf-nm-val"] {
+      ${activeRules} {
         color: var(--accent, #d4b87a); border-color: var(--accent, #d4b87a); }
-      .cf-nm-stage img { display: none; max-width: 100%; height: auto;
-        border: 1px solid var(--border-0, rgba(255,255,255,0.06)); }
-      #cf-nm-whole:checked ~ .cf-nm-stage .cf-nm-whole-img { display: block; }
-      #cf-nm-val:checked ~ .cf-nm-stage .cf-nm-val-img { display: block; }
+      .cf-nm-stage { border: 1px solid var(--border-1, rgba(255,255,255,0.12));
+        background: var(--bg-2, #1a1a17); padding: 10px; }
+      .cf-nm-stage img { display: none; max-width: 100%; height: auto; margin: 0 auto; }
+      ${showRules}
     </style>
     <div class="cf-nm-wrap">
-      <input type="radio" name="cf-nm" id="cf-nm-whole" class="cf-nm-r" checked>
-      <input type="radio" name="cf-nm" id="cf-nm-val" class="cf-nm-r">
+      ${radios}
       <div class="cf-nm-boxes">
-        <label class="cf-nm-box" for="cf-nm-whole">${esc(nm)}</label>
-        <label class="cf-nm-box" for="cf-nm-val">Valeranza</label>
+        ${boxes}
       </div>
       <div class="cf-nm-stage">
-        <img class="cf-nm-whole-img" src="${whole}" alt="${esc(nm)} map" onerror="this.style.display='none'">
-        <img class="cf-nm-val-img" src="${val}" alt="${esc(nm)} Valeranza map" onerror="this.style.display='none'">
+        ${imgs}
       </div>
     </div>`;
 }
@@ -443,12 +459,20 @@ export async function renderFormationTab(root) {
     // Electoral Makeup sits inside a 2-col grid: left slot reserved for
     // Campaign Events (not yet built), right slot shows the makeup bar.
     const makeup = buildElectoralMakeup();
+    // Nation map sits in its own copy of the same 2-col grid so it lines
+    // up with — and is exactly as wide as — the Electoral Makeup box.
+    const nationMap = buildNationMap();
     const makeupRow = (makeup
         ? `<div class="cf-makeup-row">
                <div class="cf-makeup-left"></div>
                <div class="cf-makeup-right">${makeup}</div>
            </div>`
-        : '') + buildNationMap();
+        : '') + (nationMap
+        ? `<div class="cf-makeup-row">
+               <div class="cf-makeup-left"></div>
+               <div class="cf-makeup-right">${nationMap}</div>
+           </div>`
+        : '');
 
     // Presidential systems — no coalition formation
     if (hasElectedPresident(_state.nation)) {
