@@ -16,8 +16,7 @@ let _msgListFilter = 'all';  // 'all' | 'global' | 'nation' | 'dm' — Phase 3 t
 let _msgActiveChat = null;   // { type: 'dm'|'group', id, name, ... }
 let _realtimeChannel = null;
 let _groupRealtimeChannel = null;
-// Phase 5: self-protection + pagination state.
-let _blockedFactionIds = new Set();    // faction ids this player has blocked
+// Phase 5: pagination state.
 let _oldestLoadedTs = null;            // ISO timestamp of oldest message rendered in current thread
 let _loadingOlder = false;             // prevents duplicate "load earlier" requests during scroll spam
 let _pinnedMessages = [];              // pinned messages for the active chat (Phase 5 pin strip)
@@ -691,13 +690,6 @@ function injectHTML() {
             }
             return;
         }
-        if (action === 'block' || action === 'unblock') {
-            ev.stopPropagation();
-            const fid = actionEl.dataset.factionId;
-            if (action === 'block') blockFaction(fid);
-            else unblockFaction(fid);
-            return;
-        }
         if (action === 'msg-menu') {
             ev.stopPropagation();
             const mid = actionEl.dataset.msgId;
@@ -718,7 +710,6 @@ function injectHTML() {
             return;
         }
         if (action === 'delete')      { ev.stopPropagation(); deleteOwnMessage(actionEl.dataset.msgId); return; }
-        if (action === 'report')      { ev.stopPropagation(); reportMessage(actionEl.dataset.msgId); return; }
 
         if (ev.target.id === 'msg-load-earlier') {
             ev.stopPropagation(); loadOlderMessages(); return;
@@ -1396,12 +1387,8 @@ async function loadAndRenderMessages() {
         return;
     }
 
-    // Drop messages from blocked factions before rendering.
-    messages = filterBlocked(messages);
-
-    // Sentinel is gated on rawCount, not filtered messages.length — a
-    // full page that got filtered to zero (every sender blocked) still
-    // has older history on the server that's worth paginating to.
+    // Sentinel is gated on rawCount (server page size), not
+    // messages.length, so pagination still works on a sparse page.
     const sentinel = rawCount >= MSG_PAGE_SIZE
         ? `<button class="msg-load-earlier" id="msg-load-earlier">Load earlier messages</button>`
         : '';
@@ -1471,7 +1458,7 @@ async function loadOlderMessages() {
                 .limit(MSG_PAGE_SIZE);
             if (error) throw error;
             rows = (data || []).slice().reverse();
-            const older = filterBlocked(rows.map(dmMsgRowToMessage));
+            const older = rows.map(dmMsgRowToMessage);
             prependMessages(older, rows, container, prevScrollHeight);
         } else if (chat.type === 'group') {
             const { data, error } = await _supabase
@@ -1485,7 +1472,7 @@ async function loadOlderMessages() {
             rows = (data || []).slice().reverse();
             const senderIds = [...new Set(rows.map(m => m.sender_id).filter(Boolean))];
             await loadFactionNames(senderIds);
-            const older = filterBlocked(rows.map(groupMsgRowToMessage));
+            const older = rows.map(groupMsgRowToMessage);
             prependMessages(older, rows, container, prevScrollHeight);
         }
     } catch (e) {
@@ -1517,11 +1504,6 @@ function prependMessages(msgs, rawRows, container, prevScrollHeight) {
     }
     // Preserve scroll position so the view doesn't jump when we prepend.
     container.scrollTop = container.scrollHeight - prevScrollHeight;
-}
-
-function filterBlocked(messages) {
-    if (!_blockedFactionIds || _blockedFactionIds.size === 0) return messages;
-    return messages.filter(m => m.isMine || !m.senderId || !_blockedFactionIds.has(m.senderId));
 }
 
 function renderMessage(msg) {
@@ -1577,10 +1559,11 @@ function renderMessage(msg) {
         </div>`;
     }
 
-    // Phase 5 menu: own messages get Edit/Delete; others get Report. The
-    // menu itself is built on demand in openMessageMenu() so the thread
-    // HTML stays compact.
-    const menuBtn = `<button class="msg-msg__menu-btn" data-msg-action="msg-menu" data-msg-id="${escapeHtml(msg.id)}" aria-label="Message actions" title="Actions">⋯</button>`;
+    // Own messages get an Edit/Delete menu; others have no actions, so
+    // no ⋯ button. Menu is built on demand in openMessageMenu().
+    const menuBtn = msg.isMine
+        ? `<button class="msg-msg__menu-btn" data-msg-action="msg-menu" data-msg-id="${escapeHtml(msg.id)}" aria-label="Message actions" title="Actions">⋯</button>`
+        : '';
 
     // msg-msg__text is its own span so beginEditMessage() can pull the
     // original text cleanly without dragging in the pin icon or edited
@@ -1627,12 +1610,6 @@ function openIdentityPopover(anchorEl, factionId) {
     const pop = document.createElement('div');
     pop.className = 'msg-identity-popover';
     pop.setAttribute('role', 'dialog');
-    // Phase 5: Block/Unblock affordance on the popover — only meaningful
-    // for other factions (you can't block yourself).
-    const isSelf = _msgFaction && factionId === _msgFaction.id;
-    const isBlocked = _blockedFactionIds.has(factionId);
-    const blockBtn = isSelf ? '' : `<button class="msg-identity-popover__btn" data-msg-action="${isBlocked ? 'unblock' : 'block'}" data-faction-id="${escapeHtml(factionId)}">${isBlocked ? 'Unblock' : 'Block'} user</button>`;
-
     pop.innerHTML = `
         <div class="msg-identity-popover__name" style="color:${escapeHtml(color)};">${escapeHtml(cached.faction_name || cached.abbreviation || '?')}</div>
         <div class="msg-identity-popover__row">
@@ -1643,7 +1620,6 @@ function openIdentityPopover(anchorEl, factionId) {
             <span>${escapeHtml(typeLabel)}${rawType === 'corporation' && cached.corp_sector ? ' — ' + escapeHtml(cached.corp_sector) : ''}</span>
         </div>
         ${slug ? `<a class="msg-identity-popover__link" href="nation-info.html?name=${encodeURIComponent(slug)}" target="_blank" rel="noopener">View Nation &rarr;</a>` : ''}
-        ${blockBtn}
     `;
     panel.appendChild(pop);
 
@@ -1724,9 +1700,8 @@ function openMessageMenu(btnEl, msgId) {
     if (isMine) {
         items.push(`<button class="msg-msg__menu-item" data-msg-action="edit" data-msg-id="${escapeHtml(msgId)}">Edit</button>`);
         items.push(`<button class="msg-msg__menu-item msg-msg__menu-item--danger" data-msg-action="delete" data-msg-id="${escapeHtml(msgId)}">Delete</button>`);
-    } else {
-        items.push(`<button class="msg-msg__menu-item" data-msg-action="report" data-msg-id="${escapeHtml(msgId)}">Report</button>`);
     }
+    if (items.length === 0) return;   // nothing actionable (not our message)
     menu.innerHTML = items.join('');
     msgEl.appendChild(menu);
     _messageMenuEl = menu;
@@ -1841,86 +1816,6 @@ async function deleteOwnMessage(msgId) {
     } catch (err) {
         console.warn('[Messaging] Delete failed:', err);
         showToast('Delete failed: ' + extractTriggerMessage(err));
-    }
-}
-
-// ── Report message (Phase 5, any message; admin review queue) ─────────
-async function reportMessage(msgId) {
-    closeMessageMenu();
-    if (!_msgActiveChat || !_msgFaction) return;
-    const reason = prompt('Why are you reporting this message? (max 500 chars)');
-    if (reason == null) return;          // cancel
-    const trimmed = String(reason).trim().slice(0, 500);
-    if (!trimmed) { showToast('Report reason required'); return; }
-
-    try {
-        const payload = {
-            message_kind: _msgActiveChat.type === 'dm' ? 'dm' : 'group',
-            message_id: msgId,
-            chat_id: _msgActiveChat.type === 'group' ? _msgActiveChat.id : null,
-            reporter_faction_id: _msgFaction.id,
-            reason: trimmed,
-        };
-        const { error } = await _supabase.from('message_reports').insert(payload);
-        if (error) throw error;
-        showToast('Report submitted. Admins will review.', 'success');
-    } catch (err) {
-        console.warn('[Messaging] Report failed:', err);
-        showToast('Report failed: ' + extractTriggerMessage(err));
-    }
-}
-
-// ── Block / Unblock (Phase 5) ─────────────────────────────────────────
-async function loadBlockList() {
-    if (!_msgFaction) { _blockedFactionIds = new Set(); return; }
-    try {
-        const { data, error } = await _supabase
-            .from('user_blocks')
-            .select('blocked_faction_id')
-            .eq('blocker_faction_id', _msgFaction.id);
-        if (error) throw error;
-        _blockedFactionIds = new Set((data || []).map(r => r.blocked_faction_id));
-    } catch (e) {
-        console.warn('[Messaging] Failed to load block list:', e);
-        _blockedFactionIds = new Set();
-    }
-}
-
-async function blockFaction(factionId) {
-    closeIdentityPopover();
-    if (!_msgFaction || factionId === _msgFaction.id) return;
-    try {
-        const { error } = await _supabase.from('user_blocks').insert({
-            blocker_faction_id: _msgFaction.id,
-            blocked_faction_id: factionId,
-        });
-        if (error && error.code !== '23505') throw error;  // ignore unique-violation (already blocked)
-        _blockedFactionIds.add(factionId);
-        showToast('User blocked. Their messages are now hidden.', 'success');
-        // Re-render so existing messages drop out immediately.
-        if (_msgView === 'thread') loadAndRenderMessages();
-    } catch (err) {
-        console.warn('[Messaging] Block failed:', err);
-        showToast('Block failed: ' + extractTriggerMessage(err));
-    }
-}
-
-async function unblockFaction(factionId) {
-    closeIdentityPopover();
-    if (!_msgFaction) return;
-    try {
-        const { error } = await _supabase
-            .from('user_blocks')
-            .delete()
-            .eq('blocker_faction_id', _msgFaction.id)
-            .eq('blocked_faction_id', factionId);
-        if (error) throw error;
-        _blockedFactionIds.delete(factionId);
-        showToast('User unblocked.', 'success');
-        if (_msgView === 'thread') loadAndRenderMessages();
-    } catch (err) {
-        console.warn('[Messaging] Unblock failed:', err);
-        showToast('Unblock failed: ' + extractTriggerMessage(err));
     }
 }
 
@@ -2043,7 +1938,7 @@ async function performSearch(query) {
             rows = (data || []).reverse();
         }
 
-        const messages = filterBlocked(rows.map(_msgActiveChat.type === 'dm' ? dmMsgRowToMessage : groupMsgRowToMessage));
+        const messages = rows.map(_msgActiveChat.type === 'dm' ? dmMsgRowToMessage : groupMsgRowToMessage);
         if (messages.length === 0) {
             container.innerHTML = `<div class="msg-empty"><div class="msg-empty__text">No matches.</div></div>`;
         } else {
@@ -2813,8 +2708,6 @@ function cleanupRealtime() {
 
 function onNewDM(msg) {
     if (!msg || msg.sender_id === _msgFaction.id) return;
-    // Phase 5: silently drop messages from blocked senders.
-    if (_blockedFactionIds.has(msg.sender_id)) return;
 
     // If we're in the thread with this sender, append and mark read
     if (_msgPanelOpen && _msgView === 'thread' && _msgActiveChat?.type === 'dm' && _msgActiveChat.id === msg.sender_id) {
@@ -2850,8 +2743,6 @@ function onNewDM(msg) {
 
 function onNewGroupMessage(msg) {
     if (!msg || msg.sender_id === _msgFaction.id) return;
-    // Phase 5: silently drop messages from blocked senders.
-    if (_blockedFactionIds.has(msg.sender_id)) return;
 
     // Check if this message is in a chat we're a member of
     const inOurChat = _groupChats.some(g => g.chat.id === msg.chat_id);
@@ -2906,10 +2797,6 @@ export function initMessaging(faction, nation, shard) {
 
     injectStyles();
     injectHTML();
-
-    // Phase 5: prime the block list before any thread renders so the
-    // first render already filters out blocked senders.
-    loadBlockList();
 
     // Sync auto-chats and prime the group chat list (per-chat unread
     // counts populate from realtime + the membership last_read_at, so
