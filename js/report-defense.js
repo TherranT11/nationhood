@@ -12,14 +12,14 @@ import { escapeHtml } from './utils.js';
 
 const BODY_LIMIT = 1200;
 const STAT_ROWS = [
-  ['manpower',  'Manpower'],
-  ['loyalty',   'Loyalty'],
-  ['training',  'Training'],
-  ['equipment', 'Equipment Quality'],
-  ['armor',     'Armor'],
-  ['artillery', 'Artillery'],
-  ['logistics', 'Logistics'],
-  ['supplies',  'Supplies'],
+  ['manpower',        'Manpower'],
+  ['officer_corps',   'Officer Corps'],
+  ['training',        'Training'],
+  ['equipment',       'Equipment Quality'],
+  ['cohesion',        'Cohesion'],
+  ['professionalism', 'Professionalism'],
+  ['logistics',       'Logistics'],
+  ['supplies',        'Supplies'],
 ];
 
 function rdMoney(raw) {
@@ -83,17 +83,17 @@ async function loadContext(faction) {
   try {
     const { data: f, error: fErr } = await _supabase
       .from('factions')
-      .select('party_funds, army_manpower, army_loyalty, army_training, army_equipment, army_armor, army_artillery, army_logistics, army_supplies')
+      .select('party_funds, army_manpower, army_officer_corps, army_training, army_equipment, army_cohesion, army_professionalism, army_logistics, army_supplies')
       .eq('id', faction.id)
       .maybeSingle();
     if (fErr) console.warn('[report-defense] faction load failed:', fErr.message);
     if (f) {
       funds = Number(f.party_funds) || 0;
       stats = {
-        manpower:  f.army_manpower, loyalty:  f.army_loyalty,
-        training:  f.army_training, equipment: f.army_equipment,
-        armor:     f.army_armor,    artillery: f.army_artillery,
-        logistics: f.army_logistics, supplies: f.army_supplies,
+        manpower:  f.army_manpower,  officer_corps:   f.army_officer_corps,
+        training:  f.army_training,  equipment:       f.army_equipment,
+        cohesion:  f.army_cohesion,  professionalism: f.army_professionalism,
+        logistics: f.army_logistics, supplies:        f.army_supplies,
       };
     }
     const { data: m, error: mErr } = await _supabase

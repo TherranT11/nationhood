@@ -42,8 +42,8 @@ function injectStylesOnce() {
 }
 
 const SNAP_ROWS = [
-  ['manpower', 'Manpower'], ['loyalty', 'Loyalty'], ['training', 'Training'],
-  ['equipment', 'Equipment'], ['armor', 'Armor'], ['artillery', 'Artillery'],
+  ['manpower', 'Manpower'], ['officer_corps', 'Officer Corps'], ['training', 'Training'],
+  ['equipment', 'Equipment'], ['cohesion', 'Cohesion'], ['professionalism', 'Professionalism'],
   ['logistics', 'Logistics'], ['supplies', 'Supplies'],
 ];
 
