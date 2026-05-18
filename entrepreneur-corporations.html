@@ -185,12 +185,12 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
+import { fmtM } from './js/utils.js';
 
 const FEE = 1_000_000;
 let entFunds = 0;
 let sel = { industry: 'construction', hq: 'Valcosta' };
 
-function fmtM(raw) { const m = (Number(raw) || 0) / 1e6; return '$' + (Number.isInteger(m) ? m : m.toFixed(1)) + 'M'; }
 function capRaw() { return (parseInt(document.getElementById('ec-cap').value, 10) || 5) * 1_000_000; }
 
 function refreshCost() {

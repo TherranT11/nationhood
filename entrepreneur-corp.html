@@ -10,7 +10,9 @@
 
   .cp-load { text-align:center; color:#666; font-size:12px; padding:60px 0; letter-spacing:0.1em; }
 
-  /* Breadcrumb */
+  /* Breadcrumb — full-bleeds within .ent-content. The -28px must stay
+     in sync with .ent-content padding (28px) set in js/entrepreneur-topbar.js;
+     change both together. */
   .breadcrumb { margin:-28px -28px 24px; padding:12px 28px; background:#0c0c0c;
     border-bottom:0.5px solid rgba(255,255,255,0.05); font-size:10px; letter-spacing:0.1em; color:#666; }
   .breadcrumb a { color:#8aaa6a; text-decoration:none; }
@@ -212,8 +214,8 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
+import { fmtM } from './js/utils.js';
 
-function fmtM(raw) { const m = (Number(raw) || 0) / 1e6; return '$' + (Number.isInteger(m) ? m : m.toFixed(1)) + 'M'; }
 function cap2(s) { return String(s || '').replace(/\b\w/g, c => c.toUpperCase()); }
 function initials(s, n) {
   return (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, n || 2).map(w => w[0]).join('').toUpperCase()) || '—';

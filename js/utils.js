@@ -85,6 +85,18 @@ export function hfFmtBig(n) {
 }
 
 /**
+ * Whole-million money format used by the entrepreneur corp pages —
+ * raw dollars → "$5M" / "$7.5M" (one decimal only when non-integer).
+ * Distinct from hfFmtBig (two-decimal M/B) and formatCurrencyShort
+ * (spelled-out "Million"); its own source of truth, read by both
+ * entrepreneur-corp.html and entrepreneur-corporations.html.
+ */
+export function fmtM(raw) {
+    const m = (Number(raw) || 0) / 1e6;
+    return '$' + (Number.isInteger(m) ? m : m.toFixed(1)) + 'M';
+}
+
+/**
  * Format a budget value with compact suffixes ($1.2T, $500M, $30K).
  */
 export function fmtBudgetCurrency(val) {
