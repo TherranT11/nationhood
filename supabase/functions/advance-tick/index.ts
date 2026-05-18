@@ -2008,6 +2008,39 @@ async function computeInteriorInfraAnnualCost(supabase, nation) {
     return { totalAnnual, byTier };
 }
 
+// Combined Arms School upkeep — annual abstract $ for the nation.
+// Each completed school (corp_contracts project_subtype='Combined
+// Arms School', issuer_nation_id=nation) costs upkeep_per_tick
+// (from combined_arms_school_spec, $2) every tick, perpetually,
+// surfaced under National Infrastructure. Keyed off the nation (not
+// the issuing faction) so it persists even if that faction is gone.
+// Single source of truth: the client mirror is the army_units-style
+// fetch in loadBudgetData + the National Infrastructure deep-dive
+// row in government.html — both must compute this identically.
+async function computeCombinedArmsSchoolUpkeepAnnual(supabase, nation) {
+    if (!nation?.id) return { totalAnnual: 0, count: 0 };
+    let perTick = 0;
+    try {
+        const { data: spec } = await supabase.rpc('combined_arms_school_spec');
+        perTick = Number(spec?.upkeep_per_tick) || 0;
+    } catch (_) { return { totalAnnual: 0, count: 0 }; }
+    if (perTick <= 0) return { totalAnnual: 0, count: 0 };
+    let count = 0;
+    try {
+        const { count: n, error } = await supabase.from('corp_contracts')
+            .select('id', { count: 'exact', head: true })
+            .eq('issuer_nation_id', nation.id)
+            .eq('project_subtype', 'Combined Arms School')
+            .eq('status', 'completed');
+        if (error) { console.warn('[CombinedArmsSchool] upkeep count failed:', error.message); return { totalAnnual: 0, count: 0 }; }
+        count = n || 0;
+    } catch (e) {
+        console.warn('[CombinedArmsSchool] upkeep threw:', e?.message || e);
+        return { totalAnnual: 0, count: 0 };
+    }
+    return { totalAnnual: count * perTick * GAME_CONFIG.TICKS_PER_YEAR, count };
+}
+
 // Military unit maintenance — annual abstract $ for the nation's
 // active (non-Decommissioned) units. Per-tick upkeep = 25% of a
 // unit's stored construction_cost, ROUNDED DOWN, with a HARD FLOOR
@@ -2063,6 +2096,8 @@ async function computeUnitMaintenanceAnnual(supabase, nation) {
  *   - Public Sector Wages     = (state_apparatus × wages) / 100 × 12
  *   - Unit Maintenance        = Σ max(1, floor(construction_cost/1e6 × 0.25))
  *                               over non-Decommissioned army_units × 12
+ *   - Combined Arms School    = (#completed schools) × upkeep_per_tick($2) × 12
+ *                               (rolls up under National Infrastructure)
  *
  * Single source of truth: processNationDebtTick in this file +
  * _gbBuildCostRows in government.html both depend on this returning
@@ -2101,7 +2136,8 @@ async function computePanelAnnualExpenditures(supabase, nation) {
     const interiorInfra = await computeInteriorInfraAnnualCost(supabase, nation);
     const publicSectorWagesAnnual = computePublicSectorWagesAnnual(nation);
     const unitMaintenanceAnnual = await computeUnitMaintenanceAnnual(supabase, nation);
-    return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost + interiorInfra.totalAnnual + publicSectorWagesAnnual + unitMaintenanceAnnual;
+    const combinedArmsSchoolAnnual = (await computeCombinedArmsSchoolUpkeepAnnual(supabase, nation)).totalAnnual;
+    return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost + interiorInfra.totalAnnual + publicSectorWagesAnnual + unitMaintenanceAnnual + combinedArmsSchoolAnnual;
 }
 
 async function processNationDebtTick(supabase, nation, activeCorpCount = 0) {
@@ -22869,6 +22905,99 @@ async function processInteriorInfrastructureCompletions(supabase, currentTick) {
     return { completed };
 }
 
+const _CAS_PROJECT_SUBTYPE = 'Combined Arms School';
+
+// Combined Arms School completion sweep. Mirrors
+// processInteriorInfrastructureCompletions, but the stat effects
+// land on the ISSUING ARMY FACTION (issuer_faction_id), not the
+// nation — and only if that faction still exists & is active
+// (resign/disband during the 36-month build → skip the buff;
+// product decision "Skip buff, keep the rest"). The build still
+// completes, the corp is still paid via the standard payout_tick,
+// and the $2/tick National Infrastructure upkeep still starts
+// (computeCombinedArmsSchoolUpkeepAnnual keys off the nation).
+// Effects + upkeep read combined_arms_school_spec() — the same
+// single source of truth post_combined_arms_school committed to.
+async function processCombinedArmsSchoolCompletions(supabase, currentTick) {
+    const { data: due, error } = await supabase.from('corp_contracts')
+        .select('id, name, issuer_nation_id, issuer_faction_id, expected_finish_tick')
+        .eq('project_subtype', _CAS_PROJECT_SUBTYPE)
+        .eq('status', 'active')
+        .not('expected_finish_tick', 'is', null)
+        .lte('expected_finish_tick', currentTick);
+    if (error) {
+        console.warn('[CombinedArmsSchool] fetch failed:', error.message);
+        return null;
+    }
+    if (!due || due.length === 0) return null;
+
+    const { data: specData } = await supabase.rpc('combined_arms_school_spec');
+    const effects = (specData && Array.isArray(specData.stat_effects)) ? specData.stat_effects : [];
+
+    let completed = 0;
+    for (const c of due) {
+        // Mark complete first (atomic on status='active') — guards
+        // double-apply if a downstream step fails or the cron re-fires.
+        const { error: updErr } = await supabase.from('corp_contracts').update({
+            status:            'completed',
+            completed_at_tick: currentTick,
+            payout_tick:       currentTick + 3,
+        }).eq('id', c.id).eq('status', 'active');
+        if (updErr) {
+            console.warn('[CombinedArmsSchool] mark-complete failed for', c.id, ':', updErr.message);
+            continue;
+        }
+
+        // Buff the issuing army faction — only if it still exists and
+        // is an active army faction. issuer_faction_id is NULLed by the
+        // FK (ON DELETE SET NULL) if the faction was deleted.
+        if (c.issuer_faction_id && effects.length > 0) {
+            const cols = effects.map(e => e.stat).filter(Boolean);
+            const { data: fac } = await supabase.from('factions')
+                .select(['id', 'faction_type', 'branch', 'abandoned_at', 'is_banned', ...cols].join(', '))
+                .eq('id', c.issuer_faction_id)
+                .maybeSingle();
+            const active = fac && fac.faction_type === 'military' && fac.branch === 'army'
+                && fac.abandoned_at == null && fac.is_banned !== true;
+            if (active) {
+                const updates = {};
+                for (const eff of effects) {
+                    const cur = Number(fac[eff.stat]) || 0;
+                    updates[eff.stat] = Math.max(0, Math.min(100, cur + Number(eff.delta)));
+                }
+                const { error: facErr } = await supabase.from('factions')
+                    .update(updates).eq('id', c.issuer_faction_id);
+                if (facErr) console.warn('[CombinedArmsSchool] faction buff failed for', c.issuer_faction_id, ':', facErr.message);
+            }
+        }
+
+        // Generic construction GDP bonus — same RPC every construction
+        // completion fires (parity with Interior Infrastructure).
+        try {
+            await supabase.rpc('award_construction_gdp_bonus', { p_nation_id: c.issuer_nation_id });
+        } catch (gdpErr) {
+            console.warn('[CombinedArmsSchool] gdp bonus rpc failed for', c.id, ':', gdpErr?.message || gdpErr);
+        }
+
+        const effectsText = effects.map(e => {
+            const sign = Number(e.delta) >= 0 ? '+' : '';
+            return `${sign}${e.delta} ${e.stat.replace(/^army_/, '').replace(/_/g, ' ')}`;
+        }).join(' · ');
+        await supabase.from('event_log').insert({
+            nation_id:          c.issuer_nation_id,
+            event_name:         'Combined Arms School Opened',
+            category:           'government',
+            trigger_key:        'military_combined_arms_school_completed',
+            description_chosen: `${c.name} opened${effectsText ? ' · ' + effectsText : ''}`,
+            fired_at_tick:      currentTick,
+        });
+
+        completed++;
+    }
+
+    return { completed };
+}
+
 // ==================== VWC HOST BIDDING (Sports Minister action) ====================
 
 // Sports Minister submits a host bid for a future World Vola Cup.
@@ -33037,6 +33166,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
     } catch (intErr) {
         console.error('[advanceTick] Interior infrastructure completion sweep failed (non-fatal):', intErr);
+    }
+
+    try {
+        const casResult = await processCombinedArmsSchoolCompletions(supabase, newTick);
+        if (casResult?.completed) {
+            console.log(`[CombinedArmsSchool] ${casResult.completed} school(s) completed`);
+        }
+    } catch (casErr) {
+        console.error('[advanceTick] Combined Arms School completion sweep failed (non-fatal):', casErr);
     }
 
     // ══════════════════════════════════════════════════════════════════

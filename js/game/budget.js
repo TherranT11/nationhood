@@ -197,6 +197,39 @@ export async function computeInteriorInfraAnnualCost(supabase, nation) {
     return { totalAnnual, byTier };
 }
 
+// Combined Arms School upkeep — annual abstract $ for the nation.
+// Each completed school (corp_contracts project_subtype='Combined
+// Arms School', issuer_nation_id=nation) costs upkeep_per_tick
+// (from combined_arms_school_spec, $2) every tick, perpetually,
+// surfaced under National Infrastructure. Keyed off the nation (not
+// the issuing faction) so it persists even if that faction is gone.
+// Single source of truth: the client mirror is the army_units-style
+// fetch in loadBudgetData + the National Infrastructure deep-dive
+// row in government.html — both must compute this identically.
+export async function computeCombinedArmsSchoolUpkeepAnnual(supabase, nation) {
+    if (!nation?.id) return { totalAnnual: 0, count: 0 };
+    let perTick = 0;
+    try {
+        const { data: spec } = await supabase.rpc('combined_arms_school_spec');
+        perTick = Number(spec?.upkeep_per_tick) || 0;
+    } catch (_) { return { totalAnnual: 0, count: 0 }; }
+    if (perTick <= 0) return { totalAnnual: 0, count: 0 };
+    let count = 0;
+    try {
+        const { count: n, error } = await supabase.from('corp_contracts')
+            .select('id', { count: 'exact', head: true })
+            .eq('issuer_nation_id', nation.id)
+            .eq('project_subtype', 'Combined Arms School')
+            .eq('status', 'completed');
+        if (error) { console.warn('[CombinedArmsSchool] upkeep count failed:', error.message); return { totalAnnual: 0, count: 0 }; }
+        count = n || 0;
+    } catch (e) {
+        console.warn('[CombinedArmsSchool] upkeep threw:', e?.message || e);
+        return { totalAnnual: 0, count: 0 };
+    }
+    return { totalAnnual: count * perTick * GAME_CONFIG.TICKS_PER_YEAR, count };
+}
+
 // Military unit maintenance — annual abstract $ for the nation's
 // active (non-Decommissioned) units. Per-tick upkeep = 25% of a
 // unit's stored construction_cost, ROUNDED DOWN, with a HARD FLOOR
@@ -252,6 +285,8 @@ export async function computeUnitMaintenanceAnnual(supabase, nation) {
  *   - Public Sector Wages     = (state_apparatus × wages) / 100 × 12
  *   - Unit Maintenance        = Σ max(1, floor(construction_cost/1e6 × 0.25))
  *                               over non-Decommissioned army_units × 12
+ *   - Combined Arms School    = (#completed schools) × upkeep_per_tick($2) × 12
+ *                               (rolls up under National Infrastructure)
  *
  * Single source of truth: processNationDebtTick in this file +
  * _gbBuildCostRows in government.html both depend on this returning
@@ -290,7 +325,8 @@ export async function computePanelAnnualExpenditures(supabase, nation) {
     const interiorInfra = await computeInteriorInfraAnnualCost(supabase, nation);
     const publicSectorWagesAnnual = computePublicSectorWagesAnnual(nation);
     const unitMaintenanceAnnual = await computeUnitMaintenanceAnnual(supabase, nation);
-    return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost + interiorInfra.totalAnnual + publicSectorWagesAnnual + unitMaintenanceAnnual;
+    const combinedArmsSchoolAnnual = (await computeCombinedArmsSchoolUpkeepAnnual(supabase, nation)).totalAnnual;
+    return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost + interiorInfra.totalAnnual + publicSectorWagesAnnual + unitMaintenanceAnnual + combinedArmsSchoolAnnual;
 }
 
 export async function processNationDebtTick(supabase, nation, activeCorpCount = 0) {

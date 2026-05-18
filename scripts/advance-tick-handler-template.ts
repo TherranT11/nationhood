@@ -2616,6 +2616,15 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Interior infrastructure completion sweep failed (non-fatal):', intErr);
     }
 
+    try {
+        const casResult = await processCombinedArmsSchoolCompletions(supabase, newTick);
+        if (casResult?.completed) {
+            console.log(`[CombinedArmsSchool] ${casResult.completed} school(s) completed`);
+        }
+    } catch (casErr) {
+        console.error('[advanceTick] Combined Arms School completion sweep failed (non-fatal):', casErr);
+    }
+
     // ══════════════════════════════════════════════════════════════════
     // 4a-quater-ter. ARMY UNITS — FORMING → ACTIVE — global pass.
     // Flips army_units whose 2-tick forming window has elapsed
