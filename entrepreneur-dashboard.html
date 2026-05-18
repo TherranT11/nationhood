@@ -76,6 +76,24 @@
     border-radius: 4px; padding: 22px 18px; color: #666;
     font-size: 12px; line-height: 1.6; text-align: center;
   }
+  .ev-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+  .ev-tab { flex: 1; padding: 7px 0; text-align: center; font-size: 10px; letter-spacing: 0.1em;
+    color: #888; background: #121212; border: 0.5px solid rgba(255,255,255,0.08);
+    border-radius: 3px; cursor: pointer; }
+  .ev-tab:hover:not(.active) { color: #d4d4d4; }
+  .ev-tab.active { color: #8aaa6a; border-color: #6a8a4a; background: #131613; }
+  .ev-list { list-style: none; display: flex; flex-direction: column; }
+  .ev-item { padding: 12px 0; border-bottom: 0.5px solid rgba(255,255,255,0.06); }
+  .ev-item:last-child { border-bottom: none; }
+  .ev-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+  .ev-tag { font-size: 9px; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 3px;
+    background: #1f2a1a; color: #8aaa6a; text-transform: uppercase; }
+  .ev-nation { font-size: 9px; color: #888; letter-spacing: 0.06em; display: flex; align-items: center; gap: 4px; }
+  .ev-nation img { width: 12px; height: 9px; object-fit: cover; border-radius: 1px; }
+  .ev-time { margin-left: auto; font-size: 9px; color: #555; letter-spacing: 0.1em; }
+  .ev-head { font-size: 13px; font-weight: 500; color: #fff; margin-bottom: 3px; }
+  .ev-body { font-size: 11px; color: #888; line-height: 1.5; }
+  .ev-empty { color: #666; font-size: 12px; padding: 22px 4px; text-align: center; line-height: 1.6; }
   .right-col { display: flex; flex-direction: column; gap: 28px; }
   .section-heading { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
   .section-heading .roman { color: #555; font-size: 11px; letter-spacing: 0.1em; }
@@ -130,10 +148,15 @@
 
         <div class="events">
           <div class="events-header">
-            <div class="title"><span class="dot"></span>EVENTS</div>
-            <div class="count">0 ITEMS</div>
+            <div class="title"><span class="dot"></span>DISPATCHES</div>
+            <div class="count" id="ent-event-count">—</div>
           </div>
-          <div class="empty">No events yet.<br>Activity will appear here once business mechanics go live.</div>
+          <div class="ev-tabs" id="ent-event-tabs">
+            <div class="ev-tab active" data-category="politics">POLITICS</div>
+            <div class="ev-tab" data-category="corporate">CORPORATE</div>
+            <div class="ev-tab" data-category="military">MILITARY</div>
+          </div>
+          <ul class="ev-list" id="ent-event-list"><li class="ev-empty">Loading…</li></ul>
         </div>
 
         <div class="right-col">
@@ -174,11 +197,99 @@
 </div>
 
 <script type="module">
-import { hfFmtBig } from './js/utils.js';
+import { _supabase } from './js/supabase-client.js';
+import { hfFmtBig, escapeHtml, escapeAttr } from './js/utils.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 
 function setText(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
+
+// ── Dispatches feed (World-only; entrepreneur is nation-agnostic so no
+// Nation tab). Logic mirrors corp-dashboard's dispatches — a deliberate
+// per-page copy (the cross-page extraction is tracked separately).
+function formatEventName(raw) {
+  if (!raw) return '';
+  return String(raw).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+const POLITICS_CATEGORIES = ['politics','political','government','crisis','diplomatic','diplomacy','international','economy','executive_order','protest','bill','new_party'];
+const CORPORATE_CATEGORIES = ['corporate','business','trade'];
+function dispatchBucketForRow(row) {
+  if ((row?.trigger_key || '').toLowerCase().startsWith('military_')) return 'military';
+  const c = (row?.category || '').toLowerCase();
+  if (CORPORATE_CATEGORIES.includes(c)) return 'corporate';
+  if (POLITICS_CATEGORIES.includes(c)) return 'politics';
+  return null;
+}
+const _evState = { category: 'politics', cache: {}, inflight: null };
+let _evTick = 0;
+
+function bindDispatchTabs() {
+  const bar = document.getElementById('ent-event-tabs');
+  if (!bar) return;
+  bar.addEventListener('click', (e) => {
+    const btn = e.target.closest('.ev-tab');
+    if (!btn || btn.classList.contains('active')) return;
+    bar.querySelectorAll('.ev-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    _evState.category = btn.getAttribute('data-category');
+    loadDispatches();
+  });
+}
+
+async function loadDispatches() {
+  const listEl = document.getElementById('ent-event-list');
+  const countEl = document.getElementById('ent-event-count');
+  if (!listEl) return;
+  const key = _evState.category;
+  if (_evState.cache[key]) { renderDispatchList(_evState.cache[key]); return; }
+  listEl.innerHTML = '<li class="ev-empty">Loading…</li>';
+  if (countEl) countEl.textContent = '—';
+  _evState.inflight = key;
+  // World scope: entrepreneur has no nation, so no nation filter.
+  const { data, error } = await _supabase.from('event_log')
+    .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
+    .not('category', 'is', null)
+    .order('fired_at_tick', { ascending: false })
+    .limit(120);
+  if (_evState.inflight !== key) return;
+  if (error) {
+    console.warn('[entrepreneur-dashboard] event_log fetch error:', error.message);
+    listEl.innerHTML = '<li class="ev-empty">Failed to load dispatches.</li>';
+    return;
+  }
+  const rows = (data || []).filter(r => dispatchBucketForRow(r) === key).slice(0, 30);
+  _evState.cache[key] = rows;
+  renderDispatchList(rows);
+}
+
+function renderDispatchList(rows) {
+  const listEl = document.getElementById('ent-event-list');
+  const countEl = document.getElementById('ent-event-count');
+  if (!listEl) return;
+  if (countEl) countEl.textContent = rows.length === 0 ? 'NONE' : `${rows.length} ITEM${rows.length === 1 ? '' : 'S'}`;
+  if (rows.length === 0) {
+    listEl.innerHTML = `<li class="ev-empty">No ${escapeHtml(_evState.category)} dispatches in the world yet.</li>`;
+    return;
+  }
+  listEl.innerHTML = rows.map(row => {
+    const cat = row.category || _evState.category;
+    const ago = Math.max(0, _evTick - (Number(row.fired_at_tick) || 0));
+    const timeStr = ago === 0 ? 'JUST NOW' : ago === 1 ? '1 TICK AGO' : `${ago} TICKS AGO`;
+    const nationName = row.nations?.name || null;
+    const np = row.nations?.nation_profiles;
+    const flagUrl = (Array.isArray(np) ? np[0]?.flag_url : np?.flag_url) || null;
+    const nationBadge = nationName
+      ? `<span class="ev-nation">${flagUrl ? `<img src="${escapeAttr(flagUrl)}" alt="" />` : ''}${escapeHtml(nationName)}</span>`
+      : '';
+    const head = formatEventName(row.event_name) || 'Untitled dispatch';
+    const body = (row.description_chosen || row.description_used || '').trim();
+    return `<li class="ev-item">
+      <div class="ev-meta"><span class="ev-tag">${escapeHtml(cat)}</span>${nationBadge}<span class="ev-time">${timeStr}</span></div>
+      <div class="ev-head">${escapeHtml(head)}</div>
+      ${body ? `<div class="ev-body">${escapeHtml(body)}</div>` : ''}
+    </li>`;
+  }).join('');
+}
 function initials(first, last, fallbackName) {
   const a = (first || '').trim(), b = (last || '').trim();
   if (a || b) return ((a[0] || '') + (b[0] || '')).toUpperCase() || '—';
@@ -223,6 +334,10 @@ function initials(first, last, fallbackName) {
       </div>`).join('');
 
     setText('footer-note', `${(f.faction_name || 'ENTREPRENEUR').toUpperCase()} · ENTREPRENEUR · NATIONHOOD ALPHA`);
+
+    _evTick = Number(ctx.shard?.current_tick) || 0;
+    bindDispatchTabs();
+    loadDispatches();
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('app').style.display = 'block';
