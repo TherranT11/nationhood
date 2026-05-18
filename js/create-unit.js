@@ -289,8 +289,7 @@ export function openCreateUnitModal(faction, onCreated) {
 
 // ── DISPLAY: Order of Battle ───────────────────────────────────────
 // Renders a Force-Composition summary + the unit list into hostEl.
-// `shard` supplies current_tick for the Forming countdown.
-export async function renderOrderOfBattle(faction, shard, hostEl) {
+export async function renderOrderOfBattle(faction, hostEl) {
   if (!hostEl) return;
   ensureStyles();
   const expanded = new Set();

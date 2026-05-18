@@ -48,7 +48,7 @@ import { bootstrapArmyPage } from './js/army-page.js';
 import { renderOrderOfBattle } from './js/create-unit.js';
 
 const OPS_FACTION_COLS = 'id, faction_type, faction_name, nation_id, abandoned_at, is_banned, branch, army_manpower, party_funds';
-let _faction = null, _shard = null;
+let _faction = null;
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c =>
@@ -92,7 +92,7 @@ function render() {
   });
 
   if (_subtab === 'oob') {
-    renderOrderOfBattle(_faction, _shard, document.getElementById('oob-host'));
+    renderOrderOfBattle(_faction, document.getElementById('oob-host'));
   }
 }
 
@@ -100,7 +100,6 @@ async function init() {
   const ctx = await bootstrapArmyPage({ activeTab: 'operations', factionSelect: OPS_FACTION_COLS });
   if (!ctx) return; // bootstrap already redirected
   _faction = ctx.faction;
-  _shard = ctx.shard;
   render();
 }
 

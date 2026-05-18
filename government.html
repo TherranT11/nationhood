@@ -66,6 +66,7 @@ import { fileNoConfidenceMotion } from './js/game/no-confidence.js';
 import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, isPresidentialRepublic, isPresidentialDomainMinistry, getMinistryDomain, isCohabitation, isAbsoluteMonarchy, PRESIDENTIAL_DOMAIN_MINISTRIES, CANONICAL_GOVERNMENT_TYPES } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition } from './js/game/government-structure.js';
 import { isMilitaryLoyaltyActive } from './js/game/military-loyalty.js';
+import { unitUpkeepPerTick } from './js/game/military-units.js';
 import { GRIEVANCE_LABEL, RELIEF_LABEL } from './js/game/lawsuit-types.js';
 // Static import so the ruling modal lands in the main government
 // bundle instead of a separate hashed chunk. The previous dynamic
@@ -2510,11 +2511,6 @@ function _gbToAbstract(rawDollars) {
     return (Number(rawDollars) || 0) / _GB_RAW_TO_ABSTRACT;
 }
 
-// Army units (create_unit / party_funds) store costs on the /1e6
-// scale — distinct from _GB_RAW_TO_ABSTRACT (1e9, trade/debt). The
-// "$8 create → $2 tick" maintenance spec pins this divisor.
-const _GB_UNIT_COST_PER_ABSTRACT = 1_000_000;
-
 async function loadBudgetData() {
     if (!currentNation) { _budgetData = null; return; }
     const nation = currentNation;
@@ -2623,12 +2619,10 @@ async function loadBudgetData() {
         console.warn('[Budget] active_laws fetch threw:', err.message);
     }
 
-    // Military unit maintenance — MUST match computeUnitMaintenanceAnnual
-    // in advance-tick/index.ts exactly (per-tick upkeep = 25% of stored
-    // construction_cost, rounded down, with a HARD FLOOR of $1/unit/tick
-    // — every unit always costs ≥ $1 — summed over non-Decommissioned
-    // units, ×12). Drift here = the panel Balance lying vs the real
-    // per-tick treasury drain.
+    // Military unit maintenance — per-unit upkeep via the shared
+    // unitUpkeepPerTick() (the same fn budget.js / advance-tick use),
+    // summed over non-Decommissioned units, ×12. Single source of
+    // truth, so this panel can't drift from the real treasury drain.
     let unitMaintenance = { armyCount: 0, armyAnnual: 0, totalAnnual: 0 };
     try {
         const { data: units, error: uErr } = await _supabase
@@ -2641,7 +2635,7 @@ async function loadBudgetData() {
         } else {
             let perTick = 0;
             for (const u of (units || [])) {
-                perTick += Math.max(1, Math.floor((Number(u?.construction_cost) || 0) / _GB_UNIT_COST_PER_ABSTRACT * 0.25));
+                perTick += unitUpkeepPerTick(u?.construction_cost);
             }
             const armyAnnual = perTick * GAME_CONFIG.TICKS_PER_YEAR;
             unitMaintenance = { armyCount: (units || []).length, armyAnnual, totalAnnual: armyAnnual };
