@@ -307,14 +307,25 @@ async function confirmFactionChoice() {
       const { data: { user } } = await _supabase.auth.getUser();
       if (!user) { window.location.href = 'login.html'; return; }
       // Already an entrepreneur → just go to the dashboard (no duplicate).
-      const { data: existing } = await _supabase.from('factions')
+      const { data: existing, error: existErr } = await _supabase.from('factions')
         .select('id').eq('faction_type', 'entrepreneur')
         .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
-        .maybeSingle();
+        .limit(1).maybeSingle();
+      if (existErr) {
+        errEl.textContent = 'Could not verify your factions — try again. (' + (existErr.message || 'lookup failed') + ')';
+        errEl.style.display = 'block'; btn.disabled = false; return;
+      }
       if (existing) { window.location.href = 'entrepreneur-dashboard.html'; return; }
-      // Primary slot (id = user.id) taken → this is an additional faction.
-      const { data: primary } = await _supabase.from('factions')
+      // Whether the user's primary slot (id = user.id) is taken decides
+      // insert+linked vs upsert. A swallowed error here would flip
+      // isLinked and let the upsert overwrite an existing primary
+      // faction — so abort on any error rather than guess.
+      const { data: primary, error: primErr } = await _supabase.from('factions')
         .select('id').eq('id', user.id).maybeSingle();
+      if (primErr) {
+        errEl.textContent = 'Could not verify your factions — try again. (' + (primErr.message || 'lookup failed') + ')';
+        errEl.style.display = 'block'; btn.disabled = false; return;
+      }
       const isLinked = !!primary;
       const row = {
         faction_type: 'entrepreneur',
