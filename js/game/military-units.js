@@ -6,6 +6,16 @@
 // UPDATE — idempotent (re-running finds no eligible rows) and
 // non-fatal (logs + returns 0 on error).
 
+// Per-unit per-tick maintenance: 25% of construction_cost (stored on
+// the /1e6 scale), floored, with a hard $1/tick minimum. SINGLE SOURCE
+// OF TRUTH — budget.js (the nation expenditure sum) and the Order of
+// Battle "(-$X)" readout both import this, so the per-unit figure can
+// never drift from the budget total.
+export function unitUpkeepPerTick(constructionCost) {
+    const cc = Number(constructionCost) || 0;
+    return Math.max(1, Math.floor(cc / 1_000_000 * 0.25));
+}
+
 export async function processFormingUnits(supabase, currentTick) {
     const { data, error } = await supabase
         .from('army_units')

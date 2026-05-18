@@ -9,7 +9,8 @@
 // these numbers MUST stay in sync with that RPC's brigade table.
 
 import { _supabase } from './supabase-client.js';
-import { escapeHtml, escapeAttr } from './utils.js';
+import { escapeHtml, escapeAttr, tickToDate } from './utils.js';
+import { unitUpkeepPerTick } from './game/military-units.js';
 
 export const AU_BRIGADES = {
   light_infantry: { name: 'Light Infantry', mp: 2000, cost: 1000000 },
@@ -109,7 +110,7 @@ async function loadUnitsAndFunds(faction) {
   try {
     const { data: u, error: uErr } = await _supabase
       .from('army_units')
-      .select('id,name,brigades,total_manpower,status,forming_until_tick')
+      .select('id,name,brigades,total_manpower,status,forming_until_tick,construction_cost')
       .eq('faction_id', faction.id)
       .neq('status', 'Decommissioned')
       .order('created_at', { ascending: true });
@@ -293,7 +294,6 @@ export async function renderOrderOfBattle(faction, shard, hostEl) {
   if (!hostEl) return;
   ensureStyles();
   const expanded = new Set();
-  const tick = () => Number(shard?.current_tick) || 0;
   let units = [], funds = 0;
 
   function initials(name) {
@@ -318,20 +318,18 @@ export async function renderOrderOfBattle(faction, shard, hostEl) {
       return;
     }
 
-    const t = tick();
     html += '<div class="cu-sec">Regular Army</div>';
     for (const u of units) {
       const brigs = Array.isArray(u.brigades) ? u.brigades : [];
       const forming = u.status === 'Forming';
-      const left = Math.max(0, (Number(u.forming_until_tick) || 0) - t);
       const open = expanded.has(u.id);
       const composition = AU_ORDER
         .filter(k => brigs.includes(k))
         .map(k => `${brigs.filter(x => x === k).length}× ${AU_BRIGADES[k].name}`)
         .join(' · ') || '—';
       const pill = forming
-        ? `<span class="oob-pill forming">Forming · Ready in ${left} tick${left === 1 ? '' : 's'}</span>`
-        : `<span class="oob-pill active">Active</span>`;
+        ? `<span class="oob-pill forming">Forming · Ready in ${tickToDate(Number(u.forming_until_tick))}</span>`
+        : `<span class="oob-pill active" style="color:#46c46a;">[Active]</span><span class="oob-upkeep" style="color:#e5534b;font-weight:600;margin-left:6px;">(-$${unitUpkeepPerTick(u.construction_cost)})</span>`;
       html += `<div class="oob-unit ${forming ? 'forming' : 'active'}">
         <div class="oob-top" data-uid="${escapeAttr(u.id)}">
           <span class="oob-pill" style="background:#222;color:#bbb;">${escapeHtml(initials(u.name))}</span>
