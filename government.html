@@ -2650,6 +2650,33 @@ async function loadBudgetData() {
         console.warn('[Budget] army_units fetch threw:', err.message);
     }
 
+    // Combined Arms School upkeep — MUST match
+    // computeCombinedArmsSchoolUpkeepAnnual in budget.js exactly
+    // (#completed schools × spec.upkeep_per_tick × 12, under
+    // National Infrastructure). Drift = the panel Balance lying vs
+    // the real per-tick nation drain.
+    let combinedArmsSchool = { count: 0, totalAnnual: 0 };
+    try {
+        const { data: casSpec } = await _supabase.rpc('combined_arms_school_spec');
+        const perTick = Number(casSpec?.upkeep_per_tick) || 0;
+        if (perTick > 0) {
+            const { count: casN, error: casErr } = await _supabase
+                .from('corp_contracts')
+                .select('id', { count: 'exact', head: true })
+                .eq('issuer_nation_id', nation.id)
+                .eq('project_subtype', 'Combined Arms School')
+                .eq('status', 'completed');
+            if (casErr) {
+                console.warn('[Budget] combined arms school count failed:', casErr.message);
+            } else {
+                const c = casN || 0;
+                combinedArmsSchool = { count: c, totalAnnual: c * perTick * GAME_CONFIG.TICKS_PER_YEAR };
+            }
+        }
+    } catch (err) {
+        console.warn('[Budget] combined arms school fetch threw:', err.message);
+    }
+
     _budgetData = {
         budget,
         aidReceived,
@@ -2666,6 +2693,7 @@ async function loadBudgetData() {
         activeCorpCount,
         interiorInfra,
         unitMaintenance,
+        combinedArmsSchool,
     };
 }
 
@@ -2820,7 +2848,7 @@ function _gbBuildCostRows(d) {
         { key: 'procurement_capital',  name: 'Procurement & Capital',   yr: 0,                          descKey: 'procurementCapital'   },
         { key: 'subsidies_industry',   name: 'Subsidies & Industry Support', yr: subsidiesIndustryAnnual, descKey: 'subsidiesIndustry'   },
         { key: 'defense_security',     name: 'Defense & Security',      yr: defenseSecurityAnnual,      descKey: 'defenseSecurity'      },
-        { key: 'national_infra',       name: 'National Infrastructure', yr: royalHoldingsAnnual + Number(d.interiorInfra?.totalAnnual || 0), descKey: 'nationalInfrastructure' },
+        { key: 'national_infra',       name: 'National Infrastructure', yr: royalHoldingsAnnual + Number(d.interiorInfra?.totalAnnual || 0) + Number(d.combinedArmsSchool?.totalAnnual || 0), descKey: 'nationalInfrastructure' },
         { key: 'sports_culture',       name: 'Sports & Culture',        yr: sportsCultureAnnual,        descKey: 'sportsAndCulture'     },
         { key: 'foreign_aid',          name: 'Foreign Aid & Diplomacy', yr: 0,                          descKey: 'foreignAid'           },
         { key: 'discretionary',        name: 'Discretionary Programs',  yr: 0,                          descKey: 'discretionary'        },
@@ -3243,6 +3271,16 @@ async function _gbSelectCategory(container, row, kind) {
             subRows.push({
                 k: `${t.name} × ${t.count} [Interior Ministry]`,
                 v: t.annual,
+            });
+        }
+        // Combined Arms School perpetual upkeep ($2/tick each). Source:
+        // _budgetData.combinedArmsSchool (mirrors
+        // computeCombinedArmsSchoolUpkeepAnnual in budget.js).
+        const _cas = _budgetData?.combinedArmsSchool;
+        if (_cas && _cas.count > 0) {
+            subRows.push({
+                k: `Combined Arms School × ${_cas.count} [Quartermaster]`,
+                v: _cas.totalAnnual,
             });
         }
     }

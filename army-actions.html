@@ -83,6 +83,7 @@ import { bootstrapArmyPage } from './js/army-page.js';
 import { openCreateUnitModal } from './js/create-unit.js';
 import { openReportModal } from './js/report-defense.js';
 import { openForeignOfficerExchangeModal } from './js/foreign-officer-exchange.js';
+import { openCombinedArmsSchoolModal } from './js/combined-arms-school.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
 
 function esc(s) {
@@ -169,6 +170,15 @@ function render() {
           </div>
           <div class="aa-act__desc">Resign your commission as Chief of Staff and head into a peaceful retirement. Removes your command of this army.</div>
         </div>`;
+  } else if (sel.key === 'qm') {
+    body = `
+        <div class="aa-act" data-act="combined-arms-school">
+          <div class="aa-act__head">
+            <div class="aa-act__title"><span class="aa-act__name">Establish Combined Arms School</span></div>
+            <span class="aa-act__cost">$55</span>
+          </div>
+          <div class="aa-act__desc">Stand up a national staff college teaching combined arms doctrine, joint operations, and modern warfare. Posts a construction contract for corporations to bid on. Removes 2,000 manpower immediately; on completion (≈36 months): Professionalism +6, Officer Corps +4. Then $2/tick under National Infrastructure. 24-tick cooldown.</div>
+        </div>`;
   } else if (sel.key === 'cmd') {
     body = `
         <div class="aa-act" data-act="foreign-officer-exchange">
@@ -216,6 +226,8 @@ function render() {
   if (rd) rd.onclick = () => openReportModal(_faction);
   const fo = root.querySelector('[data-act="foreign-officer-exchange"]');
   if (fo) fo.onclick = () => openForeignOfficerExchangeModal(_faction);
+  const cas = root.querySelector('[data-act="combined-arms-school"]');
+  if (cas) cas.onclick = () => openCombinedArmsSchoolModal(_faction);
 }
 
 let _resigning = false;
