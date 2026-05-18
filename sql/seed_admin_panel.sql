@@ -20,6 +20,7 @@ INSERT INTO system_config (key, value) VALUES ('admin_panel_html', $$
             <button class="tab" onclick="showTab('elections')">Elections</button>
             <button class="tab" onclick="showTab('players')">Players</button>
             <button class="tab" onclick="showTab('sectors')">Sectors</button>
+            <button class="tab" onclick="showTab('provinces')">Provinces</button>
             <button class="tab" onclick="showTab('danger')">Danger Zone</button>
             <button class="tab" onclick="showTab('inspector')">Inspector</button>
             <button class="tab" onclick="showTab('audit')">Policy Audit</button>
@@ -243,6 +244,50 @@ INSERT INTO system_config (key, value) VALUES ('admin_panel_html', $$
                     </p>
                     <button class="btn btn-primary" onclick="loadSectorDiagnostics()">Load Diagnostics</button>
                     <div id="sector-diagnostics-container" style="margin-top:16px; overflow-x:auto;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== PROVINCES TAB ==================== -->
+        <div class="tab-content" id="tab-provinces">
+            <h2>Provinces Management</h2>
+            <p style="color:#888; font-size:0.9rem; margin-bottom:20px;">
+                Split each sector's national <strong>Weight</strong> across this nation's provinces.
+                Per sector, the province weights must sum <strong>exactly</strong> to the nation weight
+                (the partition model) — Save is blocked until every sector is balanced.
+                A province weight may be <strong>0</strong> (sector absent there); the nation weight is read-only here
+                (edit it in the Sectors tab). Phase 1 is display-only: the election map shows these splits but the
+                election engine still uses the nation weight.
+            </p>
+
+            <div class="input-group">
+                <label>Select Nation</label>
+                <select id="province-nation-select" onchange="onProvinceNationSelect()">
+                    <option value="">-- Choose a nation --</option>
+                </select>
+            </div>
+
+            <div id="province-nation-info" class="hidden">
+
+                <div style="display:flex; gap:12px; align-items:flex-end; margin:16px 0; flex-wrap:wrap;">
+                    <div class="input-group" style="flex:0 0 240px; margin-bottom:0;">
+                        <label>New Province Name</label>
+                        <input type="text" id="new-province-name" placeholder="e.g. Northshire" maxlength="80">
+                    </div>
+                    <button class="btn btn-primary" onclick="addProvince(this)">+ Add Province</button>
+                    <span id="province-add-status" style="font-weight:bold;"></span>
+                </div>
+
+                <div class="weight-validator" id="province-balance-bar" style="margin:16px 0;">
+                    <span class="weight-validator-label">Balance:</span>
+                    <span class="weight-validator-status" id="province-balance-status">—</span>
+                </div>
+
+                <div id="province-grid-container" style="margin:16px 0; overflow-x:auto;"></div>
+
+                <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:16px;">
+                    <button class="btn btn-success" id="province-save-btn" onclick="saveProvinceWeights(this)">Save Weights</button>
+                    <span id="province-save-status" style="font-weight:bold;"></span>
                 </div>
             </div>
         </div>
