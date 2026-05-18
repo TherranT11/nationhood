@@ -69,8 +69,8 @@
     letter-spacing: 0.08em;
     color: #888;
   }
-  .nav .nav-item { padding: 14px 0; }
-  .nav .nav-item.soon { color: #444; cursor: default; }
+  .nav .nav-item { padding: 14px 0; color: #888; text-decoration: none; cursor: pointer; }
+  .nav a.nav-item:hover { color: #d4d4d4; }
   .nav .nav-item.active { color: #8aaa6a; border-bottom: 1px solid #8aaa6a; }
   .content { padding: 32px 24px 24px; }
   .hero { display: grid; grid-template-columns: 1fr auto; gap: 32px; margin-bottom: 28px; }
@@ -176,12 +176,11 @@
     </div>
 
     <div class="nav">
-      <div class="nav-item active">HOME</div>
-      <div class="nav-item soon" title="Coming soon">BUSINESS</div>
-      <div class="nav-item soon" title="Coming soon">ASSETS</div>
-      <div class="nav-item soon" title="Coming soon">MARKET</div>
-      <div class="nav-item soon" title="Coming soon">BOARD</div>
-      <div class="nav-item soon" title="Coming soon">LOBBYING</div>
+      <a class="nav-item active" href="entrepreneur-dashboard.html">HOME</a>
+      <a class="nav-item" href="entrepreneur-corporations.html">CORPORATIONS</a>
+      <a class="nav-item" href="entrepreneur-markets.html">MARKETS</a>
+      <a class="nav-item" href="entrepreneur-assets.html">ASSETS</a>
+      <a class="nav-item" href="entrepreneur-lobbying.html">LOBBYING</a>
     </div>
 
     <div class="content">
