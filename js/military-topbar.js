@@ -20,6 +20,19 @@ import { escapeHtml as escHtml } from './utils.js';
 
 const VERSION = 'Alpha 2.6.0.0';
 
+// Per-area theme key, mirroring corp-topbar's THEME_STORAGE_KEY
+// ('corpThemePref') and common.js's ('nationhood_theme') — each
+// dashboard family persists its own; the shared visual mechanism is
+// the body.light-mode class. Applied at render so first paint matches.
+const _MIL_THEME_KEY = 'milThemePref';
+function applyStoredMilTheme() {
+    if (typeof document === 'undefined') return;
+    try {
+        document.body.classList.toggle('light-mode',
+            localStorage.getItem(_MIL_THEME_KEY) === 'light');
+    } catch (e) { /* localStorage unavailable — default dark */ }
+}
+
 // The military top bar carries its own styling so it renders identically
 // on ANY page (army-dashboard, army-actions, future navy/air) with zero
 // per-page CSS. Tokens are scoped to the top-bar containers — not :root —
@@ -73,6 +86,18 @@ const _MIL_TOPBAR_CSS = `
   color: #f0efe6; letter-spacing: 0.5px; opacity: 0.8;
 }
 .mil-topbar__right { display: flex; align-items: center; gap: 10px; }
+.mil-topbar__budget {
+  display: flex; align-items: baseline; gap: 6px;
+  font-family: var(--font-mono); padding: 4px 10px;
+  border: 1px solid var(--border-1); background: var(--bg-3);
+}
+.mil-topbar__budget-label {
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.8px;
+  text-transform: uppercase; color: #7a7868;
+}
+.mil-topbar__budget-value {
+  font-size: 12px; font-weight: 700; color: var(--text-bright);
+}
 .mil-topbar__switcher { position: relative; }
 .mil-topbar__badge-btn {
   font-family: var(--font-mono); font-size: 12px; font-weight: 700;
@@ -134,6 +159,7 @@ function _ensureMilTopbarStyles() {
 
 export function renderMilitaryTopBar(container, opts = {}) {
     _ensureMilTopbarStyles();
+    applyStoredMilTheme();
     const {
         faction,           // the user's military faction (must have .branch)
         nation,            // nation row (for name; not used for flag, see flagUrl)
@@ -145,6 +171,13 @@ export function renderMilitaryTopBar(container, opts = {}) {
 
     const branchBadge = getBranchDisplayLabel(faction?.branch || 'army');
     const gameDate    = shard?.current_date || '--';
+    // Army treasury (party_funds) on the army /1e6 no-"M" convention —
+    // byte-identical to the army-dashboard "Available Budget" card so
+    // the two never disagree. '$0' when the column wasn't selected.
+    const budgetStr = '$' + ((Number(faction?.party_funds) || 0) / 1e6)
+        .toFixed(1).replace(/\.0$/, '');
+    const isLight = typeof document !== 'undefined'
+        && document.body.classList.contains('light-mode');
 
     // Dropdown: every active faction the user owns + "Found a …" entries
     // for missing party/corp types. We never offer "Join a Military
@@ -218,10 +251,15 @@ export function renderMilitaryTopBar(container, opts = {}) {
             </div>
             <div class="mil-topbar__version">${VERSION}</div>
             <div class="mil-topbar__right">
+                <div class="mil-topbar__budget">
+                    <span class="mil-topbar__budget-label">Budget</span>
+                    <span class="mil-topbar__budget-value">${escHtml(budgetStr)}</span>
+                </div>
                 <div class="mil-topbar__switcher" id="mil-faction-switcher">
                     <span class="mil-topbar__badge-btn" onclick="window._milTopbarToggleDropdown()">[${escHtml(branchBadge)}] ▾</span>
                     <div class="mil-topbar__dropdown" id="mil-faction-dropdown">${dropdownHtml}</div>
                 </div>
+                <button class="mil-topbar__btn" id="mil-theme-toggle" onclick="window._milTopbarToggleTheme()">${isLight ? 'Dark' : 'Light'}</button>
                 <button class="mil-topbar__btn mil-topbar__btn--logout" onclick="window._milTopbarLogout()">Logout</button>
             </div>
         </div>
@@ -265,6 +303,15 @@ document.addEventListener('click', (e) => {
         document.getElementById('mil-faction-dropdown')?.classList.remove('open');
     }
 });
+
+// Theme toggle — mirrors corp-topbar's _corpTopbarToggleTheme: flips
+// the shared body.light-mode class, persists per-area, swaps the label.
+window._milTopbarToggleTheme = function () {
+    const nowLight = document.body.classList.toggle('light-mode');
+    try { localStorage.setItem(_MIL_THEME_KEY, nowLight ? 'light' : 'dark'); } catch (e) { /* ignore */ }
+    const btn = document.getElementById('mil-theme-toggle');
+    if (btn) btn.textContent = nowLight ? 'Dark' : 'Light';
+};
 
 window._milTopbarLogout = async function () {
     sessionStorage.clear();
