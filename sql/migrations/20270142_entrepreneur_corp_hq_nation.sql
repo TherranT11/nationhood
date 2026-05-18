@@ -101,3 +101,11 @@ $$;
 GRANT EXECUTE ON FUNCTION found_entrepreneur_corp(text, uuid, text, bigint) TO authenticated;
 
 COMMIT;
+
+-- PostgREST routes RPCs by cached argument names; a function signature
+-- change (p_hq text → p_hq_nation_id uuid) is the one case where the
+-- schema cache stays stale after apply, yielding "Could not find the
+-- function public.found_entrepreneur_corp(...) in the schema cache".
+-- Reload it — same convention the rest of the codebase uses after
+-- API-affecting DDL. Idempotent.
+NOTIFY pgrst, 'reload schema';
