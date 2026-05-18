@@ -232,6 +232,17 @@ function renderHqList() {
   }
 }
 
+// Single-select highlight for an .ec-pick grid. One source for the
+// "clear siblings, mark clicked" behaviour shared by Industry + HQ;
+// callers apply their own side effect off the returned card.
+function selectPick(containerId, e) {
+  const card = e.target.closest('.ec-pick');
+  if (!card || card.classList.contains('dis')) return null;
+  document.querySelectorAll(`#${containerId} .ec-pick`).forEach(x => x.classList.remove('sel'));
+  card.classList.add('sel');
+  return card;
+}
+
 function refreshCost() {
   const cap = capRaw();
   const cost = cap + FEE;
@@ -335,10 +346,8 @@ function renderPositions(corps, filter) {
     document.getElementById('ec-close').addEventListener('click', close);
     document.getElementById('ec-cancel').addEventListener('click', close);
     document.getElementById('ec-ind').addEventListener('click', (e) => {
-      const card = e.target.closest('.ec-pick');
-      if (!card || card.classList.contains('dis') || !card.dataset.ind) return;
-      document.querySelectorAll('#ec-ind .ec-pick').forEach(x => x.classList.remove('sel'));
-      card.classList.add('sel');
+      const card = selectPick('ec-ind', e);
+      if (!card || !card.dataset.ind) return;
       sel.industry = card.dataset.ind;
       renderHqList();   // per-nation count is industry-specific
     });
@@ -351,11 +360,9 @@ function renderPositions(corps, filter) {
       renderHqList();
     });
     document.getElementById('ec-hq').addEventListener('click', (e) => {
-      const card = e.target.closest('.ec-pick');
+      const card = selectPick('ec-hq', e);
       if (!card || !card.dataset.nid) return;
       sel.hqNationId = card.dataset.nid;
-      document.querySelectorAll('#ec-hq .ec-pick').forEach(x => x.classList.remove('sel'));
-      card.classList.add('sel');
     });
     document.getElementById('ec-cap').addEventListener('input', refreshCost);
 
