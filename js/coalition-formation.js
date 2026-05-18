@@ -388,31 +388,58 @@ const NATION_MAP_PROVINCES = {
     Calveth: ['Auplandet', 'Borastadt', 'Cousheim', 'Folenberg'],
 };
 
-function buildNationMap() {
+// Renders the nation-map row: a Sectors panel (left, 280px) + the
+// map (right), both CSS-synced to ONE set of hidden radios so the
+// panel and the map always reflect the same selected button with no
+// JS. `sectors` is the live per-nation sectors table (read-only). For
+// the Whole map ([Nation]) the panel lists every sector + its weight
+// and a TOTAL WEIGHT (Σ over ALL sectors). Provinces are blank for
+// now — per-province weights come from a later admin panel.
+function buildNationMap(sectors = []) {
     const nm = _state?.nation?.name;
     if (!nm) return '';
     // Whole first (checked default) + one option per configured province.
-    const opts = [{ key: 'whole', label: nm, file: `${nm} Whole.png` }].concat(
+    const opts = [{ key: 'whole', label: nm, file: `${nm} Whole.png`, whole: true }].concat(
         (NATION_MAP_PROVINCES[nm] || []).map(p => ({
             key: p.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
             label: p,
             file: `${nm} ${p}.png`,
+            whole: false,
         }))
     );
+    // Radios now sit at row level (siblings of both columns) so a single
+    // :checked drives the map image, the active button AND the sectors
+    // panel via the general-sibling combinator.
     const activeRules = opts.map(o =>
-        `#cf-nm-${o.key}:checked ~ .cf-nm-boxes label[for="cf-nm-${o.key}"]`).join(',\n      ');
-    const showRules = opts.map(o =>
-        `#cf-nm-${o.key}:checked ~ .cf-nm-stage .cf-nm-img-${o.key} { display: block; }`).join('\n      ');
+        `#cf-nm-${o.key}:checked ~ .cf-makeup-right .cf-nm-box[for="cf-nm-${o.key}"]`).join(',\n      ');
+    const showImg = opts.map(o =>
+        `#cf-nm-${o.key}:checked ~ .cf-makeup-right .cf-nm-img-${o.key} { display: block; }`).join('\n      ');
+    const showSec = opts.map(o =>
+        `#cf-nm-${o.key}:checked ~ .cf-makeup-left .cf-sec-${o.key} { display: block; }`).join('\n      ');
     const radios = opts.map((o, i) =>
         `<input type="radio" name="cf-nm" id="cf-nm-${o.key}" class="cf-nm-r"${i === 0 ? ' checked' : ''}>`).join('\n      ');
     const boxes = opts.map(o =>
         `<label class="cf-nm-box" for="cf-nm-${o.key}">${esc(o.label)}</label>`).join('\n        ');
     const imgs = opts.map(o =>
         `<img class="cf-nm-img-${o.key}" src="${encodeURI(`assets/${o.file}`)}" alt="${esc(o.label)} map" onerror="this.style.display='none'">`).join('\n        ');
+
+    const totalWeight = (sectors || []).reduce((s, x) => s + (Number(x.weight) || 0), 0);
+    const secRows = (sectors || []).length
+        ? (sectors || []).map(s =>
+            `<div class="cf-sec-row"><span class="cf-sec-nm">${esc(s.name)}</span><span class="cf-sec-wt">${Number(s.weight) || 0}</span></div>`).join('')
+          + `<div class="cf-sec-row cf-sec-total"><span class="cf-sec-nm">Total Weight</span><span class="cf-sec-wt">${totalWeight}</span></div>`
+        : `<div class="cf-sec-empty">No sectors configured for this nation.</div>`;
+    const panels = opts.map(o =>
+        `<div class="cf-sec cf-sec-${o.key}">
+           <div class="cf-sec-head">Sectors — ${esc(o.label)}</div>
+           ${o.whole ? secRows
+             : `<div class="cf-sec-empty">Province-level sector weights are not configured yet.</div>`}
+         </div>`).join('');
+
     return `
     <style>
-      .cf-nm-wrap { margin: 14px 0 0; }
       .cf-nm-r { position: absolute; opacity: 0; pointer-events: none; }
+      .cf-nm-wrap { margin: 14px 0 0; }
       .cf-nm-boxes { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-bottom: 10px; }
       .cf-nm-box { font-family: var(--font-mono, monospace); font-size: 12px;
         font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
@@ -424,15 +451,39 @@ function buildNationMap() {
       .cf-nm-stage { border: 1px solid var(--border-1, rgba(255,255,255,0.12));
         background: var(--bg-2, #1a1a17); padding: 10px; }
       .cf-nm-stage img { display: none; max-width: 100%; height: auto; margin: 0 auto; }
-      ${showRules}
+      ${showImg}
+      .cf-sec { display: none; margin: 14px 0 0;
+        border: 1px solid var(--border-1, rgba(255,255,255,0.12));
+        background: var(--bg-2, #1a1a17); }
+      .cf-sec-head { font-family: var(--font-mono, monospace); font-size: 11px;
+        font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+        color: var(--accent, #d4b87a); padding: 10px 12px;
+        border-bottom: 1px solid var(--border-1, rgba(255,255,255,0.1)); }
+      .cf-sec-row { display: flex; justify-content: space-between; gap: 10px;
+        padding: 7px 12px; font-family: var(--font-mono, monospace); font-size: 12px;
+        color: var(--text-secondary, #888); border-bottom: 1px solid var(--border-0, rgba(255,255,255,0.05)); }
+      .cf-sec-nm { color: var(--text-bright, #f0efe6); }
+      .cf-sec-wt { color: var(--text-secondary, #888); font-weight: 700; }
+      .cf-sec-total { border-top: 1px solid var(--border-1, rgba(255,255,255,0.12)); border-bottom: none; }
+      .cf-sec-total .cf-sec-nm, .cf-sec-total .cf-sec-wt {
+        color: var(--accent, #d4b87a); font-weight: 700; text-transform: uppercase;
+        font-size: 11px; letter-spacing: 0.06em; }
+      .cf-sec-empty { padding: 14px 12px; font-family: var(--font-mono, monospace);
+        font-size: 11px; color: var(--text-dim, #4a4940); line-height: 1.5; }
+      ${showSec}
     </style>
-    <div class="cf-nm-wrap">
+    <div class="cf-makeup-row cf-nm-row">
       ${radios}
-      <div class="cf-nm-boxes">
-        ${boxes}
-      </div>
-      <div class="cf-nm-stage">
-        ${imgs}
+      <div class="cf-makeup-left">${panels}</div>
+      <div class="cf-makeup-right">
+        <div class="cf-nm-wrap">
+          <div class="cf-nm-boxes">
+            ${boxes}
+          </div>
+          <div class="cf-nm-stage">
+            ${imgs}
+          </div>
+        </div>
       </div>
     </div>`;
 }
@@ -467,7 +518,26 @@ export async function renderFormationTab(root) {
                <div class="cf-makeup-right">${inner}</div>
            </div>`
         : '';
-    const makeupRow = gridRow(buildElectoralMakeup()) + gridRow(buildNationMap());
+    // Per-nation sectors (read-only) for the map's Sectors panel. One
+    // query; safe-default to [] so a failure just shows "no sectors".
+    let _sectors = [];
+    try {
+        const _nid = _state?.nation?.id;
+        if (_nid) {
+            const { data, error } = await _supabase
+                .from('sectors')
+                .select('name, weight, is_active, display_order')
+                .eq('nation_id', _nid)
+                .order('display_order', { ascending: true });
+            if (error) console.warn('[coalition-formation] sectors load failed:', error.message);
+            else _sectors = data || [];
+        }
+    } catch (e) {
+        console.warn('[coalition-formation] sectors load threw:', e?.message || e);
+    }
+    // buildNationMap returns its OWN full grid row (radios + Sectors
+    // panel left + map right), so it is not wrapped by gridRow.
+    const makeupRow = gridRow(buildElectoralMakeup()) + buildNationMap(_sectors);
 
     // Presidential systems — no coalition formation
     if (hasElectedPresident(_state.nation)) {
