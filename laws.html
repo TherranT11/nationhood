@@ -392,7 +392,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { computeCorpValuation } from './js/game/corp-valuation.js';
-import { GAME_CONFIG, initGameConfigForNation, deductAP } from './js/game/config.js';
+import { GAME_CONFIG, FOUNDATIONAL_REPEAL_DEFAULTS, initGameConfigForNation, deductAP } from './js/game/config.js';
 import { isGovernmentPresidential, hasElectedPresident, getCurrentConstitutionalSystem, getConstitutionalSystemLabel } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies } from './js/game/government-structure.js';
 import { calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, getRequiredSeats, evaluateBillVote } from './js/game/bills.js';
@@ -1485,12 +1485,33 @@ function renderFoundationalSector(sector) {
         '</div>'
     ).join('');
 
+    // Repeal affordance — a law is "established" when its nations column
+    // differs from the hardcoded default (the *_established_tick columns
+    // aren't reliably maintained, so value≠default is the source of truth).
+    // term_length/term_limit are presidential-only.
+    const repealRows = Object.entries(FOUNDATIONAL_REPEAL_DEFAULTS).filter(([sub, spec]) => {
+        if ((sub === 'term_length' || sub === 'term_limit') && !isPresidential) return false;
+        const cur = n[spec.column];
+        return cur != null && cur !== spec.value;
+    }).map(([sub, spec]) =>
+        '<div class="foundational-row">' +
+            '<span class="foundational-label">' + escapeHtml(spec.label) + '</span>' +
+            '<button style="padding:3px 12px;font-size:0.75rem;background:transparent;' +
+                'border:1px solid var(--purple,#8b5cf6);color:var(--purple,#8b5cf6);' +
+                'border-radius:3px;cursor:pointer;" ' +
+                'onclick="proposeFoundationalRepeal(\'' + sub + '\')">Repeal (revert to default)</button>' +
+        '</div>'
+    ).join('');
+    const repealBlock = repealRows
+        ? '<div class="foundational-row" style="opacity:0.7;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;margin-top:10px;">Repeal an Established Law (2/3 supermajority)</div>' + repealRows
+        : '';
+
     return '<div class="major-sector" id="sector-FOUNDATIONAL">' +
         '<div class="major-sector-header" onclick="toggleMajorSector(\'FOUNDATIONAL\')">' +
             '<div class="major-sector-title">' + sector.icon + ' ' + sector.label + '</div>' +
             '<div class="major-sector-arrow">▶</div>' +
         '</div>' +
-        '<div class="major-sector-content">' + content + '</div>' +
+        '<div class="major-sector-content">' + content + repealBlock + '</div>' +
     '</div>';
 }
 
@@ -2904,6 +2925,29 @@ function selectFoundationalType(type) {
 }
 window.selectFoundationalType = selectFoundationalType;
 
+// Drafts a foundational repeal bill (revert this subtype's nations
+// column to its hardcoded default). Mirrors the parliamentary_term_length
+// draft path; the generic billInsert/preamble/cooldown branches and the
+// server enactFoundationalRepeal handle the rest by subtype.
+function proposeFoundationalRepeal(subtype) {
+    const spec = FOUNDATIONAL_REPEAL_DEFAULTS[subtype];
+    if (!spec) { alert('Unknown foundational law.'); return; }
+    if (!confirm(`Draft a bill to repeal "${spec.label}" (revert to the default)?\n\nThis creates a foundational bill requiring a 2/3 supermajority.`)) return;
+    draftArticles = [{
+        articleNumber: 1,
+        isFoundational: true,
+        foundationalSubtype: 'repeal_' + subtype,
+        policy: null
+    }];
+    renderDraftArticles(); hideAddArticleForm();
+    document.getElementById('bill-name-input').value = `Repeal: ${spec.label} Act`;
+    document.getElementById('bill-name-section').style.display = 'block';
+    document.getElementById('submit-bill-btn').disabled = false;
+    _hideAllArticleButtons();
+    document.getElementById('bill-name-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+window.proposeFoundationalRepeal = proposeFoundationalRepeal;
+
 function renderPolicyOptions(policies, containerId, buttonId) {
     const container = document.getElementById(containerId);
     if (policies.length === 0) { container.innerHTML = '<div class="no-law">No policies available in this sector.</div>'; return; }
@@ -3724,13 +3768,16 @@ function renderDraftArticles() {
                     <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
                 </div>`;
             }
-            if (art.foundationalSubtype === 'repeal_parliamentary_term') {
-                const currentYears = (currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS) / (GAME_CONFIG.TICKS_PER_YEAR || 12);
+            if (art.foundationalSubtype && art.foundationalSubtype.startsWith('repeal_')) {
+                const _rsub = art.foundationalSubtype.slice('repeal_'.length);
+                const _rspec = FOUNDATIONAL_REPEAL_DEFAULTS[_rsub];
+                const _rlabel = _rspec ? _rspec.label : _rsub;
+                const _rcd = _rspec && _rspec.cooldown ? ` · ${_rspec.cooldown} tick cooldown` : '';
                 return `<div class="draft-article-card" style="border-left:3px solid var(--purple);">
                     <div class="draft-article-info">
                         <div class="draft-article-num">Article ${art.articleNumber} — <span style="color:var(--purple);">Foundational</span></div>
-                        <div class="draft-article-name">🗓 Repeal: Legislative Term Length</div>
-                        <div class="draft-article-meta">Repeal the ${currentYears}-Year legislative term law · Requires 2/3 supermajority · ${GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS} tick cooldown</div>
+                        <div class="draft-article-name">🗳 Repeal: ${escapeHtml(_rlabel)}</div>
+                        <div class="draft-article-meta">Revert ${escapeHtml(_rlabel)} to its default · Requires 2/3 supermajority${_rcd}</div>
                     </div>
                     <button class="remove-article-btn" onclick="removeArticle(${index})">✕ Remove</button>
                 </div>`;
@@ -3967,7 +4014,9 @@ async function submitToCommittee() {
     if (!billName) {
         if (isFoundationalBill) {
             const fArt = draftArticles.find(a => a.isFoundational);
-            billName = fArt.foundationalSubtype === 'hos_title'
+            billName = (fArt.foundationalSubtype || '').startsWith('repeal_')
+                ? `Repeal: ${(FOUNDATIONAL_REPEAL_DEFAULTS[fArt.foundationalSubtype.slice('repeal_'.length)] || {}).label || fArt.foundationalSubtype.slice('repeal_'.length)} Act`
+                : fArt.foundationalSubtype === 'hos_title'
                 ? `Head of State Title Act (${fArt.proposedHosTitle})`
                 : fArt.foundationalSubtype === 'term_length'
                 ? `Presidential Term Length Act (${fArt.proposedTermLength / (GAME_CONFIG.TICKS_PER_YEAR || 12)} Years)`
@@ -4014,6 +4063,43 @@ async function submitToCommittee() {
             isSubmitting = false;
             document.getElementById('submit-bill-btn').disabled = false;
             return;
+        }
+
+        // Generic foundational-repeal cooldown — a repeal respects the
+        // same per-type cooldown as a proposal, counting the last passed
+        // bill of that subtype (a proposal OR a prior repeal), so it also
+        // resets the cooldown once it passes. Subtypes whose proposals
+        // have no cooldown (flags / electoral makeup) get none here too.
+        if ((foundationalArt.foundationalSubtype || '').startsWith('repeal_')) {
+            const _rsub = foundationalArt.foundationalSubtype.slice('repeal_'.length);
+            const _rspec = FOUNDATIONAL_REPEAL_DEFAULTS[_rsub];
+            if (_rspec && _rspec.cooldown > 0 && _rspec.proposedCol) {
+                const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+                const nowTick = shard?.current_tick || 0;
+                const { data: lastBill } = await _supabase
+                    .from('bills')
+                    .select('passed_tick')
+                    .eq('nation_id', currentNation.id)
+                    .eq('bill_type', 'foundational')
+                    .eq('status', 'passed')
+                    .or(`${_rspec.proposedCol}.not.is.null,foundational_repeal_subtype.eq.${_rsub}`)
+                    .order('passed_tick', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                if (lastBill && lastBill.passed_tick != null) {
+                    const ticksSince = nowTick - lastBill.passed_tick;
+                    if (ticksSince < _rspec.cooldown) {
+                        const remaining = _rspec.cooldown - ticksSince;
+                        const years = Math.floor(remaining / GAME_CONFIG.TICKS_PER_YEAR);
+                        const mo = remaining % GAME_CONFIG.TICKS_PER_YEAR;
+                        const timeStr = years > 0 ? `${years} year${years !== 1 ? 's' : ''}${mo > 0 ? ', ' + mo + ' month' + (mo !== 1 ? 's' : '') : ''}` : `${mo} month${mo !== 1 ? 's' : ''}`;
+                        alert(`${_rspec.label} was changed recently. Cooldown: ${timeStr} remaining before it can be repealed.`);
+                        isSubmitting = false;
+                        document.getElementById('submit-bill-btn').disabled = false;
+                        return;
+                    }
+                }
+            }
         }
 
         // HoS title cooldown check
@@ -4079,7 +4165,7 @@ async function submitToCommittee() {
         }
 
         // Legislative term length cooldown check (applies to both new proposals and repeals)
-        if (foundationalArt.foundationalSubtype === 'parliamentary_term_length' || foundationalArt.foundationalSubtype === 'repeal_parliamentary_term') {
+        if (foundationalArt.foundationalSubtype === 'parliamentary_term_length') {
             const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
             const nowTick = shard?.current_tick || 0;
             const { data: lastParlTermBill } = await _supabase
@@ -4283,8 +4369,8 @@ async function submitToCommittee() {
                     ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the presidential term length in ${currentNation.name} to ${draftArticles.find(a => a.isFoundational).proposedTermLength / (GAME_CONFIG.TICKS_PER_YEAR || 12)} years. Requires a two-thirds supermajority to pass.`
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'term_limit'
                     ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to ${draftArticles.find(a => a.isFoundational).proposedTermLimit === 0 ? 'remove presidential term limits' : 'set presidential term limits to ' + draftArticles.find(a => a.isFoundational).proposedTermLimit + ' term' + (draftArticles.find(a => a.isFoundational).proposedTermLimit !== 1 ? 's' : '')} in ${currentNation.name}. Requires a two-thirds supermajority to pass.`
-                    : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'repeal_parliamentary_term'
-                    ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to repeal the current Legislative Term Length law (${(currentNation.parliamentary_term_ticks || GAME_CONFIG.PARLIAMENTARY_TERM_TICKS) / (GAME_CONFIG.TICKS_PER_YEAR || 12)} years) in ${currentNation.name}. Once repealed, a new term length may be proposed. Requires a two-thirds supermajority to pass.`
+                    : (draftArticles.find(a => a.isFoundational).foundationalSubtype || '').startsWith('repeal_')
+                    ? (() => { const _s = draftArticles.find(a => a.isFoundational).foundationalSubtype.slice('repeal_'.length); const _l = (FOUNDATIONAL_REPEAL_DEFAULTS[_s] || {}).label || _s; return `This foundational law, proposed by the ${escapeHtml(currentFaction.faction_name)}, seeks to repeal the established ${escapeHtml(_l)} law in ${escapeHtml(currentNation.name)}, reverting it to the default. Requires a two-thirds supermajority to pass.`; })()
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'parliamentary_term_length'
                     ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the legislative term length in ${currentNation.name} to ${draftArticles.find(a => a.isFoundational).proposedParliamentaryTermLength / (GAME_CONFIG.TICKS_PER_YEAR || 12)} years. The new term length takes effect after the next scheduled election. Requires a two-thirds supermajority to pass.`
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'constitutional_reform'
@@ -4318,9 +4404,9 @@ async function submitToCommittee() {
                 billInsert.proposed_term_length = fArt.proposedTermLength;
             } else if (fArt.foundationalSubtype === 'term_limit') {
                 billInsert.proposed_term_limit = fArt.proposedTermLimit;
-            } else if (fArt.foundationalSubtype === 'repeal_parliamentary_term') {
+            } else if (fArt.foundationalSubtype && fArt.foundationalSubtype.startsWith('repeal_')) {
                 billInsert.is_foundational_repeal = true;
-                billInsert.foundational_repeal_subtype = 'parliamentary_term_length';
+                billInsert.foundational_repeal_subtype = fArt.foundationalSubtype.slice('repeal_'.length);
             } else if (fArt.foundationalSubtype === 'parliamentary_term_length') {
                 billInsert.proposed_parliamentary_term_length = fArt.proposedParliamentaryTermLength;
             } else if (fArt.foundationalSubtype === 'constitutional_reform') {

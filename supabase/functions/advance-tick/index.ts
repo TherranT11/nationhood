@@ -111,6 +111,33 @@ const GAME_CONFIG = {
     ENTRENCHED_COOLDOWN_TICKS: 60,      // ticks before repeal can be filed
 };
 
+// Single source of truth for repealing a Group A foundational law:
+// subtype → the `nations` column it set and the hardcoded default a
+// repeal reverts it to. Consumed by bills (enactFoundationalRepeal)
+// and laws.html (established-state detection + repeal UI). Group B
+// (constitutional_reform / monarchy / government-type transitions) is
+// deliberately absent — those aren't a bare column reset.
+// column     — the `nations` column this subtype set (server revert target)
+// value      — the hardcoded default a repeal reverts it to
+// label      — UI label for the repeal affordance
+// cooldown   — per-type cooldown ticks a repeal respects/resets (0 = none,
+//              matching subtypes whose proposals also have no cooldown)
+// proposedCol— the bills.proposed_* column, so the cooldown query can find
+//              the last *proposal* of this subtype too (null = flag subtype)
+const FOUNDATIONAL_REPEAL_DEFAULTS = Object.freeze({
+    term_length:                          { column: 'presidential_term_ticks',              value: GAME_CONFIG.PRESIDENTIAL_TERM_TICKS,  label: 'Presidential Term Length',     cooldown: GAME_CONFIG.TERM_LENGTH_COOLDOWN_TICKS,                 proposedCol: 'proposed_term_length' },
+    parliamentary_term_length:            { column: 'parliamentary_term_ticks',             value: GAME_CONFIG.PARLIAMENTARY_TERM_TICKS, label: 'Legislative Term Length',      cooldown: GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS,   proposedCol: 'proposed_parliamentary_term_length' },
+    term_limit:                           { column: 'presidential_term_limit',              value: GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT,  label: 'Presidential Term Limits',     cooldown: GAME_CONFIG.TERM_LIMIT_COOLDOWN_TICKS,                  proposedCol: 'proposed_term_limit' },
+    hos_title:                            { column: 'head_of_state_title',                  value: GAME_CONFIG.HOS_TITLE_OPTIONS[0],     label: 'Head of State Title',          cooldown: GAME_CONFIG.HOS_TITLE_COOLDOWN_TICKS,                   proposedCol: 'proposed_hos_title' },
+    hos_election:                         { column: 'hos_election_method',                  value: 'direct_vote',                        label: 'Head of State Election Method',cooldown: GAME_CONFIG.HOS_ELECTION_COOLDOWN_TICKS,                proposedCol: 'proposed_hos_election_method' },
+    electoral_makeup:                     { column: 'total_seats',                          value: GAME_CONFIG.TOTAL_SEATS,              label: 'Electoral Makeup (Seats)',     cooldown: 0,                                                     proposedCol: 'proposed_seats' },
+    judicial_appointment_politicization:  { column: 'judicial_appointment_politicization',  value: false,                                label: 'Judicial Politicization',      cooldown: 0,                                                     proposedCol: null },
+    electoral_commission_reform:          { column: 'electoral_commission_reform',          value: false,                                label: 'Electoral Commission Reform',  cooldown: 0,                                                     proposedCol: null },
+    party_registration_act:               { column: 'party_registration_threshold',         value: 0,                                    label: 'Party Registration Act',       cooldown: 0,                                                     proposedCol: null },
+    legislative_quorum_reform:            { column: 'legislative_quorum_override',          value: 0,                                    label: 'Legislative Quorum Reform',    cooldown: 0,                                                     proposedCol: null },
+    constitutional_amendment_streamlining:{ column: 'constitutional_amendment_streamlining', value: false,                               label: 'Amendment Streamlining',       cooldown: 0,                                                     proposedCol: null },
+});
+
 const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;
 const ENDORSEMENT_SWITCH_WINDOW_ERROR = `Endorsements can only be changed in the last ${ENDORSEMENT_SWITCH_WINDOW_TICKS} ticks before a presidential election.`;
 
@@ -8459,10 +8486,51 @@ const FOUNDATIONAL_REFORMS = Object.freeze([
 ]);
 
 async function enactFoundationalBill(supabase, bill, currentTick) {
+    if (bill.is_foundational_repeal) return enactFoundationalRepeal(supabase, bill, currentTick);
     for (const { matches, enact } of FOUNDATIONAL_REFORMS) {
         if (matches(bill)) return enact(supabase, bill, currentTick);
     }
     return enactElectoralMakeup(supabase, bill, currentTick);
+}
+
+// Repeal of a Group A foundational law: revert the one nation column
+// this subtype set back to its hardcoded default (per
+// FOUNDATIONAL_REPEAL_DEFAULTS — single source of truth). A bare reset
+// by design: it does NOT re-run the proposal's side effects (election
+// reschedules, stat nudges, monarch artifacts). Marking the bill
+// 'passed' makes it the most recent passed bill of this subtype, so
+// the cooldown query in laws.html naturally resets the cooldown.
+async function enactFoundationalRepeal(supabase, bill, currentTick) {
+    const subtype = bill.foundational_repeal_subtype;
+    const spec = subtype && FOUNDATIONAL_REPEAL_DEFAULTS[subtype];
+    if (!spec) {
+        console.warn(`[enactFoundationalRepeal] Bill ${bill.id} has unknown foundational_repeal_subtype: ${subtype}. Marking as failed.`);
+        await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
+        return false;
+    }
+
+    // Revert the nation column FIRST — only mark the bill passed once the
+    // revert succeeded, so a failed update can't leave the bill in a
+    // 'passed' state the resolver then reports as failed enactment.
+    const { error: nationErr } = await supabase.from('nations')
+        .update({ [spec.column]: spec.value })
+        .eq('id', bill.nation_id);
+    if (nationErr) {
+        console.error(`[enactFoundationalRepeal] Failed to revert ${spec.column} for nation ${bill.nation_id}:`, nationErr.message);
+        return false;
+    }
+
+    const { error: billErr } = await supabase.from('bills').update({
+        status: 'passed',
+        passed_tick: currentTick
+    }).eq('id', bill.id);
+    if (billErr) {
+        console.error(`[enactFoundationalRepeal] Failed to mark bill ${bill.id} as passed:`, billErr.message);
+        return false;
+    }
+
+    console.log(`[enactFoundationalRepeal] Nation ${bill.nation_id}: ${subtype} repealed — ${spec.column} reset to default (${spec.value}).`);
+    return true;
 }
 
 

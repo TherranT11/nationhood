@@ -171,6 +171,7 @@ export function renderMilitaryTopBar(container, opts = {}) {
 
     const branchBadge = getBranchDisplayLabel(faction?.branch || 'army');
     const gameDate    = shard?.current_date || '--';
+    const tickNum     = shard?.current_tick ?? '--';
     // Army treasury (party_funds) on the army /1e6 no-"M" convention —
     // byte-identical to the army-dashboard "Available Budget" card so
     // the two never disagree. '$0' when the column wasn't selected.
@@ -213,6 +214,13 @@ export function renderMilitaryTopBar(container, opts = {}) {
             <span class="mil-dd-name">Found a Corporation</span>
         </div>`;
     }
+    const hasEntrepreneur = (allUserFactions || []).some(f => f.faction_type === 'entrepreneur');
+    if (!hasEntrepreneur) {
+        dropdownHtml += `<div class="mil-dd-item mil-dd-item--create" data-action="become-entrepreneur">
+            <span class="mil-dd-type" style="color:var(--purple,#8b5cf6)">+</span>
+            <span class="mil-dd-name">Become an Entrepreneur</span>
+        </div>`;
+    }
 
     // Nav tabs — only Home for now. Active tab dashboard URL is read off
     // BRANCH_DASHBOARDS so adding navy/air-force pages later is one entry.
@@ -246,6 +254,14 @@ export function renderMilitaryTopBar(container, opts = {}) {
                     <div class="mil-topbar__tick">
                         <div class="mil-topbar__tick-label">GAME DATE</div>
                         <div class="mil-topbar__tick-value">${escHtml(String(gameDate))}</div>
+                    </div>
+                    <div class="mil-topbar__tick">
+                        <div class="mil-topbar__tick-label">TICK</div>
+                        <div class="mil-topbar__tick-value">${escHtml(String(tickNum))}</div>
+                    </div>
+                    <div class="mil-topbar__tick">
+                        <div class="mil-topbar__tick-label">NEXT TICK</div>
+                        <div class="mil-topbar__tick-value" id="mil-tick-countdown">--</div>
                     </div>
                 </div>
             </div>
@@ -282,6 +298,11 @@ export function renderMilitaryTopBar(container, opts = {}) {
                 window.location.href = 'corp-setup.html';
                 return;
             }
+            if (item.dataset.action === 'become-entrepreneur') {
+                sessionStorage.setItem('pending_faction_type', 'entrepreneur');
+                window.location.href = 'faction-select.html';
+                return;
+            }
             const fid = item.dataset.factionId;
             if (!fid) return;
             sessionStorage.setItem('active_faction_id', fid);
@@ -289,6 +310,29 @@ export function renderMilitaryTopBar(container, opts = {}) {
             window.location.href = getFactionDashboardUrl(target) || homeUrl;
         });
     }
+
+    startMilTickCountdown(shard);
+}
+
+// Live countdown to the next political tick. Mirrors the corp-topbar
+// pattern (self-contained, 1s interval) but targets shard.next_tick_at
+// directly — the political tick shown in the standard topbar, not the
+// corp midpoint. Clears any prior timer so a re-render can't stack them.
+let _milCountdownTimer = null;
+function startMilTickCountdown(shard) {
+    const el = document.getElementById('mil-tick-countdown');
+    if (!el || !shard?.next_tick_at) return;
+    const target = new Date(shard.next_tick_at).getTime();
+    function update() {
+        const diff = Math.max(0, target - Date.now());
+        const h = Math.floor(diff / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        el.textContent = `${h}h ${m}m ${s}s`;
+    }
+    update();
+    if (_milCountdownTimer) clearInterval(_milCountdownTimer);
+    _milCountdownTimer = setInterval(update, 1000);
 }
 
 // Toggle helpers attached to window so the inline onclick attributes can find

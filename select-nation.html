@@ -758,11 +758,36 @@ body {
   </div>
 </div>
 
+<div class="modal-overlay" id="entrepreneur-modal-overlay">
+  <div class="modal">
+    <div class="modal__header">
+      <div class="modal__dot" style="background:var(--purple,#8b5cf6);"></div>
+      <span class="modal__title">Found Your Business</span>
+    </div>
+    <div class="modal__body">
+      <div class="modal__text">Your businessman is from:</div>
+      <div class="modal__nation-name" id="entrepreneur-modal-name"></div>
+      <div style="margin-top:14px;font-family:var(--font-mono);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">Gender</div>
+      <div style="display:flex;gap:8px;margin-top:6px;">
+        <button type="button" id="ent-gender-male" onclick="setEntrepreneurGender('male')" style="flex:1;padding:8px;font-family:var(--font-mono);font-size:11px;background:var(--bg-3);border:1px solid var(--purple,#8b5cf6);color:var(--text-bright);cursor:pointer;">Male</button>
+        <button type="button" id="ent-gender-female" onclick="setEntrepreneurGender('female')" style="flex:1;padding:8px;font-family:var(--font-mono);font-size:11px;background:var(--bg-1);border:1px solid var(--border-1);color:var(--text-muted);cursor:pointer;">Female</button>
+      </div>
+      <div style="margin-top:14px;font-family:var(--font-mono);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">Name</div>
+      <select id="entrepreneur-modal-name-select" style="width:100%;margin-top:6px;padding:10px;font-family:var(--font-mono);font-size:12px;background:var(--bg-1);border:1px solid var(--border-1);color:var(--text-bright);outline:none;"></select>
+      <div id="entrepreneur-modal-error" style="display:none;font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:8px;line-height:1.5;"></div>
+      <div class="modal__actions">
+        <button class="modal__btn modal__btn--cancel" onclick="closeEntrepreneurModal()">CANCEL</button>
+        <button class="modal__btn modal__btn--confirm" id="entrepreneur-modal-confirm-btn" onclick="confirmEntrepreneurJoin()">CONFIRM</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, countEligibleParties } from './js/utils.js';
 import { BRANCH_DASHBOARDS } from './js/game/factions.js';
-import { getNationNames, processArmyManpower } from './js/game/political-actions.js';
+import { getNationNames, isFemaleName, processArmyManpower } from './js/game/political-actions.js';
 
 // Flag file lookup — some filenames don't match nation names exactly
 const FLAG_URLS = {
@@ -809,6 +834,8 @@ let cachedMilitaryByNation = {};
 let pendingFactionType = null;
 let pendingMilitaryNationId = null;
 let militaryJoinInFlight = false;
+let pendingEntrepreneurNationId = null;
+let entrepreneurGender = 'male';
 
 // Nations that require an alpha tester code to join
 const ALPHA_CODE_NATIONS = new Set();
@@ -840,13 +867,21 @@ async function init() {
     //  - users adding a military faction (pending_faction_type === 'military')
     const pendingParty = pendingFactionType === 'party';
     const pendingMilitary = pendingFactionType === 'military';
+    const pendingEntrepreneur = pendingFactionType === 'entrepreneur';
     const { data: faction } = await _supabase
       .from('factions').select('id, nation_id, faction_type').eq('id', user.id).maybeSingle();
     if (faction && faction.nation_id
         && !(pendingParty && faction.faction_type === 'corporation')
-        && !pendingMilitary) {
+        && !pendingMilitary && !pendingEntrepreneur) {
       window.location.href = 'dashboard.html';
       return;
+    }
+
+    if (pendingEntrepreneur) {
+      const titleEl = document.querySelector('.page-header .title');
+      const subEl = document.querySelector('.page-header .subtitle');
+      if (titleEl) titleEl.textContent = 'Where is your Businessman from?';
+      if (subEl) subEl.textContent = 'Pick the nation your entrepreneur hails from. You stay nation-agnostic — this only sets your origin and name.';
     }
 
     if (pendingMilitary) {
@@ -994,6 +1029,22 @@ function renderNations(nations, partiesByNation, crisesByNation) {
 
     if (pendingFactionType === 'military') {
       return renderMilitaryNationCard(nation, flagUrl, govClass, govLabel, needsAlphaCode);
+    }
+
+    if (pendingFactionType === 'entrepreneur') {
+      return `
+        <div class="nation-card" data-nation-id="${nation.id}" onclick="openEntrepreneurModal('${nation.id}')" style="cursor:pointer;">
+          <div class="nation-card__header">
+            ${flagUrl ? `<img class="nation-card__flag" src="${flagUrl}" alt="${escapeHtml(nation.name)}" onerror="this.style.display='none'">` : ''}
+            <span class="nation-card__name">${escapeHtml(nation.name)}</span>
+            <span class="nation-card__gov-type ${govClass}">${govLabel}</span>
+          </div>
+          <div class="nation-card__body">
+            ${NATION_DESCRIPTIONS[nation.name] ? `<div style="font-size:10px;color:var(--text-dim);line-height:1.5;margin-bottom:8px;font-style:italic;">${escapeHtml(NATION_DESCRIPTIONS[nation.name])}</div>` : ''}
+            <div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--purple,#8b5cf6);text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;">Businessman from ${escapeHtml(nation.name)}</div>
+          </div>
+        </div>
+      `;
     }
 
     return `
@@ -1312,6 +1363,81 @@ async function confirmMilitaryJoin() {
   }
 }
 
+// ── Entrepreneur (nation-agnostic; nation = origin/name-pool only) ──
+function openEntrepreneurModal(nationId) {
+  const nation = allNations.find(n => n.id === nationId);
+  if (!nation) return;
+  pendingEntrepreneurNationId = nationId;
+  entrepreneurGender = 'male';
+  document.getElementById('entrepreneur-modal-name').textContent = 'Businessman from ' + nation.name;
+  document.getElementById('entrepreneur-modal-error').style.display = 'none';
+  const btn = document.getElementById('entrepreneur-modal-confirm-btn');
+  btn.disabled = false;
+  btn.textContent = 'CONFIRM';
+  setEntrepreneurGender('male');
+  document.getElementById('entrepreneur-modal-overlay').classList.add('active');
+}
+
+function setEntrepreneurGender(g) {
+  entrepreneurGender = g;
+  const m = document.getElementById('ent-gender-male');
+  const f = document.getElementById('ent-gender-female');
+  const on  = 'flex:1;padding:8px;font-family:var(--font-mono);font-size:11px;background:var(--bg-3);border:1px solid var(--purple,#8b5cf6);color:var(--text-bright);cursor:pointer;';
+  const off = 'flex:1;padding:8px;font-family:var(--font-mono);font-size:11px;background:var(--bg-1);border:1px solid var(--border-1);color:var(--text-muted);cursor:pointer;';
+  m.style.cssText = g === 'male' ? on : off;
+  f.style.cssText = g === 'female' ? on : off;
+  populateEntrepreneurNames();
+}
+
+function populateEntrepreneurNames() {
+  const sel = document.getElementById('entrepreneur-modal-name-select');
+  if (!sel) return;
+  const nation = allNations.find(n => n.id === pendingEntrepreneurNationId);
+  const { firstNames, lastNames } = getNationNames(nation ? nation.name : '');
+  let pool = entrepreneurGender === 'female'
+    ? firstNames.filter(isFemaleName)
+    : firstNames.filter(n => !isFemaleName(n));
+  // Some nations' pools may have no recognised names for a gender —
+  // fall back to the full first-name list so the dropdown is never empty.
+  if (!pool.length) pool = firstNames;
+  const names = new Set();
+  let guard = 0;
+  while (names.size < 20 && guard++ < 400) {
+    const fn = pool[Math.floor(Math.random() * pool.length)];
+    const ln = lastNames[Math.floor(Math.random() * lastNames.length)];
+    if (fn && ln) names.add(fn + ' ' + ln);
+  }
+  sel.innerHTML = [...names].map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+}
+
+function closeEntrepreneurModal() {
+  document.getElementById('entrepreneur-modal-overlay').classList.remove('active');
+  pendingEntrepreneurNationId = null;
+}
+
+function confirmEntrepreneurJoin() {
+  if (!pendingEntrepreneurNationId) return;
+  const nation = allNations.find(n => n.id === pendingEntrepreneurNationId);
+  if (!nation) return;
+  const sel = document.getElementById('entrepreneur-modal-name-select');
+  const fullName = (sel?.value || '').trim();
+  const errEl = document.getElementById('entrepreneur-modal-error');
+  if (!fullName) {
+    errEl.textContent = 'Please choose a name.';
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+  // Origin nation + gender + name collected. The archetype page is the
+  // final setup step and performs the actual faction creation.
+  sessionStorage.setItem('entrepreneur_setup', JSON.stringify({
+    originNation: nation.name,
+    gender: entrepreneurGender,
+    name: fullName,
+  }));
+  window.location.href = 'entrepreneur-archetype.html';
+}
+
 function closeModal() {
   document.getElementById('modal-overlay').classList.remove('active');
   selectedNationId = null;
@@ -1436,6 +1562,10 @@ window.confirmNation = confirmNation;
 window.openMilitaryJoin = openMilitaryJoin;
 window.closeMilitaryModal = closeMilitaryModal;
 window.confirmMilitaryJoin = confirmMilitaryJoin;
+window.openEntrepreneurModal = openEntrepreneurModal;
+window.setEntrepreneurGender = setEntrepreneurGender;
+window.closeEntrepreneurModal = closeEntrepreneurModal;
+window.confirmEntrepreneurJoin = confirmEntrepreneurJoin;
 
 async function logoutUser() {
     await _supabase.auth.signOut();
