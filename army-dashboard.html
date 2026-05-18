@@ -565,11 +565,11 @@ import { escapeHtml, escapeAttr } from './js/utils.js';
 // is one entry here + one column there.
 const ARMY_MODIFIERS = [
     { key: 'army_manpower',       name: 'Manpower',          desc0: '<strong>No standing force.</strong> Recruitment required before any deployment.' },
-    { key: 'army_loyalty',        name: 'Loyalty',           desc0: '<strong>Wavering loyalty.</strong> Units cannot be relied on in a crisis.' },
+    { key: 'army_officer_corps',  name: 'Officer Corps',     desc0: '<strong>Hollow officer corps.</strong> Few competent commanders; units lack reliable leadership.' },
     { key: 'army_training',       name: 'Training',          desc0: '<strong>Untrained.</strong> Conscripts and militias break easily under fire.' },
     { key: 'army_equipment',      name: 'Equipment Quality', desc0: '<strong>Obsolete kit.</strong> Outdated arms and gear put soldiers at a critical disadvantage.' },
-    { key: 'army_armor',          name: 'Armor',             desc0: '<strong>Unarmored.</strong> Few or obsolete vehicles, vulnerable to modern anti-tank fire.' },
-    { key: 'army_artillery',      name: 'Artillery',         desc0: '<strong>No fire support.</strong> Infantry engages without artillery cover.' },
+    { key: 'army_cohesion',       name: 'Cohesion',          desc0: '<strong>Fractured ranks.</strong> Units fragment under pressure and cannot fight as one.' },
+    { key: 'army_professionalism', name: 'Professionalism',  desc0: '<strong>Amateur force.</strong> Lax discipline and standards undermine every operation.' },
     { key: 'army_logistics',      name: 'Logistics',         desc0: '<strong>No supply chain.</strong> Forces cannot operate beyond home territory.' },
     { key: 'army_supplies',       name: 'Supplies',          desc0: '<strong>Empty depots.</strong> Sustained combat is impossible.' },
 ];
@@ -772,7 +772,7 @@ async function init() {
     // read here as the single source of truth for the masthead.
     const { data: faction, error: factionErr } = await _supabase
       .from('factions')
-      .select('id, faction_type, faction_name, abbreviation, nation_id, abandoned_at, is_banned, branch, party_funds, leader_first_name, leader_last_name, leader_age, army_manpower, army_training, army_equipment, army_armor, army_artillery, army_logistics, army_loyalty, army_supplies')
+      .select('id, faction_type, faction_name, abbreviation, nation_id, abandoned_at, is_banned, branch, party_funds, leader_first_name, leader_last_name, leader_age, army_manpower, army_training, army_equipment, army_cohesion, army_professionalism, army_logistics, army_officer_corps, army_supplies')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
       .eq('faction_type', 'military')
       .eq('branch', 'army')
