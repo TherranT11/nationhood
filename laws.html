@@ -908,12 +908,22 @@ function filterAllLaws() {
         const isActive = activePolicyIds.has(p.id);
 
         let effectsHTML = '';
-        if (p.stat_effects && Array.isArray(p.stat_effects) && p.stat_effects.length > 0) {
-            effectsHTML = p.stat_effects.map(e => {
-                const arrow = e.direction === 'up' ? '▲' : '▼';
-                const cls = e.direction === 'up' ? 'tag-stat-up' : 'tag-stat-down';
-                return `<span class="tag ${cls}">${formatStatName(e.stat_key)} ${arrow}</span>`;
-            }).join(' ');
+        const targetStatKeys = [...new Set(
+            (Array.isArray(p.policy_options) ? p.policy_options : [])
+                .flatMap(o => Array.isArray(o.stat_targets) ? o.stat_targets : [])
+                .map(t => t && t.stat_key)
+                .filter(Boolean)
+        )];
+        if (targetStatKeys.length > 0) {
+            // One card per policy. A spectrum policy's options pull the
+            // same stat to different targets, so direction is per-option
+            // — list the stats it moves, no up/down arrow. Capped so the
+            // card stays compact.
+            const shown = targetStatKeys.slice(0, 6);
+            effectsHTML = shown.map(k => `<span class="tag">${formatStatName(k)}</span>`).join(' ');
+            if (targetStatKeys.length > shown.length) {
+                effectsHTML += ` <span class="tag">+${targetStatKeys.length - shown.length}</span>`;
+            }
         } else if (p.target_stat) {
             const arrow = p.stat_direction === 'UP' ? '▲' : '▼';
             const cls = p.stat_direction === 'UP' ? 'tag-stat-up' : 'tag-stat-down';
