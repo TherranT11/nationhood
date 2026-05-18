@@ -2068,8 +2068,7 @@ async function computeUnitMaintenanceAnnual(supabase, nation) {
             console.warn(`[Budget] army_units fetch failed for ${nation.name}:`, error.message);
         } else {
             for (const u of (units || [])) {
-                const cc = Number(u?.construction_cost) || 0;
-                perTick += Math.max(1, Math.floor(cc / 1_000_000 * 0.25)); // ≥ $1/unit/tick, rounded down
+                perTick += unitUpkeepPerTick(u?.construction_cost);
             }
         }
     } catch (err) {
@@ -30468,6 +30467,16 @@ async function onMilitaryLoyaltyRepealed(supabase, nationId) {
 // flips it to 'Active' once that window elapses. Single set-based
 // UPDATE — idempotent (re-running finds no eligible rows) and
 // non-fatal (logs + returns 0 on error).
+
+// Per-unit per-tick maintenance: 25% of construction_cost (stored on
+// the /1e6 scale), floored, with a hard $1/tick minimum. SINGLE SOURCE
+// OF TRUTH — budget (the nation expenditure sum) and the Order of
+// Battle "(-$X)" readout both import this, so the per-unit figure can
+// never drift from the budget total.
+function unitUpkeepPerTick(constructionCost) {
+    const cc = Number(constructionCost) || 0;
+    return Math.max(1, Math.floor(cc / 1_000_000 * 0.25));
+}
 
 async function processFormingUnits(supabase, currentTick) {
     const { data, error } = await supabase
