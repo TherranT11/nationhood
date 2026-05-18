@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Corporation — Entrepreneur</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; min-height:100vh; }
+  .cp-load { text-align:center; color:#666; font-size:12px; padding:60px 0; letter-spacing:0.1em; }
+  .cp-back { display:inline-block; font-size:11px; color:#666; text-decoration:none; margin-bottom:18px; }
+  .cp-back:hover { color:#8aaa6a; }
+  .cp-head { display:flex; align-items:flex-start; gap:20px; margin-bottom:24px; }
+  .cp-crest { width:80px; height:80px; background:linear-gradient(135deg,#2a2a25,#1a1a17);
+    border:0.5px solid rgba(138,170,106,0.3); border-radius:4px; display:flex; align-items:center;
+    justify-content:center; color:#8aaa6a; font-size:26px; font-weight:500; flex-shrink:0; }
+  .cp-eyebrow { color:#8aaa6a; font-size:10px; letter-spacing:0.15em; margin-bottom:6px; }
+  .cp-name { font-size:38px; font-weight:500; color:#fff; line-height:1; margin-bottom:10px; }
+  .cp-meta { display:flex; gap:24px; font-size:11px; letter-spacing:0.06em; color:#888; }
+  .cp-meta .l { color:#555; margin-right:6px; }
+  .cp-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:28px; }
+  .cp-card { background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px; padding:14px 16px; }
+  .cp-card .cl { color:#666; font-size:10px; letter-spacing:0.13em; margin-bottom:8px; }
+  .cp-card .cv { font-size:22px; font-weight:500; color:#fff; }
+  .cp-card .cv.gold { color:#8aaa6a; }
+  .cp-empty { background:#121212; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
+    padding:26px 18px; color:#666; font-size:12px; text-align:center; line-height:1.6; }
+</style>
+</head>
+<body>
+<div id="ent-topbar"></div>
+<div class="ent-content">
+  <div class="cp-load" id="cp-load">LOADING…</div>
+  <div id="cp-app" style="display:none;">
+    <a class="cp-back" href="entrepreneur-corporations.html">← Corporations</a>
+    <div class="cp-head">
+      <div class="cp-crest" id="cp-crest">—</div>
+      <div>
+        <div class="cp-eyebrow">— CORPORATION —</div>
+        <div class="cp-name" id="cp-name">—</div>
+        <div class="cp-meta">
+          <div><span class="l">INDUSTRY</span><span id="cp-ind">—</span></div>
+          <div><span class="l">HQ</span><span id="cp-hq">—</span></div>
+          <div><span class="l">FOUNDED</span><span id="cp-founded">—</span></div>
+          <div><span class="l">OWNERSHIP</span><span id="cp-own">100% · Founder</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="cp-stats">
+      <div class="cp-card"><div class="cl">STARTING CAPITAL</div><div class="cv gold" id="cp-cap">—</div></div>
+      <div class="cp-card"><div class="cl">LISTING</div><div class="cv" id="cp-listing">Private</div></div>
+      <div class="cp-card"><div class="cl">FOUNDING FEE</div><div class="cv" id="cp-fee">—</div></div>
+    </div>
+    <div class="cp-empty">Operations, contracts, financials and board mechanics are coming soon.</div>
+  </div>
+</div>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
+
+function fmtM(raw) { const m = (Number(raw) || 0) / 1e6; return '$' + (Number.isInteger(m) ? m : m.toFixed(1)) + 'M'; }
+function cap2(s) { return String(s || '').replace(/\b\w/g, c => c.toUpperCase()); }
+
+(async () => {
+  try {
+    const ctx = await bootstrapEntrepreneur('corporations');
+    if (!ctx) return;
+    const id = new URLSearchParams(location.search).get('id');
+    if (!id) { window.location.href = 'entrepreneur-corporations.html'; return; }
+
+    const { data: c, error } = await _supabase.from('entrepreneur_corps')
+      .select('id, name, industry, hq, starting_capital, founding_fee, listing, founded_tick')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!c) { window.location.href = 'entrepreneur-corporations.html'; return; }
+
+    const set = (i, v) => { const el = document.getElementById(i); if (el) el.textContent = v; };
+    const ini = (c.name || '?').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '—';
+    set('cp-crest', ini);
+    set('cp-name', c.name || 'Corporation');
+    set('cp-ind', cap2(c.industry));
+    set('cp-hq', c.hq || '—');
+    set('cp-founded', c.founded_tick != null ? 'Tick ' + c.founded_tick : '—');
+    set('cp-cap', fmtM(c.starting_capital));
+    set('cp-listing', cap2(c.listing));
+    set('cp-fee', fmtM(c.founding_fee));
+
+    document.getElementById('cp-load').style.display = 'none';
+    document.getElementById('cp-app').style.display = 'block';
+  } catch (e) {
+    const l = document.getElementById('cp-load');
+    if (l) l.textContent = 'FAILED TO LOAD — PLEASE REFRESH';
+    console.warn('[entrepreneur-corp] init failed:', e?.message || e);
+  }
+})();
+</script>
+</body>
+</html>
