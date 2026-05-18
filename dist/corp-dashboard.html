@@ -681,6 +681,7 @@ body.corp-redesign.light-mode .cr-event-item { border-bottom-color: var(--panel-
 }
 .cr-event-item.cat-politics::before  { background: var(--blue);  opacity: 0.6; }
 .cr-event-item.cat-corporate::before { background: var(--gold);  opacity: 0.6; }
+.cr-event-item.cat-military::before  { background: var(--red);   opacity: 0.6; }
 
 .cr-event-meta {
   display: flex;
@@ -709,6 +710,11 @@ body.corp-redesign.light-mode .cr-event-tag { background: var(--bg-panel); borde
   color: var(--gold);
   border-color: var(--amber-border);
   background: var(--amber-faint);
+}
+.cr-event-tag.tag-military {
+  color: var(--red);
+  border-color: var(--red-border);
+  background: rgba(217,83,79,0.08);
 }
 .cr-event-nation {
   display: inline-flex;
@@ -810,7 +816,7 @@ body.corp-redesign.light-mode .cr-footer-strip { border-top-color: var(--panel-b
   .cr-perf-grid { grid-template-columns: 1fr; }
 }
 </style>
-  <script type="module" crossorigin src="/assets/corp-dashboard-BmEQUIl0.js"></script>
+  <script type="module" crossorigin src="/assets/corp-dashboard-hNVSBlfa.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
   <link rel="modulepreload" crossorigin href="/assets/utils-oN1e812_.js">
@@ -880,6 +886,7 @@ body.corp-redesign.light-mode .cr-footer-strip { border-top-color: var(--panel-b
             <div class="cr-event-tab-bar" data-tab-axis="category">
               <button class="cr-event-tab active" data-category="politics">Politics</button>
               <button class="cr-event-tab" data-category="corporate">Corporate</button>
+              <button class="cr-event-tab" data-category="military">Military</button>
             </div>
             <div class="cr-event-tab-bar" data-tab-axis="scope">
               <button class="cr-event-tab active" data-scope="nation">Nation</button>
