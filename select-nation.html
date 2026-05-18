@@ -836,7 +836,6 @@ let pendingMilitaryNationId = null;
 let militaryJoinInFlight = false;
 let pendingEntrepreneurNationId = null;
 let entrepreneurGender = 'male';
-let entrepreneurJoinInFlight = false;
 
 // Nations that require an alpha tester code to join
 const ALPHA_CODE_NATIONS = new Set();
@@ -1414,99 +1413,29 @@ function populateEntrepreneurNames() {
 function closeEntrepreneurModal() {
   document.getElementById('entrepreneur-modal-overlay').classList.remove('active');
   pendingEntrepreneurNationId = null;
-  entrepreneurJoinInFlight = false;
 }
 
-async function confirmEntrepreneurJoin() {
-  if (entrepreneurJoinInFlight) return;
+function confirmEntrepreneurJoin() {
   if (!pendingEntrepreneurNationId) return;
   const nation = allNations.find(n => n.id === pendingEntrepreneurNationId);
   if (!nation) return;
   const sel = document.getElementById('entrepreneur-modal-name-select');
   const fullName = (sel?.value || '').trim();
   const errEl = document.getElementById('entrepreneur-modal-error');
-  const btn = document.getElementById('entrepreneur-modal-confirm-btn');
   if (!fullName) {
     errEl.textContent = 'Please choose a name.';
     errEl.style.display = 'block';
     return;
   }
-  entrepreneurJoinInFlight = true;
   errEl.style.display = 'none';
-  btn.disabled = true;
-  btn.textContent = 'CREATING...';
-
-  try {
-    // One entrepreneur per player. Match primary (id) + linked rows.
-    const { data: existing, error: existErr } = await _supabase
-      .from('factions')
-      .select('id')
-      .or(`id.eq.${currentUser.id},linked_user_id.eq.${currentUser.id}`)
-      .eq('faction_type', 'entrepreneur')
-      .is('abandoned_at', null)
-      .limit(1)
-      .maybeSingle();
-    if (existErr) throw existErr;
-    if (existing) {
-      sessionStorage.removeItem('pending_faction_type');
-      window.location.href = 'entrepreneur-dashboard.html';
-      return;
-    }
-
-    // Primary slot (id = user.id) decides primary vs linked. A swallowed
-    // error here would flip isLinked and let the upsert overwrite an
-    // existing primary faction — so abort on error.
-    const { data: primary, error: primErr } = await _supabase
-      .from('factions')
-      .select('id')
-      .eq('id', currentUser.id)
-      .maybeSingle();
-    if (primErr) throw primErr;
-
-    const isLinked = !!primary;
-    const factionId = isLinked ? crypto.randomUUID() : currentUser.id;
-    const parts = fullName.split(/\s+/);
-    const firstName = parts.shift() || fullName;
-    const lastName = parts.join(' ');
-    const age = 30 + (Math.floor(Math.random() * 6) + 1); // 30 + 1d6
-
-    const row = {
-      id: factionId,
-      faction_type: 'entrepreneur',
-      faction_name: fullName,
-      nation: nation.name,   // origin only — NOT NULL column + name pool
-      nation_id: null,       // nation-agnostic by design
-      seats: 0,
-      abandoned_at: null,
-      leader_first_name: firstName,
-      leader_last_name: lastName,
-      leader_age: age,
-    };
-    if (isLinked) row.linked_user_id = currentUser.id;
-
-    const { error: writeErr } = isLinked
-      ? await _supabase.from('factions').insert(row)
-      : await _supabase.from('factions').upsert(row);
-    if (writeErr) {
-      errEl.textContent = 'Could not create: ' + (writeErr.message || 'unknown error');
-      errEl.style.display = 'block';
-      btn.disabled = false;
-      btn.textContent = 'CONFIRM';
-      entrepreneurJoinInFlight = false;
-      return;
-    }
-
-    sessionStorage.setItem('active_faction_id', factionId);
-    sessionStorage.removeItem('pending_faction_type');
-    sessionStorage.removeItem('nationhood_pending_nation');
-    window.location.href = 'entrepreneur-dashboard.html';
-  } catch (err) {
-    errEl.textContent = 'Failed to create: ' + (err?.message || 'unknown error');
-    errEl.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = 'CONFIRM';
-    entrepreneurJoinInFlight = false;
-  }
+  // Origin nation + gender + name collected. The archetype page is the
+  // final setup step and performs the actual faction creation.
+  sessionStorage.setItem('entrepreneur_setup', JSON.stringify({
+    originNation: nation.name,
+    gender: entrepreneurGender,
+    name: fullName,
+  }));
+  window.location.href = 'entrepreneur-archetype.html';
 }
 
 function closeModal() {

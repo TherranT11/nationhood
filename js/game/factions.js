@@ -86,3 +86,26 @@ export function getFactionDashboardUrl(faction) {
     if (faction.faction_type === 'entrepreneur') return 'entrepreneur-dashboard.html';
     return null;
 }
+
+/**
+ * Entrepreneur archetypes — single source of truth for the setup
+ * archetype page. The player picks one; its fixed stat block + starting
+ * cash are written to the new factions columns. Total is always the sum
+ * of the four stats, derived wherever shown (never stored).
+ */
+export const ENTREPRENEUR_ARCHETYPES = Object.freeze({
+    heir: {
+        name: 'THE HEIR',
+        quote: "You didn't build this. Your father did. Now it's yours to keep or lose.",
+        description: "Inherited a substantial position. Comes with money and a name, but the field doesn't yet know whether you're worth your inheritance. Trusted because of who you are, doubted for the same reason.",
+        stats: { ambition: 6, cunning: 4, reputation: 18, vision: 8 },
+        startingCash: 95000000,
+    },
+    founder: {
+        name: 'THE FOUNDER',
+        quote: 'You built one thing well. Whether you can build another is the open question.',
+        description: 'Sold a successful business and now have capital to deploy but no platform. Modest reputation among insiders, unknown to the public. You know how to make things; whether you know how to make more things is untested.',
+        stats: { ambition: 16, cunning: 8, reputation: 10, vision: 14 },
+        startingCash: 48000000,
+    },
+});
