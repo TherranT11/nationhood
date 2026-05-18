@@ -1496,7 +1496,9 @@ function renderFoundationalSector(sector) {
     }).map(([sub, spec]) =>
         '<div class="foundational-row">' +
             '<span class="foundational-label">' + escapeHtml(spec.label) + '</span>' +
-            '<button class="btn-secondary" style="padding:3px 12px;font-size:0.75rem;" ' +
+            '<button style="padding:3px 12px;font-size:0.75rem;background:transparent;' +
+                'border:1px solid var(--purple,#8b5cf6);color:var(--purple,#8b5cf6);' +
+                'border-radius:3px;cursor:pointer;" ' +
                 'onclick="proposeFoundationalRepeal(\'' + sub + '\')">Repeal (revert to default)</button>' +
         '</div>'
     ).join('');

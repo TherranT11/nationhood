@@ -3915,20 +3915,23 @@ async function enactFoundationalRepeal(supabase, bill, currentTick) {
         return false;
     }
 
+    // Revert the nation column FIRST — only mark the bill passed once the
+    // revert succeeded, so a failed update can't leave the bill in a
+    // 'passed' state the resolver then reports as failed enactment.
+    const { error: nationErr } = await supabase.from('nations')
+        .update({ [spec.column]: spec.value })
+        .eq('id', bill.nation_id);
+    if (nationErr) {
+        console.error(`[enactFoundationalRepeal] Failed to revert ${spec.column} for nation ${bill.nation_id}:`, nationErr.message);
+        return false;
+    }
+
     const { error: billErr } = await supabase.from('bills').update({
         status: 'passed',
         passed_tick: currentTick
     }).eq('id', bill.id);
     if (billErr) {
         console.error(`[enactFoundationalRepeal] Failed to mark bill ${bill.id} as passed:`, billErr.message);
-        return false;
-    }
-
-    const { error: nationErr } = await supabase.from('nations')
-        .update({ [spec.column]: spec.value })
-        .eq('id', bill.nation_id);
-    if (nationErr) {
-        console.error(`[enactFoundationalRepeal] Failed to revert ${spec.column} for nation ${bill.nation_id}:`, nationErr.message);
         return false;
     }
 
