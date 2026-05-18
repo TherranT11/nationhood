@@ -117,18 +117,25 @@ const GAME_CONFIG = {
 // and laws.html (established-state detection + repeal UI). Group B
 // (constitutional_reform / monarchy / government-type transitions) is
 // deliberately absent — those aren't a bare column reset.
+// column     — the `nations` column this subtype set (server revert target)
+// value      — the hardcoded default a repeal reverts it to
+// label      — UI label for the repeal affordance
+// cooldown   — per-type cooldown ticks a repeal respects/resets (0 = none,
+//              matching subtypes whose proposals also have no cooldown)
+// proposedCol— the bills.proposed_* column, so the cooldown query can find
+//              the last *proposal* of this subtype too (null = flag subtype)
 const FOUNDATIONAL_REPEAL_DEFAULTS = Object.freeze({
-    term_length:                          { column: 'presidential_term_ticks',              value: GAME_CONFIG.PRESIDENTIAL_TERM_TICKS },
-    parliamentary_term_length:            { column: 'parliamentary_term_ticks',             value: GAME_CONFIG.PARLIAMENTARY_TERM_TICKS },
-    term_limit:                           { column: 'presidential_term_limit',              value: GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT },
-    hos_title:                            { column: 'head_of_state_title',                  value: GAME_CONFIG.HOS_TITLE_OPTIONS[0] },
-    hos_election:                         { column: 'hos_election_method',                  value: 'direct_vote' },
-    electoral_makeup:                     { column: 'total_seats',                          value: GAME_CONFIG.TOTAL_SEATS },
-    judicial_appointment_politicization:  { column: 'judicial_appointment_politicization',  value: false },
-    electoral_commission_reform:          { column: 'electoral_commission_reform',          value: false },
-    party_registration_act:               { column: 'party_registration_threshold',         value: 0 },
-    legislative_quorum_reform:            { column: 'legislative_quorum_override',          value: 0 },
-    constitutional_amendment_streamlining:{ column: 'constitutional_amendment_streamlining', value: false },
+    term_length:                          { column: 'presidential_term_ticks',              value: GAME_CONFIG.PRESIDENTIAL_TERM_TICKS,  label: 'Presidential Term Length',     cooldown: GAME_CONFIG.TERM_LENGTH_COOLDOWN_TICKS,                 proposedCol: 'proposed_term_length' },
+    parliamentary_term_length:            { column: 'parliamentary_term_ticks',             value: GAME_CONFIG.PARLIAMENTARY_TERM_TICKS, label: 'Legislative Term Length',      cooldown: GAME_CONFIG.PARLIAMENTARY_TERM_LENGTH_COOLDOWN_TICKS,   proposedCol: 'proposed_parliamentary_term_length' },
+    term_limit:                           { column: 'presidential_term_limit',              value: GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT,  label: 'Presidential Term Limits',     cooldown: GAME_CONFIG.TERM_LIMIT_COOLDOWN_TICKS,                  proposedCol: 'proposed_term_limit' },
+    hos_title:                            { column: 'head_of_state_title',                  value: GAME_CONFIG.HOS_TITLE_OPTIONS[0],     label: 'Head of State Title',          cooldown: GAME_CONFIG.HOS_TITLE_COOLDOWN_TICKS,                   proposedCol: 'proposed_hos_title' },
+    hos_election:                         { column: 'hos_election_method',                  value: 'direct_vote',                        label: 'Head of State Election Method',cooldown: GAME_CONFIG.HOS_ELECTION_COOLDOWN_TICKS,                proposedCol: 'proposed_hos_election_method' },
+    electoral_makeup:                     { column: 'total_seats',                          value: GAME_CONFIG.TOTAL_SEATS,              label: 'Electoral Makeup (Seats)',     cooldown: 0,                                                     proposedCol: 'proposed_seats' },
+    judicial_appointment_politicization:  { column: 'judicial_appointment_politicization',  value: false,                                label: 'Judicial Politicization',      cooldown: 0,                                                     proposedCol: null },
+    electoral_commission_reform:          { column: 'electoral_commission_reform',          value: false,                                label: 'Electoral Commission Reform',  cooldown: 0,                                                     proposedCol: null },
+    party_registration_act:               { column: 'party_registration_threshold',         value: 0,                                    label: 'Party Registration Act',       cooldown: 0,                                                     proposedCol: null },
+    legislative_quorum_reform:            { column: 'legislative_quorum_override',          value: 0,                                    label: 'Legislative Quorum Reform',    cooldown: 0,                                                     proposedCol: null },
+    constitutional_amendment_streamlining:{ column: 'constitutional_amendment_streamlining', value: false,                               label: 'Amendment Streamlining',       cooldown: 0,                                                     proposedCol: null },
 });
 
 const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;
