@@ -1750,7 +1750,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         provinceList.forEach(p => {
             html += `<th style="padding:8px; text-align:center; border-bottom:1px solid #444; width:110px;">
                         ${escHtml(p.name)}
-                        <button title="Delete province" onclick="deleteProvince('${p.id}')"
+                        <button title="Delete province" onclick="deleteProvince('${p.id}', this)"
                           style="display:block; margin:4px auto 0; padding:2px 8px; font-size:0.7rem; background:transparent; color:#ef5350; border:1px solid #442222; cursor:pointer; border-radius:2px;">Delete</button>
                      </th>`;
         });
@@ -1844,18 +1844,20 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         });
     }
 
-    async function deleteProvince(provinceId) {
+    async function deleteProvince(provinceId, btn) {
         const p = provinceList.find(x => x.id === provinceId);
         const pName = p ? p.name : 'this province';
         if (!confirm(`Delete "${pName}"?\n\nIts per-sector weights are removed permanently. Any sector it contributed to will become unbalanced until you re-partition and Save.`)) return;
-        try {
-            const { error } = await _supabase.from('provinces').delete().eq('id', provinceId);
-            if (error) throw error;
-            await loadProvincesForNation(provinceNationId);
-        } catch (err) {
-            console.error('deleteProvince failed', err);
-            alert('Delete failed: ' + (err.message || String(err)));
-        }
+        await withButtonLock(btn, async () => {
+            try {
+                const { error } = await _supabase.from('provinces').delete().eq('id', provinceId);
+                if (error) throw error;
+                await loadProvincesForNation(provinceNationId);
+            } catch (err) {
+                console.error('deleteProvince failed', err);
+                alert('Delete failed: ' + (err.message || String(err)));
+            }
+        });
     }
 
     async function saveProvinceWeights(btn) {
