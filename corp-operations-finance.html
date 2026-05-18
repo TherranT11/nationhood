@@ -2557,7 +2557,7 @@ async function init() {
         showFatal('Failed to load factions: ' + factionsErr.message);
         return;
     }
-    allUserFactions = (ownedFactions || []).filter(f => f.nation_id);
+    allUserFactions = (ownedFactions || []).filter(f => f.nation_id || f.faction_type === 'entrepreneur'); // entrepreneur is nation-agnostic (nation_id null)
 
     if (inspectFactionId) {
         const { data: inspected, error: inspectErr } = await _supabase

@@ -50,6 +50,7 @@
   .top-bar .cash-pill { border: 0.5px solid #4a6a4a; padding: 6px 12px; border-radius: 3px; font-size: 11px; }
   .top-bar .cash-pill .label { color: #888; }
   .top-bar .cash-pill .value { color: #8aaa6a; font-weight: 500; }
+  .top-bar .faction-switcher { position: relative; display: inline-block; }
   .top-bar .faction-pill {
     border: 0.5px solid rgba(255,255,255,0.15);
     padding: 6px 12px;
@@ -57,7 +58,26 @@
     font-size: 11px;
     color: #8aaa6a;
     text-decoration: none;
+    cursor: pointer;
+    white-space: nowrap;
   }
+  .top-bar .faction-dd {
+    position: absolute; right: 0; top: calc(100% + 8px);
+    background: #0f0f0f; border: 0.5px solid rgba(255,255,255,0.15);
+    border-radius: 4px; min-width: 240px; display: none; z-index: 100; overflow: hidden;
+  }
+  .top-bar .faction-dd.open { display: block; }
+  .top-bar .fdd-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; font-size: 11px; color: #d4d4d4; cursor: pointer;
+    border-bottom: 0.5px solid rgba(255,255,255,0.06); text-decoration: none;
+  }
+  .top-bar .faction-dd .fdd-item:last-child { border-bottom: none; }
+  .top-bar .fdd-item:hover { background: #1a1a17; }
+  .top-bar .fdd-item.create { color: #888; }
+  .top-bar .fdd-badge { font-size: 9px; letter-spacing: 0.06em; min-width: 40px; }
+  .top-bar .fdd-name { flex: 1; color: #fff; }
+  .top-bar .fdd-item.create .fdd-name { color: #888; }
   .top-bar .util-link { color: #666; font-size: 11px; cursor: pointer; }
   .top-bar .util-link:hover { color: #d4d4d4; }
   .nav {
@@ -69,8 +89,8 @@
     letter-spacing: 0.08em;
     color: #888;
   }
-  .nav .nav-item { padding: 14px 0; }
-  .nav .nav-item.soon { color: #444; cursor: default; }
+  .nav .nav-item { padding: 14px 0; color: #888; text-decoration: none; cursor: pointer; }
+  .nav a.nav-item:not(.active):hover { color: #d4d4d4; }
   .nav .nav-item.active { color: #8aaa6a; border-bottom: 1px solid #8aaa6a; }
   .content { padding: 32px 24px 24px; }
   .hero { display: grid; grid-template-columns: 1fr auto; gap: 32px; margin-bottom: 28px; }
@@ -170,18 +190,20 @@
       </div>
       <div class="right">
         <div class="cash-pill"><span class="label">CASH ON HAND: </span><span class="value" id="cash-pill">—</span></div>
-        <a class="faction-pill" href="faction-select.html" title="Switch / manage factions">[ENTREPRENEUR] ▾</a>
+        <div class="faction-switcher">
+          <span class="faction-pill" id="faction-pill" title="Switch faction">[—] ▾</span>
+          <div class="faction-dd" id="faction-dd"></div>
+        </div>
         <span class="util-link" id="logout">Logout</span>
       </div>
     </div>
 
     <div class="nav">
-      <div class="nav-item active">HOME</div>
-      <div class="nav-item soon" title="Coming soon">BUSINESS</div>
-      <div class="nav-item soon" title="Coming soon">ASSETS</div>
-      <div class="nav-item soon" title="Coming soon">MARKET</div>
-      <div class="nav-item soon" title="Coming soon">BOARD</div>
-      <div class="nav-item soon" title="Coming soon">LOBBYING</div>
+      <a class="nav-item active" href="entrepreneur-dashboard.html">HOME</a>
+      <a class="nav-item" href="entrepreneur-corporations.html">CORPORATIONS</a>
+      <a class="nav-item" href="entrepreneur-markets.html">MARKETS</a>
+      <a class="nav-item" href="entrepreneur-assets.html">ASSETS</a>
+      <a class="nav-item" href="entrepreneur-lobbying.html">LOBBYING</a>
     </div>
 
     <div class="content">
@@ -254,7 +276,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { hfFmtBig } from './js/utils.js';
-import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
+import { ENTREPRENEUR_ARCHETYPES, getFactionTypeBadge, getFactionDashboardUrl, isFactionInactive } from './js/game/factions.js';
 
 function setText(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
 function initials(first, last, fallbackName) {
@@ -262,6 +284,59 @@ function initials(first, last, fallbackName) {
   if (a || b) return ((a[0] || '') + (b[0] || '')).toUpperCase() || '—';
   const w = String(fallbackName || '').trim().split(/\s+/).filter(Boolean);
   return ((w[0]?.[0] || '') + (w[1]?.[0] || '')).toUpperCase() || '—';
+}
+
+// Faction switcher dropdown. DOM-built (textContent — no innerHTML, so
+// player-set faction names can't inject markup). Mirrors the corp /
+// military topbar switchers: list every active faction the user owns,
+// click → that faction's dashboard, plus "create" rows for missing types.
+function buildSwitcher(facs, first, last) {
+  const pill = document.getElementById('faction-pill');
+  const dd = document.getElementById('faction-dd');
+  if (!pill || !dd) return;
+  const fi = (first || '').trim()[0];
+  pill.textContent = (last ? `${(fi || '').toUpperCase()}. ${last}` : (first || 'Entrepreneur')) + ' ▾';
+
+  dd.replaceChildren();
+  const addRow = (cls, badgeText, badgeColor, name, onClick) => {
+    const row = document.createElement('div');
+    row.className = 'fdd-item' + (cls ? ' ' + cls : '');
+    const b = document.createElement('span');
+    b.className = 'fdd-badge';
+    if (badgeColor) b.style.color = badgeColor;
+    b.textContent = badgeText;
+    const n = document.createElement('span');
+    n.className = 'fdd-name';
+    n.textContent = name;
+    row.append(b, n);
+    row.addEventListener('click', onClick);
+    dd.appendChild(row);
+  };
+
+  for (const fac of facs) {
+    const { label, color } = getFactionTypeBadge(fac.faction_type);
+    addRow('', label, color, fac.faction_name || 'Unnamed', () => {
+      sessionStorage.setItem('active_faction_id', fac.id);
+      window.location.href = getFactionDashboardUrl(fac) || 'faction-select.html';
+    });
+  }
+  const creates = [
+    { has: 'party',       name: 'Found a Political Party', type: 'party',    url: 'select-nation.html' },
+    { has: 'corporation', name: 'Found a Corporation',     type: 'corp',     url: 'corp-setup.html' },
+    { has: 'military',    name: 'Join a Military Faction', type: 'military', url: 'faction-select.html' },
+  ];
+  for (const c of creates) {
+    if (facs.some(f => f.faction_type === c.has)) continue;
+    addRow('create', '+', null, c.name, () => {
+      sessionStorage.setItem('pending_faction_type', c.type);
+      window.location.href = c.url;
+    });
+  }
+
+  pill.addEventListener('click', (e) => { e.stopPropagation(); dd.classList.toggle('open'); });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#faction-pill') && !e.target.closest('#faction-dd')) dd.classList.remove('open');
+  });
 }
 
 function startCountdown(nextTickAt) {
@@ -284,7 +359,7 @@ function startCountdown(nextTickAt) {
     const { data: { user } } = await _supabase.auth.getUser();
     if (!user) { window.location.href = 'login.html'; return; }
 
-    const [facRes, shardRes] = await Promise.all([
+    const [facRes, shardRes, allFacRes] = await Promise.all([
       _supabase.from('factions')
         .select('faction_name, leader_first_name, leader_last_name, leader_age, nation, entrepreneur_archetype, ent_ambition, ent_cunning, ent_reputation, ent_vision, party_funds')
         .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
@@ -292,6 +367,9 @@ function startCountdown(nextTickAt) {
         .is('abandoned_at', null)
         .limit(1).maybeSingle(),
       _supabase.from('shard').select('current_date, current_tick, next_tick_at').eq('name', 'Alpha Shard').maybeSingle(),
+      _supabase.from('factions')
+        .select('id, faction_type, faction_name, abbreviation, branch, nation_id, abandoned_at, is_banned, linked_user_id')
+        .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
     ]);
 
     if (facRes.error) throw facRes.error;
@@ -337,6 +415,13 @@ function startCountdown(nextTickAt) {
       </div>`).join('');
 
     setText('footer-note', `${(f.faction_name || 'ENTREPRENEUR').toUpperCase()} · ENTREPRENEUR · NATIONHOOD ALPHA`);
+
+    // Switcher — every active faction the user owns. isFactionInactive
+    // (not a nation_id check) is the canonical predicate, so the
+    // nation-agnostic entrepreneur is included.
+    if (allFacRes.error) console.warn('[entrepreneur-dashboard] factions load failed:', allFacRes.error.message);
+    const allUserFactions = (allFacRes.data || []).filter(x => !isFactionInactive(x));
+    buildSwitcher(allUserFactions, first, last);
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('app').style.display = 'block';
