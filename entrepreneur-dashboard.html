@@ -1,71 +1,356 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Entrepreneur | Nationhood Alpha</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Entrepreneur — Home</title>
 <style>
-:root {
-  --bg-0: #0e0e0c; --bg-1: #1a1a1a; --bg-2: #1a1a17; --bg-3: #252525;
-  --text-bright: #f0efe6; --text-primary: #c4c2b8; --text-muted: #666;
-  --border-0: rgba(255,255,255,0.06); --border-1: rgba(255,255,255,0.08);
-  --purple: #8b5cf6; --amber: #d4a83c;
-  --font-mono: 'JetBrains Mono', monospace; --font-ui: 'IBM Plex Sans', sans-serif;
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: var(--bg-0); color: var(--text-primary); font-family: var(--font-ui);
-  min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
-.ent-card { background: var(--bg-2); border: 1px solid var(--border-1); border-left: 3px solid var(--purple);
-  padding: 32px; max-width: 520px; width: 100%; }
-.ent-kicker { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--purple); margin-bottom: 8px; }
-.ent-name { font-family: var(--font-mono); font-size: 22px; font-weight: 800; color: var(--text-bright);
-  margin-bottom: 14px; word-break: break-word; }
-.ent-desc { font-size: 13px; line-height: 1.6; color: var(--text-primary); margin-bottom: 18px; }
-.ent-soon { display: inline-block; font-family: var(--font-mono); font-size: 9px; font-weight: 600;
-  letter-spacing: 0.08em; color: var(--amber); border: 1px solid var(--amber); padding: 3px 8px;
-  text-transform: uppercase; margin-bottom: 22px; }
-.ent-nav { display: flex; gap: 10px; flex-wrap: wrap; }
-.ent-nav a { font-family: var(--font-mono); font-size: 11px; text-decoration: none; color: var(--text-muted);
-  border: 1px solid var(--border-1); padding: 8px 14px; transition: color .15s, border-color .15s; }
-.ent-nav a:hover { color: var(--text-bright); border-color: var(--purple); }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #050505;
+    color: #d4d4d4;
+    font-family: -apple-system, system-ui, sans-serif;
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .container {
+    max-width: 1320px;
+    margin: 0 auto;
+    background: #0a0a0a;
+    border: 0.5px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .top-bar {
+    display: flex;
+    align-items: center;
+    padding: 12px 22px;
+    border-bottom: 0.5px solid rgba(255,255,255,0.08);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    gap: 24px;
+  }
+  .top-bar .brand { display: flex; align-items: center; gap: 10px; }
+  .top-bar .crest {
+    width: 24px; height: 24px;
+    background: #1a1f1a;
+    border: 0.5px solid #4a6a4a;
+    border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    color: #8aaa6a;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+  }
+  .top-bar .player { color: #fff; font-weight: 500; font-size: 13px; letter-spacing: 0; }
+  .top-bar .meta { display: flex; gap: 22px; color: #888; }
+  .top-bar .meta .item .label { color: #555; font-size: 9px; letter-spacing: 0.13em; }
+  .top-bar .meta .item .value { color: #d4d4d4; font-size: 12px; margin-top: 2px; }
+  .top-bar .right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+  .top-bar .cash-pill { border: 0.5px solid #4a6a4a; padding: 6px 12px; border-radius: 3px; font-size: 11px; }
+  .top-bar .cash-pill .label { color: #888; }
+  .top-bar .cash-pill .value { color: #8aaa6a; font-weight: 500; }
+  .top-bar .faction-pill {
+    border: 0.5px solid rgba(255,255,255,0.15);
+    padding: 6px 12px;
+    border-radius: 3px;
+    font-size: 11px;
+    color: #8aaa6a;
+    text-decoration: none;
+  }
+  .top-bar .util-link { color: #666; font-size: 11px; cursor: pointer; }
+  .top-bar .util-link:hover { color: #d4d4d4; }
+  .nav {
+    display: flex;
+    gap: 32px;
+    padding: 0 22px;
+    border-bottom: 0.5px solid rgba(255,255,255,0.08);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: #888;
+  }
+  .nav .nav-item { padding: 14px 0; }
+  .nav .nav-item.soon { color: #444; cursor: default; }
+  .nav .nav-item.active { color: #8aaa6a; border-bottom: 1px solid #8aaa6a; }
+  .content { padding: 32px 24px 24px; }
+  .hero { display: grid; grid-template-columns: 1fr auto; gap: 32px; margin-bottom: 28px; }
+  .identity { display: flex; align-items: flex-start; gap: 20px; }
+  .identity-portrait {
+    width: 88px; height: 88px;
+    background: linear-gradient(135deg, #2a2a25, #1a1a17);
+    border: 0.5px solid rgba(138,170,106,0.3);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    color: #8aaa6a;
+    font-size: 28px;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    flex-shrink: 0;
+  }
+  .identity-body .eyebrow { color: #8aaa6a; font-size: 10px; letter-spacing: 0.15em; margin-bottom: 6px; }
+  .identity-body .name { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+  .identity-body .first { font-size: 46px; font-weight: 500; color: #fff; letter-spacing: -0.01em; line-height: 1; }
+  .identity-body .last {
+    font-size: 46px;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-style: italic;
+    color: #8aaa6a;
+    letter-spacing: -0.01em;
+    line-height: 1;
+  }
+  .identity-body .meta-row {
+    display: flex; gap: 28px; font-size: 11px; letter-spacing: 0.08em; color: #888; margin-bottom: 12px;
+  }
+  .identity-body .meta-row .label { color: #555; margin-right: 6px; }
+  .identity-body .meta-row .val { color: #d4d4d4; }
+  .identity-body .bio {
+    font-size: 12px; color: #888; line-height: 1.6; max-width: 600px;
+    font-style: italic; font-family: Georgia, 'Times New Roman', serif;
+  }
+  .anchor {
+    text-align: right; padding-left: 28px;
+    border-left: 0.5px solid rgba(255,255,255,0.08); min-width: 280px;
+  }
+  .anchor-label { color: #555; font-size: 10px; letter-spacing: 0.15em; margin-bottom: 6px; }
+  .anchor-value { font-size: 52px; font-weight: 500; color: #fff; letter-spacing: -0.02em; line-height: 1; }
+  .anchor-sub { color: #555; font-size: 10px; margin-top: 8px; letter-spacing: 0.08em; }
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
+  .stat-card {
+    background: #121212; border: 0.5px solid rgba(255,255,255,0.08);
+    border-radius: 4px; padding: 14px 16px;
+  }
+  .stat-card.accent { border-top: 2px solid #8aaa6a; }
+  .stat-card .stat-label { color: #666; font-size: 10px; letter-spacing: 0.13em; margin-bottom: 8px; }
+  .stat-card .stat-value { font-size: 24px; font-weight: 500; color: #fff; line-height: 1; }
+  .stat-card .stat-value.gold { color: #8aaa6a; }
+  .stat-card .stat-sub { color: #888; font-size: 11px; margin-top: 6px; letter-spacing: 0.05em; }
+  .main-grid { display: grid; grid-template-columns: 320px 1fr; gap: 22px; }
+  .events-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .events-header .title {
+    color: #8aaa6a; font-size: 11px; letter-spacing: 0.15em; font-weight: 500;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .events-header .title .dot { display: inline-block; width: 6px; height: 6px; background: #8aaa6a; border-radius: 50%; }
+  .events-header .count { color: #555; font-size: 10px; letter-spacing: 0.1em; }
+  .empty {
+    background: #121212; border: 0.5px dashed rgba(255,255,255,0.10);
+    border-radius: 4px; padding: 22px 18px; color: #666;
+    font-size: 12px; line-height: 1.6; text-align: center;
+  }
+  .right-col { display: flex; flex-direction: column; gap: 28px; }
+  .section-heading { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+  .section-heading .roman { color: #555; font-size: 11px; letter-spacing: 0.1em; }
+  .section-heading .sans { font-size: 22px; font-weight: 500; color: #fff; }
+  .section-heading .serif {
+    font-size: 22px; font-family: Georgia, 'Times New Roman', serif; font-style: italic; color: #8aaa6a;
+  }
+  .section-heading .meta { margin-left: auto; color: #555; font-size: 10px; letter-spacing: 0.1em; }
+  .footer-note {
+    margin-top: 28px; padding-top: 14px;
+    border-top: 0.5px solid rgba(255,255,255,0.05);
+    text-align: center; color: #444; font-size: 10px; letter-spacing: 0.1em;
+  }
+  .loading { text-align:center; color:#666; font-size:12px; padding:60px 0; letter-spacing:0.1em; }
 </style>
 </head>
 <body>
-  <div class="ent-card">
-    <div class="ent-kicker">Entrepreneur</div>
-    <div class="ent-name" id="ent-name">Loading…</div>
-    <div class="ent-desc">Invest in corporations, be a CEO, join a board of directors, merge, acquire and do hostile takeovers.</div>
-    <div class="ent-soon">Mechanics coming soon</div>
-    <div class="ent-nav">
-      <a href="faction-select.html">Manage factions</a>
-      <a href="dashboard.html">Party dashboard</a>
-      <a href="corp-dashboard.html">Corp dashboard</a>
+<div class="container">
+  <div class="loading" id="loading">LOADING…</div>
+  <div id="app" style="display:none;">
+
+    <div class="top-bar">
+      <div class="brand">
+        <div class="crest" id="crest">—</div>
+        <span class="player" id="player-name">—</span>
+      </div>
+      <div class="meta">
+        <div class="item"><div class="label">GAME DATE</div><div class="value" id="game-date">—</div></div>
+        <div class="item"><div class="label">TICK</div><div class="value" id="tick">—</div></div>
+        <div class="item"><div class="label">NEXT TICK</div><div class="value" id="next-tick">—</div></div>
+      </div>
+      <div class="right">
+        <div class="cash-pill"><span class="label">CASH ON HAND: </span><span class="value" id="cash-pill">—</span></div>
+        <a class="faction-pill" href="faction-select.html" title="Switch / manage factions">[ENTREPRENEUR] ▾</a>
+        <span class="util-link" id="logout">Logout</span>
+      </div>
+    </div>
+
+    <div class="nav">
+      <div class="nav-item active">HOME</div>
+      <div class="nav-item soon" title="Coming soon">BUSINESS</div>
+      <div class="nav-item soon" title="Coming soon">ASSETS</div>
+      <div class="nav-item soon" title="Coming soon">MARKET</div>
+      <div class="nav-item soon" title="Coming soon">BOARD</div>
+      <div class="nav-item soon" title="Coming soon">LOBBYING</div>
+    </div>
+
+    <div class="content">
+
+      <div class="hero">
+        <div class="identity">
+          <div class="identity-portrait" id="portrait">—</div>
+          <div class="identity-body">
+            <div class="eyebrow">— ENTREPRENEUR —</div>
+            <div class="name">
+              <span class="first" id="first-name">—</span>
+              <span class="last" id="last-name"></span>
+            </div>
+            <div class="meta-row">
+              <div><span class="label">AGE</span><span class="val" id="age">—</span></div>
+              <div><span class="label">ORIGIN</span><span class="val" id="origin">—</span></div>
+              <div><span class="label">ARCHETYPE</span><span class="val" id="archetype">—</span></div>
+            </div>
+            <div class="bio" id="bio"></div>
+          </div>
+        </div>
+
+        <div class="anchor">
+          <div class="anchor-label">CASH ON HAND</div>
+          <div class="anchor-value" id="net-worth">—</div>
+          <div class="anchor-sub">available capital · holdings &amp; assets coming soon</div>
+        </div>
+      </div>
+
+      <div class="stats-row" id="stats-row"></div>
+
+      <div class="main-grid">
+
+        <div class="events">
+          <div class="events-header">
+            <div class="title"><span class="dot"></span>EVENTS</div>
+            <div class="count">0 ITEMS</div>
+          </div>
+          <div class="empty">No events yet.<br>Activity will appear here once business mechanics go live.</div>
+        </div>
+
+        <div class="right-col">
+          <div>
+            <div class="section-heading">
+              <span class="roman">I.</span>
+              <span class="sans">Corporate</span>
+              <span class="serif">Holdings</span>
+              <span class="meta">0 ACTIVE POSITIONS</span>
+            </div>
+            <div class="empty">No holdings yet.<br>Investing in corporations, board seats, mergers, acquisitions and hostile takeovers are coming soon.</div>
+          </div>
+
+          <div>
+            <div class="section-heading">
+              <span class="roman">II.</span>
+              <span class="sans">Standing &amp;</span>
+              <span class="serif">Influence</span>
+            </div>
+            <div class="empty">Standing &amp; influence mechanics are coming soon.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-note" id="footer-note">ENTREPRENEUR · NATIONHOOD ALPHA</div>
+
     </div>
   </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
+import { escapeHtml, hfFmtBig } from './js/utils.js';
+import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
+
+function setText(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
+function initials(first, last, fallbackName) {
+  const a = (first || '').trim(), b = (last || '').trim();
+  if (a || b) return ((a[0] || '') + (b[0] || '')).toUpperCase() || '—';
+  const w = String(fallbackName || '').trim().split(/\s+/).filter(Boolean);
+  return ((w[0]?.[0] || '') + (w[1]?.[0] || '')).toUpperCase() || '—';
+}
+
+let _countdownTimer = null;
+function startCountdown(nextTickAt) {
+  const el = document.getElementById('next-tick');
+  if (!el || !nextTickAt) return;
+  const target = new Date(nextTickAt).getTime();
+  function tick() {
+    const diff = Math.max(0, target - Date.now());
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    el.textContent = `${h}h ${m}m ${s}s`;
+  }
+  tick();
+  if (_countdownTimer) clearInterval(_countdownTimer);
+  _countdownTimer = setInterval(tick, 1000);
+}
+
 (async () => {
-  const { data: { user } } = await _supabase.auth.getUser();
-  if (!user) { window.location.href = 'login.html'; return; }
   try {
-    const { data, error } = await _supabase.from('factions')
-      .select('faction_name')
-      .eq('faction_type', 'entrepreneur')
-      .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
-      .maybeSingle();
-    if (error) console.warn('[entrepreneur-dashboard] load failed:', error.message);
-    const el = document.getElementById('ent-name');
-    if (data && data.faction_name) {
-      el.textContent = data.faction_name;
-    } else {
-      // No entrepreneur faction yet — send them to create one.
-      window.location.href = 'faction-select.html';
-    }
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) { window.location.href = 'login.html'; return; }
+
+    const [facRes, shardRes] = await Promise.all([
+      _supabase.from('factions')
+        .select('faction_name, leader_first_name, leader_last_name, leader_age, nation, entrepreneur_archetype, ent_ambition, ent_cunning, ent_reputation, ent_vision, party_funds')
+        .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+        .eq('faction_type', 'entrepreneur')
+        .is('abandoned_at', null)
+        .limit(1).maybeSingle(),
+      _supabase.from('shard').select('current_date, current_tick, next_tick_at').eq('name', 'Alpha Shard').maybeSingle(),
+    ]);
+
+    if (facRes.error) throw facRes.error;
+    const f = facRes.data;
+    if (!f) { window.location.href = 'faction-select.html'; return; } // no entrepreneur → set one up
+    if (shardRes.error) console.warn('[entrepreneur-dashboard] shard load failed:', shardRes.error.message);
+    const shard = shardRes.data || {};
+
+    const first = f.leader_first_name || (f.faction_name || '').split(/\s+/)[0] || '';
+    const last  = f.leader_last_name  || (f.faction_name || '').split(/\s+/).slice(1).join(' ') || '';
+    const arch  = ENTREPRENEUR_ARCHETYPES[f.entrepreneur_archetype] || null;
+
+    const ini = initials(first, last, f.faction_name);
+    setText('crest', ini);
+    setText('portrait', ini);
+    setText('player-name', f.faction_name || `${first} ${last}`.trim() || 'Entrepreneur');
+    setText('first-name', first || (f.faction_name || 'Entrepreneur'));
+    setText('last-name', last);
+    setText('age', f.leader_age != null ? String(f.leader_age) : '—');
+    setText('origin', f.nation ? String(f.nation).toUpperCase() : '—');
+    setText('archetype', arch ? arch.name : '—');
+    document.getElementById('bio').textContent = arch ? `"${arch.description}"` : '';
+
+    const cash = hfFmtBig(Number(f.party_funds) || 0);
+    setText('cash-pill', cash);
+    setText('net-worth', cash);
+
+    setText('game-date', shard.current_date || '—');
+    setText('tick', shard.current_tick != null ? String(shard.current_tick) : '—');
+    startCountdown(shard.next_tick_at);
+
+    // Real stats — the four set at archetype selection. Total is derived.
+    const stats = [
+      ['AMBITION', f.ent_ambition], ['CUNNING', f.ent_cunning],
+      ['REPUTATION', f.ent_reputation], ['VISION', f.ent_vision],
+    ];
+    const total = stats.reduce((s, [, v]) => s + (Number(v) || 0), 0);
+    document.getElementById('stats-row').innerHTML = stats.map(([label, v], i) => `
+      <div class="stat-card${i === 0 ? ' accent' : ''}">
+        <div class="stat-label">${label}</div>
+        <div class="stat-value${i === 0 ? ' gold' : ''}">${v != null ? Number(v) : '—'}</div>
+        <div class="stat-sub">${i === 0 ? `total ${total}` : '&nbsp;'}</div>
+      </div>`).join('');
+
+    setText('footer-note', `${(f.faction_name || 'ENTREPRENEUR').toUpperCase()} · ENTREPRENEUR · NATIONHOOD ALPHA`);
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+
+    document.getElementById('logout').addEventListener('click', async () => {
+      try { await _supabase.auth.signOut(); } catch (e) { console.warn('signOut failed:', e?.message || e); }
+      window.location.href = 'login.html';
+    });
   } catch (e) {
-    console.warn('[entrepreneur-dashboard] load threw:', e?.message || e);
-    document.getElementById('ent-name').textContent = 'Entrepreneur';
+    const l = document.getElementById('loading');
+    if (l) { l.textContent = 'FAILED TO LOAD — PLEASE REFRESH'; }
+    console.warn('[entrepreneur-dashboard] init failed:', e?.message || e);
   }
 })();
 </script>
