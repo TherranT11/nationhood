@@ -13,7 +13,7 @@ import { renderMilitaryTopBar } from './military-topbar.js';
 // it; pages that don't reference it simply ignore it.
 
 const DEFAULT_FACTION_COLS =
-  'id, faction_type, faction_name, nation_id, abandoned_at, is_banned, branch';
+  'id, faction_type, faction_name, nation_id, abandoned_at, is_banned, branch, party_funds';
 
 export async function bootstrapArmyPage({ activeTab, factionSelect = DEFAULT_FACTION_COLS }) {
   const { data: { user } } = await _supabase.auth.getUser();

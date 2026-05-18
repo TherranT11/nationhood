@@ -267,7 +267,7 @@ async function triggerResign(faction) {
   }
 }
 
-const ACTIONS_FACTION_COLS = 'id, faction_type, faction_name, nation_id, abandoned_at, is_banned, branch, army_manpower, leader_first_name, leader_last_name, leader_age, army_qm_first_name, army_qm_last_name, army_qm_age, army_intel_first_name, army_intel_last_name, army_intel_age, army_cmd_first_name, army_cmd_last_name, army_cmd_age';
+const ACTIONS_FACTION_COLS = 'id, faction_type, faction_name, nation_id, abandoned_at, is_banned, branch, party_funds, army_manpower, leader_first_name, leader_last_name, leader_age, army_qm_first_name, army_qm_last_name, army_qm_age, army_intel_first_name, army_intel_last_name, army_intel_age, army_cmd_first_name, army_cmd_last_name, army_cmd_age';
 
 async function init() {
   const ctx = await bootstrapArmyPage({ activeTab: 'actions', factionSelect: ACTIONS_FACTION_COLS });
