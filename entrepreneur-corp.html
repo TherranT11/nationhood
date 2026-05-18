@@ -229,7 +229,7 @@ function initials(s, n) {
     if (!id) { window.location.href = 'entrepreneur-corporations.html'; return; }
 
     const { data: c, error } = await _supabase.from('entrepreneur_corps')
-      .select('id, name, industry, hq, starting_capital, founding_fee, listing, founded_tick, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name)')
+      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -250,7 +250,7 @@ function initials(s, n) {
     set('cp-ind', (c.industry || '—').toUpperCase());
     set('cp-listing', listing.toUpperCase());
     set('cp-listing2', listing);
-    set('cp-hq', c.hq || '—');
+    set('cp-hq', c.hq?.name ? (c.hq.continent ? `${c.hq.name} · ${c.hq.continent}` : c.hq.name) : '—');
     set('cp-founded', founded);
     set('cp-owner-sub', ownerName !== '—' ? ownerName + ' · sole owner' : 'Sole owner · privately held');
     set('cp-cap', fmtM(c.starting_capital));

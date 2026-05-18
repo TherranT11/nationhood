@@ -64,7 +64,11 @@
   .ec-h:first-child { margin-top:0; }
   .ec-h em { font-family:Georgia,serif; color:#8aaa6a; font-style:italic; }
   .ec-grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
-  .ec-grid4 { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+  .ec-conts { display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+  .ec-cont { font-size:10px; letter-spacing:0.08em; padding:6px 12px; border-radius:3px; cursor:pointer;
+    background:#121212; border:0.5px solid rgba(255,255,255,0.1); color:#888; }
+  .ec-cont:hover { color:#d4d4d4; }
+  .ec-cont.active { background:#131613; border-color:#6a8a4a; color:#8aaa6a; }
   .ec-pick { background:#121212; border:0.5px solid rgba(255,255,255,0.1); border-radius:4px;
     padding:14px 16px; cursor:pointer; }
   .ec-pick:hover { border-color:rgba(138,170,106,0.3); }
@@ -72,6 +76,7 @@
   .ec-pick.dis { opacity:0.4; cursor:not-allowed; }
   .ec-pick .pn { font-size:14px; font-weight:500; color:#fff; margin-bottom:4px; }
   .ec-pick .pd { font-size:11px; color:#888; line-height:1.5; }
+  .ec-pick .pd b { color:#8aaa6a; font-weight:600; }
   .ec-input { width:100%; background:transparent; border:none; border-bottom:1px solid rgba(138,170,106,0.3);
     color:#fff; font-size:20px; font-weight:500; font-family:inherit; outline:none; padding:4px 0; }
   .ec-input::placeholder { color:#444; font-style:italic; }
@@ -149,12 +154,13 @@
       </div>
 
       <div class="ec-h">II. <em>Headquarters</em></div>
-      <div class="ec-grid4" id="ec-hq">
-        <div class="ec-pick sel" data-hq="Valcosta"><div class="pn">Valcosta</div><div class="pd">Capital · Central</div></div>
-        <div class="ec-pick" data-hq="Port Sangreza"><div class="pn">Port Sangreza</div><div class="pd">Coastal · Southern</div></div>
-        <div class="ec-pick" data-hq="Marima"><div class="pn">Marima</div><div class="pd">Industrial · Northern</div></div>
-        <div class="ec-pick" data-hq="Verlán"><div class="pn">Verlán</div><div class="pd">Border · Eastern</div></div>
+      <div class="ec-conts" id="ec-conts">
+        <div class="ec-cont active" data-cont="Crucera">CRUCERA</div>
+        <div class="ec-cont" data-cont="Meridian">MERIDIAN</div>
+        <div class="ec-cont" data-cont="Al-Makir">AL-MAKIR</div>
+        <div class="ec-cont" data-cont="Faresia">FARESIA</div>
       </div>
+      <div class="ec-grid3" id="ec-hq"><div class="ec-empty">Loading nations…</div></div>
 
       <div class="ec-h">III. Corporation <em>Name</em></div>
       <input type="text" class="ec-input" id="ec-name" maxlength="80" placeholder="e.g. Ion Construction Group" />
@@ -189,9 +195,53 @@ import { fmtM } from './js/utils.js';
 
 const FEE = 1_000_000;
 let entFunds = 0;
-let sel = { industry: 'construction', hq: 'Valcosta' };
+let sel = { industry: 'construction', hqNationId: null };
+let nationsByCont = {};   // continent -> [{id,name,corporate_tax}]
+let entCorpCounts = {};   // `${industry}|${nationId}` -> count
+let activeCont = 'Crucera';
 
 function capRaw() { return (parseInt(document.getElementById('ec-cap').value, 10) || 5) * 1_000_000; }
+
+function renderHqList() {
+  const wrap = document.getElementById('ec-hq');
+  const list = nationsByCont[activeCont] || [];
+  wrap.replaceChildren();
+  if (list.length === 0) {
+    const e = document.createElement('div');
+    e.className = 'ec-empty';
+    e.textContent = `No nations available in ${activeCont} yet.`;
+    wrap.appendChild(e);
+    return;
+  }
+  for (const n of list) {
+    const card = document.createElement('div');
+    card.className = 'ec-pick' + (sel.hqNationId === n.id ? ' sel' : '');
+    card.dataset.nid = n.id;
+    const pn = document.createElement('div');
+    pn.className = 'pn';
+    pn.textContent = n.name;
+    const pd = document.createElement('div');
+    pd.className = 'pd';
+    const tax = n.corporate_tax != null ? Math.round(Number(n.corporate_tax)) + '%' : '—';
+    const cnt = entCorpCounts[sel.industry + '|' + n.id] || 0;
+    const b = document.createElement('b');
+    b.textContent = tax;
+    pd.append('Corporate tax ', b, ` · ${cnt} ${sel.industry} corp${cnt === 1 ? '' : 's'}`);
+    card.append(pn, pd);
+    wrap.appendChild(card);
+  }
+}
+
+// Single-select highlight for an .ec-pick grid. One source for the
+// "clear siblings, mark clicked" behaviour shared by Industry + HQ;
+// callers apply their own side effect off the returned card.
+function selectPick(containerId, e) {
+  const card = e.target.closest('.ec-pick');
+  if (!card || card.classList.contains('dis')) return null;
+  document.querySelectorAll(`#${containerId} .ec-pick`).forEach(x => x.classList.remove('sel'));
+  card.classList.add('sel');
+  return card;
+}
 
 function refreshCost() {
   const cap = capRaw();
@@ -204,17 +254,6 @@ function refreshCost() {
   const err = document.getElementById('ec-err');
   if (cost > entFunds) { err.textContent = 'Insufficient cash for this capital + $1M fee.'; err.style.display = 'inline'; }
   else err.style.display = 'none';
-}
-
-function pick(containerId, attr) {
-  const c = document.getElementById(containerId);
-  c.addEventListener('click', (e) => {
-    const card = e.target.closest('.ec-pick');
-    if (!card || card.classList.contains('dis') || !card.dataset[attr]) return;
-    c.querySelectorAll('.ec-pick').forEach(x => x.classList.remove('sel'));
-    card.classList.add('sel');
-    sel[attr] = card.dataset[attr];
-  });
 }
 
 function renderPositions(corps, filter) {
@@ -234,7 +273,7 @@ function renderPositions(corps, filter) {
     const left = document.createElement('div');
     const nm = document.createElement('div'); nm.className = 'cn'; nm.textContent = c.name;
     const ci = document.createElement('div'); ci.className = 'ci';
-    ci.textContent = `${c.industry} · ${c.hq}`;
+    ci.textContent = `${c.industry} · ${c.hq?.name || '—'}`;
     left.append(nm, ci);
     const mid = document.createElement('div');
     const cl = document.createElement('div'); cl.className = 'cl'; cl.textContent = 'STARTING CAPITAL';
@@ -258,12 +297,36 @@ function renderPositions(corps, filter) {
     let corps = [];
     if (entId) {
       const { data, error } = await _supabase.from('entrepreneur_corps')
-        .select('id, name, industry, hq, starting_capital')
+        .select('id, name, industry, starting_capital, hq:nations!hq_nation_id(name)')
         .eq('owner_faction_id', entId)
         .order('created_at', { ascending: false });
       if (error) console.warn('[entrepreneur-corporations] corps load failed:', error.message);
       else corps = data || [];
     }
+
+    // HQ picker data: real placeable nations (continent IS NOT NULL),
+    // grouped by continent, plus a tally of existing entrepreneur corps
+    // by (industry, hq nation) for the per-nation count.
+    const [natRes, cntRes] = await Promise.all([
+      _supabase.from('nations')
+        .select('id, name, continent, corporate_tax')
+        .not('continent', 'is', null)
+        .order('name'),
+      _supabase.from('entrepreneur_corps').select('industry, hq_nation_id'),
+    ]);
+    if (natRes.error) console.warn('[entrepreneur-corporations] nations load failed:', natRes.error.message);
+    if (cntRes.error) console.warn('[entrepreneur-corporations] corp counts load failed:', cntRes.error.message);
+    nationsByCont = {};
+    for (const n of (natRes.data || [])) {
+      (nationsByCont[n.continent] = nationsByCont[n.continent] || []).push(n);
+    }
+    entCorpCounts = {};
+    for (const r of (cntRes.data || [])) {
+      if (!r.hq_nation_id) continue;
+      const k = r.industry + '|' + r.hq_nation_id;
+      entCorpCounts[k] = (entCorpCounts[k] || 0) + 1;
+    }
+    renderHqList();
     let filter = 'all';
     renderPositions(corps, filter);
     document.getElementById('ec-filters').addEventListener('click', (e) => {
@@ -282,7 +345,25 @@ function renderPositions(corps, filter) {
     document.getElementById('ec-start').addEventListener('click', open);
     document.getElementById('ec-close').addEventListener('click', close);
     document.getElementById('ec-cancel').addEventListener('click', close);
-    pick('ec-ind', 'ind'); pick('ec-hq', 'hq');
+    document.getElementById('ec-ind').addEventListener('click', (e) => {
+      const card = selectPick('ec-ind', e);
+      if (!card || !card.dataset.ind) return;
+      sel.industry = card.dataset.ind;
+      renderHqList();   // per-nation count is industry-specific
+    });
+    document.getElementById('ec-conts').addEventListener('click', (e) => {
+      const t = e.target.closest('.ec-cont');
+      if (!t) return;
+      document.querySelectorAll('#ec-conts .ec-cont').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      activeCont = t.dataset.cont;
+      renderHqList();
+    });
+    document.getElementById('ec-hq').addEventListener('click', (e) => {
+      const card = selectPick('ec-hq', e);
+      if (!card || !card.dataset.nid) return;
+      sel.hqNationId = card.dataset.nid;
+    });
     document.getElementById('ec-cap').addEventListener('input', refreshCost);
 
     let founding = false;
@@ -291,13 +372,14 @@ function renderPositions(corps, filter) {
       const name = document.getElementById('ec-name').value.trim();
       const err = document.getElementById('ec-err');
       if (!name) { err.textContent = 'Enter a corporation name.'; err.style.display = 'inline'; return; }
+      if (!sel.hqNationId) { err.textContent = 'Select a headquarters nation.'; err.style.display = 'inline'; return; }
       const cap = capRaw();
       founding = true;
       const btn = document.getElementById('ec-found');
       btn.disabled = true; btn.textContent = 'FOUNDING…';
       try {
         const { data, error } = await _supabase.rpc('found_entrepreneur_corp', {
-          p_industry: sel.industry, p_hq: sel.hq, p_name: name, p_capital: cap,
+          p_industry: sel.industry, p_hq_nation_id: sel.hqNationId, p_name: name, p_capital: cap,
         });
         if (error) throw error;
         if (!data || !data.success) {
