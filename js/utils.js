@@ -32,6 +32,16 @@ export function truncate(str, max) {
     return str.length > max ? str.slice(0, max) + '...' : str;
 }
 
+/**
+ * Title-case each word ("shipping" → "Shipping"). Does not touch
+ * underscores — callers that need "snake_case" → "Snake Case" should
+ * .replace(/_/g,' ') first. One source for the entrepreneur pages'
+ * industry/listing labels (was cap2/cap inline copies).
+ */
+export function titleCase(s) {
+    return String(s || '').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 // ===== GAME DATE =====
 
 export const MONTHS = [

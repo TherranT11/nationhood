@@ -210,7 +210,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { hfFmtBig, escapeHtml, escapeAttr } from './js/utils.js';
+import { hfFmtBig, escapeHtml, escapeAttr, titleCase } from './js/utils.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 
@@ -324,13 +324,12 @@ function renderHoldings(corps) {
     listEl.innerHTML = '<div class="empty">No corporations yet.<br>Found one from the Corporations tab. Equity stakes, board seats, mergers &amp; acquisitions are coming soon.</div>';
     return;
   }
-  const cap = s => String(s || '').replace(/\b\w/g, c => c.toUpperCase());
   listEl.innerHTML = `<div class="ch-list">${corps.map(c => `
     <a class="ch-row" href="entrepreneur-corp.html?id=${encodeURIComponent(c.id)}">
       <div>
         <div class="ch-name">${escapeHtml(c.name || 'Corporation')}</div>
         <div class="ch-fields">
-          <span><span class="k">INDUSTRY</span><span class="v">${escapeHtml(cap(c.industry))}</span></span>
+          <span><span class="k">INDUSTRY</span><span class="v">${escapeHtml(titleCase(c.industry))}</span></span>
           <span><span class="k">HQ</span><span class="v">${escapeHtml(c.hq?.name || '—')}</span></span>
           <span><span class="k">OWNERSHIP</span><span class="v">100%</span></span>
           <span><span class="k">VALUATION</span><span class="v">—</span></span>

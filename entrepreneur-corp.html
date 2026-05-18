@@ -214,9 +214,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM } from './js/utils.js';
-
-function cap2(s) { return String(s || '').replace(/\b\w/g, c => c.toUpperCase()); }
+import { fmtM, titleCase } from './js/utils.js';
 function initials(s, n) {
   return (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, n || 2).map(w => w[0]).join('').toUpperCase()) || '—';
 }
@@ -240,7 +238,7 @@ function initials(s, n) {
     const o = c.owner || {};
     const ownerName = [o.leader_first_name, o.leader_last_name].filter(Boolean).join(' ').trim()
       || o.faction_name || '—';
-    const listing = cap2(c.listing || 'private');
+    const listing = titleCase(c.listing || 'private');
     const founded = c.founded_tick != null ? 'Tick ' + c.founded_tick : '—';
 
     document.title = name + ' — Corporation Management';
