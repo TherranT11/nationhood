@@ -186,18 +186,25 @@ async function createEntrepreneur() {
 }
 
 (async () => {
-  const { data: { user } } = await _supabase.auth.getUser();
-  if (!user) { window.location.href = 'login.html'; return; }
-  currentUser = user;
-  if (!setup || !setup.name || !setup.originNation) {
-    // Reached without completing the prior steps — restart the flow.
-    window.location.href = 'faction-select.html';
-    return;
+  try {
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) { window.location.href = 'login.html'; return; }
+    currentUser = user;
+    if (!setup || !setup.name || !setup.originNation) {
+      // Reached without completing the prior steps — restart the flow.
+      window.location.href = 'faction-select.html';
+      return;
+    }
+    document.getElementById('who').textContent =
+      `${setup.name} · from ${setup.originNation}`;
+    renderCards();
+    document.getElementById('create-btn').addEventListener('click', createEntrepreneur);
+  } catch (e) {
+    // Loud, not silent — a failed auth/init must not leave a blank page.
+    const errEl = document.getElementById('err');
+    errEl.textContent = 'Failed to load — please refresh. (' + (e?.message || e) + ')';
+    errEl.style.display = 'block';
   }
-  document.getElementById('who').textContent =
-    `${setup.name} · from ${setup.originNation}`;
-  renderCards();
-  document.getElementById('create-btn').addEventListener('click', createEntrepreneur);
 })();
 </script>
 </body>
