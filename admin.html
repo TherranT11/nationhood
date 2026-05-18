@@ -146,6 +146,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         await loadElectionNations();
         await updateScheduleTickHint();
         await loadSectorNations();
+        await loadProvinceNations();
         await loadInspectorNations();
         await loadMinistryConfig();
     }
@@ -1647,6 +1648,252 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
             .replace(/^_|_$/g, '');
     }
 
+    // ==================== PROVINCES TAB ====================
+    // Partition model: per sector, Σ province weights must equal the
+    // nation-level sectors.weight. Phase 1 is display-only — nothing here
+    // touches the election engine; it only writes province_sector_weights
+    // for the election-map panels to read.
+
+    let provinceNationId = null;
+    let provinceSectors = [];          // [{ id, name, weight }] active, ordered
+    let provinceList = [];             // [{ id, name, display_order }]
+    let provinceWeightMap = {};        // `${provinceId}|${sectorId}` -> weight
+
+    const PROV_INPUT_STYLE = 'background:#1a1a1a; border:1px solid #333; color:#eee; padding:4px; border-radius:2px;';
+
+    async function loadProvinceNations() {
+        try {
+            const { data, error } = await _supabase.from('nations').select('id, name').order('name');
+            if (error) throw error;
+            const select = document.getElementById('province-nation-select');
+            if (!select) return;
+            select.innerHTML = '<option value="">-- Choose a nation --</option>';
+            (data || []).forEach(n => {
+                select.innerHTML += `<option value="${n.id}">${escHtml(n.name)}</option>`;
+            });
+        } catch (err) { console.error('loadProvinceNations failed', err); }
+    }
+
+    async function onProvinceNationSelect() {
+        const nationId = document.getElementById('province-nation-select').value;
+        const infoDiv = document.getElementById('province-nation-info');
+        const addStatus = document.getElementById('province-add-status');
+        const saveStatus = document.getElementById('province-save-status');
+        if (addStatus) addStatus.textContent = '';
+        if (saveStatus) saveStatus.textContent = '';
+        if (!nationId) {
+            infoDiv.classList.add('hidden');
+            provinceNationId = null; provinceSectors = []; provinceList = []; provinceWeightMap = {};
+            return;
+        }
+        provinceNationId = nationId;
+        infoDiv.classList.remove('hidden');
+        const c = document.getElementById('province-grid-container');
+        if (c) c.innerHTML = '<div class="no-players">Loading…</div>';
+        await loadProvincesForNation(nationId);
+    }
+
+    async function loadProvincesForNation(nationId) {
+        try {
+            const [secRes, provRes] = await Promise.all([
+                _supabase.from('sectors').select('id, name, weight')
+                    .eq('nation_id', nationId).eq('is_active', true).order('display_order'),
+                _supabase.from('provinces').select('id, name, display_order')
+                    .eq('nation_id', nationId).order('display_order'),
+            ]);
+            if (secRes.error) throw secRes.error;
+            if (provRes.error) throw provRes.error;
+            provinceSectors = secRes.data || [];
+            provinceList = provRes.data || [];
+            provinceWeightMap = {};
+            const provIds = provinceList.map(p => p.id);
+            if (provIds.length) {
+                const { data: w, error: wErr } = await _supabase
+                    .from('province_sector_weights')
+                    .select('province_id, sector_id, weight')
+                    .in('province_id', provIds);
+                if (wErr) throw wErr;
+                (w || []).forEach(r => { provinceWeightMap[`${r.province_id}|${r.sector_id}`] = r.weight; });
+            }
+            renderProvinceGrid();
+        } catch (err) {
+            console.error('loadProvincesForNation failed', err);
+            const c = document.getElementById('province-grid-container');
+            if (c) c.innerHTML = `<div style="color:#e57373;">Error loading provinces: ${escHtml(err.message || String(err))}</div>`;
+        }
+    }
+
+    function provCellWeight(provinceId, sectorId) {
+        const v = provinceWeightMap[`${provinceId}|${sectorId}`];
+        return Number.isFinite(v) ? v : 0;
+    }
+
+    function renderProvinceGrid() {
+        const container = document.getElementById('province-grid-container');
+        if (!container) return;
+        if (provinceSectors.length === 0) {
+            container.innerHTML = '<div class="no-players">This nation has no active sectors — add sectors in the Sectors tab first.</div>';
+            recomputeProvinceBalance();
+            return;
+        }
+        if (provinceList.length === 0) {
+            container.innerHTML = '<div class="no-players">No provinces yet. Add a province above to begin partitioning sector weights.</div>';
+            recomputeProvinceBalance();
+            return;
+        }
+        let html = `
+            <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
+                <thead>
+                    <tr style="background:#252525; color:#ffcc00; text-transform:uppercase; font-size:0.7rem; letter-spacing:1px;">
+                        <th style="padding:8px; text-align:left; border-bottom:1px solid #444;">Sector</th>
+                        <th style="padding:8px; text-align:center; border-bottom:1px solid #444; width:90px;" title="Nation weight — the budget to split. Edit it in the Sectors tab.">Nation Wt</th>`;
+        provinceList.forEach(p => {
+            html += `<th style="padding:8px; text-align:center; border-bottom:1px solid #444; width:110px;">
+                        ${escHtml(p.name)}
+                        <button title="Delete province" onclick="deleteProvince('${p.id}')"
+                          style="display:block; margin:4px auto 0; padding:2px 8px; font-size:0.7rem; background:transparent; color:#ef5350; border:1px solid #442222; cursor:pointer; border-radius:2px;">Delete</button>
+                     </th>`;
+        });
+        html += `<th style="padding:8px; text-align:center; border-bottom:1px solid #444; width:110px;">Allocated</th>
+                    </tr></thead><tbody>`;
+        provinceSectors.forEach(s => {
+            html += `<tr id="prov-row-${s.id}" style="border-bottom:1px solid #2a2a2a;">
+                        <td style="padding:8px;">${escHtml(s.name)}</td>
+                        <td style="padding:8px; text-align:center; color:#a3b07e; font-weight:bold;">${Number(s.weight) || 0}</td>`;
+            provinceList.forEach(p => {
+                html += `<td style="padding:8px; text-align:center;">
+                            <input type="number" min="0" max="3" step="1"
+                              data-prov-id="${p.id}" data-sector-id="${s.id}" data-field="pweight"
+                              value="${provCellWeight(p.id, s.id)}"
+                              oninput="recomputeProvinceBalance()"
+                              style="width:54px; text-align:center; ${PROV_INPUT_STYLE}"></td>`;
+            });
+            html += `<td style="padding:8px; text-align:center;" id="prov-alloc-${s.id}">—</td></tr>`;
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+        recomputeProvinceBalance();
+    }
+
+    function recomputeProvinceBalance() {
+        const saveBtn = document.getElementById('province-save-btn');
+        const balStatus = document.getElementById('province-balance-status');
+        const haveGrid = provinceSectors.length > 0 && provinceList.length > 0;
+        let allBalanced = haveGrid;
+        provinceSectors.forEach(s => {
+            const target = Number(s.weight) || 0;
+            let sum = 0;
+            provinceList.forEach(p => {
+                const inp = document.querySelector(`input[data-prov-id="${p.id}"][data-sector-id="${s.id}"][data-field="pweight"]`);
+                const v = inp ? parseInt(inp.value, 10) : provCellWeight(p.id, s.id);
+                if (!isNaN(v)) sum += v;
+            });
+            const cell = document.getElementById(`prov-alloc-${s.id}`);
+            const ok = sum === target;
+            if (!ok) allBalanced = false;
+            if (cell) {
+                cell.textContent = `${sum} / ${target}`;
+                cell.style.color = ok ? '#81c784' : '#e57373';
+                cell.style.fontWeight = 'bold';
+            }
+        });
+        if (balStatus) {
+            if (!haveGrid) {
+                balStatus.textContent = provinceList.length === 0 ? 'add a province to begin' : 'no active sectors';
+                balStatus.style.color = '#888';
+            } else if (allBalanced) {
+                balStatus.textContent = 'balanced — every sector sums to its nation weight';
+                balStatus.style.color = '#81c784';
+            } else {
+                balStatus.textContent = 'unbalanced — fix the red rows before saving';
+                balStatus.style.color = '#e57373';
+            }
+        }
+        if (saveBtn) {
+            saveBtn.disabled = !allBalanced;
+            saveBtn.style.opacity = allBalanced ? '1' : '0.5';
+            saveBtn.style.cursor = allBalanced ? 'pointer' : 'not-allowed';
+        }
+        return allBalanced;
+    }
+
+    async function addProvince(btn) {
+        if (!provinceNationId) return;
+        const nameEl = document.getElementById('new-province-name');
+        const statusEl = document.getElementById('province-add-status');
+        const name = (nameEl.value || '').trim();
+        const setErr = m => { statusEl.style.color = '#e57373'; statusEl.textContent = m; };
+        statusEl.textContent = '';
+        if (!name) return setErr('Province name cannot be empty.');
+        if (provinceList.some(p => p.name.toLowerCase() === name.toLowerCase()))
+            return setErr(`A province named "${name}" already exists in this nation.`);
+        const nextOrder = provinceList.reduce((m, p) => Math.max(m, p.display_order || 0), 0) + 1;
+        await withButtonLock(btn, async () => {
+            try {
+                const { error } = await _supabase.from('provinces')
+                    .insert({ nation_id: provinceNationId, name, display_order: nextOrder });
+                if (error) throw error;
+                nameEl.value = '';
+                statusEl.style.color = '#81c784';
+                statusEl.textContent = `Added "${name}" (weights start at 0 — partition the sectors and Save).`;
+                await loadProvincesForNation(provinceNationId);
+            } catch (err) {
+                console.error('addProvince failed', err);
+                setErr('Insert failed: ' + (err.message || String(err)));
+            }
+        });
+    }
+
+    async function deleteProvince(provinceId) {
+        const p = provinceList.find(x => x.id === provinceId);
+        const pName = p ? p.name : 'this province';
+        if (!confirm(`Delete "${pName}"?\n\nIts per-sector weights are removed permanently. Any sector it contributed to will become unbalanced until you re-partition and Save.`)) return;
+        try {
+            const { error } = await _supabase.from('provinces').delete().eq('id', provinceId);
+            if (error) throw error;
+            await loadProvincesForNation(provinceNationId);
+        } catch (err) {
+            console.error('deleteProvince failed', err);
+            alert('Delete failed: ' + (err.message || String(err)));
+        }
+    }
+
+    async function saveProvinceWeights(btn) {
+        if (!provinceNationId) return;
+        const statusEl = document.getElementById('province-save-status');
+        statusEl.textContent = '';
+        if (!recomputeProvinceBalance()) {
+            statusEl.style.color = '#e57373';
+            statusEl.textContent = 'Cannot save: some sectors are not balanced to their nation weight.';
+            return;
+        }
+        const rows = [];
+        provinceList.forEach(p => {
+            provinceSectors.forEach(s => {
+                const inp = document.querySelector(`input[data-prov-id="${p.id}"][data-sector-id="${s.id}"][data-field="pweight"]`);
+                let v = inp ? parseInt(inp.value, 10) : 0;
+                if (isNaN(v) || v < 0) v = 0;
+                if (v > 3) v = 3;
+                rows.push({ province_id: p.id, sector_id: s.id, weight: v });
+            });
+        });
+        await withButtonLock(btn, async () => {
+            try {
+                const { error } = await _supabase
+                    .from('province_sector_weights')
+                    .upsert(rows, { onConflict: 'province_id,sector_id' });
+                if (error) throw error;
+                statusEl.style.color = '#81c784';
+                statusEl.textContent = `Saved ${rows.length} province-sector weights.`;
+                await loadProvincesForNation(provinceNationId);
+            } catch (err) {
+                console.error('saveProvinceWeights failed', err);
+                statusEl.style.color = '#e57373';
+                statusEl.textContent = 'Save failed: ' + (err.message || String(err));
+            }
+        });
+    }
+
     // ==================== SECTORS TAB — PHASE 1: POPULARITY EDITOR + DIAGNOSTICS ====================
 
     let sectorPopFactions = [];
@@ -2368,6 +2615,11 @@ window.updateSector = updateSector;
 window.updateSectorTotals = updateSectorTotals;
 window.addCustomSector = addCustomSector;
 window.softDeleteSector = softDeleteSector;
+window.onProvinceNationSelect = onProvinceNationSelect;
+window.recomputeProvinceBalance = recomputeProvinceBalance;
+window.addProvince = addProvince;
+window.deleteProvince = deleteProvince;
+window.saveProvinceWeights = saveProvinceWeights;
 window.loadFactionPopularityEditor = loadFactionPopularityEditor;
 window.onPopularityCellInput = onPopularityCellInput;
 window.saveFactionPopularityChanges = saveFactionPopularityChanges;

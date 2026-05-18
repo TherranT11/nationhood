@@ -377,42 +377,91 @@ function buildElectoralMakeup() {
 // ═══════════════════════════════════════════════════════════════════════════
 // Nation map — a labelled [Nation] box (→ "{Nation} Whole.png") plus one box
 // per province (→ "{Nation} {Province}.png"), toggling one image beneath
-// them. Province set is per-nation (single source: NATION_MAP_PROVINCES);
-// nations not listed show just the Whole box. Pure CSS (hidden radios +
-// :checked sibling combinator) so it survives innerHTML rebuilds and needs
-// no JS/delegation; a rebuild resets to Whole — exactly "clicking [Nation]
-// pulls it back to Whole". Missing art hides itself via onerror.
+// them. Provinces are admin-managed in the DB `provinces` table (read here,
+// edited in admin.html's Provinces tab); a nation with no provinces shows
+// just the Whole box. Pure CSS (hidden radios + :checked sibling combinator)
+// so it survives innerHTML rebuilds and needs no JS/delegation; a rebuild
+// resets to Whole — exactly "clicking [Nation] pulls it back to Whole".
+// Missing art hides itself via onerror.
 // ═══════════════════════════════════════════════════════════════════════════
-const NATION_MAP_PROVINCES = {
-    Avelia:  ['Valeranza'],
-    Calveth: ['Auplandet', 'Borastadt', 'Cousheim', 'Folenberg'],
-};
 
-function buildNationMap() {
+// Renders the nation-map row: a Sectors panel (left, 280px) + the map
+// (right), both CSS-synced to ONE set of hidden radios so the panel and
+// the map always reflect the same selected button with no JS. `sectors`
+// is the live per-nation sectors table; `provinces` the per-nation
+// provinces; `weightMap` keys `${provinceId}|${sectorId}` -> weight (0-3).
+// The Whole panel lists every sector + its nation weight + a TOTAL, and
+// flags drift when the provinces don't sum to a sector's nation weight.
+// Each province panel shows that province's per-sector split. Read-only.
+function buildNationMap(sectors = [], provinces = [], weightMap = {}) {
     const nm = _state?.nation?.name;
     if (!nm) return '';
-    // Whole first (checked default) + one option per configured province.
-    const opts = [{ key: 'whole', label: nm, file: `${nm} Whole.png` }].concat(
-        (NATION_MAP_PROVINCES[nm] || []).map(p => ({
-            key: p.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-            label: p,
-            file: `${nm} ${p}.png`,
-        }))
+    // Whole first (checked default) + one option per province. Province
+    // keys are sanitised names, de-duped so they stay valid/unique CSS
+    // idents even if two names collapse to the same slug.
+    const usedKeys = new Set(['whole']);
+    const opts = [{ key: 'whole', label: nm, file: `${nm} Whole.png`, whole: true }].concat(
+        (provinces || []).map(p => {
+            let base = (p.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'prov';
+            let key = base, n = 2;
+            while (usedKeys.has(key)) key = `${base}-${n++}`;
+            usedKeys.add(key);
+            return { key, label: p.name, file: `${nm} ${p.name}.png`, whole: false, id: p.id };
+        })
     );
+    // Radios now sit at row level (siblings of both columns) so a single
+    // :checked drives the map image, the active button AND the sectors
+    // panel via the general-sibling combinator.
     const activeRules = opts.map(o =>
-        `#cf-nm-${o.key}:checked ~ .cf-nm-boxes label[for="cf-nm-${o.key}"]`).join(',\n      ');
-    const showRules = opts.map(o =>
-        `#cf-nm-${o.key}:checked ~ .cf-nm-stage .cf-nm-img-${o.key} { display: block; }`).join('\n      ');
+        `#cf-nm-${o.key}:checked ~ .cf-makeup-right .cf-nm-box[for="cf-nm-${o.key}"]`).join(',\n      ');
+    const showImg = opts.map(o =>
+        `#cf-nm-${o.key}:checked ~ .cf-makeup-right .cf-nm-img-${o.key} { display: block; }`).join('\n      ');
+    const showSec = opts.map(o =>
+        `#cf-nm-${o.key}:checked ~ .cf-makeup-left .cf-sec-${o.key} { display: block; }`).join('\n      ');
     const radios = opts.map((o, i) =>
         `<input type="radio" name="cf-nm" id="cf-nm-${o.key}" class="cf-nm-r"${i === 0 ? ' checked' : ''}>`).join('\n      ');
     const boxes = opts.map(o =>
         `<label class="cf-nm-box" for="cf-nm-${o.key}">${esc(o.label)}</label>`).join('\n        ');
     const imgs = opts.map(o =>
         `<img class="cf-nm-img-${o.key}" src="${encodeURI(`assets/${o.file}`)}" alt="${esc(o.label)} map" onerror="this.style.display='none'">`).join('\n        ');
+
+    const secList = sectors || [];
+    const provList = provinces || [];
+    const pw = (provId, secId) => {
+        const v = weightMap?.[`${provId}|${secId}`];
+        return Number.isFinite(v) ? v : 0;
+    };
+    const totalWeight = secList.reduce((s, x) => s + (Number(x.weight) || 0), 0);
+    // Drift: under the partition model each sector's province weights
+    // should sum to its nation weight. Only meaningful once provinces
+    // exist; surfaced (not auto-fixed) per the agreed Phase 1 behaviour.
+    const hasDrift = provList.length > 0 && secList.some(s =>
+        provList.reduce((a, p) => a + pw(p.id, s.id), 0) !== (Number(s.weight) || 0));
+    const wholeRows = secList.length
+        ? secList.map(s =>
+            `<div class="cf-sec-row"><span class="cf-sec-nm">${esc(s.name)}</span><span class="cf-sec-wt">${Number(s.weight) || 0}</span></div>`).join('')
+          + `<div class="cf-sec-row cf-sec-total"><span class="cf-sec-nm">Total Weight</span><span class="cf-sec-wt">${totalWeight}</span></div>`
+          + (hasDrift
+              ? `<div class="cf-sec-row cf-sec-warn"><span class="cf-sec-nm">&#9888; Provinces don't sum to nation weight</span><span class="cf-sec-wt">rebalance</span></div>`
+              : '')
+        : `<div class="cf-sec-empty">No sectors configured for this nation.</div>`;
+    const provincePanel = (o) => {
+        if (!secList.length) return `<div class="cf-sec-empty">No sectors configured for this nation.</div>`;
+        const provTotal = secList.reduce((a, s) => a + pw(o.id, s.id), 0);
+        return secList.map(s =>
+            `<div class="cf-sec-row"><span class="cf-sec-nm">${esc(s.name)}</span><span class="cf-sec-wt">${pw(o.id, s.id)}</span></div>`).join('')
+          + `<div class="cf-sec-row cf-sec-total"><span class="cf-sec-nm">Province Total</span><span class="cf-sec-wt">${provTotal}</span></div>`;
+    };
+    const panels = opts.map(o =>
+        `<div class="cf-sec cf-sec-${o.key}">
+           <div class="cf-sec-head">Sectors — ${esc(o.label)}</div>
+           ${o.whole ? wholeRows : provincePanel(o)}
+         </div>`).join('');
+
     return `
     <style>
-      .cf-nm-wrap { margin: 14px 0 0; }
       .cf-nm-r { position: absolute; opacity: 0; pointer-events: none; }
+      .cf-nm-wrap { margin: 14px 0 0; }
       .cf-nm-boxes { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-bottom: 10px; }
       .cf-nm-box { font-family: var(--font-mono, monospace); font-size: 12px;
         font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
@@ -424,15 +473,43 @@ function buildNationMap() {
       .cf-nm-stage { border: 1px solid var(--border-1, rgba(255,255,255,0.12));
         background: var(--bg-2, #1a1a17); padding: 10px; }
       .cf-nm-stage img { display: none; max-width: 100%; height: auto; margin: 0 auto; }
-      ${showRules}
+      ${showImg}
+      .cf-sec { display: none; margin: 14px 0 0;
+        border: 1px solid var(--border-1, rgba(255,255,255,0.12));
+        background: var(--bg-2, #1a1a17); }
+      .cf-sec-head { font-family: var(--font-mono, monospace); font-size: 11px;
+        font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+        color: var(--accent, #d4b87a); padding: 10px 12px;
+        border-bottom: 1px solid var(--border-1, rgba(255,255,255,0.1)); }
+      .cf-sec-row { display: flex; justify-content: space-between; gap: 10px;
+        padding: 7px 12px; font-family: var(--font-mono, monospace); font-size: 12px;
+        color: var(--text-secondary, #888); border-bottom: 1px solid var(--border-0, rgba(255,255,255,0.05)); }
+      .cf-sec-nm { color: var(--text-bright, #f0efe6); }
+      .cf-sec-wt { color: var(--text-secondary, #888); font-weight: 700; }
+      .cf-sec-total { border-top: 1px solid var(--border-1, rgba(255,255,255,0.12)); border-bottom: none; }
+      .cf-sec-total .cf-sec-nm, .cf-sec-total .cf-sec-wt {
+        color: var(--accent, #d4b87a); font-weight: 700; text-transform: uppercase;
+        font-size: 11px; letter-spacing: 0.06em; }
+      .cf-sec-empty { padding: 14px 12px; font-family: var(--font-mono, monospace);
+        font-size: 11px; color: var(--text-dim, #4a4940); line-height: 1.5; }
+      .cf-sec-warn { border-top: none; }
+      .cf-sec-warn .cf-sec-nm, .cf-sec-warn .cf-sec-wt {
+        color: var(--amber, #d4a83c); font-weight: 700; font-size: 10px;
+        text-transform: uppercase; letter-spacing: 0.05em; }
+      ${showSec}
     </style>
-    <div class="cf-nm-wrap">
+    <div class="cf-makeup-row cf-nm-row">
       ${radios}
-      <div class="cf-nm-boxes">
-        ${boxes}
-      </div>
-      <div class="cf-nm-stage">
-        ${imgs}
+      <div class="cf-makeup-left">${panels}</div>
+      <div class="cf-makeup-right">
+        <div class="cf-nm-wrap">
+          <div class="cf-nm-boxes">
+            ${boxes}
+          </div>
+          <div class="cf-nm-stage">
+            ${imgs}
+          </div>
+        </div>
       </div>
     </div>`;
 }
@@ -467,7 +544,44 @@ export async function renderFormationTab(root) {
                <div class="cf-makeup-right">${inner}</div>
            </div>`
         : '';
-    const makeupRow = gridRow(buildElectoralMakeup()) + gridRow(buildNationMap());
+    // Per-nation sectors + provinces + per-province weights (read-only)
+    // for the map's Sectors panels. Safe-default to empty so any failure
+    // just shows "no sectors" / Whole-only rather than breaking the tab.
+    let _sectors = [];
+    let _provinces = [];
+    const _weightMap = {};
+    try {
+        const _nid = _state?.nation?.id;
+        if (_nid) {
+            const [secRes, provRes] = await Promise.all([
+                _supabase.from('sectors')
+                    .select('id, name, weight, is_active, display_order')
+                    .eq('nation_id', _nid)
+                    .order('display_order', { ascending: true }),
+                _supabase.from('provinces')
+                    .select('id, name, display_order')
+                    .eq('nation_id', _nid)
+                    .order('display_order', { ascending: true }),
+            ]);
+            if (secRes.error) console.warn('[coalition-formation] sectors load failed:', secRes.error.message);
+            else _sectors = secRes.data || [];
+            if (provRes.error) console.warn('[coalition-formation] provinces load failed:', provRes.error.message);
+            else _provinces = provRes.data || [];
+            if (_provinces.length) {
+                const { data: w, error: wErr } = await _supabase
+                    .from('province_sector_weights')
+                    .select('province_id, sector_id, weight')
+                    .in('province_id', _provinces.map(p => p.id));
+                if (wErr) console.warn('[coalition-formation] province weights load failed:', wErr.message);
+                else (w || []).forEach(r => { _weightMap[`${r.province_id}|${r.sector_id}`] = r.weight; });
+            }
+        }
+    } catch (e) {
+        console.warn('[coalition-formation] sectors/provinces load threw:', e?.message || e);
+    }
+    // buildNationMap returns its OWN full grid row (radios + Sectors
+    // panel left + map right), so it is not wrapped by gridRow.
+    const makeupRow = gridRow(buildElectoralMakeup()) + buildNationMap(_sectors, _provinces, _weightMap);
 
     // Presidential systems — no coalition formation
     if (hasElectedPresident(_state.nation)) {
