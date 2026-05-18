@@ -279,6 +279,7 @@ body {
 }
 .cr-event-item.cat-politics::before  { background: var(--blue);  opacity: 0.6; }
 .cr-event-item.cat-corporate::before { background: var(--gold);  opacity: 0.6; }
+.cr-event-item.cat-military::before  { background: var(--red);   opacity: 0.6; }
 .cr-event-meta {
   display: flex;
   justify-content: space-between;
@@ -305,6 +306,11 @@ body {
   color: var(--gold);
   border-color: var(--amber-border);
   background: var(--amber-faint);
+}
+.cr-event-tag.tag-military {
+  color: var(--red);
+  border-color: var(--red-border);
+  background: var(--red-faint);
 }
 .cr-event-nation {
   display: inline-flex;
@@ -492,6 +498,7 @@ body {
           <div class="cr-event-tab-bar" data-tab-axis="category">
             <button class="cr-event-tab active" data-category="politics">Politics</button>
             <button class="cr-event-tab" data-category="corporate">Corporate</button>
+            <button class="cr-event-tab" data-category="military">Military</button>
           </div>
           <div class="cr-event-tab-bar" data-tab-axis="scope">
             <button class="cr-event-tab active" data-scope="nation">Nation</button>
@@ -622,16 +629,21 @@ function renderOperatingModifiers(faction) {
 
 // ─── DISPATCHES FEED — ported verbatim from corp-dashboard.html ───
 // Same data model, same look. event_log.category has many values
-// across the codebase; we bucket into Politics vs Corporate so the
-// player sees a clean two-tab read.
+// across the codebase; we bucket into Politics / Corporate / Military
+// (Military matched by trigger_key — see dispatchBucketForRow) so the
+// player sees a clean three-tab read.
 const POLITICS_CATEGORIES = [
     'politics', 'political', 'government', 'crisis',
     'diplomatic', 'diplomacy', 'international', 'economy',
-    'military', 'executive_order', 'protest', 'bill', 'new_party',
+    'executive_order', 'protest', 'bill', 'new_party',
 ];
 const CORPORATE_CATEGORIES = ['corporate', 'business', 'trade'];
-function dispatchBucketFor(category) {
-    const c = (category || '').toLowerCase();
+// Military dispatches carry category 'government' but a trigger_key
+// prefixed 'military_' (command appointed/resigned). Check trigger_key
+// first so they bucket into Military, not Politics.
+function dispatchBucketForRow(row) {
+    if ((row?.trigger_key || '').toLowerCase().startsWith('military_')) return 'military';
+    const c = (row?.category || '').toLowerCase();
     if (CORPORATE_CATEGORIES.includes(c)) return 'corporate';
     if (POLITICS_CATEGORIES.includes(c))  return 'politics';
     return null;
@@ -646,7 +658,7 @@ function formatEventName(raw) {
 let _factionForDispatches = null;
 let _shardForDispatches   = null;
 const _eventState = {
-    category: 'politics',  // 'politics' | 'corporate'
+    category: 'politics',  // 'politics' | 'corporate' | 'military'
     scope:    'nation',    // 'nation'   | 'world'
     cache:    {},          // key = `${category}:${scope}` → rows
     inflight: null,        // current fetch's key, to ignore stale resolutions
@@ -684,7 +696,7 @@ async function loadDispatches() {
     const myNationId = _factionForDispatches?.nation_id;
 
     let q = _supabase.from('event_log')
-        .select('id, event_name, description_used, description_chosen, category, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
+        .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
         .not('category', 'is', null)
         .order('fired_at_tick', { ascending: false })
         .limit(120);
@@ -707,7 +719,7 @@ async function loadDispatches() {
 
     const wantBucket = _eventState.category;
     const rows = (data || [])
-        .filter(r => dispatchBucketFor(r.category) === wantBucket)
+        .filter(r => dispatchBucketForRow(r) === wantBucket)
         .slice(0, 30);
     _eventState.cache[key] = rows;
     renderDispatchList(rows);
@@ -729,8 +741,8 @@ function renderDispatchList(rows) {
     const currentTick = Number(_shardForDispatches?.current_tick) || 0;
     const showNation  = _eventState.scope === 'world';
     const bucket      = _eventState.category;
-    const tagClass    = bucket === 'politics' ? 'tag-politics' : 'tag-corporate';
-    const itemClass   = bucket === 'politics' ? 'cat-politics' : 'cat-corporate';
+    const tagClass    = `tag-${bucket}`;
+    const itemClass   = `cat-${bucket}`;
 
     listEl.innerHTML = rows.map(row => {
         const cat = row.category || bucket;

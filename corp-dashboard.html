@@ -683,6 +683,7 @@ body.corp-redesign.light-mode .cr-event-item { border-bottom-color: var(--panel-
 }
 .cr-event-item.cat-politics::before  { background: var(--blue);  opacity: 0.6; }
 .cr-event-item.cat-corporate::before { background: var(--gold);  opacity: 0.6; }
+.cr-event-item.cat-military::before  { background: var(--red);   opacity: 0.6; }
 
 .cr-event-meta {
   display: flex;
@@ -711,6 +712,11 @@ body.corp-redesign.light-mode .cr-event-tag { background: var(--bg-panel); borde
   color: var(--gold);
   border-color: var(--amber-border);
   background: var(--amber-faint);
+}
+.cr-event-tag.tag-military {
+  color: var(--red);
+  border-color: var(--red-border);
+  background: rgba(217,83,79,0.08);
 }
 .cr-event-nation {
   display: inline-flex;
@@ -874,6 +880,7 @@ body.corp-redesign.light-mode .cr-footer-strip { border-top-color: var(--panel-b
             <div class="cr-event-tab-bar" data-tab-axis="category">
               <button class="cr-event-tab active" data-category="politics">Politics</button>
               <button class="cr-event-tab" data-category="corporate">Corporate</button>
+              <button class="cr-event-tab" data-category="military">Military</button>
             </div>
             <div class="cr-event-tab-bar" data-tab-axis="scope">
               <button class="cr-event-tab active" data-scope="nation">Nation</button>
@@ -942,7 +949,7 @@ let allUserFactions = [];
 // Dispatches feed state — one cache slot per (category, scope) combination
 // so re-clicking a tab is instant after the first fetch. Reset on page load.
 const _eventState = {
-    category: 'politics',  // 'politics' | 'corporate'
+    category: 'politics',  // 'politics' | 'corporate' | 'military'
     scope:    'nation',    // 'nation'   | 'world'
     cache:    {},          // key = `${category}:${scope}` -> array of rows
     inflight: null,        // current fetch's key, to ignore stale resolutions
@@ -1690,20 +1697,25 @@ function formatEventName(raw) {
     return String(raw).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-// event_log.category has many values across the codebase. Map each into one
-// of two buckets that drive the Politics/Corporate tab. Compared against
-// row.category lower-cased, so casing variants ('Trade', 'POLITICAL', etc.)
-// all land in the right tab.
+// event_log.category has many values across the codebase. Map category
+// into the Politics/Corporate tab (Military is matched earlier by
+// trigger_key — see dispatchBucketForRow). Compared against row.category
+// lower-cased, so casing variants ('Trade', 'POLITICAL', etc.) all land
+// in the right tab.
 const POLITICS_CATEGORIES = [
     'politics', 'political', 'government', 'crisis',
     'diplomatic', 'diplomacy', 'international', 'economy',
-    'military', 'executive_order', 'protest', 'bill', 'new_party',
+    'executive_order', 'protest', 'bill', 'new_party',
 ];
 const CORPORATE_CATEGORIES = [
     'corporate', 'business', 'trade',
 ];
-function dispatchBucketFor(category) {
-    const c = (category || '').toLowerCase();
+// Military dispatches carry category 'government' but a trigger_key
+// prefixed 'military_' (command appointed/resigned). Check trigger_key
+// first so they bucket into Military, not Politics.
+function dispatchBucketForRow(row) {
+    if ((row?.trigger_key || '').toLowerCase().startsWith('military_')) return 'military';
+    const c = (row?.category || '').toLowerCase();
     if (CORPORATE_CATEGORIES.includes(c)) return 'corporate';
     if (POLITICS_CATEGORIES.includes(c))  return 'politics';
     return null;
@@ -1750,7 +1762,7 @@ async function loadDispatches() {
     // Pull a wide window and bucket client-side so casing variants
     // ('Trade' vs 'trade', 'POLITICAL' vs 'political') don't fall through.
     let q = _supabase.from('event_log')
-        .select('id, event_name, description_used, description_chosen, category, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
+        .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
         .not('category', 'is', null)
         .order('fired_at_tick', { ascending: false })
         .limit(120);
@@ -1780,7 +1792,7 @@ async function loadDispatches() {
 
     const wantBucket = _eventState.category; // 'politics' | 'corporate'
     const rows = (data || [])
-        .filter(r => dispatchBucketFor(r.category) === wantBucket)
+        .filter(r => dispatchBucketForRow(r) === wantBucket)
         .slice(0, 30);
     _eventState.cache[key] = rows;
     renderDispatchList(rows);
@@ -1807,8 +1819,8 @@ function renderDispatchList(rows) {
     // Politics events with subcategory "crisis" or "government" still render
     // with the consistent politics-blue accent — and likewise for Corporate.
     const bucket    = _eventState.category;
-    const tagClass  = bucket === 'politics' ? 'tag-politics' : 'tag-corporate';
-    const itemClass = bucket === 'politics' ? 'cat-politics' : 'cat-corporate';
+    const tagClass  = `tag-${bucket}`;
+    const itemClass = `cat-${bucket}`;
 
     listEl.innerHTML = rows.map(row => {
         // Keep the actual subcategory text on the tag so players can see why
