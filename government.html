@@ -2625,9 +2625,10 @@ async function loadBudgetData() {
 
     // Military unit maintenance — MUST match computeUnitMaintenanceAnnual
     // in advance-tick/index.ts exactly (per-tick upkeep = 25% of stored
-    // construction_cost, floored to whole abstract $/unit, summed over
-    // non-Decommissioned units, ×12). Drift here = the panel Balance
-    // lying vs the real per-tick treasury drain.
+    // construction_cost, rounded down, with a HARD FLOOR of $1/unit/tick
+    // — every unit always costs ≥ $1 — summed over non-Decommissioned
+    // units, ×12). Drift here = the panel Balance lying vs the real
+    // per-tick treasury drain.
     let unitMaintenance = { armyCount: 0, armyAnnual: 0, totalAnnual: 0 };
     try {
         const { data: units, error: uErr } = await _supabase
@@ -2640,7 +2641,7 @@ async function loadBudgetData() {
         } else {
             let perTick = 0;
             for (const u of (units || [])) {
-                perTick += Math.floor((Number(u?.construction_cost) || 0) / _GB_UNIT_COST_PER_ABSTRACT * 0.25);
+                perTick += Math.max(1, Math.floor((Number(u?.construction_cost) || 0) / _GB_UNIT_COST_PER_ABSTRACT * 0.25));
             }
             const armyAnnual = perTick * GAME_CONFIG.TICKS_PER_YEAR;
             unitMaintenance = { armyCount: (units || []).length, armyAnnual, totalAnnual: armyAnnual };
