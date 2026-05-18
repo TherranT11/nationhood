@@ -102,6 +102,18 @@
     font-size: 22px; font-family: Georgia, 'Times New Roman', serif; font-style: italic; color: #8aaa6a;
   }
   .section-heading .meta { margin-left: auto; color: #555; font-size: 10px; letter-spacing: 0.1em; }
+  .ch-list { display: flex; flex-direction: column; gap: 10px; }
+  .ch-row { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center;
+    background: #121212; border: 0.5px solid rgba(255,255,255,0.08); border-left: 2px solid #8aaa6a;
+    border-radius: 4px; padding: 14px 16px; cursor: pointer; text-decoration: none; }
+  .ch-row:hover { background: #141614; border-color: rgba(138,170,106,0.3); }
+  .ch-name { font-size: 15px; font-weight: 500; color: #fff; margin-bottom: 7px; }
+  .ch-fields { display: flex; gap: 20px; flex-wrap: wrap; font-size: 10px; letter-spacing: 0.08em; }
+  .ch-fields .k { color: #555; margin-right: 5px; }
+  .ch-fields .v { color: #d4d4d4; }
+  .ch-arrow { color: #555; font-size: 16px; }
+  .ch-foot { margin-top: 10px; color: #555; font-size: 10px; letter-spacing: 0.05em;
+    text-align: center; line-height: 1.6; }
   .footer-note {
     margin-top: 28px; padding-top: 14px;
     border-top: 0.5px solid rgba(255,255,255,0.05);
@@ -174,9 +186,9 @@
               <span class="roman">II.</span>
               <span class="sans">Corporate</span>
               <span class="serif">Holdings</span>
-              <span class="meta">0 ACTIVE POSITIONS</span>
+              <span class="meta" id="ch-count">—</span>
             </div>
-            <div class="empty">No holdings yet.<br>Investing in corporations, board seats, mergers, acquisitions and hostile takeovers are coming soon.</div>
+            <div id="ch-list"><div class="empty">Loading…</div></div>
           </div>
 
           <div>
@@ -297,6 +309,56 @@ function initials(first, last, fallbackName) {
   return ((w[0]?.[0] || '') + (w[1]?.[0] || '')).toUpperCase() || '—';
 }
 
+// ── Corporate Holdings (corps this entrepreneur founded/owns). Reads
+// the same entrepreneur_corps owner query the Corporations page uses —
+// the table is the single source; only the presentation differs.
+// Ownership is 100% by the v1 schema (founder, listing=private);
+// valuation has no model yet so it stays "—" (matches the corp page).
+function renderHoldings(corps) {
+  const listEl = document.getElementById('ch-list');
+  const countEl = document.getElementById('ch-count');
+  if (!listEl) return;
+  const n = corps.length;
+  if (countEl) countEl.textContent = n === 0 ? '0 ACTIVE POSITIONS' : `${n} ACTIVE POSITION${n === 1 ? '' : 'S'}`;
+  if (n === 0) {
+    listEl.innerHTML = '<div class="empty">No corporations yet.<br>Found one from the Corporations tab. Equity stakes, board seats, mergers &amp; acquisitions are coming soon.</div>';
+    return;
+  }
+  const cap = s => String(s || '').replace(/\b\w/g, c => c.toUpperCase());
+  listEl.innerHTML = `<div class="ch-list">${corps.map(c => `
+    <a class="ch-row" href="entrepreneur-corp.html?id=${encodeURIComponent(c.id)}">
+      <div>
+        <div class="ch-name">${escapeHtml(c.name || 'Corporation')}</div>
+        <div class="ch-fields">
+          <span><span class="k">INDUSTRY</span><span class="v">${escapeHtml(cap(c.industry))}</span></span>
+          <span><span class="k">HQ</span><span class="v">${escapeHtml(c.hq?.name || '—')}</span></span>
+          <span><span class="k">OWNERSHIP</span><span class="v">100%</span></span>
+          <span><span class="k">VALUATION</span><span class="v">—</span></span>
+        </div>
+      </div>
+      <div class="ch-arrow">▸</div>
+    </a>`).join('')}</div>
+    <div class="ch-foot">Equity stakes, board seats, mergers &amp; acquisitions are coming soon.</div>`;
+}
+
+async function loadHoldings(entId) {
+  const listEl = document.getElementById('ch-list');
+  if (!listEl) return;
+  if (!entId) { renderHoldings([]); return; }
+  const { data, error } = await _supabase.from('entrepreneur_corps')
+    .select('id, name, industry, hq:nations!hq_nation_id(name)')
+    .eq('owner_faction_id', entId)
+    .order('created_at', { ascending: false });
+  if (error) {
+    console.warn('[entrepreneur-dashboard] holdings fetch error:', error.message);
+    const countEl = document.getElementById('ch-count');
+    if (countEl) countEl.textContent = '—';
+    listEl.innerHTML = '<div class="empty">Failed to load holdings.</div>';
+    return;
+  }
+  renderHoldings(data || []);
+}
+
 (async () => {
   try {
     // Shared topbar (auth + fetch + render) — one source for every
@@ -338,6 +400,9 @@ function initials(first, last, fallbackName) {
     _evTick = Number(ctx.shard?.current_tick) || 0;
     bindDispatchTabs();
     loadDispatches();
+
+    const entId = (ctx.allUserFactions || []).find(x => x.faction_type === 'entrepreneur')?.id;
+    loadHoldings(entId);
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('app').style.display = 'block';
