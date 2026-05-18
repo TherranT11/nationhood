@@ -3972,7 +3972,7 @@ function _articleStatEffects(art) {
     const targets = Array.isArray(opt?.stat_targets) ? opt.stat_targets : null;
     if (targets && targets.length > 0) {
         return targets
-            .filter(t => t && t.stat_key && Number(t.target) !== 50)
+            .filter(t => t && t.stat_key && Number.isFinite(Number(t.target)) && Number(t.target) !== 50)
             .map(t => ({ stat_key: t.stat_key, direction: Number(t.target) >= 50 ? 'up' : 'down' }));
     }
     const p = art.policies || {};

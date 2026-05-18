@@ -286,8 +286,6 @@ function createEmptyOption() {
     return {
         option_name: '',
         option_description: '',
-        sector_effects: [],   // [{ sector_key, change_tenths }]
-        stat_effects: [],     // [{ stat_key, direction, rate, delay_ticks, duration_ticks, adjust_type, adjust_value }]
         upfront_cost: 0,
         upfront_scaling_stat: '',
         ongoing_base_cost: 0,
@@ -295,10 +293,8 @@ function createEmptyOption() {
         manpower_pct: 0,      // Army Composition only — % of population mobilized
         fiscal_category: '',
         starting_nations: new Set(),
-        // Target-based policy fields (Phase 2). Coexist with legacy
-        // stat_effects/sector_effects so the user can switch policy_type
-        // back and forth without losing data — savePolicy writes to the
-        // shape matching the chosen type.
+        // Target-based policy fields. Every policy is target-based; the
+        // legacy stat_effects/sector_effects model was removed.
         spectrum_position: null,
         stat_targets: [],     // [{ stat_key, target 0-100, pull 0-1 }]
         sector_rapport_targets: [], // [{ sector_key, rapport -10..+10 }]
@@ -358,11 +354,6 @@ const FISCAL_CATEGORY_OPTIONS = [
 
 const MAX_OPTIONS_PER_POLICY = 10;
 
-function normalizeEffectDirection(direction) {
-    const dir = String(direction || '').toLowerCase();
-    return dir === 'up' ? 'up' : (dir === 'down' ? 'down' : null);
-}
-
 // ==================== AUTH ====================
 async function checkAuth() {
     if (await hashPassword(document.getElementById('auth-pw').value) === ADMIN_PW_HASH) {
@@ -409,14 +400,13 @@ async function loadSectorOptions() {
 }
 
 async function loadPolicies() {
-    // Phase 2.7: include policy_options so the list view can read costs /
-    // stat_effects / sector_effects / fiscal_category from the option rather
-    // than the legacy policies columns. PostgREST embeds the related rows
-    // under `policy_options` (sorted by option_order so the first entry is
-    // the canonical option for single-option policies).
+    // Include policy_options so the list view can read costs /
+    // fiscal_category from the option. PostgREST embeds the related
+    // rows under `policy_options` (sorted by option_order so the first
+    // entry is the canonical option for single-option policies).
     const { data, error } = await _supabase
         .from('policies')
-        .select('*, policy_options(id, option_name, option_description, option_order, is_active, sector_effects, stat_effects, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_scaling_stat, fiscal_category)')
+        .select('*, policy_options(id, option_name, option_description, option_order, is_active, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_scaling_stat, fiscal_category)')
         .order('major_sector, minor_sector, policy_name');
     if (error) { console.error(error); return; }
     allPolicies = (data || []).map(p => ({
@@ -667,45 +657,15 @@ async function loadPolicyIntoBuilder(p) {
     }
 
     if (optionRows.length === 0) {
-        // Orphaned policy — no options yet. Build a single option from the
-        // legacy columns on the policies row so the admin can re-save it.
+        // Orphaned policy — no options yet. Seed a single empty
+        // target-based option carrying only the policies-row costs;
+        // the admin fills in the stat targets.
         const opt = createEmptyOption();
         opt.upfront_cost         = p.upfront_cost          ?? 0;
         opt.upfront_scaling_stat = p.upfront_scaling_stat  || '';
         opt.ongoing_base_cost    = p.ongoing_base_cost     ?? p.ongoing_cost_per_tick ?? 0;
         opt.ongoing_scaling_stat = p.ongoing_scaling_stat  || '';
         opt.fiscal_category      = p.fiscal_category       || '';
-        if (Array.isArray(p.stat_effects) && p.stat_effects.length > 0) {
-            opt.stat_effects = p.stat_effects
-                .map(e => ({
-                    ...e,
-                    stat_key: normalizePolicyStatKey(e.stat_key),
-                    direction: normalizeEffectDirection(e.direction) || 'up',
-                    adjust_type: e.adjust_type || null,
-                    adjust_value: e.adjust_value || 0
-                }))
-                // Phase 9: drop effects whose stat_key normalized to null
-                // (the underlying stat is gone from the alpha-23 schema).
-                .filter(e => e.stat_key);
-        } else if (p.target_stat) {
-            const normalizedTarget = normalizePolicyStatKey(p.target_stat);
-            if (normalizedTarget) {
-                opt.stat_effects = [{
-                    stat_key: normalizedTarget,
-                    direction: normalizeEffectDirection(p.stat_direction) || 'up',
-                    rate: p.stat_change_per_tick || 1,
-                    delay_ticks: 0,
-                    duration_ticks: p.duration_months || 12,
-                    adjust_type: null,
-                    adjust_value: 0
-                }];
-            }
-        }
-        if (Array.isArray(p.sector_effects)) {
-            opt.sector_effects = p.sector_effects
-                .filter(e => e && typeof e.sector_key === 'string' && Number.isFinite(Number(e.change_tenths)))
-                .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) || 0 }));
-        }
         options = [opt];
     } else {
         options = optionRows.map(row => {
@@ -720,25 +680,8 @@ async function loadPolicyIntoBuilder(p) {
             opt.ongoing_scaling_stat = row.ongoing_scaling_stat || '';
             opt.manpower_pct         = row.manpower_pct       ?? 0;
 
-            const rawStat = Array.isArray(row.stat_effects) ? row.stat_effects : [];
-            opt.stat_effects = rawStat
-                .map(e => ({
-                    ...e,
-                    stat_key: normalizePolicyStatKey(e.stat_key),
-                    direction: normalizeEffectDirection(e.direction) || 'up',
-                    adjust_type: e.adjust_type || null,
-                    adjust_value: e.adjust_value || 0
-                }))
-                // Phase 9: drop effects whose stat_key normalized to null.
-                .filter(e => e.stat_key);
-
-            const rawSector = Array.isArray(row.sector_effects) ? row.sector_effects : [];
-            opt.sector_effects = rawSector
-                .filter(e => e && typeof e.sector_key === 'string' && Number.isFinite(Number(e.change_tenths)))
-                .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) || 0 }));
-
-            // Target-based fields (Phase 2). Tolerate legacy rows where
-            // these columns were never written — defaults to empty arrays.
+            // Target-based fields. Tolerate legacy rows where these
+            // columns were never written — defaults to empty arrays.
             opt.spectrum_position = (row.spectrum_position == null) ? null : Number(row.spectrum_position);
             const rawTargets = Array.isArray(row.stat_targets) ? row.stat_targets : [];
             opt.stat_targets = rawTargets
@@ -1506,7 +1449,7 @@ async function savePolicy() {
 
     const isTB = isTargetBasedPolicy();
 
-    const optionPayloads = []; // [{ stateRef, normalizedEffects, optionData }]
+    const optionPayloads = []; // [{ stateRef, optionData }]
     for (let i = 0; i < options.length; i++) {
         const o = options[i];
         const optionName = (o.option_name || '').trim();
@@ -1558,7 +1501,6 @@ async function savePolicy() {
 
             optionPayloads.push({
                 stateRef: o,
-                normalizedEffects: [],
                 optionData: {
                     option_name: optionName,
                     option_description: (o.option_description || '').trim() || null,
@@ -1708,12 +1650,8 @@ async function savePolicy() {
 
             if (payload.stateRef.starting_nations.size === 0) continue;
 
-            // normalizedEffects is empty for target-based options — they
-            // have no rate/duration concept, so ticks_elapsed defaults to
-            // 0 (the engine treats target-based options as always-on).
-            const totalDuration = payload.normalizedEffects.length === 0
-                ? 0
-                : Math.max(...payload.normalizedEffects.map(e => (e.delay_ticks || 0) + (e.duration_ticks || 12)));
+            // Target-based options have no rate/duration concept, so
+            // ticks_elapsed is 0 (the engine treats them as always-on).
             const npRecords = [...payload.stateRef.starting_nations].map(nationId => ({
                 nation_id: nationId,
                 policy_id: policyId,
@@ -1725,7 +1663,7 @@ async function savePolicy() {
                 activated_at_tick: 0,
                 effects_started: true,
                 effects_completed: true,
-                ticks_elapsed: totalDuration
+                ticks_elapsed: 0
             }));
             const { error: insNpErr } = await _supabase.from('nation_policies').insert(npRecords);
             if (insNpErr) throw insNpErr;
