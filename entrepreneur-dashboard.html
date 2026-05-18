@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Entrepreneur | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-0: #0e0e0c; --bg-1: #1a1a1a; --bg-2: #1a1a17; --bg-3: #252525;
+  --text-bright: #f0efe6; --text-primary: #c4c2b8; --text-muted: #666;
+  --border-0: rgba(255,255,255,0.06); --border-1: rgba(255,255,255,0.08);
+  --purple: #8b5cf6; --amber: #d4a83c;
+  --font-mono: 'JetBrains Mono', monospace; --font-ui: 'IBM Plex Sans', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg-0); color: var(--text-primary); font-family: var(--font-ui);
+  min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.ent-card { background: var(--bg-2); border: 1px solid var(--border-1); border-left: 3px solid var(--purple);
+  padding: 32px; max-width: 520px; width: 100%; }
+.ent-kicker { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--purple); margin-bottom: 8px; }
+.ent-name { font-family: var(--font-mono); font-size: 22px; font-weight: 800; color: var(--text-bright);
+  margin-bottom: 14px; word-break: break-word; }
+.ent-desc { font-size: 13px; line-height: 1.6; color: var(--text-primary); margin-bottom: 18px; }
+.ent-soon { display: inline-block; font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 0.08em; color: var(--amber); border: 1px solid var(--amber); padding: 3px 8px;
+  text-transform: uppercase; margin-bottom: 22px; }
+.ent-nav { display: flex; gap: 10px; flex-wrap: wrap; }
+.ent-nav a { font-family: var(--font-mono); font-size: 11px; text-decoration: none; color: var(--text-muted);
+  border: 1px solid var(--border-1); padding: 8px 14px; transition: color .15s, border-color .15s; }
+.ent-nav a:hover { color: var(--text-bright); border-color: var(--purple); }
+</style>
+</head>
+<body>
+  <div class="ent-card">
+    <div class="ent-kicker">Entrepreneur</div>
+    <div class="ent-name" id="ent-name">Loading…</div>
+    <div class="ent-desc">Invest in corporations, be a CEO, join a board of directors, merge, acquire and do hostile takeovers.</div>
+    <div class="ent-soon">Mechanics coming soon</div>
+    <div class="ent-nav">
+      <a href="faction-select.html">Manage factions</a>
+      <a href="dashboard.html">Party dashboard</a>
+      <a href="corp-dashboard.html">Corp dashboard</a>
+    </div>
+  </div>
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+(async () => {
+  const { data: { user } } = await _supabase.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+  try {
+    const { data, error } = await _supabase.from('factions')
+      .select('faction_name')
+      .eq('faction_type', 'entrepreneur')
+      .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+      .maybeSingle();
+    if (error) console.warn('[entrepreneur-dashboard] load failed:', error.message);
+    const el = document.getElementById('ent-name');
+    if (data && data.faction_name) {
+      el.textContent = data.faction_name;
+    } else {
+      // No entrepreneur faction yet — send them to create one.
+      window.location.href = 'faction-select.html';
+    }
+  } catch (e) {
+    console.warn('[entrepreneur-dashboard] load threw:', e?.message || e);
+    document.getElementById('ent-name').textContent = 'Entrepreneur';
+  }
+})();
+</script>
+</body>
+</html>

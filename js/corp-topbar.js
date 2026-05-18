@@ -145,6 +145,13 @@ export function renderCorpTopBar(container, opts = {}) {
             <span class="corp-dd-name">Join a Military Branch</span>
         </div>`;
     }
+    const hasEntrepreneur = (allUserFactions || []).some(f => f.faction_type === 'entrepreneur');
+    if (!hasEntrepreneur) {
+        dropdownHtml += `<div class="corp-dd-item" data-action="become-entrepreneur" style="border-top:1px solid var(--border-0, rgba(255,255,255,0.06));cursor:pointer;">
+            <span class="corp-dd-type" style="color:var(--purple,#8b5cf6)">+</span>
+            <span class="corp-dd-name">Become an Entrepreneur</span>
+        </div>`;
+    }
 
     container.innerHTML = `
         <div class="corp-topbar">
@@ -230,6 +237,11 @@ export function renderCorpTopBar(container, opts = {}) {
             }
             if (item.dataset.action === 'join-military') {
                 sessionStorage.setItem('pending_faction_type', 'military');
+                window.location.href = 'faction-select.html';
+                return;
+            }
+            if (item.dataset.action === 'become-entrepreneur') {
+                sessionStorage.setItem('pending_faction_type', 'entrepreneur');
                 window.location.href = 'faction-select.html';
                 return;
             }

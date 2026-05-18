@@ -214,6 +214,13 @@ export function renderMilitaryTopBar(container, opts = {}) {
             <span class="mil-dd-name">Found a Corporation</span>
         </div>`;
     }
+    const hasEntrepreneur = (allUserFactions || []).some(f => f.faction_type === 'entrepreneur');
+    if (!hasEntrepreneur) {
+        dropdownHtml += `<div class="mil-dd-item mil-dd-item--create" data-action="become-entrepreneur">
+            <span class="mil-dd-type" style="color:var(--purple,#8b5cf6)">+</span>
+            <span class="mil-dd-name">Become an Entrepreneur</span>
+        </div>`;
+    }
 
     // Nav tabs — only Home for now. Active tab dashboard URL is read off
     // BRANCH_DASHBOARDS so adding navy/air-force pages later is one entry.
@@ -289,6 +296,11 @@ export function renderMilitaryTopBar(container, opts = {}) {
             if (item.dataset.action === 'found-corp') {
                 sessionStorage.setItem('pending_faction_type', 'corp');
                 window.location.href = 'corp-setup.html';
+                return;
+            }
+            if (item.dataset.action === 'become-entrepreneur') {
+                sessionStorage.setItem('pending_faction_type', 'entrepreneur');
+                window.location.href = 'faction-select.html';
                 return;
             }
             const fid = item.dataset.factionId;

@@ -909,6 +909,14 @@ export function updateTopBarInfo(faction, shard, nation) {
                 <span class="faction-dropdown__name">Join a Military Faction</span>
             </div>`;
         }
+        // "Become an Entrepreneur" option if none exists
+        const hasEntrepreneur = _userFactions.some(f => f.faction_type === 'entrepreneur');
+        if (!hasEntrepreneur) {
+            html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="sessionStorage.setItem('pending_faction_type','entrepreneur'); window.location.href='faction-select.html'">
+                <span class="faction-dropdown__type" style="color:var(--purple,#8b5cf6)">+</span>
+                <span class="faction-dropdown__name">Become an Entrepreneur</span>
+            </div>`;
+        }
         dropdown.innerHTML = html;
     }
 

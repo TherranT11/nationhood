@@ -62,9 +62,10 @@ export function getBranchDisplayLabel(branch) {
  * doesn't require touching every renderer.
  */
 export function getFactionTypeBadge(factionType) {
-    if (factionType === 'corporation') return { label: 'CORP',  color: 'var(--teal)'  };
-    if (factionType === 'military')    return { label: 'MIL',   color: 'var(--red)'   };
-    return                                    { label: 'PARTY', color: 'var(--amber)' };
+    if (factionType === 'corporation')  return { label: 'CORP',  color: 'var(--teal)'   };
+    if (factionType === 'military')     return { label: 'MIL',   color: 'var(--red)'    };
+    if (factionType === 'entrepreneur') return { label: 'ENTR',  color: 'var(--purple)' };
+    return                                     { label: 'PARTY', color: 'var(--amber)'  };
 }
 
 /**
@@ -82,5 +83,6 @@ export function getFactionDashboardUrl(faction) {
     if (faction.faction_type === 'military') {
         return BRANCH_DASHBOARDS[faction.branch] || 'faction-select.html';
     }
+    if (faction.faction_type === 'entrepreneur') return 'entrepreneur-dashboard.html';
     return null;
 }
