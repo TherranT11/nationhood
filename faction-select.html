@@ -142,8 +142,7 @@ body {
     </div>
     <div id="entrepreneur-alpha-gate" style="display:none;background:var(--bg-2);border:1px solid var(--purple,#8b5cf6);padding:16px;margin-bottom:8px;">
       <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--purple,#8b5cf6);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;">Alpha Access Required</div>
-      <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;margin-bottom:10px;">Enter the alpha tester code and a name for your entrepreneur.</div>
-      <input id="entrepreneur-name-input" type="text" placeholder="Entrepreneur name" maxlength="60" autocomplete="off" style="width:100%;padding:10px;margin-bottom:8px;font-family:var(--font-mono);font-size:12px;background:var(--bg-1);border:1px solid var(--border-1);color:var(--text-bright);outline:none;">
+      <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;margin-bottom:10px;">Enter the alpha tester code to proceed. You'll choose your businessman's origin and name next.</div>
       <input id="entrepreneur-alpha-input" type="text" placeholder="Alpha code" autocomplete="off" style="width:100%;padding:10px;font-family:var(--font-mono);font-size:12px;background:var(--bg-1);border:1px solid var(--border-1);color:var(--text-bright);outline:none;">
       <div id="entrepreneur-alpha-error" style="display:none;font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:8px;"></div>
     </div>
@@ -271,7 +270,7 @@ function selectFactionOption(type) {
   confirmBtn.style.borderColor = 'var(--green-border)';
 }
 
-async function confirmFactionChoice() {
+function confirmFactionChoice() {
   if (!selectedFaction) return;
   if (selectedFaction === 'military') {
     const input = document.getElementById('military-alpha-input');
@@ -286,68 +285,18 @@ async function confirmFactionChoice() {
     errEl.style.display = 'none';
   }
   if (selectedFaction === 'entrepreneur') {
-    // Nation-agnostic: no select-nation step — create the faction inline.
+    // Gate on the alpha code only; origin nation + gender + name are
+    // chosen next in select-nation.html (the faction is created there).
     const codeEl = document.getElementById('entrepreneur-alpha-input');
-    const nameEl = document.getElementById('entrepreneur-name-input');
     const errEl = document.getElementById('entrepreneur-alpha-error');
     const code = (codeEl?.value || '').trim();
-    const name = (nameEl?.value || '').trim();
     if (code !== ENTREPRENEUR_ALPHA_CODE) {
       errEl.textContent = code ? 'Invalid alpha code.' : 'Please enter the alpha code.';
       errEl.style.display = 'block'; codeEl?.focus(); return;
     }
-    if (!name) {
-      errEl.textContent = 'Please enter an entrepreneur name.';
-      errEl.style.display = 'block'; nameEl?.focus(); return;
-    }
     errEl.style.display = 'none';
-    const btn = document.getElementById('btn-confirm-faction');
-    btn.disabled = true;
-    try {
-      const { data: { user } } = await _supabase.auth.getUser();
-      if (!user) { window.location.href = 'login.html'; return; }
-      // Already an entrepreneur → just go to the dashboard (no duplicate).
-      const { data: existing, error: existErr } = await _supabase.from('factions')
-        .select('id').eq('faction_type', 'entrepreneur')
-        .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
-        .limit(1).maybeSingle();
-      if (existErr) {
-        errEl.textContent = 'Could not verify your factions — try again. (' + (existErr.message || 'lookup failed') + ')';
-        errEl.style.display = 'block'; btn.disabled = false; return;
-      }
-      if (existing) { window.location.href = 'entrepreneur-dashboard.html'; return; }
-      // Whether the user's primary slot (id = user.id) is taken decides
-      // insert+linked vs upsert. A swallowed error here would flip
-      // isLinked and let the upsert overwrite an existing primary
-      // faction — so abort on any error rather than guess.
-      const { data: primary, error: primErr } = await _supabase.from('factions')
-        .select('id').eq('id', user.id).maybeSingle();
-      if (primErr) {
-        errEl.textContent = 'Could not verify your factions — try again. (' + (primErr.message || 'lookup failed') + ')';
-        errEl.style.display = 'block'; btn.disabled = false; return;
-      }
-      const isLinked = !!primary;
-      const row = {
-        faction_type: 'entrepreneur',
-        faction_name: name,
-        nation: '',          // nation-agnostic; the column is NOT NULL
-        nation_id: null,
-        seats: 0,
-        abandoned_at: null,
-      };
-      if (isLinked) row.linked_user_id = user.id; else row.id = user.id;
-      const { error } = isLinked
-        ? await _supabase.from('factions').insert(row)
-        : await _supabase.from('factions').upsert(row);
-      if (error) {
-        errEl.textContent = 'Could not create: ' + (error.message || 'unknown error');
-        errEl.style.display = 'block'; btn.disabled = false; return;
-      }
-      window.location.href = 'entrepreneur-dashboard.html';
-    } catch (e) {
-      errEl.textContent = 'Could not create: ' + (e?.message || e);
-      errEl.style.display = 'block'; btn.disabled = false;
-    }
+    sessionStorage.setItem('pending_faction_type', 'entrepreneur');
+    window.location.href = 'select-nation.html';
     return;
   }
   chooseFactionType(selectedFaction);
