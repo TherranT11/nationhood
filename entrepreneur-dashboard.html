@@ -253,7 +253,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { escapeHtml, hfFmtBig } from './js/utils.js';
+import { hfFmtBig } from './js/utils.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
 
 function setText(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
@@ -264,7 +264,6 @@ function initials(first, last, fallbackName) {
   return ((w[0]?.[0] || '') + (w[1]?.[0] || '')).toUpperCase() || '—';
 }
 
-let _countdownTimer = null;
 function startCountdown(nextTickAt) {
   const el = document.getElementById('next-tick');
   if (!el || !nextTickAt) return;
@@ -277,8 +276,7 @@ function startCountdown(nextTickAt) {
     el.textContent = `${h}h ${m}m ${s}s`;
   }
   tick();
-  if (_countdownTimer) clearInterval(_countdownTimer);
-  _countdownTimer = setInterval(tick, 1000);
+  setInterval(tick, 1000);
 }
 
 (async () => {
