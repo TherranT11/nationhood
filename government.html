@@ -2510,6 +2510,11 @@ function _gbToAbstract(rawDollars) {
     return (Number(rawDollars) || 0) / _GB_RAW_TO_ABSTRACT;
 }
 
+// Army units (create_unit / party_funds) store costs on the /1e6
+// scale — distinct from _GB_RAW_TO_ABSTRACT (1e9, trade/debt). The
+// "$8 create → $2 tick" maintenance spec pins this divisor.
+const _GB_UNIT_COST_PER_ABSTRACT = 1_000_000;
+
 async function loadBudgetData() {
     if (!currentNation) { _budgetData = null; return; }
     const nation = currentNation;
@@ -2618,6 +2623,32 @@ async function loadBudgetData() {
         console.warn('[Budget] active_laws fetch threw:', err.message);
     }
 
+    // Military unit maintenance — MUST match computeUnitMaintenanceAnnual
+    // in advance-tick/index.ts exactly (per-tick upkeep = 25% of stored
+    // construction_cost, floored to whole abstract $/unit, summed over
+    // non-Decommissioned units, ×12). Drift here = the panel Balance
+    // lying vs the real per-tick treasury drain.
+    let unitMaintenance = { armyCount: 0, armyAnnual: 0, totalAnnual: 0 };
+    try {
+        const { data: units, error: uErr } = await _supabase
+            .from('army_units')
+            .select('construction_cost')
+            .eq('nation_id', nation.id)
+            .neq('status', 'Decommissioned');
+        if (uErr) {
+            console.warn('[Budget] army_units fetch failed:', uErr.message);
+        } else {
+            let perTick = 0;
+            for (const u of (units || [])) {
+                perTick += Math.floor((Number(u?.construction_cost) || 0) / _GB_UNIT_COST_PER_ABSTRACT * 0.25);
+            }
+            const armyAnnual = perTick * GAME_CONFIG.TICKS_PER_YEAR;
+            unitMaintenance = { armyCount: (units || []).length, armyAnnual, totalAnnual: armyAnnual };
+        }
+    } catch (err) {
+        console.warn('[Budget] army_units fetch threw:', err.message);
+    }
+
     _budgetData = {
         budget,
         aidReceived,
@@ -2633,6 +2664,7 @@ async function loadBudgetData() {
         activeLaws,
         activeCorpCount,
         interiorInfra,
+        unitMaintenance,
     };
 }
 
@@ -2753,7 +2785,11 @@ function _gbBuildCostRows(d) {
     // but the descKey is generic so future military / intelligence categories
     // can OR into the same regex. Deep-dive auto-renders each active law as
     // "<Policy> — <Option>" sub-row via _gbSelectCategory.
-    const defenseSecurityAnnual = _gbAnnualLawCostFor(d.activeLaws, 'defenseSecurity');
+    // + military unit maintenance (Military Budget sub-rows below). Added
+    // to the category total so it matches the real per-tick drain in
+    // advance-tick (computePanelAnnualExpenditures) — else Balance lies.
+    const defenseSecurityAnnual = _gbAnnualLawCostFor(d.activeLaws, 'defenseSecurity')
+        + (d.unitMaintenance?.totalAnnual || 0);
     // Catch-all for active laws whose law_category doesn't match any
     // existing descKey regex. Without this row, those costs were
     // silently deducted by the per-tick processor but invisible in
@@ -3150,11 +3186,20 @@ async function _gbSelectCategory(container, row, kind) {
         subRows.push({ k: 'Investment',              v: 0 });
     }
 
-    // Defense & Security: scaffolded $0 placeholders.
+    // Defense & Security: Manpower / Operations / Border / Internal are
+    // still $0 scaffolds. "Military Budget" (was "Military Training") is
+    // live — its 3 subsectors carry real per-unit maintenance. Only Army
+    // has a units feature today; Air Force / Navy are $0 "0 Units"
+    // scaffolds. Values come straight from _budgetData.unitMaintenance
+    // (the SAME figure folded into the category total) — not recomputed,
+    // so the sub-rows always sum to row.yr and percentages stay honest.
     if (row.descKey === 'defenseSecurity') {
+        const um = _budgetData?.unitMaintenance || { armyCount: 0, armyAnnual: 0 };
         subRows.push({ k: 'Manpower',            v: 0 });
         subRows.push({ k: 'Military Operations', v: 0 });
-        subRows.push({ k: 'Military Training',   v: 0 });
+        subRows.push({ k: `Military Budget · Army — ${um.armyCount} Unit${um.armyCount === 1 ? '' : 's'}`, v: um.armyAnnual });
+        subRows.push({ k: 'Military Budget · Air Force — 0 Units', v: 0 });
+        subRows.push({ k: 'Military Budget · Navy — 0 Units', v: 0 });
         subRows.push({ k: 'Border Security',     v: 0 });
         subRows.push({ k: 'Internal Security',   v: 0 });
     }
