@@ -458,21 +458,16 @@ export async function renderFormationTab(root) {
     const header = buildElectionHeader();
     // Electoral Makeup sits inside a 2-col grid: left slot reserved for
     // Campaign Events (not yet built), right slot shows the makeup bar.
-    const makeup = buildElectoralMakeup();
-    // Nation map sits in its own copy of the same 2-col grid so it lines
-    // up with — and is exactly as wide as — the Electoral Makeup box.
-    const nationMap = buildNationMap();
-    const makeupRow = (makeup
+    // One source for the 2-col grid row: the nation map reuses the exact
+    // same wrapper as the Electoral Makeup box so it lines up with — and
+    // is exactly as wide as — the makeup box.
+    const gridRow = (inner) => inner
         ? `<div class="cf-makeup-row">
                <div class="cf-makeup-left"></div>
-               <div class="cf-makeup-right">${makeup}</div>
+               <div class="cf-makeup-right">${inner}</div>
            </div>`
-        : '') + (nationMap
-        ? `<div class="cf-makeup-row">
-               <div class="cf-makeup-left"></div>
-               <div class="cf-makeup-right">${nationMap}</div>
-           </div>`
-        : '');
+        : '';
+    const makeupRow = gridRow(buildElectoralMakeup()) + gridRow(buildNationMap());
 
     // Presidential systems — no coalition formation
     if (hasElectedPresident(_state.nation)) {
