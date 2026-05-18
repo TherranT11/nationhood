@@ -7,19 +7,17 @@
 <link rel="stylesheet" href="css/entrepreneur-soon.css" />
 </head>
 <body>
-<div class="container">
-  <div class="nav">
-    <a class="nav-item" href="entrepreneur-dashboard.html">HOME</a>
-    <a class="nav-item" href="entrepreneur-corporations.html">CORPORATIONS</a>
-    <a class="nav-item" href="entrepreneur-markets.html">MARKETS</a>
-    <a class="nav-item" href="entrepreneur-assets.html">ASSETS</a>
-    <a class="nav-item active" href="entrepreneur-lobbying.html">LOBBYING</a>
-  </div>
+<div id="ent-topbar"></div>
+<div class="ent-content">
   <div class="soon-wrap">
     <div class="soon-kicker">— ENTREPRENEUR —</div>
     <div class="soon-title">Lobbying</div>
     <div class="soon-sub">Coming Soon</div>
   </div>
 </div>
+<script type="module">
+import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
+bootstrapEntrepreneur('lobbying').catch(e => console.warn('[entrepreneur-lobbying] init failed:', e?.message || e));
+</script>
 </body>
 </html>
