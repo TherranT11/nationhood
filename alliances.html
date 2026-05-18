@@ -846,7 +846,7 @@ async function init() {
     if (!faction) {
         const { data: allFactions } = await _supabase.from('factions')
             .select('*').or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
-        allUserFactions = (allFactions || []).filter(f => f.nation_id);
+        allUserFactions = (allFactions || []).filter(f => f.nation_id || f.faction_type === 'entrepreneur'); // entrepreneur is nation-agnostic (nation_id null)
         const activeFactionId = sessionStorage.getItem('active_faction_id');
         faction = allUserFactions.find(f => f.id === activeFactionId)
             || allUserFactions.find(f => f.faction_type === 'corporation')

@@ -1063,7 +1063,7 @@ async function init() {
         showFatal('Failed to load factions: ' + factionsErr.message);
         return;
     }
-    allUserFactions = (ownedFactions || []).filter(f => f.nation_id);
+    allUserFactions = (ownedFactions || []).filter(f => f.nation_id || f.faction_type === 'entrepreneur'); // entrepreneur is nation-agnostic (nation_id null)
 
     // Pick the active corp: ?faction_id= override, then sessionStorage
     // hint (set by the faction switcher), then any user-owned corp.
