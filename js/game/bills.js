@@ -3,7 +3,7 @@
  * Extracted from game-common.js
  */
 
-import { GAME_CONFIG, initGameConfigForNation, getPresidentialTermTicks, getPresidentialTermLimit } from './config.js';
+import { GAME_CONFIG, FOUNDATIONAL_REPEAL_DEFAULTS, initGameConfigForNation, getPresidentialTermTicks, getPresidentialTermLimit } from './config.js';
 import { hasElectedPresident, getCurrentConstitutionalSystem, isAbsoluteMonarchy, MINISTRY_OFFICE_NAMES } from './government-types.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './diplomacy-constants.js';
 import { TRADE_SECTOR_MAP } from './trade-constants.js';
@@ -3892,10 +3892,48 @@ const FOUNDATIONAL_REFORMS = Object.freeze([
 ]);
 
 export async function enactFoundationalBill(supabase, bill, currentTick) {
+    if (bill.is_foundational_repeal) return enactFoundationalRepeal(supabase, bill, currentTick);
     for (const { matches, enact } of FOUNDATIONAL_REFORMS) {
         if (matches(bill)) return enact(supabase, bill, currentTick);
     }
     return enactElectoralMakeup(supabase, bill, currentTick);
+}
+
+// Repeal of a Group A foundational law: revert the one nation column
+// this subtype set back to its hardcoded default (per
+// FOUNDATIONAL_REPEAL_DEFAULTS — single source of truth). A bare reset
+// by design: it does NOT re-run the proposal's side effects (election
+// reschedules, stat nudges, monarch artifacts). Marking the bill
+// 'passed' makes it the most recent passed bill of this subtype, so
+// the cooldown query in laws.html naturally resets the cooldown.
+async function enactFoundationalRepeal(supabase, bill, currentTick) {
+    const subtype = bill.foundational_repeal_subtype;
+    const spec = subtype && FOUNDATIONAL_REPEAL_DEFAULTS[subtype];
+    if (!spec) {
+        console.warn(`[enactFoundationalRepeal] Bill ${bill.id} has unknown foundational_repeal_subtype: ${subtype}. Marking as failed.`);
+        await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
+        return false;
+    }
+
+    const { error: billErr } = await supabase.from('bills').update({
+        status: 'passed',
+        passed_tick: currentTick
+    }).eq('id', bill.id);
+    if (billErr) {
+        console.error(`[enactFoundationalRepeal] Failed to mark bill ${bill.id} as passed:`, billErr.message);
+        return false;
+    }
+
+    const { error: nationErr } = await supabase.from('nations')
+        .update({ [spec.column]: spec.value })
+        .eq('id', bill.nation_id);
+    if (nationErr) {
+        console.error(`[enactFoundationalRepeal] Failed to revert ${spec.column} for nation ${bill.nation_id}:`, nationErr.message);
+        return false;
+    }
+
+    console.log(`[enactFoundationalRepeal] Nation ${bill.nation_id}: ${subtype} repealed — ${spec.column} reset to default (${spec.value}).`);
+    return true;
 }
 
 

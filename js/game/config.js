@@ -90,6 +90,26 @@ export const GAME_CONFIG = {
     ENTRENCHED_COOLDOWN_TICKS: 60,      // ticks before repeal can be filed
 };
 
+// Single source of truth for repealing a Group A foundational law:
+// subtype → the `nations` column it set and the hardcoded default a
+// repeal reverts it to. Consumed by bills.js (enactFoundationalRepeal)
+// and laws.html (established-state detection + repeal UI). Group B
+// (constitutional_reform / monarchy / government-type transitions) is
+// deliberately absent — those aren't a bare column reset.
+export const FOUNDATIONAL_REPEAL_DEFAULTS = Object.freeze({
+    term_length:                          { column: 'presidential_term_ticks',              value: GAME_CONFIG.PRESIDENTIAL_TERM_TICKS },
+    parliamentary_term_length:            { column: 'parliamentary_term_ticks',             value: GAME_CONFIG.PARLIAMENTARY_TERM_TICKS },
+    term_limit:                           { column: 'presidential_term_limit',              value: GAME_CONFIG.PRESIDENTIAL_TERM_LIMIT },
+    hos_title:                            { column: 'head_of_state_title',                  value: GAME_CONFIG.HOS_TITLE_OPTIONS[0] },
+    hos_election:                         { column: 'hos_election_method',                  value: 'direct_vote' },
+    electoral_makeup:                     { column: 'total_seats',                          value: GAME_CONFIG.TOTAL_SEATS },
+    judicial_appointment_politicization:  { column: 'judicial_appointment_politicization',  value: false },
+    electoral_commission_reform:          { column: 'electoral_commission_reform',          value: false },
+    party_registration_act:               { column: 'party_registration_threshold',         value: 0 },
+    legislative_quorum_reform:            { column: 'legislative_quorum_override',          value: 0 },
+    constitutional_amendment_streamlining:{ column: 'constitutional_amendment_streamlining', value: false },
+});
+
 export const ENDORSEMENT_SWITCH_WINDOW_TICKS = 6;
 export const ENDORSEMENT_SWITCH_WINDOW_ERROR = `Endorsements can only be changed in the last ${ENDORSEMENT_SWITCH_WINDOW_TICKS} ticks before a presidential election.`;
 
