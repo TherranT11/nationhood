@@ -311,8 +311,12 @@ function createEmptyOption() {
 // model. Read at every render and save site so a single source of truth
 // drives which form / save path runs.
 function isTargetBasedPolicy() {
-    const sel = document.getElementById('b-policy-type');
-    return sel && sel.value === 'multi_option_spectrum';
+    // Every policy is target-based. The legacy rate/duration
+    // stat_effects model was removed (migration 20270140); the admin
+    // editor authors stat_targets only and never writes legacy data,
+    // regardless of policy_type (which now selects lifecycle only:
+    // structural / lever / spectrum).
+    return true;
 }
 
 // Toggle the explainer block + re-render every option card so the
@@ -781,20 +785,14 @@ function renderAllOptions() {
     container.innerHTML = options.map((_, idx) => renderOptionCard(idx)).join('');
     document.getElementById('add-option-btn').disabled = options.length >= MAX_OPTIONS_PER_POLICY;
 
-    const isTB = isTargetBasedPolicy();
     options.forEach((_, idx) => {
         renderNationChecks(idx);
         updateCostPreview(idx);
-        if (isTB) {
-            renderStatTargets(idx);
-            renderSectorRapportTargets(idx);
-            renderSectorTurnoutTargets(idx);
-            renderSectorWeightTargets(idx);
-            renderEquilibriumPreview(idx);
-        } else {
-            renderSectorEffects(idx);
-            renderStatEffects(idx);
-        }
+        renderStatTargets(idx);
+        renderSectorRapportTargets(idx);
+        renderSectorTurnoutTargets(idx);
+        renderSectorWeightTargets(idx);
+        renderEquilibriumPreview(idx);
     });
 }
 
@@ -935,80 +933,6 @@ function renderOptionCard(idx) {
         </div>
         `;
     }
-
-    return `
-        <div class="builder-section">
-            <div class="builder-section-title" style="display:flex; justify-content:space-between; align-items:center;">
-                <span>🎚️ Option ${idx + 1}</span>
-                ${removeBtn}
-            </div>
-            <div class="form-field">
-                <label>Option Name</label>
-                <input type="text" id="b-option-name-${idx}" placeholder="e.g. Birthright Citizenship (Jus Soli)" value="${escapeHtml(opt.option_name || '')}" oninput="syncOptionField(${idx}, 'option_name', this.value)">
-            </div>
-            <div class="form-field">
-                <label>Option Description</label>
-                <textarea id="b-option-desc-${idx}" placeholder="Anyone born within the nation's borders is automatically a citizen..." oninput="syncOptionField(${idx}, 'option_description', this.value)">${escapeHtml(opt.option_description || '')}</textarea>
-            </div>
-
-            <div style="${subDivider}">
-                ${subTitle('🗳️', 'Sector Effects')}
-                <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
-                    Per-sector popularity shift on resolution. <strong>Pass:</strong> sponsor + YES voters get the change, NO voters get the inverse, abstain unaffected. <strong>Fail:</strong> sponsor takes the inverse alone.<br>
-                    Magnitude is 0.1 to 2.0 in 0.1 steps.
-                </p>
-                <div id="sector-effects-container-${idx}"></div>
-                <button class="add-btn" id="add-sector-effect-btn-${idx}" onclick="addSectorEffect(${idx})">+ Add Sector</button>
-            </div>
-
-            <div style="${subDivider}">
-                ${subTitle('🌍', 'Starting Status')}
-                <p style="color:#888; font-size:0.82rem; margin-bottom:14px;">
-                    Which nations have this option active at game start?
-                    <span style="color:#d48a3c;">Active = ongoing cost runs, stat effects do NOT fire (stats are pre-set).</span>
-                </p>
-                <div class="nation-checks" id="nation-checks-${idx}">Loading nations...</div>
-            </div>
-
-            <div style="${subDivider}">
-                ${subTitle('💰', 'Costs')}
-                <div class="form-field">
-                    <label>Fiscal Category <span style="font-size:0.7rem;color:var(--text-dim);">which budget bucket these costs fall under</span></label>
-                    <select id="b-fiscal-category-${idx}" onchange="syncOptionField(${idx}, 'fiscal_category', this.value)">${fiscalSelect}</select>
-                </div>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
-                    <div class="form-field">
-                        <label>Upfront Base Cost ($M) <span style="font-size:0.7rem;color:var(--text-dim);">negative = revenue</span></label>
-                        <input type="number" id="b-upfront-${idx}" value="${Number(opt.upfront_cost) || 0}" step="1" oninput="syncOptionField(${idx}, 'upfront_cost', parseFloat(this.value) || 0); updateCostPreview(${idx})">
-                    </div>
-                    <div class="form-field">
-                        <label>Upfront Scaling Stat (or None)</label>
-                        <select id="b-upfront-scaling-${idx}" onchange="syncOptionField(${idx}, 'upfront_scaling_stat', this.value); updateCostPreview(${idx})">${scalingStatSelect(opt.upfront_scaling_stat || '')}</select>
-                    </div>
-                    <div class="form-field">
-                        <label>Ongoing Base Cost ($M/tick) <span style="font-size:0.7rem;color:var(--text-dim);">negative = relief</span></label>
-                        <input type="number" id="b-ongoing-base-${idx}" value="${Number(opt.ongoing_base_cost) || 0}" step="0.1" oninput="syncOptionField(${idx}, 'ongoing_base_cost', parseFloat(this.value) || 0); updateCostPreview(${idx})">
-                    </div>
-                    <div class="form-field">
-                        <label>Ongoing Scaling Stat (or None)</label>
-                        <select id="b-scaling-stat-${idx}" onchange="syncOptionField(${idx}, 'ongoing_scaling_stat', this.value); updateCostPreview(${idx})">${scalingStatSelect(opt.ongoing_scaling_stat || '')}</select>
-                    </div>
-                </div>
-                <div class="formula-preview" id="cost-preview-${idx}" style="display:none;"></div>
-                <div class="form-field" style="margin-top:14px;">
-                    <label>Manpower % <span style="font-size:0.7rem;color:var(--text-dim);">Army Composition only — % of population mobilized; 70% to the army faction, navy/air 30% discarded. 0 for every other policy.</span></label>
-                    <input type="number" id="b-manpower-${idx}" value="${Number(opt.manpower_pct) || 0}" min="0" step="0.1" oninput="syncOptionField(${idx}, 'manpower_pct', parseFloat(this.value) || 0)">
-                </div>
-            </div>
-
-            <div style="${subDivider}">
-                ${subTitle('📊', 'Stat Effects (up to 10)')}
-                <div id="stat-effects-container-${idx}"></div>
-                <button class="add-btn" id="add-effect-btn-${idx}" onclick="addStatEffect(${idx})">+ Add Stat Effect</button>
-                <div class="effect-preview" id="effect-preview-${idx}" style="display:none;"></div>
-            </div>
-        </div>
-    `;
 }
 
 function addOption() {
@@ -1127,244 +1051,6 @@ function updateCostPreview(optIdx) {
     if (lines.length === 0) { preview.style.display = 'none'; return; }
     preview.style.display = 'block';
     preview.innerHTML = lines.join('<br>');
-}
-
-// ==================== STAT EFFECTS ====================
-function addStatEffect(optIdx) {
-    const opt = options[optIdx];
-    if (!opt || opt.stat_effects.length >= 10) return;
-    opt.stat_effects.push({ stat_key: '', direction: 'up', rate: 1, delay_ticks: 0, duration_ticks: 12, adjust_type: null, adjust_value: 0 });
-    renderStatEffects(optIdx);
-}
-
-function removeStatEffect(optIdx, idx) {
-    const opt = options[optIdx];
-    if (!opt) return;
-    opt.stat_effects.splice(idx, 1);
-    renderStatEffects(optIdx);
-}
-
-function renderStatEffects(optIdx) {
-    const opt = options[optIdx];
-    if (!opt) return;
-    const container = document.getElementById(`stat-effects-container-${optIdx}`);
-    const addBtn = document.getElementById(`add-effect-btn-${optIdx}`);
-    if (!container) return;
-    if (addBtn) addBtn.disabled = opt.stat_effects.length >= 10;
-
-    container.innerHTML = opt.stat_effects.map((e, idx) => `
-        <div class="stat-effect-card">
-            <div class="se-header">
-                <span class="se-label">Effect ${idx + 1}</span>
-                <button class="se-remove" onclick="removeStatEffect(${optIdx}, ${idx})">✕ Remove</button>
-            </div>
-            <div class="se-fields">
-                <div class="form-field">
-                    <label>Stat</label>
-                    <select onchange="updateEffect(${optIdx}, ${idx},'stat_key',this.value)">
-                        <option value="">-- Select --</option>
-                        ${STAT_OPTIONS_HTML.replace(`value="${e.stat_key}"`, `value="${e.stat_key}" selected`)}
-                    </select>
-                </div>
-                <div class="form-field">
-                    <label>Dir</label>
-                    <div class="dir-toggle">
-                        <button type="button" class="dir-btn ${(normalizeEffectDirection(e.direction) || 'up') === 'up' ? 'sel-up' : ''}" onclick="updateEffect(${optIdx}, ${idx},'direction','up')">▲</button>
-                        <button type="button" class="dir-btn ${(normalizeEffectDirection(e.direction) || 'up') === 'down' ? 'sel-down' : ''}" onclick="updateEffect(${optIdx}, ${idx},'direction','down')">▼</button>
-                    </div>
-                </div>
-                <div class="form-field">
-                    <label>Rate/tick</label>
-                    <input type="number" value="${e.rate}" min="0.1" max="5" step="0.1" onchange="updateEffect(${optIdx}, ${idx},'rate',parseFloat(this.value))">
-                </div>
-                <div class="form-field">
-                    <label>Delay</label>
-                    <input type="number" value="${e.delay_ticks}" min="0" max="24" step="1" onchange="updateEffect(${optIdx}, ${idx},'delay_ticks',parseInt(this.value))">
-                </div>
-                <div class="form-field">
-                    <label>Duration</label>
-                    <input type="number" value="${e.duration_ticks}" min="1" max="60" step="1" onchange="updateEffect(${optIdx}, ${idx},'duration_ticks',parseInt(this.value))">
-                </div>
-            </div>
-            <div class="se-fields se-floor-ceiling-row">
-                <div class="form-field">
-                    <label>Decay Adjust</label>
-                    <select onchange="updateEffect(${optIdx}, ${idx},'adjust_type',this.value || null)">
-                        <option value="">None</option>
-                        <option value="floor" ${e.adjust_type === 'floor' ? 'selected' : ''}>Add to Floor</option>
-                        <option value="ceiling" ${e.adjust_type === 'ceiling' ? 'selected' : ''}>Lower Ceiling</option>
-                    </select>
-                </div>
-                <div class="form-field" style="${e.adjust_type ? '' : 'display:none'}">
-                    <label>± Value</label>
-                    <input type="number" value="${e.adjust_value || 0}" min="1" max="50" step="1" onchange="updateEffect(${optIdx}, ${idx},'adjust_value',parseInt(this.value))">
-                </div>
-                <div class="form-field se-floor-hint" style="${e.adjust_type ? '' : 'display:none'}">
-                    <small>${e.adjust_type === 'floor' ? '↑ Raises decay floor by this amount' : e.adjust_type === 'ceiling' ? '↓ Lowers decay ceiling by this amount' : ''}</small>
-                </div>
-            </div>
-        </div>
-    `).join('');
-
-    // Fix selected values for stat dropdowns (the replace trick doesn't always work)
-    container.querySelectorAll('.stat-effect-card').forEach((card, idx) => {
-        const statSelect = card.querySelector('.se-fields select');
-        if (statSelect && opt.stat_effects[idx]?.stat_key) statSelect.value = opt.stat_effects[idx].stat_key;
-    });
-
-    updateEffectPreview(optIdx);
-}
-
-function updateEffect(optIdx, idx, field, value) {
-    const opt = options[optIdx];
-    if (!opt || !opt.stat_effects[idx]) return;
-    opt.stat_effects[idx][field] = value;
-    if (field === 'direction' || field === 'adjust_type') renderStatEffects(optIdx);
-    else updateEffectPreview(optIdx);
-}
-
-// ==================== SECTOR EFFECTS (Phase 2) ====================
-// Display range: 0.1–2.0 (= 1–20 tenths). Sign comes from the +/− toggle,
-// not from the magnitude input itself. The per-option count is uncapped.
-const SECTOR_EFFECT_MIN_MAGNITUDE_TENTHS = 1;
-const SECTOR_EFFECT_MAX_MAGNITUDE_TENTHS = 20;
-
-function addSectorEffect(optIdx) {
-    const opt = options[optIdx];
-    if (!opt) return;
-    // Default new rows to +1.0 — a typical Moderate-tier shift; admin can
-    // dial it down or flip the sign with the +/− toggle.
-    opt.sector_effects.push({ sector_key: '', change_tenths: 10 });
-    renderSectorEffects(optIdx);
-}
-
-function removeSectorEffect(optIdx, idx) {
-    const opt = options[optIdx];
-    if (!opt) return;
-    opt.sector_effects.splice(idx, 1);
-    renderSectorEffects(optIdx);
-}
-
-// Update sector_key only — the dropdown change handler.
-function updateSectorEffect(optIdx, idx, field, value) {
-    const opt = options[optIdx];
-    if (!opt || !opt.sector_effects[idx]) return;
-    opt.sector_effects[idx][field] = value;
-    renderSectorEffects(optIdx);
-}
-
-// Flip the sign of an effect, preserving its magnitude. Called by the
-// +/− toggle. A row at 0 (rare — usually only seen mid-edit) flips to +1.
-function setSectorSign(optIdx, idx, sign) {
-    const opt = options[optIdx];
-    if (!opt || !opt.sector_effects[idx]) return;
-    const current = Number(opt.sector_effects[idx].change_tenths) || 0;
-    const magnitude = Math.abs(current) || 1;
-    opt.sector_effects[idx].change_tenths = sign < 0 ? -magnitude : magnitude;
-    renderSectorEffects(optIdx);
-}
-
-// Update the magnitude (0.1–2.0). Sign is preserved from the existing
-// change_tenths so the +/− toggle isn't fought.
-function updateSectorMagnitude(optIdx, idx, value) {
-    const opt = options[optIdx];
-    if (!opt || !opt.sector_effects[idx]) return;
-    const tenths = Math.round(parseFloat(value) * 10);
-    if (!Number.isFinite(tenths)) return;
-    const clamped = Math.max(
-        SECTOR_EFFECT_MIN_MAGNITUDE_TENTHS,
-        Math.min(SECTOR_EFFECT_MAX_MAGNITUDE_TENTHS, tenths)
-    );
-    const sign = (Number(opt.sector_effects[idx].change_tenths) || 0) < 0 ? -1 : 1;
-    opt.sector_effects[idx].change_tenths = sign * clamped;
-    renderSectorEffects(optIdx);
-}
-
-function renderSectorEffects(optIdx) {
-    const opt = options[optIdx];
-    if (!opt) return;
-    const container = document.getElementById(`sector-effects-container-${optIdx}`);
-    if (!container) return;
-
-    if (opt.sector_effects.length === 0) {
-        container.innerHTML = '<div style="color:#666; font-size:0.85rem; padding:8px 0;">No sector effects. Bills without sector effects shift no popularity on resolution.</div>';
-        return;
-    }
-    if (sectorOptions.length === 0) {
-        container.innerHTML = '<div style="color:#e57373; font-size:0.85rem;">No sectors loaded — make sure the Phase 0 sectors migration has run.</div>';
-        return;
-    }
-
-    const rowStyle  = 'display:flex; gap:10px; align-items:center; padding:10px 12px; background:#1a1a1a; border:1px solid #333; margin-bottom:8px; border-radius:4px;';
-    const selStyle  = 'flex:1; min-width:220px; background:#0f0f0f; border:1px solid #333; color:#eee; padding:6px 8px; border-radius:3px;';
-    const numStyle  = 'width:78px; background:#0f0f0f; border:1px solid #333; color:#eee; padding:6px 8px; border-radius:3px; text-align:center;';
-    const signGroup = 'display:inline-flex; border:1px solid #333; border-radius:3px; overflow:hidden;';
-    const signBase  = 'background:#0f0f0f; color:#888; border:none; padding:6px 12px; cursor:pointer; font-weight:bold; font-size:0.95rem;';
-    const signPosOn = 'background:#1f3a1f; color:#81c784;';
-    const signNegOn = 'background:#3a1d1d; color:#e57373;';
-    const xBtnStyle = 'background:transparent; color:#666; border:1px solid #333; padding:5px 9px; cursor:pointer; border-radius:3px; font-size:0.85rem;';
-
-    container.innerHTML = opt.sector_effects.map((e, idx) => {
-        const optionsHtml = sectorOptions.map(s =>
-            `<option value="${escapeHtml(s.sector_key)}"${s.sector_key === e.sector_key ? ' selected' : ''}>${escapeHtml(s.name)}</option>`
-        ).join('');
-        const change = Number(e.change_tenths) || 0;
-        const isPositive = change >= 0;
-        const magnitude = (Math.abs(change) / 10).toFixed(1);
-        return `
-            <div style="${rowStyle}">
-                <select style="${selStyle}" onchange="updateSectorEffect(${optIdx}, ${idx},'sector_key',this.value)">
-                    <option value="">-- Select sector --</option>
-                    ${optionsHtml}
-                </select>
-                <div style="${signGroup}" title="Direction: + = popularity gain on pass, − = loss">
-                    <button type="button" style="${signBase}${isPositive  ? signPosOn : ''}" onclick="setSectorSign(${optIdx}, ${idx},  1)">+</button>
-                    <button type="button" style="${signBase}${!isPositive ? signNegOn : ''}" onclick="setSectorSign(${optIdx}, ${idx}, -1)">−</button>
-                </div>
-                <input type="number" min="0.1" max="2.0" step="0.1" value="${magnitude}" style="${numStyle}" onchange="updateSectorMagnitude(${optIdx}, ${idx}, this.value)" title="Magnitude (0.1 to 2.0)">
-                <button type="button" style="${xBtnStyle}" onclick="removeSectorEffect(${optIdx}, ${idx})" title="Remove">✕</button>
-            </div>
-        `;
-    }).join('');
-}
-
-function updateEffectPreview(optIdx) {
-    const opt = options[optIdx];
-    const preview = document.getElementById(`effect-preview-${optIdx}`);
-    if (!preview) return;
-    if (!opt) { preview.style.display = 'none'; return; }
-    const valid = opt.stat_effects.filter(e => e.stat_key);
-    if (valid.length === 0) { preview.style.display = 'none'; return; }
-    preview.style.display = 'block';
-
-    let html = '<strong>Timeline Preview:</strong><br>';
-    html += 'Tick 0: Policy activated. Upfront cost deducted. Ongoing cost begins.<br>';
-
-    valid.forEach((e, i) => {
-        const arrow = (normalizeEffectDirection(e.direction) || 'up') === 'up' ? '▲ +' : '▼ -';
-        const start = e.delay_ticks + 1;
-        const end = e.delay_ticks + e.duration_ticks;
-        if (e.delay_ticks > 0) {
-            html += `Tick 1–${e.delay_ticks}: ${fmtStat(e.stat_key)} in delay (no change)<br>`;
-        }
-        html += `Tick ${start}–${end}: ${fmtStat(e.stat_key)} ${arrow}${e.rate}/tick (${e.duration_ticks} ticks)<br>`;
-    });
-
-    const maxTick = Math.max(...valid.map(e => e.delay_ticks + e.duration_ticks));
-    html += `Tick ${maxTick + 1}+: All effects complete. Changes baked in. Ongoing cost continues.<br>`;
-
-    const floorCeilingEffects = valid.filter(e => e.adjust_type && e.adjust_value);
-    if (floorCeilingEffects.length > 0) {
-        html += '<br><strong>Decay Adjustments (while policy active):</strong><br>';
-        floorCeilingEffects.forEach(e => {
-            if (e.adjust_type === 'floor') {
-                html += `${fmtStat(e.stat_key)}: Floor raised by +${e.adjust_value} (stat won't decay below new floor)<br>`;
-            } else if (e.adjust_type === 'ceiling') {
-                html += `${fmtStat(e.stat_key)}: Ceiling lowered by -${e.adjust_value} (stat will decay down to new ceiling)<br>`;
-            }
-        });
-    }
-    preview.innerHTML = html;
 }
 
 function populateLawCategories() {
@@ -1898,61 +1584,6 @@ async function savePolicy() {
             });
             continue;
         }
-
-        // ── Legacy rate/duration validation ────────────────────────
-        const validEffects = o.stat_effects.filter(e => e.stat_key);
-        if (validEffects.length === 0) { alert(`Option ${i + 1} ("${optionName}"): add at least 1 stat effect.`); return; }
-
-        const incompleteSectorRows = o.sector_effects.filter(e => !e.sector_key);
-        if (incompleteSectorRows.length > 0) {
-            alert(`Option ${i + 1} ("${optionName}"): ${incompleteSectorRows.length} sector effect row${incompleteSectorRows.length === 1 ? '' : 's'} with no sector picked. Pick a sector or remove the row.`);
-            return;
-        }
-
-        const normalized = validEffects.map(e => ({ ...e, stat_key: normalizePolicyStatKey(e.stat_key) }));
-        const unknown = [...new Set(normalized.map(e => e.stat_key).filter(k => !k || !CANONICAL_STAT_KEYS.has(k)))];
-        if (unknown.length > 0) {
-            alert(`Option ${i + 1} ("${optionName}"): unknown stat key(s): ${unknown.join(', ')}.`);
-            return;
-        }
-
-        optionPayloads.push({
-            stateRef: o,
-            normalizedEffects: normalized,
-            optionData: {
-                option_name: optionName,
-                option_description: (o.option_description || '').trim() || null,
-                option_order: i,
-                is_active: true,
-                upfront_cost: Number.isFinite(Number(o.upfront_cost)) ? Number(o.upfront_cost) : 0,
-                upfront_scaling_stat: o.upfront_scaling_stat || null,
-                ongoing_base_cost: Number.isFinite(Number(o.ongoing_base_cost)) ? Number(o.ongoing_base_cost) : 0,
-                ongoing_scaling_stat: o.ongoing_scaling_stat || null,
-                fiscal_category: o.fiscal_category || null,
-                manpower_pct: Number.isFinite(Number(o.manpower_pct)) ? Number(o.manpower_pct) : 0,
-                sector_effects: o.sector_effects
-                    .filter(e => e.sector_key && Number.isFinite(Number(e.change_tenths)) && Number(e.change_tenths) !== 0)
-                    .map(e => ({ sector_key: e.sector_key, change_tenths: parseInt(e.change_tenths, 10) })),
-                stat_effects: normalized.map(e => ({
-                    stat_key: e.stat_key,
-                    direction: normalizeEffectDirection(e.direction) || 'up',
-                    rate: e.rate,
-                    delay_ticks: e.delay_ticks || 0,
-                    duration_ticks: e.duration_ticks || 12,
-                    adjust_type: e.adjust_type || null,
-                    adjust_value: e.adjust_type ? (e.adjust_value || 0) : 0
-                })),
-                // Explicit legacy markers — kept so re-saving an existing
-                // legacy policy doesn't accidentally inherit a stale
-                // is_target_based=true from a prior draft.
-                spectrum_position: null,
-                stat_targets: [],
-                sector_rapport_targets: [],
-                sector_turnout_targets: [],
-                sector_weight_targets: [],
-                is_target_based: false,
-            }
-        });
     }
 
     // Identity-only policies row. The live schema has been trimmed down to
@@ -2174,7 +1805,6 @@ window.filterPolicies = filterPolicies;
 window.populateLawCategories = populateLawCategories;
 window.onLawCategorySelect = onLawCategorySelect;
 window.updateCostPreview = updateCostPreview;
-window.addStatEffect = addStatEffect;
 window.addOption = addOption;
 window.removeOption = removeOption;
 window.resetBuilder = resetBuilder;
@@ -2183,13 +1813,6 @@ window.editPolicy = editPolicy;
 window.duplicatePolicy = duplicatePolicy;
 window.deletePolicy = deletePolicy;
 window.toggleStartingNation = toggleStartingNation;
-window.removeStatEffect = removeStatEffect;
-window.updateEffect = updateEffect;
-window.addSectorEffect = addSectorEffect;
-window.removeSectorEffect = removeSectorEffect;
-window.updateSectorEffect = updateSectorEffect;
-window.setSectorSign = setSectorSign;
-window.updateSectorMagnitude = updateSectorMagnitude;
 window.onPolicyTypeChange = onPolicyTypeChange;
 window.addStatTarget = addStatTarget;
 window.removeStatTarget = removeStatTarget;
