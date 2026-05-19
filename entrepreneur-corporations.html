@@ -106,6 +106,44 @@
   .ec-lr .nm { font-size:13px; font-weight:500; color:#fff; line-height:1.2; }
   .ec-lr .sub { font-size:10px; color:#888; margin-top:3px; letter-spacing:0.06em; }
   .ec-lr .ec-btn.pri { padding:8px 14px; }
+  /* Join Board modal: corp picker grid + confirm panel. */
+  .ec-jl-head { display:grid; grid-template-columns:2fr 0.7fr 1.2fr 1fr 1fr 0.6fr 70px;
+    gap:12px; padding:8px 14px; font-size:9px; color:#555; letter-spacing:0.13em;
+    border-bottom:0.5px solid rgba(255,255,255,0.06); margin-bottom:4px; }
+  .ec-jl-head .right { text-align:right; }
+  .ec-jr { display:grid; grid-template-columns:2fr 0.7fr 1.2fr 1fr 1fr 0.6fr 70px;
+    gap:12px; padding:11px 14px; align-items:center;
+    background:#0f120e; border:0.5px solid rgba(138,170,106,0.12); border-radius:4px;
+    margin-bottom:6px; }
+  .ec-jr .nm { font-size:13px; font-weight:500; color:#fff; line-height:1.2; }
+  .ec-jr .sub { font-size:9px; letter-spacing:0.1em; margin-top:3px; font-weight:500; color:#888; }
+  .ec-jr .sub.construction { color:#8aaa6a; }
+  .ec-jr .sub.banking      { color:#7a9aab; }
+  .ec-jr .sub.shipping     { color:#c89e6e; }
+  .ec-jr .tp { display:inline-block; padding:3px 8px; border-radius:3px;
+    font-size:9px; letter-spacing:0.12em; font-weight:500; }
+  .ec-jr .tp.public  { background:#1a2535; color:#7a9aab; }
+  .ec-jr .tp.private { background:#1a1a1a; color:#888; }
+  .ec-jr .ceo { font-size:11px; color:#d4d4d4; }
+  .ec-jr .num { text-align:right; font-size:12px; color:#d4d4d4; font-weight:500;
+    font-variant-numeric:tabular-nums; }
+  .ec-jr .num.muted { color:#555; }
+  .ec-jr .ec-btn.pri { padding:6px 10px; font-size:10px; }
+  .ec-jc { background:#0f120e; border:0.5px solid rgba(138,170,106,0.2); border-radius:4px;
+    padding:16px 18px; margin-bottom:10px; }
+  .ec-jc .corp-nm { font-size:14px; color:#fff; font-weight:500; margin-bottom:4px; }
+  .ec-jc .corp-sub { font-size:10px; color:#888; letter-spacing:0.08em; margin-bottom:14px; }
+  .ec-jc .stats-head { font-size:9px; color:#666; letter-spacing:0.14em; margin-bottom:6px; }
+  .ec-jc .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:14px; }
+  .ec-jc .stat { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.06);
+    border-radius:3px; padding:10px 12px; text-align:center; }
+  .ec-jc .stat .lab { font-size:9px; color:#666; letter-spacing:0.13em; }
+  .ec-jc .stat .v   { font-size:18px; color:#fff; font-weight:500; margin-top:4px;
+    line-height:1; font-variant-numeric:tabular-nums; }
+  .ec-jc .note { font-size:10px; color:#888; line-height:1.6; }
+  .ec-jl-msg { font-size:11px; margin-top:10px; min-height:16px; }
+  .ec-jl-msg.err { color:#c47a7a; }
+  .ec-jl-msg.ok  { color:#8aaa6a; }
 </style>
 </head>
 <body>
@@ -118,10 +156,10 @@
       <div><div class="nm">Start a Corporation</div><div class="ds">Found a new corporation in Construction, Banking, or Shipping. You become founder and 100% owner.</div></div>
       <div class="cost">FROM $5M</div>
     </div>
-    <div class="ec-action disabled">
+    <div class="ec-action go" id="ec-join">
       <div class="ic">↗</div>
-      <div><div class="nm">Join a Board</div><div class="ds">Apply for or accept an invitation to an existing corporation's board.</div></div>
-      <div class="cost">SOON</div>
+      <div><div class="nm">Join a Board</div><div class="ds">Apply to a corporation's board — needs 51% YES from the CEO + current directors within 3 ticks.</div></div>
+      <div class="cost">—</div>
     </div>
     <div class="ec-action go" id="ec-leave">
       <div class="ic">↙</div>
@@ -222,10 +260,49 @@
   </div>
 </div>
 
+<!-- Join Board modal (Phase B). Two steps: corp picker → confirm. -->
+<div class="ec-overlay" id="ec-join-overlay">
+  <div class="ec-modal">
+    <div class="ec-mh">
+      <div class="ic">↗</div>
+      <div><div class="eb">— BUSINESSMAN ACTION —</div><div class="ti">Join a <em>Board</em></div></div>
+      <div class="rt">
+        <div class="ec-x" id="ec-join-close">×</div>
+      </div>
+    </div>
+    <div class="ec-mb">
+      <!-- Step 1: corp picker -->
+      <div id="ec-join-step1">
+        <div class="ec-h"><em>Pick</em> a Corporation</div>
+        <div class="ec-jl-head">
+          <div>CORPORATION</div>
+          <div>TYPE</div>
+          <div>CEO</div>
+          <div class="right">VALUATION</div>
+          <div class="right">CASH</div>
+          <div class="right">DEBT</div>
+          <div></div>
+        </div>
+        <div id="ec-join-list"><div class="ec-empty">Loading corporations…</div></div>
+      </div>
+      <!-- Step 2: confirm -->
+      <div id="ec-join-step2" style="display:none;">
+        <div class="ec-h">Confirm <em>Application</em></div>
+        <div id="ec-join-confirm-body"></div>
+        <div class="ec-jl-msg" id="ec-join-msg"></div>
+      </div>
+    </div>
+    <div class="ec-mf">
+      <button class="ec-btn sec" id="ec-join-cancel">CANCEL</button>
+      <button class="ec-btn pri" id="ec-join-submit" style="display:none;">SEND APPLICATION</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, ownerDisplayName } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 
 const FEE = 1_000_000;
@@ -474,6 +551,181 @@ function renderPositions(corps, filter) {
     document.getElementById('ec-leave-close').addEventListener('click', closeLeave);
     document.getElementById('ec-leave-cancel').addEventListener('click', closeLeave);
     leaveOv.addEventListener('click', (e) => { if (e.target === leaveOv) closeLeave(); });
+
+    // ── Join Board (Phase B) ────────────────────────────────────────
+    // Two-step modal: corp picker → confirm with applicant stats →
+    // corp_board_request_join (the one source for the application +
+    // pool snapshot + apply event). Filters out corps you own, are
+    // already seated on, or have previously applied to. Server
+    // validates the same gates server-side; client filter is UX only.
+    const joinOv     = document.getElementById('ec-join-overlay');
+    const joinList   = document.getElementById('ec-join-list');
+    const joinStep1  = document.getElementById('ec-join-step1');
+    const joinStep2  = document.getElementById('ec-join-step2');
+    const joinBody   = document.getElementById('ec-join-confirm-body');
+    const joinMsg    = document.getElementById('ec-join-msg');
+    const joinSubmit = document.getElementById('ec-join-submit');
+    let joinSelectedCorpId = null;
+    let joinSubmitting = false;
+
+    const closeJoin = () => {
+      joinOv.classList.remove('open');
+      // Reset to step 1 for next open.
+      joinStep1.style.display = '';
+      joinStep2.style.display = 'none';
+      joinSubmit.style.display = 'none';
+      joinSelectedCorpId = null;
+      joinMsg.className = 'ec-jl-msg'; joinMsg.textContent = '';
+      joinSubmitting = false;
+      joinSubmit.disabled = false; joinSubmit.textContent = 'SEND APPLICATION';
+    };
+
+    const showStep2 = (corp) => {
+      joinSelectedCorpId = corp.id;
+      joinStep1.style.display = 'none';
+      joinStep2.style.display = '';
+      joinSubmit.style.display = '';
+      const f = ctx.faction;
+      const applicantName = ownerDisplayName(f);
+      const ind = (corp.industry || '').toLowerCase();
+      const val = computeEntrepreneurValuation(corp);
+      joinBody.replaceChildren();
+      const card = document.createElement('div'); card.className = 'ec-jc';
+      const nm  = document.createElement('div'); nm.className = 'corp-nm';
+      nm.textContent = `${applicantName} wishes to join the Board of Directors of ${corp.name || 'corporation'}`;
+      const sub = document.createElement('div'); sub.className = 'corp-sub';
+      sub.textContent = `${(corp.industry || '—').toUpperCase()} · ${(corp.listing || 'private').toUpperCase()} · CEO: ${ownerDisplayName(corp.owner)} · Valuation ${fmtValuation(val.amount)}`;
+      const sh  = document.createElement('div'); sh.className = 'stats-head';
+      sh.textContent = `${applicantName.toUpperCase()} — STATS PRESENTED TO THE BOARD`;
+      const stats = document.createElement('div'); stats.className = 'stats';
+      for (const [label, key] of [['AMBITION','ent_ambition'],['CUNNING','ent_cunning'],['REPUTATION','ent_reputation'],['VISION','ent_vision']]) {
+        const s = document.createElement('div'); s.className = 'stat';
+        const sl = document.createElement('div'); sl.className = 'lab'; sl.textContent = label;
+        const sv = document.createElement('div'); sv.className = 'v';   sv.textContent = String(f[key] ?? '—');
+        s.append(sl, sv);
+        stats.appendChild(s);
+      }
+      const note = document.createElement('div'); note.className = 'note';
+      note.textContent = 'The CEO and every current director will vote. 51% YES within 3 ticks confirms your seat (your Reputation and the CEO’s both gain +1; share price ticks up 1–6% on public corps). If the vote fails or expires, you cannot reapply to this corporation later.';
+      card.append(nm, sub, sh, stats, note);
+      joinBody.appendChild(card);
+    };
+
+    const openJoin = async () => {
+      if (!entId) { alert('No entrepreneur faction found.'); return; }
+      joinOv.classList.add('open');
+      joinList.innerHTML = '<div class="ec-empty">Loading corporations…</div>';
+
+      // Three reads: all corps + your seats + your prior requests.
+      const [corpRes, seatRes, reqRes] = await Promise.all([
+        _supabase.from('entrepreneur_corps')
+          .select('id, name, industry, listing, owner_faction_id, share_price, shares_outstanding, starting_capital, treasury_cash, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name)')
+          .order('name'),
+        _supabase.from('corp_board_seats').select('corp_id').eq('member_faction_id', entId),
+        _supabase.from('corp_board_requests').select('corp_id').eq('applicant_faction_id', entId),
+      ]);
+      if (corpRes.error) {
+        console.warn('[entrepreneur-corporations] join-corps fetch failed:', corpRes.error.message);
+        joinList.innerHTML = '<div class="ec-empty">Could not load corporations.</div>';
+        return;
+      }
+      if (seatRes.error) console.warn('[entrepreneur-corporations] seats fetch failed:', seatRes.error.message);
+      if (reqRes.error)  console.warn('[entrepreneur-corporations] requests fetch failed:', reqRes.error.message);
+
+      const blocked = new Set();
+      for (const r of (seatRes.data || [])) blocked.add(r.corp_id);
+      for (const r of (reqRes.data  || [])) blocked.add(r.corp_id);
+      const corps = (corpRes.data || [])
+        .filter(c => c.owner_faction_id !== entId && !blocked.has(c.id));
+
+      joinList.replaceChildren();
+      if (corps.length === 0) {
+        const e = document.createElement('div'); e.className = 'ec-empty';
+        e.textContent = 'No corporations are open to you — you either own them, sit on their board, or have applied before.';
+        joinList.appendChild(e);
+        return;
+      }
+
+      for (const c of corps) {
+        const isPub = c.listing === 'public';
+        const cash = isPub ? (Number(c.treasury_cash) || 0) : (Number(c.starting_capital) || 0);
+        const val  = computeEntrepreneurValuation(c);
+        const ind  = (c.industry || '').toLowerCase();
+        const row  = document.createElement('div'); row.className = 'ec-jr';
+
+        const nameCell = document.createElement('div');
+        const nm  = document.createElement('div'); nm.className = 'nm';  nm.textContent  = c.name || 'Corporation';
+        const sub = document.createElement('div'); sub.className = 'sub ' + ind;
+        sub.textContent = `${(c.industry || '—').toUpperCase()}  ·  ${(c.hq?.name || '—').toUpperCase()}`;
+        nameCell.append(nm, sub);
+
+        const typeCell = document.createElement('div');
+        const tp = document.createElement('span'); tp.className = 'tp ' + (isPub ? 'public' : 'private');
+        tp.textContent = titleCase(c.listing || 'private').toUpperCase();
+        typeCell.appendChild(tp);
+
+        const ceoCell = document.createElement('div'); ceoCell.className = 'ceo';
+        ceoCell.textContent = ownerDisplayName(c.owner);
+
+        const valCell = document.createElement('div');
+        valCell.className = 'num' + (val.amount == null ? ' muted' : '');
+        valCell.textContent = fmtValuation(val.amount);
+
+        const cashCell = document.createElement('div'); cashCell.className = 'num';
+        cashCell.textContent = fmtM(cash);
+
+        const debtCell = document.createElement('div'); debtCell.className = 'num muted';
+        debtCell.textContent = '$0';
+
+        const btn = document.createElement('button'); btn.className = 'ec-btn pri'; btn.textContent = 'APPLY';
+        btn.addEventListener('click', () => showStep2(c));
+
+        row.append(nameCell, typeCell, ceoCell, valCell, cashCell, debtCell, btn);
+        joinList.appendChild(row);
+      }
+    };
+
+    joinSubmit.addEventListener('click', async () => {
+      if (joinSubmitting || !joinSelectedCorpId) return;
+      joinSubmitting = true;
+      joinSubmit.disabled = true; joinSubmit.textContent = 'APPLYING…';
+      joinMsg.className = 'ec-jl-msg'; joinMsg.textContent = '';
+      try {
+        const { data, error } = await _supabase.rpc('corp_board_request_join',
+          { p_corp_id: joinSelectedCorpId });
+        if (error) throw error;
+        if (!data || !data.success) {
+          const RM = {
+            not_authenticated:    'You are not signed in.',
+            no_entrepreneur:      'No entrepreneur faction found.',
+            corp_not_found:       'Corporation not found.',
+            founder_cannot_apply: 'Founders cannot apply to their own corporation.',
+            already_on_board:     "You're already on this board.",
+            already_applied:      'You have already applied to this corporation.',
+            board_full:           'This board is at its 7-director cap.',
+          };
+          joinMsg.className = 'ec-jl-msg err';
+          joinMsg.textContent = RM[data?.reason] || ('Application failed: ' + (data?.reason || 'unknown'));
+          joinSubmitting = false;
+          joinSubmit.disabled = false; joinSubmit.textContent = 'SEND APPLICATION';
+          return;
+        }
+        joinMsg.className = 'ec-jl-msg ok';
+        joinMsg.textContent = 'Application sent. The CEO and current directors have 3 ticks to vote.';
+        joinSubmit.textContent = 'SENT ✓';
+        setTimeout(closeJoin, 1500);
+      } catch (e) {
+        joinMsg.className = 'ec-jl-msg err';
+        joinMsg.textContent = 'Application failed: ' + (e?.message || e);
+        joinSubmitting = false;
+        joinSubmit.disabled = false; joinSubmit.textContent = 'SEND APPLICATION';
+      }
+    });
+
+    document.getElementById('ec-join').addEventListener('click', openJoin);
+    document.getElementById('ec-join-close').addEventListener('click', closeJoin);
+    document.getElementById('ec-join-cancel').addEventListener('click', closeJoin);
+    joinOv.addEventListener('click', (e) => { if (e.target === joinOv) closeJoin(); });
     document.getElementById('ec-ind').addEventListener('click', (e) => {
       const card = selectPick('ec-ind', e);
       if (!card || !card.dataset.ind) return;
