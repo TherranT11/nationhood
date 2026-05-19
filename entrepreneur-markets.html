@@ -123,7 +123,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, titleCase, pctOwned, ownerDisplayName } from './js/utils.js';
+import { fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 
 (async () => {
@@ -219,8 +219,7 @@ import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 
         const valCell = document.createElement('div');
         valCell.className = 'num' + (val.amount == null ? ' muted' : '');
-        valCell.textContent = val.amount == null ? '—'
-          : (val.kind === 'market' ? fmtUsd(val.amount) : fmtM(val.amount));
+        valCell.textContent = fmtValuation(val.amount);
 
         const priceCell = document.createElement('div');
         const hasPrice = isPublic && c.share_price != null;

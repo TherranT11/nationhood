@@ -208,7 +208,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { hfFmtBig, escapeHtml, escapeAttr, titleCase, fmtUsd, pctOwned } from './js/utils.js';
+import { hfFmtBig, escapeHtml, escapeAttr, titleCase, fmtValuation, pctOwned } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
@@ -331,6 +331,7 @@ function renderHoldings(positions) {
   listEl.innerHTML = `<div class="ch-list">${positions.map(pos => {
     const c = pos.corp;
     const isFounder = pos.relationship === 'founder';
+    const typeLabel = titleCase(c.listing || 'private');
 
     let ownership, status;
     if (isFounder && c.listing !== 'public') {
@@ -348,7 +349,7 @@ function renderHoldings(positions) {
     const valKey = pos.valuation.kind === 'market' ? 'MARKET CAP'
                  : pos.valuation.kind === 'seed'   ? 'SEED CAPITAL'
                  : 'VALUATION';
-    const valVal = pos.valuation.amount == null ? '—' : fmtUsd(pos.valuation.amount);
+    const valVal = fmtValuation(pos.valuation.amount);
 
     return `
     <a class="ch-row" href="entrepreneur-corp.html?id=${encodeURIComponent(c.id)}">

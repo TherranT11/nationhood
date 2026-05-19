@@ -249,7 +249,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, titleCase, pctOwned, ownerDisplayName } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 function initials(s, n) {
   return (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, n || 2).map(w => w[0]).join('').toUpperCase()) || '—';
@@ -321,8 +321,7 @@ function initials(s, n) {
     const valEl = document.getElementById('cp-val');
     if (valEl) {
       valEl.classList.remove('muted');
-      valEl.textContent = val.amount == null ? '—'
-        : val.kind === 'market' ? fmtUsd(val.amount) : fmtM(val.amount);
+      valEl.textContent = fmtValuation(val.amount);
     }
     set('cp-val-delta', val.kind === 'market'
       ? `${Number(c.shares_outstanding) || 0} sh × ${fmtUsd(Number(c.share_price) || 0)}`
