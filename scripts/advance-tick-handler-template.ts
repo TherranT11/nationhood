@@ -1155,6 +1155,23 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Petition auto-accept failed (non-fatal):', petErr);
     }
 
+    // 3.6d Auto-reject any entrepreneur Board-Join request whose 3-tick
+    // deadline has elapsed (20270160 corp_board_voting). The RPC is a
+    // no-op when nothing is due and writes per-row with FOR UPDATE, so
+    // it's safe against concurrent corp_board_vote calls.
+    try {
+        const { data: boardExpiry, error: boardErr } =
+            await supabase.rpc('finalize_expired_board_requests', { p_tick: newTick });
+        if (boardErr) {
+            console.error('[advanceTick] finalize_expired_board_requests failed:', boardErr.message);
+        } else if (boardExpiry?.rejected > 0) {
+            summary.autoRejectedBoardRequests = boardExpiry.rejected;
+            console.log(`[advanceTick] Auto-rejected ${boardExpiry.rejected} board-join request(s)`);
+        }
+    } catch (brErr) {
+        console.error('[advanceTick] Board-request auto-reject failed (non-fatal):', brErr);
+    }
+
     // 3.6b Safety net: catch economic aid agreements missing their aid_agreement_state row
     // Runs every 5 ticks to reduce CPU load — orphaned rows are rare, no urgency
     if (newTick % 5 === 0) try {

@@ -176,7 +176,7 @@
               <span class="sans">Pressing</span>
               <span class="serif">Issues</span>
             </div>
-            <div class="empty">No pressing issues.</div>
+            <div id="ent-pi-host"><div class="empty">No pressing issues.</div></div>
           </div>
 
           <div>
@@ -212,6 +212,7 @@ import { hfFmtBig, escapeHtml, escapeAttr, titleCase, fmtValuation, pctOwned } f
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
+import { mountBoardPressingIssues } from './js/corp-board-pressing-issues.js';
 
 function setText(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
 
@@ -486,6 +487,15 @@ async function loadHoldings(entId, cash) {
 
     const entId = (ctx.allUserFactions || []).find(x => x.faction_type === 'entrepreneur')?.id;
     loadHoldings(entId, cash);
+
+    // Pressing Issues: pending Board-Join votes the viewer is in the
+    // pool for (20270160). The handler owns its own empty state and
+    // refreshes itself after a vote; no further wiring needed.
+    mountBoardPressingIssues({
+      supabase: _supabase, faction: f,
+      host: document.getElementById('ent-pi-host'),
+      currentTick: () => Number(ctx.shard?.current_tick) || 0,
+    });
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('app').style.display = 'block';
