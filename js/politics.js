@@ -58,25 +58,6 @@ initPage('politics', async (state) => {
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 
-    const partyIds = (allParties || []).map(p => p.id);
-
-    // Fetch 2-pillar electoral standings for forecast display
-    const { data: electoralStandings } = partyIds.length > 0
-        ? await _supabase
-            .from('faction_electoral_standing')
-            .select('faction_id, party_approval, visibility, raw_appeal')
-            .eq('nation_id', nation.id)
-            .in('faction_id', partyIds)
-        : { data: [] };
-    const standingMap = {};
-    for (const s of (electoralStandings || [])) standingMap[s.faction_id] = s;
-    for (const p of (allParties || [])) {
-        const s = standingMap[p.id];
-        p._partyApproval = Math.round(Number(s?.party_approval || 0));
-        p._pillarMomentum = Math.round(Number(s?.visibility || 0));
-        p._rawAppeal = Math.round(Number(s?.raw_appeal || 0) * 10) / 10;
-    }
-
     // Normalise seat counts from election results (single source of truth)
     const { currentSeats } = await loadSeats(_supabase, nation.id, allParties || [], f.id);
 
@@ -783,10 +764,6 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, _,
         return {
             ...p,
             estSeats,
-            momentum: Number(p.momentum ?? 0),
-            partyApproval: p._partyApproval ?? 0,
-            pillarMomentum: p._pillarMomentum ?? 0,
-            rawAppeal: p._rawAppeal ?? 0,
         };
     }).sort((a, b) => b.estSeats - a.estSeats);
 
@@ -804,17 +781,7 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, _,
         const color = p.party_color || '#888';
         const abbr = p.abbreviation || (p.faction_name || '??').substring(0, 2).toUpperCase();
         const isPlayer = p.id === playerFactionId;
-        const momColor = p.momentum > 0 ? 'var(--dgreen)' : p.momentum < 0 ? 'var(--dred)' : 'var(--dtxt-muted)';
-        const momArrow = p.momentum > 0 ? '▲' : p.momentum < 0 ? '▼' : '—';
-        const momText = p.momentum !== 0 ? `${momArrow}${Math.abs(p.momentum)}` : momArrow;
         const majLinePct = totalSeats > 0 ? (majority / totalSeats) * 100 : 50;
-
-        const pillarColor = v => v >= 60 ? 'var(--dgreen)' : v >= 35 ? 'var(--damber)' : 'var(--dred)';
-        const aprColor = pillarColor(p.partyApproval);
-        const pmColor = pillarColor(p.pillarMomentum);
-
-        const aprW = ((p.partyApproval || 0) * 0.35).toFixed(1);
-        const momW = ((p.pillarMomentum || 0) * 0.25).toFixed(1);
 
         return `<div class="pol-fc-party">
             <div class="pol-fc-party-header">
@@ -824,29 +791,8 @@ function renderForecastBox(allParties, totalSeats, currentTick, nextElection, _,
                     ${isPlayer ? '<span class="pol-ideo-legend-you">YOU</span>' : ''}
                 </div>
                 <div class="pol-fc-party-right">
-                    <span class="pol-fc-momentum" style="color:${momColor}">${momText}</span>
                     <span class="pol-fc-range">${lo}–${hi}</span>
                     <span class="pol-fc-seats-label">seats</span>
-                </div>
-            </div>
-            <div class="pol-fc-3p">
-                <div class="pol-fc-3p-row">
-                    <span class="pol-fc-3p-label">APR</span>
-                    <span class="pol-fc-3p-pct">35%</span>
-                    <div class="pol-fc-3p-bar"><div class="pol-fc-3p-fill" style="width:${p.partyApproval}%;background:${aprColor}"></div></div>
-                    <span class="pol-fc-3p-val" style="color:${aprColor}">${p.partyApproval}</span>
-                    <span class="pol-fc-3p-contrib">${aprW}</span>
-                </div>
-                <div class="pol-fc-3p-row">
-                    <span class="pol-fc-3p-label">MOM</span>
-                    <span class="pol-fc-3p-pct">25%</span>
-                    <div class="pol-fc-3p-bar"><div class="pol-fc-3p-fill" style="width:${p.pillarMomentum}%;background:${pmColor}"></div></div>
-                    <span class="pol-fc-3p-val" style="color:${pmColor}">${p.pillarMomentum}</span>
-                    <span class="pol-fc-3p-contrib">${momW}</span>
-                </div>
-                <div class="pol-fc-3p-score">
-                    <span class="pol-fc-3p-score-label">SCORE</span>
-                    <span class="pol-fc-3p-score-val">${p.rawAppeal}</span>
                 </div>
             </div>
             <div class="pol-fc-band">

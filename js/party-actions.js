@@ -32,7 +32,6 @@ let _isOpposition = false;   // is this faction in opposition?
 let _administration = null;  // active administration data
 let _heldMinistries = [];    // ministries held by my faction (active rows from `ministries`)
 let _lawsuits = [];          // faction's lawsuits (active + resolved)
-let _standing = null;        // faction_electoral_standing row (pillar scores)
 let _seatTxInProgress = false; // module-level lock for Grant/Revoke Seats actions
 let _hogActive = null;         // active head_of_government row, or null when seat is vacant
 let _activeCoalition = null;    // canonical government_formations / virtual coalition state
@@ -503,18 +502,13 @@ export async function initPartyActions(supabase, state) {
     // patch reads live values from the server. No module-level cache —
     // eliminates the silent-stale-display class of bugs.
 
-    // Fetch platforms + agitator + opposition status + electoral standing +
-    // fundraise count + active coalition (for caretaker gating on PM actions)
-    const [myPlat, nationPlat, agitatorResult, oppositionResult, standingResult, coalition] = await Promise.all([
+    // Fetch platforms + agitator + opposition status +
+    // active coalition (for caretaker gating on PM actions)
+    const [myPlat, nationPlat, agitatorResult, oppositionResult, coalition] = await Promise.all([
         _supabase.from('faction_platforms').select('*').eq('faction_id', faction.id).order('slot'),
         _supabase.from('faction_platforms').select('*').eq('nation_id', state.nation?.id),
         fetchActiveAgitator(_supabase, faction.id),
         getGoverningStatus(_supabase, state.nation?.id, faction.id),
-        _supabase.from('faction_electoral_standing')
-            .select('visibility, raw_appeal')
-            .eq('faction_id', faction.id)
-            .eq('nation_id', state.nation?.id)
-            .maybeSingle(),
         fetchActiveCoalition(_supabase, state.nation?.id),
     ]);
     // Populate caretaker flag on the nation so the action-locking check at
@@ -531,7 +525,6 @@ export async function initPartyActions(supabase, state) {
     _agitator = agitatorResult;
     _isOpposition = oppositionResult.isOpposition;
     _administration = oppositionResult.administration;
-    _standing = standingResult.data || null;
 
     // loadNoConfidenceState reads _administration.pm_party_id — must run after
     // _administration is set above, otherwise cooldown silently skips on first load.
