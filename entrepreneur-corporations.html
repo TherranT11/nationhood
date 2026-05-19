@@ -197,7 +197,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 
 const FEE = 1_000_000;
@@ -300,8 +300,7 @@ function renderPositions(corps, filter) {
     cl.textContent = val.kind === 'market' ? 'MARKET CAP'
                    : val.kind === 'seed'   ? 'STARTING CAPITAL' : 'VALUATION';
     const cv = document.createElement('div'); cv.className = 'cv';
-    cv.textContent = val.amount == null ? '—'
-                   : val.kind === 'seed' ? fmtM(val.amount) : fmtUsd(val.amount);
+    cv.textContent = fmtValuation(val.amount);
     mid.append(cl, cv);
     const arr = document.createElement('div'); arr.className = 'arr'; arr.textContent = '▸';
     row.append(left, mid, arr);

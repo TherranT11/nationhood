@@ -118,6 +118,18 @@ export function fmtUsd(n) {
 }
 
 /**
+ * Display string for an entrepreneur corp valuation — the single
+ * source for HOW valuation is rendered, paired with
+ * computeEntrepreneurValuation (the single source for the NUMBER).
+ * Compact "$20M" form (never raw "$20,000,000"); null → "—". Read by
+ * the dashboard, corporations list, markets directory and corp page so
+ * the figure looks identical everywhere.
+ */
+export function fmtValuation(amount) {
+    return amount == null ? '—' : fmtM(amount);
+}
+
+/**
  * Ownership percentage a holding represents, rounded to a whole
  * percent. null when undeterminable (no shares outstanding). One
  * source for the entrepreneur stock UI — read by the corp page and
