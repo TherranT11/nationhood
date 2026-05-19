@@ -85,6 +85,9 @@
   .ec-cap .aft { color:#888; font-size:12px; }
   .ec-range { width:100%; accent-color:#8aaa6a; }
   .ec-rl { display:flex; justify-content:space-between; font-size:9px; color:#555; letter-spacing:0.1em; margin-top:6px; }
+  .ec-ipo { margin-top:12px; font-size:11px; color:#888; line-height:1.6;
+    background:#131613; border:0.5px solid rgba(138,170,106,0.25); border-radius:4px; padding:10px 12px; }
+  .ec-ipo b { color:#8aaa6a; font-weight:600; }
   .ec-mf { padding:14px 24px; border-top:0.5px solid rgba(255,255,255,0.08); background:#0d0d0d;
     display:flex; align-items:center; gap:14px; }
   .ec-mf .st { font-size:10px; color:#666; letter-spacing:0.1em; }
@@ -174,9 +177,12 @@
       <div class="ec-rl"><span>MIN · $5M</span><span>MAX · $500M</span></div>
 
       <div class="ec-h">V. Listing <em>Structure</em></div>
-      <div class="ec-grid3">
-        <div class="ec-pick sel" style="grid-column:span 1;"><div class="pn">Private</div><div class="pd">You own 100%. Full control, no outside shareholders. Recommended.</div></div>
-        <div class="ec-pick dis" title="Coming soon"><div class="pn">Public (IPO)</div><div class="pd">Float shares to raise capital. Coming soon.</div></div>
+      <div class="ec-grid3" id="ec-listing">
+        <div class="ec-pick sel" data-listing="private" style="grid-column:span 1;"><div class="pn">Private</div><div class="pd">You own 100%. Full control, no outside shareholders. Recommended.</div></div>
+        <div class="ec-pick" data-listing="public"><div class="pn">Public (IPO)</div><div class="pd">20 shares issued at founding. Starting price = your capital ÷ 20; the capital seeds the corp treasury.</div></div>
+      </div>
+      <div class="ec-ipo" id="ec-ipo" style="display:none;">
+        Public listing — starting share price <b id="ec-ipo-price">—</b> · 20 shares issued · treasury <b id="ec-ipo-treasury">—</b>
       </div>
     </div>
     <div class="ec-mf">
@@ -195,7 +201,7 @@ import { fmtM } from './js/utils.js';
 
 const FEE = 1_000_000;
 let entFunds = 0;
-let sel = { industry: 'construction', hqNationId: null };
+let sel = { industry: 'construction', hqNationId: null, listing: 'private' };
 let nationsByCont = {};   // continent -> [{id,name,corporate_tax}]
 let entCorpCounts = {};   // `${industry}|${nationId}` -> count
 let activeCont = 'Crucera';
@@ -248,6 +254,14 @@ function refreshCost() {
   const cost = cap + FEE;
   document.getElementById('ec-cap-amt').textContent = fmtM(cap);
   document.getElementById('ec-cap-aft').textContent = fmtM(Math.max(0, entFunds - cost));
+  const ipo = document.getElementById('ec-ipo');
+  if (sel.listing === 'public') {
+    ipo.style.display = 'block';
+    document.getElementById('ec-ipo-price').textContent = '$' + (cap / 20).toLocaleString('en-US');
+    document.getElementById('ec-ipo-treasury').textContent = fmtM(cap);
+  } else {
+    ipo.style.display = 'none';
+  }
   const btn = document.getElementById('ec-found');
   btn.textContent = `FOUND CORPORATION — ${fmtM(cost)} →`;
   btn.disabled = cost > entFunds;
@@ -364,6 +378,12 @@ function renderPositions(corps, filter) {
       if (!card || !card.dataset.nid) return;
       sel.hqNationId = card.dataset.nid;
     });
+    document.getElementById('ec-listing').addEventListener('click', (e) => {
+      const card = selectPick('ec-listing', e);
+      if (!card || !card.dataset.listing) return;
+      sel.listing = card.dataset.listing;
+      refreshCost();
+    });
     document.getElementById('ec-cap').addEventListener('input', refreshCost);
 
     let founding = false;
@@ -379,7 +399,7 @@ function renderPositions(corps, filter) {
       btn.disabled = true; btn.textContent = 'FOUNDING…';
       try {
         const { data, error } = await _supabase.rpc('found_entrepreneur_corp', {
-          p_industry: sel.industry, p_hq_nation_id: sel.hqNationId, p_name: name, p_capital: cap,
+          p_industry: sel.industry, p_hq_nation_id: sel.hqNationId, p_name: name, p_capital: cap, p_listing: sel.listing,
         });
         if (error) throw error;
         if (!data || !data.success) {
