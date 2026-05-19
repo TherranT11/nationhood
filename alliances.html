@@ -2452,15 +2452,14 @@ async function loadCandidates() {
     for (const v of (vesselsRes.data || [])) byCorp.get(v.faction_id)?.vessels.push(v);
     for (const ln of (loansRes.data || [])) {
         const reqType = (ln.finance_loan_requests?.request_type || 'loan').toLowerCase();
-        const principal = Math.max(0, Number(ln.principal || 0));
         const remaining = Math.max(0, Number(ln.remaining_principal || 0));
         // Borrower side adds to debt (uses outstanding principal).
         const b = byCorp.get(ln.borrower_faction_id);
         if (b) b.debt += remaining;
-        // Lender side adds to receivables (loans + bonds counted; insurance excluded).
+        // Lender side adds to receivables (loans; insurance excluded).
         const l = byCorp.get(ln.lender_faction_id);
         if (l && reqType !== 'insurance') {
-            l.receivables += reqType === 'bond' ? (remaining > 0 ? remaining : principal) : remaining;
+            l.receivables += remaining;
         }
     }
 

@@ -2336,8 +2336,6 @@ async function renderFinances(nation, shard, faction, propertyMaint, equipmentMa
                 } else if (reqType === 'loan') {
                     // Flat-interest model — see loan-math.js + advance-corp-tick:4094.
                     pvtContracts += monthlyInterest(loanFlatInterestBase(loan), loan.interest_rate);
-                } else if (reqType === 'bond') {
-                    pvtContracts += Number(loan.monthly_payment || 0);
                 }
             }
         } else if (sector === 'Construction') {
@@ -2456,13 +2454,6 @@ async function renderFinances(nation, shard, faction, propertyMaint, equipmentMa
                 if (pmt <= 0) continue;
                 if (reqType === 'insurance') {
                     insurancePremiums += pmt;
-                } else if (reqType === 'bond') {
-                    // Bonds: the nation treasury pays the coupon, not the
-                    // corp (advance-corp-tick:2923-2981 credits the bondholder
-                    // without deducting from the borrower). So a corp listed
-                    // as borrower on a bond row has no cash impact from the
-                    // payment — skip it to avoid over-reporting expenses.
-                    continue;
                 } else {
                     corpLoanService += pmt; // standard loans
                 }
@@ -3425,10 +3416,9 @@ async function renderValuation(nation, nationName, faction, propData, equipmentV
             for (const loan of (finLoans || [])) {
                 const reqType = loan.finance_loan_requests?.request_type || 'loan';
                 // Loans: outstanding principal owed to us is the asset value.
-                // Bonds: face value outstanding is the asset. Insurance policies
-                // are written as a contingent liability for the insurer, so they
-                // don't count here.
-                if (reqType === 'loan' || reqType === 'bond') {
+                // Insurance policies are written as a contingent liability for
+                // the insurer, so they don't count here.
+                if (reqType === 'loan') {
                     const remaining = Math.max(0, Number(loan.remaining_principal || 0));
                     activeContracts += remaining;
                 }

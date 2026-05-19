@@ -1420,7 +1420,7 @@ const HERO_STATS = [
         blurb: {
             good: '<strong>Strong deposit base, broad borrower roster.</strong> Capital reserves cover even sovereign-grade lending. Bigger banks compete with you, not above you.',
             mid:  '<strong>Adequate capital reserves.</strong> Mid-tier loans are well within reach; the largest sovereign issues still require partner banks.',
-            warn: '<strong>Modest deposit base, limited borrower roster.</strong> Capital reserves cover only mid-tier loans. Major borrowers go to bigger banks. Growth requires bond issuance or aggressive deposit drives.',
+            warn: '<strong>Modest deposit base, limited borrower roster.</strong> Capital reserves cover only mid-tier loans. Major borrowers go to bigger banks. Growth requires aggressive deposit drives.',
         },
         impacts: {
             good: [
@@ -2266,9 +2266,6 @@ function attachAvailableOffersHandlers() {
 // so the displayed value matches what the player sees.
 const ACTION_DEFS = [
     { key: 'capital_raise', name: 'Capital Raising', options: [
-        { letter: 'A', title: 'Quick Bond Issuance',
-          desc: 'Issue short-term bonds to raise immediate capital — fast, but the new debt drives leverage up.',
-          cost: 60_000_000,  effects: { lending: +2, over: +2 } },
         { letter: 'B', title: 'Equity Capital Raise',
           desc: 'Sell shares to long-term investors — bigger raise, dilutes ownership but cleans the balance sheet.',
           cost: 150_000_000, effects: { lending: +3, over: -1 } },
