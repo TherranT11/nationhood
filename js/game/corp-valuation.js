@@ -97,7 +97,7 @@ export function computeEquipmentValue(vessels, currentTick) {
 }
 
 export function computeFinanceReceivableValue(positions) {
-    const breakdown = { loans: 0, bonds: 0, insurance: 0, total: 0 };
+    const breakdown = { loans: 0, insurance: 0, total: 0 };
     for (const p of (positions || [])) {
         const reqType = (p?.finance_loan_requests?.request_type || p?.request_type || 'loan').toLowerCase();
         const principal = Math.max(0, Number(p?.principal || 0));
@@ -107,16 +107,10 @@ export function computeFinanceReceivableValue(positions) {
             breakdown.insurance += principal;
             continue;
         }
-        if (reqType === 'bond') {
-            // Some bond lifecycles track remaining principal amortization; some
-            // carry face principal until maturity.
-            breakdown.bonds += remainingPrincipal > 0 ? remainingPrincipal : principal;
-            continue;
-        }
         // Default to loan logic: outstanding principal is the receivable.
         breakdown.loans += remainingPrincipal;
     }
-    breakdown.total = breakdown.loans + breakdown.bonds;
+    breakdown.total = breakdown.loans;
     return breakdown;
 }
 

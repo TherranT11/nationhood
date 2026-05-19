@@ -32,6 +32,16 @@ export function truncate(str, max) {
     return str.length > max ? str.slice(0, max) + '...' : str;
 }
 
+/**
+ * Title-case each word ("shipping" → "Shipping"). Does not touch
+ * underscores — callers that need "snake_case" → "Snake Case" should
+ * .replace(/_/g,' ') first. One source for the entrepreneur pages'
+ * industry/listing labels (was cap2/cap inline copies).
+ */
+export function titleCase(s) {
+    return String(s || '').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 // ===== GAME DATE =====
 
 export const MONTHS = [
@@ -94,6 +104,28 @@ export function hfFmtBig(n) {
 export function fmtM(raw) {
     const m = (Number(raw) || 0) / 1e6;
     return '$' + (Number.isInteger(m) ? m : m.toFixed(1)) + 'M';
+}
+
+/**
+ * Exact, thousands-grouped USD with no suffix — "$50,000" /
+ * "$1,250,000". For share prices / valuations / treasuries where the
+ * compact formatters lose precision (hfFmtBig "$50.0k", fmtM "$0.1M").
+ * One source, read by the entrepreneur stock UI. Rounds to whole
+ * dollars (display only; the authoritative numeric stays in the DB).
+ */
+export function fmtUsd(n) {
+    return '$' + Math.round(Number(n) || 0).toLocaleString('en-US');
+}
+
+/**
+ * Ownership percentage a holding represents, rounded to a whole
+ * percent. null when undeterminable (no shares outstanding). One
+ * source for the entrepreneur stock UI — read by the corp page and
+ * the dashboard holdings; never inline the divide.
+ */
+export function pctOwned(shares, sharesOutstanding) {
+    const o = Number(sharesOutstanding) || 0;
+    return o > 0 ? Math.round((Number(shares) || 0) / o * 100) : null;
 }
 
 /**

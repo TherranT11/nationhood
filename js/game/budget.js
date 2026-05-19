@@ -85,12 +85,9 @@ export function calculateNationalBudget(nation, opts = {}) {
     const incomeRevenue = computeIncomeTaxRevenue(nation);
     const corpRevenue = computeCorporateTaxRevenue(nation, undefined, opts.activeCorpCount || 0);
 
-    // Debt service: prefer the actual sum of bond coupon obligations from
-    // the tick processor; fall back to a flat 5% annual interest rate.
+    // Debt service: flat 5% annual interest on outstanding debt.
     const FLAT_ANNUAL_INTEREST = 0.05;
-    const debtService = opts.actualDebtService != null
-        ? Number(opts.actualDebtService)
-        : debt * FLAT_ANNUAL_INTEREST;
+    const debtService = debt * FLAT_ANNUAL_INTEREST;
 
     const availableBudget = grossRevenue - debtService;
 
@@ -349,33 +346,19 @@ export async function processNationDebtTick(supabase, nation, activeCorpCount = 
     const currentTreasury = Number(nation?.budget) || 0;
 
     if (perTickBalance > 0) {
-        // Surplus → pay down debt first; any leftover accumulates in
-        // treasury (stockpile). When debt is already 0, the entire
-        // surplus goes straight to treasury.
-        const debtPaydown  = Math.min(perTickBalance, Math.max(0, currentDebt));
-        const newDebt      = Math.max(0, currentDebt - debtPaydown);
-        const leftover     = perTickBalance - debtPaydown;
-        const newBudget    = currentTreasury + leftover;
-
-        if (newDebt === currentDebt && newBudget === currentTreasury) return null;
-
+        // Surplus → treasury only. Debt is NOT auto-paid from surpluses
+        // (it falls via the corp-tax credit + explicit pay-down); this
+        // lets an indebted nation build a treasury buffer so upfront
+        // costs draw from cash instead of overflowing 100% to debt.
+        const newBudget = currentTreasury + perTickBalance;
         const { error } = await supabase.from('nations')
-            .update({ debt: newDebt, budget: newBudget })
-            .eq('id', nation.id);
+            .update({ budget: newBudget }).eq('id', nation.id);
         if (error) {
             console.warn(`[Debt] surplus update failed for ${nation.name}:`, error.message);
             return null;
         }
-        nation.debt = newDebt;
         nation.budget = newBudget;
-        return {
-            mode: currentDebt > 0 && newDebt === 0 && leftover > 0
-                ? 'surplus_split'
-                : (currentDebt > 0 ? 'surplus_paydown' : 'surplus_to_treasury'),
-            perTickBalance,
-            newDebtRaw: newDebt,
-            newBudget,
-        };
+        return { mode: 'surplus_to_treasury', perTickBalance, newDebtRaw: currentDebt, newBudget };
     }
 
     // perTickBalance < 0 → deficit. Debt grows by the deficit; treasury

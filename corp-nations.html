@@ -184,7 +184,7 @@ let _allNations = [];
 let _continents = {};
 let _selectedContinent = '';
 let _selectedNationIdx = 0;
-let _presenceMap = {};  // { nationId: { hq, properties, projects, voyages, loanExposure, bondExposure, totalExposure } }
+let _presenceMap = {};  // { nationId: { hq, properties, projects, voyages, loanExposure, totalExposure } }
 let _corpsByNation = {}; // { nationId: [corp, ...] }
 
 function fmtMoney(n) {
@@ -256,7 +256,7 @@ async function init() {
             _supabase.from('corp_properties').select('nation_id').eq('faction_id', faction.id).eq('is_active', true),
             _supabase.from('construction_contracts').select('nation_id, budget_ceiling').eq('awarded_to_faction', faction.id).in('status', ['awarded', 'in_progress']),
             _supabase.from('shipping_claims').select('id, shipping_routes(origin_nation_id, destination_nation_id)').eq('faction_id', faction.id).eq('status', 'active'),
-            _supabase.from('finance_active_loans').select('nation_id, principal, status, lender_faction_id, borrower_faction_id, finance_loan_requests(request_type)').in('status', ['current', 'late', 'delinquent']),
+            _supabase.from('finance_active_loans').select('nation_id, principal, status, lender_faction_id, borrower_faction_id').in('status', ['current', 'late', 'delinquent']),
             _supabase.from('factions')
                 .select('id, faction_name, abbreviation, corp_sector, corp_subsector, corp_cash_reserves, nation_id, corp_ticker, custom_logo_url')
                 .eq('faction_type', 'corporation').is('abandoned_at', null),
@@ -266,7 +266,7 @@ async function init() {
         _presenceMap = {};
         const myNationId = faction.nation_id;
         for (const n of _allNations) {
-            _presenceMap[n.id] = { hq: n.id === myNationId, properties: 0, projects: 0, voyages: 0, loanExposure: 0, bondExposure: 0, totalExposure: 0 };
+            _presenceMap[n.id] = { hq: n.id === myNationId, properties: 0, projects: 0, voyages: 0, loanExposure: 0, totalExposure: 0 };
         }
 
         // Properties
@@ -286,24 +286,18 @@ async function init() {
             if (route?.destination_nation_id && _presenceMap[route.destination_nation_id]) _presenceMap[route.destination_nation_id].voyages++;
         }
 
-        // Loan and bond exposure (where YOUR corp is lender)
+        // Loan exposure (where YOUR corp is lender)
         for (const loan of (loansRes.data || [])) {
             if (loan.lender_faction_id !== faction.id) continue;
             const nId = loan.nation_id;
             if (!_presenceMap[nId]) continue;
-            const principal = Number(loan.principal || 0);
-            const reqType = loan.finance_loan_requests?.request_type || 'loan';
-            if (reqType === 'bond') {
-                _presenceMap[nId].bondExposure += principal;
-            } else {
-                _presenceMap[nId].loanExposure += principal;
-            }
+            _presenceMap[nId].loanExposure += Number(loan.principal || 0);
         }
 
         // Calculate total exposure per nation
         for (const nId of Object.keys(_presenceMap)) {
             const p = _presenceMap[nId];
-            p.totalExposure = p.loanExposure + p.bondExposure;
+            p.totalExposure = p.loanExposure;
         }
 
         // Build corps per nation (all corporations, not just yours)
@@ -598,7 +592,6 @@ function renderYourPresence(nation) {
         { label: 'ACTIVE PROJECTS', value: p.projects || '—', color: p.projects > 0 ? 'var(--text-bright)' : 'var(--text-dim)' },
         { label: 'ACTIVE VOYAGES', value: p.voyages || '—', color: p.voyages > 0 ? '#5a8aaa' : 'var(--text-dim)' },
         { label: 'LOAN EXPOSURE', value: p.loanExposure > 0 ? fmtMoney(p.loanExposure) : '—', color: p.loanExposure > 0 ? '#c84' : 'var(--text-dim)' },
-        { label: 'BOND EXPOSURE', value: p.bondExposure > 0 ? fmtMoney(p.bondExposure) : '—', color: p.bondExposure > 0 ? '#c84' : 'var(--text-dim)' },
     ];
 
     let html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;background:var(--bg-3);border:1px solid var(--border-0);margin-bottom:8px;">';

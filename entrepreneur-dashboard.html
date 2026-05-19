@@ -102,6 +102,16 @@
     font-size: 22px; font-family: Georgia, 'Times New Roman', serif; font-style: italic; color: #8aaa6a;
   }
   .section-heading .meta { margin-left: auto; color: #555; font-size: 10px; letter-spacing: 0.1em; }
+  .ch-list { display: flex; flex-direction: column; gap: 10px; }
+  .ch-row { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center;
+    background: #121212; border: 0.5px solid rgba(255,255,255,0.08); border-left: 2px solid #8aaa6a;
+    border-radius: 4px; padding: 14px 16px; cursor: pointer; text-decoration: none; }
+  .ch-row:hover { background: #141614; border-color: rgba(138,170,106,0.3); }
+  .ch-name { font-size: 15px; font-weight: 500; color: #fff; margin-bottom: 7px; }
+  .ch-fields { display: flex; gap: 20px; flex-wrap: wrap; font-size: 10px; letter-spacing: 0.08em; }
+  .ch-fields .k { color: #555; margin-right: 5px; }
+  .ch-fields .v { color: #d4d4d4; }
+  .ch-arrow { color: #555; font-size: 16px; }
   .footer-note {
     margin-top: 28px; padding-top: 14px;
     border-top: 0.5px solid rgba(255,255,255,0.05);
@@ -136,9 +146,9 @@
         </div>
 
         <div class="anchor">
-          <div class="anchor-label">CASH ON HAND</div>
+          <div class="anchor-label">NET WORTH</div>
           <div class="anchor-value" id="net-worth">—</div>
-          <div class="anchor-sub">available capital · holdings &amp; assets coming soon</div>
+          <div class="anchor-sub" id="net-worth-sub">cash + share holdings</div>
         </div>
       </div>
 
@@ -174,9 +184,9 @@
               <span class="roman">II.</span>
               <span class="sans">Corporate</span>
               <span class="serif">Holdings</span>
-              <span class="meta">0 ACTIVE POSITIONS</span>
+              <span class="meta" id="ch-count">—</span>
             </div>
-            <div class="empty">No holdings yet.<br>Investing in corporations, board seats, mergers, acquisitions and hostile takeovers are coming soon.</div>
+            <div id="ch-list"><div class="empty">Loading…</div></div>
           </div>
 
           <div>
@@ -198,7 +208,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { hfFmtBig, escapeHtml, escapeAttr } from './js/utils.js';
+import { hfFmtBig, escapeHtml, escapeAttr, titleCase, fmtUsd, pctOwned } from './js/utils.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 
@@ -297,6 +307,76 @@ function initials(first, last, fallbackName) {
   return ((w[0]?.[0] || '') + (w[1]?.[0] || '')).toUpperCase() || '—';
 }
 
+// ── Portfolio: every corp this entrepreneur holds shares in (founded
+// OR bought). corp_shareholdings joined to entrepreneur_corps is the
+// one source — shares and share_price are read, a position's
+// value = shares × share_price is computed once here and feeds BOTH
+// the rows and the net-worth rollup (cash + Σ value, derived, stored
+// nowhere). Private founded corps have no share position and live on
+// the Corporations page, not this list.
+function renderHoldings(positions) {
+  const listEl = document.getElementById('ch-list');
+  const countEl = document.getElementById('ch-count');
+  if (!listEl) return;
+  const n = positions.length;
+  if (countEl) countEl.textContent = n === 0 ? '0 ACTIVE POSITIONS' : `${n} ACTIVE POSITION${n === 1 ? '' : 'S'}`;
+  if (n === 0) {
+    listEl.innerHTML = '<div class="empty">No share positions yet.<br>Found a public corp or buy shares from the Corporations tab. Board seats, mergers &amp; acquisitions are coming soon.</div>';
+    return;
+  }
+  listEl.innerHTML = `<div class="ch-list">${positions.map(pos => {
+    const c = pos.corp;
+    const pct = pctOwned(pos.shares, Number(c.shares_outstanding) || 0);
+    return `
+    <a class="ch-row" href="entrepreneur-corp.html?id=${encodeURIComponent(c.id)}">
+      <div>
+        <div class="ch-name">${escapeHtml(c.name || 'Corporation')}</div>
+        <div class="ch-fields">
+          <span><span class="k">INDUSTRY</span><span class="v">${escapeHtml(titleCase(c.industry))}</span></span>
+          <span><span class="k">HQ</span><span class="v">${escapeHtml(c.hq?.name || '—')}</span></span>
+          <span><span class="k">OWNERSHIP</span><span class="v">${pos.shares} sh${pct == null ? '' : ` · ${pct}%`}</span></span>
+          <span><span class="k">VALUE</span><span class="v">${fmtUsd(pos.value)}</span></span>
+        </div>
+      </div>
+      <div class="ch-arrow">▸</div>
+    </a>`;
+  }).join('')}</div>`;
+}
+
+async function loadHoldings(entId, cash) {
+  const listEl = document.getElementById('ch-list');
+  if (!listEl) return;
+  const setNetWorth = (holdingsValue) => {
+    setText('net-worth', hfFmtBig(cash + holdingsValue));
+    setText('net-worth-sub', `cash ${hfFmtBig(cash)} · holdings ${hfFmtBig(holdingsValue)}`);
+  };
+  if (!entId) { renderHoldings([]); setNetWorth(0); return; }
+  // One source: this faction's share positions, joined to the corp for
+  // price / industry / HQ. gt('shares',0) drops fully-sold positions.
+  const { data, error } = await _supabase.from('corp_shareholdings')
+    .select('shares, corp:entrepreneur_corps!corp_id(id, name, industry, share_price, shares_outstanding, hq:nations!hq_nation_id(name))')
+    .eq('holder_faction_id', entId)
+    .gt('shares', 0);
+  if (error) {
+    console.warn('[entrepreneur-dashboard] portfolio fetch error:', error.message);
+    const countEl = document.getElementById('ch-count');
+    if (countEl) countEl.textContent = '—';
+    listEl.innerHTML = '<div class="empty">Failed to load holdings.</div>';
+    setText('net-worth-sub', 'holdings unavailable — showing cash only');
+    return;   // net-worth value stays at the cash baseline set by init
+  }
+  const positions = (data || [])
+    .filter(r => r.corp)   // corp must resolve (FK guarantees it; defensive)
+    .map(r => {
+      const shares = Number(r.shares) || 0;
+      const price = Number(r.corp.share_price) || 0;
+      return { corp: r.corp, shares, value: shares * price };
+    })
+    .sort((a, b) => b.value - a.value);   // largest position first
+  renderHoldings(positions);
+  setNetWorth(positions.reduce((s, p) => s + p.value, 0));
+}
+
 (async () => {
   try {
     // Shared topbar (auth + fetch + render) — one source for every
@@ -318,7 +398,8 @@ function initials(first, last, fallbackName) {
     setText('archetype', arch ? arch.name : '—');
     document.getElementById('bio').textContent = arch ? `"${arch.description}"` : '';
 
-    setText('net-worth', hfFmtBig(Number(f.party_funds) || 0));
+    const cash = Number(f.party_funds) || 0;
+    setText('net-worth', hfFmtBig(cash));   // baseline; loadHoldings adds holdings
 
     // Real stats — the four set at archetype selection. Total is derived.
     const stats = [
@@ -338,6 +419,9 @@ function initials(first, last, fallbackName) {
     _evTick = Number(ctx.shard?.current_tick) || 0;
     bindDispatchTabs();
     loadDispatches();
+
+    const entId = (ctx.allUserFactions || []).find(x => x.faction_type === 'entrepreneur')?.id;
+    loadHoldings(entId, cash);
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('app').style.display = 'block';

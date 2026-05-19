@@ -89,6 +89,26 @@
   .ds-row .key { color:#888; }
   .ds-row .val { color:#d4d4d4; font-weight:500; text-align:right; overflow-wrap:anywhere; }
 
+  /* Trade panel (public corps) */
+  .trade-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
+    padding:14px 18px; margin-top:14px; }
+  .trade-card .lab { font-size:11px; color:#8aaa6a; letter-spacing:0.13em; margin-bottom:12px; font-weight:500; }
+  .tc-row { display:flex; gap:8px; }
+  .tc-qty { flex:1; min-width:0; background:#121212; border:0.5px solid rgba(255,255,255,0.12);
+    border-radius:3px; color:#fff; font-size:13px; padding:8px 10px; }
+  .tc-qty:focus { outline:none; border-color:#6a8a4a; }
+  .tc-btn { background:#1f2a1a; color:#8aaa6a; border:0.5px solid #4a6a4a; border-radius:3px;
+    font-size:11px; letter-spacing:0.1em; font-weight:600; padding:8px 16px; cursor:pointer; }
+  .tc-btn:hover:not(:disabled) { background:#26331f; }
+  .tc-btn.sell { background:#2a1a1a; color:#c98a8a; border-color:#6a4a4a; }
+  .tc-btn.sell:hover:not(:disabled) { background:#331f1f; }
+  .tc-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .tc-hold { font-size:11px; color:#888; margin-bottom:10px; }
+  .tc-hint { font-size:10px; color:#666; margin-top:8px; line-height:1.5; }
+  .tc-msg { font-size:11px; margin-top:8px; line-height:1.5; }
+  .tc-msg.err { color:#c98a8a; }
+  .tc-msg.ok { color:#8aaa6a; }
+
   @media (max-width:900px) { .main-grid { grid-template-columns:1fr; } .financials { grid-template-columns:repeat(2,1fr); } }
 </style>
 </head>
@@ -122,8 +142,8 @@
       </div>
       <div class="role-block">
         <div class="role-eyebrow">OWNERSHIP</div>
-        <div class="role-pill">FOUNDER · CONTROLLING</div>
-        <div class="stake">100<span class="pct">%</span></div>
+        <div class="role-pill" id="cp-role-pill">FOUNDER · CONTROLLING</div>
+        <div class="stake"><span id="cp-stake-num">100</span><span class="pct">%</span></div>
         <div class="stake-sub" id="cp-owner-sub">Sole owner · privately held</div>
       </div>
     </div>
@@ -142,12 +162,12 @@
       <div class="fin-card">
         <div class="lab">LISTING</div>
         <div class="val" id="cp-listing2">Private</div>
-        <div class="delta">— IPOs disabled in v1</div>
+        <div class="delta" id="cp-listing-delta">—</div>
       </div>
       <div class="fin-card">
         <div class="lab">VALUATION</div>
-        <div class="val muted">—</div>
-        <div class="delta">Not yet modelled</div>
+        <div class="val muted" id="cp-val">—</div>
+        <div class="delta" id="cp-val-delta">Not yet modelled</div>
       </div>
       <div class="fin-card">
         <div class="lab">INCOME (TICK)</div>
@@ -161,7 +181,7 @@
         <div class="section-heading">
           <span class="roman">I.</span><span class="sans">Share Price</span><span class="serif">History</span>
         </div>
-        <div class="empty-card">
+        <div class="empty-card" id="cp-price-card">
           Privately held — no public share price.<br>
           Share-price history appears once IPOs are enabled.
         </div>
@@ -183,6 +203,18 @@
       </div>
 
       <div>
+        <div class="trade-card" id="cp-trade" style="display:none;">
+          <div class="lab">TRADE SHARES</div>
+          <div class="tc-hold" id="cp-hold">—</div>
+          <div class="tc-row">
+            <input id="cp-qty" class="tc-qty" type="number" min="1" step="1" value="1" />
+            <button id="cp-buy" class="tc-btn">BUY</button>
+            <button id="cp-sell" class="tc-btn sell">SELL</button>
+          </div>
+          <div class="tc-hint">Price moves 5% per share traded. The final amount is confirmed on execution.</div>
+          <div class="tc-msg" id="cp-trade-msg"></div>
+        </div>
+
         <div class="board-card">
           <div class="board-header">
             <div class="title">BOARD OF DIRECTORS</div>
@@ -205,6 +237,9 @@
           <div class="ds-row"><span class="key">Founded</span><span class="val" id="cp-d-founded">—</span></div>
           <div class="ds-row"><span class="key">Starting capital</span><span class="val" id="cp-d-cap">—</span></div>
           <div class="ds-row"><span class="key">Founding fee</span><span class="val" id="cp-d-fee">—</span></div>
+          <div class="ds-row" id="cp-d-row-price"><span class="key">Share price</span><span class="val" id="cp-d-price">—</span></div>
+          <div class="ds-row" id="cp-d-row-shares"><span class="key">Shares outstanding</span><span class="val" id="cp-d-shares">—</span></div>
+          <div class="ds-row" id="cp-d-row-treasury"><span class="key">Treasury</span><span class="val" id="cp-d-treasury">—</span></div>
         </div>
       </div>
     </div>
@@ -214,9 +249,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM } from './js/utils.js';
-
-function cap2(s) { return String(s || '').replace(/\b\w/g, c => c.toUpperCase()); }
+import { fmtM, fmtUsd, titleCase, pctOwned } from './js/utils.js';
 function initials(s, n) {
   return (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, n || 2).map(w => w[0]).join('').toUpperCase()) || '—';
 }
@@ -229,18 +262,28 @@ function initials(s, n) {
     if (!id) { window.location.href = 'entrepreneur-corporations.html'; return; }
 
     const { data: c, error } = await _supabase.from('entrepreneur_corps')
-      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
+      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, treasury_cash, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
     if (!c) { window.location.href = 'entrepreneur-corporations.html'; return; }
+
+    const isPublic = c.listing === 'public';
+    const entId = (ctx.allUserFactions || []).find(f => f.faction_type === 'entrepreneur')?.id || null;
+    let yourShares = 0;
+    if (isPublic && entId) {
+      const { data: sh, error: shErr } = await _supabase.from('corp_shareholdings')
+        .select('shares').eq('corp_id', id).eq('holder_faction_id', entId).maybeSingle();
+      if (shErr) console.warn('[entrepreneur-corp] shareholding fetch error:', shErr.message);
+      else yourShares = Number(sh?.shares) || 0;
+    }
 
     const set = (i, v) => { const el = document.getElementById(i); if (el) el.textContent = v; };
     const name = c.name || 'Corporation';
     const o = c.owner || {};
     const ownerName = [o.leader_first_name, o.leader_last_name].filter(Boolean).join(' ').trim()
       || o.faction_name || '—';
-    const listing = cap2(c.listing || 'private');
+    const listing = titleCase(c.listing || 'private');
     const founded = c.founded_tick != null ? 'Tick ' + c.founded_tick : '—';
 
     document.title = name + ' — Corporation Management';
@@ -262,6 +305,95 @@ function initials(s, n) {
     set('cp-d-founded', founded);
     set('cp-d-cap', fmtM(c.starting_capital));
     set('cp-d-fee', fmtM(c.founding_fee));
+
+    // Listing-specific market view. The share state is the one source
+    // (entrepreneur_corps.share_price / shares_outstanding /
+    // treasury_cash; corp_shareholdings for the viewer's stake) — read,
+    // never recomputed. Private corps keep the existing hardcoded view.
+    set('cp-listing-delta', isPublic ? '— public market' : '— founder owns 100%');
+    if (isPublic) {
+      const price = Number(c.share_price) || 0;
+      const sharesOut = Number(c.shares_outstanding) || 0;
+      const treasury = Number(c.treasury_cash) || 0;
+      const isOwner = !!entId && c.owner_faction_id === entId;
+      const pct = pctOwned(yourShares, sharesOut) ?? 0;
+
+      const valEl = document.getElementById('cp-val');
+      if (valEl) { valEl.classList.remove('muted'); valEl.textContent = fmtUsd(sharesOut * price); }
+      set('cp-val-delta', `${sharesOut} sh × ${fmtUsd(price)}`);
+
+      set('cp-stake-num', String(pct));
+      set('cp-role-pill', isOwner ? 'FOUNDER' : 'SHAREHOLDER');
+      set('cp-owner-sub', `${fmtUsd(yourShares * price)} · ${yourShares}/${sharesOut} shares`);
+
+      const pc = document.getElementById('cp-price-card');
+      if (pc) pc.innerHTML = `Current share price <b style="color:#8aaa6a">${fmtUsd(price)}</b>`
+        + `<br>Trading and price history begin in a later phase.`;
+
+      set('cp-d-price', fmtUsd(price));
+      set('cp-d-shares', String(sharesOut));
+      set('cp-d-treasury', fmtUsd(treasury));
+
+      // Trade panel. The bonding-curve math is NOT recomputed here —
+      // corp_trade is the one source; we send the quantity and show the
+      // amount it returns, then reload so every figure repaints from
+      // the DB. The shared `trading` flag + both buttons disabled is
+      // the double-fire lock (kept locked through the reload); the
+      // server's row locks back it up if the client lock is bypassed.
+      const tradeCard = document.getElementById('cp-trade');
+      if (tradeCard) {
+        tradeCard.style.display = 'block';
+        set('cp-hold', `You hold ${yourShares} share${yourShares === 1 ? '' : 's'}.`);
+        const buyBtn = document.getElementById('cp-buy');
+        const sellBtn = document.getElementById('cp-sell');
+        const qtyEl = document.getElementById('cp-qty');
+        const msgEl = document.getElementById('cp-trade-msg');
+        let trading = false;
+        const doTrade = async (side, btn) => {
+          if (trading) return;
+          const qty = Number((qtyEl.value || '').trim());
+          if (!Number.isInteger(qty) || qty < 1) {
+            msgEl.className = 'tc-msg err';
+            msgEl.textContent = 'Enter a whole number of shares (1 or more).';
+            return;
+          }
+          trading = true; buyBtn.disabled = true; sellBtn.disabled = true;
+          const prev = btn.textContent;
+          btn.textContent = side === 'buy' ? 'BUYING…' : 'SELLING…';
+          msgEl.className = 'tc-msg'; msgEl.textContent = '';
+          const release = () => {
+            trading = false; buyBtn.disabled = false; sellBtn.disabled = false;
+            btn.textContent = prev;
+          };
+          try {
+            const { data, error: rpcErr } = await _supabase.rpc('corp_trade',
+              { p_corp_id: id, p_side: side, p_quantity: qty });
+            if (rpcErr) throw rpcErr;
+            if (!data || !data.success) {
+              msgEl.className = 'tc-msg err';
+              msgEl.textContent = `Could not ${side}: ` + ((data && data.reason) || 'unknown');
+              release();
+              return;
+            }
+            const amt = data.side === 'sell' ? data.proceeds : data.spent;
+            msgEl.className = 'tc-msg ok';
+            msgEl.textContent = `${data.side === 'sell' ? 'Sold' : 'Bought'} ${data.quantity}`
+              + ` share${data.quantity === 1 ? '' : 's'} for ${fmtUsd(amt)}. Refreshing…`;
+            setTimeout(() => location.reload(), 700);
+          } catch (e) {
+            msgEl.className = 'tc-msg err';
+            msgEl.textContent = `Could not ${side}: ` + (e?.message || e);
+            release();
+          }
+        };
+        buyBtn.addEventListener('click', () => doTrade('buy', buyBtn));
+        sellBtn.addEventListener('click', () => doTrade('sell', sellBtn));
+      }
+    } else {
+      ['cp-d-row-price', 'cp-d-row-shares', 'cp-d-row-treasury'].forEach(rid => {
+        const r = document.getElementById(rid); if (r) r.style.display = 'none';
+      });
+    }
 
     document.getElementById('cp-load').style.display = 'none';
     document.getElementById('cp-app').style.display = 'block';

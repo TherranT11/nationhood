@@ -79,7 +79,7 @@ const DEFAULT_MISSED_THRESHOLD = 4;
 //    - advance-tick/index.ts gov_bailout path (non-P&L equity infusion — correct to skip)
 //    - js/corp-refurbish.js client-side refurbish cost (player-initiated expense)
 //    - non-P&L principal transfers (loan principal debit/credit at ~L4355 /
-//      ~L4378 / ~L5419, bond principal credit at ~L2713). These belong in
+//      ~L4378 / ~L5419). These belong in
 //      capital_in / capital_out / debt_principal categories, which need the
 //      helper extended to skip P&L semantics — deferred.
 //  Follow-up: route these through logCashEvent in a later phase.
@@ -2086,14 +2086,11 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
             logCashEvent(corp.id, 'tax',         'Corporate tax',      -taxAmount);
         }
 
-        // Credit corporate tax to the nation's debt reduction
-        if (taxAmount > 0) {
-            const { data: nationRow } = await supabase.from('nations').select('debt').eq('id', nation.id).single();
-            if (nationRow) {
-                const newDebt = Math.max(0, Number(nationRow.debt || 0) - taxAmount);
-                await supabase.from('nations').update({ debt: newDebt }).eq('id', nation.id);
-            }
-        }
+        // Corporate tax leaves the corp's cash above. It deliberately
+        // does NOT touch nation debt or budget here: corp tax reaches the
+        // treasury once, via computeCorporateTaxRevenue in advance-tick's
+        // budget path (the one source). Per directive — tax funds the
+        // budget, never pays down debt. Do not re-add a debt write here.
     }
     console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, tax rate=${ns('corporate_tax')}%`);
 }
@@ -3675,12 +3672,12 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
             .eq('status', 'pending');
     }
 
-    // 2. Process active loan/bond payments (1 tick = 1 month).
-    //    Insurance rows (request_type='insurance') are inert — see the
-    //    early-continue below.
+    // 2. Process active loan payments (1 tick = 1 month). Insurance /
+    //    equity rows are inert — see the early-continue guards below.
+    //    (Bonds retired: rows + 'bond' request_type removed via migration.)
     const { data: activeLoans } = await supabase
         .from('finance_active_loans')
-        .select('*, finance_loan_requests!inner(request_type, issuer_nation_id)')
+        .select('*, finance_loan_requests!inner(request_type)')
         .eq('nation_id', nationId)
         .in('status', ['current', 'late', 'delinquent'])
         .or(`last_payment_tick.is.null,last_payment_tick.neq.${currentTick}`);
@@ -3712,70 +3709,6 @@ async function processFinanceLoans(supabase, nationId, currentTick) {
         // loop — that path would log them as "Loan interest paid" /
         // "Loan interest received", which is wrong for equity.
         if (requestType === 'equity') {
-            continue;
-        }
-
-        // Bonds: coupon payments come from nation treasury (increases debt)
-        if (requestType === 'bond') {
-            let payment = loan.monthly_payment;
-            const newPaymentsMade = loan.payments_made + 1;
-            const isMatured = newPaymentsMade >= loan.term_months && loan.term_months > 0;
-
-            // Trading Floor bonus: +0.5% annualized bonus yield on bond principal
-            const { data: tradingFloors } = await supabase
-                .from('corp_properties')
-                .select('id')
-                .eq('faction_id', loan.lender_faction_id)
-                .eq('type', 'trading_floor')
-                .eq('is_active', true)
-                .limit(1);
-            if (tradingFloors && tradingFloors.length > 0) {
-                const bonusYield = Math.round(loan.principal * (0.005 / 12));
-                payment += bonusYield;
-            }
-
-            // Nation pays coupon to bondholder (including trading floor bonus)
-            // Coupons are interest expense — paid from treasury, do NOT change debt principal
-            const { data: lender } = await supabase.from('factions')
-                .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
-            if (lender) {
-                logCashEvent(loan.lender_faction_id, 'revenue_finance', 'Bond coupon received', payment);
-                await supabase.from('factions').update({
-                    corp_cash_reserves: Number(lender.corp_cash_reserves || 0) + payment
-                }).eq('id', loan.lender_faction_id);
-            }
-
-            // At maturity: return principal to bondholder and REDUCE nation debt
-            // (nation repays the borrowed amount, so debt decreases)
-            if (isMatured) {
-                if (lender) {
-                    const { data: lenderFresh } = await supabase.from('factions')
-                        .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
-                    await supabase.from('factions').update({
-                        corp_cash_reserves: Number(lenderFresh?.corp_cash_reserves || 0) + loan.principal
-                    }).eq('id', loan.lender_faction_id);
-                }
-                const { data: nationFresh } = await supabase.from('nations')
-                    .select('debt').eq('id', nationId).single();
-                if (nationFresh) {
-                    await supabase.from('nations').update({
-                        debt: Math.max(0, Number(nationFresh.debt || 0) - loan.principal)
-                    }).eq('id', nationId);
-                }
-                console.log(`[Bonds] Bond matured: $${Math.round(loan.principal / 1000)}k returned to ${loan.lender_faction_id}, nation debt reduced`);
-            }
-
-            await supabase.from('finance_active_loans').update({
-                total_paid: loan.total_paid + payment,
-                total_interest_paid: (loan.total_interest_paid || 0) + payment,
-                payments_made: newPaymentsMade,
-                payments_missed: 0,
-                last_payment_tick: currentTick,
-                status: isMatured ? 'repaid' : 'current',
-                completed_tick: isMatured ? currentTick : null,
-            }).eq('id', loan.id);
-
-            results.payments++;
             continue;
         }
 
