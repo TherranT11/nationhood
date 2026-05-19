@@ -54,6 +54,12 @@
   .fin-card .val.gold { color:#8aaa6a; }
   .fin-card .val.muted { color:#555; }
   .fin-card .delta { font-size:10px; margin-top:6px; letter-spacing:0.05em; color:#555; }
+  .fin-card .type-action { margin-top:10px; width:100%; background:#1f2a1a; color:#8aaa6a;
+    border:0.5px solid #4a6a4a; border-radius:3px; padding:6px 10px; font-size:10px;
+    letter-spacing:0.1em; font-weight:600; font-family:inherit; cursor:pointer; transition:background 0.15s; }
+  .fin-card .type-action:hover:not(:disabled) { background:#26331f; }
+  .fin-card .type-action:disabled { opacity:0.5; cursor:not-allowed; }
+  .fin-card .type-action[hidden] { display:none; }
 
   /* Two-col main */
   .main-grid { display:grid; grid-template-columns:1fr 320px; gap:22px; }
@@ -158,6 +164,8 @@
         <div class="lab">TYPE</div>
         <div class="val" id="cp-listing2">Private</div>
         <div class="delta" id="cp-listing-delta">—</div>
+        <button class="type-action" id="cp-go-public" hidden
+                title="Issue 20 shares and open public trading">Go Public ▸</button>
       </div>
       <div class="fin-card">
         <div class="lab">VALUATION</div>
@@ -305,6 +313,58 @@ function initials(s, n) {
 
     set('cp-listing-delta', isPublic ? '— public market' : '— founder owns 100%');
 
+    // [Go Public] lives in the TYPE card — founder-only, private corps.
+    // IPO via go_public (the one source — mirrors founding-public);
+    // one-way in v1. Reload on success so every derived figure
+    // (valuation seed→market, trade card, board) repaints from the DB.
+    // Mirrors the trade card's lock/reason/reload conventions.
+    const isOwner = !!entId && c.owner_faction_id === entId;
+    if (!isPublic && isOwner) {
+      const gp = document.getElementById('cp-go-public');
+      if (gp) {
+        gp.hidden = false;
+        let goingPublic = false;
+        gp.addEventListener('click', async () => {
+          if (goingPublic) return;
+          // Wording is intentionally generic — the share count, price
+          // and treasury are the server's (go_public) to compute; the
+          // client must not re-derive that formula here. Real figures
+          // appear on the post-success reload.
+          const ok = confirm(
+            `Take ${c.name || 'this corporation'} public?\n\n`
+            + `• Issues shares and opens public trading at a price set from your starting capital\n`
+            + `• You keep 100% — your stake dilutes only if others buy\n`
+            + `• This cannot be undone yet (Go Private comes later)`);
+          if (!ok) return;
+          goingPublic = true;
+          gp.disabled = true;
+          const prev = gp.textContent;
+          gp.textContent = 'GOING PUBLIC…';
+          try {
+            const { data, error: rpcErr } = await _supabase.rpc('go_public', { p_corp_id: id });
+            if (rpcErr) throw rpcErr;
+            if (!data || !data.success) {
+              const REASON = {
+                not_authenticated: 'You are not signed in.',
+                no_entrepreneur:   'No entrepreneur faction found.',
+                corp_not_found:    'Corporation not found.',
+                not_owner:         'Only the owner can take this corporation public.',
+                already_public:    'This corporation is already public.',
+              };
+              alert(REASON[data?.reason] || 'Could not go public. Please try again.');
+              goingPublic = false; gp.disabled = false; gp.textContent = prev;
+              return;
+            }
+            gp.textContent = 'PUBLIC ✓ — refreshing…';
+            setTimeout(() => location.reload(), 700);
+          } catch (e) {
+            alert('Could not go public: ' + (e?.message || e));
+            goingPublic = false; gp.disabled = false; gp.textContent = prev;
+          }
+        });
+      }
+    }
+
     // Cash on hand: public reads treasury_cash; private has none
     // (treasury_cash NULL by design, no ops modelled) so it shows the
     // seed it was founded with. Debt / per-tick income aren't modelled
@@ -335,7 +395,6 @@ function initials(s, n) {
       const price = Number(c.share_price) || 0;
       const sharesOut = Number(c.shares_outstanding) || 0;
       const treasury = Number(c.treasury_cash) || 0;
-      const isOwner = !!entId && c.owner_faction_id === entId;
       const pct = pctOwned(yourShares, sharesOut) ?? 0;
 
       set('cp-stake-num', String(pct));
