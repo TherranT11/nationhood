@@ -164,8 +164,8 @@
         <div class="lab">TYPE</div>
         <div class="val" id="cp-listing2">Private</div>
         <div class="delta" id="cp-listing-delta">—</div>
-        <button class="type-action" id="cp-go-public" hidden disabled
-                title="Coming soon — IPOs are not yet enabled">Go Public ▸</button>
+        <button class="type-action" id="cp-go-public" hidden
+                title="Issue 20 shares and open public trading">Go Public ▸</button>
       </div>
       <div class="fin-card">
         <div class="lab">VALUATION</div>
@@ -314,12 +314,53 @@ function initials(s, n) {
     set('cp-listing-delta', isPublic ? '— public market' : '— founder owns 100%');
 
     // [Go Public] lives in the TYPE card — founder-only, private corps.
-    // Stays disabled: the IPO / listing-transition mechanic does not
-    // exist yet (no RPC). Shown so the action has a discoverable home.
+    // IPO via go_public (the one source — mirrors founding-public);
+    // one-way in v1. Reload on success so every derived figure
+    // (valuation seed→market, trade card, board) repaints from the DB.
+    // Mirrors the trade card's lock/reason/reload conventions.
     const isOwner = !!entId && c.owner_faction_id === entId;
     if (!isPublic && isOwner) {
       const gp = document.getElementById('cp-go-public');
-      if (gp) gp.hidden = false;
+      if (gp) {
+        gp.hidden = false;
+        const seed = Number(c.starting_capital) || 0;
+        let goingPublic = false;
+        gp.addEventListener('click', async () => {
+          if (goingPublic) return;
+          const ok = confirm(
+            `Take ${c.name || 'this corporation'} public?\n\n`
+            + `• Issues 20 shares at ${fmtUsd(seed / 20)} each\n`
+            + `• Seeds the corp treasury with ${fmtM(seed)}\n`
+            + `• You keep all 20 shares (100%); your stake dilutes only if others buy\n`
+            + `• This cannot be undone yet (Go Private comes later)`);
+          if (!ok) return;
+          goingPublic = true;
+          gp.disabled = true;
+          const prev = gp.textContent;
+          gp.textContent = 'GOING PUBLIC…';
+          try {
+            const { data, error: rpcErr } = await _supabase.rpc('go_public', { p_corp_id: id });
+            if (rpcErr) throw rpcErr;
+            if (!data || !data.success) {
+              const REASON = {
+                not_authenticated: 'You are not signed in.',
+                no_entrepreneur:   'No entrepreneur faction found.',
+                corp_not_found:    'Corporation not found.',
+                not_owner:         'Only the owner can take this corporation public.',
+                already_public:    'This corporation is already public.',
+              };
+              alert(REASON[data?.reason] || 'Could not go public. Please try again.');
+              goingPublic = false; gp.disabled = false; gp.textContent = prev;
+              return;
+            }
+            gp.textContent = 'PUBLIC ✓ — refreshing…';
+            setTimeout(() => location.reload(), 700);
+          } catch (e) {
+            alert('Could not go public: ' + (e?.message || e));
+            goingPublic = false; gp.disabled = false; gp.textContent = prev;
+          }
+        });
+      }
     }
 
     // Cash on hand: public reads treasury_cash; private has none
