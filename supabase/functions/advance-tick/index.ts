@@ -3437,7 +3437,7 @@ async function fireBilateralEvent(supabase, triggerKey, nationIdA, nationIdB, cu
 // ────────── corp-valuation ──────────
 
 // Shared corporation-valuation and property-cost math. Single source of
-// truth for two distinct surfaces:
+// truth for three distinct surfaces:
 //
 //   1. Valuation pipeline — computePropertyValue / computeEquipmentValue
 //      / computeFinanceReceivableValue / computeCorpValuationBreakdown
@@ -3458,6 +3458,13 @@ async function fireBilateralEvent(supabase, triggerKey, nationIdA, nationIdB, cu
 //      The tick processor never recomputes these (purchase_price is
 //      persisted on the corp_properties row at creation), so no
 //      server-side mirror is required.
+//
+//   3. Entrepreneur-facing valuation — computeEntrepreneurValuation.
+//      The seed/market figure shown on entrepreneur-dashboard.html,
+//      entrepreneur-corporations.html and entrepreneur-corp.html.
+//      Deliberately NOT the section-1 engine valuation ("the founding
+//      cash was already spent; we don't invent a valuation"); it is
+//      display-only and never feeds net worth or the tick processor.
 
 // National HQ value/quality formulas. The HQ is now persisted as a
 // real corp_properties row at corp founding (see corp-nation-select.html)
@@ -3571,6 +3578,22 @@ function computeCorpValuationBreakdown({ cash, loans, properties, propertyValue,
 
 function computeCorpValuation({ cash, loans, properties, propertyValue, vessels, equipmentValue, financeReceivables, currentTick }) {
     return computeCorpValuationBreakdown({ cash, loans, properties, propertyValue, vessels, equipmentValue, financeReceivables, currentTick }).valuation;
+}
+
+// See header §3. Display-only seed/market valuation for the
+// entrepreneur surface — public → MARKET CAP (share_price ×
+// shares_outstanding); private → SEED CAPITAL (immutable
+// starting_capital); otherwise none. Returns the raw figure + kind so
+// each surface formats/labels itself; the rule lives only here.
+function computeEntrepreneurValuation(corp) {
+    const c = corp || {};
+    if (c.listing === 'public' && c.share_price != null && c.shares_outstanding != null) {
+        return { kind: 'market', amount: Number(c.share_price) * Number(c.shares_outstanding) };
+    }
+    if (c.listing !== 'public' && c.starting_capital != null) {
+        return { kind: 'seed', amount: Number(c.starting_capital) };
+    }
+    return { kind: 'none', amount: null };
 }
 
 // ────────── tax-articles ──────────

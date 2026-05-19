@@ -209,6 +209,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { hfFmtBig, escapeHtml, escapeAttr, titleCase, fmtUsd, pctOwned } from './js/utils.js';
+import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 
@@ -307,13 +308,16 @@ function initials(first, last, fallbackName) {
   return ((w[0]?.[0] || '') + (w[1]?.[0] || '')).toUpperCase() || '—';
 }
 
-// ── Portfolio: every corp this entrepreneur holds shares in (founded
-// OR bought). corp_shareholdings joined to entrepreneur_corps is the
-// one source — shares and share_price are read, a position's
-// value = shares × share_price is computed once here and feeds BOTH
-// the rows and the net-worth rollup (cash + Σ value, derived, stored
-// nowhere). Private founded corps have no share position and live on
-// the Corporations page, not this list.
+// ── Corporate Holdings: one row per corp the entrepreneur is tied to —
+// corps they FOUNDED (entrepreneur_corps.owner_faction_id) and corps
+// they hold SHARES in (corp_shareholdings), merged by corp id so a
+// founded-then-IPO'd corp shows once. Fields: industry, type
+// (private/public), HQ, ownership, status, valuation.
+//
+// NET WORTH is deliberately unchanged: cash + Σ(share-position value
+// only). A private founded corp's seed capital and a public corp's
+// market cap are shown for context but are NOT added to net worth
+// (the founding cash was already spent; we don't invent a valuation).
 function renderHoldings(positions) {
   const listEl = document.getElementById('ch-list');
   const countEl = document.getElementById('ch-count');
@@ -321,21 +325,42 @@ function renderHoldings(positions) {
   const n = positions.length;
   if (countEl) countEl.textContent = n === 0 ? '0 ACTIVE POSITIONS' : `${n} ACTIVE POSITION${n === 1 ? '' : 'S'}`;
   if (n === 0) {
-    listEl.innerHTML = '<div class="empty">No share positions yet.<br>Found a public corp or buy shares from the Corporations tab. Board seats, mergers &amp; acquisitions are coming soon.</div>';
+    listEl.innerHTML = '<div class="empty">No corporate holdings yet.<br>Found a corporation or buy shares from the Corporations tab. Board seats, mergers &amp; acquisitions are coming soon.</div>';
     return;
   }
   listEl.innerHTML = `<div class="ch-list">${positions.map(pos => {
     const c = pos.corp;
-    const pct = pctOwned(pos.shares, Number(c.shares_outstanding) || 0);
+    const isFounder = pos.relationship === 'founder';
+
+    let ownership, status;
+    if (isFounder && c.listing !== 'public') {
+      ownership = '100%';
+      status = 'Founder · 100% Owner';
+    } else if (isFounder) {
+      ownership = pos.shares > 0 ? `${pos.shares} sh${pos.pct == null ? '' : ` · ${pos.pct}%`}` : '—';
+      status = 'Founder';
+    } else {
+      ownership = `${pos.shares} sh${pos.pct == null ? '' : ` · ${pos.pct}%`}`;
+      status = 'Shareholder';
+    }
+
+    // Valuation figure computed once in loadHoldings (pos.valuation).
+    const valKey = pos.valuation.kind === 'market' ? 'MARKET CAP'
+                 : pos.valuation.kind === 'seed'   ? 'SEED CAPITAL'
+                 : 'VALUATION';
+    const valVal = pos.valuation.amount == null ? '—' : fmtUsd(pos.valuation.amount);
+
     return `
     <a class="ch-row" href="entrepreneur-corp.html?id=${encodeURIComponent(c.id)}">
       <div>
         <div class="ch-name">${escapeHtml(c.name || 'Corporation')}</div>
         <div class="ch-fields">
           <span><span class="k">INDUSTRY</span><span class="v">${escapeHtml(titleCase(c.industry))}</span></span>
+          <span><span class="k">TYPE</span><span class="v">${escapeHtml(typeLabel)}</span></span>
           <span><span class="k">HQ</span><span class="v">${escapeHtml(c.hq?.name || '—')}</span></span>
-          <span><span class="k">OWNERSHIP</span><span class="v">${pos.shares} sh${pct == null ? '' : ` · ${pct}%`}</span></span>
-          <span><span class="k">VALUE</span><span class="v">${fmtUsd(pos.value)}</span></span>
+          <span><span class="k">OWNERSHIP</span><span class="v">${escapeHtml(ownership)}</span></span>
+          <span><span class="k">STATUS</span><span class="v">${escapeHtml(status)}</span></span>
+          <span><span class="k">${valKey}</span><span class="v">${valVal}</span></span>
         </div>
       </div>
       <div class="ch-arrow">▸</div>
@@ -351,30 +376,68 @@ async function loadHoldings(entId, cash) {
     setText('net-worth-sub', `cash ${hfFmtBig(cash)} · holdings ${hfFmtBig(holdingsValue)}`);
   };
   if (!entId) { renderHoldings([]); setNetWorth(0); return; }
-  // One source: this faction's share positions, joined to the corp for
-  // price / industry / HQ. gt('shares',0) drops fully-sold positions.
-  const { data, error } = await _supabase.from('corp_shareholdings')
-    .select('shares, corp:entrepreneur_corps!corp_id(id, name, industry, share_price, shares_outstanding, hq:nations!hq_nation_id(name))')
-    .eq('holder_faction_id', entId)
-    .gt('shares', 0);
-  if (error) {
-    console.warn('[entrepreneur-dashboard] portfolio fetch error:', error.message);
+
+  const CORP_COLS = 'id, name, industry, listing, starting_capital, share_price, shares_outstanding, hq:nations!hq_nation_id(name)';
+  // Two sources, merged by corp id: founded corps + share positions.
+  // gt('shares',0) drops fully-sold positions.
+  const [foundedRes, sharesRes] = await Promise.all([
+    _supabase.from('entrepreneur_corps').select(CORP_COLS).eq('owner_faction_id', entId),
+    _supabase.from('corp_shareholdings')
+      .select(`shares, corp:entrepreneur_corps!corp_id(${CORP_COLS})`)
+      .eq('holder_faction_id', entId)
+      .gt('shares', 0),
+  ]);
+  if (foundedRes.error) console.warn('[entrepreneur-dashboard] founded-corps fetch error:', foundedRes.error.message);
+  if (sharesRes.error)  console.warn('[entrepreneur-dashboard] portfolio fetch error:', sharesRes.error.message);
+
+  if (foundedRes.error && sharesRes.error) {
     const countEl = document.getElementById('ch-count');
     if (countEl) countEl.textContent = '—';
     listEl.innerHTML = '<div class="empty">Failed to load holdings.</div>';
     setText('net-worth-sub', 'holdings unavailable — showing cash only');
     return;   // net-worth value stays at the cash baseline set by init
   }
-  const positions = (data || [])
-    .filter(r => r.corp)   // corp must resolve (FK guarantees it; defensive)
-    .map(r => {
-      const shares = Number(r.shares) || 0;
-      const price = Number(r.corp.share_price) || 0;
-      return { corp: r.corp, shares, value: shares * price };
-    })
-    .sort((a, b) => b.value - a.value);   // largest position first
+
+  // One row per corp, keyed by id. Founded first; a matching share
+  // position is folded into that row (founded-then-IPO'd corp).
+  const byId = new Map();
+  for (const c of (foundedRes.data || [])) {
+    if (!c) continue;
+    byId.set(c.id, { corp: c, relationship: 'founder', shares: 0, pct: null, netWorthValue: 0 });
+  }
+  for (const r of (sharesRes.data || [])) {
+    if (!r.corp) continue;   // FK guarantees corp resolves; defensive
+    const shares = Number(r.shares) || 0;
+    const price = Number(r.corp.share_price) || 0;
+    const value = shares * price;
+    const existing = byId.get(r.corp.id);
+    if (existing) {
+      existing.shares = shares;
+      existing.pct = pctOwned(shares, Number(r.corp.shares_outstanding) || 0);
+      existing.netWorthValue = value;   // founder who also holds shares
+    } else {
+      byId.set(r.corp.id, {
+        corp: r.corp, relationship: 'shareholder', shares,
+        pct: pctOwned(shares, Number(r.corp.shares_outstanding) || 0),
+        netWorthValue: value,
+      });
+    }
+  }
+
+  // Per-corp valuation from the shared single source (see
+  // js/game/corp-valuation.js §3). Read by render + sort below;
+  // display-only, never feeds net worth.
+  for (const p of byId.values()) {
+    p.valuation = computeEntrepreneurValuation(p.corp);
+  }
+
+  // Sort: biggest economic stake first — realised share value if any,
+  // else the corp's own valuation figure.
+  const sortVal = (p) => p.netWorthValue > 0 ? p.netWorthValue : (p.valuation.amount || 0);
+  const positions = [...byId.values()].sort((a, b) => sortVal(b) - sortVal(a));
   renderHoldings(positions);
-  setNetWorth(positions.reduce((s, p) => s + p.value, 0));
+  // Net worth unchanged: only realised share-position value counts.
+  setNetWorth(positions.reduce((s, p) => s + p.netWorthValue, 0));
 }
 
 (async () => {

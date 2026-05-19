@@ -150,29 +150,29 @@
 
     <div class="financials">
       <div class="fin-card">
-        <div class="lab">STARTING CAPITAL</div>
-        <div class="val gold" id="cp-cap">—</div>
-        <div class="delta">— seed (immutable)</div>
+        <div class="lab">CASH ON HAND</div>
+        <div class="val gold" id="cp-cash">—</div>
+        <div class="delta" id="cp-cash-delta">—</div>
       </div>
       <div class="fin-card">
-        <div class="lab">FOUNDING FEE</div>
-        <div class="val" id="cp-fee">—</div>
-        <div class="delta">— one-time</div>
-      </div>
-      <div class="fin-card">
-        <div class="lab">LISTING</div>
+        <div class="lab">TYPE</div>
         <div class="val" id="cp-listing2">Private</div>
         <div class="delta" id="cp-listing-delta">—</div>
       </div>
       <div class="fin-card">
         <div class="lab">VALUATION</div>
         <div class="val muted" id="cp-val">—</div>
-        <div class="delta" id="cp-val-delta">Not yet modelled</div>
+        <div class="delta" id="cp-val-delta">—</div>
       </div>
       <div class="fin-card">
-        <div class="lab">INCOME (TICK)</div>
-        <div class="val muted">—</div>
-        <div class="delta">Not yet modelled</div>
+        <div class="lab">INCOME LAST TICK</div>
+        <div class="val" id="cp-income">$0</div>
+        <div class="delta">— per tick</div>
+      </div>
+      <div class="fin-card">
+        <div class="lab">DEBT</div>
+        <div class="val" id="cp-debt">$0</div>
+        <div class="delta">— none</div>
       </div>
     </div>
 
@@ -249,7 +249,8 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, titleCase, pctOwned } from './js/utils.js';
+import { fmtM, fmtUsd, titleCase, pctOwned, ownerDisplayName } from './js/utils.js';
+import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 function initials(s, n) {
   return (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, n || 2).map(w => w[0]).join('').toUpperCase()) || '—';
 }
@@ -280,9 +281,7 @@ function initials(s, n) {
 
     const set = (i, v) => { const el = document.getElementById(i); if (el) el.textContent = v; };
     const name = c.name || 'Corporation';
-    const o = c.owner || {};
-    const ownerName = [o.leader_first_name, o.leader_last_name].filter(Boolean).join(' ').trim()
-      || o.faction_name || '—';
+    const ownerName = ownerDisplayName(c.owner);
     const listing = titleCase(c.listing || 'private');
     const founded = c.founded_tick != null ? 'Tick ' + c.founded_tick : '—';
 
@@ -296,8 +295,6 @@ function initials(s, n) {
     set('cp-hq', c.hq?.name ? (c.hq.continent ? `${c.hq.name} · ${c.hq.continent}` : c.hq.name) : '—');
     set('cp-founded', founded);
     set('cp-owner-sub', ownerName !== '—' ? ownerName + ' · sole owner' : 'Sole owner · privately held');
-    set('cp-cap', fmtM(c.starting_capital));
-    set('cp-fee', fmtM(c.founding_fee));
     set('cp-board-ini', initials(ownerName !== '—' ? ownerName : name, 2));
     set('cp-board-name', ownerName);
     set('cp-d-owner', ownerName);
@@ -306,21 +303,41 @@ function initials(s, n) {
     set('cp-d-cap', fmtM(c.starting_capital));
     set('cp-d-fee', fmtM(c.founding_fee));
 
-    // Listing-specific market view. The share state is the one source
+    set('cp-listing-delta', isPublic ? '— public market' : '— founder owns 100%');
+
+    // Cash on hand: public reads treasury_cash; private has none
+    // (treasury_cash NULL by design, no ops modelled) so it shows the
+    // seed it was founded with. Debt / per-tick income aren't modelled
+    // → static real $0 in the markup (cp-debt / cp-income).
+    const cashOnHand = isPublic ? (Number(c.treasury_cash) || 0)
+                                : (Number(c.starting_capital) || 0);
+    set('cp-cash', fmtM(cashOnHand));
+    set('cp-cash-delta', isPublic ? '— corp treasury' : '— seed · no ops yet');
+
+    // VALUATION from the shared single source (js/game/corp-valuation.js
+    // §3). The engine valuation is deliberately a separate surface and
+    // is intentionally not used on the entrepreneur pages.
+    const val = computeEntrepreneurValuation(c);
+    const valEl = document.getElementById('cp-val');
+    if (valEl) {
+      valEl.classList.remove('muted');
+      valEl.textContent = val.amount == null ? '—'
+        : val.kind === 'market' ? fmtUsd(val.amount) : fmtM(val.amount);
+    }
+    set('cp-val-delta', val.kind === 'market'
+      ? `${Number(c.shares_outstanding) || 0} sh × ${fmtUsd(Number(c.share_price) || 0)}`
+      : val.kind === 'seed' ? '— seed capital' : '— not yet valued');
+
+    // Public-only market view. The share state is the one source
     // (entrepreneur_corps.share_price / shares_outstanding /
     // treasury_cash; corp_shareholdings for the viewer's stake) — read,
-    // never recomputed. Private corps keep the existing hardcoded view.
-    set('cp-listing-delta', isPublic ? '— public market' : '— founder owns 100%');
+    // never recomputed.
     if (isPublic) {
       const price = Number(c.share_price) || 0;
       const sharesOut = Number(c.shares_outstanding) || 0;
       const treasury = Number(c.treasury_cash) || 0;
       const isOwner = !!entId && c.owner_faction_id === entId;
       const pct = pctOwned(yourShares, sharesOut) ?? 0;
-
-      const valEl = document.getElementById('cp-val');
-      if (valEl) { valEl.classList.remove('muted'); valEl.textContent = fmtUsd(sharesOut * price); }
-      set('cp-val-delta', `${sharesOut} sh × ${fmtUsd(price)}`);
 
       set('cp-stake-num', String(pct));
       set('cp-role-pill', isOwner ? 'FOUNDER' : 'SHAREHOLDER');

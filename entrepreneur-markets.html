@@ -3,21 +3,252 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Markets — Entrepreneur</title>
-<link rel="stylesheet" href="css/entrepreneur-soon.css" />
+<title>Corporations Directory — Markets</title>
+<style>
+  .mkt { color: #d4d4d4; font-family: -apple-system, system-ui, sans-serif; }
+  .mkt .hero { margin-bottom: 20px; }
+  .mkt .eyebrow { color: #8aaa6a; font-size: 10px; letter-spacing: 0.15em; margin-bottom: 8px; }
+  .mkt .title { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+  .mkt .title .sans { font-size: 32px; font-weight: 500; color: #fff; line-height: 1; }
+  .mkt .title .serif { font-size: 32px; font-family: Georgia, 'Times New Roman', serif; font-style: italic; color: #8aaa6a; line-height: 1; }
+  .mkt .meta-row { display: flex; gap: 26px; font-size: 11px; letter-spacing: 0.06em; color: #888; flex-wrap: wrap; }
+  .mkt .meta-row .label { color: #555; margin-right: 6px; }
+  .mkt .meta-row .val { color: #d4d4d4; }
+  .mkt .meta-row .val.green { color: #8aaa6a; }
+
+  .mkt .toolbar { display: flex; align-items: center; margin-bottom: 14px; }
+  .mkt .search-box {
+    margin-left: auto; background: #1a1a1a; border: 0.5px solid rgba(255,255,255,0.12);
+    color: #d4d4d4; padding: 7px 12px; border-radius: 3px; font-size: 11px;
+    letter-spacing: 0.04em; width: 260px; font-family: inherit;
+  }
+  .mkt .search-box::placeholder { color: #555; font-style: italic; }
+
+  .mkt .directory { background: #0d0d0d; border: 0.5px solid rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; }
+  .mkt .dir-grid {
+    display: grid;
+    grid-template-columns: 2fr 0.8fr 1.2fr 1fr 1fr 0.9fr 86px;
+    gap: 14px; padding: 13px 18px; align-items: center;
+  }
+  .mkt .dir-header {
+    background: #0a0a0a; border-bottom: 0.5px solid rgba(255,255,255,0.08);
+    font-size: 9px; color: #555; letter-spacing: 0.13em;
+  }
+  .mkt .dir-header .right { text-align: right; }
+  .mkt .dir-row {
+    border-bottom: 0.5px solid rgba(255,255,255,0.04);
+    transition: background 0.15s; cursor: pointer;
+  }
+  .mkt .dir-row:last-child { border-bottom: none; }
+  .mkt .dir-row:hover { background: #121212; }
+  .mkt .dir-row.mine { background: #0f140d; border-left: 2px solid #8aaa6a; padding-left: 16px; }
+  .mkt .dir-row.mine:hover { background: #131a10; }
+
+  .mkt .c-name { font-size: 14px; font-weight: 500; color: #fff; line-height: 1.2; }
+  .mkt .c-sub { font-size: 9px; letter-spacing: 0.1em; margin-top: 3px; font-weight: 500; }
+  .mkt .c-sub.construction { color: #8aaa6a; }
+  .mkt .c-sub.banking { color: #7a9aab; }
+  .mkt .c-sub.shipping { color: #c89e6e; }
+  .mkt .c-sub .hq { color: #555; font-weight: 400; }
+
+  .mkt .type-pill {
+    display: inline-block; padding: 3px 9px; border-radius: 2px;
+    font-size: 9px; letter-spacing: 0.12em; font-weight: 500;
+  }
+  .mkt .type-public { background: #1a2535; color: #7a9aab; }
+  .mkt .type-private { background: #1a1a1a; color: #888; }
+
+  .mkt .ceo { font-size: 12px; color: #d4d4d4; }
+  .mkt .ceo.you { color: #8aaa6a; font-weight: 500; }
+
+  .mkt .num { text-align: right; font-size: 13px; color: #d4d4d4; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .mkt .num.muted { color: #555; }
+  .mkt .own { text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; color: #666; font-weight: 500; }
+  .mkt .own.has { color: #8aaa6a; }
+
+  .mkt .view-btn {
+    justify-self: end; padding: 5px 11px; border-radius: 3px; font-size: 9px;
+    letter-spacing: 0.08em; font-weight: 500; cursor: pointer;
+    background: #1a1a1a; border: 0.5px solid rgba(255,255,255,0.15); color: #888;
+    transition: all 0.15s;
+  }
+  .mkt .dir-row:hover .view-btn { color: #d4d4d4; border-color: rgba(255,255,255,0.3); }
+
+  .mkt .state { padding: 40px 18px; text-align: center; color: #555; font-size: 12px; letter-spacing: 0.06em; }
+  .mkt .footer-note {
+    margin-top: 22px; padding-top: 14px; border-top: 0.5px solid rgba(255,255,255,0.05);
+    text-align: center; color: #444; font-size: 10px; letter-spacing: 0.1em;
+  }
+</style>
 </head>
 <body>
 <div id="ent-topbar"></div>
 <div class="ent-content">
-  <div class="soon-wrap">
-    <div class="soon-kicker">— ENTREPRENEUR —</div>
-    <div class="soon-title">Markets</div>
-    <div class="soon-sub">Coming Soon</div>
+  <div class="mkt">
+    <div class="hero">
+      <div class="eyebrow">— CORPORATE REGISTRY —</div>
+      <div class="title">
+        <span class="sans">Corporations</span>
+        <span class="serif">Directory</span>
+      </div>
+      <div class="meta-row">
+        <div><span class="label">REGISTERED</span><span class="val" id="mk-total">—</span></div>
+        <div><span class="label">PUBLIC</span><span class="val" id="mk-public">—</span></div>
+        <div><span class="label">PRIVATE</span><span class="val" id="mk-private">—</span></div>
+        <div><span class="label">YOUR PORTFOLIO</span><span class="val green" id="mk-mine">—</span></div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <input class="search-box" id="mk-search" placeholder="Search by name or CEO..." autocomplete="off" />
+    </div>
+
+    <div class="directory">
+      <div class="dir-grid dir-header">
+        <div>CORPORATION</div>
+        <div>TYPE</div>
+        <div>CEO</div>
+        <div class="right">VALUATION</div>
+        <div class="right">SHARE PRICE</div>
+        <div class="right">OWNERSHIP</div>
+        <div></div>
+      </div>
+      <div id="mk-rows"><div class="state">Loading directory…</div></div>
+    </div>
+
+    <div class="footer-note" id="mk-foot">CORPORATE REGISTRY · UPDATED EACH TICK</div>
   </div>
 </div>
+
 <script type="module">
+import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-bootstrapEntrepreneur('markets').catch(e => console.warn('[entrepreneur-markets] init failed:', e?.message || e));
+import { fmtM, fmtUsd, titleCase, pctOwned, ownerDisplayName } from './js/utils.js';
+import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
+
+(async () => {
+  try {
+    const ctx = await bootstrapEntrepreneur('markets');
+    if (!ctx) return;
+    const entId = (ctx.allUserFactions || []).find(f => f.faction_type === 'entrepreneur')?.id || null;
+
+    // All founded corps (entrepreneur_corps RLS = SELECT true) + owner
+    // faction (CEO) + HQ nation. Plus the viewer's own shareholdings —
+    // corp_shareholdings is the one source for who owns what.
+    const [corpRes, holdRes] = await Promise.all([
+      _supabase.from('entrepreneur_corps')
+        .select('id, name, industry, listing, starting_capital, share_price, shares_outstanding, owner_faction_id, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name)')
+        .order('name'),
+      entId
+        ? _supabase.from('corp_shareholdings').select('corp_id, shares').eq('holder_faction_id', entId)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    const rowsEl = document.getElementById('mk-rows');
+    if (corpRes.error) {
+      console.warn('[entrepreneur-markets] corps load failed:', corpRes.error.message);
+      rowsEl.innerHTML = '<div class="state">Could not load the corporate registry. Try again shortly.</div>';
+      return;
+    }
+    if (holdRes.error) console.warn('[entrepreneur-markets] holdings load failed:', holdRes.error.message);
+
+    const corps = corpRes.data || [];
+    const myShares = new Map((holdRes.data || []).map(h => [h.corp_id, Number(h.shares) || 0]));
+
+    // Viewer's ownership in a corp. Private: only the founder holds it
+    // (100%), nobody else (not tradeable). Public: viewer's share % via
+    // the shared pctOwned (null/0 when none / no shares outstanding).
+    const myPct = (c) => c.listing !== 'public'
+      ? (c.owner_faction_id === entId ? 100 : 0)
+      : (pctOwned(myShares.get(c.id) || 0, c.shares_outstanding) ?? 0);
+
+    document.getElementById('mk-total').textContent = String(corps.length);
+    const publicN = corps.filter(c => c.listing === 'public').length;
+    document.getElementById('mk-public').textContent = String(publicN);
+    document.getElementById('mk-private').textContent = String(corps.length - publicN);
+    document.getElementById('mk-mine').textContent = String(corps.filter(c => myPct(c) > 0).length);
+
+    const render = (q) => {
+      const needle = q.trim().toLowerCase();
+      const list = needle
+        ? corps.filter(c => (c.name || '').toLowerCase().includes(needle)
+            || ownerDisplayName(c.owner).toLowerCase().includes(needle))
+        : corps;
+
+      document.getElementById('mk-foot').textContent =
+        `CORPORATE REGISTRY · ${list.length} OF ${corps.length} SHOWN · UPDATED EACH TICK`;
+
+      rowsEl.replaceChildren();
+      if (list.length === 0) {
+        const s = document.createElement('div');
+        s.className = 'state';
+        s.textContent = corps.length === 0
+          ? 'No corporations have been founded yet.'
+          : 'No corporations match your search.';
+        rowsEl.appendChild(s);
+        return;
+      }
+
+      for (const c of list) {
+        const isPublic = c.listing === 'public';
+        const mine = myPct(c);
+        const val = computeEntrepreneurValuation(c);
+        const ind = (c.industry || '').toLowerCase();
+
+        const row = document.createElement('div');
+        row.className = 'dir-grid dir-row' + (mine > 0 ? ' mine' : '');
+
+        const nameCell = document.createElement('div');
+        const nm = document.createElement('div'); nm.className = 'c-name'; nm.textContent = c.name || 'Corporation';
+        const sub = document.createElement('div'); sub.className = 'c-sub ' + ind;
+        sub.textContent = (c.industry || '—').toUpperCase();
+        const hq = document.createElement('span'); hq.className = 'hq';
+        hq.textContent = '  ·  ' + (c.hq?.name || '—').toUpperCase();
+        sub.appendChild(hq);
+        nameCell.append(nm, sub);
+
+        const typeCell = document.createElement('div');
+        const tp = document.createElement('span');
+        tp.className = 'type-pill ' + (isPublic ? 'type-public' : 'type-private');
+        tp.textContent = titleCase(c.listing || 'private').toUpperCase();
+        typeCell.appendChild(tp);
+
+        const ceoCell = document.createElement('div');
+        ceoCell.className = 'ceo' + (c.owner_faction_id === entId ? ' you' : '');
+        ceoCell.textContent = ownerDisplayName(c.owner);
+
+        const valCell = document.createElement('div');
+        valCell.className = 'num' + (val.amount == null ? ' muted' : '');
+        valCell.textContent = val.amount == null ? '—'
+          : (val.kind === 'market' ? fmtUsd(val.amount) : fmtM(val.amount));
+
+        const priceCell = document.createElement('div');
+        const hasPrice = isPublic && c.share_price != null;
+        priceCell.className = 'num' + (hasPrice ? '' : ' muted');
+        priceCell.textContent = hasPrice ? fmtUsd(c.share_price) : '—';
+
+        const ownCell = document.createElement('div');
+        ownCell.className = 'own' + (mine > 0 ? ' has' : '');
+        ownCell.textContent = mine + '%';
+
+        const btn = document.createElement('span');
+        btn.className = 'view-btn';
+        btn.textContent = 'VIEW';
+
+        row.append(nameCell, typeCell, ceoCell, valCell, priceCell, ownCell, btn);
+        row.addEventListener('click', () => {
+          window.location.href = 'entrepreneur-corp.html?id=' + encodeURIComponent(c.id);
+        });
+        rowsEl.appendChild(row);
+      }
+    };
+
+    render('');
+    document.getElementById('mk-search').addEventListener('input', (e) => render(e.target.value));
+  } catch (e) {
+    console.warn('[entrepreneur-markets] init failed:', e?.message || e);
+  }
+})();
 </script>
 </body>
 </html>
