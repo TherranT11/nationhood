@@ -228,7 +228,7 @@
         <div class="board-card">
           <div class="board-header">
             <div class="title">BOARD OF DIRECTORS</div>
-            <div class="sub">1 SEAT · 100% HELD</div>
+            <div class="sub" id="cp-board-sub">1 SEAT</div>
           </div>
           <div class="board-row">
             <div class="board-avatar" id="cp-board-ini">—</div>
@@ -236,8 +236,9 @@
               <div class="bname" id="cp-board-name">—</div>
               <div class="brole">FOUNDER · CHAIRMAN &amp; CEO</div>
             </div>
-            <div class="board-stake">100%</div>
+            <div class="board-stake" id="cp-board-chair-stake">100%</div>
           </div>
+          <div id="cp-board-extra"></div>
         </div>
 
         <div class="details-card">
@@ -308,6 +309,45 @@ function initials(s, n) {
     set('cp-owner-sub', ownerName !== '—' ? ownerName + ' · sole owner' : 'Sole owner · privately held');
     set('cp-board-ini', initials(ownerName !== '—' ? ownerName : name, 2));
     set('cp-board-name', ownerName);
+    // Chairman stake: private = 100% (sole owner). Public = blank (the
+    // OWNERSHIP hero already shows the viewer's stake; without an extra
+    // fetch we don't have the founder's per-share % to honestly show
+    // here, and the hardcoded "100%" was misleading for diluted public
+    // corps. Leaving it blank for public is the honest minimum.
+    set('cp-board-chair-stake', isPublic ? '' : '100%');
+
+    // Non-founder board members from corp_board_seats (20270158).
+    // Founder is NOT a row here — the chairman row above renders them
+    // from owner_faction_id (one source). Phase B will add the Join
+    // flow that populates this table; today it's expected to be empty.
+    const extraEl = document.getElementById('cp-board-extra');
+    const subEl   = document.getElementById('cp-board-sub');
+    if (extraEl) {
+      const { data: seats, error: seatsErr } = await _supabase.from('corp_board_seats')
+        .select('member_faction_id, joined_tick, member:factions!member_faction_id(faction_name, leader_first_name, leader_last_name)')
+        .eq('corp_id', id)
+        .order('joined_tick', { ascending: true });
+      if (seatsErr) console.warn('[entrepreneur-corp] board-seats fetch error:', seatsErr.message);
+      const dirs = seats || [];
+      extraEl.replaceChildren();
+      for (const s of dirs) {
+        const dname = ownerDisplayName(s.member);
+        const row = document.createElement('div'); row.className = 'board-row';
+        const av = document.createElement('div'); av.className = 'board-avatar'; av.textContent = initials(dname, 2);
+        const info = document.createElement('div'); info.className = 'board-info';
+        const nm = document.createElement('div'); nm.className = 'bname'; nm.textContent = dname;
+        const ro = document.createElement('div'); ro.className = 'brole'; ro.textContent = 'DIRECTOR';
+        info.append(nm, ro);
+        const stake = document.createElement('div'); stake.className = 'board-stake'; stake.textContent = '';
+        row.append(av, info, stake);
+        extraEl.appendChild(row);
+      }
+      if (subEl) {
+        const total = 1 + dirs.length;   // chairman + directors
+        subEl.textContent = `${total} SEAT${total === 1 ? '' : 'S'}`;
+      }
+    }
+
     set('cp-d-owner', ownerName);
     set('cp-d-listing', listing);
     set('cp-d-founded', founded);
