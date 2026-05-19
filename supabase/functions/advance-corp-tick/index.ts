@@ -2086,21 +2086,11 @@ async function processCorpMonthlyIncome(supabase, nation, corpFactions, currentT
             logCashEvent(corp.id, 'tax',         'Corporate tax',      -taxAmount);
         }
 
-        // Credit corporate tax to the nation's debt reduction.
-        // Unit boundary: nation.debt is abstract integers (1 = $1M raw
-        // post-20261206); taxAmount is raw dollars from the corp P&L.
-        // RAW_PER_ABSTRACT bridges raw → abstract BEFORE the subtraction.
-        // Without it, raw $ was subtracted from abstract debt — a 1e6×
-        // mismatch that wiped a nation's entire debt to 0 on any corp
-        // tax payment (same convention as the trade-contract bridge).
-        if (taxAmount > 0) {
-            const RAW_PER_ABSTRACT = 1_000_000;
-            const { data: nationRow } = await supabase.from('nations').select('debt').eq('id', nation.id).single();
-            if (nationRow) {
-                const newDebt = Math.max(0, Number(nationRow.debt || 0) - taxAmount / RAW_PER_ABSTRACT);
-                await supabase.from('nations').update({ debt: newDebt }).eq('id', nation.id);
-            }
-        }
+        // Corporate tax leaves the corp's cash above. It deliberately
+        // does NOT touch nation debt or budget here: corp tax reaches the
+        // treasury once, via computeCorporateTaxRevenue in advance-tick's
+        // budget path (the one source). Per directive — tax funds the
+        // budget, never pays down debt. Do not re-add a debt write here.
     }
     console.log(`[advance-corp-tick] Corp income: ${corpFactions.length} corps in ${nation.name}, tax rate=${ns('corporate_tax')}%`);
 }
