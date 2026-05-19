@@ -172,20 +172,29 @@ import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
       : (pctOwned(mineByCorp.get(c.id) || 0, c.shares_outstanding) ?? 0);
 
     // Build view rows. Real values only — no fabricated columns.
+    // `mine` is "this corp is yours" = any economic stake OR founder of
+    // record (a founder who sold all their shares still owns the corp
+    // in the only sense that matters server-side: owner_faction_id
+    // gates go_private, and the corp still lists you as CEO). One
+    // source for the classification — read by the row filter + the
+    // row's mine-highlight; the ownership-cell green stays tied to
+    // pct alone (that's the distinct "do you have stake" concept).
     const rows = corps.map(c => {
       const val = computeEntrepreneurValuation(c);
       const sharesOut = Number(c.shares_outstanding) || 0;
       const totalHeld = totalByCorp.get(c.id) || 0;
       const isPub = c.listing === 'public';
+      const pct = myPct(c);
       return {
         c, val, sharesOut,
         available: isPub ? Math.max(0, sharesOut - totalHeld) : null,
-        pct: myPct(c),
+        pct,
+        mine: pct > 0 || (!!entId && c.owner_faction_id === entId),
       };
     });
 
-    const mine   = rows.filter(r => r.pct > 0).sort((a, b) => (b.val.amount || 0) - (a.val.amount || 0));
-    const others = rows.filter(r => r.pct === 0).sort((a, b) => (b.val.amount || 0) - (a.val.amount || 0));
+    const mine   = rows.filter(r => r.mine).sort((a, b) => (b.val.amount || 0) - (a.val.amount || 0));
+    const others = rows.filter(r => !r.mine).sort((a, b) => (b.val.amount || 0) - (a.val.amount || 0));
 
     document.getElementById('mk-total').textContent   = String(corps.length);
     const publicN = corps.filter(c => c.listing === 'public').length;
@@ -199,7 +208,7 @@ import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
       const isPub = c.listing === 'public';
 
       const row = document.createElement('a');
-      row.className = 'grid row' + (r.pct > 0 ? ' mine' : '');
+      row.className = 'grid row' + (r.mine ? ' mine' : '');
       row.href = 'entrepreneur-corp.html?id=' + encodeURIComponent(c.id);
 
       const nameCell = document.createElement('div');
