@@ -249,7 +249,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, titleCase, pctOwned } from './js/utils.js';
+import { fmtM, fmtUsd, titleCase, pctOwned, ownerDisplayName } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 function initials(s, n) {
   return (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, n || 2).map(w => w[0]).join('').toUpperCase()) || '—';
@@ -281,9 +281,7 @@ function initials(s, n) {
 
     const set = (i, v) => { const el = document.getElementById(i); if (el) el.textContent = v; };
     const name = c.name || 'Corporation';
-    const o = c.owner || {};
-    const ownerName = [o.leader_first_name, o.leader_last_name].filter(Boolean).join(' ').trim()
-      || o.faction_name || '—';
+    const ownerName = ownerDisplayName(c.owner);
     const listing = titleCase(c.listing || 'private');
     const founded = c.founded_tick != null ? 'Tick ' + c.founded_tick : '—';
 

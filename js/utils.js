@@ -129,6 +129,18 @@ export function pctOwned(shares, sharesOutstanding) {
 }
 
 /**
+ * Human display name for a faction that owns/leads something —
+ * "First Last", else faction_name, else "—". One source for the
+ * entrepreneur owner/CEO label (corp page + markets directory);
+ * never inline the leader-name ternary.
+ */
+export function ownerDisplayName(faction) {
+    const f = faction || {};
+    return [f.leader_first_name, f.leader_last_name].filter(Boolean).join(' ').trim()
+        || f.faction_name || '—';
+}
+
+/**
  * Format a budget value with compact suffixes ($1.2T, $500M, $30K).
  */
 export function fmtBudgetCurrency(val) {
