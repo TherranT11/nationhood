@@ -175,6 +175,9 @@ import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
             || ownerDisplayName(c.owner).toLowerCase().includes(needle))
         : corps;
 
+      document.getElementById('mk-foot').textContent =
+        `CORPORATE REGISTRY · ${list.length} OF ${corps.length} SHOWN · UPDATED EACH TICK`;
+
       rowsEl.replaceChildren();
       if (list.length === 0) {
         const s = document.createElement('div');
@@ -183,8 +186,6 @@ import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
           ? 'No corporations have been founded yet.'
           : 'No corporations match your search.';
         rowsEl.appendChild(s);
-        document.getElementById('mk-foot').textContent =
-          `CORPORATE REGISTRY · ${list.length} OF ${corps.length} SHOWN · UPDATED EACH TICK`;
         return;
       }
 
@@ -240,9 +241,6 @@ import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
         });
         rowsEl.appendChild(row);
       }
-
-      document.getElementById('mk-foot').textContent =
-        `CORPORATE REGISTRY · ${list.length} OF ${corps.length} SHOWN · UPDATED EACH TICK`;
     };
 
     render('');
