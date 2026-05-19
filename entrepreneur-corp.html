@@ -323,15 +323,17 @@ function initials(s, n) {
       const gp = document.getElementById('cp-go-public');
       if (gp) {
         gp.hidden = false;
-        const seed = Number(c.starting_capital) || 0;
         let goingPublic = false;
         gp.addEventListener('click', async () => {
           if (goingPublic) return;
+          // Wording is intentionally generic — the share count, price
+          // and treasury are the server's (go_public) to compute; the
+          // client must not re-derive that formula here. Real figures
+          // appear on the post-success reload.
           const ok = confirm(
             `Take ${c.name || 'this corporation'} public?\n\n`
-            + `• Issues 20 shares at ${fmtUsd(seed / 20)} each\n`
-            + `• Seeds the corp treasury with ${fmtM(seed)}\n`
-            + `• You keep all 20 shares (100%); your stake dilutes only if others buy\n`
+            + `• Issues shares and opens public trading at a price set from your starting capital\n`
+            + `• You keep 100% — your stake dilutes only if others buy\n`
             + `• This cannot be undone yet (Go Private comes later)`);
           if (!ok) return;
           goingPublic = true;
