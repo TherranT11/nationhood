@@ -200,6 +200,10 @@ import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { fmtM } from './js/utils.js';
 
 const FEE = 1_000_000;
+// Shares issued when a corp lists public. The authoritative value lives
+// in found_entrepreneur_corp (20270144); this is the modal-preview
+// mirror, same convention as FEE ↔ the RPC's v_fee. Keep in sync.
+const IPO_SHARES = 20;
 let entFunds = 0;
 let sel = { industry: 'construction', hqNationId: null, listing: 'private' };
 let nationsByCont = {};   // continent -> [{id,name,corporate_tax}]
@@ -257,7 +261,7 @@ function refreshCost() {
   const ipo = document.getElementById('ec-ipo');
   if (sel.listing === 'public') {
     ipo.style.display = 'block';
-    document.getElementById('ec-ipo-price').textContent = '$' + (cap / 20).toLocaleString('en-US');
+    document.getElementById('ec-ipo-price').textContent = '$' + (cap / IPO_SHARES).toLocaleString('en-US');
     document.getElementById('ec-ipo-treasury').textContent = fmtM(cap);
   } else {
     ipo.style.display = 'none';
