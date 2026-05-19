@@ -197,7 +197,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM } from './js/utils.js';
+import { fmtM, fmtUsd } from './js/utils.js';
 
 const FEE = 1_000_000;
 // Shares issued when a corp lists public. The authoritative value lives
@@ -261,7 +261,7 @@ function refreshCost() {
   const ipo = document.getElementById('ec-ipo');
   if (sel.listing === 'public') {
     ipo.style.display = 'block';
-    document.getElementById('ec-ipo-price').textContent = '$' + (cap / IPO_SHARES).toLocaleString('en-US');
+    document.getElementById('ec-ipo-price').textContent = fmtUsd(cap / IPO_SHARES);
     document.getElementById('ec-ipo-treasury').textContent = fmtM(cap);
   } else {
     ipo.style.display = 'none';
@@ -294,8 +294,11 @@ function renderPositions(corps, filter) {
     ci.textContent = `${c.industry} · ${c.hq?.name || '—'}`;
     left.append(nm, ci);
     const mid = document.createElement('div');
-    const cl = document.createElement('div'); cl.className = 'cl'; cl.textContent = 'STARTING CAPITAL';
-    const cv = document.createElement('div'); cv.className = 'cv'; cv.textContent = fmtM(c.starting_capital);
+    const isPub = c.listing === 'public' && c.share_price != null;
+    const cl = document.createElement('div'); cl.className = 'cl';
+    cl.textContent = isPub ? 'SHARE PRICE' : 'STARTING CAPITAL';
+    const cv = document.createElement('div'); cv.className = 'cv';
+    cv.textContent = isPub ? fmtUsd(c.share_price) : fmtM(c.starting_capital);
     mid.append(cl, cv);
     const arr = document.createElement('div'); arr.className = 'arr'; arr.textContent = '▸';
     row.append(left, mid, arr);
@@ -315,7 +318,7 @@ function renderPositions(corps, filter) {
     let corps = [];
     if (entId) {
       const { data, error } = await _supabase.from('entrepreneur_corps')
-        .select('id, name, industry, starting_capital, hq:nations!hq_nation_id(name)')
+        .select('id, name, industry, starting_capital, listing, share_price, hq:nations!hq_nation_id(name)')
         .eq('owner_faction_id', entId)
         .order('created_at', { ascending: false });
       if (error) console.warn('[entrepreneur-corporations] corps load failed:', error.message);

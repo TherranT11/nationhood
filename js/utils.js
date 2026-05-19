@@ -107,6 +107,17 @@ export function fmtM(raw) {
 }
 
 /**
+ * Exact, thousands-grouped USD with no suffix — "$50,000" /
+ * "$1,250,000". For share prices / valuations / treasuries where the
+ * compact formatters lose precision (hfFmtBig "$50.0k", fmtM "$0.1M").
+ * One source, read by the entrepreneur stock UI. Rounds to whole
+ * dollars (display only; the authoritative numeric stays in the DB).
+ */
+export function fmtUsd(n) {
+    return '$' + Math.round(Number(n) || 0).toLocaleString('en-US');
+}
+
+/**
  * Format a budget value with compact suffixes ($1.2T, $500M, $30K).
  */
 export function fmtBudgetCurrency(val) {

@@ -210,7 +210,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { hfFmtBig, escapeHtml, escapeAttr, titleCase } from './js/utils.js';
+import { hfFmtBig, escapeHtml, escapeAttr, titleCase, fmtUsd } from './js/utils.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 
@@ -309,12 +309,13 @@ function initials(first, last, fallbackName) {
   return ((w[0]?.[0] || '') + (w[1]?.[0] || '')).toUpperCase() || '—';
 }
 
-// ── Corporate Holdings (corps this entrepreneur founded/owns). Reads
-// the same entrepreneur_corps owner query the Corporations page uses —
-// the table is the single source; only the presentation differs.
-// Ownership is 100% by the v1 schema (founder, listing=private);
-// valuation has no model yet so it stays "—" (matches the corp page).
-function renderHoldings(corps) {
+// ── Corporate Holdings (corps this entrepreneur founded/owns). Share
+// state is the one source: entrepreneur_corps.share_price /
+// shares_outstanding + corp_shareholdings for this faction's shares —
+// read, never recomputed. Public corps show ownership = your shares /
+// shares outstanding and valuation = your shares × price. Private corps
+// have no share model: ownership 100%, valuation "—".
+function renderHoldings(corps, sharesByCorp) {
   const listEl = document.getElementById('ch-list');
   const countEl = document.getElementById('ch-count');
   if (!listEl) return;
@@ -324,28 +325,35 @@ function renderHoldings(corps) {
     listEl.innerHTML = '<div class="empty">No corporations yet.<br>Found one from the Corporations tab. Equity stakes, board seats, mergers &amp; acquisitions are coming soon.</div>';
     return;
   }
-  listEl.innerHTML = `<div class="ch-list">${corps.map(c => `
+  listEl.innerHTML = `<div class="ch-list">${corps.map(c => {
+    const pub = c.listing === 'public' && c.share_price != null;
+    const sharesOut = Number(c.shares_outstanding) || 0;
+    const mine = Number(sharesByCorp?.[c.id]) || 0;
+    const ownership = pub ? (sharesOut > 0 ? Math.round(mine / sharesOut * 100) + '%' : '—') : '100%';
+    const valuation = pub ? fmtUsd(mine * (Number(c.share_price) || 0)) : '—';
+    return `
     <a class="ch-row" href="entrepreneur-corp.html?id=${encodeURIComponent(c.id)}">
       <div>
         <div class="ch-name">${escapeHtml(c.name || 'Corporation')}</div>
         <div class="ch-fields">
           <span><span class="k">INDUSTRY</span><span class="v">${escapeHtml(titleCase(c.industry))}</span></span>
           <span><span class="k">HQ</span><span class="v">${escapeHtml(c.hq?.name || '—')}</span></span>
-          <span><span class="k">OWNERSHIP</span><span class="v">100%</span></span>
-          <span><span class="k">VALUATION</span><span class="v">—</span></span>
+          <span><span class="k">OWNERSHIP</span><span class="v">${ownership}</span></span>
+          <span><span class="k">VALUATION</span><span class="v">${valuation}</span></span>
         </div>
       </div>
       <div class="ch-arrow">▸</div>
-    </a>`).join('')}</div>
+    </a>`;
+  }).join('')}</div>
     <div class="ch-foot">Equity stakes, board seats, mergers &amp; acquisitions are coming soon.</div>`;
 }
 
 async function loadHoldings(entId) {
   const listEl = document.getElementById('ch-list');
   if (!listEl) return;
-  if (!entId) { renderHoldings([]); return; }
+  if (!entId) { renderHoldings([], {}); return; }
   const { data, error } = await _supabase.from('entrepreneur_corps')
-    .select('id, name, industry, hq:nations!hq_nation_id(name)')
+    .select('id, name, industry, listing, share_price, shares_outstanding, hq:nations!hq_nation_id(name)')
     .eq('owner_faction_id', entId)
     .order('created_at', { ascending: false });
   if (error) {
@@ -355,7 +363,19 @@ async function loadHoldings(entId) {
     listEl.innerHTML = '<div class="empty">Failed to load holdings.</div>';
     return;
   }
-  renderHoldings(data || []);
+  // This faction's shares per public corp — the one source for the
+  // ownership % and valuation shown per row.
+  const sharesByCorp = {};
+  const pubIds = (data || []).filter(c => c.listing === 'public').map(c => c.id);
+  if (pubIds.length) {
+    const { data: sh, error: shErr } = await _supabase.from('corp_shareholdings')
+      .select('corp_id, shares')
+      .eq('holder_faction_id', entId)
+      .in('corp_id', pubIds);
+    if (shErr) console.warn('[entrepreneur-dashboard] shareholdings fetch error:', shErr.message);
+    else for (const r of (sh || [])) sharesByCorp[r.corp_id] = r.shares;
+  }
+  renderHoldings(data || [], sharesByCorp);
 }
 
 (async () => {

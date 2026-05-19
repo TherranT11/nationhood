@@ -122,8 +122,8 @@
       </div>
       <div class="role-block">
         <div class="role-eyebrow">OWNERSHIP</div>
-        <div class="role-pill">FOUNDER · CONTROLLING</div>
-        <div class="stake">100<span class="pct">%</span></div>
+        <div class="role-pill" id="cp-role-pill">FOUNDER · CONTROLLING</div>
+        <div class="stake"><span id="cp-stake-num">100</span><span class="pct">%</span></div>
         <div class="stake-sub" id="cp-owner-sub">Sole owner · privately held</div>
       </div>
     </div>
@@ -142,12 +142,12 @@
       <div class="fin-card">
         <div class="lab">LISTING</div>
         <div class="val" id="cp-listing2">Private</div>
-        <div class="delta">— IPOs disabled in v1</div>
+        <div class="delta" id="cp-listing-delta">—</div>
       </div>
       <div class="fin-card">
         <div class="lab">VALUATION</div>
-        <div class="val muted">—</div>
-        <div class="delta">Not yet modelled</div>
+        <div class="val muted" id="cp-val">—</div>
+        <div class="delta" id="cp-val-delta">Not yet modelled</div>
       </div>
       <div class="fin-card">
         <div class="lab">INCOME (TICK)</div>
@@ -161,7 +161,7 @@
         <div class="section-heading">
           <span class="roman">I.</span><span class="sans">Share Price</span><span class="serif">History</span>
         </div>
-        <div class="empty-card">
+        <div class="empty-card" id="cp-price-card">
           Privately held — no public share price.<br>
           Share-price history appears once IPOs are enabled.
         </div>
@@ -205,6 +205,9 @@
           <div class="ds-row"><span class="key">Founded</span><span class="val" id="cp-d-founded">—</span></div>
           <div class="ds-row"><span class="key">Starting capital</span><span class="val" id="cp-d-cap">—</span></div>
           <div class="ds-row"><span class="key">Founding fee</span><span class="val" id="cp-d-fee">—</span></div>
+          <div class="ds-row" id="cp-d-row-price"><span class="key">Share price</span><span class="val" id="cp-d-price">—</span></div>
+          <div class="ds-row" id="cp-d-row-shares"><span class="key">Shares outstanding</span><span class="val" id="cp-d-shares">—</span></div>
+          <div class="ds-row" id="cp-d-row-treasury"><span class="key">Treasury</span><span class="val" id="cp-d-treasury">—</span></div>
         </div>
       </div>
     </div>
@@ -214,7 +217,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, titleCase } from './js/utils.js';
+import { fmtM, fmtUsd, titleCase } from './js/utils.js';
 function initials(s, n) {
   return (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, n || 2).map(w => w[0]).join('').toUpperCase()) || '—';
 }
@@ -227,11 +230,21 @@ function initials(s, n) {
     if (!id) { window.location.href = 'entrepreneur-corporations.html'; return; }
 
     const { data: c, error } = await _supabase.from('entrepreneur_corps')
-      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
+      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, treasury_cash, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
     if (!c) { window.location.href = 'entrepreneur-corporations.html'; return; }
+
+    const isPublic = c.listing === 'public';
+    const entId = (ctx.allUserFactions || []).find(f => f.faction_type === 'entrepreneur')?.id || null;
+    let yourShares = 0;
+    if (isPublic && entId) {
+      const { data: sh, error: shErr } = await _supabase.from('corp_shareholdings')
+        .select('shares').eq('corp_id', id).eq('holder_faction_id', entId).maybeSingle();
+      if (shErr) console.warn('[entrepreneur-corp] shareholding fetch error:', shErr.message);
+      else yourShares = Number(sh?.shares) || 0;
+    }
 
     const set = (i, v) => { const el = document.getElementById(i); if (el) el.textContent = v; };
     const name = c.name || 'Corporation';
@@ -260,6 +273,39 @@ function initials(s, n) {
     set('cp-d-founded', founded);
     set('cp-d-cap', fmtM(c.starting_capital));
     set('cp-d-fee', fmtM(c.founding_fee));
+
+    // Listing-specific market view. The share state is the one source
+    // (entrepreneur_corps.share_price / shares_outstanding /
+    // treasury_cash; corp_shareholdings for the viewer's stake) — read,
+    // never recomputed. Private corps keep the existing hardcoded view.
+    set('cp-listing-delta', isPublic ? '— public market' : '— founder owns 100%');
+    if (isPublic) {
+      const price = Number(c.share_price) || 0;
+      const sharesOut = Number(c.shares_outstanding) || 0;
+      const treasury = Number(c.treasury_cash) || 0;
+      const isOwner = !!entId && c.owner_faction_id === entId;
+      const pct = sharesOut > 0 ? Math.round(yourShares / sharesOut * 100) : 0;
+
+      const valEl = document.getElementById('cp-val');
+      if (valEl) { valEl.classList.remove('muted'); valEl.textContent = fmtUsd(sharesOut * price); }
+      set('cp-val-delta', `${sharesOut} sh × ${fmtUsd(price)}`);
+
+      set('cp-stake-num', String(pct));
+      set('cp-role-pill', isOwner ? 'FOUNDER' : 'SHAREHOLDER');
+      set('cp-owner-sub', `${fmtUsd(yourShares * price)} · ${yourShares}/${sharesOut} shares`);
+
+      const pc = document.getElementById('cp-price-card');
+      if (pc) pc.innerHTML = `Current share price <b style="color:#8aaa6a">${fmtUsd(price)}</b>`
+        + `<br>Trading and price history begin in a later phase.`;
+
+      set('cp-d-price', fmtUsd(price));
+      set('cp-d-shares', String(sharesOut));
+      set('cp-d-treasury', fmtUsd(treasury));
+    } else {
+      ['cp-d-row-price', 'cp-d-row-shares', 'cp-d-row-treasury'].forEach(rid => {
+        const r = document.getElementById(rid); if (r) r.style.display = 'none';
+      });
+    }
 
     document.getElementById('cp-load').style.display = 'none';
     document.getElementById('cp-app').style.display = 'block';
