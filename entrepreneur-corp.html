@@ -89,6 +89,23 @@
   .ds-row .key { color:#888; }
   .ds-row .val { color:#d4d4d4; font-weight:500; text-align:right; overflow-wrap:anywhere; }
 
+  /* Trade panel (public corps) */
+  .trade-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
+    padding:14px 18px; margin-top:14px; }
+  .trade-card .lab { font-size:11px; color:#8aaa6a; letter-spacing:0.13em; margin-bottom:12px; font-weight:500; }
+  .tc-row { display:flex; gap:8px; }
+  .tc-qty { flex:1; min-width:0; background:#121212; border:0.5px solid rgba(255,255,255,0.12);
+    border-radius:3px; color:#fff; font-size:13px; padding:8px 10px; }
+  .tc-qty:focus { outline:none; border-color:#6a8a4a; }
+  .tc-btn { background:#1f2a1a; color:#8aaa6a; border:0.5px solid #4a6a4a; border-radius:3px;
+    font-size:11px; letter-spacing:0.1em; font-weight:600; padding:8px 16px; cursor:pointer; }
+  .tc-btn:hover:not(:disabled) { background:#26331f; }
+  .tc-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .tc-hint { font-size:10px; color:#666; margin-top:8px; line-height:1.5; }
+  .tc-msg { font-size:11px; margin-top:8px; line-height:1.5; }
+  .tc-msg.err { color:#c98a8a; }
+  .tc-msg.ok { color:#8aaa6a; }
+
   @media (max-width:900px) { .main-grid { grid-template-columns:1fr; } .financials { grid-template-columns:repeat(2,1fr); } }
 </style>
 </head>
@@ -183,6 +200,16 @@
       </div>
 
       <div>
+        <div class="trade-card" id="cp-trade" style="display:none;">
+          <div class="lab">TRADE SHARES</div>
+          <div class="tc-row">
+            <input id="cp-qty" class="tc-qty" type="number" min="1" step="1" value="1" />
+            <button id="cp-buy" class="tc-btn">BUY</button>
+          </div>
+          <div class="tc-hint">Price rises 5% per share bought. Final cost is confirmed on purchase.</div>
+          <div class="tc-msg" id="cp-trade-msg"></div>
+        </div>
+
         <div class="board-card">
           <div class="board-header">
             <div class="title">BOARD OF DIRECTORS</div>
@@ -301,6 +328,51 @@ function initials(s, n) {
       set('cp-d-price', fmtUsd(price));
       set('cp-d-shares', String(sharesOut));
       set('cp-d-treasury', fmtUsd(treasury));
+
+      // Buy panel. Cost is NOT recomputed here — corp_trade is the one
+      // source for the bonding-curve math; we send the quantity and
+      // show the cost it returns, then reload so every figure repaints
+      // from the DB. The `trading` flag + disabled button are the
+      // double-fire lock (kept locked through the reload).
+      const tradeCard = document.getElementById('cp-trade');
+      if (tradeCard) {
+        tradeCard.style.display = 'block';
+        const buyBtn = document.getElementById('cp-buy');
+        const qtyEl = document.getElementById('cp-qty');
+        const msgEl = document.getElementById('cp-trade-msg');
+        let trading = false;
+        buyBtn.addEventListener('click', async () => {
+          if (trading) return;
+          const qty = Number((qtyEl.value || '').trim());
+          if (!Number.isInteger(qty) || qty < 1) {
+            msgEl.className = 'tc-msg err';
+            msgEl.textContent = 'Enter a whole number of shares (1 or more).';
+            return;
+          }
+          trading = true; buyBtn.disabled = true;
+          const prev = buyBtn.textContent; buyBtn.textContent = 'BUYING…';
+          msgEl.className = 'tc-msg'; msgEl.textContent = '';
+          try {
+            const { data, error: rpcErr } = await _supabase.rpc('corp_trade',
+              { p_corp_id: id, p_side: 'buy', p_quantity: qty });
+            if (rpcErr) throw rpcErr;
+            if (!data || !data.success) {
+              msgEl.className = 'tc-msg err';
+              msgEl.textContent = 'Could not buy: ' + ((data && data.reason) || 'unknown');
+              trading = false; buyBtn.disabled = false; buyBtn.textContent = prev;
+              return;
+            }
+            msgEl.className = 'tc-msg ok';
+            msgEl.textContent = `Bought ${data.quantity} share${data.quantity === 1 ? '' : 's'}`
+              + ` for ${fmtUsd(data.spent)}. Refreshing…`;
+            setTimeout(() => location.reload(), 700);
+          } catch (e) {
+            msgEl.className = 'tc-msg err';
+            msgEl.textContent = 'Could not buy: ' + (e?.message || e);
+            trading = false; buyBtn.disabled = false; buyBtn.textContent = prev;
+          }
+        });
+      }
     } else {
       ['cp-d-row-price', 'cp-d-row-shares', 'cp-d-row-treasury'].forEach(rid => {
         const r = document.getElementById(rid); if (r) r.style.display = 'none';
