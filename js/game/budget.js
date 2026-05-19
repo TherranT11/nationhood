@@ -85,12 +85,9 @@ export function calculateNationalBudget(nation, opts = {}) {
     const incomeRevenue = computeIncomeTaxRevenue(nation);
     const corpRevenue = computeCorporateTaxRevenue(nation, undefined, opts.activeCorpCount || 0);
 
-    // Debt service: prefer the actual sum of bond coupon obligations from
-    // the tick processor; fall back to a flat 5% annual interest rate.
+    // Debt service: flat 5% annual interest on outstanding debt.
     const FLAT_ANNUAL_INTEREST = 0.05;
-    const debtService = opts.actualDebtService != null
-        ? Number(opts.actualDebtService)
-        : debt * FLAT_ANNUAL_INTEREST;
+    const debtService = debt * FLAT_ANNUAL_INTEREST;
 
     const availableBudget = grossRevenue - debtService;
 
