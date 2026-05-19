@@ -278,10 +278,9 @@ function renderPartyOverview(container) {
     const statusColor = o.isGoverning ? 'var(--green)' : 'var(--orange)';
     const seats = faction?.seats || 0;
     const totalSeats = nation?.total_seats || 100;
-    const momentum = faction?.momentum ?? 50;
 
     container.innerHTML = `<div class="po-page">
-        ${renderSummaryBar(o, partyColor, seats, totalSeats, momentum)}
+        ${renderSummaryBar(o, partyColor, seats, totalSeats)}
         <div class="po-columns">
             <div class="po-col-left">
                 ${renderIdentityCard(o, faction, partyColor, statusLabel, statusColor)}
@@ -300,7 +299,7 @@ function renderPartyOverview(container) {
     </div>`;
 }
 
-function renderSummaryBar(o, partyColor, seats, totalSeats, momentum) {
+function renderSummaryBar(o, partyColor, seats, totalSeats) {
     const adminName = o.isGoverning ? (o.administration?.admin_name || 'Government') : 'Opposition';
     const isMonarchy = (_state.nation?.government_type || '').toLowerCase().includes('monarchy');
     const elTicks = isMonarchy ? 'No elections' : (o.nextElectionTicks != null ? o.nextElectionTicks : '—');
@@ -313,18 +312,6 @@ function renderSummaryBar(o, partyColor, seats, totalSeats, momentum) {
             <div>
                 <div style="font-size:11px;font-weight:700;color:var(--text-bright);">${esc(adminName)}</div>
                 <div class="po-summary-sub">${o.ticksInPower} ticks in power</div>
-            </div>
-        </div>
-        <!-- KNOWN-STALE: factions.momentum no longer drives elections —
-             run_election was rewritten in 20260517 to compute vote share
-             from sector popularity. This cell stays for now to avoid a
-             scope creep on the bills-feed change; replace with a real
-             SECTORS / POPULARITY summary metric in a follow-up. -->
-        <div class="po-summary-cell" style="text-align:center;">
-            <div class="po-summary-label">MOMENTUM</div>
-            <div style="display:flex;align-items:baseline;justify-content:center;gap:3px;">
-                <span class="po-summary-value" style="color:var(--orange);">${momentum}</span>
-                <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">/ 100</span>
             </div>
         </div>
         <div class="po-summary-cell" style="text-align:center;">
