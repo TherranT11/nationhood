@@ -306,25 +306,38 @@ function initials(s, n) {
 
     set('cp-listing-delta', isPublic ? '— public market' : '— founder owns 100%');
 
-    // Cash / Debt / Valuation — computed once; both listings read it.
-    // treasury_cash is NULL for private (by design); a private corp's
-    // cash hasn't moved (no ops modelled) so it IS the immutable seed.
-    // Debt and per-tick income aren't modelled → shown as a real $0
-    // (cp-income / cp-debt are static $0 in the markup). Private
-    // valuation = equity (cash − debt); public = market cap.
-    const debt = 0;
+    // Cash on hand: public reads treasury_cash; private has none
+    // (treasury_cash NULL by design, no ops modelled) so it shows the
+    // seed it was founded with. Debt / per-tick income aren't modelled
+    // → static real $0 in the markup (cp-debt / cp-income).
+    //
+    // VALUATION mirrors the established entrepreneur model. The single
+    // source is entrepreneur-dashboard.html (loadHoldings, the
+    // "computed ONCE" pos.valuation): public = MARKET CAP
+    // (shares × price), private = SEED CAPITAL (immutable
+    // starting_capital). The engine valuation (computeCorpValuation in
+    // js/game/corp-valuation.js — cash+assets−liab ×1.30, used by
+    // bankruptcy/bailout/tick) is a deliberately separate surface and
+    // is intentionally NOT used here ("the founding cash was already
+    // spent; we don't invent a valuation"). KNOWN ISSUE: this
+    // seed/market rule is inlined in three places (this page,
+    // entrepreneur-dashboard.html, entrepreneur-corporations.html);
+    // consolidate into one shared helper in a dedicated follow-up —
+    // do not re-derive it differently.
     const cashOnHand = isPublic ? (Number(c.treasury_cash) || 0)
                                 : (Number(c.starting_capital) || 0);
-    const valuation = isPublic
-      ? (Number(c.shares_outstanding) || 0) * (Number(c.share_price) || 0)
-      : cashOnHand - debt;
-    set('cp-cash', fmtUsd(cashOnHand));
+    set('cp-cash', fmtM(cashOnHand));
     set('cp-cash-delta', isPublic ? '— corp treasury' : '— seed · no ops yet');
     const valEl = document.getElementById('cp-val');
-    if (valEl) { valEl.classList.remove('muted'); valEl.textContent = fmtUsd(valuation); }
+    if (valEl) {
+      valEl.classList.remove('muted');
+      valEl.textContent = isPublic
+        ? fmtUsd((Number(c.shares_outstanding) || 0) * (Number(c.share_price) || 0))
+        : fmtM(Number(c.starting_capital) || 0);
+    }
     set('cp-val-delta', isPublic
       ? `${Number(c.shares_outstanding) || 0} sh × ${fmtUsd(Number(c.share_price) || 0)}`
-      : '— equity (cash − debt)');
+      : '— seed capital');
 
     // Public-only market view. The share state is the one source
     // (entrepreneur_corps.share_price / shares_outstanding /
