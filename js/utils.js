@@ -118,6 +118,17 @@ export function fmtUsd(n) {
 }
 
 /**
+ * Ownership percentage a holding represents, rounded to a whole
+ * percent. null when undeterminable (no shares outstanding). One
+ * source for the entrepreneur stock UI — read by the corp page and
+ * the dashboard holdings; never inline the divide.
+ */
+export function pctOwned(shares, sharesOutstanding) {
+    const o = Number(sharesOutstanding) || 0;
+    return o > 0 ? Math.round((Number(shares) || 0) / o * 100) : null;
+}
+
+/**
  * Format a budget value with compact suffixes ($1.2T, $500M, $30K).
  */
 export function fmtBudgetCurrency(val) {

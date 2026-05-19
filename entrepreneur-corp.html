@@ -217,7 +217,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, titleCase } from './js/utils.js';
+import { fmtM, fmtUsd, titleCase, pctOwned } from './js/utils.js';
 function initials(s, n) {
   return (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, n || 2).map(w => w[0]).join('').toUpperCase()) || '—';
 }
@@ -284,7 +284,7 @@ function initials(s, n) {
       const sharesOut = Number(c.shares_outstanding) || 0;
       const treasury = Number(c.treasury_cash) || 0;
       const isOwner = !!entId && c.owner_faction_id === entId;
-      const pct = sharesOut > 0 ? Math.round(yourShares / sharesOut * 100) : 0;
+      const pct = pctOwned(yourShares, sharesOut) ?? 0;
 
       const valEl = document.getElementById('cp-val');
       if (valEl) { valEl.classList.remove('muted'); valEl.textContent = fmtUsd(sharesOut * price); }

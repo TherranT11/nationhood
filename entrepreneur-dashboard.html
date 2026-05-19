@@ -210,7 +210,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { hfFmtBig, escapeHtml, escapeAttr, titleCase, fmtUsd } from './js/utils.js';
+import { hfFmtBig, escapeHtml, escapeAttr, titleCase, fmtUsd, pctOwned } from './js/utils.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 
@@ -329,7 +329,8 @@ function renderHoldings(corps, sharesByCorp) {
     const pub = c.listing === 'public' && c.share_price != null;
     const sharesOut = Number(c.shares_outstanding) || 0;
     const mine = Number(sharesByCorp?.[c.id]) || 0;
-    const ownership = pub ? (sharesOut > 0 ? Math.round(mine / sharesOut * 100) + '%' : '—') : '100%';
+    const p = pub ? pctOwned(mine, sharesOut) : null;
+    const ownership = pub ? (p == null ? '—' : p + '%') : '100%';
     const valuation = pub ? fmtUsd(mine * (Number(c.share_price) || 0)) : '—';
     return `
     <a class="ch-row" href="entrepreneur-corp.html?id=${encodeURIComponent(c.id)}">
