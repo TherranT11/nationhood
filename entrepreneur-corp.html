@@ -54,6 +54,12 @@
   .fin-card .val.gold { color:#8aaa6a; }
   .fin-card .val.muted { color:#555; }
   .fin-card .delta { font-size:10px; margin-top:6px; letter-spacing:0.05em; color:#555; }
+  .fin-card .type-action { margin-top:10px; width:100%; background:#1f2a1a; color:#8aaa6a;
+    border:0.5px solid #4a6a4a; border-radius:3px; padding:6px 10px; font-size:10px;
+    letter-spacing:0.1em; font-weight:600; font-family:inherit; cursor:pointer; transition:background 0.15s; }
+  .fin-card .type-action:hover:not(:disabled) { background:#26331f; }
+  .fin-card .type-action:disabled { opacity:0.5; cursor:not-allowed; }
+  .fin-card .type-action[hidden] { display:none; }
 
   /* Two-col main */
   .main-grid { display:grid; grid-template-columns:1fr 320px; gap:22px; }
@@ -158,6 +164,8 @@
         <div class="lab">TYPE</div>
         <div class="val" id="cp-listing2">Private</div>
         <div class="delta" id="cp-listing-delta">—</div>
+        <button class="type-action" id="cp-go-public" hidden disabled
+                title="Coming soon — IPOs are not yet enabled">Go Public ▸</button>
       </div>
       <div class="fin-card">
         <div class="lab">VALUATION</div>
@@ -305,6 +313,15 @@ function initials(s, n) {
 
     set('cp-listing-delta', isPublic ? '— public market' : '— founder owns 100%');
 
+    // [Go Public] lives in the TYPE card — founder-only, private corps.
+    // Stays disabled: the IPO / listing-transition mechanic does not
+    // exist yet (no RPC). Shown so the action has a discoverable home.
+    const isOwner = !!entId && c.owner_faction_id === entId;
+    if (!isPublic && isOwner) {
+      const gp = document.getElementById('cp-go-public');
+      if (gp) gp.hidden = false;
+    }
+
     // Cash on hand: public reads treasury_cash; private has none
     // (treasury_cash NULL by design, no ops modelled) so it shows the
     // seed it was founded with. Debt / per-tick income aren't modelled
@@ -335,7 +352,6 @@ function initials(s, n) {
       const price = Number(c.share_price) || 0;
       const sharesOut = Number(c.shares_outstanding) || 0;
       const treasury = Number(c.treasury_cash) || 0;
-      const isOwner = !!entId && c.owner_faction_id === entId;
       const pct = pctOwned(yourShares, sharesOut) ?? 0;
 
       set('cp-stake-num', String(pct));
