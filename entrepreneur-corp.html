@@ -166,6 +166,8 @@
         <div class="delta" id="cp-listing-delta">—</div>
         <button class="type-action" id="cp-go-public" hidden
                 title="Issue 20 shares and open public trading">Go Public ▸</button>
+        <button class="type-action" id="cp-go-private" hidden
+                title="Buy out all outside shareholders and delist">Go Private ▸</button>
       </div>
       <div class="fin-card">
         <div class="lab">VALUATION</div>
@@ -327,14 +329,15 @@ function initials(s, n) {
         gp.addEventListener('click', async () => {
           if (goingPublic) return;
           // Wording is intentionally generic — the share count, price
-          // and treasury are the server's (go_public) to compute; the
-          // client must not re-derive that formula here. Real figures
-          // appear on the post-success reload.
+          // and treasury amount are the server's (go_public) to compute;
+          // the client must not re-derive that formula here. Real
+          // figures appear on the post-success reload.
           const ok = confirm(
             `Take ${c.name || 'this corporation'} public?\n\n`
-            + `• Issues shares and opens public trading at a price set from your starting capital\n`
+            + `• Funds the corp treasury from your party funds (your starting capital)\n`
+            + `• Issues shares and opens public trading\n`
             + `• You keep 100% — your stake dilutes only if others buy\n`
-            + `• This cannot be undone yet (Go Private comes later)`);
+            + `• Reversible later via Go Private`);
           if (!ok) return;
           goingPublic = true;
           gp.disabled = true;
@@ -351,7 +354,10 @@ function initials(s, n) {
                 not_owner:         'Only the owner can take this corporation public.',
                 already_public:    'This corporation is already public.',
               };
-              alert(REASON[data?.reason] || 'Could not go public. Please try again.');
+              const msg = (data?.reason === 'insufficient_funds' && data?.need != null)
+                ? `Not enough party funds — funding the treasury needs ${fmtUsd(Number(data.need))}.`
+                : (REASON[data?.reason] || 'Could not go public. Please try again.');
+              alert(msg);
               goingPublic = false; gp.disabled = false; gp.textContent = prev;
               return;
             }
@@ -360,6 +366,58 @@ function initials(s, n) {
           } catch (e) {
             alert('Could not go public: ' + (e?.message || e));
             goingPublic = false; gp.disabled = false; gp.textContent = prev;
+          }
+        });
+      }
+    }
+
+    // [Go Private] — public corps, owner only. Inverse of go_public:
+    // the RPC buys out every non-owner holder at a premium then delists.
+    // Same lock/reason/reload conventions as the trade card / go_public.
+    if (isPublic && isOwner) {
+      const gpr = document.getElementById('cp-go-private');
+      if (gpr) {
+        gpr.hidden = false;
+        let goingPrivate = false;
+        gpr.addEventListener('click', async () => {
+          if (goingPrivate) return;
+          // Generic wording — the buyout cost (float × price × premium)
+          // is the server's (go_private) to compute; never re-derive it
+          // here. Real figures land on the post-success reload.
+          const ok = confirm(
+            `Take ${c.name || 'this corporation'} private?\n\n`
+            + `• Buys back every outside shareholder at a premium over the current share price\n`
+            + `• You reclaim the corp's treasury into your party funds\n`
+            + `• The corp delists — you own 100% privately again\n`
+            + `• Costs party funds; you can re-list later via Go Public`);
+          if (!ok) return;
+          goingPrivate = true;
+          gpr.disabled = true;
+          const prev = gpr.textContent;
+          gpr.textContent = 'GOING PRIVATE…';
+          try {
+            const { data, error: rpcErr } = await _supabase.rpc('go_private', { p_corp_id: id });
+            if (rpcErr) throw rpcErr;
+            if (!data || !data.success) {
+              const REASON = {
+                not_authenticated: 'You are not signed in.',
+                no_entrepreneur:   'No entrepreneur faction found.',
+                corp_not_found:    'Corporation not found.',
+                not_owner:         'Only the owner can take this corporation private.',
+                not_public:        'This corporation is not public.',
+              };
+              const msg = (data?.reason === 'insufficient_funds' && data?.need != null)
+                ? `Not enough party funds — buying out all shareholders needs ${fmtUsd(Number(data.need))}.`
+                : (REASON[data?.reason] || 'Could not go private. Please try again.');
+              alert(msg);
+              goingPrivate = false; gpr.disabled = false; gpr.textContent = prev;
+              return;
+            }
+            gpr.textContent = 'PRIVATE ✓ — refreshing…';
+            setTimeout(() => location.reload(), 700);
+          } catch (e) {
+            alert('Could not go private: ' + (e?.message || e));
+            goingPrivate = false; gpr.disabled = false; gpr.textContent = prev;
           }
         });
       }
