@@ -249,6 +249,7 @@
           <div class="ds-row"><span class="key">Founding fee</span><span class="val" id="cp-d-fee">—</span></div>
           <div class="ds-row" id="cp-d-row-price"><span class="key">Share price</span><span class="val" id="cp-d-price">—</span></div>
           <div class="ds-row" id="cp-d-row-shares"><span class="key">Shares outstanding</span><span class="val" id="cp-d-shares">—</span></div>
+          <div class="ds-row" id="cp-d-row-available"><span class="key">Available shares</span><span class="val" id="cp-d-available">—</span></div>
           <div class="ds-row" id="cp-d-row-treasury"><span class="key">Treasury</span><span class="val" id="cp-d-treasury">—</span></div>
         </div>
       </div>
@@ -455,6 +456,18 @@ function initials(s, n) {
       const treasury = Number(c.treasury_cash) || 0;
       const pct = pctOwned(yourShares, sharesOut) ?? 0;
 
+      // Fixed-supply float: available = shares_outstanding − Σ holdings.
+      // corp_trade / go_public are the one source for the underlying
+      // numbers; we only read + subtract for display.
+      let totalHeld = 0;
+      {
+        const { data: allH, error: ahErr } = await _supabase.from('corp_shareholdings')
+          .select('shares').eq('corp_id', id);
+        if (ahErr) console.warn('[entrepreneur-corp] holdings-sum fetch error:', ahErr.message);
+        totalHeld = (allH || []).reduce((s, r) => s + (Number(r.shares) || 0), 0);
+      }
+      const available = Math.max(0, sharesOut - totalHeld);
+
       set('cp-stake-num', String(pct));
       set('cp-role-pill', isOwner ? 'FOUNDER' : 'SHAREHOLDER');
       set('cp-owner-sub', `${fmtUsd(yourShares * price)} · ${yourShares}/${sharesOut} shares`);
@@ -465,6 +478,7 @@ function initials(s, n) {
 
       set('cp-d-price', fmtUsd(price));
       set('cp-d-shares', String(sharesOut));
+      set('cp-d-available', String(available));
       set('cp-d-treasury', fmtUsd(treasury));
 
       // Trade panel. The bonding-curve math is NOT recomputed here —
@@ -476,10 +490,11 @@ function initials(s, n) {
       const tradeCard = document.getElementById('cp-trade');
       if (tradeCard) {
         tradeCard.style.display = 'block';
-        set('cp-hold', `You hold ${yourShares} share${yourShares === 1 ? '' : 's'}.`);
+        set('cp-hold', `You hold ${yourShares} share${yourShares === 1 ? '' : 's'} · ${available} available`);
         const buyBtn = document.getElementById('cp-buy');
         const sellBtn = document.getElementById('cp-sell');
         const qtyEl = document.getElementById('cp-qty');
+        qtyEl.max = String(available);
         const msgEl = document.getElementById('cp-trade-msg');
         let trading = false;
         const doTrade = async (side, btn) => {
@@ -503,8 +518,15 @@ function initials(s, n) {
               { p_corp_id: id, p_side: side, p_quantity: qty });
             if (rpcErr) throw rpcErr;
             if (!data || !data.success) {
+              const RM = {
+                insufficient_float:    `only ${data?.available ?? 0} share${(data?.available === 1) ? '' : 's'} available`,
+                insufficient_funds:    data?.need != null ? `need ${fmtUsd(Number(data.need))}` : 'not enough party funds',
+                insufficient_shares:   `you only hold ${data?.have ?? 0} share${(data?.have === 1) ? '' : 's'}`,
+                treasury_insufficient: 'the corp treasury can’t cover that sale',
+                not_public:            'this corporation is not public',
+              };
               msgEl.className = 'tc-msg err';
-              msgEl.textContent = `Could not ${side}: ` + ((data && data.reason) || 'unknown');
+              msgEl.textContent = `Could not ${side}: ` + (RM[data?.reason] || data?.reason || 'unknown');
               release();
               return;
             }
@@ -523,7 +545,7 @@ function initials(s, n) {
         sellBtn.addEventListener('click', () => doTrade('sell', sellBtn));
       }
     } else {
-      ['cp-d-row-price', 'cp-d-row-shares', 'cp-d-row-treasury'].forEach(rid => {
+      ['cp-d-row-price', 'cp-d-row-shares', 'cp-d-row-available', 'cp-d-row-treasury'].forEach(rid => {
         const r = document.getElementById(rid); if (r) r.style.display = 'none';
       });
     }
