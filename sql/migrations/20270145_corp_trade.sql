@@ -73,8 +73,12 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'not_public');
     END IF;
 
-    -- Then the caller's entrepreneur faction (same resolution as
-    -- found_entrepreneur_corp).
+    -- Then the caller's entrepreneur faction. This guard prelude is
+    -- VERBATIM the one in found_entrepreneur_corp (20270144) — keep the
+    -- two in sync if the resolution rule changes. The codebase
+    -- deliberately inlines this per-RPC (20270142: "Mirrors create_unit
+    -- / allocate_defense_funds"); a shared SQL helper would be its own
+    -- cross-cutting pass, not part of this feature.
     SELECT * INTO v_fac FROM factions
      WHERE faction_type = 'entrepreneur'
        AND abandoned_at IS NULL
