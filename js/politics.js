@@ -7,10 +7,10 @@ import { fetchActiveCoalition, loadSeats } from './game/government-structure.js'
 import { INACTIVITY_DRAIN_THRESHOLD } from './game/electorate.js';
 import { hasElectedPresident } from './game/government-types.js';
 import { initGameConfigForNation, switchPartyEndorsement } from './game/config.js';
-import { RALLY_CONFIG, executeRally, ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, disbandParty, getNationNames } from './game/political-actions.js';
+import { ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, disbandParty, getNationNames } from './game/political-actions.js';
 import { PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress } from './game/protest.js';
 import { ISSUE_DEFS, ISSUE_IDS } from './game/electorate.js';
-import { getStrongholdSectors, formatPopularity } from './game/sectors.js';
+import { getStrongholdSectors } from './game/sectors.js';
 import { isGovernmentPresidential, getGovDisplayLabel } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
 import { getElectabilityTier, getTraitAPModifier } from './game/party-leadership.js';
@@ -2176,15 +2176,13 @@ function escapeHtml(str) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// DEMOCRACY CAMPAIGN ACTIONS TAB (Rally, Attack)
+// DEMOCRACY CAMPAIGN ACTIONS TAB (Press Conference, Attack, Protest)
 // ═══════════════════════════════════════════════════════════════════
 
 // Campaign action state
-let _caSelected = null;   // 'rally' | 'attack' | 'protest'
+let _caSelected = null;   // 'attack' | 'protest' | 'press_conference'
 let _caRival = null;      // selected rival faction id
 let _caVector = null;     // attack vector id
-let _caRallySectorId = null;  // selected sector id for Hold a Rally
-let _caSectors = [];      // [{ id, sector_key, name, popularity }] active sectors + player popularity
 let _caResult = null;     // last action result for display
 
 let _caAttackVectors = null;  // cached built vectors
@@ -2213,9 +2211,6 @@ const CA_ACTION_CATEGORIES = [
 
 const CA_ACTIONS = [
     // MOMENTUM
-    { id: 'rally', name: 'Hold a Rally', money: true, color: '#f97316', icon: '★',
-      category: 'momentum', affects: 'Sector Popularity',
-      desc: 'Spend party funds to rally one voter sector. Random outcome shifts your popularity in that sector — a rousing success builds it, a gaffe costs it. A divisive or disrupted rally also bleeds support from your other sectors.' },
     { id: 'press_conference', name: 'Press Conference', ap: 1, color: '#fbbf24', icon: '🎤',
       category: 'momentum', affects: 'Momentum',
       desc: 'Hold a press conference to make a public statement. Base roll: -2 to +2 Momentum. Opposition parties get +1 bonus. High-approval governing parties get +2 bonus.' },
@@ -2227,12 +2222,10 @@ const CA_ACTIONS = [
 // State for campaign actions
 let _caCooldowns = {};     // { action_type: ticksRemaining }
 let _caUsedThisTick = {};  // { actionId: true } — actions already used this tick
-let _caRallyEscalation = 0;    // rally cost escalation: +1 per use, -1 per tick
 let _caPressEscalation = 0;    // press conference cost escalation: +1 per use, -1 per tick
 
 function caReset() {
     _caRival = null; _caVector = null;
-    _caRallySectorId = null;
     _caAttackVectors = null;
     _protestTab = 'minister'; _protestTarget = null;
     _protestCachedMinisters = null; _protestCachedCrises = null; _protestCachedStats = null;
@@ -2240,7 +2233,6 @@ function caReset() {
 }
 
 function caIsReady() {
-    if (_caSelected === 'rally') return !!_caRallySectorId;
     if (_caSelected === 'attack') return !!_caRival && !!_caVector;
     if (_caSelected === 'protest') return !!_protestTarget;
     if (_caSelected === 'press_conference') return true;
@@ -2253,9 +2245,6 @@ function caGetCost() {
         const tick = _currentShard?.current_tick || 0;
         const decayed = getDecayedUseCount(f?.protest_use_count || 0, f?.protest_last_use_tick, tick);
         return getProtestCost(decayed);
-    }
-    if (_caSelected === 'rally') {
-        return RALLY_CONFIG.BASE_COST + (_caRallyEscalation || 0) * RALLY_CONFIG.ESCALATION_STEP;
     }
     if (_caSelected === 'press_conference') {
         const _f2 = _currentFaction;
@@ -2296,23 +2285,6 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
         f.last_action_tick = freshF.last_action_tick;
     }
     const ap = f.action_points ?? 0;
-
-    // Load active sectors + this faction's popularity (for the Rally picker)
-    const [caSectorsRes, caPopRes] = await Promise.all([
-        _supabase.from('sectors')
-            .select('id, sector_key, name, is_active')
-            .eq('nation_id', n.id)
-            .eq('is_active', true),
-        _supabase.from('faction_sector_popularity')
-            .select('sector_id, popularity')
-            .eq('faction_id', f.id),
-    ]);
-    const _caPopBySector = new Map((caPopRes.data || []).map(r => [r.sector_id, Number(r.popularity) || 0]));
-    _caSectors = (caSectorsRes.data || []).map(s => ({
-        id: s.id, sector_key: s.sector_key, name: s.name,
-        popularity: _caPopBySector.get(s.id) ?? 0,
-    }));
-    if (_caRallySectorId && !_caSectors.some(s => s.id === _caRallySectorId)) _caRallySectorId = null;
 
     // Check if faction is in government (ruling party or coalition member)
     const coalition = await fetchActiveCoalition(_supabase, n.id);
@@ -2419,7 +2391,7 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
     }
 
     // Compute escalation for repeatable actions: +1 per use, decays -1 per tick of non-use
-    for (const [actionType, setter] of [['rally', v => _caRallyEscalation = v], ['press_conference', v => _caPressEscalation = v]]) {
+    for (const [actionType, setter] of [['press_conference', v => _caPressEscalation = v]]) {
         const acts = (recentActions || []).filter(a => a.action_type === actionType);
         if (acts.length > 0) {
             const lastTick = Math.max(...acts.map(a => a.tick_performed));
@@ -2511,18 +2483,17 @@ function renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck,
                 continue;
             }
 
-            const isMoneyAct = act.id === 'rally';
-            let displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'rally' ? (RALLY_CONFIG.BASE_COST + (_caRallyEscalation || 0) * RALLY_CONFIG.ESCALATION_STEP) : act.id === 'press_conference' ? (1 + (_caPressEscalation || 0)) : act.ap;
-            // Apply leader trait modifiers to displayed AP cost (money actions exempt)
+            let displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'press_conference' ? (1 + (_caPressEscalation || 0)) : act.ap;
+            // Apply leader trait modifiers to displayed AP cost
             if (['press_conference', 'attack'].includes(act.id) && f.leader_positive_traits) {
                 displayCost = Math.max(1, displayCost + getTraitAPModifier(act.id, f, tick));
             }
-            const costLabel = isMoneyAct ? formatCurrencyShort(displayCost) : `${displayCost} AP`;
+            const costLabel = `${displayCost} AP`;
             const dbActionType = act.id;
             const cdRemaining = _caCooldowns[dbActionType] || 0;
             const onCooldown = cdRemaining > 0;
             const usedThisTick = !!_caUsedThisTick[dbActionType];
-            const canAfford = isMoneyAct ? (f.party_funds || 0) >= displayCost : ap >= displayCost;
+            const canAfford = ap >= displayCost;
             const ok = canAfford && !onCooldown && !usedThisTick;
             const borderColor = isSel ? act.color : ok ? act.color + '55' : 'var(--dtext-3)';
             const bgStyle = isSel ? `background:${act.color}08;` : '';
@@ -2637,31 +2608,10 @@ function renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck,
 // ── Render config body for each action ──
 
 function renderActionConfig(sel, otherParties, nation, ap, tick) {
-    if (sel.id === 'rally') return renderRallyConfig();
     if (sel.id === 'attack') return renderAttackConfig(otherParties);
     if (sel.id === 'protest') return renderProtestConfig(nation, tick);
     if (sel.id === 'press_conference') return `<div class="ca-info-box">Hold a press conference to make a public statement. Result depends on your position and approval.<br><br><strong>Base roll:</strong> -2 to +2 Momentum<br><strong>Opposition bonus:</strong> +1<br><strong>Government bonus:</strong> +2 (if gov approval ≥ 40)</div>`;
     return '';
-}
-
-// ── RALLY CONFIG ──
-
-function renderRallyConfig() {
-    const cost = caGetCost();
-    let html = `<div class="ca-info-box">Spend ${formatCurrencyShort(cost)} to rally one voter sector. The outcome shifts your popularity in that sector — a rousing success builds it, a gaffe costs it. A divisive or disrupted rally also bleeds support from your other sectors. Repeat rallies cost more and pay less.</div>`;
-    if (!_caSectors || _caSectors.length === 0) {
-        html += `<div class="ca-info-box" style="color:#ef4444">This nation has no voter sectors yet.</div>`;
-        return html;
-    }
-    html += `<div class="ca-subtitle">Select a sector to rally</div>`;
-    for (const s of _caSectors) {
-        const isSel = _caRallySectorId === s.id;
-        html += `<div class="ca-rival-card${isSel ? ' selected' : ''}" data-sector-id="${s.id}" style="display:flex;justify-content:space-between;align-items:center;border-left-color:${isSel ? '#f97316' : '#888'};${isSel ? 'border-color:rgba(249,115,22,0.2);background:rgba(249,115,22,0.03)' : ''}">
-            <span class="ca-rival-name" style="color:${isSel ? '#f97316' : 'var(--dtext-0)'}">${escapeHtml(s.name)}</span>
-            <span style="font-family:var(--dfont-mono);font-size:11px;color:var(--dtext-3)">Pop ${formatPopularity(s.popularity)}</span>
-        </div>`;
-    }
-    return html;
 }
 
 // ── ATTACK CONFIG ──
@@ -3243,15 +3193,6 @@ function renderProtestResolvingPanel() {
 function wireCampaignConfig(container, f, n, ap, otherParties, tick, protestCheck, protestApCost) {
     const rerender = () => renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck, protestApCost);
 
-    // Sector selection (rally)
-    container.querySelectorAll('[data-sector-id]').forEach(el => {
-        el.addEventListener('click', () => {
-            const sectorId = el.dataset.sectorId;
-            _caRallySectorId = _caRallySectorId === sectorId ? null : sectorId;
-            rerender();
-        });
-    });
-
     // Rival selection (attack)
     container.querySelectorAll('[data-rival-id]').forEach(el => {
         el.addEventListener('click', async () => {
@@ -3410,9 +3351,7 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, tick) {
 
     let result;
     try {
-        if (sel.id === 'rally') {
-            result = await executeRally(_supabase, _caRallySectorId);
-        } else if (sel.id === 'attack') {
+        if (sel.id === 'attack') {
             result = await executeAttack(_supabase, f.id, n.id, _caRival, _caVector, tick);
         } else if (sel.id === 'protest') {
             if (!_protestTarget) return;

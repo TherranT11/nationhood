@@ -8,7 +8,9 @@
  *
  * Inactivity tiers (in priority order):
  *   1. abandoned   — player explicitly disbanded the faction
- *   2. unassigned  — faction has no nation_id (detached / never seeded)
+ *   2. unassigned  — faction has no nation_id (detached / never seeded);
+ *                    entrepreneurs are exempt — they are nation-agnostic
+ *                    by design and always have nation_id = null
  *   3. banned      — admin-banned via factions.is_banned
  *
  * If you only need a boolean, use isFactionInactive(f). If you need
@@ -22,7 +24,9 @@
 export function getFactionInactiveReason(f) {
     if (!f) return null;
     if (f.abandoned_at) return 'abandoned';
-    if (!f.nation_id)   return 'unassigned';
+    // Entrepreneurs are nation-agnostic by design (created with
+    // nation_id = null); a missing nation_id is not "unassigned" for them.
+    if (!f.nation_id && f.faction_type !== 'entrepreneur') return 'unassigned';
     if (f.is_banned)    return 'banned';
     return null;
 }

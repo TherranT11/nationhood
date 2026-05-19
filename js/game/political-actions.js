@@ -836,61 +836,6 @@ export async function processStatConnections(supabase, nation, currentTick, conn
 }
 
 
-// ==================== RALLY SYSTEM ====================
-
-// Client-side cost mirror for the Rally action. The authoritative gate,
-// escalation and charge live in the hold_rally() SQL RPC
-// (20270106_hold_rally_rpc.sql); these constants exist only so
-// politics.js can show the cost before the player commits. Keep in sync
-// with v_base / v_step there.
-export const RALLY_CONFIG = {
-    BASE_COST: 50000,        // $ from party_funds for the first rally
-    ESCALATION_STEP: 25000,  // added per escalation level (repeat-use penalty)
-};
-
-// The rally mechanic — auth + one-per-tick + escalating-cost gate, the
-// weighted 1-of-6 outcome roll, the sector-popularity shift, the funds
-// debit and the campaign_actions log — lives entirely in the
-// hold_rally() SECURITY DEFINER RPC (20270106_hold_rally_rpc.sql).
-// faction_sector_popularity is admin/service-role write-only, so it
-// cannot run from the client. That RPC is the single source of truth;
-// the outcome table, weights and trait modifiers live only there.
-
-const _RALLY_REASON_MESSAGES = {
-    not_authenticated:         'You are not signed in.',
-    no_sector:                 'Pick a sector to rally.',
-    invalid_sector:            'That sector is not available in this nation.',
-    no_faction:                'Rally is unavailable right now.',
-    no_nation:                 'Rally is unavailable right now.',
-    no_shard:                  'Rally is unavailable right now.',
-    already_rallied_this_tick: 'Already held a rally this tick.',
-};
-
-/**
- * Hold a Rally — thin client for the hold_rally() RPC. Returns the RPC
- * payload on success ({ success, outcomeId, outcomeName, headline,
- * effects, weights, newFunds, cost_paid }) or { success:false, error }
- * with a user-facing message for the politics.js result panel.
- */
-export async function executeRally(supabase, sectorId) {
-    if (!sectorId) return { success: false, error: 'Pick a sector to rally.' };
-
-    const { data, error } = await supabase.rpc('hold_rally', { p_sector_id: sectorId });
-    if (error) {
-        console.error('[Rally] hold_rally RPC failed:', error.message);
-        return { success: false, error: 'Rally failed. Please try again.' };
-    }
-    if (!data || data.success !== true) {
-        if (data?.reason === 'insufficient_funds' && data?.need != null) {
-            return { success: false, error: `Not enough party funds. Need $${Number(data.need).toLocaleString()}.` };
-        }
-        return { success: false, error: _RALLY_REASON_MESSAGES[data?.reason] || 'Rally failed.' };
-    }
-    return data;
-}
-
-
-
 // Outreach system removed — voter_blocs table no longer exists.
 
 export async function executeEndorsementPreference(supabase, factionId, nationId, endorsedFactionId, currentTick, reason = 'endorsement_preference_update') {

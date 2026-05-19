@@ -2201,10 +2201,10 @@ const DEPUTY_ACTIONS = [
     {
         id: 'rally',
         name: 'Hold a Rally',
-        desc: 'Invest party funds into a public rally. Higher investment improves your odds, but a bad roll can backfire. Roll 1d6 + rally bonus for momentum.',
-        cost: '$50k-$200k',
+        desc: 'Pick a voter sector and spend party funds on a rally. Roll 1d6 plus a spend bonus — the result raises your popularity in that sector by +0.2 to +1.0. Never backfires.',
+        cost: '$50k-$500k',
         costColor: '#8b9a6b',
-        tags: ['CAMPAIGN', 'RISKY'],
+        tags: ['CAMPAIGN'],
         locked: false,
     },
     {
@@ -2249,21 +2249,16 @@ const DEPUTY_ACTIONS = [
     },
 ];
 
+// Spend tiers mirror the hold_rally() RPC (20270150). The roll, the gain
+// and the outcome are computed only in that RPC — the single source of
+// truth; these constants exist solely to render the picker pre-commit.
 const RALLY_TIERS = [
-    { cost: 50000, bonus: 1, label: '$50k (+1)' },
-    { cost: 80000, bonus: 2, label: '$80k (+2)' },
-    { cost: 120000, bonus: 3, label: '$120k (+3)' },
-    { cost: 150000, bonus: 4, label: '$150k (+4)' },
-    { cost: 200000, bonus: 5, label: '$200k (+5)' },
+    { spend: 50000,  bonus: 0, label: '$50k' },
+    { spend: 100000, bonus: 1, label: '$100k' },
+    { spend: 150000, bonus: 2, label: '$150k' },
+    { spend: 250000, bonus: 3, label: '$250k' },
+    { spend: 500000, bonus: 4, label: '$500k' },
 ];
-
-function getRallyResult(dieRoll, bonus) {
-    const total = dieRoll + bonus;
-    if (total >= 8) return { momentum: 3, label: 'Rousing Success', color: '#5cc55c' };
-    if (total >= 5) return { momentum: 2, label: 'Solid Turnout', color: '#8b9a6b' };
-    if (total >= 3) return { momentum: 0, label: 'Flat Response', color: '#ca5' };
-    return { momentum: -2, label: 'Backfire', color: '#c55' };
-}
 
 function renderDeputyActionsPanel(role) {
     const faction = _state.faction;
@@ -2547,24 +2542,63 @@ async function openHireDeputyModal(root) {
 
 // ════════════════════════ RALLY MODAL ════════════════════════
 
-function openRallyModal(root) {
+async function openRallyModal(root) {
     const overlay = document.getElementById('pa-rally-modal');
     if (!overlay) return;
     if (!_deputy) return;
 
     const faction = _state.faction;
-    const funds = faction.party_funds || 0;
+    let selectedSectorId = null;
     let selectedTier = null;
     let result = null;
+    let submitting = false;
+
+    const REASON_MSG = {
+        not_authenticated:         'You are not signed in.',
+        no_sector:                 'Pick a sector to rally.',
+        invalid_sector:            'That sector is not available.',
+        invalid_spend:             'Invalid spend amount.',
+        no_faction:                'Rally is unavailable right now.',
+        no_nation:                 'Rally is unavailable right now.',
+        no_shard:                  'Rally is unavailable right now.',
+        already_rallied_this_tick: 'You already held a rally this tick.',
+    };
+
+    overlay.classList.add('active');
+    overlay.innerHTML = `<div class="pa-modal" style="width:520px;"><div class="pa-modal-body" style="padding:24px;font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">Loading sectors…</div></div>`;
+
+    // Active sectors + this faction's current popularity (stored in tenths).
+    const [secRes, popRes] = await Promise.all([
+        _supabase.from('sectors').select('id, name').eq('nation_id', _state.nation?.id).eq('is_active', true).order('name'),
+        _supabase.from('faction_sector_popularity').select('sector_id, popularity').eq('faction_id', faction.id),
+    ]);
+    if (secRes.error) console.warn('[Rally] sector load failed:', secRes.error.message);
+    if (popRes.error) console.warn('[Rally] popularity load failed:', popRes.error.message);
+    const popBySector = new Map((popRes.data || []).map(r => [r.sector_id, Number(r.popularity) || 0]));
+    const sectors = (secRes.data || []).map(s => ({ id: s.id, name: s.name, pop: popBySector.get(s.id) || 0 }));
 
     function render() {
+        const funds = faction.party_funds || 0;
+
+        const sectorsHtml = sectors.length === 0
+            ? `<div style="padding:10px;font-family:var(--font-mono);font-size:10px;color:#c55;">This nation has no voter sectors yet.</div>`
+            : sectors.map(s => {
+                const isSel = selectedSectorId === s.id;
+                return `<div class="pa-action-item ${isSel ? 'selected' : ''}" data-sector="${s.id}" style="cursor:pointer;${isSel ? 'border-color:#8b9a6b;background:rgba(139,154,107,0.06);' : ''}">
+                    <div class="pa-action-top">
+                        <span style="font-size:12px;font-weight:700;color:${isSel ? '#8b9a6b' : 'var(--text-bright)'};">${esc(s.name)}</span>
+                        <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Pop ${(s.pop / 10).toFixed(1)}</span>
+                    </div>
+                </div>`;
+            }).join('');
+
         const tiersHtml = RALLY_TIERS.map((t, i) => {
-            const canAfford = funds >= t.cost;
+            const canAfford = funds >= t.spend;
             const isSel = selectedTier === i;
             return `<div class="pa-action-item ${isSel ? 'selected' : ''} ${!canAfford ? 'locked' : ''}" data-tier="${i}" style="cursor:${canAfford ? 'pointer' : 'not-allowed'};${isSel ? 'border-color:#8b9a6b;background:rgba(139,154,107,0.06);' : ''}">
                 <div class="pa-action-top">
-                    <span style="font-size:13px;font-weight:700;color:${isSel ? '#8b9a6b' : 'var(--text-bright)'};">$${Math.round(t.cost / 1000)}k Investment</span>
-                    <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#8b9a6b;">+${t.bonus} Rally Bonus</span>
+                    <span style="font-size:13px;font-weight:700;color:${isSel ? '#8b9a6b' : 'var(--text-bright)'};">${t.label} Investment</span>
+                    <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#8b9a6b;">+${t.bonus} Roll Bonus</span>
                 </div>
                 <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">Roll 1d6 + ${t.bonus} = range ${1 + t.bonus} to ${6 + t.bonus}</div>
             </div>`;
@@ -2573,18 +2607,19 @@ function openRallyModal(root) {
         let resultHtml = '';
         if (result) {
             resultHtml = `
-                <div style="padding:16px;background:${result.color}08;border:1px solid ${result.color}22;margin-top:12px;">
-                    <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${result.color};margin-bottom:4px;">${result.label}</div>
+                <div style="padding:16px;background:#5cc55c08;border:1px solid #5cc55c22;margin-top:12px;">
+                    <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#5cc55c;margin-bottom:4px;">${esc(result.outcomeName || 'Rally held')}</div>
                     <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);margin-bottom:6px;">
-                        Die roll: <strong>${result.dieRoll}</strong> + Rally bonus: <strong>${result.bonus}</strong> = <strong>${result.total}</strong>
+                        Roll <strong>${result.roll}</strong> + bonus <strong>${result.bonus}</strong> = <strong>${result.total}</strong> &middot; ${esc(result.sectorName || '')}
                     </div>
-                    <div style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:${result.color};">
-                        ${result.momentum >= 0 ? '+' : ''}${result.momentum} Momentum
+                    <div style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:#5cc55c;">
+                        +${Number(result.popularityGain).toFixed(1)} Popularity
                     </div>
                 </div>
             `;
         }
 
+        const submitDisabled = submitting || selectedSectorId == null || selectedTier == null;
         overlay.innerHTML = `
             <div class="pa-modal" style="width:520px;">
                 <div class="pa-modal-header">
@@ -2600,22 +2635,26 @@ function openRallyModal(root) {
                     <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">&middot; Skill ${_deputy.skill}</span>
                 </div>
                 <div class="pa-modal-body" style="gap:6px;">
-                    <div class="pa-modal-step-label">Choose Investment Level</div>
+                    <div class="pa-modal-step-label">Choose a Sector</div>
+                    <div id="rally-sectors">${sectorsHtml}</div>
+
+                    <div class="pa-modal-step-label" style="margin-top:8px;">Choose Investment Level</div>
                     <div id="rally-tiers">${tiersHtml}</div>
 
                     <div style="margin-top:8px;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border-main);font-family:var(--font-mono);font-size:9px;color:var(--text-dim);line-height:1.6;">
-                        <strong>Outcome table:</strong> Roll 1d6 + bonus<br>
-                        8-11 = <span style="color:#5cc55c;">+3 Momentum</span> &middot;
-                        5-7 = <span style="color:#8b9a6b;">+2 Momentum</span> &middot;
-                        3-4 = <span style="color:#ca5;">+0 Momentum</span> &middot;
-                        1-2 = <span style="color:#c55;">-2 Momentum</span>
+                        <strong>Outcome:</strong> Roll 1d6 + spend bonus &rarr; popularity gain<br>
+                        &le;2 = <span style="color:#ca5;">+0.2</span> &middot;
+                        3-4 = <span style="color:#8b9a6b;">+0.4</span> &middot;
+                        5-6 = <span style="color:#8b9a6b;">+0.6</span> &middot;
+                        7-8 = <span style="color:#5cc55c;">+0.8</span> &middot;
+                        &ge;9 = <span style="color:#5cc55c;">+1.0</span>
                     </div>
 
                     ${resultHtml}
                 </div>
                 <div class="pa-modal-footer">
                     <button class="pa-modal-btn pa-modal-btn--cancel" id="rally-cancel">${result ? 'Close' : 'Cancel'}</button>
-                    ${!result ? `<button class="pa-modal-btn pa-modal-btn--submit" id="rally-submit" style="background:#8b9a6b;" ${selectedTier == null ? 'disabled' : ''}>Hold Rally</button>` : ''}
+                    ${!result ? `<button class="pa-modal-btn pa-modal-btn--submit" id="rally-submit" style="background:#8b9a6b;" ${submitDisabled ? 'disabled' : ''}>${submitting ? 'Rolling…' : 'Hold Rally'}</button>` : ''}
                 </div>
             </div>
         `;
@@ -2625,6 +2664,13 @@ function openRallyModal(root) {
         document.getElementById('rally-cancel')?.addEventListener('click', close);
         overlay.onclick = (e) => { if (e.target === overlay) close(); };
 
+        document.getElementById('rally-sectors')?.addEventListener('click', (e) => {
+            const item = e.target.closest('[data-sector]');
+            if (!item) return;
+            selectedSectorId = item.dataset.sector;
+            render();
+        });
+
         document.getElementById('rally-tiers')?.addEventListener('click', (e) => {
             const item = e.target.closest('[data-tier]');
             if (!item || item.classList.contains('locked')) return;
@@ -2633,59 +2679,45 @@ function openRallyModal(root) {
         });
 
         document.getElementById('rally-submit')?.addEventListener('click', async () => {
-            if (selectedTier == null || result) return;
+            if (submitting || result || selectedSectorId == null || selectedTier == null) return;
             const tier = RALLY_TIERS[selectedTier];
-            // Fetch fresh funds from DB to avoid stale cache race condition
-            const { data: freshRallyFaction } = await _supabase.from('factions').select('party_funds, momentum').eq('id', _state.faction.id).single();
-            const currentFunds = freshRallyFaction?.party_funds || 0;
-            if (currentFunds < tier.cost) { alert('Not enough funds.'); return; }
-            // Use fresh momentum too
-            _state.faction.party_funds = currentFunds;
-            _state.faction.momentum = freshRallyFaction?.momentum ?? _state.faction.momentum;
-
-            const btn = document.getElementById('rally-submit');
-            if (btn) { btn.disabled = true; btn.textContent = 'Rolling...'; }
-
+            submitting = true;
+            render();
             try {
-                const dieRoll = 1 + Math.floor(Math.random() * 6);
-                const rallyResult = getRallyResult(dieRoll, tier.bonus);
-
-                const newFunds = currentFunds - tier.cost;
-                const newMomentum = Math.max(1, (_state.faction.momentum || 0) + rallyResult.momentum);
-
-                await _supabase.from('factions').update({
-                    party_funds: newFunds,
-                    momentum: newMomentum,
-                }).eq('id', _state.faction.id);
-
-                const tick = _state.shard?.current_tick || 0;
-                await _supabase.from('campaign_actions').insert({
-                    party_id: _state.faction.id,
-                    nation_id: _state.nation?.id,
-                    action_type: 'rally',
-                    ap_cost: 0,
-                    money_cost: tier.cost,
-                    tick_performed: tick,
-                    // momentumDelta + outcomeName are the normalized fields
-                    // the Recent Activity renderer reads. momentum + label
-                    // kept for backwards-compat with pre-existing rows.
-                    result: { dieRoll, bonus: tier.bonus, total: dieRoll + tier.bonus, momentum: rallyResult.momentum, momentumDelta: rallyResult.momentum, label: rallyResult.label, outcomeName: rallyResult.label },
+                const { data, error } = await _supabase.rpc('hold_rally', {
+                    p_sector_id: selectedSectorId,
+                    p_spend: tier.spend,
                 });
-
-                _state.faction.party_funds = newFunds;
-                _state.faction.momentum = newMomentum;
-                sessionStorage.removeItem('nationhood_state'); // bust stale cache so refreshAP reads correct value
-
-                result = { ...rallyResult, dieRoll, bonus: tier.bonus, total: dieRoll + tier.bonus };
+                if (error) {
+                    console.error('[Rally] hold_rally RPC failed:', error.message);
+                    submitting = false;
+                    alert('Rally failed. Please try again.');
+                    render();
+                    return;
+                }
+                if (!data || data.success !== true) {
+                    submitting = false;
+                    const msg = data?.reason === 'insufficient_funds' && data?.need != null
+                        ? `Not enough party funds. Need $${Number(data.need).toLocaleString()}.`
+                        : (REASON_MSG[data?.reason] || 'Rally failed.');
+                    alert(msg);
+                    render();
+                    return;
+                }
+                if (data.newFunds != null) _state.faction.party_funds = data.newFunds;
+                sessionStorage.removeItem('nationhood_state'); // bust stale cache
+                submitting = false;
+                result = data;
                 render();
             } catch (err) {
-                console.error('[Rally] Error:', err);
+                console.error('[Rally] error:', err);
+                submitting = false;
                 alert('Rally failed.');
+                render();
             }
         });
     }
 
-    overlay.classList.add('active');
     render();
 }
 
