@@ -99,6 +99,13 @@
   .ec-btn.pri:hover { background:#243a1f; }
   .ec-btn.pri:disabled { opacity:0.45; cursor:not-allowed; }
   .ec-err { color:#c47a7a; font-size:11px; margin-left:auto; display:none; }
+  /* Leave Board modal: one row per seat. Reuses .ec-empty / .ec-btn. */
+  .ec-lr { display:grid; grid-template-columns:1fr auto; gap:14px; padding:12px 16px;
+    background:#0f120e; border:0.5px solid rgba(138,170,106,0.15); border-radius:4px;
+    margin-bottom:8px; align-items:center; }
+  .ec-lr .nm { font-size:13px; font-weight:500; color:#fff; line-height:1.2; }
+  .ec-lr .sub { font-size:10px; color:#888; margin-top:3px; letter-spacing:0.06em; }
+  .ec-lr .ec-btn.pri { padding:8px 14px; }
 </style>
 </head>
 <body>
@@ -116,10 +123,10 @@
       <div><div class="nm">Join a Board</div><div class="ds">Apply for or accept an invitation to an existing corporation's board.</div></div>
       <div class="cost">SOON</div>
     </div>
-    <div class="ec-action disabled">
+    <div class="ec-action go" id="ec-leave">
       <div class="ic">↙</div>
       <div><div class="nm">Leave a Board</div><div class="ds">Resign from a board seat you currently hold.</div></div>
-      <div class="cost">SOON</div>
+      <div class="cost">—</div>
     </div>
   </div>
 
@@ -190,6 +197,27 @@
       <span class="ec-err" id="ec-err"></span>
       <button class="ec-btn sec" id="ec-cancel">CANCEL</button>
       <button class="ec-btn pri" id="ec-found">FOUND CORPORATION — $21M →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Leave Board modal (Phase A). Join Board stays SOON until Phase B
+     ships the request/vote infrastructure. -->
+<div class="ec-overlay" id="ec-leave-overlay">
+  <div class="ec-modal">
+    <div class="ec-mh">
+      <div class="ic">↙</div>
+      <div><div class="eb">— BUSINESSMAN ACTION —</div><div class="ti">Leave a <em>Board</em></div></div>
+      <div class="rt">
+        <div class="ec-x" id="ec-leave-close">×</div>
+      </div>
+    </div>
+    <div class="ec-mb">
+      <div class="ec-h">Your <em>Board Seats</em></div>
+      <div id="ec-leave-list"><div class="ec-empty">Loading…</div></div>
+    </div>
+    <div class="ec-mf">
+      <button class="ec-btn sec" id="ec-leave-cancel">CLOSE</button>
     </div>
   </div>
 </div>
@@ -368,6 +396,84 @@ function renderPositions(corps, filter) {
     document.getElementById('ec-start').addEventListener('click', open);
     document.getElementById('ec-close').addEventListener('click', close);
     document.getElementById('ec-cancel').addEventListener('click', close);
+
+    // ── Leave Board (Phase A) ───────────────────────────────────────
+    // Lists corp_board_seats for the viewer (joined to corps) and
+    // resigns via corp_board_leave (the one source for the share-price
+    // drop + event log). Join Board stays SOON until Phase B ships the
+    // request/vote infrastructure.
+    const leaveOv   = document.getElementById('ec-leave-overlay');
+    const leaveList = document.getElementById('ec-leave-list');
+    const closeLeave = () => leaveOv.classList.remove('open');
+    const openLeave = async () => {
+      if (!entId) { alert('No entrepreneur faction found.'); return; }
+      leaveOv.classList.add('open');
+      leaveList.innerHTML = '<div class="ec-empty">Loading…</div>';
+      const { data, error } = await _supabase.from('corp_board_seats')
+        .select('corp_id, joined_tick, corp:entrepreneur_corps!corp_id(id, name, industry, listing)')
+        .eq('member_faction_id', entId)
+        .order('joined_tick', { ascending: true });
+      if (error) {
+        console.warn('[entrepreneur-corporations] leave-board fetch error:', error.message);
+        leaveList.innerHTML = '<div class="ec-empty">Could not load your board seats.</div>';
+        return;
+      }
+      const seats = (data || []).filter(r => r.corp);
+      leaveList.replaceChildren();
+      if (seats.length === 0) {
+        const e = document.createElement('div'); e.className = 'ec-empty';
+        e.textContent = "You're not currently on any boards.";
+        leaveList.appendChild(e);
+        return;
+      }
+      for (const s of seats) {
+        const c = s.corp;
+        const row  = document.createElement('div'); row.className = 'ec-lr';
+        const left = document.createElement('div');
+        const nm   = document.createElement('div'); nm.className = 'nm'; nm.textContent = c.name || 'Corporation';
+        const sub  = document.createElement('div'); sub.className = 'sub';
+        sub.textContent = `${(c.industry || '—').toUpperCase()} · ${(c.listing || 'private').toUpperCase()}`;
+        left.append(nm, sub);
+        const btn = document.createElement('button'); btn.className = 'ec-btn pri'; btn.textContent = 'LEAVE';
+        btn.addEventListener('click', async () => {
+          if (btn.disabled) return;
+          const ok = confirm(
+            `Resign from the Board of Directors of ${c.name}?\n\n`
+            + `• ${c.listing === 'public' ? 'Share price drops by 1–6%' : 'No share-price effect (private corp)'}\n`
+            + `• Logs a Board Resignation event\n`
+            + `• You cannot rejoin this corporation later`);
+          if (!ok) return;
+          btn.disabled = true; btn.textContent = 'LEAVING…';
+          try {
+            const { data: r, error: rpcErr } = await _supabase.rpc('corp_board_leave', { p_corp_id: c.id });
+            if (rpcErr) throw rpcErr;
+            if (!r || !r.success) {
+              const REASON = {
+                not_authenticated:    'You are not signed in.',
+                no_entrepreneur:      'No entrepreneur faction found.',
+                corp_not_found:       'Corporation not found.',
+                founder_cannot_leave: 'Founders cannot leave their own corporation.',
+                not_on_board:         "You're not on that board.",
+              };
+              alert(REASON[r?.reason] || 'Could not leave the board. Please try again.');
+              btn.disabled = false; btn.textContent = 'LEAVE';
+              return;
+            }
+            btn.textContent = 'LEFT ✓ — refreshing…';
+            setTimeout(() => location.reload(), 700);
+          } catch (e) {
+            alert('Could not leave the board: ' + (e?.message || e));
+            btn.disabled = false; btn.textContent = 'LEAVE';
+          }
+        });
+        row.append(left, btn);
+        leaveList.appendChild(row);
+      }
+    };
+    document.getElementById('ec-leave').addEventListener('click', openLeave);
+    document.getElementById('ec-leave-close').addEventListener('click', closeLeave);
+    document.getElementById('ec-leave-cancel').addEventListener('click', closeLeave);
+    leaveOv.addEventListener('click', (e) => { if (e.target === leaveOv) closeLeave(); });
     document.getElementById('ec-ind').addEventListener('click', (e) => {
       const card = selectPick('ec-ind', e);
       if (!card || !card.dataset.ind) return;
