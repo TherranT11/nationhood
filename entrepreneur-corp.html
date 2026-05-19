@@ -100,7 +100,10 @@
   .tc-btn { background:#1f2a1a; color:#8aaa6a; border:0.5px solid #4a6a4a; border-radius:3px;
     font-size:11px; letter-spacing:0.1em; font-weight:600; padding:8px 16px; cursor:pointer; }
   .tc-btn:hover:not(:disabled) { background:#26331f; }
+  .tc-btn.sell { background:#2a1a1a; color:#c98a8a; border-color:#6a4a4a; }
+  .tc-btn.sell:hover:not(:disabled) { background:#331f1f; }
   .tc-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .tc-hold { font-size:11px; color:#888; margin-bottom:10px; }
   .tc-hint { font-size:10px; color:#666; margin-top:8px; line-height:1.5; }
   .tc-msg { font-size:11px; margin-top:8px; line-height:1.5; }
   .tc-msg.err { color:#c98a8a; }
@@ -202,11 +205,13 @@
       <div>
         <div class="trade-card" id="cp-trade" style="display:none;">
           <div class="lab">TRADE SHARES</div>
+          <div class="tc-hold" id="cp-hold">—</div>
           <div class="tc-row">
             <input id="cp-qty" class="tc-qty" type="number" min="1" step="1" value="1" />
             <button id="cp-buy" class="tc-btn">BUY</button>
+            <button id="cp-sell" class="tc-btn sell">SELL</button>
           </div>
-          <div class="tc-hint">Price rises 5% per share bought. Final cost is confirmed on purchase.</div>
+          <div class="tc-hint">Price moves 5% per share traded. The final amount is confirmed on execution.</div>
           <div class="tc-msg" id="cp-trade-msg"></div>
         </div>
 
@@ -329,19 +334,22 @@ function initials(s, n) {
       set('cp-d-shares', String(sharesOut));
       set('cp-d-treasury', fmtUsd(treasury));
 
-      // Buy panel. Cost is NOT recomputed here — corp_trade is the one
-      // source for the bonding-curve math; we send the quantity and
-      // show the cost it returns, then reload so every figure repaints
-      // from the DB. The `trading` flag + disabled button are the
-      // double-fire lock (kept locked through the reload).
+      // Trade panel. The bonding-curve math is NOT recomputed here —
+      // corp_trade is the one source; we send the quantity and show the
+      // amount it returns, then reload so every figure repaints from
+      // the DB. The shared `trading` flag + both buttons disabled is
+      // the double-fire lock (kept locked through the reload); the
+      // server's row locks back it up if the client lock is bypassed.
       const tradeCard = document.getElementById('cp-trade');
       if (tradeCard) {
         tradeCard.style.display = 'block';
+        set('cp-hold', `You hold ${yourShares} share${yourShares === 1 ? '' : 's'}.`);
         const buyBtn = document.getElementById('cp-buy');
+        const sellBtn = document.getElementById('cp-sell');
         const qtyEl = document.getElementById('cp-qty');
         const msgEl = document.getElementById('cp-trade-msg');
         let trading = false;
-        buyBtn.addEventListener('click', async () => {
+        const doTrade = async (side, btn) => {
           if (trading) return;
           const qty = Number((qtyEl.value || '').trim());
           if (!Number.isInteger(qty) || qty < 1) {
@@ -349,29 +357,37 @@ function initials(s, n) {
             msgEl.textContent = 'Enter a whole number of shares (1 or more).';
             return;
           }
-          trading = true; buyBtn.disabled = true;
-          const prev = buyBtn.textContent; buyBtn.textContent = 'BUYING…';
+          trading = true; buyBtn.disabled = true; sellBtn.disabled = true;
+          const prev = btn.textContent;
+          btn.textContent = side === 'buy' ? 'BUYING…' : 'SELLING…';
           msgEl.className = 'tc-msg'; msgEl.textContent = '';
+          const release = () => {
+            trading = false; buyBtn.disabled = false; sellBtn.disabled = false;
+            btn.textContent = prev;
+          };
           try {
             const { data, error: rpcErr } = await _supabase.rpc('corp_trade',
-              { p_corp_id: id, p_side: 'buy', p_quantity: qty });
+              { p_corp_id: id, p_side: side, p_quantity: qty });
             if (rpcErr) throw rpcErr;
             if (!data || !data.success) {
               msgEl.className = 'tc-msg err';
-              msgEl.textContent = 'Could not buy: ' + ((data && data.reason) || 'unknown');
-              trading = false; buyBtn.disabled = false; buyBtn.textContent = prev;
+              msgEl.textContent = `Could not ${side}: ` + ((data && data.reason) || 'unknown');
+              release();
               return;
             }
+            const amt = data.side === 'sell' ? data.proceeds : data.spent;
             msgEl.className = 'tc-msg ok';
-            msgEl.textContent = `Bought ${data.quantity} share${data.quantity === 1 ? '' : 's'}`
-              + ` for ${fmtUsd(data.spent)}. Refreshing…`;
+            msgEl.textContent = `${data.side === 'sell' ? 'Sold' : 'Bought'} ${data.quantity}`
+              + ` share${data.quantity === 1 ? '' : 's'} for ${fmtUsd(amt)}. Refreshing…`;
             setTimeout(() => location.reload(), 700);
           } catch (e) {
             msgEl.className = 'tc-msg err';
-            msgEl.textContent = 'Could not buy: ' + (e?.message || e);
-            trading = false; buyBtn.disabled = false; buyBtn.textContent = prev;
+            msgEl.textContent = `Could not ${side}: ` + (e?.message || e);
+            release();
           }
-        });
+        };
+        buyBtn.addEventListener('click', () => doTrade('buy', buyBtn));
+        sellBtn.addEventListener('click', () => doTrade('sell', sellBtn));
       }
     } else {
       ['cp-d-row-price', 'cp-d-row-shares', 'cp-d-row-treasury'].forEach(rid => {
