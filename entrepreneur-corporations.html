@@ -198,6 +198,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { fmtM, fmtUsd } from './js/utils.js';
+import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 
 const FEE = 1_000_000;
 // Shares issued when a corp lists public. The authoritative value lives
@@ -294,11 +295,13 @@ function renderPositions(corps, filter) {
     ci.textContent = `${c.industry} · ${c.hq?.name || '—'}`;
     left.append(nm, ci);
     const mid = document.createElement('div');
-    const isPub = c.listing === 'public' && c.share_price != null;
+    const val = computeEntrepreneurValuation(c);
     const cl = document.createElement('div'); cl.className = 'cl';
-    cl.textContent = isPub ? 'SHARE PRICE' : 'STARTING CAPITAL';
+    cl.textContent = val.kind === 'market' ? 'MARKET CAP'
+                   : val.kind === 'seed'   ? 'STARTING CAPITAL' : 'VALUATION';
     const cv = document.createElement('div'); cv.className = 'cv';
-    cv.textContent = isPub ? fmtUsd(c.share_price) : fmtM(c.starting_capital);
+    cv.textContent = val.amount == null ? '—'
+                   : val.kind === 'seed' ? fmtM(val.amount) : fmtUsd(val.amount);
     mid.append(cl, cv);
     const arr = document.createElement('div'); arr.className = 'arr'; arr.textContent = '▸';
     row.append(left, mid, arr);
@@ -318,7 +321,7 @@ function renderPositions(corps, filter) {
     let corps = [];
     if (entId) {
       const { data, error } = await _supabase.from('entrepreneur_corps')
-        .select('id, name, industry, starting_capital, listing, share_price, hq:nations!hq_nation_id(name)')
+        .select('id, name, industry, starting_capital, listing, share_price, shares_outstanding, hq:nations!hq_nation_id(name)')
         .eq('owner_faction_id', entId)
         .order('created_at', { ascending: false });
       if (error) console.warn('[entrepreneur-corporations] corps load failed:', error.message);

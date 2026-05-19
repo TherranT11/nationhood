@@ -250,6 +250,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { fmtM, fmtUsd, titleCase, pctOwned } from './js/utils.js';
+import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 function initials(s, n) {
   return (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, n || 2).map(w => w[0]).join('').toUpperCase()) || '—';
 }
@@ -310,34 +311,24 @@ function initials(s, n) {
     // (treasury_cash NULL by design, no ops modelled) so it shows the
     // seed it was founded with. Debt / per-tick income aren't modelled
     // → static real $0 in the markup (cp-debt / cp-income).
-    //
-    // VALUATION mirrors the established entrepreneur model. The single
-    // source is entrepreneur-dashboard.html (loadHoldings, the
-    // "computed ONCE" pos.valuation): public = MARKET CAP
-    // (shares × price), private = SEED CAPITAL (immutable
-    // starting_capital). The engine valuation (computeCorpValuation in
-    // js/game/corp-valuation.js — cash+assets−liab ×1.30, used by
-    // bankruptcy/bailout/tick) is a deliberately separate surface and
-    // is intentionally NOT used here ("the founding cash was already
-    // spent; we don't invent a valuation"). KNOWN ISSUE: this
-    // seed/market rule is inlined in three places (this page,
-    // entrepreneur-dashboard.html, entrepreneur-corporations.html);
-    // consolidate into one shared helper in a dedicated follow-up —
-    // do not re-derive it differently.
     const cashOnHand = isPublic ? (Number(c.treasury_cash) || 0)
                                 : (Number(c.starting_capital) || 0);
     set('cp-cash', fmtM(cashOnHand));
     set('cp-cash-delta', isPublic ? '— corp treasury' : '— seed · no ops yet');
+
+    // VALUATION from the shared single source (js/game/corp-valuation.js
+    // §3). The engine valuation is deliberately a separate surface and
+    // is intentionally not used on the entrepreneur pages.
+    const val = computeEntrepreneurValuation(c);
     const valEl = document.getElementById('cp-val');
     if (valEl) {
       valEl.classList.remove('muted');
-      valEl.textContent = isPublic
-        ? fmtUsd((Number(c.shares_outstanding) || 0) * (Number(c.share_price) || 0))
-        : fmtM(Number(c.starting_capital) || 0);
+      valEl.textContent = val.amount == null ? '—'
+        : val.kind === 'market' ? fmtUsd(val.amount) : fmtM(val.amount);
     }
-    set('cp-val-delta', isPublic
+    set('cp-val-delta', val.kind === 'market'
       ? `${Number(c.shares_outstanding) || 0} sh × ${fmtUsd(Number(c.share_price) || 0)}`
-      : '— seed capital');
+      : val.kind === 'seed' ? '— seed capital' : '— not yet valued');
 
     // Public-only market view. The share state is the one source
     // (entrepreneur_corps.share_price / shares_outstanding /

@@ -209,6 +209,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { hfFmtBig, escapeHtml, escapeAttr, titleCase, fmtUsd, pctOwned } from './js/utils.js';
+import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 
@@ -423,19 +424,11 @@ async function loadHoldings(entId, cash) {
     }
   }
 
-  // Per-corp valuation, computed ONCE here (render + sort both read it):
-  //   public  → market cap = share_price × shares_outstanding
-  //   private → seed capital (immutable starting_capital)
-  // This is display-only; it never feeds net worth.
+  // Per-corp valuation from the shared single source (see
+  // js/game/corp-valuation.js §3). Read by render + sort below;
+  // display-only, never feeds net worth.
   for (const p of byId.values()) {
-    const c = p.corp;
-    if (c.listing === 'public' && c.share_price != null && c.shares_outstanding != null) {
-      p.valuation = { kind: 'market', amount: Number(c.share_price) * Number(c.shares_outstanding) };
-    } else if (c.listing !== 'public' && c.starting_capital != null) {
-      p.valuation = { kind: 'seed', amount: Number(c.starting_capital) };
-    } else {
-      p.valuation = { kind: 'none', amount: null };
-    }
+    p.valuation = computeEntrepreneurValuation(p.corp);
   }
 
   // Sort: biggest economic stake first — realised share value if any,
