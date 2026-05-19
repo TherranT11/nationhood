@@ -1627,7 +1627,7 @@ function renderIndustriesTab(nation) {
     });
     var eqPurchasers = Object.entries(eqPurchaserMap).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 3);
 
-    // ── FINANCE: loans, bonds, insurance ──
+    // ── FINANCE: loans, insurance ──
     var financeCorps = allLocalCorps.filter(function(c) { return (c.corp_sector || '').toLowerCase() === 'finance'; });
     var bankingCorps = financeCorps.filter(function(c) { return (c.corp_subsector || '').toLowerCase() === 'banking'; });
     var investmentCorps = financeCorps.filter(function(c) { return (c.corp_subsector || '').toLowerCase() === 'investment'; });
@@ -1640,7 +1640,7 @@ function renderIndustriesTab(nation) {
     var financeActiveCount = allLoansNonInsurance.filter(function(l) { return l.status === 'current' || l.status === 'late'; }).length;
     var financePct = gdp > 0 ? ((financeOutstanding / gdp) * 100) : 0;
 
-    // Investment: bonds and larger deals
+    // Investment: larger deals (>= $50M)
     var investmentLoans = allLoansNonInsurance.filter(function(l) { return (Number(l.principal) || 0) >= 50000000; });
     var investmentOutstanding = investmentLoans.reduce(function(s, l) { return s + (Number(l.principal) || 0); }, 0);
     var investmentYield = investmentLoans.reduce(function(s, l) { return s + (Number(l.total_interest_paid) || 0); }, 0);
@@ -1980,7 +1980,7 @@ function renderIndustriesTab(nation) {
     h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Portfolio</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dgreen);">' + fmtIndustryMoney(investmentOutstanding) + '</div></div>';
     h += '<div style="flex:1;"><div style="font-size:0.55rem;color:var(--dtext-3);text-transform:uppercase;">Positions</div><div style="font-size:1.15rem;font-weight:bold;color:var(--dtext-1);">' + investmentLoans.length + '</div></div>';
     h += '</div>';
-    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:14px;">Government bonds, large-scale corporate lending, and structured investment positions above $50M.</div>';
+    h += '<div style="font-size:0.7rem;color:var(--dtext-3);margin-bottom:14px;">Large-scale corporate lending and structured investment positions above $50M.</div>';
     if (investmentYield > 0) {
         h += '<div style="display:flex;justify-content:space-between;font-size:0.7rem;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);">';
         h += '<span style="color:#8a6aaa;">Yield Earned</span>';
