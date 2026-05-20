@@ -60,6 +60,39 @@ function ensureStyles() {
   .ent-nav a:not(.active):hover { color:#d4d4d4; }
   .ent-nav a.active { color:#8aaa6a; border-bottom:1px solid #8aaa6a; }
   .ent-content { padding:28px; }
+
+  /* ── Mobile (≤700px): wrap the topbar onto two visual rows
+     (brand+right on top, meta below) and let the nav scroll
+     horizontally if it overflows. */
+  @media (max-width:700px) {
+    .ent-topbar { flex-wrap:wrap; row-gap:8px; gap:10px; padding:10px 12px; }
+    .ent-topbar .brand { flex:1 1 auto; min-width:0; }
+    .ent-topbar .player { font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ent-topbar .meta {
+      order:99;            /* drop meta to the bottom of the wrap */
+      width:100%;
+      gap:14px;
+      border-top:0.5px solid rgba(255,255,255,0.06);
+      padding-top:8px;
+    }
+    .ent-topbar .meta .label { font-size:8px; }
+    .ent-topbar .meta .value { font-size:11px; }
+    .ent-topbar .right { margin-left:auto; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+    .ent-topbar .cash-pill { font-size:10px; padding:4px 8px; }
+    .ent-pill { font-size:10px; padding:4px 8px; }
+    .ent-util { font-size:10px; }
+    .ent-dd { min-width:200px; max-width:calc(100vw - 24px); }
+    .ent-nav {
+      padding:0 12px;
+      gap:18px;
+      overflow-x:auto;
+      -webkit-overflow-scrolling:touch;
+      scrollbar-width:none;          /* Firefox */
+    }
+    .ent-nav::-webkit-scrollbar { display:none; }   /* WebKit */
+    .ent-nav a { padding:12px 0; white-space:nowrap; }
+    .ent-content { padding:18px 12px; }
+  }
   `;
   document.head.appendChild(s);
 }

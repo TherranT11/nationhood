@@ -196,6 +196,101 @@
   .ap-offer-amount { font-size:14px; color:#8aaa6a; font-weight:500;
     font-variant-numeric:tabular-nums; padding-right:4px; }
 
+  /* Pending Loan Requests in Active Projects (Banking corps only) */
+  .ap-loans-head { font-size:10px; letter-spacing:0.13em; text-transform:uppercase;
+    color:#7a9aab; margin:14px 0 6px; font-weight:500; }
+  .ap-loan { display:grid; grid-template-columns:1fr auto; gap:12px; align-items:center;
+    padding:11px 14px; background:#0d0d0d; border:0.5px solid rgba(122,154,171,0.18);
+    border-radius:4px; margin-bottom:6px; }
+  .ap-loan.ineligible { opacity:0.45; }
+  .ap-loan-info { min-width:0; }
+  .ap-loan-who { font-size:13px; color:#fff; font-weight:500; line-height:1.2; }
+  .ap-loan-sub { font-size:10px; color:#888; margin-top:3px; letter-spacing:0.04em; }
+  .ap-loan-grey { font-size:10px; color:#888; letter-spacing:0.08em; font-style:italic; }
+
+  /* Corporate Finance section (v0 corp loans, 20270174) */
+  .cf-launch { display:flex; align-items:center; justify-content:space-between; gap:14px;
+    padding:14px 18px; background:#0d0d0d; border:0.5px solid rgba(122,154,171,0.18);
+    border-radius:4px; margin-bottom:10px; }
+  .cf-launch .lab { font-size:11px; color:#888; letter-spacing:0.08em; line-height:1.5; }
+  .cf-launch .lab b { color:#d4d4d4; font-weight:500; }
+  .cf-btn { padding:9px 16px; font-size:10px; letter-spacing:0.12em; border-radius:3px; cursor:pointer;
+    background:#1a2535; border:0.5px solid #7a9aab; color:#7a9aab; font-weight:500;
+    text-transform:uppercase; font-family:inherit; }
+  .cf-btn:hover { background:#1e2c3d; }
+  .cf-btn:disabled { opacity:0.45; cursor:not-allowed; }
+  .cf-sub-head { font-size:10px; letter-spacing:0.13em; text-transform:uppercase;
+    color:#888; margin:14px 0 6px; font-weight:500; }
+  .cf-row { display:grid; grid-template-columns:1fr auto auto; gap:12px;
+    padding:11px 14px; background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08);
+    border-radius:4px; margin-bottom:6px; align-items:center; }
+  .cf-row.income { border-color:rgba(138,170,106,0.18); }
+  .cf-row .who   { font-size:13px; color:#fff; font-weight:500; }
+  .cf-row .sub   { font-size:10px; color:#888; margin-top:3px; letter-spacing:0.06em; }
+  .cf-row .num   { color:#d4d4d4; font-variant-numeric:tabular-nums; font-weight:500; }
+  .cf-row .num.green { color:#8aaa6a; }
+  .cf-row .num.amber { color:#c89e6e; }
+  .cf-row .num.red   { color:#c98a8a; }
+  .cf-row .num.muted { color:#666; }
+  .cf-status { font-size:10px; letter-spacing:0.1em; text-transform:uppercase; font-weight:500; }
+  .cf-status.pending   { color:#c89e6e; }
+  .cf-status.accepted  { color:#8aaa6a; }
+  .cf-status.declined, .cf-status.cancelled, .cf-status.expired, .cf-status.auto_declined { color:#888; }
+  .cf-status.defaulted { color:#c98a8a; }
+  .cf-status.repaid    { color:#8aaa6a; }
+  .cf-status.active    { color:#7a9aab; }
+  .cf-empty { color:#666; font-size:11px; padding:10px 0; font-style:italic; letter-spacing:0.03em; }
+
+  /* Request Loan modal — uses .po-* scaffolding from markets +
+     reuses .bm-* class language. Specific selectors so styles don't
+     bleed. */
+  .rl-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); display:none;
+    align-items:center; justify-content:center; padding:30px; z-index:500; }
+  .rl-overlay.open { display:flex; }
+  .rl-modal { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.1); border-radius:6px;
+    width:100%; max-width:680px; max-height:92vh; display:flex; flex-direction:column; overflow:hidden; }
+  .rl-head { padding:16px 22px; border-bottom:0.5px solid rgba(255,255,255,0.08);
+    display:flex; align-items:center; gap:12px;
+    background:linear-gradient(180deg,rgba(122,154,171,0.04),#0c0c0c); }
+  .rl-head .ti { font-size:18px; font-weight:500; color:#fff; flex:1; }
+  .rl-head .ti em { font-family:Georgia,serif; color:#7a9aab; font-style:italic; }
+  .rl-x { border:0.5px solid rgba(255,255,255,0.15); color:#888; width:26px; height:26px;
+    border-radius:3px; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; font-size:15px; }
+  .rl-x:hover { color:#7a9aab; border-color:rgba(122,154,171,0.4); }
+  .rl-body { padding:20px 22px; overflow-y:auto; }
+  .rl-label { font-size:10px; color:#888; letter-spacing:0.13em; text-transform:uppercase;
+    margin:14px 0 6px; }
+  .rl-label:first-child { margin-top:0; }
+  .rl-input { width:100%; background:transparent; border:none;
+    border-bottom:1px solid rgba(122,154,171,0.3); color:#fff; font-size:16px;
+    font-family:inherit; outline:none; padding:6px 0; }
+  .rl-input::placeholder { color:#444; font-style:italic; }
+  .rl-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .rl-bank { display:grid; grid-template-columns:auto 1fr auto; gap:10px;
+    padding:9px 12px; background:#121212; border:0.5px solid rgba(255,255,255,0.08);
+    border-radius:3px; margin-bottom:4px; cursor:pointer; align-items:center; }
+  .rl-bank:hover { border-color:rgba(122,154,171,0.3); }
+  .rl-bank.sel { background:#131820; border-color:#6a8a9b; }
+  .rl-bank input[type=checkbox] { accent-color:#7a9aab; }
+  .rl-bank .nm { font-size:12px; color:#fff; }
+  .rl-bank .sub { font-size:9px; color:#aa7aaa; letter-spacing:0.1em; margin-top:2px; }
+  .rl-bank .hq { font-size:10px; color:#888; }
+  .rl-summary { margin-top:14px; padding:12px 14px; background:#131820;
+    border:0.5px solid rgba(122,154,171,0.25); border-radius:4px; font-size:12px;
+    color:#aaa; line-height:1.6; }
+  .rl-summary b { color:#7a9aab; font-weight:500; }
+  .rl-err { color:#c98a8a; font-size:11px; margin-top:10px; min-height:14px; }
+  .rl-foot { padding:14px 22px; border-top:0.5px solid rgba(255,255,255,0.08);
+    background:#0d0d0d; display:flex; gap:10px; justify-content:flex-end; }
+  .rl-btn { padding:9px 18px; font-size:11px; letter-spacing:0.08em; border-radius:3px;
+    cursor:pointer; text-transform:uppercase; font-family:inherit; }
+  .rl-btn.sec { border:0.5px solid rgba(255,255,255,0.15); color:#888; background:transparent; }
+  .rl-btn.sec:hover { color:#d4d4d4; }
+  .rl-btn.pri { background:#1a2535; border:0.5px solid #7a9aab; color:#7a9aab; font-weight:500; }
+  .rl-btn.pri:hover { background:#1e2c3d; }
+  .rl-btn.pri:disabled { opacity:0.45; cursor:not-allowed; }
+
   /* Marketplace modal rows */
   .mk-row { display:grid; grid-template-columns:1fr auto auto; gap:14px; align-items:center;
     padding:11px 14px; background:#0f120e; border:0.5px solid rgba(138,170,106,0.12);
@@ -275,6 +370,35 @@
   .bm-btn.pri:disabled { opacity:0.45; cursor:not-allowed; }
 
   @media (max-width:900px) { .main-grid { grid-template-columns:1fr; } .financials { grid-template-columns:repeat(2,1fr); } }
+
+  /* ── Mobile (≤700px): stack header vertically, collapse financials
+     to one column, narrow modals + tighter modal padding. */
+  @media (max-width:700px) {
+    .ent-content { padding-left:12px; padding-right:12px; }
+    .breadcrumb { margin:-28px -12px 16px; padding:10px 12px; }
+    .corp-header { flex-direction:column; gap:18px; padding-bottom:18px; margin-bottom:20px; }
+    .corp-body .title { font-size:26px; }
+    .role-block { text-align:left; padding-left:0; border-left:none; min-width:0;
+      border-top:0.5px solid rgba(255,255,255,0.08); padding-top:16px; }
+    .financials { grid-template-columns:1fr; gap:8px; margin-bottom:20px; }
+    .fin-card { padding:14px 16px; }
+    /* All modals: full-width with smaller padding */
+    .bm-overlay, .ls-overlay, .rl-overlay { padding:12px; }
+    .bm-overlay { padding:12px; }
+    .bm-modal, .rl-modal { max-width:100%; }
+    .bm-body, .rl-body { padding:16px; }
+    .bm-foot, .rl-foot { padding:12px 16px; }
+    .bm-types { grid-template-columns:1fr; }   /* 4 type cards stack */
+    .bm-tier { grid-template-columns:1fr; gap:4px; padding:10px 12px; }
+    .bm-tier .num { text-align:left; font-size:12px; }
+    .rl-grid { grid-template-columns:1fr; gap:0; }
+    /* Active Projects + Corporate Finance rows stack their action buttons */
+    .ap-actions, .cf-row { grid-template-columns:1fr; gap:8px; }
+    .ap-row, .cf-row { padding:12px 14px; }
+    .ap-offer { grid-template-columns:1fr 1fr; gap:8px; padding:8px; }
+    .ap-loan { grid-template-columns:1fr; gap:8px; }
+    .mk-row { grid-template-columns:1fr; gap:6px; padding:12px 14px; }
+  }
 </style>
 </head>
 <body>
@@ -366,6 +490,11 @@
         <div class="empty-card">
           Workforce mechanics are coming soon.
         </div>
+
+        <div class="section-heading">
+          <span class="roman">IV.</span><span class="sans">Corporate</span><span class="serif">Finance</span>
+        </div>
+        <div id="cp-finance"></div>
       </div>
 
       <div>
@@ -1356,7 +1485,58 @@ function initials(s, n) {
             'No active projects.'
           }</div>`;
 
-      pj.innerHTML = launchBtn + listHtml;
+      // Pending Loan Requests panel (Banking corps only). Shows EVERY
+      // pending loan request across the world; rows where this bank
+      // can act (owns a Banking Office in the borrower's HQ nation)
+      // get [Accept] buttons, others are greyed out with an
+      // ineligibility chip. Server enforces the same gate at accept
+      // time — UI here is just the visibility surface.
+      let loanRequestsHtml = '';
+      if (c.industry === 'banking') {
+        const [reqsRes, mineBoRes] = await Promise.all([
+          _supabase.from('corp_loan_requests')
+            .select('id, principal, term_ticks, apr, expires_at_tick, '
+                  + 'borrower:entrepreneur_corps!borrower_corp_id(id, name, hq_nation_id, '
+                    + 'hq:nations!hq_nation_id(name), '
+                    + 'owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name))')
+            .eq('status', 'pending')
+            .order('placed_at_tick', { ascending: false }),
+          _supabase.from('corp_buildings')
+            .select('nation_id')
+            .eq('owner_corp_id', id)
+            .eq('building_type', 'banking_office')
+            .eq('status', 'completed'),
+        ]);
+        if (reqsRes.error)   console.warn('[entrepreneur-corp] loan requests fetch error:', reqsRes.error.message);
+        if (mineBoRes.error) console.warn('[entrepreneur-corp] BO holdings fetch error:',    mineBoRes.error.message);
+        const myBoNationIds = new Set((mineBoRes.data || []).map(r => r.nation_id).filter(Boolean));
+        const loanReqs = (reqsRes.data || []).filter(r => r.borrower?.id !== id);
+        if (loanReqs.length) {
+          loanRequestsHtml = `
+            <div class="ap-loans-head">Pending Loan Requests · ${loanReqs.length}</div>
+            ` + loanReqs.map(r => {
+              const eligible = myBoNationIds.has(r.borrower?.hq_nation_id);
+              const ceo = r.borrower?.owner
+                ? [r.borrower.owner.leader_first_name, r.borrower.owner.leader_last_name].filter(Boolean).join(' ').trim() || r.borrower.owner.faction_name
+                : '';
+              const perTick = Math.round(Number(r.principal) / Number(r.term_ticks) + Number(r.principal) * Number(r.apr) / 12);
+              return `
+                <div class="ap-loan ${eligible ? '' : 'ineligible'}">
+                  <div class="ap-loan-info">
+                    <div class="ap-loan-who">${escapeHtml(r.borrower?.name || 'Unknown corp')} requests ${fmtUsd(Number(r.principal))}</div>
+                    <div class="ap-loan-sub">
+                      ${ceo ? escapeHtml(ceo) + ' · ' : ''}${escapeHtml(r.borrower?.hq?.name || '—')} · ${fmtPct(r.apr)} · ${r.term_ticks}t · ${fmtUsd(perTick)}/t · expires T${r.expires_at_tick}
+                    </div>
+                  </div>
+                  ${eligible
+                    ? `<button class="ap-btn-small accept cp-accept-loan" data-rid="${r.id}">Accept</button>`
+                    : '<span class="ap-loan-grey">No Banking Office in their HQ nation</span>'}
+                </div>`;
+            }).join('');
+        }
+      }
+
+      pj.innerHTML = launchBtn + listHtml + loanRequestsHtml;
 
       if (isOwner && isConstructionCorp) {
         document.getElementById('cp-begin-construction').addEventListener('click', openBuildModal);
@@ -1371,11 +1551,14 @@ function initials(s, n) {
         pj.querySelectorAll('.ap-btn-small.delist').forEach(btn => {
           btn.addEventListener('click', () => handleDelist(btn, btn.dataset.bid));
         });
-        pj.querySelectorAll('.ap-btn-small.accept').forEach(btn => {
+        pj.querySelectorAll('.ap-btn-small.accept:not(.cp-accept-loan)').forEach(btn => {
           btn.addEventListener('click', () => handleAcceptOffer(btn, btn.dataset.oid));
         });
         pj.querySelectorAll('.ap-btn-small.reject').forEach(btn => {
           btn.addEventListener('click', () => handleRejectOffer(btn, btn.dataset.oid));
+        });
+        pj.querySelectorAll('.cp-accept-loan').forEach(btn => {
+          btn.addEventListener('click', () => handleAcceptLoan(btn, btn.dataset.rid));
         });
       }
     };
@@ -1839,7 +2022,286 @@ function initials(s, n) {
       }
     };
 
+    // ────────── Corporate Finance panel (v0 corp loans) ──────────
+    // Three conditional sub-panels:
+    //   1. [Request Loan] launcher — visible to corp owners (any
+    //      industry, any sector).
+    //   2. Outgoing Loan Requests — viewer's pending/recent requests
+    //      with their per-bank response status + [Cancel].
+    //   3. Incoming Loan Requests — only for Banking corp owners;
+    //      shows requests addressed to this corp + [Accept] [Decline].
+    //   4. Active Loans — debts (as borrower) + assets (as lender).
+    //
+    // Also wires the header DEBT card (cp-debt) from real active-loan
+    // outstanding-principal, replacing the v3 static $0 placeholder.
+
+    let loanSubmitting = false;
+
+    const fmtPct = (n) => (Number(n) * 100).toFixed(2).replace(/\.?0+$/, '') + '%';
+
+    // Section IV "Corporate Finance" renders the BORROWER-side view:
+    // [Request Loan] launcher, outgoing requests, active loans (both
+    // sides). Banking corps see pending incoming requests in Section
+    // II (Active Projects) — those are sector-specific business
+    // activity, not finance summary.
+    const renderFinance = async () => {
+      const fc = document.getElementById('cp-finance');
+      if (!fc) return;
+
+      const [reqRes, loansRes] = await Promise.all([
+        _supabase.from('corp_loan_requests')
+          .select('id, principal, term_ticks, apr, status, placed_at_tick, expires_at_tick, '
+                + 'accepted_by:entrepreneur_corps!accepted_by_corp_id(name)')
+          .eq('borrower_corp_id', id)
+          .order('placed_at_tick', { ascending: false })
+          .limit(5),
+        _supabase.from('corp_loans')
+          .select('id, principal, apr, term_ticks, per_tick_payment, payments_remaining, '
+                + 'total_paid, status, started_at_tick, borrower_corp_id, lender_corp_id, '
+                + 'borrower:entrepreneur_corps!borrower_corp_id(name), '
+                + 'lender:entrepreneur_corps!lender_corp_id(name)')
+          .or(`borrower_corp_id.eq.${id},lender_corp_id.eq.${id}`)
+          .in('status', ['active', 'defaulted'])
+          .order('started_at_tick', { ascending: false }),
+      ]);
+      if (reqRes.error)   console.warn('[entrepreneur-corp] outgoing-loans fetch error:', reqRes.error.message);
+      if (loansRes.error) console.warn('[entrepreneur-corp] active-loans fetch error:',   loansRes.error.message);
+
+      const outgoing = reqRes.data || [];
+      const loans    = loansRes.data || [];
+
+      // Wire the DEBT header card from real outstanding principal.
+      const debtSum = loans
+        .filter(l => l.borrower_corp_id === id && l.status === 'active')
+        .reduce((s, l) => s + Math.max(0, Number(l.principal) - Number(l.total_paid)), 0);
+      const debtEl = document.getElementById('cp-debt');
+      if (debtEl) {
+        debtEl.textContent = debtSum > 0 ? fmtUsd(debtSum) : '$0';
+        const debtSubEl = debtEl.nextElementSibling;
+        if (debtSubEl && debtSubEl.classList.contains('delta')) {
+          const activeBorrows = loans.filter(l => l.borrower_corp_id === id && l.status === 'active').length;
+          debtSubEl.textContent = activeBorrows > 0
+            ? `${activeBorrows} active loan${activeBorrows === 1 ? '' : 's'}`
+            : '— none';
+        }
+      }
+
+      const launchBtn = isOwner
+        ? `<div class="cf-launch">
+             <div class="lab">Need capital? <b>Broadcast a loan request</b> to Banking corps with a Banking Office in ${escapeHtml(c.hq?.name || 'your HQ nation')}.</div>
+             <button class="cf-btn" id="cp-request-loan">Request Loan</button>
+           </div>`
+        : '';
+
+      const outgoingHtml = (outgoing.length && isOwner)
+        ? `<div class="cf-sub-head">Your Loan Requests · ${outgoing.length}</div>` + outgoing.map(r => {
+            const total = Math.round(Number(r.principal) * (1 + Number(r.apr) * Number(r.term_ticks) / 12));
+            const canCancel = r.status === 'pending';
+            const tail = r.status === 'accepted' && r.accepted_by?.name
+              ? `Funded by ${escapeHtml(r.accepted_by.name)}`
+              : `Total repay ${fmtUsd(total)} · expires T${r.expires_at_tick}`;
+            return `
+              <div class="cf-row">
+                <div>
+                  <div class="who">${fmtUsd(Number(r.principal))} · ${fmtPct(r.apr)} · ${r.term_ticks}t</div>
+                  <div class="sub">${tail}</div>
+                </div>
+                <span class="cf-status ${r.status}">${r.status}</span>
+                ${canCancel ? `<button class="ap-btn-small delist cp-cancel-loan" data-rid="${r.id}">Cancel</button>` : '<span></span>'}
+              </div>`;
+          }).join('')
+        : '';
+
+      const activeHtml = loans.length
+        ? `<div class="cf-sub-head">Active Loans · ${loans.length}</div>` + loans.map(l => {
+            const isBorrower = l.borrower_corp_id === id;
+            const counterparty = isBorrower ? (l.lender?.name || 'Unknown bank') : (l.borrower?.name || 'Unknown borrower');
+            const remaining = Math.max(0, Number(l.principal) - Number(l.total_paid));
+            const statusCls = l.status === 'defaulted' ? 'red' : (isBorrower ? 'amber' : 'green');
+            return `
+              <div class="cf-row ${isBorrower ? '' : 'income'}">
+                <div>
+                  <div class="who">${isBorrower ? 'Owe' : 'Lent to'} ${escapeHtml(counterparty)} · ${fmtUsd(remaining)} outstanding</div>
+                  <div class="sub">${l.payments_remaining} of ${l.term_ticks} ticks left · ${fmtPct(l.apr)} · per tick ${fmtUsd(Number(l.per_tick_payment))}</div>
+                </div>
+                <span class="cf-status ${l.status}">${l.status}</span>
+                <span class="num ${statusCls}">${isBorrower ? '−' : '+'}${fmtUsd(Number(l.per_tick_payment))}/t</span>
+              </div>`;
+          }).join('')
+        : '';
+
+      const allHtml = launchBtn + outgoingHtml + activeHtml;
+      fc.innerHTML = allHtml || `<div class="empty-card">No loan activity yet.${isOwner ? ' Broadcast a request to start.' : ''}</div>`;
+
+      if (isOwner) {
+        document.getElementById('cp-request-loan')?.addEventListener('click', openRequestLoanModal);
+        fc.querySelectorAll('.cp-cancel-loan').forEach(btn => {
+          btn.addEventListener('click', () => handleCancelLoan(btn, btn.dataset.rid));
+        });
+      }
+    };
+
+    // ── Request Loan modal ──
+    // No bank picker (v0 broadcast model). The request becomes
+    // visible to every Banking corp; only those with a completed
+    // Banking Office in this corp's HQ nation can act on it
+    // (eligibility enforced server-side at accept time, surfaced
+    // client-side by greying out ineligible rows on the bank's
+    // Active Projects panel).
+    const openRequestLoanModal = () => {
+      const ov = document.getElementById('rl-overlay');
+      const errEl = document.getElementById('rl-err');
+      document.getElementById('rl-principal').value = '';
+      document.getElementById('rl-apr').value = '5';
+      document.getElementById('rl-term').value = '60';
+      errEl.textContent = '';
+      updateLoanSummary();
+      ov.classList.add('open');
+      setTimeout(() => document.getElementById('rl-principal').focus(), 50);
+    };
+
+    const closeRequestLoanModal = () => document.getElementById('rl-overlay').classList.remove('open');
+
+    const parseLoanInputs = () => {
+      const rawP = (document.getElementById('rl-principal').value || '').trim();
+      const principal = Number(rawP.replace(/[$,\s]/g, ''));
+      const apr = Number((document.getElementById('rl-apr').value || '').trim()) / 100;
+      const term = Number((document.getElementById('rl-term').value || '').trim());
+      return { principal, apr, term };
+    };
+
+    const updateLoanSummary = () => {
+      const { principal, apr, term } = parseLoanInputs();
+      const sumEl = document.getElementById('rl-summary');
+      if (!Number.isFinite(principal) || principal < 1) {
+        sumEl.innerHTML = `Set principal / APR / term to see the per-tick payment.`;
+        return;
+      }
+      const total   = Math.round(principal * (1 + apr * term / 12));
+      const perTick = Math.round(principal / term + principal * apr / 12);
+      sumEl.innerHTML = `Broadcast to every Banking corp with a <b>Banking Office</b> in ${escapeHtml(c.hq?.name || 'your HQ nation')}. First to accept funds the loan.<br>` +
+        `Borrow <b>${fmtUsd(principal)}</b> · repay <b>${fmtUsd(total)}</b> over <b>${term} ticks</b> at <b>${(apr * 100).toFixed(2)}%</b> APR · <b>${fmtUsd(perTick)}/tick</b>.`;
+    };
+    ['rl-principal', 'rl-apr', 'rl-term'].forEach(id => {
+      document.getElementById(id).addEventListener('input', updateLoanSummary);
+    });
+
+    document.getElementById('rl-close').addEventListener('click', closeRequestLoanModal);
+    document.getElementById('rl-cancel').addEventListener('click', closeRequestLoanModal);
+    document.getElementById('rl-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'rl-overlay') closeRequestLoanModal();
+    });
+
+    document.getElementById('rl-submit').addEventListener('click', async () => {
+      if (loanSubmitting) return;
+      const errEl = document.getElementById('rl-err');
+      const { principal, apr, term } = parseLoanInputs();
+      if (!Number.isFinite(principal) || !Number.isInteger(principal) || principal < 1000000 || principal > 1000000000) {
+        errEl.textContent = 'Principal must be between $1,000,000 and $1,000,000,000.';
+        return;
+      }
+      if (!Number.isFinite(apr) || apr < 0 || apr > 0.5) {
+        errEl.textContent = 'APR must be 0–50%.';
+        return;
+      }
+      if (!Number.isInteger(term) || term < 12 || term > 240) {
+        errEl.textContent = 'Term must be 12–240 ticks.';
+        return;
+      }
+      loanSubmitting = true;
+      const btn = document.getElementById('rl-submit');
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'SUBMITTING…';
+      errEl.textContent = '';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('submit_corp_loan_request', {
+          p_borrower_corp_id: id,
+          p_principal:        principal,
+          p_term_ticks:       term,
+          p_apr:              apr,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            invalid_principal: 'Principal must be $1M–$1B.',
+            invalid_term:      'Term must be 12–240 ticks.',
+            invalid_apr:       'APR must be 0–50%.',
+            no_hq_nation:      'Your corp has no HQ nation.',
+            already_pending:   'You already have a pending loan request. Cancel it first.',
+            not_owner:         'Only the corp owner can request loans.',
+          };
+          errEl.textContent = REASON[data?.reason] || ('Could not submit: ' + (data?.reason || 'unknown'));
+          loanSubmitting = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        btn.textContent = 'SENT ✓ — refreshing…';
+        setTimeout(() => location.reload(), 600);
+      } catch (e) {
+        errEl.textContent = 'Failed: ' + (e?.message || e);
+        loanSubmitting = false; btn.disabled = false; btn.textContent = prev;
+      }
+    });
+
+    // ── Accept / Decline / Cancel handlers (inline confirm) ──
+    let loanActionInFlight = false;
+    const handleAcceptLoan = async (btn, rid) => {
+      if (loanActionInFlight) return;
+      if (!confirm('Accept this loan request? Principal moves from your corp owner to the borrower now; per-tick repayments start next tick.')) return;
+      loanActionInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'ACCEPTING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('accept_corp_loan_request', {
+          p_request_id: rid, p_bank_corp_id: id,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            bank_insufficient_funds: data?.need != null
+              ? `Need ${fmtUsd(Number(data.need))}, your corp owner has ${fmtUsd(Number(data.have ?? 0))}.`
+              : 'Bank owner doesn’t have the principal in party funds.',
+            request_not_pending:         'This request is no longer pending.',
+            request_expired:             'This request has expired.',
+            no_banking_office_in_nation: 'Your corp doesn’t own a Banking Office in the borrower’s HQ nation.',
+            cannot_self_loan:            'A corp can’t accept its own loan request.',
+            not_bank_corp_owner:         'You don’t own this corp.',
+            not_banking_corp:            'Only Banking corps can accept loan requests.',
+          };
+          alert(REASON[data?.reason] || ('Could not accept: ' + (data?.reason || 'unknown')));
+          loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+    const handleCancelLoan = async (btn, rid) => {
+      if (loanActionInFlight) return;
+      if (!confirm('Cancel this loan request? Any pending bank responses will be auto-declined.')) return;
+      loanActionInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'CANCELLING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('cancel_corp_loan_request', {
+          p_request_id: rid,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          alert('Could not cancel: ' + (data?.reason || 'unknown'));
+          loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
     await renderProjects();
+    await renderFinance();
 
     document.getElementById('cp-load').style.display = 'none';
     document.getElementById('cp-app').style.display = 'block';
@@ -1903,6 +2365,40 @@ function initials(s, n) {
     <div class="bm-foot">
       <button class="bm-btn sec" id="ls-cancel">Cancel</button>
       <button class="bm-btn pri" id="ls-submit">List for Sale</button>
+    </div>
+  </div>
+</div>
+
+<!-- Request Loan modal (v0 corp loans, 20270174). Borrower picks
+     eligible banks (Banking corps with a Banking Office in the
+     borrower's HQ nation), sets principal/term/APR. RPC:
+     submit_corp_loan_request. -->
+<div class="rl-overlay" id="rl-overlay">
+  <div class="rl-modal">
+    <div class="rl-head">
+      <div class="ti">Request <em>Loan</em></div>
+      <div class="rl-x" id="rl-close">×</div>
+    </div>
+    <div class="rl-body">
+      <div class="rl-grid">
+        <div>
+          <div class="rl-label">Principal ($)</div>
+          <input type="text" class="rl-input" id="rl-principal" placeholder="e.g. 50,000,000" inputmode="numeric">
+        </div>
+        <div>
+          <div class="rl-label">APR (%)</div>
+          <input type="text" class="rl-input" id="rl-apr" placeholder="e.g. 5" inputmode="decimal" value="5">
+        </div>
+      </div>
+      <div class="rl-label">Term (ticks)</div>
+      <input type="text" class="rl-input" id="rl-term" placeholder="e.g. 60 (5 years)" inputmode="numeric" value="60">
+
+      <div class="rl-summary" id="rl-summary">Fill the fields to see the per-tick payment.</div>
+      <div class="rl-err" id="rl-err"></div>
+    </div>
+    <div class="rl-foot">
+      <button class="rl-btn sec" id="rl-cancel">Cancel</button>
+      <button class="rl-btn pri" id="rl-submit">Send Request</button>
     </div>
   </div>
 </div>

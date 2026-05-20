@@ -1191,6 +1191,27 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Building completion failed (non-fatal):', bcErr);
     }
 
+    // 3.6f Service corp loans (20270174). Expires pending loan
+    // requests past their deadline; debits per-tick payment from
+    // every active loan's borrower faction and credits the lender.
+    // Single missed payment defaults the loan (locked v0 design).
+    // Idempotent — last_payment_tick gate prevents double-billing.
+    try {
+        const { data: loanResult, error: loanErr } =
+            await supabase.rpc('process_corp_loans', { p_tick: newTick });
+        if (loanErr) {
+            console.error('[advanceTick] process_corp_loans failed:', loanErr.message);
+        } else if (loanResult && (loanResult.paid > 0 || loanResult.expired > 0 || loanResult.repaid > 0 || loanResult.defaulted > 0)) {
+            summary.corpLoansPaid      = loanResult.paid;
+            summary.corpLoansRepaid    = loanResult.repaid;
+            summary.corpLoansDefaulted = loanResult.defaulted;
+            summary.corpLoanRequestsExpired = loanResult.expired;
+            console.log(`[advanceTick] Corp loans: ${loanResult.paid} paid, ${loanResult.repaid} repaid, ${loanResult.defaulted} defaulted, ${loanResult.expired} expired`);
+        }
+    } catch (clErr) {
+        console.error('[advanceTick] Corp loans service failed (non-fatal):', clErr);
+    }
+
     // 3.6b Safety net: catch economic aid agreements missing their aid_agreement_state row
     // Runs every 5 ticks to reduce CPU load — orphaned rows are rare, no urgency
     if (newTick % 5 === 0) try {
