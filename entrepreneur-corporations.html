@@ -339,12 +339,18 @@ function capRaw() { return (parseInt(document.getElementById('ec-cap').value, 10
 
 function renderHqList() {
   const wrap = document.getElementById('ec-hq');
-  const list = nationsByCont[activeCont] || [];
+  // Shipping corps need a coastline (server enforces in
+  // found_entrepreneur_corp — this client filter just hides the
+  // ineligible cards so the user can't pick one in the first place).
+  const raw = nationsByCont[activeCont] || [];
+  const list = sel.industry === 'shipping' ? raw.filter(n => !n.is_landlocked) : raw;
   wrap.replaceChildren();
   if (list.length === 0) {
     const e = document.createElement('div');
     e.className = 'ec-empty';
-    e.textContent = `No nations available in ${activeCont} yet.`;
+    e.textContent = sel.industry === 'shipping' && raw.length > 0
+      ? `${activeCont} has no coastal nations — Shipping corps need a port.`
+      : `No nations available in ${activeCont} yet.`;
     wrap.appendChild(e);
     return;
   }
@@ -508,7 +514,7 @@ function renderPositions(corps, filter) {
     // by (industry, hq nation) for the per-nation count.
     const [natRes, cntRes] = await Promise.all([
       _supabase.from('nations')
-        .select('id, name, continent, corporate_tax')
+        .select('id, name, continent, corporate_tax, is_landlocked')
         .not('continent', 'is', null)
         .order('name'),
       _supabase.from('entrepreneur_corps').select('industry, hq_nation_id'),
@@ -841,7 +847,10 @@ function renderPositions(corps, filter) {
         });
         if (error) throw error;
         if (!data || !data.success) {
-          err.textContent = 'Could not found: ' + ((data && data.reason) || 'unknown');
+          const FRIENDLY = {
+            landlocked_no_shipping: 'Shipping corps need a coastline — pick a non-landlocked nation.',
+          };
+          err.textContent = FRIENDLY[data?.reason] || ('Could not found: ' + ((data && data.reason) || 'unknown'));
           err.style.display = 'inline';
           btn.disabled = false; founding = false; refreshCost();
           return;
