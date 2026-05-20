@@ -282,7 +282,7 @@ function initials(s, n) {
     if (!c) { window.location.href = 'entrepreneur-corporations.html'; return; }
 
     const isPublic = c.listing === 'public';
-    const entId = (ctx.allUserFactions || []).find(f => f.faction_type === 'entrepreneur')?.id || null;
+    const entId = ctx.faction?.id || null;
     let yourShares = 0;
     if (isPublic && entId) {
       const { data: sh, error: shErr } = await _supabase.from('corp_shareholdings')

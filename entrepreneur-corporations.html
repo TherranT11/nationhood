@@ -418,7 +418,7 @@ function renderPositions(corps, filter) {
   try {
     const ctx = await bootstrapEntrepreneur('corporations');
     if (!ctx) return;
-    const entId = (ctx.allUserFactions || []).find(f => f.faction_type === 'entrepreneur')?.id;
+    const entId = ctx.faction?.id;
     entFunds = Number(ctx.faction?.party_funds) || 0;
     document.getElementById('ec-cash').textContent = fmtM(entFunds);
 

@@ -485,7 +485,7 @@ async function loadHoldings(entId, cash) {
     bindDispatchTabs();
     loadDispatches();
 
-    const entId = (ctx.allUserFactions || []).find(x => x.faction_type === 'entrepreneur')?.id;
+    const entId = ctx.faction?.id;
     loadHoldings(entId, cash);
 
     // Pressing Issues: pending Board-Join votes the viewer is in the

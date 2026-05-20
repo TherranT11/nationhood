@@ -125,7 +125,7 @@ import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
   try {
     const ctx = await bootstrapEntrepreneur('markets');
     if (!ctx) return;
-    const entId = (ctx.allUserFactions || []).find(f => f.faction_type === 'entrepreneur')?.id || null;
+    const entId = ctx.faction?.id || null;
 
     // All corps (entrepreneur_corps RLS = SELECT true) + ALL holdings
     // (corp_shareholdings RLS = SELECT true — public market data, the
