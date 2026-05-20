@@ -608,7 +608,7 @@ BEGIN
                v_broker_corp.name,
                to_char(v_commission, 'FM999,999,999,999'),
                to_char(v_nation_take, 'FM999,999,999,999'),
-               CASE WHEN v_rep_delta >= 0 THEN '+' ELSE '' END,
+               CASE WHEN v_rep_delta > 0 THEN '+' ELSE '' END,
                v_rep_delta),
         'corporate', 'broker_sold',
         jsonb_build_object(
