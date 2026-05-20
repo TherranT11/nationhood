@@ -508,16 +508,13 @@ BEGIN
     END IF;
 
     -- Lock corp row (we may rotate ownership and write rep deltas).
+    -- v_corp.id IS NULL is unreachable here: motion.corp_id FK is
+    -- ON DELETE CASCADE, so a deleted corp would have cascaded the
+    -- motion row away and we'd have returned motion_not_found above.
+    -- Kept as a defensive guard only.
     SELECT * INTO v_corp FROM entrepreneur_corps WHERE id = v_motion.corp_id FOR UPDATE;
     IF v_corp.id IS NULL THEN
-        -- Corp was deleted between file and resolve. Mark motion as
-        -- resolved/survived-by-default so it doesn't linger.
-        UPDATE corp_no_confidence_motions
-           SET status = 'resolved', outcome = 'failed_quorum',
-               resolved_at_tick = v_tick
-         WHERE id = p_motion_id;
-        RETURN jsonb_build_object('success', true, 'outcome', 'failed_quorum',
-            'reason_note', 'corp_deleted');
+        RETURN jsonb_build_object('success', false, 'reason', 'corp_not_found');
     END IF;
 
     -- Quorum: ceil(0.30 × snapshot_held_shares). Bigint arithmetic for

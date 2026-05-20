@@ -700,8 +700,11 @@ function initials(s, n) {
           entId
             ? _supabase.from('corp_board_seats').select('corp_id')
                 .eq('corp_id', id).eq('member_faction_id', entId).maybeSingle()
-            : Promise.resolve({ data: null }),
+            : Promise.resolve({ data: null, error: null }),
         ]);
+        if (shardRes.error)  console.warn('[entrepreneur-corp] shard fetch error:',         shardRes.error.message);
+        if (motionRes.error) console.warn('[entrepreneur-corp] open-motion fetch error:',   motionRes.error.message);
+        if (dirRes.error)    console.warn('[entrepreneur-corp] board-seat fetch error:',    dirRes.error.message);
         const currentTick = Number(shardRes?.data?.current_tick || 0);
         const motion      = motionRes?.data || null;
         const isDirector  = !!dirRes?.data;
@@ -722,6 +725,8 @@ function initials(s, n) {
                 .select('vote').eq('motion_id', motion.id)
                 .eq('voter_faction_id', entId).maybeSingle(),
             ]);
+            if (elRes.error) console.warn('[entrepreneur-corp] eligibility fetch error:', elRes.error.message);
+            if (vRes.error)  console.warn('[entrepreneur-corp] vote fetch error:',        vRes.error.message);
             myWeight = Number(elRes?.data?.shares_at_open || 0);
             myVote   = vRes?.data?.vote ?? null;
           }
