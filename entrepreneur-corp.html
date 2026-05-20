@@ -108,7 +108,10 @@
     display:flex; align-items:center; justify-content:center; color:#8aaa6a; font-size:11px; font-weight:500; }
   .board-info .bname { font-size:12px; font-weight:500; color:#fff; line-height:1.2; overflow-wrap:anywhere; }
   .board-info .brole { font-size:9px; color:#8aaa6a; letter-spacing:0.1em; margin-top:2px; }
-  .board-stake { font-size:13px; color:#8aaa6a; font-weight:500; text-align:right; font-variant-numeric:tabular-nums; }
+  .board-stake { display:flex; flex-direction:column; align-items:flex-end; gap:2px;
+    font-variant-numeric:tabular-nums; }
+  .board-stake .sh  { font-size:10px; color:#888; letter-spacing:0.05em; }
+  .board-stake .pct { font-size:13px; color:#8aaa6a; font-weight:500; }
 
   /* Corp details sidebar */
   .details-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
@@ -548,7 +551,7 @@
             <button id="cp-buy" class="tc-btn">BUY</button>
             <button id="cp-sell" class="tc-btn sell">SELL</button>
           </div>
-          <div class="tc-hint">Price moves 5% per share traded. The final amount is confirmed on execution.</div>
+          <div class="tc-hint">Price moves 1% per share traded (linear). The final amount is confirmed on execution.</div>
           <div class="tc-msg" id="cp-trade-msg"></div>
         </div>
 
@@ -632,12 +635,24 @@ function initials(s, n) {
 
     const isPublic = c.listing === 'public';
     const entId = ctx.faction?.id || null;
+    // Single source for who holds how many shares. Used by:
+    //   - the viewer's stake hero (yourShares),
+    //   - the Available Shares card (Σheld),
+    //   - the Board of Directors stake column (chairman + each director).
+    // Private corps have no shareholdings table state — keep the map empty.
+    const holdingsByFaction = new Map();
     let yourShares = 0;
-    if (isPublic && entId) {
-      const { data: sh, error: shErr } = await _supabase.from('corp_shareholdings')
-        .select('shares').eq('corp_id', id).eq('holder_faction_id', entId).maybeSingle();
-      if (shErr) console.warn('[entrepreneur-corp] shareholding fetch error:', shErr.message);
-      else yourShares = Number(sh?.shares) || 0;
+    let totalHeld  = 0;
+    if (isPublic) {
+      const { data: allH, error: ahErr } = await _supabase.from('corp_shareholdings')
+        .select('holder_faction_id, shares').eq('corp_id', id);
+      if (ahErr) console.warn('[entrepreneur-corp] holdings fetch error:', ahErr.message);
+      for (const r of (allH || [])) {
+        const sh = Number(r.shares) || 0;
+        if (r.holder_faction_id) holdingsByFaction.set(r.holder_faction_id, sh);
+        totalHeld += sh;
+      }
+      if (entId) yourShares = holdingsByFaction.get(entId) || 0;
     }
 
     const set = (i, v) => { const el = document.getElementById(i); if (el) el.textContent = v; };
@@ -658,12 +673,21 @@ function initials(s, n) {
     set('cp-owner-sub', ownerName !== '—' ? ownerName + ' · sole owner' : 'Sole owner · privately held');
     set('cp-board-ini', initials(ownerName !== '—' ? ownerName : name, 2));
     set('cp-board-name', ownerName);
-    // Chairman stake: private = 100% (sole owner). Public = blank (the
-    // OWNERSHIP hero already shows the viewer's stake; without an extra
-    // fetch we don't have the founder's per-share % to honestly show
-    // here, and the hardcoded "100%" was misleading for diluted public
-    // corps. Leaving it blank for public is the honest minimum.
-    set('cp-board-chair-stake', isPublic ? '' : '100%');
+    // Chairman stake. Private corps: founder owns 100% by definition
+    // (no shareholdings table state). Public corps: render shares + %
+    // from holdingsByFaction (same map the board directors use, so the
+    // numbers line up across rows).
+    const chairStakeEl = document.getElementById('cp-board-chair-stake');
+    if (chairStakeEl) {
+      if (isPublic) {
+        const chairShares = holdingsByFaction.get(c.owner_faction_id) || 0;
+        const chairPct = pctOwned(chairShares, c.shares_outstanding) ?? 0;
+        chairStakeEl.innerHTML =
+          `<div class="sh">${chairShares} sh</div><div class="pct">${chairPct}%</div>`;
+      } else {
+        chairStakeEl.innerHTML = `<div class="pct">100%</div>`;
+      }
+    }
 
     // Non-founder board members from corp_board_seats (20270158).
     // Founder is NOT a row here — the chairman row above renders them
@@ -687,7 +711,13 @@ function initials(s, n) {
         const nm = document.createElement('div'); nm.className = 'bname'; nm.textContent = dname;
         const ro = document.createElement('div'); ro.className = 'brole'; ro.textContent = 'DIRECTOR';
         info.append(nm, ro);
-        const stake = document.createElement('div'); stake.className = 'board-stake'; stake.textContent = '';
+        // Stake column: shares + % from the same shared map as the
+        // chairman row. Directors who joined the board without buying
+        // shares show "0 sh · 0%".
+        const dShares = holdingsByFaction.get(s.member_faction_id) || 0;
+        const dPct = pctOwned(dShares, c.shares_outstanding) ?? 0;
+        const stake = document.createElement('div'); stake.className = 'board-stake';
+        stake.innerHTML = `<div class="sh">${dShares} sh</div><div class="pct">${dPct}%</div>`;
         row.append(av, info, stake);
         extraEl.appendChild(row);
       }
@@ -846,15 +876,7 @@ function initials(s, n) {
       const pct = pctOwned(yourShares, sharesOut) ?? 0;
 
       // Fixed-supply float: available = shares_outstanding − Σ holdings.
-      // corp_trade / go_public are the one source for the underlying
-      // numbers; we only read + subtract for display.
-      let totalHeld = 0;
-      {
-        const { data: allH, error: ahErr } = await _supabase.from('corp_shareholdings')
-          .select('shares').eq('corp_id', id);
-        if (ahErr) console.warn('[entrepreneur-corp] holdings-sum fetch error:', ahErr.message);
-        totalHeld = (allH || []).reduce((s, r) => s + (Number(r.shares) || 0), 0);
-      }
+      // totalHeld was computed during the single holdings fetch at the top.
       const available = Math.max(0, sharesOut - totalHeld);
 
       set('cp-stake-num', String(pct));
@@ -1011,6 +1033,9 @@ function initials(s, n) {
                 insufficient_funds:    data?.need != null ? `need ${fmtUsd(Number(data.need))}` : 'not enough party funds',
                 insufficient_shares:   `you only hold ${data?.have ?? 0} share${(data?.have === 1) ? '' : 's'}`,
                 treasury_insufficient: 'the corp treasury can’t cover that sale',
+                price_floor:           data?.max_per_trade != null
+                  ? `that sale would crash the price to zero — max ${data.max_per_trade} share${data.max_per_trade === 1 ? '' : 's'} per trade`
+                  : 'that sale would crash the price to zero',
                 not_public:            'this corporation is not public',
               };
               msgEl.className = 'tc-msg err';
