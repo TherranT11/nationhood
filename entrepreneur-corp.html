@@ -438,7 +438,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 function initials(s, n) {
   return (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, n || 2).map(w => w[0]).join('').toUpperCase()) || '—';
@@ -1191,13 +1191,15 @@ function initials(s, n) {
     // RHQ profile limited to small/medium/large (server enforces).
     const RHQ_TIERS = ['small', 'medium', 'large'];
     const ALL_TIERS = ['small', 'medium', 'large', 'major', 'monumental'];
-    const BUILDING_TYPES = {
-      regional_hq:       { label: 'Regional HQ',       desc: 'Admin presence in a nation. Required to do anything else there. Buyer Reputation bonus per profile.' },
-      construction_yard: { label: 'Construction Yard', desc: '+2 concurrent Port / Banking-Office build slots in this nation. Sold to Construction corps.' },
-      port:              { label: 'Port',              desc: 'Shipping operational. Sold to Shipping corps.' },
-      banking_office:    { label: 'Banking Office',    desc: 'Banking operational. Sold to Banking corps.' },
+    // Modal-specific descriptions. Labels come from buildingTypeLabel
+    // in utils.js — single source across the two pages that render
+    // building-type chips (entrepreneur-corp + entrepreneur-markets).
+    const BUILDING_TYPE_DESC = {
+      regional_hq:       'Admin presence in a nation. Required to do anything else there. Buyer Reputation bonus per profile.',
+      construction_yard: '+2 concurrent Port / Banking-Office build slots in this nation. Sold to Construction corps.',
+      port:              'Shipping operational. Sold to Shipping corps.',
+      banking_office:    'Banking operational. Sold to Banking corps.',
     };
-    const TYPE_LABEL = Object.fromEntries(Object.entries(BUILDING_TYPES).map(([k, v]) => [k, v.label]));
     const isConstructionCorp = (c.industry === 'construction');
     const isRealEstateCorp   = (c.industry === 'real_estate');
 
@@ -1205,10 +1207,10 @@ function initials(s, n) {
     // dropdown are filled by openBuildModal based on the type
     // selection (the visible tier set + valid nation list both
     // depend on it).
-    document.getElementById('bm-types').innerHTML = Object.entries(BUILDING_TYPES).map(([key, t], i) => `
+    document.getElementById('bm-types').innerHTML = Object.entries(BUILDING_TYPE_DESC).map(([key, desc], i) => `
       <div class="bm-type ${i === 0 ? 'sel' : ''}" data-btype="${key}">
-        <div class="tn">${escapeHtml(t.label)}</div>
-        <div class="td">${escapeHtml(t.desc)}</div>
+        <div class="tn">${escapeHtml(buildingTypeLabel(key))}</div>
+        <div class="td">${escapeHtml(desc)}</div>
       </div>`).join('');
 
     const { data: shardRow } = await _supabase.from('shard')
@@ -1298,7 +1300,7 @@ function initials(s, n) {
                       <div class="ap-name">${escapeHtml(b.name)}</div>
                       <div class="ap-sub">${escapeHtml(nationName)} · Completed at T${b.completed_at_tick}</div>
                     </div>
-                    <span>${b.building_type ? `<span class="ap-btype ${b.building_type}">${TYPE_LABEL[b.building_type] || b.building_type}</span>` : ''}<span class="ap-tier">${tier.label}</span></span>
+                    <span>${b.building_type ? `<span class="ap-btype ${b.building_type}">${buildingTypeLabel(b.building_type)}</span>` : ''}<span class="ap-tier">${tier.label}</span></span>
                   </div>
                   <div class="ap-meta">
                     <span>Cost ${fmtUsd(Number(b.cost_paid))}</span>
@@ -1415,7 +1417,7 @@ function initials(s, n) {
       const tierKey = document.querySelector('#bm-tiers .bm-tier.sel')?.dataset.tier
                    || (selectedBuildType === 'regional_hq' ? 'small' : 'small');
       const t = TIER_TABLE[tierKey] || TIER_TABLE.small;
-      const btypeLabel = TYPE_LABEL[selectedBuildType] || selectedBuildType;
+      const btypeLabel = buildingTypeLabel(selectedBuildType);
       let extra = '';
       if (selectedBuildType === 'regional_hq' && t.rep != null) {
         extra = ` · buyer gains <b>+${t.rep} Reputation</b> on acquisition`;
@@ -1440,8 +1442,9 @@ function initials(s, n) {
       // Lazy-fetch nations + corp's RHQ holdings on first open. Two
       // tiny queries; result is reused across modal opens.
       if (allNations.length === 0) {
-        const { data: nats } = await _supabase.from('nations')
+        const { data: nats, error: nErr } = await _supabase.from('nations')
           .select('id, name').not('continent', 'is', null).order('name');
+        if (nErr) console.warn('[entrepreneur-corp] nations fetch error:', nErr.message);
         allNations = nats || [];
       }
       const { data: rhqs, error: rhqErr } = await _supabase.from('corp_buildings')

@@ -262,18 +262,13 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtUsd, fmtValuation, titleCase, viewerStakePct, ownerDisplayName, escapeHtml } from './js/utils.js';
+import { fmtUsd, fmtValuation, titleCase, viewerStakePct, ownerDisplayName, escapeHtml, buildingTypeLabel } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 
-// Tier + Type labels mirror the SQL CASE in 20270165 / 20270170 —
-// authoritative copy lives in the migrations; these are display-only.
+// Tier labels mirror begin_construction's CASE — display-only copy.
+// Building-type labels come from buildingTypeLabel in utils.js
+// (single source across all dashboard pages).
 const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'Major', monumental: 'Monumental' };
-const TYPE_LABEL = {
-  regional_hq:       'Regional HQ',
-  construction_yard: 'Construction Yard',
-  port:              'Port',
-  banking_office:    'Banking Office',
-};
 
 (async () => {
   try {
@@ -485,7 +480,7 @@ const TYPE_LABEL = {
         <div class="grid props row">
           <div>
             <div class="c-name">${escapeHtml(b.name)}</div>
-            <div class="c-sub btype-${b.building_type || 'unknown'}">${escapeHtml(TYPE_LABEL[b.building_type] || 'Building')}</div>
+            <div class="c-sub btype-${b.building_type || 'unknown'}">${escapeHtml(buildingTypeLabel(b.building_type))}</div>
           </div>
           <div><span class="tier-pill">${TIER_LABEL[b.tier] || escapeHtml(b.tier)}</span></div>
           <div class="ceo">${escapeHtml(b.nation?.name || '—')}</div>
@@ -558,7 +553,7 @@ const TYPE_LABEL = {
         <div class="grid offers row">
           <div>
             <div class="c-name">${escapeHtml(o.building?.name || '—')}</div>
-            <div class="c-sub btype-${o.building?.building_type || 'unknown'}">${escapeHtml(TYPE_LABEL[o.building?.building_type] || 'Building')}<span class="hq">  ·  ${escapeHtml(o.building?.nation?.name || '—').toUpperCase()}</span></div>
+            <div class="c-sub btype-${o.building?.building_type || 'unknown'}">${escapeHtml(buildingTypeLabel(o.building?.building_type))}<span class="hq">  ·  ${escapeHtml(o.building?.nation?.name || '—').toUpperCase()}</span></div>
           </div>
           <div class="seller">${escapeHtml(o.building?.owner?.name || 'Unknown')}</div>
           <div class="ceo">${escapeHtml(o.buyer?.name || '—')}</div>
@@ -599,7 +594,7 @@ const TYPE_LABEL = {
     const openOfferModal = async (buildingId, buildingName, asking, buildingType) => {
       poBuildingId = buildingId;
       poAsking = asking;
-      const typeLabel = TYPE_LABEL[buildingType] || '';
+      const typeLabel = buildingType ? buildingTypeLabel(buildingType) : '';
       document.getElementById('po-prop').textContent = typeLabel
         ? `${buildingName || '—'} · ${typeLabel}`
         : (buildingName || '—');
