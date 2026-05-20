@@ -262,6 +262,7 @@
     border:0.5px solid rgba(138,170,106,0.25); border-radius:4px; font-size:12px;
     color:#aaa; line-height:1.6; }
   .bm-summary b { color:#8aaa6a; font-weight:500; }
+  .bm-summary .bm-stat { font-size:10px; color:#777; letter-spacing:0.06em; text-transform:uppercase; }
   .bm-err { color:#c98a8a; font-size:11px; margin-top:10px; min-height:14px; }
   .bm-foot { padding:14px 22px; border-top:0.5px solid rgba(255,255,255,0.08);
     background:#0d0d0d; display:flex; gap:10px; justify-content:flex-end; }
@@ -1175,19 +1176,36 @@ function initials(s, n) {
     // changes) and renderProjects uses it for the tier pill label.
     // The SQL begin_construction RPC carries the server-authoritative
     // copy of the same numbers — keep them in sync.
-    // TIER_TABLE rep is the buyer-Reputation grant on non-RE
-    // acquisition of an RHQ at that tier (S+0 / M+1 / L+2). The SQL
-    // begin_construction CASE is authoritative for cost/duration/
-    // ambition; the SQL accept_offer + buy_building CASE is
-    // authoritative for rep — this client copy mirrors both for
-    // display only.
+    // TIER_TABLE base figures (v4 rebalance, 20270172). SQL
+    // begin_construction's CASE is authoritative; this is the client
+    // display copy. Final cost / duration scale with the host
+    // nation's cost_of_living + physical_infrastructure (see
+    // nationCostMult). `rep` is the buyer-Reputation grant on
+    // non-RE acquisition of an RHQ (S+0 / M+1 / L+2).
     const TIER_TABLE = {
-      small:      { cost: 1000000,   ticks: 24, amb: 1, rep: 0, label: 'Small',      desc: 'Workshops, low-rises' },
-      medium:     { cost: 5000000,   ticks: 27, amb: 2, rep: 1, label: 'Medium',     desc: 'Mid-rise, mixed-use' },
-      large:      { cost: 20000000,  ticks: 30, amb: 3, rep: 2, label: 'Large',      desc: 'Towers, plazas' },
-      major:      { cost: 50000000,  ticks: 33, amb: 4, rep: null, label: 'Major',      desc: 'Skyscrapers, districts' },
-      monumental: { cost: 100000000, ticks: 36, amb: 5, rep: null, label: 'Monumental', desc: 'National landmarks' },
+      small:      { cost: 20000000,  ticks: 24, amb: 1, rep: 0, label: 'Small',      desc: 'Workshops, low-rises' },
+      medium:     { cost: 50000000,  ticks: 27, amb: 2, rep: 1, label: 'Medium',     desc: 'Mid-rise, mixed-use' },
+      large:      { cost: 100000000, ticks: 30, amb: 3, rep: 2, label: 'Large',      desc: 'Towers, plazas' },
+      major:      { cost: 200000000, ticks: 33, amb: 4, rep: null, label: 'Major',      desc: 'Skyscrapers, districts' },
+      monumental: { cost: 400000000, ticks: 36, amb: 5, rep: null, label: 'Monumental', desc: 'National landmarks' },
     };
+
+    // Nation-aware cost / duration scaling (mirrors begin_construction
+    // formula in 20270172). multiplier = (0.5 + col/100) × (0.5 +
+    // (100 - inf)/100). NULL stats → 50 (neutral, multiplier 1.0).
+    function nationCostMult(nation) {
+      const col = Number(nation?.cost_of_living ?? 50);
+      const inf = Number(nation?.physical_infrastructure ?? 50);
+      const colF = 0.5 + col / 100;
+      const infF = 0.5 + (100 - inf) / 100;
+      return colF * infF;
+    }
+    function scaledCost(base, nation) {
+      return Math.round(base * nationCostMult(nation));
+    }
+    function scaledDuration(base, nation) {
+      return Math.max(1, Math.round(base * nationCostMult(nation)));
+    }
     // RHQ profile limited to small/medium/large (server enforces).
     const RHQ_TIERS = ['small', 'medium', 'large'];
     const ALL_TIERS = ['small', 'medium', 'large', 'major', 'monumental'];
@@ -1368,17 +1386,22 @@ function initials(s, n) {
     // restricted to HQ + nations the corp already owns an RHQ in).
     let buildSubmitting = false;
     let selectedBuildType = 'regional_hq';
-    let corpRhqNations = []; // [{ nation_id, nation_name }] for non-RHQ filtering
-    let allNations = [];     // [{ id, name }] for RHQ filtering
+    let corpRhqNationIds = new Set();    // owned RHQs (for non-RHQ filtering)
+    let nationMap = new Map();            // id → { id, name, cost_of_living, physical_infrastructure }
+
+    const currentNation = () => nationMap.get(document.getElementById('bm-nation').value);
 
     const renderTiers = (btype) => {
       const tierKeys = btype === 'regional_hq' ? RHQ_TIERS : ALL_TIERS;
+      const nation = currentNation();
       document.getElementById('bm-tiers').innerHTML = tierKeys.map((key, i) => {
         const t = TIER_TABLE[key];
+        const cost = scaledCost(t.cost, nation);
+        const dur  = scaledDuration(t.ticks, nation);
         return `
           <div class="bm-tier ${i === 0 ? 'sel' : ''}" data-tier="${key}">
             <span class="tn">${escapeHtml(t.label)}</span><span class="td">${escapeHtml(t.desc)}</span>
-            <span class="num cost">${fmtUsd(t.cost)}</span><span class="num">${t.ticks}t</span>
+            <span class="num cost">${fmtUsd(cost)}</span><span class="num">${dur}t</span>
             <span class="num amb">+${t.amb} Amb</span>
           </div>`;
       }).join('');
@@ -1396,13 +1419,13 @@ function initials(s, n) {
       let options;
       if (btype === 'regional_hq') {
         // RHQ: any nation (no prereq). Show all available.
-        options = allNations.map(n => ({ id: n.id, name: n.name }));
+        options = [...nationMap.values()].map(n => ({ id: n.id, name: n.name }));
       } else {
         // Operational types: HQ + nations with owned RHQ.
         const valid = new Map();
-        if (c.hq_nation_id) valid.set(c.hq_nation_id, c.hq?.name || 'HQ');
-        for (const r of corpRhqNations) {
-          if (r.nation_id && !valid.has(r.nation_id)) valid.set(r.nation_id, r.nation_name || '—');
+        if (c.hq_nation_id) valid.set(c.hq_nation_id, nationMap.get(c.hq_nation_id)?.name || c.hq?.name || 'HQ');
+        for (const nid of corpRhqNationIds) {
+          if (nid && !valid.has(nid)) valid.set(nid, nationMap.get(nid)?.name || '—');
         }
         options = [...valid.entries()].map(([id, name]) => ({ id, name }));
       }
@@ -1417,6 +1440,9 @@ function initials(s, n) {
       const tierKey = document.querySelector('#bm-tiers .bm-tier.sel')?.dataset.tier
                    || (selectedBuildType === 'regional_hq' ? 'small' : 'small');
       const t = TIER_TABLE[tierKey] || TIER_TABLE.small;
+      const nation = currentNation();
+      const cost = scaledCost(t.cost, nation);
+      const dur  = scaledDuration(t.ticks, nation);
       const btypeLabel = buildingTypeLabel(selectedBuildType);
       let extra = '';
       if (selectedBuildType === 'regional_hq' && t.rep != null) {
@@ -1430,8 +1456,13 @@ function initials(s, n) {
       } else {
         footer = `Completion grants <b>+0.2 GDP Growth</b> to the host nation. ${btypeLabel}s are sector-locked to ${selectedBuildType === 'port' ? 'Shipping' : 'Banking'} corps.`;
       }
+      // Per-nation stat context — surfaces WHY the cost / duration
+      // is what it is (high cost-of-living + low infra = expensive).
+      const statLine = nation
+        ? `<span class="bm-stat">${escapeHtml(nation.name)}: cost-of-living ${Math.round(Number(nation.cost_of_living ?? 50))} · infrastructure ${Math.round(Number(nation.physical_infrastructure ?? 50))}</span><br>`
+        : '';
       document.getElementById('bm-summary').innerHTML =
-        `<b>${escapeHtml(btypeLabel)}</b> · spend <b>${fmtUsd(t.cost)}</b> · build over <b>${t.ticks} ticks</b> · <b>+${t.amb} Ambition</b> for you.<br>${footer}`;
+        `${statLine}<b>${escapeHtml(btypeLabel)}</b> · spend <b>${fmtUsd(cost)}</b> · build over <b>${dur} ticks</b> · <b>+${t.amb} Ambition</b> for you.<br>${footer}`;
     };
 
     const openBuildModal = async () => {
@@ -1439,21 +1470,23 @@ function initials(s, n) {
       const errEl = document.getElementById('bm-err');
       document.getElementById('bm-name').value = '';
       errEl.textContent = '';
-      // Lazy-fetch nations + corp's RHQ holdings on first open. Two
-      // tiny queries; result is reused across modal opens.
-      if (allNations.length === 0) {
+      // Lazy-fetch nations (with cost_of_living + physical_infrastructure
+      // for the cost-scaling formula) + corp's RHQ holdings on first
+      // open. Two tiny queries; result is reused across modal opens.
+      if (nationMap.size === 0) {
         const { data: nats, error: nErr } = await _supabase.from('nations')
-          .select('id, name').not('continent', 'is', null).order('name');
+          .select('id, name, cost_of_living, physical_infrastructure')
+          .not('continent', 'is', null).order('name');
         if (nErr) console.warn('[entrepreneur-corp] nations fetch error:', nErr.message);
-        allNations = nats || [];
+        for (const n of (nats || [])) nationMap.set(n.id, n);
       }
       const { data: rhqs, error: rhqErr } = await _supabase.from('corp_buildings')
-        .select('nation_id, nation:nations!nation_id(name)')
+        .select('nation_id')
         .eq('owner_corp_id', id)
         .eq('building_type', 'regional_hq')
         .eq('status', 'completed');
       if (rhqErr) console.warn('[entrepreneur-corp] RHQ holdings fetch error:', rhqErr.message);
-      corpRhqNations = (rhqs || []).map(r => ({ nation_id: r.nation_id, nation_name: r.nation?.name }));
+      corpRhqNationIds = new Set((rhqs || []).map(r => r.nation_id).filter(Boolean));
 
       // Default to Regional HQ on every open (the most common first
       // action for an expanding corp). Reset type-picker visual.
@@ -1461,8 +1494,8 @@ function initials(s, n) {
       document.querySelectorAll('#bm-types .bm-type').forEach(el => {
         el.classList.toggle('sel', el.dataset.btype === 'regional_hq');
       });
-      renderTiers('regional_hq');
       renderNations('regional_hq');
+      renderTiers('regional_hq');
       updateBuildSummary();
       ov.classList.add('open');
       setTimeout(() => document.getElementById('bm-name').focus(), 50);
@@ -1470,16 +1503,26 @@ function initials(s, n) {
 
     const closeBuildModal = () => document.getElementById('bm-overlay').classList.remove('open');
 
-    // Type-picker click wiring — single-pass on init.
+    // Type-picker click wiring — single-pass on init. Nations
+    // re-render first (filter shrinks/grows), then tiers (cost +
+    // duration depend on which nation is current), then summary.
     document.querySelectorAll('#bm-types .bm-type').forEach(el => {
       el.addEventListener('click', () => {
         document.querySelectorAll('#bm-types .bm-type').forEach(x => x.classList.remove('sel'));
         el.classList.add('sel');
         selectedBuildType = el.dataset.btype;
-        renderTiers(selectedBuildType);
         renderNations(selectedBuildType);
+        renderTiers(selectedBuildType);
         updateBuildSummary();
       });
+    });
+
+    // Nation-change handler: tier costs + durations depend on the
+    // host nation's cost_of_living + physical_infrastructure, so
+    // re-render the tier rows and the summary on every change.
+    document.getElementById('bm-nation').addEventListener('change', () => {
+      renderTiers(selectedBuildType);
+      updateBuildSummary();
     });
 
     document.getElementById('bm-close').addEventListener('click', closeBuildModal);
