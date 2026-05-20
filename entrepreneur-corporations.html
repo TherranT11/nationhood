@@ -30,14 +30,27 @@
   .ec-filter.active { background:#131613; border-color:#6a8a4a; color:#8aaa6a; }
   .ec-pos { display:flex; flex-direction:column; gap:10px; }
   .ec-corp { background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-left:2px solid #8aaa6a;
-    border-radius:4px; padding:14px 18px; display:grid; grid-template-columns:1fr auto auto;
+    border-radius:4px; padding:14px 18px;
+    display:grid; grid-template-columns:1.4fr 0.7fr 1fr 0.9fr 0.6fr auto;
     gap:18px; align-items:center; cursor:pointer; }
   .ec-corp:hover { background:#141614; border-color:rgba(138,170,106,0.3); }
   .ec-corp .cn { font-size:15px; font-weight:500; color:#fff; margin-bottom:3px; }
   .ec-corp .ci { font-size:10px; letter-spacing:0.1em; color:#888; text-transform:uppercase; }
   .ec-corp .cl { font-size:9px; color:#555; letter-spacing:0.13em; text-align:right; margin-bottom:3px; }
   .ec-corp .cv { font-size:16px; font-weight:500; color:#d4d4d4; text-align:right; }
+  .ec-corp .cv.muted { color:#555; }
   .ec-corp .arr { color:#555; font-size:16px; }
+  .ec-corp .mid { display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+  /* Category + Position pills. Industry colours mirror the markets
+     directory; position pill is rank-coloured (founder/director/share). */
+  .ec-pill { display:inline-block; padding:4px 9px; border-radius:3px;
+    font-size:9px; letter-spacing:0.13em; font-weight:500; }
+  .ec-pill.construction { background:#1f2a1a; color:#8aaa6a; }
+  .ec-pill.banking      { background:#1a2535; color:#7a9aab; }
+  .ec-pill.shipping     { background:#2a2419; color:#c89e6e; }
+  .ec-pill.founder      { background:#1f2a1a; color:#8aaa6a; }
+  .ec-pill.director     { background:#2a2419; color:#c89e6e; }
+  .ec-pill.shareholder  { background:#1a2535; color:#7a9aab; }
   .ec-empty { background:#121212; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
     padding:26px 18px; color:#666; font-size:12px; text-align:center; line-height:1.6; }
 
@@ -302,7 +315,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation, titleCase, ownerDisplayName } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, ownerDisplayName, pctOwned } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 
 const FEE = 1_000_000;
@@ -381,34 +394,58 @@ function refreshCost() {
 }
 
 function renderPositions(corps, filter) {
-  const wrap = document.getElementById('ec-pos');
-  const meta = document.getElementById('ec-pos-meta');
-  const list = (corps || []).filter(c => filter === 'all' || c.industry === filter);
-  meta.textContent = (corps || []).length === 0 ? '' : `${(corps || []).length} ACTIVE POSITION${corps.length === 1 ? '' : 'S'}`;
-  if (!corps || corps.length === 0) {
-    wrap.innerHTML = '<div class="ec-empty">No corporations yet.<br>Use “Start a Corporation” to found your first.</div>';
+  const wrap  = document.getElementById('ec-pos');
+  const meta  = document.getElementById('ec-pos-meta');
+  const list  = (corps || []).filter(c => filter === 'all' || c.industry === filter);
+  const total = (corps || []).length;
+  meta.textContent = total === 0 ? '' : `${total} ACTIVE POSITION${total === 1 ? '' : 'S'}`;
+  if (total === 0) {
+    wrap.innerHTML = '<div class="ec-empty">No corporate positions yet.<br>Found a corporation, get appointed to a board, or buy shares from the Markets tab.</div>';
     return;
   }
   if (list.length === 0) { wrap.innerHTML = '<div class="ec-empty">No corporations in this industry.</div>'; return; }
   wrap.replaceChildren();
   for (const c of list) {
-    const row = document.createElement('div');
-    row.className = 'ec-corp';
+    const ind = (c.industry || '').toLowerCase();
+    const row = document.createElement('div'); row.className = 'ec-corp';
+
+    // 1. Corporation + Nation (HQ)
     const left = document.createElement('div');
     const nm = document.createElement('div'); nm.className = 'cn'; nm.textContent = c.name;
-    const ci = document.createElement('div'); ci.className = 'ci';
-    ci.textContent = `${c.industry} · ${c.hq?.name || '—'}`;
+    const ci = document.createElement('div'); ci.className = 'ci'; ci.textContent = (c.hq?.name || '—');
     left.append(nm, ci);
-    const mid = document.createElement('div');
+
+    // 2. Category (industry pill)
+    const catCell = document.createElement('div');
+    const catPill = document.createElement('span'); catPill.className = 'ec-pill ' + ind;
+    catPill.textContent = (c.industry || '—').toUpperCase();
+    catCell.appendChild(catPill);
+
+    // 3. Valuation (computeEntrepreneurValuation + fmtValuation — single source)
     const val = computeEntrepreneurValuation(c);
-    const cl = document.createElement('div'); cl.className = 'cl';
-    cl.textContent = val.kind === 'market' ? 'MARKET CAP'
+    const valCell = document.createElement('div'); valCell.className = 'mid';
+    const vl = document.createElement('div'); vl.className = 'cl';
+    vl.textContent = val.kind === 'market' ? 'MARKET CAP'
                    : val.kind === 'seed'   ? 'STARTING CAPITAL' : 'VALUATION';
-    const cv = document.createElement('div'); cv.className = 'cv';
-    cv.textContent = fmtValuation(val.amount);
-    mid.append(cl, cv);
+    const vv = document.createElement('div'); vv.className = 'cv'; vv.textContent = fmtValuation(val.amount);
+    valCell.append(vl, vv);
+
+    // 4. Position (founder/director/shareholder pill)
+    const posCell = document.createElement('div'); posCell.className = 'mid';
+    const pl = document.createElement('div'); pl.className = 'cl'; pl.textContent = 'POSITION';
+    const posPill = document.createElement('span'); posPill.className = 'ec-pill ' + c.position;
+    posPill.textContent = c.position.toUpperCase();
+    posCell.append(pl, posPill);
+
+    // 5. Percentage owned (pctOwned for public; private founder = 100%)
+    const pctCell = document.createElement('div'); pctCell.className = 'mid';
+    const pcl = document.createElement('div'); pcl.className = 'cl'; pcl.textContent = 'OWNED';
+    const pcv = document.createElement('div'); pcv.className = 'cv' + (c.pct > 0 ? '' : ' muted');
+    pcv.textContent = c.pct + '%';
+    pctCell.append(pcl, pcv);
+
     const arr = document.createElement('div'); arr.className = 'arr'; arr.textContent = '▸';
-    row.append(left, mid, arr);
+    row.append(left, catCell, valCell, posCell, pctCell, arr);
     row.addEventListener('click', () => { window.location.href = 'entrepreneur-corp.html?id=' + encodeURIComponent(c.id); });
     wrap.appendChild(row);
   }
@@ -422,14 +459,44 @@ function renderPositions(corps, filter) {
     entFunds = Number(ctx.faction?.party_funds) || 0;
     document.getElementById('ec-cash').textContent = fmtM(entFunds);
 
+    // Active Positions = any corp where you are the founder, a
+    // director, or hold shares. Three reads (each on its own one-source
+    // table), unioned by corp id; corp details fetched once for the
+    // union. Position rank: founder > director > shareholder; pct comes
+    // from corp_shareholdings (private founder = implicit 100%).
     let corps = [];
     if (entId) {
-      const { data, error } = await _supabase.from('entrepreneur_corps')
-        .select('id, name, industry, starting_capital, listing, share_price, shares_outstanding, hq:nations!hq_nation_id(name)')
-        .eq('owner_faction_id', entId)
-        .order('created_at', { ascending: false });
-      if (error) console.warn('[entrepreneur-corporations] corps load failed:', error.message);
-      else corps = data || [];
+      const [ownedRes, seatsRes, sharesRes] = await Promise.all([
+        _supabase.from('entrepreneur_corps').select('id').eq('owner_faction_id', entId),
+        _supabase.from('corp_board_seats').select('corp_id').eq('member_faction_id', entId),
+        _supabase.from('corp_shareholdings').select('corp_id, shares').eq('holder_faction_id', entId).gt('shares', 0),
+      ]);
+      if (ownedRes.error)  console.warn('[entrepreneur-corporations] owned load failed:',  ownedRes.error.message);
+      if (seatsRes.error)  console.warn('[entrepreneur-corporations] seats load failed:',  seatsRes.error.message);
+      if (sharesRes.error) console.warn('[entrepreneur-corporations] shares load failed:', sharesRes.error.message);
+
+      const ownedIds     = new Set((ownedRes.data  || []).map(r => r.id));
+      const seatedIds    = new Set((seatsRes.data  || []).map(r => r.corp_id));
+      const sharesByCorp = new Map((sharesRes.data || []).map(r => [r.corp_id, Number(r.shares) || 0]));
+      const allIds       = new Set([...ownedIds, ...seatedIds, ...sharesByCorp.keys()]);
+
+      if (allIds.size > 0) {
+        const { data, error } = await _supabase.from('entrepreneur_corps')
+          .select('id, name, industry, listing, owner_faction_id, share_price, shares_outstanding, starting_capital, treasury_cash, hq:nations!hq_nation_id(name)')
+          .in('id', [...allIds])
+          .order('name');
+        if (error) console.warn('[entrepreneur-corporations] corps load failed:', error.message);
+        else corps = (data || []).map(c => {
+          let position = 'shareholder';
+          if (ownedIds.has(c.id))       position = 'founder';
+          else if (seatedIds.has(c.id)) position = 'director';
+          const yourShares = sharesByCorp.get(c.id) || 0;
+          const pct = c.listing !== 'public'
+            ? (position === 'founder' ? 100 : 0)
+            : (pctOwned(yourShares, c.shares_outstanding) ?? 0);
+          return { ...c, position, yourShares, pct };
+        });
+      }
     }
 
     // HQ picker data: real placeable nations (continent IS NOT NULL),
