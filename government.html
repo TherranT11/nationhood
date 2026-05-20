@@ -2734,7 +2734,13 @@ const _GB_ROYAL_HOLDINGS_MONTHLY = 3;
 const _GB_DESCKEY_TO_LAW_CATEGORY_REGEX = {
     pension:           /pension/i,
     subsidiesIndustry: /industr/i,
-    defenseSecurity:   /^prison$/i,
+    // Defense & Security catches the corrections system (Prison Policy),
+    // standing military programs (Military Composition / military_*), all
+    // defense policies, and intelligence services. Word-bound so
+    // unrelated category names containing one of these substrings (e.g.
+    // a hypothetical "Demilitarization Treaty" — though we have none
+    // today) don't accidentally fall under the military rollup.
+    defenseSecurity:   /\b(prison|military|defense|intelligence)\b/i,
 };
 
 // Income-side policies (income/corporate/sales tax) have their own

@@ -157,3 +157,16 @@ export function computeEntrepreneurValuation(corp) {
     }
     return { kind: 'none', amount: null };
 }
+
+// Live cash-on-hand for an entrepreneur corp. treasury_cash is the
+// authoritative pool for both listings post-20270182; legacy rows
+// (NULL treasury_cash) fall back to starting_capital so the UI is
+// never blank. Single source of truth — every "cash on hand" display
+// across entrepreneur-* pages reads from here.
+export function getEntrepreneurCorpCash(corp) {
+    const c = corp || {};
+    const t = Number(c.treasury_cash);
+    if (Number.isFinite(t)) return t;
+    const s = Number(c.starting_capital);
+    return Number.isFinite(s) ? s : 0;
+}

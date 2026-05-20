@@ -3139,513 +3139,35 @@ async function processProductionRuns(supabase, currentTick) {
 
 // ════════════════════════════════════════════════════════════════
 async function processTradeAgreementShipping(supabase, currentTick) {
+    // Multi-winner allocator (migration 20270181). One Postgres RPC
+    // walks every status='open' trade-agreement contract, sorts
+    // pending bids by per-unit rate ASC, fills volume_required slots
+    // cheapest-first, debits the importing nation's budget, credits
+    // each winning bidder (entrepreneur → corp treasury, legacy →
+    // faction.corp_cash_reserves). Bids stay 'pending' across ticks.
     const results = {
-        awarded: 0, completed: 0, paid: 0, polling: 0, renewed: 0,
-        missed: 0, bidsAccepted: 0, bidsAutoRejected: 0,
+        routesActive: 0, routesMissed: 0, slotsFilled: 0,
+        slotsDemanded: 0, totalPaid: 0,
     };
-    const nowIso = () => new Date().toISOString();
-
-    // ── Pass A: Auto-award (trade-agreement contracts only) ──
-    // Trade-agreement contracts have no bid window — they sit as
-    // Available Routes until a corp bids, then award on the next
-    // corp-tick. Pick every status='open' trade-agreement contract;
-    // the per-contract bid fetch decides whether to award now or
-    // skip until later. Migration 20261018 sets a sentinel
-    // expires_at_tick (INT_MAX) at spawn so the UI's
-    // `.gt(expires_at_tick, current_tick)` filter passes forever
-    // and the legacy auto-extend (incrementing expires_at_tick by
-    // +1 each tick on zero bids) is no longer needed.
-    const { data: closing, error: closingErr } = await supabase
-        .from('shipping_contracts')
-        .select('id, delivery_priority, term_ticks, volume_required, trade_agreement_id, nation_id')
-        .eq('status', 'open')
-        .not('trade_agreement_id', 'is', null);
-
-    if (closingErr) {
-        console.warn('[TradeAgreementShipping] closing fetch failed:', closingErr.message);
-    } else if (closing && closing.length > 0) {
-        for (const contract of closing) {
-            const { data: bids, error: bidsErr } = await supabase
-                .from('shipping_contract_bids')
-                .select('id, bidder_faction_id, offered_revenue_per_tick, energy_per_tick, route_risk_delta, bidder_route_risk_snapshot, freighters_allocated, applied_at_tick')
-                .eq('contract_id', contract.id)
-                .eq('status', 'pending')
-                .order('applied_at_tick', { ascending: true });
-            if (bidsErr) {
-                console.warn(`[TradeAgreementShipping] bids fetch failed for ${contract.id}:`, bidsErr.message);
-                continue;
-            }
-
-            // Zero offers ⇒ leave the contract sitting open. No
-            // window to extend, no expiry to advance — just wait
-            // for a corp to bid on a future tick.
-            if (!bids || bids.length === 0) {
-                results.polling++;
-                continue;
-            }
-
-            // Score per delivery_priority. Lower score = better in our
-            // sort. Fastest negates freighters so the largest fleet wins;
-            // safest reads the corp's full route-risk snapshot (fleet
-            // baseline + modifier deltas), not just the modifier sum.
-            const priority = contract.delivery_priority || 'cheapest';
-            const score = (b) => {
-                if (priority === 'fastest') return -(Number(b.freighters_allocated) || 0);
-                if (priority === 'safest')  return  Number(b.bidder_route_risk_snapshot) || 0;
-                return Number(b.offered_revenue_per_tick) || 0;  // cheapest
-            };
-            bids.sort((a, b) => {
-                const sa = score(a), sb = score(b);
-                if (sa !== sb) return sa - sb;
-                // Tiebreaker 1: cheapest (universal).
-                const ca = Number(a.offered_revenue_per_tick) || 0;
-                const cb = Number(b.offered_revenue_per_tick) || 0;
-                if (ca !== cb) return ca - cb;
-                // Tiebreaker 2: earliest applied.
-                return (Number(a.applied_at_tick) || 0) - (Number(b.applied_at_tick) || 0);
-            });
-
-            // Phase 6 freighter-availability gate. Walk bids in score
-            // order, skip any whose bidder no longer has enough free
-            // freighters (committed elsewhere on awarded contracts since
-            // the bid was placed). place_shipping_offer validates at bid
-            // time; this is the second-line check at award time.
-            //
-            // Implementation: pre-fetch bidders' fleet sizes + every
-            // 'accepted' bid + the contract status of each linked contract
-            // in two queries, then compute available per bidder locally.
-            // Avoids the brittle PostgREST 'embed.field=value' filter
-            // pattern (not used anywhere else in this codebase).
-            const bidderIds = [...new Set(bids.map(b => b.bidder_faction_id).filter(Boolean))];
-            const fleetByBidder    = new Map();
-            const committedByBidder = new Map();
-            if (bidderIds.length > 0) {
-                const { data: bidderFactions } = await supabase.from('factions')
-                    .select('id, corp_freighters').in('id', bidderIds);
-                for (const f of (bidderFactions || [])) {
-                    fleetByBidder.set(f.id, Math.floor(Number(f.corp_freighters) || 0));
-                }
-                const { data: acceptedBids } = await supabase.from('shipping_contract_bids')
-                    .select('bidder_faction_id, contract_id, freighters_allocated')
-                    .in('bidder_faction_id', bidderIds)
-                    .eq('status', 'accepted');
-                const acceptedRows = acceptedBids || [];
-                if (acceptedRows.length > 0) {
-                    const linkedContractIds = [...new Set(acceptedRows.map(r => r.contract_id))];
-                    const { data: linkedContracts } = await supabase.from('shipping_contracts')
-                        .select('id, status').in('id', linkedContractIds);
-                    const awardedSet = new Set(
-                        (linkedContracts || []).filter(c => c.status === 'awarded').map(c => c.id)
-                    );
-                    for (const r of acceptedRows) {
-                        if (!awardedSet.has(r.contract_id)) continue;
-                        const cur = committedByBidder.get(r.bidder_faction_id) || 0;
-                        committedByBidder.set(r.bidder_faction_id, cur + (Number(r.freighters_allocated) || 0));
-                    }
-                }
-            }
-
-            let winner = null;
-            for (const b of bids) {
-                const need      = Number(b.freighters_allocated) || 0;
-                const total     = fleetByBidder.get(b.bidder_faction_id) || 0;
-                const committed = committedByBidder.get(b.bidder_faction_id) || 0;
-                const available = Math.max(0, total - committed);
-                if (need <= available) {
-                    winner = b;
-                    break;
-                }
-                // Bidder over-committed since bid time → reject this bid
-                // and continue scoring. Mark the bid auto_rejected so it
-                // doesn't sit pending forever.
-                const { error: skipErr } = await supabase.from('shipping_contract_bids')
-                    .update({ status: 'auto_rejected', resolved_at_tick: currentTick, updated_at: nowIso() })
-                    .eq('id', b.id).eq('status', 'pending');
-                if (skipErr) {
-                    console.warn(`[TradeAgreementShipping] freighter-skip flip failed for bid ${b.id}:`, skipErr.message);
-                } else {
-                    results.bidsAutoRejected++;
-                }
-            }
-
-            // No bid had enough free capacity → contract polls again next
-            // tick (treat same as zero-bid case: extend the window).
-            if (!winner) {
-                const { error: pollErr } = await supabase.from('shipping_contracts')
-                    .update({ expires_at_tick: currentTick + 1, updated_at: nowIso() })
-                    .eq('id', contract.id).eq('status', 'open');
-                if (pollErr) {
-                    console.warn(`[TradeAgreementShipping] poll-extend (no eligible) failed for ${contract.id}:`, pollErr.message);
-                } else {
-                    results.polling++;
-                }
-                continue;
-            }
-
-            const winnerRevenue   = Number(winner.offered_revenue_per_tick) || 0;
-            const winnerRiskDelta = Number(winner.route_risk_delta)         || 0;
-            const term            = Math.max(1, Number(contract.term_ticks) || 1);
-
-            // Flip winning bid → accepted.
-            const { error: winErr } = await supabase.from('shipping_contract_bids')
-                .update({ status: 'accepted', resolved_at_tick: currentTick, updated_at: nowIso() })
-                .eq('id', winner.id).eq('status', 'pending');
-            if (winErr) {
-                console.warn(`[TradeAgreementShipping] winner-flip failed for ${contract.id}:`, winErr.message);
-                continue;
-            }
-            results.bidsAccepted++;
-
-            // Auto-reject siblings.
-            const { data: rejected, error: rejErr } = await supabase.from('shipping_contract_bids')
-                .update({ status: 'auto_rejected', resolved_at_tick: currentTick, updated_at: nowIso() })
-                .eq('contract_id', contract.id).neq('id', winner.id).eq('status', 'pending')
-                .select('id');
-            if (rejErr) {
-                console.warn(`[TradeAgreementShipping] sibling-reject failed for ${contract.id}:`, rejErr.message);
-            } else {
-                results.bidsAutoRejected += rejected?.length || 0;
-            }
-
-            // Apply route_risk_delta to winner corp (clamped 0..10).
-            // Reverted in Pass B on contract completion.
-            if (winnerRiskDelta !== 0 && winner.bidder_faction_id) {
-                const { data: w } = await supabase.from('factions')
-                    .select('corp_route_risk').eq('id', winner.bidder_faction_id).single();
-                if (w) {
-                    const newRisk = Math.max(0, Math.min(10,
-                        (Number(w.corp_route_risk) || 0) + winnerRiskDelta));
-                    const { error: riskErr } = await supabase.from('factions')
-                        .update({ corp_route_risk: newRisk })
-                        .eq('id', winner.bidder_faction_id);
-                    if (riskErr) console.warn(`[TradeAgreementShipping] risk-apply failed:`, riskErr.message);
-                }
-            }
-
-            // Flip contract → awarded. Snapshot the winning offer's
-            // revenue onto contract.revenue_per_tick so Pass C reads
-            // pricing locally without re-querying the bid each tick.
-            const { error: awErr } = await supabase.from('shipping_contracts').update({
-                status: 'awarded',
-                winner_faction_id: winner.bidder_faction_id,
-                awarded_at_tick:   currentTick,
-                ends_at_tick:      currentTick + term,
-                revenue_per_tick:  winnerRevenue,
-                updated_at:        nowIso(),
-            }).eq('id', contract.id).eq('status', 'open');
-            if (awErr) {
-                console.warn(`[TradeAgreementShipping] award-flip failed for ${contract.id}:`, awErr.message);
-                continue;
-            }
-            results.awarded++;
-
-            // Phase 7: notification events. Fire-and-forget so a flaky
-            // event_log write never blocks the contract award. Three
-            // surfaces:
-            //   - winning corp ('your offer was awarded')
-            //   - buyer nation ('shipping arranged for X')
-            //   - losing corps  ('your offer was rejected')
-            try {
-                const { data: winnerFaction } = await supabase.from('factions')
-                    .select('faction_name, nation_id').eq('id', winner.bidder_faction_id).maybeSingle();
-                const corpName = winnerFaction?.faction_name || 'Your corporation';
-                const events = [];
-                events.push({
-                    nation_id:          winnerFaction?.nation_id || null,
-                    faction_id:         winner.bidder_faction_id,
-                    event_name:         'Shipping offer awarded',
-                    category:           'corporate',
-                    description_chosen: `${corpName} won the shipping contract for ${contract.name || 'an Energy route'} (${Number(winner.energy_per_tick) || 0} Energy/tick).`,
-                    fired_at_tick:      currentTick,
-                });
-                if (contract.nation_id) {
-                    events.push({
-                        nation_id:          contract.nation_id,
-                        event_name:         'Shipping arranged',
-                        category:           'trade',
-                        description_chosen: `${corpName} will deliver ${Number(winner.energy_per_tick) || 0} Energy/tick to your nation under the active trade agreement.`,
-                        fired_at_tick:      currentTick,
-                    });
-                }
-                if (rejected && rejected.length > 0) {
-                    const rejectedIds = rejected.map(r => r.id);
-                    const { data: lostBids } = await supabase.from('shipping_contract_bids')
-                        .select('bidder_faction_id, factions:bidder_faction_id(faction_name, nation_id)')
-                        .in('id', rejectedIds);
-                    for (const lb of (lostBids || [])) {
-                        events.push({
-                            nation_id:          lb.factions?.nation_id || null,
-                            faction_id:         lb.bidder_faction_id,
-                            event_name:         'Shipping offer rejected',
-                            category:           'corporate',
-                            description_chosen: `Your offer on ${contract.name || 'an Energy route'} was not selected — ${corpName} won the contract.`,
-                            fired_at_tick:      currentTick,
-                        });
-                    }
-                }
-                if (events.length > 0) {
-                    await supabase.from('event_log').insert(events);
-                }
-            } catch (logErr) {
-                console.warn(`[TradeAgreementShipping] award event_log insert failed for ${contract.id}:`, logErr?.message || logErr);
-            }
+    try {
+        const { data: mw, error: mwErr } = await supabase.rpc(
+            'process_trade_agreement_shipping_multiwinner',
+            { p_tick: currentTick }
+        );
+        if (mwErr) {
+            console.warn('[TradeAgreementShipping] multi-winner RPC failed:', mwErr.message);
+            return results;
         }
+        if (mw && mw.success) {
+            results.routesActive  = Number(mw.routes_active)  || 0;
+            results.routesMissed  = Number(mw.routes_missed)  || 0;
+            results.slotsFilled   = Number(mw.slots_filled)   || 0;
+            results.slotsDemanded = Number(mw.slots_demanded) || 0;
+            results.totalPaid     = Number(mw.total_paid)     || 0;
+        }
+    } catch (e) {
+        console.warn('[TradeAgreementShipping] multi-winner allocator threw:', e?.message || e);
     }
-
-    // ── Pass B: Maturity sweep (revert route_risk + auto-renew) ──
-    // Pull every awarded trade-ag contract whose term has run out.
-    // Pulling more columns now since Phase 6 also re-spawns a fresh
-    // open contract when the parent agreement is still active —
-    // reuses the same operational parameters so the buyer doesn't
-    // have to re-sign for permanent agreements.
-    const { data: maturing, error: matErr } = await supabase
-        .from('shipping_contracts')
-        .select(`id, winner_faction_id, trade_agreement_id, nation_id, issuer_name,
-                 name, description, origin_port, destination_port, destination_nation_id,
-                 term_ticks, freighters_required, min_fleet_health, max_route_risk,
-                 commodity, volume_required, delivery_priority, award_criterion`)
-        .eq('status', 'awarded')
-        .not('trade_agreement_id', 'is', null)
-        .lte('ends_at_tick', currentTick);
-    if (matErr) {
-        console.warn('[TradeAgreementShipping] maturity fetch failed:', matErr.message);
-    } else if (maturing && maturing.length > 0) {
-        for (const contract of maturing) {
-            // Revert route_risk_delta on the winning corp before flipping.
-            const { data: bid } = await supabase.from('shipping_contract_bids')
-                .select('route_risk_delta')
-                .eq('contract_id', contract.id).eq('status', 'accepted')
-                .limit(1).maybeSingle();
-            const delta = Number(bid?.route_risk_delta) || 0;
-            if (delta !== 0 && contract.winner_faction_id) {
-                const { data: w } = await supabase.from('factions')
-                    .select('corp_route_risk').eq('id', contract.winner_faction_id).single();
-                if (w) {
-                    const newRisk = Math.max(0, Math.min(10,
-                        (Number(w.corp_route_risk) || 0) - delta));
-                    await supabase.from('factions')
-                        .update({ corp_route_risk: newRisk })
-                        .eq('id', contract.winner_faction_id);
-                }
-            }
-            const { error: doneErr } = await supabase.from('shipping_contracts')
-                .update({ status: 'completed', updated_at: nowIso() })
-                .eq('id', contract.id).eq('status', 'awarded');
-            if (doneErr) {
-                console.warn(`[TradeAgreementShipping] complete-flip failed for ${contract.id}:`, doneErr.message);
-                continue;
-            }
-            results.completed++;
-
-            // Phase 7: completion notification to the corp.
-            // Renewal/loss events fire below where the renewal logic
-            // decides whether to re-spawn or let the route end.
-            try {
-                if (contract.winner_faction_id) {
-                    const { data: wFaction } = await supabase.from('factions')
-                        .select('faction_name, nation_id').eq('id', contract.winner_faction_id).maybeSingle();
-                    await supabase.from('event_log').insert({
-                        nation_id:          wFaction?.nation_id || null,
-                        faction_id:         contract.winner_faction_id,
-                        event_name:         'Shipping contract completed',
-                        category:           'corporate',
-                        description_chosen: `${wFaction?.faction_name || 'Your corporation'} completed the shipping contract for ${contract.name || 'an Energy route'}.`,
-                        fired_at_tick:      currentTick,
-                    });
-                }
-            } catch (logErr) {
-                console.warn(`[TradeAgreementShipping] completion event_log insert failed for ${contract.id}:`, logErr?.message || logErr);
-            }
-
-            // Phase 6 auto-renewal: if the parent agreement is still
-            // 'active', spawn a fresh open contract with the same
-            // parameters. Buyer keeps getting deliveries; corps re-bid.
-            // Skip if the agreement ended for any reason — the cancel
-            // cascade trigger from Phase 5 already handled cleanup.
-            const { data: parent } = await supabase.from('trade_agreements')
-                .select('status, expires_at_tick, duration_type')
-                .eq('id', contract.trade_agreement_id).maybeSingle();
-            if (parent?.status === 'active') {
-                // Don't re-spawn past the agreement's expiration.
-                const aExp = Number(parent.expires_at_tick) || null;
-                const isPermanent = parent.duration_type === 'permanent' || aExp === null;
-                const wouldExpire = !isPermanent && aExp !== null && aExp <= currentTick;
-                if (!wouldExpire) {
-                    const { error: spawnErr } = await supabase.from('shipping_contracts').insert({
-                        nation_id:             contract.nation_id,
-                        issuer_faction_id:     null,
-                        issuer_name:           contract.issuer_name,
-                        contract_type:         'foreign',
-                        name:                  contract.name,
-                        description:           contract.description,
-                        origin_port:           contract.origin_port,
-                        destination_port:      contract.destination_port,
-                        destination_nation_id: contract.destination_nation_id,
-                        revenue_per_tick:      1,
-                        term_ticks:            contract.term_ticks,
-                        freighters_required:   contract.freighters_required,
-                        min_fleet_health:      contract.min_fleet_health,
-                        max_route_risk:        contract.max_route_risk,
-                        status:                'open',
-                        expires_at_tick:       currentTick + 1,
-                        created_at_tick:       currentTick,
-                        trade_agreement_id:    contract.trade_agreement_id,
-                        commodity:             contract.commodity,
-                        volume_required:       contract.volume_required,
-                        delivery_priority:     contract.delivery_priority,
-                        award_criterion:       contract.award_criterion,
-                    });
-                    if (spawnErr) {
-                        console.warn(`[TradeAgreementShipping] auto-renew spawn failed for ${contract.id}:`, spawnErr.message);
-                    } else {
-                        results.renewed = (results.renewed || 0) + 1;
-                        // Phase 7: notify the buyer nation that a fresh
-                        // bid window has opened. Corps will see the new
-                        // contract on Available Routes; no per-corp event
-                        // needed for that surface.
-                        try {
-                            await supabase.from('event_log').insert({
-                                nation_id:          contract.nation_id,
-                                event_name:         'Shipping contract renewed',
-                                category:           'trade',
-                                description_chosen: `Your trade agreement's shipping contract has completed and a fresh bid window is open for shipping corps.`,
-                                fired_at_tick:      currentTick,
-                            });
-                        } catch (logErr) {
-                            console.warn(`[TradeAgreementShipping] renewal event_log insert failed:`, logErr?.message || logErr);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // ── Pass C: Per-tick payment ──
-    // Buyer nation pays the corp; corp cash credited. Buyer's nation_id
-    // was set on the contract by Phase 2.
-    const { data: active, error: activeErr } = await supabase
-        .from('shipping_contracts')
-        .select('id, name, winner_faction_id, revenue_per_tick, total_paid, last_payment_tick, nation_id, consecutive_missed_payments')
-        .eq('status', 'awarded')
-        .not('trade_agreement_id', 'is', null)
-        .or(`last_payment_tick.is.null,last_payment_tick.neq.${currentTick}`);
-    if (activeErr) {
-        console.warn('[TradeAgreementShipping] active fetch failed:', activeErr.message);
-        return results;
-    }
-    if (!active || active.length === 0) return results;
-
-    for (const contract of active) {
-        if (!contract.winner_faction_id || !contract.nation_id) continue;
-        const revenue = Number(contract.revenue_per_tick) || 0;
-        if (revenue <= 0) continue;
-
-        // Buyer nation pays. Skip if treasury can't cover (Phase 5 will
-        // add late-payment / contract-default handling).
-        // Unit boundary: nation.budget is abstract integers (1 = $1M raw
-        // post-20261206); revenue is raw dollars from the contract.
-        // RAW_PER_ABSTRACT bridges the comparison + the debit back.
-        const RAW_PER_ABSTRACT = 1_000_000;
-        const { data: buyer, error: bErr } = await supabase.from('nations')
-            .select('budget').eq('id', contract.nation_id).single();
-        if (bErr || !buyer) {
-            console.warn(`[TradeAgreementShipping] buyer fetch failed for ${contract.id}:`, bErr?.message);
-            continue;
-        }
-        const buyerBudgetAbstract = Number(buyer.budget) || 0;
-        const buyerBudgetRaw      = buyerBudgetAbstract * RAW_PER_ABSTRACT;
-        const canPay              = buyerBudgetRaw >= revenue;
-
-        // Phase 8: payment-skipped tracking. When the buyer treasury
-        // can't cover the contract this tick, increment
-        // consecutive_missed_payments so the UI can surface the
-        // problem on both buyer and corp sides. Fire event_log
-        // entries only on the 0 → 1 transition (first miss in a
-        // streak) so chronic problems don't spam the log every tick.
-        if (!canPay) {
-            const priorMisses = Number(contract.consecutive_missed_payments) || 0;
-            const { error: missErr } = await supabase.from('shipping_contracts').update({
-                consecutive_missed_payments: priorMisses + 1,
-                updated_at: nowIso(),
-            }).eq('id', contract.id);
-            if (missErr) {
-                console.warn(`[TradeAgreementShipping] miss-counter update failed for ${contract.id}:`, missErr.message);
-                continue;
-            }
-            results.missed = (results.missed || 0) + 1;
-            if (priorMisses === 0) {
-                try {
-                    const events = [];
-                    if (contract.nation_id) {
-                        events.push({
-                            nation_id:          contract.nation_id,
-                            event_name:         'Shipping payment skipped',
-                            category:           'trade',
-                            description_chosen: `Treasury insufficient — couldn't pay this tick's shipping fee on '${contract.name || 'an Energy route'}'. The contract remains active; payment will resume once reserves are restored.`,
-                            fired_at_tick:      currentTick,
-                        });
-                    }
-                    const { data: wf } = await supabase.from('factions')
-                        .select('faction_name, nation_id').eq('id', contract.winner_faction_id).maybeSingle();
-                    events.push({
-                        nation_id:          wf?.nation_id || null,
-                        faction_id:         contract.winner_faction_id,
-                        event_name:         'Shipping payment delayed',
-                        category:           'corporate',
-                        description_chosen: `Buyer's treasury was insufficient — your shipping payment for '${contract.name || 'an Energy route'}' was skipped this tick. Service continues; payment resumes when their reserves recover.`,
-                        fired_at_tick:      currentTick,
-                    });
-                    if (events.length > 0) {
-                        await supabase.from('event_log').insert(events);
-                    }
-                } catch (logErr) {
-                    console.warn(`[TradeAgreementShipping] miss event_log insert failed for ${contract.id}:`, logErr?.message || logErr);
-                }
-            }
-            continue;
-        }
-
-        const actualPayment = revenue;
-        const { error: debitErr } = await supabase.from('nations')
-            .update({ budget: (buyerBudgetRaw - actualPayment) / RAW_PER_ABSTRACT })
-            .eq('id', contract.nation_id);
-        if (debitErr) {
-            console.warn(`[TradeAgreementShipping] buyer debit failed for ${contract.id}:`, debitErr.message);
-            continue;
-        }
-
-        const { data: winner, error: wFetchErr } = await supabase.from('factions')
-            .select('corp_cash_reserves')
-            .eq('id', contract.winner_faction_id).single();
-        if (wFetchErr || !winner) {
-            console.warn(`[TradeAgreementShipping] winner fetch failed for ${contract.id}:`, wFetchErr?.message);
-            continue;
-        }
-        const { error: credErr } = await supabase.from('factions').update({
-            corp_cash_reserves: (Number(winner.corp_cash_reserves) || 0) + actualPayment,
-        }).eq('id', contract.winner_faction_id);
-        if (credErr) {
-            console.warn(`[TradeAgreementShipping] corp credit failed for ${contract.id}:`, credErr.message);
-            continue;
-        }
-        logCashEvent(contract.winner_faction_id, 'revenue_trade', 'Trade-agreement payment', actualPayment, contract.nation_id);
-
-        // Phase 8: reset consecutive_missed_payments on any successful
-        // payment so the UI's "delayed" indicator clears once the buyer
-        // catches up.
-        const { error: contractErr } = await supabase.from('shipping_contracts').update({
-            last_payment_tick:           currentTick,
-            total_paid:                  (Number(contract.total_paid) || 0) + actualPayment,
-            consecutive_missed_payments: 0,
-            updated_at:                  nowIso(),
-        }).eq('id', contract.id);
-        if (contractErr) {
-            console.warn(`[TradeAgreementShipping] contract update failed for ${contract.id}:`, contractErr.message);
-            continue;
-        }
-        results.paid++;
-    }
-
     return results;
 }
 
@@ -4313,7 +3835,8 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
             // Organic + trade-agreement-flow shipping_routes generation is
             // gone. Trade agreements spawn shipping_contracts directly via
             // trg_spawn_shipping_contracts; bids flow through
-            // place_shipping_offer; auto-award runs in
+            // place_shipping_offer (legacy) or entrepreneur_place_shipping_bid
+            // (multi-winner); per-tick allocation runs in
             // processTradeAgreementShipping below. Pre-existing awarded
             // shipping_claims still drain through processShippingRoutes
             // until they complete naturally.
@@ -5290,20 +4813,14 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
             console.log(`[ShippingRoutes] tick ${currentTick}: ${shippingResults.awarded} awarded (${shippingResults.bidsAccepted} bids accepted, ${shippingResults.bidsAutoRejected} auto-rejected), ${shippingResults.expired} expired, ${shippingResults.completed} completed, ${shippingResults.paid} paid`);
         }
 
-        // Phase 4 — trade-agreement-spawned shipping. Auto-award by
-        // delivery_priority, route_risk delta on award/completion,
-        // per-tick payment from buyer nation → corp.
-        // Phase 6: Pass B auto-renews completed contracts when the
-        // parent agreement is still active.
+        // Trade-agreement shipping — multi-winner per-tick allocator
+        // (migration 20270181). Importing nation pays; entrepreneur
+        // bidders credited to corp treasury, legacy faction bidders
+        // to corp_cash_reserves. See process_trade_agreement_shipping_multiwinner.
         const tradeShipResults = await processTradeAgreementShipping(supabase, currentTick);
-        if (tradeShipResults.awarded > 0
-            || tradeShipResults.completed > 0
-            || tradeShipResults.paid > 0
-            || tradeShipResults.polling > 0
-            || tradeShipResults.renewed > 0
-            || tradeShipResults.missed > 0) {
+        if (tradeShipResults.routesActive > 0 || tradeShipResults.routesMissed > 0) {
             summary.tradeAgreementShipping = tradeShipResults;
-            console.log(`[TradeAgreementShipping] tick ${currentTick}: ${tradeShipResults.awarded} awarded (${tradeShipResults.bidsAccepted} bids accepted, ${tradeShipResults.bidsAutoRejected} auto-rejected), ${tradeShipResults.polling} polling for bids, ${tradeShipResults.completed} completed (${tradeShipResults.renewed} renewed), ${tradeShipResults.paid} paid, ${tradeShipResults.missed} skipped`);
+            console.log(`[TradeAgreementShipping] tick ${currentTick}: ${tradeShipResults.routesActive} routes paid, ${tradeShipResults.slotsFilled}/${tradeShipResults.slotsDemanded} slots filled, $${tradeShipResults.totalPaid} total, ${tradeShipResults.routesMissed} missed`);
         }
 
         // Aviation Manufacturing — design research advancement.
