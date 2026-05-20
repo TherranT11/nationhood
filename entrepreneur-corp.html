@@ -838,14 +838,17 @@ function initials(s, n) {
       }
     }
 
-    // Cash on hand: public reads treasury_cash; private has none
-    // (treasury_cash NULL by design, no ops modelled) so it shows the
-    // seed it was founded with. Debt / per-tick income aren't modelled
-    // → static real $0 in the markup (cp-debt / cp-income).
-    const cashOnHand = isPublic ? (Number(c.treasury_cash) || 0)
-                                : (Number(c.starting_capital) || 0);
-    set('cp-cash', fmtM(cashOnHand));
-    set('cp-cash-delta', isPublic ? '— corp treasury' : '— seed · no ops yet');
+    // Cash on hand: treasury_cash is the live cash pool for every
+    // corp (private and public) post-20270182. Backfilled = the
+    // starting_capital seed. Construction debits it, AMM trades it.
+    // Pre-migration legacy rows may still carry NULL — fall back to
+    // starting_capital so the UI is never blank.
+    const cashOnHand = Number(c.treasury_cash);
+    const cashDisplay = Number.isFinite(cashOnHand)
+        ? cashOnHand
+        : (Number(c.starting_capital) || 0);
+    set('cp-cash', fmtM(cashDisplay));
+    set('cp-cash-delta', isPublic ? '— corp treasury' : '— corp treasury');
 
     // VALUATION from the shared single source (js/game/corp-valuation.js
     // §3). The engine valuation is deliberately a separate surface and
@@ -1853,7 +1856,7 @@ function initials(s, n) {
         if (rpcErr) throw rpcErr;
         if (!data || !data.success) {
           const REASON = {
-            insufficient_funds:    data?.need != null ? `Not enough party funds — need ${fmtUsd(Number(data.need))}.` : 'Not enough party funds.',
+            insufficient_funds:    data?.need != null ? `Corp treasury too low — need ${fmtUsd(Number(data.need))}, has ${fmtUsd(Number(data.have) || 0)}.` : 'Corp treasury too low.',
             not_construction_corp: 'Only Construction corps can break ground.',
             not_owner:             'Only the corp owner can begin construction.',
             invalid_name:          'Building name must be 2–80 characters.',

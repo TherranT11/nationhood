@@ -752,7 +752,10 @@ function renderPositions(corps, filter) {
 
       for (const c of corps) {
         const isPub = c.listing === 'public';
-        const cash = isPub ? (Number(c.treasury_cash) || 0) : (Number(c.starting_capital) || 0);
+        // treasury_cash is live for both listings post-20270182.
+        // Legacy rows (treasury_cash NULL) fall back to starting_capital.
+        const treasNum = Number(c.treasury_cash);
+        const cash = Number.isFinite(treasNum) ? treasNum : (Number(c.starting_capital) || 0);
         const val  = computeEntrepreneurValuation(c);
         const ind  = (c.industry || '').toLowerCase();
         const row  = document.createElement('div'); row.className = 'ec-jr';
