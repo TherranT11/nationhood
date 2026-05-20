@@ -1466,7 +1466,7 @@ function initials(s, n) {
         const { data: market, error: mErr } = await _supabase.from('corp_buildings')
           .select('id, name, tier, list_price, owner_corp_id, '
                 + 'nation:nations!nation_id(name), '
-                + 'owner:entrepreneur_corps!owner_corp_id(name, industry)')
+                + 'owner:entrepreneur_corps!owner_corp_id(name)')
           .not('list_price', 'is', null)
           .eq('status', 'completed')
           .order('list_price', { ascending: true });
@@ -1474,7 +1474,11 @@ function initials(s, n) {
           listEl.innerHTML = `<div class="mk-empty">Failed to load: ${escapeHtml(mErr.message)}</div>`;
           return;
         }
-        const rows = (market || []).filter(b => b.owner_corp_id !== id);
+        // Two filters: hide buildings this corp already owns (can't buy
+        // from yourself — server also enforces) and hide orphaned
+        // listings (owner corp was deleted; list_price went stale via
+        // ON DELETE SET NULL, server would reject with seller_orphan).
+        const rows = (market || []).filter(b => b.owner_corp_id !== null && b.owner_corp_id !== id);
         if (rows.length === 0) {
           listEl.innerHTML = '<div class="mk-empty">No buildings currently for sale.</div>';
           return;
