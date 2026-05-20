@@ -339,10 +339,11 @@
   /* Building-type pill on Active Projects rows */
   .ap-btype { display:inline-block; padding:3px 8px; border-radius:3px; font-size:9px;
     letter-spacing:0.12em; font-weight:500; text-transform:uppercase; margin-right:6px; }
-  .ap-btype.regional_hq       { background:#2a1f2a; color:#aa7aaa; }
-  .ap-btype.construction_yard { background:#1f2a1a; color:#8aaa6a; }
-  .ap-btype.port              { background:#2a2419; color:#c89e6e; }
-  .ap-btype.banking_office    { background:#1a2535; color:#7a9aab; }
+  .ap-btype.regional_hq        { background:#2a1f2a; color:#aa7aaa; }
+  .ap-btype.construction_yard  { background:#1f2a1a; color:#8aaa6a; }
+  .ap-btype.port               { background:#2a2419; color:#c89e6e; }
+  .ap-btype.banking_office     { background:#1a2535; color:#7a9aab; }
+  .ap-btype.real_estate_office { background:#2a1f2a; color:#aa7aaa; }
   .bm-tiers { display:grid; grid-template-columns:1fr; gap:6px; }
   .bm-tier { display:grid; grid-template-columns:80px 1fr auto auto auto; gap:12px;
     padding:11px 14px; background:#121212; border:0.5px solid rgba(255,255,255,0.10);
@@ -1342,10 +1343,11 @@ function initials(s, n) {
     // in utils.js — single source across the two pages that render
     // building-type chips (entrepreneur-corp + entrepreneur-markets).
     const BUILDING_TYPE_DESC = {
-      regional_hq:       'Admin presence in a nation. Required to do anything else there. Buyer Reputation bonus per profile.',
-      construction_yard: '+2 concurrent Port / Banking-Office build slots in this nation. Sold to Construction corps.',
-      port:              'Shipping operational. Sold to Shipping corps.',
-      banking_office:    'Banking operational. Sold to Banking corps.',
+      regional_hq:        'Admin presence in a nation. Required to do anything else there. Buyer Reputation bonus per profile.',
+      construction_yard:  '+2 concurrent Port / Banking-Office / Real-Estate-Office build slots in this nation. Sold to Construction corps.',
+      port:               'Shipping operational. Sold to Shipping corps.',
+      banking_office:     'Banking operational. Sold to Banking corps.',
+      real_estate_office: 'Required for Real Estate corps to list properties in this nation. Sold to Real Estate corps.',
     };
     const isConstructionCorp = (c.industry === 'construction');
     const isRealEstateCorp   = (c.industry === 'real_estate');
@@ -1819,11 +1821,12 @@ function initials(s, n) {
         if (rpcErr) throw rpcErr;
         if (!data || !data.success) {
           const REASON = {
-            invalid_price:      'Price must be a positive whole-dollar amount.',
-            not_completed:      'Only completed buildings can be listed.',
-            not_owner:          'Only the owner corp can list this building.',
-            building_not_found: 'Building not found — refresh and try again.',
-            no_owner:           'This building has no current owner.',
+            invalid_price:                    'Price must be a positive whole-dollar amount.',
+            not_completed:                    'Only completed buildings can be listed.',
+            not_owner:                        'Only the owner corp can list this building.',
+            building_not_found:               'Building not found — refresh and try again.',
+            no_owner:                         'This building has no current owner.',
+            no_real_estate_office_in_nation:  'You need a completed Real Estate Office in this property’s nation before you can list it.',
           };
           errEl.textContent = REASON[data?.reason] || ('Could not list: ' + (data?.reason || 'unknown'));
           listSubmitting = false; btn.disabled = false; btn.textContent = prev;
@@ -1877,13 +1880,14 @@ function initials(s, n) {
         if (rpcErr) throw rpcErr;
         if (!data || !data.success) {
           const REASON = {
-            offer_not_pending:         'Offer is no longer pending.',
-            buyer_insufficient_funds:  data?.need != null
-                                         ? `Buyer no longer has the funds (have ${fmtUsd(Number(data.have ?? 0))}, need ${fmtUsd(Number(data.need))}).`
-                                         : 'Buyer no longer has the funds.',
-            not_seller_corp_owner:     'You are not the owner of the selling corp.',
-            not_for_sale:              'Listing was already withdrawn.',
-            buyer_orphan:              'Buyer corp has no owning faction.',
+            offer_not_pending:               'Offer is no longer pending.',
+            buyer_insufficient_funds:        data?.need != null
+                                               ? `Buyer no longer has the funds (have ${fmtUsd(Number(data.have ?? 0))}, need ${fmtUsd(Number(data.need))}).`
+                                               : 'Buyer no longer has the funds.',
+            not_seller_corp_owner:           'You are not the owner of the selling corp.',
+            not_for_sale:                    'Listing was already withdrawn.',
+            buyer_orphan:                    'Buyer corp has no owning faction.',
+            no_real_estate_office_in_nation: 'Your Real Estate Office in this nation is gone — listing self-cancelled.',
             seller_orphan:             'Seller corp has no owning faction.',
           };
           alert(REASON[data?.reason] || ('Could not accept: ' + (data?.reason || 'unknown')));
