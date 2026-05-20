@@ -2231,10 +2231,12 @@ function initials(s, n) {
             bank_insufficient_funds: data?.need != null
               ? `Need ${fmtUsd(Number(data.need))}, your corp owner has ${fmtUsd(Number(data.have ?? 0))}.`
               : 'Bank owner doesn’t have the principal in party funds.',
-            request_not_pending:     'This request is no longer pending.',
-            request_expired:         'This request has expired.',
-            bank_already_responded:  'Already responded to this request.',
-            not_bank_corp_owner:     'You don’t own this corp.',
+            request_not_pending:         'This request is no longer pending.',
+            request_expired:             'This request has expired.',
+            no_banking_office_in_nation: 'Your corp doesn’t own a Banking Office in the borrower’s HQ nation.',
+            cannot_self_loan:            'A corp can’t accept its own loan request.',
+            not_bank_corp_owner:         'You don’t own this corp.',
+            not_banking_corp:            'Only Banking corps can accept loan requests.',
           };
           alert(REASON[data?.reason] || ('Could not accept: ' + (data?.reason || 'unknown')));
           loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
