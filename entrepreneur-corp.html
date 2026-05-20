@@ -879,22 +879,31 @@ function initials(s, n) {
       set('cp-owner-sub', `${fmtUsd(yourShares * price)} · ${yourShares}/${sharesOut} shares`);
 
       // ────────── Share Price History panel ──────────
-      // Backed by corp_share_price_history (migration 20270164).
-      // Sparkline (SVG, no library) + recent-changes list. Actor names
-      // resolved in a second fetch; uninstrumented rows (source NULL)
-      // render as "Price changed" and the chart still plots them.
+      // Backed by corp_share_price_history (migration 20270164 +
+      // per-tick anchors 20270179). Sparkline (SVG, no library) +
+      // recent-changes list. Actor names resolved in a second fetch;
+      // uninstrumented rows (source NULL) render as "Price changed"
+      // and the chart still plots them.
+      // Cap to last 200 rows so anchors don't bloat the fetch over
+      // the long tail (200 ticks ≈ ~17 game years of context).
       const pc = document.getElementById('cp-price-card');
       if (pc) {
         pc.className = '';
-        const { data: hist, error: histErr } = await _supabase
+        const { data: histDesc, error: histErr } = await _supabase
           .from('corp_share_price_history')
           .select('id, at_tick, old_price, new_price, delta_pct, source, actor_faction_id, quantity')
           .eq('corp_id', id)
-          .order('id', { ascending: true });
+          .order('id', { ascending: false })
+          .limit(200);
         if (histErr) console.warn('[entrepreneur-corp] price-history fetch error:', histErr.message);
-        const history = hist || [];
+        // Server returns newest-first (for the limit); chart needs
+        // oldest-first to plot left-to-right.
+        const history = (histDesc || []).slice().reverse();
+        // Recent-events list excludes per-tick anchors (they're noise
+        // in a "what just happened" list); sparkline keeps them.
+        const eventRows = history.filter(h => h.source !== 'tick');
 
-        const actorIds = [...new Set(history.map(h => h.actor_faction_id).filter(Boolean))];
+        const actorIds = [...new Set(eventRows.map(h => h.actor_faction_id).filter(Boolean))];
         let actorNames = {};
         if (actorIds.length) {
           const { data: facs, error: facErr } = await _supabase.from('factions')
@@ -977,7 +986,7 @@ function initials(s, n) {
               <span class="pc-cur-val">${fmtUsd(price)}</span>
             </div>
             ${renderSpark(history)}
-            ${renderList(history)}
+            ${renderList(eventRows)}
           </div>`;
       }
 

@@ -1212,6 +1212,22 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Corp loans service failed (non-fatal):', clErr);
     }
 
+    // 3.6g Corp share-price history anchors (20270179). Inserts one
+    // no-op row per public corp into corp_share_price_history with
+    // source='tick' so the sparkline always has time-axis datapoints
+    // between trades. No money moves. Idempotent within a tick.
+    try {
+        const { data: anchorResult, error: anchorErr } =
+            await supabase.rpc('process_corp_price_anchors', { p_tick: newTick });
+        if (anchorErr) {
+            console.error('[advanceTick] process_corp_price_anchors failed:', anchorErr.message);
+        } else if (anchorResult && anchorResult.written > 0) {
+            console.log(`[advanceTick] Corp price anchors: ${anchorResult.written} public corps anchored at T${anchorResult.tick}`);
+        }
+    } catch (anchorErr) {
+        console.error('[advanceTick] Corp price anchors service failed (non-fatal):', anchorErr);
+    }
+
     // 3.6b Safety net: catch economic aid agreements missing their aid_agreement_state row
     // Runs every 5 ticks to reduce CPU load — orphaned rows are rare, no urgency
     if (newTick % 5 === 0) try {
