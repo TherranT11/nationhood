@@ -73,6 +73,30 @@
   .empty-card { background:#0d0d0d; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
     padding:30px 22px; color:#666; font-size:12px; text-align:center; line-height:1.7; letter-spacing:0.03em; }
 
+  /* Share-price history panel */
+  .price-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.10); border-radius:4px;
+    padding:18px 22px; line-height:1.55; }
+  .pc-header { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:10px; }
+  .pc-cur-lab { color:#888; font-size:10px; letter-spacing:0.13em; text-transform:uppercase; }
+  .pc-cur-val { color:#8aaa6a; font-size:18px; font-weight:500; }
+  .pc-spark { width:100%; height:80px; display:block; margin:6px 0 2px; }
+  .pc-spark-area { fill:rgba(138,170,106,0.07); }
+  .pc-spark-line { fill:none; stroke:#8aaa6a; stroke-width:1.5; }
+  .pc-spark-dot { fill:#8aaa6a; }
+  .pc-spark-empty { color:#555; font-size:11px; text-align:center; padding:24px 0; font-style:italic; }
+  .pc-list { margin-top:12px; padding-top:12px; border-top:0.5px dashed rgba(255,255,255,0.08); }
+  .pc-list-head { color:#666; font-size:10px; letter-spacing:0.13em; text-transform:uppercase; margin-bottom:6px; }
+  .pc-event { display:grid; grid-template-columns:42px 1fr auto 60px; gap:10px; align-items:baseline;
+    padding:5px 0; font-size:12px; }
+  .pc-event + .pc-event { border-top:0.5px solid rgba(255,255,255,0.04); }
+  .pc-tick { color:#555; font-size:10px; font-family:Georgia,'Times New Roman',serif; font-style:italic; }
+  .pc-desc { color:#aaa; }
+  .pc-price { color:#fff; font-variant-numeric:tabular-nums; }
+  .pc-delta { font-size:11px; font-weight:500; text-align:right; font-variant-numeric:tabular-nums; }
+  .pc-delta.pos  { color:#8aaa6a; }
+  .pc-delta.neg  { color:#c98a8a; }
+  .pc-delta.zero { color:#666; }
+
   /* Board roster sidebar */
   .board-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px; overflow:hidden; }
   .board-header { padding:14px 18px; background:#0a0a0a; border-bottom:0.5px solid rgba(255,255,255,0.06); }
@@ -193,7 +217,7 @@
         </div>
         <div class="empty-card" id="cp-price-card">
           Privately held — no public share price.<br>
-          Share-price history appears once IPOs are enabled.
+          Share-price history begins once the corp goes public.
         </div>
 
         <div class="section-heading">
@@ -534,9 +558,108 @@ function initials(s, n) {
       set('cp-role-pill', isOwner ? 'FOUNDER' : 'SHAREHOLDER');
       set('cp-owner-sub', `${fmtUsd(yourShares * price)} · ${yourShares}/${sharesOut} shares`);
 
+      // ────────── Share Price History panel ──────────
+      // Backed by corp_share_price_history (migration 20270164).
+      // Sparkline (SVG, no library) + recent-changes list. Actor names
+      // resolved in a second fetch; uninstrumented rows (source NULL)
+      // render as "Price changed" and the chart still plots them.
       const pc = document.getElementById('cp-price-card');
-      if (pc) pc.innerHTML = `Current share price <b style="color:#8aaa6a">${fmtUsd(price)}</b>`
-        + `<br>Trading and price history begin in a later phase.`;
+      if (pc) {
+        pc.className = '';
+        const { data: hist, error: histErr } = await _supabase
+          .from('corp_share_price_history')
+          .select('id, at_tick, old_price, new_price, delta_pct, source, actor_faction_id, quantity')
+          .eq('corp_id', id)
+          .order('id', { ascending: true });
+        if (histErr) console.warn('[entrepreneur-corp] price-history fetch error:', histErr.message);
+        const history = hist || [];
+
+        const actorIds = [...new Set(history.map(h => h.actor_faction_id).filter(Boolean))];
+        let actorNames = {};
+        if (actorIds.length) {
+          const { data: facs, error: facErr } = await _supabase.from('factions')
+            .select('id, faction_name, leader_first_name, leader_last_name')
+            .in('id', actorIds);
+          if (facErr) console.warn('[entrepreneur-corp] history-actor fetch error:', facErr.message);
+          actorNames = Object.fromEntries((facs || []).map(f => {
+            const full = `${f.leader_first_name || ''} ${f.leader_last_name || ''}`.trim();
+            return [f.id, full || f.faction_name || 'Someone'];
+          }));
+        }
+
+        // Sparkline: polyline through new_price values (rows with
+        // NULL new_price — only delist — are skipped on the chart but
+        // still appear in the list). Fixed viewBox, scales width via
+        // preserveAspectRatio so the SVG fills the container.
+        const renderSpark = (rows) => {
+          const pts = rows.filter(r => r.new_price != null).map(r => Number(r.new_price));
+          if (pts.length === 0) {
+            return `<div class="pc-spark-empty">No price changes recorded yet.</div>`;
+          }
+          const W = 600, H = 80, padX = 4, padY = 6;
+          const min = Math.min(...pts), max = Math.max(...pts);
+          const range = (max - min) || 1;
+          const xs = pts.length > 1
+            ? pts.map((_, i) => padX + (i * (W - 2 * padX)) / (pts.length - 1))
+            : [W / 2];
+          const ys = pts.map(p => H - padY - ((p - min) / range) * (H - 2 * padY));
+          const linePts = xs.map((x, i) => `${x.toFixed(1)},${ys[i].toFixed(1)}`).join(' ');
+          // Filled area under the line for visual weight.
+          const areaPts = `${padX},${H} ${linePts} ${(W - padX).toFixed(1)},${H}`;
+          const dot = pts.length === 1
+            ? `<circle class="pc-spark-dot" cx="${xs[0]}" cy="${ys[0]}" r="2.5" />`
+            : '';
+          return `
+            <svg class="pc-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+              <polygon class="pc-spark-area" points="${areaPts}" />
+              <polyline class="pc-spark-line" points="${linePts}" />
+              ${dot}
+            </svg>`;
+        };
+
+        // Last 8 events, newest first.
+        const renderList = (rows) => {
+          if (!rows.length) return '';
+          const recent = rows.slice(-8).reverse();
+          const items = recent.map(h => {
+            const actor = h.actor_faction_id ? (actorNames[h.actor_faction_id] || 'Someone') : null;
+            const q = h.quantity;
+            let desc;
+            switch (h.source) {
+              case 'trade_buy':   desc = `${actor || 'Someone'} bought ${q || 0} share${q === 1 ? '' : 's'}`; break;
+              case 'trade_sell':  desc = `${actor || 'Someone'} sold ${q || 0} share${q === 1 ? '' : 's'}`; break;
+              case 'board_join':  desc = `${actor || 'A new director'} joined the board`; break;
+              case 'board_leave': desc = `${actor || 'A director'} left the board`; break;
+              case 'ipo':         desc = `Initial public offering`; break;
+              case 'delist':      desc = `Taken private`; break;
+              case 'backfill':    desc = `Listed`; break;
+              default:            desc = 'Price changed';
+            }
+            const priceTxt = h.new_price != null ? fmtUsd(Number(h.new_price)) : '—';
+            const dPct = h.delta_pct != null ? Number(h.delta_pct) : null;
+            const dTxt  = dPct == null ? '' : `${dPct > 0 ? '+' : ''}${dPct.toFixed(2)}%`;
+            const dCls  = dPct == null ? '' : (dPct > 0 ? 'pos' : (dPct < 0 ? 'neg' : 'zero'));
+            return `
+              <div class="pc-event">
+                <span class="pc-tick">T${h.at_tick}</span>
+                <span class="pc-desc">${desc}</span>
+                <span class="pc-price">${priceTxt}</span>
+                <span class="pc-delta ${dCls}">${dTxt}</span>
+              </div>`;
+          }).join('');
+          return `<div class="pc-list"><div class="pc-list-head">Recent</div>${items}</div>`;
+        };
+
+        pc.innerHTML = `
+          <div class="price-card">
+            <div class="pc-header">
+              <span class="pc-cur-lab">Current share price</span>
+              <span class="pc-cur-val">${fmtUsd(price)}</span>
+            </div>
+            ${renderSpark(history)}
+            ${renderList(history)}
+          </div>`;
+      }
 
       set('cp-d-price', fmtUsd(price));
       set('cp-d-shares', String(sharesOut));
