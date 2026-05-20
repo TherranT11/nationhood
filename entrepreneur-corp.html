@@ -1612,21 +1612,45 @@ function initials(s, n) {
 
     const renderNations = (btype) => {
       const sel = document.getElementById('bm-nation');
+      // HQ fallback: c.hq_nation_id + c.hq.name come from the corp
+      // row itself and are always available regardless of whether
+      // the nations-table fetch (cached in nationMap) succeeded.
+      // The dropdown can always at least offer the HQ nation.
+      const hqOpt = c.hq_nation_id ? {
+        id:   c.hq_nation_id,
+        name: nationMap.get(c.hq_nation_id)?.name || c.hq?.name || 'HQ',
+      } : null;
       let options;
       if (btype === 'regional_hq') {
-        // RHQ: any nation (no prereq). Show all available.
-        options = [...nationMap.values()].map(n => ({ id: n.id, name: n.name }));
+        // RHQ has no nation-prereq. Show everything we know about;
+        // if the fetch silently failed (nationMap empty), still
+        // offer the HQ so a Construction corp can build their first
+        // RHQ in their own nation.
+        if (nationMap.size > 0) {
+          options = [...nationMap.values()].map(n => ({ id: n.id, name: n.name }));
+        } else if (hqOpt) {
+          options = [hqOpt];
+        } else {
+          options = [];
+        }
       } else {
-        // Operational types: HQ + nations with owned RHQ.
+        // Operational types: HQ (implicit RHQ at founding) + every
+        // nation where this corp owns a completed RHQ.
         const valid = new Map();
-        if (c.hq_nation_id) valid.set(c.hq_nation_id, nationMap.get(c.hq_nation_id)?.name || c.hq?.name || 'HQ');
+        if (hqOpt) valid.set(hqOpt.id, hqOpt.name);
         for (const nid of corpRhqNationIds) {
           if (nid && !valid.has(nid)) valid.set(nid, nationMap.get(nid)?.name || '—');
         }
         options = [...valid.entries()].map(([id, name]) => ({ id, name }));
       }
       if (options.length === 0) {
-        sel.innerHTML = '<option value="">(no eligible nations — build a Regional HQ first)</option>';
+        // Type-aware empty copy. The previous generic "build a
+        // Regional HQ first" message was misleading when the user
+        // was already trying to build an RHQ.
+        const msg = btype === 'regional_hq'
+          ? '(no nations loaded — refresh the page)'
+          : '(no eligible nations — build a Regional HQ first)';
+        sel.innerHTML = `<option value="">${msg}</option>`;
       } else {
         sel.innerHTML = options.map(o => `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join('');
       }
