@@ -879,22 +879,31 @@ function initials(s, n) {
       set('cp-owner-sub', `${fmtUsd(yourShares * price)} · ${yourShares}/${sharesOut} shares`);
 
       // ────────── Share Price History panel ──────────
-      // Backed by corp_share_price_history (migration 20270164).
-      // Sparkline (SVG, no library) + recent-changes list. Actor names
-      // resolved in a second fetch; uninstrumented rows (source NULL)
-      // render as "Price changed" and the chart still plots them.
+      // Backed by corp_share_price_history (migration 20270164 +
+      // per-tick anchors 20270179). Sparkline (SVG, no library) +
+      // recent-changes list. Actor names resolved in a second fetch;
+      // uninstrumented rows (source NULL) render as "Price changed"
+      // and the chart still plots them.
+      // Cap to last 200 rows so anchors don't bloat the fetch over
+      // the long tail (200 ticks ≈ ~17 game years of context).
       const pc = document.getElementById('cp-price-card');
       if (pc) {
         pc.className = '';
-        const { data: hist, error: histErr } = await _supabase
+        const { data: histDesc, error: histErr } = await _supabase
           .from('corp_share_price_history')
           .select('id, at_tick, old_price, new_price, delta_pct, source, actor_faction_id, quantity')
           .eq('corp_id', id)
-          .order('id', { ascending: true });
+          .order('id', { ascending: false })
+          .limit(200);
         if (histErr) console.warn('[entrepreneur-corp] price-history fetch error:', histErr.message);
-        const history = hist || [];
+        // Server returns newest-first (for the limit); chart needs
+        // oldest-first to plot left-to-right.
+        const history = (histDesc || []).slice().reverse();
+        // Recent-events list excludes per-tick anchors (they're noise
+        // in a "what just happened" list); sparkline keeps them.
+        const eventRows = history.filter(h => h.source !== 'tick');
 
-        const actorIds = [...new Set(history.map(h => h.actor_faction_id).filter(Boolean))];
+        const actorIds = [...new Set(eventRows.map(h => h.actor_faction_id).filter(Boolean))];
         let actorNames = {};
         if (actorIds.length) {
           const { data: facs, error: facErr } = await _supabase.from('factions')
@@ -977,7 +986,7 @@ function initials(s, n) {
               <span class="pc-cur-val">${fmtUsd(price)}</span>
             </div>
             ${renderSpark(history)}
-            ${renderList(history)}
+            ${renderList(eventRows)}
           </div>`;
       }
 
@@ -1367,10 +1376,10 @@ function initials(s, n) {
     // changes) and renderProjects uses it for the tier pill label.
     // The SQL begin_construction RPC carries the server-authoritative
     // copy of the same numbers — keep them in sync.
-    // TIER_TABLE base figures (v4 rebalance, 20270172). SQL
+    // TIER_TABLE base figures (v4 rebalance, 20270172/20270180). SQL
     // begin_construction's CASE is authoritative; this is the client
     // display copy. Final cost / duration scale with the host
-    // nation's cost_of_living + physical_infrastructure (see
+    // nation's cost_of_living + infrastructure (see
     // nationCostMult). `rep` is the buyer-Reputation grant on
     // non-RE acquisition of an RHQ (S+0 / M+1 / L+2).
     const TIER_TABLE = {
@@ -1382,11 +1391,14 @@ function initials(s, n) {
     };
 
     // Nation-aware cost / duration scaling (mirrors begin_construction
-    // formula in 20270172). multiplier = (0.5 + col/100) × (0.5 +
-    // (100 - inf)/100). NULL stats → 50 (neutral, multiplier 1.0).
+    // formula in 20270172/20270180). multiplier = (0.5 + col/100) ×
+    // (0.5 + (100 - inf)/100). NULL stats → 50 (neutral, multiplier
+    // 1.0). The column on `nations` is `infrastructure` (not
+    // `physical_infrastructure` — that name was the bug 20270180
+    // fixed on the server).
     function nationCostMult(nation) {
       const col = Number(nation?.cost_of_living ?? 50);
-      const inf = Number(nation?.physical_infrastructure ?? 50);
+      const inf = Number(nation?.infrastructure ?? 50);
       const colF = 0.5 + col / 100;
       const infF = 0.5 + (100 - inf) / 100;
       return colF * infF;
@@ -1636,7 +1648,7 @@ function initials(s, n) {
     let buildSubmitting = false;
     let selectedBuildType = 'regional_hq';
     let corpRhqNationIds = new Set();    // owned RHQs (for non-RHQ filtering)
-    let nationMap = new Map();            // id → { id, name, cost_of_living, physical_infrastructure }
+    let nationMap = new Map();            // id → { id, name, cost_of_living, infrastructure }
 
     const currentNation = () => nationMap.get(document.getElementById('bm-nation').value);
 
@@ -1739,7 +1751,7 @@ function initials(s, n) {
       // Per-nation stat context — surfaces WHY the cost / duration
       // is what it is (high cost-of-living + low infra = expensive).
       const statLine = nation
-        ? `<span class="bm-stat">${escapeHtml(nation.name)}: cost-of-living ${Math.round(Number(nation.cost_of_living ?? 50))} · infrastructure ${Math.round(Number(nation.physical_infrastructure ?? 50))}</span><br>`
+        ? `<span class="bm-stat">${escapeHtml(nation.name)}: cost-of-living ${Math.round(Number(nation.cost_of_living ?? 50))} · infrastructure ${Math.round(Number(nation.infrastructure ?? 50))}</span><br>`
         : '';
       document.getElementById('bm-summary').innerHTML =
         `${statLine}<b>${escapeHtml(btypeLabel)}</b> · spend <b>${fmtUsd(cost)}</b> · build over <b>${dur} ticks</b> · <b>+${t.amb} Ambition</b> for you.<br>${footer}`;
@@ -1750,12 +1762,12 @@ function initials(s, n) {
       const errEl = document.getElementById('bm-err');
       document.getElementById('bm-name').value = '';
       errEl.textContent = '';
-      // Lazy-fetch nations (with cost_of_living + physical_infrastructure
+      // Lazy-fetch nations (with cost_of_living + infrastructure
       // for the cost-scaling formula) + corp's RHQ holdings on first
       // open. Two tiny queries; result is reused across modal opens.
       if (nationMap.size === 0) {
         const { data: nats, error: nErr } = await _supabase.from('nations')
-          .select('id, name, cost_of_living, physical_infrastructure')
+          .select('id, name, cost_of_living, infrastructure')
           .not('continent', 'is', null).order('name');
         if (nErr) console.warn('[entrepreneur-corp] nations fetch error:', nErr.message);
         for (const n of (nats || [])) nationMap.set(n.id, n);
@@ -1798,7 +1810,7 @@ function initials(s, n) {
     });
 
     // Nation-change handler: tier costs + durations depend on the
-    // host nation's cost_of_living + physical_infrastructure, so
+    // host nation's cost_of_living + infrastructure, so
     // re-render the tier rows and the summary on every change.
     document.getElementById('bm-nation').addEventListener('change', () => {
       renderTiers(selectedBuildType);
