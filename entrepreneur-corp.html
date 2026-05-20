@@ -238,6 +238,15 @@
           <div class="tc-msg" id="cp-div-msg"></div>
         </div>
 
+        <!-- No-Confidence Vote panel (public corps only). JS shows it
+             when an open motion exists OR the viewer is a non-CEO
+             board director who can file one. Hidden otherwise. -->
+        <div class="trade-card" id="cp-nc" style="display:none;">
+          <div class="lab" id="cp-nc-lab">VOTE OF NO CONFIDENCE</div>
+          <div id="cp-nc-body"></div>
+          <div class="tc-msg" id="cp-nc-msg"></div>
+        </div>
+
         <div class="board-card">
           <div class="board-header">
             <div class="title">BOARD OF DIRECTORS</div>
@@ -674,6 +683,220 @@ function initials(s, n) {
             declaring = false; divBtn.disabled = false; divBtn.textContent = prev;
           }
         });
+      }
+
+      // ────────── No-Confidence Vote panel ──────────
+      // Public-only. Three visible states (resolved server-side via
+      // corp_no_confidence_* RPCs; this block is purely render +
+      // dispatch).  An expired-but-unresolved motion shows a "RESOLVE
+      // NOW" button — anyone can click; corp_no_confidence_resolve is
+      // idempotent and SECURITY DEFINER.
+      const ncCard = document.getElementById('cp-nc');
+      if (ncCard) {
+        const [shardRes, motionRes, dirRes] = await Promise.all([
+          _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').maybeSingle(),
+          _supabase.from('corp_no_confidence_motions')
+            .select('*').eq('corp_id', id).eq('status', 'open').maybeSingle(),
+          entId
+            ? _supabase.from('corp_board_seats').select('corp_id')
+                .eq('corp_id', id).eq('member_faction_id', entId).maybeSingle()
+            : Promise.resolve({ data: null }),
+        ]);
+        const currentTick = Number(shardRes?.data?.current_tick || 0);
+        const motion      = motionRes?.data || null;
+        const isDirector  = !!dirRes?.data;
+
+        const ncBody = document.getElementById('cp-nc-body');
+        const ncMsg  = document.getElementById('cp-nc-msg');
+
+        if (motion) {
+          // Eligibility + existing vote for current user.
+          let myWeight = 0;
+          let myVote   = null;
+          if (entId) {
+            const [elRes, vRes] = await Promise.all([
+              _supabase.from('corp_no_confidence_eligibility')
+                .select('shares_at_open').eq('motion_id', motion.id)
+                .eq('voter_faction_id', entId).maybeSingle(),
+              _supabase.from('corp_no_confidence_votes')
+                .select('vote').eq('motion_id', motion.id)
+                .eq('voter_faction_id', entId).maybeSingle(),
+            ]);
+            myWeight = Number(elRes?.data?.shares_at_open || 0);
+            myVote   = vRes?.data?.vote ?? null;
+          }
+
+          const expiryTick     = Number(motion.expiry_tick);
+          const expired        = currentTick >= expiryTick;
+          const ticksRemaining = Math.max(0, expiryTick - currentTick);
+          const snapshot       = Number(motion.snapshot_held_shares);
+          const yes            = Number(motion.yes_shares);
+          const no             = Number(motion.no_shares);
+          const abstain        = Math.max(0, snapshot - yes - no);
+          const quorumThr      = Math.ceil(snapshot * 0.3);
+          const quorumMet      = (yes + no) >= quorumThr;
+          const myVoteLabel    =
+            myVote === true  ? '<b style="color:#c98a8a">YES</b> (oust)'
+          : myVote === false ? '<b style="color:#8aaa6a">NO</b> (keep)'
+          : '<i style="color:#666">none yet</i>';
+
+          let html =
+            `<div class="tc-hint">Opened at tick ${motion.opened_tick}. ${
+               expired ? 'Voting closed — pending resolution.'
+                       : `Voting closes in ${ticksRemaining} tick${ticksRemaining === 1 ? '' : 's'}.`
+             }</div>
+             <div class="tc-hint" style="margin-top:8px;">
+               Tally: <b style="color:#c98a8a">${yes.toLocaleString()}</b> YES ·
+                      <b style="color:#8aaa6a">${no.toLocaleString()}</b> NO ·
+                      <span style="color:#666">${abstain.toLocaleString()} abstain</span><br>
+               of ${snapshot.toLocaleString()} eligible · quorum ${quorumThr.toLocaleString()}
+               <span style="color:${quorumMet ? '#8aaa6a' : '#c98a8a'}">${quorumMet ? '✓ met' : '✗ short'}</span>
+             </div>`;
+
+          if (myWeight > 0 && !expired) {
+            html +=
+              `<div class="tc-hint" style="margin-top:8px;">Your weight: <b>${myWeight.toLocaleString()} share${myWeight === 1 ? '' : 's'}</b> · Your vote: ${myVoteLabel}</div>
+               <div class="tc-row" style="margin-top:10px;">
+                 <button id="cp-nc-yes" class="tc-btn sell"${myVote === true  ? ' disabled' : ''}>VOTE YES</button>
+                 <button id="cp-nc-no"  class="tc-btn"${myVote === false ? ' disabled' : ''}>VOTE NO</button>
+               </div>`;
+          } else if (myWeight > 0 && expired) {
+            html += `<div class="tc-hint" style="margin-top:8px;">Your vote: ${myVoteLabel}</div>`;
+          }
+
+          if (expired) {
+            html +=
+              `<div class="tc-row" style="margin-top:10px;">
+                 <button id="cp-nc-resolve" class="tc-btn">RESOLVE NOW</button>
+               </div>`;
+          }
+
+          ncBody.innerHTML = html;
+          ncCard.style.display = 'block';
+
+          if (myWeight > 0 && !expired) {
+            let voting = false;
+            const doVote = async (yesValue) => {
+              if (voting) return;
+              voting = true;
+              ncMsg.className = 'tc-msg'; ncMsg.textContent = '';
+              const btn = document.getElementById(yesValue ? 'cp-nc-yes' : 'cp-nc-no');
+              const prev = btn.textContent;
+              btn.disabled = true; btn.textContent = 'CASTING…';
+              try {
+                const { data, error: rpcErr } = await _supabase.rpc('corp_no_confidence_vote',
+                  { p_motion_id: motion.id, p_yes: yesValue });
+                if (rpcErr) throw rpcErr;
+                if (!data?.success) {
+                  const RM = {
+                    not_authenticated: 'You are not signed in.',
+                    invalid_input:     'Invalid vote input.',
+                    motion_not_found:  'Motion not found.',
+                    motion_closed:     'This motion is no longer open.',
+                    voting_closed:     'Voting has closed.',
+                    no_entrepreneur:   'No entrepreneur faction found.',
+                    not_eligible:      'You weren’t a shareholder when this motion was filed.',
+                  };
+                  ncMsg.className = 'tc-msg err';
+                  ncMsg.textContent = RM[data?.reason] || ('Vote failed: ' + (data?.reason || 'unknown'));
+                  btn.disabled = false; btn.textContent = prev; voting = false;
+                  return;
+                }
+                ncMsg.className = 'tc-msg ok';
+                ncMsg.textContent = data.unchanged ? 'Vote unchanged.' : 'Vote recorded. Refreshing…';
+                setTimeout(() => location.reload(), 600);
+              } catch (e) {
+                ncMsg.className = 'tc-msg err';
+                ncMsg.textContent = 'Vote failed: ' + (e?.message || e);
+                btn.disabled = false; btn.textContent = prev; voting = false;
+              }
+            };
+            document.getElementById('cp-nc-yes').addEventListener('click', () => doVote(true));
+            document.getElementById('cp-nc-no').addEventListener('click', () => doVote(false));
+          }
+
+          if (expired) {
+            let resolving = false;
+            document.getElementById('cp-nc-resolve').addEventListener('click', async () => {
+              if (resolving) return;
+              resolving = true;
+              ncMsg.className = 'tc-msg'; ncMsg.textContent = '';
+              const btn = document.getElementById('cp-nc-resolve');
+              const prev = btn.textContent;
+              btn.disabled = true; btn.textContent = 'RESOLVING…';
+              try {
+                const { data, error: rpcErr } = await _supabase.rpc('corp_no_confidence_resolve',
+                  { p_motion_id: motion.id });
+                if (rpcErr) throw rpcErr;
+                if (!data?.success) {
+                  ncMsg.className = 'tc-msg err';
+                  ncMsg.textContent = 'Resolve failed: ' + (data?.reason || 'unknown');
+                  btn.disabled = false; btn.textContent = prev; resolving = false;
+                  return;
+                }
+                ncMsg.className = 'tc-msg ok';
+                ncMsg.textContent = `Outcome: ${data.outcome}. Refreshing…`;
+                setTimeout(() => location.reload(), 800);
+              } catch (e) {
+                ncMsg.className = 'tc-msg err';
+                ncMsg.textContent = 'Resolve failed: ' + (e?.message || e);
+                btn.disabled = false; btn.textContent = prev; resolving = false;
+              }
+            });
+          }
+        } else if (isDirector && !isOwner) {
+          // No open motion + viewer is a non-CEO director: show file CTA.
+          ncBody.innerHTML =
+            `<div class="tc-hint">Files a motion to oust the CEO. 3-tick window; shareholders vote weighted by shares at filing. If it fails, you lose 1 Reputation.</div>
+             <div class="tc-row" style="margin-top:10px;">
+               <button id="cp-nc-file" class="tc-btn sell">FILE NO-CONFIDENCE MOTION</button>
+             </div>`;
+          ncCard.style.display = 'block';
+
+          let filing = false;
+          document.getElementById('cp-nc-file').addEventListener('click', async () => {
+            if (filing) return;
+            if (!confirm('File a no-confidence motion against the CEO?\n\nIf the motion fails, you lose 1 Reputation. If it passes, the CEO loses 2 and the highest-share board member takes the chair.')) return;
+            filing = true;
+            ncMsg.className = 'tc-msg'; ncMsg.textContent = '';
+            const btn = document.getElementById('cp-nc-file');
+            const prev = btn.textContent;
+            btn.disabled = true; btn.textContent = 'FILING…';
+            try {
+              const { data, error: rpcErr } = await _supabase.rpc('corp_no_confidence_file',
+                { p_corp_id: id });
+              if (rpcErr) throw rpcErr;
+              if (!data?.success) {
+                const RM = {
+                  not_authenticated:     'You are not signed in.',
+                  corp_not_found:        'Corporation not found.',
+                  not_public:            'This corporation is not public.',
+                  no_entrepreneur:       'No entrepreneur faction found.',
+                  is_ceo:                'You can’t file against yourself.',
+                  not_director:          'Only board directors can file motions.',
+                  motion_already_open:   'A motion is already open against this corp.',
+                  no_eligible_successor: 'No board member is eligible to inherit the chair.',
+                  no_holders:            'This corporation has no shareholders.',
+                };
+                const msg = (data?.reason === 'cooldown_active' && data?.cooldown_until_tick != null)
+                  ? `CEO under no-confidence immunity until tick ${data.cooldown_until_tick}.`
+                  : (RM[data?.reason] || ('File failed: ' + (data?.reason || 'unknown')));
+                ncMsg.className = 'tc-msg err';
+                ncMsg.textContent = msg;
+                btn.disabled = false; btn.textContent = prev; filing = false;
+                return;
+              }
+              ncMsg.className = 'tc-msg ok';
+              ncMsg.textContent = 'Motion filed. Refreshing…';
+              setTimeout(() => location.reload(), 700);
+            } catch (e) {
+              ncMsg.className = 'tc-msg err';
+              ncMsg.textContent = 'File failed: ' + (e?.message || e);
+              btn.disabled = false; btn.textContent = prev; filing = false;
+            }
+          });
+        }
+        // else: no motion + viewer is not a director-non-CEO → panel stays hidden.
       }
     } else {
       ['cp-d-row-price', 'cp-d-row-shares', 'cp-d-row-available', 'cp-d-row-treasury'].forEach(rid => {
