@@ -178,7 +178,23 @@
   .ap-btn-small.list:hover, .ap-btn-small.buy:hover { background:#243a1f; }
   .ap-btn-small.delist { border:0.5px solid rgba(255,255,255,0.15); color:#888; background:transparent; }
   .ap-btn-small.delist:hover { color:#c98a8a; border-color:rgba(201,138,138,0.4); }
+  .ap-btn-small.accept { background:#1f2a1a; border:0.5px solid #8aaa6a; color:#8aaa6a; font-weight:500; }
+  .ap-btn-small.accept:hover { background:#243a1f; }
+  .ap-btn-small.reject { border:0.5px solid rgba(255,255,255,0.15); color:#888; background:transparent; }
+  .ap-btn-small.reject:hover { color:#c98a8a; border-color:rgba(201,138,138,0.4); }
   .ap-btn-small:disabled { opacity:0.45; cursor:not-allowed; }
+
+  /* Pending offers under a listed building (v2, seller view only) */
+  .ap-offers { margin-top:10px; padding-top:10px; border-top:0.5px solid rgba(255,255,255,0.06); }
+  .ap-offers-head { font-size:10px; letter-spacing:0.13em; text-transform:uppercase;
+    color:#aa7aaa; margin-bottom:6px; font-weight:500; }
+  .ap-offer { display:grid; grid-template-columns:1fr auto auto auto; gap:10px;
+    align-items:center; padding:8px 10px; background:#0f0a0f;
+    border:0.5px solid rgba(170,122,170,0.15); border-radius:3px; margin-bottom:5px; }
+  .ap-offer-bidder { font-size:12px; color:#fff; font-weight:500; line-height:1.2; }
+  .ap-offer-ceo { font-size:10px; color:#888; margin-top:2px; letter-spacing:0.04em; }
+  .ap-offer-amount { font-size:14px; color:#8aaa6a; font-weight:500;
+    font-variant-numeric:tabular-nums; padding-right:4px; }
 
   /* Marketplace modal rows */
   .mk-row { display:grid; grid-template-columns:1fr auto auto; gap:14px; align-items:center;
@@ -1172,11 +1188,17 @@ function initials(s, n) {
       // owns. For Construction corps: their builds (in-progress +
       // completed-and-still-owned). For Real Estate corps: their
       // acquired holdings.
+      // Nested embed: pending offers on each building (v2). Only the
+      // seller sees them — non-owner viewers get the offers in the
+      // payload but we don't render them (privacy + strategic edge).
       const { data: bldgs, error: bErr } = await _supabase.from('corp_buildings')
         .select('id, name, tier, nation_id, cost_paid, ambition_granted, status, '
               + 'started_at_tick, completes_at_tick, completed_at_tick, '
               + 'owner_corp_id, list_price, '
-              + 'nation:nations!nation_id(name)')
+              + 'nation:nations!nation_id(name), '
+              + 'offers:building_offers!building_id(id, amount, status, placed_at_tick, '
+                + 'buyer:entrepreneur_corps!buyer_corp_id(id, name, '
+                  + 'owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name)))')
         .eq('owner_corp_id', id)
         .order('started_at_tick', { ascending: false });
       if (bErr) console.warn('[entrepreneur-corp] buildings fetch error:', bErr.message);
@@ -1201,9 +1223,10 @@ function initials(s, n) {
             const nationName = b.nation?.name || '—';
             if (b.status === 'completed') {
               const listed = b.list_price != null;
+              const pendingOffers = (b.offers || []).filter(o => o.status === 'pending');
               const actionRow = isOwner
                 ? `<div class="ap-actions">
-                     ${listed ? `<span class="ap-status-line">Listed at ${fmtUsd(Number(b.list_price))}</span>` : '<span></span>'}
+                     ${listed ? `<span class="ap-status-line">Listed at ${fmtUsd(Number(b.list_price))}${pendingOffers.length ? ` · ${pendingOffers.length} pending offer${pendingOffers.length === 1 ? '' : 's'}` : ''}</span>` : '<span></span>'}
                      ${listed
                        ? `<button class="ap-btn-small delist" data-bid="${b.id}">Delist</button>`
                        : `<button class="ap-btn-small list" data-bid="${b.id}" data-bname="${escapeHtml(b.name)}">List for Sale</button>`}
@@ -1211,6 +1234,29 @@ function initials(s, n) {
                 : (listed
                    ? `<div class="ap-actions"><span class="ap-status-line">Listed at ${fmtUsd(Number(b.list_price))}</span></div>`
                    : '');
+              // Pending offers list — owner-only (privacy + strategy).
+              // The /Markets MY OFFERS view shows the bidder-side mirror.
+              const offersRow = (isOwner && listed && pendingOffers.length)
+                ? `<div class="ap-offers">
+                     <div class="ap-offers-head">Pending Offers · ${pendingOffers.length}</div>
+                     ${pendingOffers.map(o => {
+                       const bidder = o.buyer?.name || 'Unknown corp';
+                       const ceo = o.buyer?.owner
+                         ? [o.buyer.owner.leader_first_name, o.buyer.owner.leader_last_name].filter(Boolean).join(' ').trim() || o.buyer.owner.faction_name
+                         : '';
+                       return `
+                         <div class="ap-offer">
+                           <div class="ap-offer-bidder">
+                             <div>${escapeHtml(bidder)}</div>
+                             ${ceo ? `<div class="ap-offer-ceo">${escapeHtml(ceo)} · T${o.placed_at_tick}</div>` : `<div class="ap-offer-ceo">T${o.placed_at_tick}</div>`}
+                           </div>
+                           <div class="ap-offer-amount">${fmtUsd(Number(o.amount))}</div>
+                           <button class="ap-btn-small accept" data-oid="${o.id}">Accept</button>
+                           <button class="ap-btn-small reject" data-oid="${o.id}">Reject</button>
+                         </div>`;
+                     }).join('')}
+                   </div>`
+                : '';
               return `
                 <div class="ap-row completed">
                   <div class="ap-row-head">
@@ -1225,6 +1271,7 @@ function initials(s, n) {
                     <span class="done">✓ +0.2 GDP Growth applied</span>
                   </div>
                   ${actionRow}
+                  ${offersRow}
                 </div>`;
             }
             const startTick = Number(b.started_at_tick);
@@ -1269,6 +1316,12 @@ function initials(s, n) {
         });
         pj.querySelectorAll('.ap-btn-small.delist').forEach(btn => {
           btn.addEventListener('click', () => handleDelist(btn, btn.dataset.bid));
+        });
+        pj.querySelectorAll('.ap-btn-small.accept').forEach(btn => {
+          btn.addEventListener('click', () => handleAcceptOffer(btn, btn.dataset.oid));
+        });
+        pj.querySelectorAll('.ap-btn-small.reject').forEach(btn => {
+          btn.addEventListener('click', () => handleRejectOffer(btn, btn.dataset.oid));
         });
       }
     };
@@ -1446,6 +1499,63 @@ function initials(s, n) {
       } catch (e) {
         alert('Failed to delist: ' + (e?.message || e));
         delistInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    // ── Accept / Reject offer (v2, seller-side, inline confirm) ──
+    let offerActionInFlight = false;
+    const handleAcceptOffer = async (btn, offerId) => {
+      if (offerActionInFlight) return;
+      if (!confirm('Accept this offer? Ownership transfers and all other pending offers will be rejected.')) return;
+      offerActionInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'ACCEPTING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('accept_offer', {
+          p_offer_id: offerId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            offer_not_pending:         'Offer is no longer pending.',
+            buyer_insufficient_funds:  data?.need != null
+                                         ? `Buyer no longer has the funds (have ${fmtUsd(Number(data.have ?? 0))}, need ${fmtUsd(Number(data.need))}).`
+                                         : 'Buyer no longer has the funds.',
+            not_seller_corp_owner:     'You are not the owner of the selling corp.',
+            not_for_sale:              'Listing was already withdrawn.',
+            buyer_orphan:              'Buyer corp has no owning faction.',
+            seller_orphan:             'Seller corp has no owning faction.',
+          };
+          alert(REASON[data?.reason] || ('Could not accept: ' + (data?.reason || 'unknown')));
+          offerActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        offerActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+    const handleRejectOffer = async (btn, offerId) => {
+      if (offerActionInFlight) return;
+      if (!confirm('Reject this offer?')) return;
+      offerActionInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'REJECTING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('reject_offer', {
+          p_offer_id: offerId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          alert('Could not reject: ' + (data?.reason || 'unknown'));
+          offerActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        offerActionInFlight = false; btn.disabled = false; btn.textContent = prev;
       }
     };
 
