@@ -2553,14 +2553,18 @@ async function openRallyModal(root) {
     let result = null;
     let submitting = false;
 
+    // Distinct messages per RPC gate. Previously no_faction / no_nation /
+    // no_shard all mapped to the same generic "Rally is unavailable right
+    // now." which made the failures undiagnosable — each now points at
+    // the specific gate so a reproduction surfaces the actual cause.
     const REASON_MSG = {
         not_authenticated:         'You are not signed in.',
         no_sector:                 'Pick a sector to rally.',
         invalid_sector:            'That sector is not available.',
         invalid_spend:             'Invalid spend amount.',
-        no_faction:                'Rally is unavailable right now.',
-        no_nation:                 'Rally is unavailable right now.',
-        no_shard:                  'Rally is unavailable right now.',
+        no_faction:                'Rally unavailable: no party faction is linked to this account (or the 20270151 hold_rally migration is not deployed).',
+        no_nation:                 'Rally unavailable: your party faction has no assigned nation.',
+        no_shard:                  'Rally unavailable: game shard not found — contact admin.',
         already_rallied_this_tick: 'You already held a rally this tick.',
     };
 

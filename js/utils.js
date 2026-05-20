@@ -141,6 +141,21 @@ export function pctOwned(shares, sharesOutstanding) {
 }
 
 /**
+ * Viewer's ownership % of an entrepreneur corp — one source for the
+ * stake math read by the corporations list, markets directory, and any
+ * future surface that needs "what fraction of this corp does the viewer
+ * own?". Private corps aren't tradeable, so only the founder holds a
+ * stake (100%); public corps use pctOwned over the viewer's shares.
+ */
+export function viewerStakePct(corp, viewerFactionId, viewerShares) {
+    if (!corp) return 0;
+    if (corp.listing !== 'public') {
+        return corp.owner_faction_id === viewerFactionId ? 100 : 0;
+    }
+    return pctOwned(viewerShares || 0, corp.shares_outstanding) ?? 0;
+}
+
+/**
  * Human display name for a faction that owns/leads something —
  * "First Last", else faction_name, else "—". One source for the
  * entrepreneur owner/CEO label (corp page + markets directory);

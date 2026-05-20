@@ -315,7 +315,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation, titleCase, ownerDisplayName, pctOwned } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, ownerDisplayName, viewerStakePct } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 
 const FEE = 1_000_000;
@@ -437,7 +437,7 @@ function renderPositions(corps, filter) {
     posPill.textContent = c.position.toUpperCase();
     posCell.append(pl, posPill);
 
-    // 5. Percentage owned (pctOwned for public; private founder = 100%)
+    // 5. Percentage owned (single source: viewerStakePct in js/utils.js)
     const pctCell = document.createElement('div'); pctCell.className = 'mid';
     const pcl = document.createElement('div'); pcl.className = 'cl'; pcl.textContent = 'OWNED';
     const pcv = document.createElement('div'); pcv.className = 'cv' + (c.pct > 0 ? '' : ' muted');
@@ -491,9 +491,7 @@ function renderPositions(corps, filter) {
           if (ownedIds.has(c.id))       position = 'founder';
           else if (seatedIds.has(c.id)) position = 'director';
           const yourShares = sharesByCorp.get(c.id) || 0;
-          const pct = c.listing !== 'public'
-            ? (position === 'founder' ? 100 : 0)
-            : (pctOwned(yourShares, c.shares_outstanding) ?? 0);
+          const pct = viewerStakePct(c, entId, yourShares);
           return { ...c, position, yourShares, pct };
         });
       }

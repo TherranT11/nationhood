@@ -118,7 +118,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName } from './js/utils.js';
+import { fmtUsd, fmtValuation, titleCase, viewerStakePct, ownerDisplayName } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 
 (async () => {
@@ -164,13 +164,6 @@ import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
       }
     }
 
-    // Viewer's stake %. Private corps aren't tradeable → only the
-    // founder holds it (100%; anyone else 0%). Public corps use the
-    // shared pctOwned helper.
-    const myPct = (c) => c.listing !== 'public'
-      ? (c.owner_faction_id === entId ? 100 : 0)
-      : (pctOwned(mineByCorp.get(c.id) || 0, c.shares_outstanding) ?? 0);
-
     // Build view rows. Real values only — no fabricated columns.
     // `mine` is "this corp is yours" = any economic stake OR founder of
     // record (a founder who sold all their shares still owns the corp
@@ -184,7 +177,7 @@ import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
       const sharesOut = Number(c.shares_outstanding) || 0;
       const totalHeld = totalByCorp.get(c.id) || 0;
       const isPub = c.listing === 'public';
-      const pct = myPct(c);
+      const pct = viewerStakePct(c, entId, mineByCorp.get(c.id) || 0);
       return {
         c, val, sharesOut,
         available: isPub ? Math.max(0, sharesOut - totalHeld) : null,
