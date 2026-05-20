@@ -161,6 +161,33 @@
   .ec-jl-msg { font-size:11px; margin-top:10px; min-height:16px; }
   .ec-jl-msg.err { color:#c47a7a; }
   .ec-jl-msg.ok  { color:#8aaa6a; }
+
+  /* ── Mobile (≤700px): stack actions / pos rows / Found-corp modal */
+  @media (max-width:700px) {
+    .ent-content { padding-left:12px; padding-right:12px; }
+    .ec-actions { grid-template-columns:1fr; gap:10px; margin-bottom:20px; }
+    .ec-filters { gap:4px; margin-bottom:10px; flex-wrap:wrap; }
+    .ec-filter { padding:7px 10px; flex:1 0 auto; text-align:center; }
+    /* Corp directory rows — collapse the 7-col layout into a stacked card */
+    .ec-jl-head { display:none; }
+    .ec-jr { grid-template-columns:1fr; gap:6px; padding:12px 14px; }
+    .ec-jr > div { width:100%; text-align:left; }
+    .ec-jr .num { text-align:left; }
+    .ec-jr .ec-btn.pri { width:100%; padding:9px 12px; }
+    /* Found Corp modal */
+    .ec-overlay { padding:12px; }
+    .ec-modal { max-width:100%; }
+    .ec-mh { padding:14px 16px; flex-wrap:wrap; gap:10px; }
+    .ec-mh .rt { margin-left:0; width:100%; flex-wrap:wrap; justify-content:space-between; }
+    .ec-mb { padding:16px; }
+    .ec-mf { padding:12px 16px; flex-wrap:wrap; gap:10px; }
+    .ec-grid3 { grid-template-columns:1fr; gap:8px; }
+    #ec-ind.ec-grid3 { grid-template-columns:1fr; }
+    .ec-conts { gap:4px; }
+    .ec-conts .ec-cont { flex:1 0 auto; text-align:center; }
+    /* Leave Board / Join Board rows */
+    .ec-lr { grid-template-columns:1fr; gap:8px; padding:12px 14px; }
+  }
 </style>
 </head>
 <body>

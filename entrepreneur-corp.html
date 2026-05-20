@@ -370,6 +370,35 @@
   .bm-btn.pri:disabled { opacity:0.45; cursor:not-allowed; }
 
   @media (max-width:900px) { .main-grid { grid-template-columns:1fr; } .financials { grid-template-columns:repeat(2,1fr); } }
+
+  /* ── Mobile (≤700px): stack header vertically, collapse financials
+     to one column, narrow modals + tighter modal padding. */
+  @media (max-width:700px) {
+    .ent-content { padding-left:12px; padding-right:12px; }
+    .breadcrumb { margin:-28px -12px 16px; padding:10px 12px; }
+    .corp-header { flex-direction:column; gap:18px; padding-bottom:18px; margin-bottom:20px; }
+    .corp-body .title { font-size:26px; }
+    .role-block { text-align:left; padding-left:0; border-left:none; min-width:0;
+      border-top:0.5px solid rgba(255,255,255,0.08); padding-top:16px; }
+    .financials { grid-template-columns:1fr; gap:8px; margin-bottom:20px; }
+    .fin-card { padding:14px 16px; }
+    /* All modals: full-width with smaller padding */
+    .bm-overlay, .ls-overlay, .rl-overlay { padding:12px; }
+    .bm-overlay { padding:12px; }
+    .bm-modal, .rl-modal { max-width:100%; }
+    .bm-body, .rl-body { padding:16px; }
+    .bm-foot, .rl-foot { padding:12px 16px; }
+    .bm-types { grid-template-columns:1fr; }   /* 4 type cards stack */
+    .bm-tier { grid-template-columns:1fr; gap:4px; padding:10px 12px; }
+    .bm-tier .num { text-align:left; font-size:12px; }
+    .rl-grid { grid-template-columns:1fr; gap:0; }
+    /* Active Projects + Corporate Finance rows stack their action buttons */
+    .ap-actions, .cf-row { grid-template-columns:1fr; gap:8px; }
+    .ap-row, .cf-row { padding:12px 14px; }
+    .ap-offer { grid-template-columns:1fr 1fr; gap:8px; padding:8px; }
+    .ap-loan { grid-template-columns:1fr; gap:8px; }
+    .mk-row { grid-template-columns:1fr; gap:6px; padding:12px 14px; }
+  }
 </style>
 </head>
 <body>
