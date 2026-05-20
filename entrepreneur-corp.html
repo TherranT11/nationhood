@@ -1465,6 +1465,14 @@ function initials(s, n) {
 
     // Shipping economy constants — mirror entrepreneur_buy_freighter
     // ($2M per freighter, fleet cap = completed Ports × 4).
+    //
+    // KNOWN GAP (flag, not silent landmine): the cap is enforced ONLY
+    // at buy time. If a corp sells / loses a Port post-purchase the
+    // freighters_owned counter does NOT auto-trim — the fleet keeps
+    // bidding over-cap until the corp acquires a replacement Port or
+    // freighters are explicitly scrapped (no RPC exists today). Fix
+    // belongs in the building-sell path (block sale that would orphan
+    // freighters, or auto-scrap excess) and was not in this PR's scope.
     const SHIPPING_FREIGHTER_COST = 2_000_000;
     const SHIPPING_FREIGHTERS_PER_PORT = 4;
 
@@ -1485,7 +1493,14 @@ function initials(s, n) {
           : Math.floor((Number(b.offered_revenue_per_tick) || 0) / f);
         return { id: b.id, freighters: f, rate, applied: Number(b.applied_at_tick) || 0 };
       });
-      annotated.sort((a, b) => (a.rate - b.rate) || (a.applied - b.applied));
+      // Sort key MUST match process_trade_agreement_shipping_multiwinner:
+      // rate ASC, applied_at_tick ASC, id ASC. Identical ties (same rate +
+      // same tick) would otherwise pick a different winner in the UI vs
+      // the server allocator and the "Filling X/Y" badge would lie.
+      annotated.sort((a, b) =>
+        (a.rate - b.rate)
+        || (a.applied - b.applied)
+        || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
       let remaining = demand;
       const allocation = {};
       for (const b of annotated) {
@@ -1649,7 +1664,6 @@ function initials(s, n) {
         const [routesRes, portsRes] = await Promise.all([
           _supabase.from('shipping_contracts')
             .select(`id, name, commodity, volume_required, origin_port, destination_port,
-                     nation:nations!nation_id(name),
                      bids:shipping_contract_bids!contract_id(
                        id, bidder_corp_id, bid_rate, offered_revenue_per_tick,
                        freighters_allocated, status, applied_at_tick)`)
@@ -1667,7 +1681,7 @@ function initials(s, n) {
 
         const allRoutes  = routesRes.data || [];
         const portCount  = portsRes.count || 0;
-        const fleetCap   = portCount * 4;
+        const fleetCap   = portCount * SHIPPING_FREIGHTERS_PER_PORT;
         const owned      = Number(c.freighters_owned) || 0;
 
         // Split routes: ones where THIS corp has a pending bid go in
