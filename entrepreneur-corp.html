@@ -225,6 +225,19 @@
           <div class="tc-msg" id="cp-trade-msg"></div>
         </div>
 
+        <!-- CEO-only dividend card. JS shows it for the founder of a
+             public corp; reuses .trade-card styling (no new CSS). -->
+        <div class="trade-card" id="cp-div" style="display:none;">
+          <div class="lab">DECLARE DIVIDEND</div>
+          <div class="tc-hint">Treasury pays each holder per share. CEO-only.</div>
+          <div class="tc-row" style="margin-top:10px;">
+            <input id="cp-div-amt" class="tc-qty" type="number" min="1" step="1" value="1" />
+            <button id="cp-div-btn" class="tc-btn">DECLARE</button>
+          </div>
+          <div class="tc-hint" id="cp-div-preview" style="margin-top:8px;"></div>
+          <div class="tc-msg" id="cp-div-msg"></div>
+        </div>
+
         <div class="board-card">
           <div class="board-header">
             <div class="title">BOARD OF DIRECTORS</div>
@@ -583,6 +596,84 @@ function initials(s, n) {
         };
         buyBtn.addEventListener('click', () => doTrade('buy', buyBtn));
         sellBtn.addEventListener('click', () => doTrade('sell', sellBtn));
+      }
+
+      // CEO-only dividend card. Treasury → holders proportional to
+      // shares; corp_dividend is the one source (single-stmt UPDATE …
+      // FROM so credits == debit exactly). Live preview computes
+      // client-side from already-fetched treasury / totalHeld /
+      // yourShares; server is authoritative on submit.
+      const divCard = document.getElementById('cp-div');
+      if (divCard && isOwner) {
+        divCard.style.display = 'block';
+        const divAmt     = document.getElementById('cp-div-amt');
+        const divBtn     = document.getElementById('cp-div-btn');
+        const divPreview = document.getElementById('cp-div-preview');
+        const divMsg     = document.getElementById('cp-div-msg');
+
+        const updatePreview = () => {
+          const perShare = Number((divAmt.value || '').trim());
+          if (!Number.isInteger(perShare) || perShare < 1) {
+            divPreview.textContent = 'Enter a whole-dollar amount ≥ 1.';
+            return;
+          }
+          const total          = perShare * totalHeld;
+          const treasuryAfter  = treasury - total;
+          const yourPayout     = perShare * yourShares;
+          const treasuryColor  = treasuryAfter < 0 ? '#c98a8a' : '#d4d4d4';
+          divPreview.innerHTML =
+            `Pays <b style="color:#8aaa6a">${fmtUsd(total)}</b> across `
+            + `${totalHeld} share${totalHeld === 1 ? '' : 's'} · `
+            + `Treasury after <b style="color:${treasuryColor}">${fmtUsd(treasuryAfter)}</b>`
+            + `<br>Your payout <b style="color:#8aaa6a">${fmtUsd(yourPayout)}</b>`;
+        };
+        divAmt.addEventListener('input', updatePreview);
+        updatePreview();
+
+        let declaring = false;
+        divBtn.addEventListener('click', async () => {
+          if (declaring) return;
+          const perShare = Number((divAmt.value || '').trim());
+          if (!Number.isInteger(perShare) || perShare < 1) {
+            divMsg.className = 'tc-msg err';
+            divMsg.textContent = 'Enter a whole-dollar amount ≥ 1.';
+            return;
+          }
+          declaring = true; divBtn.disabled = true;
+          const prev = divBtn.textContent;
+          divBtn.textContent = 'DECLARING…';
+          divMsg.className = 'tc-msg'; divMsg.textContent = '';
+          try {
+            const { data, error: rpcErr } = await _supabase.rpc('corp_dividend',
+              { p_corp_id: id, p_per_share: perShare });
+            if (rpcErr) throw rpcErr;
+            if (!data || !data.success) {
+              const RM = {
+                not_authenticated: 'You are not signed in.',
+                no_entrepreneur:   'No entrepreneur faction found.',
+                corp_not_found:    'Corporation not found.',
+                not_public:        'This corporation is not public.',
+                not_owner:         'Only the CEO can declare a dividend.',
+                invalid_amount:    'Enter a whole-dollar amount ≥ 1.',
+                no_recipients:     'No shareholders to pay.',
+              };
+              const msg = (data?.reason === 'insufficient_treasury' && data?.need != null)
+                ? `Treasury can’t cover that — need ${fmtUsd(Number(data.need))}.`
+                : (RM[data?.reason] || ('Dividend failed: ' + (data?.reason || 'unknown')));
+              divMsg.className = 'tc-msg err';
+              divMsg.textContent = msg;
+              declaring = false; divBtn.disabled = false; divBtn.textContent = prev;
+              return;
+            }
+            divMsg.className = 'tc-msg ok';
+            divMsg.textContent = `Paid ${fmtUsd(Number(data.total))} to ${data.recipients} holder${data.recipients === 1 ? '' : 's'}. Refreshing…`;
+            setTimeout(() => location.reload(), 700);
+          } catch (e) {
+            divMsg.className = 'tc-msg err';
+            divMsg.textContent = 'Dividend failed: ' + (e?.message || e);
+            declaring = false; divBtn.disabled = false; divBtn.textContent = prev;
+          }
+        });
       }
     } else {
       ['cp-d-row-price', 'cp-d-row-shares', 'cp-d-row-available', 'cp-d-row-treasury'].forEach(rid => {
