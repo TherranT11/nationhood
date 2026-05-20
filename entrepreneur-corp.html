@@ -168,6 +168,28 @@
     padding:24px 18px; color:#666; font-size:12px; text-align:center; line-height:1.6;
     letter-spacing:0.03em; }
 
+  /* Marketplace actions on completed buildings (v1) */
+  .ap-actions { display:flex; justify-content:space-between; gap:10px; align-items:center;
+    margin-top:8px; padding-top:8px; border-top:0.5px solid rgba(255,255,255,0.05); }
+  .ap-status-line { color:#8aaa6a; font-size:11px; letter-spacing:0.06em; font-variant-numeric:tabular-nums; }
+  .ap-btn-small { padding:6px 14px; font-size:10px; letter-spacing:0.1em; border-radius:3px;
+    cursor:pointer; text-transform:uppercase; font-family:inherit; }
+  .ap-btn-small.list, .ap-btn-small.buy { background:#1f2a1a; border:0.5px solid #8aaa6a; color:#8aaa6a; font-weight:500; }
+  .ap-btn-small.list:hover, .ap-btn-small.buy:hover { background:#243a1f; }
+  .ap-btn-small.delist { border:0.5px solid rgba(255,255,255,0.15); color:#888; background:transparent; }
+  .ap-btn-small.delist:hover { color:#c98a8a; border-color:rgba(201,138,138,0.4); }
+  .ap-btn-small:disabled { opacity:0.45; cursor:not-allowed; }
+
+  /* Marketplace modal rows */
+  .mk-row { display:grid; grid-template-columns:1fr auto auto; gap:14px; align-items:center;
+    padding:11px 14px; background:#0f120e; border:0.5px solid rgba(138,170,106,0.12);
+    border-radius:4px; margin-bottom:6px; }
+  .mk-name { font-size:13px; font-weight:500; color:#fff; line-height:1.2; }
+  .mk-meta { font-size:10px; color:#888; margin-top:3px; letter-spacing:0.06em; text-transform:uppercase; }
+  .mk-price { font-size:14px; color:#8aaa6a; font-weight:500; font-variant-numeric:tabular-nums; }
+  .mk-empty { color:#666; font-size:12px; text-align:center; padding:24px 0;
+    font-style:italic; letter-spacing:0.03em; }
+
   /* Begin Construction modal */
   .bm-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); display:none;
     align-items:center; justify-content:center; padding:30px; z-index:500; }
@@ -1127,6 +1149,7 @@ function initials(s, n) {
       monumental: { cost: 100000000, ticks: 36, amb: 5, label: 'Monumental', desc: 'National landmarks' },
     };
     const isConstructionCorp = (c.industry === 'construction');
+    const isRealEstateCorp   = (c.industry === 'real_estate');
 
     // Render modal tier rows from TIER_TABLE (replaces the previous
     // 5 hardcoded HTML rows so the JS const is the only place to
@@ -1145,27 +1168,49 @@ function initials(s, n) {
     const renderProjects = async () => {
       const pj = document.getElementById('cp-projects');
       if (!pj) return;
+      // Query by owner_corp_id (v1) — buildings the corp currently
+      // owns. For Construction corps: their builds (in-progress +
+      // completed-and-still-owned). For Real Estate corps: their
+      // acquired holdings.
       const { data: bldgs, error: bErr } = await _supabase.from('corp_buildings')
         .select('id, name, tier, nation_id, cost_paid, ambition_granted, status, '
               + 'started_at_tick, completes_at_tick, completed_at_tick, '
+              + 'owner_corp_id, list_price, '
               + 'nation:nations!nation_id(name)')
-        .eq('builder_corp_id', id)
+        .eq('owner_corp_id', id)
         .order('started_at_tick', { ascending: false });
       if (bErr) console.warn('[entrepreneur-corp] buildings fetch error:', bErr.message);
       const rows = bldgs || [];
 
-      const launchBtn = (isOwner && isConstructionCorp)
-        ? `<div class="ap-launch">
-             <div class="lab">Construction corp — <b>${c.name || 'this corp'}</b> can break ground on a new building.</div>
+      let launchBtn = '';
+      if (isOwner && isConstructionCorp) {
+        launchBtn = `<div class="ap-launch">
+             <div class="lab">Construction corp — <b>${escapeHtml(c.name || 'this corp')}</b> can break ground on a new building.</div>
              <button class="ap-btn" id="cp-begin-construction">Begin Construction</button>
-           </div>`
-        : '';
+           </div>`;
+      } else if (isOwner && isRealEstateCorp) {
+        launchBtn = `<div class="ap-launch">
+             <div class="lab">Real Estate corp — browse completed buildings on the market.</div>
+             <button class="ap-btn" id="cp-browse-market">Browse Market</button>
+           </div>`;
+      }
 
       const listHtml = rows.length
         ? rows.map(b => {
             const tier = TIER_TABLE[b.tier] || { label: b.tier, ticks: 0 };
             const nationName = b.nation?.name || '—';
             if (b.status === 'completed') {
+              const listed = b.list_price != null;
+              const actionRow = isOwner
+                ? `<div class="ap-actions">
+                     ${listed ? `<span class="ap-status-line">Listed at ${fmtUsd(Number(b.list_price))}</span>` : '<span></span>'}
+                     ${listed
+                       ? `<button class="ap-btn-small delist" data-bid="${b.id}">Delist</button>`
+                       : `<button class="ap-btn-small list" data-bid="${b.id}" data-bname="${escapeHtml(b.name)}">List for Sale</button>`}
+                   </div>`
+                : (listed
+                   ? `<div class="ap-actions"><span class="ap-status-line">Listed at ${fmtUsd(Number(b.list_price))}</span></div>`
+                   : '');
               return `
                 <div class="ap-row completed">
                   <div class="ap-row-head">
@@ -1179,6 +1224,7 @@ function initials(s, n) {
                     <span>Cost ${fmtUsd(Number(b.cost_paid))}</span>
                     <span class="done">✓ +0.2 GDP Growth applied</span>
                   </div>
+                  ${actionRow}
                 </div>`;
             }
             const startTick = Number(b.started_at_tick);
@@ -1203,12 +1249,27 @@ function initials(s, n) {
                 </div>
               </div>`;
           }).join('')
-        : `<div class="ap-empty">${isConstructionCorp ? 'No active projects yet — break ground above.' : 'No active projects.'}</div>`;
+        : `<div class="ap-empty">${
+            isConstructionCorp ? 'No active projects yet — break ground above.' :
+            isRealEstateCorp   ? 'No holdings yet — browse the market to acquire your first building.' :
+            'No active projects.'
+          }</div>`;
 
       pj.innerHTML = launchBtn + listHtml;
 
       if (isOwner && isConstructionCorp) {
         document.getElementById('cp-begin-construction').addEventListener('click', openBuildModal);
+      }
+      if (isOwner && isRealEstateCorp) {
+        document.getElementById('cp-browse-market').addEventListener('click', openMarketModal);
+      }
+      if (isOwner) {
+        pj.querySelectorAll('.ap-btn-small.list').forEach(btn => {
+          btn.addEventListener('click', () => openListSaleModal(btn.dataset.bid, btn.dataset.bname));
+        });
+        pj.querySelectorAll('.ap-btn-small.delist').forEach(btn => {
+          btn.addEventListener('click', () => handleDelist(btn, btn.dataset.bid));
+        });
       }
     };
 
@@ -1300,6 +1361,187 @@ function initials(s, n) {
       }
     });
 
+    // ── List-for-Sale modal (v1) ──
+    // Opened from a completed building's [List for Sale] button.
+    // Owner-only. Calls list_building_for_sale; reloads on success.
+    let listSubmitting = false;
+    let lsBuildingId = null;
+
+    const openListSaleModal = (buildingId, buildingName) => {
+      lsBuildingId = buildingId;
+      document.getElementById('ls-building-name').textContent = buildingName || '—';
+      document.getElementById('ls-price').value = '';
+      document.getElementById('ls-err').textContent = '';
+      document.getElementById('ls-overlay').classList.add('open');
+      setTimeout(() => document.getElementById('ls-price').focus(), 50);
+    };
+    const closeListSaleModal = () => {
+      document.getElementById('ls-overlay').classList.remove('open');
+    };
+    document.getElementById('ls-close').addEventListener('click', closeListSaleModal);
+    document.getElementById('ls-cancel').addEventListener('click', closeListSaleModal);
+    document.getElementById('ls-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'ls-overlay') closeListSaleModal();
+    });
+    document.getElementById('ls-submit').addEventListener('click', async () => {
+      if (listSubmitting) return;
+      const errEl = document.getElementById('ls-err');
+      // Accept "$12,000,000" style input by stripping $ and commas.
+      const raw = (document.getElementById('ls-price').value || '').trim();
+      const price = Number(raw.replace(/[$,\s]/g, ''));
+      if (!Number.isFinite(price) || !Number.isInteger(price) || price < 1) {
+        errEl.textContent = 'Enter a whole-dollar price of $1 or more.';
+        return;
+      }
+      listSubmitting = true;
+      const btn = document.getElementById('ls-submit');
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'LISTING…';
+      errEl.textContent = '';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('list_building_for_sale', {
+          p_building_id: lsBuildingId,
+          p_price:       price,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            invalid_price:      'Price must be a positive whole-dollar amount.',
+            not_completed:      'Only completed buildings can be listed.',
+            not_owner:          'Only the owner corp can list this building.',
+            building_not_found: 'Building not found — refresh and try again.',
+            no_owner:           'This building has no current owner.',
+          };
+          errEl.textContent = REASON[data?.reason] || ('Could not list: ' + (data?.reason || 'unknown'));
+          listSubmitting = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        btn.textContent = 'LISTED ✓ — refreshing…';
+        setTimeout(() => location.reload(), 500);
+      } catch (e) {
+        errEl.textContent = 'Failed: ' + (e?.message || e);
+        listSubmitting = false; btn.disabled = false; btn.textContent = prev;
+      }
+    });
+
+    // ── Delist (inline confirm — no modal) ──
+    let delistInFlight = false;
+    const handleDelist = async (btn, buildingId) => {
+      if (delistInFlight) return;
+      if (!confirm('Withdraw this building from the market?')) return;
+      delistInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'DELISTING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('delist_building', {
+          p_building_id: buildingId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          alert('Could not delist: ' + (data?.reason || 'unknown'));
+          delistInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed to delist: ' + (e?.message || e));
+        delistInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    // ── Marketplace modal (v1) ──
+    // Opened from a Real Estate corp's [Browse Market] launcher.
+    // Lists every completed building with list_price IS NOT NULL,
+    // minus this corp's own holdings (you can't buy from yourself).
+    let marketFetching = false;
+    let buyInFlight = false;
+
+    const openMarketModal = async () => {
+      if (marketFetching) return;
+      marketFetching = true;
+      const listEl = document.getElementById('mk-list');
+      listEl.innerHTML = '<div class="mk-empty">Loading marketplace…</div>';
+      document.getElementById('mk-overlay').classList.add('open');
+      try {
+        const { data: market, error: mErr } = await _supabase.from('corp_buildings')
+          .select('id, name, tier, list_price, owner_corp_id, '
+                + 'nation:nations!nation_id(name), '
+                + 'owner:entrepreneur_corps!owner_corp_id(name, industry)')
+          .not('list_price', 'is', null)
+          .eq('status', 'completed')
+          .order('list_price', { ascending: true });
+        if (mErr) {
+          listEl.innerHTML = `<div class="mk-empty">Failed to load: ${escapeHtml(mErr.message)}</div>`;
+          return;
+        }
+        const rows = (market || []).filter(b => b.owner_corp_id !== id);
+        if (rows.length === 0) {
+          listEl.innerHTML = '<div class="mk-empty">No buildings currently for sale.</div>';
+          return;
+        }
+        listEl.innerHTML = rows.map(b => {
+          const tier = TIER_TABLE[b.tier] || { label: b.tier };
+          return `
+            <div class="mk-row">
+              <div class="mk-info">
+                <div class="mk-name">${escapeHtml(b.name)}</div>
+                <div class="mk-meta">${escapeHtml(b.owner?.name || 'Unknown')} · ${escapeHtml(b.nation?.name || '—')} · ${tier.label}</div>
+              </div>
+              <div class="mk-price">${fmtUsd(Number(b.list_price))}</div>
+              <button class="ap-btn-small buy" data-bid="${b.id}" data-price="${b.list_price}" data-bname="${escapeHtml(b.name)}">Buy</button>
+            </div>`;
+        }).join('');
+        listEl.querySelectorAll('.ap-btn-small.buy').forEach(btn => {
+          btn.addEventListener('click', () => handleBuy(btn, btn.dataset.bid, Number(btn.dataset.price), btn.dataset.bname));
+        });
+      } finally {
+        marketFetching = false;
+      }
+    };
+    const closeMarketModal = () => {
+      document.getElementById('mk-overlay').classList.remove('open');
+    };
+    document.getElementById('mk-close').addEventListener('click', closeMarketModal);
+    document.getElementById('mk-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'mk-overlay') closeMarketModal();
+    });
+
+    const handleBuy = async (btn, buildingId, price, name) => {
+      if (buyInFlight) return;
+      if (!confirm(`Buy "${name}" for ${fmtUsd(price)}?`)) return;
+      buyInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'BUYING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('buy_building', {
+          p_building_id:   buildingId,
+          p_buyer_corp_id: id,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            not_for_sale:            'Building is no longer for sale.',
+            insufficient_funds:      data?.need != null
+                                       ? `Need ${fmtUsd(Number(data.need))}; you have ${fmtUsd(Number(data.have ?? 0))}.`
+                                       : 'Not enough party funds.',
+            buyer_not_real_estate:   'Only Real Estate corps can buy buildings.',
+            not_buyer_corp_owner:    'You are not the owner of this corp.',
+            cannot_buy_own_building: 'You cannot buy your own building.',
+            building_not_found:      'Building no longer exists.',
+            seller_orphan:           'Seller corp has no owning faction.',
+          };
+          alert(REASON[data?.reason] || ('Could not buy: ' + (data?.reason || 'unknown')));
+          buyInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        btn.textContent = 'PURCHASED ✓ — refreshing…';
+        setTimeout(() => location.reload(), 500);
+      } catch (e) {
+        alert('Failed to buy: ' + (e?.message || e));
+        buyInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
     await renderProjects();
 
     document.getElementById('cp-load').style.display = 'none';
@@ -1338,6 +1580,43 @@ function initials(s, n) {
     <div class="bm-foot">
       <button class="bm-btn sec" id="bm-cancel">Cancel</button>
       <button class="bm-btn pri" id="bm-submit">Break Ground</button>
+    </div>
+  </div>
+</div>
+
+<!-- List for Sale modal (v1). Owner of a completed building sets the
+     price, RPC: list_building_for_sale. -->
+<div class="bm-overlay" id="ls-overlay">
+  <div class="bm-modal" style="max-width:480px;">
+    <div class="bm-head">
+      <div class="ti">List <em>for Sale</em></div>
+      <div class="bm-x" id="ls-close">×</div>
+    </div>
+    <div class="bm-body">
+      <div class="bm-label">Building</div>
+      <div class="bm-nation" id="ls-building-name">—</div>
+
+      <div class="bm-label">Price ($)</div>
+      <input type="text" class="bm-input" id="ls-price" placeholder="e.g. 75,000,000" inputmode="numeric">
+      <div class="bm-err" id="ls-err"></div>
+    </div>
+    <div class="bm-foot">
+      <button class="bm-btn sec" id="ls-cancel">Cancel</button>
+      <button class="bm-btn pri" id="ls-submit">List for Sale</button>
+    </div>
+  </div>
+</div>
+
+<!-- Marketplace modal (v1). Real Estate corps browse + buy. RPC:
+     buy_building. -->
+<div class="bm-overlay" id="mk-overlay">
+  <div class="bm-modal" style="max-width:760px;">
+    <div class="bm-head">
+      <div class="ti">Real Estate <em>Marketplace</em></div>
+      <div class="bm-x" id="mk-close">×</div>
+    </div>
+    <div class="bm-body">
+      <div id="mk-list">Loading marketplace…</div>
     </div>
   </div>
 </div>
