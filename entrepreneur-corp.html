@@ -673,20 +673,18 @@ function initials(s, n) {
     set('cp-owner-sub', ownerName !== '—' ? ownerName + ' · sole owner' : 'Sole owner · privately held');
     set('cp-board-ini', initials(ownerName !== '—' ? ownerName : name, 2));
     set('cp-board-name', ownerName);
-    // Chairman stake. Private corps: founder owns 100% by definition
-    // (no shareholdings table state). Public corps: render shares + %
-    // from holdingsByFaction (same map the board directors use, so the
-    // numbers line up across rows).
+    // Stake-column markup is shared by the chairman row and every
+    // director row — one template, two callers. Private corps short-
+    // circuit to a single "100%" line (no shareholdings table state).
+    const renderStakeMarkup = (shares) => {
+      const pct = pctOwned(shares, c.shares_outstanding) ?? 0;
+      return `<div class="sh">${shares} sh</div><div class="pct">${pct}%</div>`;
+    };
     const chairStakeEl = document.getElementById('cp-board-chair-stake');
     if (chairStakeEl) {
-      if (isPublic) {
-        const chairShares = holdingsByFaction.get(c.owner_faction_id) || 0;
-        const chairPct = pctOwned(chairShares, c.shares_outstanding) ?? 0;
-        chairStakeEl.innerHTML =
-          `<div class="sh">${chairShares} sh</div><div class="pct">${chairPct}%</div>`;
-      } else {
-        chairStakeEl.innerHTML = `<div class="pct">100%</div>`;
-      }
+      chairStakeEl.innerHTML = isPublic
+        ? renderStakeMarkup(holdingsByFaction.get(c.owner_faction_id) || 0)
+        : `<div class="pct">100%</div>`;
     }
 
     // Non-founder board members from corp_board_seats (20270158).
@@ -711,13 +709,10 @@ function initials(s, n) {
         const nm = document.createElement('div'); nm.className = 'bname'; nm.textContent = dname;
         const ro = document.createElement('div'); ro.className = 'brole'; ro.textContent = 'DIRECTOR';
         info.append(nm, ro);
-        // Stake column: shares + % from the same shared map as the
-        // chairman row. Directors who joined the board without buying
-        // shares show "0 sh · 0%".
-        const dShares = holdingsByFaction.get(s.member_faction_id) || 0;
-        const dPct = pctOwned(dShares, c.shares_outstanding) ?? 0;
+        // Stake column: shared renderStakeMarkup helper — chairman row
+        // above uses the same template, so the numbers line up.
         const stake = document.createElement('div'); stake.className = 'board-stake';
-        stake.innerHTML = `<div class="sh">${dShares} sh</div><div class="pct">${dPct}%</div>`;
+        stake.innerHTML = renderStakeMarkup(holdingsByFaction.get(s.member_faction_id) || 0);
         row.append(av, info, stake);
         extraEl.appendChild(row);
       }
