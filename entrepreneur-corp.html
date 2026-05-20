@@ -199,6 +199,49 @@
   .ap-offer-amount { font-size:14px; color:#8aaa6a; font-weight:500;
     font-variant-numeric:tabular-nums; padding-right:4px; }
 
+  /* Shipping Operations panel (Shipping corps only, owner-only) */
+  .sh-fleet { display:grid; grid-template-columns:1fr 1fr 1fr 1fr auto; gap:14px;
+    align-items:center; padding:14px 18px; background:#0d0d0d;
+    border:0.5px solid rgba(122,154,171,0.18); border-radius:4px; margin-bottom:12px; }
+  .sh-fleet .cell { min-width:0; }
+  .sh-fleet .lab { font-size:9px; color:#888; letter-spacing:0.13em;
+    text-transform:uppercase; line-height:1; margin-bottom:6px; }
+  .sh-fleet .val { font-size:20px; color:#fff; font-weight:500;
+    font-variant-numeric:tabular-nums; line-height:1; }
+  .sh-fleet .val.muted { color:#666; }
+  .sh-buy-btn { padding:9px 14px; font-size:10px; letter-spacing:0.12em; border-radius:3px;
+    cursor:pointer; background:#1a2535; border:0.5px solid #7a9aab; color:#7a9aab;
+    font-weight:500; text-transform:uppercase; font-family:inherit; white-space:nowrap; }
+  .sh-buy-btn:hover { background:#1e2c3d; }
+  .sh-buy-btn:disabled { opacity:0.45; cursor:not-allowed; }
+  .sh-section-head { font-size:10px; letter-spacing:0.13em; text-transform:uppercase;
+    color:#7a9aab; margin:14px 0 6px; font-weight:500; }
+  .sh-row { display:grid; grid-template-columns:1fr auto; gap:12px; align-items:center;
+    padding:11px 14px; background:#0d0d0d; border:0.5px solid rgba(122,154,171,0.18);
+    border-radius:4px; margin-bottom:6px; }
+  .sh-row.winning { border-color:rgba(138,170,106,0.30); background:#0d100c; }
+  .sh-row-info { min-width:0; }
+  .sh-row-name { font-size:13px; color:#fff; font-weight:500; line-height:1.2; }
+  .sh-row-sub { font-size:10px; color:#888; margin-top:3px; letter-spacing:0.04em;
+    line-height:1.4; }
+  .sh-row-sub .accent { color:#8aaa6a; }
+  .sh-row-sub .dim { color:#666; }
+  .sh-row-actions { display:flex; gap:6px; align-items:center; }
+  .sh-row-status { font-size:10px; letter-spacing:0.08em; text-transform:uppercase;
+    color:#8aaa6a; font-weight:500; }
+  .sh-row-status.losing { color:#888; }
+  .sh-empty { color:#666; font-size:11px; padding:10px 14px; font-style:italic;
+    letter-spacing:0.03em; background:#0a0a0a; border:0.5px dashed rgba(255,255,255,0.08);
+    border-radius:4px; }
+
+  /* Place-bid modal — reuses .bm-* scaffolding */
+  .sh-bid-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:10px; }
+  .sh-bid-summary { background:#0d0d0d; border:0.5px solid rgba(122,154,171,0.15);
+    border-radius:4px; padding:11px 14px; font-size:11px; color:#aaa; line-height:1.6;
+    letter-spacing:0.04em; margin-top:4px; }
+  .sh-bid-summary b { color:#fff; font-weight:500; }
+  .sh-bid-summary .accent { color:#8aaa6a; }
+
   /* Pending Loan Requests in Active Projects (Banking corps only) */
   .ap-loans-head { font-size:10px; letter-spacing:0.13em; text-transform:uppercase;
     color:#7a9aab; margin:14px 0 6px; font-weight:500; }
@@ -627,7 +670,7 @@ function initials(s, n) {
     if (!id) { window.location.href = 'entrepreneur-corporations.html'; return; }
 
     const { data: c, error } = await _supabase.from('entrepreneur_corps')
-      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
+      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, freighters_owned, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -1418,6 +1461,43 @@ function initials(s, n) {
     };
     const isConstructionCorp = (c.industry === 'construction');
     const isRealEstateCorp   = (c.industry === 'real_estate');
+    const isShippingCorp     = (c.industry === 'shipping');
+
+    // Shipping economy constants — mirror entrepreneur_buy_freighter
+    // ($2M per freighter, fleet cap = completed Ports × 4).
+    const SHIPPING_FREIGHTER_COST = 2_000_000;
+    const SHIPPING_FREIGHTERS_PER_PORT = 4;
+
+    // Client-side mirror of the SQL multi-winner allocator in
+    // process_trade_agreement_shipping_multiwinner. Sort pending bids
+    // by per-unit rate ASC (entrepreneur reads bid_rate; legacy
+    // derives from offered_revenue_per_tick / freighters_allocated),
+    // tiebreak by applied_at_tick, fill volume_required slots
+    // cheapest-first. Read-only preview for the UI — the actual
+    // payout still happens server-side at tick time.
+    const computeRouteAllocation = (route) => {
+      const demand = Math.max(0, Number(route.volume_required) || 0);
+      const pending = (route.bids || []).filter(b => b.status === 'pending');
+      const annotated = pending.map(b => {
+        const f = Math.max(1, Number(b.freighters_allocated) || 0);
+        const rate = b.bid_rate != null
+          ? Number(b.bid_rate)
+          : Math.floor((Number(b.offered_revenue_per_tick) || 0) / f);
+        return { id: b.id, freighters: f, rate, applied: Number(b.applied_at_tick) || 0 };
+      });
+      annotated.sort((a, b) => (a.rate - b.rate) || (a.applied - b.applied));
+      let remaining = demand;
+      const allocation = {};
+      for (const b of annotated) {
+        if (remaining <= 0) break;
+        if (b.rate <= 0) continue;
+        const units = Math.min(b.freighters, remaining);
+        if (units <= 0) continue;
+        allocation[b.id] = { units, payout: units * b.rate, rate: b.rate };
+        remaining -= units;
+      }
+      return { allocation, lowestRate: annotated[0]?.rate ?? null };
+    };
 
     // Render the building-type picker once. Tier rows + nation
     // dropdown are filled by openBuildModal based on the type
@@ -1548,11 +1628,162 @@ function initials(s, n) {
                 </div>
               </div>`;
           }).join('')
-        : `<div class="ap-empty">${
-            isConstructionCorp ? 'No active projects yet — break ground above.' :
-            isRealEstateCorp   ? 'No holdings yet — browse the market to acquire your first building.' :
-            'No active projects.'
-          }</div>`;
+        : (isShippingCorp
+            ? ''   // Shipping corps surface routes/bids below — no need for a generic "no buildings" placeholder above it.
+            : `<div class="ap-empty">${
+                isConstructionCorp ? 'No active projects yet — break ground above.' :
+                isRealEstateCorp   ? 'No holdings yet — browse the market to acquire your first building.' :
+                'No active projects.'
+              }</div>`);
+
+      // Shipping Operations panel (Shipping corps only, owner-only).
+      // Fleet card + Active Bids (this corp's pending bids) + Open
+      // Routes (every trade-agreement contract with status='open').
+      // Allocation prediction is computed client-side mirroring the
+      // SQL allocator in process_trade_agreement_shipping_multiwinner
+      // — sort pending bids by per-unit rate ASC, fill volume_required
+      // slots cheapest-first. Read-only preview; the real allocation
+      // happens at tick time.
+      let shippingPanelHtml = '';
+      if (isShippingCorp && isOwner) {
+        const [routesRes, portsRes] = await Promise.all([
+          _supabase.from('shipping_contracts')
+            .select(`id, name, commodity, volume_required, origin_port, destination_port,
+                     nation:nations!nation_id(name),
+                     bids:shipping_contract_bids!contract_id(
+                       id, bidder_corp_id, bid_rate, offered_revenue_per_tick,
+                       freighters_allocated, status, applied_at_tick)`)
+            .eq('status', 'open')
+            .not('trade_agreement_id', 'is', null)
+            .order('created_at_tick', { ascending: false }),
+          _supabase.from('corp_buildings')
+            .select('id', { count: 'exact', head: true })
+            .eq('owner_corp_id', id)
+            .eq('building_type', 'port')
+            .eq('status', 'completed'),
+        ]);
+        if (routesRes.error) console.warn('[entrepreneur-corp] open routes fetch error:', routesRes.error.message);
+        if (portsRes.error)   console.warn('[entrepreneur-corp] port count fetch error:',  portsRes.error.message);
+
+        const allRoutes  = routesRes.data || [];
+        const portCount  = portsRes.count || 0;
+        const fleetCap   = portCount * 4;
+        const owned      = Number(c.freighters_owned) || 0;
+
+        // Split routes: ones where THIS corp has a pending bid go in
+        // "Active Bids", everything else in "Open Routes".
+        const myBidsByRoute = new Map();
+        let committed = 0;
+        for (const r of allRoutes) {
+          const mine = (r.bids || []).find(b => b.bidder_corp_id === id && b.status === 'pending');
+          if (mine) {
+            myBidsByRoute.set(r.id, { route: r, bid: mine, allocation: computeRouteAllocation(r) });
+            committed += Number(mine.freighters_allocated) || 0;
+          }
+        }
+        const available = Math.max(0, owned - committed);
+        const corpCash  = getEntrepreneurCorpCash(c);
+        const canAffordFreighter = corpCash >= SHIPPING_FREIGHTER_COST;
+        const hasCapacity = owned < fleetCap;
+
+        const fleetCard = `
+          <div class="sh-fleet">
+            <div class="cell"><div class="lab">Owned</div><div class="val">${owned}</div></div>
+            <div class="cell"><div class="lab">Available</div><div class="val${available === 0 ? ' muted' : ''}">${available}</div></div>
+            <div class="cell"><div class="lab">Committed</div><div class="val${committed === 0 ? ' muted' : ''}">${committed}</div></div>
+            <div class="cell"><div class="lab">Cap</div><div class="val${fleetCap === 0 ? ' muted' : ''}">${fleetCap}</div></div>
+            <button class="sh-buy-btn" id="sh-buy-freighter"
+                    ${(!hasCapacity || !canAffordFreighter) ? 'disabled' : ''}
+                    title="${!hasCapacity ? 'Fleet at Port cap — build another Port first' : !canAffordFreighter ? 'Corp treasury too low' : ''}">
+              Buy Freighter (${fmtUsd(SHIPPING_FREIGHTER_COST)})
+            </button>
+          </div>`;
+
+        // Active Bids
+        const activeBids = [...myBidsByRoute.values()];
+        const activeBidsHtml = activeBids.length
+          ? activeBids.map(({ route, bid, allocation }) => {
+              const won = allocation.allocation[bid.id];
+              const wonUnits = won ? won.units : 0;
+              const myF = Number(bid.freighters_allocated) || 0;
+              const myRate = Number(bid.bid_rate) || 0;
+              const status = wonUnits > 0
+                ? `<span class="sh-row-status">Filling ${wonUnits}/${myF} slot${wonUnits === 1 ? '' : 's'}</span>`
+                : `<span class="sh-row-status losing">Outbid</span>`;
+              return `
+                <div class="sh-row ${wonUnits > 0 ? 'winning' : ''}">
+                  <div class="sh-row-info">
+                    <div class="sh-row-name">${escapeHtml(route.name || 'Route')}</div>
+                    <div class="sh-row-sub">
+                      ${escapeHtml(route.commodity || '—')} ·
+                      ${escapeHtml(route.origin_port || '—')} → ${escapeHtml(route.destination_port || '—')} ·
+                      <span class="accent">${myF}</span> freighter${myF === 1 ? '' : 's'} @
+                      <span class="accent">${fmtUsd(myRate)}/unit/tick</span> ·
+                      ${status}
+                    </div>
+                  </div>
+                  <div class="sh-row-actions">
+                    <button class="ap-btn-small accept sh-edit-bid"
+                            data-rid="${route.id}"
+                            data-bname="${escapeHtml(route.name || 'Route')}"
+                            data-commodity="${escapeHtml(route.commodity || '')}"
+                            data-volume="${Number(route.volume_required) || 0}"
+                            data-lowest="${allocation.lowestRate ?? ''}"
+                            data-current-f="${myF}"
+                            data-current-rate="${myRate}">Edit</button>
+                    <button class="ap-btn-small reject sh-withdraw-bid"
+                            data-rid="${route.id}"
+                            data-bname="${escapeHtml(route.name || 'Route')}">Withdraw</button>
+                  </div>
+                </div>`;
+            }).join('')
+          : `<div class="sh-empty">No active bids — pick an open route below and place one.</div>`;
+
+        // Open Routes (no bid from this corp yet)
+        const openRoutes = allRoutes.filter(r => !myBidsByRoute.has(r.id));
+        const openRoutesHtml = openRoutes.length
+          ? openRoutes.map(r => {
+              const alloc   = computeRouteAllocation(r);
+              const lowest  = alloc.lowestRate;
+              const demand  = Number(r.volume_required) || 0;
+              const bidders = (r.bids || []).filter(b => b.status === 'pending').length;
+              const lowestLabel = lowest != null
+                ? `lowest <span class="accent">${fmtUsd(lowest)}/unit/tick</span>`
+                : `<span class="dim">no bids yet</span>`;
+              return `
+                <div class="sh-row">
+                  <div class="sh-row-info">
+                    <div class="sh-row-name">${escapeHtml(r.name || 'Route')}</div>
+                    <div class="sh-row-sub">
+                      ${escapeHtml(r.commodity || '—')} ·
+                      ${escapeHtml(r.origin_port || '—')} → ${escapeHtml(r.destination_port || '—')} ·
+                      <span class="accent">${demand}</span> unit${demand === 1 ? '' : 's'}/tick ·
+                      ${lowestLabel}${bidders > 0 ? ` · ${bidders} bidder${bidders === 1 ? '' : 's'}` : ''}
+                    </div>
+                  </div>
+                  <div class="sh-row-actions">
+                    <button class="ap-btn-small list sh-place-bid"
+                            data-rid="${r.id}"
+                            data-bname="${escapeHtml(r.name || 'Route')}"
+                            data-commodity="${escapeHtml(r.commodity || '')}"
+                            data-volume="${demand}"
+                            data-lowest="${lowest ?? ''}"
+                            ${available === 0 ? 'disabled title="No available freighters — withdraw a bid or buy more"' : ''}>
+                      Place Bid
+                    </button>
+                  </div>
+                </div>`;
+            }).join('')
+          : `<div class="sh-empty">No open trade-agreement routes — waiting on nations to sign trade flows.</div>`;
+
+        shippingPanelHtml = `
+          ${fleetCard}
+          <div class="sh-section-head">Active Bids · ${activeBids.length}</div>
+          ${activeBidsHtml}
+          <div class="sh-section-head">Open Routes · ${openRoutes.length}</div>
+          ${openRoutesHtml}
+        `;
+      }
 
       // Pending Loan Requests panel (Banking corps only). Shows EVERY
       // pending loan request across the world; rows where this bank
@@ -1608,7 +1839,7 @@ function initials(s, n) {
         }
       }
 
-      pj.innerHTML = launchBtn + listHtml + loanRequestsHtml;
+      pj.innerHTML = launchBtn + listHtml + shippingPanelHtml + loanRequestsHtml;
 
       if (isOwner && isConstructionCorp) {
         document.getElementById('cp-begin-construction').addEventListener('click', openBuildModal);
@@ -1617,20 +1848,37 @@ function initials(s, n) {
         document.getElementById('cp-browse-market').addEventListener('click', openMarketModal);
       }
       if (isOwner) {
-        pj.querySelectorAll('.ap-btn-small.list').forEach(btn => {
+        // Building-marketplace handlers. The :not() guards skip the
+        // shipping buttons (sh-place-bid / sh-withdraw-bid / sh-edit-bid)
+        // that piggy-back on the .list / .reject / .accept styling
+        // classes for visual parity — they have their own handlers
+        // wired below.
+        pj.querySelectorAll('.ap-btn-small.list:not(.sh-place-bid)').forEach(btn => {
           btn.addEventListener('click', () => openListSaleModal(btn.dataset.bid, btn.dataset.bname));
         });
         pj.querySelectorAll('.ap-btn-small.delist').forEach(btn => {
           btn.addEventListener('click', () => handleDelist(btn, btn.dataset.bid));
         });
-        pj.querySelectorAll('.ap-btn-small.accept:not(.cp-make-offer)').forEach(btn => {
+        pj.querySelectorAll('.ap-btn-small.accept:not(.cp-make-offer):not(.sh-edit-bid)').forEach(btn => {
           btn.addEventListener('click', () => handleAcceptOffer(btn, btn.dataset.oid));
         });
-        pj.querySelectorAll('.ap-btn-small.reject').forEach(btn => {
+        pj.querySelectorAll('.ap-btn-small.reject:not(.sh-withdraw-bid)').forEach(btn => {
           btn.addEventListener('click', () => handleRejectOffer(btn, btn.dataset.oid));
         });
         pj.querySelectorAll('.cp-make-offer').forEach(btn => {
           btn.addEventListener('click', () => openMakeOfferModal(btn));
+        });
+        // Shipping-corp handlers (sh-*).
+        const buyBtn = document.getElementById('sh-buy-freighter');
+        if (buyBtn) buyBtn.addEventListener('click', () => handleBuyFreighter(buyBtn));
+        pj.querySelectorAll('.sh-place-bid').forEach(btn => {
+          btn.addEventListener('click', () => openPlaceBidModal(btn, { mode: 'place' }));
+        });
+        pj.querySelectorAll('.sh-edit-bid').forEach(btn => {
+          btn.addEventListener('click', () => openPlaceBidModal(btn, { mode: 'edit' }));
+        });
+        pj.querySelectorAll('.sh-withdraw-bid').forEach(btn => {
+          btn.addEventListener('click', () => handleWithdrawBid(btn, btn.dataset.rid, btn.dataset.bname));
         });
       }
     };
@@ -2573,6 +2821,172 @@ function initials(s, n) {
       }
     };
 
+    // ── Shipping-corp action handlers (sh-*) ──
+    // Single-flight gate per RPC family; the per-button disabled state
+    // is set in handleX so a fast double-tap on the SAME button can't
+    // double-fire even before the page re-renders.
+    let shippingInFlight = false;
+
+    const handleBuyFreighter = async (btn) => {
+      if (shippingInFlight) return;
+      shippingInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'BUYING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('entrepreneur_buy_freighter', {
+          p_corp_id: id, p_quantity: 1,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            insufficient_funds:    data?.need != null ? `Corp treasury too low — need ${fmtUsd(Number(data.need))}.` : 'Corp treasury too low.',
+            fleet_cap_exceeded:    `Fleet at Port cap — own ${data?.have ?? 0}, requested ${data?.requested ?? 0}, cap ${data?.cap ?? 0}. Build another Port.`,
+            not_shipping_corp:     'Only Shipping corps can buy freighters.',
+            not_owner:             'Only the corp owner can do that.',
+            invalid_quantity:      'Invalid quantity.',
+            corp_not_found:        'Corporation no longer exists.',
+          };
+          alert(REASON[data?.reason] || ('Could not buy: ' + (data?.reason || 'unknown')));
+          shippingInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        shippingInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    const handleWithdrawBid = async (btn, routeId, routeName) => {
+      if (shippingInFlight) return;
+      if (!confirm(`Withdraw your bid on "${routeName}"? Your freighters become available next tick.`)) return;
+      shippingInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = '…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('entrepreneur_withdraw_shipping_bid', {
+          p_corp_id: id, p_contract_id: routeId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          alert('Could not withdraw: ' + (data?.reason || 'unknown'));
+          shippingInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        shippingInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    // Place / edit bid modal.
+    let bidModalSubmitting = false;
+    let bidModalContext = null;     // { routeId, routeName, commodity, volume, lowest, mode, currentF, currentRate }
+
+    const openPlaceBidModal = (btn, opts) => {
+      bidModalContext = {
+        routeId:     btn.dataset.rid,
+        routeName:   btn.dataset.bname,
+        commodity:   btn.dataset.commodity || '',
+        volume:      Number(btn.dataset.volume) || 0,
+        lowest:      btn.dataset.lowest !== '' ? Number(btn.dataset.lowest) : null,
+        mode:        opts?.mode || 'place',
+        currentF:    Number(btn.dataset.currentF) || 0,
+        currentRate: Number(btn.dataset.currentRate) || 0,
+      };
+      const ov = document.getElementById('pb-overlay');
+      document.getElementById('pb-title').innerHTML =
+        (bidModalContext.mode === 'edit' ? 'Edit <em>Bid</em>' : 'Place <em>Bid</em>');
+      document.getElementById('pb-route').textContent = bidModalContext.routeName || '—';
+      const sub = bidModalContext.commodity
+        ? `${bidModalContext.commodity} · ${bidModalContext.volume} unit${bidModalContext.volume === 1 ? '' : 's'}/tick demanded`
+        : `${bidModalContext.volume} unit${bidModalContext.volume === 1 ? '' : 's'}/tick demanded`;
+      document.getElementById('pb-route-sub').textContent = sub;
+      document.getElementById('pb-lowest').textContent = bidModalContext.lowest != null
+        ? `Cheapest current bid: ${fmtUsd(bidModalContext.lowest)}/unit/tick`
+        : 'No competing bids yet — set any rate.';
+      const fInput    = document.getElementById('pb-freighters');
+      const rateInput = document.getElementById('pb-rate');
+      fInput.value    = bidModalContext.mode === 'edit' ? bidModalContext.currentF    : Math.min(bidModalContext.volume, 1);
+      rateInput.value = bidModalContext.mode === 'edit' ? bidModalContext.currentRate : '';
+      document.getElementById('pb-err').textContent = '';
+      updateBidSummary();
+      ov.classList.add('open');
+      setTimeout(() => rateInput.focus(), 50);
+    };
+    const closePlaceBidModal = () => document.getElementById('pb-overlay').classList.remove('open');
+
+    const updateBidSummary = () => {
+      if (!bidModalContext) return;
+      const f    = Math.max(0, Number(document.getElementById('pb-freighters').value) || 0);
+      const rate = Math.max(0, Number(document.getElementById('pb-rate').value) || 0);
+      const max  = bidModalContext.volume || 0;
+      const filling = Math.min(f, max);
+      const maxRev  = filling * rate;
+      const lowest  = bidModalContext.lowest;
+      const undercut = (lowest != null && rate > 0 && rate < lowest);
+      let undercutTag = '';
+      if (lowest != null && rate > 0) {
+        undercutTag = undercut
+          ? ` · <span class="accent">you're undercutting the current low</span>`
+          : ` · <span style="color:#c89e6e">at or above the current low</span>`;
+      }
+      document.getElementById('pb-summary').innerHTML =
+        `Bidding <b>${f}</b> freighter${f === 1 ? '' : 's'} @ <b>${fmtUsd(rate)}/unit/tick</b>.<br>`
+      + `If all <b>${filling}</b> slot${filling === 1 ? '' : 's'} fill, you earn <b class="accent">${fmtUsd(maxRev)}/tick</b>${undercutTag}.`;
+    };
+
+    document.getElementById('pb-freighters').addEventListener('input', updateBidSummary);
+    document.getElementById('pb-rate').addEventListener('input', updateBidSummary);
+    document.getElementById('pb-close').addEventListener('click', closePlaceBidModal);
+    document.getElementById('pb-cancel').addEventListener('click', closePlaceBidModal);
+    document.getElementById('pb-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'pb-overlay') closePlaceBidModal();
+    });
+
+    document.getElementById('pb-submit').addEventListener('click', async () => {
+      if (bidModalSubmitting || !bidModalContext) return;
+      const errEl = document.getElementById('pb-err');
+      const f     = Math.floor(Number(document.getElementById('pb-freighters').value) || 0);
+      const rate  = Math.floor(Number(document.getElementById('pb-rate').value) || 0);
+      if (f < 1 || f > 1000)   { errEl.textContent = 'Freighters must be between 1 and 1000.'; return; }
+      if (rate < 1 || rate > 1_000_000) { errEl.textContent = 'Rate must be between $1 and $1,000,000 per unit/tick.'; return; }
+      bidModalSubmitting = true;
+      const btn = document.getElementById('pb-submit');
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'PLACING…';
+      errEl.textContent = '';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('entrepreneur_place_shipping_bid', {
+          p_corp_id:     id,
+          p_contract_id: bidModalContext.routeId,
+          p_freighters:  f,
+          p_bid_rate:    rate,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            insufficient_available_freighters: data?.available != null ? `Only ${data.available} freighter${data.available === 1 ? '' : 's'} available (you own ${data.owned ?? '?'}, ${data.committed_elsewhere ?? '?'} committed elsewhere). Withdraw a bid or buy more.` : 'Not enough available freighters.',
+            invalid_freighters:    'Freighters must be 1–1000.',
+            invalid_bid_rate:      'Rate must be $1–$1,000,000 per unit/tick.',
+            contract_not_open:     'Route is no longer accepting bids.',
+            not_trade_agreement:   'This contract is not a trade-agreement route.',
+            not_shipping_corp:     'Only Shipping corps can bid here.',
+            not_owner:             'Only the corp owner can bid.',
+            contract_not_found:    'Route no longer exists.',
+          };
+          errEl.textContent = REASON[data?.reason] || ('Could not place bid: ' + (data?.reason || 'unknown'));
+          bidModalSubmitting = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        errEl.textContent = 'Failed: ' + (e?.message || e);
+        bidModalSubmitting = false; btn.disabled = false; btn.textContent = prev;
+      }
+    });
+
     await renderProjects();
     await renderFinance();
 
@@ -2714,5 +3128,40 @@ function initials(s, n) {
     </div>
   </div>
 </div>
+
+<!-- Place / Edit Bid modal (shipping). RPC: entrepreneur_place_shipping_bid. -->
+<div class="bm-overlay" id="pb-overlay">
+  <div class="bm-modal" style="max-width:540px;">
+    <div class="bm-head">
+      <div class="ti" id="pb-title">Place <em>Bid</em></div>
+      <div class="bm-x" id="pb-close">×</div>
+    </div>
+    <div class="bm-body">
+      <div class="bm-label">Route</div>
+      <div class="bm-nation" id="pb-route">—</div>
+      <div class="sh-row-sub" id="pb-route-sub" style="margin:4px 0 12px 0;">—</div>
+
+      <div class="sh-bid-row">
+        <div>
+          <div class="bm-label">Freighters</div>
+          <input type="number" class="bm-input" id="pb-freighters" min="1" max="1000" step="1" placeholder="e.g. 4">
+        </div>
+        <div>
+          <div class="bm-label">Bid Rate ($/unit/tick)</div>
+          <input type="number" class="bm-input" id="pb-rate" min="1" max="1000000" step="1" placeholder="e.g. 12000">
+        </div>
+      </div>
+
+      <div class="sh-bid-summary" id="pb-lowest">—</div>
+      <div class="sh-bid-summary" id="pb-summary" style="margin-top:8px;">—</div>
+      <div class="bm-err" id="pb-err"></div>
+    </div>
+    <div class="bm-foot">
+      <button class="bm-btn sec" id="pb-cancel">Cancel</button>
+      <button class="bm-btn pri" id="pb-submit">Place Bid</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
