@@ -108,7 +108,10 @@
     display:flex; align-items:center; justify-content:center; color:#8aaa6a; font-size:11px; font-weight:500; }
   .board-info .bname { font-size:12px; font-weight:500; color:#fff; line-height:1.2; overflow-wrap:anywhere; }
   .board-info .brole { font-size:9px; color:#8aaa6a; letter-spacing:0.1em; margin-top:2px; }
-  .board-stake { font-size:13px; color:#8aaa6a; font-weight:500; text-align:right; font-variant-numeric:tabular-nums; }
+  .board-stake { display:flex; flex-direction:column; align-items:flex-end; gap:2px;
+    font-variant-numeric:tabular-nums; }
+  .board-stake .sh  { font-size:10px; color:#888; letter-spacing:0.05em; }
+  .board-stake .pct { font-size:13px; color:#8aaa6a; font-weight:500; }
 
   /* Corp details sidebar */
   .details-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
@@ -266,7 +269,6 @@
     border-bottom:1px solid rgba(122,154,171,0.3); color:#fff; font-size:16px;
     font-family:inherit; outline:none; padding:6px 0; }
   .rl-input::placeholder { color:#444; font-style:italic; }
-  .rl-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
   .rl-bank { display:grid; grid-template-columns:auto 1fr auto; gap:10px;
     padding:9px 12px; background:#121212; border:0.5px solid rgba(255,255,255,0.08);
     border-radius:3px; margin-bottom:4px; cursor:pointer; align-items:center; }
@@ -290,6 +292,45 @@
   .rl-btn.pri { background:#1a2535; border:0.5px solid #7a9aab; color:#7a9aab; font-weight:500; }
   .rl-btn.pri:hover { background:#1e2c3d; }
   .rl-btn.pri:disabled { opacity:0.45; cursor:not-allowed; }
+
+  /* Make Offer modal — bank-side; mirrors .rl-* but smaller scope */
+  .mo-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); display:none;
+    align-items:center; justify-content:center; padding:30px; z-index:500; }
+  .mo-overlay.open { display:flex; }
+  .mo-modal { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.1); border-radius:6px;
+    width:100%; max-width:480px; display:flex; flex-direction:column; overflow:hidden; }
+  .mo-head { padding:16px 22px; border-bottom:0.5px solid rgba(255,255,255,0.08);
+    display:flex; align-items:center; gap:12px;
+    background:linear-gradient(180deg,rgba(122,154,171,0.04),#0c0c0c); }
+  .mo-head .ti { font-size:18px; font-weight:500; color:#fff; flex:1; }
+  .mo-head .ti em { font-family:Georgia,serif; color:#7a9aab; font-style:italic; }
+  .mo-x { border:0.5px solid rgba(255,255,255,0.15); color:#888; width:26px; height:26px;
+    border-radius:3px; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; font-size:15px; }
+  .mo-x:hover { color:#7a9aab; border-color:rgba(122,154,171,0.4); }
+  .mo-body { padding:20px 22px; }
+  .mo-label { font-size:10px; color:#888; letter-spacing:0.13em; text-transform:uppercase;
+    margin:14px 0 6px; }
+  .mo-label:first-child { margin-top:0; }
+  .mo-static { font-size:14px; color:#d4d4d4; padding:6px 0;
+    border-bottom:1px solid rgba(255,255,255,0.08); }
+  .mo-input { width:100%; background:transparent; border:none;
+    border-bottom:1px solid rgba(122,154,171,0.3); color:#fff; font-size:16px;
+    font-family:inherit; outline:none; padding:6px 0; }
+  .mo-preview { margin-top:14px; padding:12px 14px; background:#131820;
+    border:0.5px solid rgba(122,154,171,0.25); border-radius:4px; font-size:12px;
+    color:#aaa; line-height:1.6; }
+  .mo-preview b { color:#7a9aab; font-weight:500; }
+  .mo-err { color:#c98a8a; font-size:11px; margin-top:10px; min-height:14px; }
+  .mo-foot { padding:14px 22px; border-top:0.5px solid rgba(255,255,255,0.08);
+    background:#0d0d0d; display:flex; gap:10px; justify-content:flex-end; }
+  .mo-btn { padding:9px 18px; font-size:11px; letter-spacing:0.08em; border-radius:3px;
+    cursor:pointer; text-transform:uppercase; font-family:inherit; }
+  .mo-btn.sec { border:0.5px solid rgba(255,255,255,0.15); color:#888; background:transparent; }
+  .mo-btn.sec:hover { color:#d4d4d4; }
+  .mo-btn.pri { background:#1a2535; border:0.5px solid #7a9aab; color:#7a9aab; font-weight:500; }
+  .mo-btn.pri:hover { background:#1e2c3d; }
+  .mo-btn.pri:disabled { opacity:0.45; cursor:not-allowed; }
 
   /* Marketplace modal rows */
   .mk-row { display:grid; grid-template-columns:1fr auto auto; gap:14px; align-items:center;
@@ -396,7 +437,6 @@
     .bm-type:last-child { grid-column:auto; }  /* undo desktop full-row span */
     .bm-tier { grid-template-columns:1fr; gap:4px; padding:10px 12px; }
     .bm-tier .num { text-align:left; font-size:12px; }
-    .rl-grid { grid-template-columns:1fr; gap:0; }
     /* Active Projects + Corporate Finance rows stack their action buttons */
     .ap-actions, .cf-row { grid-template-columns:1fr; gap:8px; }
     .ap-row, .cf-row { padding:12px 14px; }
@@ -511,7 +551,7 @@
             <button id="cp-buy" class="tc-btn">BUY</button>
             <button id="cp-sell" class="tc-btn sell">SELL</button>
           </div>
-          <div class="tc-hint">Price moves 5% per share traded. The final amount is confirmed on execution.</div>
+          <div class="tc-hint">Price moves 1% per share traded (linear). The final amount is confirmed on execution.</div>
           <div class="tc-msg" id="cp-trade-msg"></div>
         </div>
 
@@ -595,12 +635,24 @@ function initials(s, n) {
 
     const isPublic = c.listing === 'public';
     const entId = ctx.faction?.id || null;
+    // Single source for who holds how many shares. Used by:
+    //   - the viewer's stake hero (yourShares),
+    //   - the Available Shares card (Σheld),
+    //   - the Board of Directors stake column (chairman + each director).
+    // Private corps have no shareholdings table state — keep the map empty.
+    const holdingsByFaction = new Map();
     let yourShares = 0;
-    if (isPublic && entId) {
-      const { data: sh, error: shErr } = await _supabase.from('corp_shareholdings')
-        .select('shares').eq('corp_id', id).eq('holder_faction_id', entId).maybeSingle();
-      if (shErr) console.warn('[entrepreneur-corp] shareholding fetch error:', shErr.message);
-      else yourShares = Number(sh?.shares) || 0;
+    let totalHeld  = 0;
+    if (isPublic) {
+      const { data: allH, error: ahErr } = await _supabase.from('corp_shareholdings')
+        .select('holder_faction_id, shares').eq('corp_id', id);
+      if (ahErr) console.warn('[entrepreneur-corp] holdings fetch error:', ahErr.message);
+      for (const r of (allH || [])) {
+        const sh = Number(r.shares) || 0;
+        if (r.holder_faction_id) holdingsByFaction.set(r.holder_faction_id, sh);
+        totalHeld += sh;
+      }
+      if (entId) yourShares = holdingsByFaction.get(entId) || 0;
     }
 
     const set = (i, v) => { const el = document.getElementById(i); if (el) el.textContent = v; };
@@ -621,12 +673,19 @@ function initials(s, n) {
     set('cp-owner-sub', ownerName !== '—' ? ownerName + ' · sole owner' : 'Sole owner · privately held');
     set('cp-board-ini', initials(ownerName !== '—' ? ownerName : name, 2));
     set('cp-board-name', ownerName);
-    // Chairman stake: private = 100% (sole owner). Public = blank (the
-    // OWNERSHIP hero already shows the viewer's stake; without an extra
-    // fetch we don't have the founder's per-share % to honestly show
-    // here, and the hardcoded "100%" was misleading for diluted public
-    // corps. Leaving it blank for public is the honest minimum.
-    set('cp-board-chair-stake', isPublic ? '' : '100%');
+    // Stake-column markup is shared by the chairman row and every
+    // director row — one template, two callers. Private corps short-
+    // circuit to a single "100%" line (no shareholdings table state).
+    const renderStakeMarkup = (shares) => {
+      const pct = pctOwned(shares, c.shares_outstanding) ?? 0;
+      return `<div class="sh">${shares} sh</div><div class="pct">${pct}%</div>`;
+    };
+    const chairStakeEl = document.getElementById('cp-board-chair-stake');
+    if (chairStakeEl) {
+      chairStakeEl.innerHTML = isPublic
+        ? renderStakeMarkup(holdingsByFaction.get(c.owner_faction_id) || 0)
+        : `<div class="pct">100%</div>`;
+    }
 
     // Non-founder board members from corp_board_seats (20270158).
     // Founder is NOT a row here — the chairman row above renders them
@@ -650,7 +709,10 @@ function initials(s, n) {
         const nm = document.createElement('div'); nm.className = 'bname'; nm.textContent = dname;
         const ro = document.createElement('div'); ro.className = 'brole'; ro.textContent = 'DIRECTOR';
         info.append(nm, ro);
-        const stake = document.createElement('div'); stake.className = 'board-stake'; stake.textContent = '';
+        // Stake column: shared renderStakeMarkup helper — chairman row
+        // above uses the same template, so the numbers line up.
+        const stake = document.createElement('div'); stake.className = 'board-stake';
+        stake.innerHTML = renderStakeMarkup(holdingsByFaction.get(s.member_faction_id) || 0);
         row.append(av, info, stake);
         extraEl.appendChild(row);
       }
@@ -809,15 +871,7 @@ function initials(s, n) {
       const pct = pctOwned(yourShares, sharesOut) ?? 0;
 
       // Fixed-supply float: available = shares_outstanding − Σ holdings.
-      // corp_trade / go_public are the one source for the underlying
-      // numbers; we only read + subtract for display.
-      let totalHeld = 0;
-      {
-        const { data: allH, error: ahErr } = await _supabase.from('corp_shareholdings')
-          .select('shares').eq('corp_id', id);
-        if (ahErr) console.warn('[entrepreneur-corp] holdings-sum fetch error:', ahErr.message);
-        totalHeld = (allH || []).reduce((s, r) => s + (Number(r.shares) || 0), 0);
-      }
+      // totalHeld was computed during the single holdings fetch at the top.
       const available = Math.max(0, sharesOut - totalHeld);
 
       set('cp-stake-num', String(pct));
@@ -974,6 +1028,9 @@ function initials(s, n) {
                 insufficient_funds:    data?.need != null ? `need ${fmtUsd(Number(data.need))}` : 'not enough party funds',
                 insufficient_shares:   `you only hold ${data?.have ?? 0} share${(data?.have === 1) ? '' : 's'}`,
                 treasury_insufficient: 'the corp treasury can’t cover that sale',
+                price_floor:           data?.max_per_trade != null
+                  ? `that sale would crash the price to zero — max ${data.max_per_trade} share${data.max_per_trade === 1 ? '' : 's'} per trade`
+                  : 'that sale would crash the price to zero',
                 not_public:            'this corporation is not public',
               };
               msgEl.className = 'tc-msg err';
@@ -1501,7 +1558,7 @@ function initials(s, n) {
       if (c.industry === 'banking') {
         const [reqsRes, mineBoRes] = await Promise.all([
           _supabase.from('corp_loan_requests')
-            .select('id, principal, term_ticks, apr, expires_at_tick, '
+            .select('id, principal, term_ticks, expires_at_tick, '
                   + 'borrower:entrepreneur_corps!borrower_corp_id(id, name, hq_nation_id, '
                     + 'hq:nations!hq_nation_id(name), '
                     + 'owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name))')
@@ -1525,17 +1582,20 @@ function initials(s, n) {
               const ceo = r.borrower?.owner
                 ? [r.borrower.owner.leader_first_name, r.borrower.owner.leader_last_name].filter(Boolean).join(' ').trim() || r.borrower.owner.faction_name
                 : '';
-              const perTick = Math.round(Number(r.principal) / Number(r.term_ticks) + Number(r.principal) * Number(r.apr) / 12);
+              // v1: request no longer carries an APR — banks set the
+              // rate in their offer. Sub-line drops the APR + per-tick
+              // numbers (those depend on what THIS bank chooses to
+              // offer).
               return `
                 <div class="ap-loan ${eligible ? '' : 'ineligible'}">
                   <div class="ap-loan-info">
                     <div class="ap-loan-who">${escapeHtml(r.borrower?.name || 'Unknown corp')} requests ${fmtUsd(Number(r.principal))}</div>
                     <div class="ap-loan-sub">
-                      ${ceo ? escapeHtml(ceo) + ' · ' : ''}${escapeHtml(r.borrower?.hq?.name || '—')} · ${fmtPct(r.apr)} · ${r.term_ticks}t · ${fmtUsd(perTick)}/t · expires T${r.expires_at_tick}
+                      ${ceo ? escapeHtml(ceo) + ' · ' : ''}${escapeHtml(r.borrower?.hq?.name || '—')} · ${r.term_ticks}t term · expires T${r.expires_at_tick}
                     </div>
                   </div>
                   ${eligible
-                    ? `<button class="ap-btn-small accept cp-accept-loan" data-rid="${r.id}">Accept</button>`
+                    ? `<button class="ap-btn-small accept cp-make-offer" data-rid="${r.id}" data-principal="${r.principal}" data-term="${r.term_ticks}" data-bname="${escapeHtml(r.borrower?.name || 'Unknown')}">Make Offer</button>`
                     : '<span class="ap-loan-grey">No Banking Office in their HQ nation</span>'}
                 </div>`;
             }).join('');
@@ -1557,14 +1617,14 @@ function initials(s, n) {
         pj.querySelectorAll('.ap-btn-small.delist').forEach(btn => {
           btn.addEventListener('click', () => handleDelist(btn, btn.dataset.bid));
         });
-        pj.querySelectorAll('.ap-btn-small.accept:not(.cp-accept-loan)').forEach(btn => {
+        pj.querySelectorAll('.ap-btn-small.accept:not(.cp-make-offer)').forEach(btn => {
           btn.addEventListener('click', () => handleAcceptOffer(btn, btn.dataset.oid));
         });
         pj.querySelectorAll('.ap-btn-small.reject').forEach(btn => {
           btn.addEventListener('click', () => handleRejectOffer(btn, btn.dataset.oid));
         });
-        pj.querySelectorAll('.cp-accept-loan').forEach(btn => {
-          btn.addEventListener('click', () => handleAcceptLoan(btn, btn.dataset.rid));
+        pj.querySelectorAll('.cp-make-offer').forEach(btn => {
+          btn.addEventListener('click', () => openMakeOfferModal(btn));
         });
       }
     };
@@ -2080,13 +2140,33 @@ function initials(s, n) {
       const fc = document.getElementById('cp-finance');
       if (!fc) return;
 
-      const [reqRes, loansRes] = await Promise.all([
+      // Four parallel fetches:
+      //   reqRes        — borrower side: this corp's pending+recent requests.
+      //   receivedRes   — borrower side: pending offers received on those requests.
+      //   sentRes       — bank side: pending offers this corp has sent.
+      //   loansRes      — active loans on either side.
+      // The corp page renders both sides regardless of industry — a
+      // corp might be a borrower today and a lender tomorrow if it's
+      // a Banking corp.
+      const [reqRes, receivedRes, sentRes, loansRes] = await Promise.all([
         _supabase.from('corp_loan_requests')
-          .select('id, principal, term_ticks, apr, status, placed_at_tick, expires_at_tick, '
+          .select('id, principal, term_ticks, status, placed_at_tick, expires_at_tick, '
                 + 'accepted_by:entrepreneur_corps!accepted_by_corp_id(name)')
           .eq('borrower_corp_id', id)
           .order('placed_at_tick', { ascending: false })
           .limit(5),
+        _supabase.from('corp_loan_offers')
+          .select('id, apr, status, placed_at_tick, '
+                + 'bank:entrepreneur_corps!bank_corp_id(name), '
+                + 'request:corp_loan_requests!request_id(id, principal, term_ticks, status, borrower_corp_id)')
+          .eq('status', 'pending'),
+        _supabase.from('corp_loan_offers')
+          .select('id, apr, status, placed_at_tick, '
+                + 'request:corp_loan_requests!request_id(id, principal, term_ticks, status, expires_at_tick, '
+                  + 'borrower:entrepreneur_corps!borrower_corp_id(name))')
+          .eq('bank_corp_id', id)
+          .order('placed_at_tick', { ascending: false })
+          .limit(10),
         _supabase.from('corp_loans')
           .select('id, principal, apr, term_ticks, per_tick_payment, payments_remaining, '
                 + 'total_paid, status, started_at_tick, borrower_corp_id, lender_corp_id, '
@@ -2096,13 +2176,20 @@ function initials(s, n) {
           .in('status', ['active', 'defaulted'])
           .order('started_at_tick', { ascending: false }),
       ]);
-      if (reqRes.error)   console.warn('[entrepreneur-corp] outgoing-loans fetch error:', reqRes.error.message);
-      if (loansRes.error) console.warn('[entrepreneur-corp] active-loans fetch error:',   loansRes.error.message);
+      if (reqRes.error)      console.warn('[entrepreneur-corp] outgoing-loans fetch error:',  reqRes.error.message);
+      if (receivedRes.error) console.warn('[entrepreneur-corp] received-offers fetch error:', receivedRes.error.message);
+      if (sentRes.error)     console.warn('[entrepreneur-corp] sent-offers fetch error:',     sentRes.error.message);
+      if (loansRes.error)    console.warn('[entrepreneur-corp] active-loans fetch error:',    loansRes.error.message);
 
       const outgoing = reqRes.data || [];
       const loans    = loansRes.data || [];
+      // Filter received-offers to ones aimed at THIS corp's requests.
+      // (The eq(status,'pending') filter above is global; cross-join
+      // on borrower_corp_id happens client-side.)
+      const receivedOffers = (receivedRes.data || []).filter(o => o.request?.borrower_corp_id === id);
+      const sentOffers     = (sentRes.data || []);
 
-      // Wire the DEBT header card from real outstanding principal.
+      // DEBT header from outstanding principal (unchanged from v0).
       const debtSum = loans
         .filter(l => l.borrower_corp_id === id && l.status === 'active')
         .reduce((s, l) => s + Math.max(0, Number(l.principal) - Number(l.total_paid)), 0);
@@ -2120,26 +2207,69 @@ function initials(s, n) {
 
       const launchBtn = isOwner
         ? `<div class="cf-launch">
-             <div class="lab">Need capital? <b>Broadcast a loan request</b> to Banking corps with a Banking Office in ${escapeHtml(c.hq?.name || 'your HQ nation')}.</div>
+             <div class="lab">Need capital? <b>Broadcast a loan request</b> to Banking corps with a Banking Office in ${escapeHtml(c.hq?.name || 'your HQ nation')}. They respond with rates; you pick the one you like.</div>
              <button class="cf-btn" id="cp-request-loan">Request Loan</button>
            </div>`
         : '';
 
+      // Borrower-side outgoing requests (no APR — request doesn't
+      // carry one in v1; banks set the rate on their offers).
       const outgoingHtml = (outgoing.length && isOwner)
         ? `<div class="cf-sub-head">Your Loan Requests · ${outgoing.length}</div>` + outgoing.map(r => {
-            const total = Math.round(Number(r.principal) * (1 + Number(r.apr) * Number(r.term_ticks) / 12));
             const canCancel = r.status === 'pending';
             const tail = r.status === 'accepted' && r.accepted_by?.name
               ? `Funded by ${escapeHtml(r.accepted_by.name)}`
-              : `Total repay ${fmtUsd(total)} · expires T${r.expires_at_tick}`;
+              : `${r.term_ticks}-tick term · expires T${r.expires_at_tick}`;
             return `
               <div class="cf-row">
                 <div>
-                  <div class="who">${fmtUsd(Number(r.principal))} · ${fmtPct(r.apr)} · ${r.term_ticks}t</div>
+                  <div class="who">${fmtUsd(Number(r.principal))} · ${r.term_ticks}t</div>
                   <div class="sub">${tail}</div>
                 </div>
                 <span class="cf-status ${r.status}">${r.status}</span>
                 ${canCancel ? `<button class="ap-btn-small delist cp-cancel-loan" data-rid="${r.id}">Cancel</button>` : '<span></span>'}
+              </div>`;
+          }).join('')
+        : '';
+
+      // Borrower-side received offers — each bank's rate on this
+      // corp's pending request. Borrower picks one.
+      const receivedHtml = (receivedOffers.length && isOwner)
+        ? `<div class="cf-sub-head">Loan Offers Received · ${receivedOffers.length}</div>` + receivedOffers.map(o => {
+            const principal = Number(o.request?.principal) || 0;
+            const term = Number(o.request?.term_ticks) || 0;
+            const apr = Number(o.apr) || 0;
+            const total   = Math.round(principal * (1 + apr * term / 12));
+            const perTick = Math.round(principal / term + principal * apr / 12);
+            return `
+              <div class="cf-row income">
+                <div>
+                  <div class="who">${escapeHtml(o.bank?.name || 'Unknown bank')} offers ${fmtPct(o.apr)} APR</div>
+                  <div class="sub">${fmtUsd(principal)} over ${term}t · total repay ${fmtUsd(total)} · ${fmtUsd(perTick)}/tick</div>
+                </div>
+                <button class="ap-btn-small accept cp-accept-loan-offer" data-oid="${o.id}">Accept</button>
+              </div>`;
+          }).join('')
+        : '';
+
+      // Bank-side outgoing offers — this corp's offers on other
+      // borrowers' requests.
+      const sentHtml = (sentOffers.length && isOwner)
+        ? `<div class="cf-sub-head">My Loan Offers · ${sentOffers.length}</div>` + sentOffers.map(o => {
+            const req = o.request;
+            const borrowerName = req?.borrower?.name || 'Unknown borrower';
+            const tail = req
+              ? `${fmtUsd(Number(req.principal))} over ${req.term_ticks}t · expires T${req.expires_at_tick}`
+              : '—';
+            const canWithdraw = o.status === 'pending';
+            return `
+              <div class="cf-row">
+                <div>
+                  <div class="who">${escapeHtml(borrowerName)} · ${fmtPct(o.apr)} APR</div>
+                  <div class="sub">${tail}</div>
+                </div>
+                <span class="cf-status ${o.status}">${o.status}</span>
+                ${canWithdraw ? `<button class="ap-btn-small delist cp-withdraw-loan-offer" data-oid="${o.id}">Withdraw</button>` : '<span></span>'}
               </div>`;
           }).join('')
         : '';
@@ -2162,13 +2292,19 @@ function initials(s, n) {
           }).join('')
         : '';
 
-      const allHtml = launchBtn + outgoingHtml + activeHtml;
+      const allHtml = launchBtn + outgoingHtml + receivedHtml + sentHtml + activeHtml;
       fc.innerHTML = allHtml || `<div class="empty-card">No loan activity yet.${isOwner ? ' Broadcast a request to start.' : ''}</div>`;
 
       if (isOwner) {
         document.getElementById('cp-request-loan')?.addEventListener('click', openRequestLoanModal);
         fc.querySelectorAll('.cp-cancel-loan').forEach(btn => {
           btn.addEventListener('click', () => handleCancelLoan(btn, btn.dataset.rid));
+        });
+        fc.querySelectorAll('.cp-accept-loan-offer').forEach(btn => {
+          btn.addEventListener('click', () => handleAcceptLoanOffer(btn, btn.dataset.oid));
+        });
+        fc.querySelectorAll('.cp-withdraw-loan-offer').forEach(btn => {
+          btn.addEventListener('click', () => handleWithdrawLoanOffer(btn, btn.dataset.oid));
         });
       }
     };
@@ -2184,7 +2320,6 @@ function initials(s, n) {
       const ov = document.getElementById('rl-overlay');
       const errEl = document.getElementById('rl-err');
       document.getElementById('rl-principal').value = '';
-      document.getElementById('rl-apr').value = '5';
       document.getElementById('rl-term').value = '60';
       errEl.textContent = '';
       updateLoanSummary();
@@ -2197,24 +2332,21 @@ function initials(s, n) {
     const parseLoanInputs = () => {
       const rawP = (document.getElementById('rl-principal').value || '').trim();
       const principal = Number(rawP.replace(/[$,\s]/g, ''));
-      const apr = Number((document.getElementById('rl-apr').value || '').trim()) / 100;
       const term = Number((document.getElementById('rl-term').value || '').trim());
-      return { principal, apr, term };
+      return { principal, term };
     };
 
     const updateLoanSummary = () => {
-      const { principal, apr, term } = parseLoanInputs();
+      const { principal, term } = parseLoanInputs();
       const sumEl = document.getElementById('rl-summary');
       if (!Number.isFinite(principal) || principal < 1) {
-        sumEl.innerHTML = `Set principal / APR / term to see the per-tick payment.`;
+        sumEl.innerHTML = `Set principal + term — eligible banks respond with their own APR.`;
         return;
       }
-      const total   = Math.round(principal * (1 + apr * term / 12));
-      const perTick = Math.round(principal / term + principal * apr / 12);
-      sumEl.innerHTML = `Broadcast to every Banking corp with a <b>Banking Office</b> in ${escapeHtml(c.hq?.name || 'your HQ nation')}. First to accept funds the loan.<br>` +
-        `Borrow <b>${fmtUsd(principal)}</b> · repay <b>${fmtUsd(total)}</b> over <b>${term} ticks</b> at <b>${(apr * 100).toFixed(2)}%</b> APR · <b>${fmtUsd(perTick)}/tick</b>.`;
+      sumEl.innerHTML = `Broadcast to every Banking corp with a <b>Banking Office</b> in ${escapeHtml(c.hq?.name || 'your HQ nation')}. Each can propose their own APR over the next <b>6 ticks</b>; you pick the one you like.<br>` +
+        `Borrowing <b>${fmtUsd(principal)}</b> over <b>${term} ticks</b>.`;
     };
-    ['rl-principal', 'rl-apr', 'rl-term'].forEach(id => {
+    ['rl-principal', 'rl-term'].forEach(id => {
       document.getElementById(id).addEventListener('input', updateLoanSummary);
     });
 
@@ -2227,13 +2359,9 @@ function initials(s, n) {
     document.getElementById('rl-submit').addEventListener('click', async () => {
       if (loanSubmitting) return;
       const errEl = document.getElementById('rl-err');
-      const { principal, apr, term } = parseLoanInputs();
+      const { principal, term } = parseLoanInputs();
       if (!Number.isFinite(principal) || !Number.isInteger(principal) || principal < 1000000 || principal > 1000000000) {
         errEl.textContent = 'Principal must be between $1,000,000 and $1,000,000,000.';
-        return;
-      }
-      if (!Number.isFinite(apr) || apr < 0 || apr > 0.5) {
-        errEl.textContent = 'APR must be 0–50%.';
         return;
       }
       if (!Number.isInteger(term) || term < 12 || term > 240) {
@@ -2250,14 +2378,12 @@ function initials(s, n) {
           p_borrower_corp_id: id,
           p_principal:        principal,
           p_term_ticks:       term,
-          p_apr:              apr,
         });
         if (rpcErr) throw rpcErr;
         if (!data || !data.success) {
           const REASON = {
             invalid_principal: 'Principal must be $1M–$1B.',
             invalid_term:      'Term must be 12–240 ticks.',
-            invalid_apr:       'APR must be 0–50%.',
             no_hq_nation:      'Your corp has no HQ nation.',
             already_pending:   'You already have a pending loan request. Cancel it first.',
             not_owner:         'Only the corp owner can request loans.',
@@ -2274,32 +2400,141 @@ function initials(s, n) {
       }
     });
 
-    // ── Accept / Decline / Cancel handlers (inline confirm) ──
+    // ── Make Offer modal (bank side, v1) ──
+    // Triggered by [Make Offer] on a pending request in the bank's
+    // Active Projects. Asks the bank for an APR; submits via the new
+    // offer_loan RPC. Bank can revise their offer via the same modal
+    // (server upserts onto the partial-unique pending row).
     let loanActionInFlight = false;
-    const handleAcceptLoan = async (btn, rid) => {
+    let moRequestId  = null;
+    let moPrincipal  = 0;
+    let moTermTicks  = 0;
+    let moBorrower   = '';
+
+    const openMakeOfferModal = (btn) => {
+      moRequestId = btn.dataset.rid;
+      moPrincipal = Number(btn.dataset.principal) || 0;
+      moTermTicks = Number(btn.dataset.term) || 0;
+      moBorrower  = btn.dataset.bname || 'borrower';
+      document.getElementById('mo-borrower').textContent = moBorrower;
+      document.getElementById('mo-principal').textContent = fmtUsd(moPrincipal);
+      document.getElementById('mo-term').textContent = `${moTermTicks} ticks`;
+      document.getElementById('mo-apr').value = '5';
+      document.getElementById('mo-err').textContent = '';
+      updateMakeOfferPreview();
+      document.getElementById('mo-overlay').classList.add('open');
+      setTimeout(() => document.getElementById('mo-apr').focus(), 50);
+    };
+    const closeMakeOfferModal = () => document.getElementById('mo-overlay').classList.remove('open');
+    document.getElementById('mo-close').addEventListener('click', closeMakeOfferModal);
+    document.getElementById('mo-cancel').addEventListener('click', closeMakeOfferModal);
+    document.getElementById('mo-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'mo-overlay') closeMakeOfferModal();
+    });
+    const updateMakeOfferPreview = () => {
+      const apr = Number((document.getElementById('mo-apr').value || '').trim()) / 100;
+      const sumEl = document.getElementById('mo-preview');
+      if (!Number.isFinite(apr) || apr < 0 || apr > 0.5 || !moPrincipal || !moTermTicks) {
+        sumEl.innerHTML = `Set an APR between 0% and 50% to preview the per-tick payment.`;
+        return;
+      }
+      const total = Math.round(moPrincipal * (1 + apr * moTermTicks / 12));
+      const perTick = Math.round(moPrincipal / moTermTicks + moPrincipal * apr / 12);
+      sumEl.innerHTML = `Borrower repays <b>${fmtUsd(total)}</b> over <b>${moTermTicks} ticks</b> at <b>${(apr * 100).toFixed(2)}%</b> APR · <b>${fmtUsd(perTick)}/tick</b> back to your corp.`;
+    };
+    document.getElementById('mo-apr').addEventListener('input', updateMakeOfferPreview);
+
+    document.getElementById('mo-submit').addEventListener('click', async () => {
       if (loanActionInFlight) return;
-      if (!confirm('Accept this loan request? Principal moves from your corp owner to the borrower now; per-tick repayments start next tick.')) return;
+      const errEl = document.getElementById('mo-err');
+      const apr = Number((document.getElementById('mo-apr').value || '').trim()) / 100;
+      if (!Number.isFinite(apr) || apr < 0 || apr > 0.5) {
+        errEl.textContent = 'APR must be 0–50%.';
+        return;
+      }
       loanActionInFlight = true;
+      const btn = document.getElementById('mo-submit');
       const prev = btn.textContent;
-      btn.disabled = true; btn.textContent = 'ACCEPTING…';
+      btn.disabled = true; btn.textContent = 'SUBMITTING…';
+      errEl.textContent = '';
       try {
-        const { data, error: rpcErr } = await _supabase.rpc('accept_corp_loan_request', {
-          p_request_id: rid, p_bank_corp_id: id,
+        const { data, error: rpcErr } = await _supabase.rpc('offer_loan', {
+          p_request_id:   moRequestId,
+          p_bank_corp_id: id,
+          p_apr:          apr,
         });
         if (rpcErr) throw rpcErr;
         if (!data || !data.success) {
           const REASON = {
-            bank_insufficient_funds: data?.need != null
-              ? `Need ${fmtUsd(Number(data.need))}, your corp owner has ${fmtUsd(Number(data.have ?? 0))}.`
-              : 'Bank owner doesn’t have the principal in party funds.',
-            request_not_pending:         'This request is no longer pending.',
-            request_expired:             'This request has expired.',
-            no_banking_office_in_nation: 'Your corp doesn’t own a Banking Office in the borrower’s HQ nation.',
-            cannot_self_loan:            'A corp can’t accept its own loan request.',
-            not_bank_corp_owner:         'You don’t own this corp.',
-            not_banking_corp:            'Only Banking corps can accept loan requests.',
+            invalid_apr:                  'APR must be 0–50%.',
+            request_not_pending:          'This request is no longer pending.',
+            request_expired:              'This request has expired.',
+            no_banking_office_in_nation:  'Your corp doesn’t own a Banking Office in the borrower’s HQ nation.',
+            cannot_self_loan:             'A corp can’t bid on its own loan request.',
+            not_bank_corp_owner:          'You don’t own this corp.',
+            not_banking_corp:             'Only Banking corps can submit loan offers.',
+          };
+          errEl.textContent = REASON[data?.reason] || ('Could not submit: ' + (data?.reason || 'unknown'));
+          loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        btn.textContent = 'OFFERED ✓ — refreshing…';
+        setTimeout(() => location.reload(), 600);
+      } catch (e) {
+        errEl.textContent = 'Failed: ' + (e?.message || e);
+        loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    });
+
+    // ── Borrower-side accept (picks one bank's offer) ──
+    const handleAcceptLoanOffer = async (btn, offerId) => {
+      if (loanActionInFlight) return;
+      if (!confirm('Accept this offer? Principal moves from the bank to your corp owner now; per-tick repayments start next tick. Other pending offers on this request will auto-decline.')) return;
+      loanActionInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'ACCEPTING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('accept_loan_offer', {
+          p_offer_id: offerId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            offer_not_pending:        'This offer is no longer pending.',
+            request_not_pending:      'The loan request was already closed.',
+            request_expired:          'The loan request has expired.',
+            bank_insufficient_funds:  data?.need != null
+              ? `Bank no longer has the funds (have ${fmtUsd(Number(data.have ?? 0))}, need ${fmtUsd(Number(data.need))}).`
+              : 'Bank no longer has the funds.',
+            not_borrower_corp_owner:  'You aren’t the borrower corp’s owner.',
+            borrower_orphan:          'Borrower corp has no owning faction.',
+            bank_orphan:              'Bank corp has no owning faction.',
           };
           alert(REASON[data?.reason] || ('Could not accept: ' + (data?.reason || 'unknown')));
+          loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    // ── Bank-side withdraw (cancel their own offer) ──
+    const handleWithdrawLoanOffer = async (btn, offerId) => {
+      if (loanActionInFlight) return;
+      if (!confirm('Withdraw this offer?')) return;
+      loanActionInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'WITHDRAWING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('withdraw_loan_offer', {
+          p_offer_id: offerId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          alert('Could not withdraw: ' + (data?.reason || 'unknown'));
           loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
           return;
         }
@@ -2412,20 +2647,13 @@ function initials(s, n) {
       <div class="rl-x" id="rl-close">×</div>
     </div>
     <div class="rl-body">
-      <div class="rl-grid">
-        <div>
-          <div class="rl-label">Principal ($)</div>
-          <input type="text" class="rl-input" id="rl-principal" placeholder="e.g. 50,000,000" inputmode="numeric">
-        </div>
-        <div>
-          <div class="rl-label">APR (%)</div>
-          <input type="text" class="rl-input" id="rl-apr" placeholder="e.g. 5" inputmode="decimal" value="5">
-        </div>
-      </div>
+      <div class="rl-label">Principal ($)</div>
+      <input type="text" class="rl-input" id="rl-principal" placeholder="e.g. 50,000,000" inputmode="numeric">
+
       <div class="rl-label">Term (ticks)</div>
       <input type="text" class="rl-input" id="rl-term" placeholder="e.g. 60 (5 years)" inputmode="numeric" value="60">
 
-      <div class="rl-summary" id="rl-summary">Fill the fields to see the per-tick payment.</div>
+      <div class="rl-summary" id="rl-summary">Set principal + term — eligible banks respond with their own APR.</div>
       <div class="rl-err" id="rl-err"></div>
     </div>
     <div class="rl-foot">
@@ -2445,6 +2673,38 @@ function initials(s, n) {
     </div>
     <div class="bm-body">
       <div id="mk-list">Loading marketplace…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Make Offer modal (v1 corp loans, 20270177). Bank-side; bank picks
+     an APR for a pending request. Principal + term come from the
+     borrower's request and are read-only here. RPC: offer_loan. -->
+<div class="mo-overlay" id="mo-overlay">
+  <div class="mo-modal">
+    <div class="mo-head">
+      <div class="ti">Make <em>Offer</em></div>
+      <div class="mo-x" id="mo-close">×</div>
+    </div>
+    <div class="mo-body">
+      <div class="mo-label">Borrower</div>
+      <div class="mo-static" id="mo-borrower">—</div>
+
+      <div class="mo-label">Principal</div>
+      <div class="mo-static" id="mo-principal">—</div>
+
+      <div class="mo-label">Term</div>
+      <div class="mo-static" id="mo-term">—</div>
+
+      <div class="mo-label">APR (%)</div>
+      <input type="text" class="mo-input" id="mo-apr" placeholder="e.g. 5" inputmode="decimal" value="5">
+
+      <div class="mo-preview" id="mo-preview">Set an APR between 0% and 50% to preview the per-tick payment.</div>
+      <div class="mo-err" id="mo-err"></div>
+    </div>
+    <div class="mo-foot">
+      <button class="mo-btn sec" id="mo-cancel">Cancel</button>
+      <button class="mo-btn pri" id="mo-submit">Submit Offer</button>
     </div>
   </div>
 </div>
