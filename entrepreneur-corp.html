@@ -1634,7 +1634,7 @@ function initials(s, n) {
                     <div class="ap-name">${escapeHtml(b.name)}</div>
                     <div class="ap-sub">${escapeHtml(nationName)} · ${elapsed}/${total} ticks</div>
                   </div>
-                  <span class="ap-tier">${tier.label}</span>
+                  <span>${b.building_type ? `<span class="ap-btype ${b.building_type}">${buildingTypeLabel(b.building_type)}</span>` : ''}<span class="ap-tier">${tier.label}</span></span>
                 </div>
                 <div class="ap-bar-wrap"><div class="ap-bar-fill" style="width:${pct}%"></div></div>
                 <div class="ap-meta">
