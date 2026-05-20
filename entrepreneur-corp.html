@@ -614,7 +614,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel } from './js/utils.js';
-import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
+import { computeEntrepreneurValuation, getEntrepreneurCorpCash } from './js/game/corp-valuation.js';
 function initials(s, n) {
   return (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, n || 2).map(w => w[0]).join('').toUpperCase()) || '—';
 }
@@ -838,17 +838,8 @@ function initials(s, n) {
       }
     }
 
-    // Cash on hand: treasury_cash is the live cash pool for every
-    // corp (private and public) post-20270182. Backfilled = the
-    // starting_capital seed. Construction debits it, AMM trades it.
-    // Pre-migration legacy rows may still carry NULL — fall back to
-    // starting_capital so the UI is never blank.
-    const cashOnHand = Number(c.treasury_cash);
-    const cashDisplay = Number.isFinite(cashOnHand)
-        ? cashOnHand
-        : (Number(c.starting_capital) || 0);
-    set('cp-cash', fmtM(cashDisplay));
-    set('cp-cash-delta', isPublic ? '— corp treasury' : '— corp treasury');
+    set('cp-cash', fmtM(getEntrepreneurCorpCash(c)));
+    set('cp-cash-delta', '— corp treasury');
 
     // VALUATION from the shared single source (js/game/corp-valuation.js
     // §3). The engine valuation is deliberately a separate surface and

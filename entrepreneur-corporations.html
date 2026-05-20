@@ -349,7 +349,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { fmtM, fmtUsd, fmtValuation, titleCase, ownerDisplayName, viewerStakePct, industryLabel } from './js/utils.js';
-import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
+import { computeEntrepreneurValuation, getEntrepreneurCorpCash } from './js/game/corp-valuation.js';
 
 const FEE = 1_000_000;
 // Shares issued when a corp lists public. The authoritative value lives
@@ -752,10 +752,7 @@ function renderPositions(corps, filter) {
 
       for (const c of corps) {
         const isPub = c.listing === 'public';
-        // treasury_cash is live for both listings post-20270182.
-        // Legacy rows (treasury_cash NULL) fall back to starting_capital.
-        const treasNum = Number(c.treasury_cash);
-        const cash = Number.isFinite(treasNum) ? treasNum : (Number(c.starting_capital) || 0);
+        const cash = getEntrepreneurCorpCash(c);
         const val  = computeEntrepreneurValuation(c);
         const ind  = (c.industry || '').toLowerCase();
         const row  = document.createElement('div'); row.className = 'ec-jr';
