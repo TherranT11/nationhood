@@ -56,6 +56,11 @@
   .mkt .c-sub.construction { color:#8aaa6a; }
   .mkt .c-sub.banking { color:#7a9aab; }
   .mkt .c-sub.shipping { color:#c89e6e; }
+  .mkt .c-sub.btype-regional_hq       { color:#aa7aaa; }
+  .mkt .c-sub.btype-construction_yard { color:#8aaa6a; }
+  .mkt .c-sub.btype-port              { color:#c89e6e; }
+  .mkt .c-sub.btype-banking_office    { color:#7a9aab; }
+  .mkt .c-sub.btype-unknown           { color:#666; }
   .mkt .c-sub .hq { color:#555; font-weight:400; }
 
   .mkt .pill { display:inline-block; padding:3px 9px; border-radius:3px;
@@ -260,10 +265,15 @@ import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { fmtUsd, fmtValuation, titleCase, viewerStakePct, ownerDisplayName, escapeHtml } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 
-// Tier table mirrors begin_construction's CASE in 20270165 — labels
-// for the Properties view. The SQL CASE is authoritative; this is
-// display-only.
+// Tier + Type labels mirror the SQL CASE in 20270165 / 20270170 —
+// authoritative copy lives in the migrations; these are display-only.
 const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'Major', monumental: 'Monumental' };
+const TYPE_LABEL = {
+  regional_hq:       'Regional HQ',
+  construction_yard: 'Construction Yard',
+  port:              'Port',
+  banking_office:    'Banking Office',
+};
 
 (async () => {
   try {
@@ -452,7 +462,7 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
       propsLoaded = true;
       const el = document.getElementById('props-rows');
       const { data: props, error: pErr } = await _supabase.from('corp_buildings')
-        .select('id, name, tier, nation_id, list_price, owner_corp_id, '
+        .select('id, name, tier, building_type, nation_id, list_price, owner_corp_id, '
               + 'nation:nations!nation_id(name), '
               + 'owner:entrepreneur_corps!owner_corp_id(name, industry)')
         .not('list_price', 'is', null)
@@ -475,6 +485,7 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
         <div class="grid props row">
           <div>
             <div class="c-name">${escapeHtml(b.name)}</div>
+            <div class="c-sub btype-${b.building_type || 'unknown'}">${escapeHtml(TYPE_LABEL[b.building_type] || 'Building')}</div>
           </div>
           <div><span class="tier-pill">${TIER_LABEL[b.tier] || escapeHtml(b.tier)}</span></div>
           <div class="ceo">${escapeHtml(b.nation?.name || '—')}</div>
@@ -485,13 +496,16 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
           <div class="num">${fmtUsd(Number(b.list_price))}</div>
           <div>
             <button class="mkt-action place-offer-btn" data-bid="${b.id}"
-              data-bname="${escapeHtml(b.name)}" data-asking="${b.list_price}">Place Offer</button>
+              data-bname="${escapeHtml(b.name)}"
+              data-btype="${b.building_type || ''}"
+              data-asking="${b.list_price}">Place Offer</button>
           </div>
         </div>
       `).join('');
       // Wire Place Offer buttons.
       el.querySelectorAll('.place-offer-btn').forEach(btn => {
-        btn.addEventListener('click', () => openOfferModal(btn.dataset.bid, btn.dataset.bname, Number(btn.dataset.asking)));
+        btn.addEventListener('click', () => openOfferModal(
+          btn.dataset.bid, btn.dataset.bname, Number(btn.dataset.asking), btn.dataset.btype));
       });
     };
 
@@ -522,7 +536,7 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
       const myCorpIds = myCorps.map(c => c.id);
       const { data: offers, error: oErr } = await _supabase.from('building_offers')
         .select('id, amount, status, placed_at_tick, buyer_corp_id, '
-              + 'building:corp_buildings!building_id(id, name, list_price, '
+              + 'building:corp_buildings!building_id(id, name, building_type, list_price, '
                 + 'nation:nations!nation_id(name), '
                 + 'owner:entrepreneur_corps!owner_corp_id(name)), '
               + 'buyer:entrepreneur_corps!buyer_corp_id(name)')
@@ -544,7 +558,7 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
         <div class="grid offers row">
           <div>
             <div class="c-name">${escapeHtml(o.building?.name || '—')}</div>
-            <div class="c-sub"><span class="hq">${escapeHtml(o.building?.nation?.name || '—').toUpperCase()}</span></div>
+            <div class="c-sub btype-${o.building?.building_type || 'unknown'}">${escapeHtml(TYPE_LABEL[o.building?.building_type] || 'Building')}<span class="hq">  ·  ${escapeHtml(o.building?.nation?.name || '—').toUpperCase()}</span></div>
           </div>
           <div class="seller">${escapeHtml(o.building?.owner?.name || 'Unknown')}</div>
           <div class="ceo">${escapeHtml(o.buyer?.name || '—')}</div>
@@ -582,10 +596,13 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
     let poBuildingId = null;
     let poAsking = 0;
 
-    const openOfferModal = async (buildingId, buildingName, asking) => {
+    const openOfferModal = async (buildingId, buildingName, asking, buildingType) => {
       poBuildingId = buildingId;
       poAsking = asking;
-      document.getElementById('po-prop').textContent = buildingName || '—';
+      const typeLabel = TYPE_LABEL[buildingType] || '';
+      document.getElementById('po-prop').textContent = typeLabel
+        ? `${buildingName || '—'} · ${typeLabel}`
+        : (buildingName || '—');
       document.getElementById('po-asking').textContent = fmtUsd(asking);
       document.getElementById('po-amount').value = '';
       document.getElementById('po-err').textContent = '';
@@ -646,6 +663,9 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
             seller_not_real_estate:       'Only Real Estate properties accept offers.',
             buyer_corp_not_found:         'The selected corp was not found.',
             not_buyer_corp_owner:         'You do not own the selected corp.',
+            wrong_sector:                 data?.required
+                                            ? `That building is sector-locked to ${data.required} corps. Pick a ${data.required} corp to bid via.`
+                                            : 'Wrong sector for this building.',
           };
           errEl.textContent = REASON[data?.reason] || ('Could not place: ' + (data?.reason || 'unknown'));
           offerSubmitting = false; btn.disabled = false; btn.textContent = prev;
