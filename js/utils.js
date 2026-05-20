@@ -63,11 +63,12 @@ export function industryLabel(s) {
  */
 export function buildingTypeLabel(t) {
     switch (t) {
-        case 'regional_hq':       return 'Regional HQ';
-        case 'construction_yard': return 'Construction Yard';
-        case 'port':              return 'Port';
-        case 'banking_office':    return 'Banking Office';
-        default:                  return t ? String(t) : 'Building';
+        case 'regional_hq':        return 'Regional HQ';
+        case 'construction_yard':  return 'Construction Yard';
+        case 'port':               return 'Port';
+        case 'banking_office':     return 'Banking Office';
+        case 'real_estate_office': return 'Real Estate Office';
+        default:                   return t ? String(t) : 'Building';
     }
 }
 
