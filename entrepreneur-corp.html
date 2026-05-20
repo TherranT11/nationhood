@@ -139,6 +139,84 @@
   .tc-msg.err { color:#c98a8a; }
   .tc-msg.ok { color:#8aaa6a; }
 
+  /* Active Projects panel — building list + Begin Construction button */
+  .ap-launch { display:flex; align-items:center; justify-content:space-between; gap:14px;
+    padding:14px 18px; background:#0d0d0d; border:0.5px solid rgba(138,170,106,0.18);
+    border-radius:4px; margin-bottom:10px; }
+  .ap-launch .lab { font-size:11px; color:#888; letter-spacing:0.08em; line-height:1.5; }
+  .ap-launch .lab b { color:#d4d4d4; font-weight:500; }
+  .ap-btn { padding:9px 16px; font-size:10px; letter-spacing:0.12em; border-radius:3px; cursor:pointer;
+    background:#1f2a1a; border:0.5px solid #8aaa6a; color:#8aaa6a; font-weight:500;
+    text-transform:uppercase; }
+  .ap-btn:hover { background:#243a1f; }
+  .ap-btn:disabled { opacity:0.45; cursor:not-allowed; }
+  .ap-row { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
+    padding:14px 18px; margin-bottom:8px; }
+  .ap-row.completed { border-color:rgba(138,170,106,0.18); }
+  .ap-row-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:8px; }
+  .ap-name { font-size:14px; color:#fff; font-weight:500; line-height:1.2; }
+  .ap-sub { font-size:10px; color:#777; letter-spacing:0.08em; text-transform:uppercase; margin-top:3px; }
+  .ap-tier { display:inline-block; padding:3px 8px; border-radius:3px; font-size:9px;
+    letter-spacing:0.13em; font-weight:500; background:#131613; color:#8aaa6a;
+    border:0.5px solid rgba(138,170,106,0.3); text-transform:uppercase; }
+  .ap-bar-wrap { height:6px; background:#1a1a1a; border-radius:3px; overflow:hidden; margin:8px 0 6px; }
+  .ap-bar-fill { height:100%; background:linear-gradient(90deg,#5a7a3a,#8aaa6a); transition:width 0.3s; }
+  .ap-meta { display:flex; justify-content:space-between; font-size:10px; color:#666;
+    letter-spacing:0.08em; }
+  .ap-meta .done { color:#8aaa6a; }
+  .ap-empty { background:#0d0d0d; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
+    padding:24px 18px; color:#666; font-size:12px; text-align:center; line-height:1.6;
+    letter-spacing:0.03em; }
+
+  /* Begin Construction modal */
+  .bm-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); display:none;
+    align-items:center; justify-content:center; padding:30px; z-index:500; }
+  .bm-overlay.open { display:flex; }
+  .bm-modal { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.1); border-radius:6px;
+    width:100%; max-width:560px; max-height:92vh; display:flex; flex-direction:column; overflow:hidden; }
+  .bm-head { padding:16px 22px; border-bottom:0.5px solid rgba(255,255,255,0.08);
+    display:flex; align-items:center; gap:12px;
+    background:linear-gradient(180deg,rgba(138,170,106,0.04),#0c0c0c); }
+  .bm-head .ti { font-size:18px; font-weight:500; color:#fff; flex:1; }
+  .bm-head .ti em { font-family:Georgia,serif; color:#8aaa6a; font-style:italic; }
+  .bm-x { border:0.5px solid rgba(255,255,255,0.15); color:#888; width:26px; height:26px;
+    border-radius:3px; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; font-size:15px; }
+  .bm-x:hover { color:#8aaa6a; border-color:rgba(138,170,106,0.4); }
+  .bm-body { padding:20px 22px; overflow-y:auto; }
+  .bm-label { font-size:10px; color:#888; letter-spacing:0.13em; text-transform:uppercase;
+    margin:14px 0 6px; }
+  .bm-label:first-child { margin-top:0; }
+  .bm-input { width:100%; background:transparent; border:none;
+    border-bottom:1px solid rgba(138,170,106,0.3); color:#fff; font-size:16px;
+    font-family:inherit; outline:none; padding:6px 0; }
+  .bm-input::placeholder { color:#444; font-style:italic; }
+  .bm-nation { font-size:14px; color:#d4d4d4; padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.08); }
+  .bm-tiers { display:grid; grid-template-columns:1fr; gap:6px; }
+  .bm-tier { display:grid; grid-template-columns:80px 1fr auto auto auto; gap:12px;
+    padding:11px 14px; background:#121212; border:0.5px solid rgba(255,255,255,0.10);
+    border-radius:4px; cursor:pointer; align-items:baseline; font-size:12px; }
+  .bm-tier:hover { border-color:rgba(138,170,106,0.3); }
+  .bm-tier.sel { background:#131613; border-color:#6a8a4a; }
+  .bm-tier .tn { color:#fff; font-weight:500; text-transform:uppercase; letter-spacing:0.08em; font-size:11px; }
+  .bm-tier .td { color:#888; font-size:11px; }
+  .bm-tier .num { font-variant-numeric:tabular-nums; color:#d4d4d4; }
+  .bm-tier .num.amb { color:#8aaa6a; }
+  .bm-summary { margin-top:14px; padding:12px 14px; background:#131613;
+    border:0.5px solid rgba(138,170,106,0.25); border-radius:4px; font-size:12px;
+    color:#aaa; line-height:1.6; }
+  .bm-summary b { color:#8aaa6a; font-weight:500; }
+  .bm-err { color:#c98a8a; font-size:11px; margin-top:10px; min-height:14px; }
+  .bm-foot { padding:14px 22px; border-top:0.5px solid rgba(255,255,255,0.08);
+    background:#0d0d0d; display:flex; gap:10px; justify-content:flex-end; }
+  .bm-btn { padding:9px 18px; font-size:11px; letter-spacing:0.08em; border-radius:3px;
+    cursor:pointer; text-transform:uppercase; }
+  .bm-btn.sec { border:0.5px solid rgba(255,255,255,0.15); color:#888; background:transparent; }
+  .bm-btn.sec:hover { color:#d4d4d4; }
+  .bm-btn.pri { background:#1f2a1a; border:0.5px solid #8aaa6a; color:#8aaa6a; font-weight:500; }
+  .bm-btn.pri:hover { background:#243a1f; }
+  .bm-btn.pri:disabled { opacity:0.45; cursor:not-allowed; }
+
   @media (max-width:900px) { .main-grid { grid-template-columns:1fr; } .financials { grid-template-columns:repeat(2,1fr); } }
 </style>
 </head>
@@ -223,10 +301,7 @@
         <div class="section-heading">
           <span class="roman">II.</span><span class="sans">Active</span><span class="serif">Projects</span>
         </div>
-        <div class="empty-card">
-          No active projects.<br>
-          Operations and contracts are coming soon.
-        </div>
+        <div id="cp-projects"></div>
 
         <div class="section-heading">
           <span class="roman">III.</span><span class="sans">Workforce &amp;</span><span class="serif">Capacity</span>
@@ -321,7 +396,7 @@ function initials(s, n) {
     if (!id) { window.location.href = 'entrepreneur-corporations.html'; return; }
 
     const { data: c, error } = await _supabase.from('entrepreneur_corps')
-      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, treasury_cash, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
+      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -347,7 +422,7 @@ function initials(s, n) {
     set('cp-crumb', name.toUpperCase());
     set('cp-crest', initials(name, 2));
     set('cp-name', name);
-    set('cp-ind', (c.industry || '—').toUpperCase());
+    set('cp-ind', (c.industry || '—').toUpperCase().replace('_', ' '));
     set('cp-listing', listing.toUpperCase());
     set('cp-listing2', listing);
     set('cp-hq', c.hq?.name ? (c.hq.continent ? `${c.hq.name} · ${c.hq.continent}` : c.hq.name) : '—');
@@ -1032,6 +1107,192 @@ function initials(s, n) {
       });
     }
 
+    // ────────── Active Projects panel ──────────
+    // Backed by corp_buildings (migration 20270165). Owners of a
+    // Construction corp see [Begin Construction]; the modal calls
+    // begin_construction; the tick processor (advance-tick 3.6e)
+    // completes projects and applies +0.2 GDP_Growth. Lazy-render
+    // only — no realtime subscription.
+    const TIER_TABLE = {
+      small:      { cost: 1000000,   ticks: 24, amb: 1, label: 'Small' },
+      medium:     { cost: 5000000,   ticks: 27, amb: 2, label: 'Medium' },
+      large:      { cost: 20000000,  ticks: 30, amb: 3, label: 'Large' },
+      major:      { cost: 50000000,  ticks: 33, amb: 4, label: 'Major' },
+      monumental: { cost: 100000000, ticks: 36, amb: 5, label: 'Monumental' },
+    };
+    const isConstructionCorp = (c.industry === 'construction');
+
+    const { data: shardRow } = await _supabase.from('shard')
+      .select('current_tick').eq('name', 'Alpha Shard').maybeSingle();
+    const currentTick = Number(shardRow?.current_tick || 0);
+
+    const renderProjects = async () => {
+      const pj = document.getElementById('cp-projects');
+      if (!pj) return;
+      const { data: bldgs, error: bErr } = await _supabase.from('corp_buildings')
+        .select('id, name, tier, nation_id, cost_paid, ambition_granted, status, '
+              + 'started_at_tick, completes_at_tick, completed_at_tick, '
+              + 'nation:nations!nation_id(name)')
+        .eq('builder_corp_id', id)
+        .order('started_at_tick', { ascending: false });
+      if (bErr) console.warn('[entrepreneur-corp] buildings fetch error:', bErr.message);
+      const rows = bldgs || [];
+
+      const launchBtn = (isOwner && isConstructionCorp)
+        ? `<div class="ap-launch">
+             <div class="lab">Construction corp — <b>${c.name || 'this corp'}</b> can break ground on a new building.</div>
+             <button class="ap-btn" id="cp-begin-construction">Begin Construction</button>
+           </div>`
+        : '';
+
+      const listHtml = rows.length
+        ? rows.map(b => {
+            const tier = TIER_TABLE[b.tier] || { label: b.tier, ticks: 0 };
+            const nationName = b.nation?.name || '—';
+            if (b.status === 'completed') {
+              return `
+                <div class="ap-row completed">
+                  <div class="ap-row-head">
+                    <div>
+                      <div class="ap-name">${escapeHtml(b.name)}</div>
+                      <div class="ap-sub">${escapeHtml(nationName)} · Completed at T${b.completed_at_tick}</div>
+                    </div>
+                    <span class="ap-tier">${tier.label}</span>
+                  </div>
+                  <div class="ap-meta">
+                    <span>Cost ${fmtUsd(Number(b.cost_paid))}</span>
+                    <span class="done">✓ +0.2 GDP Growth applied</span>
+                  </div>
+                </div>`;
+            }
+            const startTick = Number(b.started_at_tick);
+            const endTick   = Number(b.completes_at_tick);
+            const total     = Math.max(1, endTick - startTick);
+            const elapsed   = Math.max(0, Math.min(total, currentTick - startTick));
+            const pct       = Math.round((elapsed / total) * 100);
+            const remaining = Math.max(0, endTick - currentTick);
+            return `
+              <div class="ap-row">
+                <div class="ap-row-head">
+                  <div>
+                    <div class="ap-name">${escapeHtml(b.name)}</div>
+                    <div class="ap-sub">${escapeHtml(nationName)} · ${elapsed}/${total} ticks</div>
+                  </div>
+                  <span class="ap-tier">${tier.label}</span>
+                </div>
+                <div class="ap-bar-wrap"><div class="ap-bar-fill" style="width:${pct}%"></div></div>
+                <div class="ap-meta">
+                  <span>Cost ${fmtUsd(Number(b.cost_paid))}</span>
+                  <span>${remaining === 0 ? 'Awaiting next tick' : remaining + ' tick' + (remaining === 1 ? '' : 's') + ' remaining'}</span>
+                </div>
+              </div>`;
+          }).join('')
+        : `<div class="ap-empty">${isConstructionCorp ? 'No active projects yet — break ground above.' : 'No active projects.'}</div>`;
+
+      pj.innerHTML = launchBtn + listHtml;
+
+      if (isOwner && isConstructionCorp) {
+        document.getElementById('cp-begin-construction').addEventListener('click', openBuildModal);
+      }
+    };
+
+    // Tiny HTML escape — building names come from a text input, so
+    // sanitise before injecting into innerHTML.
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, m =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+
+    // ── Begin Construction modal wiring ──
+    let buildSubmitting = false;
+    const openBuildModal = () => {
+      const ov = document.getElementById('bm-overlay');
+      const nameEl = document.getElementById('bm-name');
+      const natEl  = document.getElementById('bm-nation');
+      const errEl  = document.getElementById('bm-err');
+      nameEl.value = '';
+      errEl.textContent = '';
+      // v0: HQ nation only. The server enforces this too; we just
+      // display the same value.
+      natEl.textContent = c.hq?.name || '(your HQ nation)';
+      // Reset tier to small.
+      document.querySelectorAll('#bm-tiers .bm-tier').forEach(el => {
+        el.classList.toggle('sel', el.dataset.tier === 'small');
+      });
+      updateBuildSummary('small');
+      ov.classList.add('open');
+      setTimeout(() => nameEl.focus(), 50);
+    };
+
+    const closeBuildModal = () => {
+      document.getElementById('bm-overlay').classList.remove('open');
+    };
+
+    const updateBuildSummary = (tier) => {
+      const t = TIER_TABLE[tier] || TIER_TABLE.small;
+      document.getElementById('bm-summary').innerHTML =
+        `Spend <b>${fmtUsd(t.cost)}</b> · build over <b>${t.ticks} ticks</b> · <b>+${t.amb} Ambition</b><br>` +
+        `Completion grants <b>+0.2 GDP Growth</b> to the host nation.`;
+    };
+
+    document.querySelectorAll('#bm-tiers .bm-tier').forEach(el => {
+      el.addEventListener('click', () => {
+        document.querySelectorAll('#bm-tiers .bm-tier').forEach(x => x.classList.remove('sel'));
+        el.classList.add('sel');
+        updateBuildSummary(el.dataset.tier);
+      });
+    });
+    document.getElementById('bm-close').addEventListener('click', closeBuildModal);
+    document.getElementById('bm-cancel').addEventListener('click', closeBuildModal);
+    document.getElementById('bm-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'bm-overlay') closeBuildModal();
+    });
+
+    document.getElementById('bm-submit').addEventListener('click', async () => {
+      if (buildSubmitting) return;
+      const errEl = document.getElementById('bm-err');
+      const name = (document.getElementById('bm-name').value || '').trim();
+      const tier = document.querySelector('#bm-tiers .bm-tier.sel')?.dataset.tier || 'small';
+      if (name.length < 2 || name.length > 80) {
+        errEl.textContent = 'Building name must be 2–80 characters.';
+        return;
+      }
+      buildSubmitting = true;
+      const btn = document.getElementById('bm-submit');
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'BREAKING GROUND…';
+      errEl.textContent = '';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('begin_construction', {
+          p_corp_id:   id,
+          p_nation_id: c.hq_nation_id,
+          p_name:      name,
+          p_tier:      tier,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            insufficient_funds:    data?.need != null ? `Not enough party funds — need ${fmtUsd(Number(data.need))}.` : 'Not enough party funds.',
+            not_construction_corp: 'Only Construction corps can break ground.',
+            not_owner:             'Only the corp owner can begin construction.',
+            nation_not_permitted:  'You can only build in your HQ nation right now (Regional HQs land in v1).',
+            invalid_name:          'Building name must be 2–80 characters.',
+            invalid_tier:          'Pick a tier.',
+          };
+          errEl.textContent = REASON[data?.reason] || ('Could not start: ' + (data?.reason || 'unknown'));
+          buildSubmitting = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        btn.textContent = 'STARTED ✓ — refreshing…';
+        setTimeout(() => location.reload(), 700);
+      } catch (e) {
+        errEl.textContent = 'Failed: ' + (e?.message || e);
+        buildSubmitting = false; btn.disabled = false; btn.textContent = prev;
+      }
+    });
+
+    await renderProjects();
+
     document.getElementById('cp-load').style.display = 'none';
     document.getElementById('cp-app').style.display = 'block';
   } catch (e) {
@@ -1041,5 +1302,58 @@ function initials(s, n) {
   }
 })();
 </script>
+
+<!-- Begin Construction modal (v0). Open from the Active Projects panel
+     on a Construction corp the viewer owns. RPC: begin_construction. -->
+<div class="bm-overlay" id="bm-overlay">
+  <div class="bm-modal">
+    <div class="bm-head">
+      <div class="ti">Begin <em>Construction</em></div>
+      <div class="bm-x" id="bm-close">×</div>
+    </div>
+    <div class="bm-body">
+      <div class="bm-label">Building Name</div>
+      <input type="text" class="bm-input" id="bm-name" maxlength="80"
+             placeholder="e.g. Aurora Heights, Solvarist Cathedral, Port Tower">
+
+      <div class="bm-label">Host Nation</div>
+      <div class="bm-nation" id="bm-nation">—</div>
+
+      <div class="bm-label">Tier</div>
+      <div class="bm-tiers" id="bm-tiers">
+        <div class="bm-tier sel" data-tier="small">
+          <span class="tn">Small</span><span class="td">Workshops, low-rises</span>
+          <span class="num cost">$1,000,000</span><span class="num">24t</span><span class="num amb">+1 Amb</span>
+        </div>
+        <div class="bm-tier" data-tier="medium">
+          <span class="tn">Medium</span><span class="td">Mid-rise, mixed-use</span>
+          <span class="num cost">$5,000,000</span><span class="num">27t</span><span class="num amb">+2 Amb</span>
+        </div>
+        <div class="bm-tier" data-tier="large">
+          <span class="tn">Large</span><span class="td">Towers, plazas</span>
+          <span class="num cost">$20,000,000</span><span class="num">30t</span><span class="num amb">+3 Amb</span>
+        </div>
+        <div class="bm-tier" data-tier="major">
+          <span class="tn">Major</span><span class="td">Skyscrapers, districts</span>
+          <span class="num cost">$50,000,000</span><span class="num">33t</span><span class="num amb">+4 Amb</span>
+        </div>
+        <div class="bm-tier" data-tier="monumental">
+          <span class="tn">Monumental</span><span class="td">National landmarks</span>
+          <span class="num cost">$100,000,000</span><span class="num">36t</span><span class="num amb">+5 Amb</span>
+        </div>
+      </div>
+
+      <div class="bm-summary" id="bm-summary">
+        Spend <b>$1,000,000</b> · build over <b>24 ticks</b> · <b>+1 Ambition</b><br>
+        Completion grants <b>+0.2 GDP Growth</b> to the host nation.
+      </div>
+      <div class="bm-err" id="bm-err"></div>
+    </div>
+    <div class="bm-foot">
+      <button class="bm-btn sec" id="bm-cancel">Cancel</button>
+      <button class="bm-btn pri" id="bm-submit">Break Ground</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
