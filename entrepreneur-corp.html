@@ -1394,12 +1394,19 @@ function initials(s, n) {
     const renderTiers = (btype) => {
       const tierKeys = btype === 'regional_hq' ? RHQ_TIERS : ALL_TIERS;
       const nation = currentNation();
-      document.getElementById('bm-tiers').innerHTML = tierKeys.map((key, i) => {
+      // Preserve the player's tier choice across nation re-renders
+      // (and across type re-renders when the chosen tier is still
+      // valid in the new type's set — e.g., Medium stays Medium when
+      // switching CY → Port). Defaults to first only when the
+      // previous selection is unavailable.
+      const prevSel = document.querySelector('#bm-tiers .bm-tier.sel')?.dataset.tier;
+      const selKey  = (prevSel && tierKeys.includes(prevSel)) ? prevSel : tierKeys[0];
+      document.getElementById('bm-tiers').innerHTML = tierKeys.map(key => {
         const t = TIER_TABLE[key];
         const cost = scaledCost(t.cost, nation);
         const dur  = scaledDuration(t.ticks, nation);
         return `
-          <div class="bm-tier ${i === 0 ? 'sel' : ''}" data-tier="${key}">
+          <div class="bm-tier ${key === selKey ? 'sel' : ''}" data-tier="${key}">
             <span class="tn">${escapeHtml(t.label)}</span><span class="td">${escapeHtml(t.desc)}</span>
             <span class="num cost">${fmtUsd(cost)}</span><span class="num">${dur}t</span>
             <span class="num amb">+${t.amb} Amb</span>
