@@ -42,6 +42,35 @@ export function titleCase(s) {
     return String(s || '').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+/**
+ * Display label for an entrepreneur corp industry / sector enum value.
+ * Lowercase snake_case ('real_estate') → uppercase with spaces
+ * ('REAL ESTATE'). NULL / empty → em-dash. Single source for the
+ * transformation; all dashboard sites that show an industry pill or
+ * subtitle should call this.
+ */
+export function industryLabel(s) {
+    if (!s) return '—';
+    return String(s).toUpperCase().replace(/_/g, ' ');
+}
+
+/**
+ * Display label for a corp_buildings.building_type enum value
+ * ('regional_hq' → 'Regional HQ', etc). Single source — both
+ * the per-corp Active Projects renderer and the Markets Properties /
+ * My Offers grids read from here. NULL / unknown values fall back to
+ * the generic 'Building' so unmapped future types still render.
+ */
+export function buildingTypeLabel(t) {
+    switch (t) {
+        case 'regional_hq':       return 'Regional HQ';
+        case 'construction_yard': return 'Construction Yard';
+        case 'port':              return 'Port';
+        case 'banking_office':    return 'Banking Office';
+        default:                  return t ? String(t) : 'Building';
+    }
+}
+
 // ===== GAME DATE =====
 
 export const MONTHS = [

@@ -31256,6 +31256,25 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Board-request auto-reject failed (non-fatal):', brErr);
     }
 
+    // 3.6e Complete any Construction-corp building project whose
+    // completes_at_tick has elapsed (20270165 corp_buildings). Flips
+    // status to 'completed' and applies +0.2 GDP_Growth to the host
+    // nation one-time per row. Idempotent (gdp_growth_applied flag),
+    // safe against concurrent begin_construction calls (per-row
+    // FOR UPDATE in the RPC).
+    try {
+        const { data: bldgComplete, error: bldgErr } =
+            await supabase.rpc('complete_finished_buildings', { p_tick: newTick });
+        if (bldgErr) {
+            console.error('[advanceTick] complete_finished_buildings failed:', bldgErr.message);
+        } else if (bldgComplete?.completed > 0) {
+            summary.completedBuildings = bldgComplete.completed;
+            console.log(`[advanceTick] Completed ${bldgComplete.completed} building project(s)`);
+        }
+    } catch (bcErr) {
+        console.error('[advanceTick] Building completion failed (non-fatal):', bcErr);
+    }
+
     // 3.6b Safety net: catch economic aid agreements missing their aid_agreement_state row
     // Runs every 5 ticks to reduce CPU load — orphaned rows are rare, no urgency
     if (newTick % 5 === 0) try {

@@ -73,6 +73,30 @@
   .empty-card { background:#0d0d0d; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
     padding:30px 22px; color:#666; font-size:12px; text-align:center; line-height:1.7; letter-spacing:0.03em; }
 
+  /* Share-price history panel */
+  .price-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.10); border-radius:4px;
+    padding:18px 22px; line-height:1.55; }
+  .pc-header { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:10px; }
+  .pc-cur-lab { color:#888; font-size:10px; letter-spacing:0.13em; text-transform:uppercase; }
+  .pc-cur-val { color:#8aaa6a; font-size:18px; font-weight:500; }
+  .pc-spark { width:100%; height:80px; display:block; margin:6px 0 2px; }
+  .pc-spark-area { fill:rgba(138,170,106,0.07); }
+  .pc-spark-line { fill:none; stroke:#8aaa6a; stroke-width:1.5; }
+  .pc-spark-dot { fill:#8aaa6a; }
+  .pc-spark-empty { color:#555; font-size:11px; text-align:center; padding:24px 0; font-style:italic; }
+  .pc-list { margin-top:12px; padding-top:12px; border-top:0.5px dashed rgba(255,255,255,0.08); }
+  .pc-list-head { color:#666; font-size:10px; letter-spacing:0.13em; text-transform:uppercase; margin-bottom:6px; }
+  .pc-event { display:grid; grid-template-columns:42px 1fr auto 60px; gap:10px; align-items:baseline;
+    padding:5px 0; font-size:12px; }
+  .pc-event + .pc-event { border-top:0.5px solid rgba(255,255,255,0.04); }
+  .pc-tick { color:#555; font-size:10px; font-family:Georgia,'Times New Roman',serif; font-style:italic; }
+  .pc-desc { color:#aaa; }
+  .pc-price { color:#fff; font-variant-numeric:tabular-nums; }
+  .pc-delta { font-size:11px; font-weight:500; text-align:right; font-variant-numeric:tabular-nums; }
+  .pc-delta.pos  { color:#8aaa6a; }
+  .pc-delta.neg  { color:#c98a8a; }
+  .pc-delta.zero { color:#666; }
+
   /* Board roster sidebar */
   .board-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px; overflow:hidden; }
   .board-header { padding:14px 18px; background:#0a0a0a; border-bottom:0.5px solid rgba(255,255,255,0.06); }
@@ -114,6 +138,140 @@
   .tc-msg { font-size:11px; margin-top:8px; line-height:1.5; }
   .tc-msg.err { color:#c98a8a; }
   .tc-msg.ok { color:#8aaa6a; }
+
+  /* Active Projects panel — building list + Begin Construction button */
+  .ap-launch { display:flex; align-items:center; justify-content:space-between; gap:14px;
+    padding:14px 18px; background:#0d0d0d; border:0.5px solid rgba(138,170,106,0.18);
+    border-radius:4px; margin-bottom:10px; }
+  .ap-launch .lab { font-size:11px; color:#888; letter-spacing:0.08em; line-height:1.5; }
+  .ap-launch .lab b { color:#d4d4d4; font-weight:500; }
+  .ap-btn { padding:9px 16px; font-size:10px; letter-spacing:0.12em; border-radius:3px; cursor:pointer;
+    background:#1f2a1a; border:0.5px solid #8aaa6a; color:#8aaa6a; font-weight:500;
+    text-transform:uppercase; }
+  .ap-btn:hover { background:#243a1f; }
+  .ap-btn:disabled { opacity:0.45; cursor:not-allowed; }
+  .ap-row { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
+    padding:14px 18px; margin-bottom:8px; }
+  .ap-row.completed { border-color:rgba(138,170,106,0.18); }
+  .ap-row-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:8px; }
+  .ap-name { font-size:14px; color:#fff; font-weight:500; line-height:1.2; }
+  .ap-sub { font-size:10px; color:#777; letter-spacing:0.08em; text-transform:uppercase; margin-top:3px; }
+  .ap-tier { display:inline-block; padding:3px 8px; border-radius:3px; font-size:9px;
+    letter-spacing:0.13em; font-weight:500; background:#131613; color:#8aaa6a;
+    border:0.5px solid rgba(138,170,106,0.3); text-transform:uppercase; }
+  .ap-bar-wrap { height:6px; background:#1a1a1a; border-radius:3px; overflow:hidden; margin:8px 0 6px; }
+  .ap-bar-fill { height:100%; background:linear-gradient(90deg,#5a7a3a,#8aaa6a); transition:width 0.3s; }
+  .ap-meta { display:flex; justify-content:space-between; font-size:10px; color:#666;
+    letter-spacing:0.08em; }
+  .ap-meta .done { color:#8aaa6a; }
+  .ap-empty { background:#0d0d0d; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
+    padding:24px 18px; color:#666; font-size:12px; text-align:center; line-height:1.6;
+    letter-spacing:0.03em; }
+
+  /* Marketplace actions on completed buildings (v1) */
+  .ap-actions { display:flex; justify-content:space-between; gap:10px; align-items:center;
+    margin-top:8px; padding-top:8px; border-top:0.5px solid rgba(255,255,255,0.05); }
+  .ap-status-line { color:#8aaa6a; font-size:11px; letter-spacing:0.06em; font-variant-numeric:tabular-nums; }
+  .ap-btn-small { padding:6px 14px; font-size:10px; letter-spacing:0.1em; border-radius:3px;
+    cursor:pointer; text-transform:uppercase; font-family:inherit; }
+  .ap-btn-small.list, .ap-btn-small.buy { background:#1f2a1a; border:0.5px solid #8aaa6a; color:#8aaa6a; font-weight:500; }
+  .ap-btn-small.list:hover, .ap-btn-small.buy:hover { background:#243a1f; }
+  .ap-btn-small.delist { border:0.5px solid rgba(255,255,255,0.15); color:#888; background:transparent; }
+  .ap-btn-small.delist:hover { color:#c98a8a; border-color:rgba(201,138,138,0.4); }
+  .ap-btn-small.accept { background:#1f2a1a; border:0.5px solid #8aaa6a; color:#8aaa6a; font-weight:500; }
+  .ap-btn-small.accept:hover { background:#243a1f; }
+  .ap-btn-small.reject { border:0.5px solid rgba(255,255,255,0.15); color:#888; background:transparent; }
+  .ap-btn-small.reject:hover { color:#c98a8a; border-color:rgba(201,138,138,0.4); }
+  .ap-btn-small:disabled { opacity:0.45; cursor:not-allowed; }
+
+  /* Pending offers under a listed building (v2, seller view only) */
+  .ap-offers { margin-top:10px; padding-top:10px; border-top:0.5px solid rgba(255,255,255,0.06); }
+  .ap-offers-head { font-size:10px; letter-spacing:0.13em; text-transform:uppercase;
+    color:#aa7aaa; margin-bottom:6px; font-weight:500; }
+  .ap-offer { display:grid; grid-template-columns:1fr auto auto auto; gap:10px;
+    align-items:center; padding:8px 10px; background:#0f0a0f;
+    border:0.5px solid rgba(170,122,170,0.15); border-radius:3px; margin-bottom:5px; }
+  .ap-offer-bidder { font-size:12px; color:#fff; font-weight:500; line-height:1.2; }
+  .ap-offer-ceo { font-size:10px; color:#888; margin-top:2px; letter-spacing:0.04em; }
+  .ap-offer-amount { font-size:14px; color:#8aaa6a; font-weight:500;
+    font-variant-numeric:tabular-nums; padding-right:4px; }
+
+  /* Marketplace modal rows */
+  .mk-row { display:grid; grid-template-columns:1fr auto auto; gap:14px; align-items:center;
+    padding:11px 14px; background:#0f120e; border:0.5px solid rgba(138,170,106,0.12);
+    border-radius:4px; margin-bottom:6px; }
+  .mk-name { font-size:13px; font-weight:500; color:#fff; line-height:1.2; }
+  .mk-meta { font-size:10px; color:#888; margin-top:3px; letter-spacing:0.06em; text-transform:uppercase; }
+  .mk-price { font-size:14px; color:#8aaa6a; font-weight:500; font-variant-numeric:tabular-nums; }
+  .mk-empty { color:#666; font-size:12px; text-align:center; padding:24px 0;
+    font-style:italic; letter-spacing:0.03em; }
+
+  /* Begin Construction modal */
+  .bm-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); display:none;
+    align-items:center; justify-content:center; padding:30px; z-index:500; }
+  .bm-overlay.open { display:flex; }
+  .bm-modal { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.1); border-radius:6px;
+    width:100%; max-width:560px; max-height:92vh; display:flex; flex-direction:column; overflow:hidden; }
+  .bm-head { padding:16px 22px; border-bottom:0.5px solid rgba(255,255,255,0.08);
+    display:flex; align-items:center; gap:12px;
+    background:linear-gradient(180deg,rgba(138,170,106,0.04),#0c0c0c); }
+  .bm-head .ti { font-size:18px; font-weight:500; color:#fff; flex:1; }
+  .bm-head .ti em { font-family:Georgia,serif; color:#8aaa6a; font-style:italic; }
+  .bm-x { border:0.5px solid rgba(255,255,255,0.15); color:#888; width:26px; height:26px;
+    border-radius:3px; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; font-size:15px; }
+  .bm-x:hover { color:#8aaa6a; border-color:rgba(138,170,106,0.4); }
+  .bm-body { padding:20px 22px; overflow-y:auto; }
+  .bm-label { font-size:10px; color:#888; letter-spacing:0.13em; text-transform:uppercase;
+    margin:14px 0 6px; }
+  .bm-label:first-child { margin-top:0; }
+  .bm-input { width:100%; background:transparent; border:none;
+    border-bottom:1px solid rgba(138,170,106,0.3); color:#fff; font-size:16px;
+    font-family:inherit; outline:none; padding:6px 0; }
+  .bm-input::placeholder { color:#444; font-style:italic; }
+  .bm-select { width:100%; background:transparent; border:none;
+    border-bottom:1px solid rgba(138,170,106,0.3); color:#fff; font-size:15px;
+    font-family:inherit; outline:none; padding:6px 0; appearance:none;
+    -webkit-appearance:none; cursor:pointer; }
+  /* Building Type picker (v3) — 2x2 grid like the Found Corp industry picker */
+  .bm-types { display:grid; grid-template-columns:repeat(2, 1fr); gap:6px; }
+  .bm-type { padding:11px 14px; background:#121212; border:0.5px solid rgba(255,255,255,0.10);
+    border-radius:4px; cursor:pointer; }
+  .bm-type:hover { border-color:rgba(138,170,106,0.3); }
+  .bm-type.sel { background:#131613; border-color:#6a8a4a; }
+  .bm-type .tn { color:#fff; font-size:13px; font-weight:500; }
+  .bm-type .td { color:#888; font-size:10px; margin-top:3px; letter-spacing:0.04em; line-height:1.4; }
+  /* Building-type pill on Active Projects rows */
+  .ap-btype { display:inline-block; padding:3px 8px; border-radius:3px; font-size:9px;
+    letter-spacing:0.12em; font-weight:500; text-transform:uppercase; margin-right:6px; }
+  .ap-btype.regional_hq       { background:#2a1f2a; color:#aa7aaa; }
+  .ap-btype.construction_yard { background:#1f2a1a; color:#8aaa6a; }
+  .ap-btype.port              { background:#2a2419; color:#c89e6e; }
+  .ap-btype.banking_office    { background:#1a2535; color:#7a9aab; }
+  .bm-tiers { display:grid; grid-template-columns:1fr; gap:6px; }
+  .bm-tier { display:grid; grid-template-columns:80px 1fr auto auto auto; gap:12px;
+    padding:11px 14px; background:#121212; border:0.5px solid rgba(255,255,255,0.10);
+    border-radius:4px; cursor:pointer; align-items:baseline; font-size:12px; }
+  .bm-tier:hover { border-color:rgba(138,170,106,0.3); }
+  .bm-tier.sel { background:#131613; border-color:#6a8a4a; }
+  .bm-tier .tn { color:#fff; font-weight:500; text-transform:uppercase; letter-spacing:0.08em; font-size:11px; }
+  .bm-tier .td { color:#888; font-size:11px; }
+  .bm-tier .num { font-variant-numeric:tabular-nums; color:#d4d4d4; }
+  .bm-tier .num.amb { color:#8aaa6a; }
+  .bm-summary { margin-top:14px; padding:12px 14px; background:#131613;
+    border:0.5px solid rgba(138,170,106,0.25); border-radius:4px; font-size:12px;
+    color:#aaa; line-height:1.6; }
+  .bm-summary b { color:#8aaa6a; font-weight:500; }
+  .bm-err { color:#c98a8a; font-size:11px; margin-top:10px; min-height:14px; }
+  .bm-foot { padding:14px 22px; border-top:0.5px solid rgba(255,255,255,0.08);
+    background:#0d0d0d; display:flex; gap:10px; justify-content:flex-end; }
+  .bm-btn { padding:9px 18px; font-size:11px; letter-spacing:0.08em; border-radius:3px;
+    cursor:pointer; text-transform:uppercase; }
+  .bm-btn.sec { border:0.5px solid rgba(255,255,255,0.15); color:#888; background:transparent; }
+  .bm-btn.sec:hover { color:#d4d4d4; }
+  .bm-btn.pri { background:#1f2a1a; border:0.5px solid #8aaa6a; color:#8aaa6a; font-weight:500; }
+  .bm-btn.pri:hover { background:#243a1f; }
+  .bm-btn.pri:disabled { opacity:0.45; cursor:not-allowed; }
 
   @media (max-width:900px) { .main-grid { grid-template-columns:1fr; } .financials { grid-template-columns:repeat(2,1fr); } }
 </style>
@@ -193,16 +351,13 @@
         </div>
         <div class="empty-card" id="cp-price-card">
           Privately held — no public share price.<br>
-          Share-price history appears once IPOs are enabled.
+          Share-price history begins once the corp goes public.
         </div>
 
         <div class="section-heading">
           <span class="roman">II.</span><span class="sans">Active</span><span class="serif">Projects</span>
         </div>
-        <div class="empty-card">
-          No active projects.<br>
-          Operations and contracts are coming soon.
-        </div>
+        <div id="cp-projects"></div>
 
         <div class="section-heading">
           <span class="roman">III.</span><span class="sans">Workforce &amp;</span><span class="serif">Capacity</span>
@@ -283,7 +438,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 function initials(s, n) {
   return (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, n || 2).map(w => w[0]).join('').toUpperCase()) || '—';
@@ -297,7 +452,7 @@ function initials(s, n) {
     if (!id) { window.location.href = 'entrepreneur-corporations.html'; return; }
 
     const { data: c, error } = await _supabase.from('entrepreneur_corps')
-      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, treasury_cash, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
+      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -323,7 +478,7 @@ function initials(s, n) {
     set('cp-crumb', name.toUpperCase());
     set('cp-crest', initials(name, 2));
     set('cp-name', name);
-    set('cp-ind', (c.industry || '—').toUpperCase());
+    set('cp-ind', industryLabel(c.industry));
     set('cp-listing', listing.toUpperCase());
     set('cp-listing2', listing);
     set('cp-hq', c.hq?.name ? (c.hq.continent ? `${c.hq.name} · ${c.hq.continent}` : c.hq.name) : '—');
@@ -534,9 +689,108 @@ function initials(s, n) {
       set('cp-role-pill', isOwner ? 'FOUNDER' : 'SHAREHOLDER');
       set('cp-owner-sub', `${fmtUsd(yourShares * price)} · ${yourShares}/${sharesOut} shares`);
 
+      // ────────── Share Price History panel ──────────
+      // Backed by corp_share_price_history (migration 20270164).
+      // Sparkline (SVG, no library) + recent-changes list. Actor names
+      // resolved in a second fetch; uninstrumented rows (source NULL)
+      // render as "Price changed" and the chart still plots them.
       const pc = document.getElementById('cp-price-card');
-      if (pc) pc.innerHTML = `Current share price <b style="color:#8aaa6a">${fmtUsd(price)}</b>`
-        + `<br>Trading and price history begin in a later phase.`;
+      if (pc) {
+        pc.className = '';
+        const { data: hist, error: histErr } = await _supabase
+          .from('corp_share_price_history')
+          .select('id, at_tick, old_price, new_price, delta_pct, source, actor_faction_id, quantity')
+          .eq('corp_id', id)
+          .order('id', { ascending: true });
+        if (histErr) console.warn('[entrepreneur-corp] price-history fetch error:', histErr.message);
+        const history = hist || [];
+
+        const actorIds = [...new Set(history.map(h => h.actor_faction_id).filter(Boolean))];
+        let actorNames = {};
+        if (actorIds.length) {
+          const { data: facs, error: facErr } = await _supabase.from('factions')
+            .select('id, faction_name, leader_first_name, leader_last_name')
+            .in('id', actorIds);
+          if (facErr) console.warn('[entrepreneur-corp] history-actor fetch error:', facErr.message);
+          actorNames = Object.fromEntries((facs || []).map(f => {
+            const full = `${f.leader_first_name || ''} ${f.leader_last_name || ''}`.trim();
+            return [f.id, full || f.faction_name || 'Someone'];
+          }));
+        }
+
+        // Sparkline: polyline through new_price values (rows with
+        // NULL new_price — only delist — are skipped on the chart but
+        // still appear in the list). Fixed viewBox, scales width via
+        // preserveAspectRatio so the SVG fills the container.
+        const renderSpark = (rows) => {
+          const pts = rows.filter(r => r.new_price != null).map(r => Number(r.new_price));
+          if (pts.length === 0) {
+            return `<div class="pc-spark-empty">No price changes recorded yet.</div>`;
+          }
+          const W = 600, H = 80, padX = 4, padY = 6;
+          const min = Math.min(...pts), max = Math.max(...pts);
+          const range = (max - min) || 1;
+          const xs = pts.length > 1
+            ? pts.map((_, i) => padX + (i * (W - 2 * padX)) / (pts.length - 1))
+            : [W / 2];
+          const ys = pts.map(p => H - padY - ((p - min) / range) * (H - 2 * padY));
+          const linePts = xs.map((x, i) => `${x.toFixed(1)},${ys[i].toFixed(1)}`).join(' ');
+          // Filled area under the line for visual weight.
+          const areaPts = `${padX},${H} ${linePts} ${(W - padX).toFixed(1)},${H}`;
+          const dot = pts.length === 1
+            ? `<circle class="pc-spark-dot" cx="${xs[0]}" cy="${ys[0]}" r="2.5" />`
+            : '';
+          return `
+            <svg class="pc-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+              <polygon class="pc-spark-area" points="${areaPts}" />
+              <polyline class="pc-spark-line" points="${linePts}" />
+              ${dot}
+            </svg>`;
+        };
+
+        // Last 8 events, newest first.
+        const renderList = (rows) => {
+          if (!rows.length) return '';
+          const recent = rows.slice(-8).reverse();
+          const items = recent.map(h => {
+            const actor = h.actor_faction_id ? (actorNames[h.actor_faction_id] || 'Someone') : null;
+            const q = h.quantity;
+            let desc;
+            switch (h.source) {
+              case 'trade_buy':   desc = `${actor || 'Someone'} bought ${q || 0} share${q === 1 ? '' : 's'}`; break;
+              case 'trade_sell':  desc = `${actor || 'Someone'} sold ${q || 0} share${q === 1 ? '' : 's'}`; break;
+              case 'board_join':  desc = `${actor || 'A new director'} joined the board`; break;
+              case 'board_leave': desc = `${actor || 'A director'} left the board`; break;
+              case 'ipo':         desc = `Initial public offering`; break;
+              case 'delist':      desc = `Taken private`; break;
+              case 'backfill':    desc = `Listed`; break;
+              default:            desc = 'Price changed';
+            }
+            const priceTxt = h.new_price != null ? fmtUsd(Number(h.new_price)) : '—';
+            const dPct = h.delta_pct != null ? Number(h.delta_pct) : null;
+            const dTxt  = dPct == null ? '' : `${dPct > 0 ? '+' : ''}${dPct.toFixed(2)}%`;
+            const dCls  = dPct == null ? '' : (dPct > 0 ? 'pos' : (dPct < 0 ? 'neg' : 'zero'));
+            return `
+              <div class="pc-event">
+                <span class="pc-tick">T${h.at_tick}</span>
+                <span class="pc-desc">${desc}</span>
+                <span class="pc-price">${priceTxt}</span>
+                <span class="pc-delta ${dCls}">${dTxt}</span>
+              </div>`;
+          }).join('');
+          return `<div class="pc-list"><div class="pc-list-head">Recent</div>${items}</div>`;
+        };
+
+        pc.innerHTML = `
+          <div class="price-card">
+            <div class="pc-header">
+              <span class="pc-cur-lab">Current share price</span>
+              <span class="pc-cur-val">${fmtUsd(price)}</span>
+            </div>
+            ${renderSpark(history)}
+            ${renderList(history)}
+          </div>`;
+      }
 
       set('cp-d-price', fmtUsd(price));
       set('cp-d-shares', String(sharesOut));
@@ -909,6 +1163,634 @@ function initials(s, n) {
       });
     }
 
+    // ────────── Active Projects panel ──────────
+    // Backed by corp_buildings (migration 20270165). Owners of a
+    // Construction corp see [Begin Construction]; the modal calls
+    // begin_construction; the tick processor (advance-tick 3.6e)
+    // completes projects and applies +0.2 GDP_Growth. Lazy-render
+    // only — no realtime subscription.
+    //
+    // TIER_TABLE is the JS-side source of truth: the modal tier
+    // rows are rendered from it (one place to edit if a tier
+    // changes) and renderProjects uses it for the tier pill label.
+    // The SQL begin_construction RPC carries the server-authoritative
+    // copy of the same numbers — keep them in sync.
+    // TIER_TABLE rep is the buyer-Reputation grant on non-RE
+    // acquisition of an RHQ at that tier (S+0 / M+1 / L+2). The SQL
+    // begin_construction CASE is authoritative for cost/duration/
+    // ambition; the SQL accept_offer + buy_building CASE is
+    // authoritative for rep — this client copy mirrors both for
+    // display only.
+    const TIER_TABLE = {
+      small:      { cost: 1000000,   ticks: 24, amb: 1, rep: 0, label: 'Small',      desc: 'Workshops, low-rises' },
+      medium:     { cost: 5000000,   ticks: 27, amb: 2, rep: 1, label: 'Medium',     desc: 'Mid-rise, mixed-use' },
+      large:      { cost: 20000000,  ticks: 30, amb: 3, rep: 2, label: 'Large',      desc: 'Towers, plazas' },
+      major:      { cost: 50000000,  ticks: 33, amb: 4, rep: null, label: 'Major',      desc: 'Skyscrapers, districts' },
+      monumental: { cost: 100000000, ticks: 36, amb: 5, rep: null, label: 'Monumental', desc: 'National landmarks' },
+    };
+    // RHQ profile limited to small/medium/large (server enforces).
+    const RHQ_TIERS = ['small', 'medium', 'large'];
+    const ALL_TIERS = ['small', 'medium', 'large', 'major', 'monumental'];
+    // Modal-specific descriptions. Labels come from buildingTypeLabel
+    // in utils.js — single source across the two pages that render
+    // building-type chips (entrepreneur-corp + entrepreneur-markets).
+    const BUILDING_TYPE_DESC = {
+      regional_hq:       'Admin presence in a nation. Required to do anything else there. Buyer Reputation bonus per profile.',
+      construction_yard: '+2 concurrent Port / Banking-Office build slots in this nation. Sold to Construction corps.',
+      port:              'Shipping operational. Sold to Shipping corps.',
+      banking_office:    'Banking operational. Sold to Banking corps.',
+    };
+    const isConstructionCorp = (c.industry === 'construction');
+    const isRealEstateCorp   = (c.industry === 'real_estate');
+
+    // Render the building-type picker once. Tier rows + nation
+    // dropdown are filled by openBuildModal based on the type
+    // selection (the visible tier set + valid nation list both
+    // depend on it).
+    document.getElementById('bm-types').innerHTML = Object.entries(BUILDING_TYPE_DESC).map(([key, desc], i) => `
+      <div class="bm-type ${i === 0 ? 'sel' : ''}" data-btype="${key}">
+        <div class="tn">${escapeHtml(buildingTypeLabel(key))}</div>
+        <div class="td">${escapeHtml(desc)}</div>
+      </div>`).join('');
+
+    const { data: shardRow } = await _supabase.from('shard')
+      .select('current_tick').eq('name', 'Alpha Shard').maybeSingle();
+    const currentTick = Number(shardRow?.current_tick || 0);
+
+    const renderProjects = async () => {
+      const pj = document.getElementById('cp-projects');
+      if (!pj) return;
+      // Query by owner_corp_id (v1) — buildings the corp currently
+      // owns. For Construction corps: their builds (in-progress +
+      // completed-and-still-owned). For Real Estate corps: their
+      // acquired holdings.
+      // Nested embed: pending offers on each building (v2). Only the
+      // seller sees them — non-owner viewers get the offers in the
+      // payload but we don't render them (privacy + strategic edge).
+      const { data: bldgs, error: bErr } = await _supabase.from('corp_buildings')
+        .select('id, name, tier, building_type, nation_id, cost_paid, ambition_granted, status, '
+              + 'started_at_tick, completes_at_tick, completed_at_tick, '
+              + 'owner_corp_id, list_price, '
+              + 'nation:nations!nation_id(name), '
+              + 'offers:building_offers!building_id(id, amount, status, placed_at_tick, '
+                + 'buyer:entrepreneur_corps!buyer_corp_id(id, name, '
+                  + 'owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name)))')
+        .eq('owner_corp_id', id)
+        .order('started_at_tick', { ascending: false });
+      if (bErr) console.warn('[entrepreneur-corp] buildings fetch error:', bErr.message);
+      const rows = bldgs || [];
+
+      let launchBtn = '';
+      if (isOwner && isConstructionCorp) {
+        launchBtn = `<div class="ap-launch">
+             <div class="lab">Construction corp — <b>${escapeHtml(c.name || 'this corp')}</b> can break ground on a new building.</div>
+             <button class="ap-btn" id="cp-begin-construction">Begin Construction</button>
+           </div>`;
+      } else if (isOwner && isRealEstateCorp) {
+        launchBtn = `<div class="ap-launch">
+             <div class="lab">Real Estate corp — browse completed buildings on the market.</div>
+             <button class="ap-btn" id="cp-browse-market">Browse Market</button>
+           </div>`;
+      }
+
+      const listHtml = rows.length
+        ? rows.map(b => {
+            const tier = TIER_TABLE[b.tier] || { label: b.tier, ticks: 0 };
+            const nationName = b.nation?.name || '—';
+            if (b.status === 'completed') {
+              const listed = b.list_price != null;
+              const pendingOffers = (b.offers || []).filter(o => o.status === 'pending');
+              const actionRow = isOwner
+                ? `<div class="ap-actions">
+                     ${listed ? `<span class="ap-status-line">Listed at ${fmtUsd(Number(b.list_price))}${pendingOffers.length ? ` · ${pendingOffers.length} pending offer${pendingOffers.length === 1 ? '' : 's'}` : ''}</span>` : '<span></span>'}
+                     ${listed
+                       ? `<button class="ap-btn-small delist" data-bid="${b.id}">Delist</button>`
+                       : `<button class="ap-btn-small list" data-bid="${b.id}" data-bname="${escapeHtml(b.name)}">List for Sale</button>`}
+                   </div>`
+                : (listed
+                   ? `<div class="ap-actions"><span class="ap-status-line">Listed at ${fmtUsd(Number(b.list_price))}</span></div>`
+                   : '');
+              // Pending offers list — owner-only (privacy + strategy).
+              // The /Markets MY OFFERS view shows the bidder-side mirror.
+              const offersRow = (isOwner && listed && pendingOffers.length)
+                ? `<div class="ap-offers">
+                     <div class="ap-offers-head">Pending Offers · ${pendingOffers.length}</div>
+                     ${pendingOffers.map(o => {
+                       const bidder = o.buyer?.name || 'Unknown corp';
+                       const ceo = o.buyer?.owner
+                         ? [o.buyer.owner.leader_first_name, o.buyer.owner.leader_last_name].filter(Boolean).join(' ').trim() || o.buyer.owner.faction_name
+                         : '';
+                       return `
+                         <div class="ap-offer">
+                           <div class="ap-offer-bidder">
+                             <div>${escapeHtml(bidder)}</div>
+                             ${ceo ? `<div class="ap-offer-ceo">${escapeHtml(ceo)} · T${o.placed_at_tick}</div>` : `<div class="ap-offer-ceo">T${o.placed_at_tick}</div>`}
+                           </div>
+                           <div class="ap-offer-amount">${fmtUsd(Number(o.amount))}</div>
+                           <button class="ap-btn-small accept" data-oid="${o.id}">Accept</button>
+                           <button class="ap-btn-small reject" data-oid="${o.id}">Reject</button>
+                         </div>`;
+                     }).join('')}
+                   </div>`
+                : '';
+              return `
+                <div class="ap-row completed">
+                  <div class="ap-row-head">
+                    <div>
+                      <div class="ap-name">${escapeHtml(b.name)}</div>
+                      <div class="ap-sub">${escapeHtml(nationName)} · Completed at T${b.completed_at_tick}</div>
+                    </div>
+                    <span>${b.building_type ? `<span class="ap-btype ${b.building_type}">${buildingTypeLabel(b.building_type)}</span>` : ''}<span class="ap-tier">${tier.label}</span></span>
+                  </div>
+                  <div class="ap-meta">
+                    <span>Cost ${fmtUsd(Number(b.cost_paid))}</span>
+                    <span class="done">✓ +0.2 GDP Growth applied</span>
+                  </div>
+                  ${actionRow}
+                  ${offersRow}
+                </div>`;
+            }
+            const startTick = Number(b.started_at_tick);
+            const endTick   = Number(b.completes_at_tick);
+            const total     = Math.max(1, endTick - startTick);
+            const elapsed   = Math.max(0, Math.min(total, currentTick - startTick));
+            const pct       = Math.round((elapsed / total) * 100);
+            const remaining = Math.max(0, endTick - currentTick);
+            return `
+              <div class="ap-row">
+                <div class="ap-row-head">
+                  <div>
+                    <div class="ap-name">${escapeHtml(b.name)}</div>
+                    <div class="ap-sub">${escapeHtml(nationName)} · ${elapsed}/${total} ticks</div>
+                  </div>
+                  <span class="ap-tier">${tier.label}</span>
+                </div>
+                <div class="ap-bar-wrap"><div class="ap-bar-fill" style="width:${pct}%"></div></div>
+                <div class="ap-meta">
+                  <span>Cost ${fmtUsd(Number(b.cost_paid))}</span>
+                  <span>${remaining === 0 ? 'Awaiting next tick' : remaining + ' tick' + (remaining === 1 ? '' : 's') + ' remaining'}</span>
+                </div>
+              </div>`;
+          }).join('')
+        : `<div class="ap-empty">${
+            isConstructionCorp ? 'No active projects yet — break ground above.' :
+            isRealEstateCorp   ? 'No holdings yet — browse the market to acquire your first building.' :
+            'No active projects.'
+          }</div>`;
+
+      pj.innerHTML = launchBtn + listHtml;
+
+      if (isOwner && isConstructionCorp) {
+        document.getElementById('cp-begin-construction').addEventListener('click', openBuildModal);
+      }
+      if (isOwner && isRealEstateCorp) {
+        document.getElementById('cp-browse-market').addEventListener('click', openMarketModal);
+      }
+      if (isOwner) {
+        pj.querySelectorAll('.ap-btn-small.list').forEach(btn => {
+          btn.addEventListener('click', () => openListSaleModal(btn.dataset.bid, btn.dataset.bname));
+        });
+        pj.querySelectorAll('.ap-btn-small.delist').forEach(btn => {
+          btn.addEventListener('click', () => handleDelist(btn, btn.dataset.bid));
+        });
+        pj.querySelectorAll('.ap-btn-small.accept').forEach(btn => {
+          btn.addEventListener('click', () => handleAcceptOffer(btn, btn.dataset.oid));
+        });
+        pj.querySelectorAll('.ap-btn-small.reject').forEach(btn => {
+          btn.addEventListener('click', () => handleRejectOffer(btn, btn.dataset.oid));
+        });
+      }
+    };
+
+    // ── Begin Construction modal wiring (v3) ──
+    // Building type drives both the visible tier set (RHQ is S/M/L
+    // only) and the valid nation list (RHQ can go anywhere; non-RHQ
+    // restricted to HQ + nations the corp already owns an RHQ in).
+    let buildSubmitting = false;
+    let selectedBuildType = 'regional_hq';
+    let corpRhqNations = []; // [{ nation_id, nation_name }] for non-RHQ filtering
+    let allNations = [];     // [{ id, name }] for RHQ filtering
+
+    const renderTiers = (btype) => {
+      const tierKeys = btype === 'regional_hq' ? RHQ_TIERS : ALL_TIERS;
+      document.getElementById('bm-tiers').innerHTML = tierKeys.map((key, i) => {
+        const t = TIER_TABLE[key];
+        return `
+          <div class="bm-tier ${i === 0 ? 'sel' : ''}" data-tier="${key}">
+            <span class="tn">${escapeHtml(t.label)}</span><span class="td">${escapeHtml(t.desc)}</span>
+            <span class="num cost">${fmtUsd(t.cost)}</span><span class="num">${t.ticks}t</span>
+            <span class="num amb">+${t.amb} Amb</span>
+          </div>`;
+      }).join('');
+      document.querySelectorAll('#bm-tiers .bm-tier').forEach(el => {
+        el.addEventListener('click', () => {
+          document.querySelectorAll('#bm-tiers .bm-tier').forEach(x => x.classList.remove('sel'));
+          el.classList.add('sel');
+          updateBuildSummary();
+        });
+      });
+    };
+
+    const renderNations = (btype) => {
+      const sel = document.getElementById('bm-nation');
+      let options;
+      if (btype === 'regional_hq') {
+        // RHQ: any nation (no prereq). Show all available.
+        options = allNations.map(n => ({ id: n.id, name: n.name }));
+      } else {
+        // Operational types: HQ + nations with owned RHQ.
+        const valid = new Map();
+        if (c.hq_nation_id) valid.set(c.hq_nation_id, c.hq?.name || 'HQ');
+        for (const r of corpRhqNations) {
+          if (r.nation_id && !valid.has(r.nation_id)) valid.set(r.nation_id, r.nation_name || '—');
+        }
+        options = [...valid.entries()].map(([id, name]) => ({ id, name }));
+      }
+      if (options.length === 0) {
+        sel.innerHTML = '<option value="">(no eligible nations — build a Regional HQ first)</option>';
+      } else {
+        sel.innerHTML = options.map(o => `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join('');
+      }
+    };
+
+    const updateBuildSummary = () => {
+      const tierKey = document.querySelector('#bm-tiers .bm-tier.sel')?.dataset.tier
+                   || (selectedBuildType === 'regional_hq' ? 'small' : 'small');
+      const t = TIER_TABLE[tierKey] || TIER_TABLE.small;
+      const btypeLabel = buildingTypeLabel(selectedBuildType);
+      let extra = '';
+      if (selectedBuildType === 'regional_hq' && t.rep != null) {
+        extra = ` · buyer gains <b>+${t.rep} Reputation</b> on acquisition`;
+      }
+      let footer;
+      if (selectedBuildType === 'regional_hq') {
+        footer = `Completion grants <b>+0.2 GDP Growth</b> to the host nation${extra}.`;
+      } else if (selectedBuildType === 'construction_yard') {
+        footer = `Each completed CY contributes <b>+2</b> concurrent Port / Banking-Office build slots in this nation.`;
+      } else {
+        footer = `Completion grants <b>+0.2 GDP Growth</b> to the host nation. ${btypeLabel}s are sector-locked to ${selectedBuildType === 'port' ? 'Shipping' : 'Banking'} corps.`;
+      }
+      document.getElementById('bm-summary').innerHTML =
+        `<b>${escapeHtml(btypeLabel)}</b> · spend <b>${fmtUsd(t.cost)}</b> · build over <b>${t.ticks} ticks</b> · <b>+${t.amb} Ambition</b> for you.<br>${footer}`;
+    };
+
+    const openBuildModal = async () => {
+      const ov = document.getElementById('bm-overlay');
+      const errEl = document.getElementById('bm-err');
+      document.getElementById('bm-name').value = '';
+      errEl.textContent = '';
+      // Lazy-fetch nations + corp's RHQ holdings on first open. Two
+      // tiny queries; result is reused across modal opens.
+      if (allNations.length === 0) {
+        const { data: nats, error: nErr } = await _supabase.from('nations')
+          .select('id, name').not('continent', 'is', null).order('name');
+        if (nErr) console.warn('[entrepreneur-corp] nations fetch error:', nErr.message);
+        allNations = nats || [];
+      }
+      const { data: rhqs, error: rhqErr } = await _supabase.from('corp_buildings')
+        .select('nation_id, nation:nations!nation_id(name)')
+        .eq('owner_corp_id', id)
+        .eq('building_type', 'regional_hq')
+        .eq('status', 'completed');
+      if (rhqErr) console.warn('[entrepreneur-corp] RHQ holdings fetch error:', rhqErr.message);
+      corpRhqNations = (rhqs || []).map(r => ({ nation_id: r.nation_id, nation_name: r.nation?.name }));
+
+      // Default to Regional HQ on every open (the most common first
+      // action for an expanding corp). Reset type-picker visual.
+      selectedBuildType = 'regional_hq';
+      document.querySelectorAll('#bm-types .bm-type').forEach(el => {
+        el.classList.toggle('sel', el.dataset.btype === 'regional_hq');
+      });
+      renderTiers('regional_hq');
+      renderNations('regional_hq');
+      updateBuildSummary();
+      ov.classList.add('open');
+      setTimeout(() => document.getElementById('bm-name').focus(), 50);
+    };
+
+    const closeBuildModal = () => document.getElementById('bm-overlay').classList.remove('open');
+
+    // Type-picker click wiring — single-pass on init.
+    document.querySelectorAll('#bm-types .bm-type').forEach(el => {
+      el.addEventListener('click', () => {
+        document.querySelectorAll('#bm-types .bm-type').forEach(x => x.classList.remove('sel'));
+        el.classList.add('sel');
+        selectedBuildType = el.dataset.btype;
+        renderTiers(selectedBuildType);
+        renderNations(selectedBuildType);
+        updateBuildSummary();
+      });
+    });
+
+    document.getElementById('bm-close').addEventListener('click', closeBuildModal);
+    document.getElementById('bm-cancel').addEventListener('click', closeBuildModal);
+    document.getElementById('bm-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'bm-overlay') closeBuildModal();
+    });
+
+    document.getElementById('bm-submit').addEventListener('click', async () => {
+      if (buildSubmitting) return;
+      const errEl = document.getElementById('bm-err');
+      const name = (document.getElementById('bm-name').value || '').trim();
+      const tier = document.querySelector('#bm-tiers .bm-tier.sel')?.dataset.tier || 'small';
+      const nationId = document.getElementById('bm-nation').value;
+      if (name.length < 2 || name.length > 80) {
+        errEl.textContent = 'Building name must be 2–80 characters.';
+        return;
+      }
+      if (!nationId) {
+        errEl.textContent = 'Pick a host nation.';
+        return;
+      }
+      buildSubmitting = true;
+      const btn = document.getElementById('bm-submit');
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'BREAKING GROUND…';
+      errEl.textContent = '';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('begin_construction', {
+          p_corp_id:        id,
+          p_nation_id:      nationId,
+          p_name:           name,
+          p_tier:           tier,
+          p_building_type:  selectedBuildType,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            insufficient_funds:    data?.need != null ? `Not enough party funds — need ${fmtUsd(Number(data.need))}.` : 'Not enough party funds.',
+            not_construction_corp: 'Only Construction corps can break ground.',
+            not_owner:             'Only the corp owner can begin construction.',
+            invalid_name:          'Building name must be 2–80 characters.',
+            invalid_tier:          'Pick a tier.',
+            invalid_rhq_tier:      'Regional HQs only come in Small, Medium, or Large.',
+            invalid_building_type: 'Pick a building type.',
+            no_rhq_in_nation:      'You need a completed Regional HQ in this nation first.',
+            capacity_exceeded:     data?.cy_count != null ? `No spare capacity — ${data.in_progress} in-progress vs ${data.max} max (${data.cy_count} CY${data.cy_count === 1 ? '' : 's'} × 2). Build another Construction Yard.` : 'No spare construction capacity in this nation.',
+            nation_not_found:      'That nation no longer exists.',
+          };
+          errEl.textContent = REASON[data?.reason] || ('Could not start: ' + (data?.reason || 'unknown'));
+          buildSubmitting = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        btn.textContent = 'STARTED ✓ — refreshing…';
+        setTimeout(() => location.reload(), 700);
+      } catch (e) {
+        errEl.textContent = 'Failed: ' + (e?.message || e);
+        buildSubmitting = false; btn.disabled = false; btn.textContent = prev;
+      }
+    });
+
+    // ── List-for-Sale modal (v1) ──
+    // Opened from a completed building's [List for Sale] button.
+    // Owner-only. Calls list_building_for_sale; reloads on success.
+    let listSubmitting = false;
+    let lsBuildingId = null;
+
+    const openListSaleModal = (buildingId, buildingName) => {
+      lsBuildingId = buildingId;
+      document.getElementById('ls-building-name').textContent = buildingName || '—';
+      document.getElementById('ls-price').value = '';
+      document.getElementById('ls-err').textContent = '';
+      document.getElementById('ls-overlay').classList.add('open');
+      setTimeout(() => document.getElementById('ls-price').focus(), 50);
+    };
+    const closeListSaleModal = () => {
+      document.getElementById('ls-overlay').classList.remove('open');
+    };
+    document.getElementById('ls-close').addEventListener('click', closeListSaleModal);
+    document.getElementById('ls-cancel').addEventListener('click', closeListSaleModal);
+    document.getElementById('ls-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'ls-overlay') closeListSaleModal();
+    });
+    document.getElementById('ls-submit').addEventListener('click', async () => {
+      if (listSubmitting) return;
+      const errEl = document.getElementById('ls-err');
+      // Accept "$12,000,000" style input by stripping $ and commas.
+      const raw = (document.getElementById('ls-price').value || '').trim();
+      const price = Number(raw.replace(/[$,\s]/g, ''));
+      if (!Number.isFinite(price) || !Number.isInteger(price) || price < 1) {
+        errEl.textContent = 'Enter a whole-dollar price of $1 or more.';
+        return;
+      }
+      listSubmitting = true;
+      const btn = document.getElementById('ls-submit');
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'LISTING…';
+      errEl.textContent = '';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('list_building_for_sale', {
+          p_building_id: lsBuildingId,
+          p_price:       price,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            invalid_price:      'Price must be a positive whole-dollar amount.',
+            not_completed:      'Only completed buildings can be listed.',
+            not_owner:          'Only the owner corp can list this building.',
+            building_not_found: 'Building not found — refresh and try again.',
+            no_owner:           'This building has no current owner.',
+          };
+          errEl.textContent = REASON[data?.reason] || ('Could not list: ' + (data?.reason || 'unknown'));
+          listSubmitting = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        btn.textContent = 'LISTED ✓ — refreshing…';
+        setTimeout(() => location.reload(), 500);
+      } catch (e) {
+        errEl.textContent = 'Failed: ' + (e?.message || e);
+        listSubmitting = false; btn.disabled = false; btn.textContent = prev;
+      }
+    });
+
+    // ── Delist (inline confirm — no modal) ──
+    let delistInFlight = false;
+    const handleDelist = async (btn, buildingId) => {
+      if (delistInFlight) return;
+      if (!confirm('Withdraw this building from the market?')) return;
+      delistInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'DELISTING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('delist_building', {
+          p_building_id: buildingId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          alert('Could not delist: ' + (data?.reason || 'unknown'));
+          delistInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed to delist: ' + (e?.message || e));
+        delistInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    // ── Accept / Reject offer (v2, seller-side, inline confirm) ──
+    let offerActionInFlight = false;
+    const handleAcceptOffer = async (btn, offerId) => {
+      if (offerActionInFlight) return;
+      if (!confirm('Accept this offer? Ownership transfers and all other pending offers will be rejected.')) return;
+      offerActionInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'ACCEPTING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('accept_offer', {
+          p_offer_id: offerId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            offer_not_pending:         'Offer is no longer pending.',
+            buyer_insufficient_funds:  data?.need != null
+                                         ? `Buyer no longer has the funds (have ${fmtUsd(Number(data.have ?? 0))}, need ${fmtUsd(Number(data.need))}).`
+                                         : 'Buyer no longer has the funds.',
+            not_seller_corp_owner:     'You are not the owner of the selling corp.',
+            not_for_sale:              'Listing was already withdrawn.',
+            buyer_orphan:              'Buyer corp has no owning faction.',
+            seller_orphan:             'Seller corp has no owning faction.',
+          };
+          alert(REASON[data?.reason] || ('Could not accept: ' + (data?.reason || 'unknown')));
+          offerActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        offerActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+    const handleRejectOffer = async (btn, offerId) => {
+      if (offerActionInFlight) return;
+      if (!confirm('Reject this offer?')) return;
+      offerActionInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'REJECTING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('reject_offer', {
+          p_offer_id: offerId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          alert('Could not reject: ' + (data?.reason || 'unknown'));
+          offerActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        offerActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    // ── Marketplace modal (v1) ──
+    // Opened from a Real Estate corp's [Browse Market] launcher.
+    // Lists every completed building with list_price IS NOT NULL,
+    // minus this corp's own holdings (you can't buy from yourself).
+    let marketFetching = false;
+    let buyInFlight = false;
+
+    const openMarketModal = async () => {
+      if (marketFetching) return;
+      marketFetching = true;
+      const listEl = document.getElementById('mk-list');
+      listEl.innerHTML = '<div class="mk-empty">Loading marketplace…</div>';
+      document.getElementById('mk-overlay').classList.add('open');
+      try {
+        const { data: market, error: mErr } = await _supabase.from('corp_buildings')
+          .select('id, name, tier, list_price, owner_corp_id, '
+                + 'nation:nations!nation_id(name), '
+                + 'owner:entrepreneur_corps!owner_corp_id(name, industry)')
+          .not('list_price', 'is', null)
+          .eq('status', 'completed')
+          .order('list_price', { ascending: true });
+        if (mErr) {
+          listEl.innerHTML = `<div class="mk-empty">Failed to load: ${escapeHtml(mErr.message)}</div>`;
+          return;
+        }
+        // Three filters: (1) hide buildings this corp owns (server also
+        // enforces cannot_buy_own_building); (2) hide orphans (owner
+        // corp deleted, owner_corp_id went NULL — server would reject
+        // with seller_orphan); (3) hide RE-listed buildings — those go
+        // through the retail offer system (Markets / Properties tab),
+        // not the wholesale fixed-price modal. Server would reject any
+        // wholesale buy on an RE listing with use_offer_system.
+        const rows = (market || []).filter(b =>
+          b.owner_corp_id !== null
+          && b.owner_corp_id !== id
+          && b.owner?.industry !== 'real_estate');
+        if (rows.length === 0) {
+          listEl.innerHTML = '<div class="mk-empty">No buildings currently for sale.</div>';
+          return;
+        }
+        listEl.innerHTML = rows.map(b => {
+          const tier = TIER_TABLE[b.tier] || { label: b.tier };
+          return `
+            <div class="mk-row">
+              <div class="mk-info">
+                <div class="mk-name">${escapeHtml(b.name)}</div>
+                <div class="mk-meta">${escapeHtml(b.owner?.name || 'Unknown')} · ${escapeHtml(b.nation?.name || '—')} · ${tier.label}</div>
+              </div>
+              <div class="mk-price">${fmtUsd(Number(b.list_price))}</div>
+              <button class="ap-btn-small buy" data-bid="${b.id}" data-price="${b.list_price}" data-bname="${escapeHtml(b.name)}">Buy</button>
+            </div>`;
+        }).join('');
+        listEl.querySelectorAll('.ap-btn-small.buy').forEach(btn => {
+          btn.addEventListener('click', () => handleBuy(btn, btn.dataset.bid, Number(btn.dataset.price), btn.dataset.bname));
+        });
+      } finally {
+        marketFetching = false;
+      }
+    };
+    const closeMarketModal = () => {
+      document.getElementById('mk-overlay').classList.remove('open');
+    };
+    document.getElementById('mk-close').addEventListener('click', closeMarketModal);
+    document.getElementById('mk-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'mk-overlay') closeMarketModal();
+    });
+
+    const handleBuy = async (btn, buildingId, price, name) => {
+      if (buyInFlight) return;
+      if (!confirm(`Buy "${name}" for ${fmtUsd(price)}?`)) return;
+      buyInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'BUYING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('buy_building', {
+          p_building_id:   buildingId,
+          p_buyer_corp_id: id,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            not_for_sale:            'Building is no longer for sale.',
+            insufficient_funds:      data?.need != null
+                                       ? `Need ${fmtUsd(Number(data.need))}; you have ${fmtUsd(Number(data.have ?? 0))}.`
+                                       : 'Not enough party funds.',
+            buyer_not_real_estate:   'Only Real Estate corps can buy buildings.',
+            not_buyer_corp_owner:    'You are not the owner of this corp.',
+            cannot_buy_own_building: 'You cannot buy your own building.',
+            building_not_found:      'Building no longer exists.',
+            seller_orphan:           'Seller corp has no owning faction.',
+          };
+          alert(REASON[data?.reason] || ('Could not buy: ' + (data?.reason || 'unknown')));
+          buyInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        btn.textContent = 'PURCHASED ✓ — refreshing…';
+        setTimeout(() => location.reload(), 500);
+      } catch (e) {
+        alert('Failed to buy: ' + (e?.message || e));
+        buyInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    await renderProjects();
+
     document.getElementById('cp-load').style.display = 'none';
     document.getElementById('cp-app').style.display = 'block';
   } catch (e) {
@@ -918,5 +1800,75 @@ function initials(s, n) {
   }
 })();
 </script>
+
+<!-- Begin Construction modal (v0). Open from the Active Projects panel
+     on a Construction corp the viewer owns. RPC: begin_construction. -->
+<div class="bm-overlay" id="bm-overlay">
+  <div class="bm-modal">
+    <div class="bm-head">
+      <div class="ti">Begin <em>Construction</em></div>
+      <div class="bm-x" id="bm-close">×</div>
+    </div>
+    <div class="bm-body">
+      <div class="bm-label">Building Type</div>
+      <div class="bm-types" id="bm-types"><!-- Rendered from BUILDING_TYPES on init --></div>
+
+      <div class="bm-label">Building Name</div>
+      <input type="text" class="bm-input" id="bm-name" maxlength="80"
+             placeholder="e.g. Aurora Heights, Solvarist Cathedral, Port Tower">
+
+      <div class="bm-label">Host Nation</div>
+      <select class="bm-select" id="bm-nation"><option>Loading…</option></select>
+
+      <div class="bm-label">Tier</div>
+      <div class="bm-tiers" id="bm-tiers"><!-- Rendered from TIER_TABLE on type change --></div>
+
+      <!-- Filled by updateBuildSummary on modal open from TIER_TABLE. -->
+      <div class="bm-summary" id="bm-summary"></div>
+      <div class="bm-err" id="bm-err"></div>
+    </div>
+    <div class="bm-foot">
+      <button class="bm-btn sec" id="bm-cancel">Cancel</button>
+      <button class="bm-btn pri" id="bm-submit">Break Ground</button>
+    </div>
+  </div>
+</div>
+
+<!-- List for Sale modal (v1). Owner of a completed building sets the
+     price, RPC: list_building_for_sale. -->
+<div class="bm-overlay" id="ls-overlay">
+  <div class="bm-modal" style="max-width:480px;">
+    <div class="bm-head">
+      <div class="ti">List <em>for Sale</em></div>
+      <div class="bm-x" id="ls-close">×</div>
+    </div>
+    <div class="bm-body">
+      <div class="bm-label">Building</div>
+      <div class="bm-nation" id="ls-building-name">—</div>
+
+      <div class="bm-label">Price ($)</div>
+      <input type="text" class="bm-input" id="ls-price" placeholder="e.g. 75,000,000" inputmode="numeric">
+      <div class="bm-err" id="ls-err"></div>
+    </div>
+    <div class="bm-foot">
+      <button class="bm-btn sec" id="ls-cancel">Cancel</button>
+      <button class="bm-btn pri" id="ls-submit">List for Sale</button>
+    </div>
+  </div>
+</div>
+
+<!-- Marketplace modal (v1). Real Estate corps browse + buy. RPC:
+     buy_building. -->
+<div class="bm-overlay" id="mk-overlay">
+  <div class="bm-modal" style="max-width:760px;">
+    <div class="bm-head">
+      <div class="ti">Real Estate <em>Marketplace</em></div>
+      <div class="bm-x" id="mk-close">×</div>
+    </div>
+    <div class="bm-body">
+      <div id="mk-list">Loading marketplace…</div>
+    </div>
+  </div>
+</div>
 </body>
 </html>

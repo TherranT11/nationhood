@@ -56,6 +56,11 @@
   .mkt .c-sub.construction { color:#8aaa6a; }
   .mkt .c-sub.banking { color:#7a9aab; }
   .mkt .c-sub.shipping { color:#c89e6e; }
+  .mkt .c-sub.btype-regional_hq       { color:#aa7aaa; }
+  .mkt .c-sub.btype-construction_yard { color:#8aaa6a; }
+  .mkt .c-sub.btype-port              { color:#c89e6e; }
+  .mkt .c-sub.btype-banking_office    { color:#7a9aab; }
+  .mkt .c-sub.btype-unknown           { color:#666; }
   .mkt .c-sub .hq { color:#555; font-weight:400; }
 
   .mkt .pill { display:inline-block; padding:3px 9px; border-radius:3px;
@@ -76,6 +81,76 @@
   .mkt .state { padding:40px 18px; text-align:center; color:#555; font-size:12px; letter-spacing:0.06em; }
   .mkt .foot { margin-top:20px; padding-top:14px; border-top:0.5px solid rgba(255,255,255,0.05);
     text-align:center; color:#444; font-size:10px; letter-spacing:0.1em; }
+
+  /* Section tabs — Corporations / Properties / My Offers */
+  .mkt-tabs { display:flex; gap:6px; margin-bottom:18px; flex-wrap:wrap; }
+  .mkt-tab { font-size:10px; letter-spacing:0.1em; padding:8px 16px; border-radius:3px;
+    background:#121212; border:0.5px solid rgba(255,255,255,0.1); color:#888;
+    cursor:pointer; text-transform:uppercase; }
+  .mkt-tab:hover { color:#d4d4d4; }
+  .mkt-tab.active { background:#131613; border-color:#6a8a4a; color:#8aaa6a; font-weight:500; }
+
+  /* Properties view grid (PROPERTY · TIER · NATION · SELLER · ASKING · action) */
+  .mkt .grid.props { grid-template-columns: 2fr 0.8fr 1fr 1.2fr 1fr 110px; }
+  .mkt .tier-pill { display:inline-block; padding:3px 9px; border-radius:3px;
+    font-size:9px; letter-spacing:0.12em; font-weight:500; text-transform:uppercase;
+    background:#131613; color:#8aaa6a; border:0.5px solid rgba(138,170,106,0.3); }
+  .mkt .seller { font-size:12px; color:#d4d4d4; }
+  .mkt .seller .sub { display:block; font-size:9px; color:#aa7aaa; letter-spacing:0.1em;
+    margin-top:2px; font-weight:500; }
+  .mkt-action { padding:7px 12px; font-size:10px; letter-spacing:0.08em; border-radius:3px;
+    cursor:pointer; text-transform:uppercase; font-family:inherit; font-weight:500;
+    background:#1f2a1a; border:0.5px solid #8aaa6a; color:#8aaa6a; }
+  .mkt-action:hover { background:#243a1f; }
+  .mkt-action:disabled { opacity:0.45; cursor:not-allowed; }
+  .mkt-action.sec { background:transparent; border-color:rgba(255,255,255,0.15); color:#888; }
+  .mkt-action.sec:hover { color:#c98a8a; border-color:rgba(201,138,138,0.4); }
+
+  /* My Offers view grid (PROPERTY · SELLER · VIA · OFFER · STATUS · action) */
+  .mkt .grid.offers { grid-template-columns: 2fr 1.2fr 1.2fr 1fr 1fr 110px; }
+  .mkt .offer-status { font-size:10px; letter-spacing:0.1em; text-transform:uppercase; font-weight:500; }
+  .mkt .offer-status.pending   { color:#c89e6e; }
+  .mkt .offer-status.accepted  { color:#8aaa6a; }
+  .mkt .offer-status.rejected  { color:#c98a8a; }
+  .mkt .offer-status.withdrawn { color:#666; }
+
+  /* Place Offer modal — reuses .bm-* style language from entrepreneur-corp */
+  .po-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); display:none;
+    align-items:center; justify-content:center; padding:30px; z-index:500; }
+  .po-overlay.open { display:flex; }
+  .po-modal { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.1); border-radius:6px;
+    width:100%; max-width:520px; display:flex; flex-direction:column; overflow:hidden; }
+  .po-head { padding:16px 22px; border-bottom:0.5px solid rgba(255,255,255,0.08);
+    display:flex; align-items:center; gap:12px;
+    background:linear-gradient(180deg,rgba(138,170,106,0.04),#0c0c0c); }
+  .po-head .ti { font-size:18px; font-weight:500; color:#fff; flex:1; }
+  .po-head .ti em { font-family:Georgia,serif; color:#8aaa6a; font-style:italic; }
+  .po-x { border:0.5px solid rgba(255,255,255,0.15); color:#888; width:26px; height:26px;
+    border-radius:3px; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; font-size:15px; }
+  .po-x:hover { color:#8aaa6a; border-color:rgba(138,170,106,0.4); }
+  .po-body { padding:20px 22px; }
+  .po-label { font-size:10px; color:#888; letter-spacing:0.13em; text-transform:uppercase;
+    margin:14px 0 6px; }
+  .po-label:first-child { margin-top:0; }
+  .po-static { font-size:14px; color:#d4d4d4; padding:6px 0;
+    border-bottom:1px solid rgba(255,255,255,0.08); }
+  .po-static .ask { color:#8aaa6a; font-weight:500; }
+  .po-input, .po-select { width:100%; background:transparent; border:none;
+    border-bottom:1px solid rgba(138,170,106,0.3); color:#fff; font-size:16px;
+    font-family:inherit; outline:none; padding:6px 0; }
+  .po-select { appearance:none; -webkit-appearance:none; cursor:pointer; }
+  .po-input::placeholder { color:#444; font-style:italic; }
+  .po-err { color:#c98a8a; font-size:11px; margin-top:10px; min-height:14px; }
+  .po-foot { padding:14px 22px; border-top:0.5px solid rgba(255,255,255,0.08);
+    background:#0d0d0d; display:flex; gap:10px; justify-content:flex-end; }
+  .po-btn { padding:9px 18px; font-size:11px; letter-spacing:0.08em; border-radius:3px;
+    cursor:pointer; text-transform:uppercase; font-family:inherit; }
+  .po-btn.sec { border:0.5px solid rgba(255,255,255,0.15); color:#888; background:transparent; }
+  .po-btn.sec:hover { color:#d4d4d4; }
+  .po-btn.pri { background:#1f2a1a; border:0.5px solid #8aaa6a; color:#8aaa6a; font-weight:500; }
+  .po-btn.pri:hover { background:#243a1f; }
+  .po-btn.pri:disabled { opacity:0.45; cursor:not-allowed; }
 </style>
 </head>
 <body>
@@ -93,33 +168,107 @@
       </div>
     </div>
 
-    <div class="toolbar">
-      <input class="search-box" id="mk-search" placeholder="Search by name or CEO…" autocomplete="off" />
+    <div class="mkt-tabs" id="mk-tabs">
+      <div class="mkt-tab active" data-tab="corps">Corporations</div>
+      <div class="mkt-tab" data-tab="properties">Properties</div>
+      <div class="mkt-tab" data-tab="offers">My Offers</div>
     </div>
 
-    <div class="listings">
-      <div class="grid head">
-        <div>CORPORATION</div>
-        <div>TYPE</div>
-        <div>CEO</div>
-        <div class="right">VALUATION</div>
-        <div class="right">SHARE PRICE</div>
-        <div class="right">AVAILABLE</div>
-        <div class="right">OWNERSHIP</div>
-        <div></div>
+    <!-- Corporations view (default) -->
+    <div id="view-corps">
+      <div class="toolbar">
+        <input class="search-box" id="mk-search" placeholder="Search by name or CEO…" autocomplete="off" />
       </div>
-      <div id="mk-rows"><div class="state">Loading directory…</div></div>
+
+      <div class="listings">
+        <div class="grid head">
+          <div>CORPORATION</div>
+          <div>TYPE</div>
+          <div>CEO</div>
+          <div class="right">VALUATION</div>
+          <div class="right">SHARE PRICE</div>
+          <div class="right">AVAILABLE</div>
+          <div class="right">OWNERSHIP</div>
+          <div></div>
+        </div>
+        <div id="mk-rows"><div class="state">Loading directory…</div></div>
+      </div>
+
+      <div class="foot" id="mk-foot">CORPORATE REGISTRY · UPDATED EACH TICK</div>
     </div>
 
-    <div class="foot" id="mk-foot">CORPORATE REGISTRY · UPDATED EACH TICK</div>
+    <!-- Properties view: Real-Estate-listed buildings on the retail market -->
+    <div id="view-properties" hidden>
+      <div class="listings">
+        <div class="grid head props">
+          <div>PROPERTY</div>
+          <div>TIER</div>
+          <div>NATION</div>
+          <div>SELLER</div>
+          <div class="right">ASKING</div>
+          <div></div>
+        </div>
+        <div id="props-rows"><div class="state">Loading properties…</div></div>
+      </div>
+      <div class="foot" id="props-foot">REAL ESTATE MARKET · UPDATED EACH TICK</div>
+    </div>
+
+    <!-- My Offers view: outgoing offers placed by any of your corps -->
+    <div id="view-offers" hidden>
+      <div class="listings">
+        <div class="grid head offers">
+          <div>PROPERTY</div>
+          <div>SELLER</div>
+          <div>VIA CORP</div>
+          <div class="right">OFFER</div>
+          <div>STATUS</div>
+          <div></div>
+        </div>
+        <div id="offers-rows"><div class="state">Loading your offers…</div></div>
+      </div>
+      <div class="foot" id="offers-foot">OUTGOING OFFERS · UPDATED EACH TICK</div>
+    </div>
+  </div>
+</div>
+
+<!-- Place Offer modal -->
+<div class="po-overlay" id="po-overlay">
+  <div class="po-modal">
+    <div class="po-head">
+      <div class="ti">Place an <em>Offer</em></div>
+      <div class="po-x" id="po-close">×</div>
+    </div>
+    <div class="po-body">
+      <div class="po-label">Property</div>
+      <div class="po-static" id="po-prop">—</div>
+
+      <div class="po-label">Asking Price</div>
+      <div class="po-static"><span class="ask" id="po-asking">—</span></div>
+
+      <div class="po-label">Bid via Corp</div>
+      <select class="po-select" id="po-corp"><option>Loading…</option></select>
+
+      <div class="po-label">Your Offer ($)</div>
+      <input type="text" class="po-input" id="po-amount" placeholder="e.g. 72,000,000" inputmode="numeric">
+      <div class="po-err" id="po-err"></div>
+    </div>
+    <div class="po-foot">
+      <button class="po-btn sec" id="po-cancel">Cancel</button>
+      <button class="po-btn pri" id="po-submit">Place Offer</button>
+    </div>
   </div>
 </div>
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtUsd, fmtValuation, titleCase, viewerStakePct, ownerDisplayName } from './js/utils.js';
+import { fmtUsd, fmtValuation, titleCase, viewerStakePct, ownerDisplayName, escapeHtml, buildingTypeLabel } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
+
+// Tier labels mirror begin_construction's CASE — display-only copy.
+// Building-type labels come from buildingTypeLabel in utils.js
+// (single source across all dashboard pages).
+const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'Major', monumental: 'Monumental' };
 
 (async () => {
   try {
@@ -293,6 +442,272 @@ import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 
     render('');
     document.getElementById('mk-search').addEventListener('input', (e) => render(e.target.value));
+
+    // ───────────── Properties view (RE retail listings) ─────────────
+    // Same data source the corp-page Browse Market modal would show
+    // if filtered to RE sellers: corp_buildings with list_price set
+    // + status=completed + owner industry=real_estate. Surfaced on
+    // the global Markets page so non-RE players can see what's for
+    // sale and place offers.
+    let propsLoaded = false;
+    let myCorps = [];
+
+    const loadProperties = async () => {
+      if (propsLoaded) return;
+      propsLoaded = true;
+      const el = document.getElementById('props-rows');
+      const { data: props, error: pErr } = await _supabase.from('corp_buildings')
+        .select('id, name, tier, building_type, nation_id, list_price, owner_corp_id, '
+              + 'nation:nations!nation_id(name), '
+              + 'owner:entrepreneur_corps!owner_corp_id(name, industry)')
+        .not('list_price', 'is', null)
+        .eq('status', 'completed')
+        .order('list_price', { ascending: true });
+      if (pErr) {
+        el.innerHTML = `<div class="state">Failed to load properties: ${escapeHtml(pErr.message)}</div>`;
+        return;
+      }
+      // Filter: only RE-owned (retail listings); skip orphans (owner deleted).
+      const rows = (props || []).filter(b =>
+        b.owner_corp_id !== null && b.owner?.industry === 'real_estate');
+      document.getElementById('props-foot').textContent =
+        `REAL ESTATE MARKET · ${rows.length} PROPERT${rows.length === 1 ? 'Y' : 'IES'} LISTED · UPDATED EACH TICK`;
+      if (rows.length === 0) {
+        el.innerHTML = '<div class="state">No properties currently for sale.</div>';
+        return;
+      }
+      el.innerHTML = rows.map(b => `
+        <div class="grid props row">
+          <div>
+            <div class="c-name">${escapeHtml(b.name)}</div>
+            <div class="c-sub btype-${b.building_type || 'unknown'}">${escapeHtml(buildingTypeLabel(b.building_type))}</div>
+          </div>
+          <div><span class="tier-pill">${TIER_LABEL[b.tier] || escapeHtml(b.tier)}</span></div>
+          <div class="ceo">${escapeHtml(b.nation?.name || '—')}</div>
+          <div class="seller">
+            ${escapeHtml(b.owner?.name || 'Unknown')}
+            <span class="sub">REAL ESTATE</span>
+          </div>
+          <div class="num">${fmtUsd(Number(b.list_price))}</div>
+          <div>
+            <button class="mkt-action place-offer-btn" data-bid="${b.id}"
+              data-bname="${escapeHtml(b.name)}"
+              data-btype="${b.building_type || ''}"
+              data-asking="${b.list_price}">Place Offer</button>
+          </div>
+        </div>
+      `).join('');
+      // Wire Place Offer buttons.
+      el.querySelectorAll('.place-offer-btn').forEach(btn => {
+        btn.addEventListener('click', () => openOfferModal(
+          btn.dataset.bid, btn.dataset.bname, Number(btn.dataset.asking), btn.dataset.btype));
+      });
+    };
+
+    // ───────────── My Offers view (outgoing) ─────────────
+    let offersLoaded = false;
+
+    const loadOffers = async () => {
+      if (offersLoaded) return;
+      offersLoaded = true;
+      const el = document.getElementById('offers-rows');
+      if (!entId) {
+        el.innerHTML = '<div class="state">Sign in as an entrepreneur to see your offers.</div>';
+        return;
+      }
+      // Fetch player's corps (any corp owned by their faction) so we
+      // can filter offers to ones they placed.
+      const { data: mine, error: mErr } = await _supabase.from('entrepreneur_corps')
+        .select('id, name').eq('owner_faction_id', entId);
+      if (mErr) {
+        el.innerHTML = `<div class="state">Failed to load your corps: ${escapeHtml(mErr.message)}</div>`;
+        return;
+      }
+      myCorps = mine || [];
+      if (myCorps.length === 0) {
+        el.innerHTML = '<div class="state">You have no corporations. Found one to place offers.</div>';
+        return;
+      }
+      const myCorpIds = myCorps.map(c => c.id);
+      const { data: offers, error: oErr } = await _supabase.from('building_offers')
+        .select('id, amount, status, placed_at_tick, buyer_corp_id, '
+              + 'building:corp_buildings!building_id(id, name, building_type, list_price, '
+                + 'nation:nations!nation_id(name), '
+                + 'owner:entrepreneur_corps!owner_corp_id(name)), '
+              + 'buyer:entrepreneur_corps!buyer_corp_id(name)')
+        .in('buyer_corp_id', myCorpIds)
+        .order('placed_at_tick', { ascending: false });
+      if (oErr) {
+        el.innerHTML = `<div class="state">Failed to load offers: ${escapeHtml(oErr.message)}</div>`;
+        return;
+      }
+      const rows = offers || [];
+      const pendingN = rows.filter(o => o.status === 'pending').length;
+      document.getElementById('offers-foot').textContent =
+        `OUTGOING OFFERS · ${pendingN} PENDING · ${rows.length} TOTAL`;
+      if (rows.length === 0) {
+        el.innerHTML = '<div class="state">You haven’t placed any offers yet.</div>';
+        return;
+      }
+      el.innerHTML = rows.map(o => `
+        <div class="grid offers row">
+          <div>
+            <div class="c-name">${escapeHtml(o.building?.name || '—')}</div>
+            <div class="c-sub btype-${o.building?.building_type || 'unknown'}">${escapeHtml(buildingTypeLabel(o.building?.building_type))}<span class="hq">  ·  ${escapeHtml(o.building?.nation?.name || '—').toUpperCase()}</span></div>
+          </div>
+          <div class="seller">${escapeHtml(o.building?.owner?.name || 'Unknown')}</div>
+          <div class="ceo">${escapeHtml(o.buyer?.name || '—')}</div>
+          <div class="num">${fmtUsd(Number(o.amount))}</div>
+          <div><span class="offer-status ${o.status}">${o.status}</span></div>
+          <div>
+            ${o.status === 'pending'
+              ? `<button class="mkt-action sec withdraw-btn" data-oid="${o.id}">Withdraw</button>`
+              : ''}
+          </div>
+        </div>
+      `).join('');
+      el.querySelectorAll('.withdraw-btn').forEach(btn => {
+        btn.addEventListener('click', () => handleWithdraw(btn, btn.dataset.oid));
+      });
+    };
+
+    // ───────────── Tab switcher ─────────────
+    const setTab = (tab) => {
+      document.querySelectorAll('.mkt-tab').forEach(el => {
+        el.classList.toggle('active', el.dataset.tab === tab);
+      });
+      document.getElementById('view-corps').hidden      = tab !== 'corps';
+      document.getElementById('view-properties').hidden = tab !== 'properties';
+      document.getElementById('view-offers').hidden     = tab !== 'offers';
+      if (tab === 'properties') loadProperties();
+      if (tab === 'offers')     loadOffers();
+    };
+    document.querySelectorAll('.mkt-tab').forEach(el => {
+      el.addEventListener('click', () => setTab(el.dataset.tab));
+    });
+
+    // ───────────── Place Offer modal ─────────────
+    let offerSubmitting = false;
+    let poBuildingId = null;
+    let poAsking = 0;
+
+    const openOfferModal = async (buildingId, buildingName, asking, buildingType) => {
+      poBuildingId = buildingId;
+      poAsking = asking;
+      const typeLabel = buildingType ? buildingTypeLabel(buildingType) : '';
+      document.getElementById('po-prop').textContent = typeLabel
+        ? `${buildingName || '—'} · ${typeLabel}`
+        : (buildingName || '—');
+      document.getElementById('po-asking').textContent = fmtUsd(asking);
+      document.getElementById('po-amount').value = '';
+      document.getElementById('po-err').textContent = '';
+      // Populate buyer-corp dropdown. Lazy-fetch myCorps if we haven't already.
+      if (myCorps.length === 0 && entId) {
+        const { data: mine } = await _supabase.from('entrepreneur_corps')
+          .select('id, name, industry').eq('owner_faction_id', entId);
+        myCorps = mine || [];
+      }
+      const sel = document.getElementById('po-corp');
+      if (myCorps.length === 0) {
+        sel.innerHTML = '<option value="">(no corps — found one first)</option>';
+      } else {
+        sel.innerHTML = myCorps.map(c =>
+          `<option value="${c.id}">${escapeHtml(c.name)}${c.industry ? ' (' + (c.industry === 'real_estate' ? 'Real Estate' : titleCase(c.industry)) + ')' : ''}</option>`
+        ).join('');
+      }
+      document.getElementById('po-overlay').classList.add('open');
+      setTimeout(() => document.getElementById('po-amount').focus(), 50);
+    };
+    const closeOfferModal = () => document.getElementById('po-overlay').classList.remove('open');
+    document.getElementById('po-close').addEventListener('click', closeOfferModal);
+    document.getElementById('po-cancel').addEventListener('click', closeOfferModal);
+    document.getElementById('po-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'po-overlay') closeOfferModal();
+    });
+
+    document.getElementById('po-submit').addEventListener('click', async () => {
+      if (offerSubmitting) return;
+      const errEl = document.getElementById('po-err');
+      const corpId = document.getElementById('po-corp').value;
+      const raw = (document.getElementById('po-amount').value || '').trim();
+      const amount = Number(raw.replace(/[$,\s]/g, ''));
+      if (!corpId) { errEl.textContent = 'Pick a corp to bid via.'; return; }
+      if (!Number.isFinite(amount) || !Number.isInteger(amount) || amount < 1) {
+        errEl.textContent = 'Enter a whole-dollar offer of $1 or more.';
+        return;
+      }
+      offerSubmitting = true;
+      const btn = document.getElementById('po-submit');
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'PLACING…';
+      errEl.textContent = '';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('place_offer', {
+          p_building_id:   poBuildingId,
+          p_buyer_corp_id: corpId,
+          p_amount:        amount,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            invalid_amount:               'Offer must be a positive whole-dollar amount.',
+            not_for_sale:                 'This property is no longer listed.',
+            not_completed:                'Property is not yet completed.',
+            no_seller:                    'This property has no current seller.',
+            cannot_offer_on_own_building: 'You cannot place an offer on your own building.',
+            seller_not_real_estate:       'Only Real Estate properties accept offers.',
+            buyer_corp_not_found:         'The selected corp was not found.',
+            not_buyer_corp_owner:         'You do not own the selected corp.',
+            wrong_sector:                 data?.required
+                                            ? `That building is sector-locked to ${data.required} corps. Pick a ${data.required} corp to bid via.`
+                                            : 'Wrong sector for this building.',
+          };
+          errEl.textContent = REASON[data?.reason] || ('Could not place: ' + (data?.reason || 'unknown'));
+          offerSubmitting = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        btn.textContent = 'PLACED ✓';
+        // Stay on Properties so the user can keep browsing; close the
+        // modal, invalidate the offers cache so the My Offers tab
+        // re-fetches when they next visit it.
+        setTimeout(() => {
+          closeOfferModal();
+          offersLoaded = false;
+          offerSubmitting = false;
+          btn.disabled = false; btn.textContent = prev;
+        }, 600);
+      } catch (e) {
+        errEl.textContent = 'Failed: ' + (e?.message || e);
+        offerSubmitting = false; btn.disabled = false; btn.textContent = prev;
+      }
+    });
+
+    // ───────────── Withdraw offer ─────────────
+    let withdrawInFlight = false;
+    const handleWithdraw = async (btn, offerId) => {
+      if (withdrawInFlight) return;
+      if (!confirm('Withdraw this offer?')) return;
+      withdrawInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'WITHDRAWING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('withdraw_offer', {
+          p_offer_id: offerId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          alert('Could not withdraw: ' + (data?.reason || 'unknown'));
+          withdrawInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        offersLoaded = false;
+        setTab('offers');
+        withdrawInFlight = false;
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        withdrawInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
   } catch (e) {
     console.warn('[entrepreneur-markets] init failed:', e?.message || e);
   }
