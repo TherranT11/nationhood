@@ -321,7 +321,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation, titleCase, ownerDisplayName, viewerStakePct } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, ownerDisplayName, viewerStakePct, industryLabel } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 
 const FEE = 1_000_000;
@@ -424,7 +424,7 @@ function renderPositions(corps, filter) {
     // 2. Category (industry pill)
     const catCell = document.createElement('div');
     const catPill = document.createElement('span'); catPill.className = 'ec-pill ' + ind;
-    catPill.textContent = (c.industry || '—').toUpperCase().replace('_', ' ');
+    catPill.textContent = industryLabel(c.industry);
     catCell.appendChild(catPill);
 
     // 3. Valuation (computeEntrepreneurValuation + fmtValuation — single source)
@@ -580,7 +580,7 @@ function renderPositions(corps, filter) {
         const left = document.createElement('div');
         const nm   = document.createElement('div'); nm.className = 'nm'; nm.textContent = c.name || 'Corporation';
         const sub  = document.createElement('div'); sub.className = 'sub';
-        sub.textContent = `${(c.industry || '—').toUpperCase().replace('_', ' ')} · ${(c.listing || 'private').toUpperCase()}`;
+        sub.textContent = `${industryLabel(c.industry)} · ${(c.listing || 'private').toUpperCase()}`;
         left.append(nm, sub);
         const btn = document.createElement('button'); btn.className = 'ec-btn pri'; btn.textContent = 'LEAVE';
         btn.addEventListener('click', async () => {
@@ -665,7 +665,7 @@ function renderPositions(corps, filter) {
       const nm  = document.createElement('div'); nm.className = 'corp-nm';
       nm.textContent = `${applicantName} wishes to join the Board of Directors of ${corp.name || 'corporation'}`;
       const sub = document.createElement('div'); sub.className = 'corp-sub';
-      sub.textContent = `${(corp.industry || '—').toUpperCase().replace('_', ' ')} · ${(corp.listing || 'private').toUpperCase()} · CEO: ${ownerDisplayName(corp.owner)} · Valuation ${fmtValuation(val.amount)}`;
+      sub.textContent = `${industryLabel(corp.industry)} · ${(corp.listing || 'private').toUpperCase()} · CEO: ${ownerDisplayName(corp.owner)} · Valuation ${fmtValuation(val.amount)}`;
       const sh  = document.createElement('div'); sh.className = 'stats-head';
       sh.textContent = `${applicantName.toUpperCase()} — STATS PRESENTED TO THE BOARD`;
       const stats = document.createElement('div'); stats.className = 'stats';
@@ -727,7 +727,7 @@ function renderPositions(corps, filter) {
         const nameCell = document.createElement('div');
         const nm  = document.createElement('div'); nm.className = 'nm';  nm.textContent  = c.name || 'Corporation';
         const sub = document.createElement('div'); sub.className = 'sub ' + ind;
-        sub.textContent = `${(c.industry || '—').toUpperCase().replace('_', ' ')}  ·  ${(c.hq?.name || '—').toUpperCase()}`;
+        sub.textContent = `${industryLabel(c.industry)}  ·  ${(c.hq?.name || '—').toUpperCase()}`;
         nameCell.append(nm, sub);
 
         const typeCell = document.createElement('div');

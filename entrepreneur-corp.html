@@ -382,7 +382,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 function initials(s, n) {
   return (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, n || 2).map(w => w[0]).join('').toUpperCase()) || '—';
@@ -422,7 +422,7 @@ function initials(s, n) {
     set('cp-crumb', name.toUpperCase());
     set('cp-crest', initials(name, 2));
     set('cp-name', name);
-    set('cp-ind', (c.industry || '—').toUpperCase().replace('_', ' '));
+    set('cp-ind', industryLabel(c.industry));
     set('cp-listing', listing.toUpperCase());
     set('cp-listing2', listing);
     set('cp-hq', c.hq?.name ? (c.hq.continent ? `${c.hq.name} · ${c.hq.continent}` : c.hq.name) : '—');
@@ -1113,14 +1113,30 @@ function initials(s, n) {
     // begin_construction; the tick processor (advance-tick 3.6e)
     // completes projects and applies +0.2 GDP_Growth. Lazy-render
     // only — no realtime subscription.
+    //
+    // TIER_TABLE is the JS-side source of truth: the modal tier
+    // rows are rendered from it (one place to edit if a tier
+    // changes) and renderProjects uses it for the tier pill label.
+    // The SQL begin_construction RPC carries the server-authoritative
+    // copy of the same numbers — keep them in sync.
     const TIER_TABLE = {
-      small:      { cost: 1000000,   ticks: 24, amb: 1, label: 'Small' },
-      medium:     { cost: 5000000,   ticks: 27, amb: 2, label: 'Medium' },
-      large:      { cost: 20000000,  ticks: 30, amb: 3, label: 'Large' },
-      major:      { cost: 50000000,  ticks: 33, amb: 4, label: 'Major' },
-      monumental: { cost: 100000000, ticks: 36, amb: 5, label: 'Monumental' },
+      small:      { cost: 1000000,   ticks: 24, amb: 1, label: 'Small',      desc: 'Workshops, low-rises' },
+      medium:     { cost: 5000000,   ticks: 27, amb: 2, label: 'Medium',     desc: 'Mid-rise, mixed-use' },
+      large:      { cost: 20000000,  ticks: 30, amb: 3, label: 'Large',      desc: 'Towers, plazas' },
+      major:      { cost: 50000000,  ticks: 33, amb: 4, label: 'Major',      desc: 'Skyscrapers, districts' },
+      monumental: { cost: 100000000, ticks: 36, amb: 5, label: 'Monumental', desc: 'National landmarks' },
     };
     const isConstructionCorp = (c.industry === 'construction');
+
+    // Render modal tier rows from TIER_TABLE (replaces the previous
+    // 5 hardcoded HTML rows so the JS const is the only place to
+    // edit on the client).
+    document.getElementById('bm-tiers').innerHTML = Object.entries(TIER_TABLE).map(([key, t]) => `
+      <div class="bm-tier ${key === 'small' ? 'sel' : ''}" data-tier="${key}">
+        <span class="tn">${escapeHtml(t.label)}</span><span class="td">${escapeHtml(t.desc)}</span>
+        <span class="num cost">${fmtUsd(t.cost)}</span><span class="num">${t.ticks}t</span>
+        <span class="num amb">+${t.amb} Amb</span>
+      </div>`).join('');
 
     const { data: shardRow } = await _supabase.from('shard')
       .select('current_tick').eq('name', 'Alpha Shard').maybeSingle();
@@ -1195,13 +1211,6 @@ function initials(s, n) {
         document.getElementById('cp-begin-construction').addEventListener('click', openBuildModal);
       }
     };
-
-    // Tiny HTML escape — building names come from a text input, so
-    // sanitise before injecting into innerHTML.
-    function escapeHtml(s) {
-      return String(s).replace(/[&<>"']/g, m =>
-        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
-    }
 
     // ── Begin Construction modal wiring ──
     let buildSubmitting = false;
@@ -1320,33 +1329,10 @@ function initials(s, n) {
       <div class="bm-nation" id="bm-nation">—</div>
 
       <div class="bm-label">Tier</div>
-      <div class="bm-tiers" id="bm-tiers">
-        <div class="bm-tier sel" data-tier="small">
-          <span class="tn">Small</span><span class="td">Workshops, low-rises</span>
-          <span class="num cost">$1,000,000</span><span class="num">24t</span><span class="num amb">+1 Amb</span>
-        </div>
-        <div class="bm-tier" data-tier="medium">
-          <span class="tn">Medium</span><span class="td">Mid-rise, mixed-use</span>
-          <span class="num cost">$5,000,000</span><span class="num">27t</span><span class="num amb">+2 Amb</span>
-        </div>
-        <div class="bm-tier" data-tier="large">
-          <span class="tn">Large</span><span class="td">Towers, plazas</span>
-          <span class="num cost">$20,000,000</span><span class="num">30t</span><span class="num amb">+3 Amb</span>
-        </div>
-        <div class="bm-tier" data-tier="major">
-          <span class="tn">Major</span><span class="td">Skyscrapers, districts</span>
-          <span class="num cost">$50,000,000</span><span class="num">33t</span><span class="num amb">+4 Amb</span>
-        </div>
-        <div class="bm-tier" data-tier="monumental">
-          <span class="tn">Monumental</span><span class="td">National landmarks</span>
-          <span class="num cost">$100,000,000</span><span class="num">36t</span><span class="num amb">+5 Amb</span>
-        </div>
-      </div>
+      <div class="bm-tiers" id="bm-tiers"><!-- Rendered from TIER_TABLE on init --></div>
 
-      <div class="bm-summary" id="bm-summary">
-        Spend <b>$1,000,000</b> · build over <b>24 ticks</b> · <b>+1 Ambition</b><br>
-        Completion grants <b>+0.2 GDP Growth</b> to the host nation.
-      </div>
+      <!-- Filled by updateBuildSummary on modal open from TIER_TABLE. -->
+      <div class="bm-summary" id="bm-summary"></div>
       <div class="bm-err" id="bm-err"></div>
     </div>
     <div class="bm-foot">

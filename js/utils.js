@@ -42,6 +42,18 @@ export function titleCase(s) {
     return String(s || '').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+/**
+ * Display label for an entrepreneur corp industry / sector enum value.
+ * Lowercase snake_case ('real_estate') → uppercase with spaces
+ * ('REAL ESTATE'). NULL / empty → em-dash. Single source for the
+ * transformation; all dashboard sites that show an industry pill or
+ * subtitle should call this.
+ */
+export function industryLabel(s) {
+    if (!s) return '—';
+    return String(s).toUpperCase().replace(/_/g, ' ');
+}
+
 // ===== GAME DATE =====
 
 export const MONTHS = [
