@@ -38,6 +38,15 @@
 
 BEGIN;
 
+-- ── 0. entrepreneur_corps.updated_at ─────────────────────────────
+-- entrepreneur_corps was created without a generic updated_at audit
+-- column. Several RPCs below (and 20270181's freighter / shipping
+-- writes) touch the table on every meaningful mutation, so add the
+-- column once here. IF NOT EXISTS keeps re-runs / out-of-order apply
+-- idempotent.
+ALTER TABLE entrepreneur_corps
+    ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
 -- ── 1. Backfill private-corp treasury_cash ───────────────────────
 -- Money already paid at founding (starting_capital out of the
 -- owner's party_funds). Materialise it into a spendable column.
