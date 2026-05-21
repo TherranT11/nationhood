@@ -11,11 +11,11 @@
 -- faction_sector_popularity is admin-write-only (RLS), so the client
 -- routes through this SECURITY DEFINER RPC, same as hold_rally.
 --
--- Once per tick: the effect lands only on a party's FIRST article each
--- tick. Gate reuses the player_articles record (the triggering article
--- is inserted before this call) — count > 1 at the current tick means a
--- prior article already moved popularity, so this one publishes without
--- a popularity change. No new gate table/column.
+-- Once per tick: the popularity effect lands at most once per party per
+-- tick. Gated on ACTUAL moves via a campaign_actions row (action_type
+-- 'write_article') stamped only after a successful shift — so plain /
+-- flavor articles (no target, or a target with no standing to move)
+-- don't burn the move. Mirrors how hold_rally gates one-per-tick.
 --
 -- ±0.3 = ±3 tenths (popularity is stored in tenths 0..100, like rally).
 -- ════════════════════════════════════════════════════════════════════
@@ -38,7 +38,6 @@ DECLARE
     v_target_nation uuid;
     v_tick          int;
     v_delta         int;    -- ±3 tenths
-    v_count         int;
     v_pop_id        uuid;
     v_cur           int;
     v_next          int;
@@ -83,12 +82,15 @@ BEGIN
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
     v_tick := COALESCE(v_tick, 0);
 
-    -- One popularity-moving article per tick. The triggering article is
-    -- already inserted into player_articles, so a count > 1 means a prior
-    -- article this tick already moved popularity.
-    SELECT count(*) INTO v_count FROM player_articles
-     WHERE author_faction_id = v_party_id AND published_tick = v_tick;
-    IF v_count > 1 THEN
+    -- One popularity move per party per tick — gated on the campaign_actions
+    -- row stamped below (only after a real move), so a plain/flavor article
+    -- doesn't burn the move and a no-op (no standing) lets the player retry.
+    IF EXISTS (
+        SELECT 1 FROM campaign_actions
+         WHERE party_id = v_party_id
+           AND action_type = 'write_article'
+           AND tick_performed = v_tick
+    ) THEN
         RETURN jsonb_build_object('success', false, 'reason', 'already_written_this_tick');
     END IF;
 
@@ -98,7 +100,7 @@ BEGIN
 
     -- Read-modify-write the target's row (clamp 0..100). Skip silently if
     -- the sector wasn't seeded for the target — matches the rest of the
-    -- popularity pipeline (no create-on-write).
+    -- popularity pipeline (no create-on-write). No move ⇒ no gate stamped.
     SELECT id, popularity INTO v_pop_id, v_cur
       FROM faction_sector_popularity
      WHERE faction_id = p_target_party_id AND sector_id = v_sec_id;
@@ -112,6 +114,12 @@ BEGIN
        SET popularity = v_next, updated_at = now()
      WHERE id = v_pop_id;
 
+    -- Stamp the once-per-tick gate AFTER the move actually landed.
+    INSERT INTO campaign_actions (party_id, nation_id, action_type, ap_cost, money_cost, tick_performed, result)
+    VALUES (v_party_id, v_sec_nation, 'write_article', 0, 0, v_tick,
+            jsonb_build_object('targetPartyId', p_target_party_id, 'sectorId', v_sec_id,
+                               'deltaTenths', v_delta, 'targetSelf', v_self));
+
     RETURN jsonb_build_object(
         'success',       true,
         'target_self',   v_self,
@@ -124,7 +132,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.article_sector_popularity(uuid, uuid) TO authenticated;
 
 COMMENT ON FUNCTION public.article_sector_popularity(uuid, uuid) IS
-    'Write Article (party authors): moves the target party''s popularity in the chosen sector by +0.3 (own party) or −0.3 (any other), once per tick. SECURITY DEFINER (faction_sector_popularity is admin-write-only). Resolves the author''s party by the sector''s nation; gates one-per-tick via player_articles count. Replaces the momentum reward.';
+    'Write Article (party authors): moves the target party''s popularity in the chosen sector by +0.3 (own party) or −0.3 (any other), once per tick. SECURITY DEFINER (faction_sector_popularity is admin-write-only). Resolves the author''s party by the sector''s nation; gates one-per-tick via a campaign_actions row stamped only on a real move. Replaces the momentum reward.';
 
 NOTIFY pgrst, 'reload schema';
 
