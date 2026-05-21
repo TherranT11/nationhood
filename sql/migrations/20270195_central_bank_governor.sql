@@ -37,7 +37,6 @@ ALTER TABLE public.nations
     ADD COLUMN IF NOT EXISTS central_bank_interest_rate      NUMERIC(4,2) NOT NULL DEFAULT 5.00,
     ADD COLUMN IF NOT EXISTS central_bank_discretionary       BIGINT       NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS central_bank_governor_party_id   UUID REFERENCES public.factions(id),
-    ADD COLUMN IF NOT EXISTS central_bank_governor_appointed_tick INT,
     ADD COLUMN IF NOT EXISTS central_bank_governor_term_end_tick  INT;
 
 COMMENT ON COLUMN public.nations.central_bank_interest_rate IS
@@ -126,7 +125,6 @@ BEGIN
     IF v_is_direct THEN
         UPDATE nations SET
             central_bank_governor_party_id      = p_party_id,
-            central_bank_governor_appointed_tick = v_tick,
             central_bank_governor_term_end_tick  = v_term_end
          WHERE id = v_nation;
         RETURN jsonb_build_object('success', true, 'status', 'appointed',
@@ -275,7 +273,6 @@ COMMIT;
 -- DROP FUNCTION IF EXISTS public.appoint_central_bank_governor(uuid);
 -- ALTER TABLE public.nations
 --     DROP COLUMN IF EXISTS central_bank_governor_term_end_tick,
---     DROP COLUMN IF EXISTS central_bank_governor_appointed_tick,
 --     DROP COLUMN IF EXISTS central_bank_governor_party_id,
 --     DROP COLUMN IF EXISTS central_bank_discretionary,
 --     DROP COLUMN IF EXISTS central_bank_interest_rate;

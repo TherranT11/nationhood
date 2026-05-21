@@ -6244,7 +6244,6 @@ async function resolveGovernorConfirmationBill(supabase, bill, ctx) {
         await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
         const { error: updErr } = await supabase.from('nations').update({
             central_bank_governor_party_id: pg.party_id,
-            central_bank_governor_appointed_tick: currentTick,
             central_bank_governor_term_end_tick: currentTick + 96,
         }).eq('id', bill.nation_id);
         if (updErr) console.error('[resolveGovernorConfirmation] nation update failed:', updErr.message);
