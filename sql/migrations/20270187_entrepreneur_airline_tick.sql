@@ -51,6 +51,23 @@
 
 BEGIN;
 
+-- Single source of truth for route seat capacity (regional 10 /
+-- narrowbody 25 / widebody 60). Used twice in the allocator — for the
+-- route's own seats and for the competitor-seats SUM — so it lives in
+-- one place. Pure arithmetic; IMMUTABLE.
+CREATE OR REPLACE FUNCTION public.ent_airline_seats(
+    p_regional int, p_narrowbody int, p_widebody int
+) RETURNS int
+LANGUAGE sql IMMUTABLE
+AS $$
+    SELECT COALESCE(p_regional, 0)   * 10
+         + COALESCE(p_narrowbody, 0) * 25
+         + COALESCE(p_widebody, 0)   * 60;
+$$;
+
+COMMENT ON FUNCTION public.ent_airline_seats(int, int, int) IS
+    'Canonical seat capacity for an entrepreneur airline route: regional 10 / narrowbody 25 / widebody 60. Single source for the per-tick allocator.';
+
 CREATE OR REPLACE FUNCTION public.process_entrepreneur_airline_routes(p_tick int)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -121,15 +138,13 @@ BEGIN
                              ELSE 0 END;
 
         -- Capacity.
-        v_my_seats := COALESCE(v_route.aircraft_regional, 0)   * 10
-                    + COALESCE(v_route.aircraft_narrowbody, 0) * 25
-                    + COALESCE(v_route.aircraft_widebody, 0)   * 60;
+        v_my_seats := ent_airline_seats(v_route.aircraft_regional,
+                                        v_route.aircraft_narrowbody,
+                                        v_route.aircraft_widebody);
 
         -- Competitor seats: every OTHER active route on this lane.
         SELECT COALESCE(SUM(
-                 COALESCE(aircraft_regional, 0)   * 10
-               + COALESCE(aircraft_narrowbody, 0) * 25
-               + COALESCE(aircraft_widebody, 0)   * 60), 0)
+                 ent_airline_seats(aircraft_regional, aircraft_narrowbody, aircraft_widebody)), 0)
           INTO v_competitor_seats
           FROM airline_routes
          WHERE status = 'active'
@@ -153,8 +168,7 @@ BEGIN
 
         -- Net to corp treasury (may go negative — see header).
         UPDATE entrepreneur_corps
-           SET treasury_cash = COALESCE(treasury_cash, 0) + v_net,
-               updated_at    = now()
+           SET treasury_cash = COALESCE(treasury_cash, 0) + v_net
          WHERE id = v_route.airline_corp_id;
 
         UPDATE airline_routes

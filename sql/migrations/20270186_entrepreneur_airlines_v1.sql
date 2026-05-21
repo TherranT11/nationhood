@@ -204,7 +204,7 @@ BEGIN
 
     v_col := 'aircraft_' || p_class || '_owned';
     EXECUTE format(
-        'UPDATE entrepreneur_corps SET treasury_cash = COALESCE(treasury_cash,0) - $1, %I = %I + $2, updated_at = now() WHERE id = $3',
+        'UPDATE entrepreneur_corps SET treasury_cash = COALESCE(treasury_cash,0) - $1, %I = %I + $2 WHERE id = $3',
         v_col, v_col)
       USING v_cost, p_quantity, p_corp_id;
 
@@ -315,7 +315,7 @@ BEGIN
     v_tick := COALESCE(v_tick, 0);
 
     UPDATE entrepreneur_corps
-       SET treasury_cash = COALESCE(treasury_cash, 0) - v_fee, updated_at = now()
+       SET treasury_cash = COALESCE(treasury_cash, 0) - v_fee
      WHERE id = p_corp_id;
 
     UPDATE airline_terminals
