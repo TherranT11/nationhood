@@ -355,7 +355,7 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
     // totals and the viewer's stake are aggregated client-side.
     const [corpRes, holdRes] = await Promise.all([
       _supabase.from('entrepreneur_corps')
-        .select('id, name, industry, listing, starting_capital, share_price, shares_outstanding, owner_faction_id, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name)')
+        .select('id, name, industry, listing, starting_capital, share_price, shares_outstanding, owner_faction_id, for_sale, sale_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name)')
         .order('name'),
       _supabase.from('corp_shareholdings')
         .select('corp_id, holder_faction_id, shares')
@@ -441,6 +441,15 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
       tp.className = 'pill ' + (isPub ? 'public' : 'private');
       tp.textContent = titleCase(c.listing || 'private').toUpperCase();
       typeCell.appendChild(tp);
+      // [FOR SALE] tag — corp listed for acquisition (private corps).
+      if (c.for_sale) {
+        const fs = document.createElement('span');
+        fs.className = 'pill';
+        fs.textContent = 'FOR SALE';
+        fs.style.cssText = 'margin-left:6px;background:rgba(200,168,50,0.15);color:#c8a832;border:0.5px solid rgba(200,168,50,0.4);';
+        if (c.sale_price != null) fs.title = 'Asking ' + fmtUsd(c.sale_price);
+        typeCell.appendChild(fs);
+      }
 
       const ceoCell = document.createElement('div');
       ceoCell.className = 'ceo' + (c.owner_faction_id === entId ? ' you' : '');
