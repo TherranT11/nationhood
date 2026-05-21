@@ -126,4 +126,11 @@ export const ENTREPRENEUR_ARCHETYPES = Object.freeze({
         stats: { ambition: 18, cunning: 20, reputation: 2, vision: 6 },
         startingCash: 71000000,
     },
+    visionary: {
+        name: 'THE VISIONARY',
+        quote: 'You see what no one else does. The question is whether you can convince anyone before you run out of money.',
+        description: 'Brilliant strategic thinker with unconventional ideas. Has a reputation among the people who matter for being either a genius or a crank. Has built nothing of note yet — but the ideas are real.',
+        stats: { ambition: 14, cunning: 6, reputation: 8, vision: 20 },
+        startingCash: 32000000,
+    },
 });
