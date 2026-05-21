@@ -119,4 +119,11 @@ export const ENTREPRENEUR_ARCHETYPES = Object.freeze({
         stats: { ambition: 8, cunning: 14, reputation: 14, vision: 4 },
         startingCash: 62000000,
     },
+    raider: {
+        name: 'THE RAIDER',
+        quote: 'Other people built it. You take it.',
+        description: "Aggressive corporate raider with a track record of hostile takeovers, leveraged buyouts, and brutal restructurings. Feared in boardrooms. The press hates you. You don't read the press.",
+        stats: { ambition: 18, cunning: 20, reputation: 2, vision: 6 },
+        startingCash: 71000000,
+    },
 });
