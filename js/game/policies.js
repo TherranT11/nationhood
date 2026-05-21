@@ -10,9 +10,10 @@
  * Sector rapport effects are NOT processed here. They were originally a
  * per-tick accumulator on the proposing faction, but that produced
  * runaway popularity (every law eventually pinned every party at 0 or
- * max). The model is now a one-shot delta to YES voters at bill-pass
- * time, applied by applyOptionRapportToYesVoters() in bills.js. See
- * enactBill().
+ * max). The model is now a one-shot delta applied by
+ * applyOptionRapportToVoters() in bills.js: YES voters move toward the
+ * option's standing and NO voters away from it, at full magnitude on a
+ * pass (enactBill) and reduced on a fail (processSectorShifts).
  *
  * Coexists with the legacy rate/duration model in
  * buildPolicyDecayAdjustments + processStatDecay — only options whose
