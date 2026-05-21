@@ -2709,9 +2709,10 @@ async function processCentralBankLoanPayments(supabase, currentTick) {
                     }).eq('id', loan.nation_id);
                 }
             }
-            // Ledger (SSoT helper) — split interest from principal.
-            if (interestPortion > 0)  await supabase.rpc('emit_corp_cash_event', { p_corp_id: loan.borrower_corp_id, p_category: 'debt_interest', p_label: 'Central Bank loan interest',  p_delta: -interestPortion,  p_tick: currentTick });
-            if (principalPortion > 0) await supabase.rpc('emit_corp_cash_event', { p_corp_id: loan.borrower_corp_id, p_category: 'capital_out',   p_label: 'Central Bank loan principal', p_delta: -principalPortion, p_tick: currentTick });
+            // No corp_cash_events ledger entry — that helper keys on
+            // factions.id (the faction-corp model), not entrepreneur_corps.
+            // The treasury_cash debit above is the money movement; the loan
+            // row tracks the schedule.
 
             if (newOutstanding <= 0) {
                 await supabase.from('central_bank_loans')

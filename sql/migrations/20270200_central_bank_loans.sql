@@ -108,10 +108,12 @@ BEGIN
     v_tick := COALESCE(v_tick, 0);
 
     -- Disburse to the corp treasury; record the loan (outstanding = principal).
+    -- (No corp_cash_events ledger entry: that helper is for the faction-corp
+    -- model — it keys on factions.id and mutates corp_cash_reserves, neither of
+    -- which applies to entrepreneur_corps. The event_log row below is the audit
+    -- trail, consistent with other treasury moves like withdraw_corp_treasury.)
     UPDATE entrepreneur_corps SET treasury_cash = COALESCE(treasury_cash, 0) + p_principal
      WHERE id = v_corp.id;
-    -- Keep the corp cash ledger in sync (SSoT helper, 20260712).
-    PERFORM emit_corp_cash_event(v_corp.id, 'capital_in', 'Central Bank loan', p_principal, v_tick);
 
     INSERT INTO central_bank_loans
         (nation_id, borrower_corp_id, principal, outstanding, interest_rate, term_ticks, status, started_tick)
