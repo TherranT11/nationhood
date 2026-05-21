@@ -6,7 +6,7 @@
 <title>Corporation Management</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; min-height:100vh; }
+  body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; min-height:100vh; overflow-x:hidden; }
 
   .cp-load { text-align:center; color:#666; font-size:12px; padding:60px 0; letter-spacing:0.1em; }
 
@@ -63,6 +63,10 @@
 
   /* Two-col main */
   .main-grid { display:grid; grid-template-columns:1fr 320px; gap:22px; }
+  /* Let both columns shrink below their content's intrinsic width so the
+     1fr column can't force the page wider than the viewport on mobile
+     (otherwise the layout viewport expands and the media query never fires). */
+  .main-grid > div { min-width:0; }
 
   .section-heading { display:flex; align-items:baseline; gap:10px; margin-bottom:14px; margin-top:24px; }
   .section-heading:first-child { margin-top:0; }
@@ -490,8 +494,14 @@
     .corp-body .title { font-size:26px; }
     .role-block { text-align:left; padding-left:0; border-left:none; min-width:0;
       border-top:0.5px solid rgba(255,255,255,0.08); padding-top:16px; }
-    .financials { grid-template-columns:1fr; gap:8px; margin-bottom:20px; }
-    .fin-card { padding:14px 16px; }
+    /* Sidebar stacks below the main column; financials go 2-up instead of
+       one tall column per card. */
+    .main-grid { grid-template-columns:1fr; gap:18px; }
+    .financials { grid-template-columns:1fr 1fr; gap:8px; margin-bottom:20px; }
+    .fin-card { padding:12px 14px; }
+    /* Header-inline owner controls (Withdraw / Put Up for Sale) go full-width
+       once the header stacks. */
+    #cp-withdraw, #cp-forsale { min-width:0; width:100%; }
     /* All modals: full-width with smaller padding */
     .bm-overlay, .ls-overlay, .rl-overlay { padding:12px; }
     .bm-overlay { padding:12px; }
