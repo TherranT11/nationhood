@@ -2926,6 +2926,8 @@ function initials(s, n) {
     // outstanding-principal, replacing the v3 static $0 placeholder.
 
     let loanSubmitting = false;
+    let lrMode = 'private';   // 'private' (bank negotiation) | 'cb' (Central Bank, auto-issue)
+    let cbState = null;       // { rate, available } for the corp's HQ-nation Central Bank
 
     const fmtPct = (n) => (Number(n) * 100).toFixed(2).replace(/\.?0+$/, '') + '%';
 
@@ -3142,9 +3144,37 @@ function initials(s, n) {
       document.getElementById('rl-principal').value = '';
       document.getElementById('rl-term').value = '60';
       errEl.textContent = '';
-      updateLoanSummary();
+      setLoanMode('private');
       ov.classList.add('open');
       setTimeout(() => document.getElementById('rl-principal').focus(), 50);
+    };
+
+    // Highlight the active mode button; (re)load CB capacity when switching
+    // to Central Bank; refresh the summary.
+    const setLoanMode = (mode) => {
+      lrMode = mode;
+      ['private', 'cb'].forEach(m => {
+        const b = document.getElementById('rl-mode-' + m);
+        if (b) b.style.cssText = b.style.cssText.replace(/background:[^;]*;?/g, '') +
+          (m === mode ? 'background:#1f2a1a;color:#8aaa6a;' : '');
+      });
+      if (mode === 'cb' && cbState === null) loadCbState();
+      else updateLoanSummary();
+    };
+
+    const loadCbState = async () => {
+      cbState = { rate: null, available: 0 };
+      try {
+        const nid = c.hq_nation_id;
+        const [{ data: nat }, { data: loans }] = await Promise.all([
+          _supabase.from('nations').select('central_bank_interest_rate, central_bank_discretionary').eq('id', nid).maybeSingle(),
+          _supabase.from('central_bank_loans').select('outstanding').eq('nation_id', nid).eq('status', 'active'),
+        ]);
+        const capacity = (Number(nat?.central_bank_discretionary) || 0) * 100;
+        const outstanding = (loans || []).reduce((s, l) => s + (Number(l.outstanding) || 0), 0);
+        cbState = { rate: nat?.central_bank_interest_rate ?? null, available: Math.max(0, capacity - outstanding) };
+      } catch (e) { console.warn('[cb-loan] capacity load failed:', e?.message || e); }
+      updateLoanSummary();
     };
 
     const closeRequestLoanModal = () => document.getElementById('rl-overlay').classList.remove('open');
@@ -3159,6 +3189,14 @@ function initials(s, n) {
     const updateLoanSummary = () => {
       const { principal, term } = parseLoanInputs();
       const sumEl = document.getElementById('rl-summary');
+      if (lrMode === 'cb') {
+        if (!cbState) { sumEl.innerHTML = 'Loading Central Bank capacity…'; return; }
+        if (cbState.rate == null) { sumEl.innerHTML = `${escapeHtml(c.hq?.name || 'Your HQ nation')} has no Central Bank rate set.`; return; }
+        const cap = `${escapeHtml(c.hq?.name || 'Your HQ nation')}'s Central Bank lends at <b>${Number(cbState.rate).toFixed(2)}%</b> · up to <b>${fmtUsd(cbState.available)}</b> available.`;
+        if (!Number.isFinite(principal) || principal < 1) { sumEl.innerHTML = cap + ' Issued instantly at the posted rate.'; return; }
+        sumEl.innerHTML = cap + `<br>Borrowing <b>${fmtUsd(principal)}</b> over <b>${term} ticks</b> — issued instantly to your treasury.`;
+        return;
+      }
       if (!Number.isFinite(principal) || principal < 1) {
         sumEl.innerHTML = `Set principal + term — eligible banks respond with their own APR.`;
         return;
@@ -3168,6 +3206,9 @@ function initials(s, n) {
     };
     ['rl-principal', 'rl-term'].forEach(id => {
       document.getElementById(id).addEventListener('input', updateLoanSummary);
+    });
+    ['private', 'cb'].forEach(m => {
+      document.getElementById('rl-mode-' + m).addEventListener('click', () => setLoanMode(m));
     });
 
     document.getElementById('rl-close').addEventListener('click', closeRequestLoanModal);
@@ -3194,25 +3235,34 @@ function initials(s, n) {
       btn.disabled = true; btn.textContent = 'SUBMITTING…';
       errEl.textContent = '';
       try {
-        const { data, error: rpcErr } = await _supabase.rpc('submit_corp_loan_request', {
-          p_borrower_corp_id: id,
-          p_principal:        principal,
-          p_term_ticks:       term,
-        });
+        let data, rpcErr;
+        if (lrMode === 'cb') {
+          ({ data, error: rpcErr } = await _supabase.rpc('request_central_bank_loan', {
+            p_corp_id: id, p_principal: principal, p_term_ticks: term,
+          }));
+        } else {
+          ({ data, error: rpcErr } = await _supabase.rpc('submit_corp_loan_request', {
+            p_borrower_corp_id: id, p_principal: principal, p_term_ticks: term,
+          }));
+        }
         if (rpcErr) throw rpcErr;
         if (!data || !data.success) {
           const REASON = {
-            invalid_principal: 'Principal must be $1M–$1B.',
-            invalid_term:      'Term must be 12–240 ticks.',
-            no_hq_nation:      'Your corp has no HQ nation.',
-            already_pending:   'You already have a pending loan request. Cancel it first.',
-            not_owner:         'Only the corp owner can request loans.',
+            invalid_principal:     'Principal must be $1M–$1B.',
+            invalid_amount:        'Principal must be $1M–$1B.',
+            invalid_term:          'Term must be 12–240 ticks.',
+            no_hq_nation:          'Your corp has no HQ nation.',
+            no_nation:             'Your corp has no HQ nation.',
+            no_central_bank:       'This nation’s Central Bank has no rate set.',
+            insufficient_capacity: `Central Bank can only lend ${data?.available != null ? fmtUsd(data.available) : 'less than requested'} right now.`,
+            already_pending:       'You already have a pending loan request. Cancel it first.',
+            not_owner:             'Only the corp owner can request loans.',
           };
           errEl.textContent = REASON[data?.reason] || ('Could not submit: ' + (data?.reason || 'unknown'));
           loanSubmitting = false; btn.disabled = false; btn.textContent = prev;
           return;
         }
-        btn.textContent = 'SENT ✓ — refreshing…';
+        btn.textContent = lrMode === 'cb' ? 'ISSUED ✓ — refreshing…' : 'SENT ✓ — refreshing…';
         setTimeout(() => location.reload(), 600);
       } catch (e) {
         errEl.textContent = 'Failed: ' + (e?.message || e);
@@ -3989,6 +4039,10 @@ function initials(s, n) {
       <div class="rl-x" id="rl-close">×</div>
     </div>
     <div class="rl-body">
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <button type="button" class="rl-btn sec rl-mode-btn" id="rl-mode-private" data-mode="private" style="flex:1;">Private Banks</button>
+        <button type="button" class="rl-btn sec rl-mode-btn" id="rl-mode-cb" data-mode="cb" style="flex:1;">Central Bank</button>
+      </div>
       <div class="rl-label">Principal ($)</div>
       <input type="text" class="rl-input" id="rl-principal" placeholder="e.g. 50,000,000" inputmode="numeric">
 
