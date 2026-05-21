@@ -409,6 +409,7 @@ const TAG_COLORS = {
     DEFENSIVE: '#5cc55c', CAMPAIGN: '#c84', VOTER: '#c8a832',
     OFFENSIVE: '#c84', REACTIVE: '#ca5', STRUCTURAL: '#9e9a92',
     ROYAL: '#c8a832', LEGAL: '#5a8aaa',
+    MONETARY: '#c8a832', STIMULUS: '#5cc55c', TIGHTENING: '#c84',
 };
 
 // Statement topics
@@ -1199,6 +1200,7 @@ function renderPage(root) {
             <div class="pa-modal-overlay" id="pa-debt-payment-modal"></div>
             <div class="pa-modal-overlay" id="pa-expand-infra-modal"></div>
             <div class="pa-modal-overlay" id="pa-allocate-funds-modal"></div>
+            <div class="pa-modal-overlay" id="pa-cb-rate-modal"></div>
         `,
     });
 
@@ -1268,6 +1270,10 @@ function renderPage(root) {
             openDebtPaymentModal(root, faction);
         } else if (actionId === 'allocate_funds') {
             openAllocateFundsModal(root);
+        } else if (actionId === 'cb_lower_rate') {
+            openCbRateModal(root, 'lower');
+        } else if (actionId === 'cb_raise_rate') {
+            openCbRateModal(root, 'raise');
         } else if (actionId === 'invest_in_sports_culture') {
             openVolaInvestmentModal(root, faction);
         } else if (actionId === 'expand_stadium_infrastructure') {
@@ -1406,7 +1412,53 @@ function renderLeaderCards(leaderName, partyColor, faction) {
         `;
         return html;
     }).join('')
-        + renderCabinetMinistriesPanel(faction);
+        + renderCabinetMinistriesPanel(faction)
+        + renderCentralBankGovernorPanel(faction);
+}
+
+// Central Bank pool is raw dollars (same unit as ministry balances);
+// display it in the game's abstract $ unit ($1 = $1M raw).
+function cbPoolAbstract(raw) { return Math.round(Number(raw || 0) / 1_000_000); }
+
+// True when this faction currently holds the Governor of the Central Bank
+// seat with an unexpired term. Reads the nations.central_bank_governor_*
+// columns off cached state.
+function isCentralBankGovernor(faction) {
+    const n = _state?.nation;
+    if (!n || !faction?.id) return false;
+    if (n.central_bank_governor_party_id !== faction.id) return false;
+    const tick = Number(_state?.shard?.current_tick ?? 0);
+    return Number(n.central_bank_governor_term_end_tick ?? 0) > tick;
+}
+
+// Governor of the Central Bank card — a standalone selectable role (not a
+// cabinet ministry) shown only to the party holding the seat. Reuses the
+// ministry:<key> card + detail pipeline via roleId ministry:central_bank_governor.
+function renderCentralBankGovernorPanel(faction) {
+    if (!isCentralBankGovernor(faction)) return '';
+    const r = ministryRoleDescriptor('central_bank_governor', faction);
+    const isActive = _selectedRole === r.roleId;
+    const actionCount = (r.actions || []).length;
+    return `
+        <div class="pa-cabinet-header">
+            <span class="pa-cabinet-header__title">Central Bank</span>
+            <span class="pa-cabinet-header__count">Governor</span>
+        </div>
+        <div class="pa-leader-card pa-leader-card--ministry ${isActive ? 'active' : ''}"
+             data-role="${esc(r.roleId)}"
+             style="${isActive ? `border-left-color:#c8a832;` : ''}">
+            <div class="pa-leader-top">
+                <div class="pa-leader-avatar" style="color:#c8a832;background:#c8a83215;border-color:#c8a83233;">${esc(r.chip)}</div>
+                <div class="pa-leader-info">
+                    <div class="pa-leader-role">
+                        <span class="pa-leader-role-label" style="color:#c8a832;">${esc(r.shortRole.toUpperCase())}</span>
+                        ${actionCount > 0 ? `<span class="pa-leader-role-count">${actionCount} action${actionCount === 1 ? '' : 's'}</span>` : ''}
+                    </div>
+                    <div class="pa-leader-name">${esc(r.personName)}</div>
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 // ── Cabinet ministries (selectable cards) ───────────────────────────
@@ -1486,6 +1538,21 @@ function ministryRoleDescriptor(key, faction) {
             personName:  fallbackName || 'President',
             personAge:   fallbackAge,
             actions: _MINISTRY_ACTION_REGISTRY.president || [],
+        };
+    }
+    if (key === 'central_bank_governor') {
+        return {
+            roleId: 'ministry:central_bank_governor',
+            chip: 'CB',
+            roleLabel: 'GOVERNOR',
+            fullTitle: 'Governor of the Central Bank',
+            shortRole: 'Central Bank',
+            domain: 'MONETARY POLICY',
+            personFirst: faction?.leader_first_name || '',
+            personLast:  faction?.leader_last_name || '',
+            personName:  fallbackName || faction?.faction_name || 'Governor',
+            personAge:   fallbackAge,
+            actions: _MINISTRY_ACTION_REGISTRY.central_bank_governor || [],
         };
     }
     const m = (_heldMinistries || []).find(x => x.ministry_key === key);
@@ -1569,6 +1636,24 @@ const _MINISTRY_ACTION_REGISTRY = {
         },
     ],
     president: [],
+    central_bank_governor: [
+        {
+            id: 'cb_lower_rate',
+            name: 'Lower Interest',
+            desc: 'Lower the Central Bank policy rate by up to 3% for $1 from the lending pool. Stimulus: nudges GDP growth up (+0.2 per 1% cut). Rate clamps at 0%.',
+            cost: '$1',
+            costColor: '#c8a832',
+            tags: ['MONETARY', 'STIMULUS'],
+        },
+        {
+            id: 'cb_raise_rate',
+            name: 'Raise Interest',
+            desc: 'Raise the Central Bank policy rate by up to 3% for $1 from the lending pool. Tightening: nudges GDP growth down (−0.3 per 1% hike). Rate clamps at 20%.',
+            cost: '$1',
+            costColor: '#c8a832',
+            tags: ['MONETARY', 'TIGHTENING'],
+        },
+    ],
     defense:        [_ALLOCATE_FUNDS_ENTRY, _SOE_ACTION_ENTRY],
     transportation: [_SOE_ACTION_ENTRY],
     finance: [
@@ -1724,6 +1809,11 @@ function ministryActionLockReason(actionId, faction, roleDescriptor) {
             return 'Defense Ministry discretionary budget is $0 — pass a funding bill first.';
         }
     }
+    if (actionId === 'cb_lower_rate' || actionId === 'cb_raise_rate') {
+        if (Number(nation?.central_bank_discretionary ?? 0) < 1_000_000) {
+            return 'The Central Bank lending pool is empty — $1 is required to move the rate. Fund it with a funding bill.';
+        }
+    }
     if (actionId === 'invest_in_sports_culture') {
         // Cheapest tier (Low = $2M). If the discretionary budget can't
         // cover even that, lock the card so the player sees why.
@@ -1771,7 +1861,32 @@ function renderMinistryDetail(faction, partyColor) {
     // PM and President roles aren't tied to a ministries row — they
     // don't carry a discretionary balance. Show it only for keys that
     // have a real cabinet seat.
-    const showBalance = key !== 'prime_minister' && key !== 'president' && r.ministryId;
+    const isGovernor = key === 'central_bank_governor';
+    const showBalance = !isGovernor && key !== 'prime_minister' && key !== 'president' && r.ministryId;
+
+    // Central Bank readout: current policy rate + display-only lending
+    // capital (each $1 of the discretionary pool backs $100M). Shown in
+    // the detail header in place of a ministry discretionary balance.
+    let governorReadout = '';
+    if (isGovernor) {
+        const n = _state?.nation || {};
+        const rate = Number(n.central_bank_interest_rate ?? 5);
+        const poolAbstract = cbPoolAbstract(n.central_bank_discretionary);
+        const lendingM = poolAbstract * 100;  // each $1 ($1M) backs $100M
+        const lendingFmt = lendingM >= 1000
+            ? `$${(lendingM / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}B`
+            : `$${lendingM.toLocaleString()}M`;
+        const termEnd = Number(n.central_bank_governor_term_end_tick ?? 0);
+        const ticksLeft = Math.max(0, termEnd - Number(_state?.shard?.current_tick ?? 0));
+        governorReadout = `
+            <div style="text-align:right;font-family:var(--font-mono);flex-shrink:0;">
+                <div style="font-size:9px;letter-spacing:0.14em;color:var(--text-dim);text-transform:uppercase;">Policy Rate</div>
+                <div style="font-size:18px;font-weight:700;color:#c8a832;margin-top:2px;">${rate.toFixed(2)}%</div>
+                <div style="font-size:8px;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;margin-top:6px;">Lending Capital</div>
+                <div style="font-size:12px;font-weight:700;color:var(--green);">${lendingFmt}</div>
+                <div style="font-size:8px;color:var(--text-dim);margin-top:4px;">Term: ${ticksLeft} ticks left · pool $${poolAbstract.toLocaleString()}</div>
+            </div>`;
+    }
 
     // Matches the structure in renderActionsPanel's leader action loop
     // so the existing pa-action-item / pa-action-top / pa-action-right
@@ -1825,6 +1940,7 @@ function renderMinistryDetail(faction, partyColor) {
                     <div style="font-size:14px;font-weight:700;color:${r.discretionaryBalance > 0 ? 'var(--green)' : 'var(--red)'};margin-top:2px;">${fmtDiscretionaryBalance(r.discretionaryBalance)}</div>
                 </div>
             ` : ''}
+            ${governorReadout}
         </div>
         <div class="pa-actions-list">
             ${(r.actions && r.actions.length > 0)
@@ -3228,6 +3344,119 @@ async function openAllocateFundsModal(root) {
 
     overlay.classList.add('active');
     render();
+}
+
+// ════════════════════════ CENTRAL BANK — RATE MOVE ════════════════════════
+// Governor of the Central Bank moves the policy rate by up to 3% for $1.
+async function openCbRateModal(root, direction) {
+    const overlay = document.getElementById('pa-cb-rate-modal');
+    if (!overlay) return;
+    const isLower = direction === 'lower';
+    const verb = isLower ? 'Lower' : 'Raise';
+    let pct = 3;
+    let submitting = false;
+    let result = null;
+    let errorMsg = '';
+
+    function render() {
+        const n = _state?.nation || {};
+        const rate = Number(n.central_bank_interest_rate ?? 5);
+        const disc = Number(n.central_bank_discretionary ?? 0);
+        const signed = isLower ? -pct : pct;
+        const projected = Math.max(0, Math.min(20, rate + signed));
+        const gdpNote = isLower ? `+${(0.2 * pct).toFixed(1)} GDP growth` : `−${(0.3 * pct).toFixed(1)} GDP growth`;
+
+        const pctBtns = [1, 2, 3].map(v =>
+            `<button class="pa-modal-btn ${v === pct ? 'pa-modal-btn--submit' : ''}" data-pct="${v}" ${result || submitting ? 'disabled' : ''} style="${v === pct ? 'background:#c8a832;' : 'background:transparent;border:1px solid var(--border-main);color:var(--text-secondary);'}padding:6px 14px;font-size:12px;">${v}%</button>`
+        ).join('');
+
+        const resultHtml = result ? `
+            <div style="margin-top:12px;padding:12px;background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.22);">
+                <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;margin-bottom:4px;">Rate updated</div>
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">New policy rate <strong>${Number(result.rate).toFixed(2)}%</strong> · lending pool <strong>$${cbPoolAbstract(result.discretionary).toLocaleString()}</strong></div>
+            </div>` : '';
+        const errorHtml = errorMsg ? `<div style="font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:8px;">${esc(errorMsg)}</div>` : '';
+
+        overlay.innerHTML = `
+            <div class="pa-modal" style="width:460px;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:#c8a832;"></div>
+                        <span class="pa-modal-title">${verb} Interest</span>
+                    </div>
+                    <button class="pa-modal-close" id="pa-cb-close">&times;</button>
+                </div>
+                <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                    Costs <strong style="color:#c8a832;">$1</strong> from the lending pool ($${cbPoolAbstract(disc).toLocaleString()} available). ${isLower ? 'Stimulus — raises GDP growth.' : 'Tightening — lowers GDP growth.'} Rate clamps 0–20%.
+                </div>
+                <div class="pa-modal-body" style="gap:12px;">
+                    <div>
+                        <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.04em;">CURRENT RATE</div>
+                        <div style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:#c8a832;">${rate.toFixed(2)}%</div>
+                    </div>
+                    <div class="pa-modal-step-label">${verb} by</div>
+                    <div style="display:flex;gap:8px;">${pctBtns}</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-top:4px;">
+                        <div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.04em;">PROJECTED RATE</div><div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:var(--text-bright);">${projected.toFixed(2)}%</div></div>
+                        <div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.04em;">GDP EFFECT</div><div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:${isLower ? 'var(--green)' : 'var(--red)'};">${gdpNote}</div></div>
+                    </div>
+                    ${errorHtml}
+                    ${resultHtml}
+                </div>
+                <div class="pa-modal-footer">
+                    <button class="pa-modal-btn pa-modal-btn--cancel" id="pa-cb-cancel">${result ? 'Close' : 'Cancel'}</button>
+                    <button class="pa-modal-btn pa-modal-btn--submit" id="pa-cb-submit" ${submitting || result ? 'disabled' : ''}>${submitting ? 'Working…' : verb}</button>
+                </div>
+            </div>`;
+
+        const close = () => { overlay.classList.remove('active'); if (result) renderPage(root); };
+        document.getElementById('pa-cb-close')?.addEventListener('click', close);
+        document.getElementById('pa-cb-cancel')?.addEventListener('click', close);
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+        overlay.querySelectorAll('[data-pct]').forEach(btn => btn.addEventListener('click', () => {
+            pct = parseInt(btn.dataset.pct, 10); errorMsg = ''; render();
+        }));
+        document.getElementById('pa-cb-submit')?.addEventListener('click', submit);
+    }
+
+    async function submit() {
+        if (submitting || result) return;
+        submitting = true; errorMsg = ''; render();
+        try {
+            const { data, error } = await _supabase.rpc('central_bank_set_rate', { p_direction: direction, p_pct: pct });
+            if (error) {
+                errorMsg = error.message || 'Rate change failed.';
+            } else if (!data?.success) {
+                errorMsg = humanizeCbReason(data?.reason);
+            } else {
+                result = data;
+                // Patch cached nation so the re-render shows fresh values.
+                _state.nation.central_bank_interest_rate = data.rate;
+                _state.nation.central_bank_discretionary = data.discretionary;
+                if (data.gdpGrowth != null) _state.nation.gdp_growth = data.gdpGrowth;
+            }
+        } catch (e) {
+            errorMsg = e?.message || 'Network error.';
+        } finally {
+            submitting = false; render();
+        }
+    }
+
+    overlay.classList.add('active');
+    render();
+}
+
+function humanizeCbReason(reason) {
+    switch (reason) {
+        case 'not_authenticated':          return 'You are not signed in.';
+        case 'not_governor':               return 'Only the Governor of the Central Bank can move the rate.';
+        case 'term_expired':               return 'The Governor\'s term has ended — a successor must be appointed.';
+        case 'insufficient_discretionary': return 'The lending pool is empty — $1 is required.';
+        case 'rate_at_limit':              return 'The rate is already at its limit (0% or 20%).';
+        case 'invalid_direction':
+        case 'invalid_pct':                return 'Invalid rate change.';
+        default:                           return reason || 'Action failed.';
+    }
 }
 
 // ════════════════════════ EXPAND STADIUM INFRASTRUCTURE ════════════════════════

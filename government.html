@@ -336,6 +336,89 @@ async function submitExpandInfrastructure(size) {
 window.openExpandInfrastructureModal = openExpandInfrastructureModal;
 window.closeExpandInfrastructureModal = closeExpandInfrastructureModal;
 
+// ── Appoint / Nominate Central Bank Governor ────────────────────────
+// Opened from the Governor container's drawer on the Administrative
+// cabinet. Picks a party; parliamentary nominations route to a
+// confirmation vote, presidential / monarchy appoint directly. Backed
+// by the appoint_central_bank_governor RPC.
+
+// Whether this nation's head of government appoints the Governor directly
+// (presidential / semi-presidential / monarchy) vs. via a confirmation
+// vote (parliamentary). Mirrors the routing in appoint_central_bank_governor.
+function cbGovDirectAppoint(nation) {
+    const gt = String(nation?.government_type || '').toLowerCase();
+    return gt.includes('president') || gt.includes('monarch');
+}
+
+let _governorAppointInflight = false;
+function openGovernorAppointModal() {
+    if (document.getElementById('gov-appoint-overlay')) return;
+    const parties = (_govData?.parties || []);
+    const direct = cbGovDirectAppoint(currentNation);
+    const overlay = document.createElement('div');
+    overlay.id = 'gov-appoint-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeGovernorAppointModal(); });
+    const opts = parties.map(p => `<option value="${p.id}">${escapeHtml(p.faction_name)}</option>`).join('');
+    const routeNote = direct
+        ? 'You appoint the Governor directly — they take the seat immediately for an 8-year (96-tick) term.'
+        : 'Your nominee goes to a parliamentary confirmation vote (6 ticks). On a pass they serve an 8-year (96-tick) term.';
+    overlay.innerHTML = `<div style="background:#0f0f0d;border:1px solid rgba(255,255,255,0.1);max-width:460px;width:100%;padding:24px;display:flex;flex-direction:column;gap:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="font-family:var(--font-serif,Georgia,serif);font-size:20px;font-weight:600;color:#f0efe6;">${direct ? 'Appoint' : 'Nominate'} Central Bank Governor</div>
+            <button id="gov-appoint-close" style="background:transparent;border:1px solid rgba(255,255,255,0.15);color:#9e9a92;font-family:var(--font-mono);font-size:14px;width:30px;height:30px;cursor:pointer;">×</button>
+        </div>
+        <div style="font-family:var(--font-sans,sans-serif);font-size:13px;color:#9e9a92;line-height:1.5;">${routeNote} The Governor cannot be dismissed.</div>
+        <select id="gov-appoint-select" style="background:#1a1a17;color:#f0efe6;border:1px solid rgba(255,255,255,0.15);border-radius:4px;padding:9px 12px;font-size:14px;">${opts}</select>
+        <div id="gov-appoint-error" style="display:none;font-family:var(--font-mono);font-size:11px;color:#d9534f;padding:8px 12px;border:1px solid rgba(217,83,79,0.4);background:rgba(217,83,79,0.06);"></div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+            <button id="gov-appoint-cancel" style="background:transparent;border:1px solid rgba(255,255,255,0.15);color:#9e9a92;font-family:var(--font-mono);font-size:12px;padding:8px 16px;cursor:pointer;">Cancel</button>
+            <button id="gov-appoint-submit" style="background:var(--gold,#c8a832);border:none;color:#1a1a1a;font-family:var(--font-mono);font-size:12px;font-weight:700;padding:8px 18px;cursor:pointer;">${direct ? 'Appoint' : 'Nominate'}</button>
+        </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#gov-appoint-close').addEventListener('click', closeGovernorAppointModal);
+    overlay.querySelector('#gov-appoint-cancel').addEventListener('click', closeGovernorAppointModal);
+    overlay.querySelector('#gov-appoint-submit').addEventListener('click', submitGovernorAppoint);
+}
+
+function closeGovernorAppointModal() {
+    const o = document.getElementById('gov-appoint-overlay');
+    if (o) o.remove();
+}
+
+async function submitGovernorAppoint() {
+    if (_governorAppointInflight) return;
+    const partyId = document.getElementById('gov-appoint-select')?.value;
+    const errEl = document.getElementById('gov-appoint-error');
+    if (!partyId) return;
+    _governorAppointInflight = true;
+    if (errEl) errEl.style.display = 'none';
+    try {
+        const { data, error } = await _supabase.rpc('appoint_central_bank_governor', { p_party_id: partyId });
+        if (error) { if (errEl) { errEl.textContent = error.message; errEl.style.display = 'block'; } return; }
+        if (!data?.success) {
+            const msg = {
+                not_head_of_government: 'Only the head of government can appoint the Governor.',
+                governor_seated: 'A Governor is already serving — the seat reopens when their term ends.',
+                confirmation_pending: 'A confirmation vote is already on the floor.',
+                nominee_not_party: 'The nominee must be a party.',
+            }[data?.reason] || ('Appointment failed: ' + (data?.reason || 'unknown'));
+            if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+            return;
+        }
+        closeGovernorAppointModal();
+        alert(data.status === 'appointed' ? 'Governor appointed.' : 'Nominee sent to a confirmation vote.');
+        if (typeof loadGovData === 'function') { await loadGovData(); renderGovContent(); }
+    } catch (e) {
+        if (errEl) { errEl.textContent = e?.message || 'Unknown error'; errEl.style.display = 'block'; }
+    } finally {
+        _governorAppointInflight = false;
+    }
+}
+window.openGovernorAppointModal = openGovernorAppointModal;
+window.closeGovernorAppointModal = closeGovernorAppointModal;
+
 const MINISTRY_ACTIONS = {
     interior: {
         actions: [
@@ -1985,7 +2068,63 @@ function adm2RenderCabinet() {
         </div>`;
     }).join('');
 
-    listEl.innerHTML = rows;
+    // ── Governor of the Central Bank ── a ministry-level seat backed by
+    // nations.central_bank_governor_* (not a ministries row). Appoint /
+    // nominate lives in this drawer; the 96-tick term can't be dismissed.
+    const govPartyId  = currentNation?.central_bank_governor_party_id || null;
+    const govTermEnd  = Number(currentNation?.central_bank_governor_term_end_tick ?? 0);
+    const govSeated   = !!govPartyId && govTermEnd > (currentTick || 0);
+    const govParty    = govPartyId ? parties.find(p => p.id === govPartyId) : null;
+    const govLeader   = govParty ? [govParty.leader_first_name, govParty.leader_last_name].filter(Boolean).join(' ') : '';
+    const govName     = govSeated ? (govLeader || govParty?.faction_name || 'Governor') : '';
+    const govEmpty    = !govName;
+    const govPartyNm  = govParty?.faction_name || (govEmpty ? '' : 'Independent');
+    const govColor    = govParty?.party_color || 'var(--text-muted)';
+    const govAligned  = govParty && coalitionIds.has(govParty.id);
+    const govRowCls   = govEmpty ? 'vacant' : (govAligned ? 'aligned' : 'opp');
+    const govInitials = govName ? govName.split(' ').map(s => s[0] || '').join('').slice(0, 2).toUpperCase() : '—';
+    const govTicksLeft = govSeated ? Math.max(0, govTermEnd - (currentTick || 0)) : 0;
+    const govRate     = Number(currentNation?.central_bank_interest_rate ?? 5).toFixed(2);
+
+    const govDirect    = cbGovDirectAppoint(currentNation);
+    const govIsMonarch = String(currentNation?.government_type || '').toLowerCase().includes('monarch')
+        && currentFaction?.id && currentNation?.monarch_faction_id === currentFaction.id;
+    const canAppointGov = !govSeated && !isCaretaker && (
+        govDirect ? (isPresidentParty || govIsMonarch) : !!baseCtx.isPMParty
+    );
+
+    let govActionHtml;
+    if (govSeated) {
+        govActionHtml = `<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;padding:2px 0;">8-year term · ${govTicksLeft} ticks left (ends tick ${govTermEnd}). The Governor cannot be dismissed.</div>`;
+    } else if (canAppointGov) {
+        const lbl = govDirect ? 'APPOINT' : 'NOMINATE';
+        govActionHtml = `<div class="ministry-card__mgmt"><div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--appoint" onclick="event.stopPropagation();openGovernorAppointModal()">${lbl}</div></div>`;
+    } else {
+        govActionHtml = `<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);font-style:italic;padding:2px 0;">Only the head of government can appoint the Governor.</div>`;
+    }
+
+    const governorRowHtml = `<div class="adm2-min-row ${govRowCls}" data-idx="gov">
+            <div class="ava">${escapeHtml(govInitials)}</div>
+            <div class="mid">
+                <span class="dept">Central Bank Governor</span>
+                <span class="nm">${escapeHtml(govName || 'Vacant')}</span>
+            </div>
+            <div class="right">
+                <span class="adm2-ap-val" style="color:var(--gold,#c8a832);">${govRate}%</span>
+                <span class="caret">›</span>
+            </div>
+        </div>
+        <div class="adm2-min-drawer ${govRowCls}" data-drawer="gov">
+            <div class="adm2-drawer-party ${govRowCls}"><span class="pdot" style="background:${govColor};"></span>${escapeHtml(govPartyNm || 'No Governor seated')}</div>
+            <div class="adm2-drawer-stats">
+                <div class="s"><span class="k">Policy Rate</span><span class="v">${govRate}%</span></div>
+                <div class="s"><span class="k">Term</span><span class="v">${govSeated ? govTicksLeft + ' ticks' : '—'}</span></div>
+                <div class="s"><span class="k">Party</span><span class="v" style="font-family:var(--font-ui);font-size:11px;">${escapeHtml(govPartyNm || '—')}</span></div>
+            </div>
+            <div class="adm2-drawer-actions">${govActionHtml}</div>
+        </div>`;
+
+    listEl.innerHTML = rows + governorRowHtml;
 
     // Click-to-expand: only one drawer open at a time
     listEl.onclick = (e) => {

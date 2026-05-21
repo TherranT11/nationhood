@@ -4927,7 +4927,7 @@ async function processSectorShifts(supabase, nationId, resolutions) {
             console.error('[processSectorShifts] failed-bill rapport load failed', { nationId, error: fbErr.message });
         } else {
             for (const bill of (failedBills || [])) {
-                if (['no_confidence', 'minister_confirmation', 'foundational', 'veto_override'].includes(bill.bill_type)) continue;
+                if (['no_confidence', 'minister_confirmation', 'governor_confirmation', 'foundational', 'veto_override'].includes(bill.bill_type)) continue;
                 for (const art of (bill.bill_articles || [])) {
                     if (!art?.selected_option_id || art.repeal_active_law_id) continue;
                     // prev = the option currently in force for this policy (the
@@ -4980,7 +4980,7 @@ async function processSectorShifts(supabase, nationId, resolutions) {
     // override) are political-process votes, not policy outcomes — they
     // don't carry sector effects.
     const legislative = bills.filter(b =>
-        !['no_confidence', 'minister_confirmation', 'foundational', 'veto_override'].includes(b.bill_type)
+        !['no_confidence', 'minister_confirmation', 'governor_confirmation', 'foundational', 'veto_override'].includes(b.bill_type)
     );
     if (legislative.length === 0) return;
 
@@ -6212,6 +6212,59 @@ async function resolveMinisterConfirmationBill(supabase, bill, ctx) {
 }
 
 /**
+ * Resolve a passed/failed governor_confirmation bill (parliamentary
+ * confirmation of the Governor of the Central Bank). Reads the nominee from
+ * bill.metadata.pending_governor.party_id (sole source of truth); on pass
+ * installs the party into the nation's central_bank_governor_* columns. The
+ * 8-year (96-tick) term starts when the seat is taken (this tick), not when
+ * the nomination was filed.
+ *
+ * Force-fails (overrides ctx.passed) when:
+ *   - bill.metadata.pending_governor is missing
+ *   - the nominee's own party voted NO
+ */
+async function resolveGovernorConfirmationBill(supabase, bill, ctx) {
+    const { currentTick, nation, votesFor, votesAgainst, votesAbstain } = ctx;
+    let passed = ctx.passed;
+
+    const pg = bill.metadata?.pending_governor || null;
+    if (!pg?.party_id) {
+        console.error(`[resolveGovernorConfirmation] bill ${bill.id} missing bill.metadata.pending_governor. Failing.`);
+        passed = false;
+    }
+
+    // Auto-fail if the nominee's party itself voted NO.
+    const nomineeVotedNo = pg?.party_id && (bill.bill_support || []).some(s => {
+        const st = s.stance === 'reject' ? 'no' : s.stance;
+        return s.faction_id === pg.party_id && st === 'no';
+    });
+    if (nomineeVotedNo) passed = false;
+
+    if (passed) {
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        const { error: updErr } = await supabase.from('nations').update({
+            central_bank_governor_party_id: pg.party_id,
+            central_bank_governor_term_end_tick: currentTick + 96,
+        }).eq('id', bill.nation_id);
+        if (updErr) console.error('[resolveGovernorConfirmation] nation update failed:', updErr.message);
+        await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });
+    } else {
+        await failBill(supabase, bill);
+        await fireBillEvent(supabase, 'bill_failed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, votesAbstain });
+    }
+
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: passed ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'governor_confirmation',
+        earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+/**
  * Resolve a passed/failed no_confidence bill. Thin wrapper around the
  * elections domain handler (resolveNoConfidence) plus the standard
  * bills.update / failBill + result-entry bookkeeping.
@@ -7138,6 +7191,7 @@ const BILL_RESOLVERS = Object.freeze({
     foundational:           ()  => resolveFoundationalBill,
     default_resolution:     ()  => resolveDefaultResolutionBill,
     minister_confirmation:  (b) => b.ministry_key       ? resolveMinisterConfirmationBill   : null,
+    governor_confirmation:  (b) => b.metadata?.pending_governor ? resolveGovernorConfirmationBill : null,
     veto_override:          (b) => b.original_bill_id   ? resolveVetoOverrideBill           : null,
     impeachment_motion:     (b) => b.impeachment_id     ? resolveImpeachmentMotionBill      : null,
     impeachment_conviction: (b) => b.impeachment_id     ? resolveImpeachmentConvictionBill  : null,
@@ -7352,7 +7406,7 @@ async function resolveExpiredVotes(supabase, nationId) {
         // NO voters: +2/article on fail. Abstain: nothing.
         // Skip momentum for special bill types and presidential desk (not yet enacted)
         const lastResult = results[results.length - 1];
-        const skipMomentum = ['no_confidence', 'minister_confirmation', 'impeachment_conviction'].includes(bill.bill_type)
+        const skipMomentum = ['no_confidence', 'minister_confirmation', 'governor_confirmation', 'impeachment_conviction'].includes(bill.bill_type)
             || lastResult?.result === 'president_desk';
         if (!skipMomentum) {
             try {
@@ -7653,7 +7707,7 @@ async function resolveStuckFloorBills(supabase, nationId) {
         constitutional_amendment_streamlining: !!nation?.constitutional_amendment_streamlining
     };
 
-    const specialTypes = new Set(['no_confidence', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation']);
+    const specialTypes = new Set(['no_confidence', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation', 'governor_confirmation']);
     const results = [];
 
     for (const bill of stuckBills) {
@@ -8304,6 +8358,27 @@ async function enactBill(supabase, bill, currentTick) {
         const grantAmountM = Number(fd.discretionary) || 0;
         if (grantAmountM !== 0) {
             const grantRaw = grantAmountM * 1_000_000;
+            if (fd.ministry_key === 'central_bank') {
+                // Central Bank pool lives on nations.central_bank_discretionary
+                // (raw dollars, same unit as ministry balances), not a
+                // ministries row. Credit/debit it; budget/debt below is shared.
+                const { data: cbNation, error: cbReadErr } = await supabase.from('nations')
+                    .select('central_bank_discretionary')
+                    .eq('id', bill.nation_id)
+                    .maybeSingle();
+                if (cbReadErr) {
+                    console.error('[enactBill] failed to read central_bank_discretionary:', cbReadErr.message);
+                }
+                const curBalance = Number(cbNation?.central_bank_discretionary || 0);
+                const newBalance = Math.max(0, curBalance + grantRaw);
+                const { error: cbWriteErr } = await supabase.from('nations')
+                    .update({ central_bank_discretionary: newBalance })
+                    .eq('id', bill.nation_id);
+                if (cbWriteErr) {
+                    console.error('[enactBill] failed to update central_bank_discretionary:', cbWriteErr.message);
+                }
+                console.log(`[enactBill] central_bank discretionary ${curBalance} → ${newBalance} (${grantAmountM > 0 ? '+' : ''}${grantAmountM}M)`);
+            } else {
             // Credit (or debit) the ministry's discretionary_balance
             const { data: curMinistry, error: balReadErr } = await supabase.from('ministries')
                 .select('discretionary_balance')
@@ -8325,6 +8400,7 @@ async function enactBill(supabase, bill, currentTick) {
                 console.error(`[enactBill] failed to update discretionary_balance for ${fd.ministry_key}:`, balWriteErr.message);
             }
             console.log(`[enactBill] discretionary: ${fd.ministry_key} balance ${curBalance} → ${newBalance} (${grantAmountM > 0 ? '+' : ''}${grantAmountM}M)`);
+            }
 
             // Fund the grant from the treasury first; only the shortfall
             // becomes debt. Mirrors chargePolicyUpfrontCost ("Cost: pull
