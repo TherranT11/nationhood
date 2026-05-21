@@ -141,7 +141,13 @@ async function createEntrepreneur() {
     const parts = String(setup.name).trim().split(/\s+/);
     const firstName = parts.shift() || setup.name;
     const lastName = parts.join(' ');
-    const age = 30 + (Math.floor(Math.random() * 6) + 1); // 30 + 1d6
+    // Per-archetype age pin (PRODIGY says "twenty-five years old" in the
+    // quote — without an override we'd hand them a 31-36 age that
+    // contradicts their own flavor). Anything else falls back to the
+    // default 30+1d6 spread.
+    const age = (typeof a.age === 'number')
+      ? a.age
+      : 30 + (Math.floor(Math.random() * 6) + 1);
 
     const row = {
       id: factionId,

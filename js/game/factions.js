@@ -146,6 +146,9 @@ export const ENTREPRENEUR_ARCHETYPES = Object.freeze({
         description: "Recently exited a wildly successful early venture. The market still doesn't know what to make of you. You have cash, vision, and ambition — but neither operational depth nor political capital.",
         stats: { ambition: 20, cunning: 4, reputation: 12, vision: 18 },
         startingCash: 88000000,
+        // Quote pins them to 25; setup honours this override instead
+        // of the default 30+1d6 random spread.
+        age: 25,
     },
     fixer: {
         name: 'THE FIXER',
