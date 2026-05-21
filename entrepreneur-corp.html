@@ -539,6 +539,16 @@
           </div>
         </div>
       </div>
+      <!-- Founder-only withdrawal (private corps): pull corp treasury into
+           personal Cash on Hand. Shown by JS for the owner of a private corp. -->
+      <div id="cp-withdraw" style="display:none;align-self:center;min-width:200px;">
+        <div class="role-eyebrow" style="text-align:center;">WITHDRAW TO CASH ON HAND</div>
+        <div class="tc-row" style="margin-top:8px;justify-content:center;">
+          <input id="cp-wd-amt" class="tc-qty" type="number" min="1" step="1" placeholder="Amount" />
+          <button id="cp-wd-btn" class="tc-btn">WITHDRAW</button>
+        </div>
+        <div class="tc-msg" id="cp-wd-msg" style="text-align:center;"></div>
+      </div>
       <div class="role-block">
         <div class="role-eyebrow">OWNERSHIP</div>
         <div class="role-pill" id="cp-role-pill">FOUNDER · CONTROLLING</div>
@@ -799,6 +809,50 @@ function initials(s, n) {
     // (valuation seed→market, trade card, board) repaints from the DB.
     // Mirrors the trade card's lock/reason/reload conventions.
     const isOwner = !!entId && c.owner_faction_id === entId;
+
+    // [Withdraw to Cash on Hand] — header action for the founder of a PRIVATE
+    // corp. Pulls corp treasury_cash → personal party_funds via
+    // withdraw_corp_treasury. Public corps distribute via the dividend card.
+    const cpWd = document.getElementById('cp-withdraw');
+    if (cpWd && !isPublic && isOwner) {
+      cpWd.style.display = 'block';
+      const wdBtn = document.getElementById('cp-wd-btn');
+      const wdAmt = document.getElementById('cp-wd-amt');
+      const wdMsg = document.getElementById('cp-wd-msg');
+      let withdrawing = false;
+      wdBtn.addEventListener('click', async () => {
+        if (withdrawing) return;
+        const amount = parseInt(wdAmt.value, 10);
+        if (!Number.isFinite(amount) || amount < 1) { wdMsg.textContent = 'Enter an amount of at least 1.'; return; }
+        withdrawing = true; wdBtn.disabled = true; const prev = wdBtn.textContent;
+        wdBtn.textContent = '…'; wdMsg.textContent = '';
+        try {
+          const { data, error: rpcErr } = await _supabase.rpc('withdraw_corp_treasury', { p_corp_id: id, p_amount: amount });
+          if (rpcErr) throw rpcErr;
+          if (!data || !data.success) {
+            const REASON = {
+              not_authenticated:     'You are not signed in.',
+              no_entrepreneur:       'No entrepreneur faction found.',
+              corp_not_found:        'Corporation not found.',
+              not_owner:             'Only the founder can withdraw from this corporation.',
+              use_dividend:          'Public corps pay out via dividends, not direct withdrawals.',
+              invalid_amount:        'Enter a valid amount.',
+              insufficient_treasury: `Treasury only holds $${data && data.have != null ? data.have : '?'}.`,
+            };
+            wdMsg.textContent = REASON[data && data.reason] || 'Withdrawal failed.';
+            return;
+          }
+          // Success — reload so the corp treasury + top-bar Cash on Hand both
+          // repaint from the DB (mirrors the Go Public reload convention).
+          location.reload();
+        } catch (e) {
+          wdMsg.textContent = e?.message || 'Withdrawal failed.';
+        } finally {
+          withdrawing = false; wdBtn.disabled = false; wdBtn.textContent = prev;
+        }
+      });
+    }
+
     if (!isPublic && isOwner) {
       const gp = document.getElementById('cp-go-public');
       if (gp) {
