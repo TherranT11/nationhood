@@ -2085,14 +2085,14 @@ async function computeUnitMaintenanceAnnual(supabase, nation) {
     try {
         const { data: units, error } = await supabase
             .from('army_units')
-            .select('construction_cost')
+            .select('construction_cost, army:armies(army_type)')
             .eq('nation_id', nation.id)
             .neq('status', 'Decommissioned');
         if (error) {
             console.warn(`[Budget] army_units fetch failed for ${nation.name}:`, error.message);
         } else {
             for (const u of (units || [])) {
-                perTick += unitUpkeepPerTick(u?.construction_cost);
+                perTick += unitUpkeepPerTick(u?.construction_cost, u?.army?.army_type);
             }
         }
     } catch (err) {
@@ -30009,9 +30009,15 @@ async function onMilitaryLoyaltyRepealed(supabase, nationId) {
 // OF TRUTH — budget (the nation expenditure sum) and the Order of
 // Battle "(-$X)" readout both import this, so the per-unit figure can
 // never drift from the budget total.
-function unitUpkeepPerTick(constructionCost) {
+function armyUpkeepModifier(armyType) {
+    if (armyType === 'guard') return 1;
+    if (armyType === 'paramilitary') return -1;
+    return 0;
+}
+function unitUpkeepPerTick(constructionCost, armyType) {
     const cc = Number(constructionCost) || 0;
-    return Math.max(1, Math.floor(cc / 1_000_000 * 0.25));
+    const base = Math.max(1, Math.floor(cc / 1_000_000 * 0.25));
+    return Math.max(1, base + armyUpkeepModifier(armyType));
 }
 
 async function processFormingUnits(supabase, currentTick) {
