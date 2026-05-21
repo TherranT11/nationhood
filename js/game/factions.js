@@ -112,4 +112,52 @@ export const ENTREPRENEUR_ARCHETYPES = Object.freeze({
         stats: { ambition: 16, cunning: 8, reputation: 10, vision: 14 },
         startingCash: 48000000,
     },
+    operator: {
+        name: 'THE OPERATOR',
+        quote: 'Twenty years in middle management. You know how everything works. Now you have your own seat at the table.',
+        description: "Long-tenured corporate executive who finally bought a meaningful stake. Reputation built on competence and execution. Knows where the bodies are buried in three industries. Less of a builder, more of a fixer.",
+        stats: { ambition: 8, cunning: 14, reputation: 14, vision: 4 },
+        startingCash: 62000000,
+        // 20 years in middle management means they started ~22 and
+        // are now at least 42; setup samples from a 45-55 range.
+        age: [45, 55],
+    },
+    raider: {
+        name: 'THE RAIDER',
+        quote: 'Other people built it. You take it.',
+        description: "Aggressive corporate raider with a track record of hostile takeovers, leveraged buyouts, and brutal restructurings. Feared in boardrooms. The press hates you. You don't read the press.",
+        stats: { ambition: 18, cunning: 20, reputation: 2, vision: 6 },
+        startingCash: 71000000,
+    },
+    visionary: {
+        name: 'THE VISIONARY',
+        quote: 'You see what no one else does. The question is whether you can convince anyone before you run out of money.',
+        description: 'Brilliant strategic thinker with unconventional ideas. Has a reputation among the people who matter for being either a genius or a crank. Has built nothing of note yet — but the ideas are real.',
+        stats: { ambition: 14, cunning: 6, reputation: 8, vision: 20 },
+        startingCash: 32000000,
+    },
+    politician: {
+        name: 'THE POLITICIAN',
+        quote: 'You know everyone. You know what they want. You know what they owe.',
+        description: "Spent your career in regulated industries where success depends on relationships with government. Reputation is everything in your world. You don't out-compete rivals; you out-maneuver them through connections they don't have.",
+        stats: { ambition: 10, cunning: 16, reputation: 16, vision: 4 },
+        startingCash: 54000000,
+    },
+    prodigy: {
+        name: 'THE PRODIGY',
+        quote: 'Twenty-five years old. Your first venture sold for more than the GDP of small countries. Now the second act starts and no one knows what it looks like.',
+        description: "Recently exited a wildly successful early venture. The market still doesn't know what to make of you. You have cash, vision, and ambition — but neither operational depth nor political capital.",
+        stats: { ambition: 20, cunning: 4, reputation: 12, vision: 18 },
+        startingCash: 88000000,
+        // Quote pins them to 25; setup honours this override instead
+        // of the default 30+1d6 random spread.
+        age: 25,
+    },
+    fixer: {
+        name: 'THE FIXER',
+        quote: "You've been brought in to clean up two failed companies. Both came back from the brink. Now you have your own war chest.",
+        description: 'Career turnaround specialist who\'s been hired to save dying companies, succeeded twice, and parlayed that into a personal position. Modest cash but enormous credibility for getting things done in hard situations.',
+        stats: { ambition: 12, cunning: 14, reputation: 16, vision: 8 },
+        startingCash: 28000000,
+    },
 });

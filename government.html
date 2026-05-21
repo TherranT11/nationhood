@@ -2627,7 +2627,7 @@ async function loadBudgetData() {
     try {
         const { data: units, error: uErr } = await _supabase
             .from('army_units')
-            .select('construction_cost')
+            .select('construction_cost, army:armies(army_type)')
             .eq('nation_id', nation.id)
             .neq('status', 'Decommissioned');
         if (uErr) {
@@ -2635,7 +2635,7 @@ async function loadBudgetData() {
         } else {
             let perTick = 0;
             for (const u of (units || [])) {
-                perTick += unitUpkeepPerTick(u?.construction_cost);
+                perTick += unitUpkeepPerTick(u?.construction_cost, u?.army?.army_type);
             }
             const armyAnnual = perTick * GAME_CONFIG.TICKS_PER_YEAR;
             unitMaintenance = { armyCount: (units || []).length, armyAnnual, totalAnnual: armyAnnual };

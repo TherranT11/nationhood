@@ -226,6 +226,7 @@
     line-height:1.4; }
   .sh-row-sub .accent { color:#8aaa6a; }
   .sh-row-sub .dim { color:#666; }
+  .sh-row-sub .red { color:#c98a8a; }
   .sh-row-actions { display:flex; gap:6px; align-items:center; }
   .sh-row-status { font-size:10px; letter-spacing:0.08em; text-transform:uppercase;
     color:#8aaa6a; font-weight:500; }
@@ -233,6 +234,26 @@
   .sh-empty { color:#666; font-size:11px; padding:10px 14px; font-style:italic;
     letter-spacing:0.03em; background:#0a0a0a; border:0.5px dashed rgba(255,255,255,0.08);
     border-radius:4px; }
+
+  /* Airline Operations panel (Airline corps only, owner-only) —
+     reuses .sh-fleet / .sh-row / .sh-section-head; these add the inline
+     forms + small tags. */
+  .al-idle { display:block; font-size:9px; color:#8aaa6a; letter-spacing:0.08em;
+    text-transform:uppercase; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .al-idle.muted { color:#666; }
+  .al-form { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:8px 0 4px; }
+  .al-form select, .al-form input { background:#0d0d0d; border:0.5px solid rgba(122,154,171,0.3);
+    color:#d4d4d4; border-radius:3px; padding:7px 9px; font-size:11px; font-family:inherit; }
+  .al-form input[type="number"] { width:70px; }
+  .al-form-route label { display:flex; flex-direction:column; gap:3px; font-size:9px;
+    color:#888; letter-spacing:0.1em; text-transform:uppercase; }
+  .al-hint { font-size:10px; color:#888; letter-spacing:0.04em; line-height:1.5;
+    margin:4px 0 8px; }
+  .al-hint b { color:#d4d4d4; font-weight:500; }
+  .al-cap, .al-tag { font-size:8px; letter-spacing:0.1em; padding:1px 5px; border-radius:2px;
+    vertical-align:middle; margin-left:6px; }
+  .al-cap { background:#2a2510; color:#c89e6e; }
+  .al-tag { background:#10202a; color:#7a9aab; }
 
   /* Place-bid modal — reuses .bm-* scaffolding */
   .sh-bid-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:10px; }
@@ -285,6 +306,7 @@
   .cf-status.defaulted { color:#c98a8a; }
   .cf-status.repaid    { color:#8aaa6a; }
   .cf-status.active    { color:#7a9aab; }
+  .cf-status.approved  { color:#c89e6e; }
   .cf-empty { color:#666; font-size:11px; padding:10px 0; font-style:italic; letter-spacing:0.03em; }
 
   /* Request Loan modal — uses .po-* scaffolding from markets +
@@ -670,7 +692,7 @@ function initials(s, n) {
     if (!id) { window.location.href = 'entrepreneur-corporations.html'; return; }
 
     const { data: c, error } = await _supabase.from('entrepreneur_corps')
-      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, freighters_owned, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
+      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, freighters_owned, aircraft_regional_owned, aircraft_narrowbody_owned, aircraft_widebody_owned, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -1476,6 +1498,20 @@ function initials(s, n) {
     const SHIPPING_FREIGHTER_COST = 2_000_000;
     const SHIPPING_FREIGHTERS_PER_PORT = 4;
 
+    // Airline economy — MIRRORS sql/migrations/20270186 + 20270187.
+    // The SQL RPCs/allocator are authoritative; these constants drive
+    // display and client-side affordability/idle previews only. seats +
+    // ops match ent_airline_seats / the allocator; range is the open_route
+    // per-class ceiling in range_units; terminal fee matches
+    // entrepreneur_claim_terminal ($5M + $2M × population_pct).
+    const AIRCRAFT = {
+      regional:   { label: 'Regional',   cost: 60_000_000,  seats: 10, ops: 500,  range: 20 },
+      narrowbody: { label: 'Narrowbody', cost: 90_000_000,  seats: 25, ops: 1200, range: 60 },
+      widebody:   { label: 'Widebody',   cost: 120_000_000, seats: 60, ops: 2500, range: Infinity },
+    };
+    const AIRCRAFT_CLASSES = ['regional', 'narrowbody', 'widebody'];
+    const terminalClaimFee = (popPct) => 5_000_000 + 2_000_000 * (Number(popPct) || 0);
+
     // Client-side mirror of the SQL multi-winner allocator in
     // process_trade_agreement_shipping_multiwinner. Sort pending bids
     // by per-unit rate ASC (entrepreneur reads bid_rate; legacy
@@ -1512,6 +1548,34 @@ function initials(s, n) {
         remaining -= units;
       }
       return { allocation, lowestRate: annotated[0]?.rate ?? null };
+    };
+
+    // JS mirrors of broker_list_building / broker_buy_listing's math
+    // (20270184). Single helpers so the lock-fee + commission + rep
+    // tiers live in exactly one client-side spot — every Brokerage
+    // surface reads from these instead of recomputing the formula.
+
+    // 2% of cost, floored at $1. Mirrors:
+    //   GREATEST(1, (v_building.cost_paid * 2) / 100)
+    const computeBrokerLockFee = (cost) =>
+      Math.max(1, Math.floor((Math.max(0, Number(cost) || 0) * 2) / 100));
+
+    // Sort order of CASE branches must match the SQL exactly:
+    //   price > cost × 1.20  →  +2  (highest)
+    //   price > cost × 1.10  →  +1
+    //   price < cost          →  −3
+    //   else (break-even band) → 0
+    const previewBrokerageOutcome = (cost, price) => {
+      const c = Math.max(0, Number(cost)  || 0);
+      const p = Math.max(0, Number(price) || 0);
+      const profit     = p - c;
+      const commission = Math.max(0, Math.floor((profit * 10) / 100));
+      let repDelta, repLabel, repClass;
+      if (p > Math.floor((c * 120) / 100))      { repDelta =  2; repLabel = '+2'; repClass = 'accent'; }
+      else if (p > Math.floor((c * 110) / 100)) { repDelta =  1; repLabel = '+1'; repClass = 'accent'; }
+      else if (p < c)                            { repDelta = -3; repLabel = '−3'; repClass = 'red';    }
+      else                                       { repDelta =  0; repLabel =  '0'; repClass = 'dim';    }
+      return { commission, nationTake: p - commission, profit, repDelta, repLabel, repClass };
     };
 
     // Render the building-type picker once. Tier rows + nation
@@ -1634,7 +1698,7 @@ function initials(s, n) {
                     <div class="ap-name">${escapeHtml(b.name)}</div>
                     <div class="ap-sub">${escapeHtml(nationName)} · ${elapsed}/${total} ticks</div>
                   </div>
-                  <span class="ap-tier">${tier.label}</span>
+                  <span>${b.building_type ? `<span class="ap-btype ${b.building_type}">${buildingTypeLabel(b.building_type)}</span>` : ''}<span class="ap-tier">${tier.label}</span></span>
                 </div>
                 <div class="ap-bar-wrap"><div class="ap-bar-fill" style="width:${pct}%"></div></div>
                 <div class="ap-meta">
@@ -1799,6 +1863,122 @@ function initials(s, n) {
         `;
       }
 
+      // Brokerage Operations panel (Real Estate corps only, owner-only).
+      // My Active Listings (broker_corp_id = this corp) + Available to
+      // Broker (unowned buildings in nations where this corp owns a
+      // completed Real Estate Office). Talks to 20270184's
+      // broker_list_building / broker_set_price / broker_withdraw_listing
+      // RPCs. Pricing preview math mirrors the SQL commission +
+      // reputation tiers exactly so the player sees what the server
+      // will compute.
+      let brokeragePanelHtml = '';
+      if (isRealEstateCorp && isOwner) {
+        // Pull (a) my offices to know which nations I can broker in,
+        // (b) my active listings, (c) all unowned buildings in those
+        // nations. Two queries — offices first, then a single fetch
+        // for both listings + candidates filtered by my nation set.
+        const { data: myOffices, error: oErr } = await _supabase.from('corp_buildings')
+          .select('nation_id')
+          .eq('owner_corp_id', id)
+          .eq('building_type', 'real_estate_office')
+          .eq('status', 'completed');
+        if (oErr) console.warn('[entrepreneur-corp] RE office fetch error:', oErr.message);
+        const myNationIds = [...new Set((myOffices || []).map(r => r.nation_id).filter(Boolean))];
+
+        // My active listings (regardless of nation — once listed, the
+        // broker manages them even if the office in that nation lapses).
+        const { data: myListings, error: lErr } = await _supabase.from('corp_buildings')
+          .select('id, name, building_type, tier, cost_paid, list_price, broker_fee_paid, broker_listed_at_tick, nation:nations!nation_id(name)')
+          .eq('broker_corp_id', id)
+          .eq('status', 'completed')
+          .order('broker_listed_at_tick', { ascending: false });
+        if (lErr) console.warn('[entrepreneur-corp] my listings fetch error:', lErr.message);
+
+        // Available to broker — unowned + unbrokered + in my office nations.
+        let available = [];
+        if (myNationIds.length > 0) {
+          const { data: avail, error: aErr } = await _supabase.from('corp_buildings')
+            .select('id, name, building_type, tier, cost_paid, nation:nations!nation_id(name)')
+            .in('nation_id', myNationIds)
+            .is('owner_corp_id', null)
+            .is('broker_corp_id', null)
+            .eq('status', 'completed')
+            .order('cost_paid', { ascending: false });
+          if (aErr) console.warn('[entrepreneur-corp] available fetch error:', aErr.message);
+          available = avail || [];
+        }
+
+        const listings = myListings || [];
+        const activeHtml = listings.length
+          ? listings.map(b => {
+              const cost  = Number(b.cost_paid) || 0;
+              const price = Number(b.list_price) || 0;
+              const fee   = Number(b.broker_fee_paid) || 0;
+              const preview = previewBrokerageOutcome(cost, price);
+              return `
+                <div class="sh-row">
+                  <div class="sh-row-info">
+                    <div class="sh-row-name">${escapeHtml(b.name)}</div>
+                    <div class="sh-row-sub">
+                      ${buildingTypeLabel(b.building_type)} · ${escapeHtml(b.nation?.name || '—')} ·
+                      <span class="dim">cost ${fmtUsd(cost)}</span> ·
+                      asking <span class="accent">${fmtUsd(price)}</span> ·
+                      <span class="${preview.repClass}">commission ${fmtUsd(preview.commission)}, rep ${preview.repLabel}</span>
+                      <span class="dim"> · fee paid ${fmtUsd(fee)}</span>
+                    </div>
+                  </div>
+                  <div class="sh-row-actions">
+                    <button class="ap-btn-small accept sh-broker-reprice"
+                            data-bid="${b.id}"
+                            data-bname="${escapeHtml(b.name)}"
+                            data-cost="${cost}"
+                            data-price="${price}">Re-price</button>
+                    <button class="ap-btn-small reject sh-broker-withdraw"
+                            data-bid="${b.id}"
+                            data-bname="${escapeHtml(b.name)}"
+                            data-fee="${fee}">Withdraw</button>
+                  </div>
+                </div>`;
+            }).join('')
+          : `<div class="sh-empty">No active listings — pick an available property below to broker.</div>`;
+
+        let availableHtml;
+        if (myNationIds.length === 0) {
+          availableHtml = `<div class="sh-empty">You need a completed Real Estate Office in a nation before you can broker properties there.</div>`;
+        } else if (available.length === 0) {
+          availableHtml = `<div class="sh-empty">No unowned properties to broker in your office nations right now.</div>`;
+        } else {
+          availableHtml = available.map(b => {
+            const cost = Number(b.cost_paid) || 0;
+            const fee  = computeBrokerLockFee(cost);
+            return `
+              <div class="sh-row">
+                <div class="sh-row-info">
+                  <div class="sh-row-name">${escapeHtml(b.name)}</div>
+                  <div class="sh-row-sub">
+                    ${buildingTypeLabel(b.building_type)} · ${escapeHtml(b.nation?.name || '—')} ·
+                    <span class="dim">cost ${fmtUsd(cost)}</span> ·
+                    lock fee <span class="accent">${fmtUsd(fee)}</span>
+                  </div>
+                </div>
+                <div class="sh-row-actions">
+                  <button class="ap-btn-small list sh-broker-list"
+                          data-bid="${b.id}"
+                          data-bname="${escapeHtml(b.name)}"
+                          data-cost="${cost}">List for Sale</button>
+                </div>
+              </div>`;
+          }).join('');
+        }
+
+        brokeragePanelHtml = `
+          <div class="sh-section-head">My Active Listings · ${listings.length}</div>
+          ${activeHtml}
+          <div class="sh-section-head">Available to Broker · ${available.length}</div>
+          ${availableHtml}
+        `;
+      }
+
       // Pending Loan Requests panel (Banking corps only). Shows EVERY
       // pending loan request across the world; rows where this bank
       // can act (owns a Banking Office in the borrower's HQ nation)
@@ -1853,7 +2033,155 @@ function initials(s, n) {
         }
       }
 
-      pj.innerHTML = launchBtn + listHtml + shippingPanelHtml + loanRequestsHtml;
+      // Airline Operations panel (Airline corps only, owner-only).
+      // Fleet (owned + idle per class) · Terminals (claimed slots) ·
+      // Routes (active, with last-tick performance). Inline forms call
+      // entrepreneur_buy_aircraft / _claim_terminal / _open_route /
+      // _close_route / _release_terminal. Idle = owned − Σ assigned is
+      // computed here for display only — open_route enforces it
+      // server-side (this preview can never over-grant).
+      let airlinePanelHtml = '';
+      if (c.industry === 'airline' && isOwner) {
+        const [termRes, routeRes, cityRes] = await Promise.all([
+          _supabase.from('airline_terminals')
+            .select('id, city_id, terminal_number, city:airline_cities!city_id(id, name, population_pct, is_capital)')
+            .eq('owner_corp_id', id),
+          _supabase.from('airline_routes')
+            .select(`id, ticket_price, route_type,
+                     aircraft_regional, aircraft_narrowbody, aircraft_widebody,
+                     last_tick_pax, last_tick_revenue, last_tick_spend,
+                     origin:airline_cities!origin_city_id(name),
+                     dest:airline_cities!dest_city_id(name)`)
+            .eq('airline_corp_id', id).eq('status', 'active')
+            .order('opened_at_tick', { ascending: true }),
+          _supabase.from('airline_cities')
+            .select('id, name, population_pct, is_capital').order('name'),
+        ]);
+        if (termRes.error)  console.warn('[entrepreneur-corp] terminals fetch error:', termRes.error.message);
+        if (routeRes.error) console.warn('[entrepreneur-corp] routes fetch error:', routeRes.error.message);
+        if (cityRes.error)  console.warn('[entrepreneur-corp] cities fetch error:', cityRes.error.message);
+
+        const terminals = termRes.data || [];
+        const routes    = routeRes.data || [];
+        const allCities = cityRes.data || [];
+        const corpCash  = getEntrepreneurCorpCash(c);
+
+        // Owned / assigned / idle per class (preview mirror of open_route).
+        const owned = {
+          regional:   Number(c.aircraft_regional_owned)   || 0,
+          narrowbody: Number(c.aircraft_narrowbody_owned) || 0,
+          widebody:   Number(c.aircraft_widebody_owned)   || 0,
+        };
+        const assigned = { regional: 0, narrowbody: 0, widebody: 0 };
+        for (const r of routes) {
+          assigned.regional   += Number(r.aircraft_regional)   || 0;
+          assigned.narrowbody += Number(r.aircraft_narrowbody) || 0;
+          assigned.widebody   += Number(r.aircraft_widebody)   || 0;
+        }
+        const idle = {
+          regional:   owned.regional   - assigned.regional,
+          narrowbody: owned.narrowbody - assigned.narrowbody,
+          widebody:   owned.widebody   - assigned.widebody,
+        };
+
+        // ── Fleet card: owned/idle per class + buy form ──
+        const fleetCells = AIRCRAFT_CLASSES.map(k => {
+          const a = AIRCRAFT[k];
+          return `<div class="cell"><div class="lab">${a.label}</div>
+            <div class="val${owned[k] === 0 ? ' muted' : ''}">${owned[k]}
+              <span class="al-idle${idle[k] === 0 ? ' muted' : ''}">${idle[k]} idle</span></div></div>`;
+        }).join('');
+        const buyOpts = AIRCRAFT_CLASSES.map(k =>
+          `<option value="${k}">${AIRCRAFT[k].label} · ${fmtUsd(AIRCRAFT[k].cost)} · ${AIRCRAFT[k].seats} seats</option>`).join('');
+        const fleetCard = `
+          <div class="sh-section-head">Fleet</div>
+          <div class="sh-fleet" style="grid-template-columns:1fr 1fr 1fr;">${fleetCells}</div>
+          <div class="al-form">
+            <select id="al-buy-class">${buyOpts}</select>
+            <input type="number" id="al-buy-qty" min="1" max="50" value="1" />
+            <button class="sh-buy-btn" id="al-buy">Buy Aircraft</button>
+          </div>
+          <div class="al-hint">Cash: <b>${fmtUsd(corpCash)}</b>. Aircraft are paid from corp treasury; the fleet is uncapped — per-tick ops cost is the limiter.</div>`;
+
+        // ── Terminals: owned slots + claim form ──
+        const ownedCityIds = new Set(terminals.map(t => t.city_id));
+        const termRowsHtml = terminals.length
+          ? terminals.map(t => `
+              <div class="sh-row">
+                <div class="sh-row-info">
+                  <div class="sh-row-name">${escapeHtml(t.city?.name || 'City')}${t.city?.is_capital ? ' <span class="al-cap">CAPITAL</span>' : ''}</div>
+                  <div class="sh-row-sub">Terminal #${t.terminal_number} · pop weight <span class="accent">${Number(t.city?.population_pct) || 0}</span></div>
+                </div>
+                <div class="sh-row-actions">
+                  <button class="ap-btn-small reject al-release" data-tid="${t.id}" data-cname="${escapeHtml(t.city?.name || 'City')}">Release</button>
+                </div>
+              </div>`).join('')
+          : `<div class="sh-empty">No terminals. Claim slots in two cities to open your first route.</div>`;
+        const claimOpts = allCities.filter(c2 => !ownedCityIds.has(c2.id))
+          .map(c2 => `<option value="${c2.id}" data-pop="${Number(c2.population_pct) || 0}">${escapeHtml(c2.name)} — ${fmtUsd(terminalClaimFee(c2.population_pct))}</option>`).join('');
+        const claimForm = claimOpts
+          ? `<div class="al-form">
+               <select id="al-claim-city">${claimOpts}</select>
+               <button class="sh-buy-btn" id="al-claim">Claim Terminal</button>
+             </div>`
+          : `<div class="al-hint">You hold a terminal in every city.</div>`;
+
+        // ── Routes: active list + open form ──
+        const routeRowsHtml = routes.length
+          ? routes.map(r => {
+              const planes = AIRCRAFT_CLASSES
+                .filter(k => Number(r['aircraft_' + k]) > 0)
+                .map(k => `${r['aircraft_' + k]}× ${AIRCRAFT[k].label}`).join(', ') || '—';
+              const net = (Number(r.last_tick_revenue) || 0) - (Number(r.last_tick_spend) || 0);
+              const netCls = net > 0 ? 'accent' : net < 0 ? 'red' : 'dim';
+              return `
+                <div class="sh-row">
+                  <div class="sh-row-info">
+                    <div class="sh-row-name">${escapeHtml(r.origin?.name || '?')} ↔ ${escapeHtml(r.dest?.name || '?')}
+                      <span class="al-tag">${r.route_type === 'international' ? 'INT’L' : 'DOM'}</span></div>
+                    <div class="sh-row-sub">
+                      ${planes} · ticket <span class="accent">${fmtUsd(Number(r.ticket_price) || 0)}</span> ·
+                      last tick: <span class="accent">${Number(r.last_tick_pax) || 0}</span> pax,
+                      net <span class="${netCls}">${net >= 0 ? '+' : '−'}${fmtUsd(Math.abs(net))}</span>
+                    </div>
+                  </div>
+                  <div class="sh-row-actions">
+                    <button class="ap-btn-small reject al-close" data-rid="${r.id}"
+                            data-rname="${escapeHtml((r.origin?.name || '?') + ' ↔ ' + (r.dest?.name || '?'))}">Close</button>
+                  </div>
+                </div>`;
+            }).join('')
+          : `<div class="sh-empty">No active routes. Claim two terminals, then open a route between them.</div>`;
+
+        // Open-route form: endpoints limited to cities where the corp
+        // owns a terminal (open_route requires a terminal at both ends).
+        const endpointOpts = terminals
+          .map(t => `<option value="${t.city_id}">${escapeHtml(t.city?.name || 'City')}</option>`).join('');
+        const openForm = terminals.length >= 2
+          ? `<div class="al-form al-form-route">
+               <label>From <select id="al-route-origin">${endpointOpts}</select></label>
+               <label>To <select id="al-route-dest">${endpointOpts}</select></label>
+               <label>Ticket $<input type="number" id="al-route-ticket" min="0" max="500" value="200" /></label>
+               <label>Reg <input type="number" id="al-route-reg" min="0" value="0" /></label>
+               <label>Narrow <input type="number" id="al-route-nar" min="0" value="0" /></label>
+               <label>Wide <input type="number" id="al-route-wide" min="0" value="0" /></label>
+               <button class="sh-buy-btn" id="al-open-route">Open Route</button>
+             </div>
+             <div class="al-hint">Regional/Narrowbody serve short lanes only; cross-nation routes need Widebodies. Ticket 0–500.</div>`
+          : `<div class="al-hint">Claim a terminal in at least two cities to open a route.</div>`;
+
+        airlinePanelHtml = `
+          ${fleetCard}
+          <div class="sh-section-head">Terminals · ${terminals.length}</div>
+          ${termRowsHtml}
+          ${claimForm}
+          <div class="sh-section-head">Routes · ${routes.length}</div>
+          ${routeRowsHtml}
+          ${openForm}
+        `;
+      }
+
+      pj.innerHTML = launchBtn + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + airlinePanelHtml;
 
       if (isOwner && isConstructionCorp) {
         document.getElementById('cp-begin-construction').addEventListener('click', openBuildModal);
@@ -1867,16 +2195,16 @@ function initials(s, n) {
         // that piggy-back on the .list / .reject / .accept styling
         // classes for visual parity — they have their own handlers
         // wired below.
-        pj.querySelectorAll('.ap-btn-small.list:not(.sh-place-bid)').forEach(btn => {
+        pj.querySelectorAll('.ap-btn-small.list:not(.sh-place-bid):not(.sh-broker-list)').forEach(btn => {
           btn.addEventListener('click', () => openListSaleModal(btn.dataset.bid, btn.dataset.bname));
         });
         pj.querySelectorAll('.ap-btn-small.delist').forEach(btn => {
           btn.addEventListener('click', () => handleDelist(btn, btn.dataset.bid));
         });
-        pj.querySelectorAll('.ap-btn-small.accept:not(.cp-make-offer):not(.sh-edit-bid)').forEach(btn => {
+        pj.querySelectorAll('.ap-btn-small.accept:not(.cp-make-offer):not(.sh-edit-bid):not(.sh-broker-reprice)').forEach(btn => {
           btn.addEventListener('click', () => handleAcceptOffer(btn, btn.dataset.oid));
         });
-        pj.querySelectorAll('.ap-btn-small.reject:not(.sh-withdraw-bid)').forEach(btn => {
+        pj.querySelectorAll('.ap-btn-small.reject:not(.sh-withdraw-bid):not(.sh-broker-withdraw)').forEach(btn => {
           btn.addEventListener('click', () => handleRejectOffer(btn, btn.dataset.oid));
         });
         pj.querySelectorAll('.cp-make-offer').forEach(btn => {
@@ -1893,6 +2221,29 @@ function initials(s, n) {
         });
         pj.querySelectorAll('.sh-withdraw-bid').forEach(btn => {
           btn.addEventListener('click', () => handleWithdrawBid(btn, btn.dataset.rid, btn.dataset.bname));
+        });
+        // Brokerage-panel handlers (sh-broker-*).
+        pj.querySelectorAll('.sh-broker-list').forEach(btn => {
+          btn.addEventListener('click', () => openBrokerListModal(btn));
+        });
+        pj.querySelectorAll('.sh-broker-reprice').forEach(btn => {
+          btn.addEventListener('click', () => openBrokerListModal(btn, { mode: 'reprice' }));
+        });
+        pj.querySelectorAll('.sh-broker-withdraw').forEach(btn => {
+          btn.addEventListener('click', () => handleBrokerWithdraw(btn, btn.dataset.bid, btn.dataset.bname, Number(btn.dataset.fee) || 0));
+        });
+        // Airline-corp handlers (al-*).
+        const alBuy = document.getElementById('al-buy');
+        if (alBuy) alBuy.addEventListener('click', () => handleBuyAircraft(alBuy));
+        const alClaim = document.getElementById('al-claim');
+        if (alClaim) alClaim.addEventListener('click', () => handleClaimTerminal(alClaim));
+        const alOpen = document.getElementById('al-open-route');
+        if (alOpen) alOpen.addEventListener('click', () => handleOpenRoute(alOpen));
+        pj.querySelectorAll('.al-release').forEach(btn => {
+          btn.addEventListener('click', () => handleReleaseTerminal(btn, btn.dataset.tid, btn.dataset.cname));
+        });
+        pj.querySelectorAll('.al-close').forEach(btn => {
+          btn.addEventListener('click', () => handleCloseRoute(btn, btn.dataset.rid, btn.dataset.rname));
         });
       }
     };
@@ -2441,8 +2792,8 @@ function initials(s, n) {
                 + 'borrower:entrepreneur_corps!borrower_corp_id(name), '
                 + 'lender:entrepreneur_corps!lender_corp_id(name)')
           .or(`borrower_corp_id.eq.${id},lender_corp_id.eq.${id}`)
-          .in('status', ['active', 'defaulted'])
-          .order('started_at_tick', { ascending: false }),
+          .in('status', ['approved', 'active', 'defaulted'])
+          .order('started_at_tick', { ascending: false, nullsFirst: true }),
       ]);
       if (reqRes.error)      console.warn('[entrepreneur-corp] outgoing-loans fetch error:',  reqRes.error.message);
       if (receivedRes.error) console.warn('[entrepreneur-corp] received-offers fetch error:', receivedRes.error.message);
@@ -2486,7 +2837,7 @@ function initials(s, n) {
         ? `<div class="cf-sub-head">Your Loan Requests · ${outgoing.length}</div>` + outgoing.map(r => {
             const canCancel = r.status === 'pending';
             const tail = r.status === 'accepted' && r.accepted_by?.name
-              ? `Funded by ${escapeHtml(r.accepted_by.name)}`
+              ? `Accepted · ${escapeHtml(r.accepted_by.name)} to disburse`
               : `${r.term_ticks}-tick term · expires T${r.expires_at_tick}`;
             return `
               <div class="cf-row">
@@ -2543,9 +2894,28 @@ function initials(s, n) {
         : '';
 
       const activeHtml = loans.length
-        ? `<div class="cf-sub-head">Active Loans · ${loans.length}</div>` + loans.map(l => {
+        ? `<div class="cf-sub-head">Loans · ${loans.length}</div>` + loans.map(l => {
             const isBorrower = l.borrower_corp_id === id;
             const counterparty = isBorrower ? (l.lender?.name || 'Unknown bank') : (l.borrower?.name || 'Unknown borrower');
+
+            // Approved = accepted but the bank hasn't disbursed yet. The
+            // lender's CEO sees [Issue Loan]; the borrower waits. No
+            // money has moved and the term hasn't started.
+            if (l.status === 'approved') {
+              const trailing = (!isBorrower && isOwner)
+                ? `<button class="ap-btn-small accept cp-issue-loan" data-lid="${l.id}">Issue Loan</button>`
+                : '<span class="num muted">awaiting</span>';
+              return `
+                <div class="cf-row ${isBorrower ? '' : 'income'}">
+                  <div>
+                    <div class="who">${isBorrower ? 'Borrow from' : 'Lend to'} ${escapeHtml(counterparty)} · ${fmtUsd(Number(l.principal))}</div>
+                    <div class="sub">${l.term_ticks}t · ${fmtPct(l.apr)} · ${isBorrower ? 'awaiting disbursement' : 'ready to issue — sends the principal'}</div>
+                  </div>
+                  <span class="cf-status approved">approved</span>
+                  ${trailing}
+                </div>`;
+            }
+
             const remaining = Math.max(0, Number(l.principal) - Number(l.total_paid));
             const statusCls = l.status === 'defaulted' ? 'red' : (isBorrower ? 'amber' : 'green');
             return `
@@ -2573,6 +2943,9 @@ function initials(s, n) {
         });
         fc.querySelectorAll('.cp-withdraw-loan-offer').forEach(btn => {
           btn.addEventListener('click', () => handleWithdrawLoanOffer(btn, btn.dataset.oid));
+        });
+        fc.querySelectorAll('.cp-issue-loan').forEach(btn => {
+          btn.addEventListener('click', () => handleIssueLoan(btn, btn.dataset.lid));
         });
       }
     };
@@ -2757,7 +3130,7 @@ function initials(s, n) {
     // ── Borrower-side accept (picks one bank's offer) ──
     const handleAcceptLoanOffer = async (btn, offerId) => {
       if (loanActionInFlight) return;
-      if (!confirm('Accept this offer? Principal moves from the bank to your corp owner now; per-tick repayments start next tick. Other pending offers on this request will auto-decline.')) return;
+      if (!confirm('Accept this offer? It reserves the deal with this bank and auto-declines every other offer. No money moves yet — the bank’s CEO must then Issue the loan to disburse the principal.')) return;
       loanActionInFlight = true;
       const prev = btn.textContent;
       btn.disabled = true; btn.textContent = 'ACCEPTING…';
@@ -2771,14 +3144,42 @@ function initials(s, n) {
             offer_not_pending:        'This offer is no longer pending.',
             request_not_pending:      'The loan request was already closed.',
             request_expired:          'The loan request has expired.',
-            bank_insufficient_funds:  data?.need != null
-              ? `Bank no longer has the funds (have ${fmtUsd(Number(data.have ?? 0))}, need ${fmtUsd(Number(data.need))}).`
-              : 'Bank no longer has the funds.',
             not_borrower_corp_owner:  'You aren’t the borrower corp’s owner.',
-            borrower_orphan:          'Borrower corp has no owning faction.',
-            bank_orphan:              'Bank corp has no owning faction.',
           };
           alert(REASON[data?.reason] || ('Could not accept: ' + (data?.reason || 'unknown')));
+          loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    // ── Bank-side issue (CEO disburses an approved loan) ──
+    const handleIssueLoan = async (btn, loanId) => {
+      if (loanActionInFlight) return;
+      if (!confirm('Issue this loan? The principal is sent from your corp owner to the borrower now, and the repayment term starts.')) return;
+      loanActionInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'ISSUING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('issue_corp_loan', {
+          p_loan_id: loanId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            loan_not_approved:        'This loan is no longer awaiting disbursement.',
+            bank_insufficient_funds:  data?.need != null
+              ? `Your treasury can’t cover it (have ${fmtUsd(Number(data.have ?? 0))}, need ${fmtUsd(Number(data.need))}).`
+              : 'Your treasury can’t cover the principal.',
+            not_bank_corp_owner:      'Only the lending corp’s owner can issue.',
+            borrower_corp_not_found:  'Borrower corp no longer exists.',
+            bank_corp_not_found:      'Lending corp no longer exists.',
+          };
+          alert(REASON[data?.reason] || ('Could not issue: ' + (data?.reason || 'unknown')));
           loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
           return;
         }
@@ -2832,6 +3233,175 @@ function initials(s, n) {
       } catch (e) {
         alert('Failed: ' + (e?.message || e));
         loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    // ── Airline-corp action handlers (al-*) ──
+    // Same single-flight + per-button-disable gate as the shipping
+    // handlers below. Every action writes the corp treasury or fleet via
+    // a SECURITY DEFINER RPC; the server is authoritative on funds, idle
+    // fleet, range, and terminal ownership — the client maps reasons to
+    // readable messages and reloads on success.
+    let airlineInFlight = false;
+
+    const handleBuyAircraft = async (btn) => {
+      if (airlineInFlight) return;
+      const klass = document.getElementById('al-buy-class')?.value;
+      const qty   = parseInt(document.getElementById('al-buy-qty')?.value, 10);
+      if (!klass || !Number.isFinite(qty) || qty < 1) { alert('Pick a class and a quantity of 1 or more.'); return; }
+      airlineInFlight = true;
+      const prev = btn.textContent; btn.disabled = true; btn.textContent = 'BUYING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('entrepreneur_buy_aircraft', {
+          p_corp_id: id, p_class: klass, p_quantity: qty,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            insufficient_funds: data?.need != null ? `Corp treasury too low — need ${fmtUsd(Number(data.need))}.` : 'Corp treasury too low.',
+            invalid_class:      'Invalid aircraft class.',
+            invalid_quantity:   'Quantity must be 1–50.',
+            not_airline_corp:   'Only Airline corps can buy aircraft.',
+            not_owner:          'Only the corp owner can do that.',
+            corp_not_found:     'Corporation no longer exists.',
+          };
+          alert(REASON[data?.reason] || ('Could not buy: ' + (data?.reason || 'unknown')));
+          airlineInFlight = false; btn.disabled = false; btn.textContent = prev; return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        airlineInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    const handleClaimTerminal = async (btn) => {
+      if (airlineInFlight) return;
+      const cityId = document.getElementById('al-claim-city')?.value;
+      if (!cityId) { alert('Pick a city.'); return; }
+      airlineInFlight = true;
+      const prev = btn.textContent; btn.disabled = true; btn.textContent = 'CLAIMING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('entrepreneur_claim_terminal', {
+          p_corp_id: id, p_city_id: cityId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            insufficient_funds:    data?.need != null ? `Corp treasury too low — need ${fmtUsd(Number(data.need))}.` : 'Corp treasury too low.',
+            already_have_terminal: 'You already hold a terminal in that city.',
+            no_terminal_available: 'No free terminal slots in that city.',
+            city_not_found:        'City no longer exists.',
+            not_airline_corp:      'Only Airline corps can claim terminals.',
+            not_owner:             'Only the corp owner can do that.',
+            corp_not_found:        'Corporation no longer exists.',
+          };
+          alert(REASON[data?.reason] || ('Could not claim: ' + (data?.reason || 'unknown')));
+          airlineInFlight = false; btn.disabled = false; btn.textContent = prev; return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        airlineInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    const handleReleaseTerminal = async (btn, terminalId, cityName) => {
+      if (airlineInFlight) return;
+      if (!confirm(`Release the terminal in ${cityName}? There is no refund, and the slot frees up for other airlines.`)) return;
+      airlineInFlight = true;
+      const prev = btn.textContent; btn.disabled = true; btn.textContent = '…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('entrepreneur_release_terminal', {
+          p_corp_id: id, p_terminal_id: terminalId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            terminal_in_use:   'An active route uses this city — close that route first.',
+            not_your_terminal: 'That terminal is not yours.',
+            terminal_not_found:'Terminal no longer exists.',
+            not_owner:         'Only the corp owner can do that.',
+          };
+          alert(REASON[data?.reason] || ('Could not release: ' + (data?.reason || 'unknown')));
+          airlineInFlight = false; btn.disabled = false; btn.textContent = prev; return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        airlineInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    const handleOpenRoute = async (btn) => {
+      if (airlineInFlight) return;
+      const origin = document.getElementById('al-route-origin')?.value;
+      const dest   = document.getElementById('al-route-dest')?.value;
+      const ticket = parseInt(document.getElementById('al-route-ticket')?.value, 10);
+      const reg    = parseInt(document.getElementById('al-route-reg')?.value, 10) || 0;
+      const nar    = parseInt(document.getElementById('al-route-nar')?.value, 10) || 0;
+      const wide   = parseInt(document.getElementById('al-route-wide')?.value, 10) || 0;
+      if (!origin || !dest) { alert('Pick both endpoints.'); return; }
+      if (origin === dest)  { alert('Origin and destination must differ.'); return; }
+      if (!Number.isFinite(ticket) || ticket < 0 || ticket > 500) { alert('Ticket price must be 0–500.'); return; }
+      if (reg + nar + wide < 1) { alert('Assign at least one aircraft.'); return; }
+      airlineInFlight = true;
+      const prev = btn.textContent; btn.disabled = true; btn.textContent = 'OPENING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('entrepreneur_open_route', {
+          p_corp_id: id, p_origin_city_id: origin, p_dest_city_id: dest,
+          p_ticket_price: ticket, p_regional: reg, p_narrowbody: nar, p_widebody: wide,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            same_city:                 'Origin and destination must differ.',
+            invalid_ticket_price:      'Ticket price must be 0–500.',
+            no_aircraft_assigned:      'Assign at least one aircraft.',
+            no_terminal_origin:        'You need a terminal at the origin city.',
+            no_terminal_dest:          'You need a terminal at the destination city.',
+            route_exists:              'You already run an active route on this lane.',
+            no_range_data:             'No distance data for that city pair.',
+            regional_out_of_range:     data?.range != null ? `Too far for Regional (range ${data.range} > ${data.class_max}). Use Narrowbody/Widebody.` : 'Regional aircraft cannot fly that far.',
+            narrowbody_out_of_range:   data?.range != null ? `Too far for Narrowbody (range ${data.range} > ${data.class_max}). Use Widebody.` : 'Narrowbody aircraft cannot fly that far.',
+            insufficient_idle_aircraft:`Not enough idle aircraft — idle R${data?.idle_regional ?? 0}/N${data?.idle_narrowbody ?? 0}/W${data?.idle_widebody ?? 0}.`,
+            not_airline_corp:          'Only Airline corps can open routes.',
+            not_owner:                 'Only the corp owner can do that.',
+          };
+          alert(REASON[data?.reason] || ('Could not open route: ' + (data?.reason || 'unknown')));
+          airlineInFlight = false; btn.disabled = false; btn.textContent = prev; return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        airlineInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    const handleCloseRoute = async (btn, routeId, routeName) => {
+      if (airlineInFlight) return;
+      if (!confirm(`Close ${routeName}? Its aircraft return to your idle pool and the route stops earning.`)) return;
+      airlineInFlight = true;
+      const prev = btn.textContent; btn.disabled = true; btn.textContent = '…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('entrepreneur_close_route', {
+          p_corp_id: id, p_route_id: routeId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            route_not_found:  'Route no longer exists.',
+            not_your_route:   'That route is not yours.',
+            route_not_active: 'Route is not active.',
+            not_owner:        'Only the corp owner can do that.',
+          };
+          alert(REASON[data?.reason] || ('Could not close: ' + (data?.reason || 'unknown')));
+          airlineInFlight = false; btn.disabled = false; btn.textContent = prev; return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        airlineInFlight = false; btn.disabled = false; btn.textContent = prev;
       }
     };
 
@@ -3000,6 +3570,127 @@ function initials(s, n) {
         bidModalSubmitting = false; btn.disabled = false; btn.textContent = prev;
       }
     });
+
+    // ── Brokerage handlers (sh-broker-*) ──
+    let brokerInFlight = false;
+    let brokerModalSubmitting = false;
+    let brokerModalCtx = null;   // { mode, buildingId, buildingName, cost, currentPrice }
+
+    const openBrokerListModal = (btn, opts) => {
+      brokerModalCtx = {
+        mode:         opts?.mode || 'list',
+        buildingId:   btn.dataset.bid,
+        buildingName: btn.dataset.bname,
+        cost:         Number(btn.dataset.cost)  || 0,
+        currentPrice: Number(btn.dataset.price) || 0,
+      };
+      const isReprice = brokerModalCtx.mode === 'reprice';
+      document.getElementById('br-title').innerHTML = isReprice
+        ? 'Re-price <em>Listing</em>'
+        : 'List for <em>Sale</em>';
+      document.getElementById('br-prop').textContent = brokerModalCtx.buildingName || '—';
+      document.getElementById('br-cost').textContent = fmtUsd(brokerModalCtx.cost);
+      const feeEl = document.getElementById('br-fee');
+      if (isReprice) {
+        feeEl.textContent = 'Re-pricing is free — no additional lock fee.';
+      } else {
+        const fee = computeBrokerLockFee(brokerModalCtx.cost);
+        feeEl.textContent = `Lock fee: ${fmtUsd(fee)} (2% of cost, paid to host nation, non-refundable).`;
+      }
+      const priceInput = document.getElementById('br-price');
+      priceInput.value = isReprice ? brokerModalCtx.currentPrice : Math.round(brokerModalCtx.cost * 1.15);
+      document.getElementById('br-err').textContent = '';
+      updateBrokerPreview();
+      document.getElementById('br-overlay').classList.add('open');
+      setTimeout(() => priceInput.focus(), 50);
+    };
+    const closeBrokerListModal = () => document.getElementById('br-overlay').classList.remove('open');
+
+    const updateBrokerPreview = () => {
+      if (!brokerModalCtx) return;
+      const price = Math.max(0, Number(document.getElementById('br-price').value) || 0);
+      const preview = previewBrokerageOutcome(brokerModalCtx.cost, price);
+      document.getElementById('br-preview').innerHTML = price <= 0
+        ? '<span class="dim">Set a price above $0 to preview the split.</span>'
+        : `If sold at <b>${fmtUsd(price)}</b>: commission <b class="accent">${fmtUsd(preview.commission)}</b> · nation gets <b>${fmtUsd(preview.nationTake)}</b> · CEO reputation <b class="${preview.repClass}">${preview.repLabel}</b>.`;
+    };
+    document.getElementById('br-price').addEventListener('input', updateBrokerPreview);
+    document.getElementById('br-close').addEventListener('click', closeBrokerListModal);
+    document.getElementById('br-cancel').addEventListener('click', closeBrokerListModal);
+    document.getElementById('br-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'br-overlay') closeBrokerListModal();
+    });
+
+    document.getElementById('br-submit').addEventListener('click', async () => {
+      if (brokerModalSubmitting || !brokerModalCtx) return;
+      const errEl = document.getElementById('br-err');
+      const price = Math.floor(Number(document.getElementById('br-price').value) || 0);
+      if (price < 1) { errEl.textContent = 'Price must be at least $1.'; return; }
+      brokerModalSubmitting = true;
+      const btn = document.getElementById('br-submit');
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = brokerModalCtx.mode === 'reprice' ? 'UPDATING…' : 'LISTING…';
+      errEl.textContent = '';
+      try {
+        const isReprice = brokerModalCtx.mode === 'reprice';
+        const { data, error: rpcErr } = await _supabase.rpc(
+          isReprice ? 'broker_set_price' : 'broker_list_building',
+          {
+            p_broker_corp_id: id,
+            p_building_id:    brokerModalCtx.buildingId,
+            p_list_price:     price,
+          });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            invalid_list_price:              'Price must be a positive whole-dollar amount.',
+            already_owned:                   'That property is no longer unowned.',
+            already_brokered:                'Another broker has already locked this listing.',
+            no_real_estate_office_in_nation: 'You need a completed Real Estate Office in that nation.',
+            insufficient_funds:              data?.need != null
+                                                ? `Corp treasury too low — need ${fmtUsd(Number(data.need))}, has ${fmtUsd(Number(data.have ?? 0))}.`
+                                                : 'Corp treasury too low.',
+            broker_not_real_estate:          'Only Real Estate corps can broker.',
+            not_broker_corp_owner:           'You do not own this corp.',
+            not_brokered:                    'No active brokerage on this property.',
+            not_your_listing:                'You are not the broker of this listing.',
+            building_not_found:              'Property no longer exists.',
+            not_completed:                   'Property is not yet completed.',
+          };
+          errEl.textContent = REASON[data?.reason] || ('Could not list: ' + (data?.reason || 'unknown'));
+          brokerModalSubmitting = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        errEl.textContent = 'Failed: ' + (e?.message || e);
+        brokerModalSubmitting = false; btn.disabled = false; btn.textContent = prev;
+      }
+    });
+
+    const handleBrokerWithdraw = async (btn, buildingId, buildingName, feePaid) => {
+      if (brokerInFlight) return;
+      const msg = `Withdraw listing for "${buildingName}"?\n\nThe ${fmtUsd(feePaid)} lock fee is non-refundable.`;
+      if (!confirm(msg)) return;
+      brokerInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = '…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('broker_withdraw_listing', {
+          p_broker_corp_id: id, p_building_id: buildingId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          alert('Could not withdraw: ' + (data?.reason || 'unknown'));
+          brokerInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        brokerInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
 
     await renderProjects();
     await renderFinance();
@@ -3173,6 +3864,35 @@ function initials(s, n) {
     <div class="bm-foot">
       <button class="bm-btn sec" id="pb-cancel">Cancel</button>
       <button class="bm-btn pri" id="pb-submit">Place Bid</button>
+    </div>
+  </div>
+</div>
+
+<!-- List / Re-price modal (brokerage). RPCs: broker_list_building,
+     broker_set_price. -->
+<div class="bm-overlay" id="br-overlay">
+  <div class="bm-modal" style="max-width:540px;">
+    <div class="bm-head">
+      <div class="ti" id="br-title">List for <em>Sale</em></div>
+      <div class="bm-x" id="br-close">×</div>
+    </div>
+    <div class="bm-body">
+      <div class="bm-label">Property</div>
+      <div class="bm-nation" id="br-prop">—</div>
+
+      <div class="bm-label">Construction Cost</div>
+      <div class="bm-nation" id="br-cost">—</div>
+
+      <div class="bm-label">Asking Price ($)</div>
+      <input type="number" class="bm-input" id="br-price" min="1" max="100000000000" step="1" placeholder="e.g. 55,000,000">
+
+      <div class="sh-bid-summary" id="br-fee" style="margin-top:8px;">—</div>
+      <div class="sh-bid-summary" id="br-preview" style="margin-top:8px;">—</div>
+      <div class="bm-err" id="br-err"></div>
+    </div>
+    <div class="bm-foot">
+      <button class="bm-btn sec" id="br-cancel">Cancel</button>
+      <button class="bm-btn pri" id="br-submit">List for Sale</button>
     </div>
   </div>
 </div>

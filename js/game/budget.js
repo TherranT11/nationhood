@@ -248,14 +248,14 @@ export async function computeUnitMaintenanceAnnual(supabase, nation) {
     try {
         const { data: units, error } = await supabase
             .from('army_units')
-            .select('construction_cost')
+            .select('construction_cost, army:armies(army_type)')
             .eq('nation_id', nation.id)
             .neq('status', 'Decommissioned');
         if (error) {
             console.warn(`[Budget] army_units fetch failed for ${nation.name}:`, error.message);
         } else {
             for (const u of (units || [])) {
-                perTick += unitUpkeepPerTick(u?.construction_cost);
+                perTick += unitUpkeepPerTick(u?.construction_cost, u?.army?.army_type);
             }
         }
     } catch (err) {

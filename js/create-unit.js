@@ -23,6 +23,28 @@ export const AU_BRIGADES = {
 export const AU_ORDER = ['light_infantry','infantry','mechanized','armor','artillery','support'];
 export const AU_FEE = 2000000;
 
+// Army (formation) types — single source for the Create Army modal +
+// the Order of Battle group headers. Upkeep deltas are authoritative in
+// the create_army RPC / unitUpkeepPerTick; the equipment & training
+// lines are recorded doctrine, inert until those systems exist.
+export const ARMY_TYPES = {
+  regular:      { label: 'Regular Army', short: 'Regular',      desc: 'Standard formation. No upkeep change; standard equipment and training.' },
+  guard:        { label: 'Guard',        short: 'Guard',        desc: '+$1 upkeep per unit. Always receives the latest equipment when available.' },
+  paramilitary: { label: 'Paramilitary', short: 'Paramilitary', desc: '−$1 upkeep per unit (floored at $1). Training capped at 70. Receives the lowest-quality equipment.' },
+};
+export const ARMY_TYPE_ORDER = ['regular','guard','paramilitary'];
+
+// Brigade composition as a display string ("2× Infantry · 1× Armor").
+// Single source — the Order of Battle cards and the Create Army unit
+// picker both read it.
+export function auComposition(brigades) {
+  const brigs = Array.isArray(brigades) ? brigades : [];
+  return AU_ORDER
+    .filter(k => brigs.includes(k))
+    .map(k => `${brigs.filter(x => x === k).length}× ${AU_BRIGADES[k].name}`)
+    .join(' · ') || '—';
+}
+
 export function auMoney(raw) {
   // Whole millions render as "$2" / "$12"; a fractional balance keeps
   // one decimal ("$28.4"). No "M" suffix.
@@ -93,6 +115,21 @@ const CU_CSS = `
 .oob-brigs.open { display:block; }
 .oob-brig { font-size:11px; color:#aaa; padding:3px 0; display:flex; gap:10px; }
 .oob-empty { font-size:11px; color:#666; font-style:italic; padding:8px 2px; }
+.oob-army-type { font-size:9px; font-weight:700; letter-spacing:0.1em; padding:2px 7px; border-radius:2px; text-transform:uppercase; margin-left:8px; }
+.oob-army-type.guard { color:#d4b87a; background:rgba(212,184,122,0.14); }
+.oob-army-type.paramilitary { color:#9a9a9a; background:rgba(160,160,160,0.12); }
+.oob-army-type.regular { color:#7a9aab; background:rgba(122,154,171,0.12); }
+.ca-row { display:flex; align-items:center; gap:12px; background:#121212; border:0.5px solid rgba(255,255,255,0.1); border-radius:4px; padding:10px 12px; margin-bottom:6px; cursor:pointer; }
+.ca-row.sel { border-color:rgba(212,184,122,0.5); background:#161412; }
+.ca-check { width:16px; height:16px; border-radius:3px; border:0.5px solid rgba(255,255,255,0.3); display:flex; align-items:center; justify-content:center; color:#d4b87a; font-size:11px; flex:0 0 auto; }
+.ca-row.sel .ca-check { border-color:#d4b87a; }
+.ca-row .un { font-size:13px; font-weight:600; color:#fff; }
+.ca-row .us { font-size:10px; color:#888; margin-top:2px; }
+.ca-type { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px; }
+.ca-typeopt { background:#141414; border:0.5px solid rgba(255,255,255,0.12); border-radius:4px; padding:10px 12px; cursor:pointer; }
+.ca-typeopt.sel { border-color:#d4b87a; background:#161412; }
+.ca-typeopt .tn { font-size:13px; font-weight:600; color:#fff; }
+.ca-typeopt .td { font-size:10px; color:#888; margin-top:4px; line-height:1.4; }
 `;
 
 function ensureStyles() {
@@ -106,16 +143,24 @@ function ensureStyles() {
 // Shared fetch: this faction's non-decommissioned units + the
 // nation's active defense discretionary balance (raw dollars).
 async function loadUnitsAndFunds(faction) {
-  let units = [], funds = 0;
+  let units = [], funds = 0, armies = [];
   try {
     const { data: u, error: uErr } = await _supabase
       .from('army_units')
-      .select('id,name,brigades,total_manpower,status,forming_until_tick,construction_cost')
+      .select('id,name,brigades,total_manpower,status,forming_until_tick,construction_cost,army_id')
       .eq('faction_id', faction.id)
       .neq('status', 'Decommissioned')
       .order('created_at', { ascending: true });
     if (uErr) console.warn('[create-unit] units load failed:', uErr.message);
     else units = u || [];
+
+    const { data: a, error: aErr } = await _supabase
+      .from('armies')
+      .select('id,name,army_type,created_at_tick')
+      .eq('faction_id', faction.id)
+      .order('created_at_tick', { ascending: true });
+    if (aErr) console.warn('[create-unit] armies load failed:', aErr.message);
+    else armies = a || [];
 
     // The army faction's own treasury — the single pot that
     // allocate_defense_funds fills and create_unit charges.
@@ -129,7 +174,7 @@ async function loadUnitsAndFunds(faction) {
   } catch (e) {
     console.warn('[create-unit] load failed:', e?.message || e);
   }
-  return { units, funds };
+  return { units, funds, armies };
 }
 
 function poolOf(faction) {
@@ -287,13 +332,152 @@ export function openCreateUnitModal(faction, onCreated) {
   loadUnitsAndFunds(faction).then(r => { units = r.units; funds = r.funds; shell(); });
 }
 
+// ── ACTION: Create Army modal ──────────────────────────────────────
+// Forms existing (non-decommissioned, unassigned) units into a named
+// formation. faction needs { id }. onCreated() (optional) fires after
+// a successful creation. Equipment Status is intentionally absent —
+// per-unit equipment isn't modelled yet (deferred with procurement).
+export function openCreateArmyModal(faction, onCreated) {
+  if (!faction?.id) return;
+  ensureStyles();
+
+  let overlay = document.getElementById('ca-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'ca-overlay';
+    overlay.className = 'cu-overlay';
+    document.body.appendChild(overlay);
+  }
+
+  let units = [], funds = 0, type = 'regular', creating = false;
+  const selected = new Set();
+  // Only unassigned, non-decommissioned units can be formed into an army.
+  const assignable = () => units.filter(u => !u.army_id);
+
+  function close() {
+    overlay.style.display = 'none';
+    overlay.innerHTML = '';
+    overlay.onclick = null;
+  }
+
+  function shell() {
+    overlay.innerHTML = `<div class="cu-modal">
+      <div class="cu-head">
+        <div>
+          <div class="cu-eyebrow">— ARMY ACTION —</div>
+          <div class="cu-title">Create <em>Army</em></div>
+        </div>
+        <div class="cu-head-right">
+          <div class="cu-stat"><div class="l">ACTION COST</div><div class="v gold">${auMoney(AU_FEE)}</div></div>
+          <div class="cu-stat"><div class="l">ARMY FUNDS</div><div class="v">${auMoney(funds)}</div></div>
+          <div class="cu-x" data-ca="close">×</div>
+        </div>
+      </div>
+      <div class="cu-body">
+        <div class="cu-sec">I. Army Designation</div>
+        <input class="cu-name" id="ca-name" maxlength="80" placeholder="e.g. 1st Army of Avelia" />
+        <div class="cu-hint">Take units within your faction and form them into a cohesive fighting force. Names are public.</div>
+        <div id="ca-dyn"></div>
+      </div>
+    </div>`;
+    renderBody();
+  }
+
+  function renderBody() {
+    const host = overlay.querySelector('#ca-dyn');
+    if (!host) return;
+    const pool = assignable();
+    const enoughFunds = AU_FEE <= funds;
+    const hasUnits = selected.size >= 1;
+    const canCreate = hasUnits && enoughFunds;
+
+    const typeHtml = ARMY_TYPE_ORDER.map(k => {
+      const t = ARMY_TYPES[k];
+      return `<div class="ca-typeopt ${type === k ? 'sel' : ''}" data-ca="type:${k}">
+        <div class="tn">${escapeHtml(t.label)}</div>
+        <div class="td">${escapeHtml(t.desc)}</div>
+      </div>`;
+    }).join('');
+
+    const unitsHtml = pool.length
+      ? pool.map(u => {
+          const sel = selected.has(u.id);
+          const brigs = Array.isArray(u.brigades) ? u.brigades : [];
+          const tag = u.status === 'Forming' ? ' · Forming' : '';
+          return `<div class="ca-row ${sel ? 'sel' : ''}" data-ca="unit:${escapeAttr(u.id)}">
+            <div class="ca-check">${sel ? '✓' : ''}</div>
+            <div style="flex:1;min-width:0;">
+              <div class="un">${escapeHtml(u.name)}</div>
+              <div class="us">${brigs.length} BRIGADE${brigs.length === 1 ? '' : 'S'} · ${(Number(u.total_manpower) || 0).toLocaleString()} PERSONNEL · ${escapeHtml(auComposition(u.brigades))}${tag}</div>
+            </div>
+          </div>`;
+        }).join('')
+      : `<div class="oob-empty">No unassigned units. Commission units with Create Unit first, or they’re all already in an army.</div>`;
+
+    host.innerHTML = `
+      <div class="cu-sec">II. Type</div>
+      <div class="ca-type">${typeHtml}</div>
+      <div class="cu-sec-row"><span class="cu-sec">III. Assigned Units</span><span class="cu-sec c">${selected.size} SELECTED</span></div>
+      ${unitsHtml}
+      <div class="cu-foot" style="margin:18px -22px -20px;">
+        <div class="fm">STATUS: <span class="${hasUnits ? 'gold' : 'warn'}">${hasUnits ? 'READY TO FORM' : 'SELECT AT LEAST ONE UNIT'}</span></div>
+        <div class="fm">FUNDS: <span class="${enoughFunds ? 'ok' : 'warn'}">${enoughFunds ? 'SUFFICIENT' : 'INSUFFICIENT'}</span></div>
+        <div class="cu-acts">
+          <div class="cu-btn sec" data-ca="cancel">CANCEL</div>
+          <div class="cu-btn pri ${canCreate ? '' : 'off'}" data-ca="create">CREATE ARMY — ${auMoney(AU_FEE)} →</div>
+        </div>
+      </div>`;
+  }
+
+  async function submit() {
+    if (creating) return;
+    const name = (overlay.querySelector('#ca-name')?.value || '').trim();
+    if (!name) { alert('Enter an army name.'); return; }
+    if (selected.size < 1) { alert('Select at least one unit.'); return; }
+    creating = true;
+    try {
+      const { data, error } = await _supabase.rpc('create_army', {
+        p_faction_id: faction.id,
+        p_name: name,
+        p_type: type,
+        p_unit_ids: [...selected],
+      });
+      if (error) { alert('Failed to create army: ' + error.message); return; }
+      if (data && data.success === false) { alert(data.error || 'Could not create army.'); return; }
+      close();
+      alert(`${name} formed — ${selected.size} unit${selected.size === 1 ? '' : 's'} assigned.`);
+      if (typeof onCreated === 'function') onCreated();
+    } finally {
+      creating = false;
+    }
+  }
+
+  overlay.onclick = (e) => {
+    const el = e.target.closest('[data-ca]');
+    if (!el) { if (e.target === overlay) close(); return; }
+    const a = el.getAttribute('data-ca');
+    if (a === 'close' || a === 'cancel') return close();
+    if (a.startsWith('type:')) { type = a.slice(5); return renderBody(); }
+    if (a.startsWith('unit:')) {
+      const id = a.slice(5);
+      if (selected.has(id)) selected.delete(id); else selected.add(id);
+      return renderBody();
+    }
+    if (a === 'create') return submit();
+  };
+
+  overlay.style.display = 'flex';
+  overlay.innerHTML = '<div class="cu-modal"><div class="cu-body"><div class="cu-sec">Loading…</div></div></div>';
+  loadUnitsAndFunds(faction).then(r => { units = r.units; funds = r.funds; shell(); });
+}
+
 // ── DISPLAY: Order of Battle ───────────────────────────────────────
 // Renders a Force-Composition summary + the unit list into hostEl.
 export async function renderOrderOfBattle(faction, hostEl) {
   if (!hostEl) return;
   ensureStyles();
   const expanded = new Set();
-  let units = [], funds = 0;
+  let units = [], funds = 0, armies = [];
 
   function initials(name) {
     const w = String(name || '?').trim().split(/\s+/).filter(Boolean);
@@ -317,19 +501,45 @@ export async function renderOrderOfBattle(faction, hostEl) {
       return;
     }
 
-    html += '<div class="cu-sec">Regular Army</div>';
+    // Group: unassigned units under "Regular Army", then one section
+    // per army (each carries ≥1 unit). The army's type drives both the
+    // header label and each unit's upkeep modifier.
+    // A unit shows under "Regular Army" if it's unassigned OR its army
+    // didn't load (transient fetch error / orphan) — never vanishes.
+    const knownArmies = new Set(armies.map(a => a.id));
+    const regular = units.filter(u => !u.army_id || !knownArmies.has(u.army_id));
+    const byArmy = new Map();
     for (const u of units) {
-      const brigs = Array.isArray(u.brigades) ? u.brigades : [];
-      const forming = u.status === 'Forming';
-      const open = expanded.has(u.id);
-      const composition = AU_ORDER
-        .filter(k => brigs.includes(k))
-        .map(k => `${brigs.filter(x => x === k).length}× ${AU_BRIGADES[k].name}`)
-        .join(' · ') || '—';
-      const pill = forming
-        ? `<span class="oob-pill forming">Forming · Ready in ${tickToDate(Number(u.forming_until_tick))}</span>`
-        : `<span class="oob-pill active" style="color:#46c46a;">[Active]</span><span class="oob-upkeep" style="color:#e5534b;font-weight:600;margin-left:6px;">(-$${unitUpkeepPerTick(u.construction_cost)})</span>`;
-      html += `<div class="oob-unit ${forming ? 'forming' : 'active'}">
+      if (!u.army_id || !knownArmies.has(u.army_id)) continue;
+      if (!byArmy.has(u.army_id)) byArmy.set(u.army_id, []);
+      byArmy.get(u.army_id).push(u);
+    }
+
+    if (regular.length) {
+      html += '<div class="cu-sec">Regular Army</div>';
+      for (const u of regular) html += unitCardHtml(u, null);
+    }
+    for (const a of armies) {
+      const list = byArmy.get(a.id) || [];
+      if (!list.length) continue;
+      const t = ARMY_TYPES[a.army_type];
+      html += `<div class="cu-sec-row"><span class="cu-sec">${escapeHtml(a.name)}</span>`
+            + `<span class="oob-army-type ${escapeAttr(a.army_type)}">${escapeHtml(t ? t.short : a.army_type)}</span>`
+            + `<span class="cu-sec c">${list.length} unit${list.length === 1 ? '' : 's'}</span></div>`;
+      for (const u of list) html += unitCardHtml(u, a.army_type);
+    }
+    hostEl.innerHTML = html;
+  }
+
+  function unitCardHtml(u, armyType) {
+    const brigs = Array.isArray(u.brigades) ? u.brigades : [];
+    const forming = u.status === 'Forming';
+    const open = expanded.has(u.id);
+    const composition = auComposition(brigs);
+    const pill = forming
+      ? `<span class="oob-pill forming">Forming · Ready in ${tickToDate(Number(u.forming_until_tick))}</span>`
+      : `<span class="oob-pill active" style="color:#46c46a;">[Active]</span><span class="oob-upkeep" style="color:#e5534b;font-weight:600;margin-left:6px;">(-$${unitUpkeepPerTick(u.construction_cost, armyType)})</span>`;
+    return `<div class="oob-unit ${forming ? 'forming' : 'active'}">
         <div class="oob-top" data-uid="${escapeAttr(u.id)}">
           <span class="oob-pill" style="background:#222;color:#bbb;">${escapeHtml(initials(u.name))}</span>
           <div style="flex:1;">
@@ -347,8 +557,6 @@ export async function renderOrderOfBattle(faction, hostEl) {
           }).join('')}
         </div>
       </div>`;
-    }
-    hostEl.innerHTML = html;
   }
 
   hostEl.onclick = (e) => {
@@ -361,6 +569,6 @@ export async function renderOrderOfBattle(faction, hostEl) {
 
   hostEl.innerHTML = '<div class="oob-empty">Loading order of battle…</div>';
   const r = await loadUnitsAndFunds(faction);
-  units = r.units; funds = r.funds;
+  units = r.units; funds = r.funds; armies = r.armies || [];
   draw();
 }

@@ -4823,6 +4823,23 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
             console.log(`[TradeAgreementShipping] tick ${currentTick}: ${tradeShipResults.routesActive} routes paid, ${tradeShipResults.slotsFilled}/${tradeShipResults.slotsDemanded} slots filled, $${tradeShipResults.totalPaid} total, ${tradeShipResults.routesMissed} missed`);
         }
 
+        // Entrepreneur airline routes — per-tick allocator (migration
+        // 20270187). One global call: resolves every active entrepreneur
+        // route (demand → competitor split → pax → revenue − ops →
+        // corp treasury). Idempotent within a tick via last_processed_tick.
+        try {
+            const { data: airRes, error: airErr } = await supabase.rpc(
+                'process_entrepreneur_airline_routes', { p_tick: currentTick });
+            if (airErr) {
+                console.warn('[EntrepreneurAirlines] allocator RPC failed:', airErr.message);
+            } else if (airRes && airRes.success && Number(airRes.routes_run) > 0) {
+                summary.entrepreneurAirlines = airRes;
+                console.log(`[EntrepreneurAirlines] tick ${currentTick}: ${airRes.routes_run} routes, ${airRes.total_pax} pax, $${airRes.total_revenue} rev, $${airRes.total_ops} ops`);
+            }
+        } catch (airThrow) {
+            console.warn('[EntrepreneurAirlines] allocator threw:', airThrow?.message || airThrow);
+        }
+
         // Aviation Manufacturing — design research advancement.
         // Each researching design ticks one step closer to availability,
         // costing $1M from the owner corp's cash reserves. Insufficient

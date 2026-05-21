@@ -80,7 +80,7 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 import { _supabase } from './js/supabase-client.js';
 import { getNationNames } from './js/game/political-actions.js';
 import { bootstrapArmyPage } from './js/army-page.js';
-import { openCreateUnitModal } from './js/create-unit.js';
+import { openCreateUnitModal, openCreateArmyModal } from './js/create-unit.js';
 import { openReportModal } from './js/report-defense.js';
 import { openForeignOfficerExchangeModal } from './js/foreign-officer-exchange.js';
 import { openCombinedArmsSchoolModal } from './js/combined-arms-school.js';
@@ -156,6 +156,13 @@ function render() {
           </div>
           <div class="aa-act__desc">Commission a new combat formation — $2 action fee plus construction cost from the defense budget.</div>
         </div>
+        <div class="aa-act" data-act="create-army">
+          <div class="aa-act__head">
+            <div class="aa-act__title"><span class="aa-act__name">Create Army</span></div>
+            <span class="aa-act__cost">$2</span>
+          </div>
+          <div class="aa-act__desc">Form your units into a cohesive fighting force — a named army (Regular, Guard, or Paramilitary) that can be deployed and given orders. $2 action fee from the army treasury.</div>
+        </div>
         <div class="aa-act" data-act="report-defense">
           <div class="aa-act__head">
             <div class="aa-act__title"><span class="aa-act__name">Report to Defense Minister</span></div>
@@ -220,6 +227,8 @@ function render() {
 
   const cu = root.querySelector('[data-act="create-unit"]');
   if (cu) cu.onclick = () => openCreateUnitModal(_faction);
+  const ca = root.querySelector('[data-act="create-army"]');
+  if (ca) ca.onclick = () => openCreateArmyModal(_faction);
   const rs = root.querySelector('[data-act="resign"]');
   if (rs) rs.onclick = () => triggerResign(_faction);
   const rd = root.querySelector('[data-act="report-defense"]');
