@@ -1515,9 +1515,16 @@ function initials(s, n) {
       return { allocation, lowestRate: annotated[0]?.rate ?? null };
     };
 
-    // Mirror of broker_buy_listing's commission + reputation math
-    // (20270184). Used by the Brokerage panel to preview what the
-    // server will compute when the listing sells at a given price.
+    // JS mirrors of broker_list_building / broker_buy_listing's math
+    // (20270184). Single helpers so the lock-fee + commission + rep
+    // tiers live in exactly one client-side spot — every Brokerage
+    // surface reads from these instead of recomputing the formula.
+
+    // 2% of cost, floored at $1. Mirrors:
+    //   GREATEST(1, (v_building.cost_paid * 2) / 100)
+    const computeBrokerLockFee = (cost) =>
+      Math.max(1, Math.floor((Math.max(0, Number(cost) || 0) * 2) / 100));
+
     // Sort order of CASE branches must match the SQL exactly:
     //   price > cost × 1.20  →  +2  (highest)
     //   price > cost × 1.10  →  +1
@@ -1908,7 +1915,7 @@ function initials(s, n) {
         } else {
           availableHtml = available.map(b => {
             const cost = Number(b.cost_paid) || 0;
-            const fee  = Math.max(1, Math.floor(cost * 2 / 100));
+            const fee  = computeBrokerLockFee(cost);
             return `
               <div class="sh-row">
                 <div class="sh-row-info">
@@ -3172,7 +3179,7 @@ function initials(s, n) {
       if (isReprice) {
         feeEl.textContent = 'Re-pricing is free — no additional lock fee.';
       } else {
-        const fee = Math.max(1, Math.floor(brokerModalCtx.cost * 2 / 100));
+        const fee = computeBrokerLockFee(brokerModalCtx.cost);
         feeEl.textContent = `Lock fee: ${fmtUsd(fee)} (2% of cost, paid to host nation, non-refundable).`;
       }
       const priceInput = document.getElementById('br-price');
