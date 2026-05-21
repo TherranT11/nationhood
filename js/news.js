@@ -443,6 +443,14 @@ export async function initNewspaper(supabase, state) {
                         </select>
                     </div>
 
+                    <div class="nws-form-group" id="nws-targeting-group" style="display:none;">
+                        <label for="nws-article-sector">Target Sector <span style="color:var(--text-secondary,#888);font-weight:400;">(optional)</span></label>
+                        <select id="nws-article-sector"><option value="">— No sector effect —</option></select>
+                        <label for="nws-article-party" style="margin-top:12px;display:block;">Target Party</label>
+                        <select id="nws-article-party"><option value="">— Select a party —</option></select>
+                        <div class="nws-file-info" id="nws-targeting-hint">Pick a sector + party to shift that party's popularity there: your own party <strong>+0.3</strong>, any other party <strong>−0.3</strong>. First article each tick only. Leave the sector blank to publish with no popularity effect.</div>
+                    </div>
+
                     <div class="nws-form-group">
                         <label>Image (optional, max 2MB)</label>
                         <label class="nws-file-label" for="nws-article-image">
@@ -496,11 +504,38 @@ export async function initNewspaper(supabase, state) {
         });
     }
 
-    // Update reward badge text based on faction type
+    // Reward badge + (party) sector-popularity targeting.
+    const isCorp = state.faction?.faction_type === 'corporation';
+    const isParty = state.faction?.faction_type === 'party';
     const rewardBadge = document.getElementById('nws-reward-badge');
     if (rewardBadge) {
-        const isCorp = state.faction?.faction_type === 'corporation';
-        rewardBadge.textContent = isCorp ? '+1 Reputation (1st Article)' : '+2 Momentum (1st Article)';
+        rewardBadge.textContent = isCorp ? '+1 Reputation (1st Article)'
+            : isParty ? '±0.3 Sector Popularity (1st Article)' : '';
+    }
+    // Party authors can target a sector + party (own +0.3, other −0.3).
+    // Populate the pickers and reveal the group; only parties target it.
+    const targetingGroup = document.getElementById('nws-targeting-group');
+    if (targetingGroup && isParty && state.nation?.id) {
+        targetingGroup.style.display = '';
+        const myId = state.faction?.id;
+        const [secRes, partyRes] = await Promise.all([
+            _supabase.from('sectors').select('id, name')
+                .eq('nation_id', state.nation.id).eq('is_active', true).order('name'),
+            _supabase.from('factions').select('id, faction_name, abbreviation')
+                .eq('nation_id', state.nation.id).eq('faction_type', 'party').is('abandoned_at', null),
+        ]);
+        if (secRes.error) console.warn('[News] sector load failed:', secRes.error.message);
+        if (partyRes.error) console.warn('[News] party load failed:', partyRes.error.message);
+        const secSel = document.getElementById('nws-article-sector');
+        if (secSel) secSel.innerHTML = '<option value="">— No sector effect —</option>'
+            + (secRes.data || []).map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
+        const partySel = document.getElementById('nws-article-party');
+        if (partySel) {
+            // Own party first.
+            const parties = (partyRes.data || []).slice().sort((a, b) => (a.id === myId ? -1 : b.id === myId ? 1 : 0));
+            partySel.innerHTML = '<option value="">— Select a party —</option>'
+                + parties.map(p => `<option value="${p.id}">${escapeHtml(p.faction_name || p.abbreviation || 'Party')}${p.id === myId ? ' (your party)' : ''}</option>`).join('');
+        }
     }
 
     // === LOAD & DISPLAY ARTICLES ===
@@ -637,6 +672,13 @@ function bindSubmitHandler() {
         if (!body) return showFormError('Please write an article body.');
         if (body.length < 4000) return showFormError('Article must be at least 4,000 characters. Currently: ' + body.length.toLocaleString() + '.');
         if (body.length > 12000) return showFormError('Article body must be 12,000 characters or fewer.');
+        // Party authors: sector + party popularity targeting is both-or-neither
+        // (create mode only — editing just updates content).
+        const _selSector = document.getElementById('nws-article-sector')?.value || '';
+        const _selParty  = document.getElementById('nws-article-party')?.value || '';
+        if (!_editingArticleId && _state.faction?.faction_type === 'party' && (!!_selSector !== !!_selParty)) {
+            return showFormError('To shift popularity, choose BOTH a sector and a party — or leave both blank.');
+        }
 
         const isEdit = !!_editingArticleId;
         submitBtn.disabled = true;
@@ -707,66 +749,70 @@ function bindSubmitHandler() {
 
                 if (error) throw error;
 
-                // Momentum: +2 for 1st article this tick, 0 for subsequent.
-                // Exception (Internet Sovereignty Act): if ISA is an active law
-                // in this nation AND the author is in the sitting government
-                // coalition, subsequent posts yield +1 instead of 0.
                 const currentTick = shard?.current_tick || 0;
-                let momDelta = 0;
-                const { data: tickArticles, error: tickCountErr } = await _supabase
-                    .from('player_articles')
-                    .select('id')
-                    .eq('author_faction_id', faction.id)
-                    .eq('published_tick', currentTick);
-                if (tickCountErr) {
-                    console.error('[News] Failed to count articles this tick:', tickCountErr);
-                }
-                const isFirstPostThisTick = !tickCountErr && (!tickArticles || tickArticles.length <= 1);
-                if (isFirstPostThisTick) {
-                    momDelta = 2;
-                } else {
-                    // Subsequent post — check ISA-active + coalition-member exception.
-                    try {
-                        const { data: isaLaw } = await _supabase
-                            .from('active_laws')
-                            .select('id, policies!inner(policy_key)')
-                            .eq('nation_id', nation.id)
-                            .eq('is_reversal', false)
-                            .eq('policies.policy_key', 'internet_sovereignty')
-                            .limit(1)
-                            .maybeSingle();
-                        if (isaLaw) {
-                            const coalition = await fetchActiveCoalition(_supabase, nation.id);
-                            // fetchActiveCoalition returns { party_ids, lead_party_id, ... }
-                            // with party_ids covering the full sitting government coalition
-                            // (PM + partners in parliamentary; president + cabinet in
-                            // presidential; monarch's sponsor in monarchy).
-                            const coalitionIds = new Set(coalition?.party_ids || []);
-                            if (coalition?.lead_party_id) coalitionIds.add(coalition.lead_party_id);
-                            if (coalitionIds.has(faction.id)) momDelta = 1;
-                        }
-                    } catch (e) {
-                        console.warn('[News] ISA coalition-bonus check failed:', e?.message || e);
-                    }
-                }
-                const momLabel = `News article published (+${momDelta})`;
-
+                const isCorpAuthor = faction?.faction_type === 'corporation';
                 let successMsg = 'Article published!';
-                if (momDelta > 0) {
-                    try {
-                        const { error: momErr } = await _supabase.rpc('adjust_momentum', {
-                            p_faction_id: faction.id,
-                            p_delta: momDelta,
-                            p_label: momLabel,
-                            p_tick: currentTick
-                        });
-                        if (momErr) {
-                            console.error('[News] Momentum reward failed:', momErr);
-                        } else {
-                            successMsg = `Article published! +${momDelta} Momentum.`;
+
+                if (isCorpAuthor) {
+                    // Corp authors keep the existing reward path (unchanged):
+                    // +2 for the 1st article this tick; ISA-coalition members get
+                    // +1 on subsequent posts, else 0.
+                    let momDelta = 0;
+                    const { data: tickArticles, error: tickCountErr } = await _supabase
+                        .from('player_articles').select('id')
+                        .eq('author_faction_id', faction.id).eq('published_tick', currentTick);
+                    if (tickCountErr) console.error('[News] Failed to count articles this tick:', tickCountErr);
+                    const isFirstPostThisTick = !tickCountErr && (!tickArticles || tickArticles.length <= 1);
+                    if (isFirstPostThisTick) {
+                        momDelta = 2;
+                    } else {
+                        try {
+                            const { data: isaLaw } = await _supabase
+                                .from('active_laws').select('id, policies!inner(policy_key)')
+                                .eq('nation_id', nation.id).eq('is_reversal', false)
+                                .eq('policies.policy_key', 'internet_sovereignty').limit(1).maybeSingle();
+                            if (isaLaw) {
+                                const coalition = await fetchActiveCoalition(_supabase, nation.id);
+                                const coalitionIds = new Set(coalition?.party_ids || []);
+                                if (coalition?.lead_party_id) coalitionIds.add(coalition.lead_party_id);
+                                if (coalitionIds.has(faction.id)) momDelta = 1;
+                            }
+                        } catch (e) {
+                            console.warn('[News] ISA coalition-bonus check failed:', e?.message || e);
                         }
-                    } catch (momCatchErr) {
-                        console.error('[News] Momentum reward error:', momCatchErr);
+                    }
+                    if (momDelta > 0) {
+                        try {
+                            const { error: momErr } = await _supabase.rpc('adjust_momentum', {
+                                p_faction_id: faction.id, p_delta: momDelta,
+                                p_label: `News article published (+${momDelta})`, p_tick: currentTick
+                            });
+                            if (momErr) console.error('[News] Momentum reward failed:', momErr);
+                            else successMsg = `Article published! +${momDelta} Momentum.`;
+                        } catch (momCatchErr) {
+                            console.error('[News] Momentum reward error:', momCatchErr);
+                        }
+                    }
+                } else if (faction?.faction_type === 'party' && _selSector && _selParty) {
+                    // Party authors: shift the chosen party's sector popularity —
+                    // own +0.3, any other −0.3 — on the first article each tick.
+                    // Replaces the momentum reward; server enforces direction +
+                    // one-per-tick (article_sector_popularity, migration 20270194).
+                    try {
+                        const { data: popRes, error: popErr } = await _supabase.rpc('article_sector_popularity', {
+                            p_target_party_id: _selParty, p_sector_id: _selSector
+                        });
+                        if (popErr) {
+                            console.error('[News] Article popularity failed:', popErr);
+                        } else if (popRes?.success) {
+                            successMsg = `Article published! ${popRes.delta_tenths > 0 ? '+0.3' : '−0.3'} sector popularity.`;
+                        } else if (popRes?.reason === 'already_written_this_tick') {
+                            successMsg = 'Article published! (No popularity change — you already moved a sector this tick.)';
+                        } else if (popRes?.reason === 'no_popularity_row') {
+                            successMsg = 'Article published! (That party has no standing in this sector to move.)';
+                        }
+                    } catch (popCatchErr) {
+                        console.error('[News] Article popularity error:', popCatchErr);
                     }
                 }
                 sessionStorage.removeItem('nationhood_state');
@@ -859,6 +905,10 @@ function resetModalToCreateMode() {
     document.getElementById('nws-article-author').value = '';
     document.getElementById('nws-article-category').value = '';
     document.getElementById('nws-article-body').value = '';
+    const secSel = document.getElementById('nws-article-sector');
+    if (secSel) secSel.value = '';
+    const partySel = document.getElementById('nws-article-party');
+    if (partySel) partySel.value = '';
     const fileInput = document.getElementById('nws-article-image');
     if (fileInput) fileInput.value = '';
     const fileLabelText = document.getElementById('nws-file-label-text');
