@@ -13,8 +13,12 @@
 -- cost-of-living factor. Smallest change to a working model.
 --
 --   demand_pool = (SoL/100) × colFactor × (population/1M) × 20
---   colFactor   = (150 − cost_of_living) / 100, clamped to [0.5, 1.5]
---                 → CoL 50 ⇒ 1.0×, CoL 0 ⇒ 1.5×, CoL 100 ⇒ 0.5×
+--   colFactor   = (100 − cost_of_living) / 100, clamped to [0, 1]
+--                 → CoL 0 ⇒ 1.0× (cheap, max travel), CoL 50 ⇒ 0.5×,
+--                   CoL 100 ⇒ 0× (too expensive to fly).
+--   CoL only ever DAMPENS demand (never boosts above baseline) — it
+--   takes the slot the legacy service_sector/100 factor held, so total
+--   demand stays in the legacy magnitude rather than ~2× it.
 --
 -- The pool is distributed across the origin nation's city pairs by
 -- weight = (popPct_a + popPct_b) × (capital-endpoint ? 2 : 1), exactly
@@ -113,8 +117,8 @@ BEGIN
         IF v_nation.id IS NULL THEN CONTINUE; END IF;
 
         -- Demand pool — SoL up, CoL down.
-        v_col_factor := GREATEST(0.5, LEAST(1.5,
-            (150 - COALESCE(v_nation.cost_of_living, 50)) / 100.0));
+        v_col_factor := GREATEST(0, LEAST(1,
+            (100 - COALESCE(v_nation.cost_of_living, 50)) / 100.0));
         v_demand_pool := (COALESCE(v_nation.standard_of_living, 0) / 100.0)
                        * v_col_factor
                        * (COALESCE(v_nation.population, 0) / 1000000.0)
@@ -205,7 +209,7 @@ REVOKE EXECUTE ON FUNCTION public.process_entrepreneur_airline_routes(int) FROM 
 GRANT  EXECUTE ON FUNCTION public.process_entrepreneur_airline_routes(int) TO service_role;
 
 COMMENT ON FUNCTION public.process_entrepreneur_airline_routes(int) IS
-    'Per-tick allocator for entrepreneur airline routes. Demand = (SoL/100) × colFactor × (pop/1M) × 20, colFactor = clamp((150-CoL)/100, 0.5, 1.5); distributed across origin-nation city pairs by population/capital weight (legacy lane-share model). pax = min(floor((lane_share − competitor_seats) × price_mult), my_seats); net (revenue − ops) credited to corp treasury (may go negative = insolvency). Idempotent within a tick via last_processed_tick. Service-role only.';
+    'Per-tick allocator for entrepreneur airline routes. Demand = (SoL/100) × colFactor × (pop/1M) × 20, colFactor = clamp((100-CoL)/100, 0, 1) (cost-of-living only dampens, holding the legacy service_sector slot); distributed across origin-nation city pairs by population/capital weight (legacy lane-share model). pax = min(floor((lane_share − competitor_seats) × price_mult), my_seats); net (revenue − ops) credited to corp treasury (may go negative = insolvency). Idempotent within a tick via last_processed_tick. Service-role only.';
 
 NOTIFY pgrst, 'reload schema';
 
