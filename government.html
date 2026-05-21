@@ -2744,10 +2744,14 @@ const _GB_LAW_CATEGORY_FALLBACK = [
 ];
 
 function _gbCostRowForLaw(law) {
+    const cat = law?.policies?.law_category || '';
+    // Income-side tax policies are revenue levers (own Income panel) and
+    // must NEVER appear as a cost — this exclusion outranks an explicit
+    // budget_category, so mis-tagging a tax policy can't surface it as
+    // spending.
+    if (_GB_INCOME_SIDE_LAW_CATEGORY.test(cat)) return null;
     const explicit = law?.policies?.budget_category;
     if (explicit) return explicit;
-    const cat = law?.policies?.law_category || '';
-    if (_GB_INCOME_SIDE_LAW_CATEGORY.test(cat)) return null;
     for (const [re, key] of _GB_LAW_CATEGORY_FALLBACK) {
         if (re.test(cat)) return key;
     }
