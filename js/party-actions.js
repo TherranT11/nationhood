@@ -1201,7 +1201,6 @@ function renderPage(root) {
             <div class="pa-modal-overlay" id="pa-expand-infra-modal"></div>
             <div class="pa-modal-overlay" id="pa-allocate-funds-modal"></div>
             <div class="pa-modal-overlay" id="pa-cb-rate-modal"></div>
-            <div class="pa-modal-overlay" id="pa-appoint-governor-modal"></div>
         `,
     });
 
@@ -1271,8 +1270,6 @@ function renderPage(root) {
             openDebtPaymentModal(root, faction);
         } else if (actionId === 'allocate_funds') {
             openAllocateFundsModal(root);
-        } else if (actionId === 'appoint_cb_governor') {
-            openAppointGovernorModal(root);
         } else if (actionId === 'cb_lower_rate') {
             openCbRateModal(root, 'lower');
         } else if (actionId === 'cb_raise_rate') {
@@ -1615,18 +1612,6 @@ const _ALLOCATE_FUNDS_ENTRY = {
     tags: ['MILITARY', 'COSTS BUDGET'],
 };
 
-// Head of government appoints the Governor of the Central Bank. Parliamentary
-// PMs open a confirmation vote; presidents (presidential / semi-presidential)
-// appoint directly. Backed by appoint_central_bank_governor.
-const _APPOINT_CB_GOVERNOR_ENTRY = {
-    id: 'appoint_cb_governor',
-    name: 'Appoint Central Bank Governor',
-    desc: 'Appoint a party to the Governor of the Central Bank seat (8-year / 96-tick term, cannot be dismissed). In a parliamentary system the nominee goes to a confirmation vote; presidents appoint directly. Available only when the seat is vacant.',
-    cost: 'FREE',
-    costColor: '#5cc55c',
-    tags: ['MONETARY', 'STRUCTURAL'],
-};
-
 const _MINISTRY_ACTION_REGISTRY = {
     prime_minister: [
         {
@@ -1645,9 +1630,8 @@ const _MINISTRY_ACTION_REGISTRY = {
             costColor: 'var(--text-dim)',
             tags: ['GOVERNMENT', 'PM ONLY'],
         },
-        _APPOINT_CB_GOVERNOR_ENTRY,
     ],
-    president: [_APPOINT_CB_GOVERNOR_ENTRY],
+    president: [],
     central_bank_governor: [
         {
             id: 'cb_lower_rate',
@@ -1819,14 +1803,6 @@ function ministryActionLockReason(actionId, faction, roleDescriptor) {
         const balance = Number(roleDescriptor?.discretionaryBalance ?? 0);
         if (balance < 1_000_000) {
             return 'Defense Ministry discretionary budget is $0 — pass a funding bill first.';
-        }
-    }
-    if (actionId === 'appoint_cb_governor') {
-        const tick = Number(_state?.shard?.current_tick ?? 0);
-        const seated = nation?.central_bank_governor_party_id
-            && Number(nation?.central_bank_governor_term_end_tick ?? 0) > tick;
-        if (seated) {
-            return 'A Governor is already serving — the seat reopens only when their 8-year term ends.';
         }
     }
     if (actionId === 'cb_lower_rate' || actionId === 'cb_raise_rate') {
@@ -3466,107 +3442,9 @@ async function openCbRateModal(root, direction) {
     render();
 }
 
-// ════════════════════════ CENTRAL BANK — APPOINT GOVERNOR ════════════════════════
-// Head of government appoints a party to the Governor seat.
-async function openAppointGovernorModal(root) {
-    const overlay = document.getElementById('pa-appoint-governor-modal');
-    if (!overlay) return;
-    const govType = String(_state?.nation?.government_type || '').toLowerCase();
-    const directAppoint = govType.includes('president') || govType.includes('monarch');
-
-    let parties = [];
-    let loadError = '';
-    const { data, error } = await _supabase.from('factions')
-        .select('id, faction_name')
-        .eq('nation_id', _state.nation.id)
-        .eq('faction_type', 'party')
-        .order('faction_name', { ascending: true });
-    if (error) loadError = error.message || 'Could not load parties.';
-    else parties = data || [];
-
-    let selectedId = parties[0]?.id || '';
-    let submitting = false;
-    let result = null;
-    let errorMsg = loadError;
-
-    function render() {
-        const opts = parties.map(p => `<option value="${esc(p.id)}" ${p.id === selectedId ? 'selected' : ''}>${esc(p.faction_name)}</option>`).join('');
-        const routeNote = directAppoint
-            ? 'You appoint the Governor directly — they take the seat immediately.'
-            : 'Your nominee goes to a parliamentary confirmation vote (6 ticks).';
-        const resultHtml = result ? `
-            <div style="margin-top:12px;padding:12px;background:rgba(92,197,92,0.08);border:1px solid rgba(92,197,92,0.22);">
-                <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#5cc55c;margin-bottom:4px;">${result.status === 'appointed' ? 'Governor appointed' : 'Nominee sent to confirmation vote'}</div>
-                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">${result.status === 'appointed' ? '8-year term begins now.' : 'Parliament votes over the next 6 ticks.'}</div>
-            </div>` : '';
-        const errorHtml = errorMsg ? `<div style="font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:8px;">${esc(errorMsg)}</div>` : '';
-
-        overlay.innerHTML = `
-            <div class="pa-modal" style="width:460px;">
-                <div class="pa-modal-header">
-                    <div class="pa-modal-header-left">
-                        <div class="pa-modal-dot" style="background:#c8a832;"></div>
-                        <span class="pa-modal-title">Appoint Central Bank Governor</span>
-                    </div>
-                    <button class="pa-modal-close" id="pa-ag-close">&times;</button>
-                </div>
-                <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
-                    ${routeNote} The Governor serves an 8-year (96-tick) term and cannot be dismissed.
-                </div>
-                <div class="pa-modal-body" style="gap:10px;">
-                    <div class="pa-modal-step-label">Nominate party</div>
-                    <select id="pa-ag-select" class="pa-modal-input" ${result || submitting || !parties.length ? 'disabled' : ''} style="font-family:var(--font-mono);font-size:13px;">${opts}</select>
-                    ${errorHtml}
-                    ${resultHtml}
-                </div>
-                <div class="pa-modal-footer">
-                    <button class="pa-modal-btn pa-modal-btn--cancel" id="pa-ag-cancel">${result ? 'Close' : 'Cancel'}</button>
-                    <button class="pa-modal-btn pa-modal-btn--submit" id="pa-ag-submit" ${submitting || result || !parties.length || loadError ? 'disabled' : ''}>${submitting ? 'Appointing…' : (directAppoint ? 'Appoint' : 'Nominate')}</button>
-                </div>
-            </div>`;
-
-        const close = () => { overlay.classList.remove('active'); if (result) renderPage(root); };
-        document.getElementById('pa-ag-close')?.addEventListener('click', close);
-        document.getElementById('pa-ag-cancel')?.addEventListener('click', close);
-        overlay.onclick = (e) => { if (e.target === overlay) close(); };
-        document.getElementById('pa-ag-select')?.addEventListener('change', (e) => { selectedId = e.target.value; });
-        document.getElementById('pa-ag-submit')?.addEventListener('click', submit);
-    }
-
-    async function submit() {
-        if (submitting || result || !selectedId) return;
-        submitting = true; errorMsg = ''; render();
-        try {
-            const { data: res, error: rpcErr } = await _supabase.rpc('appoint_central_bank_governor', { p_party_id: selectedId });
-            if (rpcErr) {
-                errorMsg = rpcErr.message || 'Appointment failed.';
-            } else if (!res?.success) {
-                errorMsg = humanizeCbReason(res?.reason);
-            } else {
-                result = res;
-                if (res.status === 'appointed') {
-                    _state.nation.central_bank_governor_party_id = res.partyId;
-                    _state.nation.central_bank_governor_term_end_tick = res.termEndTick;
-                }
-            }
-        } catch (e) {
-            errorMsg = e?.message || 'Network error.';
-        } finally {
-            submitting = false; render();
-        }
-    }
-
-    overlay.classList.add('active');
-    render();
-}
-
 function humanizeCbReason(reason) {
     switch (reason) {
         case 'not_authenticated':          return 'You are not signed in.';
-        case 'nominee_not_party':          return 'The nominee must be a party.';
-        case 'not_head_of_government':     return 'Only the head of government can appoint the Governor.';
-        case 'governor_seated':            return 'A Governor is already serving — the seat reopens when their term ends.';
-        case 'confirmation_pending':       return 'A confirmation vote is already on the floor.';
         case 'not_governor':               return 'Only the Governor of the Central Bank can move the rate.';
         case 'insufficient_discretionary': return 'The lending pool is empty — $1 is required.';
         case 'rate_at_limit':              return 'The rate is already at its limit (0% or 20%).';
