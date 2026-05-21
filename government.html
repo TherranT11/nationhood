@@ -1208,6 +1208,7 @@ const GOV_SUBTABS = [
     { id: 'legislative', label: 'PARLIAMENT' },
     { id: 'judicial', label: 'JUDICIAL' },
     { id: 'budget', label: 'BUDGET' },
+    { id: 'central_bank', label: 'CENTRAL BANK' },
     { id: 'laws', label: 'LAWS' },
     { id: 'past', label: 'PAST ADMINISTRATIONS' },
 ];
@@ -1258,6 +1259,8 @@ function renderGovContent() {
         renderLawsTab(content);
     } else if (_govActiveSubtab === 'budget') {
         renderBudgetTab(content);
+    } else if (_govActiveSubtab === 'central_bank') {
+        renderCentralBankTab(content);
     } else if (_govActiveSubtab === 'past') {
         renderPastAdministrationsTab(content);
     } else if (_govActiveSubtab === 'judicial') {
@@ -3337,6 +3340,130 @@ async function _gbSelectCategory(container, row, kind) {
         ` : ''}
     `;
 }
+
+// ══════════════════════════════════════════════════════════════════
+// CENTRAL BANK subtab — Governor seat + policy rate + lending capital.
+// Reads central_bank_* columns off currentNation (loaded via select('*')).
+// Appoint: head of government only. Rate moves: Governor party only.
+// ══════════════════════════════════════════════════════════════════
+function renderCentralBankTab(container) {
+    if (!_govData) {
+        container.innerHTML = '<div style="padding:40px;text-align:center;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);">Loading government data…</div>';
+        return;
+    }
+    const n = currentNation || {};
+    const rate    = Number(n.central_bank_interest_rate ?? 5);
+    const disc    = Number(n.central_bank_discretionary ?? 0);
+    const govId   = n.central_bank_governor_party_id || null;
+    const termEnd = Number(n.central_bank_governor_term_end_tick ?? 0);
+    const parties = _govData.parties || [];
+    const govParty = govId ? parties.find(p => p.id === govId) : null;
+    const seated  = !!govId && termEnd > currentTick;
+    const ticksLeft = seated ? (termEnd - currentTick) : 0;
+    const isHeadOfGov = !!isPMParty || !!isPresidentParty;
+    const isGovernor  = !!(currentFaction && govId && currentFaction.id === govId);
+    const gt = String(n.government_type || '').toLowerCase();
+    const directAppoint = gt.includes('president') || gt.includes('monarch');
+
+    // Lending capital is display-only: each $1 of discretionary = $100M.
+    const lendingM = disc * 100;
+    const lendingFmt = lendingM >= 1000
+        ? `$${(lendingM / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}B`
+        : `$${lendingM.toLocaleString()}M`;
+
+    const card = (inner) => `<div style="background:var(--panel,#1b1a17);border:1px solid var(--border,#33312c);border-radius:8px;padding:18px 20px;">${inner}</div>`;
+    const label = (t) => `<div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px;">${t}</div>`;
+
+    // ── Governor seat ──
+    let seatBody;
+    if (seated) {
+        const name = escapeHtml(govParty?.faction_name || 'Unknown Party');
+        seatBody = `
+            <div style="font-size:1.05rem;font-weight:700;color:var(--text,#e8e4da);">${name}</div>
+            <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-top:4px;">8-year term · ${ticksLeft} ticks remaining (ends tick ${termEnd})</div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:8px;font-style:italic;">The Governor cannot be dismissed. The seat reopens when the term ends.</div>`;
+    } else {
+        seatBody = `<div style="font-size:1.05rem;font-weight:700;color:var(--accent-red,#d9534f);">Vacant</div>`;
+        if (isHeadOfGov) {
+            const opts = parties.map(p => `<option value="${p.id}">${escapeHtml(p.faction_name)}</option>`).join('');
+            const routeNote = directAppoint
+                ? 'As head of government you appoint the Governor directly.'
+                : 'Your nominee goes to a parliamentary confirmation vote (6 ticks).';
+            seatBody += `
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin:10px 0 8px;font-style:italic;">${routeNote}</div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <select id="cb-appoint-select" style="background:var(--bg,#121110);color:var(--text,#e8e4da);border:1px solid var(--border,#33312c);border-radius:6px;padding:7px 10px;font-size:13px;">${opts}</select>
+                    <button onclick="cbAppointGovernor()" style="background:var(--accent,#c9a227);color:#1a1a1a;border:none;border-radius:6px;padding:8px 16px;font-weight:700;font-size:12px;letter-spacing:0.04em;cursor:pointer;">APPOINT</button>
+                </div>`;
+        } else {
+            seatBody += `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:8px;font-style:italic;">Only the head of government can appoint the Governor.</div>`;
+        }
+    }
+
+    // ── Rate controls ──
+    let rateControls;
+    if (isGovernor && seated) {
+        rateControls = `
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px;">
+                <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">Move by</span>
+                <select id="cb-rate-pct" style="background:var(--bg,#121110);color:var(--text,#e8e4da);border:1px solid var(--border,#33312c);border-radius:6px;padding:6px 10px;font-size:13px;">
+                    <option value="1">1%</option><option value="2">2%</option><option value="3">3%</option>
+                </select>
+                <button onclick="cbSetRate('lower')" style="background:var(--green,#5a9e5a);color:#fff;border:none;border-radius:6px;padding:8px 14px;font-weight:700;font-size:12px;cursor:pointer;">LOWER</button>
+                <button onclick="cbSetRate('raise')" style="background:var(--accent-red,#d9534f);color:#fff;border:none;border-radius:6px;padding:8px 14px;font-weight:700;font-size:12px;cursor:pointer;">RAISE</button>
+            </div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:8px;font-style:italic;">Each move costs $1 from the discretionary pool. Lowering nudges GDP growth up (+0.2 per 1%); raising nudges it down (−0.3 per 1%). Rate clamps 0–20%.</div>`;
+    } else if (seated) {
+        rateControls = `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:10px;font-style:italic;">Only the Governor's party can move the policy rate.</div>`;
+    } else {
+        rateControls = `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:10px;font-style:italic;">No Governor seated — the rate is frozen until one is appointed.</div>`;
+    }
+
+    container.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:16px;max-width:760px;margin:0 auto;">
+            <div style="font-family:var(--font-mono);font-size:0.9rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent,#c9a227);">Central Bank</div>
+            ${card(`${label('Policy Interest Rate')}
+                <div style="font-size:2.2rem;font-weight:800;color:var(--text,#e8e4da);line-height:1;">${rate.toFixed(2)}<span style="font-size:1.2rem;">%</span></div>
+                ${rateControls}`)}
+            ${card(`${label('Governor of the Central Bank')}${seatBody}`)}
+            ${card(`${label('Lending Capital (display only)')}
+                <div style="font-size:1.6rem;font-weight:800;color:var(--green,#5a9e5a);line-height:1;">${lendingFmt}</div>
+                <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-top:6px;">Discretionary pool: $${disc.toLocaleString()} · each $1 backs $100M of lending capital.</div>`)}
+        </div>`;
+}
+
+async function cbAppointGovernor() {
+    const sel = document.getElementById('cb-appoint-select');
+    const partyId = sel?.value;
+    if (!partyId) return;
+    try {
+        const { data, error } = await _supabase.rpc('appoint_central_bank_governor', { p_party_id: partyId });
+        if (error) { alert('Appointment failed: ' + error.message); return; }
+        if (!data?.success) { alert('Appointment failed: ' + (data?.reason || 'unknown')); return; }
+        alert(data.status === 'appointed'
+            ? 'Governor appointed.'
+            : 'Nominee sent to a confirmation vote.');
+        await loadGovData();
+        renderGovContent();
+    } catch (e) { alert('Appointment failed: ' + (e?.message || e)); }
+}
+
+async function cbSetRate(direction) {
+    const pct = parseInt(document.getElementById('cb-rate-pct')?.value || '0', 10);
+    if (!pct) return;
+    try {
+        const { data, error } = await _supabase.rpc('central_bank_set_rate', { p_direction: direction, p_pct: pct });
+        if (error) { alert('Rate change failed: ' + error.message); return; }
+        if (!data?.success) {
+            const msg = { insufficient_discretionary: 'Not enough discretionary funds ($1 required).', rate_at_limit: 'Rate is already at its limit.', not_governor: 'Only the Governor can do this.' }[data?.reason] || ('Rate change failed: ' + (data?.reason || 'unknown'));
+            alert(msg); return;
+        }
+        await loadGovData();
+        renderGovContent();
+    } catch (e) { alert('Rate change failed: ' + (e?.message || e)); }
+}
+window.cbAppointGovernor = cbAppointGovernor;
+window.cbSetRate = cbSetRate;
 
 function renderLawsTab(container) {
     if (!_lawsData) {
