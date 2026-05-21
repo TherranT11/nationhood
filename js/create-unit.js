@@ -34,6 +34,17 @@ export const ARMY_TYPES = {
 };
 export const ARMY_TYPE_ORDER = ['regular','guard','paramilitary'];
 
+// Brigade composition as a display string ("2× Infantry · 1× Armor").
+// Single source — the Order of Battle cards and the Create Army unit
+// picker both read it.
+export function auComposition(brigades) {
+  const brigs = Array.isArray(brigades) ? brigades : [];
+  return AU_ORDER
+    .filter(k => brigs.includes(k))
+    .map(k => `${brigs.filter(x => x === k).length}× ${AU_BRIGADES[k].name}`)
+    .join(' · ') || '—';
+}
+
 export function auMoney(raw) {
   // Whole millions render as "$2" / "$12"; a fractional balance keeps
   // one decimal ("$28.4"). No "M" suffix.
@@ -349,13 +360,6 @@ export function openCreateArmyModal(faction, onCreated) {
     overlay.onclick = null;
   }
 
-  function compositionOf(u) {
-    const brigs = Array.isArray(u.brigades) ? u.brigades : [];
-    return AU_ORDER.filter(k => brigs.includes(k))
-      .map(k => `${brigs.filter(x => x === k).length}× ${AU_BRIGADES[k].name}`)
-      .join(' · ') || '—';
-  }
-
   function shell() {
     overlay.innerHTML = `<div class="cu-modal">
       <div class="cu-head">
@@ -404,7 +408,7 @@ export function openCreateArmyModal(faction, onCreated) {
             <div class="ca-check">${sel ? '✓' : ''}</div>
             <div style="flex:1;min-width:0;">
               <div class="un">${escapeHtml(u.name)}</div>
-              <div class="us">${brigs.length} BRIGADE${brigs.length === 1 ? '' : 'S'} · ${(Number(u.total_manpower) || 0).toLocaleString()} PERSONNEL · ${escapeHtml(compositionOf(u))}${tag}</div>
+              <div class="us">${brigs.length} BRIGADE${brigs.length === 1 ? '' : 'S'} · ${(Number(u.total_manpower) || 0).toLocaleString()} PERSONNEL · ${escapeHtml(auComposition(u.brigades))}${tag}</div>
             </div>
           </div>`;
         }).join('')
@@ -500,17 +504,20 @@ export async function renderOrderOfBattle(faction, hostEl) {
     // Group: unassigned units under "Regular Army", then one section
     // per army (each carries ≥1 unit). The army's type drives both the
     // header label and each unit's upkeep modifier.
-    const unassigned = units.filter(u => !u.army_id);
+    // A unit shows under "Regular Army" if it's unassigned OR its army
+    // didn't load (transient fetch error / orphan) — never vanishes.
+    const knownArmies = new Set(armies.map(a => a.id));
+    const regular = units.filter(u => !u.army_id || !knownArmies.has(u.army_id));
     const byArmy = new Map();
     for (const u of units) {
-      if (!u.army_id) continue;
+      if (!u.army_id || !knownArmies.has(u.army_id)) continue;
       if (!byArmy.has(u.army_id)) byArmy.set(u.army_id, []);
       byArmy.get(u.army_id).push(u);
     }
 
-    if (unassigned.length) {
+    if (regular.length) {
       html += '<div class="cu-sec">Regular Army</div>';
-      for (const u of unassigned) html += unitCardHtml(u, null);
+      for (const u of regular) html += unitCardHtml(u, null);
     }
     for (const a of armies) {
       const list = byArmy.get(a.id) || [];
@@ -528,10 +535,7 @@ export async function renderOrderOfBattle(faction, hostEl) {
     const brigs = Array.isArray(u.brigades) ? u.brigades : [];
     const forming = u.status === 'Forming';
     const open = expanded.has(u.id);
-    const composition = AU_ORDER
-      .filter(k => brigs.includes(k))
-      .map(k => `${brigs.filter(x => x === k).length}× ${AU_BRIGADES[k].name}`)
-      .join(' · ') || '—';
+    const composition = auComposition(brigs);
     const pill = forming
       ? `<span class="oob-pill forming">Forming · Ready in ${tickToDate(Number(u.forming_until_tick))}</span>`
       : `<span class="oob-pill active" style="color:#46c46a;">[Active]</span><span class="oob-upkeep" style="color:#e5534b;font-weight:600;margin-left:6px;">(-$${unitUpkeepPerTick(u.construction_cost, armyType)})</span>`;
