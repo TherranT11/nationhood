@@ -3696,17 +3696,16 @@ function initials(s, n) {
     };
 
     // ────────── Corporate Assets panel ──────────
-    // Read-only inventory of the properties this corp owns (completed
-    // corp_buildings) + the nation each sits in. Reads the rows
-    // renderProjects already fetched (ownedBuildings) — no second query.
-    // The action-oriented marketplace controls (List for Sale / offers)
-    // live in Active Projects; this is the at-a-glance holdings list.
-    // Must run after renderProjects (it populates ownedBuildings).
+    // Read-only inventory of every property this corp owns + the nation
+    // each sits in, including in-progress builds (tagged Under
+    // construction). Reads the rows renderProjects already fetched
+    // (ownedBuildings) — no second query — so it must run after it. The
+    // action-oriented controls (List for Sale / offers / progress) live
+    // in Active Projects; this is the at-a-glance holdings list.
     const renderAssets = () => {
       const host = document.getElementById('cp-assets');
       if (!host) return;
-      const rows = ownedBuildings
-        .filter(b => b.status === 'completed')
+      const rows = [...ownedBuildings]
         .sort((a, b) => (a.building_type || '').localeCompare(b.building_type || ''));
       if (rows.length === 0) {
         host.innerHTML = `<div class="empty-card">No properties owned yet.${isConstructionCorp ? ' Break ground with Begin Construction above, or buy on the market.' : ' Acquire properties on the market.'}</div>`;
@@ -3714,14 +3713,21 @@ function initials(s, n) {
       }
       host.innerHTML = rows.map(b => {
         const tier = TIER_TABLE[b.tier] || { label: b.tier };
-        const listed = b.list_price != null;
         const typeLabel = b.building_type ? buildingTypeLabel(b.building_type) : '—';
+        let statusHtml;
+        if (b.status !== 'completed') {
+          const remaining = Math.max(0, Number(b.completes_at_tick) - currentTick);
+          statusHtml = `<span class="num muted">Under construction · ${remaining} tick${remaining === 1 ? '' : 's'} left</span>`;
+        } else {
+          const listed = b.list_price != null;
+          statusHtml = `<span class="num ${listed ? 'amber' : 'muted'}">${listed ? 'Listed ' + fmtUsd(Number(b.list_price)) : 'Held'}</span>`;
+        }
         return `<div class="cf-row">
           <div>
             <div class="who">${escapeHtml(b.name || '—')}</div>
             <div class="sub">${escapeHtml(typeLabel)} · ${escapeHtml(tier.label || '')} · ${escapeHtml(b.nation?.name || '—')}</div>
           </div>
-          <span class="num ${listed ? 'amber' : 'muted'}">${listed ? 'Listed ' + fmtUsd(Number(b.list_price)) : 'Held'}</span>
+          ${statusHtml}
         </div>`;
       }).join('');
     };
