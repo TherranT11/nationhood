@@ -563,6 +563,9 @@
            renderForSale(): owner sees list/unlist + incoming offers; a
            non-owner viewing a for-sale corp sees Make Offer. -->
       <div id="cp-forsale" style="display:none;align-self:center;min-width:220px;"></div>
+      <!-- Acquire (2.6.8.3): non-owner sees [Acquire]; owner with an incoming
+           offer sees [Review offer]. Populated by renderAcquire(). -->
+      <div id="cp-acquire" style="display:none;align-self:center;min-width:160px;text-align:center;"></div>
       <div class="role-block">
         <div class="role-eyebrow">OWNERSHIP</div>
         <div class="role-pill" id="cp-role-pill">FOUNDER · CONTROLLING</div>
@@ -824,6 +827,21 @@ function initials(s, n) {
     // Mirrors the trade card's lock/reason/reload conventions.
     const isOwner = !!entId && c.owner_faction_id === entId;
 
+    // Recommended corp valuation (one source of truth, shared by the Put Up
+    // for Sale and Acquire flows): treasury_cash − outstanding loan debt +
+    // property (building cost). Returns a floored integer ≥ 0.
+    const computeCorpRecommended = async () => {
+      try {
+        const [{ data: bld }, { data: lns }] = await Promise.all([
+          _supabase.from('corp_buildings').select('cost_paid').eq('owner_corp_id', id),
+          _supabase.from('corp_loans').select('principal, total_paid').eq('borrower_corp_id', id).in('status', ['approved', 'active']),
+        ]);
+        const property = (bld || []).reduce((s, b) => s + (Number(b.cost_paid) || 0), 0);
+        const debt = (lns || []).reduce((s, l) => s + Math.max(0, (Number(l.principal) || 0) - (Number(l.total_paid) || 0)), 0);
+        return Math.max(0, Math.round((Number(c.treasury_cash) || 0) + property - debt));
+      } catch { return Math.max(0, Math.round(Number(c.treasury_cash) || 0)); }
+    };
+
     // [Withdraw to Cash on Hand] — header action for the founder of a PRIVATE
     // corp. Pulls corp treasury_cash → personal party_funds via
     // withdraw_corp_treasury. Public corps distribute via the dividend card.
@@ -910,13 +928,7 @@ function initials(s, n) {
           }));
 
         } else if (isOwner && !c.for_sale) {
-          const [{ data: bld }, { data: lns }] = await Promise.all([
-            _supabase.from('corp_buildings').select('cost_paid').eq('owner_corp_id', id),
-            _supabase.from('corp_loans').select('principal, total_paid').eq('borrower_corp_id', id).in('status', ['approved', 'active']),
-          ]);
-          const property = (bld || []).reduce((s, b) => s + (Number(b.cost_paid) || 0), 0);
-          const debt = (lns || []).reduce((s, l) => s + Math.max(0, (Number(l.principal) || 0) - (Number(l.total_paid) || 0)), 0);
-          const rec = Math.max(1, Math.round((Number(c.treasury_cash) || 0) + property - debt));
+          const rec = Math.max(1, await computeCorpRecommended());
           fsWrap.innerHTML = `<div class="role-eyebrow" style="text-align:center;">PUT UP FOR SALE</div>
             <div class="tc-row" style="margin-top:8px;justify-content:center;">
               <input id="cp-fs-amt" class="tc-qty" type="number" min="1" step="1" value="${rec}" />
@@ -973,6 +985,176 @@ function initials(s, n) {
           }
         }
       })().catch(err => console.error('[forsale] render failed:', err));
+    }
+
+    // ── Acquire (2.6.8.3): buyer-initiated negotiation modal (private corps) ──
+    const acqWrap = document.getElementById('cp-acquire');
+    const acqOverlay = document.getElementById('acq-overlay');
+    if (acqWrap && acqOverlay && !isPublic) {
+      let acqPoll = null;
+      let acqId = null;
+      let acqBusy = false;   // double-fire lock for deal-changing actions
+
+      const acqReason = (r) => ({
+        sector_mismatch: 'Your corp must be the same sector.',
+        cannot_buy_own_corp: 'You already own this corp.',
+        not_buyer_corp_owner: 'You must own the corp you fold it into.',
+        public_not_supported: 'Only private corps can be acquired (v1).',
+        already_negotiating: 'You already have an open offer on this corp.',
+        buyer_insufficient_funds: 'The acquiring corp can’t cover the price.',
+        seller_changed: 'Ownership changed — restart the deal.',
+        not_open: 'This negotiation is no longer open.',
+        not_a_party: 'You’re not part of this deal.',
+      }[r] || ('Failed: ' + (r || 'unknown')));
+
+      const renderChat = (msgs) => (msgs || []).map(m => m.is_system
+        ? `<div style="font-size:11px;color:#7a9aab;font-style:italic;margin:4px 0;">${escapeHtml(m.message_text)}</div>`
+        : `<div style="margin:4px 0;"><span style="color:#8aaa6a;font-size:11px;">${escapeHtml(m.sender_display_name)}:</span> <span style="font-size:12px;">${escapeHtml(m.message_text)}</span></div>`
+      ).join('') || '<div style="font-size:11px;color:#666;">No messages yet.</div>';
+
+      const closeAcq = () => { acqOverlay.classList.remove('open'); if (acqPoll) { clearInterval(acqPoll); acqPoll = null; } };
+      document.getElementById('acq-close').addEventListener('click', closeAcq);
+      acqOverlay.addEventListener('click', e => { if (e.target.id === 'acq-overlay') closeAcq(); });
+
+      const loadAcq = async () => {
+        let q = _supabase.from('corp_acquisitions').select('*').eq('target_corp_id', id).eq('status', 'negotiating');
+        if (!isOwner) q = q.eq('buyer_faction_id', entId);
+        const { data } = await q.order('created_at', { ascending: false }).limit(1).maybeSingle();
+        return data || null;
+      };
+
+      const refreshChat = async () => {
+        if (!acqId) return;
+        const [{ data: msgs }, { data: a }] = await Promise.all([
+          _supabase.from('acquisition_messages').select('sender_display_name, message_text, is_system, created_at').eq('acquisition_id', acqId).order('created_at', { ascending: true }),
+          _supabase.from('corp_acquisitions').select('buyer_agreed, seller_agreed, status').eq('id', acqId).maybeSingle(),
+        ]);
+        if (!a || a.status !== 'negotiating') { location.reload(); return; }
+        const box = document.getElementById('acq-chat');
+        if (box) { box.innerHTML = renderChat(msgs); box.scrollTop = box.scrollHeight; }
+        const st = document.getElementById('acq-agree-state');
+        if (st) st.textContent = `Buyer ${a.buyer_agreed ? '✓' : '…'} · Seller ${a.seller_agreed ? '✓' : '…'}`;
+      };
+
+      const renderAcqModal = async () => {
+        const body = document.getElementById('acq-body');
+        const acq = await loadAcq();
+        acqId = acq ? acq.id : null;
+
+        if (!acq) {
+          // Propose (buyer side, no open deal): pick a same-sector corp to fold into.
+          const rec = await computeCorpRecommended();
+          const { data: mine } = await _supabase.from('entrepreneur_corps')
+            .select('id, name, treasury_cash').eq('owner_faction_id', entId).eq('industry', c.industry).neq('id', id);
+          const corps = mine || [];
+          if (!corps.length) {
+            body.innerHTML = `<div class="rl-summary">You need a <b>${escapeHtml(industryLabel(c.industry))}</b> corporation to acquire and fold ${escapeHtml(c.name)} into.</div>`;
+            return;
+          }
+          const opts = corps.map(mc => `<option value="${mc.id}">${escapeHtml(mc.name)} · ${fmtUsd(mc.treasury_cash || 0)}</option>`).join('');
+          body.innerHTML = `
+            <div class="rl-summary">Recommended valuation <b>${fmtUsd(rec)}</b> · cash − debt + property. The deal folds ${escapeHtml(c.name)} into one of your ${escapeHtml(industryLabel(c.industry))} corps; both CEOs must agree on a price.</div>
+            <div class="rl-label">Fold into</div>
+            <select id="acq-payer" class="rl-input">${opts}</select>
+            <div class="rl-label">Offer price ($)</div>
+            <input type="text" class="rl-input" id="acq-price" inputmode="numeric" value="${rec}">
+            <div class="rl-err" id="acq-err"></div>
+            <div class="rl-foot" style="padding-top:14px;"><button class="rl-btn sec" id="acq-cancel2">Cancel</button><button class="rl-btn pri" id="acq-propose">Propose</button></div>`;
+          document.getElementById('acq-cancel2').addEventListener('click', closeAcq);
+          document.getElementById('acq-propose').addEventListener('click', async () => {
+            if (acqBusy) return;
+            const errEl = document.getElementById('acq-err');
+            const payer = document.getElementById('acq-payer').value;
+            const price = parseInt((document.getElementById('acq-price').value || '').replace(/[$,\s]/g, ''), 10);
+            if (!payer) { errEl.textContent = 'Pick a corp to fold into.'; return; }
+            if (!Number.isFinite(price) || price < 0) { errEl.textContent = 'Enter a valid price.'; return; }
+            acqBusy = true;
+            try {
+              const { data, error } = await _supabase.rpc('propose_acquisition', { p_target_corp_id: id, p_buyer_corp_id: payer, p_price: price });
+              if (error) throw error;
+              if (!data?.success) { errEl.textContent = acqReason(data?.reason); return; }
+              await renderAcqModal();
+            } catch (e) { errEl.textContent = e?.message || 'Failed.'; }
+            finally { acqBusy = false; }
+          });
+          return;
+        }
+
+        // Negotiate view (either side).
+        const iAmBuyer = acq.buyer_faction_id === entId;
+        const myAgreed = iAmBuyer ? acq.buyer_agreed : acq.seller_agreed;
+        const { data: msgs } = await _supabase.from('acquisition_messages')
+          .select('sender_display_name, message_text, is_system, created_at').eq('acquisition_id', acq.id).order('created_at', { ascending: true });
+        body.innerHTML = `
+          <div class="rl-summary">Negotiating sale of <b>${escapeHtml(c.name)}</b> · <span id="acq-agree-state">Buyer ${acq.buyer_agreed ? '✓' : '…'} · Seller ${acq.seller_agreed ? '✓' : '…'}</span></div>
+          <div class="rl-label">Price ($)</div>
+          <div style="display:flex;gap:8px;">
+            <input type="text" class="rl-input" id="acq-price" inputmode="numeric" value="${acq.price}" style="flex:1;">
+            <button class="rl-btn sec" id="acq-setprice">Set</button>
+          </div>
+          <div class="rl-label">Chat</div>
+          <div id="acq-chat" style="background:#0d0d0d;border:0.5px solid rgba(255,255,255,0.1);border-radius:4px;padding:10px;height:150px;overflow-y:auto;margin-bottom:8px;">${renderChat(msgs)}</div>
+          <div style="display:flex;gap:8px;">
+            <input type="text" class="rl-input" id="acq-msg" placeholder="Message…" style="flex:1;" maxlength="2000">
+            <button class="rl-btn sec" id="acq-send">Send</button>
+          </div>
+          <div class="rl-err" id="acq-err"></div>
+          <div class="rl-foot" style="padding-top:14px;">
+            <button class="rl-btn sec" id="acq-cancel-deal">Cancel deal</button>
+            <button class="rl-btn pri" id="acq-agree">${myAgreed ? 'Agreed ✓ — waiting' : 'Agree'}</button>
+          </div>`;
+        const errEl = () => document.getElementById('acq-err');
+        document.getElementById('acq-setprice').addEventListener('click', async () => {
+          const price = parseInt((document.getElementById('acq-price').value || '').replace(/[$,\s]/g, ''), 10);
+          if (!Number.isFinite(price) || price < 0) { errEl().textContent = 'Enter a valid price.'; return; }
+          const { data, error } = await _supabase.rpc('set_acquisition_price', { p_acq_id: acq.id, p_price: price });
+          if (error || !data?.success) { errEl().textContent = acqReason(data?.reason) || error?.message; return; }
+          await renderAcqModal();
+        });
+        document.getElementById('acq-send').addEventListener('click', async () => {
+          const t = (document.getElementById('acq-msg').value || '').trim(); if (!t) return;
+          const { data, error } = await _supabase.rpc('send_acquisition_message', { p_acq_id: acq.id, p_text: t });
+          if (error || !data?.success) { errEl().textContent = acqReason(data?.reason) || error?.message; return; }
+          document.getElementById('acq-msg').value = ''; await refreshChat();
+        });
+        document.getElementById('acq-agree').addEventListener('click', async () => {
+          if (acqBusy) return; acqBusy = true;
+          try {
+            const { data, error } = await _supabase.rpc('agree_acquisition', { p_acq_id: acq.id });
+            if (error) { errEl().textContent = error.message; return; }
+            if (!data?.success) { errEl().textContent = acqReason(data?.reason); return; }
+            if (data.completed) { closeAcq(); alert('Acquisition complete.'); location.reload(); return; }
+            await renderAcqModal();
+          } finally { acqBusy = false; }
+        });
+        document.getElementById('acq-cancel-deal').addEventListener('click', async () => {
+          if (acqBusy) return; acqBusy = true;
+          try {
+            const { data, error } = await _supabase.rpc('cancel_acquisition', { p_acq_id: acq.id });
+            if (error || !data?.success) { errEl().textContent = acqReason(data?.reason) || error?.message; return; }
+            closeAcq(); location.reload();
+          } finally { acqBusy = false; }
+        });
+      };
+
+      const openAcq = async () => { acqOverlay.classList.add('open'); await renderAcqModal(); if (!acqPoll) acqPoll = setInterval(refreshChat, 4000); };
+
+      // Header control: non-owner → [Acquire]; owner with an incoming offer → [Review offer].
+      (async () => {
+        if (!isOwner && entId) {
+          acqWrap.innerHTML = `<button class="rl-btn pri" id="cp-acquire-btn" style="padding:8px 16px;">Acquire</button>`;
+          acqWrap.style.display = 'block';
+          document.getElementById('cp-acquire-btn').addEventListener('click', openAcq);
+        } else if (isOwner) {
+          const { data: offers } = await _supabase.from('corp_acquisitions').select('id').eq('target_corp_id', id).eq('status', 'negotiating');
+          const n = (offers || []).length;
+          if (n > 0) {
+            acqWrap.innerHTML = `<button class="rl-btn pri" id="cp-acquire-btn" style="padding:8px 16px;">Review offer${n > 1 ? 's (' + n + ')' : ''}</button>`;
+            acqWrap.style.display = 'block';
+            document.getElementById('cp-acquire-btn').addEventListener('click', openAcq);
+          }
+        }
+      })().catch(err => console.error('[acquire] render failed:', err));
     }
 
     if (!isPublic && isOwner) {
@@ -4057,6 +4239,18 @@ function initials(s, n) {
       <button class="rl-btn sec" id="rl-cancel">Cancel</button>
       <button class="rl-btn pri" id="rl-submit">Send Request</button>
     </div>
+  </div>
+</div>
+
+<!-- Acquisition negotiation modal (2.6.8.3). Body rendered by renderAcqModal():
+     propose (buyer, no open deal) or negotiate (price + chat + agree). -->
+<div class="rl-overlay" id="acq-overlay">
+  <div class="rl-modal" style="max-width:600px;">
+    <div class="rl-head">
+      <div class="ti" id="acq-title">Acquire <em>Corporation</em></div>
+      <div class="rl-x" id="acq-close">×</div>
+    </div>
+    <div class="rl-body" id="acq-body"></div>
   </div>
 </div>
 
