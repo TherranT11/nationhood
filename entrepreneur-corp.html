@@ -226,6 +226,7 @@
     line-height:1.4; }
   .sh-row-sub .accent { color:#8aaa6a; }
   .sh-row-sub .dim { color:#666; }
+  .sh-row-sub .red { color:#c98a8a; }
   .sh-row-actions { display:flex; gap:6px; align-items:center; }
   .sh-row-status { font-size:10px; letter-spacing:0.08em; text-transform:uppercase;
     color:#8aaa6a; font-weight:500; }
@@ -1514,6 +1515,27 @@ function initials(s, n) {
       return { allocation, lowestRate: annotated[0]?.rate ?? null };
     };
 
+    // Mirror of broker_buy_listing's commission + reputation math
+    // (20270184). Used by the Brokerage panel to preview what the
+    // server will compute when the listing sells at a given price.
+    // Sort order of CASE branches must match the SQL exactly:
+    //   price > cost × 1.20  →  +2  (highest)
+    //   price > cost × 1.10  →  +1
+    //   price < cost          →  −3
+    //   else (break-even band) → 0
+    const previewBrokerageOutcome = (cost, price) => {
+      const c = Math.max(0, Number(cost)  || 0);
+      const p = Math.max(0, Number(price) || 0);
+      const profit     = p - c;
+      const commission = Math.max(0, Math.floor((profit * 10) / 100));
+      let repDelta, repLabel, repClass;
+      if (p > Math.floor((c * 120) / 100))      { repDelta =  2; repLabel = '+2'; repClass = 'accent'; }
+      else if (p > Math.floor((c * 110) / 100)) { repDelta =  1; repLabel = '+1'; repClass = 'accent'; }
+      else if (p < c)                            { repDelta = -3; repLabel = '−3'; repClass = 'red';    }
+      else                                       { repDelta =  0; repLabel =  '0'; repClass = 'dim';    }
+      return { commission, nationTake: p - commission, profit, repDelta, repLabel, repClass };
+    };
+
     // Render the building-type picker once. Tier rows + nation
     // dropdown are filled by openBuildModal based on the type
     // selection (the visible tier set + valid nation list both
@@ -1799,6 +1821,122 @@ function initials(s, n) {
         `;
       }
 
+      // Brokerage Operations panel (Real Estate corps only, owner-only).
+      // My Active Listings (broker_corp_id = this corp) + Available to
+      // Broker (unowned buildings in nations where this corp owns a
+      // completed Real Estate Office). Talks to 20270184's
+      // broker_list_building / broker_set_price / broker_withdraw_listing
+      // RPCs. Pricing preview math mirrors the SQL commission +
+      // reputation tiers exactly so the player sees what the server
+      // will compute.
+      let brokeragePanelHtml = '';
+      if (isRealEstateCorp && isOwner) {
+        // Pull (a) my offices to know which nations I can broker in,
+        // (b) my active listings, (c) all unowned buildings in those
+        // nations. Two queries — offices first, then a single fetch
+        // for both listings + candidates filtered by my nation set.
+        const { data: myOffices, error: oErr } = await _supabase.from('corp_buildings')
+          .select('nation_id')
+          .eq('owner_corp_id', id)
+          .eq('building_type', 'real_estate_office')
+          .eq('status', 'completed');
+        if (oErr) console.warn('[entrepreneur-corp] RE office fetch error:', oErr.message);
+        const myNationIds = [...new Set((myOffices || []).map(r => r.nation_id).filter(Boolean))];
+
+        // My active listings (regardless of nation — once listed, the
+        // broker manages them even if the office in that nation lapses).
+        const { data: myListings, error: lErr } = await _supabase.from('corp_buildings')
+          .select('id, name, building_type, tier, cost_paid, list_price, broker_fee_paid, broker_listed_at_tick, nation:nations!nation_id(name)')
+          .eq('broker_corp_id', id)
+          .eq('status', 'completed')
+          .order('broker_listed_at_tick', { ascending: false });
+        if (lErr) console.warn('[entrepreneur-corp] my listings fetch error:', lErr.message);
+
+        // Available to broker — unowned + unbrokered + in my office nations.
+        let available = [];
+        if (myNationIds.length > 0) {
+          const { data: avail, error: aErr } = await _supabase.from('corp_buildings')
+            .select('id, name, building_type, tier, cost_paid, nation:nations!nation_id(name)')
+            .in('nation_id', myNationIds)
+            .is('owner_corp_id', null)
+            .is('broker_corp_id', null)
+            .eq('status', 'completed')
+            .order('cost_paid', { ascending: false });
+          if (aErr) console.warn('[entrepreneur-corp] available fetch error:', aErr.message);
+          available = avail || [];
+        }
+
+        const listings = myListings || [];
+        const activeHtml = listings.length
+          ? listings.map(b => {
+              const cost  = Number(b.cost_paid) || 0;
+              const price = Number(b.list_price) || 0;
+              const fee   = Number(b.broker_fee_paid) || 0;
+              const preview = previewBrokerageOutcome(cost, price);
+              return `
+                <div class="sh-row">
+                  <div class="sh-row-info">
+                    <div class="sh-row-name">${escapeHtml(b.name)}</div>
+                    <div class="sh-row-sub">
+                      ${buildingTypeLabel(b.building_type)} · ${escapeHtml(b.nation?.name || '—')} ·
+                      <span class="dim">cost ${fmtUsd(cost)}</span> ·
+                      asking <span class="accent">${fmtUsd(price)}</span> ·
+                      <span class="${preview.repClass}">commission ${fmtUsd(preview.commission)}, rep ${preview.repLabel}</span>
+                      <span class="dim"> · fee paid ${fmtUsd(fee)}</span>
+                    </div>
+                  </div>
+                  <div class="sh-row-actions">
+                    <button class="ap-btn-small accept sh-broker-reprice"
+                            data-bid="${b.id}"
+                            data-bname="${escapeHtml(b.name)}"
+                            data-cost="${cost}"
+                            data-price="${price}">Re-price</button>
+                    <button class="ap-btn-small reject sh-broker-withdraw"
+                            data-bid="${b.id}"
+                            data-bname="${escapeHtml(b.name)}"
+                            data-fee="${fee}">Withdraw</button>
+                  </div>
+                </div>`;
+            }).join('')
+          : `<div class="sh-empty">No active listings — pick an available property below to broker.</div>`;
+
+        let availableHtml;
+        if (myNationIds.length === 0) {
+          availableHtml = `<div class="sh-empty">You need a completed Real Estate Office in a nation before you can broker properties there.</div>`;
+        } else if (available.length === 0) {
+          availableHtml = `<div class="sh-empty">No unowned properties to broker in your office nations right now.</div>`;
+        } else {
+          availableHtml = available.map(b => {
+            const cost = Number(b.cost_paid) || 0;
+            const fee  = Math.max(1, Math.floor(cost * 2 / 100));
+            return `
+              <div class="sh-row">
+                <div class="sh-row-info">
+                  <div class="sh-row-name">${escapeHtml(b.name)}</div>
+                  <div class="sh-row-sub">
+                    ${buildingTypeLabel(b.building_type)} · ${escapeHtml(b.nation?.name || '—')} ·
+                    <span class="dim">cost ${fmtUsd(cost)}</span> ·
+                    lock fee <span class="accent">${fmtUsd(fee)}</span>
+                  </div>
+                </div>
+                <div class="sh-row-actions">
+                  <button class="ap-btn-small list sh-broker-list"
+                          data-bid="${b.id}"
+                          data-bname="${escapeHtml(b.name)}"
+                          data-cost="${cost}">List for Sale</button>
+                </div>
+              </div>`;
+          }).join('');
+        }
+
+        brokeragePanelHtml = `
+          <div class="sh-section-head">My Active Listings · ${listings.length}</div>
+          ${activeHtml}
+          <div class="sh-section-head">Available to Broker · ${available.length}</div>
+          ${availableHtml}
+        `;
+      }
+
       // Pending Loan Requests panel (Banking corps only). Shows EVERY
       // pending loan request across the world; rows where this bank
       // can act (owns a Banking Office in the borrower's HQ nation)
@@ -1853,7 +1991,7 @@ function initials(s, n) {
         }
       }
 
-      pj.innerHTML = launchBtn + listHtml + shippingPanelHtml + loanRequestsHtml;
+      pj.innerHTML = launchBtn + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml;
 
       if (isOwner && isConstructionCorp) {
         document.getElementById('cp-begin-construction').addEventListener('click', openBuildModal);
@@ -1867,16 +2005,16 @@ function initials(s, n) {
         // that piggy-back on the .list / .reject / .accept styling
         // classes for visual parity — they have their own handlers
         // wired below.
-        pj.querySelectorAll('.ap-btn-small.list:not(.sh-place-bid)').forEach(btn => {
+        pj.querySelectorAll('.ap-btn-small.list:not(.sh-place-bid):not(.sh-broker-list)').forEach(btn => {
           btn.addEventListener('click', () => openListSaleModal(btn.dataset.bid, btn.dataset.bname));
         });
         pj.querySelectorAll('.ap-btn-small.delist').forEach(btn => {
           btn.addEventListener('click', () => handleDelist(btn, btn.dataset.bid));
         });
-        pj.querySelectorAll('.ap-btn-small.accept:not(.cp-make-offer):not(.sh-edit-bid)').forEach(btn => {
+        pj.querySelectorAll('.ap-btn-small.accept:not(.cp-make-offer):not(.sh-edit-bid):not(.sh-broker-reprice)').forEach(btn => {
           btn.addEventListener('click', () => handleAcceptOffer(btn, btn.dataset.oid));
         });
-        pj.querySelectorAll('.ap-btn-small.reject:not(.sh-withdraw-bid)').forEach(btn => {
+        pj.querySelectorAll('.ap-btn-small.reject:not(.sh-withdraw-bid):not(.sh-broker-withdraw)').forEach(btn => {
           btn.addEventListener('click', () => handleRejectOffer(btn, btn.dataset.oid));
         });
         pj.querySelectorAll('.cp-make-offer').forEach(btn => {
@@ -1893,6 +2031,16 @@ function initials(s, n) {
         });
         pj.querySelectorAll('.sh-withdraw-bid').forEach(btn => {
           btn.addEventListener('click', () => handleWithdrawBid(btn, btn.dataset.rid, btn.dataset.bname));
+        });
+        // Brokerage-panel handlers (sh-broker-*).
+        pj.querySelectorAll('.sh-broker-list').forEach(btn => {
+          btn.addEventListener('click', () => openBrokerListModal(btn));
+        });
+        pj.querySelectorAll('.sh-broker-reprice').forEach(btn => {
+          btn.addEventListener('click', () => openBrokerListModal(btn, { mode: 'reprice' }));
+        });
+        pj.querySelectorAll('.sh-broker-withdraw').forEach(btn => {
+          btn.addEventListener('click', () => handleBrokerWithdraw(btn, btn.dataset.bid, btn.dataset.bname, Number(btn.dataset.fee) || 0));
         });
       }
     };
@@ -3001,6 +3149,127 @@ function initials(s, n) {
       }
     });
 
+    // ── Brokerage handlers (sh-broker-*) ──
+    let brokerInFlight = false;
+    let brokerModalSubmitting = false;
+    let brokerModalCtx = null;   // { mode, buildingId, buildingName, cost, currentPrice }
+
+    const openBrokerListModal = (btn, opts) => {
+      brokerModalCtx = {
+        mode:         opts?.mode || 'list',
+        buildingId:   btn.dataset.bid,
+        buildingName: btn.dataset.bname,
+        cost:         Number(btn.dataset.cost)  || 0,
+        currentPrice: Number(btn.dataset.price) || 0,
+      };
+      const isReprice = brokerModalCtx.mode === 'reprice';
+      document.getElementById('br-title').innerHTML = isReprice
+        ? 'Re-price <em>Listing</em>'
+        : 'List for <em>Sale</em>';
+      document.getElementById('br-prop').textContent = brokerModalCtx.buildingName || '—';
+      document.getElementById('br-cost').textContent = fmtUsd(brokerModalCtx.cost);
+      const feeEl = document.getElementById('br-fee');
+      if (isReprice) {
+        feeEl.textContent = 'Re-pricing is free — no additional lock fee.';
+      } else {
+        const fee = Math.max(1, Math.floor(brokerModalCtx.cost * 2 / 100));
+        feeEl.textContent = `Lock fee: ${fmtUsd(fee)} (2% of cost, paid to host nation, non-refundable).`;
+      }
+      const priceInput = document.getElementById('br-price');
+      priceInput.value = isReprice ? brokerModalCtx.currentPrice : Math.round(brokerModalCtx.cost * 1.15);
+      document.getElementById('br-err').textContent = '';
+      updateBrokerPreview();
+      document.getElementById('br-overlay').classList.add('open');
+      setTimeout(() => priceInput.focus(), 50);
+    };
+    const closeBrokerListModal = () => document.getElementById('br-overlay').classList.remove('open');
+
+    const updateBrokerPreview = () => {
+      if (!brokerModalCtx) return;
+      const price = Math.max(0, Number(document.getElementById('br-price').value) || 0);
+      const preview = previewBrokerageOutcome(brokerModalCtx.cost, price);
+      document.getElementById('br-preview').innerHTML = price <= 0
+        ? '<span class="dim">Set a price above $0 to preview the split.</span>'
+        : `If sold at <b>${fmtUsd(price)}</b>: commission <b class="accent">${fmtUsd(preview.commission)}</b> · nation gets <b>${fmtUsd(preview.nationTake)}</b> · CEO reputation <b class="${preview.repClass}">${preview.repLabel}</b>.`;
+    };
+    document.getElementById('br-price').addEventListener('input', updateBrokerPreview);
+    document.getElementById('br-close').addEventListener('click', closeBrokerListModal);
+    document.getElementById('br-cancel').addEventListener('click', closeBrokerListModal);
+    document.getElementById('br-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'br-overlay') closeBrokerListModal();
+    });
+
+    document.getElementById('br-submit').addEventListener('click', async () => {
+      if (brokerModalSubmitting || !brokerModalCtx) return;
+      const errEl = document.getElementById('br-err');
+      const price = Math.floor(Number(document.getElementById('br-price').value) || 0);
+      if (price < 1) { errEl.textContent = 'Price must be at least $1.'; return; }
+      brokerModalSubmitting = true;
+      const btn = document.getElementById('br-submit');
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = brokerModalCtx.mode === 'reprice' ? 'UPDATING…' : 'LISTING…';
+      errEl.textContent = '';
+      try {
+        const isReprice = brokerModalCtx.mode === 'reprice';
+        const { data, error: rpcErr } = await _supabase.rpc(
+          isReprice ? 'broker_set_price' : 'broker_list_building',
+          {
+            p_broker_corp_id: id,
+            p_building_id:    brokerModalCtx.buildingId,
+            p_list_price:     price,
+          });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            invalid_list_price:              'Price must be a positive whole-dollar amount.',
+            already_owned:                   'That property is no longer unowned.',
+            already_brokered:                'Another broker has already locked this listing.',
+            no_real_estate_office_in_nation: 'You need a completed Real Estate Office in that nation.',
+            insufficient_funds:              data?.need != null
+                                                ? `Corp treasury too low — need ${fmtUsd(Number(data.need))}, has ${fmtUsd(Number(data.have ?? 0))}.`
+                                                : 'Corp treasury too low.',
+            broker_not_real_estate:          'Only Real Estate corps can broker.',
+            not_broker_corp_owner:           'You do not own this corp.',
+            not_brokered:                    'No active brokerage on this property.',
+            not_your_listing:                'You are not the broker of this listing.',
+            building_not_found:              'Property no longer exists.',
+            not_completed:                   'Property is not yet completed.',
+          };
+          errEl.textContent = REASON[data?.reason] || ('Could not list: ' + (data?.reason || 'unknown'));
+          brokerModalSubmitting = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        errEl.textContent = 'Failed: ' + (e?.message || e);
+        brokerModalSubmitting = false; btn.disabled = false; btn.textContent = prev;
+      }
+    });
+
+    const handleBrokerWithdraw = async (btn, buildingId, buildingName, feePaid) => {
+      if (brokerInFlight) return;
+      const msg = `Withdraw listing for "${buildingName}"?\n\nThe ${fmtUsd(feePaid)} lock fee is non-refundable.`;
+      if (!confirm(msg)) return;
+      brokerInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = '…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('broker_withdraw_listing', {
+          p_broker_corp_id: id, p_building_id: buildingId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          alert('Could not withdraw: ' + (data?.reason || 'unknown'));
+          brokerInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        brokerInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
     await renderProjects();
     await renderFinance();
 
@@ -3173,6 +3442,35 @@ function initials(s, n) {
     <div class="bm-foot">
       <button class="bm-btn sec" id="pb-cancel">Cancel</button>
       <button class="bm-btn pri" id="pb-submit">Place Bid</button>
+    </div>
+  </div>
+</div>
+
+<!-- List / Re-price modal (brokerage). RPCs: broker_list_building,
+     broker_set_price. -->
+<div class="bm-overlay" id="br-overlay">
+  <div class="bm-modal" style="max-width:540px;">
+    <div class="bm-head">
+      <div class="ti" id="br-title">List for <em>Sale</em></div>
+      <div class="bm-x" id="br-close">×</div>
+    </div>
+    <div class="bm-body">
+      <div class="bm-label">Property</div>
+      <div class="bm-nation" id="br-prop">—</div>
+
+      <div class="bm-label">Construction Cost</div>
+      <div class="bm-nation" id="br-cost">—</div>
+
+      <div class="bm-label">Asking Price ($)</div>
+      <input type="number" class="bm-input" id="br-price" min="1" max="100000000000" step="1" placeholder="e.g. 55,000,000">
+
+      <div class="sh-bid-summary" id="br-fee" style="margin-top:8px;">—</div>
+      <div class="sh-bid-summary" id="br-preview" style="margin-top:8px;">—</div>
+      <div class="bm-err" id="br-err"></div>
+    </div>
+    <div class="bm-foot">
+      <button class="bm-btn sec" id="br-cancel">Cancel</button>
+      <button class="bm-btn pri" id="br-submit">List for Sale</button>
     </div>
   </div>
 </div>

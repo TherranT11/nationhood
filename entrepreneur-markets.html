@@ -273,6 +273,37 @@
   </div>
 </div>
 
+<!-- Broker Buy modal — purchase a broker-listed property at the asking
+     price. Single confirm step; no negotiation (the existing offer
+     flow is for owner-listed properties only). RPC: broker_buy_listing. -->
+<div class="po-overlay" id="bb-overlay">
+  <div class="po-modal">
+    <div class="po-head">
+      <div class="ti">Buy <em>Listing</em></div>
+      <div class="po-x" id="bb-close">×</div>
+    </div>
+    <div class="po-body">
+      <div class="po-label">Property</div>
+      <div class="po-static" id="bb-prop">—</div>
+
+      <div class="po-label">Asking Price</div>
+      <div class="po-static"><span class="ask" id="bb-asking">—</span></div>
+
+      <div class="po-label">Buy via Corp</div>
+      <select class="po-select" id="bb-corp"><option>Loading…</option></select>
+
+      <div class="po-static" id="bb-note" style="margin-top:8px; color:#888; font-size:11px; line-height:1.5;">
+        Pays the asking price from the selected corp's treasury. Sector-locked.
+      </div>
+      <div class="po-err" id="bb-err"></div>
+    </div>
+    <div class="po-foot">
+      <button class="po-btn sec" id="bb-cancel">Cancel</button>
+      <button class="po-btn pri" id="bb-submit">Buy Now</button>
+    </div>
+  </div>
+</div>
+
 <!-- Place Offer modal -->
 <div class="po-overlay" id="po-overlay">
   <div class="po-modal">
@@ -491,23 +522,40 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
     render('');
     document.getElementById('mk-search').addEventListener('input', (e) => render(e.target.value));
 
-    // ───────────── Properties view (RE retail listings) ─────────────
-    // Same data source the corp-page Browse Market modal would show
-    // if filtered to RE sellers: corp_buildings with list_price set
-    // + status=completed + owner industry=real_estate. Surfaced on
-    // the global Markets page so non-RE players can see what's for
-    // sale and place offers.
+    // ───────────── Properties view ─────────────
+    // Unified listing surface for any corp_buildings row with a
+    // list_price set + status=completed. Two flavours land here:
+    //   • Retail   — owner is a Real Estate corp; buyer places an
+    //                offer via place_offer (existing flow).
+    //   • Broker   — broker_corp_id set, owner_corp_id NULL (seed
+    //                inventory or future abandoned holdings, listed
+    //                by a Real Estate corp acting as broker per
+    //                20270184). Buyer pays the listed price directly
+    //                via broker_buy_listing; broker takes 10% of
+    //                profit, host nation gets the rest.
+    // Sorting: cheapest first across both flavours.
     let propsLoaded = false;
     let myCorps = [];
+
+    // Sector-lock mirror of broker_buy_listing — used to grey out
+    // the Buy button when the viewer has no corp of the matching
+    // industry. RHQ + real_estate_office have no restriction.
+    const SECTOR_FOR_TYPE = {
+      construction_yard: 'construction',
+      port:              'shipping',
+      banking_office:    'banking',
+    };
 
     const loadProperties = async () => {
       if (propsLoaded) return;
       propsLoaded = true;
       const el = document.getElementById('props-rows');
       const { data: props, error: pErr } = await _supabase.from('corp_buildings')
-        .select('id, name, tier, building_type, nation_id, list_price, owner_corp_id, '
+        .select('id, name, tier, building_type, nation_id, list_price, cost_paid, '
+              + 'owner_corp_id, broker_corp_id, '
               + 'nation:nations!nation_id(name), '
-              + 'owner:entrepreneur_corps!owner_corp_id(name, industry)')
+              + 'owner:entrepreneur_corps!owner_corp_id(name, industry), '
+              + 'broker:entrepreneur_corps!broker_corp_id(name)')
         .not('list_price', 'is', null)
         .eq('status', 'completed')
         .order('list_price', { ascending: true });
@@ -515,40 +563,67 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
         el.innerHTML = `<div class="state">Failed to load properties: ${escapeHtml(pErr.message)}</div>`;
         return;
       }
-      // Filter: only RE-owned (retail listings); skip orphans (owner deleted).
+      // Lazy-load the viewer's corps once for the Buy / Place Offer
+      // affordances. Same myCorps cache the Offers view uses.
+      if (myCorps.length === 0 && entId) {
+        const { data: mine } = await _supabase.from('entrepreneur_corps')
+          .select('id, name, industry').eq('owner_faction_id', entId);
+        myCorps = mine || [];
+      }
+
+      // Split rows by flavour. Broker listings have broker_corp_id;
+      // retail listings have an RE owner. Anything else (orphan
+      // RE-listing whose owner was deleted, or stale broker rows
+      // post-cascade) is dropped silently.
       const rows = (props || []).filter(b =>
-        b.owner_corp_id !== null && b.owner?.industry === 'real_estate');
+        (b.broker_corp_id && !b.owner_corp_id) ||
+        (b.owner_corp_id && b.owner?.industry === 'real_estate'));
+
       document.getElementById('props-foot').textContent =
-        `REAL ESTATE MARKET · ${rows.length} PROPERT${rows.length === 1 ? 'Y' : 'IES'} LISTED · UPDATED EACH TICK`;
+        `PROPERTY MARKET · ${rows.length} LISTING${rows.length === 1 ? '' : 'S'} · UPDATED EACH TICK`;
       if (rows.length === 0) {
         el.innerHTML = '<div class="state">No properties currently for sale.</div>';
         return;
       }
-      el.innerHTML = rows.map(b => `
-        <div class="grid props row">
-          <div>
-            <div class="c-name">${escapeHtml(b.name)}</div>
-            <div class="c-sub btype-${b.building_type || 'unknown'}">${escapeHtml(buildingTypeLabel(b.building_type))}</div>
-          </div>
-          <div data-mkey="Tier"><span class="tier-pill">${TIER_LABEL[b.tier] || escapeHtml(b.tier)}</span></div>
-          <div class="ceo" data-mkey="Nation">${escapeHtml(b.nation?.name || '—')}</div>
-          <div class="seller" data-mkey="Seller">
-            ${escapeHtml(b.owner?.name || 'Unknown')}
-            <span class="sub">REAL ESTATE</span>
-          </div>
-          <div class="num" data-mkey="Asking">${fmtUsd(Number(b.list_price))}</div>
-          <div>
-            <button class="mkt-action place-offer-btn" data-bid="${b.id}"
-              data-bname="${escapeHtml(b.name)}"
-              data-btype="${b.building_type || ''}"
-              data-asking="${b.list_price}">Place Offer</button>
-          </div>
-        </div>
-      `).join('');
-      // Wire Place Offer buttons.
+      el.innerHTML = rows.map(b => {
+        const isBroker  = !!b.broker_corp_id;
+        const sector    = SECTOR_FOR_TYPE[b.building_type] || null;
+        const agentName = isBroker ? (b.broker?.name || 'Broker') : (b.owner?.name || 'Unknown');
+        const agentTag  = isBroker ? 'BROKER' : 'REAL ESTATE';
+        const actionLbl = isBroker ? 'Buy'   : 'Place Offer';
+        const actionCls = isBroker ? 'broker-buy-btn' : 'place-offer-btn';
+        return `
+          <div class="grid props row">
+            <div>
+              <div class="c-name">${escapeHtml(b.name)}</div>
+              <div class="c-sub btype-${b.building_type || 'unknown'}">${escapeHtml(buildingTypeLabel(b.building_type))}</div>
+            </div>
+            <div data-mkey="Tier"><span class="tier-pill">${TIER_LABEL[b.tier] || escapeHtml(b.tier)}</span></div>
+            <div class="ceo" data-mkey="Nation">${escapeHtml(b.nation?.name || '—')}</div>
+            <div class="seller" data-mkey="${isBroker ? 'Broker' : 'Seller'}">
+              ${escapeHtml(agentName)}
+              <span class="sub">${agentTag}</span>
+            </div>
+            <div class="num" data-mkey="Asking">${fmtUsd(Number(b.list_price))}</div>
+            <div>
+              <button class="mkt-action ${actionCls}" data-bid="${b.id}"
+                data-bname="${escapeHtml(b.name)}"
+                data-btype="${b.building_type || ''}"
+                data-sector="${sector || ''}"
+                data-asking="${b.list_price}">${actionLbl}</button>
+            </div>
+          </div>`;
+      }).join('');
+      // Wire retail Place Offer buttons (existing flow).
       el.querySelectorAll('.place-offer-btn').forEach(btn => {
         btn.addEventListener('click', () => openOfferModal(
           btn.dataset.bid, btn.dataset.bname, Number(btn.dataset.asking), btn.dataset.btype));
+      });
+      // Wire broker Buy buttons (broker_buy_listing).
+      el.querySelectorAll('.broker-buy-btn').forEach(btn => {
+        btn.addEventListener('click', () => openBrokerBuyModal(
+          btn.dataset.bid, btn.dataset.bname, Number(btn.dataset.asking),
+          btn.dataset.btype, btn.dataset.sector));
       });
     };
 
@@ -638,6 +713,97 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
     let offerSubmitting = false;
     let poBuildingId = null;
     let poAsking = 0;
+
+    // ───────────── Broker Buy modal (broker_buy_listing) ─────────────
+    let bbInFlight = false;
+    let bbBuildingId = null;
+    let bbSector = '';   // '' = no sector lock (RHQ / RE office)
+
+    const openBrokerBuyModal = async (buildingId, buildingName, asking, buildingType, sector) => {
+      bbBuildingId = buildingId;
+      bbSector     = sector || '';
+      const typeLabel = buildingType ? buildingTypeLabel(buildingType) : '';
+      document.getElementById('bb-prop').textContent = typeLabel
+        ? `${buildingName || '—'} · ${typeLabel}`
+        : (buildingName || '—');
+      document.getElementById('bb-asking').textContent = fmtUsd(asking);
+      document.getElementById('bb-err').textContent = '';
+      // Lazy-fetch viewer's corps if Properties didn't already.
+      if (myCorps.length === 0 && entId) {
+        const { data: mine } = await _supabase.from('entrepreneur_corps')
+          .select('id, name, industry').eq('owner_faction_id', entId);
+        myCorps = mine || [];
+      }
+      // Filter the buyer-corp dropdown to corps that match the sector
+      // lock — server enforces the same rule, but pre-filtering here
+      // saves the player from picking an ineligible corp.
+      const eligible = bbSector
+        ? myCorps.filter(c => c.industry === bbSector)
+        : myCorps;
+      const sel = document.getElementById('bb-corp');
+      if (myCorps.length === 0) {
+        sel.innerHTML = '<option value="">(no corps — found one first)</option>';
+      } else if (eligible.length === 0) {
+        sel.innerHTML = `<option value="">(no eligible corps — needs ${escapeHtml(bbSector)} industry)</option>`;
+      } else {
+        sel.innerHTML = eligible.map(c =>
+          `<option value="${c.id}">${escapeHtml(c.name)}${c.industry ? ' (' + (c.industry === 'real_estate' ? 'Real Estate' : titleCase(c.industry)) + ')' : ''}</option>`
+        ).join('');
+      }
+      document.getElementById('bb-overlay').classList.add('open');
+    };
+    const closeBrokerBuyModal = () => document.getElementById('bb-overlay').classList.remove('open');
+    document.getElementById('bb-close').addEventListener('click', closeBrokerBuyModal);
+    document.getElementById('bb-cancel').addEventListener('click', closeBrokerBuyModal);
+    document.getElementById('bb-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'bb-overlay') closeBrokerBuyModal();
+    });
+
+    document.getElementById('bb-submit').addEventListener('click', async () => {
+      if (bbInFlight) return;
+      const errEl = document.getElementById('bb-err');
+      const corpId = document.getElementById('bb-corp').value;
+      if (!corpId) { errEl.textContent = 'Pick a corp to buy via.'; return; }
+      bbInFlight = true;
+      const btn = document.getElementById('bb-submit');
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'BUYING…';
+      errEl.textContent = '';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('broker_buy_listing', {
+          p_buyer_corp_id: corpId,
+          p_building_id:   bbBuildingId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            not_brokered:                'No longer a brokered listing.',
+            already_owned:               'Already owned by another corp.',
+            not_completed:               'Property is not yet completed.',
+            no_list_price:               'Listing has no price set.',
+            broker_cannot_buy_own_listing: 'A broker can’t buy their own listing.',
+            wrong_sector:                data?.required
+                                          ? `Sector-locked to ${data.required} corps. Pick a ${data.required} corp.`
+                                          : 'Wrong sector for this building.',
+            insufficient_funds:          data?.need != null
+                                          ? `Corp treasury too low — need ${fmtUsd(Number(data.need))}, has ${fmtUsd(Number(data.have ?? 0))}.`
+                                          : 'Corp treasury too low.',
+            not_buyer_corp_owner:        'You do not own the selected corp.',
+            buyer_corp_not_found:        'The selected corp was not found.',
+            broker_corp_not_found:       'The broker corp no longer exists.',
+            building_not_found:          'Property no longer exists.',
+          };
+          errEl.textContent = REASON[data?.reason] || ('Could not buy: ' + (data?.reason || 'unknown'));
+          bbInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        btn.textContent = 'PURCHASED ✓ — refreshing…';
+        setTimeout(() => location.reload(), 600);
+      } catch (e) {
+        errEl.textContent = 'Failed: ' + (e?.message || e);
+        bbInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    });
 
     const openOfferModal = async (buildingId, buildingName, asking, buildingType) => {
       poBuildingId = buildingId;
