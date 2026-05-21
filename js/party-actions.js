@@ -1416,6 +1416,10 @@ function renderLeaderCards(leaderName, partyColor, faction) {
         + renderCentralBankGovernorPanel(faction);
 }
 
+// Central Bank pool is raw dollars (same unit as ministry balances);
+// display it in the game's abstract $ unit ($1 = $1M raw).
+function cbPoolAbstract(raw) { return Math.round(Number(raw || 0) / 1_000_000); }
+
 // True when this faction currently holds the Governor of the Central Bank
 // seat with an unexpired term. Reads the nations.central_bank_governor_*
 // columns off cached state.
@@ -1806,8 +1810,8 @@ function ministryActionLockReason(actionId, faction, roleDescriptor) {
         }
     }
     if (actionId === 'cb_lower_rate' || actionId === 'cb_raise_rate') {
-        if (Number(nation?.central_bank_discretionary ?? 0) < 1) {
-            return 'The Central Bank lending pool is empty — $1 is required to move the rate.';
+        if (Number(nation?.central_bank_discretionary ?? 0) < 1_000_000) {
+            return 'The Central Bank lending pool is empty — $1 is required to move the rate. Fund it with a funding bill.';
         }
     }
     if (actionId === 'invest_in_sports_culture') {
@@ -1867,8 +1871,8 @@ function renderMinistryDetail(faction, partyColor) {
     if (isGovernor) {
         const n = _state?.nation || {};
         const rate = Number(n.central_bank_interest_rate ?? 5);
-        const disc = Number(n.central_bank_discretionary ?? 0);
-        const lendingM = disc * 100;
+        const poolAbstract = cbPoolAbstract(n.central_bank_discretionary);
+        const lendingM = poolAbstract * 100;  // each $1 ($1M) backs $100M
         const lendingFmt = lendingM >= 1000
             ? `$${(lendingM / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}B`
             : `$${lendingM.toLocaleString()}M`;
@@ -1880,7 +1884,7 @@ function renderMinistryDetail(faction, partyColor) {
                 <div style="font-size:18px;font-weight:700;color:#c8a832;margin-top:2px;">${rate.toFixed(2)}%</div>
                 <div style="font-size:8px;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;margin-top:6px;">Lending Capital</div>
                 <div style="font-size:12px;font-weight:700;color:var(--green);">${lendingFmt}</div>
-                <div style="font-size:8px;color:var(--text-dim);margin-top:4px;">Term: ${ticksLeft} ticks left · pool $${disc.toLocaleString()}</div>
+                <div style="font-size:8px;color:var(--text-dim);margin-top:4px;">Term: ${ticksLeft} ticks left · pool $${poolAbstract.toLocaleString()}</div>
             </div>`;
     }
 
@@ -3369,7 +3373,7 @@ async function openCbRateModal(root, direction) {
         const resultHtml = result ? `
             <div style="margin-top:12px;padding:12px;background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.22);">
                 <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;margin-bottom:4px;">Rate updated</div>
-                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">New policy rate <strong>${Number(result.rate).toFixed(2)}%</strong> · lending pool <strong>$${Number(result.discretionary).toLocaleString()}</strong></div>
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">New policy rate <strong>${Number(result.rate).toFixed(2)}%</strong> · lending pool <strong>$${cbPoolAbstract(result.discretionary).toLocaleString()}</strong></div>
             </div>` : '';
         const errorHtml = errorMsg ? `<div style="font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:8px;">${esc(errorMsg)}</div>` : '';
 
@@ -3383,7 +3387,7 @@ async function openCbRateModal(root, direction) {
                     <button class="pa-modal-close" id="pa-cb-close">&times;</button>
                 </div>
                 <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
-                    Costs <strong style="color:#c8a832;">$1</strong> from the lending pool ($${disc.toLocaleString()} available). ${isLower ? 'Stimulus — raises GDP growth.' : 'Tightening — lowers GDP growth.'} Rate clamps 0–20%.
+                    Costs <strong style="color:#c8a832;">$1</strong> from the lending pool ($${cbPoolAbstract(disc).toLocaleString()} available). ${isLower ? 'Stimulus — raises GDP growth.' : 'Tightening — lowers GDP growth.'} Rate clamps 0–20%.
                 </div>
                 <div class="pa-modal-body" style="gap:12px;">
                     <div>

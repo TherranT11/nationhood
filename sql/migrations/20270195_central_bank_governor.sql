@@ -14,21 +14,20 @@
 --   • One-shot GDP effect at the action: lowering by X% nudges gdp_growth
 --     +0.2·X; raising by X% nudges gdp_growth −0.3·X (gdp_growth is the
 --     0–100 momentum stat, 50 = neutral; numeric, so fractions are kept).
---   • Lending capital is DISPLAY-ONLY in v1: central_bank_discretionary is
---     a pool of whole dollars; lending capital = pool × $100M. The $1 rate
---     action cost is drawn from this pool.
+--   • Lending capital is DISPLAY-ONLY: central_bank_discretionary is a raw-
+--     dollar pool (same unit as ministries.discretionary_balance); lending
+--     capital = (pool ÷ $1M) × $100M. The $1 rate-change cost is drawn from
+--     this pool ($1 = $1M raw, the game's abstract unit).
 --
--- KNOWN ISSUE (v1): central_bank_discretionary has no funding path yet — it
--- defaults to 0 and nothing credits it. Until a funding source is decided
--- (national budget? finance ministry? per-tick allocation?), the pool stays
--- at 0, lending capital shows $0, and central_bank_set_rate returns
--- 'insufficient_discretionary' (the rate can't be moved). Appointment +
--- term + the displayed rate all work; only the rate-move action is gated on
--- this. Wire funding in a follow-up once the source is confirmed.
+-- FUNDING: the pool is filled by a funding bill, exactly like a ministry —
+-- the funding-article framework (bills.js enactBill) credits
+-- central_bank_discretionary and pulls the money from the national budget
+-- (overflow to debt). The funding target key is 'central_bank'.
 --
 -- faction_sector_popularity-style admin-write tables aren't involved; the
--- nations columns are written through these SECURITY DEFINER RPCs so the
--- client never needs direct write access.
+-- nations columns are written through these SECURITY DEFINER RPCs (and the
+-- enactBill funding path, which runs service-role) so the client never
+-- needs direct write access.
 -- ════════════════════════════════════════════════════════════════════
 
 BEGIN;
@@ -44,7 +43,7 @@ ALTER TABLE public.nations
 COMMENT ON COLUMN public.nations.central_bank_interest_rate IS
     'Central Bank policy interest rate, percent (0–20). Starts at 5.00. Moved by central_bank_set_rate.';
 COMMENT ON COLUMN public.nations.central_bank_discretionary IS
-    'Central Bank discretionary pool, in WHOLE dollars. Lending capital (display-only) = this × $100,000,000. The $1 rate-change cost is drawn from here.';
+    'Central Bank discretionary pool, in RAW dollars (same unit as ministries.discretionary_balance; $1M = 1000000). Filled by funding bills (target key ''central_bank''). Lending capital (display-only) = (pool / 1e6) * $100M. The rate-change cost ($1M raw) is drawn from here.';
 COMMENT ON COLUMN public.nations.central_bank_governor_party_id IS
     'Party faction currently holding the Governor of the Central Bank seat (NULL = vacant). Set via appoint_central_bank_governor / governor_confirmation bill.';
 COMMENT ON COLUMN public.nations.central_bank_governor_term_end_tick IS
@@ -172,8 +171,9 @@ COMMENT ON FUNCTION public.appoint_central_bank_governor(uuid) IS
     'Head of government appoints a party to the Governor of the Central Bank seat. Presidential / semi-presidential / monarchy appoint directly; parliamentary opens a governor_confirmation bill (resolved in bills.js). 96-tick term, no dismissal — a seated, in-term Governor blocks reappointment.';
 
 -- ── Rate-change RPC ─────────────────────────────────────────────────
--- Governor-only. $1 (from central_bank_discretionary) per action; moves
--- the rate up/down by up to 3%, clamped 0–20%. One-shot GDP nudge.
+-- Governor-only. $1 (= $1M raw, from central_bank_discretionary) per
+-- action; moves the rate up/down by up to 3%, clamped 0–20%. One-shot
+-- GDP nudge.
 CREATE OR REPLACE FUNCTION public.central_bank_set_rate(p_direction text, p_pct int)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -226,7 +226,8 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'term_expired');
     END IF;
 
-    IF COALESCE(v_disc, 0) < 1 THEN
+    -- Each rate move costs $1 = $1M raw, drawn from the lending pool.
+    IF COALESCE(v_disc, 0) < 1000000 THEN
         RETURN jsonb_build_object('success', false, 'reason', 'insufficient_discretionary');
     END IF;
 
@@ -244,7 +245,7 @@ BEGIN
 
     UPDATE nations SET
         central_bank_interest_rate = v_new_rate,
-        central_bank_discretionary = v_disc - 1,
+        central_bank_discretionary = v_disc - 1000000,
         gdp_growth = v_new_gdp
      WHERE id = v_nation;
 
@@ -254,7 +255,7 @@ BEGIN
         'pct',             p_pct,
         'rate',            v_new_rate,
         'gdpGrowth',       v_new_gdp,
-        'discretionary',   v_disc - 1
+        'discretionary',   v_disc - 1000000
     );
 END;
 $$;
@@ -262,7 +263,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.central_bank_set_rate(text, int) TO authenticated;
 
 COMMENT ON FUNCTION public.central_bank_set_rate(text, int) IS
-    'Governor of the Central Bank moves the policy rate up/down by up to 3% (clamp 0–20%) for $1 from central_bank_discretionary. One-shot GDP nudge: lower +0.2·X, raise −0.3·X on gdp_growth.';
+    'Governor of the Central Bank moves the policy rate up/down by up to 3% (clamp 0–20%) for $1 ($1M raw) from central_bank_discretionary. One-shot GDP nudge: lower +0.2·X, raise −0.3·X on gdp_growth.';
 
 NOTIFY pgrst, 'reload schema';
 

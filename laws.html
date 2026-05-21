@@ -1898,7 +1898,16 @@ function hideTextArticleForm() {
     _showAllArticleButtons(); _hideAllArticleForms();
 }
 
-const FUNDING_MINISTRY_LABELS = { interior:'Interior', foreign:'Foreign Affairs', defense:'Defense', finance:'Finance', education:'Education', healthcare:'Healthcare', labor:'Labor', justice:'Justice', trade:'Trade', energy:'Energy', transportation:'Transport', sports:'Sports' };
+const FUNDING_MINISTRY_LABELS = { interior:'Interior', foreign:'Foreign Affairs', defense:'Defense', finance:'Finance', education:'Education', healthcare:'Healthcare', labor:'Labor', justice:'Justice', trade:'Trade', energy:'Energy', transportation:'Transport', sports:'Sports', central_bank:'Central Bank' };
+
+// The Central Bank discretionary pool lives on nations.central_bank_discretionary
+// (raw dollars), not a ministries row — so its balance is read off the nation
+// rather than window._allMinistries.
+function _fundingTargetBalanceRaw(key) {
+    if (key === 'central_bank') return Number(currentNation?.central_bank_discretionary || 0);
+    const mRow = (window._allMinistries || []).find(m => m.ministry_key === key);
+    return Number(mRow?.discretionary_balance || 0);
+}
 
 // Per-institution slider math used to live here; institutions are
 // removed and the funding rework will replace this with new article
@@ -2405,8 +2414,7 @@ function onFundingMinistryChange() {
     document.getElementById('add-funding-btn').disabled = false;
     document.getElementById('funding-discretionary').value = 0;
     // Show current discretionary balance
-    const mRow = (window._allMinistries || []).find(m => m.ministry_key === key);
-    const curBal = Number(mRow?.discretionary_balance || 0);
+    const curBal = _fundingTargetBalanceRaw(key);
     const balLabel = document.getElementById('funding-discretionary-balance');
     if (balLabel) {
         const fmtBal = curBal >= 1000000 ? '$' + (curBal / 1000000).toFixed(1) + 'M' : '$' + Math.round(curBal).toLocaleString();
@@ -2425,8 +2433,7 @@ async function addFundingArticle() {
     if (discretionary === 0) { alert('No funding changes made. Set discretionary funds.'); return; }
     // Cap withdrawals at current balance
     if (discretionary < 0) {
-        const mRow = (window._allMinistries || []).find(m => m.ministry_key === key);
-        const curBal = Number(mRow?.discretionary_balance || 0);
+        const curBal = _fundingTargetBalanceRaw(key);
         const maxWithdrawalM = Math.floor(curBal / 1000000);
         if (Math.abs(discretionary) > maxWithdrawalM) {
             alert(`Cannot withdraw more than the current balance ($${maxWithdrawalM}M available).`);

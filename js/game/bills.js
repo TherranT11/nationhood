@@ -3752,6 +3752,27 @@ export async function enactBill(supabase, bill, currentTick) {
         const grantAmountM = Number(fd.discretionary) || 0;
         if (grantAmountM !== 0) {
             const grantRaw = grantAmountM * 1_000_000;
+            if (fd.ministry_key === 'central_bank') {
+                // Central Bank pool lives on nations.central_bank_discretionary
+                // (raw dollars, same unit as ministry balances), not a
+                // ministries row. Credit/debit it; budget/debt below is shared.
+                const { data: cbNation, error: cbReadErr } = await supabase.from('nations')
+                    .select('central_bank_discretionary')
+                    .eq('id', bill.nation_id)
+                    .maybeSingle();
+                if (cbReadErr) {
+                    console.error('[enactBill] failed to read central_bank_discretionary:', cbReadErr.message);
+                }
+                const curBalance = Number(cbNation?.central_bank_discretionary || 0);
+                const newBalance = Math.max(0, curBalance + grantRaw);
+                const { error: cbWriteErr } = await supabase.from('nations')
+                    .update({ central_bank_discretionary: newBalance })
+                    .eq('id', bill.nation_id);
+                if (cbWriteErr) {
+                    console.error('[enactBill] failed to update central_bank_discretionary:', cbWriteErr.message);
+                }
+                console.log(`[enactBill] central_bank discretionary ${curBalance} → ${newBalance} (${grantAmountM > 0 ? '+' : ''}${grantAmountM}M)`);
+            } else {
             // Credit (or debit) the ministry's discretionary_balance
             const { data: curMinistry, error: balReadErr } = await supabase.from('ministries')
                 .select('discretionary_balance')
@@ -3773,6 +3794,7 @@ export async function enactBill(supabase, bill, currentTick) {
                 console.error(`[enactBill] failed to update discretionary_balance for ${fd.ministry_key}:`, balWriteErr.message);
             }
             console.log(`[enactBill] discretionary: ${fd.ministry_key} balance ${curBalance} → ${newBalance} (${grantAmountM > 0 ? '+' : ''}${grantAmountM}M)`);
+            }
 
             // Fund the grant from the treasury first; only the shortfall
             // becomes debt. Mirrors chargePolicyUpfrontCost ("Cost: pull
