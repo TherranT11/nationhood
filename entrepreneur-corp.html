@@ -873,10 +873,10 @@ function initials(s, n) {
         if (isOwner && c.for_sale) {
           const offersHtml = pending.length
             ? pending.map(o => `<div class="tc-row" style="justify-content:space-between;margin-top:6px;gap:8px;">
-                  <span style="font-size:11px;">${escapeHtml(o.buyer?.faction_name || 'Bidder')} · $${Number(o.amount).toLocaleString()}</span>
+                  <span style="font-size:11px;">${escapeHtml(o.buyer?.faction_name || 'Bidder')} · ${fmtUsd(o.amount)}</span>
                   <button class="tc-btn cp-accept-sale" data-oid="${o.id}">ACCEPT</button></div>`).join('')
             : `<div class="tc-msg" style="text-align:center;">No offers yet.</div>`;
-          fsWrap.innerHTML = `<div class="role-eyebrow" style="text-align:center;">FOR SALE · $${Number(c.sale_price || 0).toLocaleString()}</div>
+          fsWrap.innerHTML = `<div class="role-eyebrow" style="text-align:center;">FOR SALE · ${fmtUsd(c.sale_price || 0)}</div>
             <div class="tc-row" style="justify-content:center;margin-top:8px;"><button id="cp-unlist-btn" class="tc-btn">UNLIST</button></div>
             ${offersHtml}<div class="tc-msg" id="cp-fs-msg" style="text-align:center;"></div>`;
           fsWrap.style.display = 'block';
@@ -893,7 +893,7 @@ function initials(s, n) {
             try { const { data, error } = await _supabase.rpc('accept_corp_sale_offer', { p_offer_id: btn.dataset.oid });
               if (error) throw error;
               if (!reloadOnOk(data)) {
-                const R = { buyer_insufficient_funds: `Buyer's treasury only holds $${data && data.have != null ? Number(data.have).toLocaleString() : '?'}.`, offer_not_pending: 'That offer is no longer open.' };
+                const R = { buyer_insufficient_funds: `Buyer's treasury only holds ${data && data.have != null ? fmtUsd(data.have) : '?'}.`, offer_not_pending: 'That offer is no longer open.' };
                 msg(R[data && data.reason] || 'Could not accept the offer.');
               }
             } catch (e) { msg(e?.message || 'Failed.'); } finally { busy = false; }
@@ -911,7 +911,7 @@ function initials(s, n) {
             <div class="tc-row" style="margin-top:8px;justify-content:center;">
               <input id="cp-fs-amt" class="tc-qty" type="number" min="1" step="1" value="${rec}" />
               <button id="cp-fs-btn" class="tc-btn">LIST</button></div>
-            <div class="tc-msg" style="text-align:center;">Recommended $${rec.toLocaleString()} · cash − debt + property</div>
+            <div class="tc-msg" style="text-align:center;">Recommended ${fmtUsd(rec)} · cash − debt + property</div>
             <div class="tc-msg" id="cp-fs-msg" style="text-align:center;"></div>`;
           fsWrap.style.display = 'block';
           let busy = false;
@@ -931,11 +931,11 @@ function initials(s, n) {
             .select('id, name, treasury_cash').eq('owner_faction_id', entId).neq('id', id);
           const mine = myCorps || [];
           if (!mine.length) {
-            fsWrap.innerHTML = `<div class="role-eyebrow" style="text-align:center;">FOR SALE · $${Number(c.sale_price || 0).toLocaleString()}</div>
+            fsWrap.innerHTML = `<div class="role-eyebrow" style="text-align:center;">FOR SALE · ${fmtUsd(c.sale_price || 0)}</div>
               <div class="tc-msg" style="text-align:center;">You need a corporation to fund an offer.</div>`;
           } else {
-            const opts = mine.map(mc => `<option value="${mc.id}">${escapeHtml(mc.name)} · $${Math.round(Number(mc.treasury_cash) || 0).toLocaleString()}</option>`).join('');
-            fsWrap.innerHTML = `<div class="role-eyebrow" style="text-align:center;">FOR SALE · $${Number(c.sale_price || 0).toLocaleString()}</div>
+            const opts = mine.map(mc => `<option value="${mc.id}">${escapeHtml(mc.name)} · ${fmtUsd(mc.treasury_cash || 0)}</option>`).join('');
+            fsWrap.innerHTML = `<div class="role-eyebrow" style="text-align:center;">FOR SALE · ${fmtUsd(c.sale_price || 0)}</div>
               <div class="tc-row" style="margin-top:8px;justify-content:center;"><select id="cp-fs-payer" class="tc-qty" style="min-width:130px;">${opts}</select></div>
               <div class="tc-row" style="margin-top:6px;justify-content:center;">
                 <input id="cp-fs-offer-amt" class="tc-qty" type="number" min="1" step="1" value="${Number(c.sale_price || 1)}" />
