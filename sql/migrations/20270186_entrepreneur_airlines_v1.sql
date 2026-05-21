@@ -90,8 +90,16 @@ ALTER TABLE airline_terminals
 CREATE INDEX IF NOT EXISTS idx_airline_terminals_owner_corp
     ON airline_terminals (owner_corp_id) WHERE owner_corp_id IS NOT NULL;
 
+-- owner_corp_id carries real economic value (terminal presence gates
+-- routes). The legacy "Owners can claim" UPDATE policy grants
+-- authenticated table-level UPDATE on airline_terminals, so without
+-- this revoke a client could self-assign owner_corp_id directly and
+-- skip the claim fee. Writes must go through entrepreneur_claim_terminal
+-- / _release_terminal (SECURITY DEFINER, which bypasses the revoke).
+REVOKE UPDATE (owner_corp_id) ON airline_terminals FROM PUBLIC, anon, authenticated;
+
 COMMENT ON COLUMN airline_terminals.owner_corp_id IS
-    'Entrepreneur-corp owner of this terminal slot. Mutually exclusive in practice with the legacy owner_airline_id (faction owner); a slot is unclaimed when both are NULL. Claimed via entrepreneur_claim_terminal.';
+    'Entrepreneur-corp owner of this terminal slot. Mutually exclusive in practice with the legacy owner_airline_id (faction owner); a slot is unclaimed when both are NULL. Claimed via entrepreneur_claim_terminal. Client-write-revoked — RPC-only.';
 
 -- ── 4. airline_routes — entrepreneur ownership ───────────────────
 ALTER TABLE airline_routes
@@ -114,6 +122,15 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS idx_airline_routes_corp
     ON airline_routes (airline_corp_id) WHERE airline_corp_id IS NOT NULL;
+
+-- The legacy one-active-per-lane unique index keys on airline_faction_id,
+-- which is NULL for entrepreneur routes (multiple NULLs allowed → no
+-- protection). Add a parallel partial unique for the corp path so the
+-- DB enforces one active route per (corp, lane) — defence-in-depth
+-- beyond open_route's corp-row lock + EXISTS check.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_airline_routes_one_active_per_ent_corp_lane
+    ON airline_routes (airline_corp_id, origin_city_id, dest_city_id)
+    WHERE status = 'active' AND airline_corp_id IS NOT NULL;
 
 COMMENT ON COLUMN airline_routes.airline_corp_id IS
     'Entrepreneur-corp operator of this route. Mutually exclusive with the legacy airline_faction_id (enforced by airline_routes_one_owner_chk). Set by entrepreneur_open_route.';
@@ -658,10 +675,11 @@ DECLARE
     v_capital   bigint := COALESCE(p_capital, 0);
     v_fee       bigint;
     v_total     bigint;
-    v_id        uuid;
-    v_tick      int;
-    v_listing   text;
-    v_city      uuid;
+    v_id          uuid;
+    v_tick        int;
+    v_listing     text;
+    v_city        uuid;
+    v_seed_nation uuid;
 BEGIN
     IF v_uid IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
@@ -723,27 +741,44 @@ BEGIN
     END IF;
 
     -- Airline starter seed: 2 free regional aircraft + claim a terminal
-    -- at the two largest cities (HQ-nation first, else globally largest)
-    -- so the corp can open a first route immediately.
+    -- at two cities IN THE SAME NATION, so the resulting starter lane is
+    -- domestic (range ≤ ~11) and the regional starters can actually fly
+    -- it. A cross-nation pair (range 75-80) would need a widebody the
+    -- corp doesn't have — so the two slots must share a nation.
+    --
+    -- Pick that nation: HQ if it has ≥2 seeded cities, else the
+    -- city-richest qualifying nation. If no nation has ≥2 cities
+    -- (degenerate / pre-aviation-seed DB), the corp still gets its 2
+    -- aircraft and claims terminals later by hand.
     IF p_industry = 'airline' THEN
         UPDATE entrepreneur_corps SET aircraft_regional_owned = 2 WHERE id = v_id;
 
-        FOR v_city IN
-            SELECT id FROM airline_cities
-             ORDER BY (nation_id = p_hq_nation_id) DESC, population_pct DESC, name ASC
-             LIMIT 2
-        LOOP
-            UPDATE airline_terminals
-               SET owner_corp_id = v_id, acquired_at_tick = COALESCE(v_tick, 0)
-             WHERE id = (
-                 SELECT id FROM airline_terminals
-                  WHERE city_id = v_city
-                    AND owner_airline_id IS NULL
-                    AND owner_corp_id   IS NULL
-                  ORDER BY terminal_number ASC
-                  LIMIT 1
-             );
-        END LOOP;
+        SELECT nation_id INTO v_seed_nation
+          FROM airline_cities
+         GROUP BY nation_id
+        HAVING COUNT(*) >= 2
+         ORDER BY (nation_id = p_hq_nation_id) DESC, SUM(population_pct) DESC
+         LIMIT 1;
+
+        IF v_seed_nation IS NOT NULL THEN
+            FOR v_city IN
+                SELECT id FROM airline_cities
+                 WHERE nation_id = v_seed_nation
+                 ORDER BY population_pct DESC, name ASC
+                 LIMIT 2
+            LOOP
+                UPDATE airline_terminals
+                   SET owner_corp_id = v_id, acquired_at_tick = COALESCE(v_tick, 0)
+                 WHERE id = (
+                     SELECT id FROM airline_terminals
+                      WHERE city_id = v_city
+                        AND owner_airline_id IS NULL
+                        AND owner_corp_id   IS NULL
+                      ORDER BY terminal_number ASC
+                      LIMIT 1
+                 );
+            END LOOP;
+        END IF;
     END IF;
 
     RETURN jsonb_build_object('success', true, 'corp_id', v_id, 'listing', v_listing,
