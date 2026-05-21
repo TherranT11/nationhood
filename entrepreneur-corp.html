@@ -549,6 +549,10 @@
         </div>
         <div class="tc-msg" id="cp-wd-msg" style="text-align:center;"></div>
       </div>
+      <!-- Put Up for Sale / Make Offer (private corps). Populated by
+           renderForSale(): owner sees list/unlist + incoming offers; a
+           non-owner viewing a for-sale corp sees Make Offer. -->
+      <div id="cp-forsale" style="display:none;align-self:center;min-width:220px;"></div>
       <div class="role-block">
         <div class="role-eyebrow">OWNERSHIP</div>
         <div class="role-pill" id="cp-role-pill">FOUNDER · CONTROLLING</div>
@@ -851,6 +855,114 @@ function initials(s, n) {
           withdrawing = false; wdBtn.disabled = false; wdBtn.textContent = prev;
         }
       });
+    }
+
+    // ── Put Up for Sale / Make Offer (private corps only) ──
+    // Owner of a private corp sees list/unlist + incoming offers (Accept).
+    // A non-owner viewing a for-sale corp sees Make Offer (paid from one of
+    // their own corps' treasury). Backed by the corp_sale_offers RPCs.
+    const fsWrap = document.getElementById('cp-forsale');
+    if (fsWrap && !isPublic) {
+      (async () => {
+        const reloadOnOk = (data) => { if (data && data.success) { location.reload(); return true; } return false; };
+        const { data: offers } = await _supabase.from('corp_sale_offers')
+          .select('id, amount, buyer:factions!buyer_faction_id(faction_name)')
+          .eq('corp_id', id).eq('status', 'pending').order('amount', { ascending: false });
+        const pending = offers || [];
+
+        if (isOwner && c.for_sale) {
+          const offersHtml = pending.length
+            ? pending.map(o => `<div class="tc-row" style="justify-content:space-between;margin-top:6px;gap:8px;">
+                  <span style="font-size:11px;">${escapeHtml(o.buyer?.faction_name || 'Bidder')} · $${Number(o.amount).toLocaleString()}</span>
+                  <button class="tc-btn cp-accept-sale" data-oid="${o.id}">ACCEPT</button></div>`).join('')
+            : `<div class="tc-msg" style="text-align:center;">No offers yet.</div>`;
+          fsWrap.innerHTML = `<div class="role-eyebrow" style="text-align:center;">FOR SALE · $${Number(c.sale_price || 0).toLocaleString()}</div>
+            <div class="tc-row" style="justify-content:center;margin-top:8px;"><button id="cp-unlist-btn" class="tc-btn">UNLIST</button></div>
+            ${offersHtml}<div class="tc-msg" id="cp-fs-msg" style="text-align:center;"></div>`;
+          fsWrap.style.display = 'block';
+          let busy = false;
+          const msg = (t) => { const m = document.getElementById('cp-fs-msg'); if (m) m.textContent = t; };
+          document.getElementById('cp-unlist-btn').addEventListener('click', async () => {
+            if (busy) return; busy = true;
+            try { const { data, error } = await _supabase.rpc('unlist_corp_for_sale', { p_corp_id: id });
+              if (error) throw error; if (!reloadOnOk(data)) msg('Could not unlist.'); }
+            catch (e) { msg(e?.message || 'Failed.'); } finally { busy = false; }
+          });
+          fsWrap.querySelectorAll('.cp-accept-sale').forEach(btn => btn.addEventListener('click', async () => {
+            if (busy) return; busy = true;
+            try { const { data, error } = await _supabase.rpc('accept_corp_sale_offer', { p_offer_id: btn.dataset.oid });
+              if (error) throw error;
+              if (!reloadOnOk(data)) {
+                const R = { buyer_insufficient_funds: `Buyer's treasury only holds $${data && data.have != null ? Number(data.have).toLocaleString() : '?'}.`, offer_not_pending: 'That offer is no longer open.' };
+                msg(R[data && data.reason] || 'Could not accept the offer.');
+              }
+            } catch (e) { msg(e?.message || 'Failed.'); } finally { busy = false; }
+          }));
+
+        } else if (isOwner && !c.for_sale) {
+          const [{ data: bld }, { data: lns }] = await Promise.all([
+            _supabase.from('corp_buildings').select('cost_paid').eq('owner_corp_id', id),
+            _supabase.from('corp_loans').select('principal, total_paid').eq('borrower_corp_id', id).in('status', ['approved', 'active']),
+          ]);
+          const property = (bld || []).reduce((s, b) => s + (Number(b.cost_paid) || 0), 0);
+          const debt = (lns || []).reduce((s, l) => s + Math.max(0, (Number(l.principal) || 0) - (Number(l.total_paid) || 0)), 0);
+          const rec = Math.max(1, Math.round((Number(c.treasury_cash) || 0) + property - debt));
+          fsWrap.innerHTML = `<div class="role-eyebrow" style="text-align:center;">PUT UP FOR SALE</div>
+            <div class="tc-row" style="margin-top:8px;justify-content:center;">
+              <input id="cp-fs-amt" class="tc-qty" type="number" min="1" step="1" value="${rec}" />
+              <button id="cp-fs-btn" class="tc-btn">LIST</button></div>
+            <div class="tc-msg" style="text-align:center;">Recommended $${rec.toLocaleString()} · cash − debt + property</div>
+            <div class="tc-msg" id="cp-fs-msg" style="text-align:center;"></div>`;
+          fsWrap.style.display = 'block';
+          let busy = false;
+          const msg = (t) => { const m = document.getElementById('cp-fs-msg'); if (m) m.textContent = t; };
+          document.getElementById('cp-fs-btn').addEventListener('click', async () => {
+            if (busy) return;
+            const price = parseInt(document.getElementById('cp-fs-amt').value, 10);
+            if (!Number.isFinite(price) || price < 1) { msg('Enter a price of at least 1.'); return; }
+            busy = true;
+            try { const { data, error } = await _supabase.rpc('list_corp_for_sale', { p_corp_id: id, p_price: price });
+              if (error) throw error; if (!reloadOnOk(data)) msg('Could not list.'); }
+            catch (e) { msg(e?.message || 'Failed.'); } finally { busy = false; }
+          });
+
+        } else if (!isOwner && c.for_sale && entId) {
+          const { data: myCorps } = await _supabase.from('entrepreneur_corps')
+            .select('id, name, treasury_cash').eq('owner_faction_id', entId).neq('id', id);
+          const mine = myCorps || [];
+          if (!mine.length) {
+            fsWrap.innerHTML = `<div class="role-eyebrow" style="text-align:center;">FOR SALE · $${Number(c.sale_price || 0).toLocaleString()}</div>
+              <div class="tc-msg" style="text-align:center;">You need a corporation to fund an offer.</div>`;
+          } else {
+            const opts = mine.map(mc => `<option value="${mc.id}">${escapeHtml(mc.name)} · $${Math.round(Number(mc.treasury_cash) || 0).toLocaleString()}</option>`).join('');
+            fsWrap.innerHTML = `<div class="role-eyebrow" style="text-align:center;">FOR SALE · $${Number(c.sale_price || 0).toLocaleString()}</div>
+              <div class="tc-row" style="margin-top:8px;justify-content:center;"><select id="cp-fs-payer" class="tc-qty" style="min-width:130px;">${opts}</select></div>
+              <div class="tc-row" style="margin-top:6px;justify-content:center;">
+                <input id="cp-fs-offer-amt" class="tc-qty" type="number" min="1" step="1" value="${Number(c.sale_price || 1)}" />
+                <button id="cp-fs-offer-btn" class="tc-btn">OFFER</button></div>
+              <div class="tc-msg" id="cp-fs-msg" style="text-align:center;"></div>`;
+          }
+          fsWrap.style.display = 'block';
+          const offerBtn = document.getElementById('cp-fs-offer-btn');
+          if (offerBtn) {
+            let busy = false;
+            const msg = (t) => { const m = document.getElementById('cp-fs-msg'); if (m) m.textContent = t; };
+            offerBtn.addEventListener('click', async () => {
+              if (busy) return;
+              const payer = document.getElementById('cp-fs-payer').value;
+              const amount = parseInt(document.getElementById('cp-fs-offer-amt').value, 10);
+              if (!payer) { msg('Pick a corp to fund the offer.'); return; }
+              if (!Number.isFinite(amount) || amount < 1) { msg('Enter an offer of at least 1.'); return; }
+              busy = true;
+              try { const { data, error } = await _supabase.rpc('make_corp_sale_offer', { p_corp_id: id, p_buyer_corp_id: payer, p_amount: amount });
+                if (error) throw error;
+                if (data && data.success) { msg('Offer submitted.'); offerBtn.disabled = true; }
+                else { const R = { cannot_buy_own_corp: 'You already own this corp.', not_for_sale: 'No longer for sale.' }; msg(R[data && data.reason] || 'Could not submit offer.'); }
+              } catch (e) { msg(e?.message || 'Failed.'); } finally { busy = false; }
+            });
+          }
+        }
+      })().catch(err => console.error('[forsale] render failed:', err));
     }
 
     if (!isPublic && isOwner) {
