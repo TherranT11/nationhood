@@ -141,13 +141,19 @@ async function createEntrepreneur() {
     const parts = String(setup.name).trim().split(/\s+/);
     const firstName = parts.shift() || setup.name;
     const lastName = parts.join(' ');
-    // Per-archetype age pin (PRODIGY says "twenty-five years old" in the
-    // quote — without an override we'd hand them a 31-36 age that
-    // contradicts their own flavor). Anything else falls back to the
-    // default 30+1d6 spread.
-    const age = (typeof a.age === 'number')
-      ? a.age
-      : 30 + (Math.floor(Math.random() * 6) + 1);
+    // Per-archetype age override on the archetype object:
+    //   • [min, max] tuple → random integer in the inclusive range
+    //     (OPERATOR uses this — 20yr middle-management career → 45-55).
+    //   • scalar number    → pinned exactly
+    //     (PRODIGY uses this — quote says "twenty-five years old").
+    //   • absent           → default 30 + 1d6 (31-36).
+    // Without an override, PRODIGY's quote outright lied about the
+    // character's age and OPERATOR's career arc started at age 11.
+    const age = Array.isArray(a.age)
+      ? a.age[0] + Math.floor(Math.random() * (a.age[1] - a.age[0] + 1))
+      : (typeof a.age === 'number')
+        ? a.age
+        : 30 + (Math.floor(Math.random() * 6) + 1);
 
     const row = {
       id: factionId,

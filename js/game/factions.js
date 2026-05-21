@@ -118,6 +118,9 @@ export const ENTREPRENEUR_ARCHETYPES = Object.freeze({
         description: "Long-tenured corporate executive who finally bought a meaningful stake. Reputation built on competence and execution. Knows where the bodies are buried in three industries. Less of a builder, more of a fixer.",
         stats: { ambition: 8, cunning: 14, reputation: 14, vision: 4 },
         startingCash: 62000000,
+        // 20 years in middle management means they started ~22 and
+        // are now at least 42; setup samples from a 45-55 range.
+        age: [45, 55],
     },
     raider: {
         name: 'THE RAIDER',
