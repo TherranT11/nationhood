@@ -595,11 +595,9 @@
         <div id="cp-projects"></div>
 
         <div class="section-heading">
-          <span class="roman">III.</span><span class="sans">Workforce &amp;</span><span class="serif">Capacity</span>
+          <span class="roman">III.</span><span class="sans">Corporate</span><span class="serif">Assets</span>
         </div>
-        <div class="empty-card">
-          Workforce mechanics are coming soon.
-        </div>
+        <div id="cp-assets"></div>
 
         <div class="section-heading">
           <span class="roman">IV.</span><span class="sans">Corporate</span><span class="serif">Finance</span>
@@ -3692,7 +3690,44 @@ function initials(s, n) {
       }
     };
 
+    // ────────── Corporate Assets panel ──────────
+    // Read-only inventory of the properties this corp owns (completed
+    // corp_buildings) + the nation each sits in. The action-oriented
+    // marketplace controls (List for Sale / offers) live in Active
+    // Projects; this is the at-a-glance holdings list.
+    const renderAssets = async () => {
+      const host = document.getElementById('cp-assets');
+      if (!host) return;
+      const { data: bldgs, error } = await _supabase.from('corp_buildings')
+        .select('id, name, building_type, tier, list_price, nation:nations!nation_id(name)')
+        .eq('owner_corp_id', id)
+        .eq('status', 'completed')
+        .order('building_type', { ascending: true });
+      if (error) {
+        host.innerHTML = `<div class="empty-card">Failed to load assets: ${escapeHtml(error.message)}</div>`;
+        return;
+      }
+      const rows = bldgs || [];
+      if (rows.length === 0) {
+        host.innerHTML = `<div class="empty-card">No properties owned yet.${isConstructionCorp ? ' Break ground with Begin Construction above, or buy on the market.' : ' Acquire properties on the market.'}</div>`;
+        return;
+      }
+      host.innerHTML = rows.map(b => {
+        const tier = TIER_TABLE[b.tier] || { label: b.tier };
+        const listed = b.list_price != null;
+        const typeLabel = b.building_type ? buildingTypeLabel(b.building_type) : '—';
+        return `<div class="cf-row">
+          <div>
+            <div class="who">${escapeHtml(b.name || '—')}</div>
+            <div class="sub">${escapeHtml(typeLabel)} · ${escapeHtml(tier.label || '')} · ${escapeHtml(b.nation?.name || '—')}</div>
+          </div>
+          <span class="num ${listed ? 'amber' : 'muted'}">${listed ? 'Listed ' + fmtUsd(Number(b.list_price)) : 'Held'}</span>
+        </div>`;
+      }).join('');
+    };
+
     await renderProjects();
+    await renderAssets();
     await renderFinance();
 
     document.getElementById('cp-load').style.display = 'none';
