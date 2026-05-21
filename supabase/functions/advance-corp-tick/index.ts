@@ -2658,6 +2658,86 @@ async function processBankLoanPayments(supabase, currentTick) {
     return results;
 }
 
+// Per-tick repayment for central_bank_loans (corp ↔ home-nation Central Bank).
+// Borrower corp pays an amortized payment from treasury_cash. Principal shrinks
+// `outstanding` (freeing CB lending capacity, since capacity counts only
+// active-loan outstanding). Interest flows back into the pool: added to
+// nations.central_bank_discretionary as interest/100, so capacity (= discretionary
+// × 100) grows by the interest amount 1:1. 3 missed payments → defaulted (which
+// also frees the capacity, since defaulted rows leave the active outstanding sum).
+async function processCentralBankLoanPayments(supabase, currentTick) {
+    const results = { processed: 0, paid: 0, missed: 0, defaulted: 0 };
+    const TICKS_PER_YEAR = 12;
+
+    const { data: loans, error } = await supabase
+        .from('central_bank_loans')
+        .select('id, nation_id, borrower_corp_id, principal, outstanding, interest_rate, term_ticks, payments_missed, status, last_payment_tick')
+        .eq('status', 'active')
+        .or(`last_payment_tick.is.null,last_payment_tick.neq.${currentTick}`);
+    if (error) { console.warn('[CBLoanPayments] fetch failed:', error.message); return results; }
+    if (!loans || loans.length === 0) return results;
+
+    for (const loan of loans) {
+        if (Number(loan.last_payment_tick) === Number(currentTick)) continue;
+        const outstanding = Number(loan.outstanding) || 0;
+        const rate = Number(loan.interest_rate) || 0;
+        const r = (rate / 100) / TICKS_PER_YEAR;
+        let payment = amortizedMonthlyPayment(Number(loan.principal) || 0, rate, Number(loan.term_ticks) || 1);
+        const interestDue = Math.round(outstanding * r);
+        if (payment > outstanding + interestDue) payment = outstanding + interestDue;
+        const principalPortion = Math.max(0, payment - interestDue);
+        const interestPortion = payment - principalPortion;
+
+        const { data: corp, error: cErr } = await supabase.from('entrepreneur_corps')
+            .select('treasury_cash').eq('id', loan.borrower_corp_id).single();
+        if (cErr || !corp) { console.warn(`[CBLoanPayments] corp fetch failed for ${loan.id}:`, cErr?.message); continue; }
+        const cash = Number(corp.treasury_cash) || 0;
+
+        if (cash >= payment) {
+            const newOutstanding = Math.max(0, outstanding - principalPortion);
+            const { error: cUpd } = await supabase.from('entrepreneur_corps')
+                .update({ treasury_cash: cash - payment }).eq('id', loan.borrower_corp_id);
+            if (cUpd) { console.warn(`[CBLoanPayments] debit failed for ${loan.id}:`, cUpd.message); continue; }
+
+            // Interest grows the CB pool (interest/100 → capacity +interest, 1:1).
+            if (interestPortion > 0) {
+                const { data: nat } = await supabase.from('nations')
+                    .select('central_bank_discretionary').eq('id', loan.nation_id).single();
+                if (nat) {
+                    await supabase.from('nations').update({
+                        central_bank_discretionary: (Number(nat.central_bank_discretionary) || 0) + Math.round(interestPortion / 100),
+                    }).eq('id', loan.nation_id);
+                }
+            }
+            // Ledger (SSoT helper) — split interest from principal.
+            if (interestPortion > 0)  await supabase.rpc('emit_corp_cash_event', { p_corp_id: loan.borrower_corp_id, p_category: 'debt_interest', p_label: 'Central Bank loan interest',  p_delta: -interestPortion,  p_tick: currentTick });
+            if (principalPortion > 0) await supabase.rpc('emit_corp_cash_event', { p_corp_id: loan.borrower_corp_id, p_category: 'capital_out',   p_label: 'Central Bank loan principal', p_delta: -principalPortion, p_tick: currentTick });
+
+            if (newOutstanding <= 0) {
+                await supabase.from('central_bank_loans')
+                    .update({ outstanding: 0, status: 'repaid', last_payment_tick: currentTick }).eq('id', loan.id);
+                results.paid++;
+            } else {
+                await supabase.from('central_bank_loans')
+                    .update({ outstanding: newOutstanding, last_payment_tick: currentTick }).eq('id', loan.id);
+            }
+            results.processed++;
+        } else {
+            const missed = (Number(loan.payments_missed) || 0) + 1;
+            results.missed++;
+            if (missed >= 3) {
+                await supabase.from('central_bank_loans')
+                    .update({ status: 'defaulted', last_payment_tick: currentTick, payments_missed: missed }).eq('id', loan.id);
+                results.defaulted++;
+            } else {
+                await supabase.from('central_bank_loans')
+                    .update({ payments_missed: missed, last_payment_tick: currentTick }).eq('id', loan.id);
+            }
+        }
+    }
+    return results;
+}
+
 // SOP2: per-tick processor for shipping_routes. Three passes in
 // strict order (auto-award → maturity → payment) to prevent the
 // maturity-tick double-pay edge case. Service-role bypasses RLS.
@@ -4770,6 +4850,20 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     } catch (payErr) {
         console.error('[advance-corp-tick] FAILED bank loan payments:', payErr);
         summary.errors.push({ scope: 'bank_loan_payments', error: String(payErr) });
+    }
+
+    // Central Bank loan repayments (corp ↔ home-nation CB). Mirrors the bank
+    // loan run: amortized payment from corp_cash_reserves, principal frees CB
+    // capacity, interest grows the CB pool.
+    try {
+        const cbPay = await processCentralBankLoanPayments(supabase, currentTick);
+        if (cbPay.processed > 0 || cbPay.missed > 0 || cbPay.paid > 0 || cbPay.defaulted > 0) {
+            summary.centralBankLoanPayments = cbPay;
+            console.log(`[CBLoanPayments] tick ${currentTick}: ${cbPay.processed} paid, ${cbPay.missed} missed, ${cbPay.paid} completed, ${cbPay.defaulted} defaulted`);
+        }
+    } catch (cbErr) {
+        console.error('[advance-corp-tick] FAILED central bank loan payments:', cbErr);
+        summary.errors.push({ scope: 'central_bank_loan_payments', error: String(cbErr) });
     }
 
     // EDP: Equity dividend processor (shard-wide, anniversary-driven).
