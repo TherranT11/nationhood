@@ -112,4 +112,11 @@ export const ENTREPRENEUR_ARCHETYPES = Object.freeze({
         stats: { ambition: 16, cunning: 8, reputation: 10, vision: 14 },
         startingCash: 48000000,
     },
+    operator: {
+        name: 'THE OPERATOR',
+        quote: 'Twenty years in middle management. You know how everything works. Now you have your own seat at the table.',
+        description: "Long-tenured corporate executive who finally bought a meaningful stake. Reputation built on competence and execution. Knows where the bodies are buried in three industries. Less of a builder, more of a fixer.",
+        stats: { ambition: 8, cunning: 14, reputation: 14, vision: 4 },
+        startingCash: 62000000,
+    },
 });
