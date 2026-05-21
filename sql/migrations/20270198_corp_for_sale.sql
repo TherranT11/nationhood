@@ -163,6 +163,10 @@ BEGIN
     SELECT * INTO v_buyer_corp FROM entrepreneur_corps WHERE id = v_offer.buyer_corp_id;
     IF v_target.id IS NULL OR v_buyer_corp.id IS NULL THEN RETURN jsonb_build_object('success', false, 'reason', 'corp_not_found'); END IF;
     IF NOT v_target.for_sale THEN RETURN jsonb_build_object('success', false, 'reason', 'not_for_sale'); END IF;
+    -- Defensive: never sell a public (shareholder-owned) corp wholesale, even
+    -- if it somehow went public while listed. for_sale is only set on private
+    -- corps by list_corp_for_sale, so this should never trip — belt-and-suspenders.
+    IF v_target.listing = 'public' THEN RETURN jsonb_build_object('success', false, 'reason', 'public_not_supported'); END IF;
 
     -- Caller must own the for-sale corp (the seller).
     SELECT * INTO v_seller FROM factions
