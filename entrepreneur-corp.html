@@ -827,6 +827,21 @@ function initials(s, n) {
     // Mirrors the trade card's lock/reason/reload conventions.
     const isOwner = !!entId && c.owner_faction_id === entId;
 
+    // Recommended corp valuation (one source of truth, shared by the Put Up
+    // for Sale and Acquire flows): treasury_cash − outstanding loan debt +
+    // property (building cost). Returns a floored integer ≥ 0.
+    const computeCorpRecommended = async () => {
+      try {
+        const [{ data: bld }, { data: lns }] = await Promise.all([
+          _supabase.from('corp_buildings').select('cost_paid').eq('owner_corp_id', id),
+          _supabase.from('corp_loans').select('principal, total_paid').eq('borrower_corp_id', id).in('status', ['approved', 'active']),
+        ]);
+        const property = (bld || []).reduce((s, b) => s + (Number(b.cost_paid) || 0), 0);
+        const debt = (lns || []).reduce((s, l) => s + Math.max(0, (Number(l.principal) || 0) - (Number(l.total_paid) || 0)), 0);
+        return Math.max(0, Math.round((Number(c.treasury_cash) || 0) + property - debt));
+      } catch { return Math.max(0, Math.round(Number(c.treasury_cash) || 0)); }
+    };
+
     // [Withdraw to Cash on Hand] — header action for the founder of a PRIVATE
     // corp. Pulls corp treasury_cash → personal party_funds via
     // withdraw_corp_treasury. Public corps distribute via the dividend card.
@@ -913,13 +928,7 @@ function initials(s, n) {
           }));
 
         } else if (isOwner && !c.for_sale) {
-          const [{ data: bld }, { data: lns }] = await Promise.all([
-            _supabase.from('corp_buildings').select('cost_paid').eq('owner_corp_id', id),
-            _supabase.from('corp_loans').select('principal, total_paid').eq('borrower_corp_id', id).in('status', ['approved', 'active']),
-          ]);
-          const property = (bld || []).reduce((s, b) => s + (Number(b.cost_paid) || 0), 0);
-          const debt = (lns || []).reduce((s, l) => s + Math.max(0, (Number(l.principal) || 0) - (Number(l.total_paid) || 0)), 0);
-          const rec = Math.max(1, Math.round((Number(c.treasury_cash) || 0) + property - debt));
+          const rec = Math.max(1, await computeCorpRecommended());
           fsWrap.innerHTML = `<div class="role-eyebrow" style="text-align:center;">PUT UP FOR SALE</div>
             <div class="tc-row" style="margin-top:8px;justify-content:center;">
               <input id="cp-fs-amt" class="tc-qty" type="number" min="1" step="1" value="${rec}" />
@@ -984,6 +993,7 @@ function initials(s, n) {
     if (acqWrap && acqOverlay && !isPublic) {
       let acqPoll = null;
       let acqId = null;
+      let acqBusy = false;   // double-fire lock for deal-changing actions
 
       const acqReason = (r) => ({
         sector_mismatch: 'Your corp must be the same sector.',
@@ -1005,18 +1015,6 @@ function initials(s, n) {
       const closeAcq = () => { acqOverlay.classList.remove('open'); if (acqPoll) { clearInterval(acqPoll); acqPoll = null; } };
       document.getElementById('acq-close').addEventListener('click', closeAcq);
       acqOverlay.addEventListener('click', e => { if (e.target.id === 'acq-overlay') closeAcq(); });
-
-      const computeRecommended = async () => {
-        try {
-          const [{ data: bld }, { data: lns }] = await Promise.all([
-            _supabase.from('corp_buildings').select('cost_paid').eq('owner_corp_id', id),
-            _supabase.from('corp_loans').select('principal, total_paid').eq('borrower_corp_id', id).in('status', ['approved', 'active']),
-          ]);
-          const property = (bld || []).reduce((s, b) => s + (Number(b.cost_paid) || 0), 0);
-          const debt = (lns || []).reduce((s, l) => s + Math.max(0, (Number(l.principal) || 0) - (Number(l.total_paid) || 0)), 0);
-          return Math.max(0, Math.round((Number(c.treasury_cash) || 0) + property - debt));
-        } catch { return Math.max(0, Math.round(Number(c.treasury_cash) || 0)); }
-      };
 
       const loadAcq = async () => {
         let q = _supabase.from('corp_acquisitions').select('*').eq('target_corp_id', id).eq('status', 'negotiating');
@@ -1045,7 +1043,7 @@ function initials(s, n) {
 
         if (!acq) {
           // Propose (buyer side, no open deal): pick a same-sector corp to fold into.
-          const rec = await computeRecommended();
+          const rec = await computeCorpRecommended();
           const { data: mine } = await _supabase.from('entrepreneur_corps')
             .select('id, name, treasury_cash').eq('owner_faction_id', entId).eq('industry', c.industry).neq('id', id);
           const corps = mine || [];
@@ -1064,17 +1062,20 @@ function initials(s, n) {
             <div class="rl-foot" style="padding-top:14px;"><button class="rl-btn sec" id="acq-cancel2">Cancel</button><button class="rl-btn pri" id="acq-propose">Propose</button></div>`;
           document.getElementById('acq-cancel2').addEventListener('click', closeAcq);
           document.getElementById('acq-propose').addEventListener('click', async () => {
+            if (acqBusy) return;
             const errEl = document.getElementById('acq-err');
             const payer = document.getElementById('acq-payer').value;
             const price = parseInt((document.getElementById('acq-price').value || '').replace(/[$,\s]/g, ''), 10);
             if (!payer) { errEl.textContent = 'Pick a corp to fold into.'; return; }
             if (!Number.isFinite(price) || price < 0) { errEl.textContent = 'Enter a valid price.'; return; }
+            acqBusy = true;
             try {
               const { data, error } = await _supabase.rpc('propose_acquisition', { p_target_corp_id: id, p_buyer_corp_id: payer, p_price: price });
               if (error) throw error;
               if (!data?.success) { errEl.textContent = acqReason(data?.reason); return; }
               await renderAcqModal();
             } catch (e) { errEl.textContent = e?.message || 'Failed.'; }
+            finally { acqBusy = false; }
           });
           return;
         }
@@ -1117,16 +1118,22 @@ function initials(s, n) {
           document.getElementById('acq-msg').value = ''; await refreshChat();
         });
         document.getElementById('acq-agree').addEventListener('click', async () => {
-          const { data, error } = await _supabase.rpc('agree_acquisition', { p_acq_id: acq.id });
-          if (error) { errEl().textContent = error.message; return; }
-          if (!data?.success) { errEl().textContent = acqReason(data?.reason); return; }
-          if (data.completed) { closeAcq(); alert('Acquisition complete.'); location.reload(); return; }
-          await renderAcqModal();
+          if (acqBusy) return; acqBusy = true;
+          try {
+            const { data, error } = await _supabase.rpc('agree_acquisition', { p_acq_id: acq.id });
+            if (error) { errEl().textContent = error.message; return; }
+            if (!data?.success) { errEl().textContent = acqReason(data?.reason); return; }
+            if (data.completed) { closeAcq(); alert('Acquisition complete.'); location.reload(); return; }
+            await renderAcqModal();
+          } finally { acqBusy = false; }
         });
         document.getElementById('acq-cancel-deal').addEventListener('click', async () => {
-          const { data, error } = await _supabase.rpc('cancel_acquisition', { p_acq_id: acq.id });
-          if (error || !data?.success) { errEl().textContent = acqReason(data?.reason) || error?.message; return; }
-          closeAcq(); location.reload();
+          if (acqBusy) return; acqBusy = true;
+          try {
+            const { data, error } = await _supabase.rpc('cancel_acquisition', { p_acq_id: acq.id });
+            if (error || !data?.success) { errEl().textContent = acqReason(data?.reason) || error?.message; return; }
+            closeAcq(); location.reload();
+          } finally { acqBusy = false; }
         });
       };
 

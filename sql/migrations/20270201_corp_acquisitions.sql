@@ -251,8 +251,12 @@ BEGIN
      WHERE id = v_acq.buyer_corp_id;
 
     -- Fold the target's assets into the buyer corp, then dissolve the target.
+    -- Reassign BOTH loan sides: as borrower (debt the buyer takes on) and as
+    -- lender (the loan book the buyer inherits) — otherwise the target's
+    -- lender_corp_id rows (ON DELETE CASCADE) would be wiped on dissolution.
     UPDATE corp_buildings   SET owner_corp_id    = v_acq.buyer_corp_id WHERE owner_corp_id    = v_acq.target_corp_id;
     UPDATE corp_loans       SET borrower_corp_id = v_acq.buyer_corp_id WHERE borrower_corp_id = v_acq.target_corp_id AND status IN ('approved','active');
+    UPDATE corp_loans       SET lender_corp_id   = v_acq.buyer_corp_id WHERE lender_corp_id   = v_acq.target_corp_id AND status IN ('approved','active');
     UPDATE central_bank_loans SET borrower_corp_id = v_acq.buyer_corp_id WHERE borrower_corp_id = v_acq.target_corp_id AND status = 'active';
 
     UPDATE corp_acquisitions SET status = 'completed', finalized_at_tick = v_tick WHERE id = p_acq_id;
