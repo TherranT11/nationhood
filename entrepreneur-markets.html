@@ -537,6 +537,21 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
     let propsLoaded = false;
     let myCorps = [];
 
+    // Lazy-load + cache the viewer's corps once. Shared by Properties,
+    // the broker-buy modal, and the offer modal — all of which filter by
+    // industry, so the SELECT must always carry it. Single loader so the
+    // columns can't drift between call sites (column drift here previously
+    // broke buy-via-corp eligibility).
+    async function ensureMyCorps() {
+      if (myCorps.length === 0 && entId) {
+        const { data: mine, error } = await _supabase.from('entrepreneur_corps')
+          .select('id, name, industry').eq('owner_faction_id', entId);
+        if (error) { console.warn('[markets] myCorps load failed:', error.message); return myCorps; }
+        myCorps = mine || [];
+      }
+      return myCorps;
+    }
+
     // Sector-lock mirror of broker_buy_listing — used to grey out
     // the Buy button when the viewer has no corp of the matching
     // industry. RHQ + real_estate_office have no restriction.
@@ -563,13 +578,8 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
         el.innerHTML = `<div class="state">Failed to load properties: ${escapeHtml(pErr.message)}</div>`;
         return;
       }
-      // Lazy-load the viewer's corps once for the Buy / Place Offer
-      // affordances. Same myCorps cache the Offers view uses.
-      if (myCorps.length === 0 && entId) {
-        const { data: mine } = await _supabase.from('entrepreneur_corps')
-          .select('id, name, industry').eq('owner_faction_id', entId);
-        myCorps = mine || [];
-      }
+      // Viewer's corps for the Buy / Place Offer affordances.
+      await ensureMyCorps();
 
       // Split rows by flavour. Broker listings have broker_corp_id;
       // retail listings have an RE owner. Anything else (orphan
@@ -731,12 +741,7 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
         : (buildingName || '—');
       document.getElementById('bb-asking').textContent = fmtUsd(asking);
       document.getElementById('bb-err').textContent = '';
-      // Lazy-fetch viewer's corps if Properties didn't already.
-      if (myCorps.length === 0 && entId) {
-        const { data: mine } = await _supabase.from('entrepreneur_corps')
-          .select('id, name, industry').eq('owner_faction_id', entId);
-        myCorps = mine || [];
-      }
+      await ensureMyCorps();
       // Filter the buyer-corp dropdown to corps that match the sector
       // lock — server enforces the same rule, but pre-filtering here
       // saves the player from picking an ineligible corp.
@@ -818,12 +823,8 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
       document.getElementById('po-asking').textContent = fmtUsd(asking);
       document.getElementById('po-amount').value = '';
       document.getElementById('po-err').textContent = '';
-      // Populate buyer-corp dropdown. Lazy-fetch myCorps if we haven't already.
-      if (myCorps.length === 0 && entId) {
-        const { data: mine } = await _supabase.from('entrepreneur_corps')
-          .select('id, name, industry').eq('owner_faction_id', entId);
-        myCorps = mine || [];
-      }
+      // Populate buyer-corp dropdown.
+      await ensureMyCorps();
       const sel = document.getElementById('po-corp');
       if (myCorps.length === 0) {
         sel.innerHTML = '<option value="">(no corps — found one first)</option>';
