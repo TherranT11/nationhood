@@ -3446,6 +3446,7 @@ function humanizeCbReason(reason) {
     switch (reason) {
         case 'not_authenticated':          return 'You are not signed in.';
         case 'not_governor':               return 'Only the Governor of the Central Bank can move the rate.';
+        case 'term_expired':               return 'The Governor\'s term has ended — a successor must be appointed.';
         case 'insufficient_discretionary': return 'The lending pool is empty — $1 is required.';
         case 'rate_at_limit':              return 'The rate is already at its limit (0% or 20%).';
         case 'invalid_direction':

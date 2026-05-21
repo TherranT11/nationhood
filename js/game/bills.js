@@ -1607,9 +1607,10 @@ export async function resolveMinisterConfirmationBill(supabase, bill, ctx) {
 /**
  * Resolve a passed/failed governor_confirmation bill (parliamentary
  * confirmation of the Governor of the Central Bank). Reads the nominee from
- * bill.metadata.pending_governor (sole source of truth); on pass installs
- * the party into the nation's central_bank_governor_* columns with the
- * 96-tick term carried in metadata.
+ * bill.metadata.pending_governor.party_id (sole source of truth); on pass
+ * installs the party into the nation's central_bank_governor_* columns. The
+ * 8-year (96-tick) term starts when the seat is taken (this tick), not when
+ * the nomination was filed.
  *
  * Force-fails (overrides ctx.passed) when:
  *   - bill.metadata.pending_governor is missing
@@ -1634,13 +1635,10 @@ export async function resolveGovernorConfirmationBill(supabase, bill, ctx) {
 
     if (passed) {
         await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-        // term_end_tick was computed at appointment time; fall back to a
-        // fresh 96-tick term if it's somehow absent.
-        const termEnd = Number.isFinite(pg.term_end_tick) ? pg.term_end_tick : currentTick + 96;
         const { error: updErr } = await supabase.from('nations').update({
             central_bank_governor_party_id: pg.party_id,
             central_bank_governor_appointed_tick: currentTick,
-            central_bank_governor_term_end_tick: termEnd,
+            central_bank_governor_term_end_tick: currentTick + 96,
         }).eq('id', bill.nation_id);
         if (updErr) console.error('[resolveGovernorConfirmation] nation update failed:', updErr.message);
         await fireBillEvent(supabase, 'bill_passed', bill, { currentTick, nationName: nation?.name, votesFor, votesAgainst, articleCount: 0 });

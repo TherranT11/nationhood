@@ -18,6 +18,14 @@
 --     a pool of whole dollars; lending capital = pool × $100M. The $1 rate
 --     action cost is drawn from this pool.
 --
+-- KNOWN ISSUE (v1): central_bank_discretionary has no funding path yet — it
+-- defaults to 0 and nothing credits it. Until a funding source is decided
+-- (national budget? finance ministry? per-tick allocation?), the pool stays
+-- at 0, lending capital shows $0, and central_bank_set_rate returns
+-- 'insufficient_discretionary' (the rate can't be moved). Appointment +
+-- term + the displayed rate all work; only the rate-move action is gated on
+-- this. Wire funding in a follow-up once the source is confirmed.
+--
 -- faction_sector_popularity-style admin-write tables aren't involved; the
 -- nations columns are written through these SECURITY DEFINER RPCs so the
 -- client never needs direct write access.
@@ -140,14 +148,16 @@ BEGIN
     -- A governor_confirmation bill goes to the floor for the standard
     -- confirmation window (6 ticks, matching minister confirmations);
     -- resolveGovernorConfirmationBill installs the governor on a pass.
-    -- Nominee carried in metadata.pending_governor.
+    -- Nominee carried in metadata.pending_governor. The 96-tick term is
+    -- stamped at confirmation time by the resolver (it starts when the
+    -- seat is taken), so it is intentionally NOT carried here.
     INSERT INTO bills (nation_id, proposed_by, proposed_tick, bill_name, bill_type,
                        status, floor_tick, voting_ends_tick, metadata)
     VALUES (v_nation, v_appointer, v_tick,
             'Confirmation: Governor of the Central Bank',
             'governor_confirmation', 'floor', v_tick, v_tick + 6,
             jsonb_build_object('pending_governor',
-                jsonb_build_object('party_id', p_party_id, 'term_end_tick', v_term_end)))
+                jsonb_build_object('party_id', p_party_id)))
     RETURNING id INTO v_bill_id;
 
     RETURN jsonb_build_object('success', true, 'status', 'pending_confirmation',
@@ -173,6 +183,8 @@ AS $$
 DECLARE
     v_caller    uuid := auth.uid();
     v_nation    uuid;
+    v_tick      int;
+    v_term_end  int;
     v_rate      numeric;
     v_disc      bigint;
     v_gdp       numeric;
@@ -201,9 +213,18 @@ BEGIN
     END IF;
 
     -- Lock the nation row so the balance check + debit is atomic.
-    SELECT central_bank_interest_rate, central_bank_discretionary, gdp_growth
-      INTO v_rate, v_disc, v_gdp
+    SELECT central_bank_interest_rate, central_bank_discretionary, gdp_growth,
+           central_bank_governor_term_end_tick
+      INTO v_rate, v_disc, v_gdp, v_term_end
       FROM nations WHERE id = v_nation FOR UPDATE;
+
+    -- Term gate: the column may still point to the outgoing party after
+    -- their 8-year term ends (the seat is "reopened" but not cleared until
+    -- a successor is installed). An expired-term Governor can't act.
+    SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
+    IF COALESCE(v_term_end, 0) <= COALESCE(v_tick, 0) THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'term_expired');
+    END IF;
 
     IF COALESCE(v_disc, 0) < 1 THEN
         RETURN jsonb_build_object('success', false, 'reason', 'insufficient_discretionary');

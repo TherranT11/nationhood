@@ -341,12 +341,20 @@ window.closeExpandInfrastructureModal = closeExpandInfrastructureModal;
 // cabinet. Picks a party; parliamentary nominations route to a
 // confirmation vote, presidential / monarchy appoint directly. Backed
 // by the appoint_central_bank_governor RPC.
+
+// Whether this nation's head of government appoints the Governor directly
+// (presidential / semi-presidential / monarchy) vs. via a confirmation
+// vote (parliamentary). Mirrors the routing in appoint_central_bank_governor.
+function cbGovDirectAppoint(nation) {
+    const gt = String(nation?.government_type || '').toLowerCase();
+    return gt.includes('president') || gt.includes('monarch');
+}
+
 let _governorAppointInflight = false;
 function openGovernorAppointModal() {
     if (document.getElementById('gov-appoint-overlay')) return;
     const parties = (_govData?.parties || []);
-    const gt = String(currentNation?.government_type || '').toLowerCase();
-    const direct = gt.includes('president') || gt.includes('monarch');
+    const direct = cbGovDirectAppoint(currentNation);
     const overlay = document.createElement('div');
     overlay.id = 'gov-appoint-overlay';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
@@ -2078,9 +2086,9 @@ function adm2RenderCabinet() {
     const govTicksLeft = govSeated ? Math.max(0, govTermEnd - (currentTick || 0)) : 0;
     const govRate     = Number(currentNation?.central_bank_interest_rate ?? 5).toFixed(2);
 
-    const govGt        = String(currentNation?.government_type || '').toLowerCase();
-    const govDirect    = govGt.includes('president') || govGt.includes('monarch');
-    const govIsMonarch = govGt.includes('monarch') && currentFaction?.id && currentNation?.monarch_faction_id === currentFaction.id;
+    const govDirect    = cbGovDirectAppoint(currentNation);
+    const govIsMonarch = String(currentNation?.government_type || '').toLowerCase().includes('monarch')
+        && currentFaction?.id && currentNation?.monarch_faction_id === currentFaction.id;
     const canAppointGov = !govSeated && !isCaretaker && (
         govDirect ? (isPresidentParty || govIsMonarch) : !!baseCtx.isPMParty
     );
