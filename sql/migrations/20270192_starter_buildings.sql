@@ -52,7 +52,6 @@ DECLARE
     v_city        uuid;
     v_seed_nation uuid;
     v_bld_type    text;
-    v_bld_label   text;
 BEGIN
     IF v_uid IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
@@ -155,12 +154,6 @@ BEGIN
             WHEN 'real_estate'  THEN 'real_estate_office'
             WHEN 'shipping'     THEN 'port'
         END;
-        v_bld_label := CASE p_industry
-            WHEN 'construction' THEN 'Construction Yard'
-            WHEN 'banking'      THEN 'Banking Office'
-            WHEN 'real_estate'  THEN 'Real Estate Office'
-            WHEN 'shipping'     THEN 'Port'
-        END;
 
         INSERT INTO corp_buildings (
             builder_corp_id, owner_corp_id, nation_id,
@@ -170,7 +163,7 @@ BEGIN
             gdp_growth_applied, list_price
         ) VALUES (
             v_id, v_id, p_hq_nation_id,
-            left(btrim(p_name) || ' ' || v_bld_label, 80), 'small', v_bld_type,
+            left(btrim(p_name) || ' ' || initcap(replace(v_bld_type, '_', ' ')), 80), 'small', v_bld_type,
             0, 0,
             'completed', COALESCE(v_tick, 0), COALESCE(v_tick, 0), COALESCE(v_tick, 0),
             true, NULL
@@ -197,7 +190,6 @@ DECLARE
     v_tick  int;
     v_corp  RECORD;
     v_btype text;
-    v_label text;
     v_n     int := 0;
 BEGIN
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
@@ -214,12 +206,6 @@ BEGIN
             WHEN 'banking'      THEN 'banking_office'
             WHEN 'real_estate'  THEN 'real_estate_office'
             WHEN 'shipping'     THEN 'port'
-        END;
-        v_label := CASE v_corp.industry
-            WHEN 'construction' THEN 'Construction Yard'
-            WHEN 'banking'      THEN 'Banking Office'
-            WHEN 'real_estate'  THEN 'Real Estate Office'
-            WHEN 'shipping'     THEN 'Port'
         END;
 
         -- Skip corps that already own their unique building anywhere
@@ -239,7 +225,7 @@ BEGIN
             gdp_growth_applied, list_price
         ) VALUES (
             v_corp.id, v_corp.id, v_corp.hq_nation_id,
-            left(v_corp.name || ' ' || v_label, 80), 'small', v_btype,
+            left(v_corp.name || ' ' || initcap(replace(v_btype, '_', ' ')), 80), 'small', v_btype,
             0, 0,
             'completed', v_tick, v_tick, v_tick,
             true, NULL
