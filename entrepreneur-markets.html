@@ -639,9 +639,12 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
         return;
       }
       // Fetch player's corps (any corp owned by their faction) so we
-      // can filter offers to ones they placed.
+      // can filter offers to ones they placed. Includes `industry` so the
+      // shared myCorps cache stays complete — the Properties buy modal
+      // reuses it and filters by industry; selecting only id/name here
+      // would leave industry undefined and break that eligibility check.
       const { data: mine, error: mErr } = await _supabase.from('entrepreneur_corps')
-        .select('id, name').eq('owner_faction_id', entId);
+        .select('id, name, industry').eq('owner_faction_id', entId);
       if (mErr) {
         el.innerHTML = `<div class="state">Failed to load your corps: ${escapeHtml(mErr.message)}</div>`;
         return;
