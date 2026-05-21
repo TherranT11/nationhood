@@ -142,7 +142,7 @@ function ensureStyles() {
 
 // Shared fetch: this faction's non-decommissioned units + the
 // nation's active defense discretionary balance (raw dollars).
-async function loadUnitsAndFunds(faction) {
+export async function loadUnitsAndFunds(faction) {
   let units = [], funds = 0, armies = [];
   try {
     const { data: u, error: uErr } = await _supabase
@@ -180,8 +180,11 @@ async function loadUnitsAndFunds(faction) {
 function poolOf(faction) {
   return Math.max(0, Math.round(Number(faction?.army_manpower) || 0));
 }
-function committedOf(units) {
+export function committedOf(units) {
   return units.reduce((s, u) => s + (Number(u.total_manpower) || 0), 0);
+}
+export function brigadeCountOf(units) {
+  return units.reduce((s, u) => s + (Array.isArray(u.brigades) ? u.brigades.length : 0), 0);
 }
 
 // ── ACTION: Create Unit modal ──────────────────────────────────────
@@ -487,7 +490,7 @@ export async function renderOrderOfBattle(faction, hostEl) {
   function draw() {
     const pool = poolOf(faction);
     const committed = committedOf(units);
-    const brigCount = units.reduce((s, u) => s + (Array.isArray(u.brigades) ? u.brigades.length : 0), 0);
+    const brigCount = brigadeCountOf(units);
 
     let html = `<div class="cu-sum" style="margin-bottom:16px;">
       <div><div class="l">PERSONNEL</div><div class="v">${committed.toLocaleString()}</div><div class="s">committed of ${pool.toLocaleString()}</div></div>

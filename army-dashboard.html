@@ -520,12 +520,12 @@ body {
         <div class="force-comp__grid">
           <div class="fc-card">
             <div class="fc-card__label">Personnel</div>
-            <div class="fc-card__value">0</div>
+            <div class="fc-card__value" id="fc-personnel">0</div>
             <div class="fc-card__desc">— soldiers under arms</div>
           </div>
           <div class="fc-card">
             <div class="fc-card__label">Order of Battle</div>
-            <div class="fc-card__value">0<span class="fc-card__unit">brigades</span></div>
+            <div class="fc-card__value"><span id="fc-brigades">0</span><span class="fc-card__unit">brigades</span></div>
             <div class="fc-card__desc">— combat formations</div>
           </div>
           <div class="fc-card">
@@ -565,6 +565,7 @@ import { _supabase } from './js/supabase-client.js';
 import { isFactionInactive } from './js/game/factions.js';
 import { renderMilitaryTopBar } from './js/military-topbar.js';
 import { escapeHtml, escapeAttr } from './js/utils.js';
+import { loadUnitsAndFunds, committedOf, brigadeCountOf } from './js/create-unit.js';
 
 // ─── OPERATING MODIFIERS — the army's eight 0–100 stats ───
 // Single source of truth: each entry's `key` matches the column on the
@@ -873,6 +874,21 @@ async function init() {
     if (_budgetEl) {
       _budgetEl.textContent = '$' + ((Number(faction.party_funds) || 0) / 1e6)
         .toFixed(1).replace(/\.0$/, '');
+    }
+
+    // Force Composition — Personnel (committed manpower) + Order of
+    // Battle (brigade count) from the SAME source as the Operations page
+    // (loadUnitsAndFunds + committedOf/brigadeCountOf in create-unit.js),
+    // so the two pages can never disagree. Non-fatal: leaves the 0
+    // placeholders on error.
+    try {
+      const { units } = await loadUnitsAndFunds(faction);
+      const personnelEl = document.getElementById('fc-personnel');
+      const brigadesEl  = document.getElementById('fc-brigades');
+      if (personnelEl) personnelEl.textContent = committedOf(units).toLocaleString();
+      if (brigadesEl)  brigadesEl.textContent  = brigadeCountOf(units).toLocaleString();
+    } catch (e) {
+      console.warn('[army-dashboard] force composition load failed:', e?.message || e);
     }
 
     // Operating Modifiers — render the 8 stat cards from the faction row.
