@@ -2515,8 +2515,23 @@ function buildEmptySectorElectionResult(indep, totalSeats) {
 }
 
 export async function processElections(supabase, nation, currentTick) {
-    const isPresidential = hasElectedPresident(nation);
     const results = [];
+
+    // Absolute monarchies NEVER hold elections. The call site in advance-tick
+    // is unconditional ("democracy only" was only a comment), so this is the
+    // real gate. A stale 'scheduled' election can exist — e.g. left over from
+    // before the nation converted to a monarchy — and would otherwise fire
+    // here. Cancel any such rows so they can never run and the "Next election:
+    // Never" state stays truthful.
+    if (isAbsoluteMonarchy(nation)) {
+        await supabase.from('elections')
+            .update({ status: 'cancelled' })
+            .eq('nation_id', nation.id)
+            .eq('status', 'scheduled');
+        return results;
+    }
+
+    const isPresidential = hasElectedPresident(nation);
 
     const { data: dueElections } = await supabase
         .from('elections')
@@ -3468,6 +3483,11 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
  * Always schedules parliamentary. Presidential systems also get presidential elections.
  */
 export async function ensureElectionsScheduled(supabase, nation, currentTick) {
+    // Absolute monarchies never hold elections — never schedule one. Without
+    // this, the parliamentary-cycle insert below recreated a scheduled
+    // election every tick for a monarchy, which processElections then fired.
+    if (isAbsoluteMonarchy(nation)) return;
+
     // Parliamentary cycle (every parliamentaryTermTicks). Read first so
     // the presidential branch below can align onto it for first-ever
     // presidential elections.
