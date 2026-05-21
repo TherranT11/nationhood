@@ -2608,7 +2608,7 @@ async function loadBudgetData() {
         // why the budget panel showed $0 with no obvious failure.
         const { data: lawsData, error: lawsErr } = await _supabase
             .from('active_laws')
-            .select('id, policies(policy_name, law_category), selected_option:policy_options!selected_option_id(option_name, ongoing_base_cost)')
+            .select('id, policies(policy_name, law_category, budget_category), selected_option:policy_options!selected_option_id(option_name, ongoing_base_cost)')
             .eq('nation_id', nation.id);
         if (lawsErr) {
             console.warn('[Budget] active_laws fetch failed:', lawsErr.message);
@@ -2722,31 +2722,58 @@ function _gbBuildIncomeRows(d) {
 // breaks it out as a sub-allocation so the line item is auditable.
 const _GB_ROYAL_HOLDINGS_MONTHLY = 3;
 
-// descKey → regex matching policies.law_category — defines which
-// spending row a given active law rolls up into. Both the row total
-// in _gbBuildCostRows and the deep-dive sub-rows in _gbSelectCategory
-// read this map. To bucket more spending categories, add more entries.
+// Where an active law's ongoing cost rolls up. SINGLE SOURCE for both
+// the row totals (_gbBuildCostRows) and the deep-dive list
+// (_gbSelectCategory) — they both call _gbCostRowForLaw so a row's
+// breakdown always matches its total.
 //
-// Patterns are matched against whatever law_category text the policy
-// author chose in policyadmin.html — there's no enum, so they're
-// freeform. The 'industrial' pattern matches both "Industrial Policy"
-// (long form) and "Industry" (short form, what Avelia uses).
-const _GB_DESCKEY_TO_LAW_CATEGORY_REGEX = {
-    pension:           /pension/i,
-    subsidiesIndustry: /industr/i,
-    // Defense & Security catches the corrections system (Prison Policy),
-    // standing military programs (Military Composition / military_*), all
-    // defense policies, and intelligence services. Word-bound so
-    // unrelated category names containing one of these substrings (e.g.
-    // a hypothetical "Demilitarization Treaty" — though we have none
-    // today) don't accidentally fall under the military rollup.
-    defenseSecurity:   /\b(prison|military|defense|intelligence)\b/i,
-};
+// Resolution order:
+//   1. policies.budget_category (explicit pick in policyadmin) wins.
+//   2. else regex fallback on the freeform law_category text below.
+//   3. else "other_programs" catch-all.
+// Income-side tax policies are excluded (own Income panel) → null.
+//
+// Fallback regexes map law_category → a COSTS-panel row KEY. The
+// 'industr' pattern matches "Industrial Policy" + "Industry"; the
+// defense pattern is word-bound so unrelated names containing a
+// substring don't get swept in.
+const _GB_LAW_CATEGORY_FALLBACK = [
+    [/pension/i,                                     'pension'],
+    [/industr/i,                                     'subsidies_industry'],
+    [/\b(prison|military|defense|intelligence)\b/i,  'defense_security'],
+];
+
+function _gbCostRowForLaw(law) {
+    const explicit = law?.policies?.budget_category;
+    if (explicit) return explicit;
+    const cat = law?.policies?.law_category || '';
+    if (_GB_INCOME_SIDE_LAW_CATEGORY.test(cat)) return null;
+    for (const [re, key] of _GB_LAW_CATEGORY_FALLBACK) {
+        if (re.test(cat)) return key;
+    }
+    return 'other_programs';
+}
+
+// Annualized policy ongoing cost summed per COSTS-panel row key.
+function _gbPolicyCostByRow(activeLaws) {
+    const sums = {};
+    for (const law of (activeLaws || [])) {
+        const key = _gbCostRowForLaw(law);
+        if (!key) continue;
+        sums[key] = (sums[key] || 0) + _gbAnnualLawCost(law);
+    }
+    return sums;
+}
+
+// Active laws routed to a given COSTS-panel row key (deep-dive list).
+function _gbLawsForRow(activeLaws, rowKey) {
+    return (activeLaws || []).filter(l => _gbCostRowForLaw(l) === rowKey);
+}
 
 // Income-side policies (income/corporate/sales tax) have their own
 // Income-panel rows; listing them under the cost-side "Other Programs"
-// catch-all would read as bogus spending programs. Excluded from
-// _gbLawsNotMatchingAnyDescKey.
+// catch-all would read as bogus spending programs. _gbCostRowForLaw
+// returns null for these so they're excluded from every cost row.
 //
 // INVARIANT (flagged, not a silent landmine): tax policy_options are
 // revenue levers and are expected to carry $0 ongoing_base_cost — every
@@ -2773,59 +2800,26 @@ function _gbAnnualLawCost(law) {
     return perTick * GAME_CONFIG.TICKS_PER_YEAR;
 }
 
-// Filter the active-laws array to those whose policy.law_category
-// matches a given descKey. Empty array if descKey isn't in the map.
-function _gbLawsForDescKey(activeLaws, descKey) {
-    const re = _GB_DESCKEY_TO_LAW_CATEGORY_REGEX[descKey];
-    if (!re) return [];
-    return (activeLaws || []).filter(al => re.test(al?.policies?.law_category || ''));
-}
-
-// Sum the annual ongoing-cost of every active law under a descKey.
-function _gbAnnualLawCostFor(activeLaws, descKey) {
-    return _gbLawsForDescKey(activeLaws, descKey).reduce((s, l) => s + _gbAnnualLawCost(l), 0);
-}
-
-// Active laws whose category doesn't match ANY descKey regex above
-// and aren't income-side tax policies. These were silently being
-// deducted server-side (computePanelAnnualExpenditures sums ALL
-// active_laws regardless of category) but were invisible in the UI
-// total — players saw a Balance that lied. Surface them under the
-// "Other Programs" catch-all row so display + server-side debt math
-// agree. In-force laws with $0 ongoing cost are included (shown as $0)
-// so the panel reflects every active framework law, not just costed ones.
-function _gbLawsNotMatchingAnyDescKey(activeLaws) {
-    const regexes = Object.values(_GB_DESCKEY_TO_LAW_CATEGORY_REGEX);
-    return (activeLaws || []).filter(al => {
-        const cat = al?.policies?.law_category || '';
-        if (_GB_INCOME_SIDE_LAW_CATEGORY.test(cat)) return false;
-        return !regexes.some(re => re.test(cat));
-    });
-}
-
 function _gbBuildCostRows(d) {
     const royalHoldingsAnnual = d.isMonarchy ? _GB_ROYAL_HOLDINGS_MONTHLY * GAME_CONFIG.TICKS_PER_YEAR : 0;
-    // Aggregated active-law costs per spending category. _gbSelectCategory
-    // re-reads the same _budgetData.activeLaws to populate the deep-dive
-    // sub-rows, so the row total here always matches the breakdown.
-    const pensionAnnual          = _gbAnnualLawCostFor(d.activeLaws, 'pension');
-    const subsidiesIndustryAnnual = _gbAnnualLawCostFor(d.activeLaws, 'subsidiesIndustry');
-    // Defense & Security: today the only matching law_category is 'Prison',
-    // but the descKey is generic so future military / intelligence categories
-    // can OR into the same regex. Deep-dive auto-renders each active law as
-    // "<Policy> — <Option>" sub-row via _gbSelectCategory.
-    // + military unit maintenance (Military Budget sub-rows below). Added
-    // to the category total so it matches the real per-tick drain in
-    // advance-tick (computePanelAnnualExpenditures) — else Balance lies.
-    const defenseSecurityAnnual = _gbAnnualLawCostFor(d.activeLaws, 'defenseSecurity')
+    // Aggregated active-law costs per spending row, via the single
+    // _gbCostRowForLaw resolver (explicit budget_category → regex
+    // fallback → other_programs). _gbSelectCategory re-reads the same
+    // resolver for the deep-dive, so every row total matches its
+    // breakdown. Each row below adds its policy sum on top of any
+    // non-policy base it already carries.
+    const polByRow = _gbPolicyCostByRow(d.activeLaws);
+    const pensionAnnual           = polByRow.pension || 0;
+    const subsidiesIndustryAnnual = polByRow.subsidies_industry || 0;
+    // Defense & Security + military unit maintenance, so the total
+    // matches the real per-tick drain in advance-tick
+    // (computePanelAnnualExpenditures) — else Balance lies.
+    const defenseSecurityAnnual = (polByRow.defense_security || 0)
         + (d.unitMaintenance?.totalAnnual || 0);
-    // Catch-all for active laws whose law_category doesn't match any
-    // existing descKey regex. Without this row, those costs were
-    // silently deducted by the per-tick processor but invisible in
-    // the displayed expenditures total — Balance lied by exactly this
-    // amount. Adding "Other Programs" closes the UI/server gap.
-    const otherProgramsAnnual = _gbLawsNotMatchingAnyDescKey(d.activeLaws)
-        .reduce((s, l) => s + _gbAnnualLawCost(l), 0);
+    // "Other Programs" catch-all (laws with no explicit category and no
+    // regex match). Closes the UI/server gap — these costs drain
+    // server-side regardless of category, so they must show somewhere.
+    const otherProgramsAnnual = polByRow.other_programs || 0;
     // Sports & Culture: today the only sub-line is Sport Stadiums &
     // Infrastructure (every completed Vola stadium adds its tier's
     // annual cost — small $0.5 / modest $1 / extravagant $2). Future
@@ -2843,16 +2837,16 @@ function _gbBuildCostRows(d) {
     const publicSectorWagesAnnual = computePublicSectorWagesAnnual(currentNation);
     return [
         { key: 'public_sector_wages',  name: 'Public Sector Wages',     yr: publicSectorWagesAnnual,    descKey: 'publicSectorWages'    },
-        { key: 'welfare_benefits',     name: 'Welfare Benefits',        yr: 0,                          descKey: 'welfareBenefits'      },
+        { key: 'welfare_benefits',     name: 'Welfare Benefits',        yr: (polByRow.welfare_benefits || 0),  descKey: 'welfareBenefits'      },
         { key: 'pension',              name: 'Pension',                 yr: pensionAnnual,              descKey: 'pension'              },
-        { key: 'procurement_capital',  name: 'Procurement & Capital',   yr: 0,                          descKey: 'procurementCapital'   },
+        { key: 'procurement_capital',  name: 'Procurement & Capital',   yr: (polByRow.procurement_capital || 0), descKey: 'procurementCapital'   },
         { key: 'subsidies_industry',   name: 'Subsidies & Industry Support', yr: subsidiesIndustryAnnual, descKey: 'subsidiesIndustry'   },
         { key: 'defense_security',     name: 'Defense & Security',      yr: defenseSecurityAnnual,      descKey: 'defenseSecurity'      },
-        { key: 'national_infra',       name: 'National Infrastructure', yr: royalHoldingsAnnual + Number(d.interiorInfra?.totalAnnual || 0) + Number(d.combinedArmsSchool?.totalAnnual || 0), descKey: 'nationalInfrastructure' },
-        { key: 'sports_culture',       name: 'Sports & Culture',        yr: sportsCultureAnnual,        descKey: 'sportsAndCulture'     },
-        { key: 'foreign_aid',          name: 'Foreign Aid & Diplomacy', yr: 0,                          descKey: 'foreignAid'           },
-        { key: 'discretionary',        name: 'Discretionary Programs',  yr: 0,                          descKey: 'discretionary'        },
-        { key: 'regulatory_agencies',  name: 'Regulatory Agencies',     yr: 0,                          descKey: 'regulatoryAgencies'   },
+        { key: 'national_infra',       name: 'National Infrastructure', yr: royalHoldingsAnnual + Number(d.interiorInfra?.totalAnnual || 0) + Number(d.combinedArmsSchool?.totalAnnual || 0) + (polByRow.national_infra || 0), descKey: 'nationalInfrastructure' },
+        { key: 'sports_culture',       name: 'Sports & Culture',        yr: sportsCultureAnnual + (polByRow.sports_culture || 0),        descKey: 'sportsAndCulture'     },
+        { key: 'foreign_aid',          name: 'Foreign Aid & Diplomacy', yr: (polByRow.foreign_aid || 0),       descKey: 'foreignAid'           },
+        { key: 'discretionary',        name: 'Discretionary Programs',  yr: (polByRow.discretionary || 0),     descKey: 'discretionary'        },
+        { key: 'regulatory_agencies',  name: 'Regulatory Agencies',     yr: (polByRow.regulatory_agencies || 0), descKey: 'regulatoryAgencies'   },
         { key: 'other_programs',       name: 'Other Programs',          yr: otherProgramsAnnual,        descKey: 'otherPrograms'        },
         { key: 'trade_obligations',    name: 'Trade Agreement Obligations', yr: tradeObligationsAnnual, descKey: 'tradeObligations'     },
         { key: 'debt_interest',        name: 'Interest on Debt',        yr: Number(d.debtService) || 0, descKey: 'debtInterest'   },
@@ -3113,33 +3107,16 @@ async function _gbSelectCategory(container, row, kind) {
     // buildFundingPctMap + getInstFundingPct just to keep the
     // unreachable code compiling.)
 
-    // Active-law roll-up: any descKey present in
-    // _GB_DESCKEY_TO_LAW_CATEGORY_REGEX gets a per-law sub-row showing
-    // the policy/option name + its annualized ongoing cost. Reads from
-    // the pre-fetched _budgetData.activeLaws — same
-    // source the row total in _gbBuildCostRows aggregated. So clicking
-    // a categorized row always shows the breakdown that produced its
-    // total. Falls through silently for non-categorized descKeys.
-    if (_GB_DESCKEY_TO_LAW_CATEGORY_REGEX[row.descKey] && _budgetData?.activeLaws) {
-        for (const law of _gbLawsForDescKey(_budgetData.activeLaws, row.descKey)) {
+    // Active-law roll-up: list every active law routed to this cost row
+    // by _gbCostRowForLaw (the same resolver _gbBuildCostRows summed), so
+    // a row's breakdown always matches its total. Other Programs lists
+    // $0 framework laws too (so every active law is visible); the costed
+    // rows skip $0 sub-lines. Returns [] for income/non-policy rows,
+    // which the tax branches below handle on their own.
+    if (row.key && _budgetData?.activeLaws) {
+        for (const law of _gbLawsForRow(_budgetData.activeLaws, row.key)) {
             const annual = _gbAnnualLawCost(law);
-            if (annual <= 0) continue;
-            const policyName = law.policies?.policy_name || 'Active law';
-            const optionName = law.selected_option?.option_name;
-            const label = optionName ? `${policyName} — ${optionName}` : policyName;
-            subRows.push({ k: label, v: annual });
-        }
-    }
-
-    // Other Programs catch-all: list every active law whose category
-    // didn't match any existing descKey regex. Same shape as the
-    // pension/subsidies branch above so the deep-dive renders
-    // identically.
-    if (row.descKey === 'otherPrograms' && _budgetData?.activeLaws) {
-        for (const law of _gbLawsNotMatchingAnyDescKey(_budgetData.activeLaws)) {
-            // $0 in-force laws are listed too (shown as $0) so every
-            // active framework law is visible, not just costed ones.
-            const annual = _gbAnnualLawCost(law);
+            if (annual <= 0 && row.key !== 'other_programs') continue;
             const policyName = law.policies?.policy_name || 'Active law';
             const optionName = law.selected_option?.option_name;
             const label = optionName ? `${policyName} — ${optionName}` : policyName;
