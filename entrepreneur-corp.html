@@ -306,6 +306,7 @@
   .cf-status.defaulted { color:#c98a8a; }
   .cf-status.repaid    { color:#8aaa6a; }
   .cf-status.active    { color:#7a9aab; }
+  .cf-status.approved  { color:#c89e6e; }
   .cf-empty { color:#666; font-size:11px; padding:10px 0; font-style:italic; letter-spacing:0.03em; }
 
   /* Request Loan modal — uses .po-* scaffolding from markets +
@@ -2791,8 +2792,8 @@ function initials(s, n) {
                 + 'borrower:entrepreneur_corps!borrower_corp_id(name), '
                 + 'lender:entrepreneur_corps!lender_corp_id(name)')
           .or(`borrower_corp_id.eq.${id},lender_corp_id.eq.${id}`)
-          .in('status', ['active', 'defaulted'])
-          .order('started_at_tick', { ascending: false }),
+          .in('status', ['approved', 'active', 'defaulted'])
+          .order('started_at_tick', { ascending: false, nullsFirst: true }),
       ]);
       if (reqRes.error)      console.warn('[entrepreneur-corp] outgoing-loans fetch error:',  reqRes.error.message);
       if (receivedRes.error) console.warn('[entrepreneur-corp] received-offers fetch error:', receivedRes.error.message);
@@ -2836,7 +2837,7 @@ function initials(s, n) {
         ? `<div class="cf-sub-head">Your Loan Requests · ${outgoing.length}</div>` + outgoing.map(r => {
             const canCancel = r.status === 'pending';
             const tail = r.status === 'accepted' && r.accepted_by?.name
-              ? `Funded by ${escapeHtml(r.accepted_by.name)}`
+              ? `Accepted · ${escapeHtml(r.accepted_by.name)} to disburse`
               : `${r.term_ticks}-tick term · expires T${r.expires_at_tick}`;
             return `
               <div class="cf-row">
@@ -2893,9 +2894,28 @@ function initials(s, n) {
         : '';
 
       const activeHtml = loans.length
-        ? `<div class="cf-sub-head">Active Loans · ${loans.length}</div>` + loans.map(l => {
+        ? `<div class="cf-sub-head">Loans · ${loans.length}</div>` + loans.map(l => {
             const isBorrower = l.borrower_corp_id === id;
             const counterparty = isBorrower ? (l.lender?.name || 'Unknown bank') : (l.borrower?.name || 'Unknown borrower');
+
+            // Approved = accepted but the bank hasn't disbursed yet. The
+            // lender's CEO sees [Issue Loan]; the borrower waits. No
+            // money has moved and the term hasn't started.
+            if (l.status === 'approved') {
+              const trailing = (!isBorrower && isOwner)
+                ? `<button class="ap-btn-small accept cp-issue-loan" data-lid="${l.id}">Issue Loan</button>`
+                : '<span class="num muted">awaiting</span>';
+              return `
+                <div class="cf-row ${isBorrower ? '' : 'income'}">
+                  <div>
+                    <div class="who">${isBorrower ? 'Borrow from' : 'Lend to'} ${escapeHtml(counterparty)} · ${fmtUsd(Number(l.principal))}</div>
+                    <div class="sub">${l.term_ticks}t · ${fmtPct(l.apr)} · ${isBorrower ? 'awaiting disbursement' : 'ready to issue — sends the principal'}</div>
+                  </div>
+                  <span class="cf-status approved">approved</span>
+                  ${trailing}
+                </div>`;
+            }
+
             const remaining = Math.max(0, Number(l.principal) - Number(l.total_paid));
             const statusCls = l.status === 'defaulted' ? 'red' : (isBorrower ? 'amber' : 'green');
             return `
@@ -2923,6 +2943,9 @@ function initials(s, n) {
         });
         fc.querySelectorAll('.cp-withdraw-loan-offer').forEach(btn => {
           btn.addEventListener('click', () => handleWithdrawLoanOffer(btn, btn.dataset.oid));
+        });
+        fc.querySelectorAll('.cp-issue-loan').forEach(btn => {
+          btn.addEventListener('click', () => handleIssueLoan(btn, btn.dataset.lid));
         });
       }
     };
@@ -3107,7 +3130,7 @@ function initials(s, n) {
     // ── Borrower-side accept (picks one bank's offer) ──
     const handleAcceptLoanOffer = async (btn, offerId) => {
       if (loanActionInFlight) return;
-      if (!confirm('Accept this offer? Principal moves from the bank to your corp owner now; per-tick repayments start next tick. Other pending offers on this request will auto-decline.')) return;
+      if (!confirm('Accept this offer? It reserves the deal with this bank and auto-declines every other offer. No money moves yet — the bank’s CEO must then Issue the loan to disburse the principal.')) return;
       loanActionInFlight = true;
       const prev = btn.textContent;
       btn.disabled = true; btn.textContent = 'ACCEPTING…';
@@ -3121,14 +3144,42 @@ function initials(s, n) {
             offer_not_pending:        'This offer is no longer pending.',
             request_not_pending:      'The loan request was already closed.',
             request_expired:          'The loan request has expired.',
-            bank_insufficient_funds:  data?.need != null
-              ? `Bank no longer has the funds (have ${fmtUsd(Number(data.have ?? 0))}, need ${fmtUsd(Number(data.need))}).`
-              : 'Bank no longer has the funds.',
             not_borrower_corp_owner:  'You aren’t the borrower corp’s owner.',
-            borrower_orphan:          'Borrower corp has no owning faction.',
-            bank_orphan:              'Bank corp has no owning faction.',
           };
           alert(REASON[data?.reason] || ('Could not accept: ' + (data?.reason || 'unknown')));
+          loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    // ── Bank-side issue (CEO disburses an approved loan) ──
+    const handleIssueLoan = async (btn, loanId) => {
+      if (loanActionInFlight) return;
+      if (!confirm('Issue this loan? The principal is sent from your corp owner to the borrower now, and the repayment term starts.')) return;
+      loanActionInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'ISSUING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('issue_corp_loan', {
+          p_loan_id: loanId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            loan_not_approved:        'This loan is no longer awaiting disbursement.',
+            bank_insufficient_funds:  data?.need != null
+              ? `Your treasury can’t cover it (have ${fmtUsd(Number(data.have ?? 0))}, need ${fmtUsd(Number(data.need))}).`
+              : 'Your treasury can’t cover the principal.',
+            not_bank_corp_owner:      'Only the lending corp’s owner can issue.',
+            borrower_corp_not_found:  'Borrower corp no longer exists.',
+            bank_corp_not_found:      'Lending corp no longer exists.',
+          };
+          alert(REASON[data?.reason] || ('Could not issue: ' + (data?.reason || 'unknown')));
           loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
           return;
         }
