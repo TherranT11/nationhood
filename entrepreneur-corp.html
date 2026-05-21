@@ -3155,8 +3155,9 @@ function initials(s, n) {
       lrMode = mode;
       ['private', 'cb'].forEach(m => {
         const b = document.getElementById('rl-mode-' + m);
-        if (b) b.style.cssText = b.style.cssText.replace(/background:[^;]*;?/g, '') +
-          (m === mode ? 'background:#1f2a1a;color:#8aaa6a;' : '');
+        // Reset fully each time so the inactive button never keeps stale
+        // active styling (regex-stripping background left color behind).
+        if (b) b.style.cssText = 'flex:1;' + (m === mode ? 'background:#1f2a1a;color:#8aaa6a;' : '');
       });
       if (mode === 'cb' && cbState === null) loadCbState();
       else updateLoanSummary();
