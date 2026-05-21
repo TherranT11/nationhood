@@ -1590,6 +1590,10 @@ function initials(s, n) {
       .select('current_tick').eq('name', 'Alpha Shard').maybeSingle();
     const currentTick = Number(shardRow?.current_tick || 0);
 
+    // Owned-buildings rows, fetched once by renderProjects and reused by
+    // renderAssets (single source — avoids a second corp_buildings read).
+    let ownedBuildings = [];
+
     const renderProjects = async () => {
       const pj = document.getElementById('cp-projects');
       if (!pj) return;
@@ -1612,6 +1616,7 @@ function initials(s, n) {
         .order('started_at_tick', { ascending: false });
       if (bErr) console.warn('[entrepreneur-corp] buildings fetch error:', bErr.message);
       const rows = bldgs || [];
+      ownedBuildings = rows; // shared with renderAssets (section III)
 
       let launchBtn = '';
       if (isOwner && isConstructionCorp) {
@@ -3692,22 +3697,17 @@ function initials(s, n) {
 
     // ────────── Corporate Assets panel ──────────
     // Read-only inventory of the properties this corp owns (completed
-    // corp_buildings) + the nation each sits in. The action-oriented
-    // marketplace controls (List for Sale / offers) live in Active
-    // Projects; this is the at-a-glance holdings list.
-    const renderAssets = async () => {
+    // corp_buildings) + the nation each sits in. Reads the rows
+    // renderProjects already fetched (ownedBuildings) — no second query.
+    // The action-oriented marketplace controls (List for Sale / offers)
+    // live in Active Projects; this is the at-a-glance holdings list.
+    // Must run after renderProjects (it populates ownedBuildings).
+    const renderAssets = () => {
       const host = document.getElementById('cp-assets');
       if (!host) return;
-      const { data: bldgs, error } = await _supabase.from('corp_buildings')
-        .select('id, name, building_type, tier, list_price, nation:nations!nation_id(name)')
-        .eq('owner_corp_id', id)
-        .eq('status', 'completed')
-        .order('building_type', { ascending: true });
-      if (error) {
-        host.innerHTML = `<div class="empty-card">Failed to load assets: ${escapeHtml(error.message)}</div>`;
-        return;
-      }
-      const rows = bldgs || [];
+      const rows = ownedBuildings
+        .filter(b => b.status === 'completed')
+        .sort((a, b) => (a.building_type || '').localeCompare(b.building_type || ''));
       if (rows.length === 0) {
         host.innerHTML = `<div class="empty-card">No properties owned yet.${isConstructionCorp ? ' Break ground with Begin Construction above, or buy on the market.' : ' Acquire properties on the market.'}</div>`;
         return;
@@ -3727,7 +3727,7 @@ function initials(s, n) {
     };
 
     await renderProjects();
-    await renderAssets();
+    renderAssets(); // sync — reads ownedBuildings populated by renderProjects
     await renderFinance();
 
     document.getElementById('cp-load').style.display = 'none';
