@@ -258,6 +258,7 @@
     vertical-align:middle; margin-left:6px; }
   .al-cap { background:#2a2510; color:#c89e6e; }
   .al-tag { background:#10202a; color:#7a9aab; }
+  .al-cond { font-size:9px; letter-spacing:0.08em; margin-left:6px; font-variant-numeric:tabular-nums; }
 
   /* Place-bid modal — reuses .bm-* scaffolding */
   .sh-bid-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:10px; }
@@ -719,7 +720,7 @@ function initials(s, n) {
     if (!id) { window.location.href = 'entrepreneur-corporations.html'; return; }
 
     const { data: c, error } = await _supabase.from('entrepreneur_corps')
-      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, freighters_owned, aircraft_regional_owned, aircraft_narrowbody_owned, aircraft_widebody_owned, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
+      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, freighters_owned, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -2434,7 +2435,7 @@ function initials(s, n) {
       // server-side (this preview can never over-grant).
       let airlinePanelHtml = '';
       if (c.industry === 'airline' && isOwner) {
-        const [termRes, routeRes, cityRes] = await Promise.all([
+        const [termRes, routeRes, cityRes, aircraftRes] = await Promise.all([
           _supabase.from('airline_terminals')
             .select('id, city_id, terminal_number, city:airline_cities!city_id(id, name, population_pct, is_capital)')
             .eq('owner_corp_id', id),
@@ -2448,33 +2449,33 @@ function initials(s, n) {
             .order('opened_at_tick', { ascending: true }),
           _supabase.from('airline_cities')
             .select('id, name, population_pct, is_capital').order('name'),
+          _supabase.from('corp_aircraft')
+            .select('id, aircraft_class, condition, overhaul_count, is_overhauling, route_id')
+            .eq('entrepreneur_corp_id', id)
+            .order('aircraft_class', { ascending: true })
+            .order('created_at', { ascending: true }),
         ]);
-        if (termRes.error)  console.warn('[entrepreneur-corp] terminals fetch error:', termRes.error.message);
-        if (routeRes.error) console.warn('[entrepreneur-corp] routes fetch error:', routeRes.error.message);
-        if (cityRes.error)  console.warn('[entrepreneur-corp] cities fetch error:', cityRes.error.message);
+        if (termRes.error)     console.warn('[entrepreneur-corp] terminals fetch error:', termRes.error.message);
+        if (routeRes.error)    console.warn('[entrepreneur-corp] routes fetch error:', routeRes.error.message);
+        if (cityRes.error)     console.warn('[entrepreneur-corp] cities fetch error:', cityRes.error.message);
+        if (aircraftRes.error) console.warn('[entrepreneur-corp] aircraft fetch error:', aircraftRes.error.message);
 
         const terminals = termRes.data || [];
         const routes    = routeRes.data || [];
         const allCities = cityRes.data || [];
+        const aircraft  = aircraftRes.data || [];
         const corpCash  = getEntrepreneurCorpCash(c);
 
-        // Owned / assigned / idle per class (preview mirror of open_route).
-        const owned = {
-          regional:   Number(c.aircraft_regional_owned)   || 0,
-          narrowbody: Number(c.aircraft_narrowbody_owned) || 0,
-          widebody:   Number(c.aircraft_widebody_owned)   || 0,
-        };
-        const assigned = { regional: 0, narrowbody: 0, widebody: 0 };
-        for (const r of routes) {
-          assigned.regional   += Number(r.aircraft_regional)   || 0;
-          assigned.narrowbody += Number(r.aircraft_narrowbody) || 0;
-          assigned.widebody   += Number(r.aircraft_widebody)   || 0;
+        // Owned / idle per class, derived from the aircraft rows — the
+        // SAME source entrepreneur_open_route counts (route_id IS NULL =
+        // idle). One source of truth: no separate count-based mirror.
+        const owned = { regional: 0, narrowbody: 0, widebody: 0 };
+        const idle  = { regional: 0, narrowbody: 0, widebody: 0 };
+        for (const a of aircraft) {
+          if (owned[a.aircraft_class] === undefined) continue;
+          owned[a.aircraft_class]++;
+          if (!a.route_id) idle[a.aircraft_class]++;
         }
-        const idle = {
-          regional:   owned.regional   - assigned.regional,
-          narrowbody: owned.narrowbody - assigned.narrowbody,
-          widebody:   owned.widebody   - assigned.widebody,
-        };
 
         // ── Fleet card: owned/idle per class + buy form ──
         const fleetCells = AIRCRAFT_CLASSES.map(k => {
@@ -2485,6 +2486,38 @@ function initials(s, n) {
         }).join('');
         const buyOpts = AIRCRAFT_CLASSES.map(k =>
           `<option value="${k}">${AIRCRAFT[k].label} · ${fmtUsd(AIRCRAFT[k].cost)} · ${AIRCRAFT[k].seats} seats</option>`).join('');
+        // Per-aircraft list: each plane's condition + route assignment +
+        // overhaul/retire. route_id → lane name from the already-fetched routes.
+        const routeNameById = new Map(routes.map(r =>
+          [r.id, `${r.origin?.name || '?'} ↔ ${r.dest?.name || '?'}`]));
+        const acRowsHtml = aircraft.length
+          ? aircraft.map(a => {
+              const cls  = AIRCRAFT[a.aircraft_class];
+              const cond = Math.round(Number(a.condition) || 0);
+              const condCls = cond < 30 ? 'red' : cond < 60 ? 'dim' : 'accent';
+              const assign = a.is_overhauling
+                ? '<span class="dim">In overhaul</span>'
+                : a.route_id
+                  ? `<span class="accent">${escapeHtml(routeNameById.get(a.route_id) || 'On a route')}</span>`
+                  : '<span class="dim">Unassigned</span>';
+              const ohDisabled = a.is_overhauling || cond >= 100;
+              const ohTitle = a.is_overhauling ? 'Already in overhaul'
+                : cond >= 100 ? 'Already at full condition' : '';
+              return `
+                <div class="sh-row">
+                  <div class="sh-row-info">
+                    <div class="sh-row-name">${cls?.label || a.aircraft_class}
+                      <span class="al-cond ${condCls}">${cond}%</span>${a.overhaul_count > 0 ? ` <span class="dim">· ${a.overhaul_count} overhaul${a.overhaul_count > 1 ? 's' : ''}</span>` : ''}</div>
+                    <div class="sh-row-sub">${assign}</div>
+                  </div>
+                  <div class="sh-row-actions">
+                    <button class="ap-btn-small accept al-overhaul" data-aid="${a.id}"${ohDisabled ? ' disabled title="' + ohTitle + '"' : ''}>Overhaul</button>
+                    <button class="ap-btn-small reject al-retire" data-aid="${a.id}" data-acls="${a.aircraft_class}">Retire</button>
+                  </div>
+                </div>`;
+            }).join('')
+          : `<div class="sh-empty">No aircraft yet. Buy aircraft below, then assign them to routes.</div>`;
+
         const fleetCard = `
           <div class="sh-section-head">Fleet</div>
           <div class="sh-fleet" style="grid-template-columns:1fr 1fr 1fr;">${fleetCells}</div>
@@ -2493,7 +2526,10 @@ function initials(s, n) {
             <input type="number" id="al-buy-qty" min="1" max="50" value="1" />
             <button class="sh-buy-btn" id="al-buy">Buy Aircraft</button>
           </div>
-          <div class="al-hint">Cash: <b>${fmtUsd(corpCash)}</b>. Aircraft are paid from corp treasury; the fleet is uncapped — per-tick ops cost is the limiter.</div>`;
+          <div class="al-hint">Cash: <b>${fmtUsd(corpCash)}</b>. Aircraft are paid from corp treasury; the fleet is uncapped — per-tick ops cost is the limiter.</div>
+          <div class="sh-section-head">Aircraft · ${aircraft.length}</div>
+          ${acRowsHtml}
+          <div class="al-hint">Flying aircraft lose condition each tick (6%/tick on routes). Overhaul restores condition (cost 0.5% of price — $300k/$450k/$600k; the cap falls 1% per cycle). Retire scraps a plane — no refund.</div>`;
 
         // ── Terminals: owned slots + claim form ──
         const ownedCityIds = new Set(terminals.map(t => t.city_id));
@@ -2593,10 +2629,10 @@ function initials(s, n) {
         pj.querySelectorAll('.ap-btn-small.delist').forEach(btn => {
           btn.addEventListener('click', () => handleDelist(btn, btn.dataset.bid));
         });
-        pj.querySelectorAll('.ap-btn-small.accept:not(.cp-make-offer):not(.sh-edit-bid):not(.sh-broker-reprice)').forEach(btn => {
+        pj.querySelectorAll('.ap-btn-small.accept:not(.cp-make-offer):not(.sh-edit-bid):not(.sh-broker-reprice):not(.al-overhaul)').forEach(btn => {
           btn.addEventListener('click', () => handleAcceptOffer(btn, btn.dataset.oid));
         });
-        pj.querySelectorAll('.ap-btn-small.reject:not(.sh-withdraw-bid):not(.sh-broker-withdraw)').forEach(btn => {
+        pj.querySelectorAll('.ap-btn-small.reject:not(.sh-withdraw-bid):not(.sh-broker-withdraw):not(.al-retire):not(.al-release):not(.al-close)').forEach(btn => {
           btn.addEventListener('click', () => handleRejectOffer(btn, btn.dataset.oid));
         });
         pj.querySelectorAll('.cp-make-offer').forEach(btn => {
@@ -2636,6 +2672,12 @@ function initials(s, n) {
         });
         pj.querySelectorAll('.al-close').forEach(btn => {
           btn.addEventListener('click', () => handleCloseRoute(btn, btn.dataset.rid, btn.dataset.rname));
+        });
+        pj.querySelectorAll('.al-overhaul').forEach(btn => {
+          btn.addEventListener('click', () => handleOverhaulAircraft(btn, btn.dataset.aid));
+        });
+        pj.querySelectorAll('.al-retire').forEach(btn => {
+          btn.addEventListener('click', () => handleRetireAircraft(btn, btn.dataset.aid, btn.dataset.acls));
         });
       }
     };
@@ -3839,6 +3881,63 @@ function initials(s, n) {
             not_owner:        'Only the corp owner can do that.',
           };
           alert(REASON[data?.reason] || ('Could not close: ' + (data?.reason || 'unknown')));
+          airlineInFlight = false; btn.disabled = false; btn.textContent = prev; return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        airlineInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    const handleOverhaulAircraft = async (btn, aircraftId) => {
+      if (airlineInFlight) return;
+      if (!aircraftId) return;
+      airlineInFlight = true;
+      const prev = btn.textContent; btn.disabled = true; btn.textContent = '…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('entrepreneur_overhaul_aircraft', {
+          p_corp_id: id, p_aircraft_id: aircraftId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            insufficient_funds:     data?.need != null ? `Corp treasury too low — overhaul costs ${fmtUsd(Number(data.need))}.` : 'Corp treasury too low.',
+            already_overhauling:    'That aircraft is already in overhaul.',
+            already_full_condition: 'That aircraft is already at full condition.',
+            not_your_aircraft:      'That aircraft is not yours.',
+            aircraft_not_found:     'Aircraft no longer exists.',
+            not_owner:              'Only the corp owner can do that.',
+          };
+          alert(REASON[data?.reason] || ('Could not overhaul: ' + (data?.reason || 'unknown')));
+          airlineInFlight = false; btn.disabled = false; btn.textContent = prev; return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        airlineInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    const handleRetireAircraft = async (btn, aircraftId, aircraftClass) => {
+      if (airlineInFlight) return;
+      if (!aircraftId) return;
+      const label = AIRCRAFT[aircraftClass]?.label || 'aircraft';
+      if (!confirm(`Retire this ${label}? It is scrapped permanently with no refund. If it's on a route, it leaves that route.`)) return;
+      airlineInFlight = true;
+      const prev = btn.textContent; btn.disabled = true; btn.textContent = '…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('entrepreneur_retire_aircraft', {
+          p_corp_id: id, p_aircraft_id: aircraftId,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            not_your_aircraft:  'That aircraft is not yours.',
+            aircraft_not_found: 'Aircraft no longer exists.',
+            not_owner:          'Only the corp owner can do that.',
+          };
+          alert(REASON[data?.reason] || ('Could not retire: ' + (data?.reason || 'unknown')));
           airlineInFlight = false; btn.disabled = false; btn.textContent = prev; return;
         }
         location.reload();
