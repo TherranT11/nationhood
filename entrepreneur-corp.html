@@ -711,6 +711,17 @@
           <div class="ds-row" id="cp-d-row-available"><span class="key">Available shares</span><span class="val" id="cp-d-available">—</span></div>
           <div class="ds-row" id="cp-d-row-treasury"><span class="key">Treasury</span><span class="val" id="cp-d-treasury">—</span></div>
         </div>
+
+        <div class="details-card" id="cp-chat-card" style="display:none;">
+          <div class="lab">CORP CHAT</div>
+          <div id="cp-chat-msgs" style="max-height:240px;overflow-y:auto;font-size:12px;line-height:1.55;margin-bottom:8px;"></div>
+          <div style="display:flex;gap:6px;">
+            <input id="cp-chat-input" type="text" maxlength="2000" placeholder="Message…"
+                   style="flex:1;background:#111;border:0.5px solid rgba(255,255,255,0.15);color:#e0dbc8;border-radius:3px;padding:6px 8px;font-size:12px;">
+            <button id="cp-chat-send" class="ap-btn-small list">Send</button>
+          </div>
+          <div id="cp-chat-note" style="color:#c98a8a;font-size:11px;margin-top:6px;min-height:1em;"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1247,6 +1258,68 @@ function initials(s, n) {
         } catch (e) { errEl.textContent = 'Failed: ' + (e?.message || e); submitting = false; btn.disabled = false; btn.textContent = 'Begin Research'; }
       };
       overlay.classList.add('open');
+    }
+
+    // ── Per-corp public chat (under Corp Details). Reuses group_chat_messages
+    // via ensure_corp_chat; public reads (RLS true) + sender-self inserts;
+    // lightweight 4s polling. ──
+    async function setupCorpChat() {
+      const card = document.getElementById('cp-chat-card');
+      if (!card) return;
+      const { data: ec, error: ecErr } = await _supabase.rpc('ensure_corp_chat', { p_corp_id: id });
+      if (ecErr || !ec || !ec.success || !ec.chat_id) {
+        console.warn('[entrepreneur-corp] corp chat unavailable:', ecErr?.message || ec?.reason || 'unknown');
+        return;
+      }
+      const chatId = ec.chat_id;
+      card.style.display = '';
+      const msgsEl = document.getElementById('cp-chat-msgs');
+      const inputEl = document.getElementById('cp-chat-input');
+      const sendEl  = document.getElementById('cp-chat-send');
+      const noteEl  = document.getElementById('cp-chat-note');
+      const names = new Map();
+      let sending = false;
+      const fmtName = (f) => f ? (`${f.leader_first_name || ''} ${f.leader_last_name || ''}`.trim() || f.faction_name || 'Someone') : 'System';
+      const load = async () => {
+        const { data, error } = await _supabase.from('group_chat_messages')
+          .select('id, sender_id, is_system, message_text, created_at')
+          .eq('chat_id', chatId).order('created_at', { ascending: false }).limit(50);
+        if (error) { console.warn('[entrepreneur-corp] chat load error:', error.message); return; }
+        const msgs = (data || []).slice().reverse();
+        const need = [...new Set(msgs.map(m => m.sender_id).filter(x => x && !names.has(x)))];
+        if (need.length) {
+          const { data: facs } = await _supabase.from('factions')
+            .select('id, faction_name, leader_first_name, leader_last_name').in('id', need);
+          (facs || []).forEach(f => names.set(f.id, fmtName(f)));
+        }
+        const atBottom = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 40;
+        msgsEl.innerHTML = msgs.length ? msgs.map(m => {
+          const who = m.is_system ? 'System' : (names.get(m.sender_id) || 'Someone');
+          const mine = m.sender_id && m.sender_id === entId;
+          return `<div style="margin-bottom:6px;"><span style="color:${mine ? '#8aaa6a' : '#caa45a'};font-weight:600;">${escapeHtml(who)}</span> <span style="color:#cfcabf;">${escapeHtml(m.message_text)}</span></div>`;
+        }).join('') : '<div style="color:#666;">No messages yet — say hello.</div>';
+        if (atBottom) msgsEl.scrollTop = msgsEl.scrollHeight;
+      };
+      const send = async () => {
+        if (sending) return;
+        const text = (inputEl.value || '').trim();
+        if (!text) return;
+        if (!entId) { noteEl.textContent = 'Sign in as an entrepreneur to post.'; return; }
+        sending = true; sendEl.disabled = true; noteEl.textContent = '';
+        try {
+          const { error } = await _supabase.from('group_chat_messages')
+            .insert({ chat_id: chatId, sender_id: entId, message_text: text.slice(0, 2000), is_system: false });
+          if (error) throw error;
+          inputEl.value = ''; await load();
+        } catch (e) { noteEl.textContent = 'Send failed: ' + (e?.message || e); }
+        finally { sending = false; sendEl.disabled = false; }
+      };
+      if (!entId) { inputEl.disabled = true; sendEl.disabled = true; inputEl.placeholder = 'Sign in as an entrepreneur to post'; }
+      sendEl.addEventListener('click', send);
+      inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); send(); } });
+      await load();
+      if (window._cpChatPoll) clearInterval(window._cpChatPoll);
+      window._cpChatPoll = setInterval(load, 4000);
     }
 
     // Recommended corp valuation (one source of truth, shared by the Put Up
@@ -3112,6 +3185,8 @@ function initials(s, n) {
         if (eb) eb.addEventListener('click', openEngineDesignModal);
         if (ab) ab.addEventListener('click', openAircraftDesignModal);
       }
+
+      setupCorpChat();
       if (isOwner) {
         // Building-marketplace handlers. The :not() guards skip the
         // shipping buttons (sh-place-bid / sh-withdraw-bid / sh-edit-bid)
