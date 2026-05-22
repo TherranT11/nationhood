@@ -58,9 +58,10 @@ CREATE TABLE IF NOT EXISTS public.ent_aircraft_designs (
     research_ticks_remaining int    NOT NULL,
     research_cost_per_tick   bigint NOT NULL DEFAULT 1000000,
 
-    created_at_tick   int,
-    completed_at_tick int,
-    created_at        timestamptz NOT NULL DEFAULT now()
+    created_at_tick    int,
+    last_research_tick int,   -- per-tick idempotency gate (mirrors corp_loans.last_payment_tick)
+    completed_at_tick  int,
+    created_at         timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_ent_aircraft_designs_corp
@@ -69,6 +70,10 @@ CREATE INDEX IF NOT EXISTS idx_ent_aircraft_designs_research
     ON public.ent_aircraft_designs (status) WHERE status = 'researching';
 CREATE INDEX IF NOT EXISTS idx_ent_aircraft_designs_engine_avail
     ON public.ent_aircraft_designs (design_type, status) WHERE design_type = 'engine';
+
+-- Idempotent re-run safety: add the per-tick gate column if the table
+-- predates it (applied before this guard was added).
+ALTER TABLE public.ent_aircraft_designs ADD COLUMN IF NOT EXISTS last_research_tick int;
 
 COMMENT ON TABLE public.ent_aircraft_designs IS
     'Entrepreneur aviation-manufacturing engine + aircraft designs. Created via ent_design_engine / ent_design_aircraft; research advances per tick in process_ent_aircraft_designs ($1M/tick from treasury_cash) until status=available. RPC-write-only.';
@@ -368,6 +373,7 @@ BEGIN
         SELECT id, entrepreneur_corp_id, research_cost_per_tick, research_ticks_remaining
           FROM ent_aircraft_designs
          WHERE status = 'researching'
+           AND (last_research_tick IS NULL OR last_research_tick < v_tick)   -- once per tick
          FOR UPDATE
     LOOP
         -- Pay this tick's research from the corp treasury; pause if broke.
@@ -382,12 +388,14 @@ BEGIN
 
         IF d.research_ticks_remaining - 1 <= 0 THEN
             UPDATE ent_aircraft_designs
-               SET research_ticks_remaining = 0, status = 'available', completed_at_tick = v_tick
+               SET research_ticks_remaining = 0, status = 'available',
+                   completed_at_tick = v_tick, last_research_tick = v_tick
              WHERE id = d.id;
             v_completed := v_completed + 1;
         ELSE
             UPDATE ent_aircraft_designs
-               SET research_ticks_remaining = research_ticks_remaining - 1
+               SET research_ticks_remaining = research_ticks_remaining - 1,
+                   last_research_tick = v_tick
              WHERE id = d.id;
             v_advanced := v_advanced + 1;
         END IF;
