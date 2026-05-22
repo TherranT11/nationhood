@@ -2654,16 +2654,15 @@ async function loadBudgetData() {
     if (!currentNation) { _budgetData = null; return; }
     const nation = currentNation;
 
-    // Active corp count for the per-corp footprint adder in
-    // computeCorporateTaxRevenue. Mirrors the same fetch in
-    // advance-tick/handler-template.ts so panel + tick agree.
+    // Active entrepreneur-corp count for the per-corp footprint adder in
+    // computeCorporateTaxRevenue — every corp HQ'd here (a corp is active
+    // by having a row; bankruptcy/acquisition delete it). Mirrors the same
+    // fetch in advance-tick/handler-template.ts so panel + tick agree.
     let activeCorpCount = 0;
     try {
-        const { count } = await _supabase.from('factions')
+        const { count } = await _supabase.from('entrepreneur_corps')
             .select('id', { count: 'exact', head: true })
-            .eq('faction_type', 'corporation')
-            .eq('nation_id', nation.id)
-            .is('abandoned_at', null);
+            .eq('hq_nation_id', nation.id);
         activeCorpCount = count || 0;
     } catch (_) { /* fall back to 0 */ }
 
@@ -3197,7 +3196,7 @@ function _gbWireRows(container, incomeRows, costRows) {
 // back to the fiscal_category's policy + institution mix at render time.
 const _GB_DEEP_COPY = {
     incomeTax:   { desc: 'Per-tick personal income tax revenue. Driven by the active Income Tax policy bracket (shown in the Composition section below) and scales with population × wages, dampened by unrest. Formula: (population / 10M) × (income_tax / 100) × wages × (1 − unrest/100), annualised × 12.' },
-    corporateTax: { desc: 'Annual corporate tax revenue. Two parts: (a) rate revenue = (service_sector + industry) / 10 × corporate_tax_rate × (1 − corruption/100) per tick, and (b) a flat $24/yr per active corporation HQ\'d in this nation. Both lines appear in the Composition section below.' },
+    corporateTax: { desc: 'Annual corporate tax revenue. Two parts: (a) rate revenue = (service_sector + industry) / 10 × corporate_tax_rate × (1 − corruption/100) per tick, and (b) a flat $1/tick ($12/yr) per active entrepreneur corporation headquartered in this nation. Both lines appear in the Composition section below.' },
     tradeAgr:    { desc: 'Recurring income from accepted trade agreements — both economic aid received and recurring financial transfers under GTAs. Outgoing flows appear on the Costs side. One-time transfers are not counted here (they hit treasury once and are not ongoing income).' },
     debtInterest:{ desc: 'Interest service on sovereign debt.' },
     // Spending categories — descriptions in place, allocation engines
@@ -3308,7 +3307,7 @@ async function _gbSelectCategory(container, row, kind) {
         }
         if (corpCount > 0) {
             subRows.push({
-                k: `Active corp footprint (${corpCount} HQ${corpCount === 1 ? '' : 's'} × $24/yr)`,
+                k: `Active corp footprint (${corpCount} HQ${corpCount === 1 ? '' : 's'} × $${computeCorporateTaxPerCorp(1) * GAME_CONFIG.TICKS_PER_YEAR}/yr)`,
                 v: perCorpAnnual,
             });
         }

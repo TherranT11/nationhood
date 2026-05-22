@@ -30,10 +30,10 @@ export function computeIncomeTaxRevenue(nation, rateOverride) {
     return Math.max(0, rev);
 }
 
-// Flat per-tick contribution to corporate tax revenue for every
-// active corporation HQ'd in the nation. $2/tick × 12 ticks = $24/yr
-// per corp, independent of the corporate_tax rate or corruption.
-export const CORP_TAX_PER_CORP_PER_TICK = 2;
+// Flat per-tick contribution to corporate tax revenue for every active
+// entrepreneur corporation HQ'd in the nation. $1/tick × 12 ticks =
+// $12/yr per corp, independent of the corporate_tax rate or corruption.
+export const CORP_TAX_PER_CORP_PER_TICK = 1;
 
 export function computeCorporateTaxPerCorp(activeCorpCount) {
     return CORP_TAX_PER_CORP_PER_TICK * Number(activeCorpCount || 0);
@@ -42,7 +42,7 @@ export function computeCorporateTaxPerCorp(activeCorpCount) {
 /**
  * Per-tick corporate tax revenue.
  *   ((service_sector + industry) / 10) × corporate_tax × (1 − corruption/100)
- *   + 2 × activeCorpCount      ($24/yr per active corp HQ'd here)
+ *   + 1 × activeCorpCount      ($12/yr per active corp HQ'd here)
  * Pass a rateOverride to preview revenue at a hypothetical rate.
  * activeCorpCount defaults to 0; callers without a count get the
  * rate-only figure (used by economy.html rate-delta projections
