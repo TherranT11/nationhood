@@ -1640,7 +1640,7 @@ const _MINISTRY_ACTION_REGISTRY = {
         {
             id: 'cb_lower_rate',
             name: 'Lower Interest',
-            desc: 'Lower the Central Bank policy rate by up to 3% for $1 from the lending pool. Stimulus: nudges GDP growth up (+0.2 per 1% cut). Rate clamps at 0%.',
+            desc: 'Lower the Central Bank policy rate by up to 3% for $1 from the lending pool. Stimulus: nudges GDP growth up (+3 per 1% cut). Rate clamps at 0%.',
             cost: '$1',
             costColor: '#c8a832',
             tags: ['MONETARY', 'STIMULUS'],
@@ -1648,7 +1648,7 @@ const _MINISTRY_ACTION_REGISTRY = {
         {
             id: 'cb_raise_rate',
             name: 'Raise Interest',
-            desc: 'Raise the Central Bank policy rate by up to 3% for $1 from the lending pool. Tightening: nudges GDP growth down (−0.3 per 1% hike). Rate clamps at 20%.',
+            desc: 'Raise the Central Bank policy rate by up to 3% for $1 from the lending pool. Tightening: nudges GDP growth down (−5 per 1% hike). Rate clamps at 20%.',
             cost: '$1',
             costColor: '#c8a832',
             tags: ['MONETARY', 'TIGHTENING'],
@@ -3364,7 +3364,7 @@ async function openCbRateModal(root, direction) {
         const disc = Number(n.central_bank_discretionary ?? 0);
         const signed = isLower ? -pct : pct;
         const projected = Math.max(0, Math.min(20, rate + signed));
-        const gdpNote = isLower ? `+${(0.2 * pct).toFixed(1)} GDP growth` : `−${(0.3 * pct).toFixed(1)} GDP growth`;
+        const gdpNote = isLower ? `+${3 * pct} GDP growth` : `−${5 * pct} GDP growth`;
 
         const pctBtns = [1, 2, 3].map(v =>
             `<button class="pa-modal-btn ${v === pct ? 'pa-modal-btn--submit' : ''}" data-pct="${v}" ${result || submitting ? 'disabled' : ''} style="${v === pct ? 'background:#c8a832;' : 'background:transparent;border:1px solid var(--border-main);color:var(--text-secondary);'}padding:6px 14px;font-size:12px;">${v}%</button>`
