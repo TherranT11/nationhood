@@ -4043,7 +4043,7 @@ function initials(s, n) {
     // ── Bank-side issue (CEO disburses an approved loan) ──
     const handleIssueLoan = async (btn, loanId) => {
       if (loanActionInFlight) return;
-      if (!confirm('Issue this loan? The principal is sent from your corp owner to the borrower now, and the repayment term starts.')) return;
+      if (!confirm('Issue this loan? The principal is sent from your corp treasury to the borrower’s treasury now, and the repayment term starts.')) return;
       loanActionInFlight = true;
       const prev = btn.textContent;
       btn.disabled = true; btn.textContent = 'ISSUING…';
