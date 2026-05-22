@@ -885,14 +885,6 @@ export function updateTopBarInfo(faction, shard, nation) {
                 <span class="faction-dropdown__abbr">[${f.abbreviation || '—'}]</span>
             </div>`;
         }
-        // "Found a Corporation" option if no corp exists
-        const hasCorp = _userFactions.some(f => f.faction_type === 'corporation');
-        if (!hasCorp) {
-            html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="sessionStorage.setItem('pending_faction_type','corp'); window.location.href='corp-setup.html'">
-                <span class="faction-dropdown__type" style="color:var(--teal)">+</span>
-                <span class="faction-dropdown__name">Found a Corporation</span>
-            </div>`;
-        }
         // "Found a Party" option if no party exists
         const hasParty = _userFactions.some(f => f.faction_type === 'party');
         if (!hasParty) {
