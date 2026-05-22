@@ -129,6 +129,23 @@ async function createEntrepreneur() {
       window.location.href = 'entrepreneur-dashboard.html';
       return;
     }
+
+    // HARD LOCK: cannot originate in a nation where you hold a Political
+    // Party or Military Branch (also enforced server-side by the
+    // enforce_entrepreneur_nation_lock trigger — this is the friendly gate).
+    const { data: ownFactions, error: ownErr } = await _supabase
+      .from('factions')
+      .select('faction_type, nation:nations!nation_id(name)')
+      .or(`id.eq.${currentUser.id},linked_user_id.eq.${currentUser.id}`)
+      .in('faction_type', ['party', 'military'])
+      .is('abandoned_at', null);
+    if (ownErr) throw ownErr;
+    if ((ownFactions || []).some(f => f.nation?.name === setup.originNation)) {
+      errEl.textContent = `You already hold a Political Party or Military Branch in ${setup.originNation}. An entrepreneur can't originate from a nation where you hold one — go back and pick a different origin.`;
+      errEl.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Create Entrepreneur'; creating = false;
+      return;
+    }
     // Primary slot decides primary vs linked. A swallowed error here
     // would flip isLinked and let the upsert overwrite an existing
     // primary faction — so abort on error rather than guess.
@@ -180,7 +197,10 @@ async function createEntrepreneur() {
       ? await _supabase.from('factions').insert(row)
       : await _supabase.from('factions').upsert(row);
     if (writeErr) {
-      errEl.textContent = 'Could not create: ' + (writeErr.message || 'unknown error');
+      const msg = /HARD_LOCK_ENTREPRENEUR_NATION/.test(writeErr.message || '')
+        ? `You already hold a Political Party or Military Branch in ${setup.originNation}. An entrepreneur can't originate there — go back and pick a different origin.`
+        : 'Could not create: ' + (writeErr.message || 'unknown error');
+      errEl.textContent = msg;
       errEl.style.display = 'block';
       btn.disabled = false; btn.textContent = 'Create Entrepreneur'; creating = false;
       return;
