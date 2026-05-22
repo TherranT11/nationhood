@@ -337,7 +337,7 @@ function renderIdentityCard(o, faction, partyColor, statusLabel, statusColor) {
 
     return `<div class="po-card po-identity" style="border-left-color:${partyColor};">
         <div class="po-identity-inner">
-            <div class="po-identity-logo" style="color:${partyColor};background:${partyColor}12;border-color:${partyColor}33;">${leaderInitials}</div>
+            <div class="po-identity-logo" style="color:${partyColor};background:${partyColor}12;border-color:${partyColor}33;${faction?.custom_logo_url ? 'overflow:hidden;' : ''}">${faction?.custom_logo_url ? `<img src="${esc(faction.custom_logo_url)}" alt="${esc(faction?.faction_name || 'Party logo')}" style="width:100%;height:100%;object-fit:cover;display:block;">` : leaderInitials}</div>
             <div style="flex:1;min-width:0;">
                 <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;flex-wrap:wrap;">
                     <span class="po-identity-name">${esc(faction?.faction_name)}</span>
