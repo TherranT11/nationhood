@@ -253,6 +253,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet } from './js/common.js';
 import { escapeHtml, formatTime, tickToDate, fmtBudgetCurrency } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, deductAP } from './js/game/config.js';
+import { getGameYear } from './js/game/vln.js';
 import { isGovernmentPresidential, hasElectedPresident } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies } from './js/game/government-structure.js';
 import { calculateBillSupport, syncVoteTallies, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, computeBillCostTotals } from './js/game/bills.js';
@@ -490,6 +491,10 @@ async function loadBillData() {
                 .maybeSingle();
             nominatedFactionId = min?.pending_minister?.party_id || null;
         }
+        // Governor confirmation: nominee party lives in bill metadata.
+        if (bill.bill_type === 'governor_confirmation') {
+            nominatedFactionId = bill.metadata?.pending_governor?.party_id || null;
+        }
 
         const mySupport = bill.bill_support?.find(s => s.faction_id === currentFaction?.id);
         if (mySupport) myVote = mySupport.stance;
@@ -556,6 +561,8 @@ function renderBill() {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--purple);">🏛 Foundational</span>';
     } else if (bill.bill_type === 'minister_confirmation') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--orange);">🏛 Cabinet Confirmation</span>';
+    } else if (bill.bill_type === 'governor_confirmation') {
+        document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--orange);">🏛 Governor Confirmation</span>';
     } else if (bill.bill_type === 'veto_override') {
         document.getElementById('bill-title').innerHTML = (bill.bill_name || 'Unnamed Bill') + ' <span class="bill-type-badge repeal" style="background:var(--red);">⚖ Veto Override</span>';
     } else if (bill.bill_type === 'ratification') {
@@ -1449,6 +1456,36 @@ function renderArticles() {
                     'Requires <strong style="color:var(--red);">two-thirds supermajority</strong> (' + overrideSeats + ' of ' + GAME_CONFIG.TOTAL_SEATS + ' seats) to override.<br>' +
                     'If passed: the original bill becomes law despite the veto.<br>' +
                     'If failed: the veto stands and the bill is dead.' +
+                '</div>' +
+            '</div>';
+        document.getElementById('total-upfront').textContent = '$0M';
+        document.getElementById('total-ongoing').textContent = '$0M/mo';
+        return;
+    }
+
+    // Central Bank Governor confirmation — show WHO is nominated, their
+    // party, and the 8-year (96-tick) term end year (getGameYear: 2000 +
+    // tick/12; +96 ticks = +8 years). Nominee party is in bill metadata.
+    if (bill.bill_type === 'governor_confirmation') {
+        const nominee = allParties.find(p => p.id === nominatedFactionId);
+        const nomineeName = nominee?.faction_name || 'A nominated party';
+        const endYear = getGameYear((currentShardTick || 0) + 96);
+        document.getElementById('bill-articles').innerHTML =
+            '<div class="article preamble" style="border-left-color:var(--orange);">' +
+                '<div class="article-number" style="color:var(--orange);">NOMINATION</div>' +
+                '<div class="article-title">Governor of the Central Bank</div>' +
+                '<div class="article-description">' +
+                    '<strong>' + escapeHtml(nomineeName) + '</strong> has been nominated as Governor of the Central Bank. ' +
+                    'If confirmed, they would serve an <strong>8-year term</strong> lasting until <strong>' + endYear + '</strong>.' +
+                '</div>' +
+            '</div>' +
+            '<div class="repeal-notice" style="border-color:var(--orange);">' +
+                '<div class="repeal-notice-icon">🏛</div>' +
+                '<div class="repeal-notice-text">Central Bank Governor Confirmation</div>' +
+                '<div class="repeal-notice-sub" style="color:var(--text-primary);line-height:1.6;">' +
+                    'Nominee: <strong>' + escapeHtml(nomineeName) + '</strong> (party)<br>' +
+                    'Requires <strong style="color:var(--green);">simple majority</strong> (YES votes &gt; NO votes) to confirm.<br>' +
+                    'Term: <strong>8 years</strong> (96 ticks), serving until <strong>' + endYear + '</strong>. No mid-term dismissal.' +
                 '</div>' +
             '</div>';
         document.getElementById('total-upfront').textContent = '$0M';
