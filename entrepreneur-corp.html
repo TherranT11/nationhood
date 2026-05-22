@@ -1997,7 +1997,7 @@ function initials(s, n) {
       const { data: bldgs, error: bErr } = await _supabase.from('corp_buildings')
         .select('id, name, tier, building_type, nation_id, cost_paid, ambition_granted, status, '
               + 'started_at_tick, completes_at_tick, completed_at_tick, '
-              + 'owner_corp_id, list_price, '
+              + 'owner_corp_id, list_price, brokerage_offered, broker_corp_id, '
               + 'nation:nations!nation_id(name), '
               + 'offers:building_offers!building_id(id, amount, status, placed_at_tick, '
                 + 'buyer:entrepreneur_corps!buyer_corp_id(id, name, '
@@ -2026,18 +2026,45 @@ function initials(s, n) {
             const tier = TIER_TABLE[b.tier] || { label: b.tier, ticks: 0 };
             const nationName = b.nation?.name || '—';
             if (b.status === 'completed') {
-              const listed = b.list_price != null;
+              // Mutually-exclusive states: a brokered building also carries
+              // a list_price (the broker's asking price), so "wholesale
+              // listed" excludes brokered. Brokerage and wholesale listing
+              // are mutually exclusive server-side (20270207).
+              const brokered = b.broker_corp_id != null;
+              const offered  = b.brokerage_offered === true;
+              const listed   = b.list_price != null && !brokered;
               const pendingOffers = (b.offers || []).filter(o => o.status === 'pending');
-              const actionRow = isOwner
-                ? `<div class="ap-actions">
-                     ${listed ? `<span class="ap-status-line">Listed at ${fmtUsd(Number(b.list_price))}${pendingOffers.length ? ` · ${pendingOffers.length} pending offer${pendingOffers.length === 1 ? '' : 's'}` : ''}</span>` : '<span></span>'}
-                     ${listed
-                       ? `<button class="ap-btn-small delist" data-bid="${b.id}">Delist</button>`
-                       : `<button class="ap-btn-small list" data-bid="${b.id}" data-bname="${escapeHtml(b.name)}">List for Sale</button>`}
-                   </div>`
-                : (listed
-                   ? `<div class="ap-actions"><span class="ap-status-line">Listed at ${fmtUsd(Number(b.list_price))}</span></div>`
-                   : '');
+              let actionRow = '';
+              if (isOwner) {
+                if (brokered) {
+                  actionRow = `<div class="ap-actions">
+                       <span class="ap-status-line">In brokerage · asking ${fmtUsd(Number(b.list_price))}</span>
+                       <button class="ap-btn-small delist cp-revoke-broker" data-bid="${b.id}" data-broker="1">Revoke Brokerage</button>
+                     </div>`;
+                } else if (offered) {
+                  actionRow = `<div class="ap-actions">
+                       <span class="ap-status-line">Offered for brokerage — awaiting a Real Estate broker</span>
+                       <button class="ap-btn-small delist cp-revoke-broker" data-bid="${b.id}" data-broker="0">Withdraw Offer</button>
+                     </div>`;
+                } else if (listed) {
+                  actionRow = `<div class="ap-actions">
+                       <span class="ap-status-line">Listed at ${fmtUsd(Number(b.list_price))}${pendingOffers.length ? ` · ${pendingOffers.length} pending offer${pendingOffers.length === 1 ? '' : 's'}` : ''}</span>
+                       <button class="ap-btn-small delist" data-bid="${b.id}">Delist</button>
+                     </div>`;
+                } else {
+                  actionRow = `<div class="ap-actions">
+                       <span></span>
+                       <span>
+                         <button class="ap-btn-small list" data-bid="${b.id}" data-bname="${escapeHtml(b.name)}">List for Sale</button>
+                         ${!isRealEstateCorp ? `<button class="ap-btn-small list cp-offer-broker" data-bid="${b.id}">Offer for Brokerage</button>` : ''}
+                       </span>
+                     </div>`;
+                }
+              } else if (brokered) {
+                actionRow = `<div class="ap-actions"><span class="ap-status-line">In brokerage</span></div>`;
+              } else if (listed) {
+                actionRow = `<div class="ap-actions"><span class="ap-status-line">Listed at ${fmtUsd(Number(b.list_price))}</span></div>`;
+              }
               // Pending offers list — owner-only (privacy + strategy).
               // The /Markets MY OFFERS view shows the bidder-side mirror.
               const offersRow = (isOwner && listed && pendingOffers.length)
@@ -2258,10 +2285,10 @@ function initials(s, n) {
 
       // Brokerage Operations panel (Real Estate corps only, owner-only).
       // My Active Listings (broker_corp_id = this corp) + Available to
-      // Broker (unowned buildings in nations where this corp owns a
-      // completed Real Estate Office). Talks to 20270184's
-      // broker_list_building / broker_set_price / broker_withdraw_listing
-      // RPCs. Pricing preview math mirrors the SQL commission +
+      // Broker (unowned OR owner-offered buildings in nations where this
+      // corp owns a completed Real Estate Office). Talks to 20270184 +
+      // 20270207's broker_list_building / broker_set_price /
+      // broker_withdraw_listing RPCs. Pricing preview math mirrors the SQL commission +
       // reputation tiers exactly so the player sees what the server
       // will compute.
       let brokeragePanelHtml = '';
@@ -2287,14 +2314,17 @@ function initials(s, n) {
           .order('broker_listed_at_tick', { ascending: false });
         if (lErr) console.warn('[entrepreneur-corp] my listings fetch error:', lErr.message);
 
-        // Available to broker — unowned + unbrokered + in my office nations.
+        // Available to broker — unbrokered buildings in my office nations
+        // that are EITHER unowned (nation inventory) OR owned by a non-RE
+        // corp that opted into brokerage (brokerage_offered). Both list via
+        // broker_list_building (20270207).
         let available = [];
         if (myNationIds.length > 0) {
           const { data: avail, error: aErr } = await _supabase.from('corp_buildings')
-            .select('id, name, building_type, tier, cost_paid, nation:nations!nation_id(name)')
+            .select('id, name, building_type, tier, cost_paid, owner_corp_id, brokerage_offered, nation:nations!nation_id(name), owner:entrepreneur_corps!owner_corp_id(name)')
             .in('nation_id', myNationIds)
-            .is('owner_corp_id', null)
             .is('broker_corp_id', null)
+            .or('owner_corp_id.is.null,brokerage_offered.eq.true')
             .eq('status', 'completed')
             .order('cost_paid', { ascending: false });
           if (aErr) console.warn('[entrepreneur-corp] available fetch error:', aErr.message);
@@ -2339,17 +2369,21 @@ function initials(s, n) {
         if (myNationIds.length === 0) {
           availableHtml = `<div class="sh-empty">You need a completed Real Estate Office in a nation before you can broker properties there.</div>`;
         } else if (available.length === 0) {
-          availableHtml = `<div class="sh-empty">No unowned properties to broker in your office nations right now.</div>`;
+          availableHtml = `<div class="sh-empty">No properties available to broker in your office nations right now.</div>`;
         } else {
           availableHtml = available.map(b => {
             const cost = Number(b.cost_paid) || 0;
             const fee  = computeBrokerLockFee(cost);
+            const source = b.owner_corp_id
+              ? `offered by ${escapeHtml(b.owner?.name || 'owner')}`
+              : 'nation inventory';
             return `
               <div class="sh-row">
                 <div class="sh-row-info">
                   <div class="sh-row-name">${escapeHtml(b.name)}</div>
                   <div class="sh-row-sub">
                     ${buildingTypeLabel(b.building_type)} · ${escapeHtml(b.nation?.name || '—')} ·
+                    <span class="dim">${source}</span> ·
                     <span class="dim">cost ${fmtUsd(cost)}</span> ·
                     lock fee <span class="accent">${fmtUsd(fee)}</span>
                   </div>
@@ -2623,11 +2657,18 @@ function initials(s, n) {
         // that piggy-back on the .list / .reject / .accept styling
         // classes for visual parity — they have their own handlers
         // wired below.
-        pj.querySelectorAll('.ap-btn-small.list:not(.sh-place-bid):not(.sh-broker-list)').forEach(btn => {
+        pj.querySelectorAll('.ap-btn-small.list:not(.sh-place-bid):not(.sh-broker-list):not(.cp-offer-broker)').forEach(btn => {
           btn.addEventListener('click', () => openListSaleModal(btn.dataset.bid, btn.dataset.bname));
         });
-        pj.querySelectorAll('.ap-btn-small.delist').forEach(btn => {
+        pj.querySelectorAll('.ap-btn-small.delist:not(.cp-revoke-broker)').forEach(btn => {
           btn.addEventListener('click', () => handleDelist(btn, btn.dataset.bid));
+        });
+        // Brokerage opt-in/out (owner side, non-RE corps) → 20270207.
+        pj.querySelectorAll('.cp-offer-broker').forEach(btn => {
+          btn.addEventListener('click', () => handleOfferBrokerage(btn, btn.dataset.bid));
+        });
+        pj.querySelectorAll('.cp-revoke-broker').forEach(btn => {
+          btn.addEventListener('click', () => handleRevokeBrokerage(btn, btn.dataset.bid, btn.dataset.broker === '1'));
         });
         pj.querySelectorAll('.ap-btn-small.accept:not(.cp-make-offer):not(.sh-edit-bid):not(.sh-broker-reprice):not(.al-overhaul)').forEach(btn => {
           btn.addEventListener('click', () => handleAcceptOffer(btn, btn.dataset.oid));
@@ -3003,6 +3044,63 @@ function initials(s, n) {
       } catch (e) {
         alert('Failed to delist: ' + (e?.message || e));
         delistInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+
+    // ── Brokerage opt-in / revoke (owner side) — offer_building_for_brokerage ──
+    // Construction (non-RE) owners flag a completed building for a Real
+    // Estate corp to broker, or pull it back at any stage (revoking an
+    // active broker forfeits that broker's lock fee).
+    let brokerOfferInFlight = false;
+    const handleOfferBrokerage = async (btn, buildingId) => {
+      if (brokerOfferInFlight) return;
+      brokerOfferInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'OFFERING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('offer_building_for_brokerage', {
+          p_corp_id: id, p_building_id: buildingId, p_offer: true,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          const REASON = {
+            real_estate_owner_uses_retail: 'Real Estate corps sell via the retail offer flow, not brokerage.',
+            not_building_owner:            'This corp no longer owns the building.',
+            not_completed:                 'The building is not completed yet.',
+          };
+          alert(REASON[data?.reason] || ('Could not offer for brokerage: ' + (data?.reason || 'unknown')));
+          brokerOfferInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        brokerOfferInFlight = false; btn.disabled = false; btn.textContent = prev;
+      }
+    };
+    const handleRevokeBrokerage = async (btn, buildingId, hadBroker) => {
+      if (brokerOfferInFlight) return;
+      const msg = hadBroker
+        ? 'Revoke this brokerage? The broker loses the listing and their lock fee is forfeit.'
+        : 'Withdraw this building from brokerage?';
+      if (!confirm(msg)) return;
+      brokerOfferInFlight = true;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'WITHDRAWING…';
+      try {
+        const { data, error: rpcErr } = await _supabase.rpc('offer_building_for_brokerage', {
+          p_corp_id: id, p_building_id: buildingId, p_offer: false,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!data || !data.success) {
+          alert('Could not withdraw: ' + (data?.reason || 'unknown'));
+          brokerOfferInFlight = false; btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        brokerOfferInFlight = false; btn.disabled = false; btn.textContent = prev;
       }
     };
 
