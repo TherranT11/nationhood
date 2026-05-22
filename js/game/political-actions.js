@@ -2219,22 +2219,55 @@ export async function getHistorySnapshotColumns(supabase) {
     return _historyColumnsCache;
 }
 
+// Columns the snapshot wants to write but that don't exist on
+// nations_history yet — i.e. a numeric stat was added to `nations` but
+// sync_nations_history_columns() hasn't been re-run. Learned at runtime
+// from the PostgREST "column not found" error and skipped thereafter so
+// ONE drifted column can't reject the whole row and zero out all trend
+// history. Lives for the warm process; a cold start re-checks the schema.
+const _historyMissingCols = new Set();
+
 export async function snapshotNationHistory(supabase, nation, currentTick) {
     const columns = await getHistorySnapshotColumns(supabase);
     const snapshot = { nation_id: nation.id, tick: currentTick };
 
     for (const key of columns) {
+        if (key === 'nation_id' || key === 'tick') continue;
+        if (_historyMissingCols.has(key)) continue;
         if (nation[key] !== undefined && nation[key] !== null) {
             snapshot[key] = Number(nation[key]);
         }
     }
 
-    const { error: snapError } = await supabase.from('nations_history').upsert(snapshot, {
-        onConflict: 'nation_id,tick'
-    });
+    // Resilient upsert. If a column in the snapshot is absent from
+    // nations_history, PostgREST rejects the entire row (PGRST204:
+    // "Could not find the 'X' column … in the schema cache"). Drop the
+    // offending column and retry so the remaining stats still persist;
+    // the missing one is remembered and pre-filtered next time. Only the
+    // first nation in a warm process pays the retry round-trips.
+    let snapError = null;
+    for (let attempt = 0; attempt < 32; attempt++) {
+        const { error } = await supabase.from('nations_history').upsert(snapshot, {
+            onConflict: 'nation_id,tick'
+        });
+        if (!error) { snapError = null; break; }
+        snapError = error;
+        const m = /Could not find the '([^']+)' column/i.exec(error.message || '');
+        const col = m && m[1];
+        if (col && col in snapshot && col !== 'nation_id' && col !== 'tick') {
+            _historyMissingCols.add(col);
+            delete snapshot[col];
+            continue;   // retry without it
+        }
+        break;          // unrelated error — stop retrying
+    }
+
     if (snapError) {
         console.error('[snapshotNationHistory] FAILED for nation', nation.id, 'tick', currentTick, ':', snapError.message);
     } else {
+        if (_historyMissingCols.size > 0) {
+            console.warn('[snapshotNationHistory] nations_history is missing columns (run sync_nations_history_columns to add them):', [..._historyMissingCols].join(', '));
+        }
         console.log(`[snapshotNationHistory] Stored ${Object.keys(snapshot).length - 2} stats for nation ${nation.id} at tick ${currentTick}`);
     }
 }
