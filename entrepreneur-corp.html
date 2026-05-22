@@ -573,6 +573,15 @@
       <div id="cp-acquire" style="display:none;align-self:center;min-width:160px;text-align:center;"></div>
       <!-- Declare Bankruptcy (2.6.8.6): owner-only. Populated by JS. -->
       <div id="cp-bankrupt" style="display:none;align-self:center;text-align:center;"></div>
+      <!-- Director actions (2.6.8.6.2): board directors of a PRIVATE corp see
+           [Offer Investment]; [Sell Equity] also if they hold shares. JS-gated. -->
+      <div id="cp-director-actions" style="display:none;align-self:center;min-width:200px;text-align:center;">
+        <div class="role-eyebrow" style="text-align:center;">DIRECTOR ACTIONS</div>
+        <div class="tc-row" style="margin-top:8px;justify-content:center;gap:8px;flex-wrap:wrap;">
+          <button id="cp-offer-invest-btn" class="tc-btn">OFFER INVESTMENT</button>
+          <button id="cp-sell-equity-btn" class="tc-btn" style="display:none;">SELL EQUITY</button>
+        </div>
+      </div>
       <div class="role-block">
         <div class="role-eyebrow">OWNERSHIP</div>
         <div class="role-pill" id="cp-role-pill">FOUNDER · CONTROLLING</div>
@@ -740,7 +749,9 @@ function initials(s, n) {
     const holdingsByFaction = new Map();
     let yourShares = 0;
     let totalHeld  = 0;
-    if (isPublic) {
+    // Public corps always have shares; private corps gain a share model once
+    // a director investment is accepted (20270212) — load holdings then too.
+    if (isPublic || c.shares_outstanding != null) {
       const { data: allH, error: ahErr } = await _supabase.from('corp_shareholdings')
         .select('holder_faction_id, shares').eq('corp_id', id);
       if (ahErr) console.warn('[entrepreneur-corp] holdings fetch error:', ahErr.message);
@@ -792,7 +803,7 @@ function initials(s, n) {
     };
     const chairStakeEl = document.getElementById('cp-board-chair-stake');
     if (chairStakeEl) {
-      chairStakeEl.innerHTML = isPublic
+      chairStakeEl.innerHTML = (isPublic || c.shares_outstanding != null)
         ? renderStakeMarkup(holdingsByFaction.get(c.owner_faction_id) || 0)
         : `<div class="pct">100%</div>`;
     }
@@ -958,6 +969,157 @@ function initials(s, n) {
         const tick = Number(data?.current_tick || 0);
         cdRemaining = Math.max(0, Number(c.rebrand_cooldown_until_tick || 0) - tick);
         if (cdRemaining > 0) render();
+      });
+    }
+
+    // ── Director actions (2.6.8.6.2): Offer Investment + Sell Equity ──
+    // Board directors (corp_board_seats, excludes the owner) of a PRIVATE
+    // corp can offer to invest for equity; Sell Equity also needs shares held.
+    if (!isPublic && entId && !isOwner) {
+      _supabase.from('corp_board_seats').select('corp_id')
+        .eq('corp_id', id).eq('member_faction_id', entId).maybeSingle()
+        .then(({ data: seat, error: seatErr }) => {
+          if (seatErr) { console.warn('[entrepreneur-corp] director-seat fetch error:', seatErr.message); return; }
+          if (!seat) return;
+          const wrap = document.getElementById('cp-director-actions');
+          if (wrap) wrap.style.display = 'block';
+          const myShares = holdingsByFaction.get(entId) || 0;
+          const offerBtn = document.getElementById('cp-offer-invest-btn');
+          const sellBtn  = document.getElementById('cp-sell-equity-btn');
+          if (offerBtn) offerBtn.onclick = () => openOfferInvestModal();
+          if (sellBtn && myShares > 0) {
+            sellBtn.style.display = '';
+            sellBtn.onclick = () => openSellEquityModal(myShares);
+          }
+        });
+    }
+    const parseNum = (v) => parseFloat(String(v || '').replace(/[^0-9.]/g, ''));
+
+    function openOfferInvestModal() {
+      const overlay = document.getElementById('cp-invest-overlay');
+      if (!overlay) return;
+      let submitting = false;
+      const calcVal = () => {
+        const amt = parseNum(document.getElementById('oi-amt')?.value);
+        const pct = parseNum(document.getElementById('oi-pct')?.value);
+        if (!(amt > 0) || !(pct > 0) || pct >= 100) return null;
+        return Math.round(amt * 100 / pct);
+      };
+      overlay.innerHTML = `
+        <div class="bm-modal" style="max-width:440px;">
+          <div class="bm-head"><div class="ti">Offer <em>Investment</em></div><div class="bm-x" id="oi-close">×</div></div>
+          <div class="bm-body">
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Invest cash into <b style="color:#cfcabf;">${escapeHtml(c.name || 'this corp')}</b> for newly issued equity. The CEO must accept the offer.</div>
+            <div class="bm-label">Amount to invest ($)</div>
+            <input type="text" class="bm-input" id="oi-amt" inputmode="numeric" placeholder="e.g. 5,000,000">
+            <div class="bm-label">Equity wanted (%)</div>
+            <input type="text" class="bm-input" id="oi-pct" inputmode="decimal" placeholder="e.g. 10">
+            <div style="font-size:11px;color:#8a8680;margin-top:10px;">Implied valuation: <span id="oi-val" style="color:#5cc55c;">—</span></div>
+            <div class="bm-err" id="oi-err"></div>
+          </div>
+          <div class="bm-foot">
+            <button class="bm-btn sec" id="oi-cancel">Cancel</button>
+            <button class="bm-btn pri" id="oi-submit">Submit Offer</button>
+          </div>
+        </div>`;
+      const close = () => overlay.classList.remove('open');
+      document.getElementById('oi-close').onclick = close;
+      document.getElementById('oi-cancel').onclick = close;
+      overlay.onclick = (e) => { if (e.target === overlay) close(); };
+      const upd = () => { const v = calcVal(); document.getElementById('oi-val').textContent = v ? fmtUsd(v) : '—'; };
+      document.getElementById('oi-amt').oninput = upd;
+      document.getElementById('oi-pct').oninput = upd;
+      document.getElementById('oi-submit').onclick = async () => {
+        if (submitting) return;
+        const errEl = document.getElementById('oi-err');
+        const amt = parseNum(document.getElementById('oi-amt').value);
+        const pct = parseNum(document.getElementById('oi-pct').value);
+        if (!(amt > 0)) { errEl.textContent = 'Enter an investment amount.'; return; }
+        if (!(pct > 0) || pct >= 100) { errEl.textContent = 'Equity must be between 0 and 100%.'; return; }
+        submitting = true;
+        const btn = document.getElementById('oi-submit'); btn.disabled = true; btn.textContent = 'Submitting…'; errEl.textContent = '';
+        try {
+          const { data, error } = await _supabase.rpc('offer_corp_investment', { p_corp_id: id, p_amount: amt, p_equity_pct: pct });
+          if (error) throw error;
+          if (!data || !data.success) {
+            const R = { not_director: 'Only a board director can offer investment.', not_private: 'Only private corps accept director investment.', invalid_amount: 'Enter a valid amount.', invalid_equity: 'Equity must be between 0 and 100%.', no_entrepreneur: 'No entrepreneur faction found.', corp_not_found: 'Corp not found.' };
+            errEl.textContent = R[data?.reason] || ('Failed: ' + (data?.reason || 'unknown'));
+            submitting = false; btn.disabled = false; btn.textContent = 'Submit Offer'; return;
+          }
+          btn.textContent = 'SENT ✓';
+          setTimeout(() => { close(); alert('Offer sent — the CEO will see it in their Pressing Issues.'); }, 500);
+        } catch (e) { errEl.textContent = 'Failed: ' + (e?.message || e); submitting = false; btn.disabled = false; btn.textContent = 'Submit Offer'; }
+      };
+      overlay.classList.add('open');
+      upd();
+    }
+
+    function openSellEquityModal(myShares) {
+      const overlay = document.getElementById('cp-sellequity-overlay');
+      if (!overlay) return;
+      let submitting = false;
+      let bookValue = null;
+      const total = Number(c.shares_outstanding) || 0;
+      const proceedsFor = (sh) => (bookValue == null || total < 1) ? null : Math.round(bookValue * sh / total);
+      const pct = total > 0 ? Math.round(myShares / total * 1000) / 10 : 0;
+      overlay.innerHTML = `
+        <div class="bm-modal" style="max-width:440px;">
+          <div class="bm-head"><div class="ti">Sell <em>Equity</em></div><div class="bm-x" id="se-close">×</div></div>
+          <div class="bm-body">
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Sell your shares back to <b style="color:#cfcabf;">${escapeHtml(c.name || 'this corp')}</b> at current book value. The corp pays from treasury.</div>
+            <div style="font-size:12px;color:#cfcabf;margin-bottom:8px;">You hold <b>${myShares}</b> share${myShares === 1 ? '' : 's'} (${pct}%). Corp book value: <span style="color:#5cc55c;" id="se-book">…</span></div>
+            <div class="bm-label">Shares to sell</div>
+            <input type="number" class="bm-input" id="se-shares" min="1" max="${myShares}" value="${myShares}">
+            <div style="font-size:11px;color:#8a8680;margin-top:10px;">Proceeds: <span id="se-proceeds" style="color:#5cc55c;">—</span></div>
+            <div class="bm-err" id="se-err"></div>
+          </div>
+          <div class="bm-foot">
+            <button class="bm-btn sec" id="se-cancel">Cancel</button>
+            <button class="bm-btn pri" id="se-submit">Sell</button>
+          </div>
+        </div>`;
+      const close = () => overlay.classList.remove('open');
+      document.getElementById('se-close').onclick = close;
+      document.getElementById('se-cancel').onclick = close;
+      overlay.onclick = (e) => { if (e.target === overlay) close(); };
+      const upd = () => {
+        const sh = parseInt(document.getElementById('se-shares').value, 10);
+        const p = (sh > 0) ? proceedsFor(sh) : null;
+        document.getElementById('se-proceeds').textContent = (p != null) ? fmtUsd(p) : '—';
+      };
+      document.getElementById('se-shares').oninput = upd;
+      document.getElementById('se-submit').onclick = async () => {
+        if (submitting) return;
+        const errEl = document.getElementById('se-err');
+        const sh = parseInt(document.getElementById('se-shares').value, 10);
+        if (!(sh >= 1) || sh > myShares) { errEl.textContent = `Enter 1–${myShares} shares.`; return; }
+        submitting = true;
+        const btn = document.getElementById('se-submit'); btn.disabled = true; btn.textContent = 'Selling…'; errEl.textContent = '';
+        try {
+          const { data, error } = await _supabase.rpc('sell_corp_equity', { p_corp_id: id, p_shares: sh });
+          if (error) throw error;
+          if (!data || !data.success) {
+            const R = {
+              insufficient_treasury: data?.need != null ? `Corp treasury can't cover it — needs ${fmtUsd(Number(data.need))}, has ${fmtUsd(Number(data.have) || 0)}.` : 'Corp treasury too low.',
+              insufficient_shares: "You don't hold that many shares.",
+              is_owner: 'The founder withdraws via treasury, not equity sell-back.',
+              no_entrepreneur: 'No entrepreneur faction found.', corp_not_found: 'Corp not found.', invalid_amount: 'Enter a valid amount.',
+            };
+            errEl.textContent = R[data?.reason] || ('Failed: ' + (data?.reason || 'unknown'));
+            submitting = false; btn.disabled = false; btn.textContent = 'Sell'; return;
+          }
+          btn.textContent = 'SOLD ✓ — refreshing…';
+          setTimeout(() => location.reload(), 600);
+        } catch (e) { errEl.textContent = 'Failed: ' + (e?.message || e); submitting = false; btn.disabled = false; btn.textContent = 'Sell'; }
+      };
+      overlay.classList.add('open');
+      // Book value is computed server-side (one source) — fetch for display.
+      // The buyback RPC recomputes it authoritatively; this is display-only.
+      _supabase.rpc('entrepreneur_corp_book_value', { p_corp_id: id }).then(({ data, error }) => {
+        if (error) console.warn('[entrepreneur-corp] book-value fetch error:', error.message);
+        bookValue = error ? null : (Number(data) || 0);
+        const b = document.getElementById('se-book'); if (b) b.textContent = bookValue != null ? fmtUsd(bookValue) : '—';
+        upd();
       });
     }
 
@@ -4581,6 +4743,12 @@ function initials(s, n) {
      ticker for $1M from corp treasury, 12-tick cooldown. Built
      dynamically by openCorpRebrandModal. RPC: entrepreneur_rebrand_corp. -->
 <div class="bm-overlay" id="cp-rebrand-overlay"></div>
+
+<!-- Director investment modals (2.6.8.6.2). Built dynamically by
+     openOfferInvestModal / openSellEquityModal. RPCs:
+     offer_corp_investment / sell_corp_equity. -->
+<div class="bm-overlay" id="cp-invest-overlay"></div>
+<div class="bm-overlay" id="cp-sellequity-overlay"></div>
 
 <!-- Request Loan modal (v0 corp loans, 20270174). Borrower picks
      eligible banks (Banking corps with a Banking Office in the

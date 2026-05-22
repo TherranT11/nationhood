@@ -187,6 +187,7 @@
             </div>
             <div id="ent-pi-host">
               <div id="ent-pi-acq"></div>
+              <div id="ent-pi-invest"></div>
               <div id="ent-pi-board"></div>
               <div id="ent-pi-empty"><div class="empty">No pressing issues.</div></div>
             </div>
@@ -227,6 +228,7 @@ import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { mountBoardPressingIssues } from './js/corp-board-pressing-issues.js';
 import { mountAcquisitionPressingIssues } from './js/acquisition-pressing-issues.js';
+import { mountInvestmentPressingIssues } from './js/corp-investment-pressing-issues.js';
 
 function setText(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
 
@@ -507,15 +509,20 @@ async function loadHoldings(entId, cash) {
     // Each renders into its own host; the shared empty line shows only
     // when both are empty, so a single source still suppresses it.
     const tickFn = () => Number(ctx.shard?.current_tick) || 0;
-    let _acqCtl = null, _boardCtl = null;
+    let _acqCtl = null, _boardCtl = null, _investCtl = null;
     const syncPiEmpty = () => {
-      const total = (_acqCtl?.getCount() || 0) + (_boardCtl?.getCount() || 0);
+      const total = (_acqCtl?.getCount() || 0) + (_boardCtl?.getCount() || 0) + (_investCtl?.getCount() || 0);
       const el = document.getElementById('ent-pi-empty');
       if (el) el.style.display = total === 0 ? '' : 'none';
     };
     _acqCtl = mountAcquisitionPressingIssues({
       supabase: _supabase, faction: f,
       host: document.getElementById('ent-pi-acq'),
+      showEmpty: false, onChange: syncPiEmpty,
+    });
+    _investCtl = mountInvestmentPressingIssues({
+      supabase: _supabase, faction: f,
+      host: document.getElementById('ent-pi-invest'),
       showEmpty: false, onChange: syncPiEmpty,
     });
     _boardCtl = mountBoardPressingIssues({
