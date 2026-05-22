@@ -78,6 +78,15 @@ BEGIN
     --     dependents are ON DELETE CASCADE, so votes/ballots/members go too.
     DELETE FROM strategic_alliances;
 
+    -- (1b) Pre-delete corp-tied loan negotiations. They cascade off factions
+    --      anyway, but must go BEFORE their bank_loans: deleting a bank_loan
+    --      fires SET NULL on loan_negotiations.fired_to_loan_id, which the
+    --      loan_negotiations_fired_has_loan CHECK (status='fired' ⇔ loan set)
+    --      rejects. (loan_negotiations is the only set-null/CHECK coupling.)
+    DELETE FROM loan_negotiations
+     WHERE borrower_faction_id IN (SELECT id FROM factions WHERE faction_type = 'corporation')
+        OR lender_faction_id   IN (SELECT id FROM factions WHERE faction_type = 'corporation');
+
     -- (2) Cascade-delete every corporation faction + all blocking dependents.
     PERFORM _cull_cascade('factions'::regclass, 'faction_type = ''corporation''');
 
