@@ -720,7 +720,7 @@ function initials(s, n) {
     if (!id) { window.location.href = 'entrepreneur-corporations.html'; return; }
 
     const { data: c, error } = await _supabase.from('entrepreneur_corps')
-      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, freighters_owned, aircraft_regional_owned, aircraft_narrowbody_owned, aircraft_widebody_owned, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
+      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, freighters_owned, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -2466,23 +2466,16 @@ function initials(s, n) {
         const aircraft  = aircraftRes.data || [];
         const corpCash  = getEntrepreneurCorpCash(c);
 
-        // Owned / assigned / idle per class (preview mirror of open_route).
-        const owned = {
-          regional:   Number(c.aircraft_regional_owned)   || 0,
-          narrowbody: Number(c.aircraft_narrowbody_owned) || 0,
-          widebody:   Number(c.aircraft_widebody_owned)   || 0,
-        };
-        const assigned = { regional: 0, narrowbody: 0, widebody: 0 };
-        for (const r of routes) {
-          assigned.regional   += Number(r.aircraft_regional)   || 0;
-          assigned.narrowbody += Number(r.aircraft_narrowbody) || 0;
-          assigned.widebody   += Number(r.aircraft_widebody)   || 0;
+        // Owned / idle per class, derived from the aircraft rows — the
+        // SAME source entrepreneur_open_route counts (route_id IS NULL =
+        // idle). One source of truth: no separate count-based mirror.
+        const owned = { regional: 0, narrowbody: 0, widebody: 0 };
+        const idle  = { regional: 0, narrowbody: 0, widebody: 0 };
+        for (const a of aircraft) {
+          if (owned[a.aircraft_class] === undefined) continue;
+          owned[a.aircraft_class]++;
+          if (!a.route_id) idle[a.aircraft_class]++;
         }
-        const idle = {
-          regional:   owned.regional   - assigned.regional,
-          narrowbody: owned.narrowbody - assigned.narrowbody,
-          widebody:   owned.widebody   - assigned.widebody,
-        };
 
         // ── Fleet card: owned/idle per class + buy form ──
         const fleetCells = AIRCRAFT_CLASSES.map(k => {

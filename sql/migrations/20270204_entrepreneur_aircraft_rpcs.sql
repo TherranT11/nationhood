@@ -2,23 +2,29 @@
 -- ENTREPRENEUR AIRLINES — per-aircraft rows (commit 2/2: RPCs)
 -- ════════════════════════════════════════════════════════════════════
 -- Pairs with 20270203 (schema + backfill). Rewires the entrepreneur
--- airline RPCs so per-aircraft corp_aircraft rows are the source of
--- truth, while aircraft_*_owned / airline_routes.aircraft_* stay as
--- maintained caches (read by the tick allocator, UI idle math, range
--- gating). Adds condition decay to the per-tick allocator and player-
--- facing overhaul / retire that reuse the legacy condition mechanics
--- but charge entrepreneur treasury_cash (legacy charges faction
--- corp_cash_reserves via emit_corp_cash_event, which entrepreneur corps
--- don't have).
+-- airline RPCs so per-aircraft corp_aircraft rows are the SINGLE source
+-- of truth: every function stops reading/writing the corp-level
+-- entrepreneur_corps.aircraft_*_owned counters, which are then DROPped
+-- at the end of this migration (no reader remains). The per-ROUTE counts
+-- airline_routes.aircraft_* stay — the per-tick allocator reads them for
+-- seats/ops, as the legacy system does. Adds condition decay to the
+-- allocator and player-facing overhaul / retire that reuse the legacy
+-- condition mechanics but charge entrepreneur treasury_cash (legacy
+-- charges faction corp_cash_reserves via emit_corp_cash_event, which
+-- entrepreneur corps don't have).
 --
 -- Touched:
---   entrepreneur_buy_aircraft           — INSERT N rows alongside count bump
+--   entrepreneur_buy_aircraft           — INSERT N rows (no count write)
 --   entrepreneur_open_route             — row-based idle check + assign route_id
 --   entrepreneur_close_route            — release assigned rows
 --   process_entrepreneur_airline_routes — condition decay on flying rows
---   found_entrepreneur_corp             — seed 2 rows with the 2 starter regionals
+--   found_entrepreneur_corp             — seed 2 starter-regional rows
 --   entrepreneur_overhaul_aircraft (NEW)
 --   entrepreneur_retire_aircraft   (NEW)
+--   overhaul_aircraft / retire_aircraft / set_aircraft_tail_number
+--                                       — guard legacy faction RPCs against
+--                                         entrepreneur rows (corp_id IS NULL)
+--   entrepreneur_corps.aircraft_*_owned — DROPped (single source = rows)
 --
 -- ── Overhaul cost: 0.5% of purchase price ────────────────────────
 -- Entrepreneur aircraft cost $60M/$90M/$120M (regional/narrowbody/
@@ -55,7 +61,6 @@ DECLARE
     v_unit      bigint;
     v_cost      bigint;
     v_treas     numeric;
-    v_col       text;
     v_new_owned int;
     v_tick      int;
 BEGIN
@@ -108,21 +113,19 @@ BEGIN
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
     v_tick := COALESCE(v_tick, 0);
 
-    -- Source of truth: one row per aircraft (condition 100, idle).
+    -- corp_aircraft is the single source of truth for the fleet: one row
+    -- per aircraft (condition 100, idle).
     INSERT INTO corp_aircraft (entrepreneur_corp_id, aircraft_class, condition, acquired_at_tick)
     SELECT p_corp_id, p_class, 100, v_tick
       FROM generate_series(1, p_quantity);
 
-    -- Maintained cache: keep the owned counter in lockstep (read by the
-    -- tick allocator, UI idle math, range gating).
-    v_col := 'aircraft_' || p_class || '_owned';
-    EXECUTE format(
-        'UPDATE entrepreneur_corps SET treasury_cash = COALESCE(treasury_cash,0) - $1, %I = %I + $2 WHERE id = $3',
-        v_col, v_col)
-      USING v_cost, p_quantity, p_corp_id;
+    UPDATE entrepreneur_corps
+       SET treasury_cash = COALESCE(treasury_cash, 0) - v_cost
+     WHERE id = p_corp_id;
 
-    EXECUTE format('SELECT %I FROM entrepreneur_corps WHERE id = $1', v_col)
-       INTO v_new_owned USING p_corp_id;
+    SELECT COUNT(*) INTO v_new_owned
+      FROM corp_aircraft
+     WHERE entrepreneur_corp_id = p_corp_id AND aircraft_class = p_class;
 
     RETURN jsonb_build_object(
         'success', true,
@@ -140,7 +143,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.entrepreneur_buy_aircraft(uuid, text, int) TO authenticated;
 
 COMMENT ON FUNCTION public.entrepreneur_buy_aircraft(uuid, text, int) IS
-    'Airline-corp owner buys N aircraft of a class from treasury_cash. Flat prices: regional $60M / narrowbody $90M / widebody $120M. Inserts one corp_aircraft row per plane (condition 100, idle) and keeps aircraft_*_owned in lockstep. Uncapped — per-tick ops cost is the natural limiter.';
+    'Airline-corp owner buys N aircraft of a class from treasury_cash. Flat prices: regional $60M / narrowbody $90M / widebody $120M. Inserts one corp_aircraft row per plane (condition 100, idle) — the rows are the single source of truth for the fleet. Uncapped — per-tick ops cost is the natural limiter.';
 
 -- ── 2. entrepreneur_open_route — idle from rows + assign route_id ─
 CREATE OR REPLACE FUNCTION public.entrepreneur_open_route(
@@ -534,6 +537,12 @@ BEGIN
         -- routes pin maintenance_tier='basic' → 6.0/tick (airline_condition_decay).
         -- Decay drives the player's overhaul/retire decisions; v1 has no
         -- incident-risk loop (deferred — see 20270187 header).
+        -- KNOWN v1 SIMPLIFICATION: seats/ops/revenue above are read from the
+        -- denorm route counts, which include an is_overhauling plane, so an
+        -- overhauling aircraft still earns/costs for the one tick it sits in
+        -- MRO (unlike legacy, which excludes it from seat aggregation). The
+        -- only is_overhauling effect here is skipping THIS tick's decay. Made
+        -- row-aware only if/when the tick moves off denorm counts.
         UPDATE corp_aircraft
            SET condition = GREATEST(0, condition - airline_condition_decay(v_route.maintenance_tier))
          WHERE route_id = v_route.id
@@ -703,7 +712,6 @@ DECLARE
     v_corp  entrepreneur_corps%ROWTYPE;
     v_fac   factions%ROWTYPE;
     v_ac    corp_aircraft%ROWTYPE;
-    v_col   text;
     v_tick  int;
 BEGIN
     IF v_uid IS NULL THEN
@@ -740,9 +748,9 @@ BEGIN
     END IF;
 
     -- If assigned to a route, decrement that route's per-class denorm
-    -- count so the tick allocator + UI summary stay accurate. The route
-    -- stays 'active' even if it drops to zero aircraft — a player-visible
-    -- idle route they can close.
+    -- count so the tick allocator (which reads those counts for seats/ops)
+    -- stays accurate. The route stays 'active' even if it drops to zero
+    -- aircraft — a player-visible idle route they can close.
     IF v_ac.route_id IS NOT NULL THEN
         IF v_ac.aircraft_class = 'regional' THEN
             UPDATE airline_routes SET aircraft_regional = GREATEST(0, aircraft_regional - 1) WHERE id = v_ac.route_id;
@@ -752,11 +760,6 @@ BEGIN
             UPDATE airline_routes SET aircraft_widebody = GREATEST(0, aircraft_widebody - 1) WHERE id = v_ac.route_id;
         END IF;
     END IF;
-
-    -- Maintained cache: decrement the owned counter.
-    v_col := 'aircraft_' || v_ac.aircraft_class || '_owned';
-    EXECUTE format('UPDATE entrepreneur_corps SET %I = GREATEST(0, %I - 1) WHERE id = $1', v_col, v_col)
-      USING p_corp_id;
 
     DELETE FROM corp_aircraft WHERE id = p_aircraft_id;
 
@@ -787,13 +790,13 @@ $$;
 GRANT EXECUTE ON FUNCTION public.entrepreneur_retire_aircraft(uuid, uuid) TO authenticated;
 
 COMMENT ON FUNCTION public.entrepreneur_retire_aircraft(uuid, uuid) IS
-    'Airline-corp owner retires (scraps) one aircraft. No refund. Auto-releases from any assigned route (decrementing the route''s class-count denorm), decrements aircraft_*_owned, and DELETEs the corp_aircraft row. Logs to event_log.';
+    'Airline-corp owner retires (scraps) one aircraft. No refund. Auto-releases from any assigned route (decrementing the route''s class-count denorm so the tick allocator stays accurate) and DELETEs the corp_aircraft row. Logs to event_log.';
 
--- ── 7. found_entrepreneur_corp — seed rows with the 2 starter regionals
--- Verbatim 20270192 body + one INSERT: the airline branch already sets
--- aircraft_regional_owned = 2; materialize the 2 matching corp_aircraft
--- rows so a freshly founded airline corp has real planes (not just a
--- count) ready to assign to its first route.
+-- ── 7. found_entrepreneur_corp — seed the 2 starter-regional rows
+-- 20270192 body with the airline branch's count write
+-- (aircraft_regional_owned = 2) REPLACED by a 2-row corp_aircraft INSERT,
+-- so a freshly founded airline corp has real planes (the source of truth)
+-- ready to assign to its first route.
 CREATE OR REPLACE FUNCTION found_entrepreneur_corp(
     p_industry text, p_hq_nation_id uuid, p_name text, p_capital bigint, p_listing text
 ) RETURNS jsonb
@@ -873,11 +876,9 @@ BEGIN
         VALUES (v_id, v_fac.id, 20);
     END IF;
 
-    -- Airline starter seed: 2 free regional aircraft (count + rows) + 2
-    -- same-nation starter terminals so a first route is openable.
+    -- Airline starter seed: 2 free regional aircraft (rows are the source
+    -- of truth) + 2 same-nation starter terminals so a first route is openable.
     IF p_industry = 'airline' THEN
-        UPDATE entrepreneur_corps SET aircraft_regional_owned = 2 WHERE id = v_id;
-
         INSERT INTO corp_aircraft (entrepreneur_corp_id, aircraft_class, condition, acquired_at_tick)
         SELECT v_id, 'regional', 100, COALESCE(v_tick, 0)
           FROM generate_series(1, 2);
@@ -947,7 +948,213 @@ $$;
 GRANT EXECUTE ON FUNCTION found_entrepreneur_corp(text, uuid, text, bigint, text) TO authenticated;
 
 COMMENT ON FUNCTION found_entrepreneur_corp(text, uuid, text, bigint, text) IS
-    'Found an entrepreneur corp. Debits capital + 5%% fee from party_funds, seeds treasury_cash = capital. Public adds 20-share AMM state. Airline gets 2 regional aircraft (count + corp_aircraft rows) + 2 terminals; construction/banking/real_estate/shipping each get 1 free completed unique building (cost_paid 0) in their HQ nation, and shipping also gets 2 freighters.';
+    'Found an entrepreneur corp. Debits capital + 5%% fee from party_funds, seeds treasury_cash = capital. Public adds 20-share AMM state. Airline gets 2 regional aircraft (corp_aircraft rows) + 2 terminals; construction/banking/real_estate/shipping each get 1 free completed unique building (cost_paid 0) in their HQ nation, and shipping also gets 2 freighters.';
+
+-- ── 8. Guard legacy faction RPCs against entrepreneur aircraft ───
+-- corp_aircraft now holds entrepreneur rows (corp_id IS NULL). The
+-- legacy player-facing RPCs that take a single aircraft id resolve
+-- ownership via `factions WHERE id = v_ac.corp_id` — for an entrepreneur
+-- row that yields an empty record, and the check
+-- `v_corp.id <> v_user AND ... <> v_user` evaluates to NULL (not TRUE),
+-- so it falls THROUGH the ownership gate. retire_aircraft would then
+-- DELETE any entrepreneur aircraft for any authenticated caller (and
+-- skip the aircraft_*_owned cache decrement). Add an explicit guard so
+-- these faction RPCs reject entrepreneur-owned rows — those are managed
+-- by the entrepreneur_* RPCs above. Bodies are otherwise verbatim
+-- (20261019 / 20261021 / 20260720).
+
+CREATE OR REPLACE FUNCTION overhaul_aircraft(p_aircraft_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_user      UUID := auth.uid();
+    v_ac        corp_aircraft%ROWTYPE;
+    v_corp      factions%ROWTYPE;
+    v_cost      INT;
+    v_new_count INT;
+    v_new_cond  NUMERIC;
+    v_tick      INT;
+BEGIN
+    IF v_user IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
+    END IF;
+
+    SELECT * INTO v_ac FROM corp_aircraft WHERE id = p_aircraft_id FOR UPDATE;
+    IF v_ac.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Aircraft not found');
+    END IF;
+    IF v_ac.corp_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Entrepreneur-owned aircraft — overhaul it from the corp page.');
+    END IF;
+
+    SELECT * INTO v_corp FROM factions WHERE id = v_ac.corp_id;
+    IF v_corp.id <> v_user
+       AND COALESCE(v_corp.linked_user_id, '00000000-0000-0000-0000-000000000000'::uuid) <> v_user THEN
+        RETURN jsonb_build_object('success', false, 'error', 'You do not own this aircraft');
+    END IF;
+
+    IF COALESCE(v_ac.is_overhauling, FALSE) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Aircraft is already in overhaul');
+    END IF;
+
+    IF v_ac.condition >= 100 THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Aircraft is already at full condition');
+    END IF;
+
+    v_cost := CASE v_ac.aircraft_class
+        WHEN 'regional'   THEN 40000
+        WHEN 'narrowbody' THEN 120000
+        WHEN 'widebody'   THEN 300000
+        ELSE 0
+    END;
+
+    IF COALESCE(v_corp.corp_cash_reserves, 0) < v_cost THEN
+        RETURN jsonb_build_object('success', false,
+            'error', 'Insufficient cash. Overhaul cost: $' || v_cost::TEXT);
+    END IF;
+
+    SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
+    v_tick := COALESCE(v_tick, 0);
+
+    v_new_count := COALESCE(v_ac.overhaul_count, 0) + 1;
+    v_new_cond  := GREATEST(0, 100 - v_new_count);
+
+    UPDATE corp_aircraft
+       SET is_overhauling = TRUE,
+           overhaul_count = v_new_count,
+           condition      = v_new_cond
+     WHERE id = p_aircraft_id;
+
+    PERFORM emit_corp_cash_event(
+        v_corp.id,
+        'maintenance',
+        'Aircraft overhaul · ' || v_ac.aircraft_class
+            || COALESCE(' (' || v_ac.tail_number || ')', '')
+            || ' · cycle #' || v_new_count::TEXT,
+        -v_cost::NUMERIC,
+        v_tick,
+        NULL
+    );
+
+    RETURN jsonb_build_object(
+        'success',        true,
+        'aircraft_id',    p_aircraft_id,
+        'overhaul_count', v_new_count,
+        'condition',      v_new_cond,
+        'cost',           v_cost
+    );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION retire_aircraft(p_aircraft_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_user UUID := auth.uid();
+    v_ac   corp_aircraft%ROWTYPE;
+    v_corp factions%ROWTYPE;
+BEGIN
+    IF v_user IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
+    END IF;
+
+    SELECT * INTO v_ac FROM corp_aircraft WHERE id = p_aircraft_id FOR UPDATE;
+    IF v_ac.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Aircraft not found');
+    END IF;
+    IF v_ac.corp_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Entrepreneur-owned aircraft — retire it from the corp page.');
+    END IF;
+
+    SELECT * INTO v_corp FROM factions WHERE id = v_ac.corp_id;
+    IF v_corp.id <> v_user
+       AND COALESCE(v_corp.linked_user_id, '00000000-0000-0000-0000-000000000000'::uuid) <> v_user THEN
+        RETURN jsonb_build_object('success', false, 'error', 'You do not own this aircraft');
+    END IF;
+
+    IF v_ac.route_id IS NOT NULL THEN
+        IF v_ac.aircraft_class = 'regional' THEN
+            UPDATE airline_routes
+               SET aircraft_regional = GREATEST(0, aircraft_regional - 1)
+             WHERE id = v_ac.route_id;
+        ELSIF v_ac.aircraft_class = 'narrowbody' THEN
+            UPDATE airline_routes
+               SET aircraft_narrowbody = GREATEST(0, aircraft_narrowbody - 1)
+             WHERE id = v_ac.route_id;
+        ELSIF v_ac.aircraft_class = 'widebody' THEN
+            UPDATE airline_routes
+               SET aircraft_widebody = GREATEST(0, aircraft_widebody - 1)
+             WHERE id = v_ac.route_id;
+        END IF;
+    END IF;
+
+    DELETE FROM corp_aircraft WHERE id = p_aircraft_id;
+
+    RETURN jsonb_build_object(
+        'success',           true,
+        'aircraft_id',       p_aircraft_id,
+        'released_route_id', v_ac.route_id
+    );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION set_aircraft_tail_number(p_aircraft_id UUID, p_tail_number TEXT)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_user  UUID := auth.uid();
+    v_ac    corp_aircraft%ROWTYPE;
+    v_corp  factions%ROWTYPE;
+    v_clean TEXT;
+BEGIN
+    IF v_user IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
+    END IF;
+
+    SELECT * INTO v_ac FROM corp_aircraft WHERE id = p_aircraft_id;
+    IF v_ac.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Aircraft not found');
+    END IF;
+    IF v_ac.corp_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Entrepreneur-owned aircraft.');
+    END IF;
+
+    SELECT * INTO v_corp FROM factions WHERE id = v_ac.corp_id;
+    IF v_corp.id <> v_user
+       AND COALESCE(v_corp.linked_user_id, '00000000-0000-0000-0000-000000000000'::uuid) <> v_user THEN
+        RETURN jsonb_build_object('success', false, 'error', 'You do not own this aircraft');
+    END IF;
+
+    v_clean := NULLIF(TRIM(SUBSTRING(COALESCE(p_tail_number, ''), 1, 12)), '');
+
+    UPDATE corp_aircraft SET tail_number = v_clean WHERE id = p_aircraft_id;
+
+    RETURN jsonb_build_object('success', true, 'aircraft_id', p_aircraft_id, 'tail_number', v_clean);
+END;
+$$;
+
+-- ── 9. Drop the now-readerless corp-level owned-count cache ──────
+-- Done LAST: every function above has been redefined to neither read nor
+-- write entrepreneur_corps.aircraft_*_owned, so no live definition
+-- references these columns by the time they're dropped. open_route +
+-- the corp page derive idle/owned from corp_aircraft rows; the per-tick
+-- allocator reads the per-ROUTE counts (airline_routes.aircraft_*), not
+-- these. With no reader left, the counters were pure duplicate state —
+-- corp_aircraft is now the single source of truth for the fleet.
+-- (The matching SELECT columns were removed from entrepreneur-corp.html.)
+ALTER TABLE entrepreneur_corps
+    DROP COLUMN IF EXISTS aircraft_regional_owned,
+    DROP COLUMN IF EXISTS aircraft_narrowbody_owned,
+    DROP COLUMN IF EXISTS aircraft_widebody_owned;
 
 NOTIFY pgrst, 'reload schema';
 

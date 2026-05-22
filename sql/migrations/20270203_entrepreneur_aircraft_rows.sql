@@ -25,14 +25,15 @@
 -- CHECK — exactly the pattern 20270186 used for airline_routes
 -- (airline_faction_id vs airline_corp_id + airline_routes_one_owner_chk).
 --
--- ── Counts stay as a maintained cache ────────────────────────────
--- entrepreneur_corps.aircraft_*_owned and airline_routes.aircraft_*
--- remain as denormalized caches (the per-tick allocator + UI idle math
--- + range gating read them). This mirrors the legacy system, which also
--- keeps airline_routes.aircraft_* in lockstep with the rows. The rows
--- are now the source of truth for per-plane condition/identity; the
--- counts are derived and every ownership-mutating RPC keeps both aligned
--- (commit 2/2).
+-- ── corp-level owned counts are RETIRED (single source = the rows) ─
+-- entrepreneur_corps.aircraft_*_owned were a per-corp counter cache.
+-- With per-aircraft rows, open_route counts idle from rows and the corp
+-- page derives owned/idle from rows, so the counters have no reader —
+-- 20270204 (commit 2/2) DROPs them after redefining every RPC to stop
+-- writing them. This migration still READS them (below) to materialize
+-- the right number of rows and to verify the backfill before they go.
+-- airline_routes.aircraft_* per-ROUTE counts STAY: the per-tick
+-- allocator reads them for seats/ops, exactly as the legacy system does.
 --
 -- One-time backfill: materialize one row (condition 100) per currently
 -- owned aircraft, then assign route_id to match each active route's
@@ -118,7 +119,13 @@ DECLARE
     v_route RECORD;
     v_cls   RECORD;
     v_ids   uuid[];
+    v_bad_owned int;
+    v_bad_route int;
 BEGIN
+    -- Guard makes the whole one-time migration idempotent AND keeps the
+    -- count-reading statements below from ever planning against the
+    -- aircraft_*_owned columns once 20270204 has dropped them (on a
+    -- re-run the early RETURN fires before any such statement is reached).
     IF EXISTS (SELECT 1 FROM corp_aircraft WHERE entrepreneur_corp_id IS NOT NULL) THEN
         RAISE NOTICE 'entrepreneur corp_aircraft rows already exist — skipping backfill';
         RETURN;
@@ -167,14 +174,9 @@ BEGIN
             END IF;
         END LOOP;
     END LOOP;
-END $$;
 
--- ── 4. Verification: rows must match the caches they mirror ──────
-DO $$
-DECLARE
-    v_bad_owned int;
-    v_bad_route int;
-BEGIN
+    -- ── 4. Verification: rows must match the caches they mirror, before
+    -- 20270204 drops the count caches and makes the rows authoritative.
     -- Per corp per class: row count == owned count.
     SELECT COUNT(*) INTO v_bad_owned FROM (
         SELECT ec.id
