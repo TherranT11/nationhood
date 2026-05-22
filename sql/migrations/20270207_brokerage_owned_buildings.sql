@@ -109,6 +109,16 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'not_owner');
     END IF;
 
+    -- Brokerage opt-in is for NON-RE owners (e.g. construction) who lack
+    -- an in-nation RE office to list directly. Real Estate corps sell
+    -- their own inventory via the retail offer path. Restricting it here
+    -- also closes a double-sale path: a brokered RE-owned building could
+    -- otherwise still be sold through accept_offer (which only checks
+    -- seller=real_estate), leaving a stale broker_corp_id behind.
+    IF p_offer AND v_corp.industry = 'real_estate' THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'real_estate_owner_uses_retail');
+    END IF;
+
     SELECT * INTO v_building FROM corp_buildings WHERE id = p_building_id FOR UPDATE;
     IF v_building.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'building_not_found');
