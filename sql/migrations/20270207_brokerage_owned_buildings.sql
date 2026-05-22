@@ -55,6 +55,30 @@
 
 BEGIN;
 
+-- ── 0. Shared sector lookup (one source of truth) ─────────────────
+-- building_type → the industry a BUYER must be to own/operate it.
+-- Previously an inline CASE duplicated in broker_buy_listing,
+-- buy_building, and accept_offer. Centralised here; all three call it.
+-- (The frontend keeps a small advisory mirror — SECTOR_FOR_TYPE — only
+-- to grey out ineligible Buy buttons; the DB stays authoritative.)
+CREATE OR REPLACE FUNCTION public.corp_building_required_sector(p_building_type text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT CASE p_building_type
+        WHEN 'construction_yard' THEN 'construction'
+        WHEN 'port'              THEN 'shipping'
+        WHEN 'banking_office'    THEN 'banking'
+        ELSE NULL
+    END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.corp_building_required_sector(text) TO authenticated;
+
+COMMENT ON FUNCTION public.corp_building_required_sector(text) IS
+    'Single source of truth for the building_type → required buyer industry sector-lock. NULL = no restriction (regional_hq, real_estate_office). Called by broker_buy_listing, buy_building, accept_offer.';
+
 -- ── 1. Schema: owner opt-in flag ──────────────────────────────────
 ALTER TABLE corp_buildings
     ADD COLUMN IF NOT EXISTS brokerage_offered boolean NOT NULL DEFAULT false;
@@ -78,11 +102,12 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-    v_uid       uuid := auth.uid();
-    v_corp      entrepreneur_corps%ROWTYPE;
-    v_fac       factions%ROWTYPE;
-    v_building  corp_buildings%ROWTYPE;
-    v_tick      int;
+    v_uid         uuid := auth.uid();
+    v_corp        entrepreneur_corps%ROWTYPE;
+    v_fac         factions%ROWTYPE;
+    v_building    corp_buildings%ROWTYPE;
+    v_had_broker  boolean;
+    v_tick        int;
 BEGIN
     IF v_uid IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
@@ -129,23 +154,42 @@ BEGIN
     IF v_building.owner_corp_id IS NULL OR v_building.owner_corp_id <> p_corp_id THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_building_owner');
     END IF;
-    IF v_building.broker_corp_id IS NOT NULL THEN
-        RETURN jsonb_build_object('success', false, 'reason', 'already_brokered',
-            'broker_corp_id', v_building.broker_corp_id);
+    -- p_offer = true on an already-brokered building is a no-op (it is
+    -- already offered). p_offer = false REVOKES from any state, so it is
+    -- never a no-op while a broker still holds the lock.
+    IF p_offer AND v_building.broker_corp_id IS NOT NULL THEN
+        RETURN jsonb_build_object('success', true, 'building_id', p_building_id,
+            'brokerage_offered', true, 'noop', true);
     END IF;
-    IF COALESCE(v_building.brokerage_offered, false) = p_offer THEN
+    IF COALESCE(v_building.brokerage_offered, false) = p_offer
+       AND v_building.broker_corp_id IS NULL THEN
         RETURN jsonb_build_object('success', true, 'building_id', p_building_id,
             'brokerage_offered', p_offer, 'noop', true);
     END IF;
 
+    v_had_broker := v_building.broker_corp_id IS NOT NULL;
+
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
     v_tick := COALESCE(v_tick, 0);
 
-    -- Turning ON cancels any wholesale listing (mutual exclusion).
-    UPDATE corp_buildings
-       SET brokerage_offered = p_offer,
-           list_price        = CASE WHEN p_offer THEN NULL ELSE list_price END
-     WHERE id = p_building_id;
+    IF p_offer THEN
+        -- Offer for brokerage: set the flag, cancel any wholesale listing.
+        UPDATE corp_buildings
+           SET brokerage_offered = true,
+               list_price        = NULL
+         WHERE id = p_building_id;
+    ELSE
+        -- Revoke at any stage: clear the flag AND any active broker lock +
+        -- asking price. A broker holding the lock forfeits its
+        -- (non-refundable) lock fee, consistent with broker_withdraw_listing.
+        UPDATE corp_buildings
+           SET brokerage_offered     = false,
+               broker_corp_id        = NULL,
+               broker_fee_paid       = NULL,
+               broker_listed_at_tick = NULL,
+               list_price            = NULL
+         WHERE id = p_building_id;
+    END IF;
 
     INSERT INTO event_log (
         nation_id, faction_id, event_name, description_used,
@@ -154,18 +198,22 @@ BEGIN
         v_building.nation_id, v_fac.id,
         CASE WHEN p_offer THEN 'Building Offered for Brokerage'
                           ELSE 'Brokerage Offer Withdrawn' END,
-        format('%s %s %s for brokerage.',
+        format('%s %s %s for brokerage.%s',
                v_corp.name,
                CASE WHEN p_offer THEN 'makes' ELSE 'pulls' END,
-               v_building.name),
+               v_building.name,
+               CASE WHEN (NOT p_offer) AND v_had_broker
+                    THEN ' Broker lock revoked (fee forfeit).' ELSE '' END),
         'corporate',
         CASE WHEN p_offer THEN 'brokerage_offered' ELSE 'brokerage_offer_withdrawn' END,
         jsonb_build_object(
-            'building_id',   p_building_id,
-            'building_name', v_building.name,
-            'corp_id',       p_corp_id,
-            'corp_name',     v_corp.name,
-            'offered',       p_offer
+            'building_id',    p_building_id,
+            'building_name',  v_building.name,
+            'corp_id',        p_corp_id,
+            'corp_name',      v_corp.name,
+            'offered',        p_offer,
+            'broker_revoked', (NOT p_offer) AND v_had_broker,
+            'broker_corp_id', v_building.broker_corp_id
         ),
         v_tick
     );
@@ -173,7 +221,8 @@ BEGIN
     RETURN jsonb_build_object(
         'success',           true,
         'building_id',       p_building_id,
-        'brokerage_offered', p_offer
+        'brokerage_offered', p_offer,
+        'broker_revoked',    (NOT p_offer) AND v_had_broker
     );
 END;
 $$;
@@ -181,7 +230,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.offer_building_for_brokerage(uuid, uuid, boolean) TO authenticated;
 
 COMMENT ON FUNCTION public.offer_building_for_brokerage(uuid, uuid, boolean) IS
-    'Owner opt-in for brokerage. The owning corp flags a completed building it owns as available (or not) for a Real Estate corp to broker. Turning it on cancels any wholesale list_price. Cannot toggle once a broker holds the lock. Owner-gated.';
+    'Owner opt-in/out for brokerage. p_offer=true flags a completed building the caller''s (non-RE) corp owns as available for a Real Estate corp to broker, cancelling any wholesale list_price. p_offer=false REVOKES at any stage — including clearing an active broker lock (the broker forfeits its non-refundable lock fee). Owner-gated.';
 
 -- ── 3. broker_list_building — allow OWNED, owner-offered buildings ─
 -- Body from 20270184 with the unowned-only gate replaced by:
@@ -433,12 +482,7 @@ BEGIN
 
     -- Sector lock: the BUYER (operator) must match the building type.
     -- regional_hq / real_estate_office have no restriction.
-    v_required_sector := CASE v_building.building_type
-        WHEN 'construction_yard' THEN 'construction'
-        WHEN 'port'              THEN 'shipping'
-        WHEN 'banking_office'    THEN 'banking'
-        ELSE NULL
-    END;
+    v_required_sector := corp_building_required_sector(v_building.building_type);
     IF v_required_sector IS NOT NULL AND v_buyer_corp.industry <> v_required_sector THEN
         RETURN jsonb_build_object('success', false, 'reason', 'wrong_sector',
             'required', v_required_sector, 'have', v_buyer_corp.industry);
@@ -660,12 +704,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'use_offer_system');
     END IF;
 
-    v_required_sector := CASE v_building.building_type
-        WHEN 'construction_yard' THEN 'construction'
-        WHEN 'port'              THEN 'shipping'
-        WHEN 'banking_office'    THEN 'banking'
-        ELSE NULL
-    END;
+    v_required_sector := corp_building_required_sector(v_building.building_type);
     IF v_required_sector IS NOT NULL AND v_buyer_corp.industry <> v_required_sector THEN
         RETURN jsonb_build_object('success', false, 'reason', 'wrong_sector',
             'required', v_required_sector, 'have', v_buyer_corp.industry);
@@ -884,6 +923,192 @@ GRANT EXECUTE ON FUNCTION public.list_building_for_sale(uuid, bigint) TO authent
 COMMENT ON FUNCTION public.list_building_for_sale(uuid, bigint) IS
     'Owner-direct (wholesale) listing. Sets list_price on a completed building the caller''s corp owns. Rejects buildings that are brokered (in_brokerage) or offered for brokerage (offered_for_brokerage) — those sell via the broker path. RE-office gate applies only to real_estate owners; non-RE owners (construction wholesale) bypass it.';
 
+-- ── 7. accept_offer — route through the shared sector helper ──────
+-- Body verbatim from 20270184 with the inline sector-lock CASE replaced
+-- by corp_building_required_sector() (one source of truth). No other
+-- behaviour change.
+
+CREATE OR REPLACE FUNCTION public.accept_offer(p_offer_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_uid              uuid := auth.uid();
+    v_fac              factions%ROWTYPE;
+    v_offer            building_offers%ROWTYPE;
+    v_building         corp_buildings%ROWTYPE;
+    v_seller_corp      entrepreneur_corps%ROWTYPE;
+    v_buyer_corp       entrepreneur_corps%ROWTYPE;
+    v_amount           bigint;
+    v_tick             int;
+    v_nation_name      text;
+    v_rejected_count   int := 0;
+    v_buyer_treas      numeric;
+    v_required_sector  text;
+    v_rep_bonus        int;
+BEGIN
+    IF v_uid IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
+    END IF;
+    IF p_offer_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'invalid_arguments');
+    END IF;
+
+    SELECT * INTO v_offer FROM building_offers
+     WHERE id = p_offer_id FOR UPDATE;
+    IF v_offer.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'offer_not_found');
+    END IF;
+    IF v_offer.status <> 'pending' THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'offer_not_pending');
+    END IF;
+    v_amount := v_offer.amount;
+
+    SELECT * INTO v_building FROM corp_buildings
+     WHERE id = v_offer.building_id FOR UPDATE;
+    IF v_building.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'building_not_found');
+    END IF;
+    IF v_building.list_price IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_for_sale');
+    END IF;
+    IF v_building.status <> 'completed' THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_completed');
+    END IF;
+    IF v_building.owner_corp_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'no_seller');
+    END IF;
+
+    PERFORM id FROM entrepreneur_corps
+     WHERE id IN (v_offer.buyer_corp_id, v_building.owner_corp_id)
+     ORDER BY id FOR UPDATE;
+
+    SELECT * INTO v_seller_corp FROM entrepreneur_corps WHERE id = v_building.owner_corp_id;
+    IF v_seller_corp.industry <> 'real_estate' THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'seller_not_real_estate');
+    END IF;
+
+    SELECT * INTO v_buyer_corp FROM entrepreneur_corps WHERE id = v_offer.buyer_corp_id;
+    IF v_buyer_corp.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'buyer_corp_not_found');
+    END IF;
+
+    v_required_sector := corp_building_required_sector(v_building.building_type);
+    IF v_required_sector IS NOT NULL AND v_buyer_corp.industry <> v_required_sector THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'wrong_sector',
+            'required', v_required_sector, 'have', v_buyer_corp.industry);
+    END IF;
+
+    SELECT * INTO v_fac FROM factions
+     WHERE faction_type = 'entrepreneur'
+       AND abandoned_at IS NULL
+       AND (id = v_uid OR linked_user_id = v_uid)
+     ORDER BY created_at ASC LIMIT 1
+     FOR UPDATE;
+    IF v_fac.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'no_entrepreneur');
+    END IF;
+    IF v_seller_corp.owner_faction_id <> v_fac.id THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_seller_corp_owner');
+    END IF;
+
+    SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
+    v_tick := COALESCE(v_tick, 0);
+
+    -- Atomic affordability + debit on buyer corp's treasury_cash
+    -- (migrated from party_funds). Same conditional-UPDATE pattern
+    -- the 20270169 audit established — debit only if balance covers.
+    UPDATE entrepreneur_corps
+       SET treasury_cash = COALESCE(treasury_cash, 0) - v_amount,
+           updated_at    = now()
+     WHERE id = v_buyer_corp.id
+       AND COALESCE(treasury_cash, 0) >= v_amount;
+    IF NOT FOUND THEN
+        SELECT COALESCE(treasury_cash, 0) INTO v_buyer_treas
+          FROM entrepreneur_corps WHERE id = v_buyer_corp.id;
+        RETURN jsonb_build_object('success', false, 'reason', 'buyer_insufficient_funds',
+            'have', COALESCE(v_buyer_treas, 0)::bigint, 'need', v_amount, 'payer', 'corp');
+    END IF;
+
+    UPDATE entrepreneur_corps
+       SET treasury_cash = COALESCE(treasury_cash, 0) + v_amount,
+           updated_at    = now()
+     WHERE id = v_seller_corp.id;
+
+    UPDATE corp_buildings
+       SET owner_corp_id = v_offer.buyer_corp_id,
+           list_price    = NULL
+     WHERE id = v_offer.building_id;
+
+    IF v_building.building_type = 'regional_hq' AND v_buyer_corp.industry <> 'real_estate' THEN
+        v_rep_bonus := CASE v_building.tier
+            WHEN 'small'  THEN 0
+            WHEN 'medium' THEN 1
+            WHEN 'large'  THEN 2
+            ELSE 0
+        END;
+        IF v_rep_bonus > 0 THEN
+            UPDATE factions
+               SET ent_reputation = COALESCE(ent_reputation, 0) + v_rep_bonus
+             WHERE id = v_buyer_corp.owner_faction_id;
+        END IF;
+    END IF;
+
+    UPDATE building_offers
+       SET status = 'accepted', finalized_at_tick = v_tick
+     WHERE id = p_offer_id;
+    UPDATE building_offers
+       SET status = 'rejected', finalized_at_tick = v_tick
+     WHERE building_id = v_offer.building_id
+       AND status = 'pending'
+       AND id <> p_offer_id;
+    GET DIAGNOSTICS v_rejected_count = ROW_COUNT;
+
+    SELECT name INTO v_nation_name FROM nations WHERE id = v_building.nation_id;
+    INSERT INTO event_log (
+        nation_id, faction_id, event_name, description_used,
+        category, trigger_key, effects_applied, fired_at_tick
+    ) VALUES (
+        v_building.nation_id, v_fac.id,
+        'Offer Accepted',
+        format('%s accepts $%s offer from %s for %s.',
+               v_seller_corp.name, to_char(v_amount, 'FM999,999,999,999'),
+               v_buyer_corp.name, v_building.name),
+        'corporate', 'building_offer_accepted',
+        jsonb_build_object(
+            'offer_id',         p_offer_id,
+            'building_id',      v_offer.building_id,
+            'building_name',    v_building.name,
+            'building_type',    v_building.building_type,
+            'buyer_corp_id',    v_offer.buyer_corp_id,
+            'buyer_corp_name',  v_buyer_corp.name,
+            'seller_corp_id',   v_seller_corp.id,
+            'seller_corp_name', v_seller_corp.name,
+            'amount',           v_amount,
+            'auto_rejected',    v_rejected_count,
+            'payer',            'corp_treasury'
+        ),
+        v_tick
+    );
+
+    RETURN jsonb_build_object(
+        'success',           true,
+        'offer_id',          p_offer_id,
+        'building_id',       v_offer.building_id,
+        'amount',            v_amount,
+        'auto_rejected',     v_rejected_count,
+        'new_owner_corp_id', v_offer.buyer_corp_id
+    );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.accept_offer(uuid) TO authenticated;
+
+COMMENT ON FUNCTION public.accept_offer(uuid) IS
+    'Retail path: RE seller accepts a non-RE buyer offer. Money moves corp-to-corp via treasury_cash. Sector-lock now via corp_building_required_sector() (shared with broker_buy_listing / buy_building). Atomic conditional-UPDATE preserves the 20270169 affordability/debit pattern.';
+
 NOTIFY pgrst, 'reload schema';
 
 COMMIT;
@@ -891,7 +1116,9 @@ COMMIT;
 -- ── ROLLBACK ──
 -- BEGIN;
 -- DROP FUNCTION IF EXISTS public.offer_building_for_brokerage(uuid, uuid, boolean);
+-- DROP FUNCTION IF EXISTS public.corp_building_required_sector(text);
 -- -- broker_list_building / broker_buy_listing / buy_building /
--- -- list_building_for_sale revert by re-running 20270184 + 20270176 bodies.
+-- -- list_building_for_sale / accept_offer revert by re-running the
+-- -- 20270184 + 20270176 bodies.
 -- ALTER TABLE corp_buildings DROP COLUMN IF EXISTS brokerage_offered;
 -- COMMIT;
