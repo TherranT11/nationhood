@@ -884,12 +884,14 @@ async function init() {
       if (titleEl) titleEl.textContent = 'Where is your Businessman from?';
       if (subEl) subEl.textContent = 'Pick the nation your entrepreneur hails from. You stay nation-agnostic — this only sets your origin and name.';
       // HARD LOCK: cannot originate where you already hold a party/military
-      // (also enforced by the enforce_entrepreneur_nation_lock trigger).
-      const { data: own } = await _supabase.from('factions')
+      // (also enforced by the enforce_entrepreneur_nation_lock trigger, which
+      // is authoritative — this client gate fails open to it on a read error).
+      const { data: own, error: ownErr } = await _supabase.from('factions')
         .select('nation_id')
         .or(`id.eq.${currentUser.id},linked_user_id.eq.${currentUser.id}`)
         .in('faction_type', ['party', 'military'])
         .is('abandoned_at', null);
+      if (ownErr) console.warn('[select-nation] occupied-nations fetch failed:', ownErr.message);
       userOccupiedNationIds = new Set((own || []).map(f => f.nation_id).filter(Boolean));
     }
 
