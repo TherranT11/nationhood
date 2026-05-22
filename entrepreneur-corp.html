@@ -536,13 +536,17 @@
 
     <div class="corp-header">
       <div class="corp-id">
-        <div class="corp-crest" id="cp-crest">—</div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+          <div class="corp-crest" id="cp-crest">—</div>
+          <button id="cp-rebrand-btn" class="tc-btn" style="display:none;font-size:9px;padding:5px 12px;letter-spacing:0.1em;">REBRAND</button>
+        </div>
         <div class="corp-body">
           <div class="eyebrow">— CORPORATION MANAGEMENT —</div>
           <div class="title" id="cp-name">—</div>
           <div class="pills">
             <span class="industry-pill" id="cp-ind">—</span>
             <span class="listing-pill" id="cp-listing">PRIVATE</span>
+            <span class="listing-pill" id="cp-ticker" style="display:none;background:#26201a;color:#caa45a;border-color:#5a4a2a;"></span>
           </div>
           <div class="meta-row">
             <div><span class="label">HEADQUARTERS</span><span class="val" id="cp-hq">—</span></div>
@@ -720,7 +724,7 @@ function initials(s, n) {
     if (!id) { window.location.href = 'entrepreneur-corporations.html'; return; }
 
     const { data: c, error } = await _supabase.from('entrepreneur_corps')
-      .select('id, name, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, freighters_owned, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
+      .select('id, name, ticker, custom_logo_url, rebrand_cooldown_until_tick, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, freighters_owned, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -756,7 +760,20 @@ function initials(s, n) {
 
     document.title = name + ' — Corporation Management';
     set('cp-crumb', name.toUpperCase());
-    set('cp-crest', initials(name, 2));
+    const crestEl = document.getElementById('cp-crest');
+    if (crestEl) {
+      if (c.custom_logo_url) {
+        crestEl.style.overflow = 'hidden';
+        crestEl.innerHTML = `<img src="${escapeHtml(c.custom_logo_url)}" alt="${escapeHtml(name)}" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display='none'">`;
+      } else {
+        crestEl.textContent = initials(name, 2);
+      }
+    }
+    const tickerEl = document.getElementById('cp-ticker');
+    if (tickerEl) {
+      if (c.ticker) { tickerEl.textContent = c.ticker; tickerEl.style.display = ''; }
+      else tickerEl.style.display = 'none';
+    }
     set('cp-name', name);
     set('cp-ind', industryLabel(c.industry));
     set('cp-listing', listing.toUpperCase());
@@ -829,6 +846,120 @@ function initials(s, n) {
     // (valuation seed→market, trade card, board) repaints from the DB.
     // Mirrors the trade card's lock/reason/reload conventions.
     const isOwner = !!entId && c.owner_faction_id === entId;
+
+    // ── Rebrand action (owner-only): logo + name + ticker. $1M from corp
+    //    treasury, 12-tick cooldown. RPC: entrepreneur_rebrand_corp. ──
+    const rebrandBtn = document.getElementById('cp-rebrand-btn');
+    if (isOwner && rebrandBtn) {
+      rebrandBtn.style.display = '';
+      rebrandBtn.onclick = () => openCorpRebrandModal();
+    }
+    function openCorpRebrandModal() {
+      const overlay = document.getElementById('cp-rebrand-overlay');
+      if (!overlay) return;
+      const FEE = fmtUsd(1000000);
+      let logoFile = null;
+      let previewUrl = c.custom_logo_url || null;
+      let submitting = false;
+      let cdRemaining = 0;
+
+      function render() {
+        const hasLogo = !!previewUrl;
+        const onCd = cdRemaining > 0;
+        overlay.innerHTML = `
+          <div class="bm-modal" style="max-width:460px;">
+            <div class="bm-head"><div class="ti">Rebrand <em>Corporation</em></div><div class="bm-x" id="rb2-close">×</div></div>
+            <div class="bm-body">
+              <div style="display:flex;gap:16px;align-items:center;margin-bottom:14px;">
+                <div style="width:72px;height:72px;flex:0 0 72px;border:1px dashed ${hasLogo ? '#4a6a4a' : 'rgba(255,255,255,0.2)'};border-radius:4px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#1f2a1a;">
+                  ${previewUrl ? `<img src="${escapeHtml(previewUrl)}" style="width:100%;height:100%;object-fit:cover;">` : '<span style="font-size:22px;color:#6a6660;">+</span>'}
+                </div>
+                <label style="display:inline-block;padding:6px 14px;font-size:10px;font-weight:700;letter-spacing:0.06em;color:#cfcabf;background:#1a1a1a;border:1px solid rgba(255,255,255,0.15);cursor:pointer;">
+                  ${hasLogo ? 'CHANGE LOGO' : 'UPLOAD LOGO'}
+                  <input type="file" accept="image/*" id="rb2-file" style="display:none;">
+                </label>
+              </div>
+              <div class="bm-label">Corporation Name</div>
+              <input type="text" class="bm-input" id="rb2-name" maxlength="80" value="${escapeHtml(c.name || '')}">
+              <div class="bm-label">Stock Ticker (2-4, A-Z / 0-9)</div>
+              <input type="text" class="bm-input" id="rb2-ticker" maxlength="4" value="${escapeHtml(c.ticker || '')}" style="text-transform:uppercase;" placeholder="e.g. HNA">
+              <div style="font-size:10px;color:#8a8680;margin-top:8px;">Costs <span style="color:#caa45a;">${FEE}</span> from corp treasury · 12-tick cooldown.</div>
+              ${onCd ? `<div style="font-size:10px;color:#c98a8a;margin-top:4px;">On cooldown — ${cdRemaining} tick${cdRemaining === 1 ? '' : 's'} left.</div>` : ''}
+              <div class="bm-err" id="rb2-err"></div>
+            </div>
+            <div class="bm-foot">
+              <button class="bm-btn sec" id="rb2-cancel">Cancel</button>
+              <button class="bm-btn pri" id="rb2-submit" ${onCd ? 'disabled' : ''}>Rebrand — ${FEE}</button>
+            </div>
+          </div>`;
+        const close = () => overlay.classList.remove('open');
+        document.getElementById('rb2-close').onclick = close;
+        document.getElementById('rb2-cancel').onclick = close;
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+        document.getElementById('rb2-file').onchange = (e) => {
+          const f = e.target.files?.[0];
+          if (!f) return;
+          if (f.size > 2 * 1024 * 1024) { alert('Logo must be under 2MB.'); return; }
+          logoFile = f;
+          previewUrl = URL.createObjectURL(f);
+          render();
+        };
+        document.getElementById('rb2-submit').onclick = async () => {
+          if (submitting || onCd) return;
+          const errEl = document.getElementById('rb2-err');
+          const nm = (document.getElementById('rb2-name').value || '').trim();
+          const tk = (document.getElementById('rb2-ticker').value || '').trim().toUpperCase();
+          if (nm.length < 2 || nm.length > 80) { errEl.textContent = 'Name must be 2–80 characters.'; return; }
+          if (!/^[A-Z0-9]{2,4}$/.test(tk)) { errEl.textContent = 'Ticker must be 2–4 letters/digits.'; return; }
+          submitting = true;
+          const btn = document.getElementById('rb2-submit');
+          btn.disabled = true; btn.textContent = 'Saving…'; errEl.textContent = '';
+          try {
+            let logoUrl = null;
+            if (logoFile) {
+              const ext = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
+              const path = `corp/${id}/logo_${Date.now()}.${ext}`;
+              const { error: upErr } = await _supabase.storage.from('party-logos')
+                .upload(path, logoFile, { cacheControl: '3600', upsert: true, contentType: logoFile.type });
+              if (upErr) throw new Error('Upload failed: ' + upErr.message);
+              logoUrl = _supabase.storage.from('party-logos').getPublicUrl(path)?.data?.publicUrl || null;
+            }
+            const { data, error: rpcErr } = await _supabase.rpc('entrepreneur_rebrand_corp', {
+              p_corp_id: id, p_name: nm, p_ticker: tk, p_logo_url: logoUrl,
+            });
+            if (rpcErr) throw rpcErr;
+            if (!data || !data.success) {
+              const R = {
+                not_owner:          'Only the corp owner can rebrand.',
+                invalid_name:       'Name must be 2–80 characters.',
+                invalid_ticker:     'Ticker must be 2–4 letters/digits.',
+                ticker_taken:       `Ticker ${data?.ticker || ''} is already taken.`,
+                cooldown_active:    `On cooldown — ${data?.remaining ?? '?'} ticks left.`,
+                insufficient_funds: data?.need != null ? `Corp treasury too low — need ${fmtUsd(Number(data.need))}, has ${fmtUsd(Number(data.have) || 0)}.` : 'Corp treasury too low.',
+                corp_not_found:     'Corp no longer exists.',
+              };
+              errEl.textContent = R[data?.reason] || ('Could not rebrand: ' + (data?.reason || 'unknown'));
+              submitting = false; btn.disabled = false; btn.textContent = `Rebrand — ${FEE}`;
+              return;
+            }
+            btn.textContent = 'DONE ✓ — refreshing…';
+            setTimeout(() => location.reload(), 600);
+          } catch (e) {
+            errEl.textContent = 'Failed: ' + (e?.message || e);
+            submitting = false; btn.disabled = false; btn.textContent = `Rebrand — ${FEE}`;
+          }
+        };
+      }
+
+      overlay.classList.add('open');
+      render();
+      // Cooldown is enforced server-side; reflect remaining ticks in the UI.
+      _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single().then(({ data }) => {
+        const tick = Number(data?.current_tick || 0);
+        cdRemaining = Math.max(0, Number(c.rebrand_cooldown_until_tick || 0) - tick);
+        if (cdRemaining > 0) render();
+      });
+    }
 
     // Recommended corp valuation (one source of truth, shared by the Put Up
     // for Sale and Acquire flows): treasury_cash − outstanding loan debt +
@@ -4445,6 +4576,11 @@ function initials(s, n) {
     </div>
   </div>
 </div>
+
+<!-- Rebrand Corporation modal (2.6.8.6.2). Owner sets logo + name +
+     ticker for $1M from corp treasury, 12-tick cooldown. Built
+     dynamically by openCorpRebrandModal. RPC: entrepreneur_rebrand_corp. -->
+<div class="bm-overlay" id="cp-rebrand-overlay"></div>
 
 <!-- Request Loan modal (v0 corp loans, 20270174). Borrower picks
      eligible banks (Banking corps with a Banking Office in the
