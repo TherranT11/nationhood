@@ -11108,34 +11108,25 @@ async function confirmAssign() {
             return;
         }
 
-        const existing = ministryData.find(m => m.ministry_key === assignMinistryKey);
-
-        if (existing) {
-            const { error } = await _supabase.from('ministries').update({
-                party_id: selectedCandidate.partyId,
-                minister_first_name: selectedCandidate.firstName,
-                minister_last_name: selectedCandidate.lastName,
-                minister_age: selectedCandidate.age,
-                minister_approval: NEW_MINISTER_APPROVAL,
-                stat_baselines: buildMinistryBaselines(assignMinistryKey, currentNation),
-                is_active: true
-            }).eq('id', existing.id);
-            if (error) throw error;
-        } else {
-            const { error } = await _supabase.from('ministries').insert({
-                nation_id: currentNation.id,
-                ministry_key: assignMinistryKey,
-                ministry_name: MINISTRY_NAMES[assignMinistryKey] || assignMinistryKey,
-                party_id: selectedCandidate.partyId,
-                minister_first_name: selectedCandidate.firstName,
-                minister_last_name: selectedCandidate.lastName,
-                minister_age: selectedCandidate.age,
-                minister_approval: NEW_MINISTER_APPROVAL,
-                stat_baselines: buildMinistryBaselines(assignMinistryKey, currentNation),
-                is_active: true
-            });
-            if (error) throw error;
-        }
+        // Upsert on (nation_id, ministry_key) — the unique constraint
+        // ministries_nation_ministry_unique is the source of truth, not the
+        // client-side ministryData cache (which omits vacant/inactive rows
+        // and previously caused a duplicate-key crash when appointing into a
+        // ministry row that existed in the DB but not in the cache). The
+        // vacancy pre-check above already blocks overwriting a filled seat.
+        const { error } = await _supabase.from('ministries').upsert({
+            nation_id: currentNation.id,
+            ministry_key: assignMinistryKey,
+            ministry_name: MINISTRY_NAMES[assignMinistryKey] || assignMinistryKey,
+            party_id: selectedCandidate.partyId,
+            minister_first_name: selectedCandidate.firstName,
+            minister_last_name: selectedCandidate.lastName,
+            minister_age: selectedCandidate.age,
+            minister_approval: NEW_MINISTER_APPROVAL,
+            stat_baselines: buildMinistryBaselines(assignMinistryKey, currentNation),
+            is_active: true
+        }, { onConflict: 'nation_id,ministry_key' });
+        if (error) throw error;
 
         // +3% approval to the receiving party
         await _supabase.rpc('adjust_momentum', { p_faction_id: selectedCandidate.partyId, p_delta: 3, p_label: 'Minister appointed (+3)', p_tick: authoritativeTick });
