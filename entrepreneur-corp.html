@@ -566,6 +566,8 @@
       <!-- Acquire (2.6.8.3): non-owner sees [Acquire]; owner with an incoming
            offer sees [Review offer]. Populated by renderAcquire(). -->
       <div id="cp-acquire" style="display:none;align-self:center;min-width:160px;text-align:center;"></div>
+      <!-- Declare Bankruptcy (2.6.8.6): owner-only. Populated by JS. -->
+      <div id="cp-bankrupt" style="display:none;align-self:center;text-align:center;"></div>
       <div class="role-block">
         <div class="role-eyebrow">OWNERSHIP</div>
         <div class="role-pill" id="cp-role-pill">FOUNDER · CONTROLLING</div>
@@ -1155,6 +1157,35 @@ function initials(s, n) {
           }
         }
       })().catch(err => console.error('[acquire] render failed:', err));
+    }
+
+    // ── Declare Bankruptcy (2.6.8.6): owner-only header action ──
+    const bkWrap = document.getElementById('cp-bankrupt');
+    if (bkWrap && isOwner) {
+      bkWrap.innerHTML = `<button class="rl-btn" id="cp-bankrupt-btn" style="padding:8px 14px;background:#3a1a1a;color:#d98a8a;border:0.5px solid #6a4a4a;border-radius:4px;cursor:pointer;">Declare Bankruptcy</button>`;
+      bkWrap.style.display = 'block';
+      let bkBusy = false;
+      document.getElementById('cp-bankrupt-btn').addEventListener('click', async () => {
+        if (bkBusy) return;
+        if (!confirm(`Declare bankruptcy for ${c.name}?\n\nDebts are paid from the treasury (any left unpaid cost you −3 reputation), remaining cash is distributed to equity holders, and the corporation is permanently dissolved. This cannot be undone.`)) return;
+        bkBusy = true;
+        const btn = document.getElementById('cp-bankrupt-btn');
+        btn.disabled = true; const prev = btn.textContent; btn.textContent = 'Closing…';
+        try {
+          const { data, error } = await _supabase.rpc('declare_bankruptcy', { p_corp_id: id });
+          if (error) throw error;
+          if (!data?.success) {
+            const R = { not_owner: 'Only the owner can declare bankruptcy.', no_entrepreneur: 'No entrepreneur faction found.', corp_not_found: 'Corporation not found.' };
+            alert(R[data?.reason] || ('Failed: ' + (data?.reason || 'unknown')));
+            bkBusy = false; btn.disabled = false; btn.textContent = prev; return;
+          }
+          alert(`${c.name} has been dissolved.${data.debts_unpaid ? ' Some debts went unpaid — reputation −3.' : ''}`);
+          window.location.href = 'entrepreneur-markets.html';
+        } catch (e) {
+          alert('Failed: ' + (e?.message || e));
+          bkBusy = false; btn.disabled = false; btn.textContent = prev;
+        }
+      });
     }
 
     if (!isPublic && isOwner) {
