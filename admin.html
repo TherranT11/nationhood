@@ -4734,6 +4734,282 @@ showTab = function(tabName) {
 };
 window.showTab = showTab;
 
+// ==================== HUBS TAB ====================
+// Airline hubs (airline_cities) + the airline_city_ranges distance matrix.
+// Reads go direct (tables are world-readable); writes go through is_admin()
+// gated RPCs (admin_create_hub / admin_update_hub / admin_delete_hub /
+// admin_set_hub_ranges) since these tables have no client write policy.
+let hubNations = [];     // [{id,name,population}]
+let hubNationPop = {};   // nation id -> population
+let hubsAll = [];        // [{id,nation_id,name,population_pct,terminal_count,runway_type,is_capital,nation_name}]
+let hubRangeMap = {};    // "aId|bId" (both directions) -> range_units
+const HUB_RUNWAYS = [['short', 'Short Runway'], ['standard', 'Standard'], ['international', 'International']];
+const HUB_INPUT = 'background:#1a1a1a; border:1px solid #333; color:#eee; padding:4px; border-radius:2px;';
+
+async function initHubsTab() {
+    await loadHubNations();
+    await loadHubs();
+}
+
+async function loadHubNations() {
+    try {
+        const { data, error } = await _supabase.from('nations').select('id, name, population').order('name');
+        if (error) throw error;
+        hubNations = data || [];
+        hubNationPop = {};
+        hubNations.forEach(n => { hubNationPop[n.id] = n.population; });
+        const sel = document.getElementById('hub-nation-select');
+        if (sel) {
+            sel.innerHTML = '<option value="">-- Choose a nation --</option>'
+                + hubNations.map(n => `<option value="${n.id}">${escHtml(n.name)}</option>`).join('');
+        }
+    } catch (err) { console.error('loadHubNations failed', err); }
+}
+
+function onHubNationSelect() {
+    const id = document.getElementById('hub-nation-select').value;
+    const popDiv = document.getElementById('hub-nation-pop');
+    const form = document.getElementById('hub-add-form');
+    const st = document.getElementById('hub-add-status'); if (st) st.textContent = '';
+    if (!id) {
+        if (popDiv) popDiv.innerHTML = 'Population: &mdash;';
+        if (form) form.classList.add('hidden');
+        return;
+    }
+    if (popDiv) popDiv.textContent = 'Population: ' + (Number(hubNationPop[id]) || 0).toLocaleString();
+    if (form) form.classList.remove('hidden');
+}
+
+async function loadHubs() {
+    try {
+        const [cityRes, rangeRes] = await Promise.all([
+            _supabase.from('airline_cities').select('id, nation_id, name, population_pct, terminal_count, runway_type, is_capital'),
+            _supabase.from('airline_city_ranges').select('city_a_id, city_b_id, range_units'),
+        ]);
+        if (cityRes.error) throw cityRes.error;
+        if (rangeRes.error) throw rangeRes.error;
+        const nameById = {}; hubNations.forEach(n => { nameById[n.id] = n.name; });
+        hubsAll = (cityRes.data || []).map(c => ({ ...c, nation_name: nameById[c.nation_id] || '?' }));
+        hubsAll.sort((a, b) => a.nation_name.localeCompare(b.nation_name) || a.name.localeCompare(b.name));
+        hubRangeMap = {};
+        (rangeRes.data || []).forEach(r => {
+            hubRangeMap[`${r.city_a_id}|${r.city_b_id}`] = r.range_units;
+            hubRangeMap[`${r.city_b_id}|${r.city_a_id}`] = r.range_units;
+        });
+        renderHubList();
+        renderHubMatrix();
+    } catch (err) {
+        console.error('loadHubs failed', err);
+        const c = document.getElementById('hub-list-container');
+        if (c) c.innerHTML = `<div style="color:#e57373;">Error loading hubs: ${escHtml(err.message || String(err))}</div>`;
+    }
+}
+
+function renderHubList() {
+    const c = document.getElementById('hub-list-container');
+    if (!c) return;
+    if (hubsAll.length === 0) {
+        c.innerHTML = '<div class="no-players">No hubs yet. Select a nation above and add one.</div>';
+        return;
+    }
+    const th = 'padding:8px; border-bottom:1px solid #444; text-align:left;';
+    let html = `<table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
+        <thead><tr style="background:#252525; color:#ffcc00; text-transform:uppercase; font-size:0.7rem; letter-spacing:1px;">
+            <th style="${th}">Nation</th><th style="${th}">Name</th>
+            <th style="${th} width:90px;">Weight</th><th style="${th} width:150px;">Runway</th>
+            <th style="${th} width:90px;">Terminals</th><th style="${th} width:70px;">Capital</th>
+            <th style="${th} width:150px;">Actions</th>
+        </tr></thead><tbody>`;
+    hubsAll.forEach(h => {
+        const runwayOpts = HUB_RUNWAYS.map(([v, l]) =>
+            `<option value="${v}"${h.runway_type === v ? ' selected' : ''}>${l}</option>`).join('');
+        html += `<tr data-hub-row="${h.id}" style="border-bottom:1px solid #2a2a2a;">
+            <td style="padding:8px; color:#9aa;">${escHtml(h.nation_name)}</td>
+            <td style="padding:8px;"><input type="text" maxlength="80" data-hf="name" value="${escapeAttr(h.name)}" style="width:140px; ${HUB_INPUT}"></td>
+            <td style="padding:8px;"><input type="number" min="1" max="15" step="1" data-hf="weight" value="${Number(h.population_pct)}" style="width:60px; text-align:center; ${HUB_INPUT}"></td>
+            <td style="padding:8px;"><select data-hf="runway" style="${HUB_INPUT}">${runwayOpts}</select></td>
+            <td style="padding:8px;"><input type="number" min="1" max="10" step="1" data-hf="terminals" value="${Number(h.terminal_count)}" style="width:56px; text-align:center; ${HUB_INPUT}"></td>
+            <td style="padding:8px; text-align:center;"><input type="checkbox" data-hf="capital"${h.is_capital ? ' checked' : ''}></td>
+            <td style="padding:8px;">
+                <button class="btn btn-success" style="padding:3px 10px; font-size:0.75rem;" onclick="saveHub('${h.id}', this)">Save</button>
+                <button style="padding:3px 10px; font-size:0.75rem; background:transparent; color:#ef5350; border:1px solid #442222; cursor:pointer; border-radius:2px;" onclick="deleteHub('${h.id}', this)">Delete</button>
+            </td></tr>`;
+    });
+    html += '</tbody></table>';
+    c.innerHTML = html;
+}
+
+function renderHubMatrix() {
+    const c = document.getElementById('hub-matrix-container');
+    if (!c) return;
+    if (hubsAll.length < 2) {
+        c.innerHTML = '<div class="no-players">Add at least two hubs to set ranges.</div>';
+        return;
+    }
+    const th = 'padding:6px; border:1px solid #333; font-size:0.75rem;';
+    let html = `<table style="border-collapse:collapse; font-size:0.85rem;"><thead><tr>
+        <th style="${th} background:#252525;"></th>`;
+    hubsAll.forEach(h => {
+        html += `<th style="${th} background:#252525; color:#ffcc00; writing-mode:vertical-rl; transform:rotate(180deg); height:90px;">${escHtml(h.name)}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    hubsAll.forEach((rowH, i) => {
+        html += `<tr><th style="${th} background:#252525; color:#ffcc00; text-align:right;">${escHtml(rowH.name)}</th>`;
+        hubsAll.forEach((colH, j) => {
+            if (i === j) {
+                html += `<td style="${th} background:#1a1a1a; text-align:center; color:#555;">—</td>`;
+            } else if (i < j) {
+                const v = hubRangeMap[`${rowH.id}|${colH.id}`];
+                html += `<td style="${th} text-align:center;"><input type="number" min="1" step="1"
+                    data-ri="${i}" data-rj="${j}" value="${Number.isFinite(v) ? v : ''}"
+                    style="width:48px; text-align:center; ${HUB_INPUT}"></td>`;
+            } else {
+                const v = hubRangeMap[`${rowH.id}|${colH.id}`];
+                html += `<td style="${th} text-align:center; color:#777; background:#1d1d1d;">${Number.isFinite(v) ? v : ''}</td>`;
+            }
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    c.innerHTML = html;
+}
+
+async function addHub(btn) {
+    const nationId = document.getElementById('hub-nation-select').value;
+    const statusEl = document.getElementById('hub-add-status');
+    const setErr = m => { statusEl.style.color = '#e57373'; statusEl.textContent = m; };
+    statusEl.textContent = '';
+    if (!nationId) return setErr('Select a nation first.');
+    const name = (document.getElementById('hub-new-name').value || '').trim();
+    const weight = parseInt(document.getElementById('hub-new-weight').value, 10);
+    const runway = document.getElementById('hub-new-runway').value;
+    const terminals = parseInt(document.getElementById('hub-new-terminals').value, 10);
+    const isCapital = document.getElementById('hub-new-capital').checked;
+    if (name.length < 2) return setErr('Hub name must be at least 2 characters.');
+    if (!Number.isFinite(weight) || weight < 1 || weight > 15) return setErr('Weight must be 1–15.');
+    if (!Number.isFinite(terminals) || terminals < 1 || terminals > 10) return setErr('Terminals must be 1–10.');
+    await withButtonLock(btn, async () => {
+        try {
+            const { data, error } = await _supabase.rpc('admin_create_hub', {
+                p_nation_id: nationId, p_name: name, p_weight: weight,
+                p_runway: runway, p_terminals: terminals, p_is_capital: isCapital,
+            });
+            if (error) throw error;
+            if (!data || !data.success) {
+                const REASON = {
+                    name_exists: 'A hub with that name already exists in this nation.',
+                    nation_not_found: 'Nation no longer exists.',
+                };
+                return setErr(REASON[data?.reason] || ('Could not add hub: ' + (data?.reason || 'unknown')));
+            }
+            document.getElementById('hub-new-name').value = '';
+            statusEl.style.color = '#81c784';
+            statusEl.textContent = `Added "${name}".`;
+            await loadHubs();
+        } catch (err) { setErr('Failed: ' + (err.message || String(err))); }
+    });
+}
+
+async function saveHub(hubId, btn) {
+    const row = document.querySelector(`tr[data-hub-row="${hubId}"]`);
+    if (!row) return;
+    const get = f => row.querySelector(`[data-hf="${f}"]`);
+    const name = (get('name').value || '').trim();
+    const weight = parseInt(get('weight').value, 10);
+    const runway = get('runway').value;
+    const terminals = parseInt(get('terminals').value, 10);
+    const isCapital = get('capital').checked;
+    if (name.length < 2) return alert('Hub name must be at least 2 characters.');
+    if (!Number.isFinite(weight) || weight < 1 || weight > 15) return alert('Weight must be 1–15.');
+    if (!Number.isFinite(terminals) || terminals < 1 || terminals > 10) return alert('Terminals must be 1–10.');
+    await withButtonLock(btn, async () => {
+        try {
+            const { data, error } = await _supabase.rpc('admin_update_hub', {
+                p_hub_id: hubId, p_name: name, p_weight: weight,
+                p_runway: runway, p_terminals: terminals, p_is_capital: isCapital,
+            });
+            if (error) throw error;
+            if (!data || !data.success) {
+                const REASON = {
+                    terminals_below_owned: `Can't shrink below owned slots (${data?.owned ?? '?'} owned).`,
+                    name_exists: 'Another hub in this nation already has that name.',
+                    hub_not_found: 'Hub no longer exists.',
+                };
+                return alert(REASON[data?.reason] || ('Could not save: ' + (data?.reason || 'unknown')));
+            }
+            await loadHubs();
+        } catch (err) { alert('Failed: ' + (err.message || String(err))); }
+    });
+}
+
+async function deleteHub(hubId, btn) {
+    const h = hubsAll.find(x => x.id === hubId);
+    if (!confirm(`Delete hub "${h ? h.name : hubId}"?\n\nIts terminal slots and all range entries are removed. Blocked if any slot is owned or an active route uses it.`)) return;
+    await withButtonLock(btn, async () => {
+        try {
+            const { data, error } = await _supabase.rpc('admin_delete_hub', { p_hub_id: hubId });
+            if (error) throw error;
+            if (!data || !data.success) {
+                const REASON = {
+                    has_owned_terminals: 'Cannot delete: a terminal slot here is owned by an airline.',
+                    has_active_routes: 'Cannot delete: an active route uses this hub.',
+                    hub_not_found: 'Hub no longer exists.',
+                };
+                return alert(REASON[data?.reason] || ('Could not delete: ' + (data?.reason || 'unknown')));
+            }
+            await loadHubs();
+        } catch (err) { alert('Failed: ' + (err.message || String(err))); }
+    });
+}
+
+async function saveHubRanges(btn) {
+    const statusEl = document.getElementById('hub-ranges-status');
+    statusEl.textContent = '';
+    const pairs = [];
+    document.querySelectorAll('#hub-matrix-container input[data-ri]').forEach(inp => {
+        const i = parseInt(inp.dataset.ri, 10), j = parseInt(inp.dataset.rj, 10);
+        const r = parseInt(inp.value, 10);
+        if (Number.isFinite(r) && r > 0 && hubsAll[i] && hubsAll[j]) {
+            pairs.push({ a: hubsAll[i].id, b: hubsAll[j].id, r });
+        }
+    });
+    if (pairs.length === 0) {
+        statusEl.style.color = '#e57373';
+        statusEl.textContent = 'Nothing to save — enter at least one range.';
+        return;
+    }
+    await withButtonLock(btn, async () => {
+        try {
+            const { data, error } = await _supabase.rpc('admin_set_hub_ranges', { p_ranges: pairs });
+            if (error) throw error;
+            if (!data || !data.success) {
+                statusEl.style.color = '#e57373';
+                statusEl.textContent = 'Could not save: ' + (data?.reason || 'unknown');
+                return;
+            }
+            statusEl.style.color = '#81c784';
+            statusEl.textContent = `Saved ${data.pairs_saved} range pair(s).`;
+            await loadHubs();
+        } catch (err) {
+            statusEl.style.color = '#e57373';
+            statusEl.textContent = 'Failed: ' + (err.message || String(err));
+        }
+    });
+}
+
+window.onHubNationSelect = onHubNationSelect;
+window.addHub = addHub;
+window.saveHub = saveHub;
+window.deleteHub = deleteHub;
+window.saveHubRanges = saveHubRanges;
+
+var _prevShowTabHubs = showTab;
+showTab = function(tabName) {
+    _prevShowTabHubs(tabName);
+    if (tabName === 'hubs') initHubsTab();
+};
+window.showTab = showTab;
+
 </script>
 </body>
 </html>
