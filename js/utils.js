@@ -68,6 +68,8 @@ export function buildingTypeLabel(t) {
         case 'port':               return 'Port';
         case 'banking_office':     return 'Banking Office';
         case 'real_estate_office': return 'Real Estate Office';
+        case 'light_assembly_plant':  return 'Light Assembly Plant';
+        case 'engine_assembly_plant': return 'Engine Assembly Plant';
         default:                   return t ? String(t) : 'Building';
     }
 }
