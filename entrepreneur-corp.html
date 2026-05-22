@@ -1123,6 +1123,132 @@ function initials(s, n) {
       });
     }
 
+    // ── Aviation Manufacturing design modals (Phase 1) ──
+    const AD_COMBUSTION = [['single-stage','Single-Stage Compressor'],['twin-spool','Twin-Spool Configuration'],['high-pressure','High-Pressure Core']];
+    const AD_FRAME      = [['steel-casting','Steel Casting'],['aluminum-alloy','Aluminum Alloy Frame'],['magnesium-composite','Magnesium Composite']];
+    const AD_CONTROL    = [['mechanical-governor','Mechanical Governor'],['hydraulic-control','Hydraulic Control Unit'],['early-electronic','Early Electronic Controls']];
+    const AD_AIRFRAMES  = [['business','Business Jet · 1–2 eng · 3 pax'],['regional','Regional · 2 eng · 10 pax'],['narrowbody','Narrowbody · 2 eng · 25 pax'],['widebody','Widebody · 2–4 eng · 60 pax']];
+    const AD_MECHANICALS= [['hydraulics','Standard Hydraulic Systems'],['blackbox','Black Box & Flight Recorders'],['redundant-avionics','Redundant Avionics Suite']];
+    const AD_OFFERINGS  = [['ife','In-Flight Entertainment'],['premium-seating','Premium Seating'],['high-density','High-Density Configuration']];
+    const AD_REASON = {
+      not_owner:'Only the corp owner can design.', not_aviation_manufacturing:'This corp is not an aviation manufacturer.',
+      needs_engine_assembly_plant:'Requires a completed Engine Assembly Plant.', needs_assembly_plant:'Requires a completed Light Assembly Plant.',
+      invalid_name:'Enter a name (2+ characters).', invalid_module:'Pick a valid module for each slot.', invalid_airframe:'Pick an airframe.',
+      engine_not_available:'Pick an available engine design.', invalid_engine_count:'Engine count is out of range for this airframe.',
+      insufficient_treasury:'Treasury too low — research costs $1M/tick (need at least $1M to start).', corp_not_found:'Corp not found.',
+    };
+
+    function openEngineDesignModal() {
+      const overlay = document.getElementById('ad-engine-overlay');
+      if (!overlay) return;
+      let submitting = false;
+      const sel = (eid, opts) => `<select class="bm-select" id="${eid}">${opts.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}</select>`;
+      overlay.innerHTML = `
+        <div class="bm-modal" style="max-width:460px;">
+          <div class="bm-head"><div class="ti">Design <em>Engine</em></div><div class="bm-x" id="ade-close">×</div></div>
+          <div class="bm-body">
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Pick three modules; stats are computed server-side. Research runs 8–13 ticks at $1M/tick from treasury.</div>
+            <div class="bm-label">Engine name</div>
+            <input type="text" class="bm-input" id="ade-name" maxlength="60" placeholder="e.g. Falcon T1">
+            <div class="bm-label">Combustion</div>${sel('ade-combustion', AD_COMBUSTION)}
+            <div class="bm-label">Frame</div>${sel('ade-frame', AD_FRAME)}
+            <div class="bm-label">Control</div>${sel('ade-control', AD_CONTROL)}
+            <div class="bm-err" id="ade-err"></div>
+          </div>
+          <div class="bm-foot">
+            <button class="bm-btn sec" id="ade-cancel">Cancel</button>
+            <button class="bm-btn pri" id="ade-submit">Begin Research</button>
+          </div>
+        </div>`;
+      const close = () => overlay.classList.remove('open');
+      document.getElementById('ade-close').onclick = close;
+      document.getElementById('ade-cancel').onclick = close;
+      overlay.onclick = (e) => { if (e.target === overlay) close(); };
+      document.getElementById('ade-submit').onclick = async () => {
+        if (submitting) return;
+        const errEl = document.getElementById('ade-err');
+        const name = document.getElementById('ade-name').value.trim();
+        if (name.length < 2) { errEl.textContent = 'Enter a name (2+ characters).'; return; }
+        submitting = true;
+        const btn = document.getElementById('ade-submit'); btn.disabled = true; btn.textContent = 'Submitting…'; errEl.textContent = '';
+        try {
+          const { data, error } = await _supabase.rpc('ent_design_engine', {
+            p_corp_id: id, p_name: name,
+            p_combustion: document.getElementById('ade-combustion').value,
+            p_frame: document.getElementById('ade-frame').value,
+            p_control: document.getElementById('ade-control').value });
+          if (error) throw error;
+          if (!data || !data.success) { errEl.textContent = AD_REASON[data?.reason] || ('Failed: ' + (data?.reason || 'unknown')); submitting = false; btn.disabled = false; btn.textContent = 'Begin Research'; return; }
+          btn.textContent = 'RESEARCHING ✓'; setTimeout(() => location.reload(), 600);
+        } catch (e) { errEl.textContent = 'Failed: ' + (e?.message || e); submitting = false; btn.disabled = false; btn.textContent = 'Begin Research'; }
+      };
+      overlay.classList.add('open');
+    }
+
+    async function openAircraftDesignModal() {
+      const overlay = document.getElementById('ad-aircraft-overlay');
+      if (!overlay) return;
+      const { data: engines, error: engErr } = await _supabase.from('ent_aircraft_designs')
+        .select('id, name, thrust').eq('design_type', 'engine').eq('status', 'available').order('name');
+      if (engErr) console.warn('[entrepreneur-corp] available-engines fetch error:', engErr.message);
+      const engOpts = engines || [];
+      let submitting = false;
+      const checks = (nm, opts) => opts.map(([v,l]) => `<label style="display:block;font-size:12px;color:#cfcabf;margin:4px 0;"><input type="checkbox" name="${nm}" value="${v}"> ${l}</label>`).join('');
+      overlay.innerHTML = `
+        <div class="bm-modal" style="max-width:480px;">
+          <div class="bm-head"><div class="ti">Design <em>Aircraft</em></div><div class="bm-x" id="ada-close">×</div></div>
+          <div class="bm-body">
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Pick an airframe + an available engine. Total thrust must meet weight. Research runs at $1M/tick from treasury.</div>
+            <div class="bm-label">Aircraft name</div>
+            <input type="text" class="bm-input" id="ada-name" maxlength="60" placeholder="e.g. Skyline 100">
+            <div class="bm-label">Airframe</div><select class="bm-select" id="ada-airframe">${AD_AIRFRAMES.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}</select>
+            <div class="bm-label">Engine</div>
+            ${engOpts.length ? `<select class="bm-select" id="ada-engine">${engOpts.map(e => `<option value="${e.id}">${escapeHtml(e.name)} · thrust ${e.thrust}</option>`).join('')}</select>`
+              : `<div style="font-size:12px;color:#c98a8a;">No available engine designs yet — design an engine first, or wait for one to finish research.</div>`}
+            <div class="bm-label">Engine count</div>
+            <input type="number" class="bm-input" id="ada-count" min="1" max="4" value="2">
+            <div class="bm-label">Mechanicals (safety)</div>${checks('ada-mech', AD_MECHANICALS)}
+            <div class="bm-label">Offerings (demand)</div>${checks('ada-off', AD_OFFERINGS)}
+            <div class="bm-err" id="ada-err"></div>
+          </div>
+          <div class="bm-foot">
+            <button class="bm-btn sec" id="ada-cancel">Cancel</button>
+            <button class="bm-btn pri" id="ada-submit"${engOpts.length ? '' : ' disabled'}>Begin Research</button>
+          </div>
+        </div>`;
+      const close = () => overlay.classList.remove('open');
+      document.getElementById('ada-close').onclick = close;
+      document.getElementById('ada-cancel').onclick = close;
+      overlay.onclick = (e) => { if (e.target === overlay) close(); };
+      const btn = document.getElementById('ada-submit');
+      if (btn && !btn.disabled) btn.onclick = async () => {
+        if (submitting) return;
+        const errEl = document.getElementById('ada-err');
+        const name = document.getElementById('ada-name').value.trim();
+        if (name.length < 2) { errEl.textContent = 'Enter a name (2+ characters).'; return; }
+        const count = parseInt(document.getElementById('ada-count').value, 10);
+        const mech = [...overlay.querySelectorAll('input[name="ada-mech"]:checked')].map(x => x.value);
+        const off  = [...overlay.querySelectorAll('input[name="ada-off"]:checked')].map(x => x.value);
+        submitting = true; btn.disabled = true; btn.textContent = 'Submitting…'; errEl.textContent = '';
+        try {
+          const { data, error } = await _supabase.rpc('ent_design_aircraft', {
+            p_corp_id: id, p_name: name,
+            p_airframe: document.getElementById('ada-airframe').value,
+            p_engine_design_id: document.getElementById('ada-engine').value,
+            p_engine_count: count, p_mechanicals: mech, p_offerings: off });
+          if (error) throw error;
+          if (!data || !data.success) {
+            errEl.textContent = data?.reason === 'insufficient_thrust'
+              ? `Insufficient thrust (${data.thrust} vs weight ${data.weight}). Add engines or pick a stronger engine.`
+              : (AD_REASON[data?.reason] || ('Failed: ' + (data?.reason || 'unknown')));
+            submitting = false; btn.disabled = false; btn.textContent = 'Begin Research'; return;
+          }
+          btn.textContent = 'RESEARCHING ✓'; setTimeout(() => location.reload(), 600);
+        } catch (e) { errEl.textContent = 'Failed: ' + (e?.message || e); submitting = false; btn.disabled = false; btn.textContent = 'Begin Research'; }
+      };
+      overlay.classList.add('open');
+    }
+
     // Recommended corp valuation (one source of truth, shared by the Put Up
     // for Sale and Acquire flows): treasury_cash − outstanding loan debt +
     // property (building cost). Returns a floored integer ≥ 0.
@@ -2943,13 +3069,48 @@ function initials(s, n) {
         `;
       }
 
-      pj.innerHTML = launchBtn + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + airlinePanelHtml;
+      let aviationPanelHtml = '';
+      if (c.industry === 'aviation_manufacturing' && isOwner) {
+        const { data: adData, error: adErr } = await _supabase.from('ent_aircraft_designs')
+          .select('id, design_type, name, status, research_ticks_total, research_ticks_remaining, quality, cost_per_unit, airframe_class, engine_count, passengers, range_nm, demand_score, safety_score, thrust, weight, efficiency, reliability')
+          .eq('entrepreneur_corp_id', id).order('created_at', { ascending: false });
+        if (adErr) console.warn('[entrepreneur-corp] designs fetch error:', adErr.message);
+        const designs = adData || [];
+        const dRow = (d) => {
+          const prog = d.status === 'researching'
+            ? `<span class="num amber">researching ${d.research_ticks_total - d.research_ticks_remaining}/${d.research_ticks_total}</span>`
+            : (d.status === 'available' ? `<span class="num green">available</span>` : `<span class="num muted">${escapeHtml(d.status)}</span>`);
+          const stats = d.design_type === 'engine'
+            ? `thrust ${d.thrust} · weight ${d.weight} · eff ${d.efficiency} · rel ${d.reliability} · Q${d.quality}`
+            : `${escapeHtml(d.airframe_class || '')} · ${d.engine_count}× eng · ${d.passengers} pax · range ${d.range_nm} · demand ${d.demand_score} · safety ${d.safety_score} · Q${d.quality}`;
+          return `<div class="cf-row"><div><div class="who">${d.design_type === 'engine' ? 'Engine' : 'Aircraft'} · ${escapeHtml(d.name)}</div>
+            <div class="sub">${stats} · unit ${fmtUsd(Number(d.cost_per_unit) || 0)}</div></div>${prog}</div>`;
+        };
+        aviationPanelHtml = `
+          <div class="sh-section-head">Aircraft Designs · ${designs.length}</div>
+          <div class="cf-row" style="align-items:center;">
+            <div class="sub" style="flex:1;">Design engines (needs an Engine Assembly Plant) and aircraft (needs a Light Assembly Plant). Each researches over ticks at $1M/tick from treasury.</div>
+            <div class="sh-row-actions">
+              <button class="ap-btn-small list" id="ad-design-engine">Design Engine</button>
+              <button class="ap-btn-small list" id="ad-design-aircraft">Design Aircraft</button>
+            </div>
+          </div>
+          ${designs.length ? designs.map(dRow).join('') : '<div class="sh-empty">No designs yet — design an engine, then an aircraft.</div>'}`;
+      }
+
+      pj.innerHTML = launchBtn + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + airlinePanelHtml + aviationPanelHtml;
 
       if (isOwner && isConstructionCorp) {
         document.getElementById('cp-begin-construction').addEventListener('click', openBuildModal);
       }
       if (isOwner && isRealEstateCorp) {
         document.getElementById('cp-browse-market').addEventListener('click', openMarketModal);
+      }
+      if (isOwner && c.industry === 'aviation_manufacturing') {
+        const eb = document.getElementById('ad-design-engine');
+        const ab = document.getElementById('ad-design-aircraft');
+        if (eb) eb.addEventListener('click', openEngineDesignModal);
+        if (ab) ab.addEventListener('click', openAircraftDesignModal);
       }
       if (isOwner) {
         // Building-marketplace handlers. The :not() guards skip the
@@ -4749,6 +4910,8 @@ function initials(s, n) {
      offer_corp_investment / sell_corp_equity. -->
 <div class="bm-overlay" id="cp-invest-overlay"></div>
 <div class="bm-overlay" id="cp-sellequity-overlay"></div>
+<div class="bm-overlay" id="ad-engine-overlay"></div>
+<div class="bm-overlay" id="ad-aircraft-overlay"></div>
 
 <!-- Request Loan modal (v0 corp loans, 20270174). Borrower picks
      eligible banks (Banking corps with a Banking Office in the

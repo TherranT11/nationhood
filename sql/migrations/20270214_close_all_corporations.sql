@@ -29,21 +29,31 @@ BEGIN;
 
 -- Recursive blocking-FK cascade: delete every row matching p_where in
 -- p_table, after first deleting all rows that block it via a/r/c FKs.
-CREATE OR REPLACE FUNCTION _cull_cascade(p_table regclass, p_where text, p_depth int DEFAULT 0)
+--
+-- FK cycles (e.g. a "contracts" table's winning_bid_id → its bids, while
+-- the bids' contract_id → contracts) would otherwise recurse forever.
+-- p_path carries the ancestor table OIDs on the current recursion stack;
+-- when a child is an ancestor (a real cycle, not a diamond), we break it
+-- by NULLing the nullable back-edge FK for the in-scope rows — those rows
+-- are being deleted anyway — instead of recursing. A non-nullable cyclic
+-- FK can't be auto-broken and raises a clear error.
+CREATE OR REPLACE FUNCTION _cull_cascade(p_table regclass, p_where text, p_path oid[] DEFAULT '{}')
 RETURNS void
 LANGUAGE plpgsql
 AS $fn$
 DECLARE
     r record;
 BEGIN
-    IF p_depth > 50 THEN
-        RAISE EXCEPTION 'cull cascade exceeded depth 50 (FK cycle?) at %', p_table;
+    IF array_length(p_path, 1) > 60 THEN
+        RAISE EXCEPTION 'cull cascade exceeded depth 60 at %', p_table;
     END IF;
 
     FOR r IN
-        SELECT con.conrelid::regclass AS child_tbl,
-               ac.attname             AS child_col,
-               ap.attname             AS parent_col
+        SELECT con.conrelid             AS child_oid,
+               con.conrelid::regclass   AS child_tbl,
+               ac.attname               AS child_col,
+               ap.attname               AS parent_col,
+               ac.attnotnull            AS child_col_notnull
           FROM pg_constraint con
           JOIN pg_attribute ac ON ac.attrelid = con.conrelid  AND ac.attnum = con.conkey[1]
           JOIN pg_attribute ap ON ap.attrelid = con.confrelid AND ap.attnum = con.confkey[1]
@@ -52,11 +62,22 @@ BEGIN
            AND con.confdeltype IN ('a', 'r', 'c')   -- block/cascade; skip set-null/default
            AND array_length(con.conkey, 1) = 1
     LOOP
+        IF r.child_oid = ANY(p_path) THEN
+            -- Cycle: child is an ancestor on this path. Break the back-edge
+            -- by NULLing the in-scope rows' FK rather than recursing.
+            IF r.child_col_notnull THEN
+                RAISE EXCEPTION 'cull: non-nullable FK cycle at %.% — cannot auto-break', r.child_tbl, r.child_col;
+            END IF;
+            EXECUTE format('UPDATE %s SET %I = NULL WHERE %I IN (SELECT %I FROM %s WHERE %s)',
+                           r.child_tbl::text, r.child_col, r.child_col, r.parent_col, p_table::text, p_where);
+            CONTINUE;
+        END IF;
+
         PERFORM _cull_cascade(
             r.child_tbl,
             format('%I IN (SELECT %I FROM %s WHERE %s)',
                    r.child_col, r.parent_col, p_table::text, p_where),
-            p_depth + 1
+            p_path || p_table::oid
         );
     END LOOP;
 
@@ -93,9 +114,9 @@ BEGIN
     RAISE NOTICE 'Closed % corporation faction(s) and deleted all strategic alliances.', v_n;
 END $do$;
 
-DROP FUNCTION _cull_cascade(regclass, text, int);
+DROP FUNCTION _cull_cascade(regclass, text, oid[]);
 
 COMMIT;
 
 -- ── ROLLBACK ── (data deletion is irreversible; this only drops the helper)
--- DROP FUNCTION IF EXISTS _cull_cascade(regclass, text, int);
+-- DROP FUNCTION IF EXISTS _cull_cascade(regclass, text, oid[]);

@@ -56,6 +56,10 @@ COMMENT ON TABLE public.central_bank_loans IS
     'Loans from a nation''s Central Bank to a borrower corp, auto-issued at the posted rate. outstanding draws down lending capacity (central_bank_discretionary × 100). Disbursed to / repaid from entrepreneur_corps.treasury_cash; repayment runs per-tick in advance-corp-tick.';
 
 -- ── request_central_bank_loan ───────────────────────────────────────
+-- DROP first: a legacy faction-based version exists in some DBs with a
+-- different parameter name (p_borrower_faction_id), and CREATE OR REPLACE
+-- cannot rename an input parameter. Same arg types, so this targets it.
+DROP FUNCTION IF EXISTS public.request_central_bank_loan(uuid, bigint, integer);
 CREATE OR REPLACE FUNCTION public.request_central_bank_loan(
     p_corp_id UUID, p_principal BIGINT, p_term_ticks INT
 ) RETURNS JSONB
