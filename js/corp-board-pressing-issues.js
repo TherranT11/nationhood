@@ -76,7 +76,13 @@ function ownerName(f) {
 
 function escText(s) { return String(s == null ? '' : s); }
 
-export function mountBoardPressingIssues({ supabase, faction, host, currentTick }) {
+export function mountBoardPressingIssues({
+    supabase, faction, host, currentTick,
+    showEmpty = true,
+    emptyClass = 'empty',
+    emptyMessage = 'No pressing issues.',
+    onChange = null,
+}) {
     if (!host) return { refresh: () => {}, getCount: () => 0 };
     ensureStyles();
 
@@ -239,16 +245,22 @@ export function mountBoardPressingIssues({ supabase, faction, host, currentTick 
         count = items.length;
         host.replaceChildren();
         if (items.length === 0) {
-            // The handler owns the empty state so callers don't need to
-            // toggle a sibling element. Reuses the dashboard's `.empty`
-            // class so the look matches the surrounding page.
-            const empty = document.createElement('div');
-            empty.className = 'empty';
-            empty.textContent = 'No pressing issues.';
-            host.appendChild(empty);
-            return;
+            // When showEmpty, the handler owns the empty state so callers
+            // don't need to toggle a sibling element. When the page
+            // coordinates several handlers in one column it passes
+            // showEmpty:false and renders a single shared empty line.
+            if (showEmpty) {
+                const empty = document.createElement('div');
+                if (emptyClass) empty.className = emptyClass;
+                empty.textContent = emptyMessage;
+                host.appendChild(empty);
+            }
+        } else {
+            for (const it of items) host.appendChild(renderCard(it));
         }
-        for (const it of items) host.appendChild(renderCard(it));
+        if (typeof onChange === 'function') {
+            try { onChange(items); } catch (e) { console.warn('[board-pi] onChange threw:', e?.message || e); }
+        }
     }
 
     refresh();   // initial mount
