@@ -272,12 +272,25 @@ BEGIN
         v_awarded := v_awarded + 1;
     END LOOP;
 
-    -- (B) Advance + complete active builds.
+    -- (B) Advance + complete active builds. started_at_tick < v_tick
+    -- excludes contracts awarded in loop A THIS tick: the build starts
+    -- progressing the tick AFTER award, so a timeline_ticks=N job
+    -- completes N ticks later (never awarded + completed in one tick).
     FOR c IN
-        SELECT * FROM ent_construction_contracts WHERE status = 'active' FOR UPDATE
+        SELECT * FROM ent_construction_contracts
+         WHERE status = 'active' AND started_at_tick < v_tick FOR UPDATE
     LOOP
         IF c.progress_ticks + 1 < c.timeline_ticks THEN
             UPDATE ent_construction_contracts SET progress_ticks = progress_ticks + 1 WHERE id = c.id;
+            CONTINUE;
+        END IF;
+
+        -- Winner vanished (corp deleted mid-build → winner_corp_id SET
+        -- NULL): can't pay anyone, so fail rather than debit the issuer
+        -- and hand out a completion bonus for work no one delivered.
+        IF c.winner_corp_id IS NULL THEN
+            UPDATE ent_construction_contracts SET status = 'failed', progress_ticks = c.timeline_ticks WHERE id = c.id;
+            v_failed := v_failed + 1;
             CONTINUE;
         END IF;
 
