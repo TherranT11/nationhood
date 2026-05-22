@@ -10866,6 +10866,7 @@ function openNominateModal(ministryKey) {
 }
 
 let _presidentialNominationSubmitting = false;
+let _assignSubmitting = false;
 async function confirmPresidentialNomination() {
     if (_presidentialNominationSubmitting) return;
     if (!selectedCandidate || !assignMinistryKey) return;
@@ -11091,7 +11092,11 @@ function selectCandidate(index) {
 }
 
 async function confirmAssign() {
+    if (_assignSubmitting) return;
     if (!selectedCandidate || !assignMinistryKey) return;
+    _assignSubmitting = true;
+    const confirmBtn = document.getElementById('assign-confirm-btn');
+    if (confirmBtn) confirmBtn.disabled = true;
     try {
         const { data: shard } = await _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
         const authoritativeTick = shard?.current_tick || currentTick || 0;
@@ -11220,6 +11225,11 @@ async function confirmAssign() {
     } catch (e) {
         console.error('Assign error:', e);
         alert('Error: ' + e.message);
+        // Re-enable on failure; on success the modal is closed and reopening
+        // resets the button. Mirrors confirmPresidentialNomination.
+        if (confirmBtn) confirmBtn.disabled = false;
+    } finally {
+        _assignSubmitting = false;
     }
 }
 
