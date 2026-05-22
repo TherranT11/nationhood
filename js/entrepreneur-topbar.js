@@ -7,7 +7,7 @@
 // extraction — that larger consolidation is tracked separately).
 import { _supabase } from './supabase-client.js';
 import { hfFmtBig } from './utils.js';
-import { getFactionTypeBadge, getFactionDashboardUrl, isFactionInactive } from './game/factions.js';
+import { getFactionTypeBadge, getFactionDashboardUrl, isFactionInactive, isHiddenFromSwitcher } from './game/factions.js';
 
 const ENT_TABS = [
   { id: 'home',         label: 'HOME',         href: 'entrepreneur-dashboard.html' },
@@ -188,7 +188,7 @@ export function renderEntrepreneurTopbar(container, { faction, shard, allUserFac
       ${ENT_TABS.map(t => `<a class="${t.id === activeTab ? 'active' : ''}" href="${t.href}">${t.label}</a>`).join('')}
     </nav>`;
 
-  buildSwitcher((allUserFactions || []).filter(x => !isFactionInactive(x)));
+  buildSwitcher((allUserFactions || []).filter(x => !isFactionInactive(x) && !isHiddenFromSwitcher(x)));
   startCountdown(s.next_tick_at);
   const lo = document.getElementById('ent-logout');
   if (lo) lo.addEventListener('click', async () => {
