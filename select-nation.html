@@ -835,6 +835,7 @@ let pendingFactionType = null;
 let pendingMilitaryNationId = null;
 let militaryJoinInFlight = false;
 let pendingEntrepreneurNationId = null;
+let userOccupiedNationIds = new Set();   // nations where this user holds a party/military (entrepreneur hard lock)
 let entrepreneurGender = 'male';
 
 // Nations that require an alpha tester code to join
@@ -882,6 +883,14 @@ async function init() {
       const subEl = document.querySelector('.page-header .subtitle');
       if (titleEl) titleEl.textContent = 'Where is your Businessman from?';
       if (subEl) subEl.textContent = 'Pick the nation your entrepreneur hails from. You stay nation-agnostic — this only sets your origin and name.';
+      // HARD LOCK: cannot originate where you already hold a party/military
+      // (also enforced by the enforce_entrepreneur_nation_lock trigger).
+      const { data: own } = await _supabase.from('factions')
+        .select('nation_id')
+        .or(`id.eq.${currentUser.id},linked_user_id.eq.${currentUser.id}`)
+        .in('faction_type', ['party', 'military'])
+        .is('abandoned_at', null);
+      userOccupiedNationIds = new Set((own || []).map(f => f.nation_id).filter(Boolean));
     }
 
     if (pendingMilitary) {
@@ -1032,8 +1041,9 @@ function renderNations(nations, partiesByNation, crisesByNation) {
     }
 
     if (pendingFactionType === 'entrepreneur') {
+      const locked = userOccupiedNationIds.has(nation.id);
       return `
-        <div class="nation-card" data-nation-id="${nation.id}" onclick="openEntrepreneurModal('${nation.id}')" style="cursor:pointer;">
+        <div class="nation-card ${locked ? 'disabled' : ''}" data-nation-id="${nation.id}" ${locked ? '' : `onclick="openEntrepreneurModal('${nation.id}')"`} style="cursor:${locked ? 'not-allowed' : 'pointer'};">
           <div class="nation-card__header">
             ${flagUrl ? `<img class="nation-card__flag" src="${flagUrl}" alt="${escapeHtml(nation.name)}" onerror="this.style.display='none'">` : ''}
             <span class="nation-card__name">${escapeHtml(nation.name)}</span>
@@ -1041,7 +1051,9 @@ function renderNations(nations, partiesByNation, crisesByNation) {
           </div>
           <div class="nation-card__body">
             ${NATION_DESCRIPTIONS[nation.name] ? `<div style="font-size:10px;color:var(--text-dim);line-height:1.5;margin-bottom:8px;font-style:italic;">${escapeHtml(NATION_DESCRIPTIONS[nation.name])}</div>` : ''}
-            <div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--purple,#8b5cf6);text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;">Businessman from ${escapeHtml(nation.name)}</div>
+            ${locked
+              ? `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;">Locked — you hold a Party or Military Branch here</div>`
+              : `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--purple,#8b5cf6);text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;">Businessman from ${escapeHtml(nation.name)}</div>`}
           </div>
         </div>
       `;
@@ -1367,6 +1379,7 @@ async function confirmMilitaryJoin() {
 function openEntrepreneurModal(nationId) {
   const nation = allNations.find(n => n.id === nationId);
   if (!nation) return;
+  if (userOccupiedNationIds.has(nationId)) return;   // hard lock — held party/military here
   pendingEntrepreneurNationId = nationId;
   entrepreneurGender = 'male';
   document.getElementById('entrepreneur-modal-name').textContent = 'Businessman from ' + nation.name;
