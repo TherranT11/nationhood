@@ -1114,9 +1114,11 @@ function initials(s, n) {
       };
       overlay.classList.add('open');
       // Book value is computed server-side (one source) — fetch for display.
-      _supabase.rpc('entrepreneur_corp_book_value', { p_corp_id: id }).then(({ data }) => {
-        bookValue = Number(data) || 0;
-        const b = document.getElementById('se-book'); if (b) b.textContent = fmtUsd(bookValue);
+      // The buyback RPC recomputes it authoritatively; this is display-only.
+      _supabase.rpc('entrepreneur_corp_book_value', { p_corp_id: id }).then(({ data, error }) => {
+        if (error) console.warn('[entrepreneur-corp] book-value fetch error:', error.message);
+        bookValue = error ? null : (Number(data) || 0);
+        const b = document.getElementById('se-book'); if (b) b.textContent = bookValue != null ? fmtUsd(bookValue) : '—';
         upd();
       });
     }
