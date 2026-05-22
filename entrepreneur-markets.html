@@ -536,12 +536,13 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
     // list_price set + status=completed. Two flavours land here:
     //   • Retail   — owner is a Real Estate corp; buyer places an
     //                offer via place_offer (existing flow).
-    //   • Broker   — broker_corp_id set, owner_corp_id NULL (seed
-    //                inventory or future abandoned holdings, listed
-    //                by a Real Estate corp acting as broker per
-    //                20270184). Buyer pays the listed price directly
-    //                via broker_buy_listing; broker takes 10% of
-    //                profit, host nation gets the rest.
+    //   • Broker   — broker_corp_id set, listed by a Real Estate corp
+    //                acting as broker. Covers unowned seed inventory AND
+    //                buildings owned by a non-RE corp that opted into
+    //                brokerage (20270184 + 20270207). Buyer pays the
+    //                listed price via broker_buy_listing; broker takes
+    //                10% of profit, the rest goes to the owner (or the
+    //                host nation for unowned inventory).
     // Sorting: cheapest first across both flavours.
     let propsLoaded = false;
     let myCorps = [];
@@ -590,12 +591,13 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
       // Viewer's corps for the Buy / Place Offer affordances.
       await ensureMyCorps();
 
-      // Split rows by flavour. Broker listings have broker_corp_id;
-      // retail listings have an RE owner. Anything else (orphan
-      // RE-listing whose owner was deleted, or stale broker rows
-      // post-cascade) is dropped silently.
+      // Split rows by flavour. Broker listings have broker_corp_id (the
+      // building may be unowned nation inventory OR owned by a non-RE
+      // corp that opted into brokerage — both buy via broker_buy_listing).
+      // Retail listings have an RE owner. Anything else (orphan RE-listing
+      // whose owner was deleted, or stale broker rows) is dropped silently.
       const rows = (props || []).filter(b =>
-        (b.broker_corp_id && !b.owner_corp_id) ||
+        b.broker_corp_id ||
         (b.owner_corp_id && b.owner?.industry === 'real_estate'));
 
       document.getElementById('props-foot').textContent =
@@ -795,10 +797,11 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
         if (!data || !data.success) {
           const REASON = {
             not_brokered:                'No longer a brokered listing.',
-            already_owned:               'Already owned by another corp.',
             not_completed:               'Property is not yet completed.',
             no_list_price:               'Listing has no price set.',
             broker_cannot_buy_own_listing: 'A broker can’t buy their own listing.',
+            cannot_buy_own_building:     'You can’t buy a building your corp owns.',
+            owner_corp_not_found:        'The owning corp no longer exists.',
             wrong_sector:                data?.required
                                           ? `Sector-locked to ${data.required} corps. Pick a ${data.required} corp.`
                                           : 'Wrong sector for this building.',
