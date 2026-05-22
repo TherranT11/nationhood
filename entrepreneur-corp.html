@@ -2148,6 +2148,7 @@ function initials(s, n) {
         const [routesRes, portsRes] = await Promise.all([
           _supabase.from('shipping_contracts')
             .select(`id, name, commodity, volume_required, origin_port, destination_port,
+                     last_tick_units_filled, last_filled_tick,
                      bids:shipping_contract_bids!contract_id(
                        id, bidder_corp_id, bid_rate, offered_revenue_per_tick,
                        freighters_allocated, status, applied_at_tick)`)
@@ -2248,6 +2249,12 @@ function initials(s, n) {
               const lowestLabel = lowest != null
                 ? `lowest <span class="accent">${fmtUsd(lowest)}/unit/tick</span>`
                 : `<span class="dim">no bids yet</span>`;
+              // Last-tick coverage (persisted by the allocator). Under-covered
+              // routes are where an extra bid would win slots.
+              const filled = Number(r.last_tick_units_filled) || 0;
+              const covLabel = r.last_filled_tick != null
+                ? ` · <span class="${filled >= demand ? 'accent' : 'red'}">last tick ${filled}/${demand} covered</span>`
+                : '';
               return `
                 <div class="sh-row">
                   <div class="sh-row-info">
@@ -2256,7 +2263,7 @@ function initials(s, n) {
                       ${escapeHtml(r.commodity || '—')} ·
                       ${escapeHtml(r.origin_port || '—')} → ${escapeHtml(r.destination_port || '—')} ·
                       <span class="accent">${demand}</span> unit${demand === 1 ? '' : 's'}/tick ·
-                      ${lowestLabel}${bidders > 0 ? ` · ${bidders} bidder${bidders === 1 ? '' : 's'}` : ''}
+                      ${lowestLabel}${bidders > 0 ? ` · ${bidders} bidder${bidders === 1 ? '' : 's'}` : ''}${covLabel}
                     </div>
                   </div>
                   <div class="sh-row-actions">
