@@ -1,6 +1,9 @@
 -- Re-runnable: ON CONFLICT upserts so the admin panel HTML can be
--- re-seeded whenever the tab structure changes (e.g. Phase 5 added a
--- Moderation tab — re-run this file to pick it up).
+-- re-seeded whenever the tab structure changes. NOTE: this seed has
+-- drifted from the live value — later tabs (voters, provinces) were
+-- added by migrations that REPLACE system_config.admin_panel_html and
+-- were never backported here, so a blind re-seed would drop them.
+-- Prefer a targeted migration (see 20270217) over re-running this file.
 INSERT INTO system_config (key, value) VALUES ('admin_panel_html', $$
 <div class="admin-container">
         <button class="logout-btn" onclick="logout()">Logout</button>
@@ -28,7 +31,6 @@ INSERT INTO system_config (key, value) VALUES ('admin_panel_html', $$
             <button class="tab" onclick="showTab('stataudit')">Stat Audit</button>
             <button class="tab" onclick="showTab('integrity')">Integrity</button>
             <button class="tab" onclick="showTab('issues')">Issues</button>
-            <button class="tab" onclick="showTab('moderation')">Moderation</button>
         </div>
 
         <!-- ==================== SHARD TAB ==================== -->
@@ -489,24 +491,6 @@ INSERT INTO system_config (key, value) VALUES ('admin_panel_html', $$
 
             <div id="integrity-status" style="color:#888; font-size:0.85rem; margin-bottom:15px;"></div>
             <div id="integrity-content" style="font-size:0.9rem;"></div>
-        </div>
-
-        <!-- ==================== MODERATION TAB ==================== -->
-        <div class="tab-content" id="tab-moderation">
-            <h2>🛡️ Chat Moderation</h2>
-            <p style="color:#888; font-size:0.9rem; margin-bottom:15px;">
-                Review user reports, wipe offending messages, and mute or ban
-                chat members per channel. All actions take effect immediately.
-            </p>
-
-            <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;">
-                <button class="btn btn-secondary mod-btn active" id="mod-btn-reports" style="padding:8px 16px; font-size:0.8rem;" onclick="showModView('reports')">Open Reports</button>
-                <button class="btn btn-secondary mod-btn" id="mod-btn-actions" style="padding:8px 16px; font-size:0.8rem;" onclick="showModView('actions')">Manual Actions</button>
-                <button class="btn btn-secondary mod-btn" id="mod-btn-muted" style="padding:8px 16px; font-size:0.8rem;" onclick="showModView('muted')">Active Mutes / Bans</button>
-            </div>
-
-            <div id="mod-status" style="color:#888; font-size:0.85rem; margin-bottom:12px;"></div>
-            <div id="mod-content" style="font-size:0.9rem;"></div>
         </div>
 
     </div>
