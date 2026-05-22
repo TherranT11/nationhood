@@ -25,7 +25,6 @@ INSERT INTO system_config (key, value) VALUES ('admin_panel_html', $$
             <button class="tab" onclick="showTab('sectors')">Sectors</button>
             <button class="tab" onclick="showTab('danger')">Danger Zone</button>
             <button class="tab" onclick="showTab('inspector')">Inspector</button>
-            <button class="tab" onclick="showTab('audit')">Policy Audit</button>
             <button class="tab" onclick="showTab('ministries')">Ministries</button>
             <button class="tab" onclick="showTab('statconnect')">Stat Connector</button>
             <button class="tab" onclick="showTab('stataudit')">Stat Audit</button>
@@ -347,15 +346,6 @@ INSERT INTO system_config (key, value) VALUES ('admin_panel_html', $$
                 </div>
                 <iframe id="inspector-frame" style="width:100%; height:900px; border:2px solid #333; border-radius:6px; background:#0a0a0a;"></iframe>
             </div>
-        </div>
-
-        <div class="tab-content" id="tab-audit">
-            <h2>Policy Audit</h2>
-            <p style="color:#888; margin-bottom:16px;">Review all active policies across all nations with their computed annual budget costs.</p>
-            <button class="btn btn-primary" onclick="runPolicyAudit()">Run Policy Audit</button>
-            <button class="btn btn-primary" onclick="recalculatePolicyCosts()" style="margin-left:8px; background:#e67e22;">Recalculate Policy Costs</button>
-            <div id="audit-status" class="status info hidden"></div>
-            <div id="audit-results" style="margin-top:20px;"></div>
         </div>
 
         <!-- ==================== MINISTRIES TAB ==================== -->

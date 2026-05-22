@@ -51,6 +51,8 @@ const CSS = `
   font-weight:500; cursor:pointer; border:0.5px solid; background:transparent; font-family:inherit; }
 .bp-btn.yes { background:#1f2a1a; border-color:#8aaa6a; color:#8aaa6a; }
 .bp-btn.yes:hover:not(:disabled) { background:#243a1f; }
+.bp-btn.no { background:#2a1a1a; border-color:#aa6a6a; color:#aa6a6a; }
+.bp-btn.no:hover:not(:disabled) { background:#3a1f1f; }
 .bp-btn.sec { border-color:rgba(255,255,255,0.15); color:#888; }
 .bp-btn.sec:hover:not(:disabled) { color:#d4d4d4; }
 .bp-btn:disabled { opacity:0.45; cursor:not-allowed; }
@@ -196,15 +198,27 @@ export function mountBoardPressingIssues({
         const actions = document.createElement('div'); actions.className = 'bp-actions';
         const yesBtn = document.createElement('button'); yesBtn.className = 'bp-btn yes';
         yesBtn.textContent = 'VOTE YES';
-        if (youVoted) { yesBtn.disabled = true; yesBtn.textContent = 'VOTED'; }
+        const noBtn = document.createElement('button'); noBtn.className = 'bp-btn no';
+        noBtn.textContent = 'VOTE NO';
         const msg = document.createElement('div'); msg.className = 'bp-msg';
-        yesBtn.addEventListener('click', async () => {
-            if (voting || yesBtn.disabled) return;
-            voting = true; yesBtn.disabled = true; yesBtn.textContent = 'VOTING…';
+        if (youVoted) { yesBtn.disabled = true; noBtn.disabled = true; yesBtn.textContent = 'VOTED'; }
+
+        // One vote path for both buttons (corp_board_vote takes p_yes).
+        // A NO only records the vote — rejection is finalised by the tick
+        // processor at expiry — so finalised=true can only come from a YES
+        // crossing the accept threshold.
+        const castVote = async (pYes, btn) => {
+            if (voting || btn.disabled) return;
+            voting = true; yesBtn.disabled = true; noBtn.disabled = true;
+            const prev = btn.textContent; btn.textContent = 'VOTING…';
             msg.className = 'bp-msg'; msg.textContent = '';
+            const unlock = () => {
+                voting = false; yesBtn.disabled = false; noBtn.disabled = false;
+                btn.textContent = prev;
+            };
             try {
                 const { data, error } = await supabase.rpc('corp_board_vote',
-                    { p_request_id: req.id, p_yes: true });
+                    { p_request_id: req.id, p_yes: pYes });
                 if (error) throw error;
                 if (!data || !data.success) {
                     const RM = {
@@ -218,7 +232,7 @@ export function mountBoardPressingIssues({
                     };
                     msg.className = 'bp-msg err';
                     msg.textContent = RM[data?.reason] || ('Vote failed: ' + (data?.reason || 'unknown'));
-                    voting = false; yesBtn.disabled = false; yesBtn.textContent = 'VOTE YES';
+                    unlock();
                     return;
                 }
                 msg.className = 'bp-msg ok';
@@ -229,10 +243,12 @@ export function mountBoardPressingIssues({
             } catch (e) {
                 msg.className = 'bp-msg err';
                 msg.textContent = 'Vote failed: ' + (e?.message || e);
-                voting = false; yesBtn.disabled = false; yesBtn.textContent = 'VOTE YES';
+                unlock();
             }
-        });
-        actions.appendChild(yesBtn);
+        };
+        yesBtn.addEventListener('click', () => castVote(true, yesBtn));
+        noBtn.addEventListener('click', () => castVote(false, noBtn));
+        actions.append(yesBtn, noBtn);
 
         card.append(row1, ap, status, actions, msg);
         return card;
