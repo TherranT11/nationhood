@@ -79,8 +79,6 @@ function escText(s) { return String(s == null ? '' : s); }
 export function mountBoardPressingIssues({
     supabase, faction, host, currentTick,
     showEmpty = true,
-    emptyClass = 'empty',
-    emptyMessage = 'No pressing issues.',
     onChange = null,
 }) {
     if (!host) return { refresh: () => {}, getCount: () => 0 };
@@ -251,8 +249,8 @@ export function mountBoardPressingIssues({
             // showEmpty:false and renders a single shared empty line.
             if (showEmpty) {
                 const empty = document.createElement('div');
-                if (emptyClass) empty.className = emptyClass;
-                empty.textContent = emptyMessage;
+                empty.className = 'empty';
+                empty.textContent = 'No pressing issues.';
                 host.appendChild(empty);
             }
         } else {

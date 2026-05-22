@@ -21,12 +21,13 @@
  *   import { mountAcquisitionPressingIssues } from './js/acquisition-pressing-issues.js';
  *   const ctl = mountAcquisitionPressingIssues({
  *       supabase, faction, host: document.getElementById('ent-pi-acq'),
- *       currentTick: () => Number(shard?.current_tick) || 0,
  *       showEmpty: false, onChange: () => syncEmpty(),
  *   });
  *   // ctl.refresh()  — re-fetch on demand
  *   // ctl.getCount() — number of open negotiations the viewer is in
  */
+
+import { ownerDisplayName, fmtUsd } from './utils.js';
 
 const STYLE_ID = 'aq-acq-pressing-styles';
 
@@ -57,23 +58,9 @@ function ensureStyles() {
     document.head.appendChild(s);
 }
 
-function partyName(f) {
-    const a = (f?.leader_first_name || '').trim();
-    const b = (f?.leader_last_name || '').trim();
-    const joined = (a + ' ' + b).trim();
-    return joined || f?.faction_name || 'An entrepreneur';
-}
-
-function fmtMoney(n) {
-    const v = Math.max(0, Math.floor(Number(n) || 0));
-    return '$' + v.toLocaleString('en-US');
-}
-
 export function mountAcquisitionPressingIssues({
-    supabase, faction, host, currentTick,
+    supabase, faction, host,
     showEmpty = true,
-    emptyClass = 'empty',
-    emptyMessage = 'No pressing issues.',
     onChange = null,
 }) {
     if (!host) return { refresh: async () => {}, getCount: () => 0 };
@@ -116,11 +103,11 @@ export function mountAcquisitionPressingIssues({
 
         const line = document.createElement('div'); line.className = 'aq-line';
         if (iAmSeller) {
-            const who = document.createElement('b'); who.textContent = partyName(acq.buyer);
-            const px = document.createElement('span'); px.className = 'px'; px.textContent = fmtMoney(acq.price);
+            const who = document.createElement('b'); who.textContent = ownerDisplayName(acq.buyer);
+            const px = document.createElement('span'); px.className = 'px'; px.textContent = fmtUsd(acq.price);
             line.append(who, document.createTextNode(' proposes to acquire your corporation for '), px, document.createTextNode('.'));
         } else {
-            const px = document.createElement('span'); px.className = 'px'; px.textContent = fmtMoney(acq.price);
+            const px = document.createElement('span'); px.className = 'px'; px.textContent = fmtUsd(acq.price);
             line.append(document.createTextNode('You offered to acquire '), (() => { const b = document.createElement('b'); b.textContent = corpName; return b; })(), document.createTextNode(' for '), px, document.createTextNode('.'));
         }
 
@@ -148,8 +135,8 @@ export function mountAcquisitionPressingIssues({
         if (items.length === 0) {
             if (showEmpty) {
                 const empty = document.createElement('div');
-                if (emptyClass) empty.className = emptyClass;
-                empty.textContent = emptyMessage;
+                empty.className = 'empty';
+                empty.textContent = 'No pressing issues.';
                 host.appendChild(empty);
             }
         } else {

@@ -516,7 +516,7 @@ async function loadHoldings(entId, cash) {
     _acqCtl = mountAcquisitionPressingIssues({
       supabase: _supabase, faction: f,
       host: document.getElementById('ent-pi-acq'),
-      currentTick: tickFn, showEmpty: false, onChange: syncPiEmpty,
+      showEmpty: false, onChange: syncPiEmpty,
     });
     _boardCtl = mountBoardPressingIssues({
       supabase: _supabase, faction: f,
