@@ -141,7 +141,6 @@ function buildSwitcher(facs) {
   }
   const creates = [
     { has: 'party',       name: 'Found a Political Party', type: 'party',    url: 'select-nation.html' },
-    { has: 'corporation', name: 'Found a Corporation',     type: 'corp',     url: 'corp-setup.html' },
     { has: 'military',    name: 'Join a Military Faction', type: 'military', url: 'faction-select.html' },
   ];
   for (const c of creates) {

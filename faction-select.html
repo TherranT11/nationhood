@@ -140,12 +140,6 @@ body {
       </div>
       <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Invest in corporations, be a CEO, join a board of directors, merge, acquire and do hostile takeovers.</div>
     </div>
-    <div id="entrepreneur-alpha-gate" style="display:none;background:var(--bg-2);border:1px solid var(--purple,#8b5cf6);padding:16px;margin-bottom:8px;">
-      <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--purple,#8b5cf6);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;">Alpha Access Required</div>
-      <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;margin-bottom:10px;">Enter the alpha tester code to proceed. You'll choose your businessman's origin and name next.</div>
-      <input id="entrepreneur-alpha-input" type="text" placeholder="Alpha code" autocomplete="off" style="width:100%;padding:10px;font-family:var(--font-mono);font-size:12px;background:var(--bg-1);border:1px solid var(--border-1);color:var(--text-bright);outline:none;">
-      <div id="entrepreneur-alpha-error" style="display:none;font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:8px;"></div>
-    </div>
     <button id="btn-confirm-faction" onclick="confirmFactionChoice()" disabled style="width:100%;padding:12px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:var(--bg-3);border:1px solid var(--border-0);color:var(--text-dim);cursor:not-allowed;transition:all 0.15s;">CONFIRM</button>
   </div>
 </div>
@@ -206,7 +200,6 @@ async function init() {
 }
 
 const MILITARY_ALPHA_CODE = 'Commander1';
-const ENTREPRENEUR_ALPHA_CODE = 'HenryFord1';
 
 function chooseFactionType(type) {
   if (type === 'corporation') {
@@ -232,8 +225,6 @@ function selectFactionOption(type) {
   const optEnt = document.getElementById('opt-entrepreneur');
   const milGate = document.getElementById('military-alpha-gate');
   const milError = document.getElementById('military-alpha-error');
-  const entGate = document.getElementById('entrepreneur-alpha-gate');
-  const entError = document.getElementById('entrepreneur-alpha-error');
   const confirmBtn = document.getElementById('btn-confirm-faction');
 
   // Reset all cards
@@ -256,11 +247,9 @@ function selectFactionOption(type) {
     optEnt.style.borderColor = 'var(--purple,#8b5cf6)';
   }
 
-  // Each gated type shows only its own alpha gate.
+  // Military is the only remaining alpha-gated type.
   milGate.style.display = type === 'military' ? 'block' : 'none';
-  entGate.style.display = type === 'entrepreneur' ? 'block' : 'none';
   if (type === 'military') milError.style.display = 'none';
-  if (type === 'entrepreneur') entError.style.display = 'none';
 
   // Enable confirm button
   confirmBtn.disabled = false;
@@ -285,16 +274,8 @@ function confirmFactionChoice() {
     errEl.style.display = 'none';
   }
   if (selectedFaction === 'entrepreneur') {
-    // Gate on the alpha code only; origin nation + gender + name are
-    // chosen next in select-nation.html (the faction is created there).
-    const codeEl = document.getElementById('entrepreneur-alpha-input');
-    const errEl = document.getElementById('entrepreneur-alpha-error');
-    const code = (codeEl?.value || '').trim();
-    if (code !== ENTREPRENEUR_ALPHA_CODE) {
-      errEl.textContent = code ? 'Invalid alpha code.' : 'Please enter the alpha code.';
-      errEl.style.display = 'block'; codeEl?.focus(); return;
-    }
-    errEl.style.display = 'none';
+    // No alpha gate; origin nation + gender + name are chosen next in
+    // select-nation.html (the faction is created there).
     sessionStorage.setItem('pending_faction_type', 'entrepreneur');
     window.location.href = 'select-nation.html';
     return;
