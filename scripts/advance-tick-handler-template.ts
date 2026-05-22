@@ -2262,17 +2262,16 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // Active corp count for the per-corp footprint adder in
-        // computeCorporateTaxRevenue ($2/tick per active corp HQ'd
+        // computeCorporateTaxRevenue ($1/tick per active corp HQ'd
         // here). Lifted out of the tax-revenue try so the debt tick
         // further down can also pass it into processNationDebtTick.
-        // Mirrors government.html's loadBudgetData fetch.
+        // Mirrors government.html's loadBudgetData fetch: every entrepreneur
+        // corp HQ'd here (a corp is active by having a row).
         let activeCorpCount = 0;
         try {
-            const { count } = await supabase.from('factions')
+            const { count } = await supabase.from('entrepreneur_corps')
                 .select('id', { count: 'exact', head: true })
-                .eq('faction_type', 'corporation')
-                .eq('nation_id', nation.id)
-                .is('abandoned_at', null);
+                .eq('hq_nation_id', nation.id);
             activeCorpCount = count || 0;
         } catch (_) { /* fall back to 0 → no per-corp adder this tick */ }
 
