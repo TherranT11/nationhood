@@ -40,6 +40,15 @@ export function isFactionInactive(f) {
 }
 
 /**
+ * Legacy corporations are retired — hidden from every faction-switcher
+ * dropdown (common / corp / entrepreneur / military topbars). Single source
+ * for that rule; remove this and its call sites when corps are fully culled.
+ */
+export function isHiddenFromSwitcher(f) {
+    return f?.faction_type === 'corporation';
+}
+
+/**
  * Branch → dashboard URL for military factions. Add entries as new
  * branch dashboards land. Importers should look up by faction.branch
  * and fall back gracefully if the entry is missing.

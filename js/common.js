@@ -10,7 +10,7 @@
 import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
 import { hasActiveGovernment } from './game/government-structure.js';
-import { isFactionInactive, getFactionTypeBadge, getFactionDashboardUrl } from './game/factions.js';
+import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl } from './game/factions.js';
 import { SECTOR_OPS_PAGE } from './corp-topbar.js';
 import { escapeHtml } from './utils.js';
 
@@ -877,7 +877,7 @@ export function updateTopBarInfo(faction, shard, nation) {
     if (dropdown && _userFactions.length > 0) {
         let html = '';
         for (const f of _userFactions) {
-            if (f.faction_type === 'corporation') continue;   // legacy corps hidden from switcher (retired)
+            if (isHiddenFromSwitcher(f)) continue;   // legacy corps retired from switcher
             const isActive = faction && f.id === faction.id;
             const { label, color } = getFactionTypeBadge(f.faction_type);
             html += `<div class="faction-dropdown__item${isActive ? ' active' : ''}" onclick="handleFactionSwitch('${f.id}')">

@@ -1,7 +1,7 @@
 // js/corp-topbar.js — Shared top bar for all corporation pages
 // Renders a unified top bar with logo, tick info, faction switcher, nav tabs.
 
-import { getFactionTypeBadge, getFactionDashboardUrl } from './game/factions.js';
+import { getFactionTypeBadge, getFactionDashboardUrl, isHiddenFromSwitcher } from './game/factions.js';
 
 const CORP_VERSION = 'Alpha 2.6.0.0';
 const THEME_STORAGE_KEY = 'corpThemePref';
@@ -121,7 +121,7 @@ export function renderCorpTopBar(container, opts = {}) {
     // Faction dropdown items
     let dropdownHtml = '';
     if (allUserFactions && allUserFactions.length > 0) {
-        dropdownHtml = allUserFactions.filter(f => f.faction_type !== 'corporation').map(f => {
+        dropdownHtml = allUserFactions.filter(f => !isHiddenFromSwitcher(f)).map(f => {
             const isActive = faction && f.id === faction.id;
             const { label, color } = getFactionTypeBadge(f.faction_type);
             return `<div class="corp-dd-item${isActive ? ' active' : ''}" data-faction-id="${f.id}">
