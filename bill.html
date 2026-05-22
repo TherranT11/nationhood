@@ -1466,6 +1466,9 @@ function renderArticles() {
     // Central Bank Governor confirmation — show WHO is nominated, their
     // party, and the 8-year (96-tick) term end year (getGameYear: 2000 +
     // tick/12; +96 ticks = +8 years). Nominee party is in bill metadata.
+    // KNOWN COUPLING: the 96-tick term is also hardcoded in the resolver
+    // (resolveGovernorConfirmationBill in bills.js + advance-tick); if the
+    // term length ever changes, update all three (no shared constant yet).
     if (bill.bill_type === 'governor_confirmation') {
         const nominee = allParties.find(p => p.id === nominatedFactionId);
         const nomineeName = nominee?.faction_name || 'A nominated party';
