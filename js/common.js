@@ -877,6 +877,7 @@ export function updateTopBarInfo(faction, shard, nation) {
     if (dropdown && _userFactions.length > 0) {
         let html = '';
         for (const f of _userFactions) {
+            if (f.faction_type === 'corporation') continue;   // legacy corps hidden from switcher (retired)
             const isActive = faction && f.id === faction.id;
             const { label, color } = getFactionTypeBadge(f.faction_type);
             html += `<div class="faction-dropdown__item${isActive ? ' active' : ''}" onclick="handleFactionSwitch('${f.id}')">

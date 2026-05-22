@@ -185,7 +185,7 @@ export function renderMilitaryTopBar(container, opts = {}) {
     // Branch" because the viewer is already on a military dashboard.
     let dropdownHtml = '';
     if (allUserFactions && allUserFactions.length > 0) {
-        dropdownHtml = allUserFactions.map(f => {
+        dropdownHtml = allUserFactions.filter(f => f.faction_type !== 'corporation').map(f => {
             const isActive = faction && f.id === faction.id;
             const { label, color } = getFactionTypeBadge(f.faction_type);
             // For military rows, prefer the branch label over the (often

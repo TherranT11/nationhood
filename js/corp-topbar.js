@@ -121,7 +121,7 @@ export function renderCorpTopBar(container, opts = {}) {
     // Faction dropdown items
     let dropdownHtml = '';
     if (allUserFactions && allUserFactions.length > 0) {
-        dropdownHtml = allUserFactions.map(f => {
+        dropdownHtml = allUserFactions.filter(f => f.faction_type !== 'corporation').map(f => {
             const isActive = faction && f.id === faction.id;
             const { label, color } = getFactionTypeBadge(f.faction_type);
             return `<div class="corp-dd-item${isActive ? ' active' : ''}" data-faction-id="${f.id}">

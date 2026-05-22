@@ -188,7 +188,7 @@ export function renderEntrepreneurTopbar(container, { faction, shard, allUserFac
       ${ENT_TABS.map(t => `<a class="${t.id === activeTab ? 'active' : ''}" href="${t.href}">${t.label}</a>`).join('')}
     </nav>`;
 
-  buildSwitcher((allUserFactions || []).filter(x => !isFactionInactive(x)));
+  buildSwitcher((allUserFactions || []).filter(x => !isFactionInactive(x) && x.faction_type !== 'corporation'));
   startCountdown(s.next_tick_at);
   const lo = document.getElementById('ent-logout');
   if (lo) lo.addEventListener('click', async () => {
