@@ -725,6 +725,44 @@ async function checkExecContractsExpiring(faction, shard) {
     return rows;
 }
 
+// Importing nation: any open trade-agreement shipping route that came up
+// short last tick — carriers didn't cover the demanded volume, or the
+// nation missed payment (budget too low). Coverage is read straight from
+// the value the allocator persists (shipping_contracts.last_tick_units_filled),
+// so this never re-derives the cheapest-first fill. Shown to every member
+// of the importing nation. Fresh contracts (never processed) are skipped.
+async function checkShippingCoverage(nation) {
+    if (!nation?.id) return [];
+    const { data, error } = await _supabase.from('shipping_contracts')
+        .select('id, commodity, origin_port, destination_port, volume_required, last_tick_units_filled, last_filled_tick, consecutive_missed_payments')
+        .eq('nation_id', nation.id)
+        .eq('status', 'open')
+        .not('trade_agreement_id', 'is', null);
+    if (error || !data) return [];
+    const rows = [];
+    for (const c of data) {
+        const demand = Number(c.volume_required) || 0;
+        if (demand <= 0) continue;
+        if (c.last_filled_tick == null) continue;       // never processed yet
+        const filled = Number(c.last_tick_units_filled) || 0;
+        const missed = Number(c.consecutive_missed_payments) || 0;
+        const unmet  = Math.max(0, demand - filled);
+        if (unmet <= 0 && missed <= 0) continue;
+        const lane      = `${c.origin_port || '?'} → ${c.destination_port || '?'}`;
+        const commodity = c.commodity || 'cargo';
+        const sub = missed > 0
+            ? `${commodity}: ${lane} — payment missed (treasury too low); delivery has stalled.`
+            : `${commodity}: ${lane} — only ${filled} of ${demand} units/tick delivered last tick.`;
+        rows.push({
+            title: 'Import route under-covered',
+            sub,
+            href: 'diplomacy.html',
+            dismissId: `shipping_coverage:${c.id}`,
+        });
+    }
+    return rows;
+}
+
 async function refreshNotifications() {
     if (_inflight || !_ctx) return;
     _inflight = true;
@@ -754,6 +792,7 @@ async function refreshNotifications() {
                 checkTradeNegotiationMessages(faction, nation, isPM, isTradeMin),
                 checkLawsuits(nation, isJusticeMin),
                 checkPetitionForReform(faction, nation, shard),
+                checkShippingCoverage(nation),
             ];
         }
 
