@@ -224,6 +224,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { hfFmtBig, escapeHtml, escapeAttr, titleCase, fmtValuation, pctOwned } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
+import { fetchCorpBookAggregates } from './js/corp-book-value.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { mountBoardPressingIssues } from './js/corp-board-pressing-issues.js';
@@ -443,38 +444,16 @@ async function loadHoldings(entId, cash) {
   }
 
   // Book-value aggregates for PRIVATE holdings (public corps show market
-  // cap). corp_buildings + corp_loans are world-readable; two batched
-  // .in() queries summed per corp so each private corp shows its dynamic
-  // book value, not stale seed capital.
-  const privateIds = [...byId.values()]
-    .filter(p => p.corp && p.corp.listing !== 'public')
-    .map(p => p.corp.id);
-  const bldByCorp  = new Map();
-  const debtByCorp = new Map();
-  if (privateIds.length) {
-    const [bldRes, lnRes] = await Promise.all([
-      _supabase.from('corp_buildings').select('owner_corp_id, cost_paid').in('owner_corp_id', privateIds),
-      _supabase.from('corp_loans').select('borrower_corp_id, principal, total_paid').in('borrower_corp_id', privateIds).in('status', ['approved', 'active']),
-    ]);
-    if (bldRes.error) console.warn('[entrepreneur-dashboard] buildings load failed:', bldRes.error.message);
-    if (lnRes.error)  console.warn('[entrepreneur-dashboard] loans load failed:', lnRes.error.message);
-    for (const b of (bldRes.data || [])) {
-      bldByCorp.set(b.owner_corp_id, (bldByCorp.get(b.owner_corp_id) || 0) + (Number(b.cost_paid) || 0));
-    }
-    for (const l of (lnRes.data || [])) {
-      debtByCorp.set(l.borrower_corp_id,
-        (debtByCorp.get(l.borrower_corp_id) || 0) + Math.max(0, (Number(l.principal) || 0) - (Number(l.total_paid) || 0)));
-    }
-  }
+  // cap) — fetched once via the shared fetchCorpBookAggregates so each
+  // private corp shows its dynamic book value, not stale seed capital.
+  const bookAgg = await fetchCorpBookAggregates(
+    [...byId.values()].filter(p => p.corp && p.corp.listing !== 'public').map(p => p.corp.id));
 
   // Per-corp valuation from the shared single source (see
   // js/game/corp-valuation.js §3). Read by render + sort below;
   // display-only, never feeds net worth.
   for (const p of byId.values()) {
-    p.valuation = computeEntrepreneurValuation(p.corp, {
-      buildingCostPaid: bldByCorp.get(p.corp.id) || 0,
-      outstandingDebt: debtByCorp.get(p.corp.id) || 0,
-    });
+    p.valuation = computeEntrepreneurValuation(p.corp, bookAgg.get(p.corp.id));
   }
 
   // Sort: biggest economic stake first — realised share value if any,

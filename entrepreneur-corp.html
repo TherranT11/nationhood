@@ -735,6 +735,7 @@ import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash, computeCorpBookValue } from './js/game/corp-valuation.js';
+import { fetchOneCorpBookAggregates } from './js/corp-book-value.js';
 function initials(s, n) {
   return (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, n || 2).map(w => w[0]).join('').toUpperCase()) || '—';
 }
@@ -1361,27 +1362,13 @@ function initials(s, n) {
       window._cpChatPoll = setInterval(load, 4000);
     }
 
-    // Book-value aggregates (Σ building cost_paid, Σ outstanding debt) for
-    // THIS corp — the two pieces that don't live on the corp row. Fetched
-    // here so both the displayed valuation and the sale/buyback price read
-    // the same numbers.
-    const loadCorpBookAggregates = async () => {
-      const [{ data: bld }, { data: lns }] = await Promise.all([
-        _supabase.from('corp_buildings').select('cost_paid').eq('owner_corp_id', id),
-        _supabase.from('corp_loans').select('principal, total_paid').eq('borrower_corp_id', id).in('status', ['approved', 'active']),
-      ]);
-      return {
-        buildingCostPaid: (bld || []).reduce((s, b) => s + (Number(b.cost_paid) || 0), 0),
-        outstandingDebt: (lns || []).reduce((s, l) => s + Math.max(0, (Number(l.principal) || 0) - (Number(l.total_paid) || 0)), 0),
-      };
-    };
-
     // Recommended corp valuation (one source of truth, shared by the Put Up
     // for Sale and Acquire flows) = the dynamic book value
     // (computeCorpBookValue: treasury + Σ building cost − Σ outstanding debt).
+    // Aggregates come from fetchOneCorpBookAggregates (js/corp-book-value.js).
     const computeCorpRecommended = async () => {
       try {
-        const agg = await loadCorpBookAggregates();
+        const agg = await fetchOneCorpBookAggregates(id);
         return computeCorpBookValue({ treasury: getEntrepreneurCorpCash(c), ...agg });
       } catch { return Math.max(0, Math.round(getEntrepreneurCorpCash(c))); }
     };
@@ -1840,7 +1827,7 @@ function initials(s, n) {
     // aggregates so it matches the recommended sale/buyback price. The
     // engine valuation is deliberately a separate surface and is
     // intentionally not used on the entrepreneur pages.
-    const valAgg = isPublic ? null : await loadCorpBookAggregates().catch(() => null);
+    const valAgg = isPublic ? null : await fetchOneCorpBookAggregates(id).catch(() => null);
     const val = computeEntrepreneurValuation(c, valAgg);
     const valEl = document.getElementById('cp-val');
     if (valEl) {

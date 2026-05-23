@@ -356,33 +356,18 @@ import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { fmtM, fmtUsd, fmtValuation, titleCase, ownerDisplayName, viewerStakePct, industryLabel } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash } from './js/game/corp-valuation.js';
+import { fetchCorpBookAggregates } from './js/corp-book-value.js';
 
-// Attach book-value aggregates (Σ building cost_paid, Σ outstanding debt)
-// to each PRIVATE corp in `corps` as c.bookAgg, so computeEntrepreneurValuation
-// can show dynamic book value (not stale seed). corp_buildings + corp_loans
-// are world-readable; two batched .in() queries. Public corps show market
-// cap and are skipped. Mutates and returns the same array.
+// Attach book-value aggregates to each PRIVATE corp in `corps` as c.bookAgg
+// (via the shared fetchCorpBookAggregates), so computeEntrepreneurValuation
+// can show dynamic book value (not stale seed). Public corps show market cap
+// and are skipped. Mutates and returns the same array.
 async function attachCorpBookAggregates(corps) {
-  const privateIds = (corps || []).filter(c => c && c.listing !== 'public').map(c => c.id);
-  if (!privateIds.length) return corps;
-  const [bldRes, lnRes] = await Promise.all([
-    _supabase.from('corp_buildings').select('owner_corp_id, cost_paid').in('owner_corp_id', privateIds),
-    _supabase.from('corp_loans').select('borrower_corp_id, principal, total_paid').in('borrower_corp_id', privateIds).in('status', ['approved', 'active']),
-  ]);
-  if (bldRes.error) console.warn('[entrepreneur-corporations] buildings load failed:', bldRes.error.message);
-  if (lnRes.error)  console.warn('[entrepreneur-corporations] loans load failed:', lnRes.error.message);
-  const bldByCorp = new Map(), debtByCorp = new Map();
-  for (const b of (bldRes.data || [])) {
-    bldByCorp.set(b.owner_corp_id, (bldByCorp.get(b.owner_corp_id) || 0) + (Number(b.cost_paid) || 0));
-  }
-  for (const l of (lnRes.data || [])) {
-    debtByCorp.set(l.borrower_corp_id,
-      (debtByCorp.get(l.borrower_corp_id) || 0) + Math.max(0, (Number(l.principal) || 0) - (Number(l.total_paid) || 0)));
-  }
-  for (const c of corps) {
-    if (c && c.listing !== 'public') {
-      c.bookAgg = { buildingCostPaid: bldByCorp.get(c.id) || 0, outstandingDebt: debtByCorp.get(c.id) || 0 };
-    }
+  const privateCorps = (corps || []).filter(c => c && c.listing !== 'public');
+  if (!privateCorps.length) return corps;
+  const bookAgg = await fetchCorpBookAggregates(privateCorps.map(c => c.id));
+  for (const c of privateCorps) {
+    c.bookAgg = bookAgg.get(c.id) || { buildingCostPaid: 0, outstandingDebt: 0 };
   }
   return corps;
 }
