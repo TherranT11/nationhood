@@ -391,7 +391,7 @@ async function loadBillData() {
         // "Switch to <option>" without a second round-trip.
         const { data: bill, error } = await _supabase
             .from('bills')
-            .select('*, factions(faction_name), bill_articles(*, policies(*), factions(faction_name), selected_option:policy_options!selected_option_id(option_name, option_description)), bill_support(*, factions(faction_name))')
+            .select('*, factions(faction_name), bill_articles(*, policies(*), factions(faction_name), selected_option:policy_options!selected_option_id(option_name, option_description, ongoing_base_cost, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat)), bill_support(*, factions(faction_name))')
             .eq('id', billId).single();
         if (error) throw error;
         currentBill = bill;
@@ -452,8 +452,11 @@ async function loadBillData() {
         // schema (target_stat, stat_direction, ideology, ideologies);
         // PostgREST rejects the whole query when any selected column is
         // missing.
+        // policies-table cost columns were dropped (they live on policy_options
+        // now); selecting them by name errors the whole fetch. Only request
+        // columns that still exist here.
         const { data: activeLawRows } = await _supabase.from('active_laws')
-            .select('*, policies(id, policy_name, description, major_sector, fiscal_category, ongoing_base_cost, ongoing_cost_per_tick, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat, policy_type), selected_option:policy_options!selected_option_id(option_name, option_description, stat_effects)')
+            .select('*, policies(id, policy_name, description, major_sector, fiscal_category, policy_type), selected_option:policy_options!selected_option_id(option_name, option_description, stat_effects, ongoing_base_cost, ongoing_scaling_stat, upfront_cost, upfront_scaling_stat)')
             .eq('nation_id', bill.nation_id)
             .eq('is_reversal', false);
         nationActiveLaws = (activeLawRows || []).filter(l => l.policies);
@@ -1376,8 +1379,11 @@ function renderArticles() {
         const repealTargetId = currentBill.repeal_active_law_id || (bill.bill_articles || []).find(a => a.repeal_active_law_id)?.repeal_active_law_id || null;
         const repealTargetLaw = repealTargetId ? nationActiveLaws.find(l => l.id === repealTargetId) : null;
         const repealPolicy = repealTargetLaw?.policies || null;
+        // Cost lives on the repealed law's selected option now; scale by the
+        // nation stat so the relief matches the actual budget line.
+        const repealOption = repealTargetLaw?.selected_option || null;
         const targetPolicyName = repealPolicy?.policy_name || 'Unknown policy';
-        const ongoingCost = repealPolicy ? (repealPolicy.ongoing_cost_per_tick || repealPolicy.ongoing_base_cost || 0) : 0;
+        const ongoingCost = scalePolicyOngoingCost(repealOption?.ongoing_base_cost || 0, repealOption?.ongoing_scaling_stat, currentNation);
         const recoveredPerTick = -ongoingCost;
 
         let reversedEffectsHTML = '';
@@ -1527,7 +1533,7 @@ function renderArticles() {
     // Totals come from the shared helper so bill.html's detail view and
     // government.html's parliament overview can't drift. ongoingMonthly is
     // per-tick; detail display below multiplies by 12 for the yearly figure.
-    const _costTotals = computeBillCostTotals({ bill_articles: articles }, currentNation);
+    const _costTotals = computeBillCostTotals({ bill_articles: articles }, currentNation, nationActiveLaws);
     const totalUpfront = _costTotals.upfront;
     const totalOngoing = _costTotals.ongoingMonthly;
     const html = `
@@ -1654,8 +1660,11 @@ function renderArticles() {
                 // Repeal article — show reversed effects and cost savings.
                 // onCost feeds the per-article savings pill below; the totals
                 // block at the bottom is already computed via the shared
-                // helper so no accumulation is needed here.
-                const onCost = scalePolicyOngoingCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, currentNation);
+                // helper so no accumulation is needed here. Cost comes from the
+                // repealed law's selected option (policy-level cols were dropped).
+                const _repLaw = nationActiveLaws.find(l => l.id === art.repeal_active_law_id) || null;
+                const _repOpt = _repLaw?.selected_option || null;
+                const onCost = scalePolicyOngoingCost(_repOpt?.ongoing_base_cost || 0, _repOpt?.ongoing_scaling_stat, currentNation);
 
                 // Reversed stat effects
                 let effectsHTML = '';
@@ -1709,8 +1718,11 @@ function renderArticles() {
                 effectsHTML = '<span class="' + cls + '">' + dir + ' ' + p.target_stat + '</span>';
             }
 
-            const upCost = scalePolicyOngoingCost(p.upfront_cost || 0, p.upfront_scaling_stat, currentNation);
-            const onCost = scalePolicyOngoingCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, currentNation);
+            // Cost comes from the article's chosen option (policy-level cols
+            // were dropped); scaled by the nation stat for the live figure.
+            const _optC = art.selected_option || null;
+            const upCost = scalePolicyOngoingCost(_optC?.upfront_cost || 0, _optC?.upfront_scaling_stat, currentNation);
+            const onCost = scalePolicyOngoingCost(_optC?.ongoing_base_cost || 0, _optC?.ongoing_scaling_stat, currentNation);
 
             const policyActions = articleActionsDiv(art);
 
@@ -2704,16 +2716,9 @@ function onAmendmentSectorChange() {
                 const cls = isUp ? 'stat-up' : 'stat-down';
                 return `<span class="${cls}">${arrow} ${(e.stat_key || '').replace(/_/g, ' ')}</span>`;
             }).join(', ') + '</div>' : '';
-        // Costs — inline style matching active law savings format
-        const amUpfront = Number(p.upfront_cost || 0);
-        const amOngoing = Number(p.ongoing_base_cost || 0);
-        const amUpScale = p.upfront_scaling_stat ? ' × ' + p.upfront_scaling_stat.replace(/_/g, ' ') : '';
-        const amOnScale = p.ongoing_scaling_stat ? ' × ' + p.ongoing_scaling_stat.replace(/_/g, ' ') : '';
-        const amCostParts = [];
-        if (amUpfront > 0) amCostParts.push(`Upfront: $${amUpfront}M${amUpScale}`);
-        if (amOngoing > 0) amCostParts.push(`Ongoing: $${amOngoing}M${amOnScale}/mo`);
-        const amCostHTML = amCostParts.length > 0 ? `<div style="margin-top:4px;font-family:var(--font-mono);font-size:0.68rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.03em;">${amCostParts.join(' &nbsp;&middot;&nbsp; ')}</div>` : '';
-        return `<div class="policy-option" data-policy-id="${p.id}" onclick="selectAmendmentPolicy('${p.id}')"><div class="policy-option-name">${p.policy_name}</div><div class="policy-option-desc">${p.description || ''}</div>${amEffectsHTML}${amCostHTML}</div>`;
+        // No cost chip here: cost is per-option (chosen after the policy), and
+        // the policy-level cost columns were dropped.
+        return `<div class="policy-option" data-policy-id="${p.id}" onclick="selectAmendmentPolicy('${p.id}')"><div class="policy-option-name">${p.policy_name}</div><div class="policy-option-desc">${p.description || ''}</div>${amEffectsHTML}</div>`;
     }).join('');
     document.getElementById('amendment-policy-group').style.display = 'block';
 }
@@ -3209,12 +3214,11 @@ function onSponsorAddSectorChange() {
         activeLawsHTML = '<div style="margin-bottom:12px;"><div style="color:var(--orange);font-size:0.8rem;font-weight:bold;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Active Policies</div>' +
             sectorActiveLaws.map(law => {
                 const p = law.policies;
-                // Phase 5.5: pull cost / effects / display from the active option
-                // first so multi-option laws show the option that's actually
-                // being torn down. Falls back to legacy policies columns for
-                // orphaned data.
+                // Cost / effects / display come from the active option (the
+                // multi-option law's torn-down option); policy-level cost cols
+                // were dropped. Relief is population-scaled to match the budget.
                 const opt = law.selected_option || null;
-                const onCost = (opt?.ongoing_base_cost ?? p.ongoing_cost_per_tick ?? p.ongoing_base_cost) || 0;
+                const onCost = scalePolicyOngoingCost(opt?.ongoing_base_cost || 0, opt?.ongoing_scaling_stat, currentNation);
                 const costLabel = onCost > 0 ? ` <span style="color:var(--green);font-weight:bold;">Relief: ${formatCurrency(onCost)} / mo</span>` : '';
                 const lawDisplayName = opt?.option_name
                     ? `${p.policy_name} — ${opt.option_name}`
@@ -3254,16 +3258,9 @@ function onSponsorAddSectorChange() {
                         const cls = isUp ? 'stat-up' : 'stat-down';
                         return `<span class="${cls}">${arrow} ${(e.stat_key || '').replace(/_/g, ' ')}</span>`;
                     }).join(', ') + '</div>' : '';
-                // Costs — inline style matching active law savings format
-                const upfront = Number(p.upfront_cost || 0);
-                const ongoing = Number(p.ongoing_base_cost || 0);
-                const upScaling = p.upfront_scaling_stat ? ' × ' + (p.upfront_scaling_stat || '').replace(/_/g, ' ') : '';
-                const onScaling = p.ongoing_scaling_stat ? ' × ' + (p.ongoing_scaling_stat || '').replace(/_/g, ' ') : '';
-                const costParts = [];
-                if (upfront > 0) costParts.push(`Upfront: $${upfront}M${upScaling}`);
-                if (ongoing > 0) costParts.push(`Ongoing: $${ongoing}M${onScaling}/mo`);
-                const costHTML = costParts.length > 0 ? `<div style="margin-top:4px;font-family:var(--font-mono);font-size:0.68rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.03em;">${costParts.join(' &nbsp;&middot;&nbsp; ')}</div>` : '';
-                return `<div class="policy-option" data-sponsor-policy-id="${p.id}" onclick="selectSponsorPolicy('${p.id}')">${pTypeBadge}<div class="policy-option-name">${p.policy_name}</div><div class="policy-option-desc">${p.description || ''}</div>${effectsHTML}${costHTML}</div>`;
+                // No cost chip here: cost is per-option (chosen after the
+                // policy), and the policy-level cost columns were dropped.
+                return `<div class="policy-option" data-sponsor-policy-id="${p.id}" onclick="selectSponsorPolicy('${p.id}')">${pTypeBadge}<div class="policy-option-name">${p.policy_name}</div><div class="policy-option-desc">${p.description || ''}</div>${effectsHTML}</div>`;
             }).join('');
     }
 
