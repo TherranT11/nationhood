@@ -156,7 +156,7 @@ async function loadExpenditureData(nationId, nation) {
     // from the option that's actually active for this nation. Phase 2.5
     // onward stops writing those columns on the policies row.
     var res = await _supabase.from('active_laws')
-        .select('passed_tick, is_reversal, policies(policy_name, fiscal_category, upfront_cost, ongoing_base_cost, ongoing_cost_per_tick, upfront_scaling_stat, ongoing_scaling_stat, policy_type), selected_option:policy_options!selected_option_id(option_name, fiscal_category, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_scaling_stat)')
+        .select('passed_tick, is_reversal, policies(policy_name, fiscal_category, policy_type), selected_option:policy_options!selected_option_id(option_name, fiscal_category, upfront_cost, upfront_scaling_stat, ongoing_base_cost, ongoing_scaling_stat)')
         .eq('nation_id', nationId)
         .eq('is_reversal', false);
 
@@ -178,16 +178,18 @@ async function loadExpenditureData(nationId, nation) {
 
         var policyCost = 0;
 
-        var ongoingBase = ((opt && opt.ongoing_base_cost) || policy.ongoing_base_cost || policy.ongoing_cost_per_tick) || 0;
-        var ongoingScaling = (opt && opt.ongoing_scaling_stat) || policy.ongoing_scaling_stat;
+        // Cost + scaling stat live on policy_options only (the policies-table
+        // cost columns were dropped — selecting them errors the whole fetch).
+        var ongoingBase = (opt && opt.ongoing_base_cost) || 0;
+        var ongoingScaling = opt && opt.ongoing_scaling_stat;
         if (ongoingBase > 0) {
             var ongoingScaled = scalePolicyOngoingCost(ongoingBase, ongoingScaling, nation);
             policyCost += ongoingScaled * GAME_CONFIG.TICKS_PER_YEAR * 1000000;
         }
 
         if (law.passed_tick >= yearStartTick) {
-            var upfront = ((opt && opt.upfront_cost) || policy.upfront_cost) || 0;
-            var upfrontScaling = (opt && opt.upfront_scaling_stat) || policy.upfront_scaling_stat;
+            var upfront = (opt && opt.upfront_cost) || 0;
+            var upfrontScaling = opt && opt.upfront_scaling_stat;
             if (upfront > 0) {
                 var upfrontScaled = scalePolicyOngoingCost(upfront, upfrontScaling, nation);
                 policyCost += upfrontScaled * 1000000;
