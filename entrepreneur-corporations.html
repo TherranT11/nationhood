@@ -356,6 +356,21 @@ import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { fmtM, fmtUsd, fmtValuation, titleCase, ownerDisplayName, viewerStakePct, industryLabel } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash } from './js/game/corp-valuation.js';
+import { fetchCorpBookAggregates } from './js/corp-book-value.js';
+
+// Attach book-value aggregates to each PRIVATE corp in `corps` as c.bookAgg
+// (via the shared fetchCorpBookAggregates), so computeEntrepreneurValuation
+// can show dynamic book value (not stale seed). Public corps show market cap
+// and are skipped. Mutates and returns the same array.
+async function attachCorpBookAggregates(corps) {
+  const privateCorps = (corps || []).filter(c => c && c.listing !== 'public');
+  if (!privateCorps.length) return corps;
+  const bookAgg = await fetchCorpBookAggregates(privateCorps.map(c => c.id));
+  for (const c of privateCorps) {
+    c.bookAgg = bookAgg.get(c.id) || { buildingCostPaid: 0, outstandingDebt: 0 };
+  }
+  return corps;
+}
 
 const FEE = 1_000_000;
 // Shares issued when a corp lists public. The authoritative value lives
@@ -467,11 +482,11 @@ function renderPositions(corps, filter) {
     catCell.appendChild(catPill);
 
     // 3. Valuation (computeEntrepreneurValuation + fmtValuation — single source)
-    const val = computeEntrepreneurValuation(c);
+    const val = computeEntrepreneurValuation(c, c.bookAgg);
     const valCell = document.createElement('div'); valCell.className = 'mid';
     const vl = document.createElement('div'); vl.className = 'cl';
     vl.textContent = val.kind === 'market' ? 'MARKET CAP'
-                   : val.kind === 'seed'   ? 'STARTING CAPITAL' : 'VALUATION';
+                   : val.kind === 'book'   ? 'BOOK VALUE' : 'VALUATION';
     const vv = document.createElement('div'); vv.className = 'cv'; vv.textContent = fmtValuation(val.amount);
     valCell.append(vl, vv);
 
@@ -539,6 +554,7 @@ function renderPositions(corps, filter) {
           const pct = viewerStakePct(c, entId, yourShares);
           return { ...c, position, yourShares, pct };
         });
+        await attachCorpBookAggregates(corps);
       }
     }
 
@@ -712,7 +728,7 @@ function renderPositions(corps, filter) {
       const f = ctx.faction;
       const applicantName = ownerDisplayName(f);
       const ind = (corp.industry || '').toLowerCase();
-      const val = computeEntrepreneurValuation(corp);
+      const val = computeEntrepreneurValuation(corp, corp.bookAgg);
       joinBody.replaceChildren();
       const card = document.createElement('div'); card.className = 'ec-jc';
       const nm  = document.createElement('div'); nm.className = 'corp-nm';
@@ -761,6 +777,7 @@ function renderPositions(corps, filter) {
       for (const r of (reqRes.data  || [])) blocked.add(r.corp_id);
       const corps = (corpRes.data || [])
         .filter(c => c.owner_faction_id !== entId && !blocked.has(c.id));
+      await attachCorpBookAggregates(corps);
 
       joinList.replaceChildren();
       if (corps.length === 0) {
@@ -773,7 +790,7 @@ function renderPositions(corps, filter) {
       for (const c of corps) {
         const isPub = c.listing === 'public';
         const cash = getEntrepreneurCorpCash(c);
-        const val  = computeEntrepreneurValuation(c);
+        const val  = computeEntrepreneurValuation(c, c.bookAgg);
         const ind  = (c.industry || '').toLowerCase();
         const row  = document.createElement('div'); row.className = 'ec-jr';
 
@@ -798,8 +815,9 @@ function renderPositions(corps, filter) {
         const cashCell = document.createElement('div'); cashCell.className = 'num';
         cashCell.textContent = fmtM(cash);
 
-        const debtCell = document.createElement('div'); debtCell.className = 'num muted';
-        debtCell.textContent = '$0';
+        const debt = isPub ? 0 : (c.bookAgg?.outstandingDebt || 0);
+        const debtCell = document.createElement('div'); debtCell.className = 'num' + (debt > 0 ? '' : ' muted');
+        debtCell.textContent = fmtM(debt);
 
         const btn = document.createElement('button'); btn.className = 'ec-btn pri'; btn.textContent = 'APPLY';
         btn.addEventListener('click', () => showStep2(c));

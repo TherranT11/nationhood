@@ -224,6 +224,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { hfFmtBig, escapeHtml, escapeAttr, titleCase, fmtValuation, pctOwned } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
+import { fetchCorpBookAggregates } from './js/corp-book-value.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { mountBoardPressingIssues } from './js/corp-board-pressing-issues.js';
@@ -332,9 +333,9 @@ function initials(first, last, fallbackName) {
 // (private/public), HQ, ownership, status, valuation.
 //
 // NET WORTH is deliberately unchanged: cash + Σ(share-position value
-// only). A private founded corp's seed capital and a public corp's
-// market cap are shown for context but are NOT added to net worth
-// (the founding cash was already spent; we don't invent a valuation).
+// only). A private corp's book value and a public corp's market cap are
+// shown for context but are NOT added to net worth (a founder's equity
+// isn't a liquid personal asset; we don't fold it into net worth).
 function renderHoldings(positions) {
   const listEl = document.getElementById('ch-list');
   const countEl = document.getElementById('ch-count');
@@ -364,7 +365,7 @@ function renderHoldings(positions) {
 
     // Valuation figure computed once in loadHoldings (pos.valuation).
     const valKey = pos.valuation.kind === 'market' ? 'MARKET CAP'
-                 : pos.valuation.kind === 'seed'   ? 'SEED CAPITAL'
+                 : pos.valuation.kind === 'book'   ? 'BOOK VALUE'
                  : 'VALUATION';
     const valVal = fmtValuation(pos.valuation.amount);
 
@@ -395,7 +396,7 @@ async function loadHoldings(entId, cash) {
   };
   if (!entId) { renderHoldings([]); setNetWorth(0); return; }
 
-  const CORP_COLS = 'id, name, industry, listing, starting_capital, share_price, shares_outstanding, hq:nations!hq_nation_id(name)';
+  const CORP_COLS = 'id, name, industry, listing, starting_capital, treasury_cash, share_price, shares_outstanding, hq:nations!hq_nation_id(name)';
   // Two sources, merged by corp id: founded corps + share positions.
   // gt('shares',0) drops fully-sold positions.
   const [foundedRes, sharesRes] = await Promise.all([
@@ -442,11 +443,17 @@ async function loadHoldings(entId, cash) {
     }
   }
 
+  // Book-value aggregates for PRIVATE holdings (public corps show market
+  // cap) — fetched once via the shared fetchCorpBookAggregates so each
+  // private corp shows its dynamic book value, not stale seed capital.
+  const bookAgg = await fetchCorpBookAggregates(
+    [...byId.values()].filter(p => p.corp && p.corp.listing !== 'public').map(p => p.corp.id));
+
   // Per-corp valuation from the shared single source (see
   // js/game/corp-valuation.js §3). Read by render + sort below;
   // display-only, never feeds net worth.
   for (const p of byId.values()) {
-    p.valuation = computeEntrepreneurValuation(p.corp);
+    p.valuation = computeEntrepreneurValuation(p.corp, bookAgg.get(p.corp.id));
   }
 
   // Sort: biggest economic stake first — realised share value if any,

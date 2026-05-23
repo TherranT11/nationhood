@@ -734,7 +734,8 @@
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel } from './js/utils.js';
-import { computeEntrepreneurValuation, getEntrepreneurCorpCash } from './js/game/corp-valuation.js';
+import { computeEntrepreneurValuation, getEntrepreneurCorpCash, computeCorpBookValue } from './js/game/corp-valuation.js';
+import { fetchOneCorpBookAggregates } from './js/corp-book-value.js';
 function initials(s, n) {
   return (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, n || 2).map(w => w[0]).join('').toUpperCase()) || '—';
 }
@@ -1023,7 +1024,7 @@ function initials(s, n) {
         <div class="bm-modal" style="max-width:440px;">
           <div class="bm-head"><div class="ti">Offer <em>Investment</em></div><div class="bm-x" id="oi-close">×</div></div>
           <div class="bm-body">
-            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Invest cash into <b style="color:#cfcabf;">${escapeHtml(c.name || 'this corp')}</b> for newly issued equity. The CEO must accept the offer.</div>
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Buy equity in <b style="color:#cfcabf;">${escapeHtml(c.name || 'this corp')}</b> directly from its founder — your cash goes to the founder, not the corp treasury. The CEO must accept the offer.</div>
             <div class="bm-label">Amount to invest ($)</div>
             <input type="text" class="bm-input" id="oi-amt" inputmode="numeric" placeholder="e.g. 5,000,000">
             <div class="bm-label">Equity wanted (%)</div>
@@ -1080,7 +1081,7 @@ function initials(s, n) {
         <div class="bm-modal" style="max-width:440px;">
           <div class="bm-head"><div class="ti">Sell <em>Equity</em></div><div class="bm-x" id="se-close">×</div></div>
           <div class="bm-body">
-            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Sell your shares back to <b style="color:#cfcabf;">${escapeHtml(c.name || 'this corp')}</b> at current book value. The corp pays from treasury.</div>
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Sell your shares back to the founder of <b style="color:#cfcabf;">${escapeHtml(c.name || 'this corp')}</b> at current book value. The founder pays from their personal Cash on Hand.</div>
             <div style="font-size:12px;color:#cfcabf;margin-bottom:8px;">You hold <b>${myShares}</b> share${myShares === 1 ? '' : 's'} (${pct}%). Corp book value: <span style="color:#5cc55c;" id="se-book">…</span></div>
             <div class="bm-label">Shares to sell</div>
             <input type="number" class="bm-input" id="se-shares" min="1" max="${myShares}" value="${myShares}">
@@ -1114,7 +1115,7 @@ function initials(s, n) {
           if (error) throw error;
           if (!data || !data.success) {
             const R = {
-              insufficient_treasury: data?.need != null ? `Corp treasury can't cover it — needs ${fmtUsd(Number(data.need))}, has ${fmtUsd(Number(data.have) || 0)}.` : 'Corp treasury too low.',
+              founder_insufficient_funds: data?.need != null ? `The founder can't cover it — needs ${fmtUsd(Number(data.need))}, has ${fmtUsd(Number(data.have) || 0)}.` : "The founder's cash is too low to buy back.",
               insufficient_shares: "You don't hold that many shares.",
               is_owner: 'The founder withdraws via treasury, not equity sell-back.',
               no_entrepreneur: 'No entrepreneur faction found.', corp_not_found: 'Corp not found.', invalid_amount: 'Enter a valid amount.',
@@ -1362,18 +1363,14 @@ function initials(s, n) {
     }
 
     // Recommended corp valuation (one source of truth, shared by the Put Up
-    // for Sale and Acquire flows): treasury_cash − outstanding loan debt +
-    // property (building cost). Returns a floored integer ≥ 0.
+    // for Sale and Acquire flows) = the dynamic book value
+    // (computeCorpBookValue: treasury + Σ building cost − Σ outstanding debt).
+    // Aggregates come from fetchOneCorpBookAggregates (js/corp-book-value.js).
     const computeCorpRecommended = async () => {
       try {
-        const [{ data: bld }, { data: lns }] = await Promise.all([
-          _supabase.from('corp_buildings').select('cost_paid').eq('owner_corp_id', id),
-          _supabase.from('corp_loans').select('principal, total_paid').eq('borrower_corp_id', id).in('status', ['approved', 'active']),
-        ]);
-        const property = (bld || []).reduce((s, b) => s + (Number(b.cost_paid) || 0), 0);
-        const debt = (lns || []).reduce((s, l) => s + Math.max(0, (Number(l.principal) || 0) - (Number(l.total_paid) || 0)), 0);
-        return Math.max(0, Math.round((Number(c.treasury_cash) || 0) + property - debt));
-      } catch { return Math.max(0, Math.round(Number(c.treasury_cash) || 0)); }
+        const agg = await fetchOneCorpBookAggregates(id);
+        return computeCorpBookValue({ treasury: getEntrepreneurCorpCash(c), ...agg });
+      } catch { return Math.max(0, Math.round(getEntrepreneurCorpCash(c))); }
     };
 
     // [Withdraw to Cash on Hand] — header action for the founder of a PRIVATE
@@ -1403,7 +1400,7 @@ function initials(s, n) {
               not_owner:             'Only the founder can withdraw from this corporation.',
               use_dividend:          'Public corps pay out via dividends, not direct withdrawals.',
               invalid_amount:        'Enter a valid amount.',
-              insufficient_treasury: `Treasury only holds $${data && data.have != null ? data.have : '?'}.`,
+              exceeds_withdrawable:  `Only $${data && data.have != null ? data.have : '?'} is withdrawable — the treasury holds $${data && data.treasury != null ? data.treasury : '?'} but $${data && data.debt != null ? data.debt : '?'} is owed on active loans.`,
             };
             wdMsg.textContent = REASON[data && data.reason] || 'Withdrawal failed.';
             return;
@@ -1826,9 +1823,12 @@ function initials(s, n) {
     set('cp-cash-delta', '— corp treasury');
 
     // VALUATION from the shared single source (js/game/corp-valuation.js
-    // §3). The engine valuation is deliberately a separate surface and
-    // is intentionally not used on the entrepreneur pages.
-    const val = computeEntrepreneurValuation(c);
+    // §3). Private corps show dynamic BOOK VALUE — feed the building/loan
+    // aggregates so it matches the recommended sale/buyback price. The
+    // engine valuation is deliberately a separate surface and is
+    // intentionally not used on the entrepreneur pages.
+    const valAgg = isPublic ? null : await fetchOneCorpBookAggregates(id).catch(() => null);
+    const val = computeEntrepreneurValuation(c, valAgg);
     const valEl = document.getElementById('cp-val');
     if (valEl) {
       valEl.classList.remove('muted');
@@ -1836,7 +1836,7 @@ function initials(s, n) {
     }
     set('cp-val-delta', val.kind === 'market'
       ? `${Number(c.shares_outstanding) || 0} sh × ${fmtUsd(Number(c.share_price) || 0)}`
-      : val.kind === 'seed' ? '— seed capital' : '— not yet valued');
+      : val.kind === 'book' ? '— book value' : '— not yet valued');
 
     // Public-only market view. The share state is the one source
     // (entrepreneur_corps.share_price / shares_outstanding /
@@ -3020,12 +3020,12 @@ function initials(s, n) {
       // server-side (this preview can never over-grant).
       let airlinePanelHtml = '';
       if (c.industry === 'airline' && isOwner) {
-        const [termRes, routeRes, cityRes, aircraftRes] = await Promise.all([
+        const [termRes, routeRes, cityRes, aircraftRes, laneRes] = await Promise.all([
           _supabase.from('airline_terminals')
             .select('id, city_id, terminal_number, city:airline_cities!city_id(id, name, population_pct, is_capital)')
             .eq('owner_corp_id', id),
           _supabase.from('airline_routes')
-            .select(`id, ticket_price, route_type,
+            .select(`id, ticket_price, route_type, origin_city_id, dest_city_id,
                      aircraft_regional, aircraft_narrowbody, aircraft_widebody,
                      last_tick_pax, last_tick_revenue, last_tick_spend,
                      origin:airline_cities!origin_city_id(name),
@@ -3039,17 +3039,37 @@ function initials(s, n) {
             .eq('entrepreneur_corp_id', id)
             .order('aircraft_class', { ascending: true })
             .order('created_at', { ascending: true }),
+          // Every active route, lane-wide, for the competitor breakdown on
+          // each of this corp's routes (lanes are shared across airlines).
+          _supabase.from('airline_routes')
+            .select('origin_city_id, dest_city_id, last_tick_pax, airline_corp_id, airline:entrepreneur_corps!airline_corp_id(name), faction:factions!airline_faction_id(faction_name)')
+            .eq('status', 'active'),
         ]);
         if (termRes.error)     console.warn('[entrepreneur-corp] terminals fetch error:', termRes.error.message);
         if (routeRes.error)    console.warn('[entrepreneur-corp] routes fetch error:', routeRes.error.message);
         if (cityRes.error)     console.warn('[entrepreneur-corp] cities fetch error:', cityRes.error.message);
         if (aircraftRes.error) console.warn('[entrepreneur-corp] aircraft fetch error:', aircraftRes.error.message);
+        if (laneRes.error)     console.warn('[entrepreneur-corp] lane-routes fetch error:', laneRes.error.message);
 
         const terminals = termRes.data || [];
         const routes    = routeRes.data || [];
         const allCities = cityRes.data || [];
         const aircraft  = aircraftRes.data || [];
         const corpCash  = getEntrepreneurCorpCash(c);
+
+        // Lane → { total pax, per-airline pax } across every active route on
+        // the city pair (shared lanes). Drives the competitor breakdown.
+        const laneMap = new Map();
+        for (const lr of (laneRes.data || [])) {
+          const key = `${lr.origin_city_id}|${lr.dest_city_id}`;
+          let lane = laneMap.get(key);
+          if (!lane) { lane = { total: 0, byCorp: new Map() }; laneMap.set(key, lane); }
+          const pax = Number(lr.last_tick_pax) || 0;
+          lane.total += pax;
+          const cname = lr.airline_corp_id === id ? 'You'
+            : (lr.airline?.name || lr.faction?.faction_name || 'Unknown airline');
+          lane.byCorp.set(cname, (lane.byCorp.get(cname) || 0) + pax);
+        }
 
         // Owned / idle per class, derived from the aircraft rows — the
         // SAME source entrepreneur_open_route counts (route_id IS NULL =
@@ -3143,6 +3163,13 @@ function initials(s, n) {
                 .map(k => `${r['aircraft_' + k]}× ${AIRCRAFT[k].label}`).join(', ') || '—';
               const net = (Number(r.last_tick_revenue) || 0) - (Number(r.last_tick_spend) || 0);
               const netCls = net > 0 ? 'accent' : net < 0 ? 'red' : 'dim';
+              // Lane competition: total passengers + per-airline last-tick pax
+              // across every airline serving this city pair.
+              const lane = laneMap.get(`${r.origin_city_id}|${r.dest_city_id}`);
+              const laneHtml = lane ? `<div class="sh-row-sub" style="margin-top:3px;">Total passengers on lane: <span class="accent">${lane.total}</span> — ${
+                [...lane.byCorp.entries()].sort((a, b) => b[1] - a[1])
+                  .map(([n, p]) => `<span class="${n === 'You' ? 'accent' : 'dim'}">${escapeHtml(n)} ${p}</span>`).join(' · ')
+              }</div>` : '';
               return `
                 <div class="sh-row">
                   <div class="sh-row-info">
@@ -3153,6 +3180,7 @@ function initials(s, n) {
                       last tick: <span class="accent">${Number(r.last_tick_pax) || 0}</span> pax,
                       net <span class="${netCls}">${net >= 0 ? '+' : '−'}${fmtUsd(Math.abs(net))}</span>
                     </div>
+                    ${laneHtml}
                   </div>
                   <div class="sh-row-actions">
                     <button class="ap-btn-small reject al-close" data-rid="${r.id}"

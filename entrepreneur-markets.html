@@ -347,6 +347,7 @@ import { fmtUsd, fmtValuation, titleCase, viewerStakePct, ownerDisplayName, esca
 const corpInitials = (s) =>
   (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()) || '—';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
+import { fetchCorpBookAggregates } from './js/corp-book-value.js';
 
 // Tier labels mirror begin_construction's CASE — display-only copy.
 // Building-type labels come from buildingTypeLabel in utils.js
@@ -365,7 +366,7 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
     // totals and the viewer's stake are aggregated client-side.
     const [corpRes, holdRes] = await Promise.all([
       _supabase.from('entrepreneur_corps')
-        .select('id, name, custom_logo_url, industry, listing, starting_capital, share_price, shares_outstanding, owner_faction_id, for_sale, sale_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name)')
+        .select('id, name, custom_logo_url, industry, listing, starting_capital, treasury_cash, share_price, shares_outstanding, owner_faction_id, for_sale, sale_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name)')
         .order('name'),
       _supabase.from('corp_shareholdings')
         .select('corp_id, holder_faction_id, shares')
@@ -381,6 +382,13 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
     if (holdRes.error) console.warn('[entrepreneur-markets] holdings load failed:', holdRes.error.message);
 
     const corps = corpRes.data || [];
+
+    // Book-value aggregates for PRIVATE corps (public corps show market cap,
+    // not book value) — fetched once via the shared fetchCorpBookAggregates
+    // and fed into computeEntrepreneurValuation so each private corp shows
+    // its dynamic book value, not stale seed capital.
+    const bookAgg = await fetchCorpBookAggregates(
+      corps.filter(c => c.listing !== 'public').map(c => c.id));
 
     // Aggregate holdings once: total per corp (for Available) + the
     // viewer's per-corp shares (for Ownership). Same definition of
@@ -405,7 +413,7 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
     // row's mine-highlight; the ownership-cell green stays tied to
     // pct alone (that's the distinct "do you have stake" concept).
     const rows = corps.map(c => {
-      const val = computeEntrepreneurValuation(c);
+      const val = computeEntrepreneurValuation(c, bookAgg.get(c.id));
       const sharesOut = Number(c.shares_outstanding) || 0;
       const totalHeld = totalByCorp.get(c.id) || 0;
       const isPub = c.listing === 'public';
