@@ -1,10 +1,11 @@
 -- ════════════════════════════════════════════════════════════════════
--- STATE LOAN GDP BUMP — ≥ $30M central-bank loan → +0.1 GDP_Growth (once)
+-- STATE LOAN GDP BUMP — first ≥ $30M central-bank loan → +0.1 GDP_Growth
 -- ════════════════════════════════════════════════════════════════════
--- Design: any state (Central Bank) loan of at least $30M gives the lending
--- nation a one-time +0.1 GDP_Growth at issue (capital injection stimulates
--- the economy). Applied via award_construction_gdp_bonus — the canonical
--- clamped [0,100] gdp_growth helper — so it stays a single source.
+-- Design: the FIRST state (Central Bank) loan of at least $30M taken in a
+-- nation gives it a one-time +0.1 GDP_Growth at issue (capital injection
+-- stimulates the economy). Once per nation forever — later ≥ $30M loans by
+-- any corp don't re-trigger. Applied via award_construction_gdp_bonus — the
+-- canonical clamped [0,100] gdp_growth helper — so it stays a single source.
 --
 -- Body identical to 20270200 plus one IF block after the loan is recorded.
 -- Same signature → CREATE OR REPLACE. Idempotent.
@@ -26,6 +27,7 @@ DECLARE
     v_available   BIGINT;
     v_tick        INT;
     v_id          UUID;
+    v_gdp_bump    NUMERIC := 0;
 BEGIN
     IF v_uid IS NULL THEN RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated'); END IF;
     IF p_corp_id IS NULL THEN RETURN jsonb_build_object('success', false, 'reason', 'corp_not_found'); END IF;
@@ -72,10 +74,18 @@ BEGIN
     VALUES (v_nation.id, v_corp.id, p_principal, p_principal, v_nation.central_bank_interest_rate, p_term_ticks, 'active', v_tick)
     RETURNING id INTO v_id;
 
-    -- Stimulus: a state loan ≥ $30M gives the lending nation a one-time
-    -- +0.1 GDP_Growth (clamped via the shared construction-GDP helper).
-    IF p_principal >= 30000000 THEN
+    -- Stimulus: the FIRST ≥ $30M state loan taken in a nation gives it a
+    -- one-time +0.1 GDP_Growth (clamped via the shared construction-GDP
+    -- helper). Later ≥ $30M loans (by any corp) don't re-trigger — the
+    -- central_bank_loans table itself is the "already happened here" record.
+    -- The nation row is locked FOR UPDATE above, so concurrent requests
+    -- can't both pass this check.
+    IF p_principal >= 30000000 AND NOT EXISTS (
+        SELECT 1 FROM central_bank_loans
+         WHERE nation_id = v_nation.id AND principal >= 30000000 AND id <> v_id
+    ) THEN
         PERFORM award_construction_gdp_bonus(v_nation.id, 0.1);
+        v_gdp_bump := 0.1;
     END IF;
 
     INSERT INTO event_log (nation_id, faction_id, event_name, description_used, category, trigger_key, effects_applied, fired_at_tick)
@@ -85,13 +95,13 @@ BEGIN
             'corporate', 'central_bank_loan_issued',
             jsonb_build_object('loan_id', v_id, 'corp_id', v_corp.id, 'principal', p_principal,
                                'rate', v_nation.central_bank_interest_rate, 'term_ticks', p_term_ticks,
-                               'gdp_bump', CASE WHEN p_principal >= 30000000 THEN 0.1 ELSE 0 END),
+                               'gdp_bump', v_gdp_bump),
             v_tick);
 
     RETURN jsonb_build_object('success', true, 'loan_id', v_id, 'principal', p_principal,
                               'rate', v_nation.central_bank_interest_rate, 'term_ticks', p_term_ticks,
                               'available_after', v_available - p_principal,
-                              'gdp_bump', CASE WHEN p_principal >= 30000000 THEN 0.1 ELSE 0 END);
+                              'gdp_bump', v_gdp_bump);
 END; $$;
 
 GRANT EXECUTE ON FUNCTION public.request_central_bank_loan(UUID, BIGINT, INT) TO authenticated;
