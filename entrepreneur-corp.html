@@ -1400,7 +1400,7 @@ function initials(s, n) {
               not_owner:             'Only the founder can withdraw from this corporation.',
               use_dividend:          'Public corps pay out via dividends, not direct withdrawals.',
               invalid_amount:        'Enter a valid amount.',
-              insufficient_treasury: `Treasury only holds $${data && data.have != null ? data.have : '?'}.`,
+              exceeds_withdrawable:  `Only $${data && data.have != null ? data.have : '?'} is withdrawable — the treasury holds $${data && data.treasury != null ? data.treasury : '?'} but $${data && data.debt != null ? data.debt : '?'} is owed on active loans.`,
             };
             wdMsg.textContent = REASON[data && data.reason] || 'Withdrawal failed.';
             return;

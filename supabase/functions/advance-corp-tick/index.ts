@@ -2729,6 +2729,19 @@ async function processCentralBankLoanPayments(supabase, currentTick) {
             if (missed >= 3) {
                 await supabase.from('central_bank_loans')
                     .update({ status: 'defaulted', last_payment_tick: currentTick, payments_missed: missed }).eq('id', loan.id);
+                // Penalty parity with declare_bankruptcy / corp-loan default:
+                // the borrower's CEO takes −3 ent_reputation.
+                const { data: ownerCorp } = await supabase.from('entrepreneur_corps')
+                    .select('owner_faction_id').eq('id', loan.borrower_corp_id).single();
+                if (ownerCorp?.owner_faction_id) {
+                    const { data: fac } = await supabase.from('factions')
+                        .select('ent_reputation').eq('id', ownerCorp.owner_faction_id).single();
+                    if (fac) {
+                        await supabase.from('factions')
+                            .update({ ent_reputation: (Number(fac.ent_reputation) || 0) - 3 })
+                            .eq('id', ownerCorp.owner_faction_id);
+                    }
+                }
                 results.defaulted++;
             } else {
                 await supabase.from('central_bank_loans')
