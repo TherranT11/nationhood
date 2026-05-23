@@ -439,6 +439,7 @@
     border-bottom:1px solid rgba(138,170,106,0.3); color:#fff; font-size:15px;
     font-family:inherit; outline:none; padding:6px 0; appearance:none;
     -webkit-appearance:none; cursor:pointer; }
+  .bm-select option { background:#0f1410; color:#e0dbc8; }
   /* Building Type picker (v3, extended to 5 types in v5). Two-column
      grid; the LAST cell spans both columns so an odd-count catalog
      doesn't leave a half-empty row at the bottom. */
@@ -1167,7 +1168,11 @@ function initials(s, n) {
       const overlay = document.getElementById('ad-engine-overlay');
       if (!overlay) return;
       let submitting = false;
-      const sel = (eid, opts) => `<select class="bm-select" id="${eid}">${opts.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}</select>`;
+      const sel = (eid, opts) => `<select class="bm-select" id="${eid}">${opts.map(([v,l]) => {
+        const s = AD_ENGINE_SPEC[v];
+        const tag = s ? ` — thrust ${s.thrust}, wt ${s.weight}, ${Math.round(s.cost / 1e6)}M` : '';
+        return `<option value="${v}">${l}${tag}</option>`;
+      }).join('')}</select>`;
       overlay.innerHTML = `
         <div class="bm-modal" style="max-width:460px;">
           <div class="bm-head"><div class="ti">Design <em>Engine</em></div><div class="bm-x" id="ade-close">×</div></div>
