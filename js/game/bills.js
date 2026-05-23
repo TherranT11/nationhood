@@ -5,7 +5,7 @@
 
 import { GAME_CONFIG, FOUNDATIONAL_REPEAL_DEFAULTS, initGameConfigForNation, getPresidentialTermTicks, getPresidentialTermLimit } from './config.js';
 import { hasElectedPresident, getCurrentConstitutionalSystem, isAbsoluteMonarchy, MINISTRY_OFFICE_NAMES } from './government-types.js';
-import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS, resolveTransferEndpoints } from './diplomacy-constants.js';
+import { DIPLOMACY_CONFIG, resolveTransferEndpoints } from './diplomacy-constants.js';
 import { TRADE_SECTOR_MAP } from './trade-constants.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility } from './momentum.js';
 import { computeCorpValuation } from './corp-valuation.js';
@@ -13,7 +13,7 @@ import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
 
 import { fetchActiveCoalition } from './government-structure.js';
 import { resolveNoConfidence } from './elections.js';
-import { RAW_PER_ABSTRACT } from './budget.js';
+import { RAW_PER_ABSTRACT, scalePolicyOngoingCost } from './budget.js';
 import { computeTaxArticleEffects, computeTaxArticleOngoingCost, validateTaxArticlePayload, TAX_RATE_MIN, TAX_RATE_MAX, TAX_EFFECT_NATION_COLUMNS } from './tax-articles.js';
 import { MILITARY_LOYALTY_POLICY_KEY, onMilitaryLoyaltyEnacted } from './military-loyalty.js';
 import { getNationNames, isFemaleName, installHOG } from './political-actions.js';
@@ -59,17 +59,6 @@ export function calculateBillSupport(billSupport, sponsorPartyId, allPartySeats)
 
 
 // ==================== BILL COST TOTALS ====================
-
-/**
- * Scale a policy's raw cost by its scaling stat. Mirrors bill.html's
- * scalePolicyCost() so every surface that displays bill totals converges.
- */
-function _scalePolicyCost(baseCost, scalingStat, nation) {
-    if (!scalingStat || !nation || nation[scalingStat] === undefined) return baseCost;
-    const statVal = Number(nation[scalingStat]) || 1;
-    const divisor = RAW_SCALING_DIVISORS?.[scalingStat] || 50;
-    return baseCost * (statVal / divisor);
-}
 
 /**
  * Sum upfront + ongoing cost across a bill's articles.
@@ -120,14 +109,14 @@ export function computeBillCostTotals(bill, nation) {
 
         // (2) Repeal article — saves the repealed law's ongoing cost
         if (art.repeal_active_law_id) {
-            const onCost = _scalePolicyCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, nation);
+            const onCost = scalePolicyOngoingCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, nation);
             ongoingMonthly -= onCost;
             continue;
         }
 
         // (3) Policy article
-        upfront += _scalePolicyCost(p.upfront_cost || 0, p.upfront_scaling_stat, nation);
-        ongoingMonthly += _scalePolicyCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, nation);
+        upfront += scalePolicyOngoingCost(p.upfront_cost || 0, p.upfront_scaling_stat, nation);
+        ongoingMonthly += scalePolicyOngoingCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, nation);
     }
 
     return { upfront, ongoingMonthly, ongoingYearly: ongoingMonthly * 12 };
@@ -510,7 +499,7 @@ async function chargePolicyUpfrontCost(supabase, nationId, option) {
         return;
     }
 
-    const scaledM = _scalePolicyCost(base, option.upfront_scaling_stat, nation);
+    const scaledM = scalePolicyOngoingCost(base, option.upfront_scaling_stat, nation);
     const dollars = Math.round(scaledM * 1_000_000); // option.upfront_cost is stored in $M
     if (dollars === 0) return;
 

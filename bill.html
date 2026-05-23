@@ -257,19 +257,12 @@ import { getGameYear } from './js/game/vln.js';
 import { isGovernmentPresidential, hasElectedPresident } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies } from './js/game/government-structure.js';
 import { calculateBillSupport, syncVoteTallies, getRequiredSeats, isSimpleMajorityBill, evaluateBillVote, computeBillCostTotals } from './js/game/bills.js';
-import { MAJOR_SECTORS, RAW_SCALING_DIVISORS, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP } from './js/game/diplomacy-constants.js';
+import { MAJOR_SECTORS, TRADE_AGREEMENT_TYPES, TRADE_ARTICLE_TYPES, TRADEABLE_SECTOR_MAP } from './js/game/diplomacy-constants.js';
 import { signPresidentialBill, vetoPresidentialBill, rejectOwnNomination } from './js/game/presidential.js';
-import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost } from './js/game/budget.js';
+import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, scalePolicyOngoingCost } from './js/game/budget.js';
 import { advanceBillEmergency, EO_CONFIG } from './js/game/executive-orders.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 import { computeTaxArticleEffects, computeTaxArticleOngoingCost, TAX_EFFECT_LABELS } from './js/game/tax-articles.js';
-/** Scale a policy cost by its scaling stat (e.g., population). */
-function scalePolicyCost(baseCost, scalingStat, nation) {
-    if (!scalingStat || !nation || nation[scalingStat] === undefined) return baseCost;
-    const statVal = Number(nation[scalingStat]) || 1;
-    const divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
-    return baseCost * (statVal / divisor);
-}
 
 // Bill types that bypass the committee co-sponsor expectation. Procedural /
 // ratification motions are inherently party-neutral and never carry the
@@ -1662,7 +1655,7 @@ function renderArticles() {
                 // onCost feeds the per-article savings pill below; the totals
                 // block at the bottom is already computed via the shared
                 // helper so no accumulation is needed here.
-                const onCost = scalePolicyCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, currentNation);
+                const onCost = scalePolicyOngoingCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, currentNation);
 
                 // Reversed stat effects
                 let effectsHTML = '';
@@ -1716,8 +1709,8 @@ function renderArticles() {
                 effectsHTML = '<span class="' + cls + '">' + dir + ' ' + p.target_stat + '</span>';
             }
 
-            const upCost = scalePolicyCost(p.upfront_cost || 0, p.upfront_scaling_stat, currentNation);
-            const onCost = scalePolicyCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, currentNation);
+            const upCost = scalePolicyOngoingCost(p.upfront_cost || 0, p.upfront_scaling_stat, currentNation);
+            const onCost = scalePolicyOngoingCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, currentNation);
 
             const policyActions = articleActionsDiv(art);
 

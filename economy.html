@@ -28,8 +28,8 @@ import { escapeHtml } from './js/utils.js';
 import { GAME_CONFIG, deductAP } from './js/game/config.js';
 import { hasElectedPresident } from './js/game/government-types.js';
 import { fetchActiveCoalition } from './js/game/government-structure.js';
-import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TAX_CONFIG, computeIncomeTaxRevenue, computeCorporateTaxRevenue } from './js/game/budget.js';
-import { RAW_SCALING_DIVISORS, TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS } from './js/game/diplomacy-constants.js';
+import { calculateNationalBudget, applyTradeTariffOverride, getInflationMultiplier, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, TAX_CONFIG, computeIncomeTaxRevenue, computeCorporateTaxRevenue, scalePolicyOngoingCost } from './js/game/budget.js';
+import { TRADE_AGREEMENT_TYPES, TRADEABLE_SECTORS } from './js/game/diplomacy-constants.js';
 // Phase 10A/10B: trade-constants.js wiped to a label-only shell. None
 // of its exports are referenced from economy.html anymore — all goods-
 // trade UI was removed in 10B.
@@ -181,7 +181,7 @@ async function loadExpenditureData(nationId, nation) {
         var ongoingBase = ((opt && opt.ongoing_base_cost) || policy.ongoing_base_cost || policy.ongoing_cost_per_tick) || 0;
         var ongoingScaling = (opt && opt.ongoing_scaling_stat) || policy.ongoing_scaling_stat;
         if (ongoingBase > 0) {
-            var ongoingScaled = scaleCost(ongoingBase, ongoingScaling, nation);
+            var ongoingScaled = scalePolicyOngoingCost(ongoingBase, ongoingScaling, nation);
             policyCost += ongoingScaled * GAME_CONFIG.TICKS_PER_YEAR * 1000000;
         }
 
@@ -189,7 +189,7 @@ async function loadExpenditureData(nationId, nation) {
             var upfront = ((opt && opt.upfront_cost) || policy.upfront_cost) || 0;
             var upfrontScaling = (opt && opt.upfront_scaling_stat) || policy.upfront_scaling_stat;
             if (upfront > 0) {
-                var upfrontScaled = scaleCost(upfront, upfrontScaling, nation);
+                var upfrontScaled = scalePolicyOngoingCost(upfront, upfrontScaling, nation);
                 policyCost += upfrontScaled * 1000000;
             }
         }
@@ -213,13 +213,6 @@ async function loadExpenditureData(nationId, nation) {
 
     expenditureData = totals;
     expenditureDetails = details;
-}
-
-function scaleCost(baseCost, scalingStat, nation) {
-    if (!scalingStat || !baseCost) return baseCost || 0;
-    var statVal = Number(nation[scalingStat]) || 1;
-    var divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
-    return baseCost * (statVal / divisor);
 }
 
 // ==================== TRADE DATA ====================
