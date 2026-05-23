@@ -439,6 +439,7 @@
     border-bottom:1px solid rgba(138,170,106,0.3); color:#fff; font-size:15px;
     font-family:inherit; outline:none; padding:6px 0; appearance:none;
     -webkit-appearance:none; cursor:pointer; }
+  .bm-select option { background:#0f1410; color:#e0dbc8; }
   /* Building Type picker (v3, extended to 5 types in v5). Two-column
      grid; the LAST cell spans both columns so an odd-count catalog
      doesn't leave a half-empty row at the bottom. */
@@ -1138,6 +1139,20 @@ function initials(s, n) {
     const AD_COMBUSTION = [['single-stage','Single-Stage Compressor'],['twin-spool','Twin-Spool Configuration'],['high-pressure','High-Pressure Core']];
     const AD_FRAME      = [['steel-casting','Steel Casting'],['aluminum-alloy','Aluminum Alloy Frame'],['magnesium-composite','Magnesium Composite']];
     const AD_CONTROL    = [['mechanical-governor','Mechanical Governor'],['hydraulic-control','Hydraulic Control Unit'],['early-electronic','Early Electronic Controls']];
+    // Module stat specs — client-side mirror of the CASE ladders in
+    // ent_design_engine (20270221). Preview-only; the RPC recomputes
+    // authoritatively. Keep both in sync if values change.
+    const AD_ENGINE_SPEC = {
+      'single-stage':        { thrust:2,   weight:0.5, eff:30, rel:0,  cost:1500000 },
+      'twin-spool':          { thrust:3,   weight:0.8, eff:40, rel:0,  cost:2500000 },
+      'high-pressure':       { thrust:4,   weight:1.2, eff:25, rel:-5, cost:4000000 },
+      'steel-casting':       { thrust:0,   weight:1.5, eff:0,  rel:20, cost:1000000 },
+      'aluminum-alloy':      { thrust:0,   weight:0.8, eff:5,  rel:15, cost:1800000 },
+      'magnesium-composite': { thrust:0.5, weight:0.4, eff:10, rel:10, cost:3000000 },
+      'mechanical-governor': { thrust:0,   weight:0.2, eff:10, rel:25, cost:800000  },
+      'hydraulic-control':   { thrust:0.5, weight:0.4, eff:20, rel:30, cost:1500000 },
+      'early-electronic':    { thrust:1,   weight:0.3, eff:30, rel:35, cost:2500000 },
+    };
     const AD_AIRFRAMES  = [['business','Business Jet · 1–2 eng · 3 pax'],['regional','Regional · 2 eng · 10 pax'],['narrowbody','Narrowbody · 2 eng · 25 pax'],['widebody','Widebody · 2–4 eng · 60 pax']];
     const AD_MECHANICALS= [['hydraulics','Standard Hydraulic Systems'],['blackbox','Black Box & Flight Recorders'],['redundant-avionics','Redundant Avionics Suite']];
     const AD_OFFERINGS  = [['ife','In-Flight Entertainment'],['premium-seating','Premium Seating'],['high-density','High-Density Configuration']];
@@ -1153,7 +1168,11 @@ function initials(s, n) {
       const overlay = document.getElementById('ad-engine-overlay');
       if (!overlay) return;
       let submitting = false;
-      const sel = (eid, opts) => `<select class="bm-select" id="${eid}">${opts.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}</select>`;
+      const sel = (eid, opts) => `<select class="bm-select" id="${eid}">${opts.map(([v,l]) => {
+        const s = AD_ENGINE_SPEC[v];
+        const tag = s ? ` — thrust ${s.thrust}, wt ${s.weight}, ${Math.round(s.cost / 1e6)}M` : '';
+        return `<option value="${v}">${l}${tag}</option>`;
+      }).join('')}</select>`;
       overlay.innerHTML = `
         <div class="bm-modal" style="max-width:460px;">
           <div class="bm-head"><div class="ti">Design <em>Engine</em></div><div class="bm-x" id="ade-close">×</div></div>
@@ -1164,6 +1183,7 @@ function initials(s, n) {
             <div class="bm-label">Combustion</div>${sel('ade-combustion', AD_COMBUSTION)}
             <div class="bm-label">Frame</div>${sel('ade-frame', AD_FRAME)}
             <div class="bm-label">Control</div>${sel('ade-control', AD_CONTROL)}
+            <div id="ade-preview" style="font-size:12px;color:#8aaa6a;margin:12px 0 0;line-height:1.5;"></div>
             <div class="bm-err" id="ade-err"></div>
           </div>
           <div class="bm-foot">
@@ -1175,6 +1195,23 @@ function initials(s, n) {
       document.getElementById('ade-close').onclick = close;
       document.getElementById('ade-cancel').onclick = close;
       overlay.onclick = (e) => { if (e.target === overlay) close(); };
+      // Live stat preview from the picked modules (mirrors ent_design_engine).
+      const updEnginePreview = () => {
+        const c = AD_ENGINE_SPEC[document.getElementById('ade-combustion').value];
+        const f = AD_ENGINE_SPEC[document.getElementById('ade-frame').value];
+        const k = AD_ENGINE_SPEC[document.getElementById('ade-control').value];
+        if (!c || !f || !k) return;
+        const thrust = c.thrust + f.thrust + k.thrust;
+        const weight = Math.round((c.weight + f.weight + k.weight) * 10) / 10;
+        const eff = Math.min(100, Math.max(0, c.eff + f.eff + k.eff));
+        const rel = Math.min(100, Math.max(0, c.rel + f.rel + k.rel));
+        const quality = Math.round(((Math.min(100, thrust * 10) + Math.max(0, (10 - weight) * 10) + eff + rel) / 4 / 10) * 100) / 100;
+        const cost = c.cost + f.cost + k.cost + 1000000;
+        document.getElementById('ade-preview').innerHTML =
+          `Thrust <b>${thrust}</b> · Weight <b>${weight}</b> · Efficiency <b>${eff}</b> · Reliability <b>${rel}</b> · Quality <b>${quality}</b><br>Unit cost <b>${fmtUsd(cost)}</b>`;
+      };
+      ['ade-combustion', 'ade-frame', 'ade-control'].forEach(eid => { document.getElementById(eid).onchange = updEnginePreview; });
+      updEnginePreview();
       document.getElementById('ade-submit').onclick = async () => {
         if (submitting) return;
         const errEl = document.getElementById('ade-err');

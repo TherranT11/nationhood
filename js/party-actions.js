@@ -5218,6 +5218,18 @@ async function triggerSurvey(actionKey, faction) {
     const cfg = SURVEY_CONFIG[actionKey];
     if (!cfg) return;
 
+    // Lock the whole flow (cost refresh + confirm + RPC) up front so a rapid
+    // second click during the async cost refresh can't fire the survey twice.
+    // Released on the cancel path below and in the finally.
+    _surveyInflight.add(actionKey);
+
+    // Refresh the card's cost from the server before reading it for the
+    // confirm — the DOM cell can lag the live escalated cost after prior
+    // uses (notably on mobile, where the initial patch can race). Both this
+    // and the survey RPC count ministry_action_log, so the figure shown now
+    // matches what will be charged.
+    await patchSurveyCard(actionKey);
+
     // Read the live cost off the DOM cell — patchSurveyCard puts it there.
     // If the patch hasn't run yet, the cell still reads as the "$…"
     // placeholder and we skip the specific number in the confirm dialog.
@@ -5235,9 +5247,8 @@ async function triggerSurvey(actionKey, faction) {
         costLine +
         `Cost ${cfg.costEscalation} every use. ${cfg.cooldownTicks}-tick cooldown after firing.\n\n` +
         cfg.oddsHint
-    )) return;
+    )) { _surveyInflight.delete(actionKey); return; }
 
-    _surveyInflight.add(actionKey);
     try {
         const { data, error } = await _supabase.rpc(cfg.rpc);
         if (error) {
