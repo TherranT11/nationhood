@@ -31528,6 +31528,23 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Aviation R&D service failed (non-fatal):', rdErr);
     }
 
+    // Entrepreneur construction contracts (20270216 + 20270225): award the
+    // lowest in-capacity bid at the deadline, advance active builds, and on
+    // completion deliver the finished building to the requester (settling the
+    // bid + cost atomically). Idempotent via per-contract status.
+    try {
+        const { data: ccResult, error: ccErr } =
+            await supabase.rpc('process_ent_construction_contracts', { p_tick: newTick });
+        if (ccErr) {
+            console.error('[advanceTick] process_ent_construction_contracts failed:', ccErr.message);
+        } else if (ccResult && (ccResult.awarded > 0 || ccResult.completed > 0 || ccResult.cancelled > 0 || ccResult.failed > 0)) {
+            summary.constructionContracts = ccResult;
+            console.log(`[advanceTick] Construction contracts: ${ccResult.awarded} awarded, ${ccResult.completed} completed, ${ccResult.cancelled} cancelled, ${ccResult.failed} failed`);
+        }
+    } catch (ccErr) {
+        console.error('[advanceTick] Construction contracts service failed (non-fatal):', ccErr);
+    }
+
     // 3.6g Corp share-price history anchors (20270179). Inserts one
     // no-op row per public corp into corp_share_price_history with
     // source='tick' so the sparkline always has time-axis datapoints
