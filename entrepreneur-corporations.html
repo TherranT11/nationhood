@@ -253,6 +253,7 @@
       </div>
 
       <div class="ec-h">II. <em>Headquarters</em></div>
+      <div id="ec-hq-note" style="font-size:11px;color:#8a8680;margin-bottom:8px;"></div>
       <div class="ec-conts" id="ec-conts">
         <div class="ec-cont active" data-cont="Crucera">CRUCERA</div>
         <div class="ec-cont" data-cont="Meridian">MERIDIAN</div>
@@ -556,6 +557,20 @@ function renderPositions(corps, filter) {
     nationsByCont = {};
     for (const n of (natRes.data || [])) {
       (nationsByCont[n.continent] = nationsByCont[n.continent] || []).push(n);
+    }
+    // Founding is HOME-NATION ONLY (server-enforced in found_entrepreneur_corp).
+    // Restrict the HQ picker to the home nation; corps expand to other nations
+    // per-corp via Regional HQs, not new foreign foundings. Falls back to the
+    // full picker if the home nation can't be resolved (server gate backstops).
+    const homeNation = (natRes.data || []).find(n => n.name === ctx.faction?.nation);
+    if (homeNation) {
+      nationsByCont = { [homeNation.continent]: [homeNation] };
+      activeCont = homeNation.continent;
+      sel.hqNationId = homeNation.id;
+      const conts = document.getElementById('ec-conts');
+      if (conts) conts.style.display = 'none';
+      const note = document.getElementById('ec-hq-note');
+      if (note) note.textContent = `Corps are founded in your home nation, ${homeNation.name}. Expand to other nations per-corp by building a Regional HQ there.`;
     }
     entCorpCounts = {};
     for (const r of (cntRes.data || [])) {
@@ -881,6 +896,7 @@ function renderPositions(corps, filter) {
         if (!data || !data.success) {
           const FRIENDLY = {
             landlocked_no_shipping: 'Shipping corps need a coastline — pick a non-landlocked nation.',
+            not_home_nation: 'You can only found corporations in your home nation. Expand to other nations by building a Regional HQ there first.',
           };
           err.textContent = FRIENDLY[data?.reason] || ('Could not found: ' + ((data && data.reason) || 'unknown'));
           err.style.display = 'inline';
