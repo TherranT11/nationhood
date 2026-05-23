@@ -4690,7 +4690,7 @@ function calculateBillSupport(billSupport, sponsorPartyId, allPartySeats) {
  *      ongoing_base_cost).
  *   4. Text / entrenchment / anything without a policies join: zero.
  */
-function computeBillCostTotals(bill, nation) {
+function computeBillCostTotals(bill, nation, activeLaws = []) {
     const articles = bill?.bill_articles || [];
     let upfront = 0;
     let ongoingMonthly = 0;
@@ -4721,16 +4721,21 @@ function computeBillCostTotals(bill, nation) {
         const p = art.policies;
         if (!p) continue; // text-only / entrenchment / missing join
 
-        // (2) Repeal article — saves the repealed law's ongoing cost
+        // Cost + scaling stat live on policy_options now (policy-level cost
+        // cols were dropped). Read from the chosen option.
+        // (2) Repeal article — saves the repealed law's ongoing cost, which
+        // lives on that law's selected option (needs activeLaws to resolve).
         if (art.repeal_active_law_id) {
-            const onCost = scalePolicyOngoingCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, nation);
+            const repOpt = activeLaws.find(l => l.id === art.repeal_active_law_id)?.selected_option || null;
+            const onCost = scalePolicyOngoingCost(repOpt?.ongoing_base_cost || 0, repOpt?.ongoing_scaling_stat, nation);
             ongoingMonthly -= onCost;
             continue;
         }
 
-        // (3) Policy article
-        upfront += scalePolicyOngoingCost(p.upfront_cost || 0, p.upfront_scaling_stat, nation);
-        ongoingMonthly += scalePolicyOngoingCost(p.ongoing_cost_per_tick || p.ongoing_base_cost || 0, p.ongoing_scaling_stat, nation);
+        // (3) Policy article — cost from the article's chosen option.
+        const opt = art.selected_option || null;
+        upfront += scalePolicyOngoingCost(opt?.upfront_cost || 0, opt?.upfront_scaling_stat, nation);
+        ongoingMonthly += scalePolicyOngoingCost(opt?.ongoing_base_cost || 0, opt?.ongoing_scaling_stat, nation);
     }
 
     return { upfront, ongoingMonthly, ongoingYearly: ongoingMonthly * 12 };
