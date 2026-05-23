@@ -1852,9 +1852,14 @@ async function adjustGovernmentApprovalEvent(supabase, nationId, amount, source)
 
 // ==================== NATIONAL BUDGET CALCULATION ====================
 
+// Per-capita economic scale: population is divided by this for BOTH income-tax
+// revenue and population-scaled policy costs, so the two grow in lockstep. A
+// mismatch here (revenue per-10M vs costs per-1M) once made costs ~10× revenue.
+const POPULATION_SCALE = 10_000_000;
+
 /**
  * Per-tick income tax revenue.
- *   (population / 10_000_000) × (income_tax / 100) × wages × (1 − unrest/100)
+ *   (population / POPULATION_SCALE) × (income_tax / 100) × wages × (1 − unrest/100)
  * Lands as a small literal number that adds to nation.budget each tick.
  * Pass a rateOverride to preview revenue at a hypothetical rate.
  */
@@ -1863,7 +1868,7 @@ function computeIncomeTaxRevenue(nation, rateOverride) {
     const rate = rateOverride !== undefined ? Number(rateOverride) : Number(nation.income_tax || 0);
     const wages = Number(nation.wages || 0);
     const unrest = Number(nation.unrest || 0);
-    const rev = (pop / 10_000_000) * (rate / 100) * wages * (1 - unrest / 100);
+    const rev = (pop / POPULATION_SCALE) * (rate / 100) * wages * (1 - unrest / 100);
     return Math.max(0, rev);
 }
 
@@ -2286,18 +2291,27 @@ function getInflationMultiplier(_inflationStatUnused) {
     return 1;
 }
 
+// Cost-scaling divisors for head-count stats. RAW_SCALING_DIVISORS.population
+// is 1M (its job is abstract↔raw stat-delta conversion in political-actions);
+// reusing it for COSTS made policy spend scale per-million while revenue
+// scales per-POPULATION_SCALE, so costs ran ~10× ahead of revenue. Cost
+// scaling shares revenue's POPULATION_SCALE here; other stats fall back to
+// RAW_SCALING_DIVISORS.
+const POLICY_COST_DIVISORS = { population: POPULATION_SCALE, eligible_voters: POPULATION_SCALE };
+
 /**
  * Scale a policy's ongoing_base_cost by a nation stat (e.g. population).
  * Single source of truth for the scaling factor — every cost-display
  * surface (budget, bill preview, GOV/Economy pages, the tick) calls this
- * so the figures never drift apart.
+ * so the figures never drift apart. Population/voters scale per-10M to
+ * match revenue; other stats use RAW_SCALING_DIVISORS.
  * If the scaling stat is unset or the nation lacks that column (deleted by
  * the alpha refactor), returns the unscaled base.
  */
 function scalePolicyOngoingCost(ongoingBase, scalingStat, nation) {
     const base = Number(ongoingBase) || 0;
     if (!base || !scalingStat || nation?.[scalingStat] == null) return base;
-    const divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
+    const divisor = POLICY_COST_DIVISORS[scalingStat] || RAW_SCALING_DIVISORS[scalingStat] || 50;
     return base * ((Number(nation[scalingStat]) || 1) / divisor);
 }
 
