@@ -625,8 +625,10 @@ BEGIN
                 v_cost, 0, 'completed', c.started_at_tick, v_tick, v_tick, true
             ) RETURNING id INTO v_bld_id;
 
-            -- Same +0.2 GDP growth a self-built completion grants (20270166).
-            UPDATE nations SET gdp_growth = COALESCE(gdp_growth, 0) + 0.2 WHERE id = c.nation_id;
+            -- Construction GDP bonus via the shared helper (clamped [0,100]) —
+            -- the gov-contract branch below already uses it. (Self-builds in
+            -- 20270166 still inline +0.2; converging that is a separate cleanup.)
+            PERFORM award_construction_gdp_bonus(c.nation_id, 0.2);
 
             UPDATE ent_construction_contracts
                SET status = 'completed', progress_ticks = c.timeline_ticks, delivered_building_id = v_bld_id

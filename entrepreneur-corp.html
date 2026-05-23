@@ -604,7 +604,7 @@
         <div class="val" id="cp-listing2">Private</div>
         <div class="delta" id="cp-listing-delta">—</div>
         <button class="type-action" id="cp-go-public" hidden
-                title="Issue 20 shares and open public trading">Go Public ▸</button>
+                title="Issue 100 shares (20 to you, 80 to the public float) and open trading">Go Public ▸</button>
         <button class="type-action" id="cp-go-private" hidden
                 title="Buy out all outside shareholders and delist">Go Private ▸</button>
       </div>
@@ -3222,7 +3222,60 @@ function initials(s, n) {
           ${designs.length ? designs.map(dRow).join('') : '<div class="sh-empty">No designs yet — design an engine, then an aircraft.</div>'}`;
       }
 
-      pj.innerHTML = launchBtn + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + airlinePanelHtml + aviationPanelHtml;
+      // ── Request Construction panels (20270225). My commissioned requests
+      // (any owner) + open requests this construction corp can bid on. ──
+      let requestPanelHtml = '';
+      if (isOwner) {
+        const { data: myReqs, error: mrErr } = await _supabase.from('ent_construction_contracts')
+          .select('id, name, building_type, budget, build_cost, status, timeline_ticks, progress_ticks, winning_bid, nation:nations!nation_id(name), bids:ent_construction_bids(count)')
+          .eq('issuer_corp_id', id).not('building_type', 'is', null)
+          .in('status', ['open', 'active']).order('created_at_tick', { ascending: false });
+        if (mrErr) console.warn('[entrepreneur-corp] my requests fetch error:', mrErr.message);
+        const reqs = myReqs || [];
+        const mrRow = (r) => {
+          const n = Number(r.bids?.[0]?.count ?? 0);
+          const prog = r.status === 'open'
+            ? `<span class="num amber">bidding · ${n} bid${n === 1 ? '' : 's'}</span>`
+            : `<span class="num green">building ${r.progress_ticks}/${r.timeline_ticks}${r.winning_bid ? ` · ${fmtUsd(Number(r.winning_bid))}` : ''}</span>`;
+          return `<div class="cf-row"><div><div class="who">${escapeHtml(buildingTypeLabel(r.building_type))} · ${escapeHtml(r.name)}</div>
+            <div class="sub">${escapeHtml(r.nation?.name || '—')} · budget ${fmtUsd(Number(r.budget) || 0)} · floor ${fmtUsd(Number(r.build_cost) || 0)}</div></div>${prog}</div>`;
+        };
+        requestPanelHtml += `
+          <div class="section-heading"><span class="sans">Construction</span><span class="serif">Requests</span></div>
+          <div class="cf-row" style="align-items:center;">
+            <div class="sub" style="flex:1;">Commission a building from construction corps — lowest qualifying bid builds and delivers it; you pay on completion.</div>
+            <div class="sh-row-actions"><button class="ap-btn-small list" id="rc-open-btn">Request Construction</button></div>
+          </div>
+          ${reqs.length ? reqs.map(mrRow).join('') : '<div class="sh-empty">No open requests.</div>'}`;
+      }
+      if (isOwner && isConstructionCorp) {
+        const { data: cyRows, error: cyErr } = await _supabase.from('corp_buildings')
+          .select('nation_id').eq('owner_corp_id', id).eq('building_type', 'construction_yard').eq('status', 'completed');
+        if (cyErr) console.warn('[entrepreneur-corp] CY-nations fetch error:', cyErr.message);
+        const cyNations = [...new Set((cyRows || []).map(r => r.nation_id).filter(Boolean))];
+        let openHtml;
+        if (!cyNations.length) {
+          openHtml = '<div class="sh-empty">Build a Construction Yard to bid on requests.</div>';
+        } else {
+          const { data: openReqs, error: orErr } = await _supabase.from('ent_construction_contracts')
+            .select('id, name, building_type, budget, build_cost, issuer_name, nation:nations!nation_id(name), mybid:ent_construction_bids(bid_amount, bidder_corp_id)')
+            .eq('status', 'open').not('building_type', 'is', null).in('nation_id', cyNations)
+            .neq('issuer_corp_id', id).order('bidding_closes_tick', { ascending: true });
+          if (orErr) console.warn('[entrepreneur-corp] open requests fetch error:', orErr.message);
+          const open = openReqs || [];
+          const orRow = (r) => {
+            const mine = (r.mybid || []).find(b => b.bidder_corp_id === id);
+            const label = buildingTypeLabel(r.building_type);
+            return `<div class="cf-row"><div><div class="who">${escapeHtml(label)} · ${escapeHtml(r.name)}</div>
+              <div class="sub">${escapeHtml(r.nation?.name || '—')} · by ${escapeHtml(r.issuer_name || '—')} · floor ${fmtUsd(Number(r.build_cost) || 0)} · budget ${fmtUsd(Number(r.budget) || 0)}</div></div>
+              <button class="ap-btn-small list rc-bid-btn" data-cid="${r.id}" data-label="${escapeHtml(label)}" data-floor="${Number(r.build_cost) || 0}" data-budget="${Number(r.budget) || 0}">${mine ? `bid ${fmtUsd(Number(mine.bid_amount))}` : 'Bid'}</button></div>`;
+          };
+          openHtml = open.length ? open.map(orRow).join('') : '<div class="sh-empty">No open requests in your nations.</div>';
+        }
+        requestPanelHtml += `<div class="section-heading"><span class="sans">Open</span><span class="serif">Build Requests</span></div>${openHtml}`;
+      }
+
+      pj.innerHTML = launchBtn + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + airlinePanelHtml + aviationPanelHtml + requestPanelHtml;
 
       if (isOwner && isConstructionCorp) {
         document.getElementById('cp-begin-construction').addEventListener('click', openBuildModal);
@@ -3235,6 +3288,12 @@ function initials(s, n) {
         const ab = document.getElementById('ad-design-aircraft');
         if (eb) eb.addEventListener('click', openEngineDesignModal);
         if (ab) ab.addEventListener('click', openAircraftDesignModal);
+      }
+      if (isOwner) {
+        const rcBtn = document.getElementById('rc-open-btn');
+        if (rcBtn) rcBtn.addEventListener('click', openRequestModal);
+        pj.querySelectorAll('.rc-bid-btn').forEach(btn => btn.addEventListener('click', () =>
+          openBidModal(btn.dataset.cid, btn.dataset.label, Number(btn.dataset.floor), Number(btn.dataset.budget))));
       }
 
       setupCorpChat();
@@ -3498,6 +3557,179 @@ function initials(s, n) {
       renderTiers(selectedBuildType);
       updateBuildSummary();
     });
+
+    // ── Request Construction (commission a building; 20270225) ──
+    // Any corp can commission a building it can own; construction corps with
+    // a completed CY in the nation bid; lowest in-capacity bid auto-wins and
+    // delivers it. Reuses TIER_TABLE / PLANT_PROFILE / scaledCost (the same
+    // mirror of the server cost formula the build modal uses).
+    const SECTOR_OF_TYPE = {
+      construction_yard: 'construction', port: 'shipping', banking_office: 'banking',
+      real_estate_office: 'real_estate', engine_assembly_plant: 'aviation_manufacturing',
+      light_assembly_plant: 'aviation_manufacturing',
+    };
+    const requestableTypes = ['regional_hq'].concat(
+      Object.keys(SECTOR_OF_TYPE).filter(t => SECTOR_OF_TYPE[t] === c.industry));
+    const reqBase  = (t, tier) => isPlantType(t) ? (PLANT_PROFILE[t]?.cost  || 0) : (TIER_TABLE[tier]?.cost  || 0);
+    const reqTicks = (t, tier) => isPlantType(t) ? (PLANT_PROFILE[t]?.ticks || 0) : (TIER_TABLE[tier]?.ticks || 0);
+    const RC_REASON = {
+      wrong_sector: 'Your corp can’t own this building type.',
+      budget_below_floor: 'Budget must cover the construction cost.',
+      insufficient_funds: 'Your treasury can’t cover the construction cost.',
+      invalid_tier: 'Pick a valid tier.', invalid_rhq_tier: 'Regional HQs are Small/Medium/Large only.',
+      nation_not_found: 'That nation no longer exists.', not_owner: 'Only the corp owner can request.',
+      invalid_name: 'Enter a name (2+ characters).', invalid_building_type: 'Pick a building type.',
+      corp_not_found: 'Corp not found.',
+    };
+    const RB_REASON = {
+      no_cy_in_nation: 'You need a completed Construction Yard in this nation to bid.',
+      not_construction: 'Only construction corps can bid.', own_contract: 'You can’t bid on your own request.',
+      not_open: 'Bidding has closed.', contract_not_found: 'Request not found.',
+      not_owner: 'Only the corp owner can bid.', invalid_amount: 'Enter a bid amount.',
+    };
+
+    const openRequestModal = async () => {
+      const ov = document.getElementById('rc-overlay');
+      if (!ov) return;
+      if (nationMap.size === 0) {
+        const { data: nats, error: nErr } = await _supabase.from('nations')
+          .select('id, name, cost_of_living, infrastructure').not('continent', 'is', null).order('name');
+        if (nErr) console.warn('[entrepreneur-corp] nations fetch error:', nErr.message);
+        for (const n of (nats || [])) nationMap.set(n.id, n);
+      }
+      let submitting = false;
+      const typeOpts = requestableTypes.map(t => `<option value="${t}">${escapeHtml(buildingTypeLabel(t))}</option>`).join('');
+      const natOpts = [...nationMap.values()].map(n => `<option value="${n.id}">${escapeHtml(n.name)}</option>`).join('');
+      ov.innerHTML = `
+        <div class="bm-modal">
+          <div class="bm-head"><div class="ti">Request <em>Construction</em></div><div class="bm-x" id="rc-close">×</div></div>
+          <div class="bm-body">
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Commission a building. Construction corps with a Construction Yard in the chosen nation bid; the lowest qualifying bid builds and delivers it to you. You pay the winning bid on completion.</div>
+            <div class="bm-label">Name</div>
+            <input type="text" class="bm-input" id="rc-name" maxlength="80" placeholder="e.g. Aurora Engine Works">
+            <div class="bm-label">Building Type</div>
+            <select class="bm-select" id="rc-type">${typeOpts}</select>
+            <div class="bm-label">Nation</div>
+            <select class="bm-select" id="rc-nation">${natOpts || '<option value="">No nations</option>'}</select>
+            <div class="bm-label" id="rc-tier-label">Tier</div>
+            <select class="bm-select" id="rc-tier"></select>
+            <div class="bm-label">Budget cap ($)</div>
+            <input type="number" class="bm-input" id="rc-budget" min="0" step="1000000">
+            <div class="bm-label">Bidding window (ticks)</div>
+            <input type="number" class="bm-input" id="rc-bidding" min="1" max="48" value="6">
+            <div id="rc-preview" style="font-size:12px;color:#8aaa6a;margin:12px 0 0;line-height:1.5;"></div>
+            <div class="bm-err" id="rc-err"></div>
+          </div>
+          <div class="bm-foot">
+            <button class="bm-btn sec" id="rc-cancel">Cancel</button>
+            <button class="bm-btn pri" id="rc-submit">Post Request</button>
+          </div>
+        </div>`;
+      const close = () => ov.classList.remove('open');
+      document.getElementById('rc-close').onclick = close;
+      document.getElementById('rc-cancel').onclick = close;
+      ov.onclick = (e) => { if (e.target === ov) close(); };
+      const typeEl = document.getElementById('rc-type');
+      const tierEl = document.getElementById('rc-tier');
+      const tierLabel = document.getElementById('rc-tier-label');
+      const budgetEl = document.getElementById('rc-budget');
+      const curNation = () => nationMap.get(document.getElementById('rc-nation').value);
+      const renderTier = () => {
+        const t = typeEl.value;
+        if (isPlantType(t)) {
+          tierEl.innerHTML = ''; tierEl.style.display = 'none'; tierLabel.style.display = 'none';
+        } else {
+          const keys = t === 'regional_hq' ? RHQ_TIERS : ALL_TIERS;
+          tierEl.innerHTML = keys.map(k => `<option value="${k}">${escapeHtml(TIER_TABLE[k].label)}</option>`).join('');
+          tierEl.style.display = ''; tierLabel.style.display = '';
+        }
+      };
+      const upd = () => {
+        const t = typeEl.value;
+        const tier = isPlantType(t) ? null : tierEl.value;
+        const nation = curNation();
+        const floor = scaledCost(reqBase(t, tier), nation);
+        const dur   = scaledDuration(reqTicks(t, tier), nation);
+        if (!budgetEl.value || Number(budgetEl.value) < floor) budgetEl.value = floor;
+        budgetEl.min = floor;
+        document.getElementById('rc-preview').innerHTML =
+          `Construction cost (bid floor): <b>${fmtUsd(floor)}</b> · build time ~<b>${dur} ticks</b><br>Bidders bid ≥ floor and ≤ your budget; the lowest wins.`;
+      };
+      typeEl.onchange = () => { renderTier(); upd(); };
+      tierEl.onchange = upd;
+      document.getElementById('rc-nation').onchange = upd;
+      renderTier(); upd();
+      document.getElementById('rc-submit').onclick = async () => {
+        if (submitting) return;
+        const errEl = document.getElementById('rc-err');
+        const name = document.getElementById('rc-name').value.trim();
+        if (name.length < 2) { errEl.textContent = 'Enter a name (2+ characters).'; return; }
+        const nationId = document.getElementById('rc-nation').value;
+        if (!nationId) { errEl.textContent = 'Pick a nation.'; return; }
+        const t = typeEl.value;
+        const tier = isPlantType(t) ? 'small' : tierEl.value;   // server pins plant tier
+        const budget = Math.round(Number(budgetEl.value) || 0);
+        const bidding = Math.max(1, Math.round(Number(document.getElementById('rc-bidding').value) || 6));
+        submitting = true;
+        const btn = document.getElementById('rc-submit'); btn.disabled = true; btn.textContent = 'Posting…'; errEl.textContent = '';
+        try {
+          const { data, error } = await _supabase.rpc('request_building_construction', {
+            p_corp_id: id, p_name: name, p_building_type: t, p_nation_id: nationId,
+            p_tier: tier, p_budget: budget, p_bidding_ticks: bidding });
+          if (error) throw error;
+          if (!data || !data.success) {
+            errEl.textContent = data?.reason === 'budget_below_floor'
+              ? `Budget must be at least ${fmtUsd(Number(data.floor) || 0)} (the construction cost).`
+              : (RC_REASON[data?.reason] || ('Failed: ' + (data?.reason || 'unknown')));
+            submitting = false; btn.disabled = false; btn.textContent = 'Post Request'; return;
+          }
+          btn.textContent = 'POSTED ✓'; setTimeout(() => location.reload(), 600);
+        } catch (e) { errEl.textContent = 'Failed: ' + (e?.message || e); submitting = false; btn.disabled = false; btn.textContent = 'Post Request'; }
+      };
+      ov.classList.add('open');
+    };
+
+    const openBidModal = (contractId, label, floor, budget) => {
+      const ov = document.getElementById('rcb-overlay');
+      if (!ov) return;
+      let submitting = false;
+      ov.innerHTML = `
+        <div class="bm-modal" style="max-width:420px;">
+          <div class="bm-head"><div class="ti">Bid on <em>${escapeHtml(label)}</em></div><div class="bm-x" id="rcb-close">×</div></div>
+          <div class="bm-body">
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Floor ${fmtUsd(floor)} · budget cap ${fmtUsd(budget)}. On completion you pay the construction cost and receive your bid — margin = bid − cost. Lowest qualifying bid wins.</div>
+            <div class="bm-label">Your bid ($)</div>
+            <input type="number" class="bm-input" id="rcb-amount" min="${floor}" max="${budget}" step="1000000" value="${floor}">
+            <div class="bm-err" id="rcb-err"></div>
+          </div>
+          <div class="bm-foot"><button class="bm-btn sec" id="rcb-cancel">Cancel</button><button class="bm-btn pri" id="rcb-submit">Place Bid</button></div>
+        </div>`;
+      const close = () => ov.classList.remove('open');
+      document.getElementById('rcb-close').onclick = close;
+      document.getElementById('rcb-cancel').onclick = close;
+      ov.onclick = (e) => { if (e.target === ov) close(); };
+      document.getElementById('rcb-submit').onclick = async () => {
+        if (submitting) return;
+        const errEl = document.getElementById('rcb-err');
+        const amount = Math.round(Number(document.getElementById('rcb-amount').value) || 0);
+        if (amount <= 0) { errEl.textContent = 'Enter a bid amount.'; return; }
+        submitting = true;
+        const btn = document.getElementById('rcb-submit'); btn.disabled = true; btn.textContent = 'Bidding…'; errEl.textContent = '';
+        try {
+          const { data, error } = await _supabase.rpc('ent_place_construction_bid', {
+            p_corp_id: id, p_contract_id: contractId, p_bid_amount: amount });
+          if (error) throw error;
+          if (!data || !data.success) {
+            errEl.textContent = data?.reason === 'over_budget' ? `Bid exceeds the budget cap (${fmtUsd(Number(data.budget) || 0)}).`
+              : data?.reason === 'bid_below_floor' ? `Bid must be at least the floor (${fmtUsd(Number(data.floor) || 0)}).`
+              : (RB_REASON[data?.reason] || ('Failed: ' + (data?.reason || 'unknown')));
+            submitting = false; btn.disabled = false; btn.textContent = 'Place Bid'; return;
+          }
+          btn.textContent = 'BID PLACED ✓'; setTimeout(() => location.reload(), 600);
+        } catch (e) { errEl.textContent = 'Failed: ' + (e?.message || e); submitting = false; btn.disabled = false; btn.textContent = 'Place Bid'; }
+      };
+      ov.classList.add('open');
+    };
 
     document.getElementById('bm-close').addEventListener('click', closeBuildModal);
     document.getElementById('bm-cancel').addEventListener('click', closeBuildModal);
@@ -5051,6 +5283,8 @@ function initials(s, n) {
 <div class="bm-overlay" id="cp-sellequity-overlay"></div>
 <div class="bm-overlay" id="ad-engine-overlay"></div>
 <div class="bm-overlay" id="ad-aircraft-overlay"></div>
+<div class="bm-overlay" id="rc-overlay"></div>
+<div class="bm-overlay" id="rcb-overlay"></div>
 
 <!-- Request Loan modal (v0 corp loans, 20270174). Borrower picks
      eligible banks (Banking corps with a Banking Office in the
