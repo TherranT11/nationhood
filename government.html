@@ -4151,12 +4151,12 @@ function _renderBillArticleRow(art, articleOrdinal) {
         html += `<p style="font-size:calc(9px * var(--leg-scale, 1.755));color:var(--text-dim);margin:3px 0 0;">${escapeHtml(descriptionText)}</p>`;
     }
 
-    // Per-article fiscal chips. Pull from the selected_option's fiscal
-    // fields first when present, otherwise the policy. Repeal articles
-    // surface as "saves $X/yr" since they remove an ongoing cost.
+    // Per-article fiscal chips. Cost comes from the selected option (policy
+    // cost cols were dropped); scaled by the nation stat so it matches the
+    // budget. Repeal articles surface as "saves $X/yr".
     const fiscalSrc = opt || policy;
-    const upfrontRaw = Number(fiscalSrc?.upfront_cost || 0);
-    const ongoingMonthlyRaw = Number(fiscalSrc?.ongoing_cost_per_tick || fiscalSrc?.ongoing_base_cost || 0);
+    const upfrontRaw = scalePolicyOngoingCost(fiscalSrc?.upfront_cost || 0, fiscalSrc?.upfront_scaling_stat, currentNation);
+    const ongoingMonthlyRaw = scalePolicyOngoingCost(fiscalSrc?.ongoing_base_cost || 0, fiscalSrc?.ongoing_scaling_stat, currentNation);
     const ongoingYearlyRaw = ongoingMonthlyRaw * 12;
     const isRepeal = !!art.repeal_active_law_id;
     const fiscalChips = [];
