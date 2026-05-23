@@ -734,7 +734,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel } from './js/utils.js';
-import { computeEntrepreneurValuation, getEntrepreneurCorpCash } from './js/game/corp-valuation.js';
+import { computeEntrepreneurValuation, getEntrepreneurCorpCash, computeCorpBookValue } from './js/game/corp-valuation.js';
 function initials(s, n) {
   return (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, n || 2).map(w => w[0]).join('').toUpperCase()) || '—';
 }
@@ -1361,19 +1361,29 @@ function initials(s, n) {
       window._cpChatPoll = setInterval(load, 4000);
     }
 
+    // Book-value aggregates (Σ building cost_paid, Σ outstanding debt) for
+    // THIS corp — the two pieces that don't live on the corp row. Fetched
+    // here so both the displayed valuation and the sale/buyback price read
+    // the same numbers.
+    const loadCorpBookAggregates = async () => {
+      const [{ data: bld }, { data: lns }] = await Promise.all([
+        _supabase.from('corp_buildings').select('cost_paid').eq('owner_corp_id', id),
+        _supabase.from('corp_loans').select('principal, total_paid').eq('borrower_corp_id', id).in('status', ['approved', 'active']),
+      ]);
+      return {
+        buildingCostPaid: (bld || []).reduce((s, b) => s + (Number(b.cost_paid) || 0), 0),
+        outstandingDebt: (lns || []).reduce((s, l) => s + Math.max(0, (Number(l.principal) || 0) - (Number(l.total_paid) || 0)), 0),
+      };
+    };
+
     // Recommended corp valuation (one source of truth, shared by the Put Up
-    // for Sale and Acquire flows): treasury_cash − outstanding loan debt +
-    // property (building cost). Returns a floored integer ≥ 0.
+    // for Sale and Acquire flows) = the dynamic book value
+    // (computeCorpBookValue: treasury + Σ building cost − Σ outstanding debt).
     const computeCorpRecommended = async () => {
       try {
-        const [{ data: bld }, { data: lns }] = await Promise.all([
-          _supabase.from('corp_buildings').select('cost_paid').eq('owner_corp_id', id),
-          _supabase.from('corp_loans').select('principal, total_paid').eq('borrower_corp_id', id).in('status', ['approved', 'active']),
-        ]);
-        const property = (bld || []).reduce((s, b) => s + (Number(b.cost_paid) || 0), 0);
-        const debt = (lns || []).reduce((s, l) => s + Math.max(0, (Number(l.principal) || 0) - (Number(l.total_paid) || 0)), 0);
-        return Math.max(0, Math.round((Number(c.treasury_cash) || 0) + property - debt));
-      } catch { return Math.max(0, Math.round(Number(c.treasury_cash) || 0)); }
+        const agg = await loadCorpBookAggregates();
+        return computeCorpBookValue({ treasury: getEntrepreneurCorpCash(c), ...agg });
+      } catch { return Math.max(0, Math.round(getEntrepreneurCorpCash(c))); }
     };
 
     // [Withdraw to Cash on Hand] — header action for the founder of a PRIVATE
@@ -1826,9 +1836,12 @@ function initials(s, n) {
     set('cp-cash-delta', '— corp treasury');
 
     // VALUATION from the shared single source (js/game/corp-valuation.js
-    // §3). The engine valuation is deliberately a separate surface and
-    // is intentionally not used on the entrepreneur pages.
-    const val = computeEntrepreneurValuation(c);
+    // §3). Private corps show dynamic BOOK VALUE — feed the building/loan
+    // aggregates so it matches the recommended sale/buyback price. The
+    // engine valuation is deliberately a separate surface and is
+    // intentionally not used on the entrepreneur pages.
+    const valAgg = isPublic ? null : await loadCorpBookAggregates().catch(() => null);
+    const val = computeEntrepreneurValuation(c, valAgg);
     const valEl = document.getElementById('cp-val');
     if (valEl) {
       valEl.classList.remove('muted');
@@ -1836,7 +1849,7 @@ function initials(s, n) {
     }
     set('cp-val-delta', val.kind === 'market'
       ? `${Number(c.shares_outstanding) || 0} sh × ${fmtUsd(Number(c.share_price) || 0)}`
-      : val.kind === 'seed' ? '— seed capital' : '— not yet valued');
+      : val.kind === 'book' ? '— book value' : '— not yet valued');
 
     // Public-only market view. The share state is the one source
     // (entrepreneur_corps.share_price / shares_outstanding /

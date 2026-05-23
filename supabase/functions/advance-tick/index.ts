@@ -3480,9 +3480,10 @@ async function fireBilateralEvent(supabase, triggerKey, nationIdA, nationIdB, cu
 //      persisted on the corp_properties row at creation), so no
 //      server-side mirror is required.
 //
-//   3. Entrepreneur-facing valuation — computeEntrepreneurValuation.
-//      The seed/market figure shown on entrepreneur-dashboard.html,
-//      entrepreneur-corporations.html and entrepreneur-corp.html.
+//   3. Entrepreneur-facing valuation — computeEntrepreneurValuation
+//      (+ computeCorpBookValue). The book-value/market figure shown on
+//      entrepreneur-dashboard.html, entrepreneur-corporations.html,
+//      entrepreneur-corp.html and entrepreneur-markets.html.
 //      Deliberately NOT the section-1 engine valuation ("the founding
 //      cash was already spent; we don't invent a valuation"); it is
 //      display-only and never feeds net worth or the tick processor.
@@ -3601,20 +3602,43 @@ function computeCorpValuation({ cash, loans, properties, propertyValue, vessels,
     return computeCorpValuationBreakdown({ cash, loans, properties, propertyValue, vessels, equipmentValue, financeReceivables, currentTick }).valuation;
 }
 
-// See header §3. Display-only seed/market valuation for the
-// entrepreneur surface — public → MARKET CAP (share_price ×
-// shares_outstanding); private → SEED CAPITAL (immutable
-// starting_capital); otherwise none. Returns the raw figure + kind so
-// each surface formats/labels itself; the rule lives only here.
-function computeEntrepreneurValuation(corp) {
+// Dynamic BOOK VALUE of an entrepreneur corp: treasury + Σ building
+// cost_paid − Σ outstanding debt, floored at 0. THE single JS source of
+// the book-value formula — used by computeEntrepreneurValuation (display)
+// and by computeCorpRecommended (sale/buyback price, entrepreneur-corp.html).
+// Mirrored server-side in SQL entrepreneur_corp_book_value()
+// (sql/migrations/20270212); if this formula changes, update that too.
+// Callers pass the aggregates (buildings/loans don't live on the corp row).
+function computeCorpBookValue({ treasury, buildingCostPaid, outstandingDebt } = {}) {
+    const t = Number(treasury) || 0;
+    const b = Number(buildingCostPaid) || 0;
+    const d = Number(outstandingDebt) || 0;
+    return Math.max(0, Math.round(t + b - d));
+}
+
+// See header §3. Display-only valuation for the entrepreneur surface —
+// public → MARKET CAP (share_price × shares_outstanding); private (or
+// unlisted) → dynamic BOOK VALUE (computeCorpBookValue). The caller
+// supplies the building/loan aggregates via `opts` (they aren't on the
+// corp row); absent them the figure falls back to treasury alone so it is
+// never blank or stale. Returns the raw figure + kind so each surface
+// formats/labels itself; the rule lives only here.
+function computeEntrepreneurValuation(corp, opts) {
     const c = corp || {};
-    if (c.listing === 'public' && c.share_price != null && c.shares_outstanding != null) {
-        return { kind: 'market', amount: Number(c.share_price) * Number(c.shares_outstanding) };
+    if (c.listing === 'public') {
+        if (c.share_price != null && c.shares_outstanding != null) {
+            return { kind: 'market', amount: Number(c.share_price) * Number(c.shares_outstanding) };
+        }
+        return { kind: 'none', amount: null };
     }
-    if (c.listing !== 'public' && c.starting_capital != null) {
-        return { kind: 'seed', amount: Number(c.starting_capital) };
-    }
-    return { kind: 'none', amount: null };
+    return {
+        kind: 'book',
+        amount: computeCorpBookValue({
+            treasury: getEntrepreneurCorpCash(c),
+            buildingCostPaid: opts && opts.buildingCostPaid,
+            outstandingDebt: opts && opts.outstandingDebt,
+        }),
+    };
 }
 
 // Live cash-on-hand for an entrepreneur corp. treasury_cash is the
