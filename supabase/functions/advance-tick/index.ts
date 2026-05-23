@@ -1904,7 +1904,7 @@ function computeCorporateTaxRevenue(nation, rateOverride, activeCorpCount = 0) {
 }
 
 /**
- * Annual Public Sector Wages cost: monthly = (state_apparatus × wages) / 100,
+ * Annual Public Sector Wages cost: monthly = (state_apparatus × wages) / 200,
  * annual = monthly × ticks/year. Single source of truth — read by
  * computePanelAnnualExpenditures (server per-tick debt) and
  * _gbBuildCostRows in government.html (the displayed Costs panel) so the
@@ -1912,7 +1912,7 @@ function computeCorporateTaxRevenue(nation, rateOverride, activeCorpCount = 0) {
  */
 function computePublicSectorWagesAnnual(nation) {
     return (Number(nation?.state_apparatus) || 0) * (Number(nation?.wages) || 0)
-        / 100 * GAME_CONFIG.TICKS_PER_YEAR;
+        / 200 * GAME_CONFIG.TICKS_PER_YEAR;
 }
 
 function calculateNationalBudget(nation, opts = {}) {
@@ -2121,7 +2121,7 @@ async function computeUnitMaintenanceAnnual(supabase, nation) {
  *   - Interior Infrastructure = sum over completed Interior Infrastructure
  *                               contracts of tier.upkeep_per_year
  *                               (small $1 / modest $2 / extravagant $4)
- *   - Public Sector Wages     = (state_apparatus × wages) / 100 × 12
+ *   - Public Sector Wages     = (state_apparatus × wages) / 200 × 12
  *   - Unit Maintenance        = Σ max(1, floor(construction_cost/1e6 × 0.25))
  *                               over non-Decommissioned army_units × 12
  *   - Combined Arms School    = (#completed schools) × upkeep_per_tick($2) × 12
