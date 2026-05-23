@@ -1024,7 +1024,7 @@ function initials(s, n) {
         <div class="bm-modal" style="max-width:440px;">
           <div class="bm-head"><div class="ti">Offer <em>Investment</em></div><div class="bm-x" id="oi-close">×</div></div>
           <div class="bm-body">
-            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Invest cash into <b style="color:#cfcabf;">${escapeHtml(c.name || 'this corp')}</b> for newly issued equity. The CEO must accept the offer.</div>
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Buy equity in <b style="color:#cfcabf;">${escapeHtml(c.name || 'this corp')}</b> directly from its founder — your cash goes to the founder, not the corp treasury. The CEO must accept the offer.</div>
             <div class="bm-label">Amount to invest ($)</div>
             <input type="text" class="bm-input" id="oi-amt" inputmode="numeric" placeholder="e.g. 5,000,000">
             <div class="bm-label">Equity wanted (%)</div>
@@ -1081,7 +1081,7 @@ function initials(s, n) {
         <div class="bm-modal" style="max-width:440px;">
           <div class="bm-head"><div class="ti">Sell <em>Equity</em></div><div class="bm-x" id="se-close">×</div></div>
           <div class="bm-body">
-            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Sell your shares back to <b style="color:#cfcabf;">${escapeHtml(c.name || 'this corp')}</b> at current book value. The corp pays from treasury.</div>
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Sell your shares back to the founder of <b style="color:#cfcabf;">${escapeHtml(c.name || 'this corp')}</b> at current book value. The founder pays from their personal Cash on Hand.</div>
             <div style="font-size:12px;color:#cfcabf;margin-bottom:8px;">You hold <b>${myShares}</b> share${myShares === 1 ? '' : 's'} (${pct}%). Corp book value: <span style="color:#5cc55c;" id="se-book">…</span></div>
             <div class="bm-label">Shares to sell</div>
             <input type="number" class="bm-input" id="se-shares" min="1" max="${myShares}" value="${myShares}">
@@ -1115,7 +1115,7 @@ function initials(s, n) {
           if (error) throw error;
           if (!data || !data.success) {
             const R = {
-              insufficient_treasury: data?.need != null ? `Corp treasury can't cover it — needs ${fmtUsd(Number(data.need))}, has ${fmtUsd(Number(data.have) || 0)}.` : 'Corp treasury too low.',
+              founder_insufficient_funds: data?.need != null ? `The founder can't cover it — needs ${fmtUsd(Number(data.need))}, has ${fmtUsd(Number(data.have) || 0)}.` : "The founder's cash is too low to buy back.",
               insufficient_shares: "You don't hold that many shares.",
               is_owner: 'The founder withdraws via treasury, not equity sell-back.',
               no_entrepreneur: 'No entrepreneur faction found.', corp_not_found: 'Corp not found.', invalid_amount: 'Enter a valid amount.',

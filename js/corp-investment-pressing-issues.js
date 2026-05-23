@@ -5,9 +5,10 @@
  * Surfaces every pending corp_investment_offers on a corp the viewer OWNS
  * (the CEO). Each card states the deal — director, amount, equity %, the
  * auto-computed valuation — with inline Accept / Reject buttons that call
- * respond_corp_investment_offer. On accept the capital is added to the
- * corp treasury and the equity is minted as shares (see migration
- * 20270212).
+ * respond_corp_investment_offer. On accept the founder SELLS that equity to
+ * the director (100-share model): the cash goes to the founder's personal
+ * funds and the shares transfer from founder to director — the treasury is
+ * untouched (see migration 20270232).
  *
  * Mirrors js/acquisition-pressing-issues.js (same mount contract +
  * showEmpty/onChange coordination).
@@ -100,7 +101,7 @@ export function mountInvestmentPressingIssues({
         const amt = document.createElement('span'); amt.className = 'px'; amt.textContent = fmtUsd(offer.amount);
         const val = document.createElement('span'); val.className = 'px'; val.textContent = fmtUsd(offer.valuation);
         line.append(who, document.createTextNode(' offers '), amt,
-            document.createTextNode(` to invest for ${Number(offer.equity_pct)}% equity (valuation `), val,
+            document.createTextNode(` to buy ${Number(offer.equity_pct)}% of your equity — you receive the cash (valuation `), val,
             document.createTextNode(').'));
 
         const err = document.createElement('div'); err.className = 'ci-err';
@@ -118,6 +119,7 @@ export function mountInvestmentPressingIssues({
                 if (!data || !data.success) {
                     const R = {
                         director_insufficient_funds: 'The director no longer has the cash to invest.',
+                        founder_insufficient_shares: 'You no longer hold enough equity to sell that stake.',
                         not_private:    'Only private corps can take director investment.',
                         not_ceo:        'Only the corp owner can respond.',
                         not_pending:    'This offer was already resolved.',
