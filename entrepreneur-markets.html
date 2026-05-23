@@ -51,6 +51,11 @@
   .mkt a.row.mine { background:#0f140d; border-left:2px solid #8aaa6a; padding-left:16px; }
   .mkt a.row.mine:hover { background:#131a10; }
 
+  .mkt .c-cell { display:flex; align-items:center; gap:10px; min-width:0; }
+  .mkt .c-logo { position:relative; flex:0 0 auto; width:30px; height:30px; border-radius:5px;
+    background:#1a1f17; color:#8aaa6a; display:flex; align-items:center; justify-content:center;
+    font-size:11px; font-weight:600; letter-spacing:0.02em; overflow:hidden; }
+  .mkt .c-logo img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
   .mkt .c-name { font-size:14px; font-weight:500; color:#fff; line-height:1.2; }
   .mkt .c-sub { font-size:9px; letter-spacing:0.1em; margin-top:3px; font-weight:500; }
   .mkt .c-sub.construction { color:#8aaa6a; }
@@ -336,6 +341,11 @@
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { fmtUsd, fmtValuation, titleCase, viewerStakePct, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel } from './js/utils.js';
+
+// Monogram fallback for a corp with no custom logo (first letters of the
+// first two words, e.g. "Advanced Composites" → "AC").
+const corpInitials = (s) =>
+  (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()) || '—';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 
 // Tier labels mirror begin_construction's CASE — display-only copy.
@@ -355,7 +365,7 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
     // totals and the viewer's stake are aggregated client-side.
     const [corpRes, holdRes] = await Promise.all([
       _supabase.from('entrepreneur_corps')
-        .select('id, name, industry, listing, starting_capital, share_price, shares_outstanding, owner_faction_id, for_sale, sale_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name)')
+        .select('id, name, custom_logo_url, industry, listing, starting_capital, share_price, shares_outstanding, owner_faction_id, for_sale, sale_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name)')
         .order('name'),
       _supabase.from('corp_shareholdings')
         .select('corp_id, holder_faction_id, shares')
@@ -427,13 +437,26 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
       row.href = 'entrepreneur-corp.html?id=' + encodeURIComponent(c.id);
 
       const nameCell = document.createElement('div');
+      nameCell.className = 'c-cell';
+      // Logo: custom image (covers) over the monogram fallback; on image
+      // error the img is removed and the initials show through.
+      const logo = document.createElement('div'); logo.className = 'c-logo';
+      logo.textContent = corpInitials(c.name);
+      if (c.custom_logo_url) {
+        const img = document.createElement('img');
+        img.src = c.custom_logo_url; img.alt = '';
+        img.onerror = () => img.remove();
+        logo.appendChild(img);
+      }
+      const txt = document.createElement('div'); txt.style.minWidth = '0';
       const nm = document.createElement('div'); nm.className = 'c-name'; nm.textContent = c.name || 'Corporation';
       const sub = document.createElement('div'); sub.className = 'c-sub ' + ind;
       sub.textContent = industryLabel(c.industry);
       const hq = document.createElement('span'); hq.className = 'hq';
       hq.textContent = '  ·  ' + (c.hq?.name || '—').toUpperCase();
       sub.appendChild(hq);
-      nameCell.append(nm, sub);
+      txt.append(nm, sub);
+      nameCell.append(logo, txt);
 
       const typeCell = document.createElement('div');
       typeCell.dataset.mkey = 'Type';
