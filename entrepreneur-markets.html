@@ -566,9 +566,11 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
     // the Buy button when the viewer has no corp of the matching
     // industry. RHQ + real_estate_office have no restriction.
     const SECTOR_FOR_TYPE = {
-      construction_yard: 'construction',
-      port:              'shipping',
-      banking_office:    'banking',
+      construction_yard:     'construction',
+      port:                  'shipping',
+      banking_office:        'banking',
+      engine_assembly_plant: 'aviation_manufacturing',
+      light_assembly_plant:  'aviation_manufacturing',
     };
 
     const loadProperties = async () => {
