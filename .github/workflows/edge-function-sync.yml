@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   check-edge-function-sync:
     runs-on: ubuntu-latest
