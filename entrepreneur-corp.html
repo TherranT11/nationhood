@@ -459,6 +459,8 @@
   .ap-btype.port               { background:#2a2419; color:#c89e6e; }
   .ap-btype.banking_office     { background:#1a2535; color:#7a9aab; }
   .ap-btype.real_estate_office { background:#2a1f2a; color:#aa7aaa; }
+  .ap-btype.engine_assembly_plant { background:#2a1a1a; color:#c88a8a; }
+  .ap-btype.light_assembly_plant  { background:#2a261a; color:#c8b06e; }
   .bm-tiers { display:grid; grid-template-columns:1fr; gap:6px; }
   .bm-tier { display:grid; grid-template-columns:80px 1fr auto auto auto; gap:12px;
     padding:11px 14px; background:#121212; border:0.5px solid rgba(255,255,255,0.10);
@@ -2366,6 +2368,16 @@ function initials(s, n) {
       monumental: { cost: 400000000, ticks: 36, amb: 5, rep: null, label: 'Monumental', desc: 'National landmarks' },
     };
 
+    // Assembly plants are single-profile (no tier): fixed base cost,
+    // scaled by the same nationCostMult. Mirrors begin_construction
+    // (20270224) — server is authoritative; this is the display copy.
+    // Built by Construction corps, sold to Aviation Manufacturing corps.
+    const PLANT_PROFILE = {
+      engine_assembly_plant: { cost: 45000000, ticks: 27, amb: 2 },
+      light_assembly_plant:  { cost: 75000000, ticks: 30, amb: 3 },
+    };
+    const isPlantType = (t) => t === 'engine_assembly_plant' || t === 'light_assembly_plant';
+
     // Nation-aware cost / duration scaling (mirrors begin_construction
     // formula in 20270172/20270180). multiplier = (0.5 + col/100) ×
     // (0.5 + (100 - inf)/100). NULL stats → 50 (neutral, multiplier
@@ -2397,6 +2409,8 @@ function initials(s, n) {
       port:               'Shipping operational. Sold to Shipping corps.',
       banking_office:     'Banking operational. Sold to Banking corps.',
       real_estate_office: 'Required for Real Estate corps to list properties in this nation. Sold to Real Estate corps.',
+      engine_assembly_plant: 'Lets an Aviation Manufacturing corp design engines. Fixed $45M base. Sold to Aviation Manufacturing corps.',
+      light_assembly_plant:  'Lets an Aviation Manufacturing corp design aircraft. Fixed $75M base. Sold to Aviation Manufacturing corps.',
     };
     const isConstructionCorp = (c.industry === 'construction');
     const isRealEstateCorp   = (c.industry === 'real_estate');
@@ -3308,6 +3322,15 @@ function initials(s, n) {
     const currentNation = () => nationMap.get(document.getElementById('bm-nation').value);
 
     const renderTiers = (btype) => {
+      // Assembly plants are single-profile — no tier choice; hide the
+      // Tier label + rows entirely so there's no dangling heading.
+      const tierLabel = document.getElementById('bm-tier-label');
+      if (isPlantType(btype)) {
+        document.getElementById('bm-tiers').innerHTML = '';
+        if (tierLabel) tierLabel.style.display = 'none';
+        return;
+      }
+      if (tierLabel) tierLabel.style.display = '';
       const tierKeys = btype === 'regional_hq' ? RHQ_TIERS : ALL_TIERS;
       const nation = currentNation();
       // Preserve the player's tier choice across nation re-renders
@@ -3384,13 +3407,15 @@ function initials(s, n) {
     };
 
     const updateBuildSummary = () => {
-      const tierKey = document.querySelector('#bm-tiers .bm-tier.sel')?.dataset.tier
-                   || (selectedBuildType === 'regional_hq' ? 'small' : 'small');
-      const t = TIER_TABLE[tierKey] || TIER_TABLE.small;
       const nation = currentNation();
+      const btypeLabel = buildingTypeLabel(selectedBuildType);
+      // Plants: fixed per-type profile (no tier), same Infra/CoL scaling.
+      const plant = PLANT_PROFILE[selectedBuildType] || null;
+      const t = plant
+        ? { cost: plant.cost, ticks: plant.ticks, amb: plant.amb, rep: null }
+        : (TIER_TABLE[document.querySelector('#bm-tiers .bm-tier.sel')?.dataset.tier] || TIER_TABLE.small);
       const cost = scaledCost(t.cost, nation);
       const dur  = scaledDuration(t.ticks, nation);
-      const btypeLabel = buildingTypeLabel(selectedBuildType);
       let extra = '';
       if (selectedBuildType === 'regional_hq' && t.rep != null) {
         extra = ` · buyer gains <b>+${t.rep} Reputation</b> on acquisition`;
@@ -3399,7 +3424,9 @@ function initials(s, n) {
       if (selectedBuildType === 'regional_hq') {
         footer = `Completion grants <b>+0.2 GDP Growth</b> to the host nation${extra}.`;
       } else if (selectedBuildType === 'construction_yard') {
-        footer = `Each completed CY contributes <b>+2</b> concurrent Port / Banking-Office build slots in this nation.`;
+        footer = `Each completed CY contributes <b>+2</b> concurrent Port / Banking-Office / plant build slots in this nation.`;
+      } else if (plant) {
+        footer = `Completion grants <b>+0.2 GDP Growth</b> to the host nation. ${btypeLabel}s are sector-locked to <b>Aviation Manufacturing</b> corps — build, then sell on.`;
       } else {
         footer = `Completion grants <b>+0.2 GDP Growth</b> to the host nation. ${btypeLabel}s are sector-locked to ${selectedBuildType === 'port' ? 'Shipping' : 'Banking'} corps.`;
       }
@@ -4975,7 +5002,7 @@ function initials(s, n) {
       <div class="bm-label">Host Nation</div>
       <select class="bm-select" id="bm-nation"><option>Loading…</option></select>
 
-      <div class="bm-label">Tier</div>
+      <div class="bm-label" id="bm-tier-label">Tier</div>
       <div class="bm-tiers" id="bm-tiers"><!-- Rendered from TIER_TABLE on type change --></div>
 
       <!-- Filled by updateBuildSummary on modal open from TIER_TABLE. -->
