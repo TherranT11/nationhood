@@ -2288,8 +2288,9 @@ function getInflationMultiplier(_inflationStatUnused) {
 
 /**
  * Scale a policy's ongoing_base_cost by a nation stat (e.g. population).
- * Single source of truth for the scaling factor — government.html and
- * economy.html both call this so the GOV and Economy pages never drift.
+ * Single source of truth for the scaling factor — every cost-display
+ * surface (budget, bill preview, GOV/Economy pages, the tick) calls this
+ * so the figures never drift apart.
  * If the scaling stat is unset or the nation lacks that column (deleted by
  * the alpha refactor), returns the unscaled base.
  */
