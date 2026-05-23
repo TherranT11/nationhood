@@ -3422,14 +3422,14 @@ async function _gbSelectCategory(container, row, kind) {
     }
 
     // Public Sector Wages: not an aggregation of sub-costs — it's a
-    // formula on two stats (monthly = state_apparatus × wages ÷ 100). The
+    // formula on two stats (monthly = state_apparatus × wages ÷ 200). The
     // enacted State Apparatus policy shapes the state_apparatus stat that
     // drives this line, so surface it as the composition line (at 100%) —
     // its own colour + bar, like the other categories.
     if (row.descKey === 'publicSectorWages' && currentNation) {
         const sa = Math.round(Number(currentNation.state_apparatus) || 0);
         const wg = Math.round(Number(currentNation.wages) || 0);
-        desc += ` Formula: State Apparatus ${sa} × Wages ${wg} ÷ 100 = ${_gbFmtCurrency(mo)} / mo · ${_gbFmtCurrency(row.yr)} / yr. The enacted State Apparatus policy (below) shapes the State Apparatus stat that sets this cost.`;
+        desc += ` Formula: State Apparatus ${sa} × Wages ${wg} ÷ 200 = ${_gbFmtCurrency(mo)} / mo · ${_gbFmtCurrency(row.yr)} / yr. The enacted State Apparatus policy (below) shapes the State Apparatus stat that sets this cost.`;
         const saLaw = (_budgetData?.activeLaws || []).find(al =>
             /state\s*apparatus/i.test(al?.policies?.law_category || '')
             || /state\s*apparatus/i.test(al?.policies?.policy_name || '')
