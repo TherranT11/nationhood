@@ -4133,7 +4133,7 @@ function initials(s, n) {
       // The corp page renders both sides regardless of industry — a
       // corp might be a borrower today and a lender tomorrow if it's
       // a Banking corp.
-      const [reqRes, receivedRes, sentRes, loansRes] = await Promise.all([
+      const [reqRes, receivedRes, sentRes, loansRes, cbRes] = await Promise.all([
         _supabase.from('corp_loan_requests')
           .select('id, principal, term_ticks, status, placed_at_tick, expires_at_tick, '
                 + 'accepted_by:entrepreneur_corps!accepted_by_corp_id(name)')
@@ -4160,30 +4160,40 @@ function initials(s, n) {
           .or(`borrower_corp_id.eq.${id},lender_corp_id.eq.${id}`)
           .in('status', ['approved', 'active', 'defaulted'])
           .order('started_at_tick', { ascending: false, nullsFirst: true }),
+        // Central Bank ("state") loans — borrower side only; lives in its
+        // own table (20270200), so the corp_loans fetch above never sees it.
+        _supabase.from('central_bank_loans')
+          .select('id, principal, outstanding, interest_rate, term_ticks, status, nation:nations!nation_id(name)')
+          .eq('borrower_corp_id', id)
+          .eq('status', 'active')
+          .order('started_tick', { ascending: false }),
       ]);
       if (reqRes.error)      console.warn('[entrepreneur-corp] outgoing-loans fetch error:',  reqRes.error.message);
       if (receivedRes.error) console.warn('[entrepreneur-corp] received-offers fetch error:', receivedRes.error.message);
       if (sentRes.error)     console.warn('[entrepreneur-corp] sent-offers fetch error:',     sentRes.error.message);
       if (loansRes.error)    console.warn('[entrepreneur-corp] active-loans fetch error:',    loansRes.error.message);
+      if (cbRes.error)       console.warn('[entrepreneur-corp] central-bank-loans fetch error:', cbRes.error.message);
 
       const outgoing = reqRes.data || [];
       const loans    = loansRes.data || [];
+      const cbLoans  = cbRes.data || [];
       // Filter received-offers to ones aimed at THIS corp's requests.
       // (The eq(status,'pending') filter above is global; cross-join
       // on borrower_corp_id happens client-side.)
       const receivedOffers = (receivedRes.data || []).filter(o => o.request?.borrower_corp_id === id);
       const sentOffers     = (sentRes.data || []);
 
-      // DEBT header from outstanding principal (unchanged from v0).
+      // DEBT header = outstanding corp-loan principal + central-bank loans.
+      const cbDebt = cbLoans.reduce((s, l) => s + Math.max(0, Number(l.outstanding) || 0), 0);
       const debtSum = loans
         .filter(l => l.borrower_corp_id === id && l.status === 'active')
-        .reduce((s, l) => s + Math.max(0, Number(l.principal) - Number(l.total_paid)), 0);
+        .reduce((s, l) => s + Math.max(0, Number(l.principal) - Number(l.total_paid)), 0) + cbDebt;
       const debtEl = document.getElementById('cp-debt');
       if (debtEl) {
         debtEl.textContent = debtSum > 0 ? fmtUsd(debtSum) : '$0';
         const debtSubEl = debtEl.nextElementSibling;
         if (debtSubEl && debtSubEl.classList.contains('delta')) {
-          const activeBorrows = loans.filter(l => l.borrower_corp_id === id && l.status === 'active').length;
+          const activeBorrows = loans.filter(l => l.borrower_corp_id === id && l.status === 'active').length + cbLoans.length;
           debtSubEl.textContent = activeBorrows > 0
             ? `${activeBorrows} active loan${activeBorrows === 1 ? '' : 's'}`
             : '— none';
@@ -4296,7 +4306,20 @@ function initials(s, n) {
           }).join('')
         : '';
 
-      const allHtml = launchBtn + outgoingHtml + receivedHtml + sentHtml + activeHtml;
+      // Central Bank ("state") loans — borrower-side, from the home-nation
+      // facility. Repaid per-tick in advance-corp-tick; shown read-only.
+      const cbHtml = cbLoans.length
+        ? `<div class="cf-sub-head">Central Bank Loans · ${cbLoans.length}</div>` + cbLoans.map(l => `
+            <div class="cf-row">
+              <div>
+                <div class="who">Owe ${escapeHtml(l.nation?.name || 'Central Bank')} Central Bank · ${fmtUsd(Number(l.outstanding) || 0)} outstanding</div>
+                <div class="sub">${Number(l.interest_rate || 0).toFixed(1)}% APR · ${l.term_ticks}t term · principal ${fmtUsd(Number(l.principal) || 0)}</div>
+              </div>
+              <span class="cf-status active">active</span>
+            </div>`).join('')
+        : '';
+
+      const allHtml = launchBtn + outgoingHtml + receivedHtml + sentHtml + cbHtml + activeHtml;
       fc.innerHTML = allHtml || `<div class="empty-card">No loan activity yet.${isOwner ? ' Broadcast a request to start.' : ''}</div>`;
 
       if (isOwner) {
