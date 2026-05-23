@@ -1246,6 +1246,22 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Construction contracts service failed (non-fatal):', ccErr);
     }
 
+    // Aircraft RFPs (20270229): award the lowest-price bid at the deadline,
+    // advance build-to-order, and on completion deliver the aircraft to the
+    // airline (settling the order + production cost atomically).
+    try {
+        const { data: arResult, error: arErr } =
+            await supabase.rpc('process_ent_aircraft_rfps', { p_tick: newTick });
+        if (arErr) {
+            console.error('[advanceTick] process_ent_aircraft_rfps failed:', arErr.message);
+        } else if (arResult && (arResult.awarded > 0 || arResult.completed > 0 || arResult.cancelled > 0 || arResult.failed > 0)) {
+            summary.aircraftRfps = arResult;
+            console.log(`[advanceTick] Aircraft RFPs: ${arResult.awarded} awarded, ${arResult.completed} completed, ${arResult.cancelled} cancelled, ${arResult.failed} failed`);
+        }
+    } catch (arErr) {
+        console.error('[advanceTick] Aircraft RFP service failed (non-fatal):', arErr);
+    }
+
     // 3.6g Corp share-price history anchors (20270179). Inserts one
     // no-op row per public corp into corp_share_price_history with
     // source='tick' so the sparkline always has time-axis datapoints
