@@ -397,21 +397,14 @@ import { isGovernmentPresidential, hasElectedPresident, getCurrentConstitutional
 import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies } from './js/game/government-structure.js';
 import { calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, getRequiredSeats, evaluateBillVote } from './js/game/bills.js';
 import { formatStatName, formatMinorSector } from './js/game/political-actions.js';
-import { MAJOR_SECTORS, RAW_SCALING_DIVISORS } from './js/game/diplomacy-constants.js';
+import { MAJOR_SECTORS } from './js/game/diplomacy-constants.js';
 import { signPresidentialBill, vetoPresidentialBill } from './js/game/presidential.js';
-import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost } from './js/game/budget.js';
+import { calculateNationalBudget, applyTradeTariffOverride, FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, scalePolicyOngoingCost } from './js/game/budget.js';
 import { SOVEREIGN_DEFAULT_CONFIG, canProposeDefault, previewDefaultConsequences, getDebtToGDP, formatDebtToGDP, getDebtDistressLevel, validateAusterityCommitments, AUSTERITY_ELIGIBLE_STATS } from './js/game/sovereign-default.js';
 import { getValidNewRates, computeTaxArticleEffects, computeTaxArticleOngoingCost, TAX_STEP_PP, TAX_KEY_LABELS, TAX_EFFECT_LABELS } from './js/game/tax-articles.js';
 import { formatInflationRate, getInflationLabel } from './js/game/stats.js';
 (function () {
     'use strict';
-/** Scale a policy cost by its scaling stat (e.g., population). */
-function scaleLawCost(baseCost, scalingStat) {
-    if (!scalingStat || !currentNation || currentNation[scalingStat] === undefined) return baseCost;
-    const statVal = Number(currentNation[scalingStat]) || 1;
-    const divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
-    return baseCost * (statVal / divisor);
-}
 
 // Phase 3.1: look up the option the current nation has currently selected
 // for a given policy. Returns the policy_options row (with option_name,
@@ -932,8 +925,8 @@ function filterAllLaws() {
 
         const upCostRaw = p.upfront_cost || 0;
         const onCostRaw = p.ongoing_base_cost || p.ongoing_cost_per_tick || 0;
-        const upCost = scaleLawCost(upCostRaw, p.upfront_scaling_stat);
-        const onCost = scaleLawCost(onCostRaw, p.ongoing_scaling_stat);
+        const upCost = scalePolicyOngoingCost(upCostRaw, p.upfront_scaling_stat, currentNation);
+        const onCost = scalePolicyOngoingCost(onCostRaw, p.ongoing_scaling_stat, currentNation);
         const fmtC = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + Math.round(m) + 'M';
         const costHTML = [];
         if (upCost > 0) costHTML.push(`Up: ${fmtC(upCost)}`);
@@ -3030,7 +3023,7 @@ function renderPolicyOptions(policies, containerId, buttonId) {
                         return `<span class="${cls}">${revDir} ${formatStatName(e.stat_key)}</span>`;
                     }).join(', ') + '</div>';
             }
-            const onCostScaled = scaleLawCost(policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0, policy.ongoing_scaling_stat);
+            const onCostScaled = scalePolicyOngoingCost(policy.ongoing_base_cost || policy.ongoing_cost_per_tick || 0, policy.ongoing_scaling_stat, currentNation);
             if (onCostScaled > 0) {
                 const fmtC = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + Math.round(m) + 'M';
                 repealInfoHTML += `<div style="margin-top:2px;font-size:0.75rem;color:var(--green);">Saves ${fmtC(onCostScaled)}/tick if repealed</div>`;
@@ -3885,7 +3878,7 @@ function renderDraftArticles() {
                 }).join(', ') + '</div>';
             }
             // Show cost savings from repealing (scaled by population/stat)
-            const onCostScaled2 = scaleLawCost(p.ongoing_base_cost || p.ongoing_cost_per_tick || 0, p.ongoing_scaling_stat);
+            const onCostScaled2 = scalePolicyOngoingCost(p.ongoing_base_cost || p.ongoing_cost_per_tick || 0, p.ongoing_scaling_stat, currentNation);
             const fmtCost = (m) => m >= 1000 ? '$' + (m / 1000).toFixed(m % 1000 === 0 ? 0 : 1) + 'B' : '$' + Math.round(m) + 'M';
             let savingsHTML = '';
             if (onCostScaled2 > 0) {
@@ -3976,8 +3969,8 @@ function renderDraftArticles() {
             const _onRaw   = (_opt?.ongoing_base_cost ?? art.policy.ongoing_base_cost ?? art.policy.ongoing_cost_per_tick ?? 0);
             const _upStat  = _opt?.upfront_scaling_stat || art.policy.upfront_scaling_stat;
             const _onStat  = _opt?.ongoing_scaling_stat || art.policy.ongoing_scaling_stat;
-            const _upCost = scaleLawCost(_upRaw, _upStat);
-            const _onCost = scaleLawCost(_onRaw, _onStat);
+            const _upCost = scalePolicyOngoingCost(_upRaw, _upStat, currentNation);
+            const _onCost = scalePolicyOngoingCost(_onRaw, _onStat, currentNation);
             const _parts = [];
             if (_upCost > 0) _parts.push(`Up: ${_fmtC(_upCost)}`);
             else if (_upCost < 0) _parts.push(`<span style="color:var(--green)">Rev: ${_fmtC(Math.abs(_upCost))}</span>`);
