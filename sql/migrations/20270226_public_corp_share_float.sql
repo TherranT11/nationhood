@@ -19,9 +19,12 @@
 --   share_price  capital/20 → capital/100
 -- The founder's awarded 20-share holding is unchanged.
 --
--- This is a FOUNDING-rule change (new public corps). Existing public corps
--- are NOT backfilled here (that would dilute current holders' % — a
--- separate decision). Idempotent (CREATE OR REPLACE).
+-- Applies to BOTH public paths: found_entrepreneur_corp (founded public)
+-- and go_public (private→public IPO, price = treasury/100).
+--
+-- This is a going-forward rule change. Existing public corps are NOT
+-- backfilled here (that would dilute current holders' % — a separate
+-- decision). Idempotent (CREATE OR REPLACE).
 -- ════════════════════════════════════════════════════════════════════
 
 BEGIN;
@@ -194,6 +197,83 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION found_entrepreneur_corp(text, uuid, text, bigint, text) TO authenticated;
+
+-- ── go_public — same 100-share float on the private→public IPO path ──
+-- Body of 20270182 with shares_outstanding 20→100 and price = treasury/100
+-- (valuation = treasury). Founder keeps the awarded 20 (now 20%, was 100%);
+-- the other 80 are the public float.
+CREATE OR REPLACE FUNCTION public.go_public(
+    p_corp_id UUID
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_uid    UUID := auth.uid();
+    v_fac    factions%ROWTYPE;
+    v_corp   entrepreneur_corps%ROWTYPE;
+    v_price  NUMERIC;
+    v_treas  NUMERIC;
+BEGIN
+    IF v_uid IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
+    END IF;
+    IF p_corp_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'corp_not_found');
+    END IF;
+
+    SELECT * INTO v_fac FROM factions
+     WHERE faction_type = 'entrepreneur'
+       AND abandoned_at IS NULL
+       AND (id = v_uid OR linked_user_id = v_uid)
+     ORDER BY created_at ASC LIMIT 1
+     FOR UPDATE;
+    IF v_fac.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'no_entrepreneur');
+    END IF;
+
+    SELECT * INTO v_corp FROM entrepreneur_corps
+     WHERE id = p_corp_id
+     FOR UPDATE;
+    IF v_corp.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'corp_not_found');
+    END IF;
+    IF v_corp.owner_faction_id <> v_fac.id THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_owner');
+    END IF;
+    IF v_corp.listing <> 'private' THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'already_public');
+    END IF;
+
+    -- Share price anchored to the corp's CURRENT cash. 100 shares, 20 to
+    -- the founder → 80 public float; valuation = treasury at IPO.
+    v_treas := COALESCE(v_corp.treasury_cash, v_corp.starting_capital::numeric);
+    v_price := v_treas / 100;
+
+    UPDATE entrepreneur_corps
+       SET listing            = 'public',
+           shares_outstanding = 100,
+           share_price        = v_price,
+           updated_at         = now()
+     WHERE id = p_corp_id;
+
+    INSERT INTO corp_shareholdings (corp_id, holder_faction_id, shares)
+    VALUES (p_corp_id, v_fac.id, 20)
+    ON CONFLICT (corp_id, holder_faction_id) DO UPDATE SET shares = 20;
+
+    RETURN jsonb_build_object(
+        'success',            true,
+        'corp_id',            p_corp_id,
+        'listing',            'public',
+        'shares_outstanding', 100,
+        'share_price',        v_price,
+        'treasury_cash',      v_treas
+    );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.go_public(UUID) TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
 
