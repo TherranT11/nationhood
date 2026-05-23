@@ -50,7 +50,6 @@ CREATE TABLE IF NOT EXISTS public.ent_production_runs (
     quantity             int    NOT NULL CHECK (quantity > 0),
     units_delivered      int    NOT NULL DEFAULT 0 CHECK (units_delivered >= 0),
 
-    per_unit_cost        bigint NOT NULL CHECK (per_unit_cost >= 0),
     cost_per_tick        bigint NOT NULL CHECK (cost_per_tick >= 0),
     ticks_per_unit       int    NOT NULL CHECK (ticks_per_unit > 0),
     total_ticks          int    NOT NULL CHECK (total_ticks > 0),
@@ -58,9 +57,7 @@ CREATE TABLE IF NOT EXISTS public.ent_production_runs (
 
     status               text   NOT NULL DEFAULT 'active'
                             CHECK (status IN ('active', 'completed')),
-    created_at_tick      int,
     last_processed_tick  int,
-    completed_at_tick    int,
     created_at           timestamptz NOT NULL DEFAULT now()
 );
 
@@ -186,12 +183,12 @@ BEGIN
     -- (one tick of grace, mirrors RFP started_at_tick < v_tick).
     INSERT INTO ent_production_runs (
         entrepreneur_corp_id, design_id, plant_building_id, quantity,
-        per_unit_cost, cost_per_tick, ticks_per_unit, total_ticks,
-        status, created_at_tick, last_processed_tick
+        cost_per_tick, ticks_per_unit, total_ticks,
+        status, last_processed_tick
     ) VALUES (
         p_corp_id, p_design_id, p_plant_building_id, p_quantity,
-        v_per_unit, v_cost_tick, v_tpu, v_total_ticks,
-        'active', v_tick, v_tick
+        v_cost_tick, v_tpu, v_total_ticks,
+        'active', v_tick
     ) RETURNING id INTO v_run_id;
 
     RETURN jsonb_build_object('success', true, 'run_id', v_run_id,
@@ -256,7 +253,7 @@ BEGIN
             END IF;
             UPDATE ent_production_runs
                SET ticks_elapsed = v_new, units_delivered = r.quantity,
-                   status = 'completed', completed_at_tick = v_tick, last_processed_tick = v_tick
+                   status = 'completed', last_processed_tick = v_tick
              WHERE id = r.id;
             v_completed := v_completed + 1;
         ELSE
