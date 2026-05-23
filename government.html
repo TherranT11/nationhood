@@ -2747,7 +2747,7 @@ async function loadBudgetData() {
         // why the budget panel showed $0 with no obvious failure.
         const { data: lawsData, error: lawsErr } = await _supabase
             .from('active_laws')
-            .select('id, policies(policy_name, law_category, budget_category, ongoing_base_cost, ongoing_scaling_stat), selected_option:policy_options!selected_option_id(option_name, ongoing_base_cost, ongoing_scaling_stat)')
+            .select('id, policies(policy_name, law_category, budget_category), selected_option:policy_options!selected_option_id(option_name, ongoing_base_cost, ongoing_scaling_stat)')
             .eq('nation_id', nation.id);
         if (lawsErr) {
             console.warn('[Budget] active_laws fetch failed:', lawsErr.message);
@@ -2936,11 +2936,12 @@ const _GB_INCOME_SIDE_LAW_CATEGORY = /\btax(es|ation)?\b/i;
 // stat (e.g. population) via the shared budget.js helper — the same
 // scaling computeMinistryPolicyCost and the Economy page apply, so the
 // GOV breakdown no longer shows nation-size-independent flat costs.
-// Option-level cost overrides the policy-level base (multi-option policies).
+// Cost + scaling stat live on policy_options only (the policies-table
+// cost columns were dropped — selecting them errors the whole fetch).
 // Value stays in abstract scale, same as every other Costs panel row.
 function _gbAnnualLawCost(law) {
-    const base = (law?.selected_option?.ongoing_base_cost ?? law?.policies?.ongoing_base_cost) || 0;
-    const scalingStat = law?.selected_option?.ongoing_scaling_stat || law?.policies?.ongoing_scaling_stat;
+    const base = Number(law?.selected_option?.ongoing_base_cost) || 0;
+    const scalingStat = law?.selected_option?.ongoing_scaling_stat;
     return scalePolicyOngoingCost(base, scalingStat, currentNation) * GAME_CONFIG.TICKS_PER_YEAR;
 }
 
