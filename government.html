@@ -62,6 +62,7 @@ import { escapeHtml, tickToDate } from './js/utils.js';
 import { mountPetitionPressingIssues } from './js/petition-pressing-issues.js';
 import { mountCosReportPressingIssues } from './js/cos-report-pressing.js';
 import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS, deductAP } from './js/game/config.js';
+import { scalePolicyOngoingCost } from './js/game/budget.js';
 import { fileNoConfidenceMotion } from './js/game/no-confidence.js';
 import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, isPresidentialRepublic, isPresidentialDomainMinistry, getMinistryDomain, isCohabitation, isAbsoluteMonarchy, PRESIDENTIAL_DOMAIN_MINISTRIES, CANONICAL_GOVERNMENT_TYPES } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition } from './js/game/government-structure.js';
@@ -2746,7 +2747,7 @@ async function loadBudgetData() {
         // why the budget panel showed $0 with no obvious failure.
         const { data: lawsData, error: lawsErr } = await _supabase
             .from('active_laws')
-            .select('id, policies(policy_name, law_category, budget_category), selected_option:policy_options!selected_option_id(option_name, ongoing_base_cost)')
+            .select('id, policies(policy_name, law_category, budget_category, ongoing_base_cost, ongoing_scaling_stat), selected_option:policy_options!selected_option_id(option_name, ongoing_base_cost, ongoing_scaling_stat)')
             .eq('nation_id', nation.id);
         if (lawsErr) {
             console.warn('[Budget] active_laws fetch failed:', lawsErr.message);
@@ -2931,15 +2932,16 @@ function _gbLawsForRow(activeLaws, rowKey) {
 // dropped from the cost panel. Matches Tax / Taxes / Taxation.
 const _GB_INCOME_SIDE_LAW_CATEGORY = /\btax(es|ation)?\b/i;
 
-// Annualize an active law's per-tick ongoing cost. The only live
-// cost column is policy_options.ongoing_base_cost — both
-// policies.ongoing_base_cost and policies.ongoing_cost_per_tick that
-// earlier client code referenced have been dropped from the schema
-// (their reads PostgREST-null-coalesced silently). Treats the value
-// as already in abstract scale, same as every other Costs panel row.
+// Annualize an active law's per-tick ongoing cost, scaled by its nation
+// stat (e.g. population) via the shared budget.js helper — the same
+// scaling computeMinistryPolicyCost and the Economy page apply, so the
+// GOV breakdown no longer shows nation-size-independent flat costs.
+// Option-level cost overrides the policy-level base (multi-option policies).
+// Value stays in abstract scale, same as every other Costs panel row.
 function _gbAnnualLawCost(law) {
-    const perTick = Number(law?.selected_option?.ongoing_base_cost) || 0;
-    return perTick * GAME_CONFIG.TICKS_PER_YEAR;
+    const base = (law?.selected_option?.ongoing_base_cost ?? law?.policies?.ongoing_base_cost) || 0;
+    const scalingStat = law?.selected_option?.ongoing_scaling_stat || law?.policies?.ongoing_scaling_stat;
+    return scalePolicyOngoingCost(base, scalingStat, currentNation) * GAME_CONFIG.TICKS_PER_YEAR;
 }
 
 function _gbBuildCostRows(d) {

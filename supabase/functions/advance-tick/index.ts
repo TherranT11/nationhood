@@ -2287,12 +2287,23 @@ function getInflationMultiplier(_inflationStatUnused) {
 }
 
 /**
+ * Scale a policy's ongoing_base_cost by a nation stat (e.g. population).
+ * Single source of truth for the scaling factor — government.html and
+ * economy.html both call this so the GOV and Economy pages never drift.
+ * If the scaling stat is unset or the nation lacks that column (deleted by
+ * the alpha refactor), returns the unscaled base.
+ */
+function scalePolicyOngoingCost(ongoingBase, scalingStat, nation) {
+    const base = Number(ongoingBase) || 0;
+    if (!base || !scalingStat || nation?.[scalingStat] == null) return base;
+    const divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
+    return base * ((Number(nation[scalingStat]) || 1) / divisor);
+}
+
+/**
  * Compute the annualized cost of all active policies for a given fiscal category.
  * Returns raw dollars. Alpha refactor: inflation multiplier is a no-op
- * (constant 1) so policy costs no longer scale with inflation; if the
- * `ongoing_scaling_stat` policy field still references a deleted column,
- * the read returns undefined and the scaled-cost branch falls through
- * to ongoingBase * 1 (no scaling).
+ * (constant 1) so policy costs no longer scale with inflation.
  */
 function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
     let total = 0;
@@ -2312,12 +2323,7 @@ function computeMinistryPolicyCost(activeLaws, fiscalCategory, nation) {
 
         let annualCost = 0;
         if (ongoingBase > 0) {
-            let scaled = ongoingBase;
-            if (scalingStat && nation[scalingStat] !== undefined) {
-                const statVal = Number(nation[scalingStat]) || 1;
-                const divisor = RAW_SCALING_DIVISORS[scalingStat] || 50;
-                scaled = ongoingBase * (statVal / divisor);
-            }
+            const scaled = scalePolicyOngoingCost(ongoingBase, scalingStat, nation);
             annualCost = scaled * GAME_CONFIG.TICKS_PER_YEAR * 1_000_000;
         }
 
