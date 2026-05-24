@@ -207,7 +207,7 @@ export async function bootstrapEntrepreneur(activeTab) {
 
   const [facRes, shardRes, allFacRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_name, leader_first_name, leader_last_name, leader_age, nation, entrepreneur_archetype, ent_ambition, ent_cunning, ent_reputation, ent_vision, party_funds')
+      .select('id, faction_name, leader_first_name, leader_last_name, leader_age, nation, entrepreneur_archetype, ent_ambition, ent_cunning, ent_reputation, ent_vision, party_funds, ent_unpaid_debt')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
       .eq('faction_type', 'entrepreneur')
       .is('abandoned_at', null)
