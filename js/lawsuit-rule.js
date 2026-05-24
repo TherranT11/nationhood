@@ -2,18 +2,21 @@
  * lawsuit-rule.js — Minister of Justice ruling modal (Phase 3).
  *
  * Opens from government.html → Judicial subtab → Rule on Case button.
- * Available only when status='awaiting_trial' and the viewer's party
- * holds the Justice ministry in the lawsuit's nation.
+ * Available when the viewer's party holds the Justice ministry in the
+ * lawsuit's nation, for an awaiting_trial case OR an overdue-unanswered
+ * (still-pending) case ruled as a default judgment.
  *
- * Four ruling kinds:
- *   plaintiff_wins   — full relief, defendant pays plaintiff (principal − outstanding), loan voided
+ * Four ruling kinds (relief acts on entrepreneur_corps.treasury_cash + the
+ * underlying corp_loan):
+ *   plaintiff_wins   — non_payout: borrower pays the lender the amount owed,
+ *                      loan closed. predatory_terms: loan voided.
  *   defendant_wins   — case dismissed, plaintiff pays defendant $5M legal fees
  *   dismiss          — case dismissed, no money moves
- *   settlement       — custom builder: Relief + Contract Disposition (Halt-Operations is Phase 4)
+ *   settlement       — custom builder: Relief (cash) + Contract Disposition
+ *                      (continue | void)
  *
- * Reuses the per-lawsuit chat thread from Phase 2; MoJ posts as their
- * party faction and the existing RLS allows it (insert policy keys on
- * linked_user_id, not membership).
+ * Reuses the per-lawsuit chat thread; MoJ posts as their party faction and
+ * the existing RLS allows it (insert policy keys on linked_user_id).
  */
 
 import { _supabase } from './supabase-client.js';
@@ -23,8 +26,6 @@ import { GRIEVANCE_LABEL, RELIEF_LABEL } from './game/lawsuit-types.js';
 const SETTLE_MIN  = 0;
 const SETTLE_MAX  = 500000000;
 const SETTLE_STEP = 5000000;
-const APR_MIN     = 0;
-const APR_MAX     = 100;
 
 let _state = null;
 let _chatChannel = null;
@@ -45,17 +46,16 @@ export async function openLawsuitRuleModal(lawsuit, judgeFaction) {
         loan: null,
         chatMessages: [],
         chatDraft: '',
-        currentTick: Number(lawsuit.filed_at_tick || 0),
         rulingKind: 'settlement',
         // Settlement clause state — defaults match the mockup.
         clauseRelief: { enabled: true, recipient: 'plaintiff', amount: 25000000 },
-        clauseContract: { enabled: true, disposition: 'modify', new_apr: 9.5 },
+        clauseContract: { enabled: true, disposition: 'void' },
         submitting: false,
         error: null,
     };
 
     render();
-    await Promise.all([loadChat(), loadLoan(), loadCurrentTick()]);
+    await Promise.all([loadChat(), loadLoan()]);
     subscribeChat();
     render();
 }
@@ -112,8 +112,8 @@ function subscribeChat() {
 async function loadLoan() {
     const refId = _state?.lawsuit?.relationship_ref?.id;
     if (!refId) return;
-    const { data, error } = await _supabase.from('bank_loans')
-        .select('id, principal, outstanding, apr, term_ticks, status, lender_faction_id, borrower_faction_id, issued_at_tick, matures_at_tick')
+    const { data, error } = await _supabase.from('corp_loans')
+        .select('id, principal, apr, term_ticks, per_tick_payment, payments_remaining, total_paid, status, lender_corp_id, borrower_corp_id, started_at_tick')
         .eq('id', refId)
         .single();
     if (error) {
@@ -121,16 +121,6 @@ async function loadLoan() {
         return;
     }
     _state.loan = data;
-}
-
-async function loadCurrentTick() {
-    const { data, error } = await _supabase.from('shard')
-        .select('current_tick').eq('name', 'Alpha Shard').single();
-    if (error) {
-        console.warn('[lawsuit-rule] shard tick fetch failed:', error.message);
-        return;
-    }
-    if (_state) _state.currentTick = data?.current_tick ?? 0;
 }
 
 async function sendChatMessage() {
@@ -163,7 +153,7 @@ function render() {
 
 function renderHTML() {
     const l = _state.lawsuit;
-    const ticksLeft = Math.max(0, Number(l.ruling_deadline_tick || 0) - Number(_state.currentTick || 0));
+    const isDefault = l.defendant_response !== 'refute';   // overdue/unanswered → default judgment
     const grievance = GRIEVANCE_LABEL[l.grievance_type] || l.grievance_type;
     const relief    = RELIEF_LABEL[l.relief_sought]    || l.relief_sought;
 
@@ -173,13 +163,13 @@ function renderHTML() {
         <div style="padding:18px 26px;border-bottom:1px solid var(--panel-border, rgba(255,255,255,0.08));background:var(--bg-panel);display:flex;justify-content:space-between;align-items:flex-start;">
             <div>
                 <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.22em;color:#8a722f;text-transform:uppercase;margin-bottom:4px;">Judicial Review · Active Case</div>
-                <div style="font-size:22px;font-weight:600;color:var(--panel-text, #c4c2b8);letter-spacing:-0.01em;">${escapeHtml(l.plaintiff?.faction_name || 'Plaintiff')} <span style="color:#9e9a92;font-style:italic;">v.</span> ${escapeHtml(l.defendant?.faction_name || 'Defendant')}</div>
+                <div style="font-size:22px;font-weight:600;color:var(--panel-text, #c4c2b8);letter-spacing:-0.01em;">${escapeHtml(l.plaintiff?.name || 'Plaintiff')} <span style="color:#9e9a92;font-style:italic;">v.</span> ${escapeHtml(l.defendant?.name || 'Defendant')}</div>
                 <div style="font-family:var(--font-mono);font-size:11px;color:#6a6660;margin-top:6px;">Reviewing as <span style="color:#c8a832;">${escapeHtml(_state.judge?.faction_name || 'Justice Minister')}</span> · Filing #${escapeHtml((l.id || '').slice(0,8))}</div>
                 <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
                     ${chip('Filed tick ' + l.filed_at_tick, 'rust')}
-                    ${chip('Defense Submitted', 'blue')}
+                    ${isDefault ? chip('No Defense Filed', 'red') : chip('Defense Submitted', 'blue')}
                     ${chip('Public Record', 'neutral')}
-                    ${chip('Ruling Required · ' + ticksLeft + ' tick' + (ticksLeft === 1 ? '' : 's'), 'red')}
+                    ${isDefault ? chip('Default Judgment', 'red') : ''}
                 </div>
             </div>
             <span onclick="window.lawsuitRuleClose()" style="font-family:var(--font-mono);font-size:18px;color:#6a6660;cursor:pointer;padding:0 6px;">&times;</span>
@@ -194,19 +184,19 @@ function renderHTML() {
                 ${sectionHeader('I.', "Plaintiff's Accusation", 'Filed tick ' + l.filed_at_tick)}
                 ${filingBlock({
                     accent: '#a0633a',
-                    party: { tag: 'PLAINTIFF', name: l.plaintiff?.faction_name, ticker: l.plaintiff?.corp_ticker || l.plaintiff?.abbreviation },
+                    party: { tag: 'PLAINTIFF', name: l.plaintiff?.name, ticker: l.plaintiff?.ticker },
                     grievanceLabel: 'Grievance', grievanceValue: grievance,
                     reliefLabel: 'Relief Sought', reliefValue: relief,
                     statement: 'Plaintiff alleges <strong>' + escapeHtml(grievance) + '</strong> and seeks <strong>' + escapeHtml(relief) + '</strong>.'
                 })}
 
-                ${sectionHeader('II.', "Defendant's Response", 'Refutation submitted tick ' + (l.responded_at_tick ?? '?'))}
+                ${sectionHeader('II.', "Defendant's Response", isDefault ? 'No response — default judgment' : 'Refutation submitted tick ' + (l.responded_at_tick ?? '?'))}
                 ${filingBlock({
                     accent: '#5a8aaa',
-                    party: { tag: 'DEFENDANT', name: l.defendant?.faction_name, ticker: l.defendant?.corp_ticker || l.defendant?.abbreviation },
-                    grievanceLabel: 'Response Type', grievanceValue: 'Refutation',
+                    party: { tag: 'DEFENDANT', name: l.defendant?.name, ticker: l.defendant?.ticker },
+                    grievanceLabel: 'Response Type', grievanceValue: isDefault ? 'No Response' : 'Refutation',
                     reliefLabel: 'Counter-Action', reliefValue: 'None Filed',
-                    statement: l.defense_text ? escapeHtml(l.defense_text) : '<em style="color:#6a6660;">No defense statement on file.</em>'
+                    statement: l.defense_text ? escapeHtml(l.defense_text) : '<em style="color:#6a6660;">No defense statement on file — the defendant did not respond within the window.</em>'
                 })}
 
                 ${renderContractContext(_state.loan)}
@@ -214,8 +204,8 @@ function renderHTML() {
                 ${sectionHeader('IV.', 'Issue Your Ruling', 'Public · Immediate Execution')}
                 <div style="display:flex;flex-direction:column;gap:6px;">
                     ${rulingCard('plaintiff_wins', 'Find in Favor of the Plaintiff',
-                        'Grant relief in full. The loan is voided, the plaintiff is refunded all payments to date, and outstanding debt is cleared.',
-                        ['Loan voided', 'Defendant pays full refund', 'Public verdict'])}
+                        "Grant the plaintiff's claim. Non-payout: the borrower pays the lender the amount still owed (capped at its treasury) and the loan closes. Predatory terms: the loan is voided.",
+                        ['Relief per grievance', 'Loan closed', 'Public verdict'])}
                     ${rulingCard('defendant_wins', 'Find in Favor of the Defendant',
                         'Dismiss the lawsuit. Loan terms upheld. Plaintiff pays the defendant $5M in legal fees.',
                         ['Loan unchanged', 'Plaintiff pays $5M legal fees'])}
@@ -237,7 +227,7 @@ function renderHTML() {
         <!-- Footer -->
         <div style="padding:14px 26px;border-top:1px solid var(--panel-border, rgba(255,255,255,0.08));background:var(--bg-panel);display:flex;justify-content:space-between;align-items:center;gap:18px;">
             <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#6a6660;">
-                Ruling deadline: <span style="color:#c55;">${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}</span> · Public verdict on submission · Affects approval &amp; sector relations
+                Public verdict on submission · Affects approval &amp; sector relations
             </div>
             <div style="display:flex;gap:8px;">
                 <div onclick="window.lawsuitRuleClose()" style="padding:9px 22px;font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:#9e9a92;border:1px solid var(--panel-border, rgba(255,255,255,0.08));cursor:pointer;">Defer</div>
@@ -293,13 +283,13 @@ function renderContractContext(loan) {
         return sectionHeader('III.', 'Contract Context', 'Loading…')
             + '<div style="padding:14px;text-align:center;color:#6a6660;font-family:var(--font-mono);font-size:10px;">Loan details unavailable.</div>';
     }
-    const ticksLeft = Math.max(0, Number(loan.matures_at_tick || 0) - Number(_state.currentTick || 0));
-    return sectionHeader('III.', 'Contract Context', 'Active Loan · Live Terms')
+    const remaining = Math.max(0, Number(loan.principal || 0) - Number(loan.total_paid || 0));
+    return sectionHeader('III.', 'Contract Context', 'Corp Loan · Live Terms')
         + `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:6px;">
             ${ctxCell('Principal', hfFmtBig(loan.principal))}
-            ${ctxCell('Outstanding', hfFmtBig(loan.outstanding))}
+            ${ctxCell('Outstanding', hfFmtBig(remaining))}
             ${ctxCell('APR', Number(loan.apr || 0).toFixed(2) + '%')}
-            ${ctxCell('Matures in', ticksLeft + 't')}
+            ${ctxCell('Payments left', (Number(loan.payments_remaining) || 0) + 't')}
         </div>`;
 }
 function ctxCell(label, value) {
@@ -369,14 +359,8 @@ function renderSettlementBuilder() {
                 <span>The Loan Agreement shall</span>
                 <select onchange="window.lawsuitRuleClause('contract','disposition',this.value)" style="background:var(--bg-2,#1a1a17);border:1px solid var(--panel-border, rgba(255,255,255,0.08));color:var(--panel-text, #c4c2b8);font-size:13px;padding:3px 8px;cursor:pointer;outline:none;font-style:italic;font-family:inherit;">
                     <option value="continue" ${c.disposition === 'continue' ? 'selected' : ''}>continue with original terms</option>
-                    <option value="modify"   ${c.disposition === 'modify'   ? 'selected' : ''}>continue at modified APR</option>
                     <option value="void"     ${c.disposition === 'void'     ? 'selected' : ''}>be voided in full</option>
                 </select>
-                ${c.disposition === 'modify' ? `<span>at</span>
-                    <span style="display:inline-flex;align-items:baseline;background:var(--bg-2,#1a1a17);border:1px solid var(--panel-border, rgba(255,255,255,0.08));padding:2px 8px;">
-                        <input type="number" min="${APR_MIN}" max="${APR_MAX}" step="0.1" value="${c.new_apr}" oninput="window.lawsuitRuleClause('contract','new_apr',Number(this.value))" style="background:transparent;border:none;color:#c8a832;font-weight:600;font-size:14px;width:60px;padding:2px 4px;outline:none;" />
-                        <span style="font-family:var(--font-mono);font-size:12px;color:#6a6660;">%</span>
-                    </span>` : ''}
             </div>` : ''}
         </div>
 
@@ -392,8 +376,8 @@ function buildSummary() {
     const l = _state.lawsuit;
     const r = _state.clauseRelief;
     const c = _state.clauseContract;
-    const plName = l.plaintiff?.faction_name || 'plaintiff';
-    const defName = l.defendant?.faction_name || 'defendant';
+    const plName = l.plaintiff?.name || 'plaintiff';
+    const defName = l.defendant?.name || 'defendant';
     const parts = [`The Minister of Justice rules in the matter of <strong>${escapeHtml(plName)} v. ${escapeHtml(defName)}</strong>.`];
     if (r.enabled && r.amount > 0) {
         const recipientName = r.recipient === 'plaintiff' ? plName : defName;
@@ -401,9 +385,7 @@ function buildSummary() {
         parts.push(`The <strong>${escapeHtml(payerName)}</strong> shall provide relief to the <strong>${escapeHtml(recipientName)}</strong> in the amount of <strong>${hfFmtBig(r.amount)}</strong>.`);
     }
     if (c.enabled) {
-        const dispText = c.disposition === 'continue' ? 'continue with original terms'
-                       : c.disposition === 'modify'   ? `continue at <strong>${c.new_apr}%</strong> APR`
-                       : 'be voided in full';
+        const dispText = c.disposition === 'continue' ? 'continue with original terms' : 'be voided in full';
         parts.push(`The <strong>Loan Agreement</strong> shall ${dispText}.`);
     }
     if (parts.length === 1) {
@@ -448,9 +430,6 @@ function canSubmit() {
         const c = _state.clauseContract;
         if (!r.enabled && !c.enabled) return false;
         if (r.enabled && (!Number.isFinite(r.amount) || r.amount < 0)) return false;
-        if (c.enabled && c.disposition === 'modify') {
-            if (!Number.isFinite(c.new_apr) || c.new_apr < APR_MIN || c.new_apr > APR_MAX) return false;
-        }
     }
     return true;
 }
@@ -469,9 +448,6 @@ async function submit() {
         }
         if (_state.clauseContract.enabled) {
             settlementContract = { disposition: _state.clauseContract.disposition };
-            if (_state.clauseContract.disposition === 'modify') {
-                settlementContract.new_apr = _state.clauseContract.new_apr;
-            }
         }
     }
 
