@@ -1104,7 +1104,12 @@ function bindFormationEvents(root) {
             const f = _formations.find(x => x.id === formationId);
             if (f && f.proposed_by === _state.faction?.id) {
                 _editingFormationId = formationId;
-                _proposalSelectedParties = [...(f.party_ids || [])];
+                // Seed from the coalition's CURRENT members, dropping any that
+                // have since been deleted/abandoned (not in _allParties). Those
+                // ghosts can never cast a support vote, so leaving them in
+                // party_ids makes unanimity unreachable; filtering here lets the
+                // proposer save a clean coalition (down to just themselves).
+                _proposalSelectedParties = (f.party_ids || []).filter(pid => _allParties.some(p => p.id === pid));
                 await renderFormationTab(root);
             }
             return;
@@ -1270,6 +1275,10 @@ async function updateProposal(formationId, root) {
         alert('Failed to save changes: ' + (err.message || err));
     } finally {
         _submitting = false;
+        // Restore the button on the failure paths (the success path re-renders
+        // the tab, detaching this node). Without this the button hangs on
+        // "Saving…" after an error.
+        if (btn) { btn.disabled = false; btn.textContent = 'Save Changes'; }
     }
 }
 
