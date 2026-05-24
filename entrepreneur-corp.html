@@ -1749,9 +1749,8 @@ function initials(s, n) {
       let acqBusy = false;   // double-fire lock for deal-changing actions
 
       const acqReason = (r) => ({
-        sector_mismatch: 'Your corp must be the same sector.',
         cannot_buy_own_corp: 'You already own this corp.',
-        not_buyer_corp_owner: 'You must own the corp you fold it into.',
+        not_buyer_corp_owner: 'You must own the corp you pay from.',
         public_not_supported: 'Only private corps can be acquired (v1).',
         already_negotiating: 'You already have an open offer on this corp.',
         buyer_insufficient_funds: 'The acquiring corp can’t cover the price.',
@@ -1795,19 +1794,20 @@ function initials(s, n) {
         acqId = acq ? acq.id : null;
 
         if (!acq) {
-          // Propose (buyer side, no open deal): pick a same-sector corp to fold into.
+          // Propose (buyer side, no open deal): pick one of your corps to pay from.
           const rec = await computeCorpRecommended();
-          const { data: mine } = await _supabase.from('entrepreneur_corps')
-            .select('id, name, treasury_cash').eq('owner_faction_id', entId).eq('industry', c.industry).neq('id', id);
+          const { data: mine, error: mineErr } = await _supabase.from('entrepreneur_corps')
+            .select('id, name, treasury_cash').eq('owner_faction_id', entId).neq('id', id);
+          if (mineErr) console.warn('[acquire] payer corps load failed:', mineErr.message);
           const corps = mine || [];
           if (!corps.length) {
-            body.innerHTML = `<div class="rl-summary">You need a <b>${escapeHtml(industryLabel(c.industry))}</b> corporation to acquire and fold ${escapeHtml(c.name)} into.</div>`;
+            body.innerHTML = `<div class="rl-summary">You need one of your own corporations to pay from before you can acquire ${escapeHtml(c.name)}.</div>`;
             return;
           }
           const opts = corps.map(mc => `<option value="${mc.id}">${escapeHtml(mc.name)} · ${fmtUsd(mc.treasury_cash || 0)}</option>`).join('');
           body.innerHTML = `
-            <div class="rl-summary">Recommended valuation <b>${fmtUsd(rec)}</b> · cash − debt + property. The deal folds ${escapeHtml(c.name)} into one of your ${escapeHtml(industryLabel(c.industry))} corps; both CEOs must agree on a price.</div>
-            <div class="rl-label">Fold into</div>
+            <div class="rl-summary">Recommended valuation <b>${fmtUsd(rec)}</b> · cash − debt + property. ${escapeHtml(c.name)} changes hands to you and keeps operating as its own company; both CEOs must agree on a price.</div>
+            <div class="rl-label">Pay from</div>
             <select id="acq-payer" class="rl-input">${opts}</select>
             <div class="rl-label">Offer price ($)</div>
             <input type="text" class="rl-input" id="acq-price" inputmode="numeric" value="${rec}">
@@ -1819,7 +1819,7 @@ function initials(s, n) {
             const errEl = document.getElementById('acq-err');
             const payer = document.getElementById('acq-payer').value;
             const price = parseInt((document.getElementById('acq-price').value || '').replace(/[$,\s]/g, ''), 10);
-            if (!payer) { errEl.textContent = 'Pick a corp to fold into.'; return; }
+            if (!payer) { errEl.textContent = 'Pick a corp to pay from.'; return; }
             if (!Number.isFinite(price) || price < 0) { errEl.textContent = 'Enter a valid price.'; return; }
             acqBusy = true;
             try {
