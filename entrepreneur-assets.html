@@ -4,20 +4,90 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Character — Entrepreneur</title>
-<link rel="stylesheet" href="css/entrepreneur-soon.css" />
+<style>
+  /* Topbar/nav/body-base come from js/entrepreneur-topbar.js (one source,
+     shared by every entrepreneur page). This page styles only its own body.
+     The identity header mirrors entrepreneur-dashboard.html's .identity-body
+     look (this codebase inlines per-page body styles). */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; min-height:100vh; }
+  .ch-content { padding:32px 24px 24px; max-width:1280px; }
+
+  .ch-identity { margin-bottom:28px; }
+  .ch-identity .eyebrow { color:#8aaa6a; font-size:10px; letter-spacing:0.15em; margin-bottom:6px; }
+  .ch-identity .name { display:flex; align-items:baseline; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  .ch-identity .first { font-size:46px; font-weight:500; color:#fff; letter-spacing:-0.01em; line-height:1; }
+  .ch-identity .last {
+    font-size:46px; font-family:Georgia,'Times New Roman',serif; font-style:italic;
+    color:#8aaa6a; letter-spacing:-0.01em; line-height:1;
+  }
+  .ch-identity .meta-row { display:flex; gap:28px; font-size:11px; letter-spacing:0.08em; color:#888; flex-wrap:wrap; }
+  .ch-identity .meta-row .label { color:#555; margin-right:6px; }
+  .ch-identity .meta-row .val { color:#d4d4d4; }
+
+  /* Current Location — concrete now (home/origin nation); a travel action
+     is planned, so the card leaves room for it without building anything. */
+  .ch-location {
+    background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
+    padding:16px 18px; max-width:420px;
+  }
+  .ch-loc-label { color:#8aaa6a; font-size:10px; letter-spacing:0.15em; margin-bottom:8px; }
+  .ch-loc-value { font-size:20px; font-weight:500; color:#fff; display:flex; align-items:center; gap:10px; }
+  .ch-loc-tag {
+    font-size:9px; letter-spacing:0.1em; color:#8aaa6a; border:0.5px solid rgba(138,170,106,0.3);
+    border-radius:3px; padding:2px 6px;
+  }
+  .ch-loc-note { color:#555; font-size:10px; letter-spacing:0.06em; margin-top:8px; }
+
+  @media (max-width:600px) {
+    .ch-identity .first, .ch-identity .last { font-size:34px; }
+    .ch-identity .meta-row { gap:16px; }
+  }
+</style>
 </head>
 <body>
 <div id="ent-topbar"></div>
-<div class="ent-content">
-  <div class="soon-wrap">
-    <div class="soon-kicker">— ENTREPRENEUR —</div>
-    <div class="soon-title">Character</div>
-    <div class="soon-sub">Coming Soon</div>
+<div class="ch-content">
+  <div class="ch-identity">
+    <div class="eyebrow">— ENTREPRENEUR —</div>
+    <div class="name"><span class="first" id="ch-first">—</span><span class="last" id="ch-last"></span></div>
+    <div class="meta-row">
+      <div><span class="label">AGE</span><span class="val" id="ch-age">—</span></div>
+      <div><span class="label">ORIGIN</span><span class="val" id="ch-origin">—</span></div>
+      <div><span class="label">ARCHETYPE</span><span class="val" id="ch-archetype">—</span></div>
+    </div>
+  </div>
+
+  <div class="ch-location">
+    <div class="ch-loc-label">CURRENT LOCATION</div>
+    <div class="ch-loc-value"><span id="ch-location">—</span><span class="ch-loc-tag">HOME</span></div>
+    <div class="ch-loc-note">Travel actions coming soon.</div>
   </div>
 </div>
 <script type="module">
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-bootstrapEntrepreneur('assets').catch(e => console.warn('[entrepreneur-assets] init failed:', e?.message || e));
+import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
+
+(async () => {
+  // bootstrapEntrepreneur already fetches the character fields we need
+  // (leader_first_name/last/age, nation, entrepreneur_archetype) — one source.
+  const ctx = await bootstrapEntrepreneur('assets');
+  const f = ctx?.faction;
+  if (!f) return;
+
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  const first = f.leader_first_name || (f.faction_name || '').split(/\s+/)[0] || '—';
+  const last  = f.leader_last_name  || (f.faction_name || '').split(/\s+/).slice(1).join(' ') || '';
+  const arch  = ENTREPRENEUR_ARCHETYPES[f.entrepreneur_archetype] || null;
+
+  set('ch-first', first);
+  set('ch-last', last);
+  set('ch-age', f.leader_age != null ? String(f.leader_age) : '—');
+  set('ch-origin', f.nation ? String(f.nation).toUpperCase() : '—');
+  set('ch-archetype', arch ? arch.name : '—');
+  // Current location = the character's home (origin) nation until travel ships.
+  set('ch-location', f.nation ? String(f.nation) : 'Home Nation');
+})().catch(e => console.warn('[entrepreneur-assets] init failed:', e?.message || e));
 </script>
 </body>
 </html>
