@@ -134,3 +134,4 @@ reputation decay (~3892), legacy tax processor call (~4900+).
 
 - `notifications.js` legacy `isCorp` branch (`checkExecContractsExpiring` + the corp-only probe set in `refreshNotifications`).
 - Founding entry buttons — **DONE in P1** (`faction-select.html` #opt-corp hidden; `js/military-topbar.js` found-corp item + handler removed).
+- **Dead-but-present (deferred):** `faction-select.html` `chooseFactionType('corporation')` / `selectFactionOption('corporation')` branches and `select-nation.html`'s `pending_faction_type==='corp'` redirect are now unreachable (card hidden) but not yet removed — left intact this phase to avoid partial edits to a page that P2 removes wholesale. The DB trigger is the hard backstop if any path is somehow reached. NOTE: keep `faction-select.html:170-176` existing-corp redirect until corps are gone.
