@@ -89,6 +89,7 @@
 <div id="subtab-trade" class="diplo-subtab-content" style="display:none;">
     <div id="trade-page" style="padding:0 12px 12px;">
         <div id="trade-header-stats"></div>
+        <div id="trade-ship-review" style="margin-top:8px;"></div>
         <div id="trade-agreements-row" style="margin-top:8px;"></div>
         <div style="display:flex;gap:10px;margin-top:8px;">
             <div id="trade-left" style="width:480px;flex-shrink:0;display:flex;flex-direction:column;gap:8px;"></div>
@@ -1317,6 +1318,80 @@ async function initTradeTab() {
     renderTradeEconomy();
     renderTradeAgreements();
     renderTradePartners();
+    renderShippingBidReview();
+}
+
+// Minister of Trade: review pending carrier bids on this nation's import
+// routes and veto carriers (20270238). The per-tick auction still auto-fills
+// cheapest-first; vetoing bans a carrier so the cheapest of the rest wins.
+// get_route_bids_for_minister returns nothing unless the viewer is the MoT,
+// so the panel simply stays empty for everyone else.
+async function renderShippingBidReview() {
+    const el = document.getElementById('trade-ship-review');
+    if (!el) return;
+    const myNationId = _worldState?.nation?.id;
+    if (!myNationId) { el.innerHTML = ''; return; }
+
+    let res;
+    try {
+        res = await _supabase.rpc('get_route_bids_for_minister', { p_nation_id: myNationId });
+    } catch (e) {
+        console.warn('[diplomacy] shipping bid review fetch failed:', e?.message || e);
+        el.innerHTML = ''; return;
+    }
+    if (res.error) { console.warn('[diplomacy] shipping bid review error:', res.error.message); el.innerHTML = ''; return; }
+    if (!res.data || !res.data.success) { el.innerHTML = ''; return; }   // not the Minister of Trade
+    const routes = (res.data.routes || []).filter(r => (r.bids || []).length > 0);
+    if (!routes.length) { el.innerHTML = ''; return; }
+
+    const bidRow = (b) => {
+        const rate = b.rate != null ? '$' + Number(b.rate).toLocaleString() + '/unit/tick' : 'no rate';
+        const rep = Number(b.reputation) || 0;
+        return `<div style="display:flex;align-items:center;gap:10px;padding:4px 0;${b.vetoed ? 'opacity:0.5;' : ''}">
+            <div style="flex:1;min-width:0;">
+                <span style="color:#cfcabf;">${escapeHtml(b.carrier || 'Carrier')}</span>
+                <span style="color:#8a8680;font-size:11px;"> · ${rate} · ${Number(b.freighters) || 0} freighters · rep ${rep}</span>
+            </div>
+            <button class="ship-veto-btn" data-bid="${b.bid_id}" data-vetoed="${b.vetoed ? '1' : '0'}"
+                    style="font-size:11px;padding:3px 10px;border:0.5px solid ${b.vetoed ? 'rgba(138,170,106,0.5)' : 'rgba(200,120,120,0.5)'};
+                           background:transparent;color:${b.vetoed ? '#8aaa6a' : '#c98a8a'};border-radius:3px;cursor:pointer;">
+                ${b.vetoed ? 'Allow' : 'Reject'}
+            </button>
+        </div>`;
+    };
+    const routeCard = (r) => `
+        <div style="border:0.5px solid #2a2a2a;border-radius:4px;padding:10px 12px;margin-bottom:6px;">
+            <div style="color:#cfcabf;font-size:13px;">${escapeHtml(r.name || 'Route')}</div>
+            <div style="color:#8a8680;font-size:11px;margin-bottom:6px;">${escapeHtml(r.commodity || '—')} · ${escapeHtml(r.origin_port || '—')} → ${escapeHtml(r.destination_port || '—')} · ${Number(r.volume_required) || 0} units/tick</div>
+            ${(r.bids || []).map(bidRow).join('')}
+        </div>`;
+    el.innerHTML = `
+        <div style="background:#0d0d0d;border:0.5px solid #2a2a2a;border-radius:4px;padding:12px;">
+            <div style="color:#8aaa6a;font-size:12px;font-weight:600;margin-bottom:4px;">SHIPPING BIDS — YOUR IMPORT ROUTES</div>
+            <div style="color:#8a8680;font-size:11px;margin-bottom:10px;">Cheapest non-rejected carrier auto-fills each route every tick. Reject a carrier to ban it; allow it back anytime.</div>
+            ${routes.map(routeCard).join('')}
+        </div>`;
+    el.querySelectorAll('.ship-veto-btn').forEach(btn => btn.addEventListener('click', () => toggleShipVeto(btn)));
+}
+
+async function toggleShipVeto(btn) {
+    if (btn.dataset.busy === '1') return;
+    btn.dataset.busy = '1';
+    const prev = btn.textContent;
+    btn.disabled = true; btn.textContent = '…';
+    try {
+        const { data, error } = await _supabase.rpc('veto_shipping_bid', {
+            p_bid_id: btn.dataset.bid, p_vetoed: btn.dataset.vetoed !== '1' });
+        if (error) throw error;
+        if (!data || !data.success) {
+            console.warn('[diplomacy] veto failed:', data?.reason);
+            btn.disabled = false; btn.dataset.busy = '0'; btn.textContent = prev; return;
+        }
+        await renderShippingBidReview();
+    } catch (e) {
+        console.warn('[diplomacy] veto threw:', e?.message || e);
+        btn.disabled = false; btn.dataset.busy = '0'; btn.textContent = prev;
+    }
 }
 
 function renderTradeHeaderStats() {

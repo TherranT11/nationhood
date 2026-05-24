@@ -1749,9 +1749,8 @@ function initials(s, n) {
       let acqBusy = false;   // double-fire lock for deal-changing actions
 
       const acqReason = (r) => ({
-        sector_mismatch: 'Your corp must be the same sector.',
         cannot_buy_own_corp: 'You already own this corp.',
-        not_buyer_corp_owner: 'You must own the corp you fold it into.',
+        not_buyer_corp_owner: 'You must own the corp you pay from.',
         public_not_supported: 'Only private corps can be acquired (v1).',
         already_negotiating: 'You already have an open offer on this corp.',
         buyer_insufficient_funds: 'The acquiring corp can’t cover the price.',
@@ -1795,19 +1794,20 @@ function initials(s, n) {
         acqId = acq ? acq.id : null;
 
         if (!acq) {
-          // Propose (buyer side, no open deal): pick a same-sector corp to fold into.
+          // Propose (buyer side, no open deal): pick one of your corps to pay from.
           const rec = await computeCorpRecommended();
-          const { data: mine } = await _supabase.from('entrepreneur_corps')
-            .select('id, name, treasury_cash').eq('owner_faction_id', entId).eq('industry', c.industry).neq('id', id);
+          const { data: mine, error: mineErr } = await _supabase.from('entrepreneur_corps')
+            .select('id, name, treasury_cash').eq('owner_faction_id', entId).neq('id', id);
+          if (mineErr) console.warn('[acquire] payer corps load failed:', mineErr.message);
           const corps = mine || [];
           if (!corps.length) {
-            body.innerHTML = `<div class="rl-summary">You need a <b>${escapeHtml(industryLabel(c.industry))}</b> corporation to acquire and fold ${escapeHtml(c.name)} into.</div>`;
+            body.innerHTML = `<div class="rl-summary">You need one of your own corporations to pay from before you can acquire ${escapeHtml(c.name)}.</div>`;
             return;
           }
           const opts = corps.map(mc => `<option value="${mc.id}">${escapeHtml(mc.name)} · ${fmtUsd(mc.treasury_cash || 0)}</option>`).join('');
           body.innerHTML = `
-            <div class="rl-summary">Recommended valuation <b>${fmtUsd(rec)}</b> · cash − debt + property. The deal folds ${escapeHtml(c.name)} into one of your ${escapeHtml(industryLabel(c.industry))} corps; both CEOs must agree on a price.</div>
-            <div class="rl-label">Fold into</div>
+            <div class="rl-summary">Recommended valuation <b>${fmtUsd(rec)}</b> · cash − debt + property. ${escapeHtml(c.name)} changes hands to you and keeps operating as its own company; both CEOs must agree on a price.</div>
+            <div class="rl-label">Pay from</div>
             <select id="acq-payer" class="rl-input">${opts}</select>
             <div class="rl-label">Offer price ($)</div>
             <input type="text" class="rl-input" id="acq-price" inputmode="numeric" value="${rec}">
@@ -1819,7 +1819,7 @@ function initials(s, n) {
             const errEl = document.getElementById('acq-err');
             const payer = document.getElementById('acq-payer').value;
             const price = parseInt((document.getElementById('acq-price').value || '').replace(/[$,\s]/g, ''), 10);
-            if (!payer) { errEl.textContent = 'Pick a corp to fold into.'; return; }
+            if (!payer) { errEl.textContent = 'Pick a corp to pay from.'; return; }
             if (!Number.isFinite(price) || price < 0) { errEl.textContent = 'Enter a valid price.'; return; }
             acqBusy = true;
             try {
@@ -2665,44 +2665,6 @@ function initials(s, n) {
     const AIRCRAFT_CLASSES = ['regional', 'narrowbody', 'widebody'];
     const terminalClaimFee = (popPct) => 5_000_000 + 2_000_000 * (Number(popPct) || 0);
 
-    // Client-side mirror of the SQL multi-winner allocator in
-    // process_trade_agreement_shipping_multiwinner. Sort pending bids
-    // by per-unit rate ASC (entrepreneur reads bid_rate; legacy
-    // derives from offered_revenue_per_tick / freighters_allocated),
-    // tiebreak by applied_at_tick, fill volume_required slots
-    // cheapest-first. Read-only preview for the UI — the actual
-    // payout still happens server-side at tick time.
-    const computeRouteAllocation = (route) => {
-      const demand = Math.max(0, Number(route.volume_required) || 0);
-      const pending = (route.bids || []).filter(b => b.status === 'pending');
-      const annotated = pending.map(b => {
-        const f = Math.max(1, Number(b.freighters_allocated) || 0);
-        const rate = b.bid_rate != null
-          ? Number(b.bid_rate)
-          : Math.floor((Number(b.offered_revenue_per_tick) || 0) / f);
-        return { id: b.id, freighters: f, rate, applied: Number(b.applied_at_tick) || 0 };
-      });
-      // Sort key MUST match process_trade_agreement_shipping_multiwinner:
-      // rate ASC, applied_at_tick ASC, id ASC. Identical ties (same rate +
-      // same tick) would otherwise pick a different winner in the UI vs
-      // the server allocator and the "Filling X/Y" badge would lie.
-      annotated.sort((a, b) =>
-        (a.rate - b.rate)
-        || (a.applied - b.applied)
-        || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-      let remaining = demand;
-      const allocation = {};
-      for (const b of annotated) {
-        if (remaining <= 0) break;
-        if (b.rate <= 0) continue;
-        const units = Math.min(b.freighters, remaining);
-        if (units <= 0) continue;
-        allocation[b.id] = { units, payout: units * b.rate, rate: b.rate };
-        remaining -= units;
-      }
-      return { allocation, lowestRate: annotated[0]?.rate ?? null };
-    };
-
     // JS mirrors of broker_list_building / broker_buy_listing's math
     // (20270184). Single helpers so the lock-fee + commission + rep
     // tiers live in exactly one client-side spot — every Brokerage
@@ -2902,24 +2864,15 @@ function initials(s, n) {
 
       // Shipping Operations panel (Shipping corps only, owner-only).
       // Fleet card + Active Bids (this corp's pending bids) + Open
-      // Routes (every trade-agreement contract with status='open').
-      // Allocation prediction is computed client-side mirroring the
-      // SQL allocator in process_trade_agreement_shipping_multiwinner
-      // — sort pending bids by per-unit rate ASC, fill volume_required
-      // slots cheapest-first. Read-only preview; the real allocation
-      // happens at tick time.
+      // Routes (every open trade-agreement contract). Sealed-bid: the
+      // allocation preview (my winning units) + bidder count come from
+      // get_shipping_routes_for_corp, which computes them server-side and
+      // never returns a rival's rate (see 20270237). The client only ever
+      // sees its OWN bid.
       let shippingPanelHtml = '';
       if (isShippingCorp && isOwner) {
         const [routesRes, portsRes] = await Promise.all([
-          _supabase.from('shipping_contracts')
-            .select(`id, name, commodity, volume_required, origin_port, destination_port,
-                     last_tick_units_filled, last_filled_tick,
-                     bids:shipping_contract_bids!contract_id(
-                       id, bidder_corp_id, bid_rate, offered_revenue_per_tick,
-                       freighters_allocated, status, applied_at_tick)`)
-            .eq('status', 'open')
-            .not('trade_agreement_id', 'is', null)
-            .order('created_at_tick', { ascending: false }),
+          _supabase.rpc('get_shipping_routes_for_corp', { p_corp_id: id }),
           _supabase.from('corp_buildings')
             .select('id', { count: 'exact', head: true })
             .eq('owner_corp_id', id)
@@ -2929,7 +2882,7 @@ function initials(s, n) {
         if (routesRes.error) console.warn('[entrepreneur-corp] open routes fetch error:', routesRes.error.message);
         if (portsRes.error)   console.warn('[entrepreneur-corp] port count fetch error:',  portsRes.error.message);
 
-        const allRoutes  = routesRes.data || [];
+        const allRoutes  = (routesRes.data && routesRes.data.success) ? (routesRes.data.routes || []) : [];
         const portCount  = portsRes.count || 0;
         const fleetCap   = portCount * SHIPPING_FREIGHTERS_PER_PORT;
         const owned      = Number(c.freighters_owned) || 0;
@@ -2939,10 +2892,9 @@ function initials(s, n) {
         const myBidsByRoute = new Map();
         let committed = 0;
         for (const r of allRoutes) {
-          const mine = (r.bids || []).find(b => b.bidder_corp_id === id && b.status === 'pending');
-          if (mine) {
-            myBidsByRoute.set(r.id, { route: r, bid: mine, allocation: computeRouteAllocation(r) });
-            committed += Number(mine.freighters_allocated) || 0;
+          if (r.my_bid) {
+            myBidsByRoute.set(r.id, { route: r, bid: r.my_bid, wonUnits: Number(r.my_winning_units) || 0 });
+            committed += Number(r.my_bid.freighters) || 0;
           }
         }
         const available = Math.max(0, owned - committed);
@@ -2966,14 +2918,14 @@ function initials(s, n) {
         // Active Bids
         const activeBids = [...myBidsByRoute.values()];
         const activeBidsHtml = activeBids.length
-          ? activeBids.map(({ route, bid, allocation }) => {
-              const won = allocation.allocation[bid.id];
-              const wonUnits = won ? won.units : 0;
-              const myF = Number(bid.freighters_allocated) || 0;
+          ? activeBids.map(({ route, bid, wonUnits }) => {
+              const myF = Number(bid.freighters) || 0;
               const myRate = Number(bid.bid_rate) || 0;
-              const status = wonUnits > 0
-                ? `<span class="sh-row-status">Filling ${wonUnits}/${myF} slot${wonUnits === 1 ? '' : 's'} · <span class="accent">+${fmtUsd(wonUnits * myRate)}/tick</span></span>`
-                : `<span class="sh-row-status losing">Outbid</span>`;
+              const status = bid.vetoed
+                ? `<span class="sh-row-status losing">Rejected by buyer</span>`
+                : wonUnits > 0
+                  ? `<span class="sh-row-status">Filling ${wonUnits}/${myF} slot${wonUnits === 1 ? '' : 's'} · <span class="accent">+${fmtUsd(wonUnits * myRate)}/tick</span></span>`
+                  : `<span class="sh-row-status losing">Outbid</span>`;
               return `
                 <div class="sh-row ${wonUnits > 0 ? 'winning' : ''}">
                   <div class="sh-row-info">
@@ -2992,7 +2944,6 @@ function initials(s, n) {
                             data-bname="${escapeHtml(route.name || 'Route')}"
                             data-commodity="${escapeHtml(route.commodity || '')}"
                             data-volume="${Number(route.volume_required) || 0}"
-                            data-lowest="${allocation.lowestRate ?? ''}"
                             data-current-f="${myF}"
                             data-current-rate="${myRate}">Edit</button>
                     <button class="ap-btn-small reject sh-withdraw-bid"
@@ -3007,12 +2958,12 @@ function initials(s, n) {
         const openRoutes = allRoutes.filter(r => !myBidsByRoute.has(r.id));
         const openRoutesHtml = openRoutes.length
           ? openRoutes.map(r => {
-              const alloc   = computeRouteAllocation(r);
-              const lowest  = alloc.lowestRate;
               const demand  = Number(r.volume_required) || 0;
-              const bidders = (r.bids || []).filter(b => b.status === 'pending').length;
-              const lowestLabel = lowest != null
-                ? `lowest <span class="accent">${fmtUsd(lowest)}/unit/tick</span>`
+              const bidders = Number(r.bidder_count) || 0;
+              // Sealed-bid: show competition level (bidder count) but never a
+              // rival's price, so routes don't become an undercut-by-$1 race.
+              const bidLabel = bidders > 0
+                ? `<span class="accent">${bidders}</span> bidder${bidders === 1 ? '' : 's'}`
                 : `<span class="dim">no bids yet</span>`;
               // Last-tick coverage (persisted by the allocator). Under-covered
               // routes are where an extra bid would win slots.
@@ -3028,7 +2979,7 @@ function initials(s, n) {
                       ${escapeHtml(r.commodity || '—')} ·
                       ${escapeHtml(r.origin_port || '—')} → ${escapeHtml(r.destination_port || '—')} ·
                       <span class="accent">${demand}</span> unit${demand === 1 ? '' : 's'}/tick ·
-                      ${lowestLabel}${bidders > 0 ? ` · ${bidders} bidder${bidders === 1 ? '' : 's'}` : ''}${covLabel}
+                      ${bidLabel}${covLabel}
                     </div>
                   </div>
                   <div class="sh-row-actions">
@@ -3037,7 +2988,6 @@ function initials(s, n) {
                             data-bname="${escapeHtml(r.name || 'Route')}"
                             data-commodity="${escapeHtml(r.commodity || '')}"
                             data-volume="${demand}"
-                            data-lowest="${lowest ?? ''}"
                             ${available === 0 ? 'disabled title="No available freighters — withdraw a bid or buy more"' : ''}>
                       Place Bid
                     </button>
@@ -5422,7 +5372,6 @@ function initials(s, n) {
         routeName:   btn.dataset.bname,
         commodity:   btn.dataset.commodity || '',
         volume:      Number(btn.dataset.volume) || 0,
-        lowest:      btn.dataset.lowest !== '' ? Number(btn.dataset.lowest) : null,
         mode:        opts?.mode || 'place',
         currentF:    Number(btn.dataset.currentF) || 0,
         currentRate: Number(btn.dataset.currentRate) || 0,
@@ -5435,9 +5384,8 @@ function initials(s, n) {
         ? `${bidModalContext.commodity} · ${bidModalContext.volume} unit${bidModalContext.volume === 1 ? '' : 's'}/tick demanded`
         : `${bidModalContext.volume} unit${bidModalContext.volume === 1 ? '' : 's'}/tick demanded`;
       document.getElementById('pb-route-sub').textContent = sub;
-      document.getElementById('pb-lowest').textContent = bidModalContext.lowest != null
-        ? `Cheapest current bid: ${fmtUsd(bidModalContext.lowest)}/unit/tick`
-        : 'No competing bids yet — set any rate.';
+      document.getElementById('pb-lowest').textContent =
+        'Sealed bid — rivals’ prices are hidden. Set your rate on your own costs.';
       const fInput    = document.getElementById('pb-freighters');
       const rateInput = document.getElementById('pb-rate');
       fInput.value    = bidModalContext.mode === 'edit' ? bidModalContext.currentF    : Math.min(bidModalContext.volume, 1);
@@ -5456,17 +5404,9 @@ function initials(s, n) {
       const max  = bidModalContext.volume || 0;
       const filling = Math.min(f, max);
       const maxRev  = filling * rate;
-      const lowest  = bidModalContext.lowest;
-      const undercut = (lowest != null && rate > 0 && rate < lowest);
-      let undercutTag = '';
-      if (lowest != null && rate > 0) {
-        undercutTag = undercut
-          ? ` · <span class="accent">you're undercutting the current low</span>`
-          : ` · <span style="color:#c89e6e">at or above the current low</span>`;
-      }
       document.getElementById('pb-summary').innerHTML =
         `Bidding <b>${f}</b> freighter${f === 1 ? '' : 's'} @ <b>${fmtUsd(rate)}/unit/tick</b>.<br>`
-      + `If all <b>${filling}</b> slot${filling === 1 ? '' : 's'} fill, you earn <b class="accent">${fmtUsd(maxRev)}/tick</b>${undercutTag}.`;
+      + `If all <b>${filling}</b> slot${filling === 1 ? '' : 's'} fill, you earn <b class="accent">${fmtUsd(maxRev)}/tick</b>.`;
     };
 
     document.getElementById('pb-freighters').addEventListener('input', updateBidSummary);
