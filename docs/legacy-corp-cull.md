@@ -10,7 +10,7 @@ source of truth for the 5-phase cull so any session can resume from here.
 
 ## Status
 
-- [x] **Phase 1 — Inventory & Freeze** (this doc + `20270239_freeze_legacy_corp_creation.sql`)
+- [x] **Phase 1 — Inventory & Freeze** (this doc + `20270239_freeze_legacy_corp_creation.sql`; founding entry buttons disabled; verification items worked)
 - [ ] Phase 2 — Frontend cull (pages + JS + entry links)
 - [ ] Phase 3 — RPC / function cull (forward DROP migration)
 - [ ] Phase 4 — Tick / edge decoupling (advance-corp-tick, advance-tick)
@@ -113,14 +113,24 @@ reputation decay (~3892), legacy tax processor call (~4900+).
 | `corp_aircraft` | ent 11 / legacy 1 — entrepreneur airline fleet. KEEP; strip legacy `airline_corp_id`(faction) usage in P4. |
 | `airline_routes`, `airline_terminals`, `airline_cities` | ent ≫ legacy — entrepreneur airlines. KEEP. |
 | `shipping_contracts`, `shipping_contract_bids`, `shipping_contract_events` | trade-agreement allocator serves legacy + entrepreneur bidders. KEEP; remove legacy-bidder branch only. |
-| `emit_corp_cash_event`, `corp_cash_events`, `factions.corp_cash_reserves` | **Entanglement:** entrepreneur aircraft RPCs (`20270204`) charge `corp_cash_reserves` via `emit_corp_cash_event`. KEEP until `20270204` is confirmed superseded by the `ent_*` aviation system (`20270221`+) and migrated off — resolve before P5. |
 | `process_trade_agreement_shipping_multiwinner`, `spawn_shipping_contracts_for_agreement` | dual-bidder allocator. KEEP; strip legacy payout branch in P3/P4. |
 | `processTradeAgreementShipping` tick block (advance-corp-tick ~3235) | calls the shared allocator. KEEP. |
 
-## Open verification items (resolve as their phase begins)
+> **Reclassified → CULL (see V1):** `emit_corp_cash_event`, `corp_cash_events`,
+> `factions.corp_cash_reserves`. These are **legacy-only**, not shared with the
+> live entrepreneur system (which writes `treasury_cash` directly). Cull in P5
+> after their legacy callers (tick blocks + legacy aircraft fns) are gone.
+> Final-grep gate in P5: confirm no live entrepreneur RPC calls `emit_corp_cash_event`.
 
-1. `20270204_entrepreneur_aircraft_rpcs.sql` — superseded by `20270221`+ `ent_*` aviation? If yes, its `emit_corp_cash_event`/`corp_cash_reserves` use is dead → unblocks culling the cash-event layer.
-2. `corp_executives` — legacy, or used by entrepreneur `checkExecContractsExpiring` (notifications.js)?
-3. `corp_aircraft_designs` 1 entrepreneur reference — confirm it's a comment, not a dependency.
-4. `process_corp_loans` / `recompute_finance_stats` / `process_finance_loan_payment` — confirm they operate on entrepreneur `corp_loans`, not legacy `finance_active_loans`.
-5. `factions.corp_debt` / `corp_reputation` / `corp_fleet` — confirm no SHARED reader before dropping.
+## Verification items (Phase 1 findings)
+
+1. **RESOLVED.** `20270204` is a MIXED migration: it defines live entrepreneur fns (`process_entrepreneur_airline_routes`, `found_entrepreneur_corp`) AND **legacy** aircraft fns (`overhaul_aircraft`/`retire_aircraft`/`set_aircraft_tail_number`) — the latter are what charge `corp_cash_reserves` via `emit_corp_cash_event`. `entrepreneur_buy_aircraft` has zero callers (retired "generic buy"). ⇒ the cash-event layer is **legacy, not entangled** with the live entrepreneur system. Reclassified to CULL above.
+2. **RESOLVED.** `corp_executives` is read only by the legacy `isCorp` branch (`checkExecContractsExpiring`) in `notifications.js` ⇒ **CULL**. That whole `isCorp` notification branch is legacy → remove in P2.
+3. PENDING (P3): `corp_aircraft_designs` 1 entrepreneur reference — confirm it's a comment, not a dependency.
+4. **RESOLVED.** `process_corp_loans` / `recompute_finance_stats` operate on entrepreneur `corp_loans` + `central_bank_loans` (per `20270175`/`20270233`) ⇒ **KEEP**. Legacy `finance_active_loans` is a separate system.
+5. PENDING (P5): `factions.corp_debt` / `corp_reputation` / `corp_fleet` — confirm no SHARED reader before dropping.
+
+## Also CULL in Phase 2 (found during P1)
+
+- `notifications.js` legacy `isCorp` branch (`checkExecContractsExpiring` + the corp-only probe set in `refreshNotifications`).
+- Founding entry buttons — **DONE in P1** (`faction-select.html` #opt-corp hidden; `js/military-topbar.js` found-corp item + handler removed).

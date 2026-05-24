@@ -208,13 +208,7 @@ export function renderMilitaryTopBar(container, opts = {}) {
             <span class="mil-dd-name">Found a Political Party</span>
         </div>`;
     }
-    const hasCorp = (allUserFactions || []).some(f => f.faction_type === 'corporation');
-    if (!hasCorp) {
-        dropdownHtml += `<div class="mil-dd-item mil-dd-item--create" data-action="found-corp">
-            <span class="mil-dd-type" style="color:var(--teal)">+</span>
-            <span class="mil-dd-name">Found a Corporation</span>
-        </div>`;
-    }
+    // Founding a legacy corporation is retired (corp-cull Phase 1). No entry.
     const hasEntrepreneur = (allUserFactions || []).some(f => f.faction_type === 'entrepreneur');
     if (!hasEntrepreneur) {
         dropdownHtml += `<div class="mil-dd-item mil-dd-item--create" data-action="become-entrepreneur">
@@ -292,11 +286,6 @@ export function renderMilitaryTopBar(container, opts = {}) {
             if (item.dataset.action === 'found-party') {
                 sessionStorage.setItem('pending_faction_type', 'party');
                 window.location.href = 'select-nation.html';
-                return;
-            }
-            if (item.dataset.action === 'found-corp') {
-                sessionStorage.setItem('pending_faction_type', 'corp');
-                window.location.href = 'corp-setup.html';
                 return;
             }
             if (item.dataset.action === 'become-entrepreneur') {
