@@ -18,7 +18,15 @@ source of truth for the 5-phase cull so any session can resume from here.
 - **Feature flag for P3:** the deleted `actions.html` carried the only commercial-lawsuit *filing* UI (`sue-corp.js`) and the equity-apply UI. Confirm these were legacy-corp-only before culling the lawsuit/equity RPCs — if `commercial_lawsuits`/equity apply to entrepreneur corps, an entrepreneur-side filing UI is missing.
 - **P5 reminder:** `common.js` `refreshAP` still SELECTs `corp_cash_reserves`; clean when that column is dropped.
 - [x] **Phase 3 — Client-only RPC cull** (`20270240`). Dropped 6 legacy RPCs with verified zero callers (frontend deleted): `claim_shipping_route`, `release_shipping_route`, `place_shipping_bid`, `fire_shipping_action`, `set_aircraft_tail_number`, `queue_production_run` (legacy).
-- [ ] Phase 4 — Tick / edge decoupling **+ drop the tick-bound legacy functions in the same migration** (caller+callee together): `assess_corporate_taxes`, `place_shipping_offer`, `generate_organic_shipping_routes`, `process_airline_corp_tick` + `airline_aircraft_ops_cost`/`_seats`/`_value`; also `declare_corp_bankruptcy` (after its 2 SQL callers `operational_safety_pact`/`aviation_incidents` go).
+- [~] Phase 4 — Tick / edge decoupling (IN PROGRESS, done in verified sub-steps; `advance-corp-tick` is hand-written, verify with `node --check`; **deploy the edge before applying the function-drop migrations**).
+  - [x] **4a legacy aviation** — removed TS processors `processAviationDesignResearch`/`processProductionRuns`/`processAircraftRfpExpiry` + their calls from `advance-corp-tick` (entrepreneur aviation runs in `advance-tick` via `process_ent_*`, untouched). No SQL drop (these were TS; `queue_production_run` dropped in P3).
+  - [ ] 4b legacy shipping — `processShippingRoutes` (TS) + drop `place_shipping_offer`, `generate_organic_shipping_routes`. KEEP `processTradeAgreementShipping`.
+  - [ ] 4c legacy airline — `process_airline_corp_tick` rpc block + drop that fn + `airline_aircraft_ops_cost`/`_seats`/`_value`.
+  - [ ] 4d legacy corp economy — `processPropertyEffects`/`processRegionalHqIncome`/`processCorpContracts`/`processCorpMonthlyIncome` (⚠ touches `corp_loans` — read-vs-write check first), `processVesselOrderDeliveries`/`processEquipmentDeliveries`, reputation decay, `assess_corporate_taxes` tax call (+ drop fn). KEEP `processCentralBankLoanPayments`.
+  - [ ] 4e legacy loans — `processFinanceLoans` (finance_active_loans) + `processBankLoanExpiry`/`processBankLoanPayments` (bank_loans = faction-based legacy). KEEP entrepreneur `corp_loans`/`central_bank_loans`.
+  - [ ] 4f lawsuits — `process_lawsuit_deadlines` block + drop `respond_to_lawsuit`/`respond_to_settle_offer` (verify justice-minister angle).
+  - [ ] 4g advance-tick — `gov_bailout` legacy-corp path (~8220) + `declare_corp_bankruptcy` (after `operational_safety_pact`/`aviation_incidents` go).
+  - **Loan classification (verified):** `bank_loans`/`finance_active_loans` = faction-based LEGACY → cull; `corp_loans` (corp_id) + `central_bank_loans` (entrepreneur_corp_id) = entrepreneur → KEEP.
 - [ ] Phase 5 — Schema teardown (legacy tables + `factions` columns) **+ trigger functions** `refresh_corp_routes_count`, `corp_ownership_sum_check`, `corp_ownership_auto_seed` (drop with their tables/triggers).
 
 ### P3 findings / new follow-ups
