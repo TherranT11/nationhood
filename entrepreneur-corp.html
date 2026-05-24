@@ -1375,6 +1375,7 @@ function initials(s, n) {
             const R = { plant_busy: 'That plant already has an active run.', plant_incompatible: 'That plant can\'t build this airframe.',
               plant_not_ready: 'Plant not completed yet.', design_not_available: 'Design must be available (R&D complete).',
               insufficient_cash: data?.need != null ? `Need ${fmtUsd(Number(data.need))} to start.` : 'Treasury too low.',
+              insufficient_engines: data?.engine ? `Need ${data.need}× ${data.engine} engines (you hold ${data.have}). Buy more first.` : 'Not enough engines in stock.',
               not_manufacturer: 'Only aviation manufacturers can produce.', invalid_quantity: 'Quantity must be 1–100.' };
             errEl.textContent = R[data?.reason] || ('Failed: ' + (data?.reason || 'unknown'));
             submitting = false; btn.disabled = false; btn.textContent = 'Begin Production'; return;
@@ -1383,6 +1384,142 @@ function initials(s, n) {
         } catch (e) { errEl.textContent = 'Failed: ' + (e?.message || e); submitting = false; btn.disabled = false; btn.textContent = 'Begin Production'; }
       };
       overlay.classList.add('open');
+    }
+
+    // Engine trade (20270235): buy engine units from another manufacturer.
+    // Buyer requests engine + qty → seller names a price → buyer accepts →
+    // settles instantly (engines land in the buyer's holdings, consumed by
+    // foreign-engine aircraft production).
+    async function openBuyEnginesModal() {
+      const overlay = document.getElementById('ad-engtrade-overlay');
+      if (!overlay) return;
+      const { data: engines, error: eErr } = await _supabase.from('ent_aircraft_designs')
+        .select('id, name, thrust, reliability, efficiency, cost_per_unit, owner:entrepreneur_corps!entrepreneur_corp_id(name)')
+        .eq('design_type', 'engine').eq('status', 'available').neq('entrepreneur_corp_id', id).order('name');
+      if (eErr) console.warn('[entrepreneur-corp] buy-engines fetch error:', eErr.message);
+      const opts = engines || [];
+      let submitting = false;
+      overlay.innerHTML = `
+        <div class="bm-modal" style="max-width:460px;">
+          <div class="bm-head"><div class="ti">Buy <em>Engines</em></div><div class="bm-x" id="be-close">×</div></div>
+          <div class="bm-body">
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Request engines from another manufacturer. They name a price; you accept to close the deal. Bought engines stock your holdings and are consumed when you produce aircraft that use them.</div>
+            ${opts.length ? `
+              <div class="bm-label">Engine</div>
+              <select class="bm-select" id="be-engine">${opts.map(e => `<option value="${e.id}">${escapeHtml(e.name)} · ${escapeHtml(e.owner?.name || '—')} · thr ${e.thrust}/rel ${e.reliability}</option>`).join('')}</select>
+              <div class="bm-label">Quantity</div>
+              <input type="number" class="bm-input" id="be-qty" min="1" max="1000" value="1">
+              <div style="font-size:11px;color:#8a8680;margin-top:8px;">The seller sets the price — there's no cost to request.</div>`
+              : `<div style="font-size:12px;color:#c98a8a;">No other manufacturers have an available engine design to sell yet.</div>`}
+            <div class="bm-err" id="be-err"></div>
+          </div>
+          <div class="bm-foot">
+            <button class="bm-btn sec" id="be-cancel">Cancel</button>
+            <button class="bm-btn pri" id="be-submit"${opts.length ? '' : ' disabled'}>Request</button>
+          </div>
+        </div>`;
+      const close = () => overlay.classList.remove('open');
+      document.getElementById('be-close').onclick = close;
+      document.getElementById('be-cancel').onclick = close;
+      overlay.onclick = (e) => { if (e.target === overlay) close(); };
+      const btn = document.getElementById('be-submit');
+      if (btn && !btn.disabled) btn.onclick = async () => {
+        if (submitting) return;
+        const errEl = document.getElementById('be-err');
+        const q = parseInt(document.getElementById('be-qty').value, 10);
+        if (!(q >= 1 && q <= 1000)) { errEl.textContent = 'Quantity must be 1–1000.'; return; }
+        submitting = true; btn.disabled = true; btn.textContent = 'Requesting…'; errEl.textContent = '';
+        try {
+          const { data, error } = await _supabase.rpc('ent_request_engine_order', {
+            p_buyer_corp_id: id, p_engine_design_id: document.getElementById('be-engine').value, p_quantity: q });
+          if (error) throw error;
+          if (!data || !data.success) {
+            const R = { engine_not_available: 'That engine is no longer available.', own_engine: 'You already own that engine design.',
+              not_manufacturer: 'Only aviation manufacturers can buy engines.', invalid_quantity: 'Quantity must be 1–1000.' };
+            errEl.textContent = R[data?.reason] || ('Failed: ' + (data?.reason || 'unknown'));
+            submitting = false; btn.disabled = false; btn.textContent = 'Request'; return;
+          }
+          btn.textContent = 'REQUESTED ✓'; setTimeout(() => location.reload(), 600);
+        } catch (e) { errEl.textContent = 'Failed: ' + (e?.message || e); submitting = false; btn.disabled = false; btn.textContent = 'Request'; }
+      };
+      overlay.classList.add('open');
+    }
+
+    // Seller sets a price (mode 'price') or buyer confirms purchase (mode 'accept').
+    function openEngineOrderModal(mode, o) {
+      const overlay = document.getElementById('ad-engtrade-overlay');
+      if (!overlay) return;
+      let submitting = false;
+      const isPrice = mode === 'price';
+      const total = (Number(o.price) || 0) * (Number(o.qty) || 0);
+      overlay.innerHTML = `
+        <div class="bm-modal" style="max-width:420px;">
+          <div class="bm-head"><div class="ti">${isPrice ? 'Set <em>Price</em>' : 'Accept <em>Offer</em>'}</div><div class="bm-x" id="eo-close">×</div></div>
+          <div class="bm-body">
+            <div style="font-size:12px;color:#cfcabf;margin-bottom:10px;">${o.qty}× <b>${escapeHtml(o.engine)}</b> ${isPrice ? `for ${escapeHtml(o.party)}` : `from ${escapeHtml(o.party)}`}</div>
+            ${isPrice ? `
+              <div class="bm-label">Price per unit</div>
+              <input type="number" class="bm-input" id="eo-price" min="0" step="1" value="">
+              <div id="eo-preview" style="font-size:12px;color:#8aaa6a;margin-top:8px;"></div>`
+              : `<div style="font-size:13px;color:#cfcabf;">Price <b>${fmtUsd(Number(o.price) || 0)}</b>/unit · Total <b style="color:#8aaa6a;">${fmtUsd(total)}</b><br><span style="font-size:11px;color:#8a8680;">Paid from treasury on accept; engines added to your holdings.</span></div>`}
+            <div class="bm-err" id="eo-err"></div>
+          </div>
+          <div class="bm-foot">
+            <button class="bm-btn sec" id="eo-cancel">Cancel</button>
+            <button class="bm-btn pri" id="eo-submit">${isPrice ? 'Send Price' : 'Accept & Pay'}</button>
+          </div>
+        </div>`;
+      const close = () => overlay.classList.remove('open');
+      document.getElementById('eo-close').onclick = close;
+      document.getElementById('eo-cancel').onclick = close;
+      overlay.onclick = (e) => { if (e.target === overlay) close(); };
+      if (isPrice) {
+        const pEl = document.getElementById('eo-price');
+        pEl.oninput = () => {
+          const p = Math.max(0, parseInt(pEl.value, 10) || 0);
+          document.getElementById('eo-preview').innerHTML = `Total <b>${fmtUsd(p * (Number(o.qty) || 0))}</b> for ${o.qty} unit${o.qty === 1 ? '' : 's'}`;
+        };
+      }
+      const btn = document.getElementById('eo-submit');
+      btn.onclick = async () => {
+        if (submitting) return;
+        const errEl = document.getElementById('eo-err');
+        submitting = true; btn.disabled = true; btn.textContent = 'Working…'; errEl.textContent = '';
+        try {
+          let res;
+          if (isPrice) {
+            const p = parseInt(document.getElementById('eo-price').value, 10);
+            if (!(p >= 0)) { errEl.textContent = 'Enter a price.'; submitting = false; btn.disabled = false; btn.textContent = 'Send Price'; return; }
+            res = await _supabase.rpc('ent_price_engine_order', { p_order_id: o.id, p_price_per_unit: p });
+          } else {
+            res = await _supabase.rpc('ent_accept_engine_order', { p_order_id: o.id });
+          }
+          if (res.error) throw res.error;
+          const data = res.data;
+          if (!data || !data.success) {
+            const R = { order_not_pending: 'This order is no longer awaiting a price.', order_not_priced: 'This order isn\'t ready to accept.',
+              insufficient_cash: data?.need != null ? `Need ${fmtUsd(Number(data.need))} to accept.` : 'Treasury too low.',
+              not_seller: 'Only the seller can price this.', not_buyer: 'Only the buyer can accept this.', order_not_found: 'Order not found.' };
+            errEl.textContent = R[data?.reason] || ('Failed: ' + (data?.reason || 'unknown'));
+            submitting = false; btn.disabled = false; btn.textContent = isPrice ? 'Send Price' : 'Accept & Pay'; return;
+          }
+          btn.textContent = '✓'; setTimeout(() => location.reload(), 500);
+        } catch (e) { errEl.textContent = 'Failed: ' + (e?.message || e); submitting = false; btn.disabled = false; btn.textContent = isPrice ? 'Send Price' : 'Accept & Pay'; }
+      };
+      overlay.classList.add('open');
+    }
+
+    // Decline / withdraw an engine order (either party).
+    async function cancelEngineOrder(orderId, btn) {
+      if (btn) { btn.disabled = true; btn.textContent = '…'; }
+      try {
+        const { data, error } = await _supabase.rpc('ent_cancel_engine_order', { p_order_id: orderId });
+        if (error) throw error;
+        location.reload();
+      } catch (e) {
+        console.warn('[entrepreneur-corp] cancel engine order failed:', e?.message || e);
+        if (btn) { btn.disabled = false; btn.textContent = 'Decline'; }
+      }
     }
 
     // ── Per-corp public chat (under Corp Details). Reuses group_chat_messages
@@ -3374,6 +3511,44 @@ function initials(s, n) {
           ? `<div class="section-heading"><span class="sans">Active</span><span class="serif">Production</span></div>${prData.map(prRow).join('')}`
           : '';
 
+        // Engine holdings (20270235): engines bought from other manufacturers.
+        const { data: invData, error: invErr } = await _supabase.from('ent_engine_inventory')
+          .select('quantity, engine:ent_aircraft_designs!engine_design_id(name)')
+          .eq('entrepreneur_corp_id', id).gt('quantity', 0);
+        if (invErr) console.warn('[entrepreneur-corp] engine inventory fetch error:', invErr.message);
+        const inventorySection = (invData && invData.length)
+          ? `<div class="section-heading"><span class="sans">Engine</span><span class="serif">Holdings</span></div>` +
+            invData.map(r => `<div class="cf-row"><div class="who">${escapeHtml(r.engine?.name || 'Engine')}</div><span class="num green">${r.quantity} units</span></div>`).join('')
+          : '';
+
+        // Engine orders where this corp is buyer or seller, still open.
+        const { data: ordData, error: ordErr } = await _supabase.from('ent_engine_orders')
+          .select('id, buyer_corp_id, seller_corp_id, quantity, price_per_unit, status, engine:ent_aircraft_designs!engine_design_id(name), buyer:entrepreneur_corps!buyer_corp_id(name), seller:entrepreneur_corps!seller_corp_id(name)')
+          .or(`buyer_corp_id.eq.${id},seller_corp_id.eq.${id}`).in('status', ['pending', 'priced'])
+          .order('created_at', { ascending: false });
+        if (ordErr) console.warn('[entrepreneur-corp] engine orders fetch error:', ordErr.message);
+        const ordRow = (o) => {
+          const eng = escapeHtml(o.engine?.name || 'Engine');
+          const da = `data-oid="${o.id}" data-eng="${eng}" data-qty="${o.quantity}" data-price="${Number(o.price_per_unit) || 0}"`;
+          if (o.seller_corp_id === id) {
+            // Incoming: I'm the seller.
+            const buyer = escapeHtml(o.buyer?.name || 'Buyer');
+            const act = o.status === 'pending'
+              ? `<button class="ap-btn-small list eo-price-btn" ${da} data-party="${buyer}">Set Price</button>`
+              : `<span class="num amber">${fmtUsd(Number(o.price_per_unit) || 0)}/u · sent</span>`;
+            return `<div class="cf-row"><div><div class="who">Sell ${o.quantity}× ${eng}</div><div class="sub">to ${buyer}</div></div>${act}</div>`;
+          }
+          // Outgoing: I'm the buyer.
+          const seller = escapeHtml(o.seller?.name || 'Seller');
+          const act = o.status === 'priced'
+            ? `<div class="sh-row-actions" style="gap:6px;"><button class="ap-btn-small list eo-accept-btn" ${da} data-party="${seller}">Accept ${fmtUsd(Number(o.price_per_unit) || 0)}/u</button><button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Decline</button></div>`
+            : `<div class="sh-row-actions" style="gap:6px;"><span class="num muted">awaiting price</span><button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Cancel</button></div>`;
+          return `<div class="cf-row"><div><div class="who">Buy ${o.quantity}× ${eng}</div><div class="sub">from ${seller}</div></div>${act}</div>`;
+        };
+        const ordersSection = (ordData && ordData.length)
+          ? `<div class="section-heading"><span class="sans">Engine</span><span class="serif">Orders</span></div>${ordData.map(ordRow).join('')}`
+          : '';
+
         aviationPanelHtml = `
           <div class="section-heading"><span class="sans">Aircraft</span><span class="serif">Designs</span></div>
           <div class="cf-row" style="align-items:center;">
@@ -3381,10 +3556,13 @@ function initials(s, n) {
             <div class="sh-row-actions">
               <button class="ap-btn-small list" id="ad-design-engine">Design Engine</button>
               <button class="ap-btn-small list" id="ad-design-aircraft">Design Aircraft</button>
+              <button class="ap-btn-small list" id="ad-buy-engines">Buy Engines</button>
             </div>
           </div>
           ${designs.length ? designs.map(dRow).join('') : '<div class="sh-empty">No designs yet — design an engine, then an aircraft.</div>'}
           ${productionSection}
+          ${inventorySection}
+          ${ordersSection}
           ${rfpBidSection}`;
       }
 
@@ -3457,6 +3635,16 @@ function initials(s, n) {
         pj.querySelectorAll('.ac-produce-btn').forEach(btn => btn.addEventListener('click', () =>
           openProduceModal({ id: btn.dataset.did, name: btn.dataset.name,
             airframe_class: btn.dataset.class, cost_per_unit: Number(btn.dataset.cost) })));
+        const buyBtn = document.getElementById('ad-buy-engines');
+        if (buyBtn) buyBtn.addEventListener('click', openBuyEnginesModal);
+        pj.querySelectorAll('.eo-price-btn').forEach(btn => btn.addEventListener('click', () =>
+          openEngineOrderModal('price', { id: btn.dataset.oid, engine: btn.dataset.eng,
+            qty: Number(btn.dataset.qty), party: btn.dataset.party })));
+        pj.querySelectorAll('.eo-accept-btn').forEach(btn => btn.addEventListener('click', () =>
+          openEngineOrderModal('accept', { id: btn.dataset.oid, engine: btn.dataset.eng,
+            qty: Number(btn.dataset.qty), price: Number(btn.dataset.price), party: btn.dataset.party })));
+        pj.querySelectorAll('.eo-cancel-btn').forEach(btn => btn.addEventListener('click', () =>
+          cancelEngineOrder(btn.dataset.oid, btn)));
       }
       if (isOwner) {
         const rcBtn = document.getElementById('rc-open-btn');
@@ -5572,6 +5760,7 @@ function initials(s, n) {
 <div class="bm-overlay" id="ad-engine-overlay"></div>
 <div class="bm-overlay" id="ad-aircraft-overlay"></div>
 <div class="bm-overlay" id="ad-produce-overlay"></div>
+<div class="bm-overlay" id="ad-engtrade-overlay"></div>
 <div class="bm-overlay" id="rc-overlay"></div>
 <div class="bm-overlay" id="rcb-overlay"></div>
 <div class="bm-overlay" id="ar-overlay"></div>
