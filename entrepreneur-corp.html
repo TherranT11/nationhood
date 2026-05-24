@@ -2665,44 +2665,6 @@ function initials(s, n) {
     const AIRCRAFT_CLASSES = ['regional', 'narrowbody', 'widebody'];
     const terminalClaimFee = (popPct) => 5_000_000 + 2_000_000 * (Number(popPct) || 0);
 
-    // Client-side mirror of the SQL multi-winner allocator in
-    // process_trade_agreement_shipping_multiwinner. Sort pending bids
-    // by per-unit rate ASC (entrepreneur reads bid_rate; legacy
-    // derives from offered_revenue_per_tick / freighters_allocated),
-    // tiebreak by applied_at_tick, fill volume_required slots
-    // cheapest-first. Read-only preview for the UI — the actual
-    // payout still happens server-side at tick time.
-    const computeRouteAllocation = (route) => {
-      const demand = Math.max(0, Number(route.volume_required) || 0);
-      const pending = (route.bids || []).filter(b => b.status === 'pending');
-      const annotated = pending.map(b => {
-        const f = Math.max(1, Number(b.freighters_allocated) || 0);
-        const rate = b.bid_rate != null
-          ? Number(b.bid_rate)
-          : Math.floor((Number(b.offered_revenue_per_tick) || 0) / f);
-        return { id: b.id, freighters: f, rate, applied: Number(b.applied_at_tick) || 0 };
-      });
-      // Sort key MUST match process_trade_agreement_shipping_multiwinner:
-      // rate ASC, applied_at_tick ASC, id ASC. Identical ties (same rate +
-      // same tick) would otherwise pick a different winner in the UI vs
-      // the server allocator and the "Filling X/Y" badge would lie.
-      annotated.sort((a, b) =>
-        (a.rate - b.rate)
-        || (a.applied - b.applied)
-        || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-      let remaining = demand;
-      const allocation = {};
-      for (const b of annotated) {
-        if (remaining <= 0) break;
-        if (b.rate <= 0) continue;
-        const units = Math.min(b.freighters, remaining);
-        if (units <= 0) continue;
-        allocation[b.id] = { units, payout: units * b.rate, rate: b.rate };
-        remaining -= units;
-      }
-      return { allocation };
-    };
-
     // JS mirrors of broker_list_building / broker_buy_listing's math
     // (20270184). Single helpers so the lock-fee + commission + rep
     // tiers live in exactly one client-side spot — every Brokerage
@@ -2902,24 +2864,15 @@ function initials(s, n) {
 
       // Shipping Operations panel (Shipping corps only, owner-only).
       // Fleet card + Active Bids (this corp's pending bids) + Open
-      // Routes (every trade-agreement contract with status='open').
-      // Allocation prediction is computed client-side mirroring the
-      // SQL allocator in process_trade_agreement_shipping_multiwinner
-      // — sort pending bids by per-unit rate ASC, fill volume_required
-      // slots cheapest-first. Read-only preview; the real allocation
-      // happens at tick time.
+      // Routes (every open trade-agreement contract). Sealed-bid: the
+      // allocation preview (my winning units) + bidder count come from
+      // get_shipping_routes_for_corp, which computes them server-side and
+      // never returns a rival's rate (see 20270237). The client only ever
+      // sees its OWN bid.
       let shippingPanelHtml = '';
       if (isShippingCorp && isOwner) {
         const [routesRes, portsRes] = await Promise.all([
-          _supabase.from('shipping_contracts')
-            .select(`id, name, commodity, volume_required, origin_port, destination_port,
-                     last_tick_units_filled, last_filled_tick,
-                     bids:shipping_contract_bids!contract_id(
-                       id, bidder_corp_id, bid_rate, offered_revenue_per_tick,
-                       freighters_allocated, status, applied_at_tick)`)
-            .eq('status', 'open')
-            .not('trade_agreement_id', 'is', null)
-            .order('created_at_tick', { ascending: false }),
+          _supabase.rpc('get_shipping_routes_for_corp', { p_corp_id: id }),
           _supabase.from('corp_buildings')
             .select('id', { count: 'exact', head: true })
             .eq('owner_corp_id', id)
@@ -2929,7 +2882,7 @@ function initials(s, n) {
         if (routesRes.error) console.warn('[entrepreneur-corp] open routes fetch error:', routesRes.error.message);
         if (portsRes.error)   console.warn('[entrepreneur-corp] port count fetch error:',  portsRes.error.message);
 
-        const allRoutes  = routesRes.data || [];
+        const allRoutes  = (routesRes.data && routesRes.data.success) ? (routesRes.data.routes || []) : [];
         const portCount  = portsRes.count || 0;
         const fleetCap   = portCount * SHIPPING_FREIGHTERS_PER_PORT;
         const owned      = Number(c.freighters_owned) || 0;
@@ -2939,10 +2892,9 @@ function initials(s, n) {
         const myBidsByRoute = new Map();
         let committed = 0;
         for (const r of allRoutes) {
-          const mine = (r.bids || []).find(b => b.bidder_corp_id === id && b.status === 'pending');
-          if (mine) {
-            myBidsByRoute.set(r.id, { route: r, bid: mine, allocation: computeRouteAllocation(r) });
-            committed += Number(mine.freighters_allocated) || 0;
+          if (r.my_bid) {
+            myBidsByRoute.set(r.id, { route: r, bid: r.my_bid, wonUnits: Number(r.my_winning_units) || 0 });
+            committed += Number(r.my_bid.freighters) || 0;
           }
         }
         const available = Math.max(0, owned - committed);
@@ -2966,10 +2918,8 @@ function initials(s, n) {
         // Active Bids
         const activeBids = [...myBidsByRoute.values()];
         const activeBidsHtml = activeBids.length
-          ? activeBids.map(({ route, bid, allocation }) => {
-              const won = allocation.allocation[bid.id];
-              const wonUnits = won ? won.units : 0;
-              const myF = Number(bid.freighters_allocated) || 0;
+          ? activeBids.map(({ route, bid, wonUnits }) => {
+              const myF = Number(bid.freighters) || 0;
               const myRate = Number(bid.bid_rate) || 0;
               const status = wonUnits > 0
                 ? `<span class="sh-row-status">Filling ${wonUnits}/${myF} slot${wonUnits === 1 ? '' : 's'} · <span class="accent">+${fmtUsd(wonUnits * myRate)}/tick</span></span>`
@@ -3007,7 +2957,7 @@ function initials(s, n) {
         const openRoutesHtml = openRoutes.length
           ? openRoutes.map(r => {
               const demand  = Number(r.volume_required) || 0;
-              const bidders = (r.bids || []).filter(b => b.status === 'pending').length;
+              const bidders = Number(r.bidder_count) || 0;
               // Sealed-bid: show competition level (bidder count) but never a
               // rival's price, so routes don't become an undercut-by-$1 race.
               const bidLabel = bidders > 0
