@@ -17,9 +17,13 @@ source of truth for the 5-phase cull so any session can resume from here.
 - **Pre-existing orphans (NOT this changeset, leave for a dead-code sweep):** `js/game/materials.js`, `js/game/vessels.js` (legacy construction/shipping data), `js/guide.js`, `js/politics.js` (non-corp; possibly loaded via a path the grep missed — verify before deleting).
 - **Feature flag for P3:** the deleted `actions.html` carried the only commercial-lawsuit *filing* UI (`sue-corp.js`) and the equity-apply UI. Confirm these were legacy-corp-only before culling the lawsuit/equity RPCs — if `commercial_lawsuits`/equity apply to entrepreneur corps, an entrepreneur-side filing UI is missing.
 - **P5 reminder:** `common.js` `refreshAP` still SELECTs `corp_cash_reserves`; clean when that column is dropped.
-- [ ] Phase 3 — RPC / function cull (forward DROP migration)
-- [ ] Phase 4 — Tick / edge decoupling (advance-corp-tick, advance-tick)
-- [ ] Phase 5 — Schema teardown (legacy tables + `factions` columns)
+- [x] **Phase 3 — Client-only RPC cull** (`20270240`). Dropped 6 legacy RPCs with verified zero callers (frontend deleted): `claim_shipping_route`, `release_shipping_route`, `place_shipping_bid`, `fire_shipping_action`, `set_aircraft_tail_number`, `queue_production_run` (legacy).
+- [ ] Phase 4 — Tick / edge decoupling **+ drop the tick-bound legacy functions in the same migration** (caller+callee together): `assess_corporate_taxes`, `place_shipping_offer`, `generate_organic_shipping_routes`, `process_airline_corp_tick` + `airline_aircraft_ops_cost`/`_seats`/`_value`; also `declare_corp_bankruptcy` (after its 2 SQL callers `operational_safety_pact`/`aviation_incidents` go).
+- [ ] Phase 5 — Schema teardown (legacy tables + `factions` columns) **+ trigger functions** `refresh_corp_routes_count`, `corp_ownership_sum_check`, `corp_ownership_auto_seed` (drop with their tables/triggers).
+
+### P3 findings / new follow-ups
+- **Leftover P2 frontend (orphaned, delete in a P2-completion pass):** `js/corp-tax-pressing-issues.js` (still calls `pay_/cook_/ignore_corporate_tax` RPCs — blocks dropping those until removed), `js/loan-pressing-issues.js`, `js/lawsuit-pressing-issues.js`. No surviving HTML loads them; confirm the JS-import situation (the earlier orphan sweep didn't flag them — verify they aren't pulled by `entrepreneur-dashboard.html`/`government.html`'s pressing-issues system before deleting).
+- `airline_aircraft_ops_cost`/`_seats` ARE called by `process_airline_corp_tick` (20260721:207-209) — confirmed tick-bound, hence P4.
 
 **Rules:** forward-only `DROP` migrations (never edit the ~104 historical files);
 each phase ends with build/lint + a dangling-reference grep + one reviewable commit;
