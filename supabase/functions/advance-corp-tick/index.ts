@@ -207,7 +207,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     // wrong project / silent failure). Bump the date suffix on each
     // intentional redeploy so we can distinguish stale invocations
     // from new ones in the function logs.
-    console.log('[advance-corp-tick] BUILD_MARKER 2026-05-24-b (corp-cull-4g-aviation-incidents)');
+    console.log('[advance-corp-tick] BUILD_MARKER 2026-05-24-c (corp-cull-4g-loan-negotiations)');
 
     // 1+2+3. Read + idempotency + time-gating + atomic claim, all in
     //        one RPC. SECURITY DEFINER pl/pgsql bypasses PostgREST's
@@ -271,23 +271,6 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
         nations: nationList.length,
         errors: [],
     };
-
-    // 4b. Loan-negotiation stale sweep (once per tick, global). Abandons
-    // any negotiation idle > 24 hours, refunds held escrow, system-
-    // messages the row. Cheap: typically 0 sweeps per tick.
-    try {
-        const { data: sweepRes, error: sweepErr } = await supabase
-            .rpc('auto_abandon_stale_negotiations', { p_tick: currentTick });
-        if (sweepErr) {
-            console.error('[advance-corp-tick] loan-negotiation sweep failed:', sweepErr.message);
-            summary.errors.push({ scope: 'loan_negotiation_sweep', error: sweepErr.message });
-        } else if (sweepRes?.swept > 0) {
-            console.log(`[advance-corp-tick] Auto-abandoned ${sweepRes.swept} stale loan negotiation(s)`);
-        }
-    } catch (sweepEx) {
-        console.error('[advance-corp-tick] loan-negotiation sweep threw (non-fatal):', sweepEx);
-        summary.errors.push({ scope: 'loan_negotiation_sweep', error: String(sweepEx) });
-    }
 
     // Central Bank loan repayments (entrepreneur corp ↔ home-nation CB):
     // amortized payment from treasury_cash, principal frees CB capacity,
