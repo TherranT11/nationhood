@@ -2883,11 +2883,10 @@ function initials(s, n) {
       // never returns a rival's rate (see 20270237). The client only ever
       // sees its OWN bid.
       let shippingPanelHtml = '';
-      // NOTE: shipping routes/bids come solely from get_shipping_routes_for_corp,
-      // which is owner-gated server-side — so this panel stays owner-only until
-      // that RPC is widened to board directors (see follow-up). Leaving it on
-      // canView would show directors a misleading empty routes/bids list.
-      if (isShippingCorp && isOwner) {
+      // Owner + board directors (read-only): get_shipping_routes_for_corp was
+      // widened to board members in 20270252, so directors see the routes/bids
+      // with the buy/bid/edit/withdraw controls hidden via ownerOnly() below.
+      if (isShippingCorp && canView) {
         const [routesRes, portsRes] = await Promise.all([
           _supabase.rpc('get_shipping_routes_for_corp', { p_corp_id: id }),
           _supabase.from('corp_buildings')
@@ -3548,7 +3547,7 @@ function initials(s, n) {
         // checked server-side). Valuation/CEO/HQ/reputation read their single
         // sources in get_my_construction_bids. Grouped by contract for render.
         const bidsByContract = {};
-        if (isOwner && reqs.some(r => r.status === 'open')) {
+        if (reqs.some(r => r.status === 'open')) {
           const { data: bidRes, error: bidErr } = await _supabase.rpc('get_my_construction_bids', { p_corp_id: id });
           if (bidErr) console.warn('[entrepreneur-corp] construction bids fetch error:', bidErr.message);
           else if (bidRes && bidRes.success) {
@@ -3569,16 +3568,13 @@ function initials(s, n) {
             return head(`<span class="num green">building ${r.progress_ticks}/${r.timeline_ticks}${r.winning_bid ? ` · ${fmtUsd(Number(r.winning_bid))}` : ''}</span>`);
           }
           const bids = bidsByContract[r.id] || [];
-          // Directors get the request + status, but not the issuer-only bid
-          // list (get_my_construction_bids is owner-gated) — so no misleading
-          // "0 bids" count for them.
-          const badge = isOwner
-            ? `<span class="num amber">bidding · ${bids.length} bid${bids.length === 1 ? '' : 's'}</span>`
-            : `<span class="num amber">bidding</span>`;
-          const cards = !isOwner ? ''
-            : bids.length
-              ? `<div class="cb-bids">${bids.map(bidCard).join('')}</div>`
-              : '<div class="cb-bids"><div class="sh-empty" style="padding:6px 12px;">No bids yet.</div></div>';
+          // Owner + directors both see the bid list now (get_my_construction_bids
+          // widened in 20270252); the Accept/Reject buttons inside bidCard stay
+          // owner-only via ownerOnly().
+          const badge = `<span class="num amber">bidding · ${bids.length} bid${bids.length === 1 ? '' : 's'}</span>`;
+          const cards = bids.length
+            ? `<div class="cb-bids">${bids.map(bidCard).join('')}</div>`
+            : '<div class="cb-bids"><div class="sh-empty" style="padding:6px 12px;">No bids yet.</div></div>';
           return head(badge) + cards;
         };
         requestPanelHtml += `
