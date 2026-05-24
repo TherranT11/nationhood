@@ -883,6 +883,21 @@ function initials(s, n) {
     // Mirrors the trade card's lock/reason/reload conventions.
     const isOwner = !!entId && c.owner_faction_id === entId;
 
+    // ── Viewer role (one source of truth). Board directors (corp_board_seats,
+    //    which excludes the founder — the founder is the owner/chairman) get
+    //    full READ-ONLY visibility of every operational panel; all management
+    //    actions stay owner-only. Reused below by the director-equity,
+    //    no-confidence, and operational-panel gates. ──
+    let isDirector = false;
+    if (!!entId && !isOwner) {
+      const { data: _seat, error: _seatErr } = await _supabase.from('corp_board_seats')
+        .select('corp_id').eq('corp_id', id).eq('member_faction_id', entId).maybeSingle();
+      if (_seatErr) console.warn('[entrepreneur-corp] director-seat fetch error:', _seatErr.message);
+      isDirector = !!_seat;
+    }
+    const canView   = isOwner || isDirector;       // may see operational panels
+    const ownerOnly = (html) => (isOwner ? html : ''); // strip management affordances for directors
+
     // ── Rebrand action (owner-only): logo + name + ticker. $1M from corp
     //    treasury, 12-tick cooldown. RPC: entrepreneur_rebrand_corp. ──
     const rebrandBtn = document.getElementById('cp-rebrand-btn');
@@ -1000,23 +1015,17 @@ function initials(s, n) {
     // ── Director actions (2.6.8.6.2): Offer Investment + Sell Equity ──
     // Board directors (corp_board_seats, excludes the owner) of a PRIVATE
     // corp can offer to invest for equity; Sell Equity also needs shares held.
-    if (!isPublic && entId && !isOwner) {
-      _supabase.from('corp_board_seats').select('corp_id')
-        .eq('corp_id', id).eq('member_faction_id', entId).maybeSingle()
-        .then(({ data: seat, error: seatErr }) => {
-          if (seatErr) { console.warn('[entrepreneur-corp] director-seat fetch error:', seatErr.message); return; }
-          if (!seat) return;
-          const wrap = document.getElementById('cp-director-actions');
-          if (wrap) wrap.style.display = 'block';
-          const myShares = holdingsByFaction.get(entId) || 0;
-          const offerBtn = document.getElementById('cp-offer-invest-btn');
-          const sellBtn  = document.getElementById('cp-sell-equity-btn');
-          if (offerBtn) offerBtn.onclick = () => openOfferInvestModal();
-          if (sellBtn && myShares > 0) {
-            sellBtn.style.display = '';
-            sellBtn.onclick = () => openSellEquityModal(myShares);
-          }
-        });
+    if (!isPublic && isDirector) {
+      const wrap = document.getElementById('cp-director-actions');
+      if (wrap) wrap.style.display = 'block';
+      const myShares = holdingsByFaction.get(entId) || 0;
+      const offerBtn = document.getElementById('cp-offer-invest-btn');
+      const sellBtn  = document.getElementById('cp-sell-equity-btn');
+      if (offerBtn) offerBtn.onclick = () => openOfferInvestModal();
+      if (sellBtn && myShares > 0) {
+        sellBtn.style.display = '';
+        sellBtn.onclick = () => openSellEquityModal(myShares);
+      }
     }
     const parseNum = (v) => parseFloat(String(v || '').replace(/[^0-9.]/g, ''));
 
@@ -2358,21 +2367,15 @@ function initials(s, n) {
       // idempotent and SECURITY DEFINER.
       const ncCard = document.getElementById('cp-nc');
       if (ncCard) {
-        const [shardRes, motionRes, dirRes] = await Promise.all([
+        const [shardRes, motionRes] = await Promise.all([
           _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').maybeSingle(),
           _supabase.from('corp_no_confidence_motions')
             .select('*').eq('corp_id', id).eq('status', 'open').maybeSingle(),
-          entId
-            ? _supabase.from('corp_board_seats').select('corp_id')
-                .eq('corp_id', id).eq('member_faction_id', entId).maybeSingle()
-            : Promise.resolve({ data: null, error: null }),
         ]);
         if (shardRes.error)  console.warn('[entrepreneur-corp] shard fetch error:',         shardRes.error.message);
         if (motionRes.error) console.warn('[entrepreneur-corp] open-motion fetch error:',   motionRes.error.message);
-        if (dirRes.error)    console.warn('[entrepreneur-corp] board-seat fetch error:',    dirRes.error.message);
         const currentTick = Number(shardRes?.data?.current_tick || 0);
         const motion      = motionRes?.data || null;
-        const isDirector  = !!dirRes?.data;
 
         const ncBody = document.getElementById('cp-nc-body');
         const ncMsg  = document.getElementById('cp-nc-msg');
@@ -2880,6 +2883,10 @@ function initials(s, n) {
       // never returns a rival's rate (see 20270237). The client only ever
       // sees its OWN bid.
       let shippingPanelHtml = '';
+      // NOTE: shipping routes/bids come solely from get_shipping_routes_for_corp,
+      // which is owner-gated server-side — so this panel stays owner-only until
+      // that RPC is widened to board directors (see follow-up). Leaving it on
+      // canView would show directors a misleading empty routes/bids list.
       if (isShippingCorp && isOwner) {
         const [routesRes, portsRes] = await Promise.all([
           _supabase.rpc('get_shipping_routes_for_corp', { p_corp_id: id }),
@@ -2918,11 +2925,11 @@ function initials(s, n) {
             <div class="cell"><div class="lab">Available</div><div class="val${available === 0 ? ' muted' : ''}">${available}</div></div>
             <div class="cell"><div class="lab">Committed</div><div class="val${committed === 0 ? ' muted' : ''}">${committed}</div></div>
             <div class="cell"><div class="lab">Cap</div><div class="val${fleetCap === 0 ? ' muted' : ''}">${fleetCap}</div></div>
-            <button class="sh-buy-btn" id="sh-buy-freighter"
+            ${ownerOnly(`<button class="sh-buy-btn" id="sh-buy-freighter"
                     ${(!hasCapacity || !canAffordFreighter) ? 'disabled' : ''}
                     title="${!hasCapacity ? 'Fleet at Port cap — build another Port first' : !canAffordFreighter ? 'Corp treasury too low' : ''}">
               Buy Freighter (${fmtUsd(SHIPPING_FREIGHTER_COST)})
-            </button>
+            </button>`)}
           </div>`;
 
         // Active Bids
@@ -2948,7 +2955,7 @@ function initials(s, n) {
                       ${status}
                     </div>
                   </div>
-                  <div class="sh-row-actions">
+                  ${ownerOnly(`<div class="sh-row-actions">
                     <button class="ap-btn-small accept sh-edit-bid"
                             data-rid="${route.id}"
                             data-bname="${escapeHtml(route.name || 'Route')}"
@@ -2959,7 +2966,7 @@ function initials(s, n) {
                     <button class="ap-btn-small reject sh-withdraw-bid"
                             data-rid="${route.id}"
                             data-bname="${escapeHtml(route.name || 'Route')}">Withdraw</button>
-                  </div>
+                  </div>`)}
                 </div>`;
             }).join('')
           : `<div class="sh-empty">No active bids — pick an open route below and place one.</div>`;
@@ -2992,7 +2999,7 @@ function initials(s, n) {
                       ${bidLabel}${covLabel}
                     </div>
                   </div>
-                  <div class="sh-row-actions">
+                  ${ownerOnly(`<div class="sh-row-actions">
                     <button class="ap-btn-small list sh-place-bid"
                             data-rid="${r.id}"
                             data-bname="${escapeHtml(r.name || 'Route')}"
@@ -3001,7 +3008,7 @@ function initials(s, n) {
                             ${available === 0 ? 'disabled title="No available freighters — withdraw a bid or buy more"' : ''}>
                       Place Bid
                     </button>
-                  </div>
+                  </div>`)}
                 </div>`;
             }).join('')
           : `<div class="sh-empty">No open trade-agreement routes — waiting on nations to sign trade flows.</div>`;
@@ -3024,7 +3031,7 @@ function initials(s, n) {
       // reputation tiers exactly so the player sees what the server
       // will compute.
       let brokeragePanelHtml = '';
-      if (isRealEstateCorp && isOwner) {
+      if (isRealEstateCorp && canView) {
         // Pull (a) my offices to know which nations I can broker in,
         // (b) my active listings, (c) all unowned buildings in those
         // nations. Two queries — offices first, then a single fetch
@@ -3082,7 +3089,7 @@ function initials(s, n) {
                       <span class="dim"> · fee paid ${fmtUsd(fee)}</span>
                     </div>
                   </div>
-                  <div class="sh-row-actions">
+                  ${ownerOnly(`<div class="sh-row-actions">
                     <button class="ap-btn-small accept sh-broker-reprice"
                             data-bid="${b.id}"
                             data-bname="${escapeHtml(b.name)}"
@@ -3092,7 +3099,7 @@ function initials(s, n) {
                             data-bid="${b.id}"
                             data-bname="${escapeHtml(b.name)}"
                             data-fee="${fee}">Withdraw</button>
-                  </div>
+                  </div>`)}
                 </div>`;
             }).join('')
           : `<div class="sh-empty">No active listings — pick an available property below to broker.</div>`;
@@ -3120,12 +3127,12 @@ function initials(s, n) {
                     lock fee <span class="accent">${fmtUsd(fee)}</span>
                   </div>
                 </div>
-                <div class="sh-row-actions">
+                ${ownerOnly(`<div class="sh-row-actions">
                   <button class="ap-btn-small list sh-broker-list"
                           data-bid="${b.id}"
                           data-bname="${escapeHtml(b.name)}"
                           data-cost="${cost}">List for Sale</button>
-                </div>
+                </div>`)}
               </div>`;
           }).join('');
         }
@@ -3145,7 +3152,7 @@ function initials(s, n) {
       // ineligibility chip. Server enforces the same gate at accept
       // time — UI here is just the visibility surface.
       let loanRequestsHtml = '';
-      if (c.industry === 'banking' && isOwner) {
+      if (c.industry === 'banking' && canView) {
         const [reqsRes, mineBoRes] = await Promise.all([
           _supabase.from('corp_loan_requests')
             .select('id, principal, term_ticks, expires_at_tick, '
@@ -3185,7 +3192,7 @@ function initials(s, n) {
                     </div>
                   </div>
                   ${eligible
-                    ? `<button class="ap-btn-small accept cp-make-offer" data-rid="${r.id}" data-principal="${r.principal}" data-term="${r.term_ticks}" data-bname="${escapeHtml(r.borrower?.name || 'Unknown')}">Make Offer</button>`
+                    ? ownerOnly(`<button class="ap-btn-small accept cp-make-offer" data-rid="${r.id}" data-principal="${r.principal}" data-term="${r.term_ticks}" data-bname="${escapeHtml(r.borrower?.name || 'Unknown')}">Make Offer</button>`)
                     : '<span class="ap-loan-grey">No Banking Office in their HQ nation</span>'}
                 </div>`;
             }).join('');
@@ -3201,7 +3208,7 @@ function initials(s, n) {
       // computed here for display only — open_route enforces it
       // server-side (this preview can never over-grant).
       let airlinePanelHtml = '';
-      if (c.industry === 'airline' && isOwner) {
+      if (c.industry === 'airline' && canView) {
         const [termRes, routeRes, cityRes, aircraftRes, laneRes] = await Promise.all([
           _supabase.from('airline_terminals')
             .select('id, city_id, terminal_number, city:airline_cities!city_id(id, name, population_pct, is_capital)')
@@ -3295,10 +3302,10 @@ function initials(s, n) {
                       <span class="al-cond ${condCls}">${cond}%</span>${a.overhaul_count > 0 ? ` <span class="dim">· ${a.overhaul_count} overhaul${a.overhaul_count > 1 ? 's' : ''}</span>` : ''}</div>
                     <div class="sh-row-sub">${assign}</div>
                   </div>
-                  <div class="sh-row-actions">
+                  ${ownerOnly(`<div class="sh-row-actions">
                     <button class="ap-btn-small accept al-overhaul" data-aid="${a.id}"${ohDisabled ? ' disabled title="' + ohTitle + '"' : ''}>Overhaul</button>
                     <button class="ap-btn-small reject al-retire" data-aid="${a.id}" data-acls="${a.aircraft_class}">Retire</button>
-                  </div>
+                  </div>`)}
                 </div>`;
             }).join('')
           : `<div class="sh-empty">No aircraft yet. Buy aircraft below, then assign them to routes.</div>`;
@@ -3306,9 +3313,9 @@ function initials(s, n) {
         const fleetCard = `
           <div class="sh-section-head">Fleet</div>
           <div class="sh-fleet" style="grid-template-columns:1fr 1fr 1fr;">${fleetCells}</div>
-          <div class="al-form">
+          ${ownerOnly(`<div class="al-form">
             <button class="sh-buy-btn" id="al-request-aircraft">Request Aircraft</button>
-          </div>
+          </div>`)}
           <div class="al-hint">Cash: <b>${fmtUsd(corpCash)}</b>. Commission aircraft from Aviation Manufacturing corps — post an RFP (class · qty · per-unit budget); they bid a design + price, the lowest builds it to order and delivers. Paid on delivery.</div>
           <div class="sh-section-head">Aircraft · ${aircraft.length}</div>
           ${acRowsHtml}
@@ -3323,9 +3330,9 @@ function initials(s, n) {
                   <div class="sh-row-name">${escapeHtml(t.city?.name || 'City')}${t.city?.is_capital ? ' <span class="al-cap">CAPITAL</span>' : ''}</div>
                   <div class="sh-row-sub">Terminal #${t.terminal_number} · pop weight <span class="accent">${Number(t.city?.population_pct) || 0}</span></div>
                 </div>
-                <div class="sh-row-actions">
+                ${ownerOnly(`<div class="sh-row-actions">
                   <button class="ap-btn-small reject al-release" data-tid="${t.id}" data-cname="${escapeHtml(t.city?.name || 'City')}">Release</button>
-                </div>
+                </div>`)}
               </div>`).join('')
           : `<div class="sh-empty">No terminals. Claim slots in two cities to open your first route.</div>`;
         const claimOpts = allCities.filter(c2 => !ownedCityIds.has(c2.id))
@@ -3364,10 +3371,10 @@ function initials(s, n) {
                     </div>
                     ${laneHtml}
                   </div>
-                  <div class="sh-row-actions">
+                  ${ownerOnly(`<div class="sh-row-actions">
                     <button class="ap-btn-small reject al-close" data-rid="${r.id}"
                             data-rname="${escapeHtml((r.origin?.name || '?') + ' ↔ ' + (r.dest?.name || '?'))}">Close</button>
-                  </div>
+                  </div>`)}
                 </div>`;
             }).join('')
           : `<div class="sh-empty">No active routes. Claim two terminals, then open a route between them.</div>`;
@@ -3411,15 +3418,15 @@ function initials(s, n) {
           ${rfpSection}
           <div class="sh-section-head">Terminals · ${terminals.length}</div>
           ${termRowsHtml}
-          ${claimForm}
+          ${ownerOnly(claimForm)}
           <div class="sh-section-head">Routes · ${routes.length}</div>
           ${routeRowsHtml}
-          ${openForm}
+          ${ownerOnly(openForm)}
         `;
       }
 
       let aviationPanelHtml = '';
-      if (c.industry === 'aviation_manufacturing' && isOwner) {
+      if (c.industry === 'aviation_manufacturing' && canView) {
         const { data: adData, error: adErr } = await _supabase.from('ent_aircraft_designs')
           .select('id, design_type, name, status, research_ticks_total, research_ticks_remaining, quality, cost_per_unit, airframe_class, engine_count, passengers, range_nm, demand_score, safety_score, thrust, weight, efficiency, reliability, inventory_on_hand')
           .eq('entrepreneur_corp_id', id).order('created_at', { ascending: false });
@@ -3435,7 +3442,7 @@ function initials(s, n) {
             ? `thrust ${d.thrust} · weight ${d.weight} · eff ${d.efficiency} · rel ${d.reliability} · Q${d.quality}`
             : `${escapeHtml(d.airframe_class || '')} · ${d.engine_count}× eng · ${d.passengers} pax · range ${d.range_nm} · demand ${d.demand_score} · safety ${d.safety_score} · Q${d.quality}`;
           const right = isAvailAircraft
-            ? `<div class="sh-row-actions" style="align-items:center;gap:8px;"><span class="num ${stock > 0 ? 'green' : 'muted'}">${stock} in stock</span><button class="ap-btn-small list ac-produce-btn" data-did="${d.id}" data-name="${escapeHtml(d.name)}" data-class="${escapeHtml(d.airframe_class || '')}" data-cost="${Number(d.cost_per_unit) || 0}">Produce</button></div>`
+            ? `<div class="sh-row-actions" style="align-items:center;gap:8px;"><span class="num ${stock > 0 ? 'green' : 'muted'}">${stock} in stock</span>${ownerOnly(`<button class="ap-btn-small list ac-produce-btn" data-did="${d.id}" data-name="${escapeHtml(d.name)}" data-class="${escapeHtml(d.airframe_class || '')}" data-cost="${Number(d.cost_per_unit) || 0}">Produce</button>`)}</div>`
             : prog;
           return `<div class="cf-row"><div><div class="who">${d.design_type === 'engine' ? 'Engine' : 'Aircraft'} · ${escapeHtml(d.name)}</div>
             <div class="sub">${stats} · unit ${fmtUsd(Number(d.cost_per_unit) || 0)}</div></div>${right}</div>`;
@@ -3453,9 +3460,10 @@ function initials(s, n) {
           const biddable = (openRfps || []).filter(r => availClasses.has(r.aircraft_class));
           const orRow = (r) => {
             const mine = (r.mybid || []).find(b => b.bidder_corp_id === id);
+            const bidBtn = ownerOnly(`<button class="ap-btn-small list ac-bid-btn" data-rid="${r.id}" data-class="${escapeHtml(r.aircraft_class)}" data-budget="${Number(r.budget_per_unit) || 0}">${mine ? `bid ${fmtUsd(Number(mine.price_per_unit))}` : 'Bid'}</button>`);
             return `<div class="cf-row"><div><div class="who">${r.quantity}× ${escapeHtml(r.aircraft_class)} · ${escapeHtml(r.airline?.name || 'Airline')}</div>
               <div class="sub">budget ${fmtUsd(Number(r.budget_per_unit) || 0)}/unit</div></div>
-              <button class="ap-btn-small list ac-bid-btn" data-rid="${r.id}" data-class="${escapeHtml(r.aircraft_class)}" data-budget="${Number(r.budget_per_unit) || 0}">${mine ? `bid ${fmtUsd(Number(mine.price_per_unit))}` : 'Bid'}</button></div>`;
+              ${bidBtn}</div>`;
           };
           rfpBidSection = `<div class="section-heading"><span class="sans">Open Aircraft</span><span class="serif">RFPs</span></div>${biddable.length ? biddable.map(orRow).join('') : '<div class="sh-empty">No open RFPs matching your available designs.</div>'}`;
         }
@@ -3494,15 +3502,15 @@ function initials(s, n) {
             // Incoming: I'm the seller.
             const buyer = escapeHtml(o.buyer?.name || 'Buyer');
             const act = o.status === 'pending'
-              ? `<button class="ap-btn-small list eo-price-btn" ${da} data-party="${buyer}">Set Price</button>`
+              ? ownerOnly(`<button class="ap-btn-small list eo-price-btn" ${da} data-party="${buyer}">Set Price</button>`)
               : `<span class="num amber">${fmtUsd(Number(o.price_per_unit) || 0)}/u · sent</span>`;
             return `<div class="cf-row"><div><div class="who">Sell ${o.quantity}× ${eng}</div><div class="sub">to ${buyer}</div></div>${act}</div>`;
           }
           // Outgoing: I'm the buyer.
           const seller = escapeHtml(o.seller?.name || 'Seller');
           const act = o.status === 'priced'
-            ? `<div class="sh-row-actions" style="gap:6px;"><button class="ap-btn-small list eo-accept-btn" ${da} data-party="${seller}">Accept ${fmtUsd(Number(o.price_per_unit) || 0)}/u</button><button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Decline</button></div>`
-            : `<div class="sh-row-actions" style="gap:6px;"><span class="num muted">awaiting price</span><button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Cancel</button></div>`;
+            ? `<div class="sh-row-actions" style="gap:6px;">${ownerOnly(`<button class="ap-btn-small list eo-accept-btn" ${da} data-party="${seller}">Accept ${fmtUsd(Number(o.price_per_unit) || 0)}/u</button><button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Decline</button>`)}</div>`
+            : `<div class="sh-row-actions" style="gap:6px;"><span class="num muted">awaiting price</span>${ownerOnly(`<button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Cancel</button>`)}</div>`;
           return `<div class="cf-row"><div><div class="who">Buy ${o.quantity}× ${eng}</div><div class="sub">from ${seller}</div></div>${act}</div>`;
         };
         const ordersSection = (ordData && ordData.length)
@@ -3513,11 +3521,11 @@ function initials(s, n) {
           <div class="section-heading"><span class="sans">Aircraft</span><span class="serif">Designs</span></div>
           <div class="cf-row" style="align-items:center;">
             <div class="sub" style="flex:1;">Design engines (needs an Engine Assembly Plant) and aircraft (needs a Light Assembly Plant). Each researches over ticks at $1M/tick from treasury.</div>
-            <div class="sh-row-actions">
+            ${ownerOnly(`<div class="sh-row-actions">
               <button class="ap-btn-small list" id="ad-design-engine">Design Engine</button>
               <button class="ap-btn-small list" id="ad-design-aircraft">Design Aircraft</button>
               <button class="ap-btn-small list" id="ad-buy-engines">Buy Engines</button>
-            </div>
+            </div>`)}
           </div>
           ${designs.length ? designs.map(dRow).join('') : '<div class="sh-empty">No designs yet — design an engine, then an aircraft.</div>'}
           ${productionSection}
@@ -3529,7 +3537,7 @@ function initials(s, n) {
       // ── Request Construction panels (20270225). My commissioned requests
       // (any owner) + open requests this construction corp can bid on. ──
       let requestPanelHtml = '';
-      if (isOwner) {
+      if (canView) {
         const { data: myReqs, error: mrErr } = await _supabase.from('ent_construction_contracts')
           .select('id, name, building_type, budget, build_cost, status, timeline_ticks, progress_ticks, winning_bid, nation:nations!nation_id(name)')
           .eq('issuer_corp_id', id).not('building_type', 'is', null)
@@ -3540,7 +3548,7 @@ function initials(s, n) {
         // checked server-side). Valuation/CEO/HQ/reputation read their single
         // sources in get_my_construction_bids. Grouped by contract for render.
         const bidsByContract = {};
-        if (reqs.some(r => r.status === 'open')) {
+        if (isOwner && reqs.some(r => r.status === 'open')) {
           const { data: bidRes, error: bidErr } = await _supabase.rpc('get_my_construction_bids', { p_corp_id: id });
           if (bidErr) console.warn('[entrepreneur-corp] construction bids fetch error:', bidErr.message);
           else if (bidRes && bidRes.success) {
@@ -3550,10 +3558,10 @@ function initials(s, n) {
         const bidCard = (b) => `<div class="cb-bid"><div>
             <div class="cb-bid-corp">${escapeHtml(b.corp_name || '—')}<span class="cb-bid-amt">${fmtUsd(Number(b.bid_amount) || 0)}</span></div>
             <div class="cb-bid-meta">${escapeHtml(b.hq || '—')} · Valuation ${fmtValuation(Number(b.valuation) || 0)} · CEO ${escapeHtml(b.ceo || '—')} · Rep ${Number(b.ceo_reputation) || 0}</div>
-          </div><div class="cb-bid-actions">
+          </div>${ownerOnly(`<div class="cb-bid-actions">
             <button class="ap-btn-small accept cb-accept-btn" data-bid="${b.bid_id}">Accept</button>
             <button class="ap-btn-small reject cb-reject-btn" data-bid="${b.bid_id}">Reject</button>
-          </div></div>`;
+          </div>`)}</div>`;
         const mrRow = (r) => {
           const head = (badge) => `<div class="cf-row"><div><div class="who">${escapeHtml(buildingTypeLabel(r.building_type))} · ${escapeHtml(r.name)}</div>
             <div class="sub">${escapeHtml(r.nation?.name || '—')} · budget ${fmtUsd(Number(r.budget) || 0)} · floor ${fmtUsd(Number(r.build_cost) || 0)}</div></div>${badge}</div>`;
@@ -3561,21 +3569,27 @@ function initials(s, n) {
             return head(`<span class="num green">building ${r.progress_ticks}/${r.timeline_ticks}${r.winning_bid ? ` · ${fmtUsd(Number(r.winning_bid))}` : ''}</span>`);
           }
           const bids = bidsByContract[r.id] || [];
-          const badge = `<span class="num amber">bidding · ${bids.length} bid${bids.length === 1 ? '' : 's'}</span>`;
-          const cards = bids.length
-            ? `<div class="cb-bids">${bids.map(bidCard).join('')}</div>`
-            : '<div class="cb-bids"><div class="sh-empty" style="padding:6px 12px;">No bids yet.</div></div>';
+          // Directors get the request + status, but not the issuer-only bid
+          // list (get_my_construction_bids is owner-gated) — so no misleading
+          // "0 bids" count for them.
+          const badge = isOwner
+            ? `<span class="num amber">bidding · ${bids.length} bid${bids.length === 1 ? '' : 's'}</span>`
+            : `<span class="num amber">bidding</span>`;
+          const cards = !isOwner ? ''
+            : bids.length
+              ? `<div class="cb-bids">${bids.map(bidCard).join('')}</div>`
+              : '<div class="cb-bids"><div class="sh-empty" style="padding:6px 12px;">No bids yet.</div></div>';
           return head(badge) + cards;
         };
         requestPanelHtml += `
           <div class="section-heading"><span class="sans">Construction</span><span class="serif">Requests</span></div>
           <div class="cf-row" style="align-items:center;">
             <div class="sub" style="flex:1;">Commission a building from construction corps. Review each bid and Accept the one you want, or Reject bidders (a rejected builder is locked out). If you accept none before bidding closes, the lowest qualifying bid wins automatically. You pay on completion.</div>
-            <div class="sh-row-actions"><button class="ap-btn-small list" id="rc-open-btn">Request Construction</button></div>
+            ${ownerOnly(`<div class="sh-row-actions"><button class="ap-btn-small list" id="rc-open-btn">Request Construction</button></div>`)}
           </div>
           ${reqs.length ? reqs.map(mrRow).join('') : '<div class="sh-empty">No open requests.</div>'}`;
       }
-      if (isOwner && isConstructionCorp) {
+      if (canView && isConstructionCorp) {
         const { data: cyRows, error: cyErr } = await _supabase.from('corp_buildings')
           .select('nation_id').eq('owner_corp_id', id).eq('building_type', 'construction_yard').eq('status', 'completed');
         if (cyErr) console.warn('[entrepreneur-corp] CY-nations fetch error:', cyErr.message);
@@ -3593,9 +3607,10 @@ function initials(s, n) {
           const orRow = (r) => {
             const mine = (r.mybid || []).find(b => b.bidder_corp_id === id);
             const label = buildingTypeLabel(r.building_type);
+            const bidBtn = ownerOnly(`<button class="ap-btn-small list rc-bid-btn" data-cid="${r.id}" data-label="${escapeHtml(label)}" data-floor="${Number(r.build_cost) || 0}" data-budget="${Number(r.budget) || 0}">${mine ? `bid ${fmtUsd(Number(mine.bid_amount))}` : 'Bid'}</button>`);
             return `<div class="cf-row"><div><div class="who">${escapeHtml(label)} · ${escapeHtml(r.name)}</div>
               <div class="sub">${escapeHtml(r.nation?.name || '—')} · by ${escapeHtml(r.issuer_name || '—')} · floor ${fmtUsd(Number(r.build_cost) || 0)} · budget ${fmtUsd(Number(r.budget) || 0)}</div></div>
-              <button class="ap-btn-small list rc-bid-btn" data-cid="${r.id}" data-label="${escapeHtml(label)}" data-floor="${Number(r.build_cost) || 0}" data-budget="${Number(r.budget) || 0}">${mine ? `bid ${fmtUsd(Number(mine.bid_amount))}` : 'Bid'}</button></div>`;
+              ${bidBtn}</div>`;
           };
           openHtml = open.length ? open.map(orRow).join('') : '<div class="sh-empty">No open requests in your nations.</div>';
         }
