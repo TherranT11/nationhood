@@ -155,7 +155,12 @@ import { _supabase } from './js/supabase-client.js';
   // ── Personal liability (post-bankruptcy debt recourse). Shown only when the
   //    founder owes; settling from personal funds re-enables founding corps. ──
   const usd = (n) => '$' + Math.round(Math.max(0, Number(n) || 0)).toLocaleString('en-US');
-  const owed = Math.max(0, Number(f.ent_unpaid_debt) || 0);
+  // Read the liability on its own (not via the shared bootstrap) so a not-yet-
+  // applied ent_unpaid_debt column can never break the universal topbar; a
+  // missing column / error just yields 0 (no card).
+  const { data: _liab } = await _supabase.from('factions')
+    .select('ent_unpaid_debt').eq('id', f.id).maybeSingle();
+  const owed = Math.max(0, Number(_liab?.ent_unpaid_debt) || 0);
   if (owed > 0) {
     const card = document.getElementById('ch-liability');
     const sBtn = document.getElementById('ch-settle-btn');
