@@ -39,6 +39,29 @@
   }
   .ch-loc-note { color:#555; font-size:10px; letter-spacing:0.06em; margin-top:8px; }
 
+  /* Reputable Entrepreneurs leaderboard — fixed 380×420, scrolls if the
+     roster outgrows it. Top 3 green, bottom 5 red (top wins on overlap). */
+  .ch-rep {
+    width:380px; max-width:100%; height:420px; margin-top:20px;
+    background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
+    display:flex; flex-direction:column;
+  }
+  .ch-rep-head {
+    flex:none; padding:14px 16px; border-bottom:0.5px solid rgba(255,255,255,0.08);
+    color:#8aaa6a; font-size:11px; letter-spacing:0.12em; text-transform:uppercase;
+  }
+  .ch-rep-list { flex:1; overflow-y:auto; }
+  .ch-rep-row {
+    display:flex; align-items:center; gap:8px; padding:9px 16px; font-size:12px;
+    border-bottom:0.5px solid rgba(255,255,255,0.04);
+  }
+  .ch-rep-row .rk { flex:none; width:22px; color:#555; font-size:10px; }
+  .ch-rep-row .nm { flex:1; min-width:0; color:#d4d4d4; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ch-rep-row .rp { flex:none; font-weight:600; color:#d4d4d4; font-variant-numeric:tabular-nums; }
+  .ch-rep-row.rep-top .nm, .ch-rep-row.rep-top .rp { color:#8aaa6a; }
+  .ch-rep-row.rep-bottom .nm, .ch-rep-row.rep-bottom .rp { color:#d88d82; }
+  .ch-rep-empty { padding:16px; color:#555; font-size:11px; letter-spacing:0.06em; }
+
   @media (max-width:600px) {
     .ch-identity .first, .ch-identity .last { font-size:34px; }
     .ch-identity .meta-row { gap:16px; }
@@ -63,10 +86,16 @@
     <div class="ch-loc-value"><span id="ch-location">—</span><span class="ch-loc-tag">HOME</span></div>
     <div class="ch-loc-note">Travel actions coming soon.</div>
   </div>
+
+  <div class="ch-rep">
+    <div class="ch-rep-head">Reputable Entrepreneurs</div>
+    <div class="ch-rep-list" id="ch-rep-list"></div>
+  </div>
 </div>
 <script type="module">
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
+import { _supabase } from './js/supabase-client.js';
 
 (async () => {
   // bootstrapEntrepreneur already fetches the character fields we need
@@ -87,6 +116,32 @@ import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
   set('ch-archetype', arch ? arch.name : '—');
   // Current location = the character's home (origin) nation until travel ships.
   set('ch-location', f.nation ? String(f.nation) : 'Home Nation');
+
+  // ── Reputable Entrepreneurs leaderboard: every active entrepreneur by
+  //    reputation, descending. Top 3 green, bottom 5 red (top wins overlap). ──
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
+    c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const list = document.getElementById('ch-rep-list');
+  if (list) {
+    const { data: ents, error } = await _supabase
+      .from('factions')
+      .select('id, faction_name, leader_first_name, leader_last_name, ent_reputation')
+      .eq('faction_type', 'entrepreneur')
+      .is('abandoned_at', null)
+      .order('ent_reputation', { ascending: false, nullsFirst: false });
+    if (error) console.warn('[entrepreneur-assets] reputation list failed:', error.message);
+    const rows = ents || [];
+    list.innerHTML = rows.length
+      ? rows.map((r, i) => {
+          const nm = [r.leader_first_name, r.leader_last_name].filter(Boolean).join(' ').trim()
+            || r.faction_name || 'Unknown';
+          const rep = Math.round(Number(r.ent_reputation) || 0);
+          const cls = i < 3 ? 'rep-top' : (i >= rows.length - 5 ? 'rep-bottom' : '');
+          return `<div class="ch-rep-row ${cls}"><span class="rk">${i + 1}</span>`
+            + `<span class="nm">${esc(nm)}</span><span class="rp">${rep}</span></div>`;
+        }).join('')
+      : '<div class="ch-rep-empty">No entrepreneurs yet.</div>';
+  }
 })().catch(e => console.warn('[entrepreneur-assets] init failed:', e?.message || e));
 </script>
 </body>
