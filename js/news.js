@@ -86,19 +86,9 @@ export async function initNewspaper(supabase, state) {
     const root = document.getElementById('newspaper-root');
     if (!root) return;
 
-    // Load corporate presence nations (for corps with foreign property)
+    // Legacy faction-corporations (which could hold foreign corp_properties)
+    // are culled; no faction has corp presence to surface here.
     _corpPresenceNations = [];
-    if (state.faction?.faction_type === 'corporation') {
-        try {
-            const { data: props } = await supabase.from('corp_properties')
-                .select('nation_id, nations:nation_id(name)')
-                .eq('faction_id', state.faction.id)
-                .eq('is_active', true);
-            if (props) {
-                _corpPresenceNations = props.map(p => (p.nations?.name || '').toLowerCase()).filter(Boolean);
-            }
-        } catch (_) { /* non-blocking */ }
-    }
 
     // Set default publication on first load only — on re-init from the
     // publication switcher, _publication is already set to the user's choice.
