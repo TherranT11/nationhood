@@ -6671,19 +6671,14 @@ async function triggerDisbandParty() {
                 .select('id, faction_type')
                 .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
             const otherParty = (remaining || []).find(f => f.faction_type === 'party');
-            const corp       = (remaining || []).find(f => f.faction_type === 'corporation');
             if (otherParty) {
                 sessionStorage.setItem('active_faction_id', otherParty.id);
                 alert(partyName + ' has been disbanded.\n\nRedirecting to your other party.');
                 window.location.href = 'dashboard.html';
                 return;
             }
-            if (corp) {
-                sessionStorage.setItem('active_faction_id', corp.id);
-                alert(partyName + ' has been disbanded.\n\nRedirecting to your corporation.');
-                window.location.href = 'corp-dashboard.html';
-                return;
-            }
+            // Legacy corporations are retired (corp-cull) — no corp to switch
+            // to; fall through to the faction chooser.
         }
 
         alert(partyName + ' has been disbanded.\n\nYou have no remaining factions.');

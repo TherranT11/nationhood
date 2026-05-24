@@ -11,7 +11,7 @@ source of truth for the 5-phase cull so any session can resume from here.
 ## Status
 
 - [x] **Phase 1 — Inventory & Freeze** (this doc + `20270239_freeze_legacy_corp_creation.sql`; founding entry buttons disabled; verification items worked)
-- [ ] Phase 2 — Frontend cull (pages + JS + entry links)
+- [x] **Phase 2 — Frontend cull (hard cull).** Deleted 13 pages (the 10 + `alliances.html`/`expansion.html`/`actions.html`, confirmed corp-only) + `js/corp-topbar.js` + `css/corp-topbar.css` + orphaned `js/corp-bankruptcy.js`. Rewired survivors: `factions.js` routes `corporation`→`faction-select.html`; `common.js` corp-navbar block + import + dead corp-tick-timing removed; `faction-select.html`/`select-nation.html` corp redirects removed; `notifications.js` `isCorp` branch + `checkExecContractsExpiring` removed; `admin.html` corp inspector emptied; `party-actions.js` disband-to-corp redirect removed. Verified: zero dangling refs (only code-comments mention corp-topbar), JS parses, lint clean. KEPT `corp-valuation.js` (shared).
 - [ ] Phase 3 — RPC / function cull (forward DROP migration)
 - [ ] Phase 4 — Tick / edge decoupling (advance-corp-tick, advance-tick)
 - [ ] Phase 5 — Schema teardown (legacy tables + `factions` columns)

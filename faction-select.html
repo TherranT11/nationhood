@@ -167,22 +167,6 @@ async function init() {
     }
   }
 
-  // Check if user has an active corporation — only redirect if they're NOT
-  // explicitly trying to found a party or join a military faction
-  if (pendingType !== 'party' && pendingType !== 'military' && pendingType !== 'entrepreneur') {
-    const { data: corpFaction, error: corpErr } = await _supabase
-      .from('factions').select('id, nation_id, abandoned_at, is_banned')
-      .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
-      .eq('faction_type', 'corporation')
-      .is('abandoned_at', null)
-      .maybeSingle();
-    if (corpErr) console.warn('Corp check failed:', corpErr.message);
-    if (corpFaction && !isFactionInactive(corpFaction)) {
-      window.location.href = 'corp-dashboard.html';
-      return;
-    }
-  }
-
   // Load pending nation from sessionStorage (set by select-nation.html).
   // Only auto-skip to party creation when we're actually in the party flow —
   // a stale nation in storage shouldn't hijack the military or chooser flow.
@@ -202,10 +186,7 @@ async function init() {
 const MILITARY_ALPHA_CODE = 'Commander1';
 
 function chooseFactionType(type) {
-  if (type === 'corporation') {
-    sessionStorage.setItem('pending_faction_type', 'corp');
-    window.location.href = 'corp-setup.html';
-  } else if (type === 'military') {
+  if (type === 'military') {
     sessionStorage.setItem('pending_faction_type', 'military');
     window.location.href = 'select-nation.html';
   } else {
