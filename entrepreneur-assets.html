@@ -64,10 +64,13 @@
     border-bottom:0.5px solid rgba(255,255,255,0.04);
   }
   .ch-rep-row .rk { flex:none; width:22px; color:#555; font-size:10px; }
-  .ch-rep-row .nm { flex:1; min-width:0; color:#d4d4d4; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ch-rep-row .nm { flex:1; min-width:0; display:flex; align-items:center; gap:6px; }
+  .ch-rep-row .who { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#d4d4d4; }
+  .ch-rep-row .nat { flex:none; font-size:9px; letter-spacing:0.06em; text-transform:uppercase;
+    color:#8aaa6a; border:0.5px solid rgba(138,170,106,0.3); border-radius:3px; padding:1px 5px; }
   .ch-rep-row .rp { flex:none; font-weight:600; color:#d4d4d4; font-variant-numeric:tabular-nums; }
-  .ch-rep-row.rep-top .nm, .ch-rep-row.rep-top .rp { color:#8aaa6a; }
-  .ch-rep-row.rep-bottom .nm, .ch-rep-row.rep-bottom .rp { color:#d88d82; }
+  .ch-rep-row.rep-top .who, .ch-rep-row.rep-top .rp { color:#8aaa6a; }
+  .ch-rep-row.rep-bottom .who, .ch-rep-row.rep-bottom .rp { color:#d88d82; }
   .ch-rep-empty { padding:16px; color:#555; font-size:11px; letter-spacing:0.06em; }
 
   /* Personal liability — post-bankruptcy debt recourse. Shown only when owed. */
@@ -197,16 +200,19 @@ import { _supabase } from './js/supabase-client.js';
   //    reputation, descending. Top 3 green, bottom 5 red (top wins overlap). ──
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
     c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const natTag = (n) => n ? `<span class="nat">${esc(String(n))}</span>` : '';
+  let nationById = new Map();   // faction_id → origin nation, built from the rep query, reused by net worth
   const list = document.getElementById('ch-rep-list');
   if (list) {
     const { data: ents, error } = await _supabase
       .from('factions')
-      .select('id, faction_name, leader_first_name, leader_last_name, ent_reputation')
+      .select('id, faction_name, leader_first_name, leader_last_name, ent_reputation, nation')
       .eq('faction_type', 'entrepreneur')
       .is('abandoned_at', null)
       .order('ent_reputation', { ascending: false, nullsFirst: false });
     if (error) console.warn('[entrepreneur-assets] reputation list failed:', error.message);
     const rows = ents || [];
+    nationById = new Map(rows.map(r => [r.id, r.nation]));
     list.innerHTML = rows.length
       ? rows.map((r, i) => {
           const nm = [r.leader_first_name, r.leader_last_name].filter(Boolean).join(' ').trim()
@@ -214,7 +220,8 @@ import { _supabase } from './js/supabase-client.js';
           const rep = Math.round(Number(r.ent_reputation) || 0);
           const cls = i < 3 ? 'rep-top' : (i >= rows.length - 5 ? 'rep-bottom' : '');
           return `<div class="ch-rep-row ${cls}"><span class="rk">${i + 1}</span>`
-            + `<span class="nm">${esc(nm)}</span><span class="rp">${rep}</span></div>`;
+            + `<span class="nm"><span class="who">${esc(nm)}</span>${natTag(r.nation)}</span>`
+            + `<span class="rp">${rep}</span></div>`;
         }).join('')
       : '<div class="ch-rep-empty">No entrepreneurs yet.</div>';
   }
@@ -236,7 +243,7 @@ import { _supabase } from './js/supabase-client.js';
     const nwRows = Array.isArray(nw) ? nw : [];
     nwList.innerHTML = nwRows.length
       ? nwRows.map((r, i) => `<div class="ch-rep-row"><span class="rk">${i + 1}</span>`
-          + `<span class="nm">${esc(r.name || 'Unknown')}</span>`
+          + `<span class="nm"><span class="who">${esc(r.name || 'Unknown')}</span>${natTag(nationById.get(r.faction_id))}</span>`
           + `<span class="rp">${fmtMoney(r.net_worth)}</span></div>`).join('')
       : '<div class="ch-rep-empty">No entrepreneurs yet.</div>';
   }
