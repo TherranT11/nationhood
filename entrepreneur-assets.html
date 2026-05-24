@@ -27,11 +27,16 @@
 
   /* Current Location — concrete now (home/origin nation); a travel action
      is planned, so the card leaves room for it without building anything. */
-  .ch-location {
+  /* Status row: Current Location · Asset Status · Warrants — three equal
+     cards that wrap on narrow screens. */
+  .ch-cards { display:flex; gap:16px; flex-wrap:wrap; margin-top:20px; align-items:stretch; }
+  .ch-card {
+    flex:1 1 240px; min-width:240px;
     background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
-    padding:16px 18px; max-width:420px;
+    padding:16px 18px;
   }
-  .ch-loc-label { color:#8aaa6a; font-size:10px; letter-spacing:0.15em; margin-bottom:8px; }
+  .ch-card-label { color:#8aaa6a; font-size:10px; letter-spacing:0.15em; margin-bottom:8px; }
+  .ch-card-empty { color:#555; font-size:11px; letter-spacing:0.04em; }
   .ch-loc-value { font-size:20px; font-weight:500; color:#fff; display:flex; align-items:center; gap:10px; }
   .ch-loc-tag {
     font-size:9px; letter-spacing:0.1em; color:#8aaa6a; border:0.5px solid rgba(138,170,106,0.3);
@@ -93,10 +98,20 @@
     </div>
   </div>
 
-  <div class="ch-location">
-    <div class="ch-loc-label">CURRENT LOCATION</div>
-    <div class="ch-loc-value"><span id="ch-location">—</span><span class="ch-loc-tag">HOME</span></div>
-    <div class="ch-loc-note">Travel actions coming soon.</div>
+  <div class="ch-cards">
+    <div class="ch-card">
+      <div class="ch-card-label">CURRENT LOCATION</div>
+      <div class="ch-loc-value"><span id="ch-location">—</span><span class="ch-loc-tag">HOME</span></div>
+      <div class="ch-loc-note">Travel actions coming soon.</div>
+    </div>
+    <div class="ch-card">
+      <div class="ch-card-label">ASSET STATUS</div>
+      <div class="ch-card-empty" id="ch-asset-status"></div>
+    </div>
+    <div class="ch-card">
+      <div class="ch-card-label">WARRANTS</div>
+      <div id="ch-warrants"></div>
+    </div>
   </div>
 
   <div class="ch-liability" id="ch-liability">
@@ -188,6 +203,18 @@ import { _supabase } from './js/supabase-client.js';
             + `<span class="nm">${esc(nm)}</span><span class="rp">${rep}</span></div>`;
         }).join('')
       : '<div class="ch-rep-empty">No entrepreneurs yet.</div>';
+  }
+
+  // ── Warrants — rendered from this entrepreneur's active arrest warrants.
+  //    No warrants system exists yet, so the list is empty and the card falls
+  //    back to its default empty-state; wire the query into `warrants` here when
+  //    the Minister-of-Justice warrant feature ships. ──
+  const warrants = [];
+  const wEl = document.getElementById('ch-warrants');
+  if (wEl) {
+    wEl.innerHTML = warrants.length
+      ? warrants.map(w => `<div class="ch-card-empty" style="color:#d88d82;">${esc(w.label || '')}</div>`).join('')
+      : '<div class="ch-card-empty">No active arrest warrants</div>';
   }
 })().catch(e => console.warn('[entrepreneur-assets] init failed:', e?.message || e));
 </script>
