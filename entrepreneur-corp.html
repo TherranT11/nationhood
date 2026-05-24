@@ -3185,7 +3185,7 @@ function initials(s, n) {
       // ineligibility chip. Server enforces the same gate at accept
       // time — UI here is just the visibility surface.
       let loanRequestsHtml = '';
-      if (c.industry === 'banking') {
+      if (c.industry === 'banking' && isOwner) {
         const [reqsRes, mineBoRes] = await Promise.all([
           _supabase.from('corp_loan_requests')
             .select('id, principal, term_ticks, expires_at_tick, '
