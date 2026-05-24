@@ -3084,7 +3084,6 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
         nations: nationList.length,
         corpsProcessed: 0,
         construction: [],
-        airline: [],
         // Future sector summaries:
         // energy: [],
         // finance: [],
@@ -3371,41 +3370,6 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
                 summary.errors.push({ nation: nation.name, sector: 'construction', error: String(constructionErr) });
             }
 
-            // ── Airline Sector (Phase 6 tick resolution) ─────────────────
-            // Per-corp wrapper handles each active route: pax → revenue →
-            // ops → maint (anniversary only) → incident roll → aggregate
-            // update. Cash flows go through emit_corp_cash_event so the
-            // ledger and corp_cash_reserves stay in sync.
-            try {
-                const airlineCorps = corps.filter(c => c.corp_sector === 'Airline');
-                if (airlineCorps.length > 0) {
-                    console.log(`[Airline] ${nation.name}: ${airlineCorps.length} airline corp(s) — ${airlineCorps.map(c => c.faction_name).join(', ')}`);
-                }
-                for (const ac of airlineCorps) {
-                    const { data: airlineResult, error: airlineErr } = await supabase
-                        .rpc('process_airline_corp_tick', { p_corp_id: ac.id, p_tick: currentTick });
-                    if (airlineErr) {
-                        console.error(`[advance-corp-tick] Airline tick failed for ${ac.faction_name} (non-fatal):`, airlineErr.message);
-                        summary.errors.push({ nation: nation.name, sector: 'airline', corp: ac.faction_name, error: airlineErr.message });
-                        continue;
-                    }
-                    console.log(`[Airline] ${ac.faction_name} → routes=${airlineResult?.routes ?? 'null'}, pax=${airlineResult?.pax ?? 'null'}, revenue=${airlineResult?.revenue ?? 'null'}`);
-                    if (airlineResult && Number(airlineResult.routes) > 0) {
-                        summary.airline.push({
-                            nation: nation.name,
-                            corp:   ac.faction_name,
-                            routes: airlineResult.routes,
-                            pax:    airlineResult.pax,
-                            revenue: airlineResult.revenue,
-                            spend:  airlineResult.spend,
-                            incidents: airlineResult.incidents,
-                        });
-                    }
-                }
-            } catch (airlineErr) {
-                console.error(`[advance-corp-tick] Airline pass failed for ${nation.name} (non-fatal):`, airlineErr);
-                summary.errors.push({ nation: nation.name, sector: 'airline', error: String(airlineErr) });
-            }
 
             // ── Regional HQ Property Income (flat-ish income from marketplace HQs) ──
             try {
