@@ -59,6 +59,35 @@ $$;
 REVOKE EXECUTE ON FUNCTION public._ent_award_construction_contract(uuid,uuid,int) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public._ent_award_construction_contract(uuid,uuid,int) TO authenticated, service_role;
 
+-- Capacity eligibility for a bidder on a build (one source: tick + accept).
+-- Non-building / non-commercial types have no construction-yard capacity gate;
+-- commercial types cap concurrent builds at 2× the bidder's completed CYs in
+-- the nation. Mirrors the rule the tick auto-award uses to skip over-capacity
+-- bidders so manual Accept can't bypass it.
+CREATE OR REPLACE FUNCTION public._ent_bid_capacity_ok(
+    p_bidder        uuid,
+    p_nation        uuid,
+    p_building_type text
+) RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT CASE
+        WHEN p_building_type IS NULL
+          OR p_building_type NOT IN ('port','banking_office','real_estate_office',
+                                     'engine_assembly_plant','light_assembly_plant')
+            THEN true
+        ELSE corp_commercial_build_load(p_bidder, p_nation) <
+             (SELECT COUNT(*) FROM corp_buildings
+               WHERE owner_corp_id = p_bidder AND nation_id = p_nation
+                 AND building_type = 'construction_yard' AND status = 'completed') * 2
+    END;
+$$;
+REVOKE EXECUTE ON FUNCTION public._ent_bid_capacity_ok(uuid,uuid,text) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public._ent_bid_capacity_ok(uuid,uuid,text) TO authenticated, service_role;
+
 -- ── 3. Bid RPC — same as 20270216 + rejected-builder lockout ──
 CREATE OR REPLACE FUNCTION public.ent_place_construction_bid(
     p_corp_id     uuid,
@@ -136,8 +165,6 @@ DECLARE
     v_contract   ent_construction_contracts%ROWTYPE;
     v_bid        ent_construction_bids%ROWTYPE;
     v_tick       int;
-    v_commercial boolean;
-    v_cy_count   int;
 BEGIN
     IF v_uid IS NULL THEN RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated'); END IF;
 
@@ -152,29 +179,27 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'not_owner');
     END IF;
 
+    -- Existence + the contract it belongs to (status re-read under the lock below).
     SELECT * INTO v_bid FROM ent_construction_bids WHERE id = p_bid_id;
     IF v_bid.id IS NULL THEN RETURN jsonb_build_object('success', false, 'reason', 'bid_not_found'); END IF;
 
+    -- Lock the contract FIRST — the single serialization point shared by the
+    -- tick auto-award, accept, and reject (same lock order → no race, no deadlock).
     SELECT * INTO v_contract FROM ent_construction_contracts WHERE id = v_bid.contract_id FOR UPDATE;
     IF v_contract.id IS NULL THEN RETURN jsonb_build_object('success', false, 'reason', 'contract_not_found'); END IF;
     IF v_contract.issuer_corp_id IS NULL OR v_contract.issuer_corp_id <> p_corp_id THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_issuer');
     END IF;
     IF v_contract.status <> 'open' THEN RETURN jsonb_build_object('success', false, 'reason', 'not_open'); END IF;
+
+    -- Re-read the bid now that we hold the contract lock: no other writer can
+    -- have changed its status without that lock, so this is authoritative.
+    SELECT * INTO v_bid FROM ent_construction_bids WHERE id = p_bid_id;
+    IF v_bid.contract_id <> v_contract.id THEN RETURN jsonb_build_object('success', false, 'reason', 'bid_not_found'); END IF;
     IF v_bid.status <> 'pending' THEN RETURN jsonb_build_object('success', false, 'reason', 'bid_not_pending'); END IF;
 
-    -- Capacity gate for commercial building types — mirrors the tick award.
-    IF v_contract.building_type IS NOT NULL THEN
-        v_commercial := v_contract.building_type IN ('port','banking_office','real_estate_office',
-                                                     'engine_assembly_plant','light_assembly_plant');
-        IF v_commercial THEN
-            SELECT COUNT(*) INTO v_cy_count FROM corp_buildings
-             WHERE owner_corp_id = v_bid.bidder_corp_id AND nation_id = v_contract.nation_id
-               AND building_type = 'construction_yard' AND status = 'completed';
-            IF corp_commercial_build_load(v_bid.bidder_corp_id, v_contract.nation_id) >= v_cy_count * 2 THEN
-                RETURN jsonb_build_object('success', false, 'reason', 'bidder_at_capacity');
-            END IF;
-        END IF;
+    IF NOT _ent_bid_capacity_ok(v_bid.bidder_corp_id, v_contract.nation_id, v_contract.building_type) THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'bidder_at_capacity');
     END IF;
 
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
@@ -215,15 +240,21 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'not_owner');
     END IF;
 
-    SELECT * INTO v_bid FROM ent_construction_bids WHERE id = p_bid_id FOR UPDATE;
+    -- Existence + owning contract (status re-read under the lock below).
+    SELECT * INTO v_bid FROM ent_construction_bids WHERE id = p_bid_id;
     IF v_bid.id IS NULL THEN RETURN jsonb_build_object('success', false, 'reason', 'bid_not_found'); END IF;
 
-    SELECT * INTO v_contract FROM ent_construction_contracts WHERE id = v_bid.contract_id;
+    -- Lock the contract FIRST (same order as accept + the tick auto-award).
+    SELECT * INTO v_contract FROM ent_construction_contracts WHERE id = v_bid.contract_id FOR UPDATE;
     IF v_contract.id IS NULL THEN RETURN jsonb_build_object('success', false, 'reason', 'contract_not_found'); END IF;
     IF v_contract.issuer_corp_id IS NULL OR v_contract.issuer_corp_id <> p_corp_id THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_issuer');
     END IF;
     IF v_contract.status <> 'open' THEN RETURN jsonb_build_object('success', false, 'reason', 'not_open'); END IF;
+
+    -- Authoritative status now that we hold the contract lock.
+    SELECT * INTO v_bid FROM ent_construction_bids WHERE id = p_bid_id;
+    IF v_bid.contract_id <> v_contract.id THEN RETURN jsonb_build_object('success', false, 'reason', 'bid_not_found'); END IF;
     IF v_bid.status <> 'pending' THEN RETURN jsonb_build_object('success', false, 'reason', 'bid_not_pending'); END IF;
 
     UPDATE ent_construction_bids SET status = 'rejected' WHERE id = p_bid_id;
@@ -262,7 +293,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'not_owner');
     END IF;
 
-    SELECT COALESCE(jsonb_agg(row ORDER BY (row->>'bid_amount')::bigint ASC), '[]'::jsonb)
+    SELECT COALESCE(jsonb_agg(bid_obj ORDER BY (bid_obj->>'bid_amount')::bigint ASC), '[]'::jsonb)
       INTO v_out
       FROM (
         SELECT jsonb_build_object(
@@ -272,7 +303,6 @@ BEGIN
             'corp_id',        ec.id,
             'corp_name',      ec.name,
             'hq',             COALESCE(n.name, '—'),
-            'continent',      n.continent,
             'ceo',            COALESCE(NULLIF(btrim(concat_ws(' ', f.leader_first_name, f.leader_last_name)), ''),
                                        f.faction_name, '—'),
             'ceo_reputation', COALESCE(f.ent_reputation, 0),
@@ -281,7 +311,7 @@ BEGIN
                     THEN ROUND(ec.share_price * ec.shares_outstanding)::bigint
                 ELSE entrepreneur_corp_book_value(ec.id)::bigint
             END
-        ) AS row
+        ) AS bid_obj
         FROM ent_construction_bids b
         JOIN ent_construction_contracts cc ON cc.id = b.contract_id
         JOIN entrepreneur_corps ec ON ec.id = b.bidder_corp_id
@@ -309,8 +339,6 @@ DECLARE
     v_bid        RECORD;
     v_winner_id  uuid;
     v_winner_bid bigint;
-    v_cy_count   int;
-    v_commercial boolean;
     v_cost       bigint;
     v_bid_id     uuid;
     v_pay_ok     boolean;
@@ -335,20 +363,13 @@ BEGIN
         v_winner_id := NULL; v_winner_bid := NULL; v_bid_id := NULL;
 
         IF c.building_type IS NOT NULL THEN
-            v_commercial := c.building_type IN ('port','banking_office','real_estate_office',
-                                                'engine_assembly_plant','light_assembly_plant');
             FOR v_bid IN
                 SELECT * FROM ent_construction_bids
                  WHERE contract_id = c.id AND status = 'pending'
                  ORDER BY bid_amount ASC, created_tick ASC
             LOOP
-                IF v_commercial THEN
-                    SELECT COUNT(*) INTO v_cy_count FROM corp_buildings
-                     WHERE owner_corp_id = v_bid.bidder_corp_id AND nation_id = c.nation_id
-                       AND building_type = 'construction_yard' AND status = 'completed';
-                    IF corp_commercial_build_load(v_bid.bidder_corp_id, c.nation_id) >= v_cy_count * 2 THEN
-                        CONTINUE;   -- bidder at capacity; try next-lowest
-                    END IF;
+                IF NOT _ent_bid_capacity_ok(v_bid.bidder_corp_id, c.nation_id, c.building_type) THEN
+                    CONTINUE;   -- bidder at capacity; try next-lowest
                 END IF;
                 v_winner_id := v_bid.bidder_corp_id; v_winner_bid := v_bid.bid_amount; v_bid_id := v_bid.id;
                 EXIT;
