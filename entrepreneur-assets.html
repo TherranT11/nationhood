@@ -29,9 +29,9 @@
      is planned, so the card leaves room for it without building anything. */
   /* Status row: Current Location · Asset Status · Warrants — three equal
      cards that wrap on narrow screens. */
-  .ch-cards { display:flex; gap:16px; flex-wrap:wrap; margin-top:20px; align-items:stretch; }
+  .ch-cards { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-top:20px; }
   .ch-card {
-    flex:1 1 240px; min-width:240px;
+    min-width:0;
     background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
     padding:16px 18px;
   }
@@ -44,15 +44,16 @@
   }
   .ch-loc-note { color:#555; font-size:10px; letter-spacing:0.06em; margin-top:8px; }
 
-  /* Leaderboard row: Reputable Entrepreneurs + Entrepreneur Net Worth, two
-     380×420 boards side by side (wrap on narrow screens). Reputation board:
-     top 3 green, bottom 5 red (top wins on overlap). */
-  .ch-boards { display:flex; gap:16px; flex-wrap:wrap; margin-top:20px; }
+  /* Leaderboard row: shares the 3-column grid so the boards line up under the
+     status cards (Reputable under Current Location, Net Worth under Asset
+     Status). Reputation board: top 3 green, bottom 5 red (top wins on overlap). */
+  .ch-boards { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-top:20px; }
   .ch-rep {
-    width:380px; max-width:100%; height:420px;
+    min-width:0; height:420px;
     background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
     display:flex; flex-direction:column;
   }
+  @media (max-width:860px) { .ch-cards, .ch-boards { grid-template-columns:1fr; } }
   .ch-rep-head {
     flex:none; padding:14px 16px; border-bottom:0.5px solid rgba(255,255,255,0.08);
     color:#8aaa6a; font-size:11px; letter-spacing:0.12em; text-transform:uppercase;
