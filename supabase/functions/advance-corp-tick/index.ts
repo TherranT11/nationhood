@@ -207,7 +207,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     // wrong project / silent failure). Bump the date suffix on each
     // intentional redeploy so we can distinguish stale invocations
     // from new ones in the function logs.
-    console.log('[advance-corp-tick] BUILD_MARKER 2026-05-24-a (corp-cull-4e-bank-loans)');
+    console.log('[advance-corp-tick] BUILD_MARKER 2026-05-24-b (corp-cull-4g-aviation-incidents)');
 
     // 1+2+3. Read + idempotency + time-gating + atomic claim, all in
     //        one RPC. SECURITY DEFINER pl/pgsql bypasses PostgREST's
@@ -287,24 +287,6 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     } catch (sweepEx) {
         console.error('[advance-corp-tick] loan-negotiation sweep threw (non-fatal):', sweepEx);
         summary.errors.push({ scope: 'loan_negotiation_sweep', error: String(sweepEx) });
-    }
-
-    // 4c. Aviation-incident auto-refuse sweep (Phase 7). Pending
-    // incidents past expires_at_tick get the 'auto_refused' penalty
-    // (op_safety -0.5, reputation -1.5) — same effects as the
-    // 'refused' response a player would have picked.
-    try {
-        const { data: incRes, error: incErr } = await supabase
-            .rpc('auto_resolve_stale_incidents', { p_tick: currentTick });
-        if (incErr) {
-            console.error('[advance-corp-tick] aviation-incident sweep failed:', incErr.message);
-            summary.errors.push({ scope: 'aviation_incident_sweep', error: incErr.message });
-        } else if (incRes?.swept > 0) {
-            console.log(`[advance-corp-tick] Auto-refused ${incRes.swept} stale aviation incident(s)`);
-        }
-    } catch (incEx) {
-        console.error('[advance-corp-tick] aviation-incident sweep threw (non-fatal):', incEx);
-        summary.errors.push({ scope: 'aviation_incident_sweep', error: String(incEx) });
     }
 
     // Central Bank loan repayments (entrepreneur corp ↔ home-nation CB):
