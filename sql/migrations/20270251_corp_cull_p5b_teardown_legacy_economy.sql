@@ -10,18 +10,22 @@
 --     migration-adjacent edge changes / 5B-prep), and
 --   * no surviving function that calls or references it.
 --
--- DELIBERATELY KEPT (live shared infrastructure — do NOT confuse with legacy):
---   * corp_cash_events + emit_corp_cash_event + factions.corp_cash_reserves —
---     the live corp cash ledger, written by live RPCs overhaul_aircraft /
---     place_construction_bid.
+-- DELIBERATELY KEPT — do NOT confuse with legacy:
+--   * corp_cash_events + factions.corp_cash_reserves — still have live client/edge
+--     READERS (createparty.html, admin.html, common.js, bills.js display corp
+--     cash). Their only writer, emit_corp_cash_event, is itself now dead — but it
+--     and the columns are kept here because the columns are read live; dropping
+--     them is a Phase 5C concern, not part of this table/function teardown.
+--     (Note: the live entrepreneur cash path uses entrepreneur_corps.treasury via
+--     ent_place_construction_bid / entrepreneur_overhaul_aircraft — NOT this
+--     ledger. The bare overhaul_aircraft / place_construction_bid are legacy.)
 --   * corp_contract_events / shipping_contract_events — live audit logs for the
 --     live corp_contracts / shipping_contracts systems (zero reads, live writes).
 --   * The entrepreneur economy (corp_loans, corp_shareholdings, corp_contracts,
 --     shipping_contracts, corp_aircraft, airline_routes, …).
 --
--- NOT in this migration (deferred): the factions.corp_* COLUMNS. Verification
--- showed several (corp_regulatory_standing, corp_supply_chain, corp_work_crews,
--- …) are still read by the LIVE place_construction_bid construction-bid system,
+-- NOT in this migration (deferred): the factions.corp_* COLUMNS — a per-column
+-- liveness pass (Phase 5C), separate from this table/function teardown,
 -- so the column teardown needs its own per-column pass (Phase 5C).
 --
 -- Idempotent: IF EXISTS + CASCADE throughout. CASCADE on the function drops
