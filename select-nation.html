@@ -857,12 +857,6 @@ async function init() {
 
     pendingFactionType = sessionStorage.getItem('pending_faction_type');
 
-    // Corporation flow — redirect to corp setup if pending
-    if (pendingFactionType === 'corp') {
-      window.location.href = 'corp-setup.html';
-      return;
-    }
-
     // Check if user already has a faction. Allow:
     //  - corp users founding a party (pending_faction_type === 'party')
     //  - users adding a military faction (pending_faction_type === 'military')

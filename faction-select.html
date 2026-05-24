@@ -114,7 +114,7 @@ body {
       <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Political Party</div>
       <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Shape laws, influence policy, and guide your nation's future through political power.</div>
     </div>
-    <div id="opt-corp" onclick="selectFactionOption('corporation')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--green-border)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
+    <div id="opt-corp" onclick="selectFactionOption('corporation')" style="display:none;background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--green-border)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.06em;">Corporation</span>
       </div>
@@ -167,22 +167,6 @@ async function init() {
     }
   }
 
-  // Check if user has an active corporation — only redirect if they're NOT
-  // explicitly trying to found a party or join a military faction
-  if (pendingType !== 'party' && pendingType !== 'military' && pendingType !== 'entrepreneur') {
-    const { data: corpFaction, error: corpErr } = await _supabase
-      .from('factions').select('id, nation_id, abandoned_at, is_banned')
-      .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
-      .eq('faction_type', 'corporation')
-      .is('abandoned_at', null)
-      .maybeSingle();
-    if (corpErr) console.warn('Corp check failed:', corpErr.message);
-    if (corpFaction && !isFactionInactive(corpFaction)) {
-      window.location.href = 'corp-dashboard.html';
-      return;
-    }
-  }
-
   // Load pending nation from sessionStorage (set by select-nation.html).
   // Only auto-skip to party creation when we're actually in the party flow —
   // a stale nation in storage shouldn't hijack the military or chooser flow.
@@ -202,10 +186,7 @@ async function init() {
 const MILITARY_ALPHA_CODE = 'Commander1';
 
 function chooseFactionType(type) {
-  if (type === 'corporation') {
-    sessionStorage.setItem('pending_faction_type', 'corp');
-    window.location.href = 'corp-setup.html';
-  } else if (type === 'military') {
+  if (type === 'military') {
     sessionStorage.setItem('pending_faction_type', 'military');
     window.location.href = 'select-nation.html';
   } else {

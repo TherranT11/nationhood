@@ -2223,13 +2223,8 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         ['conflict.html',                   '💥 Conflict'],
         ['diplomacy.html',                  '🤝 Diplomacy'],
     ];
-    const _INSPECTOR_CORP_PAGES = [
-        ['corp-dashboard.html',             '🏢 Corp Dashboard'],
-        ['corp-operations.html',            '⚙️ Corp Operations'],
-        ['corp-operations-finance.html',    '💵 Finance Ops'],
-        ['corp-operations-shipping.html',   '🚢 Shipping Ops'],
-        ['corp-nations.html',               '🌐 Corp Nations'],
-    ];
+    // Legacy corp pages removed (corp-cull Phase 2). No corp inspector pages.
+    const _INSPECTOR_CORP_PAGES = [];
 
     function _renderInspectorPageOptions(type) {
         const sel = document.getElementById('inspector-page-select');

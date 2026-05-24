@@ -91,7 +91,9 @@ export function getFactionTypeBadge(factionType) {
  */
 export function getFactionDashboardUrl(faction) {
     if (!faction) return null;
-    if (faction.faction_type === 'corporation') return 'corp-dashboard.html';
+    // Legacy corporations are retired (corp-cull) — send any stray login to
+    // the neutral faction chooser rather than a deleted dashboard.
+    if (faction.faction_type === 'corporation') return 'faction-select.html';
     if (faction.faction_type === 'party')       return 'dashboard.html';
     if (faction.faction_type === 'military') {
         return BRANCH_DASHBOARDS[faction.branch] || 'faction-select.html';

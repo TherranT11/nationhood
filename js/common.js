@@ -11,7 +11,6 @@ import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
 import { hasActiveGovernment } from './game/government-structure.js';
 import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl } from './game/factions.js';
-import { SECTOR_OPS_PAGE } from './corp-topbar.js';
 import { escapeHtml } from './utils.js';
 
 // ===== QUERY CACHE =====
@@ -941,57 +940,16 @@ export function updateTopBarInfo(faction, shard, nation) {
         if (nationName) nationName.textContent = 'No Nation';
     }
 
-    // Corporation faction on shared pages — show full corp nav
-    if (faction?.faction_type === 'corporation') {
-        const navEl = document.querySelector('.nav-tabs');
-        if (navEl) {
-            const currentTab = window.__currentTab || '';
-            const sector = faction.corp_sector || 'Construction';
-            const opsHref = SECTOR_OPS_PAGE[sector] || 'corp-operations.html';
-            const corpTabs = [
-                { id: 'home', label: 'Home', href: 'corp-dashboard.html' },
-                { id: 'operations', label: 'Operations', href: opsHref },
-                { id: 'expansion', label: 'Expansion', href: 'corp-operations.html?tab=expansion' },
-                { id: 'actions', label: 'Actions', href: 'corp-operations.html?tab=actions' },
-                { id: 'alliances', label: 'Strategic Alliances', href: 'alliances.html' },
-                { id: 'nations', label: 'Nations', href: 'corp-nations.html' },
-                { id: 'news', label: 'News', href: 'news.html' },
-                { id: 'wiki', label: 'Wiki', href: 'wiki.html' },
-            ];
-            navEl.innerHTML = corpTabs.map(t => {
-                const isActive = t.id === currentTab;
-                if (t.disabled) {
-                    return `<a href="#" class="nav-tab" data-tab="${t.id}" onclick="return false;" style="opacity:0.4;cursor:not-allowed;">${t.label}</a>`;
-                }
-                return `<a href="${t.href}" class="nav-tab ${isActive ? 'active' : ''}" data-tab="${t.id}">${t.label}</a>`;
-            }).join('');
-        }
-        // Update nation badge to show corp name instead
-        if (nationName) nationName.textContent = faction.faction_name || 'Corporation';
-        if (nationFlag) nationFlag.style.display = 'none';
-    }
-    
+
     if (shard) {
         const gameDate = document.getElementById('game-date');
         const tickNumber = document.getElementById('tick-number');
         if (gameDate) gameDate.textContent = shard.current_date || '—';
         if (tickNumber) tickNumber.textContent = shard.current_tick || '—';
         if (shard.next_tick_at) {
-            const isCorp = faction?.faction_type === 'corporation';
-            if (isCorp) {
-                // Corp tick fires at the midpoint of the political tick interval
-                const intervalMs = (Number(shard.tick_interval_hours) || 8) * 3600000;
-                const politicalTickAt = new Date(shard.next_tick_at).getTime();
-                const lastAdvanceAt = politicalTickAt - intervalMs;
-                const corpDueAt = lastAdvanceAt + (intervalMs / 2);
-                // If corp tick is past, next one is half-interval after next political tick
-                nextTickAt = new Date(corpDueAt > Date.now() ? corpDueAt : politicalTickAt + (intervalMs / 2));
-            } else {
-                nextTickAt = new Date(shard.next_tick_at);
-            }
-            // Update label
+            nextTickAt = new Date(shard.next_tick_at);
             const tickLabel = document.querySelector('#tick-countdown')?.closest('.tick-item')?.querySelector('.tick-label');
-            if (tickLabel) tickLabel.textContent = isCorp ? 'Next Corp Tick' : 'Next Tick';
+            if (tickLabel) tickLabel.textContent = 'Next Tick';
             startTickCountdown();
         }
     }
