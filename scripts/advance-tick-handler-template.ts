@@ -1246,6 +1246,23 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Construction contracts service failed (non-fatal):', ccErr);
     }
 
+    // Aircraft production runs (20270234): each active run burns cost_per_tick
+    // and delivers finished units into the design's inventory_on_hand. Runs
+    // BEFORE the RFP processor so stock produced this tick can fulfil an RFP
+    // the same tick.
+    try {
+        const { data: prResult, error: prErr } =
+            await supabase.rpc('process_ent_production_runs', { p_tick: newTick });
+        if (prErr) {
+            console.error('[advanceTick] process_ent_production_runs failed:', prErr.message);
+        } else if (prResult && (prResult.delivered > 0 || prResult.completed > 0 || prResult.advanced > 0 || prResult.paused > 0)) {
+            summary.aircraftProduction = prResult;
+            console.log(`[advanceTick] Aircraft production: ${prResult.delivered} units delivered, ${prResult.advanced} advanced, ${prResult.completed} completed, ${prResult.paused} paused`);
+        }
+    } catch (prErr) {
+        console.error('[advanceTick] Aircraft production service failed (non-fatal):', prErr);
+    }
+
     // Aircraft RFPs (20270229): award the lowest-price bid at the deadline,
     // advance build-to-order, and on completion deliver the aircraft to the
     // airline (settling the order + production cost atomically).
