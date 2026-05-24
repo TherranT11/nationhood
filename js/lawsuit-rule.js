@@ -153,7 +153,11 @@ function render() {
 
 function renderHTML() {
     const l = _state.lawsuit;
-    const isDefault = l.defendant_response !== 'refute';   // overdue/unanswered → default judgment
+    // The modal opens for an awaiting_trial case OR an overdue-unanswered
+    // (still-pending) case. A 'pending' case here means the defendant never
+    // responded → default judgment. An awaiting_trial case is contested
+    // (the defendant refuted, or offered a settlement the plaintiff rejected).
+    const isDefault = l.status === 'pending';
     const grievance = GRIEVANCE_LABEL[l.grievance_type] || l.grievance_type;
     const relief    = RELIEF_LABEL[l.relief_sought]    || l.relief_sought;
 
@@ -167,7 +171,7 @@ function renderHTML() {
                 <div style="font-family:var(--font-mono);font-size:11px;color:#6a6660;margin-top:6px;">Reviewing as <span style="color:#c8a832;">${escapeHtml(_state.judge?.faction_name || 'Justice Minister')}</span> · Filing #${escapeHtml((l.id || '').slice(0,8))}</div>
                 <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
                     ${chip('Filed tick ' + l.filed_at_tick, 'rust')}
-                    ${isDefault ? chip('No Defense Filed', 'red') : chip('Defense Submitted', 'blue')}
+                    ${isDefault ? chip('No Defense Filed', 'red') : (l.defense_text ? chip('Defense Submitted', 'blue') : chip('Contested', 'blue'))}
                     ${chip('Public Record', 'neutral')}
                     ${isDefault ? chip('Default Judgment', 'red') : ''}
                 </div>
@@ -190,13 +194,16 @@ function renderHTML() {
                     statement: 'Plaintiff alleges <strong>' + escapeHtml(grievance) + '</strong> and seeks <strong>' + escapeHtml(relief) + '</strong>.'
                 })}
 
-                ${sectionHeader('II.', "Defendant's Response", isDefault ? 'No response — default judgment' : 'Refutation submitted tick ' + (l.responded_at_tick ?? '?'))}
+                ${sectionHeader('II.', "Defendant's Response", isDefault ? 'No response — default judgment' : (l.defense_text ? 'Refutation submitted tick ' + (l.responded_at_tick ?? '?') : 'Defendant responded — no refutation on file'))}
                 ${filingBlock({
                     accent: '#5a8aaa',
                     party: { tag: 'DEFENDANT', name: l.defendant?.name, ticker: l.defendant?.ticker },
-                    grievanceLabel: 'Response Type', grievanceValue: isDefault ? 'No Response' : 'Refutation',
+                    grievanceLabel: 'Response Type', grievanceValue: isDefault ? 'No Response' : (l.defense_text ? 'Refutation' : 'Response'),
                     reliefLabel: 'Counter-Action', reliefValue: 'None Filed',
-                    statement: l.defense_text ? escapeHtml(l.defense_text) : '<em style="color:#6a6660;">No defense statement on file — the defendant did not respond within the window.</em>'
+                    statement: l.defense_text ? escapeHtml(l.defense_text)
+                        : (isDefault
+                            ? '<em style="color:#6a6660;">No defense statement on file — the defendant did not respond within the window.</em>'
+                            : '<em style="color:#6a6660;">No written defense on file — the defendant pursued a settlement rather than a refutation.</em>')
                 })}
 
                 ${renderContractContext(_state.loan)}
