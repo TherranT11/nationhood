@@ -779,14 +779,15 @@ async function checkShippingBidsForReview(nation, isTradeMin) {
     const routes = (res.data.routes || []).filter(r => (r.bids || []).length > 0);
     if (!routes.length) return [];
 
-    const bidIds = [];
-    for (const r of routes) for (const b of (r.bids || [])) bidIds.push(b.bid_id);
-    const total = bidIds.length;
+    const total = routes.reduce((n, r) => n + (r.bids || []).length, 0);
     return [{
         title: 'Shipping bids to review',
         sub: `${total} carrier bid${total === 1 ? '' : 's'} across ${routes.length} import route${routes.length === 1 ? '' : 's'} — review or veto in the Trade tab.`,
         href: 'diplomacy.html',
-        dismissId: 'shipping_bids:' + bidIds.sort().join(','),
+        // dismissId keyed on the bid COUNT (bounded — avoids unbounded
+        // localStorage growth): re-surfaces when a new carrier bids, stays
+        // dismissed through vetoes (a vetoed bid is still pending).
+        dismissId: 'shipping_bids:' + total,
     }];
 }
 
