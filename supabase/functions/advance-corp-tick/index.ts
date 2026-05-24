@@ -286,30 +286,6 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
         summary.errors.push({ scope: 'central_bank_loan_payments', error: String(cbErr) });
     }
 
-    // EDP: Equity dividend processor (shard-wide, anniversary-driven).
-    // Iterates active equity_positions whose 12-tick anniversary has come
-    // up. Pays 2% × borrower.corp_cash_reserves × equity_pct, floored at $0.
-    // Borrower side: dividend_paid (Cost). Holder side: revenue_finance
-    // (Revenue). Both go through emit_corp_cash_event — dashboards update
-    // automatically. RPC owns iteration + locking; this just invokes once
-    // per tick. See sql/migrations/20261008_process_equity_dividends_rpc.sql.
-    try {
-        const { data: divResult, error: divErr } = await supabase.rpc(
-            'process_equity_dividends',
-            { p_current_tick: currentTick }
-        );
-        if (divErr) {
-            console.error('[advance-corp-tick] equity dividends RPC error:', divErr);
-            summary.errors.push({ scope: 'equity_dividends', error: divErr.message });
-        } else if (divResult && (divResult.paid > 0 || divResult.skipped > 0)) {
-            summary.equityDividends = divResult;
-            console.log(`[EquityDividends] tick ${currentTick}: ${divResult.paid} paid, ${divResult.skipped} skipped`);
-        }
-    } catch (divErr) {
-        console.error('[advance-corp-tick] FAILED equity dividends:', divErr);
-        summary.errors.push({ scope: 'equity_dividends', error: String(divErr) });
-    }
-
     try {
 
         // Trade-agreement shipping — multi-winner per-tick allocator

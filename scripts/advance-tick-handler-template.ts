@@ -3366,43 +3366,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Incident processing failed (non-fatal):', incidentErr);
     }
 
-    // ══════════════════════════════════════════════════════════════════
-    // 4e. STRATEGIC ALLIANCES — auto-dissolve negotiations stuck >6 ticks
-    // ══════════════════════════════════════════════════════════════════
-    // RPC handles the whole sweep transactionally: refunds founding fees,
-    // applies −1 Reputation (floored at 0) to every invited member, and
-    // marks the alliance dissolved with reason='consensus_failed'.
-    try {
-        const { data: alliancePurge, error: allianceErr } = await supabase
-            .rpc('dissolve_failed_alliance_negotiations', { p_current_tick: newTick });
-        if (allianceErr) {
-            console.error('[advanceTick] Alliance dissolve RPC failed (non-fatal):', allianceErr.message);
-        } else if ((alliancePurge?.dissolved_count || 0) > 0) {
-            console.log(`[advanceTick] Strategic Alliances: dissolved ${alliancePurge.dissolved_count} stale negotiation(s), refunded $${alliancePurge.total_refunded}`);
-        }
-    } catch (allianceErr) {
-        console.error('[advanceTick] Alliance dissolve failed (non-fatal):', allianceErr);
-    }
-
-    // ══════════════════════════════════════════════════════════════════
-    // 4g. STRATEGIC ALLIANCES — Aligned Interest member-vote sweep
-    // ══════════════════════════════════════════════════════════════════
-    // Per-tick housekeeping for Interest Rate votes inside the alliance
-    // modal. Resolves votes that crossed >50% on Floor + Ceiling on the
-    // PREVIOUS tick (the "next-tick" rule), expires votes past their
-    // 30-tick window, auto-withdraws when the initiator has left.
-    try {
-        const { data: aiVoteSweep, error: aiVoteErr } = await supabase
-            .rpc('sweep_alliance_interest_votes', { p_tick: newTick });
-        if (aiVoteErr) {
-            console.error('[advanceTick] Aligned-interest vote sweep failed (non-fatal):', aiVoteErr.message);
-        } else if (aiVoteSweep && (aiVoteSweep.finalized || aiVoteSweep.expired || aiVoteSweep.initiator_left || aiVoteSweep.newly_majority)) {
-            console.log(`[advanceTick] Aligned-interest votes: ${aiVoteSweep.finalized || 0} finalized, ${aiVoteSweep.newly_majority || 0} newly-majority, ${aiVoteSweep.expired || 0} expired, ${aiVoteSweep.initiator_left || 0} auto-withdrawn`);
-        }
-    } catch (aiVoteErr) {
-        console.error('[advanceTick] Aligned-interest vote sweep threw (non-fatal):', aiVoteErr);
-    }
-
     // 5. Commit shard tick/date AFTER all nation processing completes.
     // This is the last step — if the function timed out earlier, the tick
     // number stays unchanged and the cron will re-process on the next run.
