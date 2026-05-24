@@ -763,6 +763,33 @@ async function checkShippingCoverage(nation) {
     return rows;
 }
 
+// Minister of Trade: carriers have bid on this nation's import routes and may
+// want reviewing/vetoing (20270238). Pending bids are hidden from the minister
+// by the sealed-bid RLS, so this reads through the get_route_bids_for_minister
+// RPC (which self-gates to the MoT). The dismissId is the full pending-bid set,
+// and the title is static — so dismissing silences it until a NEW carrier
+// bids (vetoing an existing one keeps it dismissed), rather than nagging.
+async function checkShippingBidsForReview(nation, isTradeMin) {
+    if (!isTradeMin || !nation?.id) return [];
+    let res;
+    try {
+        res = await _supabase.rpc('get_route_bids_for_minister', { p_nation_id: nation.id });
+    } catch { return []; }
+    if (res.error || !res.data || !res.data.success) return [];
+    const routes = (res.data.routes || []).filter(r => (r.bids || []).length > 0);
+    if (!routes.length) return [];
+
+    const bidIds = [];
+    for (const r of routes) for (const b of (r.bids || [])) bidIds.push(b.bid_id);
+    const total = bidIds.length;
+    return [{
+        title: 'Shipping bids to review',
+        sub: `${total} carrier bid${total === 1 ? '' : 's'} across ${routes.length} import route${routes.length === 1 ? '' : 's'} — review or veto in the Trade tab.`,
+        href: 'diplomacy.html',
+        dismissId: 'shipping_bids:' + bidIds.sort().join(','),
+    }];
+}
+
 async function refreshNotifications() {
     if (_inflight || !_ctx) return;
     _inflight = true;
@@ -793,6 +820,7 @@ async function refreshNotifications() {
                 checkLawsuits(nation, isJusticeMin),
                 checkPetitionForReform(faction, nation, shard),
                 checkShippingCoverage(nation),
+                checkShippingBidsForReview(nation, isTradeMin),
             ];
         }
 
