@@ -2700,7 +2700,7 @@ function initials(s, n) {
         allocation[b.id] = { units, payout: units * b.rate, rate: b.rate };
         remaining -= units;
       }
-      return { allocation, lowestRate: annotated[0]?.rate ?? null };
+      return { allocation };
     };
 
     // JS mirrors of broker_list_building / broker_buy_listing's math
@@ -2992,7 +2992,6 @@ function initials(s, n) {
                             data-bname="${escapeHtml(route.name || 'Route')}"
                             data-commodity="${escapeHtml(route.commodity || '')}"
                             data-volume="${Number(route.volume_required) || 0}"
-                            data-lowest="${allocation.lowestRate ?? ''}"
                             data-current-f="${myF}"
                             data-current-rate="${myRate}">Edit</button>
                     <button class="ap-btn-small reject sh-withdraw-bid"
@@ -3007,12 +3006,12 @@ function initials(s, n) {
         const openRoutes = allRoutes.filter(r => !myBidsByRoute.has(r.id));
         const openRoutesHtml = openRoutes.length
           ? openRoutes.map(r => {
-              const alloc   = computeRouteAllocation(r);
-              const lowest  = alloc.lowestRate;
               const demand  = Number(r.volume_required) || 0;
               const bidders = (r.bids || []).filter(b => b.status === 'pending').length;
-              const lowestLabel = lowest != null
-                ? `lowest <span class="accent">${fmtUsd(lowest)}/unit/tick</span>`
+              // Sealed-bid: show competition level (bidder count) but never a
+              // rival's price, so routes don't become an undercut-by-$1 race.
+              const bidLabel = bidders > 0
+                ? `<span class="accent">${bidders}</span> bidder${bidders === 1 ? '' : 's'}`
                 : `<span class="dim">no bids yet</span>`;
               // Last-tick coverage (persisted by the allocator). Under-covered
               // routes are where an extra bid would win slots.
@@ -3028,7 +3027,7 @@ function initials(s, n) {
                       ${escapeHtml(r.commodity || '—')} ·
                       ${escapeHtml(r.origin_port || '—')} → ${escapeHtml(r.destination_port || '—')} ·
                       <span class="accent">${demand}</span> unit${demand === 1 ? '' : 's'}/tick ·
-                      ${lowestLabel}${bidders > 0 ? ` · ${bidders} bidder${bidders === 1 ? '' : 's'}` : ''}${covLabel}
+                      ${bidLabel}${covLabel}
                     </div>
                   </div>
                   <div class="sh-row-actions">
@@ -3037,7 +3036,6 @@ function initials(s, n) {
                             data-bname="${escapeHtml(r.name || 'Route')}"
                             data-commodity="${escapeHtml(r.commodity || '')}"
                             data-volume="${demand}"
-                            data-lowest="${lowest ?? ''}"
                             ${available === 0 ? 'disabled title="No available freighters — withdraw a bid or buy more"' : ''}>
                       Place Bid
                     </button>
@@ -5422,7 +5420,6 @@ function initials(s, n) {
         routeName:   btn.dataset.bname,
         commodity:   btn.dataset.commodity || '',
         volume:      Number(btn.dataset.volume) || 0,
-        lowest:      btn.dataset.lowest !== '' ? Number(btn.dataset.lowest) : null,
         mode:        opts?.mode || 'place',
         currentF:    Number(btn.dataset.currentF) || 0,
         currentRate: Number(btn.dataset.currentRate) || 0,
@@ -5435,9 +5432,8 @@ function initials(s, n) {
         ? `${bidModalContext.commodity} · ${bidModalContext.volume} unit${bidModalContext.volume === 1 ? '' : 's'}/tick demanded`
         : `${bidModalContext.volume} unit${bidModalContext.volume === 1 ? '' : 's'}/tick demanded`;
       document.getElementById('pb-route-sub').textContent = sub;
-      document.getElementById('pb-lowest').textContent = bidModalContext.lowest != null
-        ? `Cheapest current bid: ${fmtUsd(bidModalContext.lowest)}/unit/tick`
-        : 'No competing bids yet — set any rate.';
+      document.getElementById('pb-lowest').textContent =
+        'Sealed bid — rivals’ prices are hidden. Set your rate on your own costs.';
       const fInput    = document.getElementById('pb-freighters');
       const rateInput = document.getElementById('pb-rate');
       fInput.value    = bidModalContext.mode === 'edit' ? bidModalContext.currentF    : Math.min(bidModalContext.volume, 1);
@@ -5456,17 +5452,9 @@ function initials(s, n) {
       const max  = bidModalContext.volume || 0;
       const filling = Math.min(f, max);
       const maxRev  = filling * rate;
-      const lowest  = bidModalContext.lowest;
-      const undercut = (lowest != null && rate > 0 && rate < lowest);
-      let undercutTag = '';
-      if (lowest != null && rate > 0) {
-        undercutTag = undercut
-          ? ` · <span class="accent">you're undercutting the current low</span>`
-          : ` · <span style="color:#c89e6e">at or above the current low</span>`;
-      }
       document.getElementById('pb-summary').innerHTML =
         `Bidding <b>${f}</b> freighter${f === 1 ? '' : 's'} @ <b>${fmtUsd(rate)}/unit/tick</b>.<br>`
-      + `If all <b>${filling}</b> slot${filling === 1 ? '' : 's'} fill, you earn <b class="accent">${fmtUsd(maxRev)}/tick</b>${undercutTag}.`;
+      + `If all <b>${filling}</b> slot${filling === 1 ? '' : 's'} fill, you earn <b class="accent">${fmtUsd(maxRev)}/tick</b>.`;
     };
 
     document.getElementById('pb-freighters').addEventListener('input', updateBidSummary);
