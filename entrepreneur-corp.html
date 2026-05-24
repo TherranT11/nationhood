@@ -2340,7 +2340,9 @@ function initials(s, n) {
                 invalid_amount:    'Enter a whole-dollar amount ≥ 1.',
                 no_recipients:     'No shareholders to pay.',
               };
-              const msg = (data?.reason === 'insufficient_treasury' && data?.need != null)
+              const msg = (data?.reason === 'exceeds_distributable' && data?.have != null)
+                ? `Only ${fmtUsd(Number(data.have))} is distributable — the treasury holds ${fmtUsd(Number(data.treasury))} but ${fmtUsd(Number(data.debt))} is owed on active loans.`
+                : (data?.reason === 'insufficient_treasury' && data?.need != null)
                 ? `Treasury can’t cover that — need ${fmtUsd(Number(data.need))}.`
                 : (RM[data?.reason] || ('Dividend failed: ' + (data?.reason || 'unknown')));
               divMsg.className = 'tc-msg err';
