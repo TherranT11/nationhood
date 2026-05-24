@@ -8215,42 +8215,34 @@ async function enactBill(supabase, bill, currentTick) {
                 console.log(`[enactBill] TAX_CHANGE ${taxKey} ${val.direction} ×${val.steps}: rate ${effect.old_rate}→${newRate}%, ` +
                     Object.entries(fx).map(([k, v]) => `${k} ${v >= 0 ? '+' : ''}${v}`).join(', '));
             }
-        } else if (effect.type === 'gov_bailout' && effect.corp_faction_id && Number.isFinite(effect.amount) && effect.amount > 0) {
-            // Government Bailout: single-source-of-truth is effect_data { corp_faction_id, amount }.
-            // Re-validate corp, recompute valuation, fund from reserves → debt, +0.1 gdp_growth,
-            // then apply -50 momentum and -20 gov_approval event per yes voter.
+        } else if (effect.type === 'gov_bailout' && effect.corp_id && Number.isFinite(effect.amount) && effect.amount > 0) {
+            // Government Bailout (entrepreneur corps): effect_data { corp_id, amount }.
+            // Re-validate the corp, recompute its book value via the shared
+            // entrepreneur_corp_book_value fn, cap the grant at 3× valuation,
+            // fund from budget → debt, +0.1 gdp_growth, then -50 momentum and
+            // -20 gov_approval event per yes voter.
             try {
-                const corpId = effect.corp_faction_id;
+                const corpId = effect.corp_id;
                 const requested = Math.max(0, Number(effect.amount));
-                const { data: corp } = await supabase.from('factions')
-                    .select('id, faction_name, faction_type, nation_id, corp_cash_reserves, corp_loans, abandoned_at')
+                const { data: corp } = await supabase.from('entrepreneur_corps')
+                    .select('id, name, hq_nation_id, treasury_cash')
                     .eq('id', corpId).single();
-                if (!corp || corp.faction_type !== 'corporation' || corp.abandoned_at || corp.nation_id !== bill.nation_id) {
-                    console.log(`[enactBill] gov_bailout voided: corp ${corpId} missing/moved/dissolved`);
+                // A dissolved corp is deleted (declare_bankruptcy), so a null row
+                // covers the dissolved case; also require it to still HQ here.
+                if (!corp || corp.hq_nation_id !== bill.nation_id) {
+                    console.log(`[enactBill] gov_bailout voided: corp ${corpId} missing or not HQ'd in this nation`);
                 } else {
-                    // National HQ is a real corp_properties row now
-                    // (20260711_persist_national_hq.sql) so the props
-                    // fetch already includes it.
-                    const { data: props } = await supabase.from('corp_properties')
-                        .select('purchase_price, condition').eq('faction_id', corpId);
-                    const { data: vessels } = await supabase.from('corp_vessels')
-                        .select('purchase_price, condition, built_at_tick, status').eq('faction_id', corpId);
-                    const corpCash = Number(corp.corp_cash_reserves || 0);
-                    const corpLoans = Number(corp.corp_loans || 0);
-                    const valuation = computeCorpValuation({
-                        cash: corpCash,
-                        loans: corpLoans,
-                        properties: props,
-                        vessels,
-                        currentTick,
-                    });
-                    const cap = Math.max(0, 3 * valuation);
+                    // Book value (treasury + Σ building cost − outstanding debt):
+                    // one source, the same SQL fn the lawsuit + sell-equity use.
+                    const { data: bookVal } = await supabase.rpc('entrepreneur_corp_book_value', { p_corp_id: corpId });
+                    const valuation = Math.max(0, Number(bookVal || 0));
+                    const cap = 3 * valuation;
                     const payout = Math.min(requested, cap);
                     if (payout > 0) {
                         // Pay out from nation.budget; overflow becomes debt.
-                        // budget + debt are abstract integers (1 = $1M);
-                        // payout is raw dollars. Imported RAW_PER_ABSTRACT
-                        // bridges, same pattern as chargePolicyUpfrontCost.
+                        // budget + debt are abstract integers (1 = $1M); payout
+                        // is raw dollars. RAW_PER_ABSTRACT bridges, same pattern
+                        // as chargePolicyUpfrontCost.
                         const { data: nation } = await supabase.from('nations')
                             .select('budget, debt, gdp_growth').eq('id', bill.nation_id).single();
                         const budgetAbstract = Number(nation?.budget || 0);
@@ -8264,17 +8256,13 @@ async function enactBill(supabase, bill, currentTick) {
                             debt:   Math.round(Number(nation?.debt || 0) + drawDebt / RAW_PER_ABSTRACT),
                             gdp_growth: newGdp,
                         }).eq('id', bill.nation_id);
-                        // Bailout payout flows through the SSoT helper so
-                        // corp_cash_events stays in sync with the balance.
-                        // 20260712_emit_corp_cash_event_helper.sql.
-                        await supabase.rpc('emit_corp_cash_event', {
-                            p_corp_id:  corpId,
-                            p_category: 'capital_in',
-                            p_label:    'Government bailout payout',
-                            p_delta:    payout,
-                            p_tick:     currentTick,
-                        });
-                        console.log(`[enactBill] gov_bailout: $${Math.round(payout / 1e6)}M to ${corp.faction_name} (budget: -$${Math.round(drawBudget / 1e6)}M, debt: +$${Math.round(drawDebt / 1e6)}M, gdp_growth: ${currentGdp} → ${newGdp})`);
+                        // Pay into the corp treasury directly — entrepreneur corps
+                        // key on entrepreneur_corps.treasury_cash, not the legacy
+                        // faction-corp corp_cash_events ledger.
+                        await supabase.from('entrepreneur_corps')
+                            .update({ treasury_cash: Number(corp.treasury_cash || 0) + payout, updated_at: new Date().toISOString() })
+                            .eq('id', corpId);
+                        console.log(`[enactBill] gov_bailout: $${Math.round(payout / 1e6)}M to ${corp.name} (budget: -$${Math.round(drawBudget / 1e6)}M, debt: +$${Math.round(drawDebt / 1e6)}M, gdp_growth: ${currentGdp} → ${newGdp})`);
                     } else {
                         console.log(`[enactBill] gov_bailout: payout capped to 0 (valuation $${Math.round(valuation / 1e6)}M)`);
                     }
