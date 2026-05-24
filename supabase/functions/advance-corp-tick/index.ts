@@ -13,11 +13,11 @@
  * the current tick number and processes corp effects for it.
  *
  * After the legacy faction-corporation cull, this tick runs only the
- * surviving money systems: bank-loan expiry/payments, central-bank loan
+ * surviving entrepreneur/shared money systems: central-bank loan
  * repayments, equity dividends, trade-agreement shipping, and the
  * entrepreneur airline-route allocator. The per-nation legacy corp
- * economy loop (construction, vessels, executives, finance loans,
- * lawsuits) was removed.
+ * economy loop and the legacy bank-loan / finance-loan processors
+ * (and their corp_cash_events ledger) were removed.
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -38,319 +38,6 @@ function amortizedMonthlyPayment(principal, apr, termTicks) {
     if (r === 0) return Math.round(safePrincipal / safeTerm);
     const factor = Math.pow(1 + r, safeTerm);
     return Math.round(safePrincipal * (r * factor) / (factor - 1));
-}
-
-// ════════════════════════════════════════════════════════════════════════════════
-//  Option 4 — corp_cash_events SSoT (Phase 4: dual-write retired).
-//
-//  logCashEvent is the single entry point for per-corp P&L cash movements.
-//  Events buffer in memory and flush in one batch at tick end so the
-//  insert doesn't fan out into one round-trip per accrual. _currentTick is
-//  captured at the top of advanceCorpTick so call sites don't have to thread
-//  it through.
-//
-//  KNOWN SCOPE GAP — cash events that still bypass the event log:
-//    - advance-tick/index.ts gov_bailout path (non-P&L equity infusion — correct to skip)
-//    - js/corp-refurbish.js client-side refurbish cost (player-initiated expense)
-// ════════════════════════════════════════════════════════════════════════════════
-
-let _currentTick = 0;
-const _pendingCashEvents = [];
-
-// corp_id → home nation_id, populated once per advanceCorpTick run so
-// logCashEvent can default to the corp's home nation when callers
-// don't pass an explicit jurisdiction. A caller tied to a foreign
-// nation overrides this default by passing nationId.
-let _corpHomeNation = new Map();
-
-async function loadCorpHomeNations(supabase) {
-    const { data, error } = await supabase
-        .from('factions')
-        .select('id, nation_id')
-        .eq('faction_type', 'corporation');
-    if (error) {
-        console.warn('[advance-corp-tick] corp home nation cache load failed:', error.message);
-        _corpHomeNation = new Map();
-        return;
-    }
-    _corpHomeNation = new Map((data || []).map(r => [r.id, r.nation_id]));
-}
-
-function logCashEvent(corpId, category, label, delta, nationId) {
-    if (!corpId || !Number.isFinite(delta) || delta === 0) return;
-    const tagNationId = nationId ?? _corpHomeNation.get(corpId) ?? null;
-    _pendingCashEvents.push({
-        corp_id:   corpId,
-        tick:      _currentTick,
-        category,
-        label:     String(label || category),
-        delta,
-        nation_id: tagNationId,
-    });
-}
-
-async function flushCashEvents(supabase) {
-    if (_pendingCashEvents.length === 0) return;
-    // Splice first so a thrown insert can't double-write on retry.
-    const batch = _pendingCashEvents.splice(0, _pendingCashEvents.length);
-    try {
-        const { error } = await supabase.from('corp_cash_events').insert(batch);
-        if (error) {
-            console.warn(`[advance-corp-tick] corp_cash_events insert failed (${batch.length} events):`, error.message);
-        }
-    } catch (err) {
-        // Catch thrown exceptions (network, schema-cache, etc.) so they
-        // don't abort tick completion — the tick already moved real cash
-        // via corp_cash_reserves writes; losing the event log for one
-        // tick is recoverable, re-running the whole tick is not.
-        console.error('[advance-corp-tick] corp_cash_events insert threw:', err?.message || err);
-    }
-}
-
-// ════════════════════════════════════════════════════════════════════════════════
-//  FINANCE SECTOR — Loan Processing
-// ════════════════════════════════════════════════════════════════════════════════
-
-// L5: Bank loan request + offer expiry. Shard-wide (not per-nation) since
-// any borrower from any nation can have a pending request, and the work
-// is cheap enough that a single sweep is simpler than a per-nation loop.
-//
-// Lifecycle:
-//   bank_loan_requests.status='pending' AND expires_at_tick <= currentTick
-//     → flip request to 'expired'
-//     → cascade: every still-pending offer on those requests → 'expired'
-//   bank_loan_offers.status='pending' AND expires_at_tick <= currentTick
-//     → catch-all flip to 'expired' for orphaned offers (offer's
-//       expires_at_tick is set to mirror its parent request's at submit
-//       time, so this branch should usually be empty; runs anyway as a
-//       defensive sweep so an out-of-band drift can't strand offers)
-//
-// Idempotent: re-running on the same tick is a no-op because the
-// .eq('status', 'pending') filter excludes rows that already terminated.
-async function processBankLoanExpiry(supabase, currentTick) {
-    const results = { expiredRequests: 0, expiredOffersCascade: 0, expiredOffersOrphan: 0 };
-    // Single payload reused across both tables — every expiry update sets
-    // the same three columns identically.
-    const expirePayload = {
-        status: 'expired',
-        resolved_at_tick: currentTick,
-        updated_at: new Date().toISOString(),
-    };
-
-    // 1. Flip pending requests past their expiry to 'expired'.
-    const { data: expiredReqs, error: reqErr } = await supabase
-        .from('bank_loan_requests')
-        .update(expirePayload)
-        .eq('status', 'pending')
-        .lte('expires_at_tick', currentTick)
-        .select('id');
-    if (reqErr) {
-        console.warn('[BankLoanExpiry] request expiry update failed:', reqErr.message);
-        return results;
-    }
-    results.expiredRequests = expiredReqs?.length || 0;
-
-    // 2. Cascade — every still-pending offer on the expired requests
-    //    flips to 'expired' too.
-    if (results.expiredRequests > 0) {
-        const expiredIds = expiredReqs.map(r => r.id);
-        const { data: cascadeOffers, error: cascadeErr } = await supabase
-            .from('bank_loan_offers')
-            .update(expirePayload)
-            .in('request_id', expiredIds)
-            .eq('status', 'pending')
-            .select('id');
-        if (cascadeErr) {
-            console.warn('[BankLoanExpiry] offer cascade update failed:', cascadeErr.message);
-        } else {
-            results.expiredOffersCascade = cascadeOffers?.length || 0;
-        }
-    }
-
-    // 3. Defensive catch-all for orphan offers whose own expires_at_tick
-    //    has passed but whose parent request hasn't (shouldn't happen
-    //    given the schema invariant; runs anyway). Also recovers any
-    //    rows missed if Step 2 hit a transient failure — those offers
-    //    have inherited their parent's now-passed expires_at_tick and
-    //    will be caught here.
-    const { data: orphanOffers, error: orphanErr } = await supabase
-        .from('bank_loan_offers')
-        .update(expirePayload)
-        .eq('status', 'pending')
-        .lte('expires_at_tick', currentTick)
-        .select('id');
-    if (orphanErr) {
-        console.warn('[BankLoanExpiry] orphan offer sweep failed:', orphanErr.message);
-    } else {
-        results.expiredOffersOrphan = orphanOffers?.length || 0;
-    }
-
-    return results;
-}
-
-// LRP2: per-tick payment processor for bank_loans (the counter-offer
-// pipeline). Reads bank_loans, computes amortized payments from the
-// schema's principal/apr/term_ticks (no monthly_payment column on the
-// table), and uses the LRP1 close_bank_loan helper for terminal
-// transitions.
-//
-// Per-tick math (simple amortization at 12 ticks/year):
-//   r       = (apr / 100) / 12               -- per-tick interest rate
-//   payment = P × r × (1+r)^N / ((1+r)^N − 1)  level payment, r > 0
-//   payment = P / N                            zero-interest fallback
-// The final payment is capped at outstanding + interest_due so a
-// rounding remainder doesn't keep the loan alive past maturity.
-//
-// Status escalation:
-//   1 missed → 'late'      (warning state, payment retried next tick)
-//   2 missed → 'delinquent'
-//   3 missed → 'defaulted' (close_bank_loan('defaulted'))
-// Successful payments don't decrement payments_missed — the counter
-// is monotonic so escalation is a one-way ratchet.
-//
-// Borrower-side accounting: payment is logged via logCashEvent (debt
-// service category) so it shows in the dashboard's expense breakdown.
-// principal portion of the payment also decrements corp_debt so the
-// dashboard's Outstanding Debt card amortizes alongside.
-async function processBankLoanPayments(supabase, currentTick) {
-    const results = {
-        processed: 0, paid: 0, missed: 0, defaulted: 0,
-        late_escalations: 0, delinquent_escalations: 0,
-    };
-    const TICKS_PER_YEAR = 12;
-
-    const { data: loans, error: loansErr } = await supabase
-        .from('bank_loans')
-        .select('id, lender_faction_id, borrower_faction_id, principal, apr, term_ticks, outstanding, payments_missed, status, last_payment_tick')
-        .in('status', ['active', 'late', 'delinquent'])
-        .or(`last_payment_tick.is.null,last_payment_tick.neq.${currentTick}`);
-
-    if (loansErr) {
-        console.warn('[BankLoanPayments] fetch failed:', loansErr.message);
-        return results;
-    }
-    if (!loans || loans.length === 0) return results;
-
-    for (const loan of loans) {
-        // Idempotency belt-and-suspenders.
-        if (Number(loan.last_payment_tick) === Number(currentTick)) continue;
-
-        const principal  = Number(loan.principal) || 0;
-        const apr        = Number(loan.apr) || 0;
-        const termTicks  = Number(loan.term_ticks) || 1;
-        const outstanding = Number(loan.outstanding) || 0;
-        let paymentsMissed = Number(loan.payments_missed) || 0;
-        const r = (apr / 100) / TICKS_PER_YEAR;
-
-        let payment = amortizedMonthlyPayment(principal, apr, termTicks);
-        // Cap final payment at outstanding + interest due so a rounding
-        // remainder closes the loan cleanly instead of leaving cents.
-        const interestDue = Math.round(outstanding * r);
-        if (payment > outstanding + interestDue) payment = outstanding + interestDue;
-        const principalPortion = Math.max(0, payment - interestDue);
-
-        const { data: borrower, error: bErr } = await supabase.from('factions')
-            .select('corp_cash_reserves, corp_debt')
-            .eq('id', loan.borrower_faction_id).single();
-        if (bErr || !borrower) {
-            console.warn(`[BankLoanPayments] borrower fetch failed for loan ${loan.id}:`, bErr?.message);
-            continue;
-        }
-        const borrowerCash = Number(borrower.corp_cash_reserves) || 0;
-
-        if (borrowerCash >= payment) {
-            const newOutstanding = Math.max(0, outstanding - principalPortion);
-
-            // Borrower: deduct cash, decrement debt by principal portion.
-            const { error: bUpdErr } = await supabase.from('factions').update({
-                corp_cash_reserves: borrowerCash - payment,
-                corp_debt:          Math.max(0, (Number(borrower.corp_debt) || 0) - principalPortion),
-            }).eq('id', loan.borrower_faction_id);
-            if (bUpdErr) {
-                console.warn(`[BankLoanPayments] borrower debit failed for loan ${loan.id}:`, bUpdErr.message);
-                continue;
-            }
-
-            // Lender: credit cash. Read-modify-write same race as the
-            // rest of the corp tick loop; service-role bypass keeps the
-            // ordering tight. Errors here surface as warnings — the
-            // borrower has already been debited, so a failed lender
-            // credit means the payment effectively disappears for this
-            // tick. Pre-existing money-flow pattern; closing it cleanly
-            // would require a SECURITY DEFINER RPC for the whole
-            // transaction.
-            const { data: lender, error: lenderSelErr } = await supabase.from('factions')
-                .select('corp_cash_reserves').eq('id', loan.lender_faction_id).single();
-            if (lenderSelErr || !lender) {
-                console.warn(`[BankLoanPayments] lender fetch failed for loan ${loan.id}:`, lenderSelErr?.message);
-            } else {
-                const { error: lenderUpdErr } = await supabase.from('factions').update({
-                    corp_cash_reserves: (Number(lender.corp_cash_reserves) || 0) + payment,
-                }).eq('id', loan.lender_faction_id);
-                if (lenderUpdErr) {
-                    console.warn(`[BankLoanPayments] lender credit failed for loan ${loan.id}:`, lenderUpdErr.message);
-                }
-            }
-
-            // Ledger entries — split interest from principal so each side's
-            // dashboard shows them as distinct categories. logCashEvent is a
-            // no-op for delta=0, so zero-interest or interest-only edges
-            // safely skip the irrelevant line.
-            const interestPortion = payment - principalPortion;
-            logCashEvent(loan.borrower_faction_id, 'debt_interest',  'Loan interest paid',      -interestPortion);
-            logCashEvent(loan.borrower_faction_id, 'capital_out',    'Loan principal payment',  -principalPortion);
-            logCashEvent(loan.lender_faction_id,   'revenue_finance', 'Loan interest received',  interestPortion);
-            logCashEvent(loan.lender_faction_id,   'capital_in',     'Loan principal received',  principalPortion);
-
-            if (newOutstanding <= 0) {
-                // Final payment — close as 'paid'. close_bank_loan also
-                // zeroes the (already-zero) outstanding, decrements the
-                // borrower's corp_debt by 0, and recomputes the lender's
-                // hero stats so headroom returns.
-                await supabase.rpc('close_bank_loan', {
-                    p_loan_id:      loan.id,
-                    p_close_status: 'paid',
-                });
-                results.paid++;
-            } else {
-                await supabase.from('bank_loans').update({
-                    outstanding:        newOutstanding,
-                    last_payment_tick:  currentTick,
-                    updated_at:         new Date().toISOString(),
-                }).eq('id', loan.id);
-                // Outstanding shrunk → recompute lender stats (overleverage
-                // relaxes, lending headroom improves slightly).
-                await supabase.rpc('recompute_finance_stats', { p_faction_id: loan.lender_faction_id });
-            }
-            results.processed++;
-        } else {
-            // Missed payment. Increment counter; escalate status.
-            paymentsMissed++;
-            results.missed++;
-
-            if (paymentsMissed >= 3) {
-                await supabase.rpc('close_bank_loan', {
-                    p_loan_id:      loan.id,
-                    p_close_status: 'defaulted',
-                });
-                results.defaulted++;
-                continue;
-            }
-
-            const newStatus = paymentsMissed >= 2 ? 'delinquent' : 'late';
-            if (newStatus === 'delinquent' && loan.status !== 'delinquent') results.delinquent_escalations++;
-            if (newStatus === 'late'       && loan.status !== 'late')       results.late_escalations++;
-
-            await supabase.from('bank_loans').update({
-                payments_missed:    paymentsMissed,
-                status:             newStatus,
-                last_payment_tick:  currentTick,
-                updated_at:         new Date().toISOString(),
-            }).eq('id', loan.id);
-        }
-    }
-
-    return results;
 }
 
 // Per-tick repayment for central_bank_loans (corp ↔ home-nation Central Bank).
@@ -520,7 +207,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     // wrong project / silent failure). Bump the date suffix on each
     // intentional redeploy so we can distinguish stale invocations
     // from new ones in the function logs.
-    console.log('[advance-corp-tick] BUILD_MARKER 2026-05-13-c (strip-insurance-full)');
+    console.log('[advance-corp-tick] BUILD_MARKER 2026-05-24-a (corp-cull-4e-bank-loans)');
 
     // 1+2+3. Read + idempotency + time-gating + atomic claim, all in
     //        one RPC. SECURITY DEFINER pl/pgsql bypasses PostgREST's
@@ -567,17 +254,6 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     };
 
     console.log(`[advance-corp-tick] Processing tick ${currentTick} (${shard.current_date})`);
-
-    // Capture the tick number for logCashEvent and reset its buffer.
-    // The buffer holds every cash event accrued so far this tick; it
-    // flushes to corp_cash_events at tick end.
-    _currentTick = currentTick;
-    _pendingCashEvents.length = 0;
-
-    // Populate the corp → home nation cache so logCashEvent can tag
-    // events with the corp's jurisdiction without callers threading it
-    // through every site.
-    await loadCorpHomeNations(supabase);
 
     // 4. Load all nations
     const { data: nations, error: nationErr } = await supabase
@@ -631,42 +307,9 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
         summary.errors.push({ scope: 'aviation_incident_sweep', error: String(incEx) });
     }
 
-    // L5: Bank loan request + offer expiry sweep (shard-wide, idempotent).
-    // Shard-wide rather than per-nation because the cascade may touch rows
-    // whose lender + borrower live in different nations.
-    try {
-        const expiryResults = await processBankLoanExpiry(supabase, currentTick);
-        if (expiryResults.expiredRequests > 0
-            || expiryResults.expiredOffersCascade > 0
-            || expiryResults.expiredOffersOrphan > 0) {
-            summary.bankLoanExpiry = expiryResults;
-            console.log(`[BankLoanExpiry] tick ${currentTick}: ${expiryResults.expiredRequests} request(s) expired, ${expiryResults.expiredOffersCascade} offer(s) cascade-expired, ${expiryResults.expiredOffersOrphan} orphan offer(s) swept`);
-        }
-    } catch (expiryErr) {
-        console.error('[advance-corp-tick] FAILED bank loan expiry sweep:', expiryErr);
-        summary.errors.push({ scope: 'bank_loan_expiry', error: String(expiryErr) });
-    }
-
-    // LRP2: Bank loan payment processor (shard-wide, idempotent via
-    // last_payment_tick guard). Runs after expiry so already-expired
-    // requests don't race with payment runs on still-active loans.
-    try {
-        const paymentResults = await processBankLoanPayments(supabase, currentTick);
-        if (paymentResults.processed > 0
-            || paymentResults.missed > 0
-            || paymentResults.paid > 0
-            || paymentResults.defaulted > 0) {
-            summary.bankLoanPayments = paymentResults;
-            console.log(`[BankLoanPayments] tick ${currentTick}: ${paymentResults.processed} paid, ${paymentResults.missed} missed (${paymentResults.late_escalations} → late, ${paymentResults.delinquent_escalations} → delinquent, ${paymentResults.defaulted} → defaulted), ${paymentResults.paid} loans completed`);
-        }
-    } catch (payErr) {
-        console.error('[advance-corp-tick] FAILED bank loan payments:', payErr);
-        summary.errors.push({ scope: 'bank_loan_payments', error: String(payErr) });
-    }
-
-    // Central Bank loan repayments (corp ↔ home-nation CB). Mirrors the bank
-    // loan run: amortized payment from corp_cash_reserves, principal frees CB
-    // capacity, interest grows the CB pool.
+    // Central Bank loan repayments (entrepreneur corp ↔ home-nation CB):
+    // amortized payment from treasury_cash, principal frees CB capacity,
+    // interest grows the CB pool.
     try {
         const cbPay = await processCentralBankLoanPayments(supabase, currentTick);
         if (cbPay.processed > 0 || cbPay.missed > 0 || cbPay.paid > 0 || cbPay.defaulted > 0) {
@@ -735,15 +378,6 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
         console.error('[advance-corp-tick] FAILED shipping route processor:', shipErr);
         summary.errors.push({ scope: 'shipping_routes', error: String(shipErr) });
     }
-
-    // Flush buffered cash events to corp_cash_events. Single writer for
-    // every per-corp P&L delta this tick, regardless of which nation
-    // triggered it. The corp_last_processed_tick guard was already
-    // written atomically at the start of the tick (see 3a above), so
-    // a failure or timeout here loses at most this tick's events
-    // ledger — corp_cash_reserves stays consistent and the next cron
-    // fire is correctly skipped instead of re-running the whole tick.
-    await flushCashEvents(supabase);
 
     console.log(`[advance-corp-tick] Tick ${currentTick} complete across ${nationList.length} nations.`);
     return summary;
