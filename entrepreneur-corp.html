@@ -304,6 +304,15 @@
   .cf-row .num.amber { color:#c89e6e; }
   .cf-row .num.red   { color:#c98a8a; }
   .cf-row .num.muted { color:#666; }
+  /* Construction bid cards (issuer Accept/Reject) */
+  .cb-bids { margin:-2px 0 8px 14px; display:flex; flex-direction:column; gap:5px; }
+  .cb-bid { display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center;
+    padding:9px 12px; background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.07);
+    border-left:2px solid rgba(138,170,106,0.35); border-radius:4px; }
+  .cb-bid-corp { font-size:12px; color:#e8e8e8; font-weight:500; }
+  .cb-bid-amt { color:#8aaa6a; font-variant-numeric:tabular-nums; margin-left:8px; }
+  .cb-bid-meta { font-size:10px; color:#888; margin-top:3px; letter-spacing:0.04em; }
+  .cb-bid-actions { display:flex; gap:6px; }
   .cf-status { font-size:10px; letter-spacing:0.1em; text-transform:uppercase; font-weight:500; }
   .cf-status.pending   { color:#c89e6e; }
   .cf-status.accepted  { color:#8aaa6a; }
@@ -3521,23 +3530,46 @@ function initials(s, n) {
       let requestPanelHtml = '';
       if (isOwner) {
         const { data: myReqs, error: mrErr } = await _supabase.from('ent_construction_contracts')
-          .select('id, name, building_type, budget, build_cost, status, timeline_ticks, progress_ticks, winning_bid, nation:nations!nation_id(name), bids:ent_construction_bids(count)')
+          .select('id, name, building_type, budget, build_cost, status, timeline_ticks, progress_ticks, winning_bid, nation:nations!nation_id(name)')
           .eq('issuer_corp_id', id).not('building_type', 'is', null)
           .in('status', ['open', 'active']).order('created_at_tick', { ascending: false });
         if (mrErr) console.warn('[entrepreneur-corp] my requests fetch error:', mrErr.message);
         const reqs = myReqs || [];
+        // Enriched bid list for the issuer's OPEN requests (one RPC, ownership-
+        // checked server-side). Valuation/CEO/HQ/reputation read their single
+        // sources in get_my_construction_bids. Grouped by contract for render.
+        const bidsByContract = {};
+        if (reqs.some(r => r.status === 'open')) {
+          const { data: bidRes, error: bidErr } = await _supabase.rpc('get_my_construction_bids', { p_corp_id: id });
+          if (bidErr) console.warn('[entrepreneur-corp] construction bids fetch error:', bidErr.message);
+          else if (bidRes && bidRes.success) {
+            for (const b of (bidRes.bids || [])) (bidsByContract[b.contract_id] = bidsByContract[b.contract_id] || []).push(b);
+          }
+        }
+        const bidCard = (b) => `<div class="cb-bid"><div>
+            <div class="cb-bid-corp">${escapeHtml(b.corp_name || '—')}<span class="cb-bid-amt">${fmtUsd(Number(b.bid_amount) || 0)}</span></div>
+            <div class="cb-bid-meta">${escapeHtml(b.hq || '—')} · Valuation ${fmtValuation(Number(b.valuation) || 0)} · CEO ${escapeHtml(b.ceo || '—')} · Rep ${Number(b.ceo_reputation) || 0}</div>
+          </div><div class="cb-bid-actions">
+            <button class="ap-btn-small accept cb-accept-btn" data-bid="${b.bid_id}">Accept</button>
+            <button class="ap-btn-small reject cb-reject-btn" data-bid="${b.bid_id}">Reject</button>
+          </div></div>`;
         const mrRow = (r) => {
-          const n = Number(r.bids?.[0]?.count ?? 0);
-          const prog = r.status === 'open'
-            ? `<span class="num amber">bidding · ${n} bid${n === 1 ? '' : 's'}</span>`
-            : `<span class="num green">building ${r.progress_ticks}/${r.timeline_ticks}${r.winning_bid ? ` · ${fmtUsd(Number(r.winning_bid))}` : ''}</span>`;
-          return `<div class="cf-row"><div><div class="who">${escapeHtml(buildingTypeLabel(r.building_type))} · ${escapeHtml(r.name)}</div>
-            <div class="sub">${escapeHtml(r.nation?.name || '—')} · budget ${fmtUsd(Number(r.budget) || 0)} · floor ${fmtUsd(Number(r.build_cost) || 0)}</div></div>${prog}</div>`;
+          const head = (badge) => `<div class="cf-row"><div><div class="who">${escapeHtml(buildingTypeLabel(r.building_type))} · ${escapeHtml(r.name)}</div>
+            <div class="sub">${escapeHtml(r.nation?.name || '—')} · budget ${fmtUsd(Number(r.budget) || 0)} · floor ${fmtUsd(Number(r.build_cost) || 0)}</div></div>${badge}</div>`;
+          if (r.status !== 'open') {
+            return head(`<span class="num green">building ${r.progress_ticks}/${r.timeline_ticks}${r.winning_bid ? ` · ${fmtUsd(Number(r.winning_bid))}` : ''}</span>`);
+          }
+          const bids = bidsByContract[r.id] || [];
+          const badge = `<span class="num amber">bidding · ${bids.length} bid${bids.length === 1 ? '' : 's'}</span>`;
+          const cards = bids.length
+            ? `<div class="cb-bids">${bids.map(bidCard).join('')}</div>`
+            : '<div class="cb-bids"><div class="sh-empty" style="padding:6px 12px;">No bids yet.</div></div>';
+          return head(badge) + cards;
         };
         requestPanelHtml += `
           <div class="section-heading"><span class="sans">Construction</span><span class="serif">Requests</span></div>
           <div class="cf-row" style="align-items:center;">
-            <div class="sub" style="flex:1;">Commission a building from construction corps — lowest qualifying bid builds and delivers it; you pay on completion.</div>
+            <div class="sub" style="flex:1;">Commission a building from construction corps. Review each bid and Accept the one you want, or Reject bidders (a rejected builder is locked out). If you accept none before bidding closes, the lowest qualifying bid wins automatically. You pay on completion.</div>
             <div class="sh-row-actions"><button class="ap-btn-small list" id="rc-open-btn">Request Construction</button></div>
           </div>
           ${reqs.length ? reqs.map(mrRow).join('') : '<div class="sh-empty">No open requests.</div>'}`;
@@ -3601,6 +3633,8 @@ function initials(s, n) {
         if (rcBtn) rcBtn.addEventListener('click', openRequestModal);
         pj.querySelectorAll('.rc-bid-btn').forEach(btn => btn.addEventListener('click', () =>
           openBidModal(btn.dataset.cid, btn.dataset.label, Number(btn.dataset.floor), Number(btn.dataset.budget))));
+        pj.querySelectorAll('.cb-accept-btn').forEach(btn => btn.addEventListener('click', () => handleConstructionBid('accept', btn)));
+        pj.querySelectorAll('.cb-reject-btn').forEach(btn => btn.addEventListener('click', () => handleConstructionBid('reject', btn)));
       }
 
       setupCorpChat();
@@ -3623,10 +3657,10 @@ function initials(s, n) {
         pj.querySelectorAll('.cp-revoke-broker').forEach(btn => {
           btn.addEventListener('click', () => handleRevokeBrokerage(btn, btn.dataset.bid, btn.dataset.broker === '1'));
         });
-        pj.querySelectorAll('.ap-btn-small.accept:not(.cp-make-offer):not(.sh-edit-bid):not(.sh-broker-reprice):not(.al-overhaul)').forEach(btn => {
+        pj.querySelectorAll('.ap-btn-small.accept:not(.cp-make-offer):not(.sh-edit-bid):not(.sh-broker-reprice):not(.al-overhaul):not(.cb-accept-btn)').forEach(btn => {
           btn.addEventListener('click', () => handleAcceptOffer(btn, btn.dataset.oid));
         });
-        pj.querySelectorAll('.ap-btn-small.reject:not(.sh-withdraw-bid):not(.sh-broker-withdraw):not(.al-retire):not(.al-release):not(.al-close)').forEach(btn => {
+        pj.querySelectorAll('.ap-btn-small.reject:not(.sh-withdraw-bid):not(.sh-broker-withdraw):not(.al-retire):not(.al-release):not(.al-close):not(.cb-reject-btn)').forEach(btn => {
           btn.addEventListener('click', () => handleRejectOffer(btn, btn.dataset.oid));
         });
         pj.querySelectorAll('.cp-make-offer').forEach(btn => {
@@ -3895,6 +3929,7 @@ function initials(s, n) {
       not_construction: 'Only construction corps can bid.', own_contract: 'You can’t bid on your own request.',
       not_open: 'Bidding has closed.', contract_not_found: 'Request not found.',
       not_owner: 'Only the corp owner can bid.', invalid_amount: 'Enter a bid amount.',
+      rejected: 'The issuer rejected your bid — you can’t bid on this request again.',
     };
 
     const openRequestModal = async () => {
@@ -3998,6 +4033,35 @@ function initials(s, n) {
       ov.classList.add('open');
     };
 
+    // ── Issuer Accept/Reject of a construction bid (20270245) ──
+    const CB_REASON = {
+      not_owner: 'Only the corp owner can do this.', not_issuer: 'You did not issue this request.',
+      not_open: 'This request is no longer open.', bid_not_pending: 'That bid is no longer pending.',
+      bid_not_found: 'Bid not found.', contract_not_found: 'Request not found.',
+      bidder_at_capacity: 'That builder is at construction-yard capacity in this nation — pick another bid.',
+    };
+    const handleConstructionBid = async (action, btn) => {
+      if (btn.disabled) return;
+      const bidId = btn.dataset.bid;
+      if (action === 'reject' && !confirm('Reject this bid? That builder will be locked out of this request.')) return;
+      const row = btn.closest('.cb-bid');
+      const lock = (state) => (row ? row.querySelectorAll('button') : [btn]).forEach(b => { b.disabled = state; });
+      lock(true);
+      const rpc = action === 'accept' ? 'ent_accept_construction_bid' : 'ent_reject_construction_bid';
+      try {
+        const { data, error } = await _supabase.rpc(rpc, { p_corp_id: id, p_bid_id: bidId });
+        if (error) throw error;
+        if (!data || !data.success) {
+          alert('Could not ' + action + ' bid: ' + (CB_REASON[data?.reason] || data?.reason || 'unknown'));
+          lock(false); return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Could not ' + action + ' bid: ' + (e?.message || e));
+        lock(false);
+      }
+    };
+
     const openBidModal = (contractId, label, floor, budget) => {
       const ov = document.getElementById('rcb-overlay');
       if (!ov) return;
@@ -4006,7 +4070,7 @@ function initials(s, n) {
         <div class="bm-modal" style="max-width:420px;">
           <div class="bm-head"><div class="ti">Bid on <em>${escapeHtml(label)}</em></div><div class="bm-x" id="rcb-close">×</div></div>
           <div class="bm-body">
-            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Floor ${fmtUsd(floor)} · budget cap ${fmtUsd(budget)}. On completion you pay the construction cost and receive your bid — margin = bid − cost. Lowest qualifying bid wins.</div>
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Floor ${fmtUsd(floor)} · budget cap ${fmtUsd(budget)}. On completion you pay the construction cost and receive your bid — margin = bid − cost. The issuer may accept your bid directly; otherwise the lowest qualifying bid wins when bidding closes.</div>
             <div class="bm-label">Your bid ($)</div>
             <input type="number" class="bm-input" id="rcb-amount" min="${floor}" max="${budget}" step="1000000" value="${floor}">
             <div class="bm-err" id="rcb-err"></div>
