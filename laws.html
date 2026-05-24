@@ -1579,7 +1579,7 @@ function renderActiveLaw(law) {
         entrenchBadge = ' <span style="background:var(--purple);color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;">🔒 ENTRENCHED</span>';
         if (law.entrenchment_cooldown_until_tick && currentTickGlobal < law.entrenchment_cooldown_until_tick) {
             rescindDisabled = true;
-            rescindTooltip = `Entrenched law — cooldown until tick ${law.entrenchment_cooldown_until_tick} (${law.entrenchment_cooldown_until_tick - currentTick} ticks remaining).`;
+            rescindTooltip = `Entrenched law — cooldown until tick ${law.entrenchment_cooldown_until_tick} (${law.entrenchment_cooldown_until_tick - currentTickGlobal} ticks remaining).`;
         }
     } else if (law.entrenchment_tier === 'protected') {
         entrenchBadge = ' <span style="background:var(--blue);color:#fff;padding:1px 6px;border-radius:3px;font-size:0.6rem;font-weight:bold;">🛡 PROTECTED</span>';
@@ -4326,7 +4326,7 @@ async function submitToCommittee() {
 
                     if (oppositionFactions) {
                         for (const faction of oppositionFactions) {
-                            await _supabase.rpc('adjust_momentum', { p_faction_id: faction.id, p_delta: 4, p_label: 'Term extension attempt — opposition boost (+4)', p_tick: currentTick || 0 });
+                            await _supabase.rpc('adjust_momentum', { p_faction_id: faction.id, p_delta: 4, p_label: 'Term extension attempt — opposition boost (+4)', p_tick: currentTickGlobal || 0 });
                         }
                     }
                 }
