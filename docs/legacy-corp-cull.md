@@ -37,9 +37,20 @@ at `corp-nation-select.html:~1010`. Entry buttons: `faction-select.html:206`,
 `corp-nation-select.html`, `corp-setup.html`, `aviation-operations.html`,
 `airline-operations.html`
 
-## CULL — JS modules (verify each is not imported by a KEEP page)
+## CULL — JS modules
 
-`js/corp-topbar.js`, `js/game/corp-valuation.js` (+ any legacy-only helpers they pull)
+`js/corp-topbar.js` (+ `css/corp-topbar.css`) — the legacy corp nav chrome
+(`renderCorpTopBar`, `SECTOR_OPS_PAGE`). **Entangled:** imported by surviving
+shared pages — `js/common.js:15` (`SECTOR_OPS_PAGE` for the corp navbar block
+~945), and `renderCorpTopBar` dynamic-imported by `actions.html:146`,
+`alliances.html:865`, `expansion.html:1963`. Must unwire all four + the
+`#corp-topbar-container` divs + CSS links before deleting.
+
+> **CORRECTION (was tentatively CULL): `js/game/corp-valuation.js` is KEEP.**
+> It is a SHARED valuation module imported by `entrepreneur-corp.html`,
+> `entrepreneur-corporations.html`, `entrepreneur-markets.html`,
+> `entrepreneur-dashboard.html`, `laws.html`, `expansion.html`, `alliances.html`.
+> Do NOT delete.
 
 ## CULL — tables (entrepreneur refs / legacy refs)
 
