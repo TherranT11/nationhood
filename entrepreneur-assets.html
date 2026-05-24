@@ -44,10 +44,12 @@
   }
   .ch-loc-note { color:#555; font-size:10px; letter-spacing:0.06em; margin-top:8px; }
 
-  /* Reputable Entrepreneurs leaderboard — fixed 380×420, scrolls if the
-     roster outgrows it. Top 3 green, bottom 5 red (top wins on overlap). */
+  /* Leaderboard row: Reputable Entrepreneurs + Entrepreneur Net Worth, two
+     380×420 boards side by side (wrap on narrow screens). Reputation board:
+     top 3 green, bottom 5 red (top wins on overlap). */
+  .ch-boards { display:flex; gap:16px; flex-wrap:wrap; margin-top:20px; }
   .ch-rep {
-    width:380px; max-width:100%; height:420px; margin-top:20px;
+    width:380px; max-width:100%; height:420px;
     background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
     display:flex; flex-direction:column;
   }
@@ -122,9 +124,15 @@
     <div class="msg" id="ch-settle-msg"></div>
   </div>
 
-  <div class="ch-rep">
-    <div class="ch-rep-head">Reputable Entrepreneurs</div>
-    <div class="ch-rep-list" id="ch-rep-list"></div>
+  <div class="ch-boards">
+    <div class="ch-rep">
+      <div class="ch-rep-head">Reputable Entrepreneurs</div>
+      <div class="ch-rep-list" id="ch-rep-list"></div>
+    </div>
+    <div class="ch-rep">
+      <div class="ch-rep-head">Entrepreneur Net Worth</div>
+      <div class="ch-rep-list" id="ch-nw-list"></div>
+    </div>
   </div>
 </div>
 <script type="module">
@@ -155,7 +163,12 @@ import { _supabase } from './js/supabase-client.js';
   // ── Personal liability (post-bankruptcy debt recourse). Shown only when the
   //    founder owes; settling from personal funds re-enables founding corps. ──
   const usd = (n) => '$' + Math.round(Math.max(0, Number(n) || 0)).toLocaleString('en-US');
-  const owed = Math.max(0, Number(f.ent_unpaid_debt) || 0);
+  // Read the liability on its own (not via the shared bootstrap) so a not-yet-
+  // applied ent_unpaid_debt column can never break the universal topbar; a
+  // missing column / error just yields 0 (no card).
+  const { data: _liab } = await _supabase.from('factions')
+    .select('ent_unpaid_debt').eq('id', f.id).maybeSingle();
+  const owed = Math.max(0, Number(_liab?.ent_unpaid_debt) || 0);
   if (owed > 0) {
     const card = document.getElementById('ch-liability');
     const sBtn = document.getElementById('ch-settle-btn');
@@ -202,6 +215,28 @@ import { _supabase } from './js/supabase-client.js';
           return `<div class="ch-rep-row ${cls}"><span class="rk">${i + 1}</span>`
             + `<span class="nm">${esc(nm)}</span><span class="rp">${rep}</span></div>`;
         }).join('')
+      : '<div class="ch-rep-empty">No entrepreneurs yet.</div>';
+  }
+
+  // ── Entrepreneur Net Worth: cash + held public stock + private-stake book
+  //    value, ranked desc. Computed server-side (get_entrepreneur_net_worth)
+  //    off the one-source book value so it matches displayed valuations. ──
+  const fmtMoney = (n) => {
+    const v = Math.round(Number(n) || 0), a = Math.abs(v);
+    if (a >= 1e9) return '$' + (v / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+    if (a >= 1e6) return '$' + (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (a >= 1e3) return '$' + (v / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+    return '$' + v.toLocaleString('en-US');
+  };
+  const nwList = document.getElementById('ch-nw-list');
+  if (nwList) {
+    const { data: nw, error: nwErr } = await _supabase.rpc('get_entrepreneur_net_worth');
+    if (nwErr) console.warn('[entrepreneur-assets] net worth failed:', nwErr.message);
+    const nwRows = Array.isArray(nw) ? nw : [];
+    nwList.innerHTML = nwRows.length
+      ? nwRows.map((r, i) => `<div class="ch-rep-row"><span class="rk">${i + 1}</span>`
+          + `<span class="nm">${esc(r.name || 'Unknown')}</span>`
+          + `<span class="rp">${fmtMoney(r.net_worth)}</span></div>`).join('')
       : '<div class="ch-rep-empty">No entrepreneurs yet.</div>';
   }
 
