@@ -2752,210 +2752,13 @@ async function processCentralBankLoanPayments(supabase, currentTick) {
     return results;
 }
 
-// SOP2: per-tick processor for shipping_routes. Three passes in
-// strict order (auto-award → maturity → payment) to prevent the
-// maturity-tick double-pay edge case. Service-role bypasses RLS.
-//
-// Pass A — Auto-award. Routes whose bid window has elapsed get a
-// winner picked by award_criterion (lowest_price / fastest_delivery
-// / lowest_risk). Tiebreaker: earliest created_at_tick. With zero
-// bids, the route flips to 'expired'. The winner's offered terms
-// snap onto the route (revenue_per_tick + term_ticks) so post-award
-// the row reflects the actual deal, not the original ceilings.
-//
-// Pass B — Maturity sweep. Routes past ends_at_tick flip to
-// 'completed'. Runs BEFORE payment so a route maturing on tick T
-// doesn't get one extra payment on its last tick.
-//
-// Pass C — Per-tick payment. Active routes credit revenue_per_tick
-// to the winner's cash and emit a revenue_shipping cash event.
-// No issuer-side debit yet —
-// payments are ambient (printed) for SOP2; private-issuer cash
-// deduction is a future concern.
-async function processShippingRoutes(supabase, currentTick) {
-    const results = {
-        awarded: 0, expired: 0, completed: 0, paid: 0,
-        bidsAccepted: 0, bidsAutoRejected: 0,
-    };
-
-    // ── Pass A: Auto-award ──
-    // Trade-agreement contracts (trade_agreement_id IS NOT NULL) are
-    // handled by processTradeAgreementShipping — different scoring fields,
-    // different payment model, no expiration on zero bids.
-    const { data: closingContracts, error: closingErr } = await supabase
-        .from('shipping_contracts')
-        .select('id, award_criterion, freighters_required, min_fleet_health, max_route_risk, revenue_per_tick, term_ticks')
-        .eq('status', 'open')
-        .is('trade_agreement_id', null)
-        .lte('expires_at_tick', currentTick);
-
-    if (closingErr) {
-        console.warn('[ShippingRoutes] closing-contracts fetch failed:', closingErr.message);
-    } else if (closingContracts && closingContracts.length > 0) {
-        for (const contract of closingContracts) {
-            const { data: bids, error: bidsErr } = await supabase
-                .from('shipping_contract_bids')
-                .select('id, bidder_faction_id, offered_revenue_per_tick, offered_term_ticks, bidder_route_risk_snapshot, created_at_tick')
-                .eq('contract_id', contract.id)
-                .eq('status', 'pending')
-                .order('created_at_tick', { ascending: true });
-            if (bidsErr) {
-                console.warn(`[ShippingRoutes] bids fetch failed for contract ${contract.id}:`, bidsErr.message);
-                continue;
-            }
-
-            if (!bids || bids.length === 0) {
-                // No bids — flip contract to 'expired'.
-                const { error: expErr } = await supabase.from('shipping_contracts').update({
-                    status: 'expired',
-                    updated_at: new Date().toISOString(),
-                }).eq('id', contract.id).eq('status', 'open');
-                if (expErr) console.warn(`[ShippingRoutes] expire failed for contract ${contract.id}:`, expErr.message);
-                else results.expired++;
-                continue;
-            }
-
-            // Pick winner by criterion. bids is already sorted
-            // ascending by created_at_tick so reduce keeps the
-            // first-bid tiebreaker on equal values.
-            let winner = bids[0];
-            for (let i = 1; i < bids.length; i++) {
-                const b = bids[i];
-                let winnerScore, candidateScore;
-                if (contract.award_criterion === 'fastest_delivery') {
-                    winnerScore = Number(winner.offered_term_ticks);
-                    candidateScore = Number(b.offered_term_ticks);
-                } else if (contract.award_criterion === 'lowest_risk') {
-                    winnerScore = Number(winner.bidder_route_risk_snapshot);
-                    candidateScore = Number(b.bidder_route_risk_snapshot);
-                } else {
-                    // lowest_price (default)
-                    winnerScore = Number(winner.offered_revenue_per_tick);
-                    candidateScore = Number(b.offered_revenue_per_tick);
-                }
-                if (candidateScore < winnerScore) winner = b;
-            }
-
-            const winnerTerm    = Number(winner.offered_term_ticks);
-            const winnerRevenue = Number(winner.offered_revenue_per_tick);
-            const nowIso        = new Date().toISOString();
-
-            // Flip winner bid → accepted.
-            const { error: winErr } = await supabase.from('shipping_contract_bids').update({
-                status: 'accepted',
-                resolved_at_tick: currentTick,
-                updated_at: nowIso,
-            }).eq('id', winner.id).eq('status', 'pending');
-            if (winErr) {
-                console.warn(`[ShippingRoutes] winner-bid flip failed for contract ${contract.id}:`, winErr.message);
-                continue;
-            }
-            results.bidsAccepted++;
-
-            // Auto-reject siblings.
-            const { data: rejected, error: rejErr } = await supabase.from('shipping_contract_bids').update({
-                status: 'auto_rejected',
-                resolved_at_tick: currentTick,
-                updated_at: nowIso,
-            }).eq('contract_id', contract.id)
-              .neq('id', winner.id)
-              .eq('status', 'pending')
-              .select('id');
-            if (rejErr) {
-                console.warn(`[ShippingRoutes] sibling-reject failed for contract ${contract.id}:`, rejErr.message);
-            } else {
-                results.bidsAutoRejected += rejected?.length || 0;
-            }
-
-            // Flip contract → awarded with snapshot.
-            const { error: awErr } = await supabase.from('shipping_contracts').update({
-                status: 'awarded',
-                winner_faction_id: winner.bidder_faction_id,
-                awarded_at_tick:   currentTick,
-                ends_at_tick:      currentTick + winnerTerm,
-                revenue_per_tick:  winnerRevenue,
-                term_ticks:        winnerTerm,
-                updated_at:        nowIso,
-            }).eq('id', contract.id).eq('status', 'open');
-            if (awErr) {
-                console.warn(`[ShippingRoutes] award flip failed for contract ${contract.id}:`, awErr.message);
-                continue;
-            }
-            results.awarded++;
-        }
-    }
-
-    // ── Pass B: Maturity sweep ──
-    const { data: matured, error: matErr } = await supabase
-        .from('shipping_contracts')
-        .update({ status: 'completed', updated_at: new Date().toISOString() })
-        .eq('status', 'awarded')
-        .is('trade_agreement_id', null)
-        .lte('ends_at_tick', currentTick)
-        .select('id');
-    if (matErr) {
-        console.warn('[ShippingRoutes] maturity sweep failed:', matErr.message);
-    } else {
-        results.completed = matured?.length || 0;
-    }
-
-    // ── Pass C: Per-tick payment ──
-    const { data: activeContracts, error: activeErr } = await supabase
-        .from('shipping_contracts')
-        .select('id, winner_faction_id, revenue_per_tick, total_paid, last_payment_tick')
-        .eq('status', 'awarded')
-        .is('trade_agreement_id', null)
-        .or(`last_payment_tick.is.null,last_payment_tick.neq.${currentTick}`);
-
-    if (activeErr) {
-        console.warn('[ShippingRoutes] active-contracts fetch failed:', activeErr.message);
-        return results;
-    }
-    if (!activeContracts || activeContracts.length === 0) return results;
-
-    for (const contract of activeContracts) {
-        if (!contract.winner_faction_id) continue;
-        const revenue = Number(contract.revenue_per_tick) || 0;
-        if (revenue <= 0) continue;
-
-        const { data: winner, error: wErr } = await supabase.from('factions')
-            .select('corp_cash_reserves')
-            .eq('id', contract.winner_faction_id).single();
-        if (wErr || !winner) {
-            console.warn(`[ShippingRoutes] winner fetch failed for contract ${contract.id}:`, wErr?.message);
-            continue;
-        }
-
-        const { error: credErr } = await supabase.from('factions').update({
-            corp_cash_reserves: (Number(winner.corp_cash_reserves) || 0) + revenue,
-        }).eq('id', contract.winner_faction_id);
-        if (credErr) {
-            console.warn(`[ShippingRoutes] credit failed for contract ${contract.id}:`, credErr.message);
-            continue;
-        }
-        logCashEvent(contract.winner_faction_id, 'revenue_shipping', 'Shipping route revenue', revenue, contract.nation_id);
-
-        const { error: contractErr } = await supabase.from('shipping_contracts').update({
-            last_payment_tick: currentTick,
-            total_paid:        (Number(contract.total_paid) || 0) + revenue,
-            updated_at:        new Date().toISOString(),
-        }).eq('id', contract.id);
-        if (contractErr) {
-            console.warn(`[ShippingRoutes] contract-payment update failed for contract ${contract.id}:`, contractErr.message);
-            continue;
-        }
-
-        results.paid++;
-    }
-
-    return results;
-}
 
 // ════════════════════════════════════════════════════════════════
 // Phase 4 — Trade-Agreement Shipping processor
 //
 // Handles shipping_contracts spawned by the AFTER INSERT trigger on
-// trade_agreements (Phase 2). Different from SOP processShippingRoutes:
+// trade_agreements (Phase 2). (The legacy SOP shipping_routes processor
+// has been removed in the corp cull.)
 //
 //   - Auto-award by delivery_priority (fastest/safest/cheapest):
 //       fastest  → MAX(energy_per_tick)
@@ -3670,14 +3473,11 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
             }
 
             // ── Shipping Sector — RETIRED ────────────────────────────────
-            // Organic + trade-agreement-flow shipping_routes generation is
-            // gone. Trade agreements spawn shipping_contracts directly via
-            // trg_spawn_shipping_contracts; bids flow through
-            // place_shipping_offer (legacy) or entrepreneur_place_shipping_bid
-            // (multi-winner); per-tick allocation runs in
-            // processTradeAgreementShipping below. Pre-existing awarded
-            // shipping_claims still drain through processShippingRoutes
-            // until they complete naturally.
+            // Legacy shipping (shipping_routes/claims, organic generation,
+            // place_shipping_offer, processShippingRoutes) has been removed in
+            // the corp cull. Trade agreements spawn shipping_contracts via
+            // trg_spawn_shipping_contracts; entrepreneur bids flow through the
+            // multi-winner allocator in processTradeAgreementShipping below.
 
             // ── Ship Market — Generate listings every 8 ticks ────────────
             try {
@@ -4648,22 +4448,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
         summary.errors.push({ scope: 'equity_dividends', error: String(divErr) });
     }
 
-    // SOP2: Shipping route processor (shard-wide). Three internal
-    // passes (auto-award → maturity → payment) ordered so a route
-    // maturing on the same tick as its scheduled payment doesn't
-    // double-pay. Routes whose bid window closed get auto-awarded
-    // by award_criterion (lowest_price / fastest_delivery /
-    // lowest_risk); active routes accrue revenue_per_tick to the
-    // winning carrier; matured routes flip to 'completed'.
     try {
-        const shippingResults = await processShippingRoutes(supabase, currentTick);
-        if (shippingResults.awarded > 0
-            || shippingResults.expired > 0
-            || shippingResults.completed > 0
-            || shippingResults.paid > 0) {
-            summary.shippingRoutes = shippingResults;
-            console.log(`[ShippingRoutes] tick ${currentTick}: ${shippingResults.awarded} awarded (${shippingResults.bidsAccepted} bids accepted, ${shippingResults.bidsAutoRejected} auto-rejected), ${shippingResults.expired} expired, ${shippingResults.completed} completed, ${shippingResults.paid} paid`);
-        }
 
         // Trade-agreement shipping — multi-winner per-tick allocator
         // (migration 20270181). Importing nation pays; entrepreneur
