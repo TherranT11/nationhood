@@ -22,7 +22,8 @@ source of truth for the 5-phase cull so any session can resume from here.
 - [ ] Phase 5 — Schema teardown (legacy tables + `factions` columns) **+ trigger functions** `refresh_corp_routes_count`, `corp_ownership_sum_check`, `corp_ownership_auto_seed` (drop with their tables/triggers).
 
 ### P3 findings / new follow-ups
-- **Leftover P2 frontend (orphaned, delete in a P2-completion pass):** `js/corp-tax-pressing-issues.js` (still calls `pay_/cook_/ignore_corporate_tax` RPCs — blocks dropping those until removed), `js/loan-pressing-issues.js`, `js/lawsuit-pressing-issues.js`. No surviving HTML loads them; confirm the JS-import situation (the earlier orphan sweep didn't flag them — verify they aren't pulled by `entrepreneur-dashboard.html`/`government.html`'s pressing-issues system before deleting).
+- **Leftover P2 frontend — DONE.** Deleted the 3 orphaned legacy pressing-issues modules (`corp-tax-`, `loan-`, `lawsuit-pressing-issues.js`) — confirmed zero loaders (the orphan sweep had been fooled by comment-mentions in sibling modules; the surviving dashboards import only the entrepreneur/government ones: `corp-board-`, `acquisition-`, `corp-investment-`, `petition-`, `cos-report-`). Dropped the now-dead corporate-tax RPCs `pay_corporate_tax_full`/`cook_corporate_tax_books`/`ignore_corporate_tax_bill` (`20270241`).
+  - **Follow-ups:** deleting `loan-`/`lawsuit-pressing-issues.js` may have orphaned the legacy loan/lawsuit *respond* RPCs they called — assess in P3/P4 (legacy `finance_active_loans` loans vs entrepreneur `corp_loans`; `commercial_lawsuits` is shared, so confirm entrepreneur corps still have a lawsuit-respond UI elsewhere — possible pre-existing gap, NOT caused by deleting this dead module).
 - `airline_aircraft_ops_cost`/`_seats` ARE called by `process_airline_corp_tick` (20260721:207-209) — confirmed tick-bound, hence P4.
 
 **Rules:** forward-only `DROP` migrations (never edit the ~104 historical files);
