@@ -27,11 +27,16 @@
 
   /* Current Location — concrete now (home/origin nation); a travel action
      is planned, so the card leaves room for it without building anything. */
-  .ch-location {
+  /* Status row: Current Location · Asset Status · Warrants — three equal
+     cards that wrap on narrow screens. */
+  .ch-cards { display:flex; gap:16px; flex-wrap:wrap; margin-top:20px; align-items:stretch; }
+  .ch-card {
+    flex:1 1 240px; min-width:240px;
     background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
-    padding:16px 18px; max-width:420px;
+    padding:16px 18px;
   }
-  .ch-loc-label { color:#8aaa6a; font-size:10px; letter-spacing:0.15em; margin-bottom:8px; }
+  .ch-card-label { color:#8aaa6a; font-size:10px; letter-spacing:0.15em; margin-bottom:8px; }
+  .ch-card-empty { color:#555; font-size:11px; letter-spacing:0.04em; }
   .ch-loc-value { font-size:20px; font-weight:500; color:#fff; display:flex; align-items:center; gap:10px; }
   .ch-loc-tag {
     font-size:9px; letter-spacing:0.1em; color:#8aaa6a; border:0.5px solid rgba(138,170,106,0.3);
@@ -62,6 +67,18 @@
   .ch-rep-row.rep-bottom .nm, .ch-rep-row.rep-bottom .rp { color:#d88d82; }
   .ch-rep-empty { padding:16px; color:#555; font-size:11px; letter-spacing:0.06em; }
 
+  /* Personal liability — post-bankruptcy debt recourse. Shown only when owed. */
+  .ch-liability { display:none; margin-top:20px; max-width:420px;
+    background:#1a1212; border:0.5px solid rgba(216,141,130,0.45); border-radius:4px; padding:16px 18px; }
+  .ch-liability.show { display:block; }
+  .ch-liability .lab { color:#d88d82; font-size:10px; letter-spacing:0.15em; margin-bottom:8px; }
+  .ch-liability .amt { font-size:20px; font-weight:500; color:#d88d82; }
+  .ch-liability .note { color:#888; font-size:11px; line-height:1.5; margin:8px 0 12px; }
+  .ch-liability .settle-btn { font-size:11px; letter-spacing:0.06em; color:#d4d4d4; background:#1a1a1a;
+    border:0.5px solid rgba(255,255,255,0.15); border-radius:3px; padding:7px 14px; cursor:pointer; }
+  .ch-liability .settle-btn:disabled { opacity:0.5; cursor:default; }
+  .ch-liability .msg { font-size:10px; margin-top:8px; color:#888; min-height:12px; }
+
   @media (max-width:600px) {
     .ch-identity .first, .ch-identity .last { font-size:34px; }
     .ch-identity .meta-row { gap:16px; }
@@ -81,10 +98,28 @@
     </div>
   </div>
 
-  <div class="ch-location">
-    <div class="ch-loc-label">CURRENT LOCATION</div>
-    <div class="ch-loc-value"><span id="ch-location">—</span><span class="ch-loc-tag">HOME</span></div>
-    <div class="ch-loc-note">Travel actions coming soon.</div>
+  <div class="ch-cards">
+    <div class="ch-card">
+      <div class="ch-card-label">CURRENT LOCATION</div>
+      <div class="ch-loc-value"><span id="ch-location">—</span><span class="ch-loc-tag">HOME</span></div>
+      <div class="ch-loc-note">Travel actions coming soon.</div>
+    </div>
+    <div class="ch-card">
+      <div class="ch-card-label">ASSET STATUS</div>
+      <div class="ch-card-empty" id="ch-asset-status"></div>
+    </div>
+    <div class="ch-card">
+      <div class="ch-card-label">WARRANTS</div>
+      <div id="ch-warrants"></div>
+    </div>
+  </div>
+
+  <div class="ch-liability" id="ch-liability">
+    <div class="lab">PERSONAL LIABILITY</div>
+    <div class="amt" id="ch-liab-amt">—</div>
+    <div class="note">Unpaid debt from a bankrupt corporation follows you personally. You cannot found new corporations until it is settled from your personal funds.</div>
+    <button class="settle-btn" id="ch-settle-btn">Settle from personal funds</button>
+    <div class="msg" id="ch-settle-msg"></div>
   </div>
 
   <div class="ch-rep">
@@ -117,6 +152,33 @@ import { _supabase } from './js/supabase-client.js';
   // Current location = the character's home (origin) nation until travel ships.
   set('ch-location', f.nation ? String(f.nation) : 'Home Nation');
 
+  // ── Personal liability (post-bankruptcy debt recourse). Shown only when the
+  //    founder owes; settling from personal funds re-enables founding corps. ──
+  const usd = (n) => '$' + Math.round(Math.max(0, Number(n) || 0)).toLocaleString('en-US');
+  const owed = Math.max(0, Number(f.ent_unpaid_debt) || 0);
+  if (owed > 0) {
+    const card = document.getElementById('ch-liability');
+    const sBtn = document.getElementById('ch-settle-btn');
+    const sMsg = document.getElementById('ch-settle-msg');
+    set('ch-liab-amt', usd(owed));
+    if (card) card.classList.add('show');
+    if (sBtn) sBtn.onclick = async () => {
+      sBtn.disabled = true; const prev = sBtn.textContent; sBtn.textContent = 'Settling…';
+      if (sMsg) sMsg.textContent = '';
+      try {
+        const { data, error } = await _supabase.rpc('settle_personal_debt', { p_amount: owed });
+        if (error) { if (sMsg) sMsg.textContent = 'Failed: ' + error.message; sBtn.disabled = false; sBtn.textContent = prev; return; }
+        if (!data?.success) {
+          if (sMsg) sMsg.textContent = data?.reason === 'insufficient_funds'
+            ? `Not enough personal funds (have ${usd(data.have)}, owe ${usd(data.owed)}).`
+            : 'Settle failed: ' + (data?.reason || 'unknown');
+          sBtn.disabled = false; sBtn.textContent = prev; return;
+        }
+        location.reload();
+      } catch (e) { if (sMsg) sMsg.textContent = 'Failed: ' + (e?.message || e); sBtn.disabled = false; sBtn.textContent = prev; }
+    };
+  }
+
   // ── Reputable Entrepreneurs leaderboard: every active entrepreneur by
   //    reputation, descending. Top 3 green, bottom 5 red (top wins overlap). ──
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g,
@@ -141,6 +203,18 @@ import { _supabase } from './js/supabase-client.js';
             + `<span class="nm">${esc(nm)}</span><span class="rp">${rep}</span></div>`;
         }).join('')
       : '<div class="ch-rep-empty">No entrepreneurs yet.</div>';
+  }
+
+  // ── Warrants — rendered from this entrepreneur's active arrest warrants.
+  //    No warrants system exists yet, so the list is empty and the card falls
+  //    back to its default empty-state; wire the query into `warrants` here when
+  //    the Minister-of-Justice warrant feature ships. ──
+  const warrants = [];
+  const wEl = document.getElementById('ch-warrants');
+  if (wEl) {
+    wEl.innerHTML = warrants.length
+      ? warrants.map(w => `<div class="ch-card-empty" style="color:#d88d82;">${esc(w.label || '')}</div>`).join('')
+      : '<div class="ch-card-empty">No active arrest warrants</div>';
   }
 })().catch(e => console.warn('[entrepreneur-assets] init failed:', e?.message || e));
 </script>

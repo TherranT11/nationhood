@@ -915,6 +915,7 @@ function renderPositions(corps, filter) {
           const FRIENDLY = {
             landlocked_no_shipping: 'Shipping corps need a coastline — pick a non-landlocked nation.',
             not_home_nation: 'You can only found corporations in your home nation. Expand to other nations by building a Regional HQ there first.',
+            delinquent_debt: 'You owe personal debt from a bankrupt corporation. Settle it on your Character page before founding a new corporation.',
           };
           err.textContent = FRIENDLY[data?.reason] || ('Could not found: ' + ((data && data.reason) || 'unknown'));
           err.style.display = 'inline';
