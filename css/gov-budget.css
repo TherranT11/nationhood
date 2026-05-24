@@ -335,6 +335,27 @@
 .gb-panel.is-income .gb-panel__footer-v { color: #9ac89e; }
 .gb-panel.is-costs  .gb-panel__footer-v { color: #d88d82; }
 
+/* ── Phones: the 2×108px value columns starve the category label,
+   truncating it to "P…"/"S…". Tighten the value columns + gutters and
+   let the label WRAP (no ellipsis) so the full category name is always
+   readable. Header/row/footer share one grid, so override all three. */
+@media (max-width: 600px) {
+    .gb-panel__head,
+    .gb-panel__row,
+    .gb-panel__footer {
+        grid-template-columns: 1fr 72px 72px;
+        gap: 8px;
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+    .gb-panel__row { align-items: start; }
+    .gb-panel__row-lbl {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+    }
+}
+
 /* ── Deep Dive panel ─────────────────────────────────────── */
 .gb-deep {
     /* Amber (explicit bright #c79a5c, not the muted var(--amber)
