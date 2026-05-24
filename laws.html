@@ -391,7 +391,6 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { computeCorpValuation } from './js/game/corp-valuation.js';
 import { GAME_CONFIG, FOUNDATIONAL_REPEAL_DEFAULTS, initGameConfigForNation, deductAP } from './js/game/config.js';
 import { isGovernmentPresidential, hasElectedPresident, getCurrentConstitutionalSystem, getConstitutionalSystemLabel } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies } from './js/game/government-structure.js';
@@ -2260,31 +2259,19 @@ window.addTaxArticle = addTaxArticle;
 let _bailoutCorps = [];
 
 async function _loadBailoutCorps() {
-    const { data: corps, error: corpsErr } = await _supabase.from('factions')
-        .select('id, faction_name, corp_cash_reserves, corp_loans')
-        .eq('faction_type', 'corporation')
-        .eq('nation_id', currentNation.id)
-        .is('abandoned_at', null);
+    // Entrepreneur corps headquartered in this nation. Valuation = book value
+    // (treasury + Σ building cost − outstanding debt) via the shared SQL fn —
+    // one source, the same the lawsuit + sell-equity flows use.
+    const { data: corps, error: corpsErr } = await _supabase.from('entrepreneur_corps')
+        .select('id, name')
+        .eq('hq_nation_id', currentNation.id);
     if (corpsErr) throw corpsErr;
     const list = corps || [];
     const results = [];
     for (const c of list) {
-        const { data: props, error: propsErr } = await _supabase.from('corp_properties')
-            .select('purchase_price, condition').eq('faction_id', c.id);
-        if (propsErr) throw propsErr;
-        const { data: vessels, error: vesselsErr } = await _supabase.from('corp_vessels')
-            .select('purchase_price, condition, built_at_tick, status').eq('faction_id', c.id);
-        if (vesselsErr) throw vesselsErr;
-        // National HQ is a real corp_properties row now (20260711), so
-        // the props fetch above already includes it.
-        const valuation = computeCorpValuation({
-            cash: c.corp_cash_reserves,
-            loans: c.corp_loans,
-            properties: props,
-            vessels,
-            currentTick: currentTickGlobal,
-        });
-        results.push({ id: c.id, faction_name: c.faction_name, valuation });
+        const { data: bookVal, error: valErr } = await _supabase.rpc('entrepreneur_corp_book_value', { p_corp_id: c.id });
+        if (valErr) throw valErr;
+        results.push({ id: c.id, name: c.name, valuation: Math.max(0, Number(bookVal || 0)) });
     }
     _bailoutCorps = results;
     return results;
@@ -2310,7 +2297,7 @@ async function showBailoutForm() {
         sel.innerHTML = '<option value="">-- No corporations headquartered here --</option>';
     } else {
         sel.innerHTML = '<option value="">-- Choose a corporation --</option>' +
-            corps.map(c => `<option value="${c.id}">${escapeHtml(c.faction_name || 'Unnamed Corp')}</option>`).join('');
+            corps.map(c => `<option value="${c.id}">${escapeHtml(c.name || 'Unnamed Corp')}</option>`).join('');
     }
     sel.disabled = false;
     document.getElementById('bailout-valuation').textContent = '';
@@ -2380,8 +2367,8 @@ function addBailoutArticle() {
         draftArticles.push({
             articleNumber: articleNum,
             isBailout: true,
-            corpFactionId: corp.id,
-            corpName: corp.faction_name,
+            corpId: corp.id,
+            corpName: corp.name,
             amount: amountDollars,
         });
         renderDraftArticles();
@@ -4489,7 +4476,7 @@ async function submitToCommittee() {
                         bill_id: bill.id, policy_id: null, article_number: art.articleNumber, added_by: currentFaction.id,
                         article_title: 'Government Bailout',
                         article_text: `Government Bailout of ${art.corpName} for an amount of $${amtM.toLocaleString()}M.`,
-                        effect_data: { type: 'gov_bailout', corp_faction_id: art.corpFactionId, amount: art.amount },
+                        effect_data: { type: 'gov_bailout', corp_id: art.corpId, amount: art.amount },
                     };
                 }
                 if (art.isFunding) {

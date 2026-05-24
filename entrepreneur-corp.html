@@ -745,6 +745,7 @@ import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash, computeCorpBookValue } from './js/game/corp-valuation.js';
 import { fetchOneCorpBookAggregates } from './js/corp-book-value.js';
+import { GRIEVANCE_LABEL } from './js/game/lawsuit-types.js';
 function initials(s, n) {
   return (String(s || '').trim().split(/\s+/).filter(Boolean).slice(0, n || 2).map(w => w[0]).join('').toUpperCase()) || '—';
 }
@@ -4631,7 +4632,7 @@ function initials(s, n) {
       // The corp page renders both sides regardless of industry — a
       // corp might be a borrower today and a lender tomorrow if it's
       // a Banking corp.
-      const [reqRes, receivedRes, sentRes, loansRes, cbRes] = await Promise.all([
+      const [reqRes, receivedRes, sentRes, loansRes, cbRes, lawsuitsRes] = await Promise.all([
         _supabase.from('corp_loan_requests')
           .select('id, principal, term_ticks, status, placed_at_tick, expires_at_tick, '
                 + 'accepted_by:entrepreneur_corps!accepted_by_corp_id(name)')
@@ -4665,16 +4666,29 @@ function initials(s, n) {
           .eq('borrower_corp_id', id)
           .eq('status', 'active')
           .order('started_tick', { ascending: false }),
+        // Loan disputes (20270247) where this corp is plaintiff or defendant.
+        _supabase.from('commercial_lawsuits')
+          .select('id, status, grievance_type, settle_offer_amount, response_deadline_tick, '
+                + 'relationship_ref, plaintiff_corp_id, defendant_corp_id, '
+                + 'plaintiff:entrepreneur_corps!plaintiff_corp_id(name), '
+                + 'defendant:entrepreneur_corps!defendant_corp_id(name)')
+          .or(`plaintiff_corp_id.eq.${id},defendant_corp_id.eq.${id}`)
+          .in('status', ['pending', 'awaiting_trial', 'settle_offered'])
+          .order('filed_at_tick', { ascending: false }),
       ]);
       if (reqRes.error)      console.warn('[entrepreneur-corp] outgoing-loans fetch error:',  reqRes.error.message);
       if (receivedRes.error) console.warn('[entrepreneur-corp] received-offers fetch error:', receivedRes.error.message);
       if (sentRes.error)     console.warn('[entrepreneur-corp] sent-offers fetch error:',     sentRes.error.message);
       if (loansRes.error)    console.warn('[entrepreneur-corp] active-loans fetch error:',    loansRes.error.message);
       if (cbRes.error)       console.warn('[entrepreneur-corp] central-bank-loans fetch error:', cbRes.error.message);
+      if (lawsuitsRes.error) console.warn('[entrepreneur-corp] lawsuits fetch error:', lawsuitsRes.error.message);
 
       const outgoing = reqRes.data || [];
       const loans    = loansRes.data || [];
       const cbLoans  = cbRes.data || [];
+      const myLawsuits = lawsuitsRes.data || [];
+      // Loan ids already under dispute by/against me → hide the Sue button.
+      const disputedLoanIds = new Set(myLawsuits.map(s => s.relationship_ref?.id).filter(Boolean));
       // Filter received-offers to ones aimed at THIS corp's requests.
       // (The eq(status,'pending') filter above is global; cross-join
       // on borrower_corp_id happens client-side.)
@@ -4792,6 +4806,13 @@ function initials(s, n) {
 
             const remaining = Math.max(0, Number(l.principal) - Number(l.total_paid));
             const statusCls = l.status === 'defaulted' ? 'red' : (isBorrower ? 'amber' : 'green');
+            // Sue affordance: a borrower can sue the lender for predatory terms;
+            // a lender can sue the borrower for non-payout. Hidden once a dispute
+            // already references this loan.
+            const grievance = isBorrower ? 'predatory_terms' : 'non_payout';
+            const sueBtn = (isOwner && !disputedLoanIds.has(l.id))
+              ? `<button class="ap-btn-small cp-sue-loan" data-lid="${l.id}" data-grievance="${grievance}" data-def="${isBorrower ? l.lender_corp_id : l.borrower_corp_id}" data-cp="${escapeHtml(counterparty)}" style="background:transparent;border:1px solid rgba(201,138,138,0.4);color:#c98a8a;">${isBorrower ? 'Sue: Predatory' : 'Sue: Non-Payout'}</button>`
+              : '';
             return `
               <div class="cf-row ${isBorrower ? '' : 'income'}">
                 <div>
@@ -4799,7 +4820,10 @@ function initials(s, n) {
                   <div class="sub">${l.payments_remaining} of ${l.term_ticks} ticks left · ${fmtPct(l.apr)} · per tick ${fmtUsd(Number(l.per_tick_payment))}</div>
                 </div>
                 <span class="cf-status ${l.status}">${l.status}</span>
-                <span class="num ${statusCls}">${isBorrower ? '−' : '+'}${fmtUsd(Number(l.per_tick_payment))}/t</span>
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
+                  <span class="num ${statusCls}">${isBorrower ? '−' : '+'}${fmtUsd(Number(l.per_tick_payment))}/t</span>
+                  ${sueBtn}
+                </div>
               </div>`;
           }).join('')
         : '';
@@ -4817,7 +4841,32 @@ function initials(s, n) {
             </div>`).join('')
         : '';
 
-      const allHtml = launchBtn + outgoingHtml + receivedHtml + sentHtml + cbHtml + activeHtml;
+      // Legal disputes (loans only) — my corp as plaintiff or defendant.
+      const disputesHtml = (myLawsuits.length && isOwner)
+        ? `<div class="cf-sub-head">Legal Disputes · ${myLawsuits.length}</div>` + myLawsuits.map(s => {
+            const iAmDefendant = s.defendant_corp_id === id;
+            const other = iAmDefendant ? (s.plaintiff?.name || 'a corp') : (s.defendant?.name || 'a corp');
+            const role  = iAmDefendant ? 'Sued by' : 'Suing';
+            const offer = Number(s.settle_offer_amount) || 0;
+            let action;
+            if (iAmDefendant && s.status === 'pending') {
+              action = `<button class="ap-btn-small cp-respond-suit" data-sid="${s.id}" data-grievance="${s.grievance_type}" style="background:#1f2a1a;border:1px solid #8aaa6a;color:#8aaa6a;">Respond</button>`;
+            } else if (!iAmDefendant && s.status === 'settle_offered') {
+              action = `<div style="display:flex;gap:6px;">
+                  <button class="ap-btn-small cp-settle-accept" data-sid="${s.id}" style="background:#1f2a1a;border:1px solid #8aaa6a;color:#8aaa6a;">Accept ${fmtUsd(offer)}</button>
+                  <button class="ap-btn-small cp-settle-reject" data-sid="${s.id}" style="background:transparent;border:1px solid rgba(255,255,255,0.15);color:#888;">Reject</button>
+                </div>`;
+            } else {
+              action = `<span class="cf-status ${s.status}">${s.status.replace('_', ' ')}</span>`;
+            }
+            const sub = (!iAmDefendant && s.status === 'settle_offered')
+              ? `${GRIEVANCE_LABEL[s.grievance_type] || s.grievance_type} · settlement offered ${fmtUsd(offer)}`
+              : `${GRIEVANCE_LABEL[s.grievance_type] || s.grievance_type} · ${s.status.replace('_', ' ')}`;
+            return `<div class="cf-row"><div><div class="who">${role} ${escapeHtml(other)}</div><div class="sub">${escapeHtml(sub)}</div></div>${action}</div>`;
+          }).join('')
+        : '';
+
+      const allHtml = launchBtn + outgoingHtml + receivedHtml + sentHtml + cbHtml + activeHtml + disputesHtml;
       fc.innerHTML = allHtml || `<div class="empty-card">No loan activity yet.${isOwner ? ' Broadcast a request to start.' : ''}</div>`;
 
       if (isOwner) {
@@ -4834,7 +4883,107 @@ function initials(s, n) {
         fc.querySelectorAll('.cp-issue-loan').forEach(btn => {
           btn.addEventListener('click', () => handleIssueLoan(btn, btn.dataset.lid));
         });
+        fc.querySelectorAll('.cp-sue-loan').forEach(btn => {
+          btn.addEventListener('click', () => handleSueLoan(btn));
+        });
+        fc.querySelectorAll('.cp-respond-suit').forEach(btn => {
+          btn.addEventListener('click', () => openLawsuitResponse(btn.dataset.sid, btn.dataset.grievance));
+        });
+        fc.querySelectorAll('.cp-settle-accept').forEach(btn => {
+          btn.addEventListener('click', () => handleSettleDecision(btn, btn.dataset.sid, 'accept'));
+        });
+        fc.querySelectorAll('.cp-settle-reject').forEach(btn => {
+          btn.addEventListener('click', () => handleSettleDecision(btn, btn.dataset.sid, 'reject'));
+        });
       }
+    };
+
+    // ── Loan-dispute actions (20270247): file / respond / settle ──
+    const handleSueLoan = async (btn) => {
+      if (btn.disabled) return;
+      const grievance = btn.dataset.grievance;
+      const relief = grievance === 'non_payout' ? 'payment' : 'contract_voidance';
+      const label  = GRIEVANCE_LABEL[grievance] || grievance;
+      if (!confirm(`File a ${label} lawsuit against ${btn.dataset.cp} over this loan?\n\nA $2,000,000 filing fee is charged to your treasury. The Minister of Justice in your HQ nation rules the case.`)) return;
+      btn.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('file_commercial_lawsuit', {
+          p_plaintiff_corp_id: id, p_defendant_corp_id: btn.dataset.def,
+          p_grievance_type: grievance, p_relief_sought: relief, p_loan_id: btn.dataset.lid });
+        if (error) throw error;
+        if (!data?.success) { alert('Could not file: ' + (data?.error || 'unknown')); btn.disabled = false; return; }
+        location.reload();
+      } catch (e) { alert('Could not file: ' + (e?.message || e)); btn.disabled = false; }
+    };
+
+    const handleSettleDecision = async (btn, sid, decision) => {
+      if (btn.disabled) return;
+      if (decision === 'reject' && !confirm('Reject the settlement offer? The case proceeds to the Minister of Justice.')) return;
+      btn.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('respond_to_settle_offer', { p_lawsuit_id: sid, p_decision: decision });
+        if (error) throw error;
+        if (!data?.success) { alert('Failed: ' + (data?.error || 'unknown')); btn.disabled = false; return; }
+        location.reload();
+      } catch (e) { alert('Failed: ' + (e?.message || e)); btn.disabled = false; }
+    };
+
+    // Defendant response modal (refute / settle / concede). Built as a
+    // self-contained overlay so it needs no markup in the page body.
+    const openLawsuitResponse = (sid, grievance) => {
+      document.getElementById('lr-resp-overlay')?.remove();
+      const label = GRIEVANCE_LABEL[grievance] || grievance;
+      const ov = document.createElement('div');
+      ov.id = 'lr-resp-overlay';
+      ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:700;display:flex;align-items:center;justify-content:center;padding:24px;';
+      ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
+      ov.innerHTML = `
+        <div style="width:480px;max-width:94vw;background:#15140f;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:20px;">
+          <div style="font-size:15px;font-weight:600;color:#e8e6df;margin-bottom:4px;">Respond to Lawsuit</div>
+          <div style="font-size:11px;color:#8a8680;margin-bottom:14px;">You are the defendant in a ${escapeHtml(label)} claim. Choose a response before the deadline, or the Minister of Justice may enter a default judgment.</div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;"><input type="radio" name="lr-kind" value="refute" checked><div><b style="color:#cfcabf;font-size:12px;">Refute</b><div style="font-size:10px;color:#8a8680;">Contest the claim. $5,000,000 legal fee. Requires a defense statement (50+ chars). Goes to trial.</div></div></label>
+            <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;"><input type="radio" name="lr-kind" value="settle"><div><b style="color:#cfcabf;font-size:12px;">Offer Settlement</b><div style="font-size:10px;color:#8a8680;">Propose a cash amount to the plaintiff. They accept it, or the case goes to trial.</div></div></label>
+            <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;"><input type="radio" name="lr-kind" value="concede"><div><b style="color:#cfcabf;font-size:12px;">Concede</b><div style="font-size:10px;color:#8a8680;">Admit liability. The court's relief applies immediately.</div></div></label>
+          </div>
+          <div id="lr-resp-refute" style="margin-top:10px;"><textarea id="lr-resp-defense" rows="3" placeholder="Your defense statement (50+ characters)…" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid rgba(255,255,255,0.12);color:#cfcabf;font-size:12px;padding:8px;border-radius:4px;resize:vertical;"></textarea></div>
+          <div id="lr-resp-settle" style="margin-top:10px;display:none;"><input type="number" id="lr-resp-amount" min="1" step="1000000" placeholder="Settlement amount ($)" style="width:100%;box-sizing:border-box;background:#0d0d0d;border:1px solid rgba(255,255,255,0.12);color:#cfcabf;font-size:12px;padding:8px;border-radius:4px;"></div>
+          <div id="lr-resp-err" style="color:#c98a8a;font-size:11px;margin-top:8px;min-height:14px;"></div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+            <button id="lr-resp-cancel" class="ap-btn-small" style="background:transparent;border:1px solid rgba(255,255,255,0.15);color:#888;">Cancel</button>
+            <button id="lr-resp-submit" class="ap-btn-small" style="background:#1f2a1a;border:1px solid #8aaa6a;color:#8aaa6a;">Submit</button>
+          </div>
+        </div>`;
+      document.body.appendChild(ov);
+      const refuteBox = ov.querySelector('#lr-resp-refute');
+      const settleBox = ov.querySelector('#lr-resp-settle');
+      ov.querySelectorAll('input[name="lr-kind"]').forEach(r => r.addEventListener('change', () => {
+        const k = ov.querySelector('input[name="lr-kind"]:checked').value;
+        refuteBox.style.display = k === 'refute' ? 'block' : 'none';
+        settleBox.style.display = k === 'settle' ? 'block' : 'none';
+      }));
+      ov.querySelector('#lr-resp-cancel').onclick = () => ov.remove();
+      ov.querySelector('#lr-resp-submit').onclick = async () => {
+        const kind = ov.querySelector('input[name="lr-kind"]:checked').value;
+        const errEl = ov.querySelector('#lr-resp-err');
+        let defense = null, amount = null;
+        if (kind === 'refute') {
+          defense = (ov.querySelector('#lr-resp-defense').value || '').trim();
+          if (defense.length < 50) { errEl.textContent = 'Defense statement must be at least 50 characters.'; return; }
+        } else if (kind === 'settle') {
+          amount = Math.round(Number(ov.querySelector('#lr-resp-amount').value) || 0);
+          if (amount <= 0) { errEl.textContent = 'Enter a settlement amount.'; return; }
+        }
+        const submitBtn = ov.querySelector('#lr-resp-submit');
+        submitBtn.disabled = true; submitBtn.textContent = 'Submitting…'; errEl.textContent = '';
+        try {
+          const { data, error } = await _supabase.rpc('respond_to_lawsuit', {
+            p_lawsuit_id: sid, p_response_kind: kind, p_defense_text: defense, p_settle_offer_amount: amount });
+          if (error) throw error;
+          if (!data?.success) { errEl.textContent = data?.error || 'Failed'; submitBtn.disabled = false; submitBtn.textContent = 'Submit'; return; }
+          ov.remove(); location.reload();
+        } catch (e) { errEl.textContent = e?.message || String(e); submitBtn.disabled = false; submitBtn.textContent = 'Submit'; }
+      };
     };
 
     // ── Request Loan modal ──

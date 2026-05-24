@@ -12946,10 +12946,10 @@ async function renderJudicialTab(container) {
             .select(`
                 id, status, grievance_type, relief_sought,
                 filed_at_tick, responded_at_tick,
-                response_deadline_tick, ruling_deadline_tick, closed_at_tick,
+                response_deadline_tick, closed_at_tick,
                 defense_text, relationship_ref, chat_id,
-                plaintiff:plaintiff_faction_id(faction_name, abbreviation, corp_ticker),
-                defendant:defendant_faction_id(faction_name, abbreviation, corp_ticker)
+                plaintiff:entrepreneur_corps!plaintiff_corp_id(name, ticker),
+                defendant:entrepreneur_corps!defendant_corp_id(name, ticker)
             `)
             .eq('nation_id', currentNation.id)
             .order('filed_at_tick', { ascending: false }),
@@ -13001,19 +13001,23 @@ async function renderJudicialTab(container) {
     };
 
     function lawsuitRow(l) {
-        const plName  = l.plaintiff?.faction_name || 'Unknown';
-        const plTick  = l.plaintiff?.corp_ticker || l.plaintiff?.abbreviation || '';
-        const defName = l.defendant?.faction_name || 'Unknown';
-        const defTick = l.defendant?.corp_ticker || l.defendant?.abbreviation || '';
+        const plName  = l.plaintiff?.name || 'Unknown';
+        const plTick  = l.plaintiff?.ticker || '';
+        const defName = l.defendant?.name || 'Unknown';
+        const defTick = l.defendant?.ticker || '';
         const sc      = statusColor[l.status] || '#9e9a92';
         const ticksLeft = Math.max(0, Number(l.response_deadline_tick || 0) - Number(currentTick || 0));
+        // Overdue & unanswered → the MoJ can rule it as a default judgment.
+        const isOverdue = l.status === 'pending' && Number(currentTick || 0) > Number(l.response_deadline_tick || 0);
 
         // Phase-stage hint reflects where the case actually is in its
         // lifecycle. The Rule on Case button (further down) is the
         // MoJ-holder's active control on awaiting_trial cases.
         let hintText = '';
         if (l.status === 'pending') {
-            hintText = `Waiting for Defendant to Respond · ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}`;
+            hintText = isOverdue
+                ? (justiceVacant ? 'Defendant Did Not Respond · Justice Vacant' : 'Defendant Did Not Respond · Default Judgment')
+                : `Waiting for Defendant to Respond · ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}`;
         } else if (l.status === 'awaiting_trial') {
             hintText = justiceVacant ? 'Justice Vacant · Awaiting Appointment' : 'Awaiting MoJ Ruling';
         } else if (l.status === 'settle_offered') {
@@ -13031,8 +13035,8 @@ async function renderJudicialTab(container) {
         // MoJ ruling button — shown only when case is awaiting_trial
         // AND viewer's party holds Justice in this nation. data-lawsuit-id
         // wires to the click handler that mounts the rule modal.
-        const ruleBtn = (l.status === 'awaiting_trial' && viewerHoldsJustice)
-            ? `<button class="judicial-rule-btn" data-lawsuit-id="${escapeHtml(l.id)}" style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;padding:6px 12px;color:#000;background:#c8a832;border:1px solid #c8a832;cursor:pointer;">Rule on Case ▸</button>`
+        const ruleBtn = ((l.status === 'awaiting_trial' || isOverdue) && viewerHoldsJustice)
+            ? `<button class="judicial-rule-btn" data-lawsuit-id="${escapeHtml(l.id)}" style="font-family:var(--font-mono);font-size:9px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;padding:6px 12px;color:#000;background:#c8a832;border:1px solid #c8a832;cursor:pointer;">${isOverdue ? 'Default Judgment ▸' : 'Rule on Case ▸'}</button>`
             : '';
 
         return `<div style="padding:12px 16px;border-bottom:1px solid var(--border-main);background:var(--bg-panel);display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;">

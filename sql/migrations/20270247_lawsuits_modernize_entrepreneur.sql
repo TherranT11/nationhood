@@ -125,6 +125,9 @@ BEGIN
     IF p_grievance_type NOT IN ('non_payout','predatory_terms') THEN
         RETURN jsonb_build_object('success', false, 'error', 'Only loan disputes are supported');
     END IF;
+    IF p_relief_sought NOT IN ('payment','specific_performance','contract_voidance','asset_seizure') THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Invalid relief sought');
+    END IF;
 
     SELECT * INTO v_plaintiff FROM entrepreneur_corps WHERE id = p_plaintiff_corp_id FOR UPDATE;
     IF v_plaintiff.id IS NULL THEN RETURN jsonb_build_object('success', false, 'error', 'Plaintiff corp not found'); END IF;
@@ -221,8 +224,6 @@ DECLARE
     v_tick      INT;
     v_legal_fee BIGINT := 0;
     v_new_status TEXT;
-    v_ruling_window CONSTANT INT := 4;
-    v_ruling_deadline INT;
     v_relief    JSONB := '{}'::jsonb;
 BEGIN
     IF v_user IS NULL THEN RETURN jsonb_build_object('success', false, 'error', 'Not authenticated'); END IF;
@@ -255,7 +256,6 @@ BEGIN
     IF p_response_kind = 'refute' THEN
         v_legal_fee := 5000000;
         v_new_status := 'awaiting_trial';
-        v_ruling_deadline := v_tick + v_ruling_window;
         IF p_defense_text IS NULL OR length(trim(p_defense_text)) < 50 THEN
             RETURN jsonb_build_object('success', false, 'error', 'A refutation requires at least 50 characters of defense text');
         END IF;
@@ -287,12 +287,11 @@ BEGIN
            ruling               = CASE WHEN p_response_kind = 'concede'
                                        THEN jsonb_build_object('kind','concede','ruled_at_tick',v_tick,'executed',v_relief)
                                        ELSE ruling END,
-           ruling_deadline_tick = CASE WHEN p_response_kind = 'refute' THEN v_ruling_deadline ELSE ruling_deadline_tick END,
            updated_at           = now()
      WHERE id = p_lawsuit_id;
 
     RETURN jsonb_build_object('success', true, 'lawsuit_id', p_lawsuit_id, 'new_status', v_new_status,
-        'legal_fee', v_legal_fee, 'ruling_deadline_tick', v_ruling_deadline, 'executed', v_relief);
+        'legal_fee', v_legal_fee, 'executed', v_relief);
 END;
 $$;
 GRANT EXECUTE ON FUNCTION public.respond_to_lawsuit(UUID, TEXT, TEXT, BIGINT) TO authenticated;

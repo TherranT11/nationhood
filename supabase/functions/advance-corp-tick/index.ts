@@ -207,7 +207,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     // wrong project / silent failure). Bump the date suffix on each
     // intentional redeploy so we can distinguish stale invocations
     // from new ones in the function logs.
-    console.log('[advance-corp-tick] BUILD_MARKER 2026-05-24-a (corp-cull-4e-bank-loans)');
+    console.log('[advance-corp-tick] BUILD_MARKER 2026-05-24-c (corp-cull-4g-loan-negotiations)');
 
     // 1+2+3. Read + idempotency + time-gating + atomic claim, all in
     //        one RPC. SECURITY DEFINER pl/pgsql bypasses PostgREST's
@@ -272,41 +272,6 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
         errors: [],
     };
 
-    // 4b. Loan-negotiation stale sweep (once per tick, global). Abandons
-    // any negotiation idle > 24 hours, refunds held escrow, system-
-    // messages the row. Cheap: typically 0 sweeps per tick.
-    try {
-        const { data: sweepRes, error: sweepErr } = await supabase
-            .rpc('auto_abandon_stale_negotiations', { p_tick: currentTick });
-        if (sweepErr) {
-            console.error('[advance-corp-tick] loan-negotiation sweep failed:', sweepErr.message);
-            summary.errors.push({ scope: 'loan_negotiation_sweep', error: sweepErr.message });
-        } else if (sweepRes?.swept > 0) {
-            console.log(`[advance-corp-tick] Auto-abandoned ${sweepRes.swept} stale loan negotiation(s)`);
-        }
-    } catch (sweepEx) {
-        console.error('[advance-corp-tick] loan-negotiation sweep threw (non-fatal):', sweepEx);
-        summary.errors.push({ scope: 'loan_negotiation_sweep', error: String(sweepEx) });
-    }
-
-    // 4c. Aviation-incident auto-refuse sweep (Phase 7). Pending
-    // incidents past expires_at_tick get the 'auto_refused' penalty
-    // (op_safety -0.5, reputation -1.5) — same effects as the
-    // 'refused' response a player would have picked.
-    try {
-        const { data: incRes, error: incErr } = await supabase
-            .rpc('auto_resolve_stale_incidents', { p_tick: currentTick });
-        if (incErr) {
-            console.error('[advance-corp-tick] aviation-incident sweep failed:', incErr.message);
-            summary.errors.push({ scope: 'aviation_incident_sweep', error: incErr.message });
-        } else if (incRes?.swept > 0) {
-            console.log(`[advance-corp-tick] Auto-refused ${incRes.swept} stale aviation incident(s)`);
-        }
-    } catch (incEx) {
-        console.error('[advance-corp-tick] aviation-incident sweep threw (non-fatal):', incEx);
-        summary.errors.push({ scope: 'aviation_incident_sweep', error: String(incEx) });
-    }
-
     // Central Bank loan repayments (entrepreneur corp ↔ home-nation CB):
     // amortized payment from treasury_cash, principal frees CB capacity,
     // interest grows the CB pool.
@@ -319,30 +284,6 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     } catch (cbErr) {
         console.error('[advance-corp-tick] FAILED central bank loan payments:', cbErr);
         summary.errors.push({ scope: 'central_bank_loan_payments', error: String(cbErr) });
-    }
-
-    // EDP: Equity dividend processor (shard-wide, anniversary-driven).
-    // Iterates active equity_positions whose 12-tick anniversary has come
-    // up. Pays 2% × borrower.corp_cash_reserves × equity_pct, floored at $0.
-    // Borrower side: dividend_paid (Cost). Holder side: revenue_finance
-    // (Revenue). Both go through emit_corp_cash_event — dashboards update
-    // automatically. RPC owns iteration + locking; this just invokes once
-    // per tick. See sql/migrations/20261008_process_equity_dividends_rpc.sql.
-    try {
-        const { data: divResult, error: divErr } = await supabase.rpc(
-            'process_equity_dividends',
-            { p_current_tick: currentTick }
-        );
-        if (divErr) {
-            console.error('[advance-corp-tick] equity dividends RPC error:', divErr);
-            summary.errors.push({ scope: 'equity_dividends', error: divErr.message });
-        } else if (divResult && (divResult.paid > 0 || divResult.skipped > 0)) {
-            summary.equityDividends = divResult;
-            console.log(`[EquityDividends] tick ${currentTick}: ${divResult.paid} paid, ${divResult.skipped} skipped`);
-        }
-    } catch (divErr) {
-        console.error('[advance-corp-tick] FAILED equity dividends:', divErr);
-        summary.errors.push({ scope: 'equity_dividends', error: String(divErr) });
     }
 
     try {
