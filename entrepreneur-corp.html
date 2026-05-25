@@ -1979,7 +1979,9 @@ function initials(s, n) {
       const corpCash = getEntrepreneurCorpCash(c);
       const items = [
         ...(corpRes.data || []).map(l => ({
-          type: 'corp', id: l.id, apr: Number(l.apr) || 0,
+          // corp apr is a fraction (0.03); CB interest_rate below is already a
+          // percentage — normalise both to a percentage for the APR display.
+          type: 'corp', id: l.id, apr: (Number(l.apr) || 0) * 100,
           lender: l.lender?.name || 'lender',
           bal: Math.max(0, Math.ceil(Number(l.balance ?? (Number(l.principal) - Number(l.total_paid || 0))))),
         })),
@@ -4897,7 +4899,7 @@ function initials(s, n) {
             }
 
             const remaining = Math.max(0, Number(l.balance ?? (Number(l.principal) - Number(l.total_paid))));
-            const perTickInterest = Math.round(remaining * (Number(l.apr) || 0) / 100 / 12);
+            const perTickInterest = Math.round(remaining * (Number(l.apr) || 0) / 12);
             const statusCls = l.status === 'defaulted' ? 'red' : (isBorrower ? 'amber' : 'green');
             // Sue affordance: a borrower can sue the lender for predatory terms;
             // a lender can sue the borrower for non-payout. Hidden once a dispute
