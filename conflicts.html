@@ -213,10 +213,8 @@ let allIssues = [];
 let selectedIssueId = null;
 let issuesLoaded = false;
 // Card system state
-let _selectedCardNumber = null;  // currently selected card in hand
 let _currentIssueData = null;    // cached issue data for card play
 let _currentCardDefs = {};       // cached card definitions lookup
-let _cardPlayInProgress = false; // debounce lock
 const ACTIONS = {}; // stub for legacy references
 let _currentRoles = new Set(); // roles held by the current faction (e.g. 'foreign_minister', 'head_of_government')
 
@@ -619,6 +617,14 @@ async function renderCardBilateralIntel(issue) {
     el.innerHTML = `<div style="display:flex;">${intelCard(ourName, 'var(--blue,#6b8cae)', ourHog, ourApproval, ourControl, ourPower, ourCrises)}<div style="border-left:1px solid rgba(200,196,184,0.06);"></div>${intelCard(theirName, 'var(--red,#a65d5d)', theirHog, theirApproval, theirControl, theirPower, theirCrises)}</div>`;
 }
 
+// The nation that holds Initiative on an issue (the side whose id matches
+// initiative_nation_id), or null for legacy issues with none recorded.
+function issueInitiativeNation(issue) {
+    const id = issue.initiative_nation_id;
+    return id === issue.nation_a_id ? issue.nation_a
+        : id === issue.nation_b_id ? issue.nation_b : null;
+}
+
 function renderCardStatusStrip(issue) {
     const el = document.getElementById('issues-status-bar');
     if (!el) return;
@@ -644,10 +650,7 @@ function renderCardStatusStrip(issue) {
         cells += `<div style="flex:1;min-width:0;height:26px;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;${style}${cur}">${i}</div>`;
     }
 
-    // Initiative holder = the nation that started the issue (NULL on legacy issues).
-    const initId = issue.initiative_nation_id;
-    const initNation = initId === issue.nation_a_id ? issue.nation_a
-        : initId === issue.nation_b_id ? issue.nation_b : null;
+    const initNation = issueInitiativeNation(issue);
     const initName = initNation?.name || null;
     const initChip = initName ? escapeHtml(initName.slice(0, 2).toUpperCase()) : '—';
     const initDisplay = initName ? escapeHtml(initName) : 'Undetermined';
@@ -730,9 +733,7 @@ function renderCardActiveCard(issue, myHand, cardDefMap, mySide, isMyTurn) {
     _currentCardDefs = cardDefMap;
 
     // Initiative holder — shown on the Current Card header ("X APPLIES — HOLDS INITIATIVE").
-    const initId = issue.initiative_nation_id;
-    const initNation = initId === issue.nation_a_id ? issue.nation_a
-        : initId === issue.nation_b_id ? issue.nation_b : null;
+    const initNation = issueInitiativeNation(issue);
     const initTag = initNation?.name
         ? `${escapeHtml(initNation.name.toUpperCase())} APPLIES — HOLDS INITIATIVE`
         : 'HOLDS INITIATIVE';
@@ -770,30 +771,6 @@ function renderCardActiveCard(issue, myHand, cardDefMap, mySide, isMyTurn) {
                 </div>
             </div>
             <div style="text-align:center;font-size:9px;font-style:italic;color:var(--text-dim);">Both nations choose in secret. Choices resolve simultaneously when the tick closes.</div>
-        </div>`;
-}
-
-function renderDiplomaticResponse(el, issue, cd, mySide) {
-    const ticksLeft = Math.max(0, (issue.pending_diplomatic_deadline_tick || 0) - currentTick);
-    const proposerName = issue.pending_diplomatic_proposer === 'a' ? (issue.nation_a?.name || 'A') : (issue.nation_b?.name || 'B');
-    const acceptFx = cd.diplomatic_accept_effects || {};
-    const rejectFx = cd.diplomatic_reject_effects || {};
-
-    el.innerHTML = `
-        <div style="max-width:560px;background:var(--bg-card,#1e1e1a);border:1px solid rgba(91,154,139,0.2);">
-            <div style="padding:8px 12px 6px;border-bottom:1px solid rgba(200,196,184,0.06);display:flex;align-items:center;gap:8px;">
-                <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;padding:1.5px 5px;text-transform:uppercase;color:var(--teal);background:rgba(91,154,139,0.08);border:1px solid rgba(91,154,139,0.2);">Diplomatic Proposal</span>
-                <span style="font-family:var(--font-serif);font-size:14px;font-weight:600;flex:1;">${escapeHtml(cd.card_name)}</span>
-                <span style="font-family:var(--font-mono);font-size:8px;color:var(--amber);">${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''} to respond</span>
-            </div>
-            <div style="padding:10px 12px;">
-                <div style="font-size:11px;color:var(--text-muted);line-height:1.5;margin-bottom:6px;">${escapeHtml(proposerName)} proposes: ${escapeHtml(cd.narrative)}</div>
-                <div style="display:flex;gap:8px;margin-top:10px;">
-                    <button onclick="window._respondDiplomatic('accept')" style="flex:1;padding:8px;font-family:var(--font-mono);font-size:9px;font-weight:700;text-transform:uppercase;border:1px solid rgba(122,154,91,0.2);color:var(--green);background:rgba(122,154,91,0.06);cursor:pointer;">Accept</button>
-                    <button onclick="window._respondDiplomatic('reject')" style="flex:1;padding:8px;font-family:var(--font-mono);font-size:9px;font-weight:700;text-transform:uppercase;border:1px solid rgba(166,93,93,0.2);color:var(--red);background:rgba(166,93,93,0.06);cursor:pointer;">Reject</button>
-                </div>
-                <div style="font-size:8px;color:var(--text-dim);margin-top:6px;">If no response in ${ticksLeft} tick${ticksLeft !== 1 ? 's' : ''}, auto-rejected.</div>
-            </div>
         </div>`;
 }
 
@@ -939,7 +916,7 @@ function renderCardTimeline(issue, history, cardPlays, cardDefMap, modifiers, my
     html += `<div style="position:relative;padding-left:20px;padding-bottom:10px;border-left:1px solid transparent;margin-left:5px;opacity:0.5;">
         <div style="position:absolute;left:-4px;top:3px;width:7px;height:7px;border:1.5px solid var(--amber);background:var(--amber);"></div>
         <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--amber);">Now — Tick ${currentTick}</div>
-        <div style="font-size:12.5px;color:var(--amber);">${_selectedCardNumber ? 'Reviewing card...' : (issue.whose_turn === mySide ? 'Your turn' : 'Opponent\'s turn')}</div>
+        <div style="font-size:12.5px;color:var(--amber);">${issue.whose_turn === mySide ? 'Your turn' : 'Opponent\'s turn'}</div>
     </div>`;
 
     // ── Active Modifiers ──
@@ -1076,64 +1053,6 @@ window._savePrimer = async function(historyId) {
     }
 
     if (_currentIssueData) await selectIssue(_currentIssueData.id);
-};
-
-// ==================== CARD INTERACTION HANDLERS ====================
-
-window._selectHandCard = function(cardNumber) {
-    _selectedCardNumber = cardNumber;
-    if (_currentIssueData) {
-        const mySide = _currentIssueData.nation_a_id === currentNation.id ? 'a' : 'b';
-        const myHand = mySide === 'a' ? (_currentIssueData.hand_a || []) : (_currentIssueData.hand_b || []);
-        const isMyTurn = _currentIssueData.whose_turn === mySide;
-        renderCardActiveCard(_currentIssueData, myHand, _currentCardDefs, mySide, isMyTurn);
-        renderCardHand(_currentIssueData, myHand, _currentCardDefs, mySide, isMyTurn);
-    }
-};
-
-window._playSelectedCard = async function() {
-    if (_cardPlayInProgress || !_selectedCardNumber || !_currentIssueData) return;
-    _cardPlayInProgress = true;
-    try {
-        const { playIssueCard } = await import('./js/game/issues.js');
-        const result = await playIssueCard(_supabase, {
-            issueId: _currentIssueData.id,
-            cardNumber: _selectedCardNumber,
-            nationId: currentNation.id,
-            factionId: currentFaction.id,
-            currentTick,
-        });
-        if (!result.success) {
-            alert('Card play failed: ' + (result.error || 'Unknown error'));
-        } else {
-            _selectedCardNumber = null;
-            await selectIssue(_currentIssueData.id);
-        }
-    } catch (err) {
-        alert('Card play error: ' + err.message);
-    } finally {
-        _cardPlayInProgress = false;
-    }
-};
-
-window._respondDiplomatic = async function(response) {
-    if (_cardPlayInProgress || !_currentIssueData) return;
-    _cardPlayInProgress = true;
-    try {
-        const { respondToDiplomaticCard } = await import('./js/game/issues.js');
-        const result = await respondToDiplomaticCard(
-            _supabase, _currentIssueData.id, currentNation.id, response, currentTick
-        );
-        if (!result.success) {
-            alert('Response failed: ' + (result.error || 'Unknown error'));
-        } else {
-            await selectIssue(_currentIssueData.id);
-        }
-    } catch (err) {
-        alert('Response error: ' + err.message);
-    } finally {
-        _cardPlayInProgress = false;
-    }
 };
 
 // ==================== SIDEBAR RENDERING ====================
