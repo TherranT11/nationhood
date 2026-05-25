@@ -2184,14 +2184,25 @@ async function processNationDebtTick(supabase, nation, activeCorpCount = 0) {
     // nation.debt and nation.budget are both stored as abstract integers
     // post-migrations 20261206 + 20261207 — no _RAW_PER_ABSTRACT bridging
     // needed inside this function. perTickBalance is also abstract.
-    const currentDebt    = Number(nation?.debt) || 0;
-    const currentTreasury = Number(nation?.budget) || 0;
+    //
+    // Re-read budget + debt fresh: earlier processors this tick (notably the
+    // recurring trade/aid transfer loop, section 3.5f) credit or debit the
+    // treasury directly in the DB, so the in-memory `nation` object can be
+    // stale here. Reading first keeps the deficit-from-treasury math correct
+    // and avoids overwriting those updates with a stale baseline.
+    const { data: _fresh, error: _readErr } = await supabase.from('nations')
+        .select('budget, debt').eq('id', nation.id).maybeSingle();
+    if (_readErr || !_fresh) {
+        console.warn(`[Debt] balance read failed for ${nation.name}:`, _readErr?.message);
+        return null;
+    }
+    const currentDebt     = Number(_fresh.debt) || 0;
+    const currentTreasury = Number(_fresh.budget) || 0;
 
     if (perTickBalance > 0) {
-        // Surplus → treasury only. Debt is NOT auto-paid from surpluses
-        // (it falls via the corp-tax credit + explicit pay-down); this
-        // lets an indebted nation build a treasury buffer so upfront
-        // costs draw from cash instead of overflowing 100% to debt.
+        // Surplus → treasury. Debt is NOT auto-paid from surpluses (it falls
+        // via the corp-tax credit + explicit pay-down); this lets an indebted
+        // nation build a treasury buffer so costs draw from cash, not debt.
         const newBudget = currentTreasury + perTickBalance;
         const { error } = await supabase.from('nations')
             .update({ budget: newBudget }).eq('id', nation.id);
@@ -2203,19 +2214,33 @@ async function processNationDebtTick(supabase, nation, activeCorpCount = 0) {
         return { mode: 'surplus_to_treasury', perTickBalance, newDebtRaw: currentDebt, newBudget };
     }
 
-    // perTickBalance < 0 → deficit. Debt grows by the deficit; treasury
-    // is unchanged (implicit borrow — the shortfall is now on the books
-    // as more debt rather than a cash drain).
+    // Deficit → draw from the treasury first; borrow only the shortfall.
+    // Trade/aid income has already landed in the treasury (the recurring
+    // transfer + aid processors run earlier this tick), so paying the
+    // operating deficit from cash instead of always borrowing keeps debt flat
+    // whenever the nation is solvent — which is what the budget panel's unified
+    // Balance (tax + trade/aid − costs) reflects. Net worth still moves by
+    // exactly that Balance; only its split between treasury and debt changes.
+    // Debt grows only once the treasury is exhausted.
     const deficit = -perTickBalance;
-    const newDebt = currentDebt + deficit;
+    const fromTreasury = Math.min(deficit, Math.max(0, currentTreasury));
+    const borrow = deficit - fromTreasury;
+    const newBudget = currentTreasury - fromTreasury;
+    const newDebt = currentDebt + borrow;
     const { error } = await supabase.from('nations')
-        .update({ debt: newDebt }).eq('id', nation.id);
+        .update({ budget: newBudget, debt: newDebt }).eq('id', nation.id);
     if (error) {
         console.warn(`[Debt] deficit update failed for ${nation.name}:`, error.message);
         return null;
     }
+    nation.budget = newBudget;
     nation.debt = newDebt;
-    return { mode: 'deficit', perTickBalance: -deficit, newDebtRaw: newDebt };
+    return {
+        mode: borrow > 0 ? 'deficit_borrow' : 'deficit_from_treasury',
+        perTickBalance: -deficit,
+        newDebtRaw: newDebt,
+        newBudget,
+    };
 }
 
 /**
@@ -26169,7 +26194,9 @@ async function initializeDeck(supabase, issue, nationA, nationB, currentTick) {
     const handB = allCardNumbers.splice(0, drawB);
     const deckRemaining = allCardNumbers; // whatever is left
 
-    // Nation A goes first
+    // The initiative holder (the nation that started the issue) takes the first
+    // turn. Falls back to nation A for legacy issues with no recorded initiative.
+    const firstTurn = issue.initiative_nation_id === issue.nation_b_id ? 'b' : 'a';
     const { error: updateErr } = await supabase
         .from('bilateral_issues')
         .update({
@@ -26177,7 +26204,7 @@ async function initializeDeck(supabase, issue, nationA, nationB, currentTick) {
             hand_a: handA,
             hand_b: handB,
             played_cards: [],
-            whose_turn: 'a',
+            whose_turn: firstTurn,
             deck_initialized: true,
             last_card_played_tick: currentTick,
         })
@@ -32706,10 +32733,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
 
         // National debt — single rule. Bonds retired (2026-05).
-        //   balance = revenue − expenditures (panel-accurate, /12 per tick)
-        //   surplus → debt down, treasury down by the same amount
-        //   deficit → debt up, treasury unchanged (implicit borrow)
-        // No bond offers, no coupon payments, no printing.
+        //   balance = tax revenue − expenditures (/12 per tick)
+        //   surplus → treasury up
+        //   deficit → paid from treasury first; only the shortfall beyond
+        //             available cash is borrowed (debt up). Trade/aid cash
+        //             already sits in the treasury (section 3.5f), so a
+        //             nation with a positive unified panel Balance stays out
+        //             of new debt. No bonds, no coupons, no printing.
         try {
             const result = await processNationDebtTick(supabase, nation, activeCorpCount);
             if (result) {
