@@ -152,9 +152,12 @@ function disputeDetail(issue, roles, role, region) {
 
   const roleModule = role === 'claimant' ? claimantZone()
                    : role === 'pressor'  ? pressorZone()
-                   :                       observerZone();
+                   :                       thirdPartyZone(roles);
 
-  return combatants + others + roleModule + chatPlaceholder();
+  // The head-of-state channel is private to the two principals (and, in future,
+  // the accepted mediator). Third parties don't see it.
+  const chat = (role === 'claimant' || role === 'pressor') ? chatPlaceholder() : '';
+  return combatants + others + roleModule + chat;
 }
 
 // ── role modules (inert previews) ────────────────────────────────────────────
@@ -197,11 +200,26 @@ function pressorZone() {
   </div>`;
 }
 
-function observerZone() {
-  return `<div class="claimant-zone"><div class="cz-actions">
-    <div class="lab">OBSERVING</div>
-    ${PREVIEW('You are not a party to this dispute. Third-party options (back a side, offer to mediate) are not yet built.')}
-  </div></div>`;
+// Third-party role module: the five intervention options. Inert preview — the
+// stance system isn't built. NOTE: mediation is a future sub-role — when a third
+// party offers to mediate and BOTH principals accept, they become the issue's
+// single mediator (role 'med'), which is what unlocks the chat panel below for
+// them. Until that system lands, no viewer resolves to 'med'.
+function thirdPartyZone(roles) {
+  const a = escapeHtml(roles.claimantName);
+  const b = escapeHtml(roles.pressorName);
+  return `<div class="tp-actions">
+    <div class="lab">YOUR OPTIONS AS A THIRD PARTY</div>
+    ${PREVIEW('Stances and mediation are not yet active.')}
+    <div class="tpa-grid iss-inert">
+      <div class="tpa support-a"><div class="tn">Support ${a}</div><div class="td">Lend strength &amp; legitimacy to the Claimant.</div></div>
+      <div class="tpa support-b"><div class="tn">Support ${b}</div><div class="td">Back the Pressor's claim.</div></div>
+      <div class="tpa condemn-a"><div class="tn">Condemn ${a}</div><div class="td">Censure the Claimant's intransigence.</div></div>
+      <div class="tpa condemn-b"><div class="tn">Condemn ${b}</div><div class="td">Censure the Pressor as an aggressor.</div></div>
+      <div class="tpa mediate"><div class="tn">Offer to Mediate</div><div class="td">Volunteer as broker. Pauses the clock if both accept.</div></div>
+    </div>
+    <div class="tp-note">Third parties are not on the head-of-state channel unless they become the accepted mediator. Only one mediator per issue.</div>
+  </div>`;
 }
 
 function chatPlaceholder() {
@@ -281,6 +299,19 @@ function ensureStyles() {
     .issues-panel .cza.compromise{background:#1a160d;border-color:rgba(200,158,110,0.3);} .issues-panel .cza.compromise .cn{color:#c89e6e;}
     .issues-panel .cza.mediate{background:#11181f;border-color:rgba(122,154,171,0.3);} .issues-panel .cza.mediate .cn{color:#7a9aab;}
     .issues-panel .cza.stand{background:#0e1610;border-color:rgba(138,170,106,0.35);} .issues-panel .cza.stand .cn{color:#8aaa6a;}
+
+    .issues-panel .tp-actions{padding:14px 18px;}
+    .issues-panel .tp-actions .lab{font-size:9px;letter-spacing:0.13em;color:#888;margin-bottom:10px;}
+    .issues-panel .tpa-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
+    .issues-panel .tpa{padding:11px 10px;border-radius:4px;text-align:center;border:0.5px solid;}
+    .issues-panel .tpa .tn{font-size:11px;font-weight:500;margin-bottom:3px;line-height:1.2;}
+    .issues-panel .tpa .td{font-size:8px;color:#777;line-height:1.35;}
+    .issues-panel .tpa.support-a{background:#0e131a;border-color:rgba(122,154,171,0.3);} .issues-panel .tpa.support-a .tn{color:#7a9aab;}
+    .issues-panel .tpa.support-b{background:#160e0e;border-color:rgba(200,122,122,0.3);} .issues-panel .tpa.support-b .tn{color:#c87a7a;}
+    .issues-panel .tpa.condemn-a{background:#0e131a;border-color:rgba(122,154,171,0.2);} .issues-panel .tpa.condemn-a .tn{color:#9ab4c4;}
+    .issues-panel .tpa.condemn-b{background:#160e0e;border-color:rgba(200,122,122,0.2);} .issues-panel .tpa.condemn-b .tn{color:#d49a9a;}
+    .issues-panel .tpa.mediate{background:#1a160d;border-color:rgba(200,158,110,0.35);} .issues-panel .tpa.mediate .tn{color:#c89e6e;}
+    .issues-panel .tp-note{margin-top:10px;font-size:9px;color:#666;letter-spacing:0.04em;line-height:1.5;font-style:italic;}
 
     .issues-panel .ladder-rungs{display:flex;flex-direction:column;gap:5px;}
     .issues-panel .rung{display:flex;align-items:center;gap:11px;padding:8px 11px;border-radius:4px;border:0.5px solid rgba(255,255,255,0.06);background:#0e0e0e;}
