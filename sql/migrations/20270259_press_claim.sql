@@ -35,7 +35,13 @@ ALTER TABLE bilateral_issues
     -- Initiative: the nation that currently "holds the narrative" and applies
     -- each drawn card. Set to the nation that starts the issue (the presser, for
     -- a pressed claim) and takes the first card turn. NULL for legacy issues.
-    ADD COLUMN IF NOT EXISTS initiative_nation_id UUID REFERENCES nations(id);
+    ADD COLUMN IF NOT EXISTS initiative_nation_id UUID REFERENCES nations(id),
+    -- Contest stats shown beneath Tension/Initiative. leverage is universal
+    -- (decides war at tension 10); issue_stat_1 / issue_stat_2 are issue-specific
+    -- (for territorial: Claim Strength / Dissident Strength). Single value each.
+    ADD COLUMN IF NOT EXISTS leverage INT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS issue_stat_1 INT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS issue_stat_2 INT NOT NULL DEFAULT 0;
 
 -- ── 2. Territorial cards 29 & 30 (deck → 30) ────────────────────────────────
 INSERT INTO issue_card_definitions (
@@ -166,14 +172,18 @@ BEGIN
 
     -- Create the issue. The presser challenges the territory the target holds,
     -- so the target is the administering nation.
+    -- Starting contest stats: the presser opens with 2 Leverage; the nation
+    -- pressed against holds 2 Claim Strength; Dissident Strength starts at 0.
     INSERT INTO bilateral_issues (
         issue_type, nation_a_id, nation_b_id, tension, favor, status,
         created_tick, ticks_without_diplomatic_action, administering_nation_id,
-        contested_region_name, stake_resource, stake_quantity, initiative_nation_id
+        contested_region_name, stake_resource, stake_quantity, initiative_nation_id,
+        leverage, issue_stat_1, issue_stat_2
     ) VALUES (
         'territorial_ownership', v_canonical_a, v_canonical_b, 1, 0, 'active',
         v_current_tick, 0, p_target_nation_id,
-        v_region, v_stake_resource, v_stake_qty, v_nation_id
+        v_region, v_stake_resource, v_stake_qty, v_nation_id,
+        2, 2, 0
     ) RETURNING id INTO v_issue_id;
 
     -- Starter modifiers (client passes them, built from MODIFIERS — one source).
