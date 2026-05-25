@@ -835,6 +835,9 @@ export const ISSUE_TYPES = {
         incident_type_alt: null,
         incident_type_alt_weight: 0,
         has_administering_nation: true,
+        // Labels for the two issue-specific stat containers (the universal one
+        // is Leverage). Read by the conflicts.html issue header.
+        stat_labels: { stat1: 'Claim Strength', stat2: 'Dissident Strength' },
         starter_modifiers: [
             'competing_sovereignty_claims',
             'no_international_adjudication',

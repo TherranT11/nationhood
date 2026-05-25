@@ -652,29 +652,47 @@ function renderCardStatusStrip(issue) {
     const initChip = initName ? escapeHtml(initName.slice(0, 2).toUpperCase()) : '—';
     const initDisplay = initName ? escapeHtml(initName) : 'Undetermined';
 
-    el.innerHTML = `<div style="display:flex;gap:14px;padding:14px 20px;background:var(--bg-elevated,#1a1a17);">
-        <div style="flex:2;border:1px solid rgba(200,196,184,0.08);padding:12px 16px;">
-            <div style="display:flex;justify-content:space-between;align-items:baseline;">
-                <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:var(--text-dim);">Tension</div>
-                <div style="font-family:var(--font-mono);">
-                    <span style="font-size:18px;font-weight:700;color:${labelColor};">${tension}</span>
-                    <span style="font-size:11px;color:var(--text-dim);"> / 10</span>
-                    <span style="font-size:8px;color:rgba(166,93,93,0.85);letter-spacing:0.08em;margin-left:6px;">10 = WAR</span>
+    // Contest stats: Leverage is universal; the two issue-specific stats take
+    // their labels from the issue type (Claim Strength / Dissident Strength for a
+    // territorial dispute). Single value each.
+    const statLabels = ISSUE_TYPES[issue.issue_type]?.stat_labels || {};
+    const statCard = (label, value, caption) => `
+        <div style="flex:1;border:1px solid rgba(200,196,184,0.08);padding:12px 16px;">
+            <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:var(--text-dim);">${escapeHtml(label)}</div>
+            <div style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:var(--text-bright,#e8e4d8);margin-top:6px;">${Number(value) || 0}</div>
+            ${caption ? `<div style="font-size:9px;color:var(--text-dim);margin-top:6px;line-height:1.4;">${escapeHtml(caption)}</div>` : ''}
+        </div>`;
+
+    el.innerHTML = `<div style="display:flex;flex-direction:column;gap:14px;padding:14px 20px;background:var(--bg-elevated,#1a1a17);">
+        <div style="display:flex;gap:14px;">
+            <div style="flex:2;border:1px solid rgba(200,196,184,0.08);padding:12px 16px;">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;">
+                    <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:var(--text-dim);">Tension</div>
+                    <div style="font-family:var(--font-mono);">
+                        <span style="font-size:18px;font-weight:700;color:${labelColor};">${tension}</span>
+                        <span style="font-size:11px;color:var(--text-dim);"> / 10</span>
+                        <span style="font-size:8px;color:rgba(166,93,93,0.85);letter-spacing:0.08em;margin-left:6px;">10 = WAR</span>
+                    </div>
+                </div>
+                <div style="display:flex;gap:4px;margin-top:10px;">${cells}</div>
+                <div style="font-size:9px;color:var(--text-dim);margin-top:8px;">
+                    <span style="color:${labelColor};font-weight:600;">${escapeHtml(tLabel)}.</span>
+                    At 10, war breaks out — decided by Leverage.
                 </div>
             </div>
-            <div style="display:flex;gap:4px;margin-top:10px;">${cells}</div>
-            <div style="font-size:9px;color:var(--text-dim);margin-top:8px;">
-                <span style="color:${labelColor};font-weight:600;">${escapeHtml(tLabel)}.</span>
-                At 10, war breaks out — decided by Leverage.
+            <div style="flex:1;border:1px solid rgba(200,196,184,0.08);padding:12px 16px;">
+                <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:var(--text-dim);">Initiative</div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+                    <div style="width:26px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:9px;font-weight:700;color:#1a1a17;background:${AMBER};">${initChip}</div>
+                    <div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:${AMBER};">${initDisplay}</div>
+                </div>
+                <div style="font-size:9px;color:var(--text-dim);margin-top:8px;line-height:1.4;">Holds the narrative. Applies each drawn card. Lost only when both nations restrain.</div>
             </div>
         </div>
-        <div style="flex:1;border:1px solid rgba(200,196,184,0.08);padding:12px 16px;">
-            <div style="font-family:var(--font-mono);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:var(--text-dim);">Initiative</div>
-            <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
-                <div style="width:26px;height:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:9px;font-weight:700;color:#1a1a17;background:${AMBER};">${initChip}</div>
-                <div style="font-family:var(--font-mono);font-size:13px;font-weight:700;color:${AMBER};">${initDisplay}</div>
-            </div>
-            <div style="font-size:9px;color:var(--text-dim);margin-top:8px;line-height:1.4;">Holds the narrative. Applies each drawn card. Lost only when both nations restrain.</div>
+        <div style="display:flex;gap:14px;">
+            ${statCard('Leverage', issue.leverage, 'Decides the outcome if tension reaches war.')}
+            ${statCard(statLabels.stat1 || 'Stat 1', issue.issue_stat_1, '')}
+            ${statCard(statLabels.stat2 || 'Stat 2', issue.issue_stat_2, '')}
         </div>
     </div>`;
 }
