@@ -61,7 +61,7 @@ INSERT INTO issue_card_definitions (
     'Reinforce the Garrison',
     'Move an additional brigade into the administered zone and harden the checkpoints. Possession, made visible.',
     '{ "favor_delta": 2, "tension_delta": 2.5, "relation_delta": -0.2, "treasury_cost": 18000000,
-       "stat_effects": [ { "stat_key": "stability", "delta": -0.05, "duration_ticks": 10, "target": "other" } ] }'::jsonb,
+       "stat_effects": [ { "stat_key": "stability", "delta": -0.05, "duration_ticks": 10, "target": "opponent" } ] }'::jsonb,
     'Claimant Nation',
     'Stage a Forward Deployment',
     'Mass units on your side of the line and run loud exercises. You cannot enter the territory, but you can make holding it expensive.',
@@ -206,8 +206,15 @@ BEGIN
     RETURN jsonb_build_object('ok', true, 'message', 'Claim pressed.', 'issue_id', v_issue_id,
         'stake_resource', v_stake_resource, 'stake_quantity', v_stake_qty);
 
-EXCEPTION WHEN OTHERS THEN
-    RETURN jsonb_build_object('ok', false, 'message', 'Error: ' || SQLERRM);
+EXCEPTION
+    WHEN unique_violation THEN
+        -- bilateral_issues has UNIQUE(issue_type, nation_a_id, nation_b_id): a
+        -- territorial dispute can exist only once per pair, even if a prior one
+        -- resolved. (Re-pressing resolved disputes is a Phase-2 design question.)
+        RETURN jsonb_build_object('ok', false, 'message',
+            'A territorial dispute with that nation already exists and cannot be re-opened.');
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('ok', false, 'message', 'Error: ' || SQLERRM);
 END;
 $$;
 
