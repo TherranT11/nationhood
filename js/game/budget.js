@@ -4,7 +4,6 @@
  */
 
 import { GAME_CONFIG } from './config.js';
-import { unitUpkeepPerTick } from './military-units.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS } from './diplomacy-constants.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
@@ -105,36 +104,20 @@ export function calculateNationalBudget(nation, opts = {}) {
 }
 
 // ════════════════════════════════════════════════════════════════
-// Per-tick national debt math (v3 — bonds retired).
-//
-// Balance = revenue − expenditures.
-//   surplus + debt > 0 → debt shrinks by the surplus (capped at
-//                         remaining debt); any leftover after the
-//                         debt clears accumulates in treasury.
-//   surplus + debt = 0 → full surplus accumulates in treasury
-//                         (stockpile, not flow — once the books
-//                         are square, future surpluses are savings).
-//   deficit            → debt grows by |balance|, treasury untouched
-//                         (implicit borrow — no bond offers, no printing).
-//
-// Mirrors the Government Budget panel's monthly-balance math so
-// what the player sees on the cards is what gets applied each tick.
+// Per-tick national debt math (bonds retired) lives only in the server
+// tick: processNationDebtTick in supabase/functions/advance-tick/index.ts.
+// The debt update is server-only, so there is no copy here.
 //
 // Unit handling: nation.budget AND nation.debt are both stored as
-// abstract integers (migrations 20261206 + 20261207). The unified
-// scale means processNationDebtTick can compute deltas without any
-// raw↔abstract conversion. Other tick-math paths (chargePolicyUpfrontCost,
-// resolveTradeRatificationBill, bailout payouts, recurring trade
-// transfers, corp shipping payments) bridge through the exported
-// RAW_PER_ABSTRACT constant below when comparing raw-dollar `amount` /
-// `revenue` / `dollars` fields against the abstract columns.
+// abstract integers (migrations 20261206 + 20261207). Tick-math paths
+// (chargePolicyUpfrontCost, resolveTradeRatificationBill, bailout payouts,
+// recurring trade transfers, corp shipping payments) bridge through the
+// exported RAW_PER_ABSTRACT constant below when comparing raw-dollar
+// `amount` / `revenue` / `dollars` fields against the abstract columns.
 //
 // REMAINING SCOPE-FLAG: calculateNationalBudget still aliases
-// nation.budget (treasury) as `grossRevenue` for back-compat. The
-// Government Budget panel + processNationDebtTick now compute real
-// revenue via computeIncomeTaxRevenue + computeCorporateTaxRevenue,
-// so they no longer see the aliasing flaw. economy.html still reads
-// budget.grossRevenue directly and will display treasury as revenue
+// nation.budget (treasury) as `grossRevenue` for back-compat. economy.html
+// reads budget.grossRevenue directly and will display treasury as revenue
 // until separately patched.
 // ════════════════════════════════════════════════════════════════
 
@@ -200,211 +183,12 @@ export async function computeInteriorInfraAnnualCost(supabase, nation) {
     return { totalAnnual, byTier };
 }
 
-// Combined Arms School upkeep — annual abstract $ for the nation.
-// Each completed school (corp_contracts project_subtype='Combined
-// Arms School', issuer_nation_id=nation) costs upkeep_per_tick
-// (from combined_arms_school_spec, $2) every tick, perpetually,
-// surfaced under National Infrastructure. Keyed off the nation (not
-// the issuing faction) so it persists even if that faction is gone.
-// Single source of truth: the client mirror is the army_units-style
-// fetch in loadBudgetData + the National Infrastructure deep-dive
-// row in government.html — both must compute this identically.
-export async function computeCombinedArmsSchoolUpkeepAnnual(supabase, nation) {
-    if (!nation?.id) return { totalAnnual: 0, count: 0 };
-    let perTick = 0;
-    try {
-        const { data: spec } = await supabase.rpc('combined_arms_school_spec');
-        perTick = Number(spec?.upkeep_per_tick) || 0;
-    } catch (_) { return { totalAnnual: 0, count: 0 }; }
-    if (perTick <= 0) return { totalAnnual: 0, count: 0 };
-    let count = 0;
-    try {
-        const { count: n, error } = await supabase.from('corp_contracts')
-            .select('id', { count: 'exact', head: true })
-            .eq('issuer_nation_id', nation.id)
-            .eq('project_subtype', 'Combined Arms School')
-            .eq('status', 'completed');
-        if (error) { console.warn('[CombinedArmsSchool] upkeep count failed:', error.message); return { totalAnnual: 0, count: 0 }; }
-        count = n || 0;
-    } catch (e) {
-        console.warn('[CombinedArmsSchool] upkeep threw:', e?.message || e);
-        return { totalAnnual: 0, count: 0 };
-    }
-    return { totalAnnual: count * perTick * GAME_CONFIG.TICKS_PER_YEAR, count };
-}
-
-// Military unit maintenance — annual abstract $ for the nation's
-// active (non-Decommissioned) units. Per-tick upkeep = 25% of a
-// unit's stored construction_cost, ROUNDED DOWN, with a HARD FLOOR
-// of $1/tick per unit (every unit always costs ≥ $1; an $8 unit →
-// $2/tick → $24/yr). construction_cost is stored on the army /1e6
-// scale (create_unit / party_funds), distinct from the /1e9 trade-
-// debt abstraction — the "$8 create → $2 tick" spec pins this. The
-// status <> 'Decommissioned' filter is the SAME committed-unit rule
-// create_unit uses for manpower (one definition).
-//
-// Single source of truth: the client mirror is the army_units fetch
-// in loadBudgetData + the Defense & Security deep-dive rows in
-// government.html — both must compute this identically or the panel
-// Balance lies (same contract as activeLawAnnual). Returns the
-// annual scalar (the only value the expenditures sum consumes).
-export async function computeUnitMaintenanceAnnual(supabase, nation) {
-    let perTick = 0;
-    try {
-        const { data: units, error } = await supabase
-            .from('army_units')
-            .select('construction_cost, army:armies(army_type)')
-            .eq('nation_id', nation.id)
-            .neq('status', 'Decommissioned');
-        if (error) {
-            console.warn(`[Budget] army_units fetch failed for ${nation.name}:`, error.message);
-        } else {
-            for (const u of (units || [])) {
-                perTick += unitUpkeepPerTick(u?.construction_cost, u?.army?.army_type);
-            }
-        }
-    } catch (err) {
-        console.warn(`[Budget] army_units threw for ${nation.name}:`, err?.message || err);
-    }
-    return perTick * GAME_CONFIG.TICKS_PER_YEAR; // per-tick → annual abstract $
-}
-
-/**
- * Panel-accurate annual expenditures. Mirrors _gbBuildCostRows in
- * government.html so the tick processor's debt math agrees with what
- * the Government Budget panel shows the player.
- *
- * Five line items, all in abstract units:
- *   - Interest on Debt        = debtService (raw $) / 1e9
- *   - Royal Holdings          = $36/yr if monarchy, else 0
- *   - Active-law ongoing      = sum(active_laws.selected_option.ongoing_base_cost) × 12
- *   - Sports & Culture (Vola) = nations.vola_stadium_annual_cost
- *                               (sum of every completed stadium's tier annual cost
- *                               — small $0.5 / modest $1 / extravagant $2)
- *   - Interior Infrastructure = sum over completed Interior Infrastructure
- *                               contracts of tier.upkeep_per_year
- *                               (small $1 / modest $2 / extravagant $4)
- *   - Public Sector Wages     = (state_apparatus × wages) / 200 × 12
- *   - Unit Maintenance        = Σ max(1, floor(construction_cost/1e6 × 0.25))
- *                               over non-Decommissioned army_units × 12
- *   - Combined Arms School    = (#completed schools) × upkeep_per_tick($2) × 12
- *                               (rolls up under National Infrastructure)
- *
- * Single source of truth: processNationDebtTick in this file +
- * _gbBuildCostRows in government.html both depend on this returning
- * the same number, so the panel's monthly balance and the per-tick
- * debt change always agree.
- */
-export async function computePanelAnnualExpenditures(supabase, nation) {
-    const budget = calculateNationalBudget(nation);
-    // nation.debt is now stored as abstract integers (migration 20261207),
-    // so debtService (= debt × FLAT_ANNUAL_INTEREST) is already on the
-    // unified abstract scale — no _RAW_PER_ABSTRACT division needed.
-    const debtServiceAbstract = Number(budget.debtService || 0);
-    const royalHoldingsAnnual = isAbsoluteMonarchy(nation) ? 36 : 0;
-    let activeLawAnnual = 0;
-    try {
-        // Canonical cost column: policy_options.ongoing_base_cost.
-        // Both policies.ongoing_base_cost and
-        // policies.ongoing_cost_per_tick that older code referenced
-        // were dropped from the schema.
-        const { data: laws, error: lawsErr } = await supabase
-            .from('active_laws')
-            .select('selected_option:policy_options!selected_option_id(ongoing_base_cost)')
-            .eq('nation_id', nation.id);
-        if (lawsErr) {
-            console.warn(`[Budget] active_laws fetch failed for ${nation.name}:`, lawsErr.message);
-        } else {
-            for (const law of (laws || [])) {
-                const perTick = Number(law?.selected_option?.ongoing_base_cost) || 0;
-                if (perTick > 0) activeLawAnnual += perTick * 12;
-            }
-        }
-    } catch (err) {
-        console.warn(`[Budget] active_laws threw for ${nation.name}:`, err?.message || err);
-    }
-    const stadiumAnnualCost = Number(nation.vola_stadium_annual_cost) || 0;
-    const interiorInfra = await computeInteriorInfraAnnualCost(supabase, nation);
-    const publicSectorWagesAnnual = computePublicSectorWagesAnnual(nation);
-    const unitMaintenanceAnnual = await computeUnitMaintenanceAnnual(supabase, nation);
-    const combinedArmsSchoolAnnual = (await computeCombinedArmsSchoolUpkeepAnnual(supabase, nation)).totalAnnual;
-    return debtServiceAbstract + royalHoldingsAnnual + activeLawAnnual + stadiumAnnualCost + interiorInfra.totalAnnual + publicSectorWagesAnnual + unitMaintenanceAnnual + combinedArmsSchoolAnnual;
-}
-
-export async function processNationDebtTick(supabase, nation, activeCorpCount = 0) {
-    // Annual revenue from the actual tax flow — same formulas that drive
-    // the Revenue card in the budget panel. Previously this read
-    // budget.grossRevenue which is aliased to nation.budget (treasury),
-    // producing a perTickBalance based on stockpile vs flow — wrong unit.
-    const incomeAnnual = computeIncomeTaxRevenue(nation) * 12;
-    const corpAnnual   = computeCorporateTaxRevenue(nation, undefined, activeCorpCount) * 12;
-    const annualRevenue = incomeAnnual + corpAnnual;
-    const annualExpenditures = await computePanelAnnualExpenditures(supabase, nation);
-    const perTickBalance = (annualRevenue - annualExpenditures) / 12;
-
-    if (perTickBalance === 0) return null;
-
-    // nation.debt and nation.budget are both stored as abstract integers
-    // post-migrations 20261206 + 20261207 — no _RAW_PER_ABSTRACT bridging
-    // needed inside this function. perTickBalance is also abstract.
-    //
-    // Re-read budget + debt fresh: earlier processors this tick (notably the
-    // recurring trade/aid transfer loop, section 3.5f) credit or debit the
-    // treasury directly in the DB, so the in-memory `nation` object can be
-    // stale here. Reading first keeps the deficit-from-treasury math correct
-    // and avoids overwriting those updates with a stale baseline.
-    const { data: _fresh, error: _readErr } = await supabase.from('nations')
-        .select('budget, debt').eq('id', nation.id).maybeSingle();
-    if (_readErr || !_fresh) {
-        console.warn(`[Debt] balance read failed for ${nation.name}:`, _readErr?.message);
-        return null;
-    }
-    const currentDebt     = Number(_fresh.debt) || 0;
-    const currentTreasury = Number(_fresh.budget) || 0;
-
-    if (perTickBalance > 0) {
-        // Surplus → treasury. Debt is NOT auto-paid from surpluses (it falls
-        // via the corp-tax credit + explicit pay-down); this lets an indebted
-        // nation build a treasury buffer so costs draw from cash, not debt.
-        const newBudget = currentTreasury + perTickBalance;
-        const { error } = await supabase.from('nations')
-            .update({ budget: newBudget }).eq('id', nation.id);
-        if (error) {
-            console.warn(`[Debt] surplus update failed for ${nation.name}:`, error.message);
-            return null;
-        }
-        nation.budget = newBudget;
-        return { mode: 'surplus_to_treasury', perTickBalance, newDebtRaw: currentDebt, newBudget };
-    }
-
-    // Deficit → draw from the treasury first; borrow only the shortfall.
-    // Trade/aid income has already landed in the treasury (the recurring
-    // transfer + aid processors run earlier this tick), so paying the
-    // operating deficit from cash instead of always borrowing keeps debt flat
-    // whenever the nation is solvent — which is what the budget panel's unified
-    // Balance (tax + trade/aid − costs) reflects. Net worth still moves by
-    // exactly that Balance; only its split between treasury and debt changes.
-    // Debt grows only once the treasury is exhausted.
-    const deficit = -perTickBalance;
-    const fromTreasury = Math.min(deficit, Math.max(0, currentTreasury));
-    const borrow = deficit - fromTreasury;
-    const newBudget = currentTreasury - fromTreasury;
-    const newDebt = currentDebt + borrow;
-    const { error } = await supabase.from('nations')
-        .update({ budget: newBudget, debt: newDebt }).eq('id', nation.id);
-    if (error) {
-        console.warn(`[Debt] deficit update failed for ${nation.name}:`, error.message);
-        return null;
-    }
-    nation.budget = newBudget;
-    nation.debt = newDebt;
-    return {
-        mode: borrow > 0 ? 'deficit_borrow' : 'deficit_from_treasury',
-        perTickBalance: -deficit,
-        newDebtRaw: newDebt,
-        newBudget,
-    };
-}
+// The national debt tick (processNationDebtTick) and its expenditure roll-up
+// (computePanelAnnualExpenditures) live only in the server tick
+// (supabase/functions/advance-tick/index.ts) — the debt update is server-only,
+// so there is no client copy here. The expenditure sub-helpers above
+// (computeInteriorInfraAnnualCost, computePublicSectorWagesAnnual) remain
+// because the Government Budget panel imports them directly.
 
 /**
  * Override formula-based tariff revenue with real trade engine data.
