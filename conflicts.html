@@ -155,15 +155,11 @@
                     <!-- Bilateral Intel -->
                     <div id="issues-intel" style="display:none;border-bottom:1px solid rgba(200,196,184,0.06);"></div>
 
-                    <!-- Status strip + Deck viz -->
+                    <!-- Status strip -->
                     <div id="issues-status-bar" style="border-bottom:1px solid rgba(200,196,184,0.06);"></div>
-                    <div id="issues-deck-strip" style="border-bottom:1px solid rgba(200,196,184,0.06);"></div>
 
-                    <!-- Active Card -->
+                    <!-- Issue body (empty pending a new mechanic) -->
                     <div id="issues-card-col" style="flex:1;min-height:0;overflow-y:auto;padding:14px 20px;"></div>
-
-                    <!-- Hand strip (bottom) -->
-                    <div id="issues-hand-area" style="border-top:1px solid rgba(200,196,184,0.06);flex-shrink:0;"></div>
 
                 </div>
 
@@ -212,10 +208,7 @@ let allIncidents = [];
 let allIssues = [];
 let selectedIssueId = null;
 let issuesLoaded = false;
-// Card system state
-let _currentIssueData = null;    // cached issue data for card play
-let _currentCardDefs = {};       // cached card definitions lookup
-let _disputeInProgress = false;  // resolve_dispute_card debounce lock
+let _currentIssueData = null;    // cached selected-issue data
 const ACTIONS = {}; // stub for legacy references
 let _currentRoles = new Set(); // roles held by the current faction (e.g. 'foreign_minister', 'head_of_government')
 
@@ -441,17 +434,11 @@ function renderIssueSidebarItem(issue) {
         hasNewAction = oppActionTick > mySeenTick;
     }
 
-    // Deck info
-    const handSize = mySide === 'a' ? (issue.hand_a || []).length : mySide === 'b' ? (issue.hand_b || []).length : 0;
-    const totalCards = (issue.played_cards || []).length + (issue.hand_a || []).length + (issue.hand_b || []).length + (issue.deck_remaining || []).length;
-    const deckInfo = issue.deck_initialized ? `${totalCards - (issue.played_cards || []).length}/${totalCards}` : '';
-
     return `<div class="sidebar-item issue-sidebar-item${isActive ? ' sidebar-item--active' : ''}${hasNewAction ? ' sidebar-item--has-action' : ''}" data-issue-id="${issue.id}">
         <div class="sidebar-item-title">${hasNewAction ? '<span class="action-dot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--amber);margin-right:4px;vertical-align:middle;"></span>' : ''}${escapeHtml(typeName)}</div>
         <div class="sidebar-item-meta">
             <span class="sidebar-item-nation">${escapeHtml(nations)}</span>
             <span class="issue-tension issue-tension--${tInfo.cls}">${tInfo.label}</span>
-            ${deckInfo ? `<span style="font-family:var(--font-mono);font-size:6.5px;color:var(--text-dim);">${deckInfo}</span>` : ''}
         </div>
     </div>`;
 }
@@ -492,8 +479,8 @@ async function selectIssue(issueId) {
         _supabase.from('bilateral_issues').update({ [seenKey]: currentTick }).eq('id', issueId).then(() => {});
     }
 
-    // Load modifiers, history, card plays, card definitions, and the current dispute card
-    const [modsResult, histResult, cardPlaysResult, cardDefsResult, disputeResult] = await Promise.allSettled([
+    // Load modifiers and history
+    const [modsResult, histResult] = await Promise.allSettled([
         _supabase.from('bilateral_issue_modifiers')
             .select('*')
             .eq('issue_id', issueId)
@@ -503,52 +490,23 @@ async function selectIssue(issueId) {
             .eq('issue_id', issueId)
             .order('tick', { ascending: false })
             .limit(50),
-        _supabase.from('issue_card_plays')
-            .select('*')
-            .eq('issue_id', issueId)
-            .order('played_tick', { ascending: true }),
-        _supabase.from('issue_card_definitions')
-            .select('*')
-            .eq('issue_type', issue.issue_type)
-            .order('card_number'),
-        _supabase.from('issue_dispute_cards')
-            .select('*')
-            .eq('issue_type', issue.issue_type)
-            .eq('card_number', issue.current_card_number || 1)
-            .maybeSingle(),
     ]);
 
     const modifiers = modsResult.status === 'fulfilled' ? (modsResult.value.data || []) : [];
     const history = histResult.status === 'fulfilled' ? (histResult.value.data || []) : [];
-    const cardPlays = cardPlaysResult.status === 'fulfilled' ? (cardPlaysResult.value.data || []) : [];
-    const cardDefs = cardDefsResult.status === 'fulfilled' ? (cardDefsResult.value.data || []) : [];
-    const disputeCard = disputeResult.status === 'fulfilled' ? (disputeResult.value.data || null) : null;
-
-    // Build card lookup
-    const cardDefMap = {};
-    for (const cd of cardDefs) cardDefMap[cd.card_number] = cd;
 
     // Determine which side the player is
     const mySide = issue.nation_a_id === currentNation.id ? 'a' : issue.nation_b_id === currentNation.id ? 'b' : null;
-    const myHand = mySide === 'a' ? (issue.hand_a || []) : mySide === 'b' ? (issue.hand_b || []) : [];
-    const isMyTurn = mySide && issue.whose_turn === mySide;
 
     renderCardIssueHeader(issue);
     await renderCardBilateralIntel(issue);
     renderCardStatusStrip(issue);
-    renderCardDeckStrip(issue, cardDefs.length);
-    renderCardActiveCard(issue, disputeCard, mySide);
-    renderCardTimeline(issue, history, cardPlays, cardDefMap, modifiers, mySide);
-    renderCardHand(issue, myHand, cardDefMap, mySide, isMyTurn);
+    document.getElementById('issues-card-col').innerHTML = '';
+    renderCardTimeline(issue, history, modifiers, mySide);
 }
 
 // ==================== CARD SYSTEM RENDERERS ====================
 // getTensionInfo already declared above
-
-function faToDrawCount(intlRep) {
-    const fa = Math.max(0, Math.min(100, Number(intlRep) || 0));
-    return Math.max(1, Math.min(12, Math.ceil(fa / 8.33)));
-}
 
 function renderCardIssueHeader(issue) {
     const el = document.getElementById('issues-header');
@@ -607,7 +565,7 @@ async function renderCardBilateralIntel(issue) {
             <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Head of Government</span><span style="font-size:11px;color:var(--text-muted);">${hogName}${hogParty}</span></div>
             <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Gov. Approval</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:${approvalColor};">${Math.round(approval)}</span></div>
             <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">State Apparatus</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:${controlColor};">${Math.round(control)}</span></div>
-            <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Foreign Affairs</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;">${faToDrawCount(power)}</span><span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-left:4px;">cards</span></div>
+            <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Foreign Affairs</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;">${Math.round(power)}</span></div>
             <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Active Crises</span></div>
             ${crisesHtml}
         </div>`;
@@ -707,131 +665,9 @@ function renderCardStatusStrip(issue) {
     </div>`;
 }
 
-function renderCardDeckStrip(issue, totalCardDefs) {
-    const el = document.getElementById('issues-deck-strip');
-    if (!el) return;
-    if (!issue.deck_initialized) { el.innerHTML = ''; return; }
-
-    const played = (issue.played_cards || []).length;
-    const myHand = issue.nation_a_id === currentNation.id ? (issue.hand_a || []) : (issue.hand_b || []);
-    const theirHand = issue.nation_a_id === currentNation.id ? (issue.hand_b || []) : (issue.hand_a || []);
-    const deckLeft = (issue.deck_remaining || []).length;
-    const activeCard = issue.active_card ? 1 : 0;
-    const fa = Math.round(Number(currentNation.global_image) || 0);
-
-    let pips = '';
-    for (let i = 0; i < played; i++) pips += '<div style="width:6px;height:10px;border:1px solid var(--text-dim);background:var(--text-dim);opacity:0.3;"></div>';
-    if (activeCard) pips += '<div style="width:6px;height:10px;border:1px solid var(--amber-border,rgba(176,154,91,0.2));background:var(--amber,#b09a5b);"></div>';
-    for (let i = 0; i < myHand.length - activeCard; i++) pips += '<div style="width:6px;height:10px;border:1px solid var(--teal-border,rgba(91,154,139,0.2));background:var(--teal,#5b9a8b);"></div>';
-    for (let i = 0; i < deckLeft + theirHand.length; i++) pips += '<div style="width:6px;height:10px;border:1px solid rgba(200,196,184,0.1);"></div>';
-
-    el.innerHTML = `<div style="display:flex;align-items:center;gap:12px;padding:5px 20px;background:var(--bg-card,#1e1e1a);">
-        <span style="font-family:var(--font-mono);font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);">Deck</span>
-        <div style="display:flex;gap:2px;">${pips}</div>
-        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">${played} played / ${myHand.length} hand / ${deckLeft} deck</span>
-        <span style="font-family:var(--font-mono);font-size:8px;color:var(--teal,#5b9a8b);margin-left:auto;">Foreign Affairs: ${faToDrawCount(Number(currentNation.global_image))} cards</span>
-    </div>`;
-}
-
-function renderCardActiveCard(issue, disputeCard, mySide) {
-    const el = document.getElementById('issues-card-col');
-    if (!el) return;
-    _currentIssueData = issue;
-
-    if (!disputeCard) {
-        el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-dim);font-size:11px;">No active card for this issue.</div>`;
-        return;
-    }
-
-    // Fixed roles: Claimant administers/holds the ground; Pressor challenges.
-    // Initiative can sit with either side and is what makes options actionable.
-    const claimantId = issue.administering_nation_id;
-    const pressorId = issue.nation_a_id === claimantId ? issue.nation_b_id : issue.nation_a_id;
-    const holderId = issue.initiative_nation_id;
-    const holderRole = holderId === claimantId ? 'claimant' : 'pressor';
-    const iAmHolder = !!currentNation.id && currentNation.id === holderId;
-    const holderName = (holderId === issue.nation_a_id ? issue.nation_a?.name : issue.nation_b?.name) || '';
-    const roles = disputeCard.roles || {};
-
-    function optHtml(roleKey, optKey) {
-        const o = roles[roleKey] && roles[roleKey][optKey];
-        if (!o) return '';
-        const isEvent = optKey === 'event';
-        const tagColor = isEvent ? '#c89e6e' : '#8aaa6a';
-        const bg = isEvent ? 'rgba(200,158,110,0.06)' : 'rgba(138,170,106,0.06)';
-        const border = isEvent ? 'rgba(200,158,110,0.28)' : 'rgba(138,170,106,0.28)';
-        const actionable = iAmHolder && roleKey === holderRole;
-        const click = actionable ? `onclick="window._applyDisputeOption('${optKey}')"` : '';
-        return `
-            <div ${click} style="border:0.5px solid ${border};background:${bg};border-radius:5px;padding:12px 14px;${actionable ? 'cursor:pointer;' : ''}">
-                <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.13em;font-weight:700;color:${tagColor};margin-bottom:5px;">${isEvent ? 'EVENT' : 'MOVE'} <span style="font-size:8px;color:var(--text-dim);font-weight:400;">&middot; ${escapeHtml(o.kind || '')}</span></div>
-                <div style="font-size:14px;color:#fff;font-weight:500;margin-bottom:4px;">${escapeHtml(o.name || '')}</div>
-                <div style="font-size:11.5px;color:var(--text-muted);font-style:italic;line-height:1.5;margin-bottom:8px;">${escapeHtml(o.desc || '')}</div>
-                <div style="font-size:11px;color:#c4c4c4;line-height:1.6;padding-top:8px;border-top:0.5px solid rgba(255,255,255,0.06);">${escapeHtml(o.effect_text || '')}</div>
-                ${actionable ? `<div style="font-family:var(--font-mono);font-size:8px;color:${tagColor};margin-top:8px;letter-spacing:0.1em;">&#9656; APPLY</div>` : ''}
-            </div>`;
-    }
-
-    function roleSection(roleKey, label, sub, diamondColor, nameColor) {
-        const isHolderRole = roleKey === holderRole;
-        return `
-            <div style="padding:14px 20px 8px;${roleKey === 'pressor' ? 'border-top:0.5px solid rgba(255,255,255,0.05);' : ''}">
-                <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px;">
-                    <span style="font-size:9px;color:${diamondColor};">&#9670;</span>
-                    <span style="font-size:12px;font-weight:600;letter-spacing:0.13em;color:${nameColor};">${label}</span>
-                    <span style="font-size:9px;color:var(--text-dim);letter-spacing:0.08em;">&mdash; ${sub}</span>
-                    ${isHolderRole ? `<span style="font-family:var(--font-mono);font-size:8px;color:#c89e6e;margin-left:auto;letter-spacing:0.1em;">HOLDS INITIATIVE</span>` : ''}
-                </div>
-                <div style="display:flex;flex-direction:column;gap:10px;${isHolderRole ? '' : 'opacity:0.5;'}">
-                    ${optHtml(roleKey, 'move')}
-                    ${optHtml(roleKey, 'event')}
-                </div>
-            </div>`;
-    }
-
-    el.innerHTML = `
-        <div style="border:0.5px solid rgba(122,154,171,0.25);border-radius:6px;overflow:hidden;background:#0d0d0d;">
-            <div style="padding:12px 20px;background:#11181f;border-bottom:0.5px solid rgba(122,154,171,0.15);display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-size:9px;color:#7a9aab;letter-spacing:0.16em;">CURRENT CARD</span>
-                <span style="font-size:9px;color:#555;letter-spacing:0.12em;">${String(disputeCard.card_number).padStart(2,'0')} / 30 &middot; TERRITORIAL DISPUTE</span>
-            </div>
-            <div style="padding:20px 20px 16px;border-bottom:0.5px solid rgba(255,255,255,0.05);">
-                <div style="font-size:22px;font-weight:500;color:#fff;margin-bottom:10px;">${escapeHtml(disputeCard.theme_name)}</div>
-                <div style="font-size:12.5px;color:var(--text-muted);font-style:italic;line-height:1.6;">${escapeHtml(disputeCard.theme_desc)}</div>
-            </div>
-            ${roleSection('claimant', 'THE CLAIMANT', 'holds the ground', '#8a7aab', '#a89ec8')}
-            ${roleSection('pressor', 'THE PRESSOR', 'presses the claim', '#c89e6e', '#c89e6e')}
-            <div style="padding:11px 20px;background:#0b0b0b;border-top:0.5px solid rgba(255,255,255,0.05);font-size:9px;color:var(--text-dim);letter-spacing:0.1em;text-align:center;">
-                ${iAmHolder ? 'YOU HOLD INITIATIVE &mdash; CHOOSE ONE OPTION FROM YOUR ROLE' : `${escapeHtml(holderName.toUpperCase())} HOLDS INITIATIVE &mdash; AWAITING THEIR CHOICE`}
-            </div>
-        </div>`;
-}
-
-// The Initiative holder applies one option (move|event) from their role.
-window._applyDisputeOption = async function(option) {
-    if (_disputeInProgress || !_currentIssueData) return;
-    _disputeInProgress = true;
-    try {
-        const { data, error } = await _supabase.rpc('resolve_dispute_card', {
-            p_issue_id: _currentIssueData.id,
-            p_option: option,
-        });
-        if (error) alert('Could not apply the card: ' + error.message);
-        else if (!data?.ok) alert(data?.message || 'Could not apply the card.');
-        else await selectIssue(_currentIssueData.id);
-    } catch (e) {
-        alert('Card apply error: ' + (e?.message || e));
-    } finally {
-        _disputeInProgress = false;
-    }
-};
-
-function renderCardTimeline(issue, history, cardPlays, cardDefMap, modifiers, mySide) {
+function renderCardTimeline(issue, history, modifiers, mySide) {
     const el = document.getElementById('issues-timeline-col');
     if (!el) return;
-
-    const nationAName = issue.nation_a?.name || 'Nation A';
-    const nationBName = issue.nation_b?.name || 'Nation B';
 
     // ── Header with Add Event button ──
     let html = `<div style="display:flex;align-items:center;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid rgba(200,196,184,0.06);">
@@ -895,52 +731,8 @@ function renderCardTimeline(issue, history, cardPlays, cardDefMap, modifiers, my
         }
     }
 
-    // ── Gameplay Events (card plays + system events) ──
+    // ── Gameplay Events (system events) ──
     const gameEvents = [];
-
-    // Card plays → timeline entries
-    for (const play of cardPlays) {
-        const cd = cardDefMap[play.card_number];
-        const playedByName = play.played_by === 'a' ? nationAName : nationBName;
-        const isBlue = (play.played_by === 'a' && mySide === 'a') || (play.played_by === 'b' && mySide === 'b');
-        const nationColor = isBlue ? 'var(--blue)' : 'var(--red)';
-        const typeTag = { unilateral: 'u', diplomatic: 'd', aggressive: 'a', special: 's' };
-        const typeLabel = { unilateral: 'Unilateral', diplomatic: 'Diplomatic', aggressive: 'Aggressive', special: 'Special' };
-        const typeColors = {
-            u: { color: 'var(--amber)', bg: 'rgba(176,154,91,0.08)', border: 'rgba(176,154,91,0.2)' },
-            d: { color: 'var(--teal)', bg: 'rgba(91,154,139,0.08)', border: 'rgba(91,154,139,0.2)' },
-            a: { color: 'var(--red)', bg: 'rgba(166,93,93,0.06)', border: 'rgba(166,93,93,0.2)' },
-            s: { color: '#a88bc4', bg: 'rgba(168,139,196,0.08)', border: 'rgba(168,139,196,0.2)' },
-        };
-
-        let effectText = '';
-        const fx = play.effects_applied || {};
-        const parts = [];
-        if (fx.favor_delta) parts.push(`Favor ${fx.favor_delta > 0 ? '+' : ''}${fx.favor_delta}`);
-        if (fx.tension_delta) parts.push(`Tension ${fx.tension_delta > 0 ? '+' : ''}${fx.tension_delta}`);
-        if (fx.add_modifier) parts.push(`Added: ${fx.add_modifier.replace(/_/g, ' ')}`);
-        if (fx.backfired) parts.push('BACKFIRED');
-        if (fx.roll_outcome) parts.push(fx.roll_outcome);
-        if (play.diplomatic_response === 'accepted') parts.push('Accepted');
-        if (play.diplomatic_response === 'rejected') parts.push('Rejected');
-        if (play.diplomatic_response === 'expired') parts.push('Expired (auto-reject)');
-        effectText = parts.join('. ');
-
-        const tc = typeTag[cd?.card_type] || 'u';
-        const tcColors = typeColors[tc];
-        const dotStyle = `border-color:${tcColors.color};background:${tcColors.bg};`;
-
-        gameEvents.push({
-            tick: play.played_tick,
-            html: `<div style="position:relative;padding-left:20px;padding-bottom:10px;border-left:1px solid rgba(200,196,184,0.1);margin-left:5px;">
-                <div style="position:absolute;left:-4px;top:3px;width:7px;height:7px;border:1.5px solid;background:var(--bg-elevated,#1a1a17);${dotStyle}"></div>
-                <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--text-dim);margin-bottom:2px;">Tick ${play.played_tick} / ${tickToDate(play.played_tick)}</div>
-                <div style="font-family:var(--font-mono);font-size:8.5px;font-weight:700;text-transform:uppercase;color:${nationColor};margin-bottom:1px;">${escapeHtml(playedByName)}</div>
-                <div style="font-size:12.5px;color:var(--text-muted);line-height:1.4;">${escapeHtml(cd?.card_name || 'Card #' + play.card_number)}. <span style="font-family:var(--font-mono);font-size:7.5px;font-weight:700;padding:1px 3px;text-transform:uppercase;color:${tcColors.color};background:${tcColors.bg};border:1px solid ${tcColors.border};vertical-align:middle;">${typeLabel[cd?.card_type] || '?'}</span></div>
-                ${effectText ? `<div style="font-family:var(--font-mono);font-size:8.5px;color:var(--text-dim);margin-top:2px;">${escapeHtml(effectText)}</div>` : ''}
-            </div>`,
-        });
-    }
 
     // System history events (tension changes, modifier events, escalation)
     const systemTypes = new Set(['tension_changed', 'modifier_added', 'modifier_removed', 'modifier_fired', 'escalated', 'status_changed', 'escalation_favor']);
@@ -968,7 +760,6 @@ function renderCardTimeline(issue, history, cardPlays, cardDefMap, modifiers, my
     html += `<div style="position:relative;padding-left:20px;padding-bottom:10px;border-left:1px solid transparent;margin-left:5px;opacity:0.5;">
         <div style="position:absolute;left:-4px;top:3px;width:7px;height:7px;border:1.5px solid var(--amber);background:var(--amber);"></div>
         <div style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:var(--amber);">Now — Tick ${currentTick}</div>
-        <div style="font-size:12.5px;color:var(--amber);">${issue.whose_turn === mySide ? 'Your turn' : 'Opponent\'s turn'}</div>
     </div>`;
 
     // ── Active Modifiers ──
@@ -1000,14 +791,6 @@ function renderCardTimeline(issue, history, cardPlays, cardDefMap, modifiers, my
         }
     });
 }
-
-function renderCardHand() {
-    // Hand retired: the Escalate/Restrain arena replaces select-from-hand play.
-    // Card content returns inside the Current Card container in a later step.
-    const el = document.getElementById('issues-hand-area');
-    if (el) el.innerHTML = '';
-}
-
 
 // ==================== TIMELINE INTERACTION HANDLERS ====================
 
