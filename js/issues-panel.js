@@ -8,20 +8,11 @@
 // nation. None ongoing → "No ongoing issues".
 
 import { escapeHtml } from './utils.js';
+import { ISSUE_TYPES, getTensionLabel } from './game/issues.js';
 
-const ISSUE_TYPE_NAMES = {
-  maritime_fishing_rights: 'Maritime Fishing Rights',
-  territorial_ownership:   'Territorial Ownership Dispute',
-  chronic_trade_imbalance: 'Chronic Trade Imbalance',
-};
-
-function tensionInfo(tension) {
-  const t = Number(tension) || 0;
-  if (t <= 2) return { label: 'Low',      cls: 'low'  };
-  if (t <= 5) return { label: 'Moderate', cls: 'mod'  };
-  if (t <= 8) return { label: 'High',     cls: 'high' };
-  return { label: 'Critical', cls: 'crit' };
-}
+// Tension band → CSS suffix. Presentation only — the thresholds and labels
+// live in getTensionLabel (the one source); this just maps a label to a class.
+const TENSION_CLS = { Low: 'low', Moderate: 'mod', High: 'high', Critical: 'crit' };
 
 // Active/partial/escalated issues involving this nation, hottest first.
 export async function fetchOngoingIssues(supabase, nationId) {
@@ -39,13 +30,13 @@ export async function fetchOngoingIssues(supabase, nationId) {
 }
 
 function issueRow(issue, nationId) {
-  const t = tensionInfo(issue.tension);
+  const label = getTensionLabel(Number(issue.tension) || 0).label;
   const other = issue.nation_a_id === nationId ? issue.nation_b?.name : issue.nation_a?.name;
-  const typeName = ISSUE_TYPE_NAMES[issue.issue_type] || issue.issue_type;
+  const typeName = ISSUE_TYPES[issue.issue_type]?.name || issue.issue_type;
   return `<div class="issues-row">
     <span class="issues-row__title">${escapeHtml(typeName)}</span>
     <span class="issues-row__nation">${escapeHtml(other || 'Unknown')}</span>
-    <span class="issues-tension issues-tension--${t.cls}">${escapeHtml(t.label)}</span>
+    <span class="issues-tension issues-tension--${TENSION_CLS[label] || 'low'}">${escapeHtml(label)}</span>
   </div>`;
 }
 
@@ -93,6 +84,17 @@ export function renderIssuesPanel(host, issues, nationId, opts = {}) {
 // Fetch + render in one call. Both pages use this so they stay in lockstep.
 export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
   if (!host) return;
-  const issues = await fetchOngoingIssues(supabase, nationId);
-  renderIssuesPanel(host, issues, nationId, opts);
+  ensureStyles();
+  const heading = opts.heading === undefined ? 'I. Issues' : opts.heading;
+  host.innerHTML = `<section class="issues-panel">
+      ${heading ? `<div class="issues-panel__head">${escapeHtml(heading)}</div>` : ''}
+      <div class="issues-panel__body"><div class="issues-empty">Loading…</div></div>
+    </section>`;
+  try {
+    const issues = await fetchOngoingIssues(supabase, nationId);
+    renderIssuesPanel(host, issues, nationId, opts);
+  } catch (err) {
+    console.warn('[issues-panel] mount failed:', err?.message || err);
+    renderIssuesPanel(host, [], nationId, opts);
+  }
 }

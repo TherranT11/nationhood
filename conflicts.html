@@ -198,7 +198,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { MODIFIERS, ISSUE_TYPES } from './js/game/issues.js';
+import { MODIFIERS, ISSUE_TYPES, getTensionLabel } from './js/game/issues.js';
 // Phase 0: ACTIONS and executeIssueAction removed — replaced by card system.
 
 let currentFaction = null;
@@ -400,10 +400,9 @@ async function loadIssues() {
 }
 
 function getTensionInfo(tension) {
-    if (tension <= 2) return { label: 'Low', cls: 'low' };
-    if (tension <= 5) return { label: 'Moderate', cls: 'mod' };
-    if (tension <= 8) return { label: 'High', cls: 'high' };
-    return { label: 'Critical', cls: 'crit' };
+    // Thresholds/labels come from getTensionLabel (one source); map to a CSS suffix.
+    const label = getTensionLabel(Number(tension) || 0).label;
+    return { label, cls: { Low: 'low', Moderate: 'mod', High: 'high', Critical: 'crit' }[label] || 'low' };
 }
 
 function renderIssuesSidebar(yours, intl) {
@@ -432,7 +431,7 @@ function renderIssueSidebarItem(issue) {
         ? `${issue.nation_a?.name} / ${issue.nation_b?.name}`
         : (otherNation || 'Unknown');
     const isActive = issue.id === selectedIssueId;
-    const typeName = ISSUE_TYPE_NAMES[issue.issue_type] || issue.issue_type;
+    const typeName = ISSUE_TYPES[issue.issue_type]?.name || issue.issue_type;
 
     // Amber badge: opponent played a card since you last viewed
     const mySide = issue.nation_a_id === currentNation.id ? 'a' : issue.nation_b_id === currentNation.id ? 'b' : null;
@@ -457,13 +456,6 @@ function renderIssueSidebarItem(issue) {
         </div>
     </div>`;
 }
-
-const ISSUE_TYPE_NAMES = {
-    maritime_fishing_rights: 'Maritime Fishing Rights',
-    territorial_ownership: 'Territorial Ownership Dispute',
-    chronic_trade_imbalance: 'Chronic Trade Imbalance',
-};
-
 
 // ==================== SELECT ISSUE ====================
 
@@ -546,7 +538,7 @@ async function selectIssue(issueId) {
 }
 
 // ==================== CARD SYSTEM RENDERERS ====================
-// ISSUE_TYPE_NAMES and getTensionInfo already declared above
+// getTensionInfo already declared above
 
 function faToDrawCount(intlRep) {
     const fa = Math.max(0, Math.min(100, Number(intlRep) || 0));
@@ -556,7 +548,7 @@ function faToDrawCount(intlRep) {
 function renderCardIssueHeader(issue) {
     const el = document.getElementById('issues-header');
     if (!el) return;
-    const typeName = ISSUE_TYPE_NAMES[issue.issue_type] || issue.issue_type;
+    const typeName = ISSUE_TYPES[issue.issue_type]?.name || issue.issue_type;
     const otherNation = issue.nation_a_id === currentNation.id
         ? issue.nation_b?.name : issue.nation_a?.name;
     const isYours = issue.nation_a_id === currentNation.id || issue.nation_b_id === currentNation.id;
