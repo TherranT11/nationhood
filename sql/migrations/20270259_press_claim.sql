@@ -31,7 +31,11 @@ ALTER TABLE bilateral_issues
     ADD COLUMN IF NOT EXISTS stake_resource TEXT
         CHECK (stake_resource IS NULL OR stake_resource IN ('farmland','minerals','energy')),
     ADD COLUMN IF NOT EXISTS stake_quantity INT
-        CHECK (stake_quantity IS NULL OR (stake_quantity BETWEEN 1 AND 3));
+        CHECK (stake_quantity IS NULL OR (stake_quantity BETWEEN 1 AND 3)),
+    -- Initiative: the nation that currently "holds the narrative" and applies
+    -- each drawn card. Set to the nation that starts the issue (the presser, for
+    -- a pressed claim) and takes the first card turn. NULL for legacy issues.
+    ADD COLUMN IF NOT EXISTS initiative_nation_id UUID REFERENCES nations(id);
 
 -- ── 2. Territorial cards 29 & 30 (deck → 30) ────────────────────────────────
 INSERT INTO issue_card_definitions (
@@ -165,11 +169,11 @@ BEGIN
     INSERT INTO bilateral_issues (
         issue_type, nation_a_id, nation_b_id, tension, favor, status,
         created_tick, ticks_without_diplomatic_action, administering_nation_id,
-        contested_region_name, stake_resource, stake_quantity
+        contested_region_name, stake_resource, stake_quantity, initiative_nation_id
     ) VALUES (
-        'territorial_ownership', v_canonical_a, v_canonical_b, 0, 0, 'active',
+        'territorial_ownership', v_canonical_a, v_canonical_b, 1, 0, 'active',
         v_current_tick, 0, p_target_nation_id,
-        v_region, v_stake_resource, v_stake_qty
+        v_region, v_stake_resource, v_stake_qty, v_nation_id
     ) RETURNING id INTO v_issue_id;
 
     -- Starter modifiers (client passes them, built from MODIFIERS — one source).

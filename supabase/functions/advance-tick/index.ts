@@ -26194,7 +26194,9 @@ async function initializeDeck(supabase, issue, nationA, nationB, currentTick) {
     const handB = allCardNumbers.splice(0, drawB);
     const deckRemaining = allCardNumbers; // whatever is left
 
-    // Nation A goes first
+    // The initiative holder (the nation that started the issue) takes the first
+    // turn. Falls back to nation A for legacy issues with no recorded initiative.
+    const firstTurn = issue.initiative_nation_id === issue.nation_b_id ? 'b' : 'a';
     const { error: updateErr } = await supabase
         .from('bilateral_issues')
         .update({
@@ -26202,7 +26204,7 @@ async function initializeDeck(supabase, issue, nationA, nationB, currentTick) {
             hand_a: handA,
             hand_b: handB,
             played_cards: [],
-            whose_turn: 'a',
+            whose_turn: firstTurn,
             deck_initialized: true,
             last_card_played_tick: currentTick,
         })
