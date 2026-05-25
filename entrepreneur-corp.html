@@ -4703,6 +4703,16 @@ function initials(s, n) {
     let cbState = null;       // { rate, available } for the corp's HQ-nation Central Bank
 
     const fmtPct = (n) => (Number(n) * 100).toFixed(2).replace(/\.?0+$/, '') + '%';
+    // Single source of truth for a corp-loan quote (flat-interest model, apr as a
+    // FRACTION e.g. 0.03 = 3%). Mirrors accept_loan_offer's per_tick_payment in
+    // SQL — once a loan exists, corp_loans.per_tick_payment is the stored value;
+    // this is only for previewing offers that haven't been accepted yet.
+    const corpLoanQuote = (principal, apr, termTicks) => {
+      const p = Math.max(0, Number(principal) || 0);
+      const r = Math.max(0, Number(apr) || 0);
+      const n = Math.max(1, Number(termTicks) || 1);
+      return { perTick: Math.round(p / n + p * r / 12), total: Math.round(p * (1 + r * n / 12)) };
+    };
 
     // Section IV "Corporate Finance" renders the BORROWER-side view:
     // [Request Loan] launcher, outgoing requests, active loans (both
@@ -4834,9 +4844,7 @@ function initials(s, n) {
         ? `<div class="cf-sub-head">Loan Offers Received · ${receivedOffers.length}</div>` + receivedOffers.map(o => {
             const principal = Number(o.request?.principal) || 0;
             const term = Number(o.request?.term_ticks) || 0;
-            const apr = Number(o.apr) || 0;
-            const total   = Math.round(principal * (1 + apr * term / 12));
-            const perTick = Math.round(principal / term + principal * apr / 12);
+            const { perTick, total } = corpLoanQuote(principal, o.apr, term);
             return `
               <div class="cf-row income">
                 <div>
@@ -5259,8 +5267,7 @@ function initials(s, n) {
         sumEl.innerHTML = `Set an APR between 0% and 50% to preview the per-tick payment.`;
         return;
       }
-      const total = Math.round(moPrincipal * (1 + apr * moTermTicks / 12));
-      const perTick = Math.round(moPrincipal / moTermTicks + moPrincipal * apr / 12);
+      const { perTick, total } = corpLoanQuote(moPrincipal, apr, moTermTicks);
       sumEl.innerHTML = `Borrower repays <b>${fmtUsd(total)}</b> over <b>${moTermTicks} ticks</b> at <b>${(apr * 100).toFixed(2)}%</b> APR · <b>${fmtUsd(perTick)}/tick</b> back to your corp.`;
     };
     document.getElementById('mo-apr').addEventListener('input', updateMakeOfferPreview);
