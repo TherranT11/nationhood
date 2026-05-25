@@ -88,7 +88,7 @@ export async function fetchWorldIssues(supabase) {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from('bilateral_issues')
-    .select('id, issue_type, status, tension, '
+    .select('id, issue_type, '
           + 'nation_a_id, nation_b_id, administering_nation_id, initiative_nation_id, '
           + 'contested_region_name, stake_resource, stake_quantity, metadata, '
           + 'nation_a:nations!bilateral_issues_nation_a_id_fkey(id, name), '
@@ -101,9 +101,7 @@ export async function fetchWorldIssues(supabase) {
 
 // ── render: summary row ─────────────────────────────────────────────────────
 
-function disputeRow(issue, nationId) {
-  const roles = rolesOf(issue);
-  const role  = viewerRole(issue, nationId, roles);
+function disputeRow(issue, role, roles) {
   const badge = typeBadge(issue.issue_type);
   const region = regionText(issue);
 
@@ -119,12 +117,12 @@ function disputeRow(issue, nationId) {
       <span class="d-clock" title="Decision clock not yet implemented"><span class="lab">CLOCK</span> &mdash;</span>
     </div>`;
 
-  return `<div class="dispute" data-id="${escapeHtml(issue.id)}">${summary}<div class="d-detail">${disputeDetail(issue, nationId, roles, role, region)}</div></div>`;
+  return `<div class="dispute" data-id="${escapeHtml(issue.id)}">${summary}<div class="d-detail">${disputeDetail(issue, roles, role, region)}</div></div>`;
 }
 
 // ── render: shared detail (combatants + stances + role module + chat) ─────────
 
-function disputeDetail(issue, nationId, roles, role, region) {
+function disputeDetail(issue, roles, role, region) {
   const youTag = '<span class="you">YOU</span>';
   const aYou = role === 'claimant' ? youTag : '';
   const bYou = role === 'pressor'  ? youTag : '';
@@ -243,7 +241,6 @@ function ensureStyles() {
     .issues-panel .role-claimant{background:#11181f;color:#7a9aab;}
     .issues-panel .role-pressor{background:#1a1414;color:#c87a7a;}
     .issues-panel .role-third{background:#161616;color:#888;}
-    .issues-panel .role-med{background:#1a160d;color:#c89e6e;}
     .issues-panel .d-clock{font-size:10px;color:#888;letter-spacing:0.05em;flex-shrink:0;font-variant-numeric:tabular-nums;}
     .issues-panel .d-clock .lab{color:#666;}
 
@@ -316,12 +313,15 @@ export function renderIssuesPanel(host, issues, nationId, opts = {}) {
   ensureStyles();
   const list = Array.isArray(issues) ? issues : [];
   const heading = opts.heading === undefined ? 'I. Issues' : opts.heading;
-  const involved = list.filter(it => viewerRole(it, nationId, rolesOf(it)) !== 'third').length;
-  const sub = list.length
-    ? `${list.length} ONGOING &middot; YOU ARE INVOLVED IN ${involved}`
-    : '';
-  const body = list.length
-    ? `<div class="issues-sub">${sub}</div><div class="disputes">${list.map(it => disputeRow(it, nationId)).join('')}</div>`
+  // Resolve each dispute's roles once; the count and the rows both read from it.
+  const tagged = list.map(it => {
+    const roles = rolesOf(it);
+    return { issue: it, roles, role: viewerRole(it, nationId, roles) };
+  });
+  const involved = tagged.filter(t => t.role !== 'third').length;
+  const body = tagged.length
+    ? `<div class="issues-sub">${tagged.length} ONGOING &middot; YOU ARE INVOLVED IN ${involved}</div>`
+      + `<div class="disputes">${tagged.map(t => disputeRow(t.issue, t.role, t.roles)).join('')}</div>`
     : '<div class="issues-empty">No ongoing issues</div>';
   host.innerHTML = `<section class="issues-panel">
       ${heading ? `<div class="issues-panel__head">${escapeHtml(heading)}</div>` : ''}
