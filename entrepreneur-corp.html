@@ -1966,23 +1966,36 @@ function initials(s, n) {
     async function openDebtPaymentModal() {
       let ov = document.getElementById('cp-debt-overlay');
       if (!ov) { ov = document.createElement('div'); ov.id = 'cp-debt-overlay'; ov.className = 'bm-overlay'; document.body.appendChild(ov); }
-      const { data: loans, error: dErr } = await _supabase.from('corp_loans')
-        .select('id, balance, principal, total_paid, apr, lender:entrepreneur_corps!lender_corp_id(name)')
-        .eq('borrower_corp_id', id).eq('status', 'active').order('started_at_tick', { ascending: true });
-      if (dErr) console.warn('[entrepreneur-corp] debt fetch error:', dErr.message);
-      const rows = loans || [];
+      const [corpRes, cbRes] = await Promise.all([
+        _supabase.from('corp_loans')
+          .select('id, balance, principal, total_paid, apr, lender:entrepreneur_corps!lender_corp_id(name)')
+          .eq('borrower_corp_id', id).eq('status', 'active').order('started_at_tick', { ascending: true }),
+        _supabase.from('central_bank_loans')
+          .select('id, outstanding, interest_rate, nation:nations!nation_id(name)')
+          .eq('borrower_corp_id', id).eq('status', 'active').order('started_tick', { ascending: true }),
+      ]);
+      if (corpRes.error) console.warn('[entrepreneur-corp] corp-debt fetch error:', corpRes.error.message);
+      if (cbRes.error)   console.warn('[entrepreneur-corp] cb-debt fetch error:', cbRes.error.message);
       const corpCash = getEntrepreneurCorpCash(c);
-      const balOf = (l) => Math.max(0, Math.ceil(Number(l.balance ?? (Number(l.principal) - Number(l.total_paid || 0)))));
-      const loanHtml = rows.length
-        ? rows.map(l => {
-            const bal = balOf(l);
-            return `<div style="border:0.5px solid rgba(255,255,255,0.08);border-radius:4px;padding:10px 12px;margin-bottom:8px;">
-              <div style="font-size:12px;color:#d4d4d4;">Owe <b>${escapeHtml(l.lender?.name || 'lender')}</b> · <span style="color:#d98a8a;">${fmtUsd(bal)}</span><span style="color:#8a8680;font-size:10px;"> · ${(Number(l.apr) || 0).toFixed(1)}% APR</span></div>
+      const items = [
+        ...(corpRes.data || []).map(l => ({
+          type: 'corp', id: l.id, apr: Number(l.apr) || 0,
+          lender: l.lender?.name || 'lender',
+          bal: Math.max(0, Math.ceil(Number(l.balance ?? (Number(l.principal) - Number(l.total_paid || 0))))),
+        })),
+        ...(cbRes.data || []).map(l => ({
+          type: 'cb', id: l.id, apr: Number(l.interest_rate) || 0,
+          lender: `${l.nation?.name || 'National'} Central Bank`,
+          bal: Math.max(0, Math.ceil(Number(l.outstanding) || 0)),
+        })),
+      ];
+      const loanHtml = items.length
+        ? items.map(l => `<div style="border:0.5px solid rgba(255,255,255,0.08);border-radius:4px;padding:10px 12px;margin-bottom:8px;">
+              <div style="font-size:12px;color:#d4d4d4;">Owe <b>${escapeHtml(l.lender)}</b> · <span style="color:#d98a8a;">${fmtUsd(l.bal)}</span><span style="color:#8a8680;font-size:10px;"> · ${l.apr.toFixed(1)}% APR</span></div>
               <div style="display:flex;gap:6px;margin-top:8px;">
-                <input type="number" class="bm-input dp-amt" data-lid="${l.id}" min="1" max="${bal}" placeholder="Amount" style="flex:1;">
-                <button class="bm-btn pri dp-pay" data-lid="${l.id}">Pay</button>
-              </div></div>`;
-          }).join('')
+                <input type="number" class="bm-input dp-amt" data-lid="${l.id}" min="1" max="${l.bal}" placeholder="Amount" style="flex:1;">
+                <button class="bm-btn pri dp-pay" data-lid="${l.id}" data-type="${l.type}">Pay</button>
+              </div></div>`).join('')
         : '<div style="color:#8a8680;font-size:12px;padding:8px 0;">No active loans.</div>';
       ov.innerHTML = `<div class="bm-modal" style="max-width:460px;">
         <div class="bm-head"><div class="ti">Debt <em>Payment</em></div><div class="bm-x" id="dp-close">×</div></div>
@@ -2004,7 +2017,8 @@ function initials(s, n) {
           if (!(amt >= 1)) { if (msg) msg.textContent = 'Enter an amount of at least $1.'; return; }
           btn.disabled = true; const prev = btn.textContent; btn.textContent = '…';
           try {
-            const { data, error: pErr } = await _supabase.rpc('pay_corp_debt', { p_loan_id: lid, p_amount: amt });
+            const rpc = btn.dataset.type === 'cb' ? 'pay_central_bank_debt' : 'pay_corp_debt';
+            const { data, error: pErr } = await _supabase.rpc(rpc, { p_loan_id: lid, p_amount: amt });
             if (pErr) { if (msg) msg.textContent = 'Failed: ' + pErr.message; btn.disabled = false; btn.textContent = prev; return; }
             if (!data?.success) {
               if (msg) msg.textContent = data?.reason === 'insufficient_treasury'
