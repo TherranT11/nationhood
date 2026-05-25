@@ -4852,9 +4852,14 @@ function initials(s, n) {
         ? `<div class="cf-sub-head">My Loan Offers · ${sentOffers.length}</div>` + sentOffers.map(o => {
             const req = o.request;
             const borrowerName = req?.borrower?.name || 'Unknown borrower';
-            const tail = req
-              ? `${fmtUsd(Number(req.principal))} over ${req.term_ticks}t · expires T${req.expires_at_tick}`
-              : '—';
+            // expires_at_tick is the request's 6-tick BIDDING window, not the
+            // loan term. Only show it while the offer is still pending — once
+            // accepted (or withdrawn/declined) that window is dead, and printing
+            // "expires T###" on an accepted offer reads as "the loan expires then".
+            const principalTxt = req ? `${fmtUsd(Number(req.principal))} over ${req.term_ticks}t` : '—';
+            const tail = (o.status === 'pending' && req)
+              ? `${principalTxt} · bid expires T${req.expires_at_tick}`
+              : principalTxt;
             const canWithdraw = o.status === 'pending';
             return `
               <div class="cf-row">
