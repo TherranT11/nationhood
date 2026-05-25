@@ -12,7 +12,7 @@ const TENSION_LABELS = {
     CRITICAL: { min: 9, max: 10, label: 'Critical', incident_pct: 6.0 },
 };
 
-function getTensionLabel(tension) {
+export function getTensionLabel(tension) {
     if (tension <= 2) return TENSION_LABELS.LOW;
     if (tension <= 5) return TENSION_LABELS.MODERATE;
     if (tension <= 8) return TENSION_LABELS.HIGH;
