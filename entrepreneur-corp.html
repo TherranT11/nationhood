@@ -4725,8 +4725,8 @@ function initials(s, n) {
           .order('placed_at_tick', { ascending: false })
           .limit(10),
         _supabase.from('corp_loans')
-          .select('id, principal, apr, term_ticks, per_tick_payment, payments_remaining, '
-                + 'total_paid, status, started_at_tick, borrower_corp_id, lender_corp_id, '
+          .select('id, principal, apr, term_ticks, balance, total_paid, '
+                + 'status, started_at_tick, borrower_corp_id, lender_corp_id, '
                 + 'borrower:entrepreneur_corps!borrower_corp_id(name), '
                 + 'lender:entrepreneur_corps!lender_corp_id(name)')
           .or(`borrower_corp_id.eq.${id},lender_corp_id.eq.${id}`)
@@ -4772,7 +4772,7 @@ function initials(s, n) {
       const cbDebt = cbLoans.reduce((s, l) => s + Math.max(0, Number(l.outstanding) || 0), 0);
       const debtSum = loans
         .filter(l => l.borrower_corp_id === id && l.status === 'active')
-        .reduce((s, l) => s + Math.max(0, Number(l.principal) - Number(l.total_paid)), 0) + cbDebt;
+        .reduce((s, l) => s + Math.max(0, Number(l.balance ?? (Number(l.principal) - Number(l.total_paid)))), 0) + cbDebt;
       const debtEl = document.getElementById('cp-debt');
       if (debtEl) {
         debtEl.textContent = debtSum > 0 ? fmtUsd(debtSum) : '$0';
@@ -4877,7 +4877,8 @@ function initials(s, n) {
                 </div>`;
             }
 
-            const remaining = Math.max(0, Number(l.principal) - Number(l.total_paid));
+            const remaining = Math.max(0, Number(l.balance ?? (Number(l.principal) - Number(l.total_paid))));
+            const perTickInterest = Math.round(remaining * (Number(l.apr) || 0) / 100 / 12);
             const statusCls = l.status === 'defaulted' ? 'red' : (isBorrower ? 'amber' : 'green');
             // Sue affordance: a borrower can sue the lender for predatory terms;
             // a lender can sue the borrower for non-payout. Hidden once a dispute
@@ -4890,11 +4891,11 @@ function initials(s, n) {
               <div class="cf-row ${isBorrower ? '' : 'income'}">
                 <div>
                   <div class="who">${isBorrower ? 'Owe' : 'Lent to'} ${escapeHtml(counterparty)} · ${fmtUsd(remaining)} outstanding</div>
-                  <div class="sub">${l.payments_remaining} of ${l.term_ticks} ticks left · ${fmtPct(l.apr)} · per tick ${fmtUsd(Number(l.per_tick_payment))}</div>
+                  <div class="sub">${fmtPct(l.apr)} APR · interest accrues each tick · ${l.term_ticks}-tick term</div>
                 </div>
                 <span class="cf-status ${l.status}">${l.status}</span>
                 <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
-                  <span class="num ${statusCls}">${isBorrower ? '−' : '+'}${fmtUsd(Number(l.per_tick_payment))}/t</span>
+                  <span class="num ${statusCls}">${isBorrower ? `+${fmtUsd(perTickInterest)}/t` : ''}</span>
                   ${sueBtn}
                 </div>
               </div>`;
