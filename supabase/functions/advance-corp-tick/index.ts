@@ -22,38 +22,20 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-// ════════════════════════════════════════════════════════════════════════════════
-//  LOAN MATH — verbatim copy of js/game/loan-math.js
-//
-//  This file is hand-maintained (no bundler), so amortizedMonthlyPayment is
-//  inlined here. If you change either copy, update the other in the same
-//  commit. The canonical home is js/game/loan-math.js.
-// ════════════════════════════════════════════════════════════════════════════════
-
-function amortizedMonthlyPayment(principal, apr, termTicks) {
-    const safePrincipal = Math.max(0, Number(principal) || 0);
-    const safeApr = Math.max(0, Number(apr) || 0);
-    const safeTerm = Math.max(1, Number(termTicks) || 1);
-    const r = (safeApr / 100) / 12;
-    if (r === 0) return Math.round(safePrincipal / safeTerm);
-    const factor = Math.pow(1 + r, safeTerm);
-    return Math.round(safePrincipal * (r * factor) / (factor - 1));
-}
-
-// Per-tick repayment for central_bank_loans (corp ↔ home-nation Central Bank).
-// Borrower corp pays an amortized payment from treasury_cash. Principal shrinks
-// `outstanding` (freeing CB lending capacity, since capacity counts only
-// active-loan outstanding). Interest flows back into the pool: added to
-// nations.central_bank_discretionary as interest/100, so capacity (= discretionary
-// × 100) grows by the interest amount 1:1. 3 missed payments → defaulted (which
-// also frees the capacity, since defaulted rows leave the active outstanding sum).
+// Central Bank loans — manual servicing (20270258, parity with corp loans):
+// NO auto-payment. Interest COMPOUNDS on `outstanding` each tick (rate/12); a
+// loan still owed at term (started_tick + term_ticks) defaults (CEO −3 rep). The
+// borrower pays manually via pay_central_bank_debt. Accrual runs at most once per
+// tick (last_payment_tick guard). Growing outstanding reserves CB lending
+// capacity; payoff/default frees it (capacity = discretionary×100 − Σ active
+// outstanding) — no discretionary bookkeeping here.
 async function processCentralBankLoanPayments(supabase, currentTick) {
-    const results = { processed: 0, paid: 0, missed: 0, defaulted: 0 };
+    const results = { processed: 0, accrued: 0, defaulted: 0, repaid: 0 };
     const TICKS_PER_YEAR = 12;
 
     const { data: loans, error } = await supabase
         .from('central_bank_loans')
-        .select('id, nation_id, borrower_corp_id, principal, outstanding, interest_rate, term_ticks, payments_missed, status, last_payment_tick')
+        .select('id, borrower_corp_id, outstanding, interest_rate, term_ticks, started_tick, status, last_payment_tick')
         .eq('status', 'active')
         .or(`last_payment_tick.is.null,last_payment_tick.neq.${currentTick}`);
     if (error) { console.warn('[CBLoanPayments] fetch failed:', error.message); return results; }
@@ -62,74 +44,39 @@ async function processCentralBankLoanPayments(supabase, currentTick) {
     for (const loan of loans) {
         if (Number(loan.last_payment_tick) === Number(currentTick)) continue;
         const outstanding = Number(loan.outstanding) || 0;
-        const rate = Number(loan.interest_rate) || 0;
-        const r = (rate / 100) / TICKS_PER_YEAR;
-        let payment = amortizedMonthlyPayment(Number(loan.principal) || 0, rate, Number(loan.term_ticks) || 1);
-        const interestDue = Math.round(outstanding * r);
-        if (payment > outstanding + interestDue) payment = outstanding + interestDue;
-        const principalPortion = Math.max(0, payment - interestDue);
-        const interestPortion = payment - principalPortion;
 
-        const { data: corp, error: cErr } = await supabase.from('entrepreneur_corps')
-            .select('treasury_cash').eq('id', loan.borrower_corp_id).single();
-        if (cErr || !corp) { console.warn(`[CBLoanPayments] corp fetch failed for ${loan.id}:`, cErr?.message); continue; }
-        const cash = Number(corp.treasury_cash) || 0;
-
-        if (cash >= payment) {
-            const newOutstanding = Math.max(0, outstanding - principalPortion);
-            const { error: cUpd } = await supabase.from('entrepreneur_corps')
-                .update({ treasury_cash: cash - payment }).eq('id', loan.borrower_corp_id);
-            if (cUpd) { console.warn(`[CBLoanPayments] debit failed for ${loan.id}:`, cUpd.message); continue; }
-
-            // Interest grows the CB pool (interest/100 → capacity +interest, 1:1).
-            if (interestPortion > 0) {
-                const { data: nat } = await supabase.from('nations')
-                    .select('central_bank_discretionary').eq('id', loan.nation_id).single();
-                if (nat) {
-                    await supabase.from('nations').update({
-                        central_bank_discretionary: (Number(nat.central_bank_discretionary) || 0) + Math.round(interestPortion / 100),
-                    }).eq('id', loan.nation_id);
-                }
-            }
-            // No corp_cash_events ledger entry — that helper keys on
-            // factions.id (the faction-corp model), not entrepreneur_corps.
-            // The treasury_cash debit above is the money movement; the loan
-            // row tracks the schedule.
-
-            if (newOutstanding <= 0) {
-                await supabase.from('central_bank_loans')
-                    .update({ outstanding: 0, status: 'repaid', last_payment_tick: currentTick }).eq('id', loan.id);
-                results.paid++;
-            } else {
-                await supabase.from('central_bank_loans')
-                    .update({ outstanding: newOutstanding, last_payment_tick: currentTick }).eq('id', loan.id);
-            }
-            results.processed++;
-        } else {
-            const missed = (Number(loan.payments_missed) || 0) + 1;
-            results.missed++;
-            if (missed >= 3) {
-                await supabase.from('central_bank_loans')
-                    .update({ status: 'defaulted', last_payment_tick: currentTick, payments_missed: missed }).eq('id', loan.id);
-                // Penalty parity with declare_bankruptcy / corp-loan default:
-                // the borrower's CEO takes −3 ent_reputation.
-                const { data: ownerCorp } = await supabase.from('entrepreneur_corps')
-                    .select('owner_faction_id').eq('id', loan.borrower_corp_id).single();
-                if (ownerCorp?.owner_faction_id) {
-                    const { data: fac } = await supabase.from('factions')
-                        .select('ent_reputation').eq('id', ownerCorp.owner_faction_id).single();
-                    if (fac) {
-                        await supabase.from('factions')
-                            .update({ ent_reputation: (Number(fac.ent_reputation) || 0) - 3 })
-                            .eq('id', ownerCorp.owner_faction_id);
-                    }
-                }
-                results.defaulted++;
-            } else {
-                await supabase.from('central_bank_loans')
-                    .update({ payments_missed: missed, last_payment_tick: currentTick }).eq('id', loan.id);
-            }
+        // Paid off (manually) → mark repaid.
+        if (outstanding < 1) {
+            await supabase.from('central_bank_loans')
+                .update({ outstanding: 0, status: 'repaid', last_payment_tick: currentTick }).eq('id', loan.id);
+            results.repaid++; results.processed++;
+            continue;
         }
+
+        // Term reached, still owed → default (parity with corp loans / bankruptcy).
+        if (currentTick >= (Number(loan.started_tick) || 0) + (Number(loan.term_ticks) || 0)) {
+            await supabase.from('central_bank_loans')
+                .update({ status: 'defaulted', last_payment_tick: currentTick }).eq('id', loan.id);
+            const { data: ownerCorp } = await supabase.from('entrepreneur_corps')
+                .select('owner_faction_id').eq('id', loan.borrower_corp_id).single();
+            if (ownerCorp?.owner_faction_id) {
+                const { data: fac } = await supabase.from('factions')
+                    .select('ent_reputation').eq('id', ownerCorp.owner_faction_id).single();
+                if (fac) {
+                    await supabase.from('factions')
+                        .update({ ent_reputation: (Number(fac.ent_reputation) || 0) - 3 })
+                        .eq('id', ownerCorp.owner_faction_id);
+                }
+            }
+            results.defaulted++; results.processed++;
+            continue;
+        }
+
+        // Accrue compound interest (rate/12 per tick).
+        const r = (Number(loan.interest_rate) || 0) / 100 / TICKS_PER_YEAR;
+        await supabase.from('central_bank_loans')
+            .update({ outstanding: Math.round(outstanding * (1 + r)), last_payment_tick: currentTick }).eq('id', loan.id);
+        results.accrued++; results.processed++;
     }
     return results;
 }

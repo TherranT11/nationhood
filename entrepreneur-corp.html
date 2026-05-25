@@ -1932,8 +1932,11 @@ function initials(s, n) {
     // ── Declare Bankruptcy (2.6.8.6): owner-only header action ──
     const bkWrap = document.getElementById('cp-bankrupt');
     if (bkWrap && isOwner) {
-      bkWrap.innerHTML = `<button class="rl-btn" id="cp-bankrupt-btn" style="padding:8px 14px;background:#3a1a1a;color:#d98a8a;border:0.5px solid #6a4a4a;border-radius:4px;cursor:pointer;">Declare Bankruptcy</button>`;
+      bkWrap.innerHTML = `
+        <button class="rl-btn" id="cp-debt-pay-btn" style="padding:8px 14px;background:#16240f;color:#9ac89e;border:0.5px solid #4a6a4a;border-radius:4px;cursor:pointer;display:block;width:100%;margin-bottom:8px;">Debt Payment</button>
+        <button class="rl-btn" id="cp-bankrupt-btn" style="padding:8px 14px;background:#3a1a1a;color:#d98a8a;border:0.5px solid #6a4a4a;border-radius:4px;cursor:pointer;display:block;width:100%;">Declare Bankruptcy</button>`;
       bkWrap.style.display = 'block';
+      document.getElementById('cp-debt-pay-btn').addEventListener('click', () => openDebtPaymentModal());
       let bkBusy = false;
       document.getElementById('cp-bankrupt-btn').addEventListener('click', async () => {
         if (bkBusy) return;
@@ -1955,6 +1958,77 @@ function initials(s, n) {
           alert('Failed: ' + (e?.message || e));
           bkBusy = false; btn.disabled = false; btn.textContent = prev;
         }
+      });
+    }
+
+    // ── Debt Payment (manual servicing): pay an amount toward an active corp
+    //    loan from treasury → lender. Interest accrues per tick; no auto-pay. ──
+    async function openDebtPaymentModal() {
+      let ov = document.getElementById('cp-debt-overlay');
+      if (!ov) { ov = document.createElement('div'); ov.id = 'cp-debt-overlay'; ov.className = 'bm-overlay'; document.body.appendChild(ov); }
+      const [corpRes, cbRes] = await Promise.all([
+        _supabase.from('corp_loans')
+          .select('id, balance, principal, total_paid, apr, lender:entrepreneur_corps!lender_corp_id(name)')
+          .eq('borrower_corp_id', id).eq('status', 'active').order('started_at_tick', { ascending: true }),
+        _supabase.from('central_bank_loans')
+          .select('id, outstanding, interest_rate, nation:nations!nation_id(name)')
+          .eq('borrower_corp_id', id).eq('status', 'active').order('started_tick', { ascending: true }),
+      ]);
+      if (corpRes.error) console.warn('[entrepreneur-corp] corp-debt fetch error:', corpRes.error.message);
+      if (cbRes.error)   console.warn('[entrepreneur-corp] cb-debt fetch error:', cbRes.error.message);
+      const corpCash = getEntrepreneurCorpCash(c);
+      const items = [
+        ...(corpRes.data || []).map(l => ({
+          type: 'corp', id: l.id, apr: Number(l.apr) || 0,
+          lender: l.lender?.name || 'lender',
+          bal: Math.max(0, Math.ceil(Number(l.balance ?? (Number(l.principal) - Number(l.total_paid || 0))))),
+        })),
+        ...(cbRes.data || []).map(l => ({
+          type: 'cb', id: l.id, apr: Number(l.interest_rate) || 0,
+          lender: `${l.nation?.name || 'National'} Central Bank`,
+          bal: Math.max(0, Math.ceil(Number(l.outstanding) || 0)),
+        })),
+      ];
+      const loanHtml = items.length
+        ? items.map(l => `<div style="border:0.5px solid rgba(255,255,255,0.08);border-radius:4px;padding:10px 12px;margin-bottom:8px;">
+              <div style="font-size:12px;color:#d4d4d4;">Owe <b>${escapeHtml(l.lender)}</b> · <span style="color:#d98a8a;">${fmtUsd(l.bal)}</span><span style="color:#8a8680;font-size:10px;"> · ${l.apr.toFixed(1)}% APR</span></div>
+              <div style="display:flex;gap:6px;margin-top:8px;">
+                <input type="number" class="bm-input dp-amt" data-lid="${l.id}" min="1" max="${l.bal}" placeholder="Amount" style="flex:1;">
+                <button class="bm-btn pri dp-pay" data-lid="${l.id}" data-type="${l.type}">Pay</button>
+              </div></div>`).join('')
+        : '<div style="color:#8a8680;font-size:12px;padding:8px 0;">No active loans.</div>';
+      ov.innerHTML = `<div class="bm-modal" style="max-width:460px;">
+        <div class="bm-head"><div class="ti">Debt <em>Payment</em></div><div class="bm-x" id="dp-close">×</div></div>
+        <div class="bm-body">
+          <div style="font-size:10px;color:#8a8680;margin-bottom:12px;">Cash on hand: <b>${fmtUsd(corpCash)}</b>. Interest compounds each tick on the balance; a loan defaults if still owed at the end of its term.</div>
+          ${loanHtml}
+          <div class="bm-err" id="dp-msg"></div>
+        </div></div>`;
+      ov.classList.add('open');
+      const close = () => ov.classList.remove('open');
+      document.getElementById('dp-close').onclick = close;
+      ov.onclick = (e) => { if (e.target === ov) close(); };
+      ov.querySelectorAll('.dp-pay').forEach(btn => {
+        btn.onclick = async () => {
+          const lid = btn.dataset.lid;
+          const amt = parseInt(ov.querySelector(`.dp-amt[data-lid="${lid}"]`)?.value, 10);
+          const msg = document.getElementById('dp-msg');
+          if (msg) msg.textContent = '';
+          if (!(amt >= 1)) { if (msg) msg.textContent = 'Enter an amount of at least $1.'; return; }
+          btn.disabled = true; const prev = btn.textContent; btn.textContent = '…';
+          try {
+            const rpc = btn.dataset.type === 'cb' ? 'pay_central_bank_debt' : 'pay_corp_debt';
+            const { data, error: pErr } = await _supabase.rpc(rpc, { p_loan_id: lid, p_amount: amt });
+            if (pErr) { if (msg) msg.textContent = 'Failed: ' + pErr.message; btn.disabled = false; btn.textContent = prev; return; }
+            if (!data?.success) {
+              if (msg) msg.textContent = data?.reason === 'insufficient_treasury'
+                ? `Treasury too low — cash on hand ${fmtUsd(Number(data.have) || 0)}.`
+                : ('Payment failed: ' + (data?.reason || 'unknown'));
+              btn.disabled = false; btn.textContent = prev; return;
+            }
+            location.reload();
+          } catch (e) { if (msg) msg.textContent = 'Failed: ' + (e?.message || e); btn.disabled = false; btn.textContent = prev; }
+        };
       });
     }
 
@@ -4665,8 +4739,8 @@ function initials(s, n) {
           .order('placed_at_tick', { ascending: false })
           .limit(10),
         _supabase.from('corp_loans')
-          .select('id, principal, apr, term_ticks, per_tick_payment, payments_remaining, '
-                + 'total_paid, status, started_at_tick, borrower_corp_id, lender_corp_id, '
+          .select('id, principal, apr, term_ticks, balance, total_paid, '
+                + 'status, started_at_tick, borrower_corp_id, lender_corp_id, '
                 + 'borrower:entrepreneur_corps!borrower_corp_id(name), '
                 + 'lender:entrepreneur_corps!lender_corp_id(name)')
           .or(`borrower_corp_id.eq.${id},lender_corp_id.eq.${id}`)
@@ -4712,7 +4786,7 @@ function initials(s, n) {
       const cbDebt = cbLoans.reduce((s, l) => s + Math.max(0, Number(l.outstanding) || 0), 0);
       const debtSum = loans
         .filter(l => l.borrower_corp_id === id && l.status === 'active')
-        .reduce((s, l) => s + Math.max(0, Number(l.principal) - Number(l.total_paid)), 0) + cbDebt;
+        .reduce((s, l) => s + Math.max(0, Number(l.balance ?? (Number(l.principal) - Number(l.total_paid)))), 0) + cbDebt;
       const debtEl = document.getElementById('cp-debt');
       if (debtEl) {
         debtEl.textContent = debtSum > 0 ? fmtUsd(debtSum) : '$0';
@@ -4817,7 +4891,8 @@ function initials(s, n) {
                 </div>`;
             }
 
-            const remaining = Math.max(0, Number(l.principal) - Number(l.total_paid));
+            const remaining = Math.max(0, Number(l.balance ?? (Number(l.principal) - Number(l.total_paid))));
+            const perTickInterest = Math.round(remaining * (Number(l.apr) || 0) / 100 / 12);
             const statusCls = l.status === 'defaulted' ? 'red' : (isBorrower ? 'amber' : 'green');
             // Sue affordance: a borrower can sue the lender for predatory terms;
             // a lender can sue the borrower for non-payout. Hidden once a dispute
@@ -4830,11 +4905,11 @@ function initials(s, n) {
               <div class="cf-row ${isBorrower ? '' : 'income'}">
                 <div>
                   <div class="who">${isBorrower ? 'Owe' : 'Lent to'} ${escapeHtml(counterparty)} · ${fmtUsd(remaining)} outstanding</div>
-                  <div class="sub">${l.payments_remaining} of ${l.term_ticks} ticks left · ${fmtPct(l.apr)} · per tick ${fmtUsd(Number(l.per_tick_payment))}</div>
+                  <div class="sub">${fmtPct(l.apr)} APR · interest accrues each tick · ${l.term_ticks}-tick term</div>
                 </div>
                 <span class="cf-status ${l.status}">${l.status}</span>
                 <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
-                  <span class="num ${statusCls}">${isBorrower ? '−' : '+'}${fmtUsd(Number(l.per_tick_payment))}/t</span>
+                  <span class="num ${statusCls}">${isBorrower ? `+${fmtUsd(perTickInterest)}/t` : ''}</span>
                   ${sueBtn}
                 </div>
               </div>`;
