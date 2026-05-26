@@ -177,22 +177,50 @@ export async function loadUnitsAndFunds(faction) {
   return { units, funds, armies };
 }
 
-// Total soldiers this army's on-hand rifles can equip (Σ qty × soldiers_per_rifle).
-export async function loadEquipCapacity(factionId) {
-  if (!factionId) return 0;
+// Rifles actually equipped to this army's brigades, by unit. Returns
+// { byUnit: Map<unitId, rows[]>, armed } where armed = Σ qty × soldiers_per_rifle
+// (the manpower actually armed, vs. on-hand capacity).
+export async function loadBrigadeEquipment(unitIds) {
+  const out = { byUnit: new Map(), armed: 0 };
+  if (!unitIds || !unitIds.length) return out;
+  try {
+    const { data, error } = await _supabase
+      .from('army_brigade_equipment')
+      .select('army_unit_id, brigade_index, quantity, rifle_model_id, rifle_models(name, soldiers_per_rifle)')
+      .in('army_unit_id', unitIds);
+    if (error) { console.warn('[create-unit] brigade equipment load failed:', error.message); return out; }
+    for (const e of (data || [])) {
+      if (!out.byUnit.has(e.army_unit_id)) out.byUnit.set(e.army_unit_id, []);
+      out.byUnit.get(e.army_unit_id).push(e);
+      out.armed += (Number(e.quantity) || 0) * (Number(e.rifle_models?.soldiers_per_rifle) || 0);
+    }
+  } catch (e) {
+    console.warn('[create-unit] brigade equipment load failed:', e?.message || e);
+  }
+  return out;
+}
+
+// On-hand rifles a faction can still allocate (qty > 0), with model name.
+async function loadOnHandRifles(factionId) {
+  if (!factionId) return [];
   try {
     const { data, error } = await _supabase
       .from('army_rifle_inventory')
-      .select('quantity, rifle_models(soldiers_per_rifle)')
+      .select('rifle_model_id, quantity, rifle_models(name)')
       .eq('faction_id', factionId)
       .gt('quantity', 0);
-    if (error) { console.warn('[create-unit] rifle capacity load failed:', error.message); return 0; }
-    return (data || []).reduce((s, r) =>
-      s + (Number(r.quantity) || 0) * (Number(r.rifle_models?.soldiers_per_rifle) || 0), 0);
+    if (error) { console.warn('[create-unit] on-hand rifles load failed:', error.message); return []; }
+    return data || [];
   } catch (e) {
-    console.warn('[create-unit] rifle capacity load failed:', e?.message || e);
-    return 0;
+    console.warn('[create-unit] on-hand rifles load failed:', e?.message || e);
+    return [];
   }
+}
+
+// Rifles a brigade needs: 1 rifle arms up to 1,000 soldiers.
+function riflesNeeded(brigadeKey) {
+  const mp = AU_BRIGADES[brigadeKey]?.mp || 0;
+  return Math.ceil(mp / 1000);
 }
 
 function poolOf(faction) {
@@ -498,7 +526,7 @@ export async function renderOrderOfBattle(faction, hostEl) {
   if (!hostEl) return;
   ensureStyles();
   const expanded = new Set();
-  let units = [], funds = 0, armies = [], equipCapacity = 0;
+  let units = [], funds = 0, armies = [], equip = { byUnit: new Map(), armed: 0 };
 
   function initials(name) {
     const w = String(name || '?').trim().split(/\s+/).filter(Boolean);
@@ -509,9 +537,9 @@ export async function renderOrderOfBattle(faction, hostEl) {
     const pool = poolOf(faction);
     const committed = committedOf(units);
     const brigCount = brigadeCountOf(units);
-    // Rifles arm up to soldiers_per_rifle troops each; armed = capacity capped at
-    // the soldiers actually committed to units.
-    const armed = Math.min(equipCapacity, committed);
+    // Armed = manpower covered by rifles actually equipped to brigades (capped
+    // at committed for safety). Pump-proof: only real assignments count.
+    const armed = Math.min(equip.armed, committed);
 
     let html = `<div class="cu-sum" style="margin-bottom:16px;">
       <div><div class="l">PERSONNEL</div><div class="v">${committed.toLocaleString()}</div><div class="s">committed of ${pool.toLocaleString()}</div></div>
@@ -560,6 +588,7 @@ export async function renderOrderOfBattle(faction, hostEl) {
     const brigs = Array.isArray(u.brigades) ? u.brigades : [];
     const forming = u.status === 'Forming';
     const open = expanded.has(u.id);
+    const eqByIdx = new Map((equip.byUnit.get(u.id) || []).map(e => [e.brigade_index, Number(e.quantity) || 0]));
     const composition = auComposition(brigs);
     const pill = forming
       ? `<span class="oob-pill forming">Forming · Ready in ${tickToDate(Number(u.forming_until_tick))}</span>`
@@ -578,13 +607,33 @@ export async function renderOrderOfBattle(faction, hostEl) {
           <div class="oob-sub" style="margin-bottom:4px;">${escapeHtml(composition)}</div>
           ${brigs.map((k, i) => {
             const sp = AU_BRIGADES[k];
-            return `<div class="oob-brig"><span style="color:#666;">${i + 1}/${brigs.length}</span><span style="color:#fff;">${sp ? escapeHtml(sp.name) : escapeHtml(k)}</span><span>${sp ? sp.mp.toLocaleString() : '0'} manpower</span></div>`;
+            const need = riflesNeeded(k);
+            const got = eqByIdx.get(i) || 0;
+            const armedTag = need > 0
+              ? `<span style="color:${got >= need ? '#46c46a' : got > 0 ? '#c8a832' : '#888'};">${got}/${need} rifles</span>`
+              : '';
+            return `<div class="oob-brig"><span style="color:#666;">${i + 1}/${brigs.length}</span><span style="color:#fff;">${sp ? escapeHtml(sp.name) : escapeHtml(k)}</span><span>${sp ? sp.mp.toLocaleString() : '0'} manpower</span>${armedTag}</div>`;
           }).join('')}
+          <button class="oob-equip" data-equip-uid="${escapeAttr(u.id)}" style="margin-top:8px;font-family:var(--font-mono,monospace);font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:7px 14px;border-radius:3px;cursor:pointer;background:rgba(182,83,63,0.14);border:1px solid var(--army,#b6533f);color:#e0a090;">Equip</button>
         </div>
       </div>`;
   }
 
+  // Re-read equipment (after an equip/unequip) and redraw — keeps the open
+  // unit expanded.
+  const reloadEquip = async () => {
+    equip = await loadBrigadeEquipment(units.map(u => u.id));
+    draw();
+  };
+
   hostEl.onclick = (e) => {
+    const equipBtn = e.target.closest('[data-equip-uid]');
+    if (equipBtn) {
+      e.stopPropagation();
+      const u = units.find(x => x.id === equipBtn.getAttribute('data-equip-uid'));
+      if (u) openEquipModal(u, faction, reloadEquip);
+      return;
+    }
     const top = e.target.closest('[data-uid]');
     if (!top) return;
     const id = top.getAttribute('data-uid');
@@ -595,6 +644,159 @@ export async function renderOrderOfBattle(faction, hostEl) {
   hostEl.innerHTML = '<div class="oob-empty">Loading order of battle…</div>';
   const r = await loadUnitsAndFunds(faction);
   units = r.units; funds = r.funds; armies = r.armies || [];
-  equipCapacity = await loadEquipCapacity(faction.id);
+  equip = await loadBrigadeEquipment(units.map(u => u.id));
   draw();
+}
+
+// Inject equip-modal styles once (kept out of the big ensureStyles block).
+function ensureEquipStyles() {
+  if (document.getElementById('eq-modal-styles')) return;
+  const s = document.createElement('style');
+  s.id = 'eq-modal-styles';
+  s.textContent = `
+    .eq-list{display:flex;flex-direction:column;gap:8px;margin-top:12px;}
+    .eq-row{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;padding:10px 12px;background:#0f0f0f;border:0.5px solid rgba(255,255,255,0.08);border-radius:5px;}
+    .eq-row .eq-name{font-size:13px;font-weight:600;color:#fff;}
+    .eq-row .eq-mp{font-family:var(--font-mono,monospace);font-size:10px;color:#888;margin-top:2px;}
+    .eq-count{font-family:var(--font-mono,monospace);font-size:13px;font-weight:700;color:#888;}
+    .eq-count.part{color:#c8a832;} .eq-count.full{color:#46c46a;}
+    .eq-ctl{display:flex;align-items:center;gap:6px;}
+    .eq-model{background:#1a1a17;border:0.5px solid rgba(255,255,255,0.15);border-radius:3px;color:#f0efe6;font-family:var(--font-mono,monospace);font-size:11px;padding:5px 7px;max-width:200px;}
+    .eq-btn{font-family:var(--font-mono,monospace);font-size:10px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;padding:6px 11px;border-radius:3px;cursor:pointer;border:1px solid;}
+    .eq-btn.equip{background:rgba(182,83,63,0.16);border-color:var(--army,#b6533f);color:#e0a090;}
+    .eq-btn.unequip{background:none;border-color:rgba(255,255,255,0.18);color:#aaa;}
+    .eq-btn:disabled{opacity:0.5;cursor:default;}
+    .eq-done{font-family:var(--font-mono,monospace);font-size:11px;color:#46c46a;}
+    .eq-none{font-family:var(--font-mono,monospace);font-size:10px;color:#888;font-style:italic;}
+    .eq-err{margin-top:10px;font-family:var(--font-mono,monospace);font-size:11px;color:#c47a7a;background:rgba(196,122,122,0.1);border:0.5px solid rgba(196,122,122,0.3);border-radius:3px;padding:8px 11px;}
+  `;
+  document.head.appendChild(s);
+}
+
+// ── ACTION: Equip Brigade modal ────────────────────────────────────
+// Per-brigade rifle assignment for a unit. One model per brigade; equipping
+// pulls from on-hand inventory, unequipping returns it. onChange() refreshes the
+// Order of Battle after each change. Listeners are assigned (not addEventListener)
+// so re-rendering after an action can't stack handlers; a busy flag + the
+// server's FOR UPDATE guard double-fire.
+export function openEquipModal(unit, faction, onChange) {
+  if (!unit?.id || !faction?.id) return;
+  ensureStyles();
+  ensureEquipStyles();
+  let overlay = document.getElementById('eq-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'eq-overlay';
+    overlay.className = 'cu-overlay';
+    document.body.appendChild(overlay);
+  }
+  const brigs = Array.isArray(unit.brigades) ? unit.brigades : [];
+  let onHand = [];
+  let eqByIdx = new Map();
+  let busy = false;
+
+  const close = () => { overlay.style.display = 'none'; overlay.innerHTML = ''; overlay.onclick = null; };
+
+  async function reload() {
+    const [oh, eq] = await Promise.all([
+      loadOnHandRifles(faction.id),
+      loadBrigadeEquipment([unit.id]),
+    ]);
+    onHand = oh;
+    eqByIdx = new Map((eq.byUnit.get(unit.id) || []).map(e => [e.brigade_index, e]));
+    render();
+    if (typeof onChange === 'function') onChange();
+  }
+
+  function render() {
+    const rows = brigs.map((k, i) => {
+      const sp = AU_BRIGADES[k];
+      const name = sp ? sp.name : k;
+      const mp = sp ? sp.mp : 0;
+      const need = riflesNeeded(k);
+      const cur = eqByIdx.get(i);
+      const got = cur ? Number(cur.quantity) || 0 : 0;
+      const curModel = cur ? cur.rifle_model_id : null;
+      const full = need > 0 && got >= need;
+      const remaining = Math.max(0, need - got);
+      // Models available: locked to the brigade's current model if partly
+      // equipped, else any on-hand model with stock.
+      const options = onHand.filter(o => (Number(o.quantity) || 0) > 0 && (!curModel || o.rifle_model_id === curModel));
+
+      let control;
+      if (full) {
+        control = `<span class="eq-done">✓ ${escapeHtml(cur?.rifle_models?.name || 'Equipped')}</span>`;
+      } else if (!options.length) {
+        control = `<span class="eq-none">${curModel ? 'No more on hand' : 'No rifles on hand'}</span>`;
+      } else {
+        control = `<select class="eq-model" data-idx="${i}">${options.map(o =>
+            `<option value="${escapeAttr(o.rifle_model_id)}">${escapeHtml(o.rifle_models?.name || 'Rifle')} · ${Number(o.quantity).toLocaleString()} on hand</option>`).join('')}</select>`
+          + `<button class="eq-btn equip" data-equip-idx="${i}" data-remaining="${remaining}">Equip</button>`;
+      }
+      const unequip = got > 0 ? `<button class="eq-btn unequip" data-unequip-idx="${i}">Unequip</button>` : '';
+
+      return `<div class="eq-row">
+          <div class="eq-brig"><div class="eq-name">${escapeHtml(name)}</div><div class="eq-mp">${mp.toLocaleString()} manpower</div></div>
+          <div class="eq-count ${full ? 'full' : got > 0 ? 'part' : ''}">${got} / ${need}</div>
+          <div class="eq-ctl">${control}${unequip}</div>
+        </div>`;
+    }).join('');
+
+    overlay.innerHTML = `<div class="cu-modal" style="max-width:580px;">
+      <div class="cu-head">
+        <div><div class="cu-eyebrow">— ARMY ACTION —</div><div class="cu-title">Equip <em>${escapeHtml(unit.name)}</em></div></div>
+        <div class="cu-head-right"><div class="cu-x" data-eq="close">×</div></div>
+      </div>
+      <div class="cu-body">
+        <div class="cu-hint">One rifle arms up to 1,000 soldiers · one model per brigade. Rifles come from your on-hand inventory.</div>
+        <div class="eq-list">${rows || '<div class="oob-empty">This unit has no brigades.</div>'}</div>
+        <div class="eq-err" id="eq-err" hidden></div>
+      </div>
+    </div>`;
+  }
+
+  overlay.onclick = async (e) => {
+    if (e.target === overlay || e.target.closest('[data-eq="close"]')) { if (!busy) close(); return; }
+    const equipBtn = e.target.closest('[data-equip-idx]');
+    const unequipBtn = e.target.closest('[data-unequip-idx]');
+    if ((!equipBtn && !unequipBtn) || busy) return;
+    const errEl = document.getElementById('eq-err');
+    busy = true;
+    overlay.querySelectorAll('.eq-btn').forEach(b => { b.disabled = true; });
+    if (errEl) { errEl.hidden = true; errEl.textContent = ''; }
+    try {
+      let data, error;
+      if (equipBtn) {
+        const idx = Number(equipBtn.dataset.equipIdx);
+        const remaining = Number(equipBtn.dataset.remaining) || 1;
+        const modelId = overlay.querySelector(`.eq-model[data-idx="${idx}"]`)?.value;
+        const onHandQty = Number(onHand.find(o => o.rifle_model_id === modelId)?.quantity) || 0;
+        const qty = Math.max(1, Math.min(remaining, onHandQty));
+        if (!modelId || onHandQty < 1) { busy = false; overlay.querySelectorAll('.eq-btn').forEach(b => { b.disabled = false; }); return; }
+        ({ data, error } = await _supabase.rpc('equip_brigade', {
+          p_unit_id: unit.id, p_brigade_index: idx, p_rifle_model_id: modelId, p_quantity: qty,
+        }));
+      } else {
+        ({ data, error } = await _supabase.rpc('unequip_brigade', {
+          p_unit_id: unit.id, p_brigade_index: Number(unequipBtn.dataset.unequipIdx),
+        }));
+      }
+      if (error || (data && data.ok === false)) {
+        if (errEl) { errEl.textContent = (data && data.error) || error?.message || 'Action failed.'; errEl.hidden = false; }
+        busy = false;
+        overlay.querySelectorAll('.eq-btn').forEach(b => { b.disabled = false; });
+      } else {
+        busy = false;
+        await reload();   // fresh render (buttons recreated) + OOB refresh
+      }
+    } catch (ex) {
+      if (errEl) { errEl.textContent = ex?.message || 'Action failed.'; errEl.hidden = false; }
+      busy = false;
+      overlay.querySelectorAll('.eq-btn').forEach(b => { b.disabled = false; });
+    }
+  };
+
+  overlay.style.display = 'flex';
+  overlay.innerHTML = '<div class="cu-modal"><div class="cu-body"><div class="cu-sec">Loading…</div></div></div>';
+  reload();
 }

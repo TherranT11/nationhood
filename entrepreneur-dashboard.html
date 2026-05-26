@@ -223,7 +223,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { hfFmtBig, escapeHtml, escapeAttr, titleCase, fmtValuation, pctOwned } from './js/utils.js';
-import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
+import { computeEntrepreneurValuation, corpShareLiquidationValue } from './js/game/corp-valuation.js';
 import { fetchCorpBookAggregates } from './js/corp-book-value.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
@@ -428,7 +428,11 @@ async function loadHoldings(entId, cash) {
     if (!r.corp) continue;   // FK guarantees corp resolves; defensive
     const shares = Number(r.shares) || 0;
     const price = Number(r.corp.share_price) || 0;
-    const value = shares * price;
+    // Public holdings count at sell-side liquidation value (can't be pumped);
+    // private holdings keep their existing marking. Mirrors get_entrepreneur_net_worth.
+    const value = r.corp.listing === 'public'
+      ? corpShareLiquidationValue(shares, price)
+      : shares * price;
     const existing = byId.get(r.corp.id);
     if (existing) {
       existing.shares = shares;

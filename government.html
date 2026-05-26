@@ -1371,7 +1371,8 @@ function renderAdministrationTab(container) {
     const contextKey = getTimelineContextKey();
     if (_timelineContextKey !== contextKey) {
         _timelineContextKey = contextKey;
-        _timelineFilter = 'all';
+        // Keep the user's active filter tab — the context key changes every tick
+        // (moving lookback window), and resetting to 'all' each tick would be jarring.
         _timelineEvents = [];
         if (!contextKey) {
             _timelineEmptyReason = 'No active administration record — timeline unavailable.';
@@ -1791,7 +1792,10 @@ function adm2RenderHogCard() {
 // undeclared identifier throws ReferenceError under module strict mode
 // (works only when this file is loaded as a raw <script>).
 const TIMELINE_CACHE_MAX = 8;
-let _timelineContextKey = null;        // stable key for the current admin (cache + in-flight gate)
+// The timeline shows the nation's recent history over a fixed lookback window
+// (not scoped to the current administration). 1 tick ≈ 1 month, so 60 ≈ 5 years.
+const TIMELINE_LOOKBACK_TICKS = 60;
+let _timelineContextKey = null;        // stable key (nation + tick) for cache + in-flight gate
 let _timelineFilter = 'all';           // active filter chip
 let _timelineEvents = [];              // currently-rendered events
 let _timelineEmptyReason = '';         // text shown when the list is empty
@@ -2151,7 +2155,9 @@ function getTimelineContextKey() {
     const nationId = currentNation?.id;
     const admin = _govData?.admin;
     if (!nationId || !admin?.id) return null;
-    return `${nationId}:${admin.id}:${admin.started_at_tick || 0}`;
+    // Keyed on the current tick so the moving lookback window refetches as time
+    // advances (still gated on an active administration existing).
+    return `${nationId}:${currentTick}`;
 }
 
 async function loadTimelineData() {
@@ -2171,7 +2177,10 @@ async function loadTimelineData() {
             : '';
         return;
     }
-    const startTick = _govData.admin.started_at_tick || 0;
+    // Fixed lookback window (not the admin's term) — recent history across
+    // administrations. Falls back to 0 (all history, up to row caps) if the
+    // current tick isn't known yet.
+    const startTick = Math.max(0, (Number(currentTick) || 0) - TIMELINE_LOOKBACK_TICKS);
     const nationId = currentNation.id;
 
     try {

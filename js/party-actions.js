@@ -1209,6 +1209,7 @@ function renderPage(root) {
     document.getElementById('pa-leaders').innerHTML = renderLeaderCards(leaderName, partyColor, faction);
     document.getElementById('pa-actions-panel').innerHTML = renderActionsPanel(leaderName, partyColor, faction);
     for (const key of Object.keys(SURVEY_CONFIG)) patchSurveyCard(key);
+    mountCbLoanRequests(faction);   // fills the Governor's pending-loan-request panel (no-op otherwise)
 
     // Bind card clicks. Cabinet ministry / PM / President cards reuse
     // the same `.pa-leader-card` shell + `data-role` mechanism as the
@@ -1962,6 +1963,7 @@ function renderMinistryDetail(faction, partyColor) {
             ` : ''}
             ${governorReadout}
         </div>
+        ${isGovernor ? '<div id="cb-loan-requests" style="margin-bottom:14px;"></div>' : ''}
         <div class="pa-actions-list">
             ${(r.actions && r.actions.length > 0)
                 ? actionsHtml
@@ -1969,6 +1971,94 @@ function renderMinistryDetail(faction, partyColor) {
             }
         </div>
     `;
+}
+
+// Friendly text for a loan-decision RPC failure reason.
+function cbDecideError(reason) {
+    return ({
+        not_governor: 'You no longer hold the Governor seat.',
+        term_expired: 'Your term has expired.',
+        not_pending: 'This request was already decided.',
+        loan_not_found: 'Request not found.',
+        insufficient_capacity: 'Not enough lending capital to issue this loan.',
+        not_authenticated: 'Not signed in.',
+    })[reason] || (reason ? String(reason) : 'Action failed.');
+}
+
+// Fill the Governor's pending-loan-request panel (placeholder #cb-loan-requests,
+// present only on the Governor detail). Each request shows corp, amount, the
+// corp's existing debt and the entrepreneur's reputation, with Issue / Reject.
+// Re-fills after a decision so the decided card disappears. Buttons are wired
+// on fresh DOM each fill, so listeners can't stack.
+async function mountCbLoanRequests(faction) {
+    const host = document.getElementById('cb-loan-requests');
+    if (!host) return;                                   // not the Governor view
+    const nationId = _state?.nation?.id;
+    if (!_supabase || !nationId || !isCentralBankGovernor(faction)) { host.innerHTML = ''; return; }
+
+    const { data: loans, error } = await _supabase
+        .from('central_bank_loans')
+        .select('id, principal, term_ticks, borrower_corp_id, corp:entrepreneur_corps!borrower_corp_id(name, owner_faction_id)')
+        .eq('nation_id', nationId).eq('status', 'pending')
+        .order('created_at', { ascending: true });
+    if (error) { console.warn('[party-actions] CB loan requests load failed:', error.message); host.innerHTML = ''; return; }
+    if (!loans || !loans.length) { host.innerHTML = ''; return; }
+
+    // Reputation per owner (batch) + existing debt per corp (the one-source RPC).
+    const ownerIds = [...new Set(loans.map(l => l.corp?.owner_faction_id).filter(Boolean))];
+    const repByOwner = {};
+    if (ownerIds.length) {
+        const { data: facs } = await _supabase.from('factions').select('id, corp_reputation').in('id', ownerIds);
+        for (const f of (facs || [])) repByOwner[f.id] = Number(f.corp_reputation);
+    }
+    const debts = await Promise.all(loans.map(l =>
+        _supabase.rpc('entrepreneur_corp_outstanding_debt', { p_corp_id: l.borrower_corp_id })
+            .then(r => Number(r.data) || 0).catch(() => 0)));
+    const cbAmt = (raw) => '$' + cbPoolAbstract(raw).toLocaleString();
+
+    host.innerHTML = `
+        <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#c8a832;margin-bottom:8px;">New Loan Request${loans.length > 1 ? 's' : ''}</div>
+        ${loans.map((l, i) => {
+            const corp = l.corp || {};
+            const rep = repByOwner[corp.owner_faction_id];
+            return `
+            <div class="cb-lr-card" data-loan-id="${esc(l.id)}" style="border:0.5px solid #c8a83244;background:#c8a8320c;border-radius:6px;padding:12px 14px;margin-bottom:8px;">
+                <div style="font-size:13px;font-weight:700;color:var(--text-bright);margin-bottom:8px;">${esc(corp.name || 'Unknown corp')}</div>
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;font-family:var(--font-mono);">
+                    <div><div style="font-size:8px;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;">Loan Amount</div><div style="font-size:13px;font-weight:600;color:var(--text-bright);margin-top:2px;">${cbAmt(l.principal)}</div></div>
+                    <div><div style="font-size:8px;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;">Existing Debt</div><div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-top:2px;">${cbAmt(debts[i])}</div></div>
+                    <div><div style="font-size:8px;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;">Reputation</div><div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-top:2px;">${Number.isFinite(rep) ? rep.toFixed(1) + '/10' : '—'}</div></div>
+                    <div><div style="font-size:8px;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;">Term</div><div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-top:2px;">${Number(l.term_ticks)} ticks</div></div>
+                </div>
+                <div class="cb-lr-err" hidden style="margin-top:8px;font-family:var(--font-mono);font-size:10px;color:var(--red);"></div>
+                <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;">
+                    <button data-cb-decide="reject" data-loan-id="${esc(l.id)}" style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.06em;padding:7px 14px;border-radius:3px;cursor:pointer;background:none;border:1px solid var(--red);color:var(--red);">Reject</button>
+                    <button data-cb-decide="issue" data-loan-id="${esc(l.id)}" style="font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.06em;padding:7px 14px;border-radius:3px;cursor:pointer;background:#c8a832;border:1px solid #c8a832;color:#1a1a17;">Issue Loan</button>
+                </div>
+            </div>`;
+        }).join('')}`;
+
+    host.querySelectorAll('[data-cb-decide]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const card = btn.closest('.cb-lr-card');
+            const errEl = card?.querySelector('.cb-lr-err');
+            card?.querySelectorAll('[data-cb-decide]').forEach(b => { b.disabled = true; b.style.opacity = '0.5'; });
+            if (errEl) { errEl.hidden = true; errEl.textContent = ''; }
+            try {
+                const fn = btn.dataset.cbDecide === 'issue' ? 'issue_central_bank_loan' : 'reject_central_bank_loan';
+                const { data, error: rpcErr } = await _supabase.rpc(fn, { p_loan_id: btn.dataset.loanId });
+                if (rpcErr || (data && data.success === false)) {
+                    if (errEl) { errEl.textContent = cbDecideError((data && data.reason) || rpcErr?.message); errEl.hidden = false; }
+                    card?.querySelectorAll('[data-cb-decide]').forEach(b => { b.disabled = false; b.style.opacity = '1'; });
+                } else {
+                    await mountCbLoanRequests(faction);   // decided card disappears
+                }
+            } catch (ex) {
+                if (errEl) { errEl.textContent = ex?.message || 'Action failed.'; errEl.hidden = false; }
+                card?.querySelectorAll('[data-cb-decide]').forEach(b => { b.disabled = false; b.style.opacity = '1'; });
+            }
+        });
+    });
 }
 
 function renderActionsPanel(leaderName, partyColor, faction) {
