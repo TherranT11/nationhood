@@ -1979,7 +1979,9 @@ function initials(s, n) {
       const corpCash = getEntrepreneurCorpCash(c);
       const items = [
         ...(corpRes.data || []).map(l => ({
-          type: 'corp', id: l.id, apr: Number(l.apr) || 0,
+          // corp apr is a fraction (0.03); CB interest_rate below is already a
+          // percentage — normalise both to a percentage for the APR display.
+          type: 'corp', id: l.id, apr: (Number(l.apr) || 0) * 100,
           lender: l.lender?.name || 'lender',
           bal: Math.max(0, Math.ceil(Number(l.balance ?? (Number(l.principal) - Number(l.total_paid || 0))))),
         })),
@@ -4701,6 +4703,16 @@ function initials(s, n) {
     let cbState = null;       // { rate, available } for the corp's HQ-nation Central Bank
 
     const fmtPct = (n) => (Number(n) * 100).toFixed(2).replace(/\.?0+$/, '') + '%';
+    // Single source of truth for a corp-loan quote (flat-interest model, apr as a
+    // FRACTION e.g. 0.03 = 3%). Mirrors accept_loan_offer's per_tick_payment in
+    // SQL — once a loan exists, corp_loans.per_tick_payment is the stored value;
+    // this is only for previewing offers that haven't been accepted yet.
+    const corpLoanQuote = (principal, apr, termTicks) => {
+      const p = Math.max(0, Number(principal) || 0);
+      const r = Math.max(0, Number(apr) || 0);
+      const n = Math.max(1, Number(termTicks) || 1);
+      return { perTick: Math.round(p / n + p * r / 12), total: Math.round(p * (1 + r * n / 12)) };
+    };
 
     // Section IV "Corporate Finance" renders the BORROWER-side view:
     // [Request Loan] launcher, outgoing requests, active loans (both
@@ -4832,9 +4844,7 @@ function initials(s, n) {
         ? `<div class="cf-sub-head">Loan Offers Received · ${receivedOffers.length}</div>` + receivedOffers.map(o => {
             const principal = Number(o.request?.principal) || 0;
             const term = Number(o.request?.term_ticks) || 0;
-            const apr = Number(o.apr) || 0;
-            const total   = Math.round(principal * (1 + apr * term / 12));
-            const perTick = Math.round(principal / term + principal * apr / 12);
+            const { perTick, total } = corpLoanQuote(principal, o.apr, term);
             return `
               <div class="cf-row income">
                 <div>
@@ -4852,9 +4862,14 @@ function initials(s, n) {
         ? `<div class="cf-sub-head">My Loan Offers · ${sentOffers.length}</div>` + sentOffers.map(o => {
             const req = o.request;
             const borrowerName = req?.borrower?.name || 'Unknown borrower';
-            const tail = req
-              ? `${fmtUsd(Number(req.principal))} over ${req.term_ticks}t · expires T${req.expires_at_tick}`
-              : '—';
+            // expires_at_tick is the request's 6-tick BIDDING window, not the
+            // loan term. Only show it while the offer is still pending — once
+            // accepted (or withdrawn/declined) that window is dead, and printing
+            // "expires T###" on an accepted offer reads as "the loan expires then".
+            const principalTxt = req ? `${fmtUsd(Number(req.principal))} over ${req.term_ticks}t` : '—';
+            const tail = (o.status === 'pending' && req)
+              ? `${principalTxt} · bid expires T${req.expires_at_tick}`
+              : principalTxt;
             const canWithdraw = o.status === 'pending';
             return `
               <div class="cf-row">
@@ -4892,7 +4907,7 @@ function initials(s, n) {
             }
 
             const remaining = Math.max(0, Number(l.balance ?? (Number(l.principal) - Number(l.total_paid))));
-            const perTickInterest = Math.round(remaining * (Number(l.apr) || 0) / 100 / 12);
+            const perTickInterest = Math.round(remaining * (Number(l.apr) || 0) / 12);
             const statusCls = l.status === 'defaulted' ? 'red' : (isBorrower ? 'amber' : 'green');
             // Sue affordance: a borrower can sue the lender for predatory terms;
             // a lender can sue the borrower for non-payout. Hidden once a dispute
@@ -5252,8 +5267,7 @@ function initials(s, n) {
         sumEl.innerHTML = `Set an APR between 0% and 50% to preview the per-tick payment.`;
         return;
       }
-      const total = Math.round(moPrincipal * (1 + apr * moTermTicks / 12));
-      const perTick = Math.round(moPrincipal / moTermTicks + moPrincipal * apr / 12);
+      const { perTick, total } = corpLoanQuote(moPrincipal, apr, moTermTicks);
       sumEl.innerHTML = `Borrower repays <b>${fmtUsd(total)}</b> over <b>${moTermTicks} ticks</b> at <b>${(apr * 100).toFixed(2)}%</b> APR · <b>${fmtUsd(perTick)}/tick</b> back to your corp.`;
     };
     document.getElementById('mo-apr').addEventListener('input', updateMakeOfferPreview);
