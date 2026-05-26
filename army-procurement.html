@@ -194,19 +194,21 @@ let MARKET = [];
 let _flagCache = null;
 async function originFlags(origins) {
   if (_flagCache) return _flagCache;
-  _flagCache = {};
+  const map = {};
   if (origins.length) {
     const { data: nats, error } = await _supabase
       .from('nations')
       .select('name, flag_url, nation_profiles(flag_url)')
       .in('name', origins);
-    if (error) console.warn('[army-procurement] origin flags load failed:', error.message);
+    // Don't cache a transient failure — leave _flagCache null so it retries next refresh.
+    if (error) { console.warn('[army-procurement] origin flags load failed:', error.message); return map; }
     for (const n of (nats || [])) {
       const pf = Array.isArray(n.nation_profiles) ? n.nation_profiles[0]?.flag_url : n.nation_profiles?.flag_url;
-      _flagCache[n.name] = pf || n.flag_url || `assets/flags/${n.name}.png`;
+      map[n.name] = pf || n.flag_url || `assets/flags/${n.name}.png`;
     }
   }
-  return _flagCache;
+  _flagCache = map;
+  return map;
 }
 
 async function loadWorldMarket() {
