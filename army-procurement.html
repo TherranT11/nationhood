@@ -163,7 +163,7 @@ function inventorySectionHtml() {
             <div class="ap-stat__label">Variants</div>
             <div class="ap-stat__value${variantCount ? '' : ' is-dim'}">${variantCount}</div>
           </div>
-          <span class="ap-pill ap-pill--none">None</span>
+          ${qty ? '' : '<span class="ap-pill ap-pill--none">None</span>'}
         </button>
         <div class="ap-cat__body">${variantsHtml}</div>
       </div>`;
