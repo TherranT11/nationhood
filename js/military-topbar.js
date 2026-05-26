@@ -17,9 +17,7 @@ import {
     getBranchDisplayLabel,
     isHiddenFromSwitcher,
 } from './game/factions.js';
-import { escapeHtml as escHtml } from './utils.js';
-
-const VERSION = 'Alpha 2.6.0.0';
+import { escapeHtml as escHtml, APP_VERSION } from './utils.js';
 
 // Per-area theme key, mirroring corp-topbar's THEME_STORAGE_KEY
 // ('corpThemePref') and common.js's ('nationhood_theme') — each
@@ -260,7 +258,7 @@ export function renderMilitaryTopBar(container, opts = {}) {
                     </div>
                 </div>
             </div>
-            <div class="mil-topbar__version">${VERSION}</div>
+            <div class="mil-topbar__version">${APP_VERSION}</div>
             <div class="mil-topbar__right">
                 <div class="mil-topbar__budget">
                     <span class="mil-topbar__budget-label">Budget</span>

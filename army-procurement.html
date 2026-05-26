@@ -71,9 +71,12 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
   font-size: 12px; color: var(--text-dim); }
 
 /* — World Market — */
-.wm-offer { display: grid; grid-template-columns: 1fr 110px 130px 100px 92px;
+.wm-offer { display: grid; grid-template-columns: 1fr 64px 96px 120px 96px 92px;
   align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--border-0); }
 .wm-offer:last-child { border-bottom: 0; }
+.wm-flag { width: 30px; height: 20px; object-fit: cover; border-radius: 2px;
+  border: 0.5px solid var(--border-1); margin-top: 4px; display: block; }
+.wm-flag--fallback { background: #1a1a17; }
 .wm-offer__name { font-size: 13px; font-weight: 600; color: var(--text-bright); }
 .wm-offer__tag { font-family: var(--font-mono); font-size: 9px; color: var(--text-secondary);
   text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
@@ -191,7 +194,23 @@ async function loadWorldMarket() {
     .select('id, name, origin, quality, cost_raw, world_stock')
     .order('cost_raw', { ascending: true });
   if (error) { console.warn('[army-procurement] market load failed:', error.message); return []; }
-  return data || [];
+  const models = data || [];
+  // Resolve each origin's nation flag the same way the rest of the app does
+  // (profile flag → nation flag → asset path); onerror falls back to a blank tile.
+  const origins = [...new Set(models.map(m => m.origin).filter(Boolean))];
+  const flagByName = {};
+  if (origins.length) {
+    const { data: nats, error: nErr } = await _supabase
+      .from('nations')
+      .select('name, flag_url, nation_profiles(flag_url)')
+      .in('name', origins);
+    if (nErr) console.warn('[army-procurement] origin flags load failed:', nErr.message);
+    for (const n of (nats || [])) {
+      const pf = Array.isArray(n.nation_profiles) ? n.nation_profiles[0]?.flag_url : n.nation_profiles?.flag_url;
+      flagByName[n.name] = pf || n.flag_url || `assets/flags/${n.name}.png`;
+    }
+  }
+  return models.map(m => ({ ...m, flagUrl: flagByName[m.origin] || '' }));
 }
 
 function inventorySectionHtml() {
@@ -262,6 +281,12 @@ function worldMarketSectionHtml() {
             <div>
               <div class="wm-offer__name">${esc(m.name)}</div>
               <div class="wm-offer__tag">${esc(m.origin)} · Quality ${(Number(m.quality) || 0).toFixed(1)}/10</div>
+            </div>
+            <div>
+              <div class="wm-col__l">Origin</div>
+              ${m.flagUrl
+                ? `<img class="wm-flag" src="${esc(m.flagUrl)}" alt="${esc(m.origin)}" title="${esc(m.origin)}" onerror="this.outerHTML='<div class=&quot;wm-flag wm-flag--fallback&quot;></div>'">`
+                : `<div class="wm-flag wm-flag--fallback" title="${esc(m.origin)}"></div>`}
             </div>
             <div><div class="wm-col__l">Seller</div><div class="wm-col__v is-dim">—</div></div>
             <div><div class="wm-col__l">Price / Unit</div><div class="wm-col__v">${auMoney(m.cost_raw)}</div></div>
