@@ -215,7 +215,7 @@ function pressorZone(issue, region, roles) {
       ${PREVIEW('Pressor actions for this issue type are not yet active.')}
     </div></div>`;
   }
-  const cur = Math.min(4, Math.max(1, issue.demand_rung || 1));
+  const cur = rungOf(issue).n;
   const r = escapeHtml(region), c = escapeHtml(roles.claimantName), p = escapeHtml(roles.pressorName);
   const rungs = RUNGS.map(rung => {
     const cls = rung.n < cur ? 'rung past' : rung.n === cur ? 'rung current' : 'rung';
@@ -455,6 +455,11 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
 
     const zone = btn.closest('.pressor-zone');
     const errEl = zone?.querySelector('.iss-error');
+    const fail = (msg) => {
+      if (errEl) { errEl.textContent = msg; errEl.hidden = false; }
+      zone?.querySelectorAll('[data-action]').forEach(b => { b.disabled = false; });
+      btn.classList.remove('is-busy');
+    };
     busy = true;
     zone?.querySelectorAll('[data-action]').forEach(b => { b.disabled = true; });
     btn.classList.add('is-busy');
@@ -462,20 +467,16 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
     try {
       const { data, error } = await supabase.rpc(rpc, { p_issue_id: btn.dataset.id });
       if (error || (data && data.ok === false)) {
-        const msg = (data && data.message) || error?.message || 'Action failed.';
-        if (errEl) { errEl.textContent = msg; errEl.hidden = false; }
-        zone?.querySelectorAll('[data-action]').forEach(b => { b.disabled = false; });
-        btn.classList.remove('is-busy');
+        fail((data && data.message) || error?.message || 'Action failed.');
       } else {
+        // Success rebuilds the content (fresh, enabled buttons), re-expanding this dispute.
         const openId = root.querySelector('.dispute.expanded')?.dataset.id || null;
         let fresh = [];
         try { fresh = await fetchWorldIssues(supabase); } catch { /* keep empty */ }
         content.innerHTML = buildContent(fresh, nationId, openId);
       }
     } catch (err) {
-      if (errEl) { errEl.textContent = err?.message || 'Action failed.'; errEl.hidden = false; }
-      zone?.querySelectorAll('[data-action]').forEach(b => { b.disabled = false; });
-      btn.classList.remove('is-busy');
+      fail(err?.message || 'Action failed.');
     } finally {
       busy = false;
     }

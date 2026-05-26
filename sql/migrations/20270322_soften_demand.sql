@@ -283,6 +283,8 @@ BEGIN
 
     -- Create the issue. The presser challenges the territory the target holds, so
     -- the target is the administering nation. Demand opens at rung 1 (Full Cession).
+    -- Starting contest stats: the presser opens with 2 Leverage; the nation pressed
+    -- against holds 2 Claim Strength; Dissident Strength starts at 0.
     INSERT INTO bilateral_issues (
         issue_type, nation_a_id, nation_b_id, tension, favor, status,
         created_tick, ticks_without_diplomatic_action, administering_nation_id,
