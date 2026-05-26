@@ -90,8 +90,12 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- Bordering pairs (canonical a<b) without fronts yet.
-    FOR v_pair IN SELECT nation_a_id AS a, nation_b_id AS b FROM diplomatic_relations WHERE proximity = 0 LOOP
+    -- Bordering pairs, canonicalised (a<b) and de-duped so storage order can't
+    -- produce reversed-duplicate fronts.
+    FOR v_pair IN
+        SELECT DISTINCT LEAST(nation_a_id, nation_b_id) AS a, GREATEST(nation_a_id, nation_b_id) AS b
+          FROM diplomatic_relations WHERE proximity = 0
+    LOOP
         IF EXISTS (SELECT 1 FROM war_fronts WHERE nation_a_id = v_pair.a AND nation_b_id = v_pair.b) THEN
             CONTINUE;
         END IF;
