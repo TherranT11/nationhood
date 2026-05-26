@@ -206,7 +206,7 @@ async function loadOnHandRifles(factionId) {
   try {
     const { data, error } = await _supabase
       .from('army_rifle_inventory')
-      .select('rifle_model_id, quantity, rifle_models(name, soldiers_per_rifle)')
+      .select('rifle_model_id, quantity, rifle_models(name)')
       .eq('faction_id', factionId)
       .gt('quantity', 0);
     if (error) { console.warn('[create-unit] on-hand rifles load failed:', error.message); return []; }
