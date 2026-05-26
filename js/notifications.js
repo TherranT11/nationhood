@@ -248,6 +248,27 @@ async function detectRoles(faction, nation) {
 //  Row shape: { title, sub, href }.
 // ──────────────────────────────────────────────────────────────────────
 
+// Governor of the Central Bank: pending corp loan requests awaiting a decision.
+// One row per pending request. nation carries the central_bank_governor_* columns
+// (same source party-actions reads); if absent the guard returns [] (no row).
+async function checkCentralBankLoanRequests(faction, nation, shard) {
+    if (!faction?.id || !nation?.id) return [];
+    if (nation.central_bank_governor_party_id !== faction.id) return [];
+    if (Number(nation.central_bank_governor_term_end_tick ?? 0) <= Number(shard?.current_tick ?? 0)) return [];
+
+    const { data, error } = await _supabase
+        .from('central_bank_loans')
+        .select('id, principal, corp:entrepreneur_corps!borrower_corp_id(name)')
+        .eq('nation_id', nation.id).eq('status', 'pending')
+        .order('created_at', { ascending: true });
+    if (error || !data) return [];
+    return data.map(l => ({
+        title: 'New Loan Request',
+        sub: `${l.corp?.name || 'A corporation'} · $${Math.round(Number(l.principal || 0) / 1e6).toLocaleString()}`,
+        href: 'government.html',
+    }));
+}
+
 async function checkBills(faction, nation) {
     const { data, error } = await _supabase
         .from('bills')
@@ -770,6 +791,7 @@ async function refreshNotifications() {
         const { isPM, isTradeMin, isJusticeMin } = await detectRoles(faction, nation);
         const probes = [
             checkBills(faction, nation),
+            checkCentralBankLoanRequests(faction, nation, shard),
             checkRecentElection(nation, shard),
             checkPostElectionFormation(nation, shard),
             checkCoalitionInvites(faction, nation),
