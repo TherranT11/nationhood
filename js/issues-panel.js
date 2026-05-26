@@ -67,13 +67,27 @@ function regionText(issue) {
   return issue.contested_region_name || issue.metadata?.territory_name || 'the contested area';
 }
 
+// The pressor's demand ladder for territorial disputes — single source of truth
+// for rung labels + copy (the DB stores only demand_rung 1-4). `desc` takes the
+// already-escaped region / claimant / pressor names.
+const RUNGS = [
+  { n: 1, name: 'Full Cession',          tag: 'HARDEST YES',
+    desc: (r) => `${r} is transferred outright — sovereignty, territory, and resources.` },
+  { n: 2, name: 'Administrative Control', tag: '&mdash;',
+    desc: (r, c, p) => `${c} keeps nominal sovereignty; ${p} administers ${r} — its laws, police, and institutions.` },
+  { n: 3, name: 'Joint Condominium',      tag: 'COMPROMISE',
+    desc: (r) => `${r} is governed jointly — shared administration and resource revenue, 50/50.` },
+  { n: 4, name: 'Resource Rights',        tag: 'FLOOR &middot; EASIEST YES',
+    desc: (r, c, p) => `${c} keeps full sovereignty and governance; ${p} gets a guaranteed share of ${r}'s output.` },
+];
+const rungOf = (issue) => RUNGS[Math.min(4, Math.max(1, issue.demand_rung || 1)) - 1];
+
 function demandText(issue, region) {
+  if (issue.issue_type === 'territorial_ownership') return rungOf(issue).name;
   if (issue.stake_resource) {
     const q = issue.stake_quantity != null ? `${issue.stake_quantity} ` : '';
     return `Claim over ${q}${issue.stake_resource} in ${region}`;
   }
-  const t = String(issue.issue_type || '').toLowerCase();
-  if (t.includes('territor') || issue.contested_region_name) return `Full cession of ${region}`;
   return `Resolution of ${ISSUE_TYPES[issue.issue_type]?.name || region}`;
 }
 
@@ -90,7 +104,7 @@ export async function fetchWorldIssues(supabase) {
     .from('bilateral_issues')
     .select('id, issue_type, '
           + 'nation_a_id, nation_b_id, administering_nation_id, initiative_nation_id, '
-          + 'contested_region_name, stake_resource, stake_quantity, metadata, '
+          + 'contested_region_name, stake_resource, stake_quantity, demand_rung, metadata, '
           + 'nation_a:nations!bilateral_issues_nation_a_id_fkey(id, name), '
           + 'nation_b:nations!bilateral_issues_nation_b_id_fkey(id, name)')
     .in('status', ['active', 'partial', 'escalated'])
@@ -101,7 +115,7 @@ export async function fetchWorldIssues(supabase) {
 
 // ── render: summary row ─────────────────────────────────────────────────────
 
-function disputeRow(issue, role, roles) {
+function disputeRow(issue, role, roles, expanded) {
   const badge = typeBadge(issue.issue_type);
   const region = regionText(issue);
 
@@ -117,7 +131,20 @@ function disputeRow(issue, role, roles) {
       <span class="d-clock" title="Decision clock not yet implemented"><span class="lab">CLOCK</span> &mdash;</span>
     </div>`;
 
-  return `<div class="dispute" data-id="${escapeHtml(issue.id)}">${summary}<div class="d-detail">${disputeDetail(issue, roles, role, region)}</div></div>`;
+  return `<div class="dispute${expanded ? ' expanded' : ''}" data-id="${escapeHtml(issue.id)}">${summary}<div class="d-detail">${disputeDetail(issue, roles, role, region)}</div></div>`;
+}
+
+// HTML inside `.issues-content` — the count line + the dispute list. Shared by the
+// initial render and the post-action reload so they can't drift.
+function buildContent(issues, nationId, expandedId) {
+  const tagged = (Array.isArray(issues) ? issues : []).map(it => {
+    const roles = rolesOf(it);
+    return { issue: it, roles, role: viewerRole(it, nationId, roles) };
+  });
+  if (!tagged.length) return '<div class="issues-empty">No ongoing issues</div>';
+  const involved = tagged.filter(t => t.role !== 'third').length;
+  return `<div class="issues-sub">${tagged.length} ONGOING &middot; YOU ARE INVOLVED IN ${involved}</div>`
+    + `<div class="disputes">${tagged.map(t => disputeRow(t.issue, t.role, t.roles, t.issue.id === expandedId)).join('')}</div>`;
 }
 
 // ── render: shared detail (combatants + stances + role module + chat) ─────────
@@ -151,7 +178,7 @@ function disputeDetail(issue, roles, role, region) {
     </div>`;
 
   const roleModule = role === 'claimant' ? claimantZone()
-                   : role === 'pressor'  ? pressorZone()
+                   : role === 'pressor'  ? pressorZone(issue, region, roles)
                    :                       thirdPartyZone(roles);
 
   // The head-of-state channel is private to the two principals (and, in future,
@@ -177,25 +204,37 @@ function claimantZone() {
   </div>`;
 }
 
-function pressorZone() {
+// Pressor role module — LIVE for territorial disputes: the demand ladder reads
+// demand_rung, and Soften/Drop call the soften_demand / drop_claim RPCs (wired in
+// mountIssuesPanel, with a busy-lock). For any other issue type there is no ladder
+// yet, so it stays an inert preview.
+function pressorZone(issue, region, roles) {
+  if (issue.issue_type !== 'territorial_ownership') {
+    return `<div class="pressor-zone"><div class="pz-ladder">
+      <div class="lab">YOUR MOVES</div>
+      ${PREVIEW('Pressor actions for this issue type are not yet active.')}
+    </div></div>`;
+  }
+  const cur = Math.min(4, Math.max(1, issue.demand_rung || 1));
+  const r = escapeHtml(region), c = escapeHtml(roles.claimantName), p = escapeHtml(roles.pressorName);
+  const rungs = RUNGS.map(rung => {
+    const cls = rung.n < cur ? 'rung past' : rung.n === cur ? 'rung current' : 'rung';
+    const floor = rung.n === 4 ? ' floor' : '';
+    const tag = rung.n < cur ? 'WITHDRAWN' : rung.n === cur ? 'CURRENT' : rung.tag;
+    return `<div class="${cls}${floor}"><span class="dot"></span><span class="rname">${escapeHtml(rung.name)}</span>`
+         + `<span class="rdesc">${rung.desc(r, c, p)}</span><span class="rtag">${tag}</span></div>`;
+  }).join('');
+  const id = escapeHtml(issue.id);
+  const soften = cur < 4
+    ? `<button type="button" class="iss-btn soften" data-action="soften" data-id="${id}">&#9662; Soften one rung &mdash; smaller prize, easier yes (cannot be undone)</button>`
+    : `<div class="iss-note">At the floor. The only move left is to drop the claim.</div>`;
   return `<div class="pressor-zone">
     <div class="pz-ladder">
       <div class="lab">YOUR DEMAND &mdash; SOFTEN TO MAKE A "YES" EASIER</div>
-      ${PREVIEW('The demand ladder and softening are not yet active.')}
-      <div class="ladder-rungs iss-inert">
-        <div class="rung current"><span class="dot"></span><span class="rname">Full Cession</span><span class="rdesc">The ground becomes yours, sovereignty and all.</span><span class="rtag">HARDEST YES</span></div>
-        <div class="rung"><span class="dot"></span><span class="rname">Administrative Control</span><span class="rdesc">They keep the flag; you run the territory.</span><span class="rtag">&mdash;</span></div>
-        <div class="rung"><span class="dot"></span><span class="rname">Joint Condominium</span><span class="rdesc">Shared governance and revenue, 50/50.</span><span class="rtag">COMPROMISE</span></div>
-        <div class="rung floor"><span class="dot"></span><span class="rname">Resource Rights</span><span class="rdesc">They keep the land; you get a share of the output.</span><span class="rtag">FLOOR</span></div>
-      </div>
-    </div>
-    <div class="pz-moves">
-      <div class="lab">YOUR MOVES</div>
-      ${PREVIEW('Pressor moves (press harder / extend / war / back down) are not yet active.')}
-      <div class="pm-grid iss-inert">
-        <div class="pm"><div class="pmn">Press Harder</div><div class="pmd">Burn a tick faster, but make your threat more credible.</div></div>
-        <div class="pm"><div class="pmn">Extend Deadline</div><div class="pmd">Add ticks to your clock at an approval cost.</div></div>
-      </div>
+      <div class="ladder-rungs">${rungs}</div>
+      ${soften}
+      <button type="button" class="iss-btn drop" data-action="drop" data-id="${id}">Drop the claim &mdash; &minus;25 approval, +10 unrest &middot; 360-tick re-press cooldown</button>
+      <div class="iss-error" hidden></div>
     </div>
   </div>`;
 }
@@ -288,9 +327,9 @@ function ensureStyles() {
     .issues-panel .others{padding:14px 18px;background:#0c0c0c;border-bottom:0.5px solid rgba(255,255,255,0.05);}
     .issues-panel .others .lab{font-size:9px;letter-spacing:0.13em;color:#888;margin-bottom:11px;}
 
-    .issues-panel .cz-actions,.issues-panel .pz-ladder,.issues-panel .pz-moves{padding:14px 18px;border-bottom:0.5px solid rgba(255,255,255,0.05);}
-    .issues-panel .cz-actions .lab,.issues-panel .pz-ladder .lab,.issues-panel .pz-moves .lab{font-size:9px;letter-spacing:0.13em;margin-bottom:10px;}
-    .issues-panel .cz-actions .lab{color:#7a9aab;} .issues-panel .pz-ladder .lab,.issues-panel .pz-moves .lab{color:#c87a7a;}
+    .issues-panel .cz-actions,.issues-panel .pz-ladder{padding:14px 18px;border-bottom:0.5px solid rgba(255,255,255,0.05);}
+    .issues-panel .cz-actions .lab,.issues-panel .pz-ladder .lab{font-size:9px;letter-spacing:0.13em;margin-bottom:10px;}
+    .issues-panel .cz-actions .lab{color:#7a9aab;} .issues-panel .pz-ladder .lab{color:#c87a7a;}
     .issues-panel .cz-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
     .issues-panel .cza{padding:12px 11px;border-radius:4px;text-align:center;border:0.5px solid;}
     .issues-panel .cza .cn{font-size:12px;font-weight:500;margin-bottom:3px;line-height:1.2;}
@@ -323,10 +362,18 @@ function ensureStyles() {
     .issues-panel .rung.current .rname{color:#fff;}
     .issues-panel .rung .rdesc{font-size:9px;color:#777;letter-spacing:0.02em;}
     .issues-panel .rung .rtag{font-size:8px;letter-spacing:0.1em;color:#888;}
-    .issues-panel .pm-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
-    .issues-panel .pm{padding:11px 13px;border-radius:4px;border:0.5px solid rgba(200,122,122,0.25);background:#120d0d;}
-    .issues-panel .pm .pmn{font-size:12px;color:#fff;font-weight:500;margin-bottom:3px;}
-    .issues-panel .pm .pmd{font-size:9px;color:#888;line-height:1.4;}
+    .issues-panel .rung.current .rtag{color:#c87a7a;}
+    .issues-panel .rung.past{opacity:0.4;}
+    .issues-panel .rung.past .rname{text-decoration:line-through;}
+    .issues-panel .rung.past .dot{background:#333;border-color:#333;}
+    .issues-panel .iss-btn{display:block;width:100%;margin-top:9px;padding:9px 11px;border-radius:4px;text-align:center;font-size:10px;letter-spacing:0.05em;font-family:inherit;cursor:pointer;border:0.5px solid;}
+    .issues-panel .iss-btn.soften{background:#160e0e;border-color:rgba(200,122,122,0.35);color:#c87a7a;}
+    .issues-panel .iss-btn.soften:hover{background:#1a1111;}
+    .issues-panel .iss-btn.drop{background:#1f0e0e;border-color:rgba(200,90,90,0.5);color:#e08080;}
+    .issues-panel .iss-btn.drop:hover{background:#2a1212;}
+    .issues-panel .iss-btn:disabled,.issues-panel .iss-btn.is-busy{opacity:0.5;cursor:default;}
+    .issues-panel .iss-note{margin-top:9px;font-size:9px;color:#888;letter-spacing:0.04em;font-style:italic;text-align:center;}
+    .issues-panel .iss-error{margin-top:9px;font-size:10px;color:#cf6b66;background:rgba(207,107,102,0.1);border:0.5px solid rgba(207,107,102,0.3);padding:7px 10px;border-radius:3px;}
 
     .issues-panel .channel .ch-head{padding:11px 18px;background:#0a0a0a;border-bottom:0.5px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;}
     .issues-panel .channel .ch-head .t{font-size:10px;letter-spacing:0.13em;color:#888;}
@@ -339,36 +386,38 @@ function ensureStyles() {
 // ── public API ────────────────────────────────────────────────────────────
 
 // Render the panel. nationId = the viewer's nation (drives role tagging + YOU).
+// Actions (soften/drop) are wired separately in mountIssuesPanel.
 export function renderIssuesPanel(host, issues, nationId, opts = {}) {
   if (!host) return;
   ensureStyles();
-  const list = Array.isArray(issues) ? issues : [];
   const heading = opts.heading === undefined ? 'I. Issues' : opts.heading;
-  // Resolve each dispute's roles once; the count and the rows both read from it.
-  const tagged = list.map(it => {
-    const roles = rolesOf(it);
-    return { issue: it, roles, role: viewerRole(it, nationId, roles) };
-  });
-  const involved = tagged.filter(t => t.role !== 'third').length;
-  const body = tagged.length
-    ? `<div class="issues-sub">${tagged.length} ONGOING &middot; YOU ARE INVOLVED IN ${involved}</div>`
-      + `<div class="disputes">${tagged.map(t => disputeRow(t.issue, t.role, t.roles)).join('')}</div>`
-    : '<div class="issues-empty">No ongoing issues</div>';
   host.innerHTML = `<section class="issues-panel">
       ${heading ? `<div class="issues-panel__head">${escapeHtml(heading)}</div>` : ''}
-      ${body}
+      <div class="issues-content">${buildContent(issues, nationId, opts.expandedId || null)}</div>
     </section>`;
 
-  // Expand/collapse via delegation (survives the single render).
+  // Accordion expand/collapse via delegation on the root, which survives content
+  // reloads. Clicks on action buttons are handled by the action listener instead.
   const root = host.querySelector('.issues-panel');
-  if (root && !root.dataset.wired) {
-    root.dataset.wired = '1';
+  if (root && !root.dataset.expandWired) {
+    root.dataset.expandWired = '1';
     root.addEventListener('click', (e) => {
+      if (e.target.closest('[data-action]')) return;
       const summary = e.target.closest('.d-summary');
-      if (summary && root.contains(summary)) summary.parentElement.classList.toggle('expanded');
+      if (!summary || !root.contains(summary)) return;
+      const d = summary.parentElement;
+      const open = d.classList.contains('expanded');
+      root.querySelectorAll('.dispute.expanded').forEach(x => x.classList.remove('expanded'));
+      if (!open) d.classList.add('expanded');
     });
   }
 }
+
+const ACTION_RPC = { soften: 'soften_demand', drop: 'drop_claim' };
+const ACTION_CONFIRM = {
+  soften: 'Soften your demand one rung? This cannot be undone.',
+  drop: 'Drop the claim entirely? You take −25 approval, +10 unrest, and cannot re-press this nation for 360 ticks.',
+};
 
 // Fetch + render. Both pages call this so they stay in lockstep.
 export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
@@ -377,13 +426,58 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
   const heading = opts.heading === undefined ? 'I. Issues' : opts.heading;
   host.innerHTML = `<section class="issues-panel">
       ${heading ? `<div class="issues-panel__head">${escapeHtml(heading)}</div>` : ''}
-      <div class="issues-empty">Loading…</div>
+      <div class="issues-content"><div class="issues-empty">Loading…</div></div>
     </section>`;
+
+  let issues = [];
   try {
-    const issues = await fetchWorldIssues(supabase);
-    renderIssuesPanel(host, issues, nationId, opts);
+    issues = await fetchWorldIssues(supabase);
   } catch (err) {
     console.warn('[issues-panel] mount failed:', err?.message || err);
-    renderIssuesPanel(host, [], nationId, opts);
   }
+  renderIssuesPanel(host, issues, nationId, opts);
+
+  const root = host.querySelector('.issues-panel');
+  const content = host.querySelector('.issues-content');
+  if (!root || !content || root.dataset.actionWired) return;
+  root.dataset.actionWired = '1';
+
+  let busy = false;
+  root.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn || !root.contains(btn)) return;
+    e.stopPropagation();
+    if (busy) return;
+    const rpc = ACTION_RPC[btn.dataset.action];
+    if (!rpc) return;
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function'
+        && !window.confirm(ACTION_CONFIRM[btn.dataset.action])) return;
+
+    const zone = btn.closest('.pressor-zone');
+    const errEl = zone?.querySelector('.iss-error');
+    busy = true;
+    zone?.querySelectorAll('[data-action]').forEach(b => { b.disabled = true; });
+    btn.classList.add('is-busy');
+    if (errEl) { errEl.hidden = true; errEl.textContent = ''; }
+    try {
+      const { data, error } = await supabase.rpc(rpc, { p_issue_id: btn.dataset.id });
+      if (error || (data && data.ok === false)) {
+        const msg = (data && data.message) || error?.message || 'Action failed.';
+        if (errEl) { errEl.textContent = msg; errEl.hidden = false; }
+        zone?.querySelectorAll('[data-action]').forEach(b => { b.disabled = false; });
+        btn.classList.remove('is-busy');
+      } else {
+        const openId = root.querySelector('.dispute.expanded')?.dataset.id || null;
+        let fresh = [];
+        try { fresh = await fetchWorldIssues(supabase); } catch { /* keep empty */ }
+        content.innerHTML = buildContent(fresh, nationId, openId);
+      }
+    } catch (err) {
+      if (errEl) { errEl.textContent = err?.message || 'Action failed.'; errEl.hidden = false; }
+      zone?.querySelectorAll('[data-action]').forEach(b => { b.disabled = false; });
+      btn.classList.remove('is-busy');
+    } finally {
+      busy = false;
+    }
+  });
 }
