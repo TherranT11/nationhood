@@ -135,14 +135,12 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 <script type="module">
 import { bootstrapArmyPage } from './js/army-page.js';
 import { _supabase } from './js/supabase-client.js';
+import { auMoney } from './js/create-unit.js'; // shared army money formatter ($1 = $1M)
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c =>
     ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
-
-// Raw dollars → display string ($1 shown = $1,000,000 raw).
-const money = (raw) => '$' + (Number(raw || 0) / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 });
 
 // Inventory categories. Rifles is the only unit at launch; its `variants` are
 // the army's ON-HAND rifle holdings, loaded from army_rifle_inventory. With no
@@ -266,7 +264,7 @@ function worldMarketSectionHtml() {
               <div class="wm-offer__tag">${esc(m.origin)} · Quality ${(Number(m.quality) || 0).toFixed(1)}/10</div>
             </div>
             <div><div class="wm-col__l">Seller</div><div class="wm-col__v is-dim">—</div></div>
-            <div><div class="wm-col__l">Price / Unit</div><div class="wm-col__v">${money(m.cost_raw)}</div></div>
+            <div><div class="wm-col__l">Price / Unit</div><div class="wm-col__v">${auMoney(m.cost_raw)}</div></div>
             <div><div class="wm-col__l">World Stock</div><div class="wm-col__v${sold ? ' is-dim' : ''}">${stock.toLocaleString()}</div></div>
             <button class="wm-buy" data-buy="${esc(m.id)}"${sold ? ' disabled' : ''}>${sold ? 'Sold Out' : 'Buy'}</button>
           </div>`;
@@ -292,7 +290,7 @@ function worldMarketSectionHtml() {
           </div>
           <div>
             <div class="ap-stat__label">From</div>
-            <div class="ap-stat__value${minPrice == null ? ' is-dim' : ''}">${minPrice == null ? '—' : money(minPrice)}</div>
+            <div class="ap-stat__value${minPrice == null ? ' is-dim' : ''}">${minPrice == null ? '—' : auMoney(minPrice)}</div>
           </div>
           <div>
             <div class="ap-stat__label">World Stock</div>
@@ -370,7 +368,7 @@ function openBuyModal(model) {
   let qty = 1;
 
   const close = () => { overlay.style.display = 'none'; overlay.innerHTML = ''; overlay.onclick = null; overlay.oninput = null; };
-  const buyLabel = () => `Buy ${qty.toLocaleString()} · ${money(unit * qty)}`;
+  const buyLabel = () => `Buy ${qty.toLocaleString()} · ${auMoney(unit * qty)}`;
 
   overlay.innerHTML = `
     <div class="wm-modal">
@@ -378,7 +376,7 @@ function openBuyModal(model) {
         <div>
           <div class="wm-modal__eyebrow">— Purchase —</div>
           <div class="wm-modal__title">${esc(model.name)}</div>
-          <div class="wm-modal__sub">${esc(model.origin)} · ${money(unit)} / unit · ${stock.toLocaleString()} in stock</div>
+          <div class="wm-modal__sub">${esc(model.origin)} · ${auMoney(unit)} / unit · ${stock.toLocaleString()} in stock</div>
         </div>
         <div class="wm-x" data-wm="close">×</div>
       </div>
@@ -388,8 +386,8 @@ function openBuyModal(model) {
           <input type="number" id="wm-qty-input" min="1" max="${stock}" step="1" value="1" />
         </label>
         <div class="wm-sum">
-          <div><div class="wm-sum__l">Army Funds</div><div class="wm-sum__v">${money(funds)}</div></div>
-          <div><div class="wm-sum__l">Total Price</div><div class="wm-sum__v ${unit <= funds ? 'gold' : 'warn'}" id="wm-total">${money(unit)}</div></div>
+          <div><div class="wm-sum__l">Army Funds</div><div class="wm-sum__v">${auMoney(funds)}</div></div>
+          <div><div class="wm-sum__l">Total Price</div><div class="wm-sum__v ${unit <= funds ? 'gold' : 'warn'}" id="wm-total">${auMoney(unit)}</div></div>
         </div>
         <div class="wm-err" id="wm-err" hidden></div>
       </div>
@@ -410,7 +408,7 @@ function openBuyModal(model) {
     const total = unit * qty;
     const affordable = total <= funds;
     const totalEl = document.getElementById('wm-total');
-    totalEl.textContent = money(total);
+    totalEl.textContent = auMoney(total);
     totalEl.className = 'wm-sum__v ' + (affordable ? 'gold' : 'warn');
     const confirm = document.getElementById('wm-confirm');
     confirm.textContent = buyLabel();
