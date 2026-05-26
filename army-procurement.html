@@ -60,6 +60,8 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 .ap-variant__tag { font-family: var(--font-mono); font-size: 9px; color: var(--text-secondary);
   text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
 .ap-variant__qty { font-family: var(--font-mono); font-size: 13px; color: var(--text-primary); }
+.ap-variant__cap { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em;
+  color: var(--text-dim); text-transform: uppercase; margin-top: 4px; }
 .ap-qbar { height: 6px; background: rgba(255,255,255,0.05); position: relative; }
 .ap-qbar__fill { position: absolute; inset: 0 auto 0 0; background: var(--army); }
 .ap-empty { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim);
@@ -77,21 +79,22 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 
 <script type="module">
 import { bootstrapArmyPage } from './js/army-page.js';
+import { _supabase } from './js/supabase-client.js';
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c =>
     ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
-// Inventory categories. Rifles is the only unit at launch and every army
-// starts with zero — there is no inventory store yet, so this is the
-// zero-state shell. Each category's totals derive from its `variants`
-// array (empty for now); pushing variants later lights the card up with
-// no layout change. Active Orders / RFPs are intentionally empty.
+// Inventory categories. Rifles is the only unit at launch; its `variants` are
+// the army's ON-HAND rifle holdings, loaded from army_rifle_inventory. With no
+// procurement flow yet, on-hand is 0 for every faction, so the card shows its
+// zero-state until a buying pass lands. Active Orders / RFPs stay empty.
 const CATEGORIES = [
   { key: 'rifles', name: 'Rifles', sub: 'Infantry Small Arms', variants: [] },
 ];
 
+// Rifle quality is a 0–10 score (the mean of Reliability/Lethality/Complexity).
 function catTotals(cat) {
   const qty = cat.variants.reduce((s, v) => s + (v.qty || 0), 0);
   const qualities = cat.variants.filter(v => v.qty > 0).map(v => v.quality).sort((a, b) => a - b);
@@ -99,6 +102,29 @@ function catTotals(cat) {
     ? qualities[Math.floor((qualities.length - 1) / 2)]
     : null;
   return { qty, median, variantCount: cat.variants.length };
+}
+
+// This army's on-hand rifles, joined to their catalog model. Each row becomes a
+// variant {name, tag(origin), qty, quality, soldiers(=qty × soldiers_per_rifle)}.
+async function loadRifleVariants(factionId) {
+  if (!factionId) return [];
+  const { data, error } = await _supabase
+    .from('army_rifle_inventory')
+    .select('quantity, rifle_models(name, origin, quality, soldiers_per_rifle)')
+    .eq('faction_id', factionId)
+    .gt('quantity', 0);
+  if (error) { console.warn('[army-procurement] rifle load failed:', error.message); return []; }
+  return (data || []).map(r => {
+    const m = r.rifle_models || {};
+    const qty = Number(r.quantity) || 0;
+    return {
+      name: m.name || 'Unknown rifle',
+      tag: m.origin || '—',
+      qty,
+      quality: Number(m.quality) || 0,
+      soldiers: qty * (Number(m.soldiers_per_rifle) || 0),
+    };
+  });
 }
 
 function inventorySectionHtml() {
@@ -109,11 +135,12 @@ function inventorySectionHtml() {
           <div class="ap-variant">
             <div>
               <div class="ap-variant__name">${esc(v.name)}</div>
-              <div class="ap-variant__tag">${esc(v.tag)}</div>
+              <div class="ap-variant__tag">${esc(v.tag)} · Quality ${v.quality.toFixed(1)}/10</div>
             </div>
             <div class="ap-variant__qty">QTY ${v.qty.toLocaleString()}</div>
             <div>
-              <div class="ap-qbar"><div class="ap-qbar__fill" style="width:${Math.max(0, Math.min(100, v.quality))}%"></div></div>
+              <div class="ap-qbar"><div class="ap-qbar__fill" style="width:${Math.max(0, Math.min(100, v.quality * 10))}%"></div></div>
+              <div class="ap-variant__cap">Equips ${v.soldiers.toLocaleString()} soldiers</div>
             </div>
           </div>`).join('')
       : `<div class="ap-empty">This army holds no ${esc(cat.name.toLowerCase())}. Procurement orders will populate this category.</div>`;
@@ -130,7 +157,7 @@ function inventorySectionHtml() {
           </div>
           <div>
             <div class="ap-stat__label">Median Quality</div>
-            <div class="ap-stat__value${median == null ? ' is-dim' : ''}">${median == null ? '—' : esc(median) + '/100'}</div>
+            <div class="ap-stat__value${median == null ? ' is-dim' : ''}">${median == null ? '—' : median.toFixed(1) + '/10'}</div>
           </div>
           <div>
             <div class="ap-stat__label">Variants</div>
@@ -195,6 +222,7 @@ async function init() {
   const ctx = await bootstrapArmyPage({ activeTab: 'procurement' });
   if (!ctx) return; // bootstrap already redirected
   _faction = ctx.faction;
+  CATEGORIES[0].variants = await loadRifleVariants(_faction.id);
   render();
 }
 

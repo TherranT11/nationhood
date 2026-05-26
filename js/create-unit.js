@@ -86,7 +86,7 @@ const CU_CSS = `
 .cu-opt:hover { border-color:rgba(212,184,122,0.4); }
 .cu-opt .on { font-size:13px; font-weight:600; color:#fff; display:flex; justify-content:space-between; }
 .cu-opt .om { font-size:10px; color:#888; margin-top:4px; }
-.cu-sum { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; background:#0f0f0f; border:0.5px solid rgba(212,184,122,0.2); border-radius:4px; padding:16px 18px; }
+.cu-sum { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:20px; background:#0f0f0f; border:0.5px solid rgba(212,184,122,0.2); border-radius:4px; padding:16px 18px; }
 .cu-sum .l { font-size:9px; color:#666; letter-spacing:0.12em; }
 .cu-sum .v { font-size:20px; font-weight:600; color:#fff; margin-top:4px; }
 .cu-sum .v.gold { color:#d4b87a; }
@@ -175,6 +175,24 @@ export async function loadUnitsAndFunds(faction) {
     console.warn('[create-unit] load failed:', e?.message || e);
   }
   return { units, funds, armies };
+}
+
+// Total soldiers this army's on-hand rifles can equip (Σ qty × soldiers_per_rifle).
+export async function loadEquipCapacity(factionId) {
+  if (!factionId) return 0;
+  try {
+    const { data, error } = await _supabase
+      .from('army_rifle_inventory')
+      .select('quantity, rifle_models(soldiers_per_rifle)')
+      .eq('faction_id', factionId)
+      .gt('quantity', 0);
+    if (error) { console.warn('[create-unit] rifle capacity load failed:', error.message); return 0; }
+    return (data || []).reduce((s, r) =>
+      s + (Number(r.quantity) || 0) * (Number(r.rifle_models?.soldiers_per_rifle) || 0), 0);
+  } catch (e) {
+    console.warn('[create-unit] rifle capacity load failed:', e?.message || e);
+    return 0;
+  }
 }
 
 function poolOf(faction) {
@@ -480,7 +498,7 @@ export async function renderOrderOfBattle(faction, hostEl) {
   if (!hostEl) return;
   ensureStyles();
   const expanded = new Set();
-  let units = [], funds = 0, armies = [];
+  let units = [], funds = 0, armies = [], equipCapacity = 0;
 
   function initials(name) {
     const w = String(name || '?').trim().split(/\s+/).filter(Boolean);
@@ -491,9 +509,13 @@ export async function renderOrderOfBattle(faction, hostEl) {
     const pool = poolOf(faction);
     const committed = committedOf(units);
     const brigCount = brigadeCountOf(units);
+    // Rifles arm up to soldiers_per_rifle troops each; armed = capacity capped at
+    // the soldiers actually committed to units.
+    const armed = Math.min(equipCapacity, committed);
 
     let html = `<div class="cu-sum" style="margin-bottom:16px;">
       <div><div class="l">PERSONNEL</div><div class="v">${committed.toLocaleString()}</div><div class="s">committed of ${pool.toLocaleString()}</div></div>
+      <div><div class="l">EQUIPPED</div><div class="v${committed > 0 && armed < committed ? ' warn' : ''}">${armed.toLocaleString()}</div><div class="s">armed of ${committed.toLocaleString()} · rifles</div></div>
       <div><div class="l">ORDER OF BATTLE</div><div class="v">${brigCount}</div><div class="s">${units.length} unit${units.length === 1 ? '' : 's'} · brigades</div></div>
       <div><div class="l">DEFENSE BUDGET</div><div class="v gold">${auMoney(funds)}</div><div class="s">discretionary</div></div>
     </div>`;
@@ -573,5 +595,6 @@ export async function renderOrderOfBattle(faction, hostEl) {
   hostEl.innerHTML = '<div class="oob-empty">Loading order of battle…</div>';
   const r = await loadUnitsAndFunds(faction);
   units = r.units; funds = r.funds; armies = r.armies || [];
+  equipCapacity = await loadEquipCapacity(faction.id);
   draw();
 }
