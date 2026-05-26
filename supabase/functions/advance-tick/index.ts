@@ -3513,6 +3513,19 @@ async function fireBilateralEvent(supabase, triggerKey, nationIdA, nationIdB, cu
 //      cash was already spent; we don't invent a valuation"); it is
 //      display-only and never feeds net worth or the tick processor.
 
+// Sell-side (liquidation) value of a held public-stock position on the +5%/share
+// bonding curve: what the holder would actually receive selling the whole stake
+// back at the current price — liquidation(S,P) = P·(1−r^−S)/(r−1), r=1.05.
+// Mirror of SQL corp_share_liquidation_value (20270325); the rate MUST match
+// corp_trade. Marking holdings at this (not S×price) means pumping share_price
+// can't inflate net worth — buying N converts cash into shares of equal value.
+function corpShareLiquidationValue(shares, price) {
+    const s = Number(shares) || 0;
+    const p = Number(price) || 0;
+    if (s <= 0 || p <= 0) return 0;
+    return p * (1 - Math.pow(1.05, -s)) / 0.05;
+}
+
 // National HQ value/quality formulas. The HQ is now persisted as a
 // real corp_properties row at corp founding (see corp-nation-select.html)
 // and backfilled for existing corps via
