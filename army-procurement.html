@@ -188,6 +188,27 @@ async function loadRifleVariants(factionId) {
 
 // World market: the buyable rifle catalog (rifle_models), cheapest first.
 let MARKET = [];
+// Origin → flag URL, resolved the same way the rest of the app does
+// (profile flag → nation flag → asset path). Flags never change mid-session, so
+// this is fetched once and reused across refreshes (stock/price still re-fetch).
+let _flagCache = null;
+async function originFlags(origins) {
+  if (_flagCache) return _flagCache;
+  _flagCache = {};
+  if (origins.length) {
+    const { data: nats, error } = await _supabase
+      .from('nations')
+      .select('name, flag_url, nation_profiles(flag_url)')
+      .in('name', origins);
+    if (error) console.warn('[army-procurement] origin flags load failed:', error.message);
+    for (const n of (nats || [])) {
+      const pf = Array.isArray(n.nation_profiles) ? n.nation_profiles[0]?.flag_url : n.nation_profiles?.flag_url;
+      _flagCache[n.name] = pf || n.flag_url || `assets/flags/${n.name}.png`;
+    }
+  }
+  return _flagCache;
+}
+
 async function loadWorldMarket() {
   const { data, error } = await _supabase
     .from('rifle_models')
@@ -195,22 +216,8 @@ async function loadWorldMarket() {
     .order('cost_raw', { ascending: true });
   if (error) { console.warn('[army-procurement] market load failed:', error.message); return []; }
   const models = data || [];
-  // Resolve each origin's nation flag the same way the rest of the app does
-  // (profile flag → nation flag → asset path); onerror falls back to a blank tile.
-  const origins = [...new Set(models.map(m => m.origin).filter(Boolean))];
-  const flagByName = {};
-  if (origins.length) {
-    const { data: nats, error: nErr } = await _supabase
-      .from('nations')
-      .select('name, flag_url, nation_profiles(flag_url)')
-      .in('name', origins);
-    if (nErr) console.warn('[army-procurement] origin flags load failed:', nErr.message);
-    for (const n of (nats || [])) {
-      const pf = Array.isArray(n.nation_profiles) ? n.nation_profiles[0]?.flag_url : n.nation_profiles?.flag_url;
-      flagByName[n.name] = pf || n.flag_url || `assets/flags/${n.name}.png`;
-    }
-  }
-  return models.map(m => ({ ...m, flagUrl: flagByName[m.origin] || '' }));
+  const flags = await originFlags([...new Set(models.map(m => m.origin).filter(Boolean))]);
+  return models.map(m => ({ ...m, flagUrl: flags[m.origin] || '' }));
 }
 
 function inventorySectionHtml() {
