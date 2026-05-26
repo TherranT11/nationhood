@@ -6,7 +6,7 @@
 // pattern (a deliberate "entrepreneur copy", not a cross-type shared
 // extraction — that larger consolidation is tracked separately).
 import { _supabase } from './supabase-client.js';
-import { hfFmtBig } from './utils.js';
+import { hfFmtBig, APP_VERSION } from './utils.js';
 import { getFactionTypeBadge, getFactionDashboardUrl, isFactionInactive, isHiddenFromSwitcher } from './game/factions.js';
 
 const ENT_TABS = [
@@ -31,6 +31,7 @@ function ensureStyles() {
     border-radius:3px; display:flex; align-items:center; justify-content:center; color:#8aaa6a;
     font-size:11px; font-weight:600; letter-spacing:0.05em; }
   .ent-topbar .player { color:#fff; font-weight:500; font-size:13px; }
+  .ent-topbar__version { font-family:var(--font-mono,monospace); font-size:10px; color:#f0efe6; letter-spacing:0.5px; opacity:0.8; }
   .ent-topbar .meta { display:flex; gap:22px; color:#888; }
   .ent-topbar .meta .label { color:#555; font-size:9px; letter-spacing:0.13em; }
   .ent-topbar .meta .value { color:#d4d4d4; font-size:12px; margin-top:2px; }
@@ -169,7 +170,7 @@ export function renderEntrepreneurTopbar(container, { faction, shard, allUserFac
 
   container.innerHTML = `
     <div class="ent-topbar">
-      <div class="brand"><div class="crest">${esc(ini)}</div><span class="player">${esc(f.faction_name || pillLabel)}</span></div>
+      <div class="brand"><div class="crest">${esc(ini)}</div><span class="player">${esc(f.faction_name || pillLabel)}</span><span class="ent-topbar__version">${esc(APP_VERSION)}</span></div>
       <div class="meta">
         <div><div class="label">GAME DATE</div><div class="value">${esc(s.current_date || '—')}</div></div>
         <div><div class="label">TICK</div><div class="value">${s.current_tick != null ? esc(s.current_tick) : '—'}</div></div>
