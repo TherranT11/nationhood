@@ -29790,7 +29790,12 @@ async function processCombat(supabase, currentTick) {
                 : Promise.resolve({ data: [] }),
             supabase.from('factions').select('id, army_training, army_professionalism, army_cohesion').in('id', factionIds),
         ]);
-        if (fRes.error) { console.error('[processCombat] factions load failed:', fRes.error.message); return { battles: 0 }; }
+        // Bail on a partial read: missing equipment would make every army read
+        // as unarmed (×0.3) and silently skew casualties across the board.
+        if (eqRes.error || fRes.error) {
+            console.error('[processCombat] equip/faction load failed:', (eqRes.error || fRes.error).message);
+            return { battles: 0 };
+        }
         equip = eqRes.data || [];
         facs = fRes.data || [];
     }
