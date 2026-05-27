@@ -81,6 +81,8 @@ import { _supabase } from './js/supabase-client.js';
 import { getNationNames } from './js/game/political-actions.js';
 import { bootstrapArmyPage } from './js/army-page.js';
 import { openCreateUnitModal, openCreateArmyModal, openAssignArmyModal, openFrontOrdersModal } from './js/create-unit.js';
+import { openOfficerAction } from './js/officer-actions.js';
+import { openAppointCommanderModal } from './js/appoint-commander.js';
 import { openReportModal } from './js/report-defense.js';
 import { openForeignOfficerExchangeModal } from './js/foreign-officer-exchange.js';
 import { openCombinedArmsSchoolModal } from './js/combined-arms-school.js';
@@ -163,6 +165,13 @@ function render() {
           </div>
           <div class="aa-act__desc">Form your units into a cohesive fighting force — a named army (Regular, Guard, or Paramilitary) that can be deployed and given orders. $2 action fee from the army treasury.</div>
         </div>
+        <div class="aa-act" data-act="appoint-commander">
+          <div class="aa-act__head">
+            <div class="aa-act__title"><span class="aa-act__name">Appoint Army Commander</span></div>
+            <span class="aa-act__cost">$0</span>
+          </div>
+          <div class="aa-act__desc">Review seven generals and place one in command of an army. Leadership (combat power) and Discipline (staying power under fire) are capped by your army's Professionalism and Cohesion. Free.</div>
+        </div>
         <div class="aa-act" data-act="assign-army">
           <div class="aa-act__head">
             <div class="aa-act__title"><span class="aa-act__name">Assign Army to Theater</span></div>
@@ -176,6 +185,13 @@ function render() {
             <span class="aa-act__cost">$0</span>
           </div>
           <div class="aa-act__desc">Set each land front's posture for the next tick — ASSAULT to push the line toward the enemy capital (costly), or DEFEND to hold (cheap, can't advance). Free to issue.</div>
+        </div>
+        <div class="aa-act" data-act="doctrine-reform">
+          <div class="aa-act__head">
+            <div class="aa-act__title"><span class="aa-act__name">Doctrine Reform</span></div>
+            <span class="aa-act__cost">$15</span>
+          </div>
+          <div class="aa-act__desc">Rewrite the field manual and enforce professional standards. <b>+5 Professionalism / −5 Training</b> — conduct and doctrine focus pulls troops off the live-fire range.</div>
         </div>
         <div class="aa-act" data-act="report-defense">
           <div class="aa-act__head">
@@ -193,6 +209,20 @@ function render() {
         </div>`;
   } else if (sel.key === 'qm') {
     body = `
+        <div class="aa-act" data-act="forward-stockpiling">
+          <div class="aa-act__head">
+            <div class="aa-act__title"><span class="aa-act__name">Forward Stockpiling</span></div>
+            <span class="aa-act__cost">$8</span>
+          </div>
+          <div class="aa-act__desc">Cram the forward depots to bursting. <b>+5 Supply / −5 Logistics</b> — the overloaded transport net slows even as stocks rise.</div>
+        </div>
+        <div class="aa-act" data-act="logistics-overhaul">
+          <div class="aa-act__head">
+            <div class="aa-act__title"><span class="aa-act__name">Logistics Overhaul</span></div>
+            <span class="aa-act__cost">$12</span>
+          </div>
+          <div class="aa-act__desc">Re-rationalise convoys and motor pools for throughput. <b>+5 Logistics / −5 Supply</b> — existing stockpiles are consumed in the reshuffle.</div>
+        </div>
         <div class="aa-act" data-act="combined-arms-school">
           <div class="aa-act__head">
             <div class="aa-act__title"><span class="aa-act__name">Establish Combined Arms School</span></div>
@@ -200,8 +230,24 @@ function render() {
           </div>
           <div class="aa-act__desc">Stand up a national staff college teaching combined arms doctrine, joint operations, and modern warfare. Posts a construction contract for corporations to bid on. Removes 2,000 manpower immediately; on completion (≈36 months): Professionalism +6, Officer Corps +4. Then $2/tick under National Infrastructure. 24-tick cooldown.</div>
         </div>`;
+  } else if (sel.key === 'intel') {
+    body = `
+        <div class="aa-act" data-act="internal-security-sweep">
+          <div class="aa-act__head">
+            <div class="aa-act__title"><span class="aa-act__name">Internal Security Sweep</span></div>
+            <span class="aa-act__cost">$12</span>
+          </div>
+          <div class="aa-act__desc">Root out defeatists and enemy informants. <b>+5 Cohesion / −5 Professionalism</b> — ranks close up, but a climate of surveillance corrodes professional trust.</div>
+        </div>`;
   } else if (sel.key === 'cmd') {
     body = `
+        <div class="aa-act" data-act="intensive-drills">
+          <div class="aa-act__head">
+            <div class="aa-act__title"><span class="aa-act__name">Intensive Drills</span></div>
+            <span class="aa-act__cost">$10</span>
+          </div>
+          <div class="aa-act__desc">Order grueling drill cycles across the force. <b>+5 Training / −5 Cohesion</b> — combat skill sharpens, but exhausted and resentful troops fray.</div>
+        </div>
         <div class="aa-act" data-act="foreign-officer-exchange">
           <div class="aa-act__head">
             <div class="aa-act__title"><span class="aa-act__name">Foreign Officer Exchange Program</span></div>
@@ -245,6 +291,8 @@ function render() {
   if (ca) ca.onclick = () => openCreateArmyModal(_faction);
   const aa = root.querySelector('[data-act="assign-army"]');
   if (aa) aa.onclick = () => openAssignArmyModal(_faction);
+  const ap = root.querySelector('[data-act="appoint-commander"]');
+  if (ap) ap.onclick = () => openAppointCommanderModal(_faction);
   const ford = root.querySelector('[data-act="front-orders"]');
   if (ford) ford.onclick = () => openFrontOrdersModal(_faction);
   const rs = root.querySelector('[data-act="resign"]');
@@ -255,6 +303,20 @@ function render() {
   if (fo) fo.onclick = () => openForeignOfficerExchangeModal(_faction);
   const cas = root.querySelector('[data-act="combined-arms-school"]');
   if (cas) cas.onclick = () => openCombinedArmsSchoolModal(_faction);
+
+  // Officer actions (+5/−5 stat reallocations) — one handler, the RPC keys off p_action.
+  // After a successful action, refresh the army faction's treasury so repeat
+  // opens show the spent-down balance (stats themselves live on the dashboard).
+  const refreshFunds = async () => {
+    const { data } = await _supabase.from('factions').select('party_funds').eq('id', _faction.id).maybeSingle();
+    if (data) _faction.party_funds = data.party_funds;
+  };
+  [['forward-stockpiling', 'forward_stockpiling'], ['logistics-overhaul', 'logistics_overhaul'],
+   ['intensive-drills', 'intensive_drills'], ['internal-security-sweep', 'internal_security_sweep'],
+   ['doctrine-reform', 'doctrine_reform']].forEach(([act, key]) => {
+    const el = root.querySelector(`[data-act="${act}"]`);
+    if (el) el.onclick = () => openOfficerAction(_faction, key, refreshFunds);
+  });
 }
 
 let _resigning = false;

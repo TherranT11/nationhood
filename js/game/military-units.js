@@ -189,7 +189,7 @@ export async function processCombat(supabase, currentTick) {
     const frontById = new Map(fronts.map(f => [f.id, f]));
 
     const { data: armyData, error: armyErr } = await supabase
-        .from('armies').select('id, faction_id, nation_id, assigned_front_id, supply_balance').in('assigned_front_id', frontIds);
+        .from('armies').select('id, faction_id, nation_id, assigned_front_id, supply_balance, commander_leadership, commander_discipline').in('assigned_front_id', frontIds);
     if (armyErr) { console.error('[processCombat] armies load failed:', armyErr.message); return { battles: 0 }; }
     const armies = armyData || [];
     const armyIds = armies.map(a => a.id);
@@ -264,20 +264,23 @@ export async function processCombat(supabase, currentTick) {
         applyCasualties(A, COMBAT.INTENSITY * minM * (ecpB / total) * 2 * (actA === 'defend' ? COMBAT.DEF_CAS : 1), unitMp);
         applyCasualties(B, COMBAT.INTENSITY * minM * (ecpA / total) * 2 * (actB === 'defend' ? COMBAT.DEF_CAS : 1), unitMp);
 
-        const cohA = COMBAT.COH_BASE * (ecpB / total) * 2 * (actA === 'defend' ? COMBAT.DEF_COH : 1);
-        const cohB = COMBAT.COH_BASE * (ecpA / total) * 2 * (actB === 'defend' ? COMBAT.DEF_COH : 1);
+        // DISCIPLINE resists cohesion drain (×0.5 at 100, ×1.5 at 1; neutral 50 = ×1.0).
+        const cohA = COMBAT.COH_BASE * (ecpB / total) * 2 * (actA === 'defend' ? COMBAT.DEF_COH : 1) * (1.5 - A.discipline / 100);
+        const cohB = COMBAT.COH_BASE * (ecpA / total) * 2 * (actB === 'defend' ? COMBAT.DEF_COH : 1) * (1.5 - B.discipline / 100);
         for (const fid of A.facIds) cohVal.set(fid, Math.max(0, (cohVal.get(fid) || 0) - cohA));
         for (const fid of B.facIds) cohVal.set(fid, Math.max(0, (cohVal.get(fid) || 0) - cohB));
 
+        // DISCIPLINE also raises the rally floor a broken side recovers to.
+        const rally = (disc) => Math.round(COMBAT.REGROUP_COH * (0.5 + disc / 100));
         const aBroke = A.M <= 0 || sideCohesion(A, cohVal) <= 0;
         const bBroke = B.M <= 0 || sideCohesion(B, cohVal) <= 0;
         if (bBroke && !aBroke && actA === 'assault') {
             line = Math.min(N, line + 1);
-            for (const fid of B.facIds) cohVal.set(fid, Math.max(cohVal.get(fid) || 0, COMBAT.REGROUP_COH));
+            for (const fid of B.facIds) cohVal.set(fid, Math.max(cohVal.get(fid) || 0, rally(B.discipline)));
             lineUpd.set(f.id, line);
         } else if (aBroke && !bBroke && actB === 'assault') {
             line = Math.max(0, line - 1);
-            for (const fid of A.facIds) cohVal.set(fid, Math.max(cohVal.get(fid) || 0, COMBAT.REGROUP_COH));
+            for (const fid of A.facIds) cohVal.set(fid, Math.max(cohVal.get(fid) || 0, rally(A.discipline)));
             lineUpd.set(f.id, line);
         }
         battles++;
@@ -303,7 +306,7 @@ export async function processCombat(supabase, currentTick) {
 // One side's pooled strength. ECP per army: effective manpower (real rifles
 // weight unarmed troops to 30%) × (floor + stat quality) × supply, + armor punch.
 function computeSide(armies, unitsByArmy, armedByUnit, facById, cohVal, unitMp) {
-    let M = 0, ecp = 0;
+    let M = 0, ecp = 0, discSum = 0, discWt = 0;
     const facIds = new Set();
     const unitIds = [];
     for (const ar of armies) {
@@ -323,9 +326,15 @@ function computeSide(armies, unitsByArmy, armedByUnit, facById, cohVal, unitMp) 
         const quality = ((Number(fac.army_training) || 0) + (Number(fac.army_professionalism) || 0) + (cohVal.get(ar.faction_id) || 0)) / 300;
         const effM = armed + COMBAT.UNARMED * (aM - armed);
         const supplyMlt = (Number(ar.supply_balance) || 0) >= 0 ? 1 : 0.6;
-        ecp += effM * (COMBAT.QUAL_FLOOR + quality) * supplyMlt + armor * COMBAT.ARMOR_VAL + mech * COMBAT.MECH_VAL;
+        const armyEcp = effM * (COMBAT.QUAL_FLOOR + quality) * supplyMlt + armor * COMBAT.ARMOR_VAL + mech * COMBAT.MECH_VAL;
+        // Commander LEADERSHIP scales this army's hitting power (no commander = neutral 50).
+        const lead = Number(ar.commander_leadership) || 50;
+        ecp += armyEcp * (0.75 + lead / 200);
+        // Commander DISCIPLINE feeds the side's cohesion-drain resistance (manpower-weighted).
+        discSum += (Number(ar.commander_discipline) || 50) * aM;
+        discWt += aM;
     }
-    return { M, ecp, facIds, unitIds };
+    return { M, ecp, facIds, unitIds, discipline: discWt > 0 ? discSum / discWt : 50 };
 }
 
 // Average cohesion of a side's factions (typically one) — the break gauge.
