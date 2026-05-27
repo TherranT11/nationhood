@@ -49,6 +49,12 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: latest
+        env:
+          # Authenticate the "resolve latest release" GitHub API call so it
+          # uses the repo token's 1000/hr limit instead of the shared-runner
+          # unauthenticated 60/hr limit (which was failing: "Failed to resolve
+          # latest Supabase CLI release: rate limit exceeded").
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: supabase functions deploy advance-tick --no-verify-jwt --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
