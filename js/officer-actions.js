@@ -120,8 +120,11 @@ export function openOfficerAction(faction, key, onDone) {
             if (fRes.data) {
                 funds = Number(fRes.data.party_funds) || 0;
                 const last = Number(fRes.data.officer_action_cooldowns?.[key]);
-                const tick = Number(sRes.data?.current_tick) || 0;
-                if (Number.isFinite(last)) cdRemaining = Math.max(0, last + 12 - tick);
+                // Only compute remaining if we actually got the tick — a missing
+                // shard row would otherwise read tick=0 and fake a huge cooldown.
+                if (sRes.data && Number.isFinite(last)) {
+                    cdRemaining = Math.max(0, last + 12 - (Number(sRes.data.current_tick) || 0));
+                }
             }
         } catch (_) { /* non-fatal — keep the optimistic render */ }
         if (!done && !busy) render();
