@@ -25,10 +25,8 @@
   .ch-identity .meta-row .label { color:#555; margin-right:6px; }
   .ch-identity .meta-row .val { color:#d4d4d4; }
 
-  /* Current Location — concrete now (home/origin nation); a travel action
-     is planned, so the card leaves room for it without building anything. */
-  /* Status row: Current Location · Asset Status · Warrants — three equal
-     cards that wrap on narrow screens. */
+  /* Status row: Current Location (with the Travel action) · Asset Status ·
+     Warrants — three equal cards that wrap on narrow screens. */
   .ch-cards { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-top:20px; }
   .ch-card {
     min-width:0;
@@ -42,7 +40,6 @@
     font-size:9px; letter-spacing:0.1em; color:#8aaa6a; border:0.5px solid rgba(138,170,106,0.3);
     border-radius:3px; padding:2px 6px;
   }
-  .ch-loc-note { color:#555; font-size:10px; letter-spacing:0.06em; margin-top:8px; }
 
   /* Leaderboard row: shares the 3-column grid so the boards line up under the
      status cards (Reputable under Current Location, Net Worth under Asset
@@ -195,9 +192,8 @@ import { _supabase } from './js/supabase-client.js';
 
   // ── Travel: $20k personal funds relocates the founder to any nation. ──
   // ORIGIN (birthplace) is immutable — read it from ent_origin_nation, falling
-  // back to the current nation if the column isn't migrated yet.
-  const escT = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
-  const usdT = (n) => '$' + Math.round(Math.max(0, Number(n) || 0)).toLocaleString('en-US');
+  // back to the current nation if the column isn't migrated yet. (usd is defined
+  // above; esc below — both in scope by the time the modal renders on click.)
   const TRAVEL_COST = 20000;
   let originName = f.nation;
   try {
@@ -218,14 +214,14 @@ import { _supabase } from './js/supabase-client.js';
 
     function renderT(nations, funds, msg) {
       const afford = funds >= TRAVEL_COST;
-      const opts = nations.map(n => `<option value="${escT(n.id)}">${escT(n.name)}</option>`).join('');
+      const opts = nations.map(n => `<option value="${esc(n.id)}">${esc(n.name)}</option>`).join('');
       tOverlay.innerHTML = `<div class="ch-travel-modal">
         <div class="ct-head"><span class="ct-eyebrow">— TRAVEL —</span><button class="ct-x" id="ct-x">&times;</button></div>
         <div class="ct-title">Board a Plane</div>
         <div class="ct-sub">Relocate your entrepreneur to any nation. Remember: you can only found a corporation in the nation you're currently in.</div>
-        <div class="ct-cost">Cost <b>${usdT(TRAVEL_COST)}</b> &middot; Personal Funds <b class="${afford ? 'ok' : 'no'}">${usdT(funds)}</b></div>
+        <div class="ct-cost">Cost <b>${usd(TRAVEL_COST)}</b> &middot; Personal Funds <b class="${afford ? 'ok' : 'no'}">${usd(funds)}</b></div>
         ${nations.length ? `<select id="ct-nation" class="ct-select">${opts}</select>` : `<div class="ct-empty">No other nation to travel to.</div>`}
-        ${msg ? `<div class="ct-msg">${escT(msg)}</div>` : ''}
+        ${msg ? `<div class="ct-msg">${esc(msg)}</div>` : ''}
         <div class="ct-foot"><button class="ct-btn sec" id="ct-cancel">Cancel</button>${(nations.length && afford) ? `<button class="ct-btn pri" id="ct-board">Board Plane</button>` : ''}</div>
       </div>`;
       document.getElementById('ct-x').onclick = closeT;
@@ -241,7 +237,7 @@ import { _supabase } from './js/supabase-client.js';
           if (error || !data?.success) {
             const r = data?.reason;
             const m = error ? error.message
-              : r === 'insufficient_funds' ? `Not enough personal funds (have ${usdT(data.have)}, need ${usdT(data.cost)}).`
+              : r === 'insufficient_funds' ? `Not enough personal funds (have ${usd(data.have)}, need ${usd(data.cost)}).`
               : r === 'already_there' ? 'You are already there.'
               : 'Travel failed.';
             tBusy = false; board.disabled = false; renderT(nations, funds, m); return;

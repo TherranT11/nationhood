@@ -15,6 +15,13 @@ ALTER TABLE factions ADD COLUMN IF NOT EXISTS ent_origin_nation TEXT;
 UPDATE factions SET ent_origin_nation = nation
  WHERE faction_type = 'entrepreneur' AND ent_origin_nation IS NULL;
 
+-- Location must move only through the costed RPC. Without this the open
+-- "Factions update own" policy would let a client UPDATE factions.nation
+-- directly — free travel, and a bypass of found_entrepreneur_corp's home-nation
+-- gate. Origin is likewise set only by the RPC/backfill. The SECURITY DEFINER
+-- RPC (and the service-role tick) write them as owner, bypassing this revoke.
+REVOKE UPDATE (nation, ent_origin_nation) ON public.factions FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.entrepreneur_travel(p_nation_id UUID)
 RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE
