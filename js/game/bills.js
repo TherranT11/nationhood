@@ -5,7 +5,7 @@
 
 import { GAME_CONFIG, FOUNDATIONAL_REPEAL_DEFAULTS, initGameConfigForNation, getPresidentialTermTicks, getPresidentialTermLimit } from './config.js';
 import { hasElectedPresident, getCurrentConstitutionalSystem, isAbsoluteMonarchy, MINISTRY_OFFICE_NAMES } from './government-types.js';
-import { DIPLOMACY_CONFIG, resolveTransferEndpoints } from './diplomacy-constants.js';
+import { DIPLOMACY_CONFIG, resolveTransferEndpoints, setNationsAtWar } from './diplomacy-constants.js';
 import { TRADE_SECTOR_MAP } from './trade-constants.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility } from './momentum.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines } from './stats.js';
@@ -1689,18 +1689,8 @@ export async function resolveDeclareWarBill(supabase, bill, ctx) {
         await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
         const target = bill.metadata?.target_nation_id;
         if (target && bill.nation_id) {
-            const a = bill.nation_id < target ? bill.nation_id : target;
-            const b = bill.nation_id < target ? target : bill.nation_id;
-            const justification = bill.metadata?.casus_belli === 'our_honor' ? 'Our Honor' : 'Pressed Claim';
-            const { error } = await supabase.from('diplomatic_relations').upsert({
-                nation_a_id: a,
-                nation_b_id: b,
-                relation_type: 'war',
-                war_declared_at_tick: currentTick,
-                war_justification: justification,
-                updated_at: new Date().toISOString(),
-            }, { onConflict: 'nation_a_id,nation_b_id' });
-            if (error) console.error(`[resolveDeclareWarBill] failed to set war state for bill ${bill.id}:`, error.message);
+            const { ok } = await setNationsAtWar(supabase, bill.nation_id, target, currentTick, 'Our Honor');
+            if (!ok) console.error(`[resolveDeclareWarBill] failed to set war state for bill ${bill.id}`);
         }
     } else {
         await failBill(supabase, bill);

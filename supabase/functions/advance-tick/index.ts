@@ -722,6 +722,29 @@ function resolveTransferEndpoints(article, agreement) {
 }
 
 /**
+ * Single writer of the war-state transition. Puts two nations into
+ * relation_type='war' on their canonical (a<b) diplomatic_relations row.
+ * Used by BOTH the manual declaration resolver (bills) and territorial
+ * auto-escalation (issues), so the war-state write lives in one place.
+ * Returns { ok }.
+ */
+async function setNationsAtWar(supabase, nationX, nationY, currentTick, justification) {
+    if (!nationX || !nationY) return { ok: false };
+    const a = nationX < nationY ? nationX : nationY;
+    const b = nationX < nationY ? nationY : nationX;
+    const { error } = await supabase.from('diplomatic_relations').upsert({
+        nation_a_id: a,
+        nation_b_id: b,
+        relation_type: 'war',
+        war_declared_at_tick: currentTick,
+        war_justification: justification,
+        updated_at: new Date().toISOString(),
+    }, { onConflict: 'nation_a_id,nation_b_id' });
+    if (error) { console.error('[setNationsAtWar] failed:', error.message); return { ok: false, error: error }; }
+    return { ok: true };
+}
+
+/**
  * Trade Agreement types that can be negotiated as Diplomatic Initiatives.
  */
 const TRADE_AGREEMENT_TYPES = {
@@ -6380,18 +6403,8 @@ async function resolveDeclareWarBill(supabase, bill, ctx) {
         await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
         const target = bill.metadata?.target_nation_id;
         if (target && bill.nation_id) {
-            const a = bill.nation_id < target ? bill.nation_id : target;
-            const b = bill.nation_id < target ? target : bill.nation_id;
-            const justification = bill.metadata?.casus_belli === 'our_honor' ? 'Our Honor' : 'Pressed Claim';
-            const { error } = await supabase.from('diplomatic_relations').upsert({
-                nation_a_id: a,
-                nation_b_id: b,
-                relation_type: 'war',
-                war_declared_at_tick: currentTick,
-                war_justification: justification,
-                updated_at: new Date().toISOString(),
-            }, { onConflict: 'nation_a_id,nation_b_id' });
-            if (error) console.error(`[resolveDeclareWarBill] failed to set war state for bill ${bill.id}:`, error.message);
+            const { ok } = await setNationsAtWar(supabase, bill.nation_id, target, currentTick, 'Our Honor');
+            if (!ok) console.error(`[resolveDeclareWarBill] failed to set war state for bill ${bill.id}`);
         }
     } else {
         await failBill(supabase, bill);
@@ -26501,23 +26514,34 @@ async function processIssueTick(supabase, nationList, currentTick) {
             newStatus = 'partial';
         }
 
-        // ── 7. Check tension 10 → escalation to incident ──
+        // ── 7. Check tension 10 → escalation ──
+        // Territorial disputes that go unresolved escalate straight to WAR
+        // (diplomatic_relations.relation_type='war'); every other issue type
+        // spawns its incident as before.
         if (newTension >= 10 && issue.status !== 'escalated') {
             const leverage = favorToLeverage(issue.favor);
+            const isTerritorial = issue.issue_type === 'territorial_ownership';
 
-            // Spawn the actual incident via the existing incident system
-            const incidentResult = await spawnIncidentFromIssue(
-                supabase, issue, nationA, nationB, leverage, currentTick
-            );
+            let incidentId = null, escalationOk = false;
+            if (isTerritorial) {
+                escalationOk = await startWarFromIssue(supabase, issue, nationA, nationB, currentTick);
+            } else {
+                const incidentResult = await spawnIncidentFromIssue(
+                    supabase, issue, nationA, nationB, leverage, currentTick
+                );
+                incidentId = incidentResult?.incidentId || null;
+                escalationOk = !!incidentId;
+            }
 
-            // Only mark as escalated if the incident was actually created
-            if (incidentResult?.incidentId) {
+            // Only mark as escalated if the war/incident actually happened.
+            if (escalationOk) {
                 newStatus = 'escalated';
 
                 results.escalations.push({
                     issue_id: issue.id,
                     issue_type: issue.issue_type,
-                    incident_id: incidentResult.incidentId,
+                    incident_id: incidentId,
+                    war: isTerritorial,
                     nation_a_id: issue.nation_a_id,
                     nation_b_id: issue.nation_b_id,
                     favor: issue.favor,
@@ -26525,16 +26549,18 @@ async function processIssueTick(supabase, nationList, currentTick) {
                 });
 
                 await insertHistory(supabase, issue.id, currentTick, 'escalated',
-                    'This issue has escalated to an incident.',
+                    isTerritorial
+                        ? 'The territorial dispute went unresolved — a state of war now exists.'
+                        : 'This issue has escalated to an incident.',
                     { tension: newTension, favor: issue.favor, leverage,
-                      incident_id: incidentResult.incidentId });
+                      incident_id: incidentId });
 
             // ── ESCALATION FAVOR BONUS/PENALTY ──
             // Favored nation: +7 gov_approval, +6 momentum to all government parties
             // Disfavored nation: -7 gov_approval, -10 momentum to all government parties
             // Neutral (favor === 0): no bonus/penalty
             const currentFavor = Number(issue.favor) || 0;
-            if (currentFavor !== 0) {
+            if (incidentId && currentFavor !== 0) {
                 const favoredNationId = currentFavor > 0 ? issue.nation_b_id : issue.nation_a_id;
                 const disfavoredNationId = currentFavor > 0 ? issue.nation_a_id : issue.nation_b_id;
                 const favoredNation = favoredNationId === issue.nation_a_id ? nationA : nationB;
@@ -26583,8 +26609,8 @@ async function processIssueTick(supabase, nationList, currentTick) {
                       momentum_favored: 4, momentum_disfavored: -6 });
             }
             } else {
-                // Incident creation failed — keep issue active at tension 10
-                console.warn(`[Issues] Escalation failed for issue ${issue.id} — incident not created, keeping issue active`);
+                // War/incident not created — keep the issue active at tension 10.
+                console.warn(`[Issues] Escalation failed for issue ${issue.id} — keeping issue active`);
             }
         }
 
@@ -26683,6 +26709,28 @@ async function spawnModifier(supabase, issue, modifierKey, appliesTo, currentTic
         { modifier_key: modifierKey, created_by: createdBy });
 }
 
+
+// ==================== ISSUE → WAR ESCALATION ====================
+
+/**
+ * Territorial dispute escalation = war. Sets the canonical diplomatic_relations
+ * pair to relation_type='war' (the same state a manual declaration produces, so
+ * the fronts + supply systems pick it up automatically) and writes a war-start
+ * dispatch to both nations' event_log. Returns true if the war state was set.
+ */
+async function startWarFromIssue(supabase, issue, nationA, nationB, currentTick) {
+    // setNationsAtWar (diplomacy-constants) is the single writer of the
+    // war-state transition — shared with the manual declaration resolver.
+    const { ok } = await setNationsAtWar(supabase, issue.nation_a_id, issue.nation_b_id, currentTick, 'Territorial Dispute');
+    if (!ok) return false;
+    const summary = `After the territorial dispute went unresolved, a state of war now exists between ${nationA?.name || 'one nation'} and ${nationB?.name || 'another nation'}.`;
+    const { error: logErr } = await supabase.from('event_log').insert([
+        { nation_id: issue.nation_a_id, event_name: 'War Declared', trigger_key: 'war_started_territorial', description_chosen: summary, category: 'crisis', fired_at_tick: currentTick },
+        { nation_id: issue.nation_b_id, event_name: 'War Declared', trigger_key: 'war_started_territorial', description_chosen: summary, category: 'crisis', fired_at_tick: currentTick },
+    ]);
+    if (logErr) console.warn('[startWarFromIssue] event_log insert failed:', logErr.message);
+    return true;
+}
 
 // ==================== ISSUE → INCIDENT ESCALATION ====================
 

@@ -54,6 +54,29 @@ export function resolveTransferEndpoints(article, agreement) {
 }
 
 /**
+ * Single writer of the war-state transition. Puts two nations into
+ * relation_type='war' on their canonical (a<b) diplomatic_relations row.
+ * Used by BOTH the manual declaration resolver (bills.js) and territorial
+ * auto-escalation (issues.js), so the war-state write lives in one place.
+ * Returns { ok }.
+ */
+export async function setNationsAtWar(supabase, nationX, nationY, currentTick, justification) {
+    if (!nationX || !nationY) return { ok: false };
+    const a = nationX < nationY ? nationX : nationY;
+    const b = nationX < nationY ? nationY : nationX;
+    const { error } = await supabase.from('diplomatic_relations').upsert({
+        nation_a_id: a,
+        nation_b_id: b,
+        relation_type: 'war',
+        war_declared_at_tick: currentTick,
+        war_justification: justification,
+        updated_at: new Date().toISOString(),
+    }, { onConflict: 'nation_a_id,nation_b_id' });
+    if (error) { console.error('[setNationsAtWar] failed:', error.message); return { ok: false, error: error }; }
+    return { ok: true };
+}
+
+/**
  * Trade Agreement types that can be negotiated as Diplomatic Initiatives.
  */
 export const TRADE_AGREEMENT_TYPES = {

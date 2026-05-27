@@ -1,29 +1,31 @@
 -- ════════════════════════════════════════════════════════════════════
--- DECLARE WAR — PM/President files a war-declaration bill in parliament
+-- DECLARE WAR — PM/President files an UNPROVOKED war declaration ("Our Honor")
 -- ════════════════════════════════════════════════════════════════════
 -- The head of government (PM) or head of state (President) brings a motion to
--- declare war on a BORDERING nation. Two casus belli:
---   • press_claim — requires a pressed territorial claim at max tension (10)
---                   against the target. No political cost; the claim is the
---                   justification.
---   • our_honor   — no claim needed, but paid on FILING: -10 public_approval
---                   to the nation, and -3.0 popularity (stored tenths: -30,
---                   clamped at 0) for the declaring party in EVERY sector.
+-- declare war on a BORDERING nation. There is one casus belli: "Our Honor" —
+-- no pretext required, but paid on FILING:
+--   • -10 public_approval to the nation
+--   • -3.0 popularity (stored tenths: -30, clamped 0) for the declaring party
+--     in EVERY sector.
+-- (Territorial wars no longer go through this action — a territorial dispute
+-- that reaches tension 10 now auto-escalates to war in the tick. See issues.js
+-- startWarFromIssue. This action is purely for unprovoked aggression.)
 --
 -- Filing inserts a `declare_war` bill (status 'floor') + auto-casts the
 -- proposer's YES vote. Passage needs a SUPERMAJORITY — enforced at tick by
 -- bills.js (resolveDeclareWarBill), which on pass sets the pair's
--- diplomatic_relations.relation_type = 'war'. Fronts between the two nations
--- are "active" whenever that relation = war (derived; no separate flag).
+-- diplomatic_relations.relation_type='war'. Fronts between the two nations are
+-- "active" whenever that relation = war (derived; no separate flag).
 --
--- War state already has a home (diplomatic_relations: relation_type='war' +
--- war_declared_at_tick + war_justification) so this adds no new columns.
 -- Owner/office-gated SECURITY DEFINER — bills/bill_support writes go through it.
 -- ════════════════════════════════════════════════════════════════════
 
 BEGIN;
 
-CREATE OR REPLACE FUNCTION public.declare_war(p_target_nation_id UUID, p_casus_belli TEXT)
+-- Drop the earlier two-arg (casus belli) signature if it was applied.
+DROP FUNCTION IF EXISTS public.declare_war(UUID, TEXT);
+
+CREATE OR REPLACE FUNCTION public.declare_war(p_target_nation_id UUID)
 RETURNS JSONB
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -43,9 +45,6 @@ DECLARE
     v_bill      UUID;
 BEGIN
     IF v_user IS NULL THEN RETURN jsonb_build_object('success', false, 'error', 'Not authenticated'); END IF;
-    IF p_casus_belli NOT IN ('press_claim', 'our_honor') THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Invalid casus belli');
-    END IF;
 
     -- Caller's party (a faction owned by this user).
     SELECT * INTO v_fac FROM factions
@@ -90,25 +89,12 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'A war declaration against that nation is already before parliament');
     END IF;
 
-    -- Casus belli.
-    IF p_casus_belli = 'press_claim' THEN
-        -- "Completed at tension 10" = the issue escalated (durable state; tension
-        -- can drift back below 10 afterwards once its modifiers are deactivated).
-        IF NOT EXISTS (
-            SELECT 1 FROM bilateral_issues
-             WHERE issue_type = 'territorial_ownership'
-               AND (status = 'escalated' OR tension >= 10)
-               AND ((nation_a_id = v_a AND nation_b_id = v_b) OR (nation_a_id = v_b AND nation_b_id = v_a))
-        ) THEN
-            RETURN jsonb_build_object('success', false, 'error', 'No pressed claim at maximum tension against that nation');
-        END IF;
-    ELSE  -- our_honor: pay the political cost on filing.
-        UPDATE nations SET public_approval = GREATEST(0, COALESCE(public_approval, 0) - 10) WHERE id = v_nation;
-        UPDATE faction_sector_popularity
-           SET popularity = GREATEST(0, popularity - 30), updated_at = now()
-         WHERE faction_id = v_fac.id
-           AND sector_id IN (SELECT id FROM sectors WHERE nation_id = v_nation);
-    END IF;
+    -- "Our Honor" political cost, paid on filing.
+    UPDATE nations SET public_approval = GREATEST(0, COALESCE(public_approval, 0) - 10) WHERE id = v_nation;
+    UPDATE faction_sector_popularity
+       SET popularity = GREATEST(0, popularity - 30), updated_at = now()
+     WHERE faction_id = v_fac.id
+       AND sector_id IN (SELECT id FROM sectors WHERE nation_id = v_nation);
 
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard';
     v_tick := COALESCE(v_tick, 0);
@@ -119,7 +105,7 @@ BEGIN
             'Declaration of War — ' || v_target.name, 'declare_war', 'floor',
             v_tick, v_tick + v_voting, v_fac.faction_name, v_fac.party_color,
             'The ' || COALESCE(v_self_name, 'Republic') || ' is now in a state of war with the nation of ' || v_target.name || '.',
-            jsonb_build_object('target_nation_id', p_target_nation_id, 'casus_belli', p_casus_belli))
+            jsonb_build_object('target_nation_id', p_target_nation_id))
     RETURNING id INTO v_bill;
 
     -- Auto-cast the proposer's YES vote with their seat weight. The bill was
@@ -127,10 +113,10 @@ BEGIN
     INSERT INTO bill_support (bill_id, faction_id, stance, seat_count)
     VALUES (v_bill, v_fac.id, 'yes', COALESCE(v_fac.seats, 0));
 
-    RETURN jsonb_build_object('success', true, 'bill_id', v_bill, 'casus_belli', p_casus_belli);
+    RETURN jsonb_build_object('success', true, 'bill_id', v_bill);
 END; $$;
 
-GRANT EXECUTE ON FUNCTION public.declare_war(UUID, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.declare_war(UUID) TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
 
