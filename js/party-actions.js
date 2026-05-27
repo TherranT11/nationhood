@@ -1203,6 +1203,7 @@ function renderPage(root) {
             <div class="pa-modal-overlay" id="pa-allocate-funds-modal"></div>
             <div class="pa-modal-overlay" id="pa-cb-rate-modal"></div>
             <div class="pa-modal-overlay" id="pa-press-claim-modal"></div>
+            <div class="pa-modal-overlay" id="pa-declare-war-modal"></div>
         `,
     });
 
@@ -1273,6 +1274,8 @@ function renderPage(root) {
             openDebtPaymentModal(root, faction);
         } else if (actionId === 'press_claim') {
             openPressClaimModal(root, faction);
+        } else if (actionId === 'declare_war') {
+            openDeclareWarModal(root, faction);
         } else if (actionId === 'allocate_funds') {
             openAllocateFundsModal(root);
         } else if (actionId === 'cb_lower_rate') {
@@ -1621,6 +1624,15 @@ const _ALLOCATE_FUNDS_ENTRY = {
     tags: ['MILITARY', 'COSTS BUDGET'],
 };
 
+const _DECLARE_WAR_ENTRY = {
+    id: 'declare_war',
+    name: 'Declare War',
+    desc: 'Bring a declaration of war before parliament against a bordering nation. Requires either a pressed claim at maximum tension (10), or the Our Honor casus belli (−10 Public Approval; −3.0 popularity with your party in every sector, paid on filing). Passing requires a supermajority; on passage the two nations enter a state of war and their fronts activate.',
+    cost: '$0',
+    costColor: 'var(--text-dim)',
+    tags: ['MILITARY', 'SUPERMAJORITY'],
+};
+
 const _MINISTRY_ACTION_REGISTRY = {
     prime_minister: [
         {
@@ -1639,8 +1651,9 @@ const _MINISTRY_ACTION_REGISTRY = {
             costColor: 'var(--text-dim)',
             tags: ['GOVERNMENT', 'PM ONLY'],
         },
+        _DECLARE_WAR_ENTRY,
     ],
-    president: [],
+    president: [_DECLARE_WAR_ENTRY],
     foreign: [
         {
             id: 'press_claim',
@@ -3399,6 +3412,143 @@ async function openPressClaimModal(root, faction) {
             });
             if (error) errorMsg = error.message || 'Could not press the claim.';
             else if (!data?.ok) errorMsg = data?.message || 'Could not press the claim.';
+            else result = data;
+        } catch (e) {
+            errorMsg = e?.message || 'Network error.';
+        } finally {
+            submitting = false; render();
+        }
+    }
+
+    overlay.classList.add('active');
+    render();
+}
+
+// ════════════════════════ DECLARE WAR (Prime Minister / President) ════════════════════════
+// Pick a bordering nation + a casus belli, then file a declare_war bill
+// (supermajority). Press-claim path needs a pressed claim at tension 10;
+// Our Honor needs none but is paid on filing. Server (declare_war RPC) is the
+// authority — this modal just scopes the choices to what's plausibly valid.
+async function openDeclareWarModal(root, faction) {
+    const overlay = document.getElementById('pa-declare-war-modal');
+    if (!overlay) return;
+    const myNationId = _state?.nation?.id;
+
+    let loadError = '';
+    let neighbours = [];          // { id, name, atWar, claimable }
+    try {
+        const [relResp, issResp] = await Promise.all([
+            _supabase.from('diplomatic_relations').select('nation_a_id, nation_b_id, relation_type')
+                .or(`nation_a_id.eq.${myNationId},nation_b_id.eq.${myNationId}`).eq('proximity', 0),
+            _supabase.from('bilateral_issues').select('nation_a_id, nation_b_id')
+                .eq('issue_type', 'territorial_ownership').gte('tension', 10)
+                .or(`nation_a_id.eq.${myNationId},nation_b_id.eq.${myNationId}`),
+        ]);
+        if (relResp.error) throw relResp.error;
+        const rels = relResp.data || [];
+        const claimable = new Set((issResp.data || []).map(i => i.nation_a_id === myNationId ? i.nation_b_id : i.nation_a_id));
+        const ids = rels.map(r => r.nation_a_id === myNationId ? r.nation_b_id : r.nation_a_id);
+        const atWar = new Set(rels.filter(r => r.relation_type === 'war').map(r => r.nation_a_id === myNationId ? r.nation_b_id : r.nation_a_id));
+        if (ids.length) {
+            const { data: nats } = await _supabase.from('nations').select('id, name').in('id', ids);
+            neighbours = (nats || []).map(n => ({ id: n.id, name: n.name, atWar: atWar.has(n.id), claimable: claimable.has(n.id) }))
+                .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        }
+    } catch (e) {
+        loadError = e?.message || 'Could not load bordering nations.';
+    }
+
+    let submitting = false;
+    let result = null;
+    let errorMsg = loadError;
+    let selectedId = neighbours.find(n => !n.atWar)?.id || '';
+    const selected = () => neighbours.find(n => n.id === selectedId) || null;
+    // Prefer the cheaper, justified path when the selected target supports it.
+    let casus = selected()?.claimable ? 'press_claim' : 'our_honor';
+
+    function render() {
+        const sel = selected();
+        const canPressClaim = !!sel && sel.claimable && !sel.atWar;
+        if (casus === 'press_claim' && !canPressClaim) casus = 'our_honor';
+        const canSubmit = !!sel && !sel.atWar && !submitting && !result;
+
+        const optionsHtml = neighbours.map(n =>
+            `<option value="${esc(n.id)}"${n.id === selectedId ? ' selected' : ''}${n.atWar ? ' disabled' : ''}>${esc(n.name)}${n.atWar ? ' — already at war' : ''}</option>`
+        ).join('');
+
+        const cbOption = (key, title, sub, enabled) => `
+            <div class="pa-dw-cb" data-cb="${key}" style="padding:10px 12px;border:1px solid ${casus === key ? 'var(--red)' : 'var(--border-main)'};border-radius:3px;margin-bottom:6px;${enabled ? 'cursor:pointer;' : 'opacity:0.4;cursor:not-allowed;'}background:${casus === key ? 'rgba(200,60,60,0.08)' : 'transparent'};">
+                <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${casus === key ? 'var(--red)' : 'var(--text-secondary)'};">${casus === key ? '◉ ' : '○ '}${title}</div>
+                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;line-height:1.4;">${sub}</div>
+            </div>`;
+
+        const resultHtml = result ? `
+            <div style="padding:12px;background:rgba(200,60,60,0.08);border:1px solid rgba(200,60,60,0.22);margin-top:12px;">
+                <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--red);margin-bottom:4px;">Declaration filed</div>
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);line-height:1.5;">
+                    The motion is now before parliament and requires a <strong>supermajority</strong> to pass. If it carries, the two nations enter a state of war and the fronts between them activate.
+                </div>
+            </div>` : '';
+        const errorHtml = errorMsg ? `<div style="font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:6px;">${esc(errorMsg)}</div>` : '';
+
+        const bodyHtml = (neighbours.length === 0 && !loadError)
+            ? `<div style="font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);">No bordering nations to declare war on. War can only be declared against a nation you share a border with.</div>`
+            : `
+                <div class="pa-modal-step-label">Select a Nation</div>
+                <select id="pa-dw-nation" class="pa-modal-input" ${result || submitting ? 'disabled' : ''} style="font-family:var(--font-ui);font-size:12px;">${optionsHtml}</select>
+                <div class="pa-modal-step-label">Casus Belli</div>
+                ${cbOption('press_claim', 'Pressed Claim', canPressClaim ? 'A claim at maximum tension (10) justifies the war. No political cost.' : 'No pressed claim at maximum tension against this nation.', canPressClaim)}
+                ${cbOption('our_honor', 'Our Honor', 'No claim required, paid now: −10 Public Approval and −3.0 popularity with your party in every sector.', !sel || !sel.atWar)}
+                ${errorHtml}
+                ${resultHtml}
+            `;
+
+        overlay.innerHTML = `
+            <div class="pa-modal" style="width:460px;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:var(--red);"></div>
+                        <span class="pa-modal-title">Declare War</span>
+                    </div>
+                    <button class="pa-modal-close" id="pa-dw-close">&times;</button>
+                </div>
+                <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                    File a declaration of war before parliament. Passage requires a supermajority. Until it passes, your nations are not at war.
+                </div>
+                <div class="pa-modal-body" style="gap:10px;">${bodyHtml}</div>
+                <div class="pa-modal-footer">
+                    <button class="pa-modal-btn pa-modal-btn--cancel" id="pa-dw-cancel">${result ? 'Close' : 'Cancel'}</button>
+                    ${result ? '' : `<button class="pa-modal-btn pa-modal-btn--submit" id="pa-dw-file" ${canSubmit ? '' : 'disabled'}>${submitting ? 'Filing…' : 'Declare'}</button>`}
+                </div>
+            </div>`;
+
+        const close = () => { overlay.classList.remove('active'); if (result) renderPage(root); };
+        document.getElementById('pa-dw-close')?.addEventListener('click', close);
+        document.getElementById('pa-dw-cancel')?.addEventListener('click', close);
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+        const natSel = document.getElementById('pa-dw-nation');
+        if (natSel) natSel.addEventListener('change', (e) => { selectedId = e.target.value; render(); });
+        overlay.querySelectorAll('.pa-dw-cb').forEach(el => el.addEventListener('click', () => {
+            const key = el.getAttribute('data-cb');
+            const s = selected();
+            if (key === 'press_claim' && !(s && s.claimable && !s.atWar)) return;
+            if (s && s.atWar) return;
+            casus = key; render();
+        }));
+        document.getElementById('pa-dw-file')?.addEventListener('click', submit);
+    }
+
+    async function submit() {
+        const sel = selected();
+        if (submitting || result || !sel || sel.atWar) return;
+        submitting = true; errorMsg = ''; render();
+        try {
+            const { data, error } = await _supabase.rpc('declare_war', {
+                p_target_nation_id: selectedId,
+                p_casus_belli: casus,
+            });
+            if (error) errorMsg = error.message || 'Could not declare war.';
+            else if (!data?.success) errorMsg = data?.error || 'Could not declare war.';
             else result = data;
         } catch (e) {
             errorMsg = e?.message || 'Network error.';

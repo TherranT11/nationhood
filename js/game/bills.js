@@ -841,6 +841,7 @@ const BILL_TYPE_SPECS = Object.freeze({
     default_resolution:     { threshold: 'supermajority' },
     veto_override:          { threshold: 'veto_override' },
     impeachment_conviction: { threshold: 'supermajority' },
+    declare_war:            { threshold: 'supermajority' },
     no_confidence:          { threshold: 'absolute' },
     impeachment_motion:     { threshold: 'absolute' },
 });
@@ -1671,6 +1672,46 @@ export async function resolveNoConfidenceBill(supabase, bill, ctx) {
         votesAgainst,
         type: 'no_confidence',
         earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+/**
+ * Resolve a passed/failed declare_war bill. On pass (supermajority), the two
+ * nations enter a state of war: set the canonical diplomatic_relations pair's
+ * relation_type='war' with the tick + casus belli as justification. Fronts
+ * between the pair are "active" whenever that relation = war (derived, no
+ * separate flag). On fail, the motion just dies — no extra penalty (any
+ * 'our_honor' cost was already paid at filing time).
+ */
+export async function resolveDeclareWarBill(supabase, bill, ctx) {
+    const { passed, currentTick, votesFor, votesAgainst } = ctx;
+    if (passed) {
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        const target = bill.metadata?.target_nation_id;
+        if (target && bill.nation_id) {
+            const a = bill.nation_id < target ? bill.nation_id : target;
+            const b = bill.nation_id < target ? target : bill.nation_id;
+            const justification = bill.metadata?.casus_belli === 'our_honor' ? 'Our Honor' : 'Pressed Claim';
+            const { error } = await supabase.from('diplomatic_relations').upsert({
+                nation_a_id: a,
+                nation_b_id: b,
+                relation_type: 'war',
+                war_declared_at_tick: currentTick,
+                war_justification: justification,
+                updated_at: new Date().toISOString(),
+            }, { onConflict: 'nation_a_id,nation_b_id' });
+            if (error) console.error(`[resolveDeclareWarBill] failed to set war state for bill ${bill.id}:`, error.message);
+        }
+    } else {
+        await failBill(supabase, bill);
+    }
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: passed ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'declare_war',
     };
 }
 
@@ -2574,6 +2615,7 @@ export async function resolveOrdinaryBill(supabase, bill, ctx) {
 // This mirrors BILL_TYPE_SPECS (threshold side, R2) on the dispatch side.
 const BILL_RESOLVERS = Object.freeze({
     no_confidence:          ()  => resolveNoConfidenceBill,
+    declare_war:            ()  => resolveDeclareWarBill,
     foundational:           ()  => resolveFoundationalBill,
     default_resolution:     ()  => resolveDefaultResolutionBill,
     minister_confirmation:  (b) => b.ministry_key       ? resolveMinisterConfirmationBill   : null,
@@ -2792,7 +2834,7 @@ export async function resolveExpiredVotes(supabase, nationId) {
         // NO voters: +2/article on fail. Abstain: nothing.
         // Skip momentum for special bill types and presidential desk (not yet enacted)
         const lastResult = results[results.length - 1];
-        const skipMomentum = ['no_confidence', 'minister_confirmation', 'governor_confirmation', 'impeachment_conviction'].includes(bill.bill_type)
+        const skipMomentum = ['no_confidence', 'declare_war', 'minister_confirmation', 'governor_confirmation', 'impeachment_conviction'].includes(bill.bill_type)
             || lastResult?.result === 'president_desk';
         if (!skipMomentum) {
             try {
