@@ -736,11 +736,11 @@ export async function renderOrderOfBattle(faction, hostEl) {
       return;
     }
 
-    // Group: unassigned units under "Regular Army", then one section
-    // per army (each carries ≥1 unit). The army's type drives both the
-    // header label and each unit's upkeep modifier.
-    // A unit shows under "Regular Army" if it's unassigned OR its army
-    // didn't load (transient fetch error / orphan) — never vanishes.
+    // Group: one section per army (each carries ≥1 unit; the army's type
+    // drives both the header label and each unit's upkeep modifier), then
+    // "Reserves" last for unassigned units.
+    // A unit shows under "Reserves" if it's unassigned OR its army didn't
+    // load (transient fetch error / orphan) — never vanishes.
     const knownArmies = new Set(armies.map(a => a.id));
     const regular = units.filter(u => !u.army_id || !knownArmies.has(u.army_id));
     const byArmy = new Map();
@@ -750,10 +750,6 @@ export async function renderOrderOfBattle(faction, hostEl) {
       byArmy.get(u.army_id).push(u);
     }
 
-    if (regular.length) {
-      html += '<div class="cu-sec">Regular Army</div>';
-      for (const u of regular) html += unitCardHtml(u, null);
-    }
     for (const a of armies) {
       const list = byArmy.get(a.id) || [];
       if (!list.length) continue;
@@ -763,6 +759,11 @@ export async function renderOrderOfBattle(faction, hostEl) {
             + (armyFronts[a.id] ? `<span class="cu-sec c" style="color:#c89e6e;">▸ ${escapeHtml(armyFronts[a.id])}</span>` : '')
             + `<span class="cu-sec c">${list.length} unit${list.length === 1 ? '' : 's'}</span></div>`;
       for (const u of list) html += unitCardHtml(u, a.army_type);
+    }
+    // Reserves last — units not assigned to any army.
+    if (regular.length) {
+      html += '<div class="cu-sec">Reserves</div>';
+      for (const u of regular) html += unitCardHtml(u, null);
     }
     hostEl.innerHTML = html;
   }
