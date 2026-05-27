@@ -1,0 +1,205 @@
+// War Room — read-only view of the player's active wars (Phase 1).
+//
+// Renders, per war the viewer's nation is in: a header (auto-titled "The X–Y
+// War" + duration), the three land fronts each as their capital→border→capital
+// sector chain coloured by owner with any armies + supply on them, the air-war
+// spectrum (war_fronts.air_status, shown from the viewer's POV), and a greyed
+// naval row when there's no sea front. Combat numbers/timelines come in Phase 2
+// once the combat engine exists — this only reflects state we already store.
+
+import { _supabase } from './supabase-client.js';
+import { escapeHtml, tickToDate } from './utils.js';
+
+let _stylesInjected = false;
+function ensureStyles() {
+    if (_stylesInjected) return;
+    _stylesInjected = true;
+    const css = `
+    .wr-empty{padding:40px 20px;text-align:center;color:#666;font-family:var(--font-mono,monospace);font-size:12px;}
+    .wr-war{background:#0a0a0a;border:0.5px solid rgba(255,255,255,0.08);border-radius:8px;padding:20px;margin-bottom:18px;}
+    .wr-head{text-align:center;margin-bottom:20px;}
+    .wr-eyebrow{font-size:10px;letter-spacing:0.2em;color:#7a4a4a;margin-bottom:6px;}
+    .wr-title{font-size:24px;font-weight:500;color:#fff;}
+    .wr-dates{margin-top:8px;font-size:11px;color:#888;letter-spacing:0.04em;}
+    .wr-dates .dur{color:#c89e6e;}
+    .wr-sec{font-size:10px;letter-spacing:0.16em;color:#666;margin:18px 0 10px;padding-bottom:6px;border-bottom:0.5px solid rgba(255,255,255,0.08);}
+    .wr-front{background:#0d0d0d;border:0.5px solid rgba(255,255,255,0.08);border-radius:5px;padding:12px 14px;margin-bottom:10px;}
+    .wr-front-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;}
+    .wr-front-name{font-size:13px;font-weight:600;color:#fff;}
+    .wr-front-sub{font-size:9px;letter-spacing:0.06em;color:#666;}
+    .wr-chain{display:flex;gap:4px;overflow-x:auto;padding-bottom:4px;}
+    .wr-cell{flex:1;min-width:78px;background:#111;border:0.5px solid rgba(255,255,255,0.08);border-radius:4px;padding:8px;border-top-width:3px;}
+    .wr-cell.mine{border-top-color:var(--wr-mine,#c87a7a);}
+    .wr-cell.theirs{border-top-color:var(--wr-theirs,#7a9aab);}
+    .wr-cell.cap{background:#161013;}
+    .wr-cell .cn{font-size:11px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .wr-cell .ct{font-size:8px;letter-spacing:0.08em;color:#777;margin-top:2px;}
+    .wr-cell .cm{font-size:7px;letter-spacing:0.1em;margin-top:4px;}
+    .wr-cell .cm.cap{color:#c89e6e;} .wr-cell .cm.border{color:#c87a7a;}
+    .wr-army{font-size:9px;margin-top:5px;display:flex;align-items:center;gap:4px;}
+    .wr-army .dot{width:6px;height:6px;border-radius:50%;flex:none;}
+    .wr-army.mine .dot{background:#c87a7a;} .wr-army.theirs .dot{background:#7a9aab;}
+    .wr-army .nm{color:#bbb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .wr-army .sup{margin-left:auto;font-weight:700;flex:none;}
+    .wr-army .sup.ok{color:#46c46a;} .wr-army .sup.short{color:#e5534b;}
+    .wr-spectrum{display:flex;border-radius:4px;overflow:hidden;border:0.5px solid rgba(255,255,255,0.08);}
+    .wr-seg{flex:1;padding:8px 6px;text-align:center;font-size:9px;letter-spacing:0.03em;color:#666;border-right:0.5px solid rgba(255,255,255,0.05);}
+    .wr-seg:last-child{border-right:none;}
+    .wr-seg.you{background:#1f1313;color:#c87a7a;} .wr-seg.them{background:#11181f;color:#7a9aab;}
+    .wr-seg.active{font-weight:700;box-shadow:inset 0 0 0 1px currentColor;}
+    .wr-naval{background:#0d0d0d;border:0.5px solid rgba(255,255,255,0.08);border-radius:5px;padding:12px 14px;opacity:0.45;font-size:11px;color:#888;}`;
+    const el = document.createElement('style');
+    el.id = 'war-room-styles';
+    el.textContent = css;
+    document.head.appendChild(el);
+}
+
+// air_status is stored from nation_a's POV (a_domination … b_domination). Render
+// the spectrum from the VIEWER's POV: their side always on the left.
+const AIR_INDEX = { a_domination: 0, a_superiority: 1, contested: 2, b_superiority: 3, b_domination: 4 };
+
+export async function mountWarRoom(container, nation) {
+    if (!container) return;
+    ensureStyles();
+    if (!nation?.id) { container.innerHTML = `<div class="wr-empty">No nation context.</div>`; return; }
+    container.innerHTML = `<div class="wr-empty">Loading wars…</div>`;
+
+    let wars = [];
+    try {
+        const { data, error } = await _supabase.from('diplomatic_relations')
+            .select('nation_a_id, nation_b_id, war_declared_at_tick, war_justification')
+            .eq('relation_type', 'war')
+            .or(`nation_a_id.eq.${nation.id},nation_b_id.eq.${nation.id}`);
+        if (error) throw error;
+        wars = data || [];
+    } catch (e) {
+        console.warn('[war-room] load failed:', e?.message || e);
+        container.innerHTML = `<div class="wr-empty">Could not load wars.</div>`;
+        return;
+    }
+    if (!wars.length) {
+        container.innerHTML = `<div class="wr-empty">No active wars. When a state of war exists, it appears here.</div>`;
+        return;
+    }
+
+    const enemyIds = [...new Set(wars.map(w => w.nation_a_id === nation.id ? w.nation_b_id : w.nation_a_id))];
+    const { data: nats } = await _supabase.from('nations').select('id, name').in('id', enemyIds);
+    const nameById = new Map((nats || []).map(n => [n.id, n.name]));
+
+    try {
+        const blocks = [];
+        for (const w of wars) blocks.push(await renderWar(w, nation, nameById));
+        container.innerHTML = blocks.join('');
+    } catch (e) {
+        console.warn('[war-room] render failed:', e?.message || e);
+        container.innerHTML = `<div class="wr-empty">Could not render the war room.</div>`;
+    }
+}
+
+async function renderWar(w, nation, nameById) {
+    const a = w.nation_a_id, b = w.nation_b_id;   // canonical (a<b)
+    const enemyId = a === nation.id ? b : a;
+    const enemyName = nameById.get(enemyId) || 'the enemy';
+    const youAreA = nation.id === a;
+
+    const { data: fronts } = await _supabase.from('war_fronts')
+        .select('id, front_type, label, sector_count, air_status')
+        .eq('nation_a_id', a).eq('nation_b_id', b);
+    const land = (fronts || []).filter(f => f.front_type === 'land').sort((x, y) => String(x.label).localeCompare(String(y.label)));
+    const air = (fronts || []).find(f => f.front_type === 'air');
+    const hasSea = (fronts || []).some(f => f.front_type === 'sea');
+
+    // Sectors of the land fronts + capital nodes (front_id NULL) for the two nations.
+    const landIds = land.map(f => f.id);
+    const sectorsByFront = new Map();
+    const armiesBySector = new Map();
+    let capByNation = new Map();
+    if (landIds.length) {
+        const { data: secs } = await _supabase.from('war_sectors')
+            .select('id, front_id, position, name, type, nation_id, is_capital, is_border, is_capital_adjacent')
+            .in('front_id', landIds);
+        for (const s of (secs || [])) {
+            if (!sectorsByFront.has(s.front_id)) sectorsByFront.set(s.front_id, []);
+            sectorsByFront.get(s.front_id).push(s);
+        }
+        for (const arr of sectorsByFront.values()) arr.sort((x, y) => (x.position || 0) - (y.position || 0));
+
+        const { data: caps } = await _supabase.from('war_sectors')
+            .select('id, name, type, nation_id, is_capital')
+            .is('front_id', null).eq('is_capital', true).in('nation_id', [a, b]);
+        capByNation = new Map((caps || []).map(c => [c.nation_id, c]));
+
+        const secIds = (secs || []).map(s => s.id);
+        if (secIds.length) {
+            const { data: arms } = await _supabase.from('armies')
+                .select('id, name, nation_id, current_sector_id, supply_balance')
+                .in('current_sector_id', secIds);
+            for (const ar of (arms || [])) {
+                if (!armiesBySector.has(ar.current_sector_id)) armiesBySector.set(ar.current_sector_id, []);
+                armiesBySector.get(ar.current_sector_id).push(ar);
+            }
+        }
+    }
+
+    const styleVars = `--wr-mine:#c87a7a;--wr-theirs:#7a9aab;`;
+
+    // Land fronts
+    const frontsHtml = land.length ? land.map(f => {
+        const secs = sectorsByFront.get(f.id) || [];
+        // Bookend with each nation's capital: A's capital left, B's capital right.
+        const cells = [];
+        const capA = capByNation.get(a), capB = capByNation.get(b);
+        if (capA) cells.push(cellHtml(capA, nation, armiesBySector, true));
+        for (const s of secs) cells.push(cellHtml(s, nation, armiesBySector, false));
+        if (capB) cells.push(cellHtml(capB, nation, armiesBySector, true));
+        return `<div class="wr-front">
+            <div class="wr-front-head"><span class="wr-front-name">Front ${escapeHtml(f.label || '')}</span><span class="wr-front-sub">${Number(f.sector_count) || secs.length} sectors · ${escapeHtml(nation.name)} ← → ${escapeHtml(enemyName)}</span></div>
+            <div class="wr-chain">${cells.join('')}</div>
+        </div>`;
+    }).join('') : `<div class="wr-empty">No land fronts generated for this war yet.</div>`;
+
+    // Air spectrum (viewer POV)
+    const rawIdx = air ? (AIR_INDEX[air.air_status] ?? 2) : 2;
+    const activeIdx = youAreA ? rawIdx : 4 - rawIdx;
+    const segLabels = [`${nation.name} Domination`, `${nation.name} Superiority`, 'Contested', `${enemyName} Superiority`, `${enemyName} Domination`];
+    const segClass = ['you', 'you', '', 'them', 'them'];
+    const airHtml = `<div class="wr-spectrum">${segLabels.map((l, i) =>
+        `<div class="wr-seg ${segClass[i]} ${i === activeIdx ? 'active' : ''}">${escapeHtml(l)}</div>`).join('')}</div>`;
+
+    const navalHtml = hasSea ? '' : `<div class="wr-naval">⚓ Naval War — no contested coastline; not applicable to this war.</div>`;
+
+    return `<div class="wr-war" style="${styleVars}">
+        <div class="wr-head">
+            <div class="wr-eyebrow">— ACTIVE CONFLICT —</div>
+            <div class="wr-title">The ${escapeHtml(nation.name)}–${escapeHtml(enemyName)} War</div>
+            <div class="wr-dates">Began ${escapeHtml(tickToDate(Number(w.war_declared_at_tick)) || '—')}${w.war_justification ? ` · ${escapeHtml(w.war_justification)}` : ''}</div>
+        </div>
+        <div class="wr-sec">LAND FRONTS</div>
+        ${frontsHtml}
+        <div class="wr-sec">AIR WAR</div>
+        ${airHtml}
+        <div class="wr-sec">NAVAL</div>
+        ${navalHtml || '<div class="wr-naval">⚓ Naval War — active sea front.</div>'}
+    </div>`;
+}
+
+function cellHtml(s, nation, armiesBySector, isCapital) {
+    const mine = s.nation_id === nation.id;
+    const marker = s.is_capital ? `<div class="cm cap">★ CAPITAL</div>`
+        : s.is_border ? `<div class="cm border">⚔ BORDER</div>`
+        : s.is_capital_adjacent ? `<div class="cm">⌂ REAR</div>` : '';
+    const armies = armiesBySector.get(s.id) || [];
+    const armiesHtml = armies.map(ar => {
+        const am = ar.nation_id === nation.id;
+        const sb = ar.supply_balance;
+        const sup = (sb === null || sb === undefined) ? ''
+            : (Number(sb) < 0 ? `<span class="sup short">⚠${Number(sb)}</span>` : `<span class="sup ok">+${Number(sb)}</span>`);
+        return `<div class="wr-army ${am ? 'mine' : 'theirs'}"><span class="dot"></span><span class="nm">${escapeHtml(ar.name || 'Army')}</span>${sup}</div>`;
+    }).join('');
+    return `<div class="wr-cell ${mine ? 'mine' : 'theirs'} ${isCapital ? 'cap' : ''}">
+        <div class="cn">${escapeHtml(s.name || s.sector_code || '—')}</div>
+        <div class="ct">${escapeHtml((s.type || '').toUpperCase())}</div>
+        ${marker}
+        ${armiesHtml}
+    </div>`;
+}
