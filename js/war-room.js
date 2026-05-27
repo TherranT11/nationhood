@@ -21,7 +21,6 @@ function ensureStyles() {
     .wr-eyebrow{font-size:10px;letter-spacing:0.2em;color:#7a4a4a;margin-bottom:6px;}
     .wr-title{font-size:24px;font-weight:500;color:#fff;}
     .wr-dates{margin-top:8px;font-size:11px;color:#888;letter-spacing:0.04em;}
-    .wr-dates .dur{color:#c89e6e;}
     .wr-sec{font-size:10px;letter-spacing:0.16em;color:#666;margin:18px 0 10px;padding-bottom:6px;border-bottom:0.5px solid rgba(255,255,255,0.08);}
     .wr-front{background:#0d0d0d;border:0.5px solid rgba(255,255,255,0.08);border-radius:5px;padding:12px 14px;margin-bottom:10px;}
     .wr-front-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;}
@@ -29,8 +28,8 @@ function ensureStyles() {
     .wr-front-sub{font-size:9px;letter-spacing:0.06em;color:#666;}
     .wr-chain{display:flex;gap:4px;overflow-x:auto;padding-bottom:4px;}
     .wr-cell{flex:1;min-width:78px;background:#111;border:0.5px solid rgba(255,255,255,0.08);border-radius:4px;padding:8px;border-top-width:3px;}
-    .wr-cell.mine{border-top-color:var(--wr-mine,#c87a7a);}
-    .wr-cell.theirs{border-top-color:var(--wr-theirs,#7a9aab);}
+    .wr-cell.mine{border-top-color:#c87a7a;}
+    .wr-cell.theirs{border-top-color:#7a9aab;}
     .wr-cell.cap{background:#161013;}
     .wr-cell .cn{font-size:11px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .wr-cell .ct{font-size:8px;letter-spacing:0.08em;color:#777;margin-top:2px;}
@@ -82,11 +81,10 @@ export async function mountWarRoom(container, nation) {
         return;
     }
 
-    const enemyIds = [...new Set(wars.map(w => w.nation_a_id === nation.id ? w.nation_b_id : w.nation_a_id))];
-    const { data: nats } = await _supabase.from('nations').select('id, name').in('id', enemyIds);
-    const nameById = new Map((nats || []).map(n => [n.id, n.name]));
-
     try {
+        const enemyIds = [...new Set(wars.map(w => w.nation_a_id === nation.id ? w.nation_b_id : w.nation_a_id))];
+        const { data: nats } = await _supabase.from('nations').select('id, name').in('id', enemyIds);
+        const nameById = new Map((nats || []).map(n => [n.id, n.name]));
         const blocks = [];
         for (const w of wars) blocks.push(await renderWar(w, nation, nameById));
         container.innerHTML = blocks.join('');
@@ -141,7 +139,10 @@ async function renderWar(w, nation, nameById) {
         }
     }
 
-    const styleVars = `--wr-mine:#c87a7a;--wr-theirs:#7a9aab;`;
+    // The chain is always laid out nation_a (left) → nation_b (right); label it
+    // in that same order so a nation_b viewer isn't mis-oriented.
+    const leftName = youAreA ? nation.name : enemyName;
+    const rightName = youAreA ? enemyName : nation.name;
 
     // Land fronts
     const frontsHtml = land.length ? land.map(f => {
@@ -153,7 +154,7 @@ async function renderWar(w, nation, nameById) {
         for (const s of secs) cells.push(cellHtml(s, nation, armiesBySector, false));
         if (capB) cells.push(cellHtml(capB, nation, armiesBySector, true));
         return `<div class="wr-front">
-            <div class="wr-front-head"><span class="wr-front-name">Front ${escapeHtml(f.label || '')}</span><span class="wr-front-sub">${Number(f.sector_count) || secs.length} sectors · ${escapeHtml(nation.name)} ← → ${escapeHtml(enemyName)}</span></div>
+            <div class="wr-front-head"><span class="wr-front-name">Front ${escapeHtml(f.label || '')}</span><span class="wr-front-sub">${Number(f.sector_count) || secs.length} sectors · ${escapeHtml(leftName)} ← → ${escapeHtml(rightName)}</span></div>
             <div class="wr-chain">${cells.join('')}</div>
         </div>`;
     }).join('') : `<div class="wr-empty">No land fronts generated for this war yet.</div>`;
@@ -168,7 +169,7 @@ async function renderWar(w, nation, nameById) {
 
     const navalHtml = hasSea ? '' : `<div class="wr-naval">⚓ Naval War — no contested coastline; not applicable to this war.</div>`;
 
-    return `<div class="wr-war" style="${styleVars}">
+    return `<div class="wr-war">
         <div class="wr-head">
             <div class="wr-eyebrow">— ACTIVE CONFLICT —</div>
             <div class="wr-title">The ${escapeHtml(nation.name)}–${escapeHtml(enemyName)} War</div>
@@ -197,7 +198,7 @@ function cellHtml(s, nation, armiesBySector, isCapital) {
         return `<div class="wr-army ${am ? 'mine' : 'theirs'}"><span class="dot"></span><span class="nm">${escapeHtml(ar.name || 'Army')}</span>${sup}</div>`;
     }).join('');
     return `<div class="wr-cell ${mine ? 'mine' : 'theirs'} ${isCapital ? 'cap' : ''}">
-        <div class="cn">${escapeHtml(s.name || s.sector_code || '—')}</div>
+        <div class="cn">${escapeHtml(s.name || '—')}</div>
         <div class="ct">${escapeHtml((s.type || '').toUpperCase())}</div>
         ${marker}
         ${armiesHtml}
