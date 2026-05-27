@@ -26538,24 +26538,46 @@ async function processIssueTick(supabase, nationList, currentTick) {
             newStatus = 'partial';
         }
 
-        // ── 7. Check tension 10 → escalation ──
-        // Territorial disputes that go unresolved escalate straight to WAR
-        // (diplomatic_relations.relation_type='war'); every other issue type
-        // spawns its incident as before.
-        if (newTension >= 10 && issue.status !== 'escalated') {
-            const leverage = favorToLeverage(issue.favor);
-            const isTerritorial = issue.issue_type === 'territorial_ownership';
-
-            let incidentId = null, escalationOk = false;
-            if (isTerritorial) {
-                escalationOk = await startWarFromIssue(supabase, issue, nationA, nationB, currentTick);
-            } else {
-                const incidentResult = await spawnIncidentFromIssue(
-                    supabase, issue, nationA, nationB, leverage, currentTick
-                );
-                incidentId = incidentResult?.incidentId || null;
-                escalationOk = !!incidentId;
+        // ── 7. Territorial decision clock → war ──
+        // Territorial disputes resolve via their decision clock, NOT passive
+        // tension. At/after the deadline with nothing resolved, the dispute
+        // auto-goes to war (the clock running out IS the casus belli). go_to_war
+        // collapses the deadline to "now" so this same branch fires it. The war
+        // state is set by the one writer, setNationsAtWar, via startWarFromIssue.
+        let escalatedToWar = false;
+        if (issue.issue_type === 'territorial_ownership' && issue.status !== 'escalated') {
+            let deadline = issue.decision_deadline_tick;
+            if (deadline == null && issue.created_tick != null) {
+                deadline = issue.created_tick + 6;
+                await supabase.from('bilateral_issues')
+                    .update({ decision_deadline_tick: deadline }).eq('id', issue.id);
             }
+            if (deadline != null && currentTick >= deadline
+                && await startWarFromIssue(supabase, issue, nationA, nationB, currentTick)) {
+                newStatus = 'escalated';
+                escalatedToWar = true;
+                results.escalations.push({
+                    issue_id: issue.id, issue_type: issue.issue_type, incident_id: null,
+                    war: true, nation_a_id: issue.nation_a_id, nation_b_id: issue.nation_b_id,
+                    favor: issue.favor, starting_leverage: favorToLeverage(issue.favor),
+                });
+                await insertHistory(supabase, issue.id, currentTick, 'escalated',
+                    'The decision clock ran out — a state of war now exists.',
+                    { deadline_tick: deadline, tension: newTension });
+            }
+        }
+
+        // ── 8. Check tension 10 → incident escalation (non-territorial only) ──
+        // Territorial disputes no longer escalate on tension; they use the clock
+        // above. Every other issue type still spawns its incident at tension 10.
+        if (!escalatedToWar && newTension >= 10 && issue.status !== 'escalated'
+            && issue.issue_type !== 'territorial_ownership') {
+            const leverage = favorToLeverage(issue.favor);
+            const incidentResult = await spawnIncidentFromIssue(
+                supabase, issue, nationA, nationB, leverage, currentTick
+            );
+            const incidentId = incidentResult?.incidentId || null;
+            const escalationOk = !!incidentId;
 
             // Only mark as escalated if the war/incident actually happened.
             if (escalationOk) {
@@ -26565,7 +26587,7 @@ async function processIssueTick(supabase, nationList, currentTick) {
                     issue_id: issue.id,
                     issue_type: issue.issue_type,
                     incident_id: incidentId,
-                    war: isTerritorial,
+                    war: false,
                     nation_a_id: issue.nation_a_id,
                     nation_b_id: issue.nation_b_id,
                     favor: issue.favor,
@@ -26573,9 +26595,7 @@ async function processIssueTick(supabase, nationList, currentTick) {
                 });
 
                 await insertHistory(supabase, issue.id, currentTick, 'escalated',
-                    isTerritorial
-                        ? 'The territorial dispute went unresolved — a state of war now exists.'
-                        : 'This issue has escalated to an incident.',
+                    'This issue has escalated to an incident.',
                     { tension: newTension, favor: issue.favor, leverage,
                       incident_id: incidentId });
 
