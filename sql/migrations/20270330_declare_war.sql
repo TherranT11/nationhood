@@ -92,10 +92,12 @@ BEGIN
 
     -- Casus belli.
     IF p_casus_belli = 'press_claim' THEN
+        -- "Completed at tension 10" = the issue escalated (durable state; tension
+        -- can drift back below 10 afterwards once its modifiers are deactivated).
         IF NOT EXISTS (
             SELECT 1 FROM bilateral_issues
              WHERE issue_type = 'territorial_ownership'
-               AND tension >= 10
+               AND (status = 'escalated' OR tension >= 10)
                AND ((nation_a_id = v_a AND nation_b_id = v_b) OR (nation_a_id = v_b AND nation_b_id = v_a))
         ) THEN
             RETURN jsonb_build_object('success', false, 'error', 'No pressed claim at maximum tension against that nation');

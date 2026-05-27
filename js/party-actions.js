@@ -3441,7 +3441,7 @@ async function openDeclareWarModal(root, faction) {
             _supabase.from('diplomatic_relations').select('nation_a_id, nation_b_id, relation_type')
                 .or(`nation_a_id.eq.${myNationId},nation_b_id.eq.${myNationId}`).eq('proximity', 0),
             _supabase.from('bilateral_issues').select('nation_a_id, nation_b_id')
-                .eq('issue_type', 'territorial_ownership').gte('tension', 10)
+                .eq('issue_type', 'territorial_ownership').or('status.eq.escalated,tension.gte.10')
                 .or(`nation_a_id.eq.${myNationId},nation_b_id.eq.${myNationId}`),
         ]);
         if (relResp.error) throw relResp.error;

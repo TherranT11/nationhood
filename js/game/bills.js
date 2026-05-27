@@ -3135,7 +3135,7 @@ export async function resolveStuckFloorBills(supabase, nationId) {
         constitutional_amendment_streamlining: !!nation?.constitutional_amendment_streamlining
     };
 
-    const specialTypes = new Set(['no_confidence', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation', 'governor_confirmation']);
+    const specialTypes = new Set(['no_confidence', 'declare_war', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation', 'governor_confirmation']);
     const results = [];
 
     for (const bill of stuckBills) {

@@ -565,7 +565,7 @@ export function openAssignArmyModal(faction, onAssigned) {
     document.body.appendChild(overlay);
   }
   const FEE = 1000000;
-  let armies = [], fronts = [], neighborById = new Map(), unitsOnFront = new Map(), oppOnFront = new Map(), funds = 0;
+  let armies = [], fronts = [], neighborById = new Map(), unitsOnFront = new Map(), oppOnFront = new Map(), warNeighbours = new Set(), funds = 0;
   let selArmy = null, selFront = null, busy = false;
 
   const close = () => { overlay.style.display = 'none'; overlay.innerHTML = ''; overlay.onclick = null; };
@@ -588,15 +588,19 @@ export function openAssignArmyModal(faction, onAssigned) {
     const frontsHtml = fronts.length
       ? fronts.map(f => {
           const sel = selFront === f.id;
-          const neigh = neighborById.get(frontNeighbourId(f, faction.nation_id));
+          const nId = frontNeighbourId(f, faction.nation_id);
+          const neigh = neighborById.get(nId);
           const flag = nationFlagUrl(neigh);
           const nm = (neigh && neigh.name) || 'Border';
           const onFront = unitsOnFront.get(f.id) || 0;
           const opp = oppOnFront.get(f.id) || 0;
+          const statusPill = warNeighbours.has(nId)
+            ? `<span style="color:#e5534b;font-weight:700;margin-left:6px;">[AT WAR]</span>`
+            : `<span style="color:#46c46a;font-weight:700;margin-left:6px;">[PEACE]</span>`;
           return `<div class="ca-row ${sel ? 'sel' : ''}" data-asn="front:${escapeAttr(f.id)}">
             <div class="ca-check">${sel ? '✓' : ''}</div>
             ${flag ? `<img src="${escapeAttr(flag)}" alt="" style="width:26px;height:18px;object-fit:cover;border-radius:2px;flex:none;" onerror="this.style.display='none'">` : ''}
-            <div style="flex:1;min-width:0;"><div class="un">${escapeHtml(nm)} Front ${escapeHtml(f.label)}</div>
+            <div style="flex:1;min-width:0;"><div class="un">${escapeHtml(nm)} Front ${escapeHtml(f.label)}${statusPill}</div>
             <div class="us">${onFront} unit${onFront === 1 ? '' : 's'} deployed · ${Number(f.sector_count) || 0} sectors</div>
             <div class="us">Opposing Units in this Sector: ${opp}</div></div>
           </div>`;
@@ -680,7 +684,7 @@ export function openAssignArmyModal(faction, onAssigned) {
 
       const neighborIds = [...new Set(fronts.map(f => frontNeighbourId(f, faction.nation_id)))];
       const frontIds = fronts.map(f => f.id);
-      const [natsRes, oppArmiesRes] = await Promise.all([
+      const [natsRes, oppArmiesRes, relRes] = await Promise.all([
         neighborIds.length
           ? _supabase.from('nations').select('id, name, flag_url, nation_profiles(flag_url)').in('id', neighborIds)
           : Promise.resolve({ data: [] }),
@@ -688,8 +692,17 @@ export function openAssignArmyModal(faction, onAssigned) {
         frontIds.length
           ? _supabase.from('armies').select('id, assigned_front_id').in('assigned_front_id', frontIds).neq('nation_id', faction.nation_id)
           : Promise.resolve({ data: [] }),
+        // War state: neighbours whose pair-relation with us is 'war' (fronts active).
+        neighborIds.length
+          ? _supabase.from('diplomatic_relations').select('nation_a_id, nation_b_id')
+              .eq('relation_type', 'war')
+              .or(`nation_a_id.eq.${faction.nation_id},nation_b_id.eq.${faction.nation_id}`)
+          : Promise.resolve({ data: [] }),
       ]);
       for (const n of (natsRes.data || [])) neighborById.set(n.id, n);
+      for (const r of (relRes.data || [])) {
+        warNeighbours.add(r.nation_a_id === faction.nation_id ? r.nation_b_id : r.nation_a_id);
+      }
 
       const oppArmies = oppArmiesRes.data || [];
       if (oppArmies.length) {
