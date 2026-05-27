@@ -3672,15 +3672,19 @@ function initials(s, n) {
         if (!cyNations.length) {
           openHtml = '<div class="sh-empty">Build a Construction Yard to bid on requests.</div>';
         } else {
+          // Private building requests (building_type set) AND government
+          // infrastructure (building_type NULL, issuer_corp_id NULL — Expand
+          // Infrastructure). neq(issuer_corp_id) is done client-side so NULL gov
+          // issuers aren't excluded by SQL's NULL <> id.
           const { data: openReqs, error: orErr } = await _supabase.from('ent_construction_contracts')
-            .select('id, name, building_type, budget, build_cost, issuer_name, nation:nations!nation_id(name), mybid:ent_construction_bids(bid_amount, bidder_corp_id)')
-            .eq('status', 'open').not('building_type', 'is', null).in('nation_id', cyNations)
-            .neq('issuer_corp_id', id).order('bidding_closes_tick', { ascending: true });
+            .select('id, name, building_type, contract_type, issuer_corp_id, budget, build_cost, issuer_name, nation:nations!nation_id(name), mybid:ent_construction_bids(bid_amount, bidder_corp_id)')
+            .eq('status', 'open').in('nation_id', cyNations)
+            .order('bidding_closes_tick', { ascending: true });
           if (orErr) console.warn('[entrepreneur-corp] open requests fetch error:', orErr.message);
-          const open = openReqs || [];
+          const open = (openReqs || []).filter(r => r.issuer_corp_id !== id);
           const orRow = (r) => {
             const mine = (r.mybid || []).find(b => b.bidder_corp_id === id);
-            const label = buildingTypeLabel(r.building_type);
+            const label = r.building_type ? buildingTypeLabel(r.building_type) : 'Government · Infrastructure';
             const bidBtn = ownerOnly(`<button class="ap-btn-small list rc-bid-btn" data-cid="${r.id}" data-label="${escapeHtml(label)}" data-floor="${Number(r.build_cost) || 0}" data-budget="${Number(r.budget) || 0}">${mine ? `bid ${fmtUsd(Number(mine.bid_amount))}` : 'Bid'}</button>`);
             return `<div class="cf-row"><div><div class="who">${escapeHtml(label)} · ${escapeHtml(r.name)}</div>
               <div class="sub">${escapeHtml(r.nation?.name || '—')} · by ${escapeHtml(r.issuer_name || '—')} · floor ${fmtUsd(Number(r.build_cost) || 0)} · budget ${fmtUsd(Number(r.budget) || 0)}</div></div>
