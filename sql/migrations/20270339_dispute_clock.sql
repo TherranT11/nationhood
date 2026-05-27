@@ -32,6 +32,13 @@ BEGIN;
 ALTER TABLE bilateral_issues
     ADD COLUMN IF NOT EXISTS decision_deadline_tick INT;
 
+-- Lock the clock against direct client writes. The open bilateral_issues_auth_update
+-- policy (20260410) lets any authenticated user UPDATE any column, so without this a
+-- pressor could push the deadline out forever (dodging auto-war) or a claimant could
+-- collapse it. Only the SECURITY DEFINER RPCs below (and the service-role tick) move
+-- it — they bypass this revoke. Mirrors the officer_action_cooldowns / army_* pattern.
+REVOKE UPDATE (decision_deadline_tick) ON public.bilateral_issues FROM PUBLIC, anon, authenticated;
+
 -- ── 2. Start the clock on every new territorial claim ────────────────────────
 -- A BEFORE INSERT trigger keeps press_claim untouched (DRY): any territorial
 -- dispute opens with deadline = created_tick + 6. created_tick is stamped by
