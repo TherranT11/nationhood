@@ -3316,6 +3316,8 @@ async function openPressClaimModal(root, faction) {
         if (mResp.error || relResp.error) throw (mResp.error || relResp.error);
         balance = Number(mResp.data?.discretionary_balance || 0);
         const ids = (relResp.data || []).map(r => r.nation_a_id === myNationId ? r.nation_b_id : r.nation_a_id);
+        // TEMP DIAGNOSTIC — remove after debugging the "no bordering nations" issue.
+        console.log('[press-claim debug]', { myNationId, relErr: relResp.error?.message || null, relCount: (relResp.data || []).length, ids, mErr: mResp.error?.message || null });
         const disputed = new Set((issResp.data || []).map(i => i.nation_a_id === myNationId ? i.nation_b_id : i.nation_a_id));
         if (ids.length) {
             const { data: nats } = await _supabase.from('nations').select('id, name').in('id', ids);
