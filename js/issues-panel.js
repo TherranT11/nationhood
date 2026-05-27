@@ -144,7 +144,7 @@ export async function fetchWorldIssues(supabase) {
 
 // ── render: summary row ─────────────────────────────────────────────────────
 
-function disputeRow(issue, role, roles, expanded, currentTick) {
+function disputeRow(issue, role, roles, expanded, currentTick, canManage) {
   const badge = typeBadge(issue.issue_type);
   const region = regionText(issue);
 
@@ -162,12 +162,12 @@ function disputeRow(issue, role, roles, expanded, currentTick) {
       <span class="${clockCls}">${clockText(issue, currentTick)}</span>
     </div>`;
 
-  return `<div class="dispute${expanded ? ' expanded' : ''}" data-id="${escapeHtml(issue.id)}">${summary}<div class="d-detail">${disputeDetail(issue, roles, role, region, currentTick)}</div></div>`;
+  return `<div class="dispute${expanded ? ' expanded' : ''}" data-id="${escapeHtml(issue.id)}">${summary}<div class="d-detail">${disputeDetail(issue, roles, role, region, currentTick, canManage)}</div></div>`;
 }
 
 // HTML inside `.issues-content` — the count line + the dispute list. Shared by the
 // initial render and the post-action reload so they can't drift.
-function buildContent(issues, nationId, expandedId, currentTick) {
+function buildContent(issues, nationId, expandedId, currentTick, canManage) {
   const tagged = (Array.isArray(issues) ? issues : []).map(it => {
     const roles = rolesOf(it);
     return { issue: it, roles, role: viewerRole(it, nationId, roles) };
@@ -175,12 +175,12 @@ function buildContent(issues, nationId, expandedId, currentTick) {
   if (!tagged.length) return '<div class="issues-empty">No ongoing issues</div>';
   const involved = tagged.filter(t => t.role !== 'third').length;
   return `<div class="issues-sub">${tagged.length} ONGOING &middot; YOU ARE INVOLVED IN ${involved}</div>`
-    + `<div class="disputes">${tagged.map(t => disputeRow(t.issue, t.role, t.roles, t.issue.id === expandedId, currentTick)).join('')}</div>`;
+    + `<div class="disputes">${tagged.map(t => disputeRow(t.issue, t.role, t.roles, t.issue.id === expandedId, currentTick, canManage)).join('')}</div>`;
 }
 
 // ── render: shared detail (combatants + stances + role module + chat) ─────────
 
-function disputeDetail(issue, roles, role, region, currentTick) {
+function disputeDetail(issue, roles, role, region, currentTick, canManage) {
   const youTag = '<span class="you">YOU</span>';
   const aYou = role === 'claimant' ? youTag : '';
   const bYou = role === 'pressor'  ? youTag : '';
@@ -210,8 +210,8 @@ function disputeDetail(issue, roles, role, region, currentTick) {
       ${PREVIEW('Third-party stances (support / condemn / mediate) are not yet tracked.')}
     </div>`;
 
-  const roleModule = role === 'claimant' ? claimantZone(issue)
-                   : role === 'pressor'  ? pressorZone(issue, region, roles)
+  const roleModule = role === 'claimant' ? claimantZone(issue, canManage)
+                   : role === 'pressor'  ? pressorZone(issue, region, roles, canManage)
                    :                       thirdPartyZone(roles);
 
   // The head-of-state channel is private to the two principals (and, in future,
@@ -223,16 +223,29 @@ function disputeDetail(issue, roles, role, region, currentTick) {
 // ── role modules (inert previews) ────────────────────────────────────────────
 
 // Claimant role module. For territorial disputes, Concede (concede_claim) and
-// Stand Strong are LIVE; Offer Compromise + Request Mediation stay inert previews
-// (those systems aren't built). Non-territorial claimant views stay inert.
-function claimantZone(issue) {
+// Stand Strong are LIVE — but only for the head of government (canManage);
+// everyone else sees a read-only view. Offer Compromise + Request Mediation stay
+// inert previews. Non-territorial claimant views stay inert.
+function claimantZone(issue, canManage) {
   if (issue.issue_type !== 'territorial_ownership') {
     return `<div class="claimant-zone"><div class="cz-actions">
-      <div class="lab">YOUR OPTIONS AS THE CLAIMANT</div>
+      <div class="lab">CLAIMANT &mdash; YOUR NATION'S OPTIONS</div>
       ${PREVIEW('Claimant actions for this issue type are not yet active.')}
     </div></div>`;
   }
   const id = escapeHtml(issue.id);
+  if (!canManage) {
+    return `<div class="claimant-zone"><div class="cz-actions">
+      <div class="lab">CLAIMANT &mdash; YOUR NATION'S OPTIONS</div>
+      <div class="cz-grid iss-inert">
+        <div class="cza concede"><div class="cn">Concede</div><div class="cd">Accept the demand. The dispute ends in the pressor's favour.</div></div>
+        <div class="cza stand"><div class="cn">Stand Strong</div><div class="cd">Hold the ground and let the clock run.</div></div>
+        <div class="cza compromise"><div class="cn">Offer Compromise</div><div class="cd">Table a counter-offer. Not yet active.</div></div>
+        <div class="cza mediate"><div class="cn">Request Mediation</div><div class="cd">Bring in a broker. Not yet active.</div></div>
+      </div>
+      <div class="iss-note">Only the head of government can decide this dispute.</div>
+    </div></div>`;
+  }
   return `<div class="claimant-zone">
     <div class="cz-actions">
       <div class="lab">YOUR OPTIONS AS THE CLAIMANT</div>
@@ -251,7 +264,7 @@ function claimantZone(issue) {
 // demand_rung; soften / press_harder / extend_deadline / go_to_war / drop (back
 // down) call their RPCs (wired in mountIssuesPanel, with a busy-lock). For any
 // other issue type there is no ladder yet, so it stays an inert preview.
-function pressorZone(issue, region, roles) {
+function pressorZone(issue, region, roles, canManage) {
   if (issue.issue_type !== 'territorial_ownership') {
     return `<div class="pressor-zone"><div class="pz-ladder">
       <div class="lab">YOUR MOVES</div>
@@ -268,6 +281,14 @@ function pressorZone(issue, region, roles) {
          + `<span class="rdesc">${rung.desc(r, c, p)}</span><span class="rtag">${tag}</span></div>`;
   }).join('');
   const id = escapeHtml(issue.id);
+  // Non-HoG viewers see the standing demand read-only — no levers or doors.
+  if (!canManage) {
+    return `<div class="pressor-zone"><div class="pz-ladder">
+      <div class="lab">CURRENT DEMAND</div>
+      <div class="ladder-rungs">${rungs}</div>
+      <div class="iss-note">Only the head of government can act on this dispute.</div>
+    </div></div>`;
+  }
   const soften = cur < 4
     ? `<button type="button" class="iss-btn soften" data-action="soften" data-id="${id}">&#9662; Soften one rung &mdash; smaller prize, easier yes (cannot be undone)</button>`
     : `<div class="iss-note">At the floor. The only moves left are to go to war or back down.</div>`;
@@ -467,14 +488,15 @@ function ensureStyles() {
 // ── public API ────────────────────────────────────────────────────────────
 
 // Render the panel. nationId = the viewer's nation (drives role tagging + YOU).
-// opts.currentTick drives the decision clock. Actions are wired in mountIssuesPanel.
+// opts.currentTick drives the decision clock; opts.canManage shows the action
+// buttons (head of government only). Actions are wired in mountIssuesPanel.
 export function renderIssuesPanel(host, issues, nationId, opts = {}) {
   if (!host) return;
   ensureStyles();
   const heading = opts.heading === undefined ? 'I. Issues' : opts.heading;
   host.innerHTML = `<section class="issues-panel">
       ${heading ? `<div class="issues-panel__head">${escapeHtml(heading)}</div>` : ''}
-      <div class="issues-content">${buildContent(issues, nationId, opts.expandedId || null, opts.currentTick ?? null)}</div>
+      <div class="issues-content">${buildContent(issues, nationId, opts.expandedId || null, opts.currentTick ?? null, !!opts.canManage)}</div>
     </section>`;
 
   // Accordion expand/collapse via delegation on the root, which survives content
@@ -516,6 +538,16 @@ async function fetchCurrentTick(supabase) {
   } catch { return null; }
 }
 
+// The nation the viewer governs as head of government (PM/President), or null —
+// the SAME authority the action RPCs enforce, so the UI gate can't drift from
+// the server. Action buttons show only when this matches the viewer's nation.
+async function fetchGovernedNation(supabase) {
+  try {
+    const { data, error } = await supabase.rpc('dispute_actor_nation');
+    return error ? null : (data || null);
+  } catch { return null; }
+}
+
 // Fetch + render. Both pages call this so they stay in lockstep.
 export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
   if (!host) return;
@@ -526,13 +558,17 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
       <div class="issues-content"><div class="issues-empty">Loading…</div></div>
     </section>`;
 
-  let issues = [], currentTick = null;
+  let issues = [], currentTick = null, governed = null;
   try {
-    [issues, currentTick] = await Promise.all([fetchWorldIssues(supabase), fetchCurrentTick(supabase)]);
+    [issues, currentTick, governed] = await Promise.all([
+      fetchWorldIssues(supabase), fetchCurrentTick(supabase), fetchGovernedNation(supabase),
+    ]);
   } catch (err) {
     console.warn('[issues-panel] mount failed:', err?.message || err);
   }
-  renderIssuesPanel(host, issues, nationId, { ...opts, currentTick });
+  // Only the nation's head of government may act on its disputes.
+  const canManage = !!governed && governed === nationId;
+  renderIssuesPanel(host, issues, nationId, { ...opts, currentTick, canManage });
 
   const root = host.querySelector('.issues-panel');
   const content = host.querySelector('.issues-content');
@@ -570,7 +606,7 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
         const openId = root.querySelector('.dispute.expanded')?.dataset.id || null;
         let fresh = [], freshTick = currentTick;
         try { [fresh, freshTick] = await Promise.all([fetchWorldIssues(supabase), fetchCurrentTick(supabase)]); } catch { /* keep empty */ }
-        content.innerHTML = buildContent(fresh, nationId, openId, freshTick);
+        content.innerHTML = buildContent(fresh, nationId, openId, freshTick, canManage);
       }
     } catch (err) {
       fail(err?.message || 'Action failed.');
