@@ -48,9 +48,11 @@ import { bootstrapArmyPage } from './js/army-page.js';
 import { renderOrderOfBattle } from './js/create-unit.js';
 import { _supabase } from './js/supabase-client.js';
 import { mountIssuesPanel } from './js/issues-panel.js';
+import { mountWarRoom } from './js/war-room.js';
 
 const OPS_FACTION_COLS = 'id, faction_type, faction_name, nation_id, abandoned_at, is_banned, branch, army_manpower, party_funds';
 let _faction = null;
+let _nation = null;   // { id, name } for the faction's nation — the war room needs the name
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c =>
@@ -58,15 +60,14 @@ function esc(s) {
 }
 
 // Subtabs. The big serif-accented title is driven by the active one.
-// Order of Battle renders units; Issues shows the nation's ongoing
-// bilateral issues (shared with the Diplomacy "Issues" section);
-// Conflict is empty scaffolding built out in a later pass.
+// Order of Battle renders units; Issues shows the nation's ongoing bilateral
+// issues (the same shared panel as nation.html); Conflict mounts the shared war
+// room (the same component as conflicts.html) for the faction's nation.
 const SUBTABS = [
   { key: 'oob',      label: 'Order of Battle', titlePlain: 'Order of ', titleAccent: 'Battle',
     empty: 'No order of battle established yet.' },
   { key: 'issues',   label: 'Issues',          titlePlain: '',          titleAccent: 'Issues' },
-  { key: 'conflict', label: 'Conflict',        titlePlain: '',          titleAccent: 'Conflict',
-    empty: 'No active conflicts.' },
+  { key: 'conflict', label: 'Conflict',        titlePlain: '',          titleAccent: 'Conflict' },
 ];
 
 let _subtab = 'oob';
@@ -88,6 +89,7 @@ function render() {
     </div>
     ${sel.key === 'oob' ? '<div id="oob-host"></div>'
       : sel.key === 'issues' ? '<div id="issues-host"></div>'
+      : sel.key === 'conflict' ? '<div id="conflict-host"></div>'
       : `<div class="ao-empty">${esc(sel.empty)}</div>`}`;
 
   root.querySelectorAll('[data-subtab]').forEach(btn => {
@@ -102,7 +104,24 @@ function render() {
   } else if (_subtab === 'issues') {
     // Page title already reads "Issues", so the panel omits its own heading.
     mountIssuesPanel(_supabase, _faction?.nation_id, document.getElementById('issues-host'), { heading: null });
+  } else if (_subtab === 'conflict') {
+    mountConflict();
   }
+}
+
+// The shared war room (same module as conflicts.html), mounted for the faction's
+// nation. The war room renders its own loading / empty / error states.
+async function mountConflict() {
+  const host = document.getElementById('conflict-host');
+  if (!host) return;
+  if (!_nation && _faction?.nation_id) {
+    try {
+      const { data } = await _supabase.from('nations').select('id, name').eq('id', _faction.nation_id).maybeSingle();
+      _nation = data || null;
+    } catch (e) { console.warn('[army-operations] nation load failed:', e?.message || e); }
+  }
+  if (!_nation) { host.innerHTML = '<div class="ao-empty">No nation context.</div>'; return; }
+  mountWarRoom(host, _nation);
 }
 
 async function init() {
