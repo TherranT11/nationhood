@@ -152,7 +152,7 @@ export async function fetchWorldIssues(supabase) {
 
 // ── render: summary row ─────────────────────────────────────────────────────
 
-function disputeRow(issue, role, roles, expanded, currentTick, canManage, messagesByIssue) {
+function disputeRow(issue, role, roles, expanded, currentTick, canManage, messagesByIssue, stanceCtx) {
   const badge = typeBadge(issue.issue_type);
   const region = regionText(issue);
 
@@ -170,12 +170,12 @@ function disputeRow(issue, role, roles, expanded, currentTick, canManage, messag
       <span class="${clockCls}">${clockText(issue, currentTick)}</span>
     </div>`;
 
-  return `<div class="dispute${expanded ? ' expanded' : ''}" data-id="${escapeHtml(issue.id)}">${summary}<div class="d-detail">${disputeDetail(issue, roles, role, region, currentTick, canManage, messagesByIssue)}</div></div>`;
+  return `<div class="dispute${expanded ? ' expanded' : ''}" data-id="${escapeHtml(issue.id)}">${summary}<div class="d-detail">${disputeDetail(issue, roles, role, region, currentTick, canManage, messagesByIssue, stanceCtx)}</div></div>`;
 }
 
 // HTML inside `.issues-content` — the count line + the dispute list. Shared by the
 // initial render and the post-action reload so they can't drift.
-function buildContent(issues, nationId, expandedId, currentTick, canManage, messagesByIssue) {
+function buildContent(issues, nationId, expandedId, currentTick, canManage, messagesByIssue, stanceCtx) {
   const tagged = (Array.isArray(issues) ? issues : []).map(it => {
     const roles = rolesOf(it);
     return { issue: it, roles, role: viewerRole(it, nationId, roles) };
@@ -183,12 +183,12 @@ function buildContent(issues, nationId, expandedId, currentTick, canManage, mess
   if (!tagged.length) return '<div class="issues-empty">No ongoing issues</div>';
   const involved = tagged.filter(t => t.role !== 'third').length;
   return `<div class="issues-sub">${tagged.length} ONGOING &middot; YOU ARE INVOLVED IN ${involved}</div>`
-    + `<div class="disputes">${tagged.map(t => disputeRow(t.issue, t.role, t.roles, t.issue.id === expandedId, currentTick, canManage, messagesByIssue)).join('')}</div>`;
+    + `<div class="disputes">${tagged.map(t => disputeRow(t.issue, t.role, t.roles, t.issue.id === expandedId, currentTick, canManage, messagesByIssue, stanceCtx)).join('')}</div>`;
 }
 
 // ── render: shared detail (combatants + stances + role module + chat) ─────────
 
-function disputeDetail(issue, roles, role, region, currentTick, canManage, messagesByIssue) {
+function disputeDetail(issue, roles, role, region, currentTick, canManage, messagesByIssue, stanceCtx) {
   const youTag = '<span class="you">YOU</span>';
   const aYou = role === 'claimant' ? youTag : '';
   const bYou = role === 'pressor'  ? youTag : '';
@@ -223,15 +223,11 @@ function disputeDetail(issue, roles, role, region, currentTick, canManage, messa
       </div>
     </div>`;
 
-  // Other-nation stances: not yet a system → inert placeholder.
-  const others = `<div class="others">
-      <div class="lab">OTHER NATIONS</div>
-      ${PREVIEW('Third-party stances (support / condemn / mediate) are not yet tracked.')}
-    </div>`;
+  const others = otherNationsBlock(issue, roles, stanceCtx);
 
   const roleModule = role === 'claimant' ? claimantZone(issue, canManage)
                    : role === 'pressor'  ? pressorZone(issue, region, roles, canManage)
-                   :                       thirdPartyZone(roles);
+                   :                       thirdPartyZone(roles, issue, stanceCtx);
 
   // The head-of-state channel is for the two belligerent nations (both their
   // factions read; only their heads of government write). Third parties don't see it.
@@ -341,21 +337,66 @@ function pressorZone(issue, region, roles, canManage) {
 // party offers to mediate and BOTH principals accept, they become the issue's
 // single mediator (role 'med'), which is what unlocks the chat panel below for
 // them. Until that system lands, no viewer resolves to 'med'.
-function thirdPartyZone(roles) {
+// One nation's stance toward the dispute, as a display string.
+function stanceLabel(stance, roles, isMediator) {
+  if (isMediator) return 'Mediating';
+  switch (stance) {
+    case 'support_claimant': return `Supporting ${escapeHtml(roles.claimantName)}`;
+    case 'support_pressor':  return `Supporting ${escapeHtml(roles.pressorName)}`;
+    case 'condemn_claimant': return `Condemning ${escapeHtml(roles.claimantName)}`;
+    case 'condemn_pressor':  return `Condemning ${escapeHtml(roles.pressorName)}`;
+    case 'mediate':          return 'Offered to mediate';
+    default:                 return 'Neutral &middot; no position';
+  }
+}
+
+// OTHER NATIONS — every nation that isn't a belligerent, with its stance.
+function otherNationsBlock(issue, roles, ctx) {
+  const names = ctx && ctx.names;
+  const stanceList = (ctx && ctx.stances && typeof ctx.stances.get === 'function' && ctx.stances.get(issue.id)) || [];
+  const stanceByNation = new Map(stanceList.map(s => [s.nation_id, s.stance]));
+  const belligerents = new Set([issue.nation_a_id, issue.nation_b_id]);
+  let rows = '';
+  if (names && names.size) {
+    for (const [nid, nm] of names) {
+      if (belligerents.has(nid)) continue;
+      const stance = stanceByNation.get(nid) || 'neutral';
+      const isMediator = issue.mediator_nation_id === nid;   // column lands in the mediation pass
+      const cls = isMediator ? 'mediate' : stance;
+      const you = nid === (ctx && ctx.nationId) ? ' <span class="on-you">&middot; that\'s you</span>' : '';
+      rows += `<div class="on-row"><div class="on-flag">${escapeHtml(initials(nm))}</div>`
+            + `<div class="on-name">${escapeHtml(nm)}</div>`
+            + `<div class="on-stance ${cls}">${stanceLabel(stance, roles, isMediator)}${you}</div></div>`;
+    }
+  }
+  return `<div class="others"><div class="lab">OTHER NATIONS</div>`
+       + (rows ? `<div class="on-list">${rows}</div>` : PREVIEW('No other nations on the continent.'))
+       + `</div>`;
+}
+
+// Third-party options — LIVE only for the nation's Foreign Minister (set_issue_stance
+// enforces the same). Everyone else sees them inert.
+function thirdPartyZone(roles, issue, ctx) {
   const a = escapeHtml(roles.claimantName);
   const b = escapeHtml(roles.pressorName);
-  return `<div class="tp-actions">
-    <div class="lab">YOUR OPTIONS AS A THIRD PARTY</div>
-    ${PREVIEW('Stances and mediation are not yet active.')}
-    <div class="tpa-grid iss-inert">
-      <div class="tpa support-a"><div class="tn">Support ${a}</div><div class="td">Lend strength &amp; legitimacy to the Claimant.</div></div>
-      <div class="tpa support-b"><div class="tn">Support ${b}</div><div class="td">Back the Pressor's claim.</div></div>
-      <div class="tpa condemn-a"><div class="tn">Condemn ${a}</div><div class="td">Censure the Claimant's intransigence.</div></div>
-      <div class="tpa condemn-b"><div class="tn">Condemn ${b}</div><div class="td">Censure the Pressor as an aggressor.</div></div>
-      <div class="tpa mediate"><div class="tn">Offer to Mediate</div><div class="td">Volunteer as broker. Pauses the clock if both accept.</div></div>
-    </div>
-    <div class="tp-note">Third parties are not on the head-of-state channel unless they become the accepted mediator. Only one mediator per issue.</div>
-  </div>`;
+  const id = escapeHtml(issue.id);
+  const canStance = !!(ctx && ctx.fmNation && ctx.fmNation === ctx.nationId);
+  const mine = ((ctx && ctx.stances && typeof ctx.stances.get === 'function' && ctx.stances.get(issue.id)) || [])
+    .find(s => s.nation_id === (ctx && ctx.nationId))?.stance || 'neutral';
+  const cell = (key, cls, title, desc) => canStance
+    ? `<button type="button" class="tpa ${cls}${mine === key ? ' sel' : ''}" data-stance="${key}" data-id="${id}"><div class="tn">${title}</div><div class="td">${desc}</div></button>`
+    : `<div class="tpa ${cls}"><div class="tn">${title}</div><div class="td">${desc}</div></div>`;
+  const grid = `<div class="tpa-grid${canStance ? '' : ' iss-inert'}">`
+    + cell('support_claimant', 'support-a', `Support ${a}`, 'Lend strength &amp; legitimacy to the Claimant.')
+    + cell('support_pressor',  'support-b', `Support ${b}`, "Back the Pressor's claim.")
+    + cell('condemn_claimant', 'condemn-a', `Condemn ${a}`, "Censure the Claimant's intransigence.")
+    + cell('condemn_pressor',  'condemn-b', `Condemn ${b}`, 'Censure the Pressor as an aggressor.')
+    + cell('mediate',          'mediate',   'Offer to Mediate', 'Volunteer as broker.')
+    + `</div>`;
+  const note = canStance
+    ? `<div class="tp-note">Changing your stance costs diplomatic standing with the affected nation. Mediation takes effect once both sides accept.</div>`
+    : `<div class="tp-note">Your nation's Foreign Minister sets its stance here. Only one mediator per issue.</div>`;
+  return `<div class="tp-actions"><div class="lab">YOUR OPTIONS AS A THIRD PARTY</div>${grid}${note}</div>`;
 }
 
 // The head-of-government channel. Both belligerent nations' factions READ it
@@ -451,6 +492,19 @@ function ensureStyles() {
 
     .issues-panel .others{padding:14px 18px;background:#0c0c0c;border-bottom:0.5px solid rgba(255,255,255,0.05);}
     .issues-panel .others .lab{font-size:9px;letter-spacing:0.13em;color:#888;margin-bottom:11px;}
+    .issues-panel .on-list{display:flex;flex-direction:column;gap:7px;}
+    .issues-panel .on-row{display:flex;align-items:center;gap:11px;}
+    .issues-panel .on-flag{width:26px;height:26px;border-radius:3px;background:#15171a;border:0.5px solid rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;color:#9a9a92;flex-shrink:0;}
+    .issues-panel .on-name{font-size:12px;color:#cdd6dc;min-width:90px;}
+    .issues-panel .on-stance{font-size:11px;color:#888;}
+    .issues-panel .on-stance.support_claimant{color:#7a9aab;} .issues-panel .on-stance.support_pressor{color:#c87a7a;}
+    .issues-panel .on-stance.condemn_claimant,.issues-panel .on-stance.condemn_pressor{color:#d49a9a;}
+    .issues-panel .on-stance.mediate{color:#c89e6e;}
+    .issues-panel .on-stance.neutral{color:#666;}
+    .issues-panel .on-you{color:#7a9aab;font-style:italic;}
+    .issues-panel button.tpa{font-family:inherit;cursor:pointer;}
+    .issues-panel .tpa.sel{box-shadow:0 0 0 1px rgba(212,184,122,0.5) inset;}
+    .issues-panel .tpa.is-busy{opacity:0.5;}
 
     .issues-panel .cz-actions,.issues-panel .pz-ladder{padding:14px 18px;border-bottom:0.5px solid rgba(255,255,255,0.05);}
     .issues-panel .cz-actions .lab,.issues-panel .pz-ladder .lab{font-size:9px;letter-spacing:0.13em;margin-bottom:10px;}
@@ -559,7 +613,7 @@ export function renderIssuesPanel(host, issues, nationId, opts = {}) {
   const heading = opts.heading === undefined ? 'I. Issues' : opts.heading;
   host.innerHTML = `<section class="issues-panel">
       ${heading ? `<div class="issues-panel__head">${escapeHtml(heading)}</div>` : ''}
-      <div class="issues-content">${buildContent(issues, nationId, opts.expandedId || null, opts.currentTick ?? null, !!opts.canManage, opts.messages || null)}</div>
+      <div class="issues-content">${buildContent(issues, nationId, opts.expandedId || null, opts.currentTick ?? null, !!opts.canManage, opts.messages || null, opts.stanceCtx || null)}</div>
     </section>`;
 
   // Accordion expand/collapse via delegation on the root, which survives content
@@ -611,6 +665,44 @@ async function fetchGovernedNation(supabase) {
   } catch { return null; }
 }
 
+// Third-party stances per issue, grouped by issue id. World-visible.
+async function fetchIssueStances(supabase, issueIds) {
+  const map = new Map();
+  if (!issueIds || !issueIds.length) return map;
+  try {
+    const { data, error } = await supabase
+      .from('bilateral_issue_stances')
+      .select('issue_id, nation_id, stance')
+      .in('issue_id', issueIds);
+    if (error) { console.warn('[issues-panel] stances fetch failed:', error.message); return map; }
+    for (const s of (data || [])) {
+      if (!map.has(s.issue_id)) map.set(s.issue_id, []);
+      map.get(s.issue_id).push(s);
+    }
+  } catch (e) { console.warn('[issues-panel] stances fetch failed:', e?.message || e); }
+  return map;
+}
+
+// id → name for every nation, to list third parties (incl. neutrals).
+async function fetchNations(supabase) {
+  const map = new Map();
+  try {
+    const { data, error } = await supabase.from('nations').select('id, name');
+    if (error) { console.warn('[issues-panel] nations fetch failed:', error.message); return map; }
+    for (const n of (data || [])) map.set(n.id, n.name);
+  } catch (e) { console.warn('[issues-panel] nations fetch failed:', e?.message || e); }
+  return map;
+}
+
+// The nation where the viewer holds the Foreign Ministry, or null — the same
+// authority set_issue_stance enforces, so the stance buttons only show to the FM.
+async function fetchForeignMinistryNation(supabase) {
+  try {
+    const { data, error } = await supabase.rpc('foreign_ministry_nation');
+    return error ? null : (data || null);
+  } catch { return null; }
+}
+
 // Head-of-government channel messages for the given issues, grouped by issue id
 // (oldest first). RLS returns only the messages the viewer's nation may read.
 async function fetchIssueMessages(supabase, issueIds) {
@@ -642,17 +734,22 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
     </section>`;
 
   let issues = [], currentTick = null, governed = null, messages = new Map();
+  let stances = new Map(), names = new Map(), fmNation = null;
   try {
-    [issues, currentTick, governed] = await Promise.all([
+    [issues, currentTick, governed, names, fmNation] = await Promise.all([
       fetchWorldIssues(supabase), fetchCurrentTick(supabase), fetchGovernedNation(supabase),
+      fetchNations(supabase), fetchForeignMinistryNation(supabase),
     ]);
-    messages = await fetchIssueMessages(supabase, (issues || []).map(i => i.id));
+    const ids = (issues || []).map(i => i.id);
+    [messages, stances] = await Promise.all([fetchIssueMessages(supabase, ids), fetchIssueStances(supabase, ids)]);
   } catch (err) {
     console.warn('[issues-panel] mount failed:', err?.message || err);
   }
   // Only the nation's head of government may act on its disputes.
   const canManage = !!governed && governed === nationId;
-  renderIssuesPanel(host, issues, nationId, { ...opts, currentTick, canManage, messages });
+  // names + fmNation are stable for the session; stances refresh on reload.
+  const stanceCtx = { stances, names, fmNation, nationId };
+  renderIssuesPanel(host, issues, nationId, { ...opts, currentTick, canManage, messages, stanceCtx });
 
   const root = host.querySelector('.issues-panel');
   const content = host.querySelector('.issues-content');
@@ -665,12 +762,14 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
   // the action buttons and the chat so they can't drift.
   async function reload() {
     const openId = root.querySelector('.dispute.expanded')?.dataset.id || null;
-    let fresh = [], freshTick = currentTick, freshMsgs = new Map();
+    let fresh = [], freshTick = currentTick, freshMsgs = new Map(), freshStances = new Map();
     try {
       [fresh, freshTick] = await Promise.all([fetchWorldIssues(supabase), fetchCurrentTick(supabase)]);
-      freshMsgs = await fetchIssueMessages(supabase, fresh.map(i => i.id));
+      const ids = fresh.map(i => i.id);
+      [freshMsgs, freshStances] = await Promise.all([fetchIssueMessages(supabase, ids), fetchIssueStances(supabase, ids)]);
     } catch { /* keep what we have */ }
-    content.innerHTML = buildContent(fresh, nationId, openId, freshTick, canManage, freshMsgs);
+    content.innerHTML = buildContent(fresh, nationId, openId, freshTick, canManage, freshMsgs,
+      { stances: freshStances, names, fmNation, nationId });
   }
 
   // Claimant/pressor decision buttons.
@@ -735,6 +834,25 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
     if (!inp || e.key !== 'Enter') return;
     e.preventDefault();
     sendChat(inp.dataset.chatInput, inp);
+  });
+
+  // Third-party stance (the nation's Foreign Minister).
+  root.addEventListener('click', async (e) => {
+    const sb = e.target.closest('[data-stance]');
+    if (!sb || !root.contains(sb)) return;
+    e.stopPropagation();
+    if (busy) return;
+    busy = true; sb.classList.add('is-busy');
+    try {
+      const { data, error } = await supabase.rpc('set_issue_stance', { p_issue_id: sb.dataset.id, p_stance: sb.dataset.stance });
+      if (!error && !(data && data.ok === false)) await reload();
+      else { sb.classList.remove('is-busy'); console.warn('[issues-panel] stance failed:', (data && data.message) || error?.message); }
+    } catch (ex) {
+      sb.classList.remove('is-busy');
+      console.warn('[issues-panel] stance failed:', ex?.message || ex);
+    } finally {
+      busy = false;
+    }
   });
 
   // Rename the contested region (either belligerent's head of government).
