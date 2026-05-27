@@ -2783,6 +2783,22 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // 4a-ter. ARMY SUPPLY — global pass.
+    // Armies of nations at war consume supply each tick (manpower + brigade
+    // costs, less the logistics tail), delivered from the capital with −1 per
+    // sector of transit and capped by the faction's logistics stat. Shortfall
+    // drains army_cohesion. Places newly-at-war armies at their start sector.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const supRes = await processArmySupply(supabase, newTick);
+        if (supRes?.underSupplied) {
+            console.log(`[ArmySupply] ${supRes.underSupplied} faction(s) under-supplied this tick`);
+        }
+    } catch (supErr) {
+        console.error('[advanceTick] Army supply sweep failed (non-fatal):', supErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // 4a-quinque. VWC HOST BID RESOLUTION — global pass.
     // For every cup whose qualifier tick is current_tick (= cup_start
     // - 12), pick a host via the bid-score formula. Winner gets the

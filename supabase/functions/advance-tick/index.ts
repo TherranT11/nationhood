@@ -722,6 +722,29 @@ function resolveTransferEndpoints(article, agreement) {
 }
 
 /**
+ * Single writer of the war-state transition. Puts two nations into
+ * relation_type='war' on their canonical (a<b) diplomatic_relations row.
+ * Used by BOTH the manual declaration resolver (bills) and territorial
+ * auto-escalation (issues), so the war-state write lives in one place.
+ * Returns { ok }.
+ */
+async function setNationsAtWar(supabase, nationX, nationY, currentTick, justification) {
+    if (!nationX || !nationY) return { ok: false };
+    const a = nationX < nationY ? nationX : nationY;
+    const b = nationX < nationY ? nationY : nationX;
+    const { error } = await supabase.from('diplomatic_relations').upsert({
+        nation_a_id: a,
+        nation_b_id: b,
+        relation_type: 'war',
+        war_declared_at_tick: currentTick,
+        war_justification: justification,
+        updated_at: new Date().toISOString(),
+    }, { onConflict: 'nation_a_id,nation_b_id' });
+    if (error) { console.error('[setNationsAtWar] failed:', error.message); return { ok: false, error: error }; }
+    return { ok: true };
+}
+
+/**
  * Trade Agreement types that can be negotiated as Diplomatic Initiatives.
  */
 const TRADE_AGREEMENT_TYPES = {
@@ -5532,6 +5555,7 @@ const BILL_TYPE_SPECS = Object.freeze({
     default_resolution:     { threshold: 'supermajority' },
     veto_override:          { threshold: 'veto_override' },
     impeachment_conviction: { threshold: 'supermajority' },
+    declare_war:            { threshold: 'supermajority' },
     no_confidence:          { threshold: 'absolute' },
     impeachment_motion:     { threshold: 'absolute' },
 });
@@ -6362,6 +6386,36 @@ async function resolveNoConfidenceBill(supabase, bill, ctx) {
         votesAgainst,
         type: 'no_confidence',
         earlyResolution: bill.early_resolution_status || null,
+    };
+}
+
+/**
+ * Resolve a passed/failed declare_war bill. On pass (supermajority), the two
+ * nations enter a state of war: set the canonical diplomatic_relations pair's
+ * relation_type='war' with the tick + casus belli as justification. Fronts
+ * between the pair are "active" whenever that relation = war (derived, no
+ * separate flag). On fail, the motion just dies — no extra penalty (any
+ * 'our_honor' cost was already paid at filing time).
+ */
+async function resolveDeclareWarBill(supabase, bill, ctx) {
+    const { passed, currentTick, votesFor, votesAgainst } = ctx;
+    if (passed) {
+        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
+        const target = bill.metadata?.target_nation_id;
+        if (target && bill.nation_id) {
+            const { ok } = await setNationsAtWar(supabase, bill.nation_id, target, currentTick, 'Our Honor');
+            if (!ok) console.error(`[resolveDeclareWarBill] failed to set war state for bill ${bill.id}`);
+        }
+    } else {
+        await failBill(supabase, bill);
+    }
+    return {
+        billId: bill.id,
+        billName: bill.bill_name,
+        result: passed ? 'passed' : 'failed',
+        votesFor,
+        votesAgainst,
+        type: 'declare_war',
     };
 }
 
@@ -7265,6 +7319,7 @@ async function resolveOrdinaryBill(supabase, bill, ctx) {
 // This mirrors BILL_TYPE_SPECS (threshold side, R2) on the dispatch side.
 const BILL_RESOLVERS = Object.freeze({
     no_confidence:          ()  => resolveNoConfidenceBill,
+    declare_war:            ()  => resolveDeclareWarBill,
     foundational:           ()  => resolveFoundationalBill,
     default_resolution:     ()  => resolveDefaultResolutionBill,
     minister_confirmation:  (b) => b.ministry_key       ? resolveMinisterConfirmationBill   : null,
@@ -7483,7 +7538,7 @@ async function resolveExpiredVotes(supabase, nationId) {
         // NO voters: +2/article on fail. Abstain: nothing.
         // Skip momentum for special bill types and presidential desk (not yet enacted)
         const lastResult = results[results.length - 1];
-        const skipMomentum = ['no_confidence', 'minister_confirmation', 'governor_confirmation', 'impeachment_conviction'].includes(bill.bill_type)
+        const skipMomentum = ['no_confidence', 'declare_war', 'minister_confirmation', 'governor_confirmation', 'impeachment_conviction'].includes(bill.bill_type)
             || lastResult?.result === 'president_desk';
         if (!skipMomentum) {
             try {
@@ -7784,7 +7839,7 @@ async function resolveStuckFloorBills(supabase, nationId) {
         constitutional_amendment_streamlining: !!nation?.constitutional_amendment_streamlining
     };
 
-    const specialTypes = new Set(['no_confidence', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation', 'governor_confirmation']);
+    const specialTypes = new Set(['no_confidence', 'declare_war', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation', 'governor_confirmation']);
     const results = [];
 
     for (const bill of stuckBills) {
@@ -26459,23 +26514,34 @@ async function processIssueTick(supabase, nationList, currentTick) {
             newStatus = 'partial';
         }
 
-        // ── 7. Check tension 10 → escalation to incident ──
+        // ── 7. Check tension 10 → escalation ──
+        // Territorial disputes that go unresolved escalate straight to WAR
+        // (diplomatic_relations.relation_type='war'); every other issue type
+        // spawns its incident as before.
         if (newTension >= 10 && issue.status !== 'escalated') {
             const leverage = favorToLeverage(issue.favor);
+            const isTerritorial = issue.issue_type === 'territorial_ownership';
 
-            // Spawn the actual incident via the existing incident system
-            const incidentResult = await spawnIncidentFromIssue(
-                supabase, issue, nationA, nationB, leverage, currentTick
-            );
+            let incidentId = null, escalationOk = false;
+            if (isTerritorial) {
+                escalationOk = await startWarFromIssue(supabase, issue, nationA, nationB, currentTick);
+            } else {
+                const incidentResult = await spawnIncidentFromIssue(
+                    supabase, issue, nationA, nationB, leverage, currentTick
+                );
+                incidentId = incidentResult?.incidentId || null;
+                escalationOk = !!incidentId;
+            }
 
-            // Only mark as escalated if the incident was actually created
-            if (incidentResult?.incidentId) {
+            // Only mark as escalated if the war/incident actually happened.
+            if (escalationOk) {
                 newStatus = 'escalated';
 
                 results.escalations.push({
                     issue_id: issue.id,
                     issue_type: issue.issue_type,
-                    incident_id: incidentResult.incidentId,
+                    incident_id: incidentId,
+                    war: isTerritorial,
                     nation_a_id: issue.nation_a_id,
                     nation_b_id: issue.nation_b_id,
                     favor: issue.favor,
@@ -26483,16 +26549,18 @@ async function processIssueTick(supabase, nationList, currentTick) {
                 });
 
                 await insertHistory(supabase, issue.id, currentTick, 'escalated',
-                    'This issue has escalated to an incident.',
+                    isTerritorial
+                        ? 'The territorial dispute went unresolved — a state of war now exists.'
+                        : 'This issue has escalated to an incident.',
                     { tension: newTension, favor: issue.favor, leverage,
-                      incident_id: incidentResult.incidentId });
+                      incident_id: incidentId });
 
             // ── ESCALATION FAVOR BONUS/PENALTY ──
             // Favored nation: +7 gov_approval, +6 momentum to all government parties
             // Disfavored nation: -7 gov_approval, -10 momentum to all government parties
             // Neutral (favor === 0): no bonus/penalty
             const currentFavor = Number(issue.favor) || 0;
-            if (currentFavor !== 0) {
+            if (incidentId && currentFavor !== 0) {
                 const favoredNationId = currentFavor > 0 ? issue.nation_b_id : issue.nation_a_id;
                 const disfavoredNationId = currentFavor > 0 ? issue.nation_a_id : issue.nation_b_id;
                 const favoredNation = favoredNationId === issue.nation_a_id ? nationA : nationB;
@@ -26541,8 +26609,8 @@ async function processIssueTick(supabase, nationList, currentTick) {
                       momentum_favored: 4, momentum_disfavored: -6 });
             }
             } else {
-                // Incident creation failed — keep issue active at tension 10
-                console.warn(`[Issues] Escalation failed for issue ${issue.id} — incident not created, keeping issue active`);
+                // War/incident not created — keep the issue active at tension 10.
+                console.warn(`[Issues] Escalation failed for issue ${issue.id} — keeping issue active`);
             }
         }
 
@@ -26641,6 +26709,28 @@ async function spawnModifier(supabase, issue, modifierKey, appliesTo, currentTic
         { modifier_key: modifierKey, created_by: createdBy });
 }
 
+
+// ==================== ISSUE → WAR ESCALATION ====================
+
+/**
+ * Territorial dispute escalation = war. Sets the canonical diplomatic_relations
+ * pair to relation_type='war' (the same state a manual declaration produces, so
+ * the fronts + supply systems pick it up automatically) and writes a war-start
+ * dispatch to both nations' event_log. Returns true if the war state was set.
+ */
+async function startWarFromIssue(supabase, issue, nationA, nationB, currentTick) {
+    // setNationsAtWar (diplomacy-constants) is the single writer of the
+    // war-state transition — shared with the manual declaration resolver.
+    const { ok } = await setNationsAtWar(supabase, issue.nation_a_id, issue.nation_b_id, currentTick, 'Territorial Dispute');
+    if (!ok) return false;
+    const summary = `After the territorial dispute went unresolved, a state of war now exists between ${nationA?.name || 'one nation'} and ${nationB?.name || 'another nation'}.`;
+    const { error: logErr } = await supabase.from('event_log').insert([
+        { nation_id: issue.nation_a_id, event_name: 'War Declared', trigger_key: 'war_started_territorial', description_chosen: summary, category: 'crisis', fired_at_tick: currentTick },
+        { nation_id: issue.nation_b_id, event_name: 'War Declared', trigger_key: 'war_started_territorial', description_chosen: summary, category: 'crisis', fired_at_tick: currentTick },
+    ]);
+    if (logErr) console.warn('[startWarFromIssue] event_log insert failed:', logErr.message);
+    return true;
+}
 
 // ==================== ISSUE → INCIDENT ESCALATION ====================
 
@@ -29514,6 +29604,122 @@ async function processFormingUnits(supabase, currentTick) {
     return { activated: (data || []).length };
 }
 
+// Per-brigade supply cost, ON TOP of the 1-per-1,000-manpower base. Support
+// brigades are the logistics tail — they REDUCE the requirement. Light/regular
+// infantry add nothing beyond their manpower.
+const BRIGADE_SUPPLY = { mechanized: 2, armor: 3, artillery: 1, support: -3 };
+// Cohesion lost per tick by an army faction with any under-supplied army. Tunable.
+const UNDERSUPPLY_COHESION_DRAIN = 5;
+
+// Per-tick supply pass for armies of nations at war. Places a newly-at-war army
+// at its capital-adjacent sector, computes supply needed vs delivered (generation
+// capped by logistics, minus per-sector transit loss from the capital), writes
+// armies.supply_balance, and drains army_cohesion for any faction left short.
+// Global, idempotent, non-fatal.
+async function processArmySupply(supabase, currentTick) {
+    const { data: warRels, error: relErr } = await supabase
+        .from('diplomatic_relations').select('nation_a_id, nation_b_id').eq('relation_type', 'war');
+    if (relErr) { console.error('[processArmySupply] war relations load failed:', relErr.message); return { supplied: 0 }; }
+    const atWar = new Set();
+    const enemiesByNation = new Map();   // nationId → Set(enemy nationIds)
+    for (const r of (warRels || [])) {
+        atWar.add(r.nation_a_id); atWar.add(r.nation_b_id);
+        if (!enemiesByNation.has(r.nation_a_id)) enemiesByNation.set(r.nation_a_id, new Set());
+        if (!enemiesByNation.has(r.nation_b_id)) enemiesByNation.set(r.nation_b_id, new Set());
+        enemiesByNation.get(r.nation_a_id).add(r.nation_b_id);
+        enemiesByNation.get(r.nation_b_id).add(r.nation_a_id);
+    }
+    if (atWar.size === 0) return { supplied: 0 };
+
+    const { data: armies, error: aErr } = await supabase
+        .from('armies').select('id, faction_id, nation_id, assigned_front_id, army_type, current_sector_id')
+        .in('nation_id', [...atWar]).not('assigned_front_id', 'is', null);
+    if (aErr) { console.error('[processArmySupply] armies load failed:', aErr.message); return { supplied: 0 }; }
+    if (!armies || armies.length === 0) return { supplied: 0 };
+
+    const frontIds = [...new Set(armies.map(a => a.assigned_front_id))];
+    const armyIds = armies.map(a => a.id);
+    const factionIds = [...new Set(armies.map(a => a.faction_id))];
+
+    const [frontsRes, sectorsRes, unitsRes, facsRes] = await Promise.all([
+        supabase.from('war_fronts').select('id, nation_a_id, sector_count').in('id', frontIds),
+        supabase.from('war_sectors').select('id, front_id, nation_id, position, is_capital_adjacent').in('front_id', frontIds),
+        supabase.from('army_units').select('army_id, total_manpower, brigades').in('army_id', armyIds).neq('status', 'Decommissioned'),
+        supabase.from('factions').select('id, army_supplies, army_logistics, army_cohesion').in('id', factionIds),
+    ]);
+    // Bail on incomplete core data rather than apply effects on partial reads
+    // (e.g. a failed factions fetch would read every army's supply as 0 and
+    // wrongly drain cohesion across the board).
+    if (frontsRes.error || sectorsRes.error || unitsRes.error || facsRes.error) {
+        console.error('[processArmySupply] core load failed:',
+            (frontsRes.error || sectorsRes.error || unitsRes.error || facsRes.error).message);
+        return { supplied: 0 };
+    }
+    const fronts = new Map((frontsRes.data || []).map(f => [f.id, f]));
+    const sectors = sectorsRes.data || [];
+    const sectorById = new Map(sectors.map(s => [s.id, s]));
+    const facById = new Map((facsRes.data || []).map(f => [f.id, f]));
+
+    // Aggregate each army's committed units → total manpower + brigade supply cost.
+    const perArmy = new Map();
+    for (const u of (unitsRes.data || [])) {
+        let e = perArmy.get(u.army_id);
+        if (!e) { e = { manpower: 0, brigCost: 0 }; perArmy.set(u.army_id, e); }
+        e.manpower += Number(u.total_manpower) || 0;
+        const brigs = Array.isArray(u.brigades) ? u.brigades : [];
+        for (const b of brigs) e.brigCost += (BRIGADE_SUPPLY[b] || 0);
+    }
+
+    const underSupplied = new Set();
+    let supplied = 0;
+
+    for (const a of armies) {
+        const front = fronts.get(a.assigned_front_id);
+        if (!front) continue;
+        // Only fronts between this nation and a nation it's actually at war with
+        // are active — an army parked on a peaceful neighbour's front sits idle.
+        const neighbour = a.nation_id === front.nation_a_id ? front.nation_b_id : front.nation_a_id;
+        if (!enemiesByNation.get(a.nation_id)?.has(neighbour)) continue;
+
+        // Lazy placement: a newly-at-war army starts at its capital-adjacent sector.
+        let sector = a.current_sector_id ? sectorById.get(a.current_sector_id) : null;
+        if (!sector) {
+            sector = sectors.find(s => s.front_id === a.assigned_front_id && s.nation_id === a.nation_id && s.is_capital_adjacent) || null;
+            if (sector) await supabase.from('armies').update({ current_sector_id: sector.id }).eq('id', a.id);
+        }
+        if (!sector) continue;  // front not generated yet — nothing to supply
+
+        const n = front.sector_count || 0;
+        // Sectors traversed from the capital to this sector (−1 supply each).
+        const pathCost = (a.nation_id === front.nation_a_id)
+            ? sector.position
+            : (n - sector.position + 1);
+
+        const agg = perArmy.get(a.id) || { manpower: 0, brigCost: 0 };
+        const formation = a.army_type === 'guard' ? 1 : a.army_type === 'paramilitary' ? -1 : 0;
+        const needed = Math.max(0, Math.round(agg.manpower / 1000) + agg.brigCost + formation);
+
+        const fac = facById.get(a.faction_id) || {};
+        const generated = (Number(fac.army_supplies) || 0) * 5;
+        const transportCap = (Number(fac.army_logistics) || 0) * 4;
+        const delivered = Math.max(0, Math.min(generated, transportCap) - pathCost);
+        const balance = delivered - needed;
+
+        await supabase.from('armies').update({ supply_balance: balance }).eq('id', a.id);
+        if (balance < 0) underSupplied.add(a.faction_id);
+        supplied++;
+    }
+
+    // Under-supply consequence: drain Cohesion once per affected army faction.
+    for (const fid of underSupplied) {
+        const fac = facById.get(fid);
+        const newCoh = Math.max(0, (Number(fac?.army_cohesion) || 0) - UNDERSUPPLY_COHESION_DRAIN);
+        await supabase.from('factions').update({ army_cohesion: newCoh }).eq('id', fid);
+    }
+
+    return { supplied, underSupplied: underSupplied.size };
+}
+
 // ────────── loan-math ──────────
 
 // Shared loan math — single source of truth for monthly interest,
@@ -32363,6 +32569,22 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
     } catch (formErr) {
         console.error('[advanceTick] Army units forming sweep failed (non-fatal):', formErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4a-ter. ARMY SUPPLY — global pass.
+    // Armies of nations at war consume supply each tick (manpower + brigade
+    // costs, less the logistics tail), delivered from the capital with −1 per
+    // sector of transit and capped by the faction's logistics stat. Shortfall
+    // drains army_cohesion. Places newly-at-war armies at their start sector.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const supRes = await processArmySupply(supabase, newTick);
+        if (supRes?.underSupplied) {
+            console.log(`[ArmySupply] ${supRes.underSupplied} faction(s) under-supplied this tick`);
+        }
+    } catch (supErr) {
+        console.error('[advanceTick] Army supply sweep failed (non-fatal):', supErr);
     }
 
     // ══════════════════════════════════════════════════════════════════

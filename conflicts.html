@@ -178,6 +178,9 @@
     <div class="empty-subtitle">No bilateral issues are currently active. Issues emerge from diplomatic relationships between nations.</div>
 </div>
 
+<!-- ===== WAR ROOM (Conflicts subtab) ===== -->
+<div id="wars-view" style="display:none;padding:18px 22px;"></div>
+
 <!-- ===== ACTION CONFIRMATION MODAL ===== -->
 <div class="modal-overlay" id="action-modal" style="display:none;">
     <div class="modal-box">
@@ -195,6 +198,7 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { MODIFIERS, ISSUE_TYPES, getTensionLabel } from './js/game/issues.js';
+import { mountWarRoom } from './js/war-room.js';
 // Phase 0: ACTIONS and executeIssueAction removed — replaced by card system.
 
 let currentFaction = null;
@@ -309,27 +313,28 @@ function switchSubTab(tab) {
     const incidentsEmpty = document.getElementById('global-empty');
     const issuesLayout = document.getElementById('issues-layout');
     const issuesEmpty = document.getElementById('issues-global-empty');
+    const warsView = document.getElementById('wars-view');
+
+    // Hide everything, then reveal the chosen view.
+    incidentsLayout.style.display = 'none';
+    incidentsEmpty.style.display = 'none';
+    issuesLayout.style.display = 'none';
+    issuesEmpty.style.display = 'none';
+    warsView.style.display = 'none';
 
     if (tab === 'issues') {
-        // Hide incidents, show issues
-        incidentsLayout.style.display = 'none';
-        incidentsEmpty.style.display = 'none';
         issuesLayout.style.display = '';
-        issuesEmpty.style.display = 'none';
-        if (!issuesLoaded) {
-            loadIssues();
-        }
+        if (!issuesLoaded) loadIssues();
+    } else if (tab === 'conflicts') {
+        // Wars: the read-only war room for the viewer's nation.
+        warsView.style.display = '';
+        mountWarRoom(warsView, currentNation);
     } else {
-        // Hide issues, show incidents
-        issuesLayout.style.display = 'none';
-        issuesEmpty.style.display = 'none';
-        // Re-evaluate incidents display
+        // Incidents
         if (allIncidents.length === 0) {
-            incidentsLayout.style.display = 'none';
             incidentsEmpty.style.display = '';
         } else {
             incidentsLayout.style.display = '';
-            incidentsEmpty.style.display = 'none';
         }
         if (selectedIncidentId) {
             const incident = allIncidents.find(i => i.id === selectedIncidentId);
