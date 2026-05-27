@@ -189,9 +189,16 @@ function render() {
         <div class="aa-act" data-act="doctrine-reform">
           <div class="aa-act__head">
             <div class="aa-act__title"><span class="aa-act__name">Doctrine Reform</span></div>
-            <span class="aa-act__cost">$15</span>
+            <span class="aa-act__cost">$7.5</span>
           </div>
-          <div class="aa-act__desc">Rewrite the field manual and enforce professional standards. <b>+5 Professionalism / −5 Training</b> — conduct and doctrine focus pulls troops off the live-fire range.</div>
+          <div class="aa-act__desc">Rewrite the field manual and enforce professional standards. <b>+5 Professionalism / −5 Training</b> — conduct and doctrine focus pulls troops off the live-fire range. 12-tick cooldown.</div>
+        </div>
+        <div class="aa-act" data-act="standardize-procedures">
+          <div class="aa-act__head">
+            <div class="aa-act__title"><span class="aa-act__name">Standardize Procedures</span></div>
+            <span class="aa-act__cost">$7</span>
+          </div>
+          <div class="aa-act__desc">Impose strict doctrine and paperwork across the force. <b>+5 Professionalism / −5 Logistics</b> — standards rise, but the transport net bogs down in process. 12-tick cooldown.</div>
         </div>
         <div class="aa-act" data-act="report-defense">
           <div class="aa-act__head">
@@ -212,16 +219,30 @@ function render() {
         <div class="aa-act" data-act="forward-stockpiling">
           <div class="aa-act__head">
             <div class="aa-act__title"><span class="aa-act__name">Forward Stockpiling</span></div>
-            <span class="aa-act__cost">$8</span>
+            <span class="aa-act__cost">$4</span>
           </div>
-          <div class="aa-act__desc">Cram the forward depots to bursting. <b>+5 Supply / −5 Logistics</b> — the overloaded transport net slows even as stocks rise.</div>
+          <div class="aa-act__desc">Cram the forward depots to bursting. <b>+5 Supply / −5 Logistics</b> — the overloaded transport net slows even as stocks rise. 12-tick cooldown.</div>
         </div>
         <div class="aa-act" data-act="logistics-overhaul">
           <div class="aa-act__head">
             <div class="aa-act__title"><span class="aa-act__name">Logistics Overhaul</span></div>
-            <span class="aa-act__cost">$12</span>
+            <span class="aa-act__cost">$6</span>
           </div>
-          <div class="aa-act__desc">Re-rationalise convoys and motor pools for throughput. <b>+5 Logistics / −5 Supply</b> — existing stockpiles are consumed in the reshuffle.</div>
+          <div class="aa-act__desc">Re-rationalise convoys and motor pools for throughput. <b>+5 Logistics / −5 Supply</b> — existing stockpiles are consumed in the reshuffle. 12-tick cooldown.</div>
+        </div>
+        <div class="aa-act" data-act="requisition-drive">
+          <div class="aa-act__head">
+            <div class="aa-act__title"><span class="aa-act__name">Requisition Drive</span></div>
+            <span class="aa-act__cost">$5</span>
+          </div>
+          <div class="aa-act__desc">Seize supplies hard to fill the depots. <b>+5 Supply / −5 Cohesion</b> — heavy-handed requisition and rationing grind troop morale. 12-tick cooldown.</div>
+        </div>
+        <div class="aa-act" data-act="field-improvisation">
+          <div class="aa-act__head">
+            <div class="aa-act__title"><span class="aa-act__name">Field Improvisation</span></div>
+            <span class="aa-act__cost">$6</span>
+          </div>
+          <div class="aa-act__desc">Push throughput by improvising routes and pressing every hand into hauling. <b>+5 Logistics / −5 Professionalism</b> — cargo moves, standards slip. 12-tick cooldown.</div>
         </div>
         <div class="aa-act" data-act="combined-arms-school">
           <div class="aa-act__head">
@@ -235,18 +256,25 @@ function render() {
         <div class="aa-act" data-act="internal-security-sweep">
           <div class="aa-act__head">
             <div class="aa-act__title"><span class="aa-act__name">Internal Security Sweep</span></div>
-            <span class="aa-act__cost">$12</span>
+            <span class="aa-act__cost">$6</span>
           </div>
-          <div class="aa-act__desc">Root out defeatists and enemy informants. <b>+5 Cohesion / −5 Professionalism</b> — ranks close up, but a climate of surveillance corrodes professional trust.</div>
+          <div class="aa-act__desc">Root out defeatists and enemy informants. <b>+5 Cohesion / −5 Professionalism</b> — ranks close up, but a climate of surveillance corrodes professional trust. 12-tick cooldown.</div>
         </div>`;
   } else if (sel.key === 'cmd') {
     body = `
         <div class="aa-act" data-act="intensive-drills">
           <div class="aa-act__head">
             <div class="aa-act__title"><span class="aa-act__name">Intensive Drills</span></div>
-            <span class="aa-act__cost">$10</span>
+            <span class="aa-act__cost">$5</span>
           </div>
-          <div class="aa-act__desc">Order grueling drill cycles across the force. <b>+5 Training / −5 Cohesion</b> — combat skill sharpens, but exhausted and resentful troops fray.</div>
+          <div class="aa-act__desc">Order grueling drill cycles across the force. <b>+5 Training / −5 Cohesion</b> — combat skill sharpens, but exhausted and resentful troops fray. 12-tick cooldown.</div>
+        </div>
+        <div class="aa-act" data-act="comforts-and-rations">
+          <div class="aa-act__head">
+            <div class="aa-act__title"><span class="aa-act__name">Comforts &amp; Rations</span></div>
+            <span class="aa-act__cost">$5</span>
+          </div>
+          <div class="aa-act__desc">Spend stockpiles on hot food, rest, and comforts. <b>+5 Cohesion / −5 Supply</b> — morale lifts as the depots draw down. 12-tick cooldown.</div>
         </div>
         <div class="aa-act" data-act="foreign-officer-exchange">
           <div class="aa-act__head">
@@ -313,7 +341,9 @@ function render() {
   };
   [['forward-stockpiling', 'forward_stockpiling'], ['logistics-overhaul', 'logistics_overhaul'],
    ['intensive-drills', 'intensive_drills'], ['internal-security-sweep', 'internal_security_sweep'],
-   ['doctrine-reform', 'doctrine_reform']].forEach(([act, key]) => {
+   ['doctrine-reform', 'doctrine_reform'], ['requisition-drive', 'requisition_drive'],
+   ['comforts-and-rations', 'comforts_and_rations'], ['field-improvisation', 'field_improvisation'],
+   ['standardize-procedures', 'standardize_procedures']].forEach(([act, key]) => {
     const el = root.querySelector(`[data-act="${act}"]`);
     if (el) el.onclick = () => openOfficerAction(_faction, key, refreshFunds);
   });
