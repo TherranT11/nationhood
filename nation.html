@@ -31,6 +31,7 @@ import { initPage, refreshGameState, qCache, qCacheSet, qCacheBust, formatNumber
 import { formatCurrencyShort, escapeHtml } from './js/utils.js';
 import { CANONICAL_GOVERNMENT_TYPES, hasElectedPresident } from './js/game/government-types.js';
 import { normalizeNationStatKey, translateStatEffect, STAT_DECAY_CONFIG } from './js/game/stats.js';
+import { isTargetBasedStat } from './js/game/policies.js';
 /**
  * Nation Page - Comprehensive Stats Display
  * With Rankings and Trend Arrows
@@ -338,7 +339,7 @@ async function loadStatEffectSources(nationId, nation) {
         // any selected column is missing, which would silently empty the
         // per-stat panel for option-bearing laws too.
         _supabase.from('active_laws')
-            .select('is_reversal, passed_tick, effects_applied_through_tick, policies(policy_name), selected_option:policy_options!selected_option_id(option_name, stat_effects)')
+            .select('is_reversal, passed_tick, effects_applied_through_tick, policies(policy_name), selected_option:policy_options!selected_option_id(option_name, stat_effects, is_target_based, stat_targets)')
             .eq('nation_id', nationId),
         _supabase.from('active_crises')
             .select('crisis_id, crisis_templates(name, crisis_effects(stat_key, change_per_tick, target))')
@@ -364,6 +365,7 @@ async function loadStatEffectSources(nationId, nation) {
     var currentTick = await getShardTick();
     var map = {};
     parsePolicyEffects(results[0].data || [], map, currentTick);
+    parseTargetBasedPolicyEffects(results[0].data || [], map, nation);
     parseCrisisEffects(results[1].data || [], map);
     parseMinistryEffects(results[2].data || [], map, currentTick);
     parseDiplomaticEffects(results[3].data || [], map, currentTick);
@@ -434,6 +436,30 @@ function addEffectToMap(map, statKey, name, direction, type, rate, remainingTick
         }
     }
     map[key].push({ name: name, direction: direction, type: type, rate: parsedRate, remainingTicks: parsedRemaining, extras: extras || null });
+}
+
+// Target-based policies (the modern model): each pulls a stat toward its target.
+// Player-facing — shows "Policy — Option → {target}" with a rising/falling arrow,
+// not a per-tick number (the admin Stat Delta Audit gives the precise figure).
+function parseTargetBasedPolicyEffects(laws, map, nation) {
+    for (var i = 0; i < laws.length; i++) {
+        var opt = laws[i].selected_option;
+        if (!opt || !opt.is_target_based || !Array.isArray(opt.stat_targets)) continue;
+        var policy = laws[i].policies;
+        var pName = (policy && policy.policy_name) || 'Policy';
+        var baseName = opt.option_name ? (pName + ' — ' + opt.option_name) : pName;
+        for (var j = 0; j < opt.stat_targets.length; j++) {
+            var t = opt.stat_targets[j];
+            var key = normalizeNationStatKey(t && t.stat_key);
+            if (!isTargetBasedStat(key)) continue;
+            var target = Number(t.target);
+            var pull = Number(t.pull);
+            if (!Number.isFinite(target) || !Number.isFinite(pull) || pull <= 0) continue;
+            var current = Number(nation[key]);
+            var dir = (Number.isFinite(current) && target < current) ? 'down' : 'up';
+            addEffectToMap(map, key, baseName + ' → ' + Math.round(target), dir, 'Target', null, null);
+        }
+    }
 }
 
 function parsePolicyEffects(laws, map, currentTick) {
