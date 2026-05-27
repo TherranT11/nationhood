@@ -65,7 +65,7 @@ function viewerRole(issue, nationId, roles) {
 }
 
 function regionText(issue) {
-  return issue.contested_region_name || issue.metadata?.territory_name || 'the contested area';
+  return issue.contested_region_name || 'the contested area';
 }
 
 // The pressor's demand ladder for territorial disputes — single source of truth
@@ -132,7 +132,7 @@ export async function fetchWorldIssues(supabase) {
     .from('bilateral_issues')
     .select('id, issue_type, '
           + 'nation_a_id, nation_b_id, administering_nation_id, initiative_nation_id, '
-          + 'contested_region_name, stake_resource, stake_quantity, demand_rung, metadata, '
+          + 'contested_region_name, stake_resource, stake_quantity, demand_rung, '
           + 'created_tick, decision_deadline_tick, '
           + 'nation_a:nations!bilateral_issues_nation_a_id_fkey(id, name), '
           + 'nation_b:nations!bilateral_issues_nation_b_id_fkey(id, name)')
