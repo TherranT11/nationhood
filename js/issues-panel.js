@@ -338,8 +338,7 @@ function pressorZone(issue, region, roles, canManage) {
 // single mediator (role 'med'), which is what unlocks the chat panel below for
 // them. Until that system lands, no viewer resolves to 'med'.
 // One nation's stance toward the dispute, as a display string.
-function stanceLabel(stance, roles, isMediator) {
-  if (isMediator) return 'Mediating';
+function stanceLabel(stance, roles) {
   switch (stance) {
     case 'support_claimant': return `Supporting ${escapeHtml(roles.claimantName)}`;
     case 'support_pressor':  return `Supporting ${escapeHtml(roles.pressorName)}`;
@@ -361,12 +360,10 @@ function otherNationsBlock(issue, roles, ctx) {
     for (const [nid, nm] of names) {
       if (belligerents.has(nid)) continue;
       const stance = stanceByNation.get(nid) || 'neutral';
-      const isMediator = issue.mediator_nation_id === nid;   // column lands in the mediation pass
-      const cls = isMediator ? 'mediate' : stance;
       const you = nid === (ctx && ctx.nationId) ? ' <span class="on-you">&middot; that\'s you</span>' : '';
       rows += `<div class="on-row"><div class="on-flag">${escapeHtml(initials(nm))}</div>`
             + `<div class="on-name">${escapeHtml(nm)}</div>`
-            + `<div class="on-stance ${cls}">${stanceLabel(stance, roles, isMediator)}${you}</div></div>`;
+            + `<div class="on-stance ${stance}">${stanceLabel(stance, roles)}${you}</div></div>`;
     }
   }
   return `<div class="others"><div class="lab">OTHER NATIONS</div>`

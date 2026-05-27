@@ -53,6 +53,10 @@ RETURNS void LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp AS 
      SET relation_score = GREATEST(-100, LEAST(100, relation_score + p_delta))
    WHERE nation_a_id = LEAST(p_n1, p_n2) AND nation_b_id = GREATEST(p_n1, p_n2);
 $$;
+-- Internal helper only — it nudges relation_score with NO auth check, so it must
+-- NOT be client-callable. Revoke the default PUBLIC execute; set_issue_stance
+-- (running as owner) still calls it.
+REVOKE EXECUTE ON FUNCTION public.dispute_nudge_relation(UUID, UUID, NUMERIC) FROM PUBLIC;
 
 -- ── set_issue_stance: a third party's Foreign Minister sets the stance ───────
 CREATE OR REPLACE FUNCTION public.set_issue_stance(p_issue_id UUID, p_stance TEXT)
