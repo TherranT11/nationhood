@@ -68,12 +68,18 @@ function regionText(issue) {
   return issue.contested_region_name || 'the contested area';
 }
 
-// "What's at stake" — the staked resource, e.g. "2 Farmland". '' when unset.
-function stakeText(issue) {
+// "What's at stake" — staked resource + the population headcount at risk, e.g.
+// "2 Farmland · 847,000 people". claimantPop = the claimant's current population.
+function stakeText(issue, claimantPop) {
+  const parts = [];
   const q = Number(issue.stake_quantity);
   const res = String(issue.stake_resource || '').trim();
-  if (!res || !Number.isFinite(q) || q <= 0) return '';
-  return `${q} ${res.charAt(0).toUpperCase()}${res.slice(1)}`;
+  if (res && Number.isFinite(q) && q > 0) parts.push(`${q} ${res.charAt(0).toUpperCase()}${res.slice(1)}`);
+  const pct = Number(issue.population_stake_pct);
+  if (Number.isFinite(pct) && pct > 0 && Number.isFinite(claimantPop) && claimantPop > 0) {
+    parts.push(`${Math.round(claimantPop * pct / 100).toLocaleString()} people`);
+  }
+  return parts.join(' · ');
 }
 
 // The pressor's demand ladder for territorial disputes — single source of truth
@@ -145,7 +151,7 @@ export async function fetchWorldIssues(supabase) {
   const CORE = 'id, issue_type, nation_a_id, nation_b_id, administering_nation_id, initiative_nation_id, '
              + 'contested_region_name, stake_resource, stake_quantity, demand_rung, created_tick, '
              + 'decision_deadline_tick, ' + NAME_JOIN;
-  const FULL = CORE + ', mediator_nation_id, mediation_offer_nation_id, mediation_accept_a, mediation_accept_b';
+  const FULL = CORE + ', mediator_nation_id, mediation_offer_nation_id, mediation_accept_a, mediation_accept_b, population_stake_pct';
   for (const cols of [FULL, CORE]) {
     const { data, error } = await supabase
       .from('bilateral_issues')
@@ -203,7 +209,8 @@ function disputeDetail(issue, roles, role, region, currentTick, canManage, messa
   const demandLab = role === 'claimant' ? 'THEY DEMAND' : role === 'pressor' ? 'YOU DEMAND' : 'THE DEMAND';
 
   const left = ticksLeft(issue, currentTick);
-  const stake = issue.issue_type === 'territorial_ownership' ? stakeText(issue) : '';
+  const claimantPop = stanceCtx && stanceCtx.names && stanceCtx.names.get(roles.claimantId)?.population;
+  const stake = issue.issue_type === 'territorial_ownership' ? stakeText(issue, claimantPop) : '';
   // Either belligerent's head of government may rename the region.
   const canEditRegion = canManage && (role === 'claimant' || role === 'pressor')
     && issue.issue_type === 'territorial_ownership';
@@ -375,11 +382,12 @@ function otherNationsBlock(issue, roles, ctx) {
   if (names && names.size) {
     for (const [nid, nm] of names) {
       if (belligerents.has(nid)) continue;
+      const nationName = nm && nm.name || '';
       const stance = stanceByNation.get(nid) || 'neutral';
       const isMediator = issue.mediator_nation_id === nid;
       const you = nid === (ctx && ctx.nationId) ? ' <span class="on-you">&middot; that\'s you</span>' : '';
-      rows += `<div class="on-row"><div class="on-flag">${escapeHtml(initials(nm))}</div>`
-            + `<div class="on-name">${escapeHtml(nm)}</div>`
+      rows += `<div class="on-row"><div class="on-flag">${escapeHtml(initials(nationName))}</div>`
+            + `<div class="on-name">${escapeHtml(nationName)}</div>`
             + `<div class="on-stance ${isMediator ? 'mediate' : stance}">${stanceLabel(stance, roles, isMediator)}${you}</div></div>`;
     }
   }
@@ -395,7 +403,7 @@ function mediationBox(issue, roles, role, canManage, ctx) {
   if (!offer || !canManage || (role !== 'claimant' && role !== 'pressor')) return '';
   const myNation = role === 'claimant' ? roles.claimantId : roles.pressorId;
   const accepted = myNation === issue.nation_a_id ? issue.mediation_accept_a : issue.mediation_accept_b;
-  const offerName = escapeHtml((ctx && ctx.names && ctx.names.get(offer)) || 'A nation');
+  const offerName = escapeHtml((ctx && ctx.names && ctx.names.get(offer)?.name) || 'A nation');
   const id = escapeHtml(issue.id);
   if (accepted) {
     return `<div class="med-box pending"><div class="med-t">You accepted <b>${offerName}</b> as mediator &mdash; awaiting the other side.</div></div>`;
@@ -440,7 +448,7 @@ function thirdPartyZone(roles, issue, ctx) {
 // issue's rows (oldest first); a viewer's own side's messages sit right.
 function chatChannel(issue, myNation, canWrite, messages, names) {
   const msgs = Array.isArray(messages) ? messages : [];
-  const nameOf = (nid) => (names && names.get(nid)) || 'Unknown';
+  const nameOf = (nid) => (names && names.get(nid)?.name) || 'Unknown';
   const body = msgs.length
     ? msgs.map(m => {
         return `<div class="msg ${m.sender_nation_id === myNation ? 'me' : 'them'}">`
@@ -723,13 +731,14 @@ async function fetchIssueStances(supabase, issueIds) {
   return map;
 }
 
-// id → name for every nation, to list third parties (incl. neutrals).
+// Every nation's id → { name, population } — names list third parties, population
+// turns the stake's percentage into an actual headcount.
 async function fetchNations(supabase) {
   const map = new Map();
   try {
-    const { data, error } = await supabase.from('nations').select('id, name');
+    const { data, error } = await supabase.from('nations').select('id, name, population');
     if (error) { console.warn('[issues-panel] nations fetch failed:', error.message); return map; }
-    for (const n of (data || [])) map.set(n.id, n.name);
+    for (const n of (data || [])) map.set(n.id, { name: n.name, population: Number(n.population) || 0 });
   } catch (e) { console.warn('[issues-panel] nations fetch failed:', e?.message || e); }
   return map;
 }
