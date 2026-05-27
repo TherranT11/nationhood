@@ -156,7 +156,7 @@ export async function loadUnitsAndFunds(faction) {
 
     const { data: a, error: aErr } = await _supabase
       .from('armies')
-      .select('id,name,army_type,created_at_tick')
+      .select('id,name,army_type,created_at_tick,assigned_front_id')
       .eq('faction_id', faction.id)
       .order('created_at_tick', { ascending: true });
     if (aErr) console.warn('[create-unit] armies load failed:', aErr.message);
@@ -520,13 +520,176 @@ export function openCreateArmyModal(faction, onCreated) {
   loadUnitsAndFunds(faction).then(r => { units = r.units; funds = r.funds; shell(); });
 }
 
+// Deployment label for a front from the viewer's nation's POV:
+// "{neighbour demonym or name} Front {label}". neighbour(id) → {name,demonym}|null.
+// One source for both the assign modal and the Order of Battle.
+function frontDeployLabel(front, myNationId, neighbour) {
+  const neigh = front.nation_a_id === myNationId ? front.nation_b_id : front.nation_a_id;
+  const n = neighbour(neigh);
+  return `${(n && (n.demonym || n.name)) || 'Border'} Front ${front.label}`;
+}
+
+// ── ACTION: Assign Army to a land front ($1) ───────────────────────
+// Pick one of the faction's named armies, then a land front bordering its
+// nation. assign_army_to_front charges $1 from the army treasury. Re-assignable.
+export function openAssignArmyModal(faction, onAssigned) {
+  if (!faction?.id) return;
+  ensureStyles();
+  let overlay = document.getElementById('asn-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'asn-overlay'; overlay.className = 'cu-overlay';
+    document.body.appendChild(overlay);
+  }
+  const FEE = 1000000;
+  let armies = [], fronts = [], neighborById = new Map(), funds = 0;
+  let selArmy = null, selFront = null, busy = false;
+
+  const close = () => { overlay.style.display = 'none'; overlay.innerHTML = ''; overlay.onclick = null; };
+  const frontLabel = (f) => frontDeployLabel(f, faction.nation_id, (id) => neighborById.get(id));
+
+  function render() {
+    const enough = funds >= FEE;
+    const armiesHtml = armies.length
+      ? armies.map(a => {
+          const cur = a.assigned_front_id ? fronts.find(f => f.id === a.assigned_front_id) : null;
+          const sel = selArmy === a.id;
+          return `<div class="ca-row ${sel ? 'sel' : ''}" data-asn="army:${escapeAttr(a.id)}">
+            <div class="ca-check">${sel ? '✓' : ''}</div>
+            <div style="flex:1;min-width:0;"><div class="un">${escapeHtml(a.name)}</div>
+            <div class="us">${escapeHtml((ARMY_TYPES[a.army_type] && ARMY_TYPES[a.army_type].short) || a.army_type)} · Currently: ${escapeHtml(cur ? frontLabel(cur) : 'Unassigned')}</div></div>
+          </div>`;
+        }).join('')
+      : `<div class="oob-empty">No armies yet. Use Create Army to form one first.</div>`;
+
+    const frontsHtml = fronts.length
+      ? fronts.map(f => {
+          const sel = selFront === f.id;
+          return `<div class="ca-row ${sel ? 'sel' : ''}" data-asn="front:${escapeAttr(f.id)}">
+            <div class="ca-check">${sel ? '✓' : ''}</div>
+            <div style="flex:1;min-width:0;"><div class="un">${escapeHtml(frontLabel(f))}</div>
+            <div class="us">${Number(f.sector_count) || 0} sectors</div></div>
+          </div>`;
+        }).join('')
+      : `<div class="oob-empty">No land fronts border your nation yet.</div>`;
+
+    const canAssign = !!selArmy && !!selFront && enough && !busy;
+    overlay.innerHTML = `<div class="cu-modal">
+      <div class="cu-head">
+        <div><div class="cu-eyebrow">— ARMY ACTION —</div><div class="cu-title">Assign Army to <em>Theater</em></div></div>
+        <div class="cu-head-right">
+          <div class="cu-stat"><div class="l">ACTION COST</div><div class="v gold">${auMoney(FEE)}</div></div>
+          <div class="cu-stat"><div class="l">ARMY FUNDS</div><div class="v">${auMoney(funds)}</div></div>
+          <div class="cu-x" data-asn="close">×</div>
+        </div>
+      </div>
+      <div class="cu-body">
+        <div class="cu-sec-row"><span class="cu-sec">I. Army</span><span class="cu-sec c">${selArmy ? '1' : '0'} SELECTED</span></div>
+        ${armiesHtml}
+        <div class="cu-sec-row" style="margin-top:14px;"><span class="cu-sec">II. Front</span><span class="cu-sec c">${selFront ? '1' : '0'} SELECTED</span></div>
+        ${frontsHtml}
+        <div class="asn-err" id="asn-err" hidden style="margin-top:10px;font-family:var(--font-mono,monospace);font-size:11px;color:#c47a7a;"></div>
+        <div class="cu-foot" style="margin:18px -22px -20px;">
+          <div class="fm">FUNDS: <span class="${enough ? 'ok' : 'warn'}">${enough ? 'SUFFICIENT' : 'INSUFFICIENT'}</span></div>
+          <div class="cu-acts">
+            <div class="cu-btn sec" data-asn="cancel">CANCEL</div>
+            <div class="cu-btn pri ${canAssign ? '' : 'off'}" data-asn="assign">ASSIGN — ${auMoney(FEE)} →</div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  overlay.onclick = async (e) => {
+    if (e.target === overlay) { if (!busy) close(); return; }
+    const el = e.target.closest('[data-asn]');
+    if (!el) return;
+    const v = el.getAttribute('data-asn');
+    if (v === 'close' || v === 'cancel') { if (!busy) close(); return; }
+    if (v.startsWith('army:'))  { if (!busy) { selArmy = v.slice(5);  render(); } return; }
+    if (v.startsWith('front:')) { if (!busy) { selFront = v.slice(6); render(); } return; }
+    if (v === 'assign') {
+      if (!selArmy || !selFront || funds < FEE || busy) return;
+      busy = true; render();
+      try {
+        const { data, error } = await _supabase.rpc('assign_army_to_front', { p_army_id: selArmy, p_front_id: selFront });
+        if (error || (data && data.success === false)) {
+          busy = false; render();
+          const er = document.getElementById('asn-err');
+          if (er) { er.textContent = (data && data.error) || error?.message || 'Assignment failed.'; er.hidden = false; }
+        } else {
+          close();
+          if (typeof onAssigned === 'function') onAssigned();
+        }
+      } catch (ex) {
+        busy = false; render();
+        const er = document.getElementById('asn-err');
+        if (er) { er.textContent = ex?.message || 'Assignment failed.'; er.hidden = false; }
+      }
+    }
+  };
+
+  overlay.style.display = 'flex';
+  overlay.innerHTML = '<div class="cu-modal"><div class="cu-body"><div class="cu-sec">Loading…</div></div></div>';
+  (async () => {
+    const [aRes, fRes, facRes] = await Promise.all([
+      _supabase.from('armies').select('id, name, army_type, assigned_front_id')
+        .eq('faction_id', faction.id).order('created_at_tick', { ascending: true }),
+      _supabase.from('war_fronts').select('id, label, nation_a_id, nation_b_id, sector_count')
+        .eq('front_type', 'land')
+        .or(`nation_a_id.eq.${faction.nation_id},nation_b_id.eq.${faction.nation_id}`),
+      _supabase.from('factions').select('party_funds').eq('id', faction.id).maybeSingle(),
+    ]);
+    if (aRes.error) console.warn('[assign-army] armies load:', aRes.error.message);
+    if (fRes.error) console.warn('[assign-army] fronts load:', fRes.error.message);
+    armies = aRes.data || [];
+    fronts = fRes.data || [];
+    funds = Number(facRes.data?.party_funds) || 0;
+    const neighborIds = [...new Set(fronts.map(f => f.nation_a_id === faction.nation_id ? f.nation_b_id : f.nation_a_id))];
+    if (neighborIds.length) {
+      const { data: nats } = await _supabase.from('nations').select('id, name, demonym').in('id', neighborIds);
+      for (const n of (nats || [])) neighborById.set(n.id, n);
+    }
+    fronts.sort((x, y) => frontLabel(x).localeCompare(frontLabel(y)));
+    render();
+  })();
+}
+
+// armyId → deployment label ("Avelian Front A"), for the Order of Battle.
+// Isolated from loadUnitsAndFunds so a fronts/nations fetch hiccup can't break
+// the core OOB render — it just drops the label.
+async function loadArmyFronts(faction, armies) {
+  const map = {};
+  const frontIds = [...new Set((armies || []).map(a => a.assigned_front_id).filter(Boolean))];
+  if (!frontIds.length) return map;
+  try {
+    const { data: fr } = await _supabase.from('war_fronts')
+      .select('id, label, nation_a_id, nation_b_id').in('id', frontIds);
+    const fronts = fr || [];
+    const fById = {}; for (const f of fronts) fById[f.id] = f;
+    const neighborIds = [...new Set(fronts.map(f => f.nation_a_id === faction.nation_id ? f.nation_b_id : f.nation_a_id))];
+    const nById = {};
+    if (neighborIds.length) {
+      const { data: nats } = await _supabase.from('nations').select('id, name, demonym').in('id', neighborIds);
+      for (const n of (nats || [])) nById[n.id] = n;
+    }
+    for (const a of (armies || [])) {
+      const f = a.assigned_front_id && fById[a.assigned_front_id];
+      if (!f) continue;
+      map[a.id] = frontDeployLabel(f, faction.nation_id, (id) => nById[id]);
+    }
+  } catch (e) {
+    console.warn('[create-unit] army fronts load failed:', e?.message || e);
+  }
+  return map;
+}
+
 // ── DISPLAY: Order of Battle ───────────────────────────────────────
 // Renders a Force-Composition summary + the unit list into hostEl.
 export async function renderOrderOfBattle(faction, hostEl) {
   if (!hostEl) return;
   ensureStyles();
   const expanded = new Set();
-  let units = [], funds = 0, armies = [], equip = { byUnit: new Map(), armed: 0 };
+  let units = [], funds = 0, armies = [], equip = { byUnit: new Map(), armed: 0 }, armyFronts = {};
 
   function initials(name) {
     const w = String(name || '?').trim().split(/\s+/).filter(Boolean);
@@ -578,6 +741,7 @@ export async function renderOrderOfBattle(faction, hostEl) {
       const t = ARMY_TYPES[a.army_type];
       html += `<div class="cu-sec-row"><span class="cu-sec">${escapeHtml(a.name)}</span>`
             + `<span class="oob-army-type ${escapeAttr(a.army_type)}">${escapeHtml(t ? t.short : a.army_type)}</span>`
+            + (armyFronts[a.id] ? `<span class="cu-sec c" style="color:#c89e6e;">▸ ${escapeHtml(armyFronts[a.id])}</span>` : '')
             + `<span class="cu-sec c">${list.length} unit${list.length === 1 ? '' : 's'}</span></div>`;
       for (const u of list) html += unitCardHtml(u, a.army_type);
     }
@@ -645,6 +809,7 @@ export async function renderOrderOfBattle(faction, hostEl) {
   const r = await loadUnitsAndFunds(faction);
   units = r.units; funds = r.funds; armies = r.armies || [];
   equip = await loadBrigadeEquipment(units.map(u => u.id));
+  armyFronts = await loadArmyFronts(faction, armies);
   draw();
 }
 
