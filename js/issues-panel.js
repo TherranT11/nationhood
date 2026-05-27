@@ -144,7 +144,7 @@ export async function fetchWorldIssues(supabase) {
 
 // ── render: summary row ─────────────────────────────────────────────────────
 
-function disputeRow(issue, role, roles, expanded, currentTick, canManage) {
+function disputeRow(issue, role, roles, expanded, currentTick, canManage, messagesByIssue) {
   const badge = typeBadge(issue.issue_type);
   const region = regionText(issue);
 
@@ -162,12 +162,12 @@ function disputeRow(issue, role, roles, expanded, currentTick, canManage) {
       <span class="${clockCls}">${clockText(issue, currentTick)}</span>
     </div>`;
 
-  return `<div class="dispute${expanded ? ' expanded' : ''}" data-id="${escapeHtml(issue.id)}">${summary}<div class="d-detail">${disputeDetail(issue, roles, role, region, currentTick, canManage)}</div></div>`;
+  return `<div class="dispute${expanded ? ' expanded' : ''}" data-id="${escapeHtml(issue.id)}">${summary}<div class="d-detail">${disputeDetail(issue, roles, role, region, currentTick, canManage, messagesByIssue)}</div></div>`;
 }
 
 // HTML inside `.issues-content` — the count line + the dispute list. Shared by the
 // initial render and the post-action reload so they can't drift.
-function buildContent(issues, nationId, expandedId, currentTick, canManage) {
+function buildContent(issues, nationId, expandedId, currentTick, canManage, messagesByIssue) {
   const tagged = (Array.isArray(issues) ? issues : []).map(it => {
     const roles = rolesOf(it);
     return { issue: it, roles, role: viewerRole(it, nationId, roles) };
@@ -175,12 +175,12 @@ function buildContent(issues, nationId, expandedId, currentTick, canManage) {
   if (!tagged.length) return '<div class="issues-empty">No ongoing issues</div>';
   const involved = tagged.filter(t => t.role !== 'third').length;
   return `<div class="issues-sub">${tagged.length} ONGOING &middot; YOU ARE INVOLVED IN ${involved}</div>`
-    + `<div class="disputes">${tagged.map(t => disputeRow(t.issue, t.role, t.roles, t.issue.id === expandedId, currentTick, canManage)).join('')}</div>`;
+    + `<div class="disputes">${tagged.map(t => disputeRow(t.issue, t.role, t.roles, t.issue.id === expandedId, currentTick, canManage, messagesByIssue)).join('')}</div>`;
 }
 
 // ── render: shared detail (combatants + stances + role module + chat) ─────────
 
-function disputeDetail(issue, roles, role, region, currentTick, canManage) {
+function disputeDetail(issue, roles, role, region, currentTick, canManage, messagesByIssue) {
   const youTag = '<span class="you">YOU</span>';
   const aYou = role === 'claimant' ? youTag : '';
   const bYou = role === 'pressor'  ? youTag : '';
@@ -214,9 +214,10 @@ function disputeDetail(issue, roles, role, region, currentTick, canManage) {
                    : role === 'pressor'  ? pressorZone(issue, region, roles, canManage)
                    :                       thirdPartyZone(roles);
 
-  // The head-of-state channel is private to the two principals (and, in future,
-  // the accepted mediator). Third parties don't see it.
-  const chat = (role === 'claimant' || role === 'pressor') ? chatPlaceholder() : '';
+  // The head-of-state channel is for the two belligerent nations (both their
+  // factions read; only their heads of government write). Third parties don't see it.
+  const msgs = messagesByIssue && typeof messagesByIssue.get === 'function' ? messagesByIssue.get(issue.id) : null;
+  const chat = (role === 'claimant' || role === 'pressor') ? chatChannel(issue, roles, role, canManage, msgs) : '';
   return combatants + others + roleModule + chat;
 }
 
@@ -338,10 +339,32 @@ function thirdPartyZone(roles) {
   </div>`;
 }
 
-function chatPlaceholder() {
+// The head-of-government channel. Both belligerent nations' factions READ it
+// (gated by RLS on the message table); only the head of government (canManage)
+// gets the input — everyone else sees a read-only note. `messages` is this
+// issue's rows (oldest first); a viewer's own side's messages sit right.
+function chatChannel(issue, roles, role, canManage, messages) {
+  const msgs = Array.isArray(messages) ? messages : [];
+  const mineId = role === 'claimant' ? roles.claimantId : role === 'pressor' ? roles.pressorId : null;
+  const body = msgs.length
+    ? msgs.map(m => {
+        const who = m.sender_nation_id === roles.claimantId ? roles.claimantName
+                  : m.sender_nation_id === roles.pressorId  ? roles.pressorName
+                  :                                           'Unknown';
+        return `<div class="msg ${m.sender_nation_id === mineId ? 'me' : 'them'}">`
+             + `<div class="who">${escapeHtml(who)}</div>`
+             + `<div class="bubble">${escapeHtml(m.body)}</div>`
+             + `<div class="ts">TICK ${Number(m.sent_at_tick) || 0}</div></div>`;
+      }).join('')
+    : `<div class="ch-empty">No messages yet.</div>`;
+  const id = escapeHtml(issue.id);
+  const foot = canManage
+    ? `<div class="ch-input"><input type="text" data-chat-input="${id}" maxlength="1000" placeholder="Message the other head of government…"><button type="button" class="ch-send" data-chat-send="${id}">Send</button></div>`
+    : `<div class="ch-note">Only your head of government can post to this channel.</div>`;
   return `<div class="channel">
     <div class="ch-head"><span class="t">HEAD-OF-STATE CHANNEL</span><span class="secure">&#128274; PRIVATE</span></div>
-    <div class="ch-body">${PREVIEW('The private leader-to-leader channel is not yet built.')}</div>
+    <div class="ch-body">${body}</div>
+    ${foot}
   </div>`;
 }
 
@@ -480,7 +503,22 @@ function ensureStyles() {
     .issues-panel .channel .ch-head{padding:11px 18px;background:#0a0a0a;border-bottom:0.5px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;}
     .issues-panel .channel .ch-head .t{font-size:10px;letter-spacing:0.13em;color:#888;}
     .issues-panel .channel .ch-head .secure{font-size:8px;color:#6a8a5a;letter-spacing:0.1em;}
-    .issues-panel .channel .ch-body{padding:14px 18px;}
+    .issues-panel .channel .ch-body{padding:14px 18px;display:flex;flex-direction:column;gap:10px;max-height:300px;overflow-y:auto;}
+    .issues-panel .ch-empty{font-size:10px;color:#666;font-style:italic;text-align:center;padding:8px;}
+    .issues-panel .msg{display:flex;flex-direction:column;max-width:78%;}
+    .issues-panel .msg.them{align-self:flex-start;} .issues-panel .msg.me{align-self:flex-end;align-items:flex-end;}
+    .issues-panel .msg .who{font-size:9px;letter-spacing:0.07em;margin-bottom:3px;color:#888;}
+    .issues-panel .msg .bubble{padding:8px 11px;border-radius:8px;font-size:12px;line-height:1.5;overflow-wrap:anywhere;white-space:pre-wrap;}
+    .issues-panel .msg.them .bubble{background:#13191f;color:#cdd6dc;border-bottom-left-radius:2px;}
+    .issues-panel .msg.me .bubble{background:#1f1414;color:#e4cccc;border-bottom-right-radius:2px;}
+    .issues-panel .msg .ts{font-size:8px;color:#555;margin-top:3px;letter-spacing:0.06em;}
+    .issues-panel .ch-input{display:flex;gap:8px;padding:12px 18px;border-top:0.5px solid rgba(255,255,255,0.06);}
+    .issues-panel .ch-input input{flex:1;background:#161616;border:0.5px solid rgba(255,255,255,0.12);color:#d4d4d4;padding:9px 12px;border-radius:4px;font-size:12px;font-family:inherit;}
+    .issues-panel .ch-input input::placeholder{color:#555;font-style:italic;}
+    .issues-panel .ch-input input:disabled{opacity:0.5;}
+    .issues-panel .ch-send{background:#1f1414;border:0.5px solid rgba(200,122,122,0.4);color:#c87a7a;padding:9px 16px;border-radius:4px;font-size:11px;letter-spacing:0.08em;cursor:pointer;font-family:inherit;}
+    .issues-panel .ch-send:hover{background:#2a1818;}
+    .issues-panel .ch-note{padding:11px 18px;border-top:0.5px solid rgba(255,255,255,0.06);font-size:9px;color:#777;font-style:italic;letter-spacing:0.04em;}
   `;
   document.head.appendChild(s);
 }
@@ -496,7 +534,7 @@ export function renderIssuesPanel(host, issues, nationId, opts = {}) {
   const heading = opts.heading === undefined ? 'I. Issues' : opts.heading;
   host.innerHTML = `<section class="issues-panel">
       ${heading ? `<div class="issues-panel__head">${escapeHtml(heading)}</div>` : ''}
-      <div class="issues-content">${buildContent(issues, nationId, opts.expandedId || null, opts.currentTick ?? null, !!opts.canManage)}</div>
+      <div class="issues-content">${buildContent(issues, nationId, opts.expandedId || null, opts.currentTick ?? null, !!opts.canManage, opts.messages || null)}</div>
     </section>`;
 
   // Accordion expand/collapse via delegation on the root, which survives content
@@ -548,6 +586,26 @@ async function fetchGovernedNation(supabase) {
   } catch { return null; }
 }
 
+// Head-of-government channel messages for the given issues, grouped by issue id
+// (oldest first). RLS returns only the messages the viewer's nation may read.
+async function fetchIssueMessages(supabase, issueIds) {
+  const map = new Map();
+  if (!issueIds || !issueIds.length) return map;
+  try {
+    const { data, error } = await supabase
+      .from('bilateral_issue_messages')
+      .select('issue_id, sender_nation_id, body, sent_at_tick')
+      .in('issue_id', issueIds)
+      .order('created_at', { ascending: true });
+    if (error) { console.warn('[issues-panel] messages fetch failed:', error.message); return map; }
+    for (const m of (data || [])) {
+      if (!map.has(m.issue_id)) map.set(m.issue_id, []);
+      map.get(m.issue_id).push(m);
+    }
+  } catch (e) { console.warn('[issues-panel] messages fetch failed:', e?.message || e); }
+  return map;
+}
+
 // Fetch + render. Both pages call this so they stay in lockstep.
 export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
   if (!host) return;
@@ -558,17 +616,18 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
       <div class="issues-content"><div class="issues-empty">Loading…</div></div>
     </section>`;
 
-  let issues = [], currentTick = null, governed = null;
+  let issues = [], currentTick = null, governed = null, messages = new Map();
   try {
     [issues, currentTick, governed] = await Promise.all([
       fetchWorldIssues(supabase), fetchCurrentTick(supabase), fetchGovernedNation(supabase),
     ]);
+    messages = await fetchIssueMessages(supabase, (issues || []).map(i => i.id));
   } catch (err) {
     console.warn('[issues-panel] mount failed:', err?.message || err);
   }
   // Only the nation's head of government may act on its disputes.
   const canManage = !!governed && governed === nationId;
-  renderIssuesPanel(host, issues, nationId, { ...opts, currentTick, canManage });
+  renderIssuesPanel(host, issues, nationId, { ...opts, currentTick, canManage, messages });
 
   const root = host.querySelector('.issues-panel');
   const content = host.querySelector('.issues-content');
@@ -576,6 +635,20 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
   root.dataset.actionWired = '1';
 
   let busy = false;
+
+  // Re-fetch everything and rebuild, keeping the open dispute expanded. Shared by
+  // the action buttons and the chat so they can't drift.
+  async function reload() {
+    const openId = root.querySelector('.dispute.expanded')?.dataset.id || null;
+    let fresh = [], freshTick = currentTick, freshMsgs = new Map();
+    try {
+      [fresh, freshTick] = await Promise.all([fetchWorldIssues(supabase), fetchCurrentTick(supabase)]);
+      freshMsgs = await fetchIssueMessages(supabase, fresh.map(i => i.id));
+    } catch { /* keep what we have */ }
+    content.innerHTML = buildContent(fresh, nationId, openId, freshTick, canManage, freshMsgs);
+  }
+
+  // Claimant/pressor decision buttons.
   root.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-action]');
     if (!btn || !root.contains(btn)) return;
@@ -599,19 +672,43 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
     if (errEl) { errEl.hidden = true; errEl.textContent = ''; }
     try {
       const { data, error } = await supabase.rpc(rpc, { p_issue_id: btn.dataset.id });
-      if (error || (data && data.ok === false)) {
-        fail((data && data.message) || error?.message || 'Action failed.');
-      } else {
-        // Success rebuilds the content (fresh, enabled buttons), re-expanding this dispute.
-        const openId = root.querySelector('.dispute.expanded')?.dataset.id || null;
-        let fresh = [], freshTick = currentTick;
-        try { [fresh, freshTick] = await Promise.all([fetchWorldIssues(supabase), fetchCurrentTick(supabase)]); } catch { /* keep empty */ }
-        content.innerHTML = buildContent(fresh, nationId, openId, freshTick, canManage);
-      }
+      if (error || (data && data.ok === false)) fail((data && data.message) || error?.message || 'Action failed.');
+      else await reload();
     } catch (err) {
       fail(err?.message || 'Action failed.');
     } finally {
       busy = false;
     }
+  });
+
+  // Head-of-government channel: post a message, then reload to show it.
+  async function sendChat(issueId, inputEl) {
+    if (busy) return;
+    const body = inputEl ? inputEl.value.trim() : '';
+    if (!body) return;
+    busy = true;
+    if (inputEl) inputEl.disabled = true;
+    try {
+      const { data, error } = await supabase.rpc('send_issue_message', { p_issue_id: issueId, p_body: body });
+      if (!error && !(data && data.ok === false)) { await reload(); }
+      else { if (inputEl) inputEl.disabled = false; console.warn('[issues-panel] send failed:', (data && data.message) || error?.message); }
+    } catch (ex) {
+      if (inputEl) inputEl.disabled = false;
+      console.warn('[issues-panel] send failed:', ex?.message || ex);
+    } finally {
+      busy = false;
+    }
+  }
+  root.addEventListener('click', (e) => {
+    const sb = e.target.closest('[data-chat-send]');
+    if (!sb || !root.contains(sb)) return;
+    e.stopPropagation();
+    sendChat(sb.dataset.chatSend, root.querySelector(`[data-chat-input="${sb.dataset.chatSend}"]`));
+  });
+  root.addEventListener('keydown', (e) => {
+    const inp = e.target.closest('[data-chat-input]');
+    if (!inp || e.key !== 'Enter') return;
+    e.preventDefault();
+    sendChat(inp.dataset.chatInput, inp);
   });
 }
