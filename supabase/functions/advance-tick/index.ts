@@ -29759,10 +29759,13 @@ const _pairKey = (x, y) => (x < y ? `${x}|${y}` : `${y}|${x}`);
 // 0.4× cohesion drain, cannot advance. Non-fatal; bails on partial reads.
 async function processCombat(supabase, currentTick) {
     const { data: warRels, error: relErr } = await supabase
-        .from('diplomatic_relations').select('nation_a_id, nation_b_id').eq('relation_type', 'war');
+        .from('diplomatic_relations').select('id, nation_a_id, nation_b_id, war_score_a, war_score_b').eq('relation_type', 'war');
     if (relErr) { console.error('[processCombat] war relations load failed:', relErr.message); return { battles: 0 }; }
     if (!warRels || !warRels.length) return { battles: 0 };
     const warPairs = new Set(warRels.map(r => _pairKey(r.nation_a_id, r.nation_b_id)));
+    // Per-war conquest score, mutated as sectors are seized and flushed at the end.
+    const relByPair = new Map(warRels.map(r => [_pairKey(r.nation_a_id, r.nation_b_id),
+        { id: r.id, a: Number(r.war_score_a) || 0, b: Number(r.war_score_b) || 0, dirty: false }]));
 
     const { data: allFronts, error: fErr } = await supabase.from('war_fronts')
         .select('id, nation_a_id, nation_b_id, sector_count, line_position, action_a, action_b')
@@ -29860,14 +29863,17 @@ async function processCombat(supabase, currentTick) {
         const rally = (disc) => Math.round(COMBAT.REGROUP_COH * (0.5 + disc / 100));
         const aBroke = A.M <= 0 || sideCohesion(A, cohVal) <= 0;
         const bBroke = B.M <= 0 || sideCohesion(B, cohVal) <= 0;
+        const rel = relByPair.get(_pairKey(f.nation_a_id, f.nation_b_id));
         if (bBroke && !aBroke && actA === 'assault') {
             line = Math.min(N, line + 1);
             for (const fid of B.facIds) cohVal.set(fid, Math.max(cohVal.get(fid) || 0, rally(B.discipline)));
             lineUpd.set(f.id, line);
+            if (rel) { rel.a += 1; rel.dirty = true; }   // nation_a seized a sector → +1 Conquest Point
         } else if (aBroke && !bBroke && actB === 'assault') {
             line = Math.max(0, line - 1);
             for (const fid of A.facIds) cohVal.set(fid, Math.max(cohVal.get(fid) || 0, rally(A.discipline)));
             lineUpd.set(f.id, line);
+            if (rel) { rel.b += 1; rel.dirty = true; }   // nation_b seized a sector → +1 Conquest Point
         }
         battles++;
     }
@@ -29884,6 +29890,9 @@ async function processCombat(supabase, currentTick) {
     for (const [fid, f] of facById) {
         const nc = Math.round(cohVal.get(fid));
         if (nc !== (Number(f.army_cohesion) || 0)) await supabase.from('factions').update({ army_cohesion: nc }).eq('id', fid);
+    }
+    for (const rel of relByPair.values()) {
+        if (rel.dirty) await supabase.from('diplomatic_relations').update({ war_score_a: rel.a, war_score_b: rel.b }).eq('id', rel.id);
     }
 
     return { battles };
