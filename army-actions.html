@@ -82,6 +82,7 @@ import { getNationNames } from './js/game/political-actions.js';
 import { bootstrapArmyPage } from './js/army-page.js';
 import { openCreateUnitModal, openCreateArmyModal, openAssignArmyModal, openFrontOrdersModal } from './js/create-unit.js';
 import { openOfficerAction } from './js/officer-actions.js';
+import { openAppointCommanderModal } from './js/appoint-commander.js';
 import { openReportModal } from './js/report-defense.js';
 import { openForeignOfficerExchangeModal } from './js/foreign-officer-exchange.js';
 import { openCombinedArmsSchoolModal } from './js/combined-arms-school.js';
@@ -163,6 +164,13 @@ function render() {
             <span class="aa-act__cost">$2</span>
           </div>
           <div class="aa-act__desc">Form your units into a cohesive fighting force — a named army (Regular, Guard, or Paramilitary) that can be deployed and given orders. $2 action fee from the army treasury.</div>
+        </div>
+        <div class="aa-act" data-act="appoint-commander">
+          <div class="aa-act__head">
+            <div class="aa-act__title"><span class="aa-act__name">Appoint Army Commander</span></div>
+            <span class="aa-act__cost">$0</span>
+          </div>
+          <div class="aa-act__desc">Review seven generals and place one in command of an army. Leadership (combat power) and Discipline (staying power under fire) are capped by your army's Professionalism and Cohesion. Free.</div>
         </div>
         <div class="aa-act" data-act="assign-army">
           <div class="aa-act__head">
@@ -283,6 +291,8 @@ function render() {
   if (ca) ca.onclick = () => openCreateArmyModal(_faction);
   const aa = root.querySelector('[data-act="assign-army"]');
   if (aa) aa.onclick = () => openAssignArmyModal(_faction);
+  const ap = root.querySelector('[data-act="appoint-commander"]');
+  if (ap) ap.onclick = () => openAppointCommanderModal(_faction);
   const ford = root.querySelector('[data-act="front-orders"]');
   if (ford) ford.onclick = () => openFrontOrdersModal(_faction);
   const rs = root.querySelector('[data-act="resign"]');
