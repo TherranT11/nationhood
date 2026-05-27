@@ -125,6 +125,8 @@ const CU_CSS = `
 .ca-row.sel .ca-check { border-color:#d4b87a; }
 .ca-row .un { font-size:13px; font-weight:600; color:#fff; }
 .ca-row .us { font-size:10px; color:#888; margin-top:2px; }
+.ford-intel { font-size:10px; color:#9a8a6a; margin-top:5px; letter-spacing:0.03em; }
+.ford-intel b { color:#d4b87a; font-weight:600; }
 .ca-type { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px; }
 .ca-typeopt { background:#141414; border:0.5px solid rgba(255,255,255,0.12); border-radius:4px; padding:10px 12px; cursor:pointer; }
 .ca-typeopt.sel { border-color:#d4b87a; background:#161412; }
@@ -719,10 +721,16 @@ export function openAssignArmyModal(faction, onAssigned) {
   })();
 }
 
-// ── ACTION: Front Orders — set each land front's posture for the next tick ──
-// ASSAULT (push the line, costly) or DEFEND (hold cheaply, can't advance).
-// Free; the combat tick reads action_a/action_b. set_front_action is gated to
-// the army faction commanding one of the front's nations.
+// ── ACTION: Army Orders — set the posture of each deployed army for next tick ──
+// ARMIES receive orders, not fronts: each row is one of your armies, the front
+// it's deployed on, and an ESTIMATED enemy-intelligence readout for that front
+// (fuzzed ±1–10%). ASSAULT (push the line, costly) or DEFEND (hold). Combat
+// resolves per front-side, so the order sets that army's front posture — armies
+// sharing a front share the posture. set_front_action is the server authority.
+//
+// Enemy intel: Soldiers = summed enemy unit manpower on the front (real data,
+// fuzzed). Vehicles / Tanks have no count in the schema yet, so they read 0
+// until those are tracked — no fabricated numbers.
 export function openFrontOrdersModal(faction, onSet) {
   if (!faction?.id) return;
   ensureStyles();
@@ -732,29 +740,40 @@ export function openFrontOrdersModal(faction, onSet) {
     overlay.id = 'ford-overlay'; overlay.className = 'cu-overlay';
     document.body.appendChild(overlay);
   }
-  let fronts = [], neighborById = new Map(), busy = false;
+  let armyRows = [], busy = false;
   const close = () => { overlay.style.display = 'none'; overlay.innerHTML = ''; overlay.onclick = null; };
   const sideAction = (f) => (f.nation_a_id === faction.nation_id ? f.action_a : f.action_b) === 'assault' ? 'assault' : 'defend';
 
+  // ±1D10% intel fuzz, rolled once per modal open (stored on the row).
+  const fuzz = (n) => {
+    const v = Number(n) || 0;
+    if (v <= 0) return 0;
+    const sign = Math.random() < 0.5 ? -1 : 1;
+    return Math.max(0, Math.round(v * (1 + sign * (1 + Math.floor(Math.random() * 10)) / 100)));
+  };
+
   function render() {
-    const rows = fronts.length
-      ? fronts.map(f => {
-          const neigh = neighborById.get(frontNeighbourId(f, faction.nation_id));
-          const nm = (neigh && neigh.name) || 'Border';
+    const rows = armyRows.length
+      ? armyRows.map(r => {
+          const f = r.front;
           const act = sideAction(f);
+          const i = r.intel;
           return `<div class="ca-row">
-            <div style="flex:1;min-width:0;"><div class="un">${escapeHtml(nm)} Front ${escapeHtml(f.label || '')}</div>
-            <div class="us">${Number(f.sector_count) || 0} sectors</div></div>
+            <div style="flex:1;min-width:0;">
+              <div class="un">${escapeHtml(r.army.name)}</div>
+              <div class="us">${escapeHtml(r.frontName)} Front ${escapeHtml(f.label || '')} · ${Number(f.sector_count) || 0} sectors</div>
+              <div class="ford-intel">Estimated Enemy Intelligence in Front: <b>${i.soldiers.toLocaleString()}</b> Soldiers, <b>${i.vehicles.toLocaleString()}</b> Vehicles, <b>${i.tanks.toLocaleString()}</b> Tanks</div>
+            </div>
             <div style="display:flex;gap:6px;flex:none;">
               <div class="cu-btn ${act === 'assault' ? 'pri' : 'sec'} ${busy ? 'off' : ''}" data-ford="assault:${escapeAttr(f.id)}">ASSAULT</div>
               <div class="cu-btn ${act === 'defend' ? 'pri' : 'sec'} ${busy ? 'off' : ''}" data-ford="defend:${escapeAttr(f.id)}">DEFEND</div>
             </div>
           </div>`;
         }).join('')
-      : `<div class="oob-empty">No land fronts border your nation yet.</div>`;
+      : `<div class="oob-empty">No armies deployed to a front. Use Assign Army to Theater first.</div>`;
     overlay.innerHTML = `<div class="cu-modal">
       <div class="cu-head">
-        <div><div class="cu-eyebrow">— ARMY ACTION —</div><div class="cu-title">Front <em>Orders</em></div></div>
+        <div><div class="cu-eyebrow">— ARMY ACTION —</div><div class="cu-title">Army <em>Orders</em></div></div>
         <div class="cu-head-right"><div class="cu-x" data-ford="close">×</div></div>
       </div>
       <div class="cu-body">
@@ -772,7 +791,9 @@ export function openFrontOrdersModal(faction, onSet) {
     if (v === 'close') { if (!busy) close(); return; }
     if (busy) return;
     const [action, frontId] = v.split(':');
-    const f = fronts.find(x => x.id === frontId);
+    // Front objects are shared across rows on the same front, so updating one
+    // updates every army sharing it.
+    const f = armyRows.find(r => r.front && r.front.id === frontId)?.front;
     if (!f || sideAction(f) === action) return;
     busy = true; render();
     try {
@@ -795,20 +816,62 @@ export function openFrontOrdersModal(faction, onSet) {
   overlay.innerHTML = '<div class="cu-modal"><div class="cu-body"><div class="cu-sec">Loading…</div></div></div>';
   (async () => {
     try {
-      const { data: fr, error } = await _supabase.from('war_fronts')
-        .select('id, label, nation_a_id, nation_b_id, sector_count, action_a, action_b')
-        .eq('front_type', 'land')
-        .or(`nation_a_id.eq.${faction.nation_id},nation_b_id.eq.${faction.nation_id}`);
+      // My deployed armies (those assigned to a front).
+      const { data: myArmies, error } = await _supabase.from('armies')
+        .select('id, name, assigned_front_id')
+        .eq('nation_id', faction.nation_id)
+        .not('assigned_front_id', 'is', null);
       if (error) throw error;
-      fronts = fr || [];
-      const neighborIds = [...new Set(fronts.map(f => frontNeighbourId(f, faction.nation_id)))];
+      const armies = myArmies || [];
+      const frontIds = [...new Set(armies.map(a => a.assigned_front_id))];
+      if (!frontIds.length) { armyRows = []; render(); return; }
+
+      // Fronts those armies sit on + neighbour names.
+      const { data: fr } = await _supabase.from('war_fronts')
+        .select('id, label, nation_a_id, nation_b_id, sector_count, action_a, action_b')
+        .in('id', frontIds);
+      const fById = new Map((fr || []).map(f => [f.id, f]));
+      const neighborIds = [...new Set((fr || []).map(f => frontNeighbourId(f, faction.nation_id)))];
+      const nameById = new Map();
       if (neighborIds.length) {
         const { data: nats } = await _supabase.from('nations').select('id, name').in('id', neighborIds);
-        for (const n of (nats || [])) neighborById.set(n.id, n);
+        for (const n of (nats || [])) nameById.set(n.id, n.name);
       }
-      fronts.sort((x, y) => String(x.label).localeCompare(String(y.label)));
+
+      // Enemy intel per front: enemy armies on these fronts → their units' manpower.
+      const soldiersByFront = new Map();
+      const { data: enemyArmies } = await _supabase.from('armies')
+        .select('id, assigned_front_id')
+        .in('assigned_front_id', frontIds)
+        .neq('nation_id', faction.nation_id);
+      const frontByEnemyArmy = new Map((enemyArmies || []).map(a => [a.id, a.assigned_front_id]));
+      const enemyArmyIds = [...frontByEnemyArmy.keys()];
+      if (enemyArmyIds.length) {
+        const { data: units } = await _supabase.from('army_units')
+          .select('army_id, total_manpower')
+          .in('army_id', enemyArmyIds)
+          .neq('status', 'Decommissioned');
+        for (const u of (units || [])) {
+          const fId = frontByEnemyArmy.get(u.army_id);
+          if (!fId) continue;
+          soldiersByFront.set(fId, (soldiersByFront.get(fId) || 0) + (Number(u.total_manpower) || 0));
+        }
+      }
+
+      armyRows = armies.map(a => {
+        const f = fById.get(a.assigned_front_id);
+        if (!f) return null;
+        return {
+          army: a,
+          front: f,
+          frontName: nameById.get(frontNeighbourId(f, faction.nation_id)) || 'Border',
+          // Soldiers from real manpower (fuzzed); Vehicles/Tanks unmodelled → 0.
+          intel: { soldiers: fuzz(soldiersByFront.get(a.assigned_front_id) || 0), vehicles: 0, tanks: 0 },
+        };
+      }).filter(Boolean);
+      armyRows.sort((x, y) => String(x.army.name).localeCompare(String(y.army.name)));
     } catch (e) {
-      console.warn('[front-orders] load failed:', e?.message || e);
+      console.warn('[army-orders] load failed:', e?.message || e);
     }
     render();
   })();
