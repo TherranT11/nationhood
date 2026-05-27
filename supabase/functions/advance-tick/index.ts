@@ -741,6 +741,30 @@ async function setNationsAtWar(supabase, nationX, nationY, currentTick, justific
         updated_at: new Date().toISOString(),
     }, { onConflict: 'nation_a_id,nation_b_id' });
     if (error) { console.error('[setNationsAtWar] failed:', error.message); return { ok: false, error: error }; }
+
+    // Initialise each land front's line to the static border (count of nation_a's
+    // sectors), clamped inside the chain — the single place the front line is
+    // seeded, so supply/combat never read a NULL. Only sets fronts not yet set.
+    // Best-effort: a hiccup here leaves line_position NULL (combat/supply skip the
+    // front, no wrong result) and the migration backfill is the safety net.
+    try {
+        const { data: fronts } = await supabase.from('war_fronts')
+            .select('id, sector_count').eq('front_type', 'land')
+            .eq('nation_a_id', a).eq('nation_b_id', b).is('line_position', null);
+        if (fronts && fronts.length) {
+            const ids = fronts.map(f => f.id);
+            const { data: secs } = await supabase.from('war_sectors').select('front_id, nation_id').in('front_id', ids);
+            const aCount = new Map();
+            for (const s of (secs || [])) if (s.nation_id === a) aCount.set(s.front_id, (aCount.get(s.front_id) || 0) + 1);
+            for (const f of fronts) {
+                const N = Number(f.sector_count) || 0;
+                const border = Math.min(Math.max(aCount.get(f.id) || Math.floor(N / 2), 1), Math.max(N - 1, 1));
+                await supabase.from('war_fronts').update({ line_position: border }).eq('id', f.id);
+            }
+        }
+    } catch (e) {
+        console.warn('[setNationsAtWar] front-line init failed (backfill/next call covers it):', e?.message || e);
+    }
     return { ok: true };
 }
 
@@ -29632,7 +29656,7 @@ async function processArmySupply(supabase, currentTick) {
     if (atWar.size === 0) return { supplied: 0 };
 
     const { data: armies, error: aErr } = await supabase
-        .from('armies').select('id, faction_id, nation_id, assigned_front_id, army_type, current_sector_id')
+        .from('armies').select('id, faction_id, nation_id, assigned_front_id, army_type')
         .in('nation_id', [...atWar]).not('assigned_front_id', 'is', null);
     if (aErr) { console.error('[processArmySupply] armies load failed:', aErr.message); return { supplied: 0 }; }
     if (!armies || armies.length === 0) return { supplied: 0 };
@@ -29641,23 +29665,20 @@ async function processArmySupply(supabase, currentTick) {
     const armyIds = armies.map(a => a.id);
     const factionIds = [...new Set(armies.map(a => a.faction_id))];
 
-    const [frontsRes, sectorsRes, unitsRes, facsRes] = await Promise.all([
-        supabase.from('war_fronts').select('id, nation_a_id, sector_count').in('id', frontIds),
-        supabase.from('war_sectors').select('id, front_id, nation_id, position, is_capital_adjacent').in('front_id', frontIds),
+    const [frontsRes, unitsRes, facsRes] = await Promise.all([
+        supabase.from('war_fronts').select('id, nation_a_id, sector_count, line_position').in('id', frontIds),
         supabase.from('army_units').select('army_id, total_manpower, brigades').in('army_id', armyIds).neq('status', 'Decommissioned'),
         supabase.from('factions').select('id, army_supplies, army_logistics, army_cohesion').in('id', factionIds),
     ]);
     // Bail on incomplete core data rather than apply effects on partial reads
     // (e.g. a failed factions fetch would read every army's supply as 0 and
     // wrongly drain cohesion across the board).
-    if (frontsRes.error || sectorsRes.error || unitsRes.error || facsRes.error) {
+    if (frontsRes.error || unitsRes.error || facsRes.error) {
         console.error('[processArmySupply] core load failed:',
-            (frontsRes.error || sectorsRes.error || unitsRes.error || facsRes.error).message);
+            (frontsRes.error || unitsRes.error || facsRes.error).message);
         return { supplied: 0 };
     }
     const fronts = new Map((frontsRes.data || []).map(f => [f.id, f]));
-    const sectors = sectorsRes.data || [];
-    const sectorById = new Map(sectors.map(s => [s.id, s]));
     const facById = new Map((facsRes.data || []).map(f => [f.id, f]));
 
     // Aggregate each army's committed units → total manpower + brigade supply cost.
@@ -29681,19 +29702,13 @@ async function processArmySupply(supabase, currentTick) {
         const neighbour = a.nation_id === front.nation_a_id ? front.nation_b_id : front.nation_a_id;
         if (!enemiesByNation.get(a.nation_id)?.has(neighbour)) continue;
 
-        // Lazy placement: a newly-at-war army starts at its capital-adjacent sector.
-        let sector = a.current_sector_id ? sectorById.get(a.current_sector_id) : null;
-        if (!sector) {
-            sector = sectors.find(s => s.front_id === a.assigned_front_id && s.nation_id === a.nation_id && s.is_capital_adjacent) || null;
-            if (sector) await supabase.from('armies').update({ current_sector_id: sector.id }).eq('id', a.id);
-        }
-        if (!sector) continue;  // front not generated yet — nothing to supply
-
-        const n = front.sector_count || 0;
-        // Sectors traversed from the capital to this sector (−1 supply each).
-        const pathCost = (a.nation_id === front.nation_a_id)
-            ? sector.position
-            : (n - sector.position + 1);
+        const N = Number(front.sector_count) || 0;
+        const line = front.line_position;
+        if (line === null || line === undefined || N <= 0) continue;   // line seeded at war start
+        // Supply travels from the capital to the FRONT LINE — it lengthens as you
+        // push into enemy land (line moves away from your capital) and shortens
+        // as you fall back. nation_a's path = line; nation_b's = N − line.
+        const pathCost = (a.nation_id === front.nation_a_id) ? line : (N - line);
 
         const agg = perArmy.get(a.id) || { manpower: 0, brigCost: 0 };
         const formation = a.army_type === 'guard' ? 1 : a.army_type === 'paramilitary' ? -1 : 0;
@@ -29759,21 +29774,10 @@ async function processCombat(supabase, currentTick) {
     const frontIds = fronts.map(f => f.id);
     const frontById = new Map(fronts.map(f => [f.id, f]));
 
-    const [secRes, armyRes] = await Promise.all([
-        supabase.from('war_sectors').select('front_id, nation_id').in('front_id', frontIds),
-        supabase.from('armies').select('id, faction_id, nation_id, assigned_front_id, supply_balance').in('assigned_front_id', frontIds),
-    ]);
-    if (secRes.error || armyRes.error) {
-        console.error('[processCombat] core load failed:', (secRes.error || armyRes.error).message);
-        return { battles: 0 };
-    }
-    const aCount = new Map(fronts.map(f => [f.id, 0]));   // nation_a's static sector count (line init)
-    for (const s of (secRes.data || [])) {
-        const f = frontById.get(s.front_id);
-        if (f && s.nation_id === f.nation_a_id) aCount.set(f.id, aCount.get(f.id) + 1);
-    }
-
-    const armies = armyRes.data || [];
+    const { data: armyData, error: armyErr } = await supabase
+        .from('armies').select('id, faction_id, nation_id, assigned_front_id, supply_balance').in('assigned_front_id', frontIds);
+    if (armyErr) { console.error('[processCombat] armies load failed:', armyErr.message); return { battles: 0 }; }
+    const armies = armyData || [];
     const armyIds = armies.map(a => a.id);
     const factionIds = [...new Set(armies.map(a => a.faction_id))];
 
@@ -29824,11 +29828,8 @@ async function processCombat(supabase, currentTick) {
     for (const f of fronts) {
         const N = Number(f.sector_count) || 0;
         let line = f.line_position;
-        if (line === null || line === undefined) {
-            line = Math.min(Math.max(aCount.get(f.id) || Math.floor(N / 2), 1), Math.max(N - 1, 1));
-            lineUpd.set(f.id, line);
-        }
-        if (N <= 0 || line <= 0 || line >= N) continue;   // decided / unusable
+        if (line === null || line === undefined || N <= 0) continue;   // line seeded at war start
+        if (line <= 0 || line >= N) continue;   // a capital has fallen — front decided
 
         const buckets = armiesByFront.get(f.id);
         const A = computeSide(buckets.a, unitsByArmy, armedByUnit, facById, cohVal, unitMp);

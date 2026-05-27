@@ -108,10 +108,11 @@ async function renderWar(w, nation, nameById) {
     const air = (fronts || []).find(f => f.front_type === 'air');
     const hasSea = (fronts || []).some(f => f.front_type === 'sea');
 
-    // Sectors of the land fronts + capital nodes (front_id NULL) for the two nations.
+    // Sectors of the land fronts + capital nodes (front_id NULL) for the two
+    // nations, plus the armies on each front (placed at the line, not a sector).
     const landIds = land.map(f => f.id);
     const sectorsByFront = new Map();
-    const armiesBySector = new Map();
+    const armiesByFront = new Map();   // front_id → { a:[], b:[] }
     let capByNation = new Map();
     if (landIds.length) {
         const { data: secs } = await _supabase.from('war_sectors')
@@ -128,15 +129,13 @@ async function renderWar(w, nation, nameById) {
             .is('front_id', null).eq('is_capital', true).in('nation_id', [a, b]);
         capByNation = new Map((caps || []).map(c => [c.nation_id, c]));
 
-        const secIds = (secs || []).map(s => s.id);
-        if (secIds.length) {
-            const { data: arms } = await _supabase.from('armies')
-                .select('id, name, nation_id, current_sector_id, supply_balance')
-                .in('current_sector_id', secIds);
-            for (const ar of (arms || [])) {
-                if (!armiesBySector.has(ar.current_sector_id)) armiesBySector.set(ar.current_sector_id, []);
-                armiesBySector.get(ar.current_sector_id).push(ar);
-            }
+        const { data: arms } = await _supabase.from('armies')
+            .select('id, name, nation_id, assigned_front_id, supply_balance')
+            .in('assigned_front_id', landIds);
+        for (const f of land) armiesByFront.set(f.id, { a: [], b: [] });
+        for (const ar of (arms || [])) {
+            const bucket = armiesByFront.get(ar.assigned_front_id);
+            if (bucket) (ar.nation_id === a ? bucket.a : bucket.b).push(ar);
         }
     }
 
@@ -155,12 +154,15 @@ async function renderWar(w, nation, nameById) {
         const line = (f.line_position === null || f.line_position === undefined) ? null : Number(f.line_position);
         const controllerOf = (s) => line === null ? s.nation_id : (s.position <= line ? a : b);
         const contestedAt = (p) => line !== null && (p === line || p === line + 1);
+        // Each side's armies sit at its frontline sector (a at `line`, b at line+1).
+        const fa = armiesByFront.get(f.id) || { a: [], b: [] };
+        const armiesAt = (p) => line === null ? [] : (p === line ? fa.a : p === line + 1 ? fa.b : []);
 
         const cells = [];
         const capA = capByNation.get(a), capB = capByNation.get(b);
-        if (capA) cells.push(cellHtml(capA, nation, armiesBySector, true, line !== null && line <= 0 ? b : a, false));
-        for (const s of secs) cells.push(cellHtml(s, nation, armiesBySector, false, controllerOf(s), contestedAt(s.position)));
-        if (capB) cells.push(cellHtml(capB, nation, armiesBySector, true, line !== null && line >= N ? a : b, false));
+        if (capA) cells.push(cellHtml(capA, nation, [], true, line !== null && line <= 0 ? b : a, false));
+        for (const s of secs) cells.push(cellHtml(s, nation, armiesAt(s.position), false, controllerOf(s), contestedAt(s.position)));
+        if (capB) cells.push(cellHtml(capB, nation, [], true, line !== null && line >= N ? a : b, false));
 
         return `<div class="wr-front">
             <div class="wr-front-head"><span class="wr-front-name">Front ${escapeHtml(f.label || '')}</span><span class="wr-front-sub">${N} sectors · ${escapeHtml(leftName)} ${actionLabel(f.action_a)} ← → ${actionLabel(f.action_b)} ${escapeHtml(rightName)}</span></div>
@@ -193,13 +195,12 @@ async function renderWar(w, nation, nameById) {
     </div>`;
 }
 
-function cellHtml(s, nation, armiesBySector, isCapital, controllerId, contested) {
+function cellHtml(s, nation, armies, isCapital, controllerId, contested) {
     const mine = (controllerId !== undefined ? controllerId : s.nation_id) === nation.id;
     const marker = s.is_capital ? `<div class="cm cap">★ CAPITAL</div>`
         : contested ? `<div class="cm border">⚔ FRONT LINE</div>`
         : s.is_capital_adjacent ? `<div class="cm">⌂ REAR</div>` : '';
-    const armies = armiesBySector.get(s.id) || [];
-    const armiesHtml = armies.map(ar => {
+    const armiesHtml = (armies || []).map(ar => {
         const am = ar.nation_id === nation.id;
         const sb = ar.supply_balance;
         const sup = (sb === null || sb === undefined) ? ''
