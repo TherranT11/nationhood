@@ -2,9 +2,9 @@
 //
 // One implementation, mounted identically on:
 //   • army-operations.html  → Army ▸ Operations ▸ "Issues"   (military faction)
-//   • diplomacy.html         → World ▸ Diplomacy ▸ "Issues"   (political / party)
-// Both call mountIssuesPanel(), so the two surfaces can never diverge. Do NOT
-// copy this markup/CSS into a page — extend it here.
+//   • nation.html           → Nation ▸ "Issues"              (the player's nation)
+// Both call mountIssuesPanel() with a null heading, so the two surfaces can never
+// diverge. Do NOT copy this markup/CSS into a page — extend it here.
 //
 // Renders the world's ongoing bilateral_issues as an expand-in-place list. The
 // viewer's role per dispute is derived from the data:
