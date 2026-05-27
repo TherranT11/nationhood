@@ -2799,6 +2799,22 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // 4a-quater. COMBAT — global pass.
+    // Resolves land battles on every front between nations at war: pooled
+    // ECP per side, mutual casualties + cohesion drain, line moves toward a
+    // broken side's capital when its foe assaulted. Runs after supply so the
+    // supply_balance feeding ECP is current.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const combatRes = await processCombat(supabase, newTick);
+        if (combatRes?.battles) {
+            console.log(`[Combat] resolved ${combatRes.battles} front battle(s)`);
+        }
+    } catch (combatErr) {
+        console.error('[advanceTick] Combat sweep failed (non-fatal):', combatErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // 4a-quinque. VWC HOST BID RESOLUTION — global pass.
     // For every cup whose qualifier tick is current_tick (= cup_start
     // - 12), pick a host via the bid-score formula. Winner gets the

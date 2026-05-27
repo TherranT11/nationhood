@@ -80,7 +80,7 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 import { _supabase } from './js/supabase-client.js';
 import { getNationNames } from './js/game/political-actions.js';
 import { bootstrapArmyPage } from './js/army-page.js';
-import { openCreateUnitModal, openCreateArmyModal, openAssignArmyModal } from './js/create-unit.js';
+import { openCreateUnitModal, openCreateArmyModal, openAssignArmyModal, openFrontOrdersModal } from './js/create-unit.js';
 import { openReportModal } from './js/report-defense.js';
 import { openForeignOfficerExchangeModal } from './js/foreign-officer-exchange.js';
 import { openCombinedArmsSchoolModal } from './js/combined-arms-school.js';
@@ -170,6 +170,13 @@ function render() {
           </div>
           <div class="aa-act__desc">Deploy a named army to a specific land front bordering your nation. $1 action fee from the army treasury.</div>
         </div>
+        <div class="aa-act" data-act="front-orders">
+          <div class="aa-act__head">
+            <div class="aa-act__title"><span class="aa-act__name">Front Orders</span></div>
+            <span class="aa-act__cost">$0</span>
+          </div>
+          <div class="aa-act__desc">Set each land front's posture for the next tick — ASSAULT to push the line toward the enemy capital (costly), or DEFEND to hold (cheap, can't advance). Free to issue.</div>
+        </div>
         <div class="aa-act" data-act="report-defense">
           <div class="aa-act__head">
             <div class="aa-act__title"><span class="aa-act__name">Report to Defense Minister</span></div>
@@ -238,6 +245,8 @@ function render() {
   if (ca) ca.onclick = () => openCreateArmyModal(_faction);
   const aa = root.querySelector('[data-act="assign-army"]');
   if (aa) aa.onclick = () => openAssignArmyModal(_faction);
+  const ford = root.querySelector('[data-act="front-orders"]');
+  if (ford) ford.onclick = () => openFrontOrdersModal(_faction);
   const rs = root.querySelector('[data-act="resign"]');
   if (rs) rs.onclick = () => triggerResign(_faction);
   const rd = root.querySelector('[data-act="report-defense"]');

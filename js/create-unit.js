@@ -719,6 +719,101 @@ export function openAssignArmyModal(faction, onAssigned) {
   })();
 }
 
+// ── ACTION: Front Orders — set each land front's posture for the next tick ──
+// ASSAULT (push the line, costly) or DEFEND (hold cheaply, can't advance).
+// Free; the combat tick reads action_a/action_b. set_front_action is gated to
+// the army faction commanding one of the front's nations.
+export function openFrontOrdersModal(faction, onSet) {
+  if (!faction?.id) return;
+  ensureStyles();
+  let overlay = document.getElementById('ford-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'ford-overlay'; overlay.className = 'cu-overlay';
+    document.body.appendChild(overlay);
+  }
+  let fronts = [], neighborById = new Map(), busy = false;
+  const close = () => { overlay.style.display = 'none'; overlay.innerHTML = ''; overlay.onclick = null; };
+  const sideAction = (f) => (f.nation_a_id === faction.nation_id ? f.action_a : f.action_b) === 'assault' ? 'assault' : 'defend';
+
+  function render() {
+    const rows = fronts.length
+      ? fronts.map(f => {
+          const neigh = neighborById.get(frontNeighbourId(f, faction.nation_id));
+          const nm = (neigh && neigh.name) || 'Border';
+          const act = sideAction(f);
+          return `<div class="ca-row">
+            <div style="flex:1;min-width:0;"><div class="un">${escapeHtml(nm)} Front ${escapeHtml(f.label || '')}</div>
+            <div class="us">${Number(f.sector_count) || 0} sectors</div></div>
+            <div style="display:flex;gap:6px;flex:none;">
+              <div class="cu-btn ${act === 'assault' ? 'pri' : 'sec'} ${busy ? 'off' : ''}" data-ford="assault:${escapeAttr(f.id)}">ASSAULT</div>
+              <div class="cu-btn ${act === 'defend' ? 'pri' : 'sec'} ${busy ? 'off' : ''}" data-ford="defend:${escapeAttr(f.id)}">DEFEND</div>
+            </div>
+          </div>`;
+        }).join('')
+      : `<div class="oob-empty">No land fronts border your nation yet.</div>`;
+    overlay.innerHTML = `<div class="cu-modal">
+      <div class="cu-head">
+        <div><div class="cu-eyebrow">— ARMY ACTION —</div><div class="cu-title">Front <em>Orders</em></div></div>
+        <div class="cu-head-right"><div class="cu-x" data-ford="close">×</div></div>
+      </div>
+      <div class="cu-body">
+        <div class="cu-sec-row"><span class="cu-sec">Posture next tick</span><span class="cu-sec c">ASSAULT advances · DEFEND holds</span></div>
+        ${rows}
+        <div class="asn-err" id="ford-err" hidden style="margin-top:10px;font-family:var(--font-mono,monospace);font-size:11px;color:#c47a7a;"></div>
+      </div></div>`;
+  }
+
+  overlay.onclick = async (e) => {
+    if (e.target === overlay) { if (!busy) close(); return; }
+    const el = e.target.closest('[data-ford]');
+    if (!el) return;
+    const v = el.getAttribute('data-ford');
+    if (v === 'close') { if (!busy) close(); return; }
+    if (busy) return;
+    const [action, frontId] = v.split(':');
+    const f = fronts.find(x => x.id === frontId);
+    if (!f || sideAction(f) === action) return;
+    busy = true; render();
+    try {
+      const { data, error } = await _supabase.rpc('set_front_action', { p_front_id: frontId, p_action: action });
+      if (error || (data && data.success === false)) {
+        const er = document.getElementById('ford-err');
+        if (er) { er.textContent = (data && data.error) || error?.message || 'Could not set order.'; er.hidden = false; }
+      } else {
+        if (f.nation_a_id === faction.nation_id) f.action_a = action; else f.action_b = action;
+        if (typeof onSet === 'function') onSet();
+      }
+    } catch (ex) {
+      const er = document.getElementById('ford-err');
+      if (er) { er.textContent = ex?.message || 'Could not set order.'; er.hidden = false; }
+    }
+    busy = false; render();
+  };
+
+  overlay.style.display = 'flex';
+  overlay.innerHTML = '<div class="cu-modal"><div class="cu-body"><div class="cu-sec">Loading…</div></div></div>';
+  (async () => {
+    try {
+      const { data: fr, error } = await _supabase.from('war_fronts')
+        .select('id, label, nation_a_id, nation_b_id, sector_count, action_a, action_b')
+        .eq('front_type', 'land')
+        .or(`nation_a_id.eq.${faction.nation_id},nation_b_id.eq.${faction.nation_id}`);
+      if (error) throw error;
+      fronts = fr || [];
+      const neighborIds = [...new Set(fronts.map(f => frontNeighbourId(f, faction.nation_id)))];
+      if (neighborIds.length) {
+        const { data: nats } = await _supabase.from('nations').select('id, name').in('id', neighborIds);
+        for (const n of (nats || [])) neighborById.set(n.id, n);
+      }
+      fronts.sort((x, y) => String(x.label).localeCompare(String(y.label)));
+    } catch (e) {
+      console.warn('[front-orders] load failed:', e?.message || e);
+    }
+    render();
+  })();
+}
+
 // armyId → deployment label ("Avelian Front A"), for the Order of Battle.
 // Isolated from loadUnitsAndFunds so a fronts/nations fetch hiccup can't break
 // the core OOB render — it just drops the label.
