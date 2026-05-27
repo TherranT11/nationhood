@@ -94,15 +94,20 @@ export async function mountWarRoom(container, nation) {
         const nameById = new Map((nats || []).map(n => [n.id, n.name]));
 
         // Order controls show only if THIS user commands this nation's army
-        // faction; set_front_action remains the server-side authority.
+        // faction; set_front_action remains the server-side authority. Isolated
+        // so a failed command check just hides the buttons, never blanks the room.
         let commandable = false;
-        const { data: auth } = await _supabase.auth.getUser();
-        const uid = auth?.user?.id;
-        if (uid) {
-            const { data: myArmy } = await _supabase.from('factions').select('id')
-                .eq('faction_type', 'military').eq('branch', 'army').eq('nation_id', nation.id)
-                .or(`id.eq.${uid},linked_user_id.eq.${uid}`).limit(1);
-            commandable = !!(myArmy && myArmy.length);
+        try {
+            const { data: auth } = await _supabase.auth.getUser();
+            const uid = auth?.user?.id;
+            if (uid) {
+                const { data: myArmy } = await _supabase.from('factions').select('id')
+                    .eq('faction_type', 'military').eq('branch', 'army').eq('nation_id', nation.id)
+                    .or(`id.eq.${uid},linked_user_id.eq.${uid}`).limit(1);
+                commandable = !!(myArmy && myArmy.length);
+            }
+        } catch (e) {
+            console.warn('[war-room] command check failed:', e?.message || e);
         }
 
         const blocks = [];
