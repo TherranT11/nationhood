@@ -142,6 +142,7 @@ export async function fetchWorldIssues(supabase) {
           + 'nation_a_id, nation_b_id, administering_nation_id, initiative_nation_id, '
           + 'contested_region_name, stake_resource, stake_quantity, demand_rung, '
           + 'created_tick, decision_deadline_tick, '
+          + 'mediator_nation_id, mediation_offer_nation_id, mediation_accept_a, mediation_accept_b, '
           + 'nation_a:nations!bilateral_issues_nation_a_id_fkey(id, name), '
           + 'nation_b:nations!bilateral_issues_nation_b_id_fkey(id, name)')
     .in('status', ['active', 'partial', 'escalated'])
@@ -224,16 +225,23 @@ function disputeDetail(issue, roles, role, region, currentTick, canManage, messa
     </div>`;
 
   const others = otherNationsBlock(issue, roles, stanceCtx);
+  const medBox = mediationBox(issue, roles, role, canManage, stanceCtx);
 
   const roleModule = role === 'claimant' ? claimantZone(issue, canManage)
                    : role === 'pressor'  ? pressorZone(issue, region, roles, canManage)
                    :                       thirdPartyZone(roles, issue, stanceCtx);
 
-  // The head-of-state channel is for the two belligerent nations (both their
-  // factions read; only their heads of government write). Third parties don't see it.
+  // The channel is for the two belligerent nations + the seated mediator nation.
+  // Belligerent nations read (HoG writes); the mediator nation reads, its FM/HoG write.
+  const myNation = stanceCtx && stanceCtx.nationId;
+  const mediator = issue.mediator_nation_id || null;
+  const isMediatorNation = !!(mediator && myNation === mediator);
+  const showChat = role === 'claimant' || role === 'pressor' || isMediatorNation;
+  const canChatWrite = (canManage && (role === 'claimant' || role === 'pressor'))
+    || (mediator && stanceCtx && (stanceCtx.governed === mediator || stanceCtx.fmNation === mediator));
   const msgs = messagesByIssue && typeof messagesByIssue.get === 'function' ? messagesByIssue.get(issue.id) : null;
-  const chat = (role === 'claimant' || role === 'pressor') ? chatChannel(issue, roles, role, canManage, msgs) : '';
-  return combatants + others + roleModule + chat;
+  const chat = showChat ? chatChannel(issue, myNation, canChatWrite, msgs, stanceCtx && stanceCtx.names) : '';
+  return combatants + medBox + others + roleModule + chat;
 }
 
 // ── role modules (inert previews) ────────────────────────────────────────────
@@ -361,17 +369,37 @@ function otherNationsBlock(issue, roles, ctx) {
     for (const [nid, nm] of names) {
       if (belligerents.has(nid)) continue;
       const stance = stanceByNation.get(nid) || 'neutral';
-      const isMediator = issue.mediator_nation_id === nid;   // column lands in the mediation pass
-      const cls = isMediator ? 'mediate' : stance;
+      const isMediator = issue.mediator_nation_id === nid;
       const you = nid === (ctx && ctx.nationId) ? ' <span class="on-you">&middot; that\'s you</span>' : '';
       rows += `<div class="on-row"><div class="on-flag">${escapeHtml(initials(nm))}</div>`
             + `<div class="on-name">${escapeHtml(nm)}</div>`
-            + `<div class="on-stance ${cls}">${stanceLabel(stance, roles, isMediator)}${you}</div></div>`;
+            + `<div class="on-stance ${isMediator ? 'mediate' : stance}">${stanceLabel(stance, roles, isMediator)}${you}</div></div>`;
     }
   }
   return `<div class="others"><div class="lab">OTHER NATIONS</div>`
        + (rows ? `<div class="on-list">${rows}</div>` : PREVIEW('No other nations on the continent.'))
        + `</div>`;
+}
+
+// The accept/reject prompt a belligerent HoG sees while a mediation offer is
+// pending. Both must accept (respond_mediation) to seat the mediator (+6 ticks).
+function mediationBox(issue, roles, role, canManage, ctx) {
+  const offer = issue.mediation_offer_nation_id;
+  if (!offer || !canManage || (role !== 'claimant' && role !== 'pressor')) return '';
+  const myNation = role === 'claimant' ? roles.claimantId : roles.pressorId;
+  const accepted = myNation === issue.nation_a_id ? issue.mediation_accept_a : issue.mediation_accept_b;
+  const offerName = escapeHtml((ctx && ctx.names && ctx.names.get(offer)) || 'A nation');
+  const id = escapeHtml(issue.id);
+  if (accepted) {
+    return `<div class="med-box pending"><div class="med-t">You accepted <b>${offerName}</b> as mediator &mdash; awaiting the other side.</div></div>`;
+  }
+  return `<div class="med-box">
+      <div class="med-t"><b>${offerName}</b> has offered to mediate this dispute. If both sides accept, the clock gains 6 ticks and ${offerName} joins the channel.</div>
+      <div class="med-acts">
+        <button type="button" class="med-btn accept" data-mediate="accept" data-id="${id}">Accept mediator</button>
+        <button type="button" class="med-btn reject" data-mediate="reject" data-id="${id}">Reject</button>
+      </div>
+    </div>`;
 }
 
 // Third-party options — LIVE only for the nation's Foreign Minister (set_issue_stance
@@ -403,24 +431,21 @@ function thirdPartyZone(roles, issue, ctx) {
 // (gated by RLS on the message table); only the head of government (canManage)
 // gets the input — everyone else sees a read-only note. `messages` is this
 // issue's rows (oldest first); a viewer's own side's messages sit right.
-function chatChannel(issue, roles, role, canManage, messages) {
+function chatChannel(issue, myNation, canWrite, messages, names) {
   const msgs = Array.isArray(messages) ? messages : [];
-  const mineId = role === 'claimant' ? roles.claimantId : role === 'pressor' ? roles.pressorId : null;
+  const nameOf = (nid) => (names && names.get(nid)) || 'Unknown';
   const body = msgs.length
     ? msgs.map(m => {
-        const who = m.sender_nation_id === roles.claimantId ? roles.claimantName
-                  : m.sender_nation_id === roles.pressorId  ? roles.pressorName
-                  :                                           'Unknown';
-        return `<div class="msg ${m.sender_nation_id === mineId ? 'me' : 'them'}">`
-             + `<div class="who">${escapeHtml(who)}</div>`
+        return `<div class="msg ${m.sender_nation_id === myNation ? 'me' : 'them'}">`
+             + `<div class="who">${escapeHtml(nameOf(m.sender_nation_id))}</div>`
              + `<div class="bubble">${escapeHtml(m.body)}</div>`
              + `<div class="ts">TICK ${Number(m.sent_at_tick) || 0}</div></div>`;
       }).join('')
     : `<div class="ch-empty">No messages yet.</div>`;
   const id = escapeHtml(issue.id);
-  const foot = canManage
-    ? `<div class="ch-input"><input type="text" data-chat-input="${id}" maxlength="1000" placeholder="Message the other head of government…"><button type="button" class="ch-send" data-chat-send="${id}">Send</button></div>`
-    : `<div class="ch-note">Only your head of government can post to this channel.</div>`;
+  const foot = canWrite
+    ? `<div class="ch-input"><input type="text" data-chat-input="${id}" maxlength="1000" placeholder="Message the channel…"><button type="button" class="ch-send" data-chat-send="${id}">Send</button></div>`
+    : `<div class="ch-note">Only the belligerent heads of government and the accepted mediator can post here.</div>`;
   return `<div class="channel">
     <div class="ch-head"><span class="t">HEAD-OF-STATE CHANNEL</span><span class="secure">&#128274; PRIVATE</span></div>
     <div class="ch-body">${body}</div>
@@ -502,6 +527,14 @@ function ensureStyles() {
     .issues-panel .on-stance.mediate{color:#c89e6e;}
     .issues-panel .on-stance.neutral{color:#666;}
     .issues-panel .on-you{color:#7a9aab;font-style:italic;}
+    .issues-panel .med-box{margin:0 18px 14px;padding:12px 14px;border-radius:5px;background:#1a160d;border:0.5px solid rgba(200,158,110,0.4);}
+    .issues-panel .med-box.pending{background:#12120c;border-color:rgba(200,158,110,0.25);}
+    .issues-panel .med-box .med-t{font-size:11px;color:#d4b87a;line-height:1.5;}
+    .issues-panel .med-box .med-acts{display:flex;gap:8px;margin-top:10px;}
+    .issues-panel .med-btn{font-family:inherit;cursor:pointer;font-size:11px;letter-spacing:0.05em;padding:8px 14px;border-radius:4px;border:0.5px solid;}
+    .issues-panel .med-btn.accept{background:#0e1610;border-color:rgba(138,170,106,0.5);color:#8aaa6a;}
+    .issues-panel .med-btn.reject{background:#160e0e;border-color:rgba(200,122,122,0.45);color:#c87a7a;}
+    .issues-panel .med-btn.is-busy{opacity:0.5;}
     .issues-panel button.tpa{font-family:inherit;cursor:pointer;}
     .issues-panel .tpa.sel{box-shadow:0 0 0 1px rgba(212,184,122,0.5) inset;}
     .issues-panel .tpa.is-busy{opacity:0.5;}
@@ -747,8 +780,8 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
   }
   // Only the nation's head of government may act on its disputes.
   const canManage = !!governed && governed === nationId;
-  // names + fmNation are stable for the session; stances refresh on reload.
-  const stanceCtx = { stances, names, fmNation, nationId };
+  // names + fmNation + governed are stable for the session; stances refresh on reload.
+  const stanceCtx = { stances, names, fmNation, nationId, governed };
   renderIssuesPanel(host, issues, nationId, { ...opts, currentTick, canManage, messages, stanceCtx });
 
   const root = host.querySelector('.issues-panel');
@@ -769,7 +802,7 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
       [freshMsgs, freshStances] = await Promise.all([fetchIssueMessages(supabase, ids), fetchIssueStances(supabase, ids)]);
     } catch { /* keep what we have */ }
     content.innerHTML = buildContent(fresh, nationId, openId, freshTick, canManage, freshMsgs,
-      { stances: freshStances, names, fmNation, nationId });
+      { stances: freshStances, names, fmNation, nationId, governed });
   }
 
   // Claimant/pressor decision buttons.
@@ -834,6 +867,25 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
     if (!inp || e.key !== 'Enter') return;
     e.preventDefault();
     sendChat(inp.dataset.chatInput, inp);
+  });
+
+  // Belligerent HoG responds to a mediation offer (accept / reject).
+  root.addEventListener('click', async (e) => {
+    const mb = e.target.closest('[data-mediate]');
+    if (!mb || !root.contains(mb)) return;
+    e.stopPropagation();
+    if (busy) return;
+    busy = true; mb.classList.add('is-busy');
+    try {
+      const { data, error } = await supabase.rpc('respond_mediation', { p_issue_id: mb.dataset.id, p_accept: mb.dataset.mediate === 'accept' });
+      if (!error && !(data && data.ok === false)) await reload();
+      else { mb.classList.remove('is-busy'); console.warn('[issues-panel] mediation failed:', (data && data.message) || error?.message); }
+    } catch (ex) {
+      mb.classList.remove('is-busy');
+      console.warn('[issues-panel] mediation failed:', ex?.message || ex);
+    } finally {
+      busy = false;
+    }
   });
 
   // Third-party stance (the nation's Foreign Minister).
