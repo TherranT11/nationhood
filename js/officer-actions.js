@@ -6,17 +6,38 @@
 import { _supabase } from './supabase-client.js';
 import { escapeHtml } from './utils.js';
 
+// Each action's effects are the SINGLE SOURCE OF TRUTH for the displayed numbers
+// (the modal here + the army-actions.html cards read officerEffectText()). The
+// server RPC army_officer_action applies the matching deltas — keep the two in
+// step. `k` is up/down only for colouring. Manpower is a soldier count (±1,000,
+// no 0–100 clamp); every other effect is a 0–100 stat (±5 primary, ±3 secondary).
 const OA = {
-    forward_stockpiling:     { name: 'Forward Stockpiling',     up: 'Supply',          down: 'Logistics',       cost: 4,   blurb: 'Cram the forward depots to bursting — the overloaded transport net slows even as stocks rise.' },
-    logistics_overhaul:      { name: 'Logistics Overhaul',      up: 'Logistics',       down: 'Supply',          cost: 6,   blurb: 'Re-rationalise convoys and motor pools for throughput — existing stockpiles are consumed in the reshuffle.' },
-    intensive_drills:        { name: 'Intensive Drills',        up: 'Training',        down: 'Cohesion',        cost: 5,   blurb: 'Grueling drill cycles sharpen combat skill — exhausted, resentful troops fray.' },
-    internal_security_sweep: { name: 'Internal Security Sweep', up: 'Cohesion',        down: 'Professionalism', cost: 6,   blurb: 'Root out defeatists and informants — ranks close up, but the climate of surveillance corrodes professional trust.' },
-    doctrine_reform:         { name: 'Doctrine Reform',         up: 'Professionalism', down: 'Training',        cost: 7.5, blurb: 'Rewrite the field manual and enforce standards — conduct focus pulls troops off the live-fire range.' },
-    requisition_drive:       { name: 'Requisition Drive',       up: 'Supply',          down: 'Cohesion',        cost: 5,   blurb: 'Seize supplies hard to fill the depots — heavy-handed requisition and rationing grind troop morale.' },
-    comforts_and_rations:    { name: 'Comforts & Rations',      up: 'Cohesion',        down: 'Supply',          cost: 5,   blurb: 'Spend stockpiles on hot food, rest, and comforts — morale lifts as the depots draw down.' },
-    field_improvisation:     { name: 'Field Improvisation',     up: 'Logistics',       down: 'Professionalism', cost: 6,   blurb: 'Push throughput by improvising routes and pressing every hand into hauling — standards slip.' },
-    standardize_procedures:  { name: 'Standardize Procedures',  up: 'Professionalism', down: 'Logistics',       cost: 7,   blurb: 'Impose strict doctrine and paperwork — professional standards rise, the transport net bogs down in process.' },
+    forward_stockpiling:     { name: 'Forward Stockpiling',     cost: 4,   blurb: 'Cram the forward depots to bursting — the overloaded transport net slows even as stocks rise.',
+        eff: [{ t: '+5 Supply', k: 'up' }, { t: '−5 Logistics', k: 'down' }] },
+    logistics_overhaul:      { name: 'Logistics Overhaul',      cost: 6,   blurb: 'Re-rationalise convoys and motor pools for throughput — existing stockpiles are consumed in the reshuffle.',
+        eff: [{ t: '+5 Logistics', k: 'up' }, { t: '−5 Supply', k: 'down' }] },
+    intensive_drills:        { name: 'Intensive Drills',        cost: 5,   blurb: 'Grueling drill cycles sharpen combat skill — exhausted, resentful troops fray and some wash out.',
+        eff: [{ t: '+5 Training', k: 'up' }, { t: '−5 Cohesion', k: 'down' }, { t: '−1,000 Manpower', k: 'down' }] },
+    internal_security_sweep: { name: 'Internal Security Sweep', cost: 6,   blurb: 'Root out defeatists and informants — ranks close up, but surveillance corrodes professional trust and the purge thins the ranks.',
+        eff: [{ t: '+5 Cohesion', k: 'up' }, { t: '−5 Professionalism', k: 'down' }, { t: '−1,000 Manpower', k: 'down' }] },
+    doctrine_reform:         { name: 'Doctrine Reform',         cost: 7.5, blurb: 'Rewrite the field manual and enforce standards — conduct focus pulls troops off the live-fire range but sharpens the officer corps.',
+        eff: [{ t: '+5 Professionalism', k: 'up' }, { t: '−5 Training', k: 'down' }, { t: '+3 Officer Corps', k: 'up' }] },
+    requisition_drive:       { name: 'Requisition Drive',       cost: 5,   blurb: 'Seize supplies hard to fill the depots — heavy-handed requisition grinds morale and spurs desertion.',
+        eff: [{ t: '+5 Supply', k: 'up' }, { t: '−5 Cohesion', k: 'down' }, { t: '−1,000 Manpower', k: 'down' }] },
+    comforts_and_rations:    { name: 'Comforts & Rations',      cost: 5,   blurb: 'Spend stockpiles on hot food, rest, and comforts — morale lifts and stragglers rejoin as the depots draw down.',
+        eff: [{ t: '+5 Cohesion', k: 'up' }, { t: '−5 Supply', k: 'down' }, { t: '+1,000 Manpower', k: 'up' }] },
+    field_improvisation:     { name: 'Field Improvisation',     cost: 6,   blurb: 'Push throughput by improvising routes and pressing every hand into hauling — standards slip and the command staff is sidelined.',
+        eff: [{ t: '+5 Logistics', k: 'up' }, { t: '−5 Professionalism', k: 'down' }, { t: '−3 Officer Corps', k: 'down' }] },
+    standardize_procedures:  { name: 'Standardize Procedures',  cost: 7,   blurb: 'Impose strict doctrine and paperwork — professional standards rise and the staff sharpens, but the transport net bogs down in process.',
+        eff: [{ t: '+5 Professionalism', k: 'up' }, { t: '−5 Logistics', k: 'down' }, { t: '+3 Officer Corps', k: 'up' }] },
 };
+
+// Joined effect line, e.g. "+5 Training / −5 Cohesion / −1,000 Manpower". Single
+// source for both the modal and the army-actions.html action cards.
+export function officerEffectText(key) {
+    const def = OA[key];
+    return def ? def.eff.map(e => e.t).join(' / ') : '';
+}
 
 const money = (raw) => '$' + ((Number(raw) || 0) / 1e6).toFixed(1).replace(/\.0$/, '');
 
@@ -73,11 +94,11 @@ export function openOfficerAction(faction, key, onDone) {
             <div class="oa-head"><div class="oa-eyebrow">— OFFICER ACTION —</div><div class="oa-title">${escapeHtml(def.name)}</div></div>
             <div class="oa-body">
                 <div class="oa-blurb">${escapeHtml(def.blurb)}</div>
-                <div class="oa-eff"><span class="up">+5 ${escapeHtml(def.up)}</span><span class="down">−5 ${escapeHtml(def.down)}</span></div>
+                <div class="oa-eff">${def.eff.map(e => `<span class="${e.k}">${escapeHtml(e.t)}</span>`).join('')}</div>
                 <div class="oa-cost">Cost <b>${money(costRaw)}</b> &middot; Army Funds <b class="${enough ? 'ok' : 'no'}">${money(funds)}</b> &middot; 12-tick cooldown</div>
                 ${onCd ? `<div class="oa-cd">On cooldown — ready in ${cdRemaining} tick${cdRemaining === 1 ? '' : 's'}.</div>` : ''}
                 ${err ? `<div class="oa-err">${escapeHtml(err)}</div>` : ''}
-                ${done ? `<div class="oa-done">Order carried out — ${escapeHtml('+5 ' + def.up + ', −5 ' + def.down)}.</div>` : ''}
+                ${done ? `<div class="oa-done">Order carried out — ${escapeHtml(def.eff.map(e => e.t).join(', '))}.</div>` : ''}
             </div>
             <div class="oa-foot">
                 <div class="oa-btn sec" data-oa="close">${done ? 'Close' : 'Cancel'}</div>
