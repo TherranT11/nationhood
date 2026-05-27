@@ -4275,18 +4275,21 @@ async function openExpandInfrastructureModal(root, faction) {
             .eq('ministry_key', 'interior').eq('is_active', true).maybeSingle();
         const balance = Number(mRow?.discretionary_balance) || 0;
 
-        const { data: open } = await _supabase.from('corp_contracts')
-            .select('id, name, description, spec_category, budget, timeline_months, status, expires_at_tick, created_at_tick')
+        // Expand Infrastructure now posts to the entrepreneur construction-bid
+        // system (government ent_construction_contracts). Aliased to the field
+        // names the render below already uses.
+        const { data: open } = await _supabase.from('ent_construction_contracts')
+            .select('id, name, budget, status, spec_category:spec_tier, timeline_months:timeline_ticks, expires_at_tick:bidding_closes_tick, created_at_tick')
             .eq('issuer_nation_id', _state.nation.id)
-            .eq('project_subtype', 'Interior Infrastructure')
+            .eq('contract_type', 'government')
             .in('status', ['open', 'active'])
             .order('created_at_tick', { ascending: false }).limit(1).maybeSingle();
         bidsContract = open || null;
 
         bids = [];
         if (bidsContract && bidsContract.status !== 'active') {
-            const { data: bidRows } = await _supabase.from('corp_contract_bids')
-                .select('id, faction_id, bid_amount, quoted_timeline_months, status, created_at_tick, factions:faction_id(id, faction_name, nation_id, nations:nation_id(name))')
+            const { data: bidRows } = await _supabase.from('ent_construction_bids')
+                .select('id, bid_amount, status, created_tick, factions:entrepreneur_corps!bidder_corp_id(faction_name:name)')
                 .eq('contract_id', bidsContract.id)
                 .eq('status', 'pending')
                 .order('bid_amount', { ascending: true });
@@ -4339,25 +4342,21 @@ async function openExpandInfrastructureModal(root, faction) {
                 } else {
                     bodyHtml += bids.map(b => {
                         const corpName = b.factions?.faction_name || 'Unknown Corp';
-                        const hqNation = b.factions?.nations?.name || '—';
                         const price    = Number(b.bid_amount || 0);
                         const priceLabel = price >= 1e9 ? '$' + (price / 1e9).toFixed(2) + 'B'
                                          : price >= 1e6 ? '$' + (price / 1e6).toFixed(1) + 'M'
                                          : '$' + Math.round(price).toLocaleString();
-                        const timeline = Number(b.quoted_timeline_months || 0);
                         return `<div class="pa-action-item" style="cursor:default;">
                             <div class="pa-action-top">
                                 <div>
                                     <div style="font-size:13px;font-weight:700;color:var(--text-bright);">${esc(corpName)}</div>
-                                    <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">
-                                        HQ ${esc(hqNation)} · Bid ${priceLabel} · Timeline ${timeline} ticks
-                                    </div>
+                                    <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">Bid ${priceLabel}</div>
                                 </div>
                             </div>
                         </div>`;
                     }).join('');
                 }
-                bodyHtml += `<div style="margin-top:10px;padding:8px 10px;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.08);">Auto-awarded to the best-scoring bid (cost, timeline, reputation) when the bid window closes.</div>`;
+                bodyHtml += `<div style="margin-top:10px;padding:8px 10px;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.08);">The lowest qualifying bid wins automatically when the bid window closes.</div>`;
             }
         } else {
             // Tier-picking view.
