@@ -68,6 +68,14 @@ function regionText(issue) {
   return issue.contested_region_name || 'the contested area';
 }
 
+// "What's at stake" — the staked resource, e.g. "2 Farmland". '' when unset.
+function stakeText(issue) {
+  const q = Number(issue.stake_quantity);
+  const res = String(issue.stake_resource || '').trim();
+  if (!res || !Number.isFinite(q) || q <= 0) return '';
+  return `${q} ${res.charAt(0).toUpperCase()}${res.slice(1)}`;
+}
+
 // The pressor's demand ladder for territorial disputes — single source of truth
 // for rung labels + copy (the DB stores only demand_rung 1-4). `desc` takes the
 // already-escaped region / claimant / pressor names.
@@ -187,6 +195,15 @@ function disputeDetail(issue, roles, role, region, currentTick, canManage, messa
   const demandLab = role === 'claimant' ? 'THEY DEMAND' : role === 'pressor' ? 'YOU DEMAND' : 'THE DEMAND';
 
   const left = ticksLeft(issue, currentTick);
+  const stake = issue.issue_type === 'territorial_ownership' ? stakeText(issue) : '';
+  // Either belligerent's head of government may rename the region.
+  const canEditRegion = canManage && (role === 'claimant' || role === 'pressor')
+    && issue.issue_type === 'territorial_ownership';
+  const regionLine = issue.issue_type === 'territorial_ownership'
+    ? `<div class="dem-region">Cession of <span class="rn">${escapeHtml(region)}</span>`
+      + (canEditRegion ? ` <button type="button" class="region-edit" data-region-edit="${escapeHtml(issue.id)}" data-region="${escapeHtml(issue.contested_region_name || '')}" title="Rename the contested region">&#9998;</button>` : '')
+      + `</div>`
+    : '';
   const combatants = `<div class="combatants">
       <div class="comb a">
         <div class="role">&#9670; CLAIMANT &middot; HOLDS THE GROUND</div>
@@ -195,6 +212,8 @@ function disputeDetail(issue, roles, role, region, currentTick, canManage, messa
       <div class="comb-center">
         <div class="dem-lab">${demandLab}</div>
         <div class="dem">${escapeHtml(demandText(issue, region))}</div>
+        ${stake ? `<div class="dem-stake">What's at Stake: <b>${escapeHtml(stake)}</b></div>` : ''}
+        ${regionLine}
         ${clockPips(issue, currentTick)}
         <div class="clk${left != null && left <= 0 ? ' war' : ''}">${clockText(issue, currentTick)}</div>
       </div>
@@ -422,6 +441,12 @@ function ensureStyles() {
     .issues-panel .comb-center .dem-lab{font-size:8px;letter-spacing:0.13em;color:#666;margin-bottom:5px;}
     .issues-panel .comb-center .dem{font-size:11px;color:#fff;font-weight:500;text-align:center;line-height:1.4;margin-bottom:11px;}
     .issues-panel .comb-center .clk{font-size:10px;color:#888;text-align:center;}
+    .issues-panel .comb-center .dem-stake{font-size:10px;color:#c89e6e;margin-bottom:5px;text-align:center;}
+    .issues-panel .comb-center .dem-stake b{color:#e0b888;font-weight:600;}
+    .issues-panel .comb-center .dem-region{font-size:10px;color:#888;margin-bottom:9px;text-align:center;line-height:1.5;}
+    .issues-panel .comb-center .dem-region .rn{color:#cdd6dc;}
+    .issues-panel .region-edit{background:none;border:none;color:#7a9aab;cursor:pointer;font-size:11px;padding:0 2px;font-family:inherit;vertical-align:baseline;}
+    .issues-panel .region-edit:hover{color:#9ab4c4;}
     .issues-panel .comb-center .clk .lab{color:#666;display:block;font-size:8px;letter-spacing:0.1em;margin-bottom:2px;}
 
     .issues-panel .others{padding:14px 18px;background:#0c0c0c;border-bottom:0.5px solid rgba(255,255,255,0.05);}
@@ -710,5 +735,25 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
     if (!inp || e.key !== 'Enter') return;
     e.preventDefault();
     sendChat(inp.dataset.chatInput, inp);
+  });
+
+  // Rename the contested region (either belligerent's head of government).
+  root.addEventListener('click', async (e) => {
+    const rb = e.target.closest('[data-region-edit]');
+    if (!rb || !root.contains(rb)) return;
+    e.stopPropagation();
+    if (busy || typeof window === 'undefined' || typeof window.prompt !== 'function') return;
+    const name = window.prompt('Name the contested region:', rb.dataset.region || '');
+    if (name === null) return; // cancelled
+    busy = true;
+    try {
+      const { data, error } = await supabase.rpc('set_dispute_region', { p_issue_id: rb.dataset.regionEdit, p_region: name.trim() });
+      if (!error && !(data && data.ok === false)) await reload();
+      else console.warn('[issues-panel] region edit failed:', (data && data.message) || error?.message);
+    } catch (ex) {
+      console.warn('[issues-panel] region edit failed:', ex?.message || ex);
+    } finally {
+      busy = false;
+    }
   });
 }
