@@ -68,6 +68,18 @@ END; $$;
 
 GRANT EXECUTE ON FUNCTION public.army_officer_action(UUID, TEXT) TO authenticated;
 
+-- The operating modifiers must change ONLY through RPCs (officer actions,
+-- foreign officer exchange, combined arms school) and the combat/supply tick —
+-- never a direct client UPDATE. But authenticated owners can update their own
+-- faction row ("Factions update own" RLS), and RLS UPDATE is row-level, so lock
+-- these at the column-privilege level (same pattern as ent_unpaid_debt). The
+-- SECURITY DEFINER RPCs (owned by postgres) and the service-role tick bypass
+-- this; no browser path writes these columns, so nothing legitimate breaks.
+REVOKE UPDATE (
+    army_manpower, army_training, army_equipment, army_cohesion,
+    army_professionalism, army_logistics, army_officer_corps, army_supplies
+) ON public.factions FROM PUBLIC, anon, authenticated;
+
 NOTIFY pgrst, 'reload schema';
 
 COMMIT;
