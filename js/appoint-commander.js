@@ -82,6 +82,8 @@ export function openAppointCommanderModal(faction, onDone) {
         </div>`).join('');
 
         const canAppoint = selArmy && selGen !== null && !busy && !result;
+        const msg = result || loadError;
+        const isErr = msg.startsWith('Error') || (!result && !!loadError);
         overlay.innerHTML = `<div class="ac-modal">
             <div class="ac-head"><div><div class="ac-eyebrow">— ARMY ACTION —</div><div class="ac-title">Appoint Army <em>Commander</em></div></div><div class="ac-x" data-ac="close">×</div></div>
             <div class="ac-body">
@@ -90,7 +92,7 @@ export function openAppointCommanderModal(faction, onDone) {
                 <div class="ac-grid">${gensHtml}</div>
             </div>
             <div class="ac-foot">
-                <div class="fm ${result.startsWith('Error') ? 'ac-err' : 'ac-ok'}">${escapeHtml(result || loadError)}</div>
+                <div class="fm ${isErr ? 'ac-err' : 'ac-ok'}">${escapeHtml(msg)}</div>
                 <div class="ac-acts">
                     <div class="ac-btn sec" data-ac="close">${result ? 'Close' : 'Cancel'}</div>
                     ${result ? '' : `<div class="ac-btn pri ${canAppoint ? '' : 'off'}" data-ac="appoint">Appoint →</div>`}

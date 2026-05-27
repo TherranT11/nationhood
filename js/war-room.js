@@ -8,9 +8,10 @@
 // once the combat engine exists — this only reflects state we already store.
 
 import { _supabase } from './supabase-client.js';
-import { escapeHtml, tickToDate } from './utils.js';
+import { escapeHtml, escapeAttr, tickToDate } from './utils.js';
 
 let _stylesInjected = false;
+let _orderBusy = false;   // guards the inline ASSAULT/DEFEND order buttons
 function ensureStyles() {
     if (_stylesInjected) return;
     _stylesInjected = true;
@@ -47,7 +48,12 @@ function ensureStyles() {
     .wr-seg:last-child{border-right:none;}
     .wr-seg.you{background:#1f1313;color:#c87a7a;} .wr-seg.them{background:#11181f;color:#7a9aab;}
     .wr-seg.active{font-weight:700;box-shadow:inset 0 0 0 1px currentColor;}
-    .wr-naval{background:#0d0d0d;border:0.5px solid rgba(255,255,255,0.08);border-radius:5px;padding:12px 14px;opacity:0.45;font-size:11px;color:#888;}`;
+    .wr-naval{background:#0d0d0d;border:0.5px solid rgba(255,255,255,0.08);border-radius:5px;padding:12px 14px;opacity:0.45;font-size:11px;color:#888;}
+    .wr-orders{display:flex;align-items:center;gap:6px;margin-top:10px;}
+    .wr-ord-lab{font-size:8px;letter-spacing:0.12em;color:#666;margin-right:4px;}
+    .wr-ord{font-size:9px;font-weight:700;letter-spacing:0.06em;padding:5px 12px;border-radius:3px;cursor:pointer;background:transparent;border:0.5px solid rgba(255,255,255,0.15);color:#888;font-family:inherit;}
+    .wr-ord:hover{border-color:rgba(255,255,255,0.3);}
+    .wr-ord.on{border-color:#b6533f;background:rgba(182,83,63,0.14);color:#e0a090;}`;
     const el = document.createElement('style');
     el.id = 'war-room-styles';
     el.textContent = css;
@@ -86,16 +92,53 @@ export async function mountWarRoom(container, nation) {
         const enemyIds = [...new Set(wars.map(w => w.nation_a_id === nation.id ? w.nation_b_id : w.nation_a_id))];
         const { data: nats } = await _supabase.from('nations').select('id, name').in('id', enemyIds);
         const nameById = new Map((nats || []).map(n => [n.id, n.name]));
+
+        // Order controls show only if THIS user commands this nation's army
+        // faction; set_front_action remains the server-side authority. Isolated
+        // so a failed command check just hides the buttons, never blanks the room.
+        let commandable = false;
+        try {
+            const { data: auth } = await _supabase.auth.getUser();
+            const uid = auth?.user?.id;
+            if (uid) {
+                const { data: myArmy } = await _supabase.from('factions').select('id')
+                    .eq('faction_type', 'military').eq('branch', 'army').eq('nation_id', nation.id)
+                    .or(`id.eq.${uid},linked_user_id.eq.${uid}`).limit(1);
+                commandable = !!(myArmy && myArmy.length);
+            }
+        } catch (e) {
+            console.warn('[war-room] command check failed:', e?.message || e);
+        }
+
         const blocks = [];
-        for (const w of wars) blocks.push(await renderWar(w, nation, nameById));
+        for (const w of wars) blocks.push(await renderWar(w, nation, nameById, commandable));
         container.innerHTML = blocks.join('');
+
+        // Inline ASSAULT/DEFEND order buttons → set_front_action, then re-mount.
+        container.onclick = async (e) => {
+            const btn = e.target.closest('[data-wr-order]');
+            if (!btn || _orderBusy) return;
+            const [frontId, action] = btn.getAttribute('data-wr-order').split('|');
+            _orderBusy = true;
+            try {
+                const { data, error } = await _supabase.rpc('set_front_action', { p_front_id: frontId, p_action: action });
+                if (error || (data && data.success === false)) {
+                    console.warn('[war-room] set order failed:', (data && data.error) || error?.message);
+                }
+            } catch (ex) {
+                console.warn('[war-room] set order failed:', ex?.message || ex);
+            } finally {
+                _orderBusy = false;
+            }
+            mountWarRoom(container, nation);
+        };
     } catch (e) {
         console.warn('[war-room] render failed:', e?.message || e);
         container.innerHTML = `<div class="wr-empty">Could not render the war room.</div>`;
     }
 }
 
-async function renderWar(w, nation, nameById) {
+async function renderWar(w, nation, nameById, commandable) {
     const a = w.nation_a_id, b = w.nation_b_id;   // canonical (a<b)
     const enemyId = a === nation.id ? b : a;
     const enemyName = nameById.get(enemyId) || 'the enemy';
@@ -164,9 +207,18 @@ async function renderWar(w, nation, nameById) {
         for (const s of secs) cells.push(cellHtml(s, nation, armiesAt(s.position), false, controllerOf(s), contestedAt(s.position)));
         if (capB) cells.push(cellHtml(capB, nation, [], true, line !== null && line >= N ? a : b, false));
 
+        // Your side's order (set_front_action picks the side from the army faction).
+        const myAction = (youAreA ? f.action_a : f.action_b) === 'assault' ? 'assault' : 'defend';
+        const orders = commandable ? `<div class="wr-orders">
+                <span class="wr-ord-lab">YOUR ORDERS</span>
+                <button class="wr-ord ${myAction === 'assault' ? 'on' : ''}" data-wr-order="${escapeAttr(f.id)}|assault">ASSAULT</button>
+                <button class="wr-ord ${myAction === 'defend' ? 'on' : ''}" data-wr-order="${escapeAttr(f.id)}|defend">DEFEND</button>
+            </div>` : '';
+
         return `<div class="wr-front">
             <div class="wr-front-head"><span class="wr-front-name">Front ${escapeHtml(f.label || '')}</span><span class="wr-front-sub">${N} sectors · ${escapeHtml(leftName)} ${actionLabel(f.action_a)} ← → ${actionLabel(f.action_b)} ${escapeHtml(rightName)}</span></div>
             <div class="wr-chain">${cells.join('')}</div>
+            ${orders}
         </div>`;
     }).join('') : `<div class="wr-empty">No land fronts generated for this war yet.</div>`;
 
