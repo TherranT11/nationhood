@@ -136,19 +136,26 @@ const PREVIEW = (txt) => `<div class="iss-preview">${escapeHtml(txt)}</div>`;
 // client-side from administering/initiative against the viewer's nation.
 export async function fetchWorldIssues(supabase) {
   if (!supabase) return [];
-  const { data, error } = await supabase
-    .from('bilateral_issues')
-    .select('id, issue_type, '
-          + 'nation_a_id, nation_b_id, administering_nation_id, initiative_nation_id, '
-          + 'contested_region_name, stake_resource, stake_quantity, demand_rung, '
-          + 'created_tick, decision_deadline_tick, '
-          + 'mediator_nation_id, mediation_offer_nation_id, mediation_accept_a, mediation_accept_b, '
-          + 'nation_a:nations!bilateral_issues_nation_a_id_fkey(id, name), '
-          + 'nation_b:nations!bilateral_issues_nation_b_id_fkey(id, name)')
-    .in('status', ['active', 'partial', 'escalated'])
-    .order('tension', { ascending: false });
-  if (error) { console.warn('[issues-panel] fetch failed:', error.message); return []; }
-  return data || [];
+  const NAME_JOIN = 'nation_a:nations!bilateral_issues_nation_a_id_fkey(id, name), '
+                  + 'nation_b:nations!bilateral_issues_nation_b_id_fkey(id, name)';
+  // CORE = columns live since Phase A; FULL adds the Phase-B mediation columns.
+  // PostgREST rejects the whole query on ANY unknown column, so if a migration
+  // hasn't been applied yet we fall back to CORE and the panel still renders
+  // (the newer feature just stays dormant) — instead of blanking entirely.
+  const CORE = 'id, issue_type, nation_a_id, nation_b_id, administering_nation_id, initiative_nation_id, '
+             + 'contested_region_name, stake_resource, stake_quantity, demand_rung, created_tick, '
+             + 'decision_deadline_tick, ' + NAME_JOIN;
+  const FULL = CORE + ', mediator_nation_id, mediation_offer_nation_id, mediation_accept_a, mediation_accept_b';
+  for (const cols of [FULL, CORE]) {
+    const { data, error } = await supabase
+      .from('bilateral_issues')
+      .select(cols)
+      .in('status', ['active', 'partial', 'escalated'])
+      .order('tension', { ascending: false });
+    if (!error) return data || [];
+    console.warn('[issues-panel] fetch failed, trying narrower columns:', error.message);
+  }
+  return [];
 }
 
 // ── render: summary row ─────────────────────────────────────────────────────
