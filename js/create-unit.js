@@ -520,8 +520,15 @@ export function openCreateArmyModal(faction, onCreated) {
   loadUnitsAndFunds(faction).then(r => { units = r.units; funds = r.funds; shell(); });
 }
 
-// ── DISPLAY: Order of Battle ───────────────────────────────────────
-// Renders a Force-Composition summary + the unit list into hostEl.
+// Deployment label for a front from the viewer's nation's POV:
+// "{neighbour demonym or name} Front {label}". neighbour(id) → {name,demonym}|null.
+// One source for both the assign modal and the Order of Battle.
+function frontDeployLabel(front, myNationId, neighbour) {
+  const neigh = front.nation_a_id === myNationId ? front.nation_b_id : front.nation_a_id;
+  const n = neighbour(neigh);
+  return `${(n && (n.demonym || n.name)) || 'Border'} Front ${front.label}`;
+}
+
 // ── ACTION: Assign Army to a land front ($1) ───────────────────────
 // Pick one of the faction's named armies, then a land front bordering its
 // nation. assign_army_to_front charges $1 from the army treasury. Re-assignable.
@@ -539,11 +546,7 @@ export function openAssignArmyModal(faction, onAssigned) {
   let selArmy = null, selFront = null, busy = false;
 
   const close = () => { overlay.style.display = 'none'; overlay.innerHTML = ''; overlay.onclick = null; };
-  const frontLabel = (f) => {
-    const neigh = f.nation_a_id === faction.nation_id ? f.nation_b_id : f.nation_a_id;
-    const n = neighborById.get(neigh);
-    return `${(n && (n.demonym || n.name)) || 'Border'} Front ${f.label}`;
-  };
+  const frontLabel = (f) => frontDeployLabel(f, faction.nation_id, (id) => neighborById.get(id));
 
   function render() {
     const enough = funds >= FEE;
@@ -672,9 +675,7 @@ async function loadArmyFronts(faction, armies) {
     for (const a of (armies || [])) {
       const f = a.assigned_front_id && fById[a.assigned_front_id];
       if (!f) continue;
-      const neigh = f.nation_a_id === faction.nation_id ? f.nation_b_id : f.nation_a_id;
-      const who = (nById[neigh] && (nById[neigh].demonym || nById[neigh].name)) || 'Border';
-      map[a.id] = `${who} Front ${f.label}`;
+      map[a.id] = frontDeployLabel(f, faction.nation_id, (id) => nById[id]);
     }
   } catch (e) {
     console.warn('[create-unit] army fronts load failed:', e?.message || e);
@@ -682,6 +683,8 @@ async function loadArmyFronts(faction, armies) {
   return map;
 }
 
+// ── DISPLAY: Order of Battle ───────────────────────────────────────
+// Renders a Force-Composition summary + the unit list into hostEl.
 export async function renderOrderOfBattle(faction, hostEl) {
   if (!hostEl) return;
   ensureStyles();
