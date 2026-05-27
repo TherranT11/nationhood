@@ -83,13 +83,20 @@ export function calculateSectorContributions(factionId, sectors, popularityRows)
 // grow when the underlying stat shrinks (e.g. Rural & Agricultural's
 // secondary is `urbanization_inverse`).
 //
-// Range: 1–3 per sector, soft-cap to 32 across the nation.
-// Stepped: stat ≥ 65 → 3, 35-65 → 2, < 35 → 1.
+// Range: 10–30 per sector, soft-cap to 320 across the nation.
+// Stepped: stat ≥ 65 → 30, 35-65 → 20, < 35 → 10.
 // Two-stat sectors blend 70/30 before stepping.
+//
+// The scale is 10× the natural 1/2/3 tiers: a coarser 1–3 forces province
+// partitions into whole thirds, whereas 10/20/30 lets the partition UI split
+// a sector finely across provinces. Because MIN, MID, MAX and the nation cap
+// all scale by the same 10×, every downstream computation (TWP, turnout, seat
+// shares) is identical — weight is only ever consumed as a relative share.
 
-const SECTOR_WEIGHT_MIN = 1;
-const SECTOR_WEIGHT_MAX = 3;
-const SECTOR_WEIGHT_NATION_CAP = 32;
+const SECTOR_WEIGHT_MIN = 10;
+const SECTOR_WEIGHT_MID = 20;
+const SECTOR_WEIGHT_MAX = 30;
+const SECTOR_WEIGHT_NATION_CAP = 320;
 const SECTOR_STAT_HIGH_THRESHOLD = 65;
 const SECTOR_STAT_LOW_THRESHOLD = 35;
 const SECTOR_PRIMARY_BLEND = 0.7;
@@ -112,7 +119,7 @@ export function getStatValueForSector(nation, statKey) {
 function stepStatToWeight(blendedValue) {
     if (blendedValue == null || Number.isNaN(blendedValue)) return SECTOR_WEIGHT_MIN;
     if (blendedValue >= SECTOR_STAT_HIGH_THRESHOLD) return SECTOR_WEIGHT_MAX;
-    if (blendedValue >= SECTOR_STAT_LOW_THRESHOLD) return 2;
+    if (blendedValue >= SECTOR_STAT_LOW_THRESHOLD) return SECTOR_WEIGHT_MID;
     return SECTOR_WEIGHT_MIN;
 }
 
@@ -146,7 +153,7 @@ export function computeSectorWeights(nation, sectors) {
 
         if (!s.primary_stat) { out[s.id] = existing; continue; }
 
-        // Admin override: stepStatToWeight only ever returns 1/2/3, so a
+        // Admin override: stepStatToWeight only ever returns 10/20/30, so a
         // value above MAX could only have come from an admin manually
         // setting it via admin.html. Skip the stat-driven recompute so
         // their override survives the next election. Without this,
