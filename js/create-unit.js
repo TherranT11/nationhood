@@ -156,7 +156,7 @@ export async function loadUnitsAndFunds(faction) {
 
     const { data: a, error: aErr } = await _supabase
       .from('armies')
-      .select('id,name,army_type,created_at_tick,assigned_front_id')
+      .select('id,name,army_type,created_at_tick,assigned_front_id,supply_balance')
       .eq('faction_id', faction.id)
       .order('created_at_tick', { ascending: true });
     if (aErr) console.warn('[create-unit] armies load failed:', aErr.message);
@@ -800,9 +800,16 @@ export async function renderOrderOfBattle(faction, hostEl) {
       const list = byArmy.get(a.id) || [];
       if (!list.length) continue;
       const t = ARMY_TYPES[a.army_type];
+      // Supply readout — only set once at war (NULL in peacetime). Negative = short.
+      const sb = a.supply_balance;
+      const supplyPill = (sb === null || sb === undefined) ? ''
+        : (Number(sb) < 0
+            ? `<span class="cu-sec c" style="color:#e5534b;">⚠ Under-supplied ${Number(sb)}</span>`
+            : `<span class="cu-sec c" style="color:#46c46a;">✓ Supplied +${Number(sb)}</span>`);
       html += `<div class="cu-sec-row"><span class="cu-sec">${escapeHtml(a.name)}</span>`
             + `<span class="oob-army-type ${escapeAttr(a.army_type)}">${escapeHtml(t ? t.short : a.army_type)}</span>`
             + (armyFronts[a.id] ? `<span class="cu-sec c" style="color:#c89e6e;">▸ ${escapeHtml(armyFronts[a.id])}</span>` : '')
+            + supplyPill
             + `<span class="cu-sec c">${list.length} unit${list.length === 1 ? '' : 's'}</span></div>`;
       for (const u of list) html += unitCardHtml(u, a.army_type);
     }
