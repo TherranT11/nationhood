@@ -32354,27 +32354,11 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             activeCorpCount = count || 0;
         } catch (_) { /* fall back to 0 → no per-corp adder this tick */ }
 
-        // Phase 8.5.4: Per-tick tax revenue. nation.budget is a cash
-        // balance; income + corporate tax revenue accumulate into it
-        // each tick. Formulas live in budget.
-        try {
-            const incomeRev = computeIncomeTaxRevenue(nation);
-            const corpRev = computeCorporateTaxRevenue(nation, undefined, activeCorpCount);
-            const totalRev = incomeRev + corpRev;
-            if (totalRev > 0) {
-                const newBudget = Math.max(0, Number(nation.budget || 0) + totalRev);
-                const { error: budgetErr } = await supabase.from('nations')
-                    .update({ budget: newBudget })
-                    .eq('id', nation.id);
-                if (budgetErr) {
-                    console.error(`[advanceTick] Tax revenue DB update failed for ${nation.name}:`, budgetErr.message);
-                } else {
-                    nation.budget = newBudget;
-                }
-            }
-        } catch (taxErr) {
-            console.error(`[advanceTick] Tax revenue tick failed for ${nation.name} (non-fatal):`, taxErr);
-        }
+        // Tax revenue is applied to the treasury by processNationDebtTick
+        // (below) as part of its net Balance (revenue − expenditures) — it is
+        // NOT added separately here. A separate add double-counted revenue,
+        // inflating every nation's treasury by a full revenue each tick.
+        // processNationDebtTick is the single source for the tax→treasury flow.
 
         // Per-tick GDP drift. Applies ((gdp_growth − 50) / 50) × 1% to
         // nation.gdp each tick. SoT: applyGdpGrowthDrift in budget
