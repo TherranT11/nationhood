@@ -508,7 +508,7 @@ function ensureStyles() {
     .issues-panel .msg{display:flex;flex-direction:column;max-width:78%;}
     .issues-panel .msg.them{align-self:flex-start;} .issues-panel .msg.me{align-self:flex-end;align-items:flex-end;}
     .issues-panel .msg .who{font-size:9px;letter-spacing:0.07em;margin-bottom:3px;color:#888;}
-    .issues-panel .msg .bubble{padding:8px 11px;border-radius:8px;font-size:12px;line-height:1.5;}
+    .issues-panel .msg .bubble{padding:8px 11px;border-radius:8px;font-size:12px;line-height:1.5;overflow-wrap:anywhere;white-space:pre-wrap;}
     .issues-panel .msg.them .bubble{background:#13191f;color:#cdd6dc;border-bottom-left-radius:2px;}
     .issues-panel .msg.me .bubble{background:#1f1414;color:#e4cccc;border-bottom-right-radius:2px;}
     .issues-panel .msg .ts{font-size:8px;color:#555;margin-top:3px;letter-spacing:0.06em;}
