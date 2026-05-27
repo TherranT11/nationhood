@@ -2,9 +2,9 @@
 //
 // One implementation, mounted identically on:
 //   • army-operations.html  → Army ▸ Operations ▸ "Issues"   (military faction)
-//   • diplomacy.html         → World ▸ Diplomacy ▸ "Issues"   (political / party)
-// Both call mountIssuesPanel(), so the two surfaces can never diverge. Do NOT
-// copy this markup/CSS into a page — extend it here.
+//   • nation.html           → Nation ▸ "Issues"              (the player's nation)
+// Both call mountIssuesPanel() with a null heading, so the two surfaces can never
+// diverge. Do NOT copy this markup/CSS into a page — extend it here.
 //
 // Renders the world's ongoing bilateral_issues as an expand-in-place list. The
 // viewer's role per dispute is derived from the data:
@@ -12,11 +12,12 @@
 //   Pressor  = initiative_nation_id    (pressed the claim)
 //   Third party = anyone else
 //
-// SHELL SCOPE: combatants + matchup + roles + region render from live data.
-// The four planned-but-unbuilt systems — the decision CLOCK, third-party
-// STANCES, the head-of-state CHAT, and the claimant/pressor ACTIONS — render as
-// clearly-labelled, inert PREVIEW placeholders (no handlers, no fake state).
-// Wire each up in its own later pass.
+// LIVE: combatants + matchup + roles + region + the decision CLOCK, plus the
+// pressor's levers/doors (soften, press harder, extend, go to war, back down)
+// and the claimant's concede — all reading/writing live data via RPCs.
+// STILL INERT (own later pass): third-party STANCES and the head-of-state CHAT,
+// plus the claimant's Offer Compromise / Request Mediation — rendered as
+// clearly-labelled PREVIEW placeholders (no handlers, no fake state).
 
 import { escapeHtml } from './utils.js';
 import { ISSUE_TYPES } from './game/issues.js';
@@ -91,6 +92,33 @@ function demandText(issue, region) {
   return `Resolution of ${ISSUE_TYPES[issue.issue_type]?.name || region}`;
 }
 
+// Decision clock — ticks until the pressor must resolve or the dispute
+// auto-goes to war. null when there is no clock (non-territorial / not set yet).
+function ticksLeft(issue, currentTick) {
+  if (issue.decision_deadline_tick == null || currentTick == null) return null;
+  return Math.max(0, Number(issue.decision_deadline_tick) - Number(currentTick));
+}
+
+// Compact "N ticks left" / "WAR IMMINENT" used in the summary row + center.
+function clockText(issue, currentTick) {
+  const left = ticksLeft(issue, currentTick);
+  if (left == null) return '<span class="lab">CLOCK</span> &mdash;';
+  if (left <= 0)    return '<span class="lab">CLOCK</span> <b class="imminent">WAR IMMINENT</b>';
+  return `<span class="lab">CLOCK</span> ${left} tick${left === 1 ? '' : 's'} left`;
+}
+
+// A small pip row (capped) for the center panel, derived from created_tick→deadline.
+function clockPips(issue, currentTick) {
+  if (issue.decision_deadline_tick == null || issue.created_tick == null || currentTick == null) return '';
+  const total = Math.min(12, Math.max(1, Number(issue.decision_deadline_tick) - Number(issue.created_tick)));
+  const spent = Math.min(total, Math.max(0, Number(currentTick) - Number(issue.created_tick)));
+  let pips = '';
+  for (let i = 0; i < total; i++) {
+    pips += `<span class="cd-pip ${i < spent ? 'spent' : i === spent ? 'current' : ''}"></span>`;
+  }
+  return `<div class="cd-ticks">${pips}</div>`;
+}
+
 // Inert preview banner reused by every not-yet-built module.
 const PREVIEW = (txt) => `<div class="iss-preview">${escapeHtml(txt)}</div>`;
 
@@ -105,6 +133,7 @@ export async function fetchWorldIssues(supabase) {
     .select('id, issue_type, '
           + 'nation_a_id, nation_b_id, administering_nation_id, initiative_nation_id, '
           + 'contested_region_name, stake_resource, stake_quantity, demand_rung, metadata, '
+          + 'created_tick, decision_deadline_tick, '
           + 'nation_a:nations!bilateral_issues_nation_a_id_fkey(id, name), '
           + 'nation_b:nations!bilateral_issues_nation_b_id_fkey(id, name)')
     .in('status', ['active', 'partial', 'escalated'])
@@ -115,7 +144,7 @@ export async function fetchWorldIssues(supabase) {
 
 // ── render: summary row ─────────────────────────────────────────────────────
 
-function disputeRow(issue, role, roles, expanded) {
+function disputeRow(issue, role, roles, expanded, currentTick) {
   const badge = typeBadge(issue.issue_type);
   const region = regionText(issue);
 
@@ -123,20 +152,22 @@ function disputeRow(issue, role, roles, expanded) {
                   : role === 'pressor'  ? { cls: 'role-pressor',  txt: 'YOU ARE THE PRESSOR' }
                   :                       { cls: 'role-third',     txt: 'THIRD PARTY' };
 
+  const left = ticksLeft(issue, currentTick);
+  const clockCls = left != null && left <= 0 ? 'd-clock war' : 'd-clock';
   const summary = `<div class="d-summary">
       <span class="d-chevron">&#9656;</span>
       <span class="d-type ${badge.cls}">${escapeHtml(badge.label)}</span>
       <span class="d-matchup">${escapeHtml(roles.pressorName)} <span class="vs">presses</span> ${escapeHtml(roles.claimantName)} <span class="over">&mdash; over ${escapeHtml(region)}</span></span>
       <span class="d-role ${roleBadge.cls}">${roleBadge.txt}</span>
-      <span class="d-clock" title="Decision clock not yet implemented"><span class="lab">CLOCK</span> &mdash;</span>
+      <span class="${clockCls}">${clockText(issue, currentTick)}</span>
     </div>`;
 
-  return `<div class="dispute${expanded ? ' expanded' : ''}" data-id="${escapeHtml(issue.id)}">${summary}<div class="d-detail">${disputeDetail(issue, roles, role, region)}</div></div>`;
+  return `<div class="dispute${expanded ? ' expanded' : ''}" data-id="${escapeHtml(issue.id)}">${summary}<div class="d-detail">${disputeDetail(issue, roles, role, region, currentTick)}</div></div>`;
 }
 
 // HTML inside `.issues-content` — the count line + the dispute list. Shared by the
 // initial render and the post-action reload so they can't drift.
-function buildContent(issues, nationId, expandedId) {
+function buildContent(issues, nationId, expandedId, currentTick) {
   const tagged = (Array.isArray(issues) ? issues : []).map(it => {
     const roles = rolesOf(it);
     return { issue: it, roles, role: viewerRole(it, nationId, roles) };
@@ -144,17 +175,18 @@ function buildContent(issues, nationId, expandedId) {
   if (!tagged.length) return '<div class="issues-empty">No ongoing issues</div>';
   const involved = tagged.filter(t => t.role !== 'third').length;
   return `<div class="issues-sub">${tagged.length} ONGOING &middot; YOU ARE INVOLVED IN ${involved}</div>`
-    + `<div class="disputes">${tagged.map(t => disputeRow(t.issue, t.role, t.roles, t.issue.id === expandedId)).join('')}</div>`;
+    + `<div class="disputes">${tagged.map(t => disputeRow(t.issue, t.role, t.roles, t.issue.id === expandedId, currentTick)).join('')}</div>`;
 }
 
 // ── render: shared detail (combatants + stances + role module + chat) ─────────
 
-function disputeDetail(issue, roles, role, region) {
+function disputeDetail(issue, roles, role, region, currentTick) {
   const youTag = '<span class="you">YOU</span>';
   const aYou = role === 'claimant' ? youTag : '';
   const bYou = role === 'pressor'  ? youTag : '';
   const demandLab = role === 'claimant' ? 'THEY DEMAND' : role === 'pressor' ? 'YOU DEMAND' : 'THE DEMAND';
 
+  const left = ticksLeft(issue, currentTick);
   const combatants = `<div class="combatants">
       <div class="comb a">
         <div class="role">&#9670; CLAIMANT &middot; HOLDS THE GROUND</div>
@@ -163,7 +195,8 @@ function disputeDetail(issue, roles, role, region) {
       <div class="comb-center">
         <div class="dem-lab">${demandLab}</div>
         <div class="dem">${escapeHtml(demandText(issue, region))}</div>
-        <div class="clk" title="Decision clock not yet implemented"><span class="lab">CLOCK</span> &mdash;</div>
+        ${clockPips(issue, currentTick)}
+        <div class="clk${left != null && left <= 0 ? ' war' : ''}">${clockText(issue, currentTick)}</div>
       </div>
       <div class="comb b">
         <div class="role">PRESSOR &middot; PRESSES THE CLAIM &#9670;</div>
@@ -177,7 +210,7 @@ function disputeDetail(issue, roles, role, region) {
       ${PREVIEW('Third-party stances (support / condemn / mediate) are not yet tracked.')}
     </div>`;
 
-  const roleModule = role === 'claimant' ? claimantZone()
+  const roleModule = role === 'claimant' ? claimantZone(issue)
                    : role === 'pressor'  ? pressorZone(issue, region, roles)
                    :                       thirdPartyZone(roles);
 
@@ -189,25 +222,35 @@ function disputeDetail(issue, roles, role, region) {
 
 // ── role modules (inert previews) ────────────────────────────────────────────
 
-function claimantZone() {
+// Claimant role module. For territorial disputes, Concede (concede_claim) and
+// Stand Strong are LIVE; Offer Compromise + Request Mediation stay inert previews
+// (those systems aren't built). Non-territorial claimant views stay inert.
+function claimantZone(issue) {
+  if (issue.issue_type !== 'territorial_ownership') {
+    return `<div class="claimant-zone"><div class="cz-actions">
+      <div class="lab">YOUR OPTIONS AS THE CLAIMANT</div>
+      ${PREVIEW('Claimant actions for this issue type are not yet active.')}
+    </div></div>`;
+  }
+  const id = escapeHtml(issue.id);
   return `<div class="claimant-zone">
     <div class="cz-actions">
       <div class="lab">YOUR OPTIONS AS THE CLAIMANT</div>
-      ${PREVIEW('Actions are not yet active.')}
-      <div class="cz-grid iss-inert">
-        <div class="cza concede"><div class="cn">Concede</div><div class="cd">Give up the ground. The dispute ends; the pressor wins.</div></div>
-        <div class="cza compromise"><div class="cn">Offer Compromise</div><div class="cd">Table an offer (1d6). They choose to accept or reject.</div></div>
-        <div class="cza mediate"><div class="cn">Request Mediation</div><div class="cd">Bring in a broker. Pauses their clock if accepted.</div></div>
-        <div class="cza stand"><div class="cn">Stand Strong</div><div class="cd">Defy the demand. Run their clock down.</div></div>
+      <div class="cz-grid">
+        <button type="button" class="cza concede" data-action="concede" data-id="${id}"><div class="cn">Concede</div><div class="cd">Accept the demand. The dispute ends in the pressor's favour.</div></button>
+        <button type="button" class="cza stand"><div class="cn">Stand Strong</div><div class="cd">Hold the ground and let the clock run. (No action needed.)</div></button>
+        <div class="cza compromise iss-inert"><div class="cn">Offer Compromise</div><div class="cd">Table a counter-offer. Not yet active.</div></div>
+        <div class="cza mediate iss-inert"><div class="cn">Request Mediation</div><div class="cd">Bring in a broker. Not yet active.</div></div>
       </div>
+      <div class="iss-error" hidden></div>
     </div>
   </div>`;
 }
 
 // Pressor role module — LIVE for territorial disputes: the demand ladder reads
-// demand_rung, and Soften/Drop call the soften_demand / drop_claim RPCs (wired in
-// mountIssuesPanel, with a busy-lock). For any other issue type there is no ladder
-// yet, so it stays an inert preview.
+// demand_rung; soften / press_harder / extend_deadline / go_to_war / drop (back
+// down) call their RPCs (wired in mountIssuesPanel, with a busy-lock). For any
+// other issue type there is no ladder yet, so it stays an inert preview.
 function pressorZone(issue, region, roles) {
   if (issue.issue_type !== 'territorial_ownership') {
     return `<div class="pressor-zone"><div class="pz-ladder">
@@ -227,15 +270,28 @@ function pressorZone(issue, region, roles) {
   const id = escapeHtml(issue.id);
   const soften = cur < 4
     ? `<button type="button" class="iss-btn soften" data-action="soften" data-id="${id}">&#9662; Soften one rung &mdash; smaller prize, easier yes (cannot be undone)</button>`
-    : `<div class="iss-note">At the floor. The only move left is to drop the claim.</div>`;
+    : `<div class="iss-note">At the floor. The only moves left are to go to war or back down.</div>`;
   return `<div class="pressor-zone">
     <div class="pz-ladder">
       <div class="lab">YOUR DEMAND &mdash; SOFTEN TO MAKE A "YES" EASIER</div>
       <div class="ladder-rungs">${rungs}</div>
       ${soften}
-      <button type="button" class="iss-btn drop" data-action="drop" data-id="${id}">Drop the claim &mdash; &minus;25 approval, +10 unrest &middot; 360-tick re-press cooldown</button>
-      <div class="iss-error" hidden></div>
     </div>
+    <div class="pz-levers">
+      <div class="lab">YOUR MOVE &mdash; WORK THE CLOCK</div>
+      <div class="lever-grid">
+        <button type="button" class="iss-lever" data-action="press_harder" data-id="${id}"><div class="ln">Press Harder</div><div class="ld">Burn one tick off the clock &mdash; tighten the screw.</div></button>
+        <button type="button" class="iss-lever" data-action="extend" data-id="${id}"><div class="ln">Extend Deadline <span class="cost">&minus;8 Appr</span></div><div class="ld">Add 2 ticks. Your public tires of the delay.</div></button>
+      </div>
+    </div>
+    <div class="pz-doors">
+      <div class="lab">AT THE DEADLINE, YOU MUST CHOOSE</div>
+      <div class="doors">
+        <button type="button" class="door war" data-action="go_to_war" data-id="${id}"><div class="dn">&#9876; Go to War</div><div class="dc">Escalate to the front &mdash; a state of war begins at the next tick.</div></button>
+        <button type="button" class="door back" data-action="drop" data-id="${id}"><div class="dn">Back Down</div><div class="dc">Drop the claim &mdash; &minus;25 approval, +10 unrest, 360-tick re-press cooldown.</div></button>
+      </div>
+    </div>
+    <div class="iss-error" hidden></div>
   </div>`;
 }
 
@@ -369,11 +425,36 @@ function ensureStyles() {
     .issues-panel .iss-btn{display:block;width:100%;margin-top:9px;padding:9px 11px;border-radius:4px;text-align:center;font-size:10px;letter-spacing:0.05em;font-family:inherit;cursor:pointer;border:0.5px solid;}
     .issues-panel .iss-btn.soften{background:#160e0e;border-color:rgba(200,122,122,0.35);color:#c87a7a;}
     .issues-panel .iss-btn.soften:hover{background:#1a1111;}
-    .issues-panel .iss-btn.drop{background:#1f0e0e;border-color:rgba(200,90,90,0.5);color:#e08080;}
-    .issues-panel .iss-btn.drop:hover{background:#2a1212;}
     .issues-panel .iss-btn:disabled,.issues-panel .iss-btn.is-busy{opacity:0.5;cursor:default;}
     .issues-panel .iss-note{margin-top:9px;font-size:9px;color:#888;letter-spacing:0.04em;font-style:italic;text-align:center;}
-    .issues-panel .iss-error{margin-top:9px;font-size:10px;color:#cf6b66;background:rgba(207,107,102,0.1);border:0.5px solid rgba(207,107,102,0.3);padding:7px 10px;border-radius:3px;}
+    .issues-panel .iss-error{margin:9px 18px 0;font-size:10px;color:#cf6b66;background:rgba(207,107,102,0.1);border:0.5px solid rgba(207,107,102,0.3);padding:7px 10px;border-radius:3px;}
+
+    .issues-panel .d-clock.war b.imminent,.issues-panel .clk.war b.imminent{color:#e08080;font-weight:600;}
+    .issues-panel .comb-center .cd-ticks{display:flex;gap:4px;margin:2px 0 8px;}
+    .issues-panel .cd-pip{width:12px;height:12px;border-radius:2px;background:#1a1010;border:0.5px solid rgba(200,122,122,0.25);}
+    .issues-panel .cd-pip.spent{background:#2a1212;border-color:#6a3030;}
+    .issues-panel .cd-pip.current{background:#3a1818;border-color:#c87a7a;}
+    .issues-panel .clk.war{color:#e08080;}
+
+    .issues-panel .cz-grid button.cza{font-family:inherit;cursor:pointer;}
+    .issues-panel .cza.stand{background:#0e1610;border-color:rgba(138,170,106,0.35);} .issues-panel .cza.stand .cn{color:#8aaa6a;}
+
+    .issues-panel .pz-levers,.issues-panel .pz-doors{padding:12px 18px;border-bottom:0.5px solid rgba(255,255,255,0.05);}
+    .issues-panel .pz-levers .lab{font-size:9px;letter-spacing:0.13em;color:#c87a7a;margin-bottom:9px;}
+    .issues-panel .pz-doors .lab{font-size:9px;letter-spacing:0.13em;color:#888;margin-bottom:9px;}
+    .issues-panel .lever-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+    .issues-panel .iss-lever{font-family:inherit;cursor:pointer;text-align:left;background:#120d0d;border:0.5px solid rgba(200,122,122,0.25);border-radius:5px;padding:11px 13px;}
+    .issues-panel .iss-lever:hover{background:#1a1012;border-color:rgba(200,122,122,0.45);}
+    .issues-panel .iss-lever .ln{font-size:12px;color:#fff;font-weight:500;margin-bottom:3px;display:flex;justify-content:space-between;align-items:center;}
+    .issues-panel .iss-lever .ln .cost{font-size:9px;color:#c89e6e;letter-spacing:0.04em;}
+    .issues-panel .iss-lever .ld{font-size:9px;color:#999;line-height:1.4;}
+    .issues-panel .doors{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+    .issues-panel .door{font-family:inherit;cursor:pointer;text-align:center;border-radius:4px;padding:12px 11px;border:0.5px solid;}
+    .issues-panel .door.war{background:#1f0e0e;border-color:rgba(200,90,90,0.5);} .issues-panel .door.war:hover{background:#2a1212;}
+    .issues-panel .door.back{background:#161616;border-color:rgba(255,255,255,0.15);} .issues-panel .door.back:hover{background:#1c1c1c;}
+    .issues-panel .door .dn{font-size:12px;font-weight:600;margin-bottom:3px;} .issues-panel .door.war .dn{color:#e08080;} .issues-panel .door.back .dn{color:#aaa;}
+    .issues-panel .door .dc{font-size:8px;line-height:1.4;} .issues-panel .door.war .dc{color:#a86a6a;} .issues-panel .door.back .dc{color:#777;}
+    .issues-panel .iss-lever:disabled,.issues-panel .door:disabled,.issues-panel button.cza:disabled,.issues-panel .is-busy{opacity:0.5;cursor:default;}
 
     .issues-panel .channel .ch-head{padding:11px 18px;background:#0a0a0a;border-bottom:0.5px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;}
     .issues-panel .channel .ch-head .t{font-size:10px;letter-spacing:0.13em;color:#888;}
@@ -386,14 +467,14 @@ function ensureStyles() {
 // ── public API ────────────────────────────────────────────────────────────
 
 // Render the panel. nationId = the viewer's nation (drives role tagging + YOU).
-// Actions (soften/drop) are wired separately in mountIssuesPanel.
+// opts.currentTick drives the decision clock. Actions are wired in mountIssuesPanel.
 export function renderIssuesPanel(host, issues, nationId, opts = {}) {
   if (!host) return;
   ensureStyles();
   const heading = opts.heading === undefined ? 'I. Issues' : opts.heading;
   host.innerHTML = `<section class="issues-panel">
       ${heading ? `<div class="issues-panel__head">${escapeHtml(heading)}</div>` : ''}
-      <div class="issues-content">${buildContent(issues, nationId, opts.expandedId || null)}</div>
+      <div class="issues-content">${buildContent(issues, nationId, opts.expandedId || null, opts.currentTick ?? null)}</div>
     </section>`;
 
   // Accordion expand/collapse via delegation on the root, which survives content
@@ -413,11 +494,27 @@ export function renderIssuesPanel(host, issues, nationId, opts = {}) {
   }
 }
 
-const ACTION_RPC = { soften: 'soften_demand', drop: 'drop_claim' };
+const ACTION_RPC = {
+  soften: 'soften_demand', drop: 'drop_claim',
+  press_harder: 'press_harder', extend: 'extend_deadline',
+  go_to_war: 'go_to_war', concede: 'concede_claim',
+};
 const ACTION_CONFIRM = {
   soften: 'Soften your demand one rung? This cannot be undone.',
-  drop: 'Drop the claim entirely? You take −25 approval, +10 unrest, and cannot re-press this nation for 360 ticks.',
+  drop: 'Back down — drop the claim entirely? You take −25 approval, +10 unrest, and cannot re-press this nation for 360 ticks.',
+  press_harder: 'Press harder? This burns one tick off the decision clock.',
+  extend: 'Extend the deadline by 2 ticks? This costs you 8 approval.',
+  go_to_war: 'Go to war? This is final — a state of war begins at the next tick.',
+  concede: 'Concede the claim? You accept the demand and the dispute resolves in the pressor’s favour.',
 };
+
+// The shard's current tick, fetched once per mount/reload so the clock reads true.
+async function fetchCurrentTick(supabase) {
+  try {
+    const { data } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').maybeSingle();
+    return data ? (Number(data.current_tick) || 0) : null;
+  } catch { return null; }
+}
 
 // Fetch + render. Both pages call this so they stay in lockstep.
 export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
@@ -429,13 +526,13 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
       <div class="issues-content"><div class="issues-empty">Loading…</div></div>
     </section>`;
 
-  let issues = [];
+  let issues = [], currentTick = null;
   try {
-    issues = await fetchWorldIssues(supabase);
+    [issues, currentTick] = await Promise.all([fetchWorldIssues(supabase), fetchCurrentTick(supabase)]);
   } catch (err) {
     console.warn('[issues-panel] mount failed:', err?.message || err);
   }
-  renderIssuesPanel(host, issues, nationId, opts);
+  renderIssuesPanel(host, issues, nationId, { ...opts, currentTick });
 
   const root = host.querySelector('.issues-panel');
   const content = host.querySelector('.issues-content');
@@ -453,7 +550,7 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
     if (typeof window !== 'undefined' && typeof window.confirm === 'function'
         && !window.confirm(ACTION_CONFIRM[btn.dataset.action])) return;
 
-    const zone = btn.closest('.pressor-zone');
+    const zone = btn.closest('.pressor-zone, .claimant-zone');
     const errEl = zone?.querySelector('.iss-error');
     const fail = (msg) => {
       if (errEl) { errEl.textContent = msg; errEl.hidden = false; }
@@ -471,9 +568,9 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
       } else {
         // Success rebuilds the content (fresh, enabled buttons), re-expanding this dispute.
         const openId = root.querySelector('.dispute.expanded')?.dataset.id || null;
-        let fresh = [];
-        try { fresh = await fetchWorldIssues(supabase); } catch { /* keep empty */ }
-        content.innerHTML = buildContent(fresh, nationId, openId);
+        let fresh = [], freshTick = currentTick;
+        try { [fresh, freshTick] = await Promise.all([fetchWorldIssues(supabase), fetchCurrentTick(supabase)]); } catch { /* keep empty */ }
+        content.innerHTML = buildContent(fresh, nationId, openId, freshTick);
       }
     } catch (err) {
       fail(err?.message || 'Action failed.');

@@ -22,6 +22,8 @@ function ensureStyles() {
     .wr-eyebrow{font-size:10px;letter-spacing:0.2em;color:#7a4a4a;margin-bottom:6px;}
     .wr-title{font-size:24px;font-weight:500;color:#fff;}
     .wr-dates{margin-top:8px;font-size:11px;color:#888;letter-spacing:0.04em;}
+    .wr-score{margin-top:8px;font-size:12px;font-weight:700;letter-spacing:0.04em;color:#888;}
+    .wr-score .mine{color:#c87a7a;} .wr-score .theirs{color:#7a9aab;}
     .wr-sec{font-size:10px;letter-spacing:0.16em;color:#666;margin:18px 0 10px;padding-bottom:6px;border-bottom:0.5px solid rgba(255,255,255,0.08);}
     .wr-front{background:#0d0d0d;border:0.5px solid rgba(255,255,255,0.08);border-radius:5px;padding:12px 14px;margin-bottom:10px;}
     .wr-front-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;}
@@ -73,7 +75,7 @@ export async function mountWarRoom(container, nation) {
     let wars = [];
     try {
         const { data, error } = await _supabase.from('diplomatic_relations')
-            .select('nation_a_id, nation_b_id, war_declared_at_tick, war_justification')
+            .select('nation_a_id, nation_b_id, war_declared_at_tick, war_justification, war_score_a, war_score_b')
             .eq('relation_type', 'war')
             .or(`nation_a_id.eq.${nation.id},nation_b_id.eq.${nation.id}`);
         if (error) throw error;
@@ -232,11 +234,14 @@ async function renderWar(w, nation, nameById, commandable) {
 
     const navalHtml = hasSea ? '' : `<div class="wr-naval">⚓ Naval War — no contested coastline; not applicable to this war.</div>`;
 
+    const myScore = youAreA ? (Number(w.war_score_a) || 0) : (Number(w.war_score_b) || 0);
+    const enemyScore = youAreA ? (Number(w.war_score_b) || 0) : (Number(w.war_score_a) || 0);
     return `<div class="wr-war">
         <div class="wr-head">
             <div class="wr-eyebrow">— ACTIVE CONFLICT —</div>
             <div class="wr-title">The ${escapeHtml(nation.name)}–${escapeHtml(enemyName)} War</div>
             <div class="wr-dates">Began ${escapeHtml(tickToDate(Number(w.war_declared_at_tick)) || '—')}${w.war_justification ? ` · ${escapeHtml(w.war_justification)}` : ''}</div>
+            <div class="wr-score">Conquest Points — <span class="mine">${escapeHtml(nation.name)} ${myScore}</span> · <span class="theirs">${escapeHtml(enemyName)} ${enemyScore}</span></div>
         </div>
         <div class="wr-sec">LAND FRONTS</div>
         ${frontsHtml}

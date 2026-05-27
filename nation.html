@@ -32,6 +32,7 @@ import { formatCurrencyShort, escapeHtml } from './js/utils.js';
 import { CANONICAL_GOVERNMENT_TYPES, hasElectedPresident } from './js/game/government-types.js';
 import { normalizeNationStatKey, translateStatEffect, STAT_DECAY_CONFIG } from './js/game/stats.js';
 import { isTargetBasedStat } from './js/game/policies.js';
+import { mountIssuesPanel } from './js/issues-panel.js';
 /**
  * Nation Page - Comprehensive Stats Display
  * With Rankings and Trend Arrows
@@ -1195,6 +1196,15 @@ function renderFeaturedCategory(cat, nation) {
 // ===== TAB SWITCHING =====
 
 var _activeNationTab = 'statistics';
+var _pageNation = null;
+
+// Shared Issues panel (same module + null heading as army-operations.html, so the
+// two surfaces render identically for the same nation). nation here is the
+// viewer's own nation, which drives claimant/pressor role tagging.
+function mountNationIssues() {
+    if (!_pageNation) return;
+    mountIssuesPanel(_supabase, _pageNation.id, document.getElementById('nation-issues-host'), { heading: null });
+}
 
 function switchNationTab(tab) {
     if (tab === _activeNationTab) return;
@@ -1207,6 +1217,7 @@ function switchNationTab(tab) {
     });
     var target = document.getElementById('nation-tab-' + tab);
     if (target) target.style.display = '';
+    if (tab === 'issues') mountNationIssues();
 }
 window.switchNationTab = switchNationTab;
 
@@ -1648,6 +1659,7 @@ async function renderNationPage(nation) {
     h += '<div class="nation-tab-bar">';
     h += '<button class="nation-tab' + (_activeNationTab === 'statistics' ? ' active' : '') + '" data-tab="statistics" onclick="switchNationTab(\'statistics\')">Statistics</button>';
     h += '<button class="nation-tab' + (_activeNationTab === 'immigration' ? ' active' : '') + '" data-tab="immigration" onclick="switchNationTab(\'immigration\')">Immigration</button>';
+    h += '<button class="nation-tab' + (_activeNationTab === 'issues' ? ' active' : '') + '" data-tab="issues" onclick="switchNationTab(\'issues\')">Issues</button>';
     h += '</div>';
 
     // ---- Statistics tab ----
@@ -1669,8 +1681,15 @@ async function renderNationPage(nation) {
     h += '<div id="migration-flow-panels"><div class="imm-loading">Loading migration data...</div></div>';
     h += '</div>'; // end immigration tab
 
+    // ---- Issues tab ----
+    h += '<div class="nation-body nation-tab-content" id="nation-tab-issues"' + (_activeNationTab === 'issues' ? '' : ' style="display:none;"') + '>';
+    h += '<div id="nation-issues-host"></div>';
+    h += '</div>'; // end issues tab
+
+    _pageNation = nation;
     document.getElementById('content-area').innerHTML = h;
     attachHandlers();
+    if (_activeNationTab === 'issues') mountNationIssues();
 
     // Load migration flows AFTER DOM is set so .then() can find the tab elements
     try {

@@ -80,8 +80,8 @@
 
 <!-- ===== DIPLOMACY SUBTAB ===== -->
 <div id="subtab-diplomacy" class="diplo-subtab-content" style="display:none;">
-    <div style="padding:8px 12px 24px;">
-        <div id="diplo-issues-host"></div>
+    <div style="padding:40px 12px;text-align:center;color:var(--text-bright);font-family:var(--font-mono);font-size:14px;">
+        Diplomacy coming soon!
     </div>
 </div>
 
@@ -166,7 +166,6 @@ import { _supabase } from './js/supabase-client.js';
 import { initPage, formatNumber } from './js/common.js';
 import { escapeHtml, tickToDate, fmtBudgetCurrency } from './js/utils.js';
 import { getPartyLogoHTML } from './js/party-icons.js';
-import { mountIssuesPanel } from './js/issues-panel.js';
 import { isGovernmentPresidential, hasElectedPresident, hasParliamentaryPM, getGovDisplayLabel } from './js/game/government-types.js';
 import { fetchActiveCoalition, detectHeadFaction, loadSeats } from './js/game/government-structure.js';
 import { GAME_CONFIG, deductAP } from './js/game/config.js';
@@ -280,10 +279,6 @@ function showDiploSubtab() {
 
     if (_diploActiveSubtab === 'sports') {
         renderSportsTab();
-    }
-
-    if (_diploActiveSubtab === 'diplomacy') {
-        mountIssuesPanel(_supabase, _worldState?.nation?.id, document.getElementById('diplo-issues-host'), { heading: 'I. Issues' });
     }
 
     if (_diploActiveSubtab === 'ipo') {
