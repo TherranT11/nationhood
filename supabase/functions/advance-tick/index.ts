@@ -29720,6 +29720,214 @@ async function processArmySupply(supabase, currentTick) {
     return { supplied, underSupplied: underSupplied.size };
 }
 
+// ── COMBAT ─────────────────────────────────────────────────────────
+const COMBAT = Object.freeze({
+    INTENSITY: 0.04,   // base casualty rate vs the smaller force, at parity
+    COH_BASE: 4,       // base cohesion drained per tick of battle
+    DEF_POWER: 1.5,    // DEFEND power multiplier
+    DEF_CAS: 0.5,      // DEFEND own-casualty multiplier
+    DEF_COH: 0.4,      // DEFEND own-cohesion-drain multiplier
+    UNARMED: 0.3,      // effectiveness of soldiers with no rifle
+    QUAL_FLOOR: 0.5,   // power floor so raw numbers always count
+    ARMOR_VAL: 1500, MECH_VAL: 750,   // manpower-equivalent punch per brigade
+    REGROUP_COH: 20,   // cohesion a broken side rallies back to on retreat
+});
+const _pairKey = (x, y) => (x < y ? `${x}|${y}` : `${y}|${x}`);
+
+// Per-tick land combat for fronts between nations at war. Front-level: all
+// armies on a front pool strength for their side. ECP = effective manpower
+// (real rifles weight unarmed troops down) × stat quality × supply, + armor.
+// Both sides bleed manpower + cohesion each tick; a side at 0 cohesion (or no
+// troops) breaks, and if its foe ASSAULTed the line slides one sector toward
+// the broken side's capital. line 0 / sector_count = a capital has fallen and
+// the front is decided (combat halts). DEFEND: ×1.5 power, ½ casualties,
+// 0.4× cohesion drain, cannot advance. Non-fatal; bails on partial reads.
+async function processCombat(supabase, currentTick) {
+    const { data: warRels, error: relErr } = await supabase
+        .from('diplomatic_relations').select('nation_a_id, nation_b_id').eq('relation_type', 'war');
+    if (relErr) { console.error('[processCombat] war relations load failed:', relErr.message); return { battles: 0 }; }
+    if (!warRels || !warRels.length) return { battles: 0 };
+    const warPairs = new Set(warRels.map(r => _pairKey(r.nation_a_id, r.nation_b_id)));
+
+    const { data: allFronts, error: fErr } = await supabase.from('war_fronts')
+        .select('id, nation_a_id, nation_b_id, sector_count, line_position, action_a, action_b')
+        .eq('front_type', 'land');
+    if (fErr) { console.error('[processCombat] fronts load failed:', fErr.message); return { battles: 0 }; }
+    const fronts = (allFronts || []).filter(f => warPairs.has(_pairKey(f.nation_a_id, f.nation_b_id)));
+    if (!fronts.length) return { battles: 0 };
+
+    const frontIds = fronts.map(f => f.id);
+    const frontById = new Map(fronts.map(f => [f.id, f]));
+
+    const [secRes, armyRes] = await Promise.all([
+        supabase.from('war_sectors').select('front_id, nation_id').in('front_id', frontIds),
+        supabase.from('armies').select('id, faction_id, nation_id, assigned_front_id, supply_balance').in('assigned_front_id', frontIds),
+    ]);
+    if (secRes.error || armyRes.error) {
+        console.error('[processCombat] core load failed:', (secRes.error || armyRes.error).message);
+        return { battles: 0 };
+    }
+    const aCount = new Map(fronts.map(f => [f.id, 0]));   // nation_a's static sector count (line init)
+    for (const s of (secRes.data || [])) {
+        const f = frontById.get(s.front_id);
+        if (f && s.nation_id === f.nation_a_id) aCount.set(f.id, aCount.get(f.id) + 1);
+    }
+
+    const armies = armyRes.data || [];
+    const armyIds = armies.map(a => a.id);
+    const factionIds = [...new Set(armies.map(a => a.faction_id))];
+
+    let units = [], equip = [], facs = [];
+    if (armyIds.length) {
+        const uRes = await supabase.from('army_units')
+            .select('id, army_id, total_manpower, brigades').in('army_id', armyIds).eq('status', 'Active');
+        if (uRes.error) { console.error('[processCombat] units load failed:', uRes.error.message); return { battles: 0 }; }
+        units = uRes.data || [];
+        const unitIds = units.map(u => u.id);
+        const [eqRes, fRes] = await Promise.all([
+            unitIds.length
+                ? supabase.from('army_brigade_equipment').select('army_unit_id, quantity, rifle_models(soldiers_per_rifle)').in('army_unit_id', unitIds)
+                : Promise.resolve({ data: [] }),
+            supabase.from('factions').select('id, army_training, army_professionalism, army_cohesion').in('id', factionIds),
+        ]);
+        if (fRes.error) { console.error('[processCombat] factions load failed:', fRes.error.message); return { battles: 0 }; }
+        equip = eqRes.data || [];
+        facs = fRes.data || [];
+    }
+
+    const armedByUnit = new Map();
+    for (const e of equip) armedByUnit.set(e.army_unit_id, (armedByUnit.get(e.army_unit_id) || 0) + (Number(e.quantity) || 0) * (Number(e.rifle_models?.soldiers_per_rifle) || 0));
+    const unitsByArmy = new Map();
+    for (const u of units) { if (!unitsByArmy.has(u.army_id)) unitsByArmy.set(u.army_id, []); unitsByArmy.get(u.army_id).push(u); }
+    const facById = new Map(facs.map(f => [f.id, f]));
+
+    const armiesByFront = new Map(fronts.map(f => [f.id, { a: [], b: [] }]));
+    for (const ar of armies) {
+        const f = frontById.get(ar.assigned_front_id); if (!f) continue;
+        const bucket = armiesByFront.get(f.id);
+        if (ar.nation_id === f.nation_a_id) bucket.a.push(ar);
+        else if (ar.nation_id === f.nation_b_id) bucket.b.push(ar);
+    }
+
+    // Mutable running state, flushed once at the end (a faction may fight on
+    // several fronts in one tick — cohesion/manpower carry across them).
+    const cohVal = new Map([...facById].map(([id, f]) => [id, Number(f.army_cohesion) || 0]));
+    const unitMp = new Map(units.map(u => [u.id, Number(u.total_manpower) || 0]));
+    const lineUpd = new Map();
+    let battles = 0;
+
+    for (const f of fronts) {
+        const N = Number(f.sector_count) || 0;
+        let line = f.line_position;
+        if (line === null || line === undefined) {
+            line = Math.min(Math.max(aCount.get(f.id) || Math.floor(N / 2), 1), Math.max(N - 1, 1));
+            lineUpd.set(f.id, line);
+        }
+        if (N <= 0 || line <= 0 || line >= N) continue;   // decided / unusable
+
+        const buckets = armiesByFront.get(f.id);
+        const A = computeSide(buckets.a, unitsByArmy, armedByUnit, facById, cohVal, unitMp);
+        const B = computeSide(buckets.b, unitsByArmy, armedByUnit, facById, cohVal, unitMp);
+        if (A.M <= 0 && B.M <= 0) continue;
+
+        const actA = f.action_a === 'assault' ? 'assault' : 'defend';
+        const actB = f.action_b === 'assault' ? 'assault' : 'defend';
+        // Nobody attacking → quiet front: no engagement, no bleed this tick.
+        if (actA !== 'assault' && actB !== 'assault') continue;
+
+        const ecpA = A.ecp * (actA === 'defend' ? COMBAT.DEF_POWER : 1);
+        const ecpB = B.ecp * (actB === 'defend' ? COMBAT.DEF_POWER : 1);
+        const total = ecpA + ecpB;
+        if (total <= 0) continue;
+
+        const minM = Math.min(A.M || B.M, B.M || A.M);
+        applyCasualties(A, COMBAT.INTENSITY * minM * (ecpB / total) * 2 * (actA === 'defend' ? COMBAT.DEF_CAS : 1), unitMp);
+        applyCasualties(B, COMBAT.INTENSITY * minM * (ecpA / total) * 2 * (actB === 'defend' ? COMBAT.DEF_CAS : 1), unitMp);
+
+        const cohA = COMBAT.COH_BASE * (ecpB / total) * 2 * (actA === 'defend' ? COMBAT.DEF_COH : 1);
+        const cohB = COMBAT.COH_BASE * (ecpA / total) * 2 * (actB === 'defend' ? COMBAT.DEF_COH : 1);
+        for (const fid of A.facIds) cohVal.set(fid, Math.max(0, (cohVal.get(fid) || 0) - cohA));
+        for (const fid of B.facIds) cohVal.set(fid, Math.max(0, (cohVal.get(fid) || 0) - cohB));
+
+        const aBroke = A.M <= 0 || sideCohesion(A, cohVal) <= 0;
+        const bBroke = B.M <= 0 || sideCohesion(B, cohVal) <= 0;
+        if (bBroke && !aBroke && actA === 'assault') {
+            line = Math.min(N, line + 1);
+            for (const fid of B.facIds) cohVal.set(fid, Math.max(cohVal.get(fid) || 0, COMBAT.REGROUP_COH));
+            lineUpd.set(f.id, line);
+        } else if (aBroke && !bBroke && actB === 'assault') {
+            line = Math.max(0, line - 1);
+            for (const fid of A.facIds) cohVal.set(fid, Math.max(cohVal.get(fid) || 0, COMBAT.REGROUP_COH));
+            lineUpd.set(f.id, line);
+        }
+        battles++;
+    }
+
+    // Flush.
+    for (const [fid, line] of lineUpd) await supabase.from('war_fronts').update({ line_position: line }).eq('id', fid);
+    for (const u of units) {
+        const nm = Math.round(unitMp.get(u.id));
+        if (nm !== (Number(u.total_manpower) || 0)) {
+            const patch = nm <= 0 ? { total_manpower: 0, status: 'Decommissioned' } : { total_manpower: nm };
+            await supabase.from('army_units').update(patch).eq('id', u.id);
+        }
+    }
+    for (const [fid, f] of facById) {
+        const nc = Math.round(cohVal.get(fid));
+        if (nc !== (Number(f.army_cohesion) || 0)) await supabase.from('factions').update({ army_cohesion: nc }).eq('id', fid);
+    }
+
+    return { battles };
+}
+
+// One side's pooled strength. ECP per army: effective manpower (real rifles
+// weight unarmed troops to 30%) × (floor + stat quality) × supply, + armor punch.
+function computeSide(armies, unitsByArmy, armedByUnit, facById, cohVal, unitMp) {
+    let M = 0, ecp = 0;
+    const facIds = new Set();
+    const unitIds = [];
+    for (const ar of armies) {
+        facIds.add(ar.faction_id);
+        const fac = facById.get(ar.faction_id) || {};
+        let aM = 0, armed = 0, armor = 0, mech = 0;
+        for (const u of (unitsByArmy.get(ar.id) || [])) {
+            const mp = unitMp.get(u.id) || 0;
+            aM += mp;
+            armed += Math.min(mp, armedByUnit.get(u.id) || 0);
+            for (const bk of (Array.isArray(u.brigades) ? u.brigades : [])) {
+                if (bk === 'armor') armor++; else if (bk === 'mechanized') mech++;
+            }
+            unitIds.push(u.id);
+        }
+        M += aM;
+        const quality = ((Number(fac.army_training) || 0) + (Number(fac.army_professionalism) || 0) + (cohVal.get(ar.faction_id) || 0)) / 300;
+        const effM = armed + COMBAT.UNARMED * (aM - armed);
+        const supplyMlt = (Number(ar.supply_balance) || 0) >= 0 ? 1 : 0.6;
+        ecp += effM * (COMBAT.QUAL_FLOOR + quality) * supplyMlt + armor * COMBAT.ARMOR_VAL + mech * COMBAT.MECH_VAL;
+    }
+    return { M, ecp, facIds, unitIds };
+}
+
+// Average cohesion of a side's factions (typically one) — the break gauge.
+function sideCohesion(side, cohVal) {
+    if (!side.facIds.size) return 0;
+    let sum = 0;
+    for (const fid of side.facIds) sum += cohVal.get(fid) || 0;
+    return sum / side.facIds.size;
+}
+
+// Distribute a side's casualties across its units in proportion to manpower.
+function applyCasualties(side, cas, unitMp) {
+    if (cas <= 0 || !side.unitIds.length) return;
+    let total = 0;
+    for (const id of side.unitIds) total += unitMp.get(id) || 0;
+    if (total <= 0) return;
+    for (const id of side.unitIds) {
+        const mp = unitMp.get(id) || 0;
+        unitMp.set(id, Math.max(0, mp - cas * (mp / total)));
+    }
+}
+
 // ────────── loan-math ──────────
 
 // Shared loan math — single source of truth for monthly interest,
@@ -32585,6 +32793,22 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
     } catch (supErr) {
         console.error('[advanceTick] Army supply sweep failed (non-fatal):', supErr);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // 4a-quater. COMBAT — global pass.
+    // Resolves land battles on every front between nations at war: pooled
+    // ECP per side, mutual casualties + cohesion drain, line moves toward a
+    // broken side's capital when its foe assaulted. Runs after supply so the
+    // supply_balance feeding ECP is current.
+    // ══════════════════════════════════════════════════════════════════
+    try {
+        const combatRes = await processCombat(supabase, newTick);
+        if (combatRes?.battles) {
+            console.log(`[Combat] resolved ${combatRes.battles} front battle(s)`);
+        }
+    } catch (combatErr) {
+        console.error('[advanceTick] Combat sweep failed (non-fatal):', combatErr);
     }
 
     // ══════════════════════════════════════════════════════════════════
