@@ -1962,8 +1962,8 @@ async function runSectorElection(supabase, nation) {
     // Phase 1 dynamic sector weights: recompute and persist before TWP.
     // sectors carry primary_stat / secondary_stat keys (set by the
     // 20260430_sector_dynamic_weights migration); each weight is stepped
-    // from the nation's current stat values (≥65→3, 35-65→2, <35→1) and
-    // soft-capped to the nation total of 28. persistSectorWeights mutates
+    // from the nation's current stat values (≥65→30, 35-65→20, <35→10) and
+    // soft-capped to the nation total of 320. persistSectorWeights mutates
     // sectorList in place so the TWP math below reads the fresh values.
     try {
         const newWeights = computeSectorWeights(nation, sectorList);
