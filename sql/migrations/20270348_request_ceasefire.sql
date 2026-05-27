@@ -86,8 +86,8 @@ BEGIN
        AND nation_a_id = v_a AND nation_b_id = v_b;
     -- Dispatch to both nations' event logs.
     INSERT INTO event_log (nation_id, event_name, trigger_key, description_chosen, category, fired_at_tick)
-    VALUES (v_a, 'Ceasefire', 'ceasefire', 'A ceasefire has ended the war — white peace, no territory changes hands.', 'crisis', v_tick),
-           (v_b, 'Ceasefire', 'ceasefire', 'A ceasefire has ended the war — white peace, no territory changes hands.', 'crisis', v_tick);
+    VALUES (v_a, 'Ceasefire', 'ceasefire', 'A ceasefire has ended the war — the fighting stops and the front line holds where it stands.', 'crisis', v_tick),
+           (v_b, 'Ceasefire', 'ceasefire', 'A ceasefire has ended the war — the fighting stops and the front line holds where it stands.', 'crisis', v_tick);
     RETURN jsonb_build_object('ok', true, 'ceasefire', 'accepted');
 EXCEPTION WHEN OTHERS THEN
     RETURN jsonb_build_object('ok', false, 'message', 'Error: ' || SQLERRM);

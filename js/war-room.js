@@ -277,7 +277,7 @@ async function renderWar(w, nation, nameById, commandable, isHoG) {
         ceasefireHtml = `<div class="wr-cf pending">You have requested a ceasefire — awaiting ${escapeHtml(enemyName)}'s head of government.</div>`;
     } else if (offerer === enemyId) {
         ceasefireHtml = isHoG
-            ? `<div class="wr-cf"><div class="wr-cf-t">${escapeHtml(enemyName)} has requested a <b>ceasefire</b> — white peace, no territory changes hands. Accept to end the war.</div>`
+            ? `<div class="wr-cf"><div class="wr-cf-t">${escapeHtml(enemyName)} has requested a <b>ceasefire</b> — white peace: the fighting stops and the front line holds where it stands. Accept to end the war.</div>`
               + `<div class="wr-cf-acts"><button type="button" class="wr-cf-btn accept" data-ceasefire="accept|${escapeHtml(enemyId)}">Accept ceasefire</button>`
               + `<button type="button" class="wr-cf-btn reject" data-ceasefire="reject|${escapeHtml(enemyId)}">Reject</button></div></div>`
             : `<div class="wr-cf pending">${escapeHtml(enemyName)} has requested a ceasefire — awaiting your head of government.</div>`;

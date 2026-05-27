@@ -1669,7 +1669,7 @@ const _MINISTRY_ACTION_REGISTRY = {
         {
             id: 'request_ceasefire',
             name: 'Request Ceasefire',
-            desc: 'Sue for peace in a war you are fighting. Proposes a white-peace ceasefire — the fighting stops and no territory changes hands. The enemy\'s head of government must accept it in their War Room to end the war.',
+            desc: 'Sue for peace in a war you are fighting. Proposes a white-peace ceasefire — the fighting stops and the front line holds where it stands. The enemy\'s head of government must accept it in their War Room to end the war.',
             cost: '$0',
             costColor: '#c8a832',
             tags: ['DIPLOMACY'],
@@ -3497,7 +3497,7 @@ async function openRequestCeasefireModal(root, faction) {
                 <div class="pa-modal-step-label">Select a War</div>
                 <select id="pa-cf-nation" class="pa-modal-input" ${result || submitting ? 'disabled' : ''} style="font-family:var(--font-ui);font-size:12px;">${optionsHtml}</select>
                 <div style="margin-top:10px;padding:10px 12px;border:1px solid rgba(200,168,50,0.3);border-radius:3px;background:rgba(200,168,50,0.06);font-family:var(--font-mono);font-size:9px;color:var(--text-dim);line-height:1.5;">
-                    <span style="color:var(--amber,#c8a832);font-weight:700;">White peace.</span> Fighting stops, the front line freezes, and <strong>no territory changes hands</strong>. The other nation's head of government must accept — you cannot end the war alone.
+                    <span style="color:var(--amber,#c8a832);font-weight:700;">White peace.</span> The fighting stops and the front line <strong>freezes where it stands</strong> — each side keeps the ground it currently holds, and the dispute ends. The other nation's head of government must accept — you cannot end the war alone.
                 </div>
                 ${errorHtml}
                 ${resultHtml}
