@@ -54,6 +54,7 @@ DECLARE
     v_land_tier NUMERIC;
     v_pop_tier  NUMERIC;
     v_land_amt  NUMERIC;
+    v_land_have NUMERIC;
     v_claim_pop NUMERIC;
     v_pop_amt   NUMERIC;
 BEGIN
@@ -79,12 +80,18 @@ BEGIN
         ELSE        v_land_tier := 0.00; v_pop_tier := 0.00;
     END CASE;
 
-    -- Resource transfer (claimant → pressor). %I columns come from the validated
-    -- stake_resource set only.
+    -- Resource transfer (claimant → pressor), clamped to what the claimant
+    -- actually holds so the pressor can never gain more than the claimant loses
+    -- (the stake quantity is rolled independently of real holdings). %I columns
+    -- come from the validated stake_resource set only.
     v_land_amt := round(COALESCE(v_issue.stake_quantity, 0) * v_land_tier);
     IF v_pressor IS NOT NULL AND v_land_amt > 0 AND v_res IN ('farmland', 'minerals', 'energy') THEN
-        EXECUTE format('UPDATE nations SET %I = GREATEST(0, COALESCE(%I,0) - $1) WHERE id = $2', v_res, v_res) USING v_land_amt, v_nation;
-        EXECUTE format('UPDATE nations SET %I = COALESCE(%I,0) + $1 WHERE id = $2', v_res, v_res) USING v_land_amt, v_pressor;
+        EXECUTE format('SELECT GREATEST(0, COALESCE(%I, 0)) FROM nations WHERE id = $1', v_res) INTO v_land_have USING v_nation;
+        v_land_amt := LEAST(v_land_amt, COALESCE(v_land_have, 0));
+        IF v_land_amt > 0 THEN
+            EXECUTE format('UPDATE nations SET %I = COALESCE(%I,0) - $1 WHERE id = $2', v_res, v_res) USING v_land_amt, v_nation;
+            EXECUTE format('UPDATE nations SET %I = COALESCE(%I,0) + $1 WHERE id = $2', v_res, v_res) USING v_land_amt, v_pressor;
+        END IF;
     END IF;
 
     -- Population transfer (a slice of the claimant's CURRENT population).
