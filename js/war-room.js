@@ -24,6 +24,13 @@ function ensureStyles() {
     .wr-dates{margin-top:8px;font-size:11px;color:#888;letter-spacing:0.04em;}
     .wr-score{margin-top:8px;font-size:12px;font-weight:700;letter-spacing:0.04em;color:#888;}
     .wr-score .mine{color:#c87a7a;} .wr-score .theirs{color:#7a9aab;}
+    .wr-cf{margin:0 0 18px;padding:13px 16px;border-radius:6px;background:#1a160d;border:0.5px solid rgba(200,158,110,0.4);text-align:left;}
+    .wr-cf.pending{background:#12120c;border-color:rgba(200,158,110,0.25);color:#c4a86a;font-size:12px;}
+    .wr-cf .wr-cf-t{font-size:12px;color:#d4b87a;line-height:1.5;}
+    .wr-cf .wr-cf-acts{display:flex;gap:8px;margin-top:11px;}
+    .wr-cf-btn{font-family:inherit;cursor:pointer;font-size:11px;letter-spacing:0.05em;padding:8px 15px;border-radius:4px;border:0.5px solid;}
+    .wr-cf-btn.accept{background:#0e1610;border-color:rgba(138,170,106,0.5);color:#8aaa6a;}
+    .wr-cf-btn.reject{background:#160e0e;border-color:rgba(200,122,122,0.45);color:#c87a7a;}
     .wr-sec{font-size:10px;letter-spacing:0.16em;color:#666;margin:18px 0 10px;padding-bottom:6px;border-bottom:0.5px solid rgba(255,255,255,0.08);}
     .wr-front{background:#0d0d0d;border:0.5px solid rgba(255,255,255,0.08);border-radius:5px;padding:12px 14px;margin-bottom:10px;}
     .wr-front-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;}
@@ -72,18 +79,18 @@ export async function mountWarRoom(container, nation) {
     if (!nation?.id) { container.innerHTML = `<div class="wr-empty">No nation context.</div>`; return; }
     container.innerHTML = `<div class="wr-empty">Loading wars…</div>`;
 
+    // ceasefire_offer_nation_id lands with the ceasefire migration; fall back to
+    // the core columns if it isn't applied yet so the room never blanks.
     let wars = [];
-    try {
+    const WAR_CORE = 'nation_a_id, nation_b_id, war_declared_at_tick, war_justification, war_score_a, war_score_b';
+    for (const cols of [WAR_CORE + ', ceasefire_offer_nation_id', WAR_CORE]) {
         const { data, error } = await _supabase.from('diplomatic_relations')
-            .select('nation_a_id, nation_b_id, war_declared_at_tick, war_justification, war_score_a, war_score_b')
+            .select(cols)
             .eq('relation_type', 'war')
             .or(`nation_a_id.eq.${nation.id},nation_b_id.eq.${nation.id}`);
-        if (error) throw error;
-        wars = data || [];
-    } catch (e) {
-        console.warn('[war-room] load failed:', e?.message || e);
-        container.innerHTML = `<div class="wr-empty">Could not load wars.</div>`;
-        return;
+        if (!error) { wars = data || []; break; }
+        console.warn('[war-room] load failed, trying narrower columns:', error.message);
+        if (cols === WAR_CORE) { container.innerHTML = `<div class="wr-empty">Could not load wars.</div>`; return; }
     }
     if (!wars.length) {
         container.innerHTML = `<div class="wr-empty">No active wars. When a state of war exists, it appears here.</div>`;
@@ -112,12 +119,37 @@ export async function mountWarRoom(container, nation) {
             console.warn('[war-room] command check failed:', e?.message || e);
         }
 
+        // Only the viewer's head of government may accept/reject a ceasefire.
+        let isHoG = false;
+        try {
+            const { data: gov } = await _supabase.rpc('dispute_actor_nation');
+            isHoG = !!gov && gov === nation.id;
+        } catch (e) {
+            console.warn('[war-room] HoG check failed:', e?.message || e);
+        }
+
         const blocks = [];
-        for (const w of wars) blocks.push(await renderWar(w, nation, nameById, commandable));
+        for (const w of wars) blocks.push(await renderWar(w, nation, nameById, commandable, isHoG));
         container.innerHTML = blocks.join('');
 
         // Inline ASSAULT/DEFEND order buttons → set_front_action, then re-mount.
         container.onclick = async (e) => {
+            // Ceasefire accept/reject (the enemy's head of government).
+            const cf = e.target.closest('[data-ceasefire]');
+            if (cf && !_orderBusy) {
+                const [act, otherId] = cf.getAttribute('data-ceasefire').split('|');
+                _orderBusy = true;
+                try {
+                    const { data, error } = await _supabase.rpc('respond_ceasefire', { p_other_nation_id: otherId, p_accept: act === 'accept' });
+                    if (error || (data && data.ok === false)) console.warn('[war-room] ceasefire failed:', (data && data.message) || error?.message);
+                } catch (ex) {
+                    console.warn('[war-room] ceasefire failed:', ex?.message || ex);
+                } finally {
+                    _orderBusy = false;
+                }
+                mountWarRoom(container, nation);
+                return;
+            }
             const btn = e.target.closest('[data-wr-order]');
             if (!btn || _orderBusy) return;
             const [frontId, action] = btn.getAttribute('data-wr-order').split('|');
@@ -140,7 +172,7 @@ export async function mountWarRoom(container, nation) {
     }
 }
 
-async function renderWar(w, nation, nameById, commandable) {
+async function renderWar(w, nation, nameById, commandable, isHoG) {
     const a = w.nation_a_id, b = w.nation_b_id;   // canonical (a<b)
     const enemyId = a === nation.id ? b : a;
     const enemyName = nameById.get(enemyId) || 'the enemy';
@@ -236,6 +268,21 @@ async function renderWar(w, nation, nameById, commandable) {
 
     const myScore = youAreA ? (Number(w.war_score_a) || 0) : (Number(w.war_score_b) || 0);
     const enemyScore = youAreA ? (Number(w.war_score_b) || 0) : (Number(w.war_score_a) || 0);
+
+    // Ceasefire offer (white peace). Offerer's nation sees a pending note; the
+    // enemy's head of government gets accept/reject; their other factions wait.
+    let ceasefireHtml = '';
+    const offerer = w.ceasefire_offer_nation_id || null;
+    if (offerer === nation.id) {
+        ceasefireHtml = `<div class="wr-cf pending">You have requested a ceasefire — awaiting ${escapeHtml(enemyName)}'s head of government.</div>`;
+    } else if (offerer === enemyId) {
+        ceasefireHtml = isHoG
+            ? `<div class="wr-cf"><div class="wr-cf-t">${escapeHtml(enemyName)} has requested a <b>ceasefire</b> — white peace: the fighting stops and the front line holds where it stands. Accept to end the war.</div>`
+              + `<div class="wr-cf-acts"><button type="button" class="wr-cf-btn accept" data-ceasefire="accept|${escapeHtml(enemyId)}">Accept ceasefire</button>`
+              + `<button type="button" class="wr-cf-btn reject" data-ceasefire="reject|${escapeHtml(enemyId)}">Reject</button></div></div>`
+            : `<div class="wr-cf pending">${escapeHtml(enemyName)} has requested a ceasefire — awaiting your head of government.</div>`;
+    }
+
     return `<div class="wr-war">
         <div class="wr-head">
             <div class="wr-eyebrow">— ACTIVE CONFLICT —</div>
@@ -243,6 +290,7 @@ async function renderWar(w, nation, nameById, commandable) {
             <div class="wr-dates">Began ${escapeHtml(tickToDate(Number(w.war_declared_at_tick)) || '—')}${w.war_justification ? ` · ${escapeHtml(w.war_justification)}` : ''}</div>
             <div class="wr-score">Conquest Points — <span class="mine">${escapeHtml(nation.name)} ${myScore}</span> · <span class="theirs">${escapeHtml(enemyName)} ${enemyScore}</span></div>
         </div>
+        ${ceasefireHtml}
         <div class="wr-sec">LAND FRONTS</div>
         ${frontsHtml}
         <div class="wr-sec">AIR WAR</div>

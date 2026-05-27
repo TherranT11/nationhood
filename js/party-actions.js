@@ -1204,6 +1204,7 @@ function renderPage(root) {
             <div class="pa-modal-overlay" id="pa-cb-rate-modal"></div>
             <div class="pa-modal-overlay" id="pa-press-claim-modal"></div>
             <div class="pa-modal-overlay" id="pa-declare-war-modal"></div>
+            <div class="pa-modal-overlay" id="pa-ceasefire-modal"></div>
         `,
     });
 
@@ -1274,6 +1275,8 @@ function renderPage(root) {
             openDebtPaymentModal(root, faction);
         } else if (actionId === 'press_claim') {
             openPressClaimModal(root, faction);
+        } else if (actionId === 'request_ceasefire') {
+            openRequestCeasefireModal(root, faction);
         } else if (actionId === 'declare_war') {
             openDeclareWarModal(root, faction);
         } else if (actionId === 'allocate_funds') {
@@ -1662,6 +1665,14 @@ const _MINISTRY_ACTION_REGISTRY = {
             cost: '$3',
             costColor: '#c8a832',
             tags: ['DIPLOMACY', 'COSTS BUDGET'],
+        },
+        {
+            id: 'request_ceasefire',
+            name: 'Request Ceasefire',
+            desc: 'Sue for peace in a war you are fighting. Proposes a white-peace ceasefire — the fighting stops and the front line holds where it stands. The enemy\'s head of government must accept it in their War Room to end the war.',
+            cost: '$0',
+            costColor: '#c8a832',
+            tags: ['DIPLOMACY'],
         },
     ],
     central_bank_governor: [
@@ -3429,6 +3440,117 @@ async function openPressClaimModal(root, faction) {
 // (supermajority). Press-claim path needs a pressed claim at tension 10;
 // Our Honor needs none but is paid on filing. Server (declare_war RPC) is the
 // authority — this modal just scopes the choices to what's plausibly valid.
+// Request Ceasefire — a belligerent's Foreign Minister sues for white peace. The
+// enemy's head of government accepts/rejects in their War Room (respond_ceasefire).
+async function openRequestCeasefireModal(root, faction) {
+    const overlay = document.getElementById('pa-ceasefire-modal');
+    if (!overlay) return;
+    const myNationId = _state?.nation?.id;
+
+    let loadError = '';
+    let enemies = [];   // { id, name, offered }
+    try {
+        const { data: rels, error: relErr } = await _supabase
+            .from('diplomatic_relations')
+            .select('nation_a_id, nation_b_id, relation_type, ceasefire_offer_nation_id')
+            .or(`nation_a_id.eq.${myNationId},nation_b_id.eq.${myNationId}`).eq('relation_type', 'war');
+        if (relErr) throw relErr;
+        const ids = (rels || []).map(r => r.nation_a_id === myNationId ? r.nation_b_id : r.nation_a_id);
+        const offeredByMe = new Set((rels || [])
+            .filter(r => r.ceasefire_offer_nation_id === myNationId)
+            .map(r => r.nation_a_id === myNationId ? r.nation_b_id : r.nation_a_id));
+        if (ids.length) {
+            const { data: nats } = await _supabase.from('nations').select('id, name').in('id', ids);
+            enemies = (nats || []).map(n => ({ id: n.id, name: n.name, offered: offeredByMe.has(n.id) }))
+                .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        }
+    } catch (e) {
+        loadError = e?.message || 'Could not load your wars.';
+    }
+
+    let submitting = false;
+    let result = null;
+    let errorMsg = loadError;
+    let selectedId = enemies[0]?.id || '';
+    const selected = () => enemies.find(n => n.id === selectedId) || null;
+
+    function render() {
+        const sel = selected();
+        const canSubmit = !!sel && !submitting && !result;
+
+        const optionsHtml = enemies.map(n =>
+            `<option value="${esc(n.id)}"${n.id === selectedId ? ' selected' : ''}>${esc(n.name)}${n.offered ? ' — already requested' : ''}</option>`
+        ).join('');
+
+        const resultHtml = result ? `
+            <div style="padding:12px;background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.25);margin-top:12px;">
+                <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--amber,#c8a832);margin-bottom:4px;">Ceasefire requested</div>
+                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);line-height:1.5;">
+                    The enemy's head of government must accept it in their War Room. Until they do, the war continues.
+                </div>
+            </div>` : '';
+        const errorHtml = errorMsg ? `<div style="font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:6px;">${esc(errorMsg)}</div>` : '';
+
+        const bodyHtml = (enemies.length === 0 && !loadError)
+            ? `<div style="font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);">You are not at war with anyone. A ceasefire can only be requested during an active war.</div>`
+            : `
+                <div class="pa-modal-step-label">Select a War</div>
+                <select id="pa-cf-nation" class="pa-modal-input" ${result || submitting ? 'disabled' : ''} style="font-family:var(--font-ui);font-size:12px;">${optionsHtml}</select>
+                <div style="margin-top:10px;padding:10px 12px;border:1px solid rgba(200,168,50,0.3);border-radius:3px;background:rgba(200,168,50,0.06);font-family:var(--font-mono);font-size:9px;color:var(--text-dim);line-height:1.5;">
+                    <span style="color:var(--amber,#c8a832);font-weight:700;">White peace.</span> The fighting stops and the front line <strong>freezes where it stands</strong> — each side keeps the ground it currently holds, and the dispute ends. The other nation's head of government must accept — you cannot end the war alone.
+                </div>
+                ${errorHtml}
+                ${resultHtml}
+            `;
+
+        overlay.innerHTML = `
+            <div class="pa-modal" style="width:460px;">
+                <div class="pa-modal-header">
+                    <div class="pa-modal-header-left">
+                        <div class="pa-modal-dot" style="background:var(--amber,#c8a832);"></div>
+                        <span class="pa-modal-title">Request Ceasefire</span>
+                    </div>
+                    <button class="pa-modal-close" id="pa-cf-close">&times;</button>
+                </div>
+                <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                    Sue for peace. The enemy's head of government decides whether to accept.
+                </div>
+                <div class="pa-modal-body" style="gap:10px;">${bodyHtml}</div>
+                <div class="pa-modal-footer">
+                    <button class="pa-modal-btn pa-modal-btn--cancel" id="pa-cf-cancel">${result ? 'Close' : 'Cancel'}</button>
+                    ${result ? '' : `<button class="pa-modal-btn pa-modal-btn--submit" id="pa-cf-send" ${canSubmit ? '' : 'disabled'}>${submitting ? 'Requesting…' : 'Request Ceasefire'}</button>`}
+                </div>
+            </div>`;
+
+        const close = () => { overlay.classList.remove('active'); if (result) renderPage(root); };
+        document.getElementById('pa-cf-close')?.addEventListener('click', close);
+        document.getElementById('pa-cf-cancel')?.addEventListener('click', close);
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+        const natSel = document.getElementById('pa-cf-nation');
+        if (natSel) natSel.addEventListener('change', (e) => { selectedId = e.target.value; render(); });
+        document.getElementById('pa-cf-send')?.addEventListener('click', cfSubmit);
+    }
+
+    async function cfSubmit() {
+        const sel = selected();
+        if (submitting || result || !sel) return;
+        submitting = true; errorMsg = ''; render();
+        try {
+            const { data, error } = await _supabase.rpc('request_ceasefire', { p_target_nation_id: selectedId });
+            if (error) errorMsg = error.message || 'Could not request ceasefire.';
+            else if (!data?.ok) errorMsg = data?.message || 'Could not request ceasefire.';
+            else result = data;
+        } catch (e) {
+            errorMsg = e?.message || 'Network error.';
+        } finally {
+            submitting = false; render();
+        }
+    }
+
+    overlay.classList.add('active');
+    render();
+}
+
 async function openDeclareWarModal(root, faction) {
     const overlay = document.getElementById('pa-declare-war-modal');
     if (!overlay) return;
