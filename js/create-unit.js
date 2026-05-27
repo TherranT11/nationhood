@@ -520,12 +520,16 @@ export function openCreateArmyModal(faction, onCreated) {
   loadUnitsAndFunds(faction).then(r => { units = r.units; funds = r.funds; shell(); });
 }
 
+// The other nation on a front, from myNationId's POV.
+function frontNeighbourId(front, myNationId) {
+  return front.nation_a_id === myNationId ? front.nation_b_id : front.nation_a_id;
+}
+
 // Deployment label for a front from the viewer's nation's POV:
 // "{neighbour name} Front {label}". neighbour(id) → {name,...}|null.
 // One source for both the assign modal and the Order of Battle.
 function frontDeployLabel(front, myNationId, neighbour) {
-  const neigh = front.nation_a_id === myNationId ? front.nation_b_id : front.nation_a_id;
-  const n = neighbour(neigh);
+  const n = neighbour(frontNeighbourId(front, myNationId));
   return `${(n && n.name) || 'Border'} Front ${front.label}`;
 }
 
@@ -534,6 +538,18 @@ function nationFlagUrl(n) {
   if (!n) return '';
   const pf = Array.isArray(n.nation_profiles) ? n.nation_profiles[0]?.flag_url : n.nation_profiles?.flag_url;
   return pf || n.flag_url || `assets/flags/${n.name}.png`;
+}
+
+// front_id → count of the given units, routed through each unit's army assignment.
+// Shared by the friendly and opposing tallies in the assign-army modal.
+function tallyUnitsByFront(armyRows, unitRows) {
+  const armyToFront = new Map((armyRows || []).map(a => [a.id, a.assigned_front_id]));
+  const out = new Map();
+  for (const u of (unitRows || [])) {
+    const fId = armyToFront.get(u.army_id);
+    if (fId) out.set(fId, (out.get(fId) || 0) + 1);
+  }
+  return out;
 }
 
 // ── ACTION: Assign Army to a land front ($1) ───────────────────────
@@ -572,7 +588,7 @@ export function openAssignArmyModal(faction, onAssigned) {
     const frontsHtml = fronts.length
       ? fronts.map(f => {
           const sel = selFront === f.id;
-          const neigh = neighborById.get(f.nation_a_id === faction.nation_id ? f.nation_b_id : f.nation_a_id);
+          const neigh = neighborById.get(frontNeighbourId(f, faction.nation_id));
           const flag = nationFlagUrl(neigh);
           const nm = (neigh && neigh.name) || 'Border';
           const onFront = unitsOnFront.get(f.id) || 0;
@@ -645,48 +661,47 @@ export function openAssignArmyModal(faction, onAssigned) {
   overlay.style.display = 'flex';
   overlay.innerHTML = '<div class="cu-modal"><div class="cu-body"><div class="cu-sec">Loading…</div></div></div>';
   (async () => {
-    const [aRes, fRes, uRes, facRes] = await Promise.all([
-      _supabase.from('armies').select('id, name, army_type, assigned_front_id')
-        .eq('faction_id', faction.id).order('created_at_tick', { ascending: true }),
-      _supabase.from('war_fronts').select('id, label, nation_a_id, nation_b_id, sector_count')
-        .eq('front_type', 'land')
-        .or(`nation_a_id.eq.${faction.nation_id},nation_b_id.eq.${faction.nation_id}`),
-      _supabase.from('army_units').select('army_id').eq('faction_id', faction.id).neq('status', 'Decommissioned'),
-      _supabase.from('factions').select('party_funds').eq('id', faction.id).maybeSingle(),
-    ]);
-    if (aRes.error) console.warn('[assign-army] armies load:', aRes.error.message);
-    if (fRes.error) console.warn('[assign-army] fronts load:', fRes.error.message);
-    armies = aRes.data || [];
-    fronts = fRes.data || [];
-    funds = Number(facRes.data?.party_funds) || 0;
-    // Units deployed per front: a unit sits on the front its army is assigned to.
-    const armyToFront = new Map(armies.map(a => [a.id, a.assigned_front_id]));
-    for (const u of (uRes.data || [])) {
-      const fId = armyToFront.get(u.army_id);
-      if (fId) unitsOnFront.set(fId, (unitsOnFront.get(fId) || 0) + 1);
-    }
-    const neighborIds = [...new Set(fronts.map(f => f.nation_a_id === faction.nation_id ? f.nation_b_id : f.nation_a_id))];
-    const frontIds = fronts.map(f => f.id);
-    const [natsRes, oppArmiesRes] = await Promise.all([
-      neighborIds.length
-        ? _supabase.from('nations').select('id, name, flag_url, nation_profiles(flag_url)').in('id', neighborIds)
-        : Promise.resolve({ data: [] }),
-      // Opposing armies: any army deployed to these fronts that isn't ours.
-      frontIds.length
-        ? _supabase.from('armies').select('id, assigned_front_id').in('assigned_front_id', frontIds).neq('nation_id', faction.nation_id)
-        : Promise.resolve({ data: [] }),
-    ]);
-    for (const n of (natsRes.data || [])) neighborById.set(n.id, n);
-    const oppArmyToFront = new Map((oppArmiesRes.data || []).map(a => [a.id, a.assigned_front_id]));
-    if (oppArmyToFront.size) {
-      const { data: oppUnits } = await _supabase.from('army_units')
-        .select('army_id').in('army_id', [...oppArmyToFront.keys()]).neq('status', 'Decommissioned');
-      for (const u of (oppUnits || [])) {
-        const fId = oppArmyToFront.get(u.army_id);
-        if (fId) oppOnFront.set(fId, (oppOnFront.get(fId) || 0) + 1);
+    try {
+      const [aRes, fRes, uRes, facRes] = await Promise.all([
+        _supabase.from('armies').select('id, name, army_type, assigned_front_id')
+          .eq('faction_id', faction.id).order('created_at_tick', { ascending: true }),
+        _supabase.from('war_fronts').select('id, label, nation_a_id, nation_b_id, sector_count')
+          .eq('front_type', 'land')
+          .or(`nation_a_id.eq.${faction.nation_id},nation_b_id.eq.${faction.nation_id}`),
+        _supabase.from('army_units').select('army_id').eq('faction_id', faction.id).neq('status', 'Decommissioned'),
+        _supabase.from('factions').select('party_funds').eq('id', faction.id).maybeSingle(),
+      ]);
+      if (aRes.error) console.warn('[assign-army] armies load:', aRes.error.message);
+      if (fRes.error) console.warn('[assign-army] fronts load:', fRes.error.message);
+      armies = aRes.data || [];
+      fronts = fRes.data || [];
+      funds = Number(facRes.data?.party_funds) || 0;
+      unitsOnFront = tallyUnitsByFront(armies, uRes.data);
+
+      const neighborIds = [...new Set(fronts.map(f => frontNeighbourId(f, faction.nation_id)))];
+      const frontIds = fronts.map(f => f.id);
+      const [natsRes, oppArmiesRes] = await Promise.all([
+        neighborIds.length
+          ? _supabase.from('nations').select('id, name, flag_url, nation_profiles(flag_url)').in('id', neighborIds)
+          : Promise.resolve({ data: [] }),
+        // Opposing armies: any army deployed to these fronts that isn't ours.
+        frontIds.length
+          ? _supabase.from('armies').select('id, assigned_front_id').in('assigned_front_id', frontIds).neq('nation_id', faction.nation_id)
+          : Promise.resolve({ data: [] }),
+      ]);
+      for (const n of (natsRes.data || [])) neighborById.set(n.id, n);
+
+      const oppArmies = oppArmiesRes.data || [];
+      if (oppArmies.length) {
+        const { data: oppUnits, error: oppErr } = await _supabase.from('army_units')
+          .select('army_id').in('army_id', oppArmies.map(a => a.id)).neq('status', 'Decommissioned');
+        if (oppErr) console.warn('[assign-army] opposing units load:', oppErr.message);
+        oppOnFront = tallyUnitsByFront(oppArmies, oppUnits);
       }
+      fronts.sort((x, y) => frontLabel(x).localeCompare(frontLabel(y)));
+    } catch (e) {
+      console.warn('[assign-army] load failed:', e?.message || e);
     }
-    fronts.sort((x, y) => frontLabel(x).localeCompare(frontLabel(y)));
     render();
   })();
 }
@@ -703,7 +718,7 @@ async function loadArmyFronts(faction, armies) {
       .select('id, label, nation_a_id, nation_b_id').in('id', frontIds);
     const fronts = fr || [];
     const fById = {}; for (const f of fronts) fById[f.id] = f;
-    const neighborIds = [...new Set(fronts.map(f => f.nation_a_id === faction.nation_id ? f.nation_b_id : f.nation_a_id))];
+    const neighborIds = [...new Set(fronts.map(f => frontNeighbourId(f, faction.nation_id)))];
     const nById = {};
     if (neighborIds.length) {
       const { data: nats } = await _supabase.from('nations').select('id, name').in('id', neighborIds);
