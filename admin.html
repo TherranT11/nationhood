@@ -49,6 +49,7 @@ import { processElections, processGovernmentVacancy, resolveNoConfidence, runMan
 import { processEvents, processCrises, processStatEffects, processMinistryActions, processOngoingCosts, snapshotNationHistory, processPMTraitEffects, formatStatName } from './js/game/political-actions.js';
 import { processPresidentDesk, processPresidentialTermEnd, triggerPresidentialCandidateSelection, autoSelectPresidentialCandidates } from './js/game/presidential.js';
 import { recalcDerivedApproval, resolveExpiredVotes } from './js/game/bills.js';
+import { targetEquilibrium, convergeStat, isTargetBasedStat } from './js/game/policies.js';
 import { NATION_STAT_COLUMNS, STAT_DECAY_CONFIG, normalizeNationStatKey } from './js/game/stats.js';
 import { runElectionPreview, runPresidentialElectionPreview } from './js/game/election-simulation.js';
 import { SECTIONS, EVENT_TYPES, HEADLINE_TEMPLATES, LEDE_TEMPLATES, BODY_BLOCK_TEMPLATES, QUOTE_TEMPLATES, OPINION_TRIGGERS, REPORTERS } from './js/game/valdorian-templates.js';
@@ -2996,7 +2997,7 @@ async function runStatAudit() {
     // selected_option so the per-stat audit reflects the active option
     // for multi-option laws.
     const { data: laws } = await _supabase.from('active_laws')
-        .select('id, bill_id, is_reversal, passed_tick, effects_applied_through_tick, reversal_effects, policies(policy_name), selected_option:policy_options!selected_option_id(option_name, stat_effects)')
+        .select('id, bill_id, is_reversal, passed_tick, effects_applied_through_tick, reversal_effects, policies(policy_name), selected_option:policy_options!selected_option_id(option_name, stat_effects, is_target_based, stat_targets)')
         .eq('nation_id', nationId);
     const hitLaws = (laws || []).filter(l => {
         const p = l.policies;
@@ -3038,6 +3039,32 @@ async function runStatAudit() {
     }
 
     // 4. Stat connections
+    // 3b. Target-based policies — the modern model the convergence engine uses
+    //     (one source: policies.js targetEquilibrium/convergeStat).
+    heading('TARGET-BASED POLICIES');
+    let tbDelta = 0;
+    const tbContribs = [];
+    for (const l of (laws || [])) {
+        const opt = l.selected_option;
+        if (!opt || !opt.is_target_based || !Array.isArray(opt.stat_targets)) continue;
+        for (const t of opt.stat_targets) {
+            if (normalizeNationStatKey(t?.stat_key) !== sk || !isTargetBasedStat(sk)) continue;
+            const target = Number(t.target), pull = Number(t.pull);
+            if (!Number.isFinite(target) || !Number.isFinite(pull) || pull <= 0) continue;
+            tbContribs.push({ target, pull,
+                label: (l.policies?.policy_name || 'Policy') + (opt.option_name ? ' — ' + opt.option_name : '') });
+        }
+    }
+    if (tbContribs.length === 0) {
+        log('  None pulling this stat.', '#888');
+    } else {
+        for (const c of tbContribs) log(`  ${c.label} → target ${c.target} (pull ${c.pull})`);
+        const cur = Number(nation[sk] ?? 50);
+        const eq = targetEquilibrium(sk, tbContribs);
+        tbDelta = convergeStat(cur, eq, sk) - cur;
+        log(`  Aggregate equilibrium: ${eq == null ? '—' : Math.round(eq * 100) / 100} | current ${cur} | convergence this tick: ${tbDelta > 0 ? '+' : ''}${tbDelta}`);
+    }
+
     heading('STAT CONNECTIONS');
     const { data: conns } = await _supabase.from('stat_connections')
         .select('*').eq('enabled', true).eq('target_stat', sk);
@@ -3162,6 +3189,8 @@ async function runStatAudit() {
             total += Number(e.change_per_tick);
         }
     }
+    // Target-based policy convergence (the modern model)
+    total += tbDelta;
     total = Math.round(total * 100) / 100;
     log(`  Estimated net change: ${total > 0 ? '+' : ''}${total} per tick`, total < 0 ? '#f44' : total > 0 ? '#4f4' : '#888');
     log(`  (Does not include unprocessed ministry actions or leader trait effects)`, '#666');

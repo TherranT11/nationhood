@@ -72,6 +72,52 @@ export const TARGET_BASED_STAT_SKIP = new Set([
     'population', 'eligible_voters', 'debt', 'budget'
 ]);
 
+// ── Shared target-based math — ONE SOURCE for the tick processor below, the
+// admin Stat Delta Audit, and nation.html's "Affected By". Pure (no I/O), so
+// it's safe to import into the browser pages. ─────────────────────────────
+
+// True if a stat is eligible for target-based pulls (the filter the engine uses).
+export function isTargetBasedStat(statKey) {
+    const k = normalizeNationStatKey(statKey);
+    return !!k && NATION_STAT_COLUMN_SET.has(k)
+        && !STAT_PROCESSOR_SKIP.has(k) && !TARGET_BASED_STAT_SKIP.has(k);
+}
+
+// Weighted equilibrium from pre-summed weights: Σ(target×pull)/Σpull, clamped to
+// the stat's cap. Returns null when there is no pull.
+export function targetEquilibriumFromSums(sumTargetWeighted, sumPull, statKey) {
+    if (!(sumPull > 0)) return null;
+    const cap = nationStatCap(statKey);
+    return Math.max(0, Math.min(cap, sumTargetWeighted / sumPull));
+}
+
+// Weighted equilibrium from a list of { target, pull } contributions.
+export function targetEquilibrium(statKey, contributions) {
+    let sumTW = 0, sumP = 0;
+    for (const c of (contributions || [])) {
+        const t = Number(c.target), p = Number(c.pull);
+        if (!Number.isFinite(t) || !Number.isFinite(p) || p <= 0) continue;
+        sumTW += t * p; sumP += p;
+    }
+    return targetEquilibriumFromSums(sumTW, sumP, statKey);
+}
+
+// One tick's converged value: move TARGET_CONVERGENCE_RATE of the gap toward
+// equilibrium, round to int, with a small-gap ±1 rescue so fine targets still
+// converge despite rounding. Mirrors the engine exactly.
+export function convergeStat(current, equilibrium, statKey) {
+    const cap = nationStatCap(statKey);
+    const cur = Number(current);
+    if (!Number.isFinite(cur) || equilibrium == null) return cur;
+    let clamped = Math.max(0, Math.min(cap, Math.round(cur + (equilibrium - cur) * TARGET_CONVERGENCE_RATE)));
+    if (clamped === cur) {
+        const rounded = Math.round(equilibrium);
+        if      (rounded > cur) clamped = Math.min(cap, cur + 1);
+        else if (rounded < cur) clamped = Math.max(0, cur - 1);
+    }
+    return clamped;
+}
+
 export async function processTargetBasedPolicies(supabase, nation) {
     const summary = { stats: [] };
 
@@ -93,10 +139,8 @@ export async function processTargetBasedPolicies(supabase, nation) {
     for (const law of targetLaws) {
         const targets = Array.isArray(law.selected_option.stat_targets) ? law.selected_option.stat_targets : [];
         for (const t of targets) {
-            const rawKey = t?.stat_key;
-            const key = normalizeNationStatKey(rawKey);
-            if (!key || !NATION_STAT_COLUMN_SET.has(key)) continue;
-            if (STAT_PROCESSOR_SKIP.has(key) || TARGET_BASED_STAT_SKIP.has(key)) continue;
+            const key = normalizeNationStatKey(t?.stat_key);
+            if (!isTargetBasedStat(key)) continue;
             const target = Number(t.target);
             const pull = Number(t.pull);
             if (!Number.isFinite(target) || !Number.isFinite(pull) || pull <= 0) continue;
@@ -111,37 +155,14 @@ export async function processTargetBasedPolicies(supabase, nation) {
     //    twelve stats nudging at once cost one DB write, not twelve.
     const statUpdates = {};
     for (const [statKey, agg] of Object.entries(perStat)) {
-        if (agg.sumPull <= 0) continue;
-        // cap respects per-column CHECK constraints — tax columns are
-        // 0–10, everything else 0–100. Without this, a tax target
-        // authored on the 0–100 scale would crash the whole update
-        // with a constraint violation.
-        const cap = nationStatCap(statKey);
-        const equilibrium = Math.max(0, Math.min(cap,
-            agg.sumTargetWeighted / agg.sumPull
-        ));
+        const equilibrium = targetEquilibriumFromSums(agg.sumTargetWeighted, agg.sumPull, statKey);
+        if (equilibrium == null) continue;
         const current = Number(nation[statKey]);
         if (!Number.isFinite(current)) continue;
-        const next = current + (equilibrium - current) * TARGET_CONVERGENCE_RATE;
-        // Round to integer — the canonical stat columns are smallint
-        // (writing a fractional value triggers an "invalid input syntax
-        // for type smallint" error). Convergence is gradual enough that
-        // the precision loss doesn't matter.
-        let clamped = Math.max(0, Math.min(cap, Math.round(next)));
-        // Small-gap rescue: at 10% convergence any gap < 5 rounds back
-        // to current, pinning the stat. If the rounded equilibrium sits
-        // in a different integer bucket, take a 1-step nudge toward it
-        // so multi-tick convergence still happens for fine targets.
-        if (clamped === current) {
-            const rounded = Math.round(equilibrium);
-            if      (rounded > current) clamped = Math.min(cap, current + 1);
-            else if (rounded < current) clamped = Math.max(0, current - 1);
-        }
+        const clamped = convergeStat(current, equilibrium, statKey);
         if (clamped === current) continue;
         statUpdates[statKey] = clamped;
-        summary.stats.push({
-            stat: statKey, before: current, equilibrium, after: clamped
-        });
+        summary.stats.push({ stat: statKey, before: current, equilibrium, after: clamped });
     }
     if (Object.keys(statUpdates).length > 0) {
         const { error: updErr } = await supabase
