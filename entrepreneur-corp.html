@@ -1333,7 +1333,13 @@ function initials(s, n) {
     async function openProduceModal(d) {
       const overlay = document.getElementById('ad-produce-overlay');
       if (!overlay) return;
-      const compat = AC_PLANT_COMPAT[d.airframe_class] || [];
+      // Engines build at engine_assembly_plant @ 1 tick/unit; aircraft use the
+      // per-airframe compat + ticks/unit map. Server gates the same in
+      // ent_queue_production_run — client picks are advisory + UX.
+      const isEngine = d.design_type === 'engine';
+      const compat   = isEngine ? ['engine_assembly_plant'] : (AC_PLANT_COMPAT[d.airframe_class] || []);
+      const tpu      = isEngine ? 1 : (AC_TICKS_PER_UNIT[d.airframe_class] || 2);
+      const subType  = isEngine ? '' : (d.airframe_class || '');
       const [{ data: plants, error: pErr }, { data: runs, error: rErr }] = await Promise.all([
         _supabase.from('corp_buildings').select('id, name, building_type')
           .eq('owner_corp_id', id).eq('status', 'completed').in('building_type', compat),
@@ -1344,13 +1350,12 @@ function initials(s, n) {
       const busy = new Set((runs || []).map(r => r.plant_building_id));
       const freePlants = (plants || []).filter(p => !busy.has(p.id));
       const perUnit = Number(d.cost_per_unit) || 0;
-      const tpu = AC_TICKS_PER_UNIT[d.airframe_class] || 2;
       let submitting = false;
       overlay.innerHTML = `
         <div class="bm-modal" style="max-width:460px;">
-          <div class="bm-head"><div class="ti">Produce <em>Aircraft</em></div><div class="bm-x" id="apr-close">×</div></div>
+          <div class="bm-head"><div class="ti">Produce <em>${isEngine ? 'Engine' : 'Aircraft'}</em></div><div class="bm-x" id="apr-close">×</div></div>
           <div class="bm-body">
-            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Manufacture <b style="color:#cfcabf;">${escapeHtml(d.name)}</b> (${escapeHtml(d.airframe_class || '')}) into stock. The run burns cost/tick from treasury over its timeline; finished units fill inventory and can fulfil airline RFPs instantly.</div>
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Manufacture <b style="color:#cfcabf;">${escapeHtml(d.name)}</b>${subType ? ` (${escapeHtml(subType)})` : ''} into stock. The run burns cost/tick from treasury over its timeline; finished units fill inventory${isEngine ? ' for sale or future aircraft builds' : ' and can fulfil airline RFPs instantly'}.</div>
             ${freePlants.length ? `
               <div class="bm-label">Assembly plant</div>
               <select class="bm-select" id="apr-plant">${freePlants.map(p => `<option value="${p.id}">${escapeHtml(p.name)} · ${escapeHtml(buildingTypeLabel(p.building_type))}</option>`).join('')}</select>
@@ -1391,7 +1396,7 @@ function initials(s, n) {
             p_plant_building_id: document.getElementById('apr-plant').value, p_quantity: q });
           if (error) throw error;
           if (!data || !data.success) {
-            const R = { plant_busy: 'That plant already has an active run.', plant_incompatible: 'That plant can\'t build this airframe.',
+            const R = { plant_busy: 'That plant already has an active run.', plant_incompatible: 'That plant can\'t build this design.',
               plant_not_ready: 'Plant not completed yet.', design_not_available: 'Design must be available (R&D complete).',
               insufficient_cash: data?.need != null ? `Need ${fmtUsd(Number(data.need))} to start.` : 'Treasury too low.',
               insufficient_engines: data?.engine ? `Need ${data.need}× ${data.engine} engines (you hold ${data.have}). Buy more first.` : 'Not enough engines in stock.',
@@ -3513,13 +3518,13 @@ function initials(s, n) {
           const prog = d.status === 'researching'
             ? `<span class="num amber">researching ${d.research_ticks_total - d.research_ticks_remaining}/${d.research_ticks_total}</span>`
             : (d.status === 'available' ? `<span class="num green">available</span>` : `<span class="num muted">${escapeHtml(d.status)}</span>`);
-          const isAvailAircraft = d.design_type === 'aircraft' && d.status === 'available';
+          const isAvail = d.status === 'available';
           const stock = Number(d.inventory_on_hand) || 0;
           const stats = d.design_type === 'engine'
             ? `thrust ${d.thrust} · weight ${d.weight} · eff ${d.efficiency} · rel ${d.reliability} · Q${d.quality}`
             : `${escapeHtml(d.airframe_class || '')} · ${d.engine_count}× eng · ${d.passengers} pax · range ${d.range_nm} · demand ${d.demand_score} · safety ${d.safety_score} · Q${d.quality}`;
-          const right = isAvailAircraft
-            ? `<div class="sh-row-actions" style="align-items:center;gap:8px;"><span class="num ${stock > 0 ? 'green' : 'muted'}">${stock} in stock</span>${ownerOnly(`<button class="ap-btn-small list ac-produce-btn" data-did="${d.id}" data-name="${escapeHtml(d.name)}" data-class="${escapeHtml(d.airframe_class || '')}" data-cost="${Number(d.cost_per_unit) || 0}">Produce</button>`)}</div>`
+          const right = isAvail
+            ? `<div class="sh-row-actions" style="align-items:center;gap:8px;"><span class="num ${stock > 0 ? 'green' : 'muted'}">${stock} in stock</span>${ownerOnly(`<button class="ap-btn-small list ac-produce-btn" data-did="${d.id}" data-name="${escapeHtml(d.name)}" data-type="${escapeHtml(d.design_type)}" data-class="${escapeHtml(d.airframe_class || '')}" data-cost="${Number(d.cost_per_unit) || 0}">Produce</button>`)}</div>`
             : prog;
           return `<div class="cf-row"><div><div class="who">${d.design_type === 'engine' ? 'Engine' : 'Aircraft'} · ${escapeHtml(d.name)}</div>
             <div class="sub">${stats} · unit ${fmtUsd(Number(d.cost_per_unit) || 0)}</div></div>${right}</div>`;
@@ -3547,11 +3552,15 @@ function initials(s, n) {
 
         // Active production runs (20270234): in-flight builds delivering into stock.
         const { data: prData, error: prErr } = await _supabase.from('ent_production_runs')
-          .select('id, quantity, units_delivered, ticks_elapsed, total_ticks, design:ent_aircraft_designs!design_id(name, airframe_class)')
+          .select('id, quantity, units_delivered, ticks_elapsed, total_ticks, design:ent_aircraft_designs!design_id(name, design_type, airframe_class)')
           .eq('entrepreneur_corp_id', id).eq('status', 'active').order('created_at', { ascending: false });
         if (prErr) console.warn('[entrepreneur-corp] production runs fetch error:', prErr.message);
-        const prRow = (r) => `<div class="cf-row"><div><div class="who">${escapeHtml(r.design?.name || 'Aircraft')} · ${escapeHtml(r.design?.airframe_class || '')}</div>
+        const prRow = (r) => {
+          const isEng = r.design?.design_type === 'engine';
+          const sub   = isEng ? 'Engine' : (r.design?.airframe_class || 'Aircraft');
+          return `<div class="cf-row"><div><div class="who">${escapeHtml(r.design?.name || (isEng ? 'Engine' : 'Aircraft'))} · ${escapeHtml(sub)}</div>
             <div class="sub">${r.units_delivered}/${r.quantity} built · tick ${r.ticks_elapsed}/${r.total_ticks}</div></div><span class="num amber">producing</span></div>`;
+        };
         const productionSection = (prData && prData.length)
           ? `<div class="section-heading"><span class="sans">Active</span><span class="serif">Production</span></div>${prData.map(prRow).join('')}`
           : '';
@@ -3713,7 +3722,7 @@ function initials(s, n) {
         if (eb) eb.addEventListener('click', openEngineDesignModal);
         if (ab) ab.addEventListener('click', openAircraftDesignModal);
         pj.querySelectorAll('.ac-produce-btn').forEach(btn => btn.addEventListener('click', () =>
-          openProduceModal({ id: btn.dataset.did, name: btn.dataset.name,
+          openProduceModal({ id: btn.dataset.did, name: btn.dataset.name, design_type: btn.dataset.type,
             airframe_class: btn.dataset.class, cost_per_unit: Number(btn.dataset.cost) })));
         const buyBtn = document.getElementById('ad-buy-engines');
         if (buyBtn) buyBtn.addEventListener('click', openBuyEnginesModal);
