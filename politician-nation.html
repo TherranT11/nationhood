@@ -118,6 +118,12 @@
    CEO · valuation. Valuation uses the same computeEntrepreneurValuation
    helper the entrepreneur-corporations page does — one source. */
 .corp-list { display:flex; flex-direction:column; }
+.corp-head { display:grid; grid-template-columns:44px 2fr 90px 1.3fr 110px;
+  align-items:center; gap:14px; padding:0 4px 8px;
+  border-bottom:0.5px solid rgba(255,255,255,0.10);
+  font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
+  color:#666; font-weight:600; }
+.corp-head .right { text-align:right; }
 .corp-row  { display:grid; grid-template-columns:44px 2fr 90px 1.3fr 110px;
   align-items:center; gap:14px; padding:11px 4px;
   border-bottom:0.5px solid rgba(255,255,255,0.05); }
@@ -169,7 +175,9 @@
   .nat-card { min-height:auto; }
   .nat-card__value { font-size:24px; }
   .nat-body__head { font-size:12px; }
-  .corp-row { grid-template-columns:36px 1fr auto; gap:10px; padding:10px 2px; }
+  .corp-row, .corp-head { grid-template-columns:36px 1fr auto; gap:10px; }
+  .corp-row { padding:10px 2px; }
+  .corp-head .col-type, .corp-head .col-ceo,
   .corp-row .corp-listing, .corp-row .corp-ceo { display:none; }
 }
 @media (max-width:420px) {
@@ -770,7 +778,14 @@ async function renderCorporations(nationId) {
         c.bookAgg = bookAgg.get(c.id) || { buildingCostPaid: 0, outstandingDebt: 0 };
       }
     }
-    body.innerHTML = `<div class="corp-list">${corps.map(renderCorpRow).join('')}</div>` + footer;
+    const header = `<div class="corp-head">
+      <div></div>
+      <div>Corporation</div>
+      <div class="col-type">Type</div>
+      <div class="col-ceo">CEO</div>
+      <div class="right">Valuation</div>
+    </div>`;
+    body.innerHTML = `<div class="corp-list">${header}${corps.map(renderCorpRow).join('')}</div>` + footer;
   } catch (err) {
     console.error('politician-nation: corporations fetch failed', err);
     body.innerHTML = '<div class="sec-empty">Could not load corporations.</div>' + footer;
