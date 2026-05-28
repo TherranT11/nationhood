@@ -155,8 +155,8 @@
 <div id="loading" class="loading">LOADING...</div>
 
 <script type="module">
-import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
+import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 
 const START_AGE = 25;
 const TICKS_PER_AGE_YEAR = 12;
@@ -567,22 +567,15 @@ function bindRungActions(politicianId) {
   document.querySelectorAll('.rung-btn[data-action="leave-party"]').forEach(btn => {
     btn.addEventListener('click', async () => {
       if (!politicianId) return;
-      if (!confirm('Leave your political party? This costs 5 Influence.')) return;
+      if (!confirm(LEAVE_PARTY_CONFIRM)) return;
       btn.disabled = true; btn.textContent = 'Leaving…';
-      try {
-        const { data, error } = await _supabase.rpc('politician_leave_party', { p_politician_id: politicianId });
-        if (error) throw error;
-        if (!data || !data.success) {
-          alert('Could not leave: ' + (data?.reason || 'unknown'));
-          btn.disabled = false; btn.textContent = 'Leave Political Party';
-          return;
-        }
-        location.reload();
-      } catch (err) {
-        console.error('politician-career: leave party failed', err);
-        alert('Could not leave: ' + (err.message || err));
+      const res = await callPartyAction('leave', politicianId, null);
+      if (!res.ok) {
+        alert('Could not leave: ' + res.reason);
         btn.disabled = false; btn.textContent = 'Leave Political Party';
+        return;
       }
+      location.reload();
     });
   });
 }

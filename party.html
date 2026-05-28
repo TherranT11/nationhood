@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Party</title>
+<style>
+/* Politician segment party page. Loaded with ?id=<faction_id> for any
+   faction_type='movement_party' row. Mirrors the structural language of
+   politician-nation.html (gov-strip cards, party-badge, status-pill)
+   so the surfaces feel like one product. Sections gated on real data:
+   anything we don't have a column for yet doesn't render. */
+* { box-sizing:border-box; margin:0; padding:0; }
+.content { padding:32px 24px 24px; max-width:1180px; margin:0 auto; }
+
+.crumb { font-size:9px; letter-spacing:0.13em; color:#666; margin-bottom:14px; }
+.crumb a { color:#888; text-decoration:none; cursor:pointer; }
+.crumb a:hover { color:#5aafa5; }
+.crumb .sep { margin:0 7px; color:#3a3a3a; }
+.crumb .here { color:#d4d4d4; }
+
+/* Identity card — coloured top band, big logo, name, status tags. */
+.identity { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:8px; overflow:hidden; margin-bottom:14px; }
+.id-top { display:flex; gap:22px; padding:24px 26px; align-items:flex-start;
+  border-bottom:0.5px solid rgba(255,255,255,0.07); }
+.id-logo { width:84px; height:84px; border-radius:10px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:24px; font-weight:700; letter-spacing:0.04em;
+  font-family:monospace; }
+.id-titles { flex:1; min-width:0; }
+.id-eyebrow { font-size:9px; letter-spacing:0.16em; margin-bottom:6px; }
+.id-name { font-size:28px; font-weight:500; color:#fff; letter-spacing:-0.01em; line-height:1.1; }
+.id-name .serif { font-family:Georgia,'Times New Roman',serif; font-style:italic; }
+.id-tags { display:flex; gap:8px; margin-top:11px; flex-wrap:wrap; align-items:center; }
+.id-tag { font-size:9px; letter-spacing:0.08em; padding:4px 9px; border-radius:3px;
+  background:#161616; color:#888; border:0.5px solid rgba(255,255,255,0.07);
+  text-transform:uppercase; font-weight:600; }
+.id-tag.status-gov { background:#0e1611; color:#8aaa6a; border-color:rgba(122,170,106,0.35); }
+.id-tag.status-opp { background:#161208; color:#c89e6e; border-color:rgba(200,158,110,0.25); }
+.id-tag.you       { background:#0e1416; color:#5aafa5; border-color:rgba(90,175,165,0.4); }
+
+.id-actions { flex-shrink:0; display:flex; flex-direction:column; gap:7px; align-items:flex-end; }
+.act-btn { font-size:10px; letter-spacing:0.07em; padding:8px 14px; border-radius:4px;
+  cursor:pointer; border:0.5px solid; font-family:monospace; font-weight:600;
+  text-transform:uppercase; background:transparent; min-width:140px; text-align:center; }
+.act-btn.join     { color:#5aafa5; border-color:rgba(90,175,165,0.4); }
+.act-btn.join:hover { background:rgba(90,175,165,0.10); border-color:#5aafa5; }
+.act-btn.leave    { color:#c89e6e; border-color:rgba(200,158,110,0.4); }
+.act-btn.leave:hover { background:rgba(200,158,110,0.10); border-color:#c89e6e; }
+.act-btn.disabled { color:#555; border-color:rgba(255,255,255,0.06); cursor:not-allowed; }
+
+/* Stats strip below the identity card. */
+.stats-strip { display:grid; grid-template-columns:repeat(4,1fr); }
+.ss { padding:16px 22px; border-right:0.5px solid rgba(255,255,255,0.07); }
+.ss:last-child { border-right:none; }
+.ss .k { font-size:8px; letter-spacing:0.12em; color:#666; margin-bottom:6px; }
+.ss .v { font-size:22px; font-weight:600; color:#fff; font-variant-numeric:tabular-nums; line-height:1; }
+.ss .v .of { font-size:11px; color:#888; font-weight:500; margin-left:3px; }
+.ss .d { font-size:9px; color:#888; margin-top:5px; letter-spacing:0.02em; }
+
+/* About / Leadership / Members panels share the .panel shell. */
+.panel { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:8px; padding:20px 24px; margin-bottom:14px; }
+.panel-lab { font-size:9px; letter-spacing:0.13em; color:#666; margin-bottom:10px;
+  text-transform:uppercase; font-weight:600; }
+.about-text { font-size:13px; color:#d4d4d4; line-height:1.65; }
+.about-text em { color:#888; font-style:italic; }
+
+/* Leadership card — only Leader for now; deputies / ranking come when
+   the schema carries them. */
+.lead-card { display:flex; gap:14px; align-items:center;
+  padding:14px 0; border-top:0.5px solid rgba(255,255,255,0.04); }
+.lead-card:first-of-type { border-top:none; padding-top:6px; }
+.lead-portrait { width:44px; height:44px; border-radius:5px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:700; font-family:monospace; }
+.lead-name { font-size:14px; color:#fff; font-weight:600; }
+.lead-meta { font-size:10px; color:#888; margin-top:3px; letter-spacing:0.04em; }
+
+/* Members list — every politician faction whose politician_party_id is
+   this party. Sorted by politician_influence desc. */
+.mem-row { display:grid; grid-template-columns:38px 1fr 1fr 80px;
+  gap:14px; align-items:center; padding:11px 4px;
+  border-bottom:0.5px solid rgba(255,255,255,0.04); font-size:12px; }
+.mem-row:last-child { border-bottom:none; }
+.mem-row.header { font-size:8px; letter-spacing:0.11em; color:#666;
+  border-bottom-color:rgba(255,255,255,0.08); padding-bottom:8px;
+  text-transform:uppercase; font-weight:600; }
+.mem-badge { width:30px; height:30px; border-radius:4px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:monospace; font-size:10px; font-weight:700; }
+.mem-name { color:#fff; font-weight:500; }
+.mem-name .you { font-size:8px; letter-spacing:0.1em; margin-left:8px;
+  background:#0e1416; color:#5aafa5; border:0.5px solid rgba(90,175,165,0.4);
+  padding:2px 6px; border-radius:2px; text-transform:uppercase; }
+.mem-career { color:#888; font-size:11px; }
+.mem-inf { text-align:right; color:#cfcabf; font-family:monospace;
+  font-variant-numeric:tabular-nums; }
+.mem-empty { color:#666; font-size:12px; font-style:italic; text-align:center; padding:18px 0; }
+
+.loading { font-family:monospace; font-size:11px; color:#4a4940;
+  text-align:center; padding:80px 20px; }
+.fail { font-family:monospace; font-size:11px; color:#c87a7a;
+  text-align:center; padding:80px 20px; }
+
+@media (max-width:700px) {
+  .content { padding:18px 12px 16px; }
+  .id-top { flex-direction:column; gap:14px; padding:18px; }
+  .id-actions { flex-direction:row; align-items:stretch; flex-wrap:wrap; }
+  .stats-strip { grid-template-columns:1fr 1fr; }
+  .ss { border-right:none; border-bottom:0.5px solid rgba(255,255,255,0.07); }
+  .ss:nth-child(odd) { border-right:0.5px solid rgba(255,255,255,0.07); }
+  .mem-row { grid-template-columns:30px 1fr auto; }
+  .mem-row .mem-career { display:none; }
+}
+</style>
+</head>
+<body>
+
+<div id="pol-topbar-container"></div>
+
+<div class="content" id="content" style="display:none;">
+  <div class="crumb" id="crumb"></div>
+  <div id="identity-host"></div>
+  <div class="panel" id="about-panel" style="display:none;">
+    <div class="panel-lab">About the Party</div>
+    <div class="about-text" id="about-text"></div>
+  </div>
+  <div class="panel">
+    <div class="panel-lab">Party Leadership</div>
+    <div id="leadership-host"></div>
+  </div>
+  <div class="panel">
+    <div class="panel-lab">Members <span id="members-count" style="color:#888; font-weight:500; letter-spacing:0.04em; text-transform:none; font-size:10px; margin-left:8px;"></span></div>
+    <div id="members-host"></div>
+  </div>
+</div>
+
+<div id="loading" class="loading">LOADING...</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { bootstrapPolitician } from './js/politician-topbar.js';
+import { safeHexColor, factionInitials, tickToYear } from './js/utils.js';
+import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
+
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+
+let _viewerPolId = null;
+let _viewerPartyId = null;
+
+async function init() {
+  const params  = new URLSearchParams(location.search);
+  const partyId = params.get('id');
+  if (!partyId) { showFail('No party id in URL.'); return; }
+
+  let ctx = null;
+  try { ctx = await bootstrapPolitician('movements'); }
+  catch (err) {
+    console.error('party: bootstrap failed', err);
+    showFail('Failed to load. Please reload the page.');
+    return;
+  }
+  if (!ctx) return; // bootstrap redirected (no auth / no politician)
+
+  _viewerPolId   = ctx.faction?.id || null;
+  _viewerPartyId = ctx.faction?.politician_party_id || null;
+
+  // Party + members in parallel. Members filter on faction_type so a
+  // typo'd politician_party_id on a different faction kind can't leak in.
+  const [partyRes, membersRes] = await Promise.all([
+    _supabase.from('factions')
+      .select('id, faction_name, abbreviation, seats, party_color, party_description, leader_first_name, leader_last_name, leader_age, founded_tick, nation_id, nation:nations!nation_id(id, name, total_seats, government_type)')
+      .eq('id', partyId)
+      .eq('faction_type', 'movement_party')
+      .is('abandoned_at', null)
+      .maybeSingle(),
+    _supabase.from('factions')
+      .select('id, leader_first_name, leader_last_name, politician_career, politician_influence')
+      .eq('politician_party_id', partyId)
+      .eq('faction_type', 'politician')
+      .is('abandoned_at', null)
+      .order('politician_influence', { ascending: false }),
+  ]);
+
+  if (partyRes.error) {
+    console.error('party: party fetch failed', partyRes.error);
+    showFail('Could not load this party.');
+    return;
+  }
+  if (!partyRes.data) { showFail('Party not found or has been abandoned.'); return; }
+  if (membersRes.error) console.error('party: members fetch failed', membersRes.error);
+
+  render(partyRes.data, membersRes.data || []);
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+}
+
+function showFail(msg) {
+  const el = document.getElementById('loading');
+  if (el) { el.className = 'fail'; el.textContent = msg; }
+}
+
+function render(party, members) {
+  const accent     = safeHexColor(party.party_color);
+  const initials   = factionInitials(party.faction_name, party.abbreviation);
+  const totalSeats = Math.max(0, Number(party.nation?.total_seats) || 0);
+  const majority   = totalSeats > 0 ? Math.floor(totalSeats / 2) + 1 : 0;
+  const seats      = Math.max(0, Number(party.seats) || 0);
+  const isGov      = totalSeats > 0 && seats >= majority;
+  const isMine     = _viewerPartyId && _viewerPartyId === party.id;
+  const nationName = party.nation?.name || '—';
+  const isAbsMon   = party.nation?.government_type === 'Absolute Monarchy';
+
+  document.title = `${party.faction_name} — Party`;
+
+  renderCrumb(party);
+
+  // Identity card.
+  const tags = [
+    isGov  ? '<span class="id-tag status-gov">&#9679; Governing</span>'
+           : (totalSeats > 0 ? '<span class="id-tag status-opp">&#9679; Opposition</span>' : ''),
+    isMine ? '<span class="id-tag you">&#9679; You are a member</span>' : '',
+    party.founded_tick != null ? `<span class="id-tag">Founded ${tickToYear(party.founded_tick)}</span>` : '',
+    party.abbreviation ? `<span class="id-tag">${escHtml(party.abbreviation.toUpperCase())}</span>` : '',
+  ].filter(Boolean).join(' ');
+
+  document.getElementById('identity-host').innerHTML = `
+    <div class="identity">
+      <div class="id-top">
+        <div class="id-logo" style="background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;">${escHtml(initials)}</div>
+        <div class="id-titles">
+          <div class="id-eyebrow" style="color:${accent};">&mdash; POLITICAL PARTY &middot; ${escHtml(nationName.toUpperCase())} &mdash;</div>
+          <div class="id-name">${escHtml(party.faction_name)}</div>
+          <div class="id-tags">${tags}</div>
+        </div>
+        <div class="id-actions" id="action-host"></div>
+      </div>
+      <div class="stats-strip">
+        ${statCell('Seats in Assembly', totalSeats > 0 ? `${seats}<span class="of">/ ${totalSeats}</span>` : String(seats), totalSeats > 0
+          ? `${pctOfChamber(seats, totalSeats)} of chamber`
+          : 'No assembly')}
+        ${statCell('Status', isGov ? 'In Power' : (totalSeats > 0 ? 'Opposition' : '—'),
+          isGov ? `holds majority (${majority} needed)` : (totalSeats > 0 ? `${majority - seats} short of majority` : ''))}
+        ${statCell('Founded', party.founded_tick != null ? String(tickToYear(party.founded_tick)) : '—',
+          party.founded_tick != null ? `tick ${party.founded_tick}` : 'unknown')}
+        ${statCell('Members', String(members.length), `${members.length === 1 ? 'politician' : 'politicians'} on file`)}
+      </div>
+    </div>`;
+
+  renderActionButton(party, isMine, isAbsMon);
+  renderAbout(party);
+  renderLeadership(party, accent);
+  renderMembers(members, accent);
+}
+
+function statCell(label, value, detail) {
+  return `<div class="ss">
+    <div class="k">${escHtml(label)}</div>
+    <div class="v">${value}</div>
+    ${detail ? `<div class="d">${escHtml(detail)}</div>` : ''}
+  </div>`;
+}
+
+function pctOfChamber(seats, total) {
+  if (!total) return '0%';
+  return `${(seats / total * 100).toFixed(1).replace(/\.0$/, '')}%`;
+}
+
+function renderCrumb(party) {
+  document.getElementById('crumb').innerHTML = `
+    <a href="politician-nation.html">${escHtml((party.nation?.name || 'Nation').toUpperCase())}</a>
+    <span class="sep">&rsaquo;</span>
+    <a href="politician-movements.html">POLITICAL PARTIES</a>
+    <span class="sep">&rsaquo;</span>
+    <span class="here">${escHtml(party.faction_name.toUpperCase())}</span>`;
+}
+
+function renderActionButton(party, isMine, isAbsMon) {
+  const host = document.getElementById('action-host');
+  if (!_viewerPolId || isAbsMon) {
+    host.innerHTML = '';
+    return;
+  }
+  if (isMine) {
+    host.innerHTML = '<button class="act-btn leave" id="party-leave">Leave Party</button>';
+    document.getElementById('party-leave').addEventListener('click', () => doLeaveOrJoin('leave'));
+  } else if (_viewerPartyId) {
+    host.innerHTML = '<button class="act-btn disabled" disabled title="Leave your current party first">Join Party</button>';
+  } else {
+    host.innerHTML = `<button class="act-btn join" id="party-join" data-party-id="${escHtml(party.id)}">Join Party</button>`;
+    document.getElementById('party-join').addEventListener('click', (e) => doLeaveOrJoin('join', e.currentTarget.dataset.partyId));
+  }
+}
+
+async function doLeaveOrJoin(mode, partyId) {
+  if (mode === 'leave' && !confirm(LEAVE_PARTY_CONFIRM)) return;
+  const btn = document.getElementById(mode === 'leave' ? 'party-leave' : 'party-join');
+  if (!btn) return;
+  const prev = btn.textContent;
+  btn.disabled = true; btn.textContent = mode === 'leave' ? 'Leaving…' : 'Joining…';
+  const res = await callPartyAction(mode, _viewerPolId, partyId);
+  if (!res.ok) {
+    alert((mode === 'leave' ? 'Could not leave: ' : 'Could not join: ') + res.reason);
+    btn.disabled = false; btn.textContent = prev;
+    return;
+  }
+  location.reload();
+}
+
+function renderAbout(party) {
+  if (!party.party_description) return;
+  document.getElementById('about-panel').style.display = '';
+  document.getElementById('about-text').textContent = party.party_description;
+}
+
+function renderLeadership(party, accent) {
+  const host = document.getElementById('leadership-host');
+  const leader = [party.leader_first_name, party.leader_last_name].filter(Boolean).join(' ');
+  if (!leader) {
+    host.innerHTML = '<div class="mem-empty">No leader on record.</div>';
+    return;
+  }
+  const ini = factionInitials(leader, null);
+  const ageBit = party.leader_age ? ` &middot; age ${Number(party.leader_age)}` : '';
+  host.innerHTML = `<div class="lead-card">
+    <div class="lead-portrait" style="background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;">${escHtml(ini)}</div>
+    <div>
+      <div class="lead-name">${escHtml(leader)}</div>
+      <div class="lead-meta">Party Leader${ageBit}</div>
+    </div>
+  </div>`;
+}
+
+function renderMembers(members, accent) {
+  const host = document.getElementById('members-host');
+  const countEl = document.getElementById('members-count');
+  countEl.textContent = members.length ? `${members.length} on file` : '';
+  if (!members.length) {
+    host.innerHTML = '<div class="mem-empty">No politicians have registered membership yet.</div>';
+    return;
+  }
+  const rows = members.map(m => {
+    const name = [m.leader_first_name, m.leader_last_name].filter(Boolean).join(' ') || '—';
+    const youBadge = m.id === _viewerPolId ? ' <span class="you">You</span>' : '';
+    return `<div class="mem-row">
+      <div class="mem-badge" style="background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;">${escHtml(factionInitials(name, null))}</div>
+      <div class="mem-name">${escHtml(name)}${youBadge}</div>
+      <div class="mem-career">${escHtml(m.politician_career || 'Independent')}</div>
+      <div class="mem-inf">${Number(m.politician_influence) || 0}</div>
+    </div>`;
+  }).join('');
+  host.innerHTML = `<div class="mem-row header">
+    <span></span><span>Name</span><span>Career</span><span style="text-align:right;">Influence</span>
+  </div>${rows}`;
+}
+
+init();
+</script>
+</body>
+</html>
