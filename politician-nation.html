@@ -113,6 +113,37 @@
 .nat-body__desc   { font-style:italic; font-size:11px; color:#666;
   line-height:1.55; margin-top:10px; }
 
+/* Corporations list — one row per entrepreneur corp HQ'd in this nation.
+   Logo (industry-coloured 2-letter badge) · name + sector · listing pill ·
+   CEO · valuation. Valuation uses the same computeEntrepreneurValuation
+   helper the entrepreneur-corporations page does — one source. */
+.corp-list { display:flex; flex-direction:column; }
+.corp-row  { display:grid; grid-template-columns:44px 2fr 90px 1.3fr 110px;
+  align-items:center; gap:14px; padding:11px 4px;
+  border-bottom:0.5px solid rgba(255,255,255,0.05); }
+.corp-row:last-child { border-bottom:none; }
+.corp-badge { width:36px; height:36px; border-radius:4px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:monospace; font-size:13px; font-weight:600; letter-spacing:0.05em;
+  color:#cfcabf; background:rgba(255,255,255,0.06); }
+.corp-badge.construction            { background:#1a2218; color:#8aaa6a; }
+.corp-badge.banking                 { background:#171f28; color:#7a9aab; }
+.corp-badge.shipping                { background:#221d14; color:#c89e6e; }
+.corp-badge.real_estate             { background:#211a21; color:#aa7aaa; }
+.corp-badge.airline                 { background:#152028; color:#7ab8d0; }
+.corp-badge.aviation_manufacturing  { background:#221615; color:#c88a8a; }
+.corp-name { font-size:13px; color:#fff; font-weight:500; line-height:1.2; }
+.corp-sub  { font-size:9px; letter-spacing:0.1em; text-transform:uppercase;
+  color:#888; margin-top:3px; font-weight:500; }
+.corp-listing { display:inline-block; font-size:10px; letter-spacing:0.08em;
+  text-transform:uppercase; padding:3px 9px; border-radius:3px;
+  font-weight:500; text-align:center; }
+.corp-listing.public  { background:#1a2535; color:#7a9aab; }
+.corp-listing.private { background:#1f1f1f; color:#888; }
+.corp-ceo { font-size:12px; color:#d4d4d4; }
+.corp-val { font-size:13px; color:#cfcabf; font-family:monospace;
+  text-align:right; font-variant-numeric:tabular-nums; }
+
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
 /* Mobile refresh — tighter padding on the whole content, wrap the hero,
@@ -138,6 +169,8 @@
   .nat-card { min-height:auto; }
   .nat-card__value { font-size:24px; }
   .nat-body__head { font-size:12px; }
+  .corp-row { grid-template-columns:36px 1fr auto; gap:10px; padding:10px 2px; }
+  .corp-row .corp-listing, .corp-row .corp-ceo { display:none; }
 }
 @media (max-width:420px) {
   .info-grid, .stats-grid { grid-template-columns:1fr; }
@@ -250,8 +283,8 @@
   </details>
   <details id="sec-corp" class="sec">
     <summary>Corporations</summary>
-    <div class="sec-body">
-      <div class="sec-empty">No corporations recorded yet.</div>
+    <div class="sec-body" id="sec-corp-body">
+      <div class="sec-empty">Loading…</div>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
@@ -297,6 +330,9 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
+import { industryLabel, ownerDisplayName, fmtValuation } from './js/utils.js';
+import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
+import { fetchCorpBookAggregates } from './js/corp-book-value.js';
 
 // Tier helpers — the scored stat rows in the top card and the prose cards
 // in the National Characteristics body both read from the same tier arrays
@@ -402,6 +438,9 @@ async function init() {
   bindJumpNav();
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
+  // Side panels that hit the DB. Fire-and-forget — failures render an
+  // empty state in their own section without blocking the page.
+  renderCorporations(nation.id);
 }
 
 // Jump-nav clicks open the matching <details> and scroll it into view.
@@ -699,6 +738,65 @@ function renderNationalCharacteristics(n) {
       </div>
     </div>`).join('')}</div>
   <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>`;
+}
+
+// Corporations section — every entrepreneur corp HQ'd in this nation.
+// Logo (industry-colored 2-letter badge) · name + sector · listing pill ·
+// CEO · valuation. computeEntrepreneurValuation is the single source for
+// the valuation figure — same helper the entrepreneur-corporations page
+// uses, so the number reads identically on both surfaces.
+async function renderCorporations(nationId) {
+  const body = document.getElementById('sec-corp-body');
+  if (!body) return;
+  const footer = '<div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>';
+  try {
+    const { data, error } = await _supabase.from('entrepreneur_corps')
+      .select('id, name, industry, listing, owner_faction_id, share_price, shares_outstanding, starting_capital, treasury_cash, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name)')
+      .eq('hq_nation_id', nationId)
+      .order('name');
+    if (error) throw error;
+    const corps = data || [];
+    if (!corps.length) {
+      body.innerHTML = '<div class="sec-empty">No corporations headquartered here yet.</div>' + footer;
+      return;
+    }
+    // Private corps need building/debt aggregates for the book-value path
+    // inside computeEntrepreneurValuation; public corps read share price ×
+    // shares outstanding and skip this call entirely.
+    const privateCorps = corps.filter(c => c.listing !== 'public');
+    if (privateCorps.length) {
+      const bookAgg = await fetchCorpBookAggregates(privateCorps.map(c => c.id));
+      for (const c of privateCorps) {
+        c.bookAgg = bookAgg.get(c.id) || { buildingCostPaid: 0, outstandingDebt: 0 };
+      }
+    }
+    body.innerHTML = `<div class="corp-list">${corps.map(renderCorpRow).join('')}</div>` + footer;
+  } catch (err) {
+    console.error('politician-nation: corporations fetch failed', err);
+    body.innerHTML = '<div class="sec-empty">Could not load corporations.</div>' + footer;
+  }
+}
+
+function corpInitials(name) {
+  const parts = (name || '').split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return (name || '??').substring(0, 2).toUpperCase();
+}
+
+function renderCorpRow(c) {
+  const val = computeEntrepreneurValuation(c, c.bookAgg);
+  const ind = (c.industry || '').toLowerCase();
+  const listing = (c.listing || 'private').toLowerCase();
+  return `<div class="corp-row">
+    <div class="corp-badge ${escHtml(ind)}">${escHtml(corpInitials(c.name))}</div>
+    <div>
+      <div class="corp-name">${escHtml(c.name || 'Corporation')}</div>
+      <div class="corp-sub">${escHtml(industryLabel(c.industry))}</div>
+    </div>
+    <div><span class="corp-listing ${escHtml(listing)}">${escHtml(listing.toUpperCase())}</span></div>
+    <div class="corp-ceo">${escHtml(ownerDisplayName(c.owner))}</div>
+    <div class="corp-val">${escHtml(fmtValuation(val.amount))}</div>
+  </div>`;
 }
 
 init();
