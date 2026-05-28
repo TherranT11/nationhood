@@ -81,6 +81,9 @@
 .rung-btn--primary:hover { border-color:#5aafa5; background:rgba(90,175,165,0.08); }
 .rung-btn--disabled { color:#555; border:0.5px solid rgba(255,255,255,0.06); cursor:not-allowed; }
 .rung-held { font-size:10px; color:#888; letter-spacing:0.08em; text-transform:uppercase; }
+/* Ladder-level footer note — italic flavor line beneath the rung list. */
+.ladder__footer { font-size:11px; font-style:italic; color:#888; line-height:1.5;
+  padding:14px 0 4px; margin-top:4px; border-top:0.5px solid rgba(255,255,255,0.04); }
 
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
@@ -163,6 +166,8 @@ const LADDERS = [
   { id: 'party',      icon: '\u{1F6A9}', name: 'Party Office',       rungs: () => PARTY_OFFICE_RUNGS },
   { id: 'legislature',icon: '⚖️',       name: 'Legislature',         rungs: () => LEGISLATURE_RUNGS },
   { id: 'govt',       icon: '\u{1F451}', name: 'Government & State', rungs: () => GOVERNMENT_RUNGS },
+  { id: 'judiciary',  icon: '\u{1F3DB}\u{FE0F}', name: 'Judiciary',  rungs: () => JUDICIARY_RUNGS,
+    footer: 'The judiciary does not campaign or command — it waits for cases, then rules. Its power is reactive but absolute: a Chief Justice can undo what the Legislature passed, jail a Minister, or declare a war footing unlawful. The only limit is the independence that makes those rulings stick.' },
   { id: 'civil',      icon: '\u{1F91D}', name: 'Civil Society' },
   { id: 'underground',icon: '\u{1F3AD}', name: 'Underground' },
 ];
@@ -321,6 +326,42 @@ const GOVERNMENT_RUNGS = [
   },
 ];
 
+// Judiciary rungs — the bench arc. Advocate is the entry (right-side
+// [Seek the Bar]). Chief Justice is reached by appointment, not by climbing,
+// so its right-side tag reads "appointed" instead of carrying an entry
+// button. The ladder closes with a footer note (rendered via ladder.footer
+// in LADDERS) explaining the judiciary's reactive-but-absolute character.
+const JUDICIARY_RUNGS = [
+  {
+    name: 'Advocate',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Practiced law and argued before the courts. Cleared.',
+    descIfNot:   ()  => 'Practice law and argue before the courts — the realistic first step on the bench.',
+    actionIfNot: { label: 'Seek the Bar', kind: 'disabled' },
+  },
+  {
+    name: 'Magistrate',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Presided over a lower court. Cleared.',
+    descIfNot:   ()  => 'Preside over a lower court — district or municipal jurisdiction.',
+  },
+  {
+    name: 'Appellate Justice',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Sit on a higher court that reviews lower rulings. Your judgments bind the courts beneath you.',
+    descIfNot:   ()  => 'Sit on a higher court that reviews lower rulings. Your judgments bind the courts beneath you.',
+    actions:     ['Hear an Appeal', '§ Set Precedent', '↩ Overturn a Ruling'],
+  },
+  {
+    name: 'Chief Justice',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Lead the highest court in the land. Your word on the law is final — and binds the other branches.',
+    descIfNot:   ()  => 'Lead the highest court in the land. Your word on the law is final — and binds the other branches.',
+    actions:     ['Rule on Constitutionality', 'Strike Down Legislation', 'Try a High Official', 'Void State Action'],
+    accessNote:  'appointed',
+  },
+];
+
 // Suspicion sub-text by level — read once the value lands on the page so the
 // copy isn't repeated through the renderer.
 const SUSPICION_SUB = {
@@ -438,7 +479,8 @@ function renderLadders(state) {
   const host = document.getElementById('ladders');
   host.innerHTML = LADDERS.map(l => {
     const rungs = typeof l.rungs === 'function' ? l.rungs() : l.rungs;
-    const body = rungs ? renderRungs(rungs, state) : '<div class="empty-row">Not on this ladder yet.</div>';
+    const body  = rungs ? renderRungs(rungs, state) : '<div class="empty-row">Not on this ladder yet.</div>';
+    const footer = l.footer ? `<div class="ladder__footer">${escHtml(l.footer)}</div>` : '';
     return `
     <details class="ladder">
       <summary>
@@ -446,7 +488,7 @@ function renderLadders(state) {
         <span class="name">${escHtml(l.name)}</span>
         <span class="rung empty">—</span>
       </summary>
-      <div class="body">${body}</div>
+      <div class="body">${body}${footer}</div>
     </details>`;
   }).join('');
   bindRungActions();
@@ -478,6 +520,12 @@ function renderRungs(rungs, state) {
       const hrefAttr = a.kind === 'primary' && a.href ? ` data-href="${escHtml(a.href)}"` : '';
       const disabledAttr = a.kind === 'disabled' ? ' disabled' : '';
       actionHtml = `<button class="${cls}"${hrefAttr}${disabledAttr}>${escHtml(a.label)}</button>`;
+    } else if (r.accessNote) {
+      // Rungs reached by appointment / external selection rather than by
+      // climbing (e.g. Chief Justice) carry an accessNote instead of an
+      // entry button. Rendered with the same dim tag styling as the
+      // "held" marker on the right side.
+      actionHtml = `<span class="rung-held">${escHtml(r.accessNote)}</span>`;
     }
 
     return `
