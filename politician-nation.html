@@ -9,7 +9,7 @@
    the nation-brief card — amber-accented to read as "regal / sovereign", a
    deliberate visual break from the teal politician chrome. */
 * { box-sizing:border-box; margin:0; padding:0; }
-.content { padding:32px 24px 24px; max-width:1200px; }
+.content { padding:32px 24px 24px; }
 
 .nation-card { background:#0d0d0c; border:0.5px solid rgba(200,166,78,0.15);
   border-radius:6px; padding:24px; margin-bottom:24px; }
@@ -66,9 +66,27 @@
 
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
+/* Mobile refresh — tighter padding on the whole content, wrap the hero,
+   collapse the info / stats grids to 2 columns, shrink the jump-nav pills
+   and the section padding so the page breathes on a phone. */
 @media (max-width:700px) {
-  .nation-card__top { flex-direction:column; }
-  .info-grid, .stats-grid { grid-template-columns:repeat(2,1fr); }
+  .content { padding:18px 12px 16px; }
+  .nation-card { padding:16px; }
+  .nation-card__top { flex-direction:column; gap:12px; margin-bottom:14px; }
+  .nation-card__flag { width:64px; height:44px; }
+  .nation-card__title h1 { font-size:22px; }
+  .nation-card__title .subtitle { font-size:11px; }
+  .tag { font-size:8.5px; padding:3px 8px; }
+  .info-grid, .stats-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
+  .info-cell .value { font-size:16px; }
+  .stat-cell .row .value { font-size:13px; }
+  .jump-nav { gap:4px; margin-bottom:12px; }
+  .jump-nav button { font-size:9px; padding:6px 10px; letter-spacing:0.06em; }
+  .sec summary { padding:12px 14px; font-size:11px; letter-spacing:0.06em; }
+  .sec-body { padding:14px; }
+}
+@media (max-width:420px) {
+  .info-grid, .stats-grid { grid-template-columns:1fr; }
 }
 </style>
 </head>
@@ -117,6 +135,8 @@
     <button data-target="sec-parties">Parties</button>
     <button data-target="sec-military">Military</button>
     <button data-target="sec-economy">Economy</button>
+    <button data-target="sec-conflicts">Conflicts</button>
+    <button data-target="sec-world">World Orgs</button>
     <button data-target="sec-ngos">NGOs</button>
     <button data-target="sec-dissident">Dissident</button>
   </nav>
@@ -140,6 +160,14 @@
   <details id="sec-economy" class="sec">
     <summary>Economy &amp; Trade</summary>
     <div class="sec-body"><div class="sec-empty">Nothing recorded yet.</div></div>
+  </details>
+  <details id="sec-conflicts" class="sec">
+    <summary>Conflicts &amp; Issues</summary>
+    <div class="sec-body"><div class="sec-empty">No active conflicts or open issues yet.</div></div>
+  </details>
+  <details id="sec-world" class="sec">
+    <summary>World Organizations</summary>
+    <div class="sec-body"><div class="sec-empty">No international memberships recorded yet.</div></div>
   </details>
   <details id="sec-ngos" class="sec">
     <summary>NGOs &amp; Civil Society</summary>
