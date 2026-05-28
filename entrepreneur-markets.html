@@ -212,6 +212,24 @@
     .po-body { padding:16px; }
     .po-foot { padding:12px 16px; }
   }
+
+  /* Mobile refresh — phone-class viewport. The 700px rule above handles
+     the grid-to-card stack and modal sizing; this raises every tab /
+     chip / action / modal button to a 44px tap target. po-input already
+     uses 16px (prevents iOS focus-zoom). */
+  @media (max-width:640px) {
+    .mkt-tab { min-height:44px; padding:12px 14px; font-size:11px; }
+    .mkt .mk-chip { min-height:32px; padding:8px 14px; }
+    .mkt-action { min-height:44px; padding:11px 14px; font-size:11px; }
+    .po-btn { min-height:44px; padding:12px 18px; font-size:12px; }
+    .mkt .grid.row { min-height:44px; }   /* row itself is the tap target */
+  }
+  @media (max-width:360px) {
+    /* .ent-content padding tightens via topbar.js (the rule's owner). */
+    .mkt .title .sans, .mkt .title .serif { font-size:20px; }
+    .po-overlay { padding:8px; }
+    .po-body { padding:14px; }
+  }
 </style>
 </head>
 <body>

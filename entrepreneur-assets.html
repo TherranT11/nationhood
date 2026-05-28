@@ -114,6 +114,35 @@
     .ch-identity .first, .ch-identity .last { font-size:34px; }
     .ch-identity .meta-row { gap:16px; }
   }
+
+  /* Mobile refresh — phone-class viewport. Tighten container padding,
+     shrink the modal overlay safe-area, and bring every actionable
+     control up to a 44px tap target. The 860px / 600px rules above
+     handle stacking + hero shrink at tablet; this block is phone-only. */
+  @media (max-width:640px) {
+    .ch-content { padding:20px 14px 20px; }
+    .ch-identity { margin-bottom:20px; }
+    .ch-identity .first, .ch-identity .last { font-size:28px; }
+    .ch-cards, .ch-boards { gap:12px; margin-top:16px; }
+    .ch-card { padding:14px 14px; }
+    .ch-rep { height:360px; }
+
+    /* Touch targets: travel / settle / modal buttons hit 44px. */
+    .ch-travel-btn, .ch-liability .settle-btn,
+    .ch-travel-modal .ct-btn { min-height:44px; padding:12px 16px; font-size:12px; }
+    .ch-travel-modal .ct-x { min-width:44px; min-height:44px; font-size:22px; }
+    .ch-travel-modal .ct-select { min-height:44px; padding:11px 12px; font-size:14px; }
+
+    /* Modal overlay: drop the 30px safe-area down to 16px so the modal
+       has full viewport width minus a thin gutter. */
+    .ch-travel-overlay { padding:16px; }
+    .ch-travel-modal { max-width:100%; max-height:90vh; overflow:auto; }
+  }
+  @media (max-width:360px) {
+    .ch-content { padding:16px 10px 16px; }
+    .ch-identity .first, .ch-identity .last { font-size:24px; }
+    .ch-travel-overlay { padding:10px; }
+  }
 </style>
 </head>
 <body>
