@@ -83,6 +83,43 @@ body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sa
 .stat-card .stat-value { font-size:24px; font-weight:500; color:#fff; line-height:1; }
 .stat-card .stat-value.text { font-size:18px; color:#5aafa5; }
 
+/* Dispatches sidebar — mirrors entrepreneur-dashboard.html .ev-* classes,
+   teal-tinted. Five tabs: politics/corporate/military match the entrepreneur
+   category buckets; nation/world are scope filters specific to politicians. */
+.main-grid { display:grid; grid-template-columns:320px 1fr; gap:22px; }
+.dispatch-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.dispatch-header .title { color:#5aafa5; font-size:11px; letter-spacing:0.15em; font-weight:500;
+  display:flex; align-items:center; gap:6px; }
+.dispatch-header .title .dot { display:inline-block; width:6px; height:6px; background:#5aafa5; border-radius:50%; }
+.dispatch-header .count { color:#555; font-size:10px; letter-spacing:0.1em; }
+.ev-tabs { display:flex; gap:4px; margin-bottom:12px; flex-wrap:wrap; }
+.ev-tab { flex:1 1 auto; min-width:0; padding:7px 0; text-align:center; font-size:10px; letter-spacing:0.1em;
+  color:#888; background:#121212; border:0.5px solid rgba(255,255,255,0.08);
+  border-radius:3px; cursor:pointer; }
+.ev-tab:hover:not(.active) { color:#d4d4d4; }
+.ev-tab.active { color:#5aafa5; border-color:rgba(90,175,165,0.4); background:#121613; }
+.ev-list { list-style:none; display:flex; flex-direction:column; max-height:600px; overflow-y:auto; }
+.ev-item { padding:12px 0; border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.ev-item:last-child { border-bottom:none; }
+.ev-meta { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+.ev-tag { font-size:9px; letter-spacing:0.08em; padding:2px 7px; border-radius:3px;
+  background:rgba(90,175,165,0.10); color:#5aafa5; text-transform:uppercase; }
+.ev-nation { font-size:9px; color:#888; letter-spacing:0.06em; display:flex; align-items:center; gap:4px; }
+.ev-nation img { width:12px; height:9px; object-fit:cover; border-radius:1px; }
+.ev-time { margin-left:auto; font-size:9px; color:#555; letter-spacing:0.1em; }
+.ev-head { font-size:13px; font-weight:500; color:#fff; margin-bottom:3px; }
+.ev-body { font-size:11px; color:#888; line-height:1.5; }
+.ev-empty { color:#666; font-size:12px; padding:22px 4px; text-align:center; line-height:1.6; }
+
+/* Section heading + empty card — ports from entrepreneur-dashboard.html in teal. */
+.section-heading { display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
+.section-heading .roman { color:#555; font-size:11px; letter-spacing:0.1em; }
+.section-heading .sans  { font-size:22px; font-weight:500; color:#fff; }
+.section-heading .serif { font-size:22px; font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#5aafa5; }
+.section-heading .meta  { margin-left:auto; color:#555; font-size:10px; letter-spacing:0.1em; }
+.empty { background:#121212; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
+  padding:22px 18px; color:#666; font-size:12px; line-height:1.6; text-align:center; }
+
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
 @media (max-width:700px) {
@@ -102,6 +139,7 @@ body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sa
   .anchor-message { margin-left:0; }
   .stats-row { grid-template-columns:repeat(2, 1fr); }
   .identity-body .name .first, .identity-body .name .last { font-size:32px; }
+  .main-grid { grid-template-columns:1fr; }
 }
 </style>
 </head>
@@ -160,6 +198,31 @@ body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sa
   </div>
 
   <div class="stats-row" id="stats-row"></div>
+
+  <div class="main-grid">
+    <div class="dispatch-side">
+      <div class="dispatch-header">
+        <div class="title"><span class="dot"></span>DISPATCHES</div>
+        <div class="count" id="ev-count">—</div>
+      </div>
+      <div class="ev-tabs" id="ev-tabs">
+        <div class="ev-tab active" data-tab="politics">POLITICS</div>
+        <div class="ev-tab" data-tab="corporate">CORPORATE</div>
+        <div class="ev-tab" data-tab="military">MILITARY</div>
+        <div class="ev-tab" data-tab="nation">NATION</div>
+        <div class="ev-tab" data-tab="world">WORLD</div>
+      </div>
+      <ul class="ev-list" id="ev-list"><li class="ev-empty">Loading…</li></ul>
+    </div>
+    <div class="content-right">
+      <div class="section-heading">
+        <span class="roman">I.</span>
+        <span class="sans">Pressing</span>
+        <span class="serif">Issues</span>
+      </div>
+      <div class="empty">No pressing issues right now.</div>
+    </div>
+  </div>
 </div>
 
 <script type="module">
@@ -171,10 +234,18 @@ const START_AGE = 25;
 const TICKS_PER_AGE_YEAR = 12;
 const NO_AFFILIATION_MESSAGE = 'This character has no affiliation.';
 
+// Dispatch bucket categories — mirror entrepreneur-dashboard.html so the same
+// event_log row falls into the same bucket on both surfaces.
+const POLITICS_CATEGORIES  = ['politics','political','government','crisis','diplomatic','diplomacy','international','economy','executive_order','protest','bill','new_party'];
+const CORPORATE_CATEGORIES = ['corporate','business','trade'];
+
 let politician = null;
 let otherFactions = [];
 let nation = null;
 let countdownTimer = null;
+let allEvents = [];      // raw event_log rows, sorted newest-first
+let evCurrentTab = 'politics';
+let evTickNow = 0;       // shard.current_tick at load, used for the "N TICKS AGO" formatter
 
 async function init() {
   const { data: { user } } = await _supabase.auth.getUser();
@@ -183,16 +254,24 @@ async function init() {
   let factions = [];
   let shard = null;
   try {
-    const [facRes, shardRes] = await Promise.all([
+    const [facRes, shardRes, evRes] = await Promise.all([
       _supabase.from('factions')
         .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, founded_tick, party_funds, abandoned_at, is_banned, politician_career, politician_charisma, politician_reputation, politician_credibility')
         .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
       _supabase.from('shard').select('current_tick, current_date, next_tick_at').eq('name', 'Alpha Shard').single(),
+      _supabase.from('event_log')
+        .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
+        .not('category', 'is', null)
+        .order('fired_at_tick', { ascending: false })
+        .limit(200),
     ]);
     if (facRes.error) throw facRes.error;
     if (shardRes.error) throw shardRes.error;
+    if (evRes.error) throw evRes.error;
     factions = facRes.data || [];
     shard = shardRes.data || {};
+    allEvents = evRes.data || [];
+    evTickNow = Number(shard.current_tick) || 0;
   } catch (err) {
     console.error('politician-home: load failed', err);
     document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
@@ -224,6 +303,8 @@ async function init() {
     f.id !== politician.id && !isFactionInactive(f) && !isHiddenFromSwitcher(f));
 
   render(shard);
+  renderDispatches();
+  bindDispatchTabs();
   document.getElementById('loading').style.display = 'none';
   document.getElementById('topbar').style.display = 'flex';
   document.getElementById('pol-nav').style.display = 'flex';
@@ -322,6 +403,70 @@ function render(shard) {
       });
     });
   }
+}
+
+// ── Dispatches: classify, filter by current tab, render. ─────────────────────
+// Bucket logic mirrors entrepreneur-dashboard.html so the same event_log row
+// lands in the same politics/corporate/military bucket on both surfaces; the
+// extra nation/world tabs are pure scope filters.
+function formatEventName(raw) {
+  if (!raw) return '';
+  return String(raw).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+function dispatchBucketForRow(row) {
+  if ((row?.trigger_key || '').toLowerCase().startsWith('military_')) return 'military';
+  const c = (row?.category || '').toLowerCase();
+  if (CORPORATE_CATEGORIES.includes(c)) return 'corporate';
+  if (POLITICS_CATEGORIES.includes(c))  return 'politics';
+  return null;
+}
+function eventMatchesTab(row, tab) {
+  if (tab === 'world')  return true;
+  if (tab === 'nation') return politician.nation_id && row.nation_id === politician.nation_id;
+  return dispatchBucketForRow(row) === tab;
+}
+
+function bindDispatchTabs() {
+  const bar = document.getElementById('ev-tabs');
+  if (!bar) return;
+  bar.addEventListener('click', (e) => {
+    const btn = e.target.closest('.ev-tab');
+    if (!btn || btn.classList.contains('active')) return;
+    bar.querySelectorAll('.ev-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    evCurrentTab = btn.dataset.tab;
+    renderDispatches();
+  });
+}
+
+function renderDispatches() {
+  const listEl  = document.getElementById('ev-list');
+  const countEl = document.getElementById('ev-count');
+  if (!listEl) return;
+  const rows = allEvents.filter(r => eventMatchesTab(r, evCurrentTab)).slice(0, 30);
+  if (countEl) countEl.textContent = rows.length === 0 ? 'NONE' : `${rows.length} ITEM${rows.length === 1 ? '' : 'S'}`;
+  if (!rows.length) {
+    listEl.innerHTML = `<li class="ev-empty">No ${escHtml(evCurrentTab)} dispatches yet.</li>`;
+    return;
+  }
+  listEl.innerHTML = rows.map(row => {
+    const cat = row.category || evCurrentTab;
+    const ago = Math.max(0, evTickNow - (Number(row.fired_at_tick) || 0));
+    const timeStr = ago === 0 ? 'JUST NOW' : ago === 1 ? '1 TICK AGO' : `${ago} TICKS AGO`;
+    const nationName = row.nations?.name || null;
+    const np = row.nations?.nation_profiles;
+    const flagUrl = (Array.isArray(np) ? np[0]?.flag_url : np?.flag_url) || null;
+    const nationBadge = nationName
+      ? `<span class="ev-nation">${flagUrl ? `<img src="${escAttr(flagUrl)}" alt="">` : ''}${escHtml(nationName)}</span>`
+      : '';
+    const head = formatEventName(row.event_name) || 'Untitled dispatch';
+    const body = (row.description_chosen || row.description_used || '').trim();
+    return `<li class="ev-item">
+      <div class="ev-meta"><span class="ev-tag">${escHtml(cat)}</span>${nationBadge}<span class="ev-time">${timeStr}</span></div>
+      <div class="ev-head">${escHtml(head)}</div>
+      ${body ? `<div class="ev-body">${escHtml(body)}</div>` : ''}
+    </li>`;
+  }).join('');
 }
 
 function startCountdown(nextTickAt) {
