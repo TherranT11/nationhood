@@ -168,11 +168,24 @@ const NO_AFFILIATION_MESSAGE = 'This character has no affiliation.';
 const POLITICS_CATEGORIES  = ['politics','political','government','crisis','diplomatic','diplomacy','international','economy','executive_order','protest','bill','new_party'];
 const CORPORATE_CATEGORIES = ['corporate','business','trade'];
 
+// Career-log templates — keyed by politician_career_events.event_type. Adding
+// a new beat is one entry here plus whatever inserts the row server-side.
+// Dissident-group joins / founds are deliberately omitted: underground
+// affiliations are illegal in-fiction and the public career log isn't where
+// they belong (a separate private dossier surface would house those).
+const CAREER_EVENT_TEMPLATES = {
+  joined_party:  (name, target) => `${name} has registered their membership in the ${target || 'a political party'}.`,
+  founded_party: (name, target) => `The ${target || 'new political party'} was established by ${name}.`,
+  joined_ngo:    (name, target) => `${name} has registered their membership in the ${target || 'a non-government organisation'}.`,
+  founded_ngo:   (name, target) => `The ${target || 'new organisation'} was established by ${name}.`,
+};
+
 let politician = null;
 let nation = null;
 let allEvents = [];
 let evCurrentTab = 'politics';
 let evTickNow = 0;
+let careerRows = [];  // persistent rows from politician_career_events; merged with the derived founding event at render time.
 
 async function init() {
   let ctx = null;
@@ -189,16 +202,25 @@ async function init() {
   evTickNow  = Number(ctx.shard?.current_tick) || 0;
 
   try {
-    const { data, error } = await _supabase.from('event_log')
-      .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
-      .not('category', 'is', null)
-      .order('fired_at_tick', { ascending: false })
-      .limit(200);
-    if (error) throw error;
-    allEvents = data || [];
+    const [evRes, careerRes] = await Promise.all([
+      _supabase.from('event_log')
+        .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
+        .not('category', 'is', null)
+        .order('fired_at_tick', { ascending: false })
+        .limit(200),
+      _supabase.from('politician_career_events')
+        .select('event_tick, event_type, target_name')
+        .eq('faction_id', politician.id)
+        .order('event_tick', { ascending: false }),
+    ]);
+    if (evRes.error) throw evRes.error;
+    if (careerRes.error) throw careerRes.error;
+    allEvents  = evRes.data || [];
+    careerRows = careerRes.data || [];
   } catch (err) {
-    console.error('politician-home: event_log fetch failed', err);
+    console.error('politician-home: event_log / career-events fetch failed', err);
     allEvents = [];
+    careerRows = [];
   }
 
   renderHero(ctx.shard);
@@ -251,6 +273,14 @@ function renderCareer() {
       tick: Number(politician.founded_tick),
       text: `${display} began their career in the nation of ${nationName}.`,
     });
+  }
+  // Persistent career rows (joined_party / founded_party / joined_ngo /
+  // founded_ngo today). Unknown event_types are skipped so a future row
+  // shape lands silently rather than rendering "[object Object]".
+  for (const row of careerRows) {
+    const fn = CAREER_EVENT_TEMPLATES[row.event_type];
+    if (!fn) continue;
+    events.push({ tick: Number(row.event_tick), text: fn(display, row.target_name) });
   }
   events.sort((a, b) => b.tick - a.tick);
 
