@@ -10,6 +10,7 @@ import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactio
 const POL_TABS = [
   { id: 'home',      label: 'HOME',      href: 'politician-home.html' },
   { id: 'movements', label: 'MOVEMENTS', href: 'politician-movements.html' },
+  { id: 'nation',    label: 'NATION',    href: 'politician-nation.html' },
 ];
 
 const START_AGE = 25;
