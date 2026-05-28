@@ -3426,10 +3426,12 @@ async function openPressClaimModal(root, faction) {
             else if (!data?.ok) errorMsg = data?.message || 'Could not press the claim.';
             else {
                 result = data;
-                // World news. Non-fatal — broadcastWorldEvent swallows errors.
+                // World news. Awaited to match the codebase's event_log insert
+                // pattern (elections.js, impeachment.js, budget.js, …); the
+                // helper swallows its own errors so this can't break the flow.
                 const myName = _state?.nation?.name || 'A nation';
                 const targetName = neighbours.find(n => n.id === selectedId)?.name || 'another nation';
-                broadcastWorldEvent(_supabase, {
+                await broadcastWorldEvent(_supabase, {
                     eventName: 'Territorial Claim Pressed',
                     triggerKey: 'dispute_press_claim',
                     description: `${myName} has pressed a territorial claim against ${targetName}.`,

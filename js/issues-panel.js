@@ -23,6 +23,37 @@ import { escapeHtml } from './utils.js';
 import { ISSUE_TYPES } from './game/issues.js';
 import { broadcastWorldEvent } from './game/event-helpers.js';
 
+// p_stance value → world-news event mapping. 'neutral' is intentionally absent
+// (a stance reset is not an action and emits nothing). Used by the set_issue_stance
+// click handler below; kept at module scope so the table isn't rebuilt per click.
+const STANCE_EVENTS = {
+  mediate: {
+    eventName: 'Mediation Offered',
+    triggerKey: 'dispute_mediate_offered',
+    line: (my, p, c) => `${my} has offered to mediate the conflict between ${p} and ${c}.`,
+  },
+  condemn_pressor: {
+    eventName: 'Dispute Condemnation',
+    triggerKey: 'dispute_condemn_pressor',
+    line: (my, p, c) => `${my} has condemned ${p} in the dispute between ${p} and ${c}.`,
+  },
+  condemn_claimant: {
+    eventName: 'Dispute Condemnation',
+    triggerKey: 'dispute_condemn_claimant',
+    line: (my, p, c) => `${my} has condemned ${c} in the dispute between ${p} and ${c}.`,
+  },
+  support_pressor: {
+    eventName: 'Dispute Support',
+    triggerKey: 'dispute_support_pressor',
+    line: (my, p, c) => `${my} is supporting ${p} in the dispute between ${p} and ${c}.`,
+  },
+  support_claimant: {
+    eventName: 'Dispute Support',
+    triggerKey: 'dispute_support_claimant',
+    line: (my, p, c) => `${my} is supporting ${c} in the dispute between ${p} and ${c}.`,
+  },
+};
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 // 2-letter flag glyph from a nation name ("Palvera" → "PA", "Karst Bay" → "KB").
@@ -919,31 +950,17 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
     try {
       const { data, error } = await supabase.rpc('set_issue_stance', { p_issue_id: sb.dataset.id, p_stance: sb.dataset.stance });
       if (!error && !(data && data.ok === false)) {
-        // Broadcast a world-news event for the four actions players care about.
-        // 'neutral' is a stance reset, not an action — skip it. Non-fatal.
-        const stance = sb.dataset.stance;
-        const pName = sb.dataset.pressorName || 'the Pressor';
-        const cName = sb.dataset.claimantName || 'the Claimant';
-        const myName = sb.dataset.myName || 'A nation';
-        let desc = null, eventName = null, triggerKey = null;
-        if (stance === 'mediate') {
-          desc = `${myName} has offered to mediate the conflict between ${pName} and ${cName}.`;
-          eventName = 'Mediation Offered'; triggerKey = 'dispute_mediate_offered';
-        } else if (stance === 'condemn_pressor') {
-          desc = `${myName} has condemned ${pName} in the dispute between ${pName} and ${cName}.`;
-          eventName = 'Dispute Condemnation'; triggerKey = 'dispute_condemn_pressor';
-        } else if (stance === 'condemn_claimant') {
-          desc = `${myName} has condemned ${cName} in the dispute between ${pName} and ${cName}.`;
-          eventName = 'Dispute Condemnation'; triggerKey = 'dispute_condemn_claimant';
-        } else if (stance === 'support_pressor') {
-          desc = `${myName} is supporting ${pName} in the dispute between ${pName} and ${cName}.`;
-          eventName = 'Dispute Support'; triggerKey = 'dispute_support_pressor';
-        } else if (stance === 'support_claimant') {
-          desc = `${myName} is supporting ${cName} in the dispute between ${pName} and ${cName}.`;
-          eventName = 'Dispute Support'; triggerKey = 'dispute_support_claimant';
-        }
-        if (desc) {
-          broadcastWorldEvent(supabase, { eventName, triggerKey, description: desc, category: 'diplomacy' });
+        const ev = STANCE_EVENTS[sb.dataset.stance];
+        if (ev) {
+          const myName = sb.dataset.myName        || 'A nation';
+          const pName  = sb.dataset.pressorName   || 'the Pressor';
+          const cName  = sb.dataset.claimantName  || 'the Claimant';
+          await broadcastWorldEvent(supabase, {
+            eventName: ev.eventName,
+            triggerKey: ev.triggerKey,
+            description: ev.line(myName, pName, cName),
+            category: 'diplomacy',
+          });
         }
         await reload();
       }
