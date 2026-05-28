@@ -132,6 +132,18 @@ export function hfFmtBig(n) {
 }
 
 /**
+ * Magnitude formatter for counts/populations — same B / M / k scaling as
+ * hfFmtBig but without the currency prefix. e.g. 23_500_000 → "23.50M".
+ */
+export function fmtBig(n) {
+    const abs = Math.abs(Number(n) || 0);
+    if (abs >= 1e9) return (abs / 1e9).toFixed(2) + 'B';
+    if (abs >= 1e6) return (abs / 1e6).toFixed(2) + 'M';
+    if (abs >= 1e3) return (abs / 1e3).toFixed(1) + 'k';
+    return abs.toLocaleString();
+}
+
+/**
  * Whole-million money format used by the entrepreneur corp pages —
  * raw dollars → "$5M" / "$7.5M" (one decimal only when non-integer).
  * Distinct from hfFmtBig (two-decimal M/B) and formatCurrencyShort

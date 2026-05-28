@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Politician | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-0: #0e0e0c; --bg-1: #1a1a1a; --bg-2: #1a1a17; --bg-3: #252525; --bg-hover: #282822;
+  --text-bright: #f0efe6; --text-primary: #c4c2b8; --text-secondary: #888;
+  --text-muted: #666; --text-dim: #4a4940;
+  --border-1: rgba(255,255,255,0.08); --border-2: rgba(255,255,255,0.12);
+  --red: #d9534f; --teal: #5aafa5; --teal-faint: rgba(90,175,165,0.08); --teal-border: rgba(90,175,165,0.3);
+  --amber: #c8a64e; --purple: #8b7ec8;
+  --font-mono: 'JetBrains Mono', monospace; --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg-0); color: var(--text-primary); font-family: var(--font-ui); min-height: 100vh; }
+
+/* Navbar — mirrors the entrepreneur topbar layout. */
+.pol-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 10px 16px; background: var(--bg-1); border-bottom: 1px solid var(--border-1); }
+.pol-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.pol-crest { width: 28px; height: 28px; border: 1px solid var(--teal-border); background: var(--teal-faint);
+  color: var(--teal); display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-weight: 700; font-size: 11px; letter-spacing: 0.04em; }
+.pol-name { font-family: var(--font-ui); font-size: 14px; font-weight: 600; color: var(--text-bright);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.pol-meta { display: flex; gap: 18px; }
+.pol-meta__cell { text-align: center; }
+.pol-meta__label { font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-dim); }
+.pol-meta__value { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--text-primary); margin-top: 2px; }
+
+.pol-right { display: flex; align-items: center; gap: 10px; position: relative; }
+.pol-pill { border: 1px solid var(--teal-border); background: var(--teal-faint); color: var(--teal);
+  padding: 6px 12px; font-family: var(--font-mono); font-size: 11px; font-weight: 600; cursor: pointer;
+  display: flex; align-items: center; gap: 6px; }
+.pol-pill__cash { color: var(--text-secondary); }
+.pol-pill__amount { color: var(--teal); }
+.pol-dd { position: absolute; top: calc(100% + 6px); right: 0; min-width: 240px; background: var(--bg-2);
+  border: 1px solid var(--border-2); padding: 4px; display: none; z-index: 50; }
+.pol-dd.open { display: block; }
+.pol-dd__item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; transition: background 0.12s; }
+.pol-dd__item:hover { background: var(--bg-hover); }
+.pol-dd__item.active { background: var(--teal-faint); }
+.pol-dd__badge { font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: 0.06em; min-width: 36px; }
+.pol-dd__name { font-family: var(--font-ui); font-size: 12px; color: var(--text-primary); }
+.pol-dd__empty { padding: 10px; font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
+
+.pol-logout { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; background: transparent; color: var(--text-muted); border: 1px solid var(--border-1);
+  padding: 7px 14px; cursor: pointer; transition: all 0.15s; }
+.pol-logout:hover { color: var(--red); border-color: var(--red); }
+
+.loading { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); text-align: center; padding: 80px 20px; }
+</style>
+</head>
+<body>
+
+<div id="loading" class="loading">LOADING...</div>
+
+<div id="topbar" class="pol-topbar" style="display:none;">
+  <div class="pol-brand">
+    <div class="pol-crest" id="pol-crest">--</div>
+    <div class="pol-name" id="pol-name">Politician</div>
+  </div>
+  <div class="pol-meta">
+    <div class="pol-meta__cell"><div class="pol-meta__label">Age</div><div class="pol-meta__value" id="pol-age">—</div></div>
+  </div>
+  <div class="pol-right">
+    <span class="pol-pill" id="pol-pill" title="Switch faction">
+      <span class="pol-pill__cash">POL</span>
+      <span class="pol-pill__amount" id="pol-cash">$0</span>
+      <span>&#x25BE;</span>
+    </span>
+    <div class="pol-dd" id="pol-dd"></div>
+    <button class="pol-logout" id="pol-logout">Logout</button>
+  </div>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl } from './js/game/factions.js';
+
+const START_AGE = 25;
+const TICKS_PER_AGE_YEAR = 12;
+
+let politician = null;
+let otherFactions = [];
+
+async function init() {
+  const { data: { user } } = await _supabase.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  // Load all this user's factions in one shot, then split off the active
+  // politician. The switcher shows the others.
+  let factions = [];
+  let currentTick = 0;
+  try {
+    const [{ data: facs, error: facErr }, { data: shard, error: shardErr }] = await Promise.all([
+      _supabase.from('factions')
+        .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, founded_tick, party_funds, abandoned_at, is_banned')
+        .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
+      _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+    ]);
+    if (facErr) throw facErr;
+    if (shardErr) throw shardErr;
+    factions = facs || [];
+    currentTick = shard?.current_tick || 0;
+  } catch (err) {
+    console.error('politician-home: load failed', err);
+    document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
+    return;
+  }
+
+  const activeId = sessionStorage.getItem('active_faction_id');
+  // Prefer the explicitly-active faction if it's a politician; otherwise
+  // fall back to the user's first active politician.
+  politician = factions.find(f => f.id === activeId && f.faction_type === 'politician' && !isFactionInactive(f))
+            || factions.find(f => f.faction_type === 'politician' && !isFactionInactive(f))
+            || null;
+
+  if (!politician) {
+    // User landed here without a politician — send them back to the start.
+    window.location.href = 'character-select.html';
+    return;
+  }
+
+  otherFactions = factions.filter(f =>
+    f.id !== politician.id && !isFactionInactive(f) && !isHiddenFromSwitcher(f));
+
+  render(currentTick);
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('topbar').style.display = 'flex';
+}
+
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+
+function fmtCash(n) {
+  const v = Number(n) || 0;
+  if (v >= 1_000_000) return '$' + (v / 1_000_000).toFixed(1) + 'M';
+  if (v >= 1_000)     return '$' + Math.round(v / 1_000) + 'k';
+  return '$' + v;
+}
+
+function currentAge(currentTick) {
+  // No founded_tick recorded (legacy rows / data drift) → show the starting
+  // age rather than (current_tick / 12) of garbage.
+  if (politician.founded_tick == null) return START_AGE;
+  const elapsed = Math.max(0, currentTick - Number(politician.founded_tick));
+  return START_AGE + Math.floor(elapsed / TICKS_PER_AGE_YEAR);
+}
+
+function render(currentTick) {
+  const first = politician.leader_first_name || '';
+  const last  = politician.leader_last_name  || '';
+  const ini = (((first[0] || '') + (last[0] || '')).toUpperCase()) || '—';
+  const display = (first || last) ? (first + ' ' + last).trim() : (politician.faction_name || 'Politician');
+  document.getElementById('pol-crest').textContent = ini;
+  document.getElementById('pol-name').textContent = display;
+  document.getElementById('pol-age').textContent = String(currentAge(currentTick));
+  document.getElementById('pol-cash').textContent = fmtCash(politician.party_funds);
+
+  // Faction-switcher dropdown render. NOTE: near-duplicate of the
+  // dropdown logic in common.js (party topbar) and entrepreneur-topbar.js.
+  // Three inline copies live in the codebase; consolidating them into a
+  // shared renderer is the right fix but touches all three live topbars,
+  // so it's deferred to a focused pass rather than smuggled in here.
+  const dd = document.getElementById('pol-dd');
+  if (!otherFactions.length) {
+    dd.innerHTML = '<div class="pol-dd__empty">No other factions.</div>';
+  } else {
+    dd.innerHTML = otherFactions.map(f => {
+      const { label, color } = getFactionTypeBadge(f.faction_type);
+      return `<div class="pol-dd__item" data-id="${f.id}">
+        <span class="pol-dd__badge" style="color:${color}">${label}</span>
+        <span class="pol-dd__name">${escHtml(f.faction_name || 'Unnamed')}</span>
+      </div>`;
+    }).join('');
+    dd.querySelectorAll('.pol-dd__item').forEach(el => {
+      el.addEventListener('click', () => {
+        const f = otherFactions.find(x => x.id === el.dataset.id);
+        if (!f) return;
+        sessionStorage.setItem('active_faction_id', f.id);
+        window.location.href = getFactionDashboardUrl(f) || 'faction-select.html';
+      });
+    });
+  }
+}
+
+const pill = document.getElementById('pol-pill');
+const dd = document.getElementById('pol-dd');
+pill.addEventListener('click', (e) => { e.stopPropagation(); dd.classList.toggle('open'); });
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#pol-pill') && !e.target.closest('#pol-dd')) dd.classList.remove('open');
+});
+
+document.getElementById('pol-logout').addEventListener('click', async () => {
+  try { await _supabase.auth.signOut(); } catch (_) { /* swallow — redirect anyway */ }
+  window.location.href = 'login.html';
+});
+
+init();
+</script>
+</body>
+</html>

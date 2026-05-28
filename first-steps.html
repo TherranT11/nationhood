@@ -11,7 +11,7 @@
   --text-bright: #f0efe6; --text-primary: #c4c2b8; --text-secondary: #888;
   --text-muted: #666; --text-dim: #4a4940;
   --border-1: rgba(255,255,255,0.08); --border-2: rgba(255,255,255,0.12);
-  --teal: #5aafa5; --teal-faint: rgba(90,175,165,0.08); --teal-border: rgba(90,175,165,0.3);
+  --red: #d9534f; --teal: #5aafa5; --teal-faint: rgba(90,175,165,0.08); --teal-border: rgba(90,175,165,0.3);
   --font-mono: 'JetBrains Mono', monospace; --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -25,36 +25,81 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 .eyebrow { font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.18em;
   text-transform: uppercase; color: var(--teal); margin-bottom: 10px; }
 .title { font-family: var(--font-ui); font-size: 22px; font-weight: 700; color: var(--text-bright); }
+.subtitle { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
 
-.continent-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
-.continent-tab { flex: 1; min-width: 160px; background: var(--bg-2); border: 1px solid var(--border-1);
-  padding: 12px 14px; cursor: pointer; transition: all 0.15s; }
-.continent-tab:hover { border-color: var(--teal-border); }
-.continent-tab.active { border-color: var(--teal-border); background: var(--teal-faint); }
-.continent-tab__name { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--text-primary); }
-.continent-tab.active .continent-tab__name { color: var(--teal); }
-.continent-tab__desc { font-size: 10px; color: var(--text-muted); line-height: 1.5; margin-top: 4px; }
+/* Continent tabs — full-width row with a teal underline on the active tab,
+   mirroring the entrepreneur picker in select-nation.html. */
+.continent-tabs { display: flex; gap: 2px; margin-bottom: 16px; }
+.continent-tab { flex: 1; background: var(--bg-2); border: 1px solid var(--border-1);
+  border-bottom: none; padding: 10px 14px; cursor: pointer; transition: background 0.15s;
+  text-align: center; }
+.continent-tab:hover { background: var(--bg-3); }
+.continent-tab.active { background: var(--bg-3); border-color: var(--border-2); border-bottom: 2px solid var(--teal); }
+.continent-tab__name { font-family: var(--font-mono); font-size: 12px; font-weight: 700;
+  color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.continent-tab.active .continent-tab__name { color: var(--text-bright); }
+.continent-tab__desc { font-family: var(--font-mono); font-size: 9px; color: var(--text-dim);
+  margin-top: 3px; line-height: 1.4; }
+.continent-tab.active .continent-tab__desc { color: var(--text-muted); }
 
-.nations-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
-.nation-card { background: var(--bg-2); border: 1px solid var(--border-1); padding: 14px; cursor: pointer; transition: all 0.15s; }
-.nation-card:hover { border-color: var(--teal-border); background: var(--bg-hover); }
-.nation-card.selected { border-color: var(--teal); background: var(--teal-faint); }
-.nation-card__header { display: flex; align-items: center; gap: 10px; }
-.nation-card__flag { width: 34px; height: 22px; object-fit: cover; border: 1px solid var(--border-1); background: var(--bg-3); flex: 0 0 auto; }
-.nation-card__name { font-family: var(--font-ui); font-size: 14px; font-weight: 600; color: var(--text-bright); }
-.nation-card__gov { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); margin-top: 6px; }
+/* Nation cards — header (flag + name + gov-type badge), body (description +
+   "POLITICIAN FROM …" action line), full card click target. */
+.nations-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.nation-card { background: var(--bg-2); border: 1px solid var(--border-1); cursor: pointer; transition: border-color 0.15s; }
+.nation-card:hover { border-color: var(--teal-border); }
+.nation-card.selected { border-color: var(--teal); }
+.nation-card__header { background: var(--bg-3); border-bottom: 1px solid var(--border-1);
+  padding: 10px 12px; display: flex; align-items: center; gap: 10px; }
+.nation-card__flag { width: 36px; height: 24px; object-fit: cover;
+  border: 1px solid var(--border-1); background: var(--bg-3); flex: 0 0 auto; }
+.nation-card__name { font-family: var(--font-ui); font-size: 14px; font-weight: 700;
+  color: var(--text-bright); flex: 1; }
+.nation-card__gov-type { font-family: var(--font-mono); font-size: 8.5px; font-weight: 700;
+  padding: 2px 6px; letter-spacing: 0.04em; text-transform: uppercase; }
+.gov-democracy { background: rgba(92,184,92,0.08); color: #5cb85c; border: 1px solid rgba(92,184,92,0.18); }
+.gov-presidential { background: rgba(91,155,213,0.08); color: #5b9bd5; border: 1px solid rgba(91,155,213,0.18); }
+.nation-card__body { padding: 10px 12px; }
+.nation-card__desc { font-size: 11px; color: var(--text-dim); line-height: 1.5;
+  margin-bottom: 8px; font-style: italic; }
+.nation-card__action { font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  color: var(--teal); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 6px; }
+.stat-row { display: flex; justify-content: space-between; align-items: center;
+  padding: 3px 0; font-family: var(--font-mono); font-size: 10px; }
+.stat-row__label { color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.stat-row__value { color: var(--text-secondary); font-weight: 600; }
 .empty { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); padding: 40px 0; text-align: center; }
+
+.gender-row { display: flex; gap: 12px; max-width: 420px; margin: 0 auto; }
+.gender-btn { flex: 1; padding: 18px; background: var(--bg-2); border: 1px solid var(--border-1);
+  font-family: var(--font-mono); font-size: 13px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-primary); cursor: pointer; transition: all 0.15s; }
+.gender-btn:hover { border-color: var(--teal-border); background: var(--bg-hover); }
+.gender-btn.selected { border-color: var(--teal); background: var(--teal-faint); color: var(--teal); }
+
+.names-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; max-width: 720px; margin: 0 auto; }
+.name-card { background: var(--bg-2); border: 1px solid var(--border-1); padding: 12px 14px;
+  font-family: var(--font-ui); font-size: 14px; color: var(--text-primary); cursor: pointer; transition: all 0.15s; text-align: center; }
+.name-card:hover { border-color: var(--teal-border); background: var(--bg-hover); }
+.name-card.selected { border-color: var(--teal); background: var(--teal-faint); color: var(--teal); font-weight: 600; }
 
 .footer { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-1); border-top: 1px solid var(--border-1);
   padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .footer__sel { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
 .footer__sel b { color: var(--teal); }
+.footer__actions { display: flex; gap: 10px; }
+.btn { font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; padding: 12px 22px; cursor: pointer; transition: all 0.15s; border: 1px solid var(--border-2); }
+.btn--ghost { background: transparent; color: var(--text-muted); }
+.btn--ghost:hover { color: var(--text-bright); border-color: var(--text-muted); }
+.btn--danger-ghost { background: transparent; color: var(--text-muted); }
+.btn--danger-ghost:hover { color: var(--red); border-color: var(--red); }
 .confirm-btn { font-family: var(--font-mono); font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
   text-transform: uppercase; background: var(--teal-faint); color: var(--teal); border: 1px solid var(--teal-border);
   padding: 12px 28px; cursor: pointer; transition: all 0.15s; }
 .confirm-btn:hover:not(:disabled) { background: var(--teal); color: var(--bg-0); }
 .confirm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .loading { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); text-align: center; padding: 80px 20px; }
+.error { font-family: var(--font-mono); font-size: 10px; color: var(--red); }
 </style>
 </head>
 <body>
@@ -64,79 +109,170 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 <div id="app" class="wrap" style="display:none;">
   <button class="back-btn" id="back-btn">&larr; Back</button>
 
-  <div class="header">
-    <div class="eyebrow">Project Neptune</div>
-    <div class="title">Where is your politician from?</div>
+  <!-- STEP 1 — NATION -->
+  <div id="step-1">
+    <div class="header">
+      <div class="eyebrow">Project Neptune</div>
+      <div class="title">Where is your politician from?</div>
+      <div class="subtitle">Pick the nation your politician hails from. This only sets your origin and name.</div>
+    </div>
+    <div class="continent-tabs" id="continent-tabs">
+      <div class="continent-tab active" data-continent="Crucera">
+        <div class="continent-tab__name">Crucera</div>
+        <div class="continent-tab__desc">A vast and diverse continent, rich in natural resources.</div>
+      </div>
+      <div class="continent-tab" data-continent="Meridian">
+        <div class="continent-tab__name">Meridian</div>
+        <div class="continent-tab__desc">The old world of ancient kingdoms and republics.</div>
+      </div>
+      <div class="continent-tab" data-continent="Al-Makir">
+        <div class="continent-tab__name">Al-Makir</div>
+        <div class="continent-tab__desc">A desert continent of monarchies and oil wealth.</div>
+      </div>
+      <div class="continent-tab" data-continent="Faresia">
+        <div class="continent-tab__name">Faresia</div>
+        <div class="continent-tab__desc">High-tech island republics and globalist trade.</div>
+      </div>
+    </div>
+    <div class="nations-grid" id="nations-grid"></div>
   </div>
 
-  <div class="continent-tabs" id="continent-tabs">
-    <div class="continent-tab active" data-continent="Crucera">
-      <div class="continent-tab__name">Crucera</div>
-      <div class="continent-tab__desc">A vast and diverse continent, rich in natural resources.</div>
+  <!-- STEP 2 — GENDER -->
+  <div id="step-2" style="display:none;">
+    <div class="header">
+      <div class="eyebrow">Project Neptune</div>
+      <div class="title">What gender is your politician?</div>
     </div>
-    <div class="continent-tab" data-continent="Meridian">
-      <div class="continent-tab__name">Meridian</div>
-      <div class="continent-tab__desc">The old world of ancient kingdoms and republics.</div>
-    </div>
-    <div class="continent-tab" data-continent="Al-Makir">
-      <div class="continent-tab__name">Al-Makir</div>
-      <div class="continent-tab__desc">A desert continent of monarchies and oil wealth.</div>
-    </div>
-    <div class="continent-tab" data-continent="Faresia">
-      <div class="continent-tab__name">Faresia</div>
-      <div class="continent-tab__desc">High-tech island republics and globalist trade.</div>
+    <div class="gender-row">
+      <button class="gender-btn" data-gender="male">Male</button>
+      <button class="gender-btn" data-gender="female">Female</button>
     </div>
   </div>
 
-  <div class="nations-grid" id="nations-grid"></div>
+  <!-- STEP 3 — NAME -->
+  <div id="step-3" style="display:none;">
+    <div class="header">
+      <div class="eyebrow">Project Neptune</div>
+      <div class="title">What is their name?</div>
+    </div>
+    <div class="names-grid" id="names-grid"></div>
+  </div>
 </div>
 
 <div id="footer" class="footer" style="display:none;">
-  <div class="footer__sel" id="footer-sel">No nation selected</div>
-  <button class="confirm-btn" id="confirm-btn" disabled>Confirm</button>
+  <div>
+    <div class="footer__sel" id="footer-sel">No nation selected</div>
+    <div class="error" id="footer-error" style="margin-top:4px;"></div>
+  </div>
+  <div class="footer__actions">
+    <button class="btn btn--ghost" id="goback-btn" style="display:none;">Go Back</button>
+    <button class="btn btn--danger-ghost" id="cancel-btn" style="display:none;">Cancel Journey</button>
+    <button class="confirm-btn" id="confirm-btn" disabled>Confirm</button>
+  </div>
 </div>
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
+import { hfFmtBig, fmtBig } from './js/utils.js';
+import { getNationNames, isFemaleName } from './js/game/political-actions.js';
+import { NATION_DESCRIPTIONS } from './js/game/nation-descriptions.js';
 
 let allNations = [];
+let politiciansByNation = {};  // nation_id → count of active politicians
 let currentContinent = 'Crucera';
 let selectedNation = null;
+let selectedGender = null;
+let selectedName = null;  // { first, last } once picked
+let generatedNames = [];  // [{ first, last }, ...] — generated once per gender change
+let currentStep = 1;
+let currentUser = null;
+let currentTick = 0;
+let createInFlight = false;
 
 async function init() {
   const { data: { user } } = await _supabase.auth.getUser();
   if (!user) { window.location.href = 'login.html'; return; }
-  // Must have cleared the alpha gate.
+  currentUser = user;
   if (sessionStorage.getItem('neptune_unlocked') !== '1') {
     window.location.href = 'character-select.html';
     return;
   }
 
   try {
-    const { data, error } = await _supabase
-      .from('nations')
-      .select('id, name, continent, government_type, flag_url, nation_profiles(flag_url)')
-      .order('name');
-    if (error) throw error;
-    allNations = data || [];
+    const [{ data: nations, error: natErr }, { data: shard, error: shardErr }, { data: pols, error: polErr }] = await Promise.all([
+      _supabase.from('nations').select('id, name, continent, government_type, population, gdp, flag_url, nation_profiles(flag_url)').order('name'),
+      _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+      _supabase.from('factions').select('nation_id').eq('faction_type', 'politician').is('abandoned_at', null),
+    ]);
+    if (natErr) throw natErr;
+    if (shardErr) throw shardErr;
+    if (polErr) throw polErr;
+    allNations = nations || [];
+    currentTick = shard?.current_tick || 0;
+    politiciansByNation = {};
+    for (const p of (pols || [])) {
+      if (!p.nation_id) continue;
+      politiciansByNation[p.nation_id] = (politiciansByNation[p.nation_id] || 0) + 1;
+    }
   } catch (err) {
-    console.error('first-steps: failed to load nations', err);
-    document.getElementById('loading').textContent = 'Failed to load nations. Please reload the page.';
+    console.error('first-steps: failed to load nations/shard/politicians', err);
+    document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
     return;
   }
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('footer').style.display = 'flex';
-  renderNations();
-}
-
-function flagFor(n) {
-  return (n.nation_profiles && n.nation_profiles.flag_url) || n.flag_url || `assets/flags/${n.name}.png`;
+  renderStep();
 }
 
 function escAttr(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+function flagFor(n) { return (n.nation_profiles && n.nation_profiles.flag_url) || n.flag_url || `assets/flags/${n.name}.png`; }
+
+function renderStep() {
+  document.getElementById('step-1').style.display = currentStep === 1 ? 'block' : 'none';
+  document.getElementById('step-2').style.display = currentStep === 2 ? 'block' : 'none';
+  document.getElementById('step-3').style.display = currentStep === 3 ? 'block' : 'none';
+  document.getElementById('back-btn').style.display = currentStep === 1 ? '' : 'none';
+  document.getElementById('goback-btn').style.display = currentStep > 1 ? '' : 'none';
+  document.getElementById('cancel-btn').style.display = currentStep > 1 ? '' : 'none';
+  document.getElementById('footer-error').textContent = '';
+
+  if (currentStep === 1) {
+    renderNations();
+    updateConfirm('Confirm', !!selectedNation,
+      selectedNation ? `Selected: <b>${escHtml(selectedNation.name)}</b>` : 'No nation selected');
+  } else if (currentStep === 2) {
+    renderGender();
+    updateConfirm('Confirm', !!selectedGender,
+      selectedGender ? `Gender: <b>${selectedGender === 'female' ? 'Female' : 'Male'}</b>` : 'Pick a gender');
+  } else if (currentStep === 3) {
+    renderNames();
+    updateConfirm('Begin Career', !!selectedName,
+      selectedName ? `Name: <b>${escHtml(selectedName.first + ' ' + selectedName.last)}</b>` : 'Pick a name');
+  }
+}
+
+function updateConfirm(label, enabled, selHtml) {
+  const btn = document.getElementById('confirm-btn');
+  btn.textContent = label;
+  btn.disabled = !enabled;
+  document.getElementById('footer-sel').innerHTML = selHtml;
+}
+
+// ─── STEP 1: NATION ────────────────────────────────────────────────
+// Presidential / Semi-Presidential share the blue badge; everything else
+// (Parliamentary, Constitutional Monarchy, Absolute Monarchy) uses the
+// green "democracy" badge. Mirrors getGovTypeClass in select-nation.html.
+function govBadge(govType) {
+  const isPres = govType === 'Presidential' || govType === 'Semi-Presidential';
+  const cls    = isPres ? 'gov-presidential' : 'gov-democracy';
+  const label  = govType === 'Semi-Presidential' ? 'SEMI-PRESIDENTIAL'
+              :  govType === 'Presidential'      ? 'PRESIDENTIAL'
+              :  'PARLIAMENTARY';
+  return { cls, label };
+}
 
 function renderNations() {
   const grid = document.getElementById('nations-grid');
@@ -147,16 +283,34 @@ function renderNations() {
   }
   grid.innerHTML = list.map(n => {
     const sel = selectedNation && selectedNation.id === n.id ? ' selected' : '';
+    const { cls, label } = govBadge(n.government_type);
+    const desc = NATION_DESCRIPTIONS[n.name] || '';
     return `<div class="nation-card${sel}" data-id="${n.id}">
       <div class="nation-card__header">
         <img class="nation-card__flag" src="${escAttr(flagFor(n))}" alt="" onerror="this.style.visibility='hidden'">
         <span class="nation-card__name">${escHtml(n.name)}</span>
+        <span class="nation-card__gov-type ${cls}">${label}</span>
       </div>
-      <div class="nation-card__gov">${escHtml(n.government_type || '—')}</div>
+      <div class="nation-card__body">
+        ${desc ? `<div class="nation-card__desc">${escHtml(desc)}</div>` : ''}
+        <div class="stat-row"><span class="stat-row__label">GDP</span><span class="stat-row__value">${hfFmtBig(Number(n.gdp) || 0)}</span></div>
+        <div class="stat-row"><span class="stat-row__label">Population</span><span class="stat-row__value">${fmtBig(n.population)}</span></div>
+        <div class="stat-row"><span class="stat-row__label">Active Politicians</span><span class="stat-row__value">${politiciansByNation[n.id] || 0}</span></div>
+        <div class="nation-card__action">Politician from ${escHtml(n.name)}</div>
+      </div>
     </div>`;
   }).join('');
   grid.querySelectorAll('.nation-card').forEach(card => {
-    card.addEventListener('click', () => selectNation(card.dataset.id));
+    card.addEventListener('click', () => {
+      const n = allNations.find(x => x.id === card.dataset.id);
+      // Different nation → different name pool, so any prior name pick is stale.
+      if (selectedNation && n && selectedNation.id !== n.id) {
+        generatedNames = [];
+        selectedName = null;
+      }
+      selectedNation = n || null;
+      renderStep();
+    });
   });
 }
 
@@ -167,38 +321,160 @@ function switchContinent(continent) {
   renderNations();
 }
 
-function selectNation(id) {
-  selectedNation = allNations.find(n => n.id === id) || null;
-  renderNations();
-  const sel = document.getElementById('footer-sel');
-  const btn = document.getElementById('confirm-btn');
-  if (selectedNation) {
-    sel.innerHTML = `Selected: <b>${escHtml(selectedNation.name)}</b>`;
-    btn.disabled = false;
-  } else {
-    sel.textContent = 'No nation selected';
-    btn.disabled = true;
+// ─── STEP 2: GENDER ────────────────────────────────────────────────
+function renderGender() {
+  document.querySelectorAll('.gender-btn').forEach(b =>
+    b.classList.toggle('selected', b.dataset.gender === selectedGender));
+}
+
+// ─── STEP 3: NAME ──────────────────────────────────────────────────
+// Pulls 20 unique First-Last combos from the chosen nation's name pool,
+// filtered by gender. Pattern mirrors populateEntrepreneurNames in
+// select-nation.html so behavior is consistent across creation flows.
+function generateNames() {
+  const { firstNames, lastNames } = getNationNames(selectedNation.name);
+  let pool = selectedGender === 'female'
+    ? firstNames.filter(isFemaleName)
+    : firstNames.filter(n => !isFemaleName(n));
+  if (!pool.length) pool = firstNames;  // Some nations' pools have no recognised names for a gender.
+  const seen = new Set();
+  const out = [];
+  let guard = 0;
+  while (out.length < 20 && guard++ < 400) {
+    const first = pool[Math.floor(Math.random() * pool.length)];
+    const last  = lastNames[Math.floor(Math.random() * lastNames.length)];
+    if (!first || !last) continue;
+    const key = first + ' ' + last;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ first, last });
+  }
+  return out;
+}
+
+function renderNames() {
+  if (!generatedNames.length) generatedNames = generateNames();
+  const grid = document.getElementById('names-grid');
+  grid.innerHTML = generatedNames.map((n, i) => {
+    const sel = selectedName && selectedName.first === n.first && selectedName.last === n.last ? ' selected' : '';
+    return `<div class="name-card${sel}" data-idx="${i}">${escHtml(n.first + ' ' + n.last)}</div>`;
+  }).join('');
+  grid.querySelectorAll('.name-card').forEach(card => {
+    card.addEventListener('click', () => {
+      selectedName = generatedNames[parseInt(card.dataset.idx, 10)] || null;
+      renderStep();
+    });
+  });
+}
+
+// ─── NAVIGATION ────────────────────────────────────────────────────
+function goBack() {
+  if (currentStep === 1) return;  // top "← Back" handles step 1
+  currentStep -= 1;
+  renderStep();
+}
+
+function cancelJourney() { window.location.href = 'character-select.html'; }
+
+function confirmStep() {
+  if (currentStep === 1) {
+    if (!selectedNation) return;
+    currentStep = 2;
+    renderStep();
+  } else if (currentStep === 2) {
+    if (!selectedGender) return;
+    currentStep = 3;
+    renderStep();
+  } else if (currentStep === 3) {
+    if (!selectedName) return;
+    createPolitician();
   }
 }
 
-function confirmSelection() {
-  if (!selectedNation) return;
-  sessionStorage.setItem('neptune_nation', JSON.stringify({
-    id: selectedNation.id, name: selectedNation.name,
-    continent: selectedNation.continent, government_type: selectedNation.government_type
-  }));
-  // NOTE: the next politician-creation step (gender, name, stats) is not yet
-  // designed/built. For now, confirm just persists the chosen nation and
-  // acknowledges the selection so the flow is testable end-to-end.
-  const sel = document.getElementById('footer-sel');
-  sel.innerHTML = `Locked in: <b>${escHtml(selectedNation.name)}</b> — next step coming soon.`;
-  document.getElementById('confirm-btn').disabled = true;
+// ─── POLITICIAN CREATION ───────────────────────────────────────────
+// Mirrors the linked-faction pattern in select-nation.html (military
+// army create, ~L1265): primary if the user has no existing faction,
+// otherwise a linked secondary with a fresh uuid + linked_user_id.
+async function createPolitician() {
+  if (createInFlight) return;
+  createInFlight = true;
+  const btn = document.getElementById('confirm-btn');
+  btn.disabled = true;
+  const errEl = document.getElementById('footer-error');
+  errEl.textContent = '';
+
+  try {
+    const { data: primary, error: primaryErr } = await _supabase
+      .from('factions').select('id').eq('id', currentUser.id)
+      .is('abandoned_at', null).maybeSingle();
+    if (primaryErr) throw primaryErr;
+
+    const isLinked = !!primary;
+    const factionId = isLinked ? crypto.randomUUID() : currentUser.id;
+    const fullName = selectedName.first + ' ' + selectedName.last;
+
+    const row = {
+      id: factionId,
+      faction_type: 'politician',
+      faction_name: fullName,
+      nation_id: selectedNation.id,
+      nation: selectedNation.name,
+      seats: 0,
+      action_points: 0,
+      party_funds: 0,
+      abandoned_at: null,
+      leader_first_name: selectedName.first,
+      leader_last_name: selectedName.last,
+      leader_age: 25,         // baseline; displayed age is derived from founded_tick
+      founded_tick: currentTick,
+    };
+    if (isLinked) row.linked_user_id = currentUser.id;
+
+    const op = isLinked
+      ? _supabase.from('factions').insert(row)
+      : _supabase.from('factions').upsert(row);
+    const { error: writeErr } = await op;
+    if (writeErr) {
+      if (writeErr.code === '23505') {
+        errEl.textContent = 'You already hold a faction in this nation.';
+      } else {
+        errEl.textContent = 'Could not create politician: ' + (writeErr.message || 'unknown error');
+      }
+      btn.disabled = false;
+      createInFlight = false;
+      return;
+    }
+
+    sessionStorage.setItem('active_faction_id', factionId);
+    sessionStorage.removeItem('neptune_unlocked');
+    sessionStorage.removeItem('neptune_return_url');
+    window.location.href = 'politician-home.html';
+  } catch (err) {
+    console.error('createPolitician failed', err);
+    errEl.textContent = 'Create failed: ' + (err.message || String(err));
+    btn.disabled = false;
+    createInFlight = false;
+  }
 }
 
+// ─── WIRING ────────────────────────────────────────────────────────
 document.getElementById('back-btn').addEventListener('click', () => { window.location.href = 'character-select.html'; });
-document.getElementById('confirm-btn').addEventListener('click', confirmSelection);
+document.getElementById('goback-btn').addEventListener('click', goBack);
+document.getElementById('cancel-btn').addEventListener('click', cancelJourney);
+document.getElementById('confirm-btn').addEventListener('click', confirmStep);
 document.querySelectorAll('.continent-tab').forEach(tab => {
   tab.addEventListener('click', () => switchContinent(tab.dataset.continent));
+});
+document.querySelectorAll('.gender-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    // Switching gender invalidates any previously-generated names.
+    if (b.dataset.gender !== selectedGender) {
+      generatedNames = [];
+      selectedName = null;
+    }
+    selectedGender = b.dataset.gender;
+    renderStep();
+  });
 });
 
 init();

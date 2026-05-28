@@ -151,6 +151,14 @@ function buildSwitcher(facs) {
       window.location.href = c.url;
     });
   }
+  // Project Neptune (Politician alpha) — hidden once the user holds a politician,
+  // matching the hide-on-claimed pattern above.
+  if (!facs.some(f => f.faction_type === 'politician')) {
+    addRow('create', '+', null, 'Join Project Neptune', () => {
+      sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search);
+      window.location.href = 'character-select.html';
+    });
+  }
   pill.addEventListener('click', (e) => { e.stopPropagation(); dd.classList.toggle('open'); });
   document.addEventListener('click', (e) => {
     if (!e.target.closest('#ent-pill') && !e.target.closest('#ent-dd')) dd.classList.remove('open');

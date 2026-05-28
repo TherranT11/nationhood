@@ -21,6 +21,38 @@
 
 import { escapeHtml } from './utils.js';
 import { ISSUE_TYPES } from './game/issues.js';
+import { broadcastWorldEvent } from './game/event-helpers.js';
+
+// p_stance value → world-news event mapping. 'neutral' is intentionally absent
+// (a stance reset is not an action and emits nothing). Used by the set_issue_stance
+// click handler below; kept at module scope so the table isn't rebuilt per click.
+const STANCE_EVENTS = {
+  mediate: {
+    eventName: 'Mediation Offered',
+    triggerKey: 'dispute_mediate_offered',
+    line: (my, p, c) => `${my} has offered to mediate the conflict between ${p} and ${c}.`,
+  },
+  condemn_pressor: {
+    eventName: 'Dispute Condemnation',
+    triggerKey: 'dispute_condemn_pressor',
+    line: (my, p, c) => `${my} has condemned ${p} in the dispute between ${p} and ${c}.`,
+  },
+  condemn_claimant: {
+    eventName: 'Dispute Condemnation',
+    triggerKey: 'dispute_condemn_claimant',
+    line: (my, p, c) => `${my} has condemned ${c} in the dispute between ${p} and ${c}.`,
+  },
+  support_pressor: {
+    eventName: 'Dispute Support',
+    triggerKey: 'dispute_support_pressor',
+    line: (my, p, c) => `${my} is supporting ${p} in the dispute between ${p} and ${c}.`,
+  },
+  support_claimant: {
+    eventName: 'Dispute Support',
+    triggerKey: 'dispute_support_claimant',
+    line: (my, p, c) => `${my} is supporting ${c} in the dispute between ${p} and ${c}.`,
+  },
+};
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -426,8 +458,12 @@ function thirdPartyZone(roles, issue, ctx) {
   const canStance = !!(ctx && ctx.fmNation && ctx.fmNation === ctx.nationId);
   const mine = ((ctx && ctx.stances && typeof ctx.stances.get === 'function' && ctx.stances.get(issue.id)) || [])
     .find(s => s.nation_id === (ctx && ctx.nationId))?.stance || 'neutral';
+  // Plumb names onto the button so the click handler can build a world-news
+  // event description without having to refetch the issue (the handler doesn't
+  // close over `roles` / `ctx`). Already-escaped via escapeHtml above.
+  const myName = escapeHtml((ctx && ctx.names && ctx.names.get(ctx.nationId)?.name) || '');
   const cell = (key, cls, title, desc) => canStance
-    ? `<button type="button" class="tpa ${cls}${mine === key ? ' sel' : ''}" data-stance="${key}" data-id="${id}"><div class="tn">${title}</div><div class="td">${desc}</div></button>`
+    ? `<button type="button" class="tpa ${cls}${mine === key ? ' sel' : ''}" data-stance="${key}" data-id="${id}" data-pressor-name="${b}" data-claimant-name="${a}" data-my-name="${myName}"><div class="tn">${title}</div><div class="td">${desc}</div></button>`
     : `<div class="tpa ${cls}"><div class="tn">${title}</div><div class="td">${desc}</div></div>`;
   const grid = `<div class="tpa-grid${canStance ? '' : ' iss-inert'}">`
     + cell('support_claimant', 'support-a', `Support ${a}`, 'Lend strength &amp; legitimacy to the Claimant.')
@@ -913,7 +949,21 @@ export async function mountIssuesPanel(supabase, nationId, host, opts = {}) {
     busy = true; sb.classList.add('is-busy');
     try {
       const { data, error } = await supabase.rpc('set_issue_stance', { p_issue_id: sb.dataset.id, p_stance: sb.dataset.stance });
-      if (!error && !(data && data.ok === false)) await reload();
+      if (!error && !(data && data.ok === false)) {
+        const ev = STANCE_EVENTS[sb.dataset.stance];
+        if (ev) {
+          const myName = sb.dataset.myName        || 'A nation';
+          const pName  = sb.dataset.pressorName   || 'the Pressor';
+          const cName  = sb.dataset.claimantName  || 'the Claimant';
+          await broadcastWorldEvent(supabase, {
+            eventName: ev.eventName,
+            triggerKey: ev.triggerKey,
+            description: ev.line(myName, pName, cName),
+            category: 'diplomacy',
+          });
+        }
+        await reload();
+      }
       else { sb.classList.remove('is-busy'); console.warn('[issues-panel] stance failed:', (data && data.message) || error?.message); }
     } catch (ex) {
       sb.classList.remove('is-busy');

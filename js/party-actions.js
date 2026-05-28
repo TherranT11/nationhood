@@ -21,6 +21,7 @@ import { callEarlyElectionsAction } from './game/elections.js';
 import { openImpeachmentTrigger } from './game/impeachment.js';
 import { MODIFIERS, ISSUE_TYPES } from './game/issues.js';
 import { getAdminFactionOverride } from './common.js';
+import { broadcastWorldEvent } from './game/event-helpers.js';
 
 let _supabase = null;
 let _state = null;
@@ -3423,7 +3424,21 @@ async function openPressClaimModal(root, faction) {
             });
             if (error) errorMsg = error.message || 'Could not press the claim.';
             else if (!data?.ok) errorMsg = data?.message || 'Could not press the claim.';
-            else result = data;
+            else {
+                result = data;
+                // World news. Awaited to match the codebase's event_log insert
+                // pattern (elections.js, impeachment.js, budget.js, …); the
+                // helper swallows its own errors so this can't break the flow.
+                const myName = _state?.nation?.name || 'A nation';
+                const targetName = neighbours.find(n => n.id === selectedId)?.name || 'another nation';
+                await broadcastWorldEvent(_supabase, {
+                    eventName: 'Territorial Claim Pressed',
+                    triggerKey: 'dispute_press_claim',
+                    description: `${myName} has pressed a territorial claim against ${targetName}.`,
+                    category: 'diplomacy',
+                    currentTick: _state?.shard?.current_tick,
+                });
+            }
         } catch (e) {
             errorMsg = e?.message || 'Network error.';
         } finally {
