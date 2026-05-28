@@ -401,7 +401,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { industryLabel, ownerDisplayName, fmtValuation } from './js/utils.js';
+import { industryLabel, ownerDisplayName, fmtValuation, safeHexColor, factionInitials } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 import { fetchCorpBookAggregates } from './js/corp-book-value.js';
 
@@ -416,6 +416,22 @@ function pickTier(tiers, value) {
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 function escAttr(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
+
+// One source for "who is the current PM and which party do they head?"
+// Same lookup shape used by the hero HoG cell and the parliament's
+// PM strip card: prefer ministry minister fields, fall back to the
+// seated party's leader, "" if neither. The ministry's joined
+// factions field is sometimes a single object and sometimes an array
+// (Supabase pgrest quirk for single foreign-key joins), so normalize.
+function resolvePm(pm) {
+  const fac = pm && (Array.isArray(pm.factions) ? pm.factions[0] : pm.factions);
+  const first = pm?.minister_first_name || fac?.leader_first_name || '';
+  const last  = pm?.minister_last_name  || fac?.leader_last_name  || '';
+  return {
+    name:      `${first} ${last}`.trim(),
+    partyName: fac?.faction_name || '',
+  };
+}
 
 function formatPopulation(n) {
   const v = Number(n) || 0;
@@ -580,14 +596,9 @@ function renderCard(n, pm) {
     hogEl.textContent = hosName ? `${hosTitle} ${hosName}` : '—';
     hogSubEl.textContent = 'president leads the government';
   } else {
-    // Prefer the minister fields on the ministry row; fall back to the seated
-    // party's leader if those aren't set. Final fallback: "Vacant".
-    const fac = pm && (Array.isArray(pm.factions) ? pm.factions[0] : pm.factions);
-    const pmFirst = pm?.minister_first_name || fac?.leader_first_name || '';
-    const pmLast  = pm?.minister_last_name  || fac?.leader_last_name  || '';
-    const pmName  = `${pmFirst} ${pmLast}`.trim();
+    const { name: pmName, partyName } = resolvePm(pm);
     hogEl.textContent = pmName ? `PM ${pmName}` : 'Vacant';
-    hogSubEl.textContent = fac?.faction_name ? `${fac.faction_name}-led government` : 'Prime Minister';
+    hogSubEl.textContent = partyName ? `${partyName}-led government` : 'Prime Minister';
   }
 
   // Politician-side stats: three dollar cells (GDP / Budget / Debt) and two
@@ -856,18 +867,12 @@ async function renderCorporations(nationId) {
   }
 }
 
-function corpInitials(name) {
-  const parts = (name || '').split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return (name || '??').substring(0, 2).toUpperCase();
-}
-
 function renderCorpRow(c) {
   const val = computeEntrepreneurValuation(c, c.bookAgg);
   const ind = (c.industry || '').toLowerCase();
   const listing = (c.listing || 'private').toLowerCase();
   return `<div class="corp-row">
-    <div class="corp-badge ${escHtml(ind)}">${escHtml(corpInitials(c.name))}</div>
+    <div class="corp-badge ${escHtml(ind)}">${escHtml(factionInitials(c.name))}</div>
     <div>
       <div class="corp-name">${escHtml(c.name || 'Corporation')}</div>
       <div class="corp-sub">${escHtml(industryLabel(c.industry))}</div>
@@ -996,16 +1001,11 @@ function renderGovStrip(governing, opposition, pm, totalSeats) {
          <div class="gcd">no party holds &gt; 50% of seats</div>
        </div>`;
 
-  // PM lookup follows the same pattern renderCard uses: ministry minister
-  // fields first, faction leader as fallback, "Vacant" if neither.
-  const fac = pm && (Array.isArray(pm.factions) ? pm.factions[0] : pm.factions);
-  const pmFirst = pm?.minister_first_name || fac?.leader_first_name || '';
-  const pmLast  = pm?.minister_last_name  || fac?.leader_last_name  || '';
-  const pmName  = `${pmFirst} ${pmLast}`.trim();
+  const { name: pmName, partyName } = resolvePm(pm);
   const pmCard = `<div class="gov-card">
     <div class="gck">PRIME MINISTER</div>
     <div class="gcv">${pmName ? escHtml(pmName) : 'Vacant'}</div>
-    <div class="gcd">${fac?.faction_name ? `leader of ${escHtml(fac.faction_name)}` : 'awaiting appointment'}</div>
+    <div class="gcd">${partyName ? `leader of ${escHtml(partyName)}` : 'awaiting appointment'}</div>
   </div>`;
 
   const oppLeaderName = opposition
@@ -1038,7 +1038,7 @@ function renderPartyRow(p, totalSeats, governing, myPartyId) {
     isMine ? '<span class="status-pill you">&#9679; You</span>' : '',
   ].filter(Boolean).join(' ');
   return `<div class="party-row" style="border-left-color:${accent};">
-    <div class="party-badge" style="${badgeStyle}">${escHtml(partyBadgeInitials(p))}</div>
+    <div class="party-badge" style="${badgeStyle}">${escHtml(factionInitials(p.faction_name, p.abbreviation))}</div>
     <div class="party-info">
       <div class="party-name">${escHtml(p.faction_name)} ${pills}</div>
       ${p.party_description ? `<div class="party-desc">${escHtml(p.party_description)}</div>` : ''}
@@ -1053,21 +1053,6 @@ function renderPartyRow(p, totalSeats, governing, myPartyId) {
       <div class="ps-l">SEATS</div>
     </div>
   </div>`;
-}
-
-function partyBadgeInitials(p) {
-  if (p.abbreviation) return p.abbreviation.slice(0, 3).toUpperCase();
-  const parts = (p.faction_name || '').split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return (p.faction_name || '??').slice(0, 2).toUpperCase();
-}
-
-// Hex-only filter for any party_color value flowing into inline CSS —
-// safeHexColor rejects anything that isn't a 3/6/8-digit hex so the
-// `style="background:${color};"` interpolations below can't be hijacked
-// via a "; background:url(...)" payload in the column.
-function safeHexColor(c) {
-  return /^#[0-9a-f]{3}([0-9a-f]{3}([0-9a-f]{2})?)?$/i.test(c || '') ? c : '#5aafa5';
 }
 
 init();

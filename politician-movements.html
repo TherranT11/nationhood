@@ -231,6 +231,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
+import { safeHexColor, factionInitials } from './js/utils.js';
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 
@@ -327,14 +328,6 @@ function renderTab(tab) {
   list.innerHTML = `<div class="empty">${EMPTY_BY_TAB[tab] || 'No active movements yet.'}</div>`;
 }
 
-// Hex-color only — party_color is admin-supplied (trusted today, but escHtml
-// doesn't escape CSS context, so anything non-hex would still let a stray
-// "; background:url(...)" through into the style attribute). Anything that
-// isn't a 3/6/8-digit hex falls back to the brand teal.
-function safeHexColor(c) {
-  return /^#[0-9a-f]{3}([0-9a-f]{3}([0-9a-f]{2})?)?$/i.test(c || '') ? c : '#5aafa5';
-}
-
 function renderPartyCard(p) {
   const accent = safeHexColor(p.party_color);
   const leader = [p.leader_first_name, p.leader_last_name].filter(Boolean).join(' ');
@@ -393,13 +386,6 @@ function renderJoinList() {
   });
 }
 
-function partyInitials(name, abbr) {
-  if (abbr) return abbr.slice(0, 3).toUpperCase();
-  const parts = (name || '').split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return (name || '??').slice(0, 2).toUpperCase();
-}
-
 function renderJoinRow(p) {
   const accent = safeHexColor(p.party_color);
   const leaderName = [p.leader_first_name, p.leader_last_name].filter(Boolean).join(' ');
@@ -418,7 +404,7 @@ function renderJoinRow(p) {
   const logoStyle = `background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;`;
   return `<div class="jp-party">
     <div class="jp-row">
-      <div class="jp-logo" style="${logoStyle}">${escHtml(partyInitials(p.faction_name, p.abbreviation))}</div>
+      <div class="jp-logo" style="${logoStyle}">${escHtml(factionInitials(p.faction_name, p.abbreviation))}</div>
       <div>
         <div class="jp-name">${escHtml(p.faction_name)}</div>
         <div class="jp-abbr">${escHtml(p.abbreviation || '')}</div>

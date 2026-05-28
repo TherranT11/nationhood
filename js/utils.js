@@ -30,6 +30,30 @@ export function escapeAttr(text) {
 }
 
 /**
+ * Hex-color guard for any user-supplied color string that flows into
+ * inline CSS via `style="..."`. escapeHtml doesn't escape CSS context,
+ * so a "; background:url(...)" payload would otherwise slip through.
+ * Accepts 3 / 6 / 8-digit hex values; anything else falls back to the
+ * brand teal. Source of truth — every page that paints with a stored
+ * party_color or similar must filter through this.
+ */
+export function safeHexColor(c, fallback = '#5aafa5') {
+    return /^#[0-9a-f]{3}([0-9a-f]{3}([0-9a-f]{2})?)?$/i.test(c || '') ? c : fallback;
+}
+
+/**
+ * 2-3 letter badge initials for a faction (party / corp / etc.). Prefers
+ * the abbreviation when present; falls back to two-word initials, then a
+ * two-letter slice of the name. Final fallback: "??".
+ */
+export function factionInitials(name, abbreviation) {
+    if (abbreviation) return String(abbreviation).slice(0, 3).toUpperCase();
+    const parts = (name || '').split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return (name || '??').slice(0, 2).toUpperCase();
+}
+
+/**
  * Truncate a string to `max` characters, adding '...' if trimmed.
  */
 export function truncate(str, max) {
