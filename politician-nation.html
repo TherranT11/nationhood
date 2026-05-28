@@ -150,6 +150,66 @@
 .corp-val { font-size:13px; color:#cfcabf; font-family:monospace;
   text-align:right; font-variant-numeric:tabular-nums; }
 
+/* Government & Politics — parliament block. Reads movement_party rows
+   for the nation and renders an SVG arc (one seat per circle, coloured
+   by party), a three-card strip (governing party / PM / opposition
+   leader), and a per-party list. Empty-state for Absolute Monarchy. */
+.parl-head { display:flex; justify-content:space-between; align-items:baseline;
+  margin-bottom:14px; padding:2px 2px 12px; border-bottom:0.5px solid rgba(255,255,255,0.05); }
+.parl-title { font-size:15px; font-weight:500; color:#fff; }
+.parl-title .serif { font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#7a9aab; }
+.parl-meta  { font-size:10px; color:#888; letter-spacing:0.04em; }
+.parl-meta strong { color:#fff; }
+.chamber-wrap { display:flex; justify-content:center; padding:14px 0 6px; }
+.chamber { width:100%; max-width:760px; height:auto; }
+
+.gov-strip { display:grid; grid-template-columns:repeat(3,1fr); gap:10px;
+  padding-top:14px; margin-bottom:16px; }
+.gov-card { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:5px; padding:11px 14px; }
+.gov-card .gck { font-size:8px; letter-spacing:0.12em; color:#666; margin-bottom:5px; }
+.gov-card .gcv { font-size:13px; font-weight:600; color:#fff; line-height:1.2; }
+.gov-card .gcd { font-size:10px; color:#888; margin-top:4px; line-height:1.4; }
+.gov-card.gov { background:#0e1611; border-color:rgba(122,170,106,0.35); }
+.gov-card.gov .gck { color:#8aaa6a; }
+.gov-card.opp { background:#161208; border-color:rgba(200,158,110,0.25); }
+.gov-card.opp .gck { color:#c89e6e; }
+
+.parties-lab { font-size:9px; letter-spacing:0.13em; color:#666;
+  margin:6px 0 10px; padding-top:6px; border-top:0.5px solid rgba(255,255,255,0.05); }
+.party-row { display:flex; align-items:center; gap:14px; padding:13px 14px;
+  border-radius:6px; border:0.5px solid rgba(255,255,255,0.07);
+  border-left-width:3px; background:#0a0a0a; margin-bottom:8px; }
+.party-row:last-child { margin-bottom:0; }
+.party-badge { width:36px; height:36px; border-radius:5px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-family:monospace; font-size:11px; font-weight:700; letter-spacing:0.04em; }
+.party-info { flex:1; min-width:0; }
+.party-name { font-size:13px; font-weight:600; color:#fff; display:flex;
+  align-items:center; gap:10px; flex-wrap:wrap; }
+.party-desc { font-size:10.5px; color:#888; margin-top:4px; line-height:1.5; }
+.status-pill { font-size:8px; letter-spacing:0.11em; padding:2px 7px; border-radius:2px;
+  text-transform:uppercase; font-weight:600; }
+.status-pill.gov   { background:#0e1611; color:#8aaa6a; border:0.5px solid rgba(122,170,106,0.35); }
+.status-pill.opp   { background:#161208; color:#c89e6e; border:0.5px solid rgba(200,158,110,0.25); }
+.status-pill.you   { background:#0e1416; color:#5aafa5; border:0.5px solid rgba(90,175,165,0.4); }
+.party-meta { display:flex; flex-direction:column; gap:6px; font-size:10px;
+  color:#bbb; flex-shrink:0; padding-left:10px; min-width:160px; }
+.party-meta .ml { color:#666; font-size:8px; letter-spacing:0.07em; }
+.party-meta .mv { color:#fff; font-weight:500; }
+.party-meta .mv.none { color:#666; font-style:italic; font-weight:400; }
+.party-seats { text-align:right; flex-shrink:0; min-width:74px; }
+.party-seats .ps-n  { font-size:20px; font-weight:600; color:#fff;
+  font-variant-numeric:tabular-nums; line-height:1; }
+.party-seats .ps-of { font-size:9px; color:#888; margin-top:3px; }
+.party-seats .ps-l  { font-size:8px; letter-spacing:0.11em; color:#666; margin-top:5px; }
+
+.govt-empty { padding:24px 8px; text-align:center; }
+.govt-empty .head { font-size:14px; color:#fff; font-weight:500; margin-bottom:8px; }
+.govt-empty .head .serif { font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#c89e6e; }
+.govt-empty .note { font-size:11px; color:#888; line-height:1.6; font-style:italic;
+  max-width:540px; margin:0 auto; }
+
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
 /* Mobile refresh — tighter padding on the whole content, wrap the hero,
@@ -179,6 +239,9 @@
   .corp-row { padding:10px 2px; }
   .corp-head .col-type, .corp-head .col-ceo,
   .corp-row .corp-listing, .corp-row .corp-ceo { display:none; }
+  .gov-strip { grid-template-columns:1fr; gap:8px; }
+  .party-row { flex-wrap:wrap; }
+  .party-meta { padding-left:0; min-width:0; width:100%; flex-direction:row; gap:14px; }
 }
 @media (max-width:420px) {
   .info-grid, .stats-grid { grid-template-columns:1fr; }
@@ -249,8 +312,8 @@
   </details>
   <details id="sec-govt" class="sec">
     <summary>Government &amp; Politics</summary>
-    <div class="sec-body">
-      <div class="sec-empty">Nothing recorded yet.</div>
+    <div class="sec-body" id="sec-govt-body">
+      <div class="sec-empty">Loading…</div>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
@@ -449,6 +512,7 @@ async function init() {
   // Side panels that hit the DB. Fire-and-forget — failures render an
   // empty state in their own section without blocking the page.
   renderCorporations(nation.id);
+  renderGovernment(nation, pmMinistry, ctx.faction?.politician_party_id || null);
 }
 
 // Jump-nav clicks open the matching <details> and scroll it into view.
@@ -812,6 +876,198 @@ function renderCorpRow(c) {
     <div class="corp-ceo">${escHtml(ownerDisplayName(c.owner))}</div>
     <div class="corp-val">${escHtml(fmtValuation(val.amount))}</div>
   </div>`;
+}
+
+// Government & Politics — parliament block for parliamentary nations,
+// crown-rule notice for Absolute Monarchies. Reads movement_party rows
+// in the politician's nation (the same source the Movements page reads),
+// so seat counts and governing/opposition status stay in lockstep across
+// surfaces. Soft-fails to an error empty state on query failure.
+async function renderGovernment(n, pm, myPartyId) {
+  const body = document.getElementById('sec-govt-body');
+  if (!body) return;
+  const footer = '<div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>';
+
+  if (n.government_type === 'Absolute Monarchy') {
+    body.innerHTML = `<div class="govt-empty">
+      <div class="head">There is no <span class="serif">parliament</span> in ${escHtml(n.name)}.</div>
+      <div class="note">Political authority flows from the throne. The monarch governs through ministers of their choosing; parties are prohibited, there are no elections, no constituencies, and no chamber to seat them.</div>
+    </div>` + footer;
+    return;
+  }
+
+  try {
+    const { data, error } = await _supabase.from('factions')
+      .select('id, faction_name, abbreviation, seats, party_color, party_description, leader_first_name, leader_last_name')
+      .eq('nation_id', n.id)
+      .eq('faction_type', 'movement_party')
+      .is('abandoned_at', null)
+      .order('seats', { ascending: false })
+      .order('faction_name');
+    if (error) throw error;
+    const parties = data || [];
+    const totalSeats = Math.max(0, Number(n.total_seats) || 0);
+    const majority   = totalSeats > 0 ? Math.floor(totalSeats / 2) + 1 : 0;
+    // Governing party = first one with > 50% seats. No coalition logic —
+    // when nobody has a majority, the strip says "No majority government".
+    const governing = parties.find(p => (Number(p.seats) || 0) >= majority && totalSeats > 0) || null;
+    const opposition = parties.find(p => !governing || p.id !== governing.id) || null;
+
+    body.innerHTML = `
+      <div class="parl-head">
+        <div class="parl-title">National <span class="serif">Assembly</span></div>
+        <div class="parl-meta"><strong>${totalSeats}</strong> seats &middot; <strong>${majority}</strong> needed for a majority</div>
+      </div>
+      <div class="chamber-wrap">${renderChamberArc(parties, totalSeats)}</div>
+      ${renderGovStrip(governing, opposition, pm, totalSeats)}
+      <div class="parties-lab">Parties in the Assembly &middot; ordered by seat share</div>
+      ${parties.length
+        ? parties.map(p => renderPartyRow(p, totalSeats, governing, myPartyId)).join('')
+        : '<div class="sec-empty">No parties have been seated yet.</div>'}
+    ` + footer;
+  } catch (err) {
+    console.error('politician-nation: government fetch failed', err);
+    body.innerHTML = '<div class="sec-empty">Could not load the parliament.</div>' + footer;
+  }
+}
+
+// Half-annulus arc, one circle per seat. Lays seats out in concentric rows
+// proportional to row radius, then sorts left-to-right and paints each
+// seat with its party's color in seat-count-descending order.
+function renderChamberArc(parties, totalSeats) {
+  if (!totalSeats) return '';
+  const W = 760, H = 400, cx = W / 2, cy = 340;
+  const innerR = 90, outerR = 320, rows = 7;
+  const rowGap = (outerR - innerR) / (rows - 1);
+  const radii = Array.from({ length: rows }, (_, i) => innerR + i * rowGap);
+  const totalArc = radii.reduce((s, r) => s + r, 0);
+  const seatsPerRow = radii.map(r => Math.round(totalSeats * r / totalArc));
+  // Adjust to exactly totalSeats so no row over/undershoots.
+  let diff = totalSeats - seatsPerRow.reduce((a, b) => a + b, 0);
+  for (let i = 0; diff !== 0; i++) {
+    seatsPerRow[i % rows] += diff > 0 ? 1 : -1;
+    diff += diff > 0 ? -1 : 1;
+  }
+  const positions = [];
+  for (let r = 0; r < rows; r++) {
+    const n = seatsPerRow[r], radius = radii[r];
+    for (let s = 0; s < n; s++) {
+      const t = (s + 0.5) / n;
+      const angle = Math.PI - t * Math.PI;
+      positions.push({
+        x: cx + radius * Math.cos(angle),
+        y: cy - radius * Math.sin(angle),
+        angle,
+      });
+    }
+  }
+  positions.sort((a, b) => b.angle - a.angle);
+
+  // Paint seats: each party claims its seats in arc order. Unfilled seats
+  // (total_seats > sum(party.seats)) get a dim "vacant" color so the
+  // shape is visible even in a half-empty chamber.
+  let cursor = 0;
+  let svg = '';
+  for (const p of parties) {
+    const color = safeHexColor(p.party_color);
+    const count = Math.max(0, Number(p.seats) || 0);
+    for (let i = 0; i < count && cursor < positions.length; i++) {
+      const pos = positions[cursor++];
+      svg += `<circle cx="${pos.x.toFixed(1)}" cy="${pos.y.toFixed(1)}" r="6" fill="${color}" opacity="0.92"/>`;
+    }
+  }
+  while (cursor < positions.length) {
+    const pos = positions[cursor++];
+    svg += `<circle cx="${pos.x.toFixed(1)}" cy="${pos.y.toFixed(1)}" r="6" fill="#333" opacity="0.55"/>`;
+  }
+  return `<svg class="chamber" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${svg}</svg>`;
+}
+
+function renderGovStrip(governing, opposition, pm, totalSeats) {
+  const govCard = governing
+    ? `<div class="gov-card gov">
+         <div class="gck">GOVERNING PARTY</div>
+         <div class="gcv">${escHtml(governing.faction_name)}</div>
+         <div class="gcd">${governing.seats} of ${totalSeats} seats &middot; majority government</div>
+       </div>`
+    : `<div class="gov-card">
+         <div class="gck">GOVERNING PARTY</div>
+         <div class="gcv">No majority</div>
+         <div class="gcd">no party holds &gt; 50% of seats</div>
+       </div>`;
+
+  // PM lookup follows the same pattern renderCard uses: ministry minister
+  // fields first, faction leader as fallback, "Vacant" if neither.
+  const fac = pm && (Array.isArray(pm.factions) ? pm.factions[0] : pm.factions);
+  const pmFirst = pm?.minister_first_name || fac?.leader_first_name || '';
+  const pmLast  = pm?.minister_last_name  || fac?.leader_last_name  || '';
+  const pmName  = `${pmFirst} ${pmLast}`.trim();
+  const pmCard = `<div class="gov-card">
+    <div class="gck">PRIME MINISTER</div>
+    <div class="gcv">${pmName ? escHtml(pmName) : 'Vacant'}</div>
+    <div class="gcd">${fac?.faction_name ? `leader of ${escHtml(fac.faction_name)}` : 'awaiting appointment'}</div>
+  </div>`;
+
+  const oppLeaderName = opposition
+    ? `${opposition.leader_first_name || ''} ${opposition.leader_last_name || ''}`.trim() || '—'
+    : '—';
+  const oppCard = opposition
+    ? `<div class="gov-card opp">
+         <div class="gck">LEADER OF OPPOSITION</div>
+         <div class="gcv">${escHtml(oppLeaderName)}</div>
+         <div class="gcd">leader of ${escHtml(opposition.faction_name)}</div>
+       </div>`
+    : `<div class="gov-card">
+         <div class="gck">LEADER OF OPPOSITION</div>
+         <div class="gcv">—</div>
+         <div class="gcd">no opposition party</div>
+       </div>`;
+
+  return `<div class="gov-strip">${govCard}${pmCard}${oppCard}</div>`;
+}
+
+function renderPartyRow(p, totalSeats, governing, myPartyId) {
+  const accent = safeHexColor(p.party_color);
+  const isGov  = governing && governing.id === p.id;
+  const isMine = myPartyId && myPartyId === p.id;
+  const leader = [p.leader_first_name, p.leader_last_name].filter(Boolean).join(' ');
+  const badgeStyle = `background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;`;
+  const pills = [
+    isGov  ? '<span class="status-pill gov">&#9679; Governing</span>'
+           : '<span class="status-pill opp">&#9679; Opposition</span>',
+    isMine ? '<span class="status-pill you">&#9679; You</span>' : '',
+  ].filter(Boolean).join(' ');
+  return `<div class="party-row" style="border-left-color:${accent};">
+    <div class="party-badge" style="${badgeStyle}">${escHtml(partyBadgeInitials(p))}</div>
+    <div class="party-info">
+      <div class="party-name">${escHtml(p.faction_name)} ${pills}</div>
+      ${p.party_description ? `<div class="party-desc">${escHtml(p.party_description)}</div>` : ''}
+    </div>
+    <div class="party-meta">
+      <div><div class="ml">PARTY LEADER</div><div class="mv${leader ? '' : ' none'}">${leader ? escHtml(leader) : 'Vacant'}</div></div>
+      <div><div class="ml">YOUR AFFILIATION</div><div class="mv${isMine ? '' : ' none'}">${isMine ? 'Member' : '—'}</div></div>
+    </div>
+    <div class="party-seats">
+      <div class="ps-n">${Number(p.seats) || 0}</div>
+      <div class="ps-of">of ${totalSeats}</div>
+      <div class="ps-l">SEATS</div>
+    </div>
+  </div>`;
+}
+
+function partyBadgeInitials(p) {
+  if (p.abbreviation) return p.abbreviation.slice(0, 3).toUpperCase();
+  const parts = (p.faction_name || '').split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return (p.faction_name || '??').slice(0, 2).toUpperCase();
+}
+
+// Hex-only filter for any party_color value flowing into inline CSS —
+// safeHexColor rejects anything that isn't a 3/6/8-digit hex so the
+// `style="background:${color};"` interpolations below can't be hijacked
+// via a "; background:url(...)" payload in the column.
+function safeHexColor(c) {
+  return /^#[0-9a-f]{3}([0-9a-f]{3}([0-9a-f]{2})?)?$/i.test(c || '') ? c : '#5aafa5';
 }
 
 init();
