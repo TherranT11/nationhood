@@ -485,6 +485,18 @@
     color:#aaa; line-height:1.6; }
   .bm-summary b { color:#8aaa6a; font-weight:500; }
   .bm-summary .bm-stat { font-size:10px; color:#777; letter-spacing:0.06em; text-transform:uppercase; }
+  /* Buy Engines: card picker (replaces <select> so long names wrap and the
+     full stat line — thrust / weight / eff / rel / Q — is always visible). */
+  .be-engines { display:flex; flex-direction:column; gap:6px; max-height:280px; overflow-y:auto; }
+  .be-eng { padding:10px 12px; background:#121212; border:0.5px solid rgba(255,255,255,0.10);
+    border-radius:4px; cursor:pointer; }
+  .be-eng:hover { border-color:rgba(138,170,106,0.3); }
+  .be-eng.sel { background:#131613; border-color:#6a8a4a; }
+  .be-eng-top { display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:3px; }
+  .be-eng-nm { font-size:13px; font-weight:500; color:#fff; word-break:break-word; min-width:0; }
+  .be-eng-cost { font-size:11px; font-weight:700; color:#8aaa6a; flex-shrink:0; font-variant-numeric:tabular-nums; }
+  .be-eng-mfg { font-size:10px; color:#8a8680; margin-bottom:4px; word-break:break-word; }
+  .be-eng-st { font-size:10px; color:#aca8a0; font-variant-numeric:tabular-nums; letter-spacing:0.02em; }
   .bm-err { color:#c98a8a; font-size:11px; margin-top:10px; min-height:14px; }
   .bm-foot { padding:14px 22px; border-top:0.5px solid rgba(255,255,255,0.08);
     background:#0d0d0d; display:flex; gap:10px; justify-content:flex-end; }
@@ -1449,7 +1461,7 @@ function initials(s, n) {
       const overlay = document.getElementById('ad-engtrade-overlay');
       if (!overlay) return;
       const { data: engines, error: eErr } = await _supabase.from('ent_aircraft_designs')
-        .select('id, name, thrust, reliability, efficiency, cost_per_unit, owner:entrepreneur_corps!entrepreneur_corp_id(name)')
+        .select('id, name, thrust, weight, efficiency, reliability, quality, cost_per_unit, owner:entrepreneur_corps!entrepreneur_corp_id(name)')
         .eq('design_type', 'engine').eq('status', 'available').neq('entrepreneur_corp_id', id).order('name');
       if (eErr) console.warn('[entrepreneur-corp] buy-engines fetch error:', eErr.message);
       const opts = engines || [];
@@ -1461,7 +1473,16 @@ function initials(s, n) {
             <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Request engines from another manufacturer. They name a price; you accept to close the deal. Bought engines stock your holdings and are consumed when you produce aircraft that use them.</div>
             ${opts.length ? `
               <div class="bm-label">Engine</div>
-              <select class="bm-select" id="be-engine">${opts.map(e => `<option value="${e.id}">${escapeHtml(e.name)} · ${escapeHtml(e.owner?.name || '—')} · thr ${e.thrust}/rel ${e.reliability}</option>`).join('')}</select>
+              <div class="be-engines" id="be-engine-list">${opts.map((e, i) => `
+                <div class="be-eng${i === 0 ? ' sel' : ''}" data-id="${e.id}">
+                  <div class="be-eng-top">
+                    <span class="be-eng-nm">${escapeHtml(e.name)}</span>
+                    <span class="be-eng-cost">${fmtUsd(Number(e.cost_per_unit) || 0)}/u</span>
+                  </div>
+                  <div class="be-eng-mfg">${escapeHtml(e.owner?.name || '—')}</div>
+                  <div class="be-eng-st">thrust ${e.thrust} · weight ${e.weight} · eff ${e.efficiency} · rel ${e.reliability} · Q${e.quality}</div>
+                </div>`).join('')}</div>
+              <input type="hidden" id="be-engine" value="${opts[0].id}">
               <div class="bm-label">Quantity</div>
               <input type="number" class="bm-input" id="be-qty" min="1" max="1000" value="1">
               <div style="font-size:11px;color:#8a8680;margin-top:8px;">The seller sets the price — there's no cost to request.</div>`
@@ -1477,6 +1498,15 @@ function initials(s, n) {
       document.getElementById('be-close').onclick = close;
       document.getElementById('be-cancel').onclick = close;
       overlay.onclick = (e) => { if (e.target === overlay) close(); };
+      // Card picker → hidden input is the source of truth for the submit.
+      const list = document.getElementById('be-engine-list');
+      if (list) list.addEventListener('click', (ev) => {
+        const card = ev.target.closest('.be-eng');
+        if (!card) return;
+        list.querySelectorAll('.be-eng.sel').forEach(el => el.classList.remove('sel'));
+        card.classList.add('sel');
+        document.getElementById('be-engine').value = card.dataset.id;
+      });
       const btn = document.getElementById('be-submit');
       if (btn && !btn.disabled) btn.onclick = async () => {
         if (submitting) return;
@@ -1564,8 +1594,11 @@ function initials(s, n) {
       overlay.classList.add('open');
     }
 
-    // Decline / withdraw an engine order (either party).
+    // Decline / withdraw / reject an engine order — the same RPC handles all
+    // three (ent_cancel_engine_order accepts either party). Preserve the
+    // caller's button label so a failed Reject doesn't revert to "Decline".
     async function cancelEngineOrder(orderId, btn) {
+      const originalLabel = btn ? btn.textContent : null;
       if (btn) { btn.disabled = true; btn.textContent = '…'; }
       try {
         const { data, error } = await _supabase.rpc('ent_cancel_engine_order', { p_order_id: orderId });
@@ -1573,7 +1606,7 @@ function initials(s, n) {
         location.reload();
       } catch (e) {
         console.warn('[entrepreneur-corp] cancel engine order failed:', e?.message || e);
-        if (btn) { btn.disabled = false; btn.textContent = 'Decline'; }
+        if (btn) { btn.disabled = false; btn.textContent = originalLabel || 'Decline'; }
       }
     }
 
@@ -3632,10 +3665,12 @@ function initials(s, n) {
           const eng = escapeHtml(o.engine?.name || 'Engine');
           const da = `data-oid="${o.id}" data-eng="${eng}" data-qty="${o.quantity}" data-price="${Number(o.price_per_unit) || 0}"`;
           if (o.seller_corp_id === id) {
-            // Incoming: I'm the seller.
+            // Incoming: I'm the seller. Pending → Set Price (responds with a
+            // price; buyer then accepts or declines) or Reject (kills the
+            // request via ent_cancel_engine_order, which permits either party).
             const buyer = escapeHtml(o.buyer?.name || 'Buyer');
             const act = o.status === 'pending'
-              ? ownerOnly(`<button class="ap-btn-small list eo-price-btn" ${da} data-party="${buyer}">Set Price</button>`)
+              ? `<div class="sh-row-actions" style="gap:6px;">${ownerOnly(`<button class="ap-btn-small list eo-price-btn" ${da} data-party="${buyer}">Set Price</button><button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Reject</button>`)}</div>`
               : `<span class="num amber">${fmtUsd(Number(o.price_per_unit) || 0)}/u · sent</span>`;
             return `<div class="cf-row"><div><div class="who">Sell ${o.quantity}× ${eng}</div><div class="sub">to ${buyer}</div></div>${act}</div>`;
           }
