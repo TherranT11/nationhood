@@ -142,17 +142,10 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { safeHexColor, factionInitials } from './js/utils.js';
+import { safeHexColor, factionInitials, tickToYear } from './js/utils.js';
+import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
-
-const TICKS_PER_AGE_YEAR = 12;
-const FOUNDED_YEAR_ANCHOR = 2010; // first politician-segment shard year; party.founded_tick of 0 reads as this year.
-
-function foundedYear(foundedTick) {
-  const t = Number(foundedTick) || 0;
-  return FOUNDED_YEAR_ANCHOR + Math.floor(t / TICKS_PER_AGE_YEAR);
-}
 
 let _viewerPolId = null;
 let _viewerPartyId = null;
@@ -229,7 +222,7 @@ function render(party, members) {
     isGov  ? '<span class="id-tag status-gov">&#9679; Governing</span>'
            : (totalSeats > 0 ? '<span class="id-tag status-opp">&#9679; Opposition</span>' : ''),
     isMine ? '<span class="id-tag you">&#9679; You are a member</span>' : '',
-    party.founded_tick != null ? `<span class="id-tag">Founded ${foundedYear(party.founded_tick)}</span>` : '',
+    party.founded_tick != null ? `<span class="id-tag">Founded ${tickToYear(party.founded_tick)}</span>` : '',
     party.abbreviation ? `<span class="id-tag">${escHtml(party.abbreviation.toUpperCase())}</span>` : '',
   ].filter(Boolean).join(' ');
 
@@ -250,7 +243,7 @@ function render(party, members) {
           : 'No assembly')}
         ${statCell('Status', isGov ? 'In Power' : (totalSeats > 0 ? 'Opposition' : '—'),
           isGov ? `holds majority (${majority} needed)` : (totalSeats > 0 ? `${majority - seats} short of majority` : ''))}
-        ${statCell('Founded', party.founded_tick != null ? String(foundedYear(party.founded_tick)) : '—',
+        ${statCell('Founded', party.founded_tick != null ? String(tickToYear(party.founded_tick)) : '—',
           party.founded_tick != null ? `tick ${party.founded_tick}` : 'unknown')}
         ${statCell('Members', String(members.length), `${members.length === 1 ? 'politician' : 'politicians'} on file`)}
       </div>
@@ -302,28 +295,18 @@ function renderActionButton(party, isMine, isAbsMon) {
 }
 
 async function doLeaveOrJoin(mode, partyId) {
-  if (mode === 'leave' && !confirm('Leave your political party? This costs 5 Influence.')) return;
+  if (mode === 'leave' && !confirm(LEAVE_PARTY_CONFIRM)) return;
   const btn = document.getElementById(mode === 'leave' ? 'party-leave' : 'party-join');
   if (!btn) return;
   const prev = btn.textContent;
   btn.disabled = true; btn.textContent = mode === 'leave' ? 'Leaving…' : 'Joining…';
-  try {
-    const rpc = mode === 'leave'
-      ? _supabase.rpc('politician_leave_party', { p_politician_id: _viewerPolId })
-      : _supabase.rpc('politician_join_party',  { p_politician_id: _viewerPolId, p_party_id: partyId });
-    const { data, error } = await rpc;
-    if (error) throw error;
-    if (!data || !data.success) {
-      alert((mode === 'leave' ? 'Could not leave: ' : 'Could not join: ') + (data?.reason || 'unknown'));
-      btn.disabled = false; btn.textContent = prev;
-      return;
-    }
-    location.reload();
-  } catch (err) {
-    console.error('party: leave/join failed', err);
-    alert((mode === 'leave' ? 'Could not leave: ' : 'Could not join: ') + (err.message || err));
+  const res = await callPartyAction(mode, _viewerPolId, partyId);
+  if (!res.ok) {
+    alert((mode === 'leave' ? 'Could not leave: ' : 'Could not join: ') + res.reason);
     btn.disabled = false; btn.textContent = prev;
+    return;
   }
+  location.reload();
 }
 
 function renderAbout(party) {

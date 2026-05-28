@@ -234,6 +234,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { safeHexColor, factionInitials } from './js/utils.js';
+import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 
@@ -338,6 +339,14 @@ function renderPartyCard(p) {
   if (p.party_description) subParts.push(escHtml(p.party_description));
   const sub = subParts.join(' &middot; ');
   const href = `party.html?id=${encodeURIComponent(p.id)}`;
+  // popularity_pct is the nation-level movement popularity (added on main).
+  // Rendered only when present so an older row that pre-dates the column,
+  // or a future reuse of this card for non-movement faction types, doesn't
+  // show "—%" or 0%. If you want the value to surface in this list, ensure
+  // popularity_pct is in the loadMovementParties() SELECT.
+  const pop = (p.popularity_pct != null)
+    ? `<div class="popularity">Popularity<strong>${Math.round(Number(p.popularity_pct))}%</strong></div>`
+    : '';
   return `<a class="mv-card" href="${href}" style="border-left-color:${accent}; text-decoration:none; color:inherit;">
     <div class="badge">${escHtml(p.abbreviation || '—')}</div>
     <div class="body">
@@ -345,6 +354,7 @@ function renderPartyCard(p) {
       <div class="sub">${sub || '<em>No description on record.</em>'}</div>
     </div>
     <div class="seats">Seats<strong>${Number(p.seats) || 0}</strong></div>
+    ${pop}
   </a>`;
 }
 
@@ -425,27 +435,17 @@ async function handleJoinClick(btn) {
   const partyId = btn.dataset.partyId;
   const mode    = btn.dataset.mode;
   // Leave is destructive (-5 Influence). Confirm before firing the RPC.
-  if (mode === 'leave' && !confirm('Leave your political party? This costs 5 Influence.')) return;
+  if (mode === 'leave' && !confirm(LEAVE_PARTY_CONFIRM)) return;
   const prevTxt = btn.textContent;
   btn.disabled = true; btn.textContent = mode === 'leave' ? 'Leaving…' : 'Joining…';
-  try {
-    const rpc = mode === 'leave'
-      ? _supabase.rpc('politician_leave_party', { p_politician_id: _politicianId })
-      : _supabase.rpc('politician_join_party',  { p_politician_id: _politicianId, p_party_id: partyId });
-    const { data, error } = await rpc;
-    if (error) throw error;
-    if (!data || !data.success) {
-      alert((mode === 'leave' ? 'Could not leave: ' : 'Could not join: ') + (data?.reason || 'unknown'));
-      btn.disabled = false; btn.textContent = prevTxt;
-      return;
-    }
-    // Reload so topbar (Influence pill) + career page state all reflect the change.
-    location.reload();
-  } catch (err) {
-    console.error('politician-movements: join/leave failed', err);
-    alert((mode === 'leave' ? 'Could not leave: ' : 'Could not join: ') + (err.message || err));
+  const res = await callPartyAction(mode, _politicianId, partyId);
+  if (!res.ok) {
+    alert((mode === 'leave' ? 'Could not leave: ' : 'Could not join: ') + res.reason);
     btn.disabled = false; btn.textContent = prevTxt;
+    return;
   }
+  // Reload so topbar (Influence pill) + career page state all reflect the change.
+  location.reload();
 }
 
 init();

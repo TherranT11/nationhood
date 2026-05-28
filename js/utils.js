@@ -116,8 +116,16 @@ export const MONTHS = [
  */
 export function tickToDate(tick) {
     if (tick == null) return '—';
-    const y = 2000 + Math.floor(tick / 12);
-    return `${MONTHS[tick % 12]}, ${y}`;
+    return `${MONTHS[tick % 12]}, ${tickToYear(tick)}`;
+}
+
+/**
+ * Year portion of tickToDate's "Month, Year" — same anchor (2000) and same
+ * 12-ticks-per-year math. Use this when a surface only needs the year and
+ * would otherwise re-derive it (and risk drifting from tickToDate).
+ */
+export function tickToYear(tick) {
+    return 2000 + Math.floor((Number(tick) || 0) / 12);
 }
 
 // ===== FORMATTING =====
