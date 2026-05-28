@@ -529,167 +529,10 @@ import { _supabase } from './js/supabase-client.js';
 import { PARTY_ICONS, PARTY_COLOR_PALETTE, DEFAULT_PARTY_ICON, getPartyIconSVG, getDefaultPartyColor } from './js/party-icons.js';
 import { escapeHtml } from './js/utils.js';
 import { ARCHETYPES, STRONGHOLD_POPULARITY_TIERS } from './js/game/archetypes.js';
+import { getNationNames } from './js/game/political-actions.js';
 
 let selectedArchetype = null; // archetype object from ARCHETYPES, or null
 
-// Leader name pools (default: Crucera / Spanish)
-const CRUCERA_FIRST_NAMES = [
-  'Alejandro','Camila','Diego','Valentina','Mateo','Isabela','Sebastian','Luca',
-  'Andres','Gabriel','Joaquin','Mariana','Carlos','Tomas','Rafael','Edwin',
-  'Emilio','Catalina','Fernando','Renata'
-];
-const CRUCERA_LAST_NAMES = [
-  'Velasco','Mendoza','Guerrero','Salazar','Castillo','Herrera','Morales','Rios',
-  'Delgado','Espinoza','Guzman','Navarro','Cordoba','Echeverria','Pacheco','Montero',
-  'Aguilar','Valenzuela','Carrasco','Ibarra'
-];
-
-// Calveth names (Danish)
-const CALVETH_FIRST = [
-  'Lukas','Noah','Victor','Oliver','Oscar','William','Emil','Alfred',
-  'Magnus','Mads','Frederik','Christian','Mikkel','Anders','Lars',
-  'Alma','Ida','Clara','Ella','Freja'
-];
-const CALVETH_LAST = [
-  'Jensen','Nielsen','Hansen','Pedersen','Andersen','Christensen',
-  'Larsen','Sørensen','Rasmussen','Jørgensen','Petersen','Madsen',
-  'Kristensen','Olsen','Thomsen','Frederiksen','Mikkelsen','Henriksen'
-];
-
-// Flandis names (Dutch)
-const FLANDIS_FIRST = [
-  'Anneliese','Bregje','Clasien','Dymphna','Elske','Fenna','Grietje','Hanneke',
-  'Ilse','Jobke','Karlijn','Lieselotte','Maaike','Nienke','Roos',
-  'Adriaan','Bastiaan','Casper','Damiaan','Evert','Floris','Gerben','Harmen',
-  'Ivo','Jasper','Klaas','Laurens','Maarten','Niels','Olaf','Pieter',
-  'Quinten','Reinier','Sander','Thijs','Uwe','Valentijn','Wessel','Xander',
-  'Yorick','Zeger','Arjen','Bram','Cor','Daan','Egbert','Folkert','Gijs','Hedzer','Imro'
-];
-const FLANDIS_LAST = [
-  'Bakker','Bos','Bosman','Brouwer','De Graaf','De Jong','De Vries','De Wit',
-  'Dekker','Dijkstra','Dijk','Driessen','Gerritsen','Hendriks','Hermans',
-  'Hoekstra','Huisman','Jacobs','Janssen','Koster','Kuiper','Lammers','Maas',
-  'Meijer','Mulder','Peters','Pieters','Pijpers','Post','Prins','Smit',
-  'Smits','Snel','Snoek','Timmers','Van Dam','Van den Berg','Van den Bosch',
-  'Van der Laan','Van der Meer','Van Dijk','Van Houten','Van Leeuwen','Van Rijn',
-  'Vermeer','Visser','Willems','Wolff','Zijlstra','Zwart'
-];
-
-// Avelia names (Spanish with Italian influence)
-const AVELIA_FIRST = [
-  'Marcelo','Luciana','Dante','Sofía','Lorenzo','Elena','Tomás','Rosario',
-  'Fabrizio','Carolina','Leandro','Paloma','Giancarlo','Inés','Renato','Marisol',
-  'Nico','Florencia','Aurelio','Celeste'
-];
-const AVELIA_LAST = [
-  'Montalbán','Ferretti','Salcedo','Conti','Valverde','Lucero','Maretti','Orellana',
-  'Bellini','Calderón','Santoro','Vásquez','Lombardi','Peñaloza','Rinaldi','Escobar',
-  'Castellani','Madrigal','Giacomo','Solano'
-];
-
-// Vostia names (Serbian/Slavic)
-const VOSTIA_FIRST = [
-  'Dragan','Goran','Vuk','Zoran','Dušan','Nemanja','Bogdan','Slobodan',
-  'Vlastimir','Milorad','Gvozden','Radomir','Branislav','Jovan','Dimitrije',
-  'Ognjen','Lazar','Miodrag','Zdravko','Nebojša','Predrag','Stojan',
-  'Vojislav','Darko','Borislav','Momčilo','Uroš','Radoš','Božidar',
-  'Gavrilo','Vasilije','Đorđe','Radovan','Blagoje','Veljko','Živko',
-  'Krsto','Miloš','Draško','Balša',
-  'Dragana','Svetlana','Jelena','Milica','Danica','Zora','Radmila','Snežana','Vesna'
-];
-const VOSTIA_LAST = [
-  'Jovanović','Petrović','Đorđević','Marković','Nikolić','Popović',
-  'Stojanović','Ilić','Lukić','Babić','Ristić','Kostić','Vuković',
-  'Lazarević','Kovačević','Simić','Milošević','Stevanović','Tomić',
-  'Savić','Radović','Dimitrijević','Vasić','Bogdanović','Jović',
-  'Krstić','Mladenović','Filipović','Gajić','Cvetković','Mitić',
-  'Todorović','Milosavljević','Živković','Knežević','Pantić','Stanković',
-  'Marić','Mihajlović','Tasić','Pavlović','Kuzmanović','Milanović'
-];
-
-// Hajjara / Al-Makir names (Arabic). Mirrors the ALMAKIR_* pools in
-// js/game/political-actions.js so client-side party creation and
-// server-side candidate generation draw from the same list.
-const HAJJARA_FIRST = [
-  'Ahmad','Muhammad','Ali','Omar','Hassan','Hussein','Khalid','Abdullah','Ibrahim','Yusuf',
-  'Ismail','Hamza','Tariq','Zayd','Saeed','Faisal','Nasser','Salman','Rashid','Kareem',
-  'Mahmoud','Farid','Jamal','Samir','Hadi','Anwar','Imran','Bilal','Qasim','Majid',
-  'Walid','Fadi','Rami','Zahir','Adnan','Amin','Haris','Yasin','Tamer','Nabil',
-  'Bashir','Dawood','Zakaria','Munir','Latif','Jaber','Mazen','Kamil','Rauf','Shadi'
-];
-const HAJJARA_LAST = [
-  'Al-Farouq','Al-Hakim','Al-Masri','Al-Sabah','Al-Najjar','Al-Haddad','Al-Saleh','Al-Sharif',
-  'Al-Khalifa','Al-Qahtani','Al-Harbi','Al-Otaibi','Al-Anzi','Al-Zahrani','Al-Ghamdi','Al-Dosari',
-  'Al-Rashidi','Al-Suwaidi','Al-Mansouri','Al-Mutairi','Al-Ahmadi','Al-Saeed','Al-Jabari','Al-Khatib',
-  'Al-Basri','Al-Tamimi','Al-Hashimi','Al-Kurdi','Al-Husseini','Al-Yamani','Al-Shammari','Al-Farsi',
-  'Al-Hamadi','Al-Siddiqi','Al-Qureshi','Al-Azmi','Al-Salem','Al-Din','Al-Rahman','Al-Majid',
-  'Al-Bakri','Al-Saadi','Al-Hilali','Al-Makki','Al-Madani','Al-Baghdadi','Al-Dimashqi','Al-Andalusi',
-  'Al-Maghribi','Al-Samarrai','Al-Tikriti','Al-Nasiri','Al-Fahd','Al-Karim','Al-Nouri','Al-Sayegh',
-  'Al-Rifai','Al-Qadri','Al-Ayoubi','Al-Barghouti','Al-Khatri','Al-Shihabi','Al-Awadi','Al-Sarraf',
-  'Al-Zubaidi','Al-Hussein','Al-Attar','Al-Safadi','Al-Hourani','Al-Kassab','Al-Taleb','Al-Hamdan',
-  'Al-Rantisi','Al-Banna','Al-Khatour'
-];
-
-// Dravka names (Albanian). Mirrors DRAVKA_* pools in political-actions.js
-const DRAVKA_FIRST = [
-  'Agon','Altin','Arban','Ardian','Ardit','Arian','Arlind','Armend','Artan','Auron',
-  'Bardhyl','Besart','Besmir','Besnik','Bledar','Blerim','Burim','Dalmat','Dardan','Dasnor',
-  'Dëfrim','Dorian','Drilon','Dritan','Edon','Endrit','Enver','Erion','Ermal','Ervin',
-  'Fisnik','Flamur','Genti','Gezim','Ilir','Jetmir','Kastriot','Kreshnik','Luan','Mirlind',
-  'Pajtim','Saimir','Skerdilaid','Taulant','Vigan',
-  'Afërdita','Bora','Era','Luljeta','Teuta'
-];
-const DRAVKA_LAST = [
-  'Abazi','Ademi','Agolli','Ahmeti','Alia','Aliti','Asllani','Bajrami','Bakalli','Bala',
-  'Balaj','Bardhi','Beqiri','Berisha','Biba','Bisha','Brahimi','Buda','Bushaj','Bushati',
-  'Caka','Cami','Cani','Cela','Dajaku','Dauti','Deda','Dedaj','Demiri','Dervishi',
-  'Dobi','Doda','Dragusha','Duka','Elezi','Fejzu','Ferati','Frashëri','Gashi','Gega',
-  'Gjoni','Gjoka','Gurakuqi','Hadergjonaj','Hajdari','Halili','Hamiti','Haradinaj','Hasani','Hoti',
-  'Hoxha','Ismaili','Jahjaga','Jashari','Kadiu','Kastrati','Kelmendi','Kodra','Kola','Konica',
-  'Krasniqi','Kuqi','Kurti','Leka','Lekaj','Limaj','Luli','Lumi','Malo','Marku',
-  'Mazreku','Mehmeti','Meidani','Meksi','Meta','Morina','Muka','Murati','Musliu','Mustafa',
-  'Myftiu','Nano','Ndreu','Osmani','Pajaziti','Pasha','Prenga','Qosja','Rama','Rexhepi',
-  'Rugova','Sadiku','Sejdiu','Selimi','Shala','Shehu','Smajlaj','Spahiu','Tafa','Zaimi'
-];
-
-// Danwei names (Taiwanese, family-first convention). Mirrors DANWEI_*
-// pools in political-actions.js. FIRST = surnames, LAST = given names —
-// produces "Lin Mei-ling" display order.
-const DANWEI_FIRST = [
-  'Chen','Lin','Huang','Chang','Lee','Wang','Wu','Liu','Tsai','Yang',
-  'Hsu','Cheng','Chou','Hsieh','Kuo','Chiang','Tang','Lo','Pan','Chao',
-  'Ho','Chu','Tseng','Yeh','Hsiao','Lai','Su','Ma','Hung','Chiu',
-  'Shih','Chien','Liao','Han','Sun','Wei','Ku','Fang','Yu','Shen',
-  'Fu','Hsiang','Tsao','Hu','Sung','Shao','Kao','Pao','Po','Lung'
-];
-const DANWEI_LAST = [
-  // Male
-  'Kuo-yu','Wei-ming','Ming-chen','Chih-yuan','Hsiao-ping','Wen-cheng',
-  'Yu-ren','Ying-jeou','Teng-hui','Cheng-yi','Chen-yi','Tien-hsing',
-  'Po-yu','Chih-hao','Yi-feng','Chih-hung','Wei-jen','Cheng-ming',
-  'Po-chen','Hsing-kuo','Wen-fan','Po-hsiung','Tsung-hsien','Chao-ming',
-  'Yi-chun','Chang-ting',
-  // Female
-  'Mei-ling','Hsiu-lien','Wen-chi','Yu-hua','Su-chen','Yi-fang','Hsin-yi',
-  'Yu-ling','Chia-ling','Pei-ling','Mei-feng','Hsiao-mei','Yu-chen',
-  'Wen-ling','Mei-yu','Chia-hsuan','Pei-yi','Hsin-mei','Chia-jung',
-  'Pei-chen','Hsiu-chen','Mei-chen','Yi-ling','Hsiu-mei'
-];
-
-// Nation-aware name selection
-const NATION_NAMES = {
-  'Calveth': { first: CALVETH_FIRST, last: CALVETH_LAST },
-  'Avelia':  { first: AVELIA_FIRST,  last: AVELIA_LAST  },
-  'Flandis': { first: FLANDIS_FIRST, last: FLANDIS_LAST },
-  'Vostia':  { first: VOSTIA_FIRST,  last: VOSTIA_LAST  },
-  'Hajjara': { first: HAJJARA_FIRST, last: HAJJARA_LAST },
-  'Dravka':  { first: DRAVKA_FIRST,  last: DRAVKA_LAST  },
-  'Danwei':  { first: DANWEI_FIRST,  last: DANWEI_LAST  }
-};
-function getNamePool(nationName) {
-  const pool = NATION_NAMES[nationName];
-  return pool || { first: CRUCERA_FIRST_NAMES, last: CRUCERA_LAST_NAMES };
-}
 
 let currentUser = null;
 let nationData = null;
@@ -905,10 +748,10 @@ async function proceed() {
     const currentTick = shardData?.current_tick || 0;
 
     // Generate leader (nation-aware name pool)
-    const namePool = getNamePool(nationData.name);
+    const namePool = getNationNames(nationData.name);
     const leader = {
-      first: namePool.first[Math.floor(Math.random() * namePool.first.length)],
-      last: namePool.last[Math.floor(Math.random() * namePool.last.length)],
+      first: namePool.firstNames[Math.floor(Math.random() * namePool.firstNames.length)],
+      last: namePool.lastNames[Math.floor(Math.random() * namePool.lastNames.length)],
       age: 35 + Math.floor(Math.random() * 20)
     };
 
