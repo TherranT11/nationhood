@@ -54,10 +54,21 @@ export function resolveTransferEndpoints(article, agreement) {
 }
 
 /**
- * Single writer of the war-state transition. Puts two nations into
- * relation_type='war' on their canonical (a<b) diplomatic_relations row.
- * Used by BOTH the manual declaration resolver (bills.js) and territorial
- * auto-escalation (issues.js), so the war-state write lives in one place.
+ * Writer of the war-state transition. Puts two nations into relation_type='war'
+ * on their canonical (a<b) diplomatic_relations row.
+ *
+ * Callers (intentional dual-writer reality):
+ *   1. bills.js — manual declaration resolver (declare_war bill passes).
+ *   2. issues.js startWarFromIssue — natural-deadline auto-escalation in the
+ *      territorial-dispute tick branch.
+ *   3. SQL RPC public.go_to_war (sql/migrations/20270354) — the pressor's
+ *      manual "Go to War" click. This path REPLICATES the upsert + front-line
+ *      init in PL/pgSQL so war is instant. The companion bilateral_issues
+ *      status='escalated' it sets gates the issues.js tick branch so the
+ *      auto-escalation path does NOT re-fire.
+ *
+ * If you change the upsert shape or the front-line init contract here, you
+ * MUST mirror the change in 20270354_go_to_war_instant.sql.
  * Returns { ok }.
  */
 export async function setNationsAtWar(supabase, nationX, nationY, currentTick, justification) {

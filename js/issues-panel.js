@@ -378,7 +378,7 @@ function pressorZone(issue, region, roles, canManage) {
     <div class="pz-doors">
       <div class="lab">AT THE DEADLINE, YOU MUST CHOOSE</div>
       <div class="doors">
-        <button type="button" class="door war" data-action="go_to_war" data-id="${id}"><div class="dn">&#9876; Go to War</div><div class="dc">Escalate to the front &mdash; a state of war begins at the next tick.</div></button>
+        <button type="button" class="door war" data-action="go_to_war" data-id="${id}"><div class="dn">&#9876; Go to War</div><div class="dc">Escalate to the front &mdash; a state of war begins immediately.</div></button>
         <button type="button" class="door back" data-action="drop" data-id="${id}"><div class="dn">Back Down</div><div class="dc">Drop the claim &mdash; &minus;25 approval, +10 unrest, 360-tick re-press cooldown.</div></button>
       </div>
     </div>
@@ -727,7 +727,7 @@ const ACTION_CONFIRM = {
   drop: 'Back down — drop the claim entirely? You take −25 approval, +10 unrest, and cannot re-press this nation for 360 ticks.',
   press_harder: 'Press harder? This burns one tick off the decision clock.',
   extend: 'Extend the deadline by 2 ticks? This costs you 8 approval.',
-  go_to_war: 'Go to war? This is final — a state of war begins at the next tick.',
+  go_to_war: 'Go to war? This is final — a state of war begins immediately.',
   concede: 'Concede the claim? You accept the demand and the dispute resolves in the pressor’s favour.',
 };
 
