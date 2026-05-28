@@ -3070,6 +3070,13 @@ function initials(s, n) {
               const covLabel = r.last_filled_tick != null
                 ? ` · <span class="${filled >= demand ? 'accent' : 'red'}">last tick ${filled}/${demand} covered</span>`
                 : '';
+              // Bidders list: corp + committed freighters (no rates — sealed).
+              const biddersList = Array.isArray(r.bidders) ? r.bidders : [];
+              const biddersLine = biddersList.length
+                ? `<div class="sh-row-sub">Bidders: ${biddersList
+                    .map(b => `<span class="accent">${escapeHtml(b.corp_name || 'Corp')}</span> <span class="dim">${Number(b.freighters) || 0}×</span>`)
+                    .join(' · ')}</div>`
+                : '';
               return `
                 <div class="sh-row">
                   <div class="sh-row-info">
@@ -3080,6 +3087,7 @@ function initials(s, n) {
                       <span class="accent">${demand}</span> unit${demand === 1 ? '' : 's'}/tick ·
                       ${bidLabel}${covLabel}
                     </div>
+                    ${biddersLine}
                   </div>
                   ${ownerOnly(`<div class="sh-row-actions">
                     <button class="ap-btn-small list sh-place-bid"
