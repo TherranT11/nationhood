@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Your Politician | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-0: #0e0e0c; --bg-1: #1a1a1a; --bg-2: #1a1a17; --bg-3: #252525; --bg-hover: #282822;
+  --text-bright: #f0efe6; --text-primary: #c4c2b8; --text-secondary: #888;
+  --text-muted: #666; --text-dim: #4a4940;
+  --border-1: rgba(255,255,255,0.08); --border-2: rgba(255,255,255,0.12);
+  --teal: #5aafa5; --teal-faint: rgba(90,175,165,0.08); --teal-border: rgba(90,175,165,0.3);
+  --font-mono: 'JetBrains Mono', monospace; --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg-0); color: var(--text-primary); font-family: var(--font-ui); min-height: 100vh; }
+.wrap { max-width: 880px; margin: 0 auto; padding: 24px 20px 120px; }
+.back-btn { font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; background: transparent; color: var(--text-muted); border: 1px solid var(--border-1);
+  padding: 8px 16px; cursor: pointer; transition: all 0.15s; }
+.back-btn:hover { color: var(--text-bright); border-color: var(--text-muted); }
+.header { text-align: center; padding: 28px 0 20px; }
+.eyebrow { font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--teal); margin-bottom: 10px; }
+.title { font-family: var(--font-ui); font-size: 22px; font-weight: 700; color: var(--text-bright); }
+
+.continent-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.continent-tab { flex: 1; min-width: 160px; background: var(--bg-2); border: 1px solid var(--border-1);
+  padding: 12px 14px; cursor: pointer; transition: all 0.15s; }
+.continent-tab:hover { border-color: var(--teal-border); }
+.continent-tab.active { border-color: var(--teal-border); background: var(--teal-faint); }
+.continent-tab__name { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.continent-tab.active .continent-tab__name { color: var(--teal); }
+.continent-tab__desc { font-size: 10px; color: var(--text-muted); line-height: 1.5; margin-top: 4px; }
+
+.nations-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.nation-card { background: var(--bg-2); border: 1px solid var(--border-1); padding: 14px; cursor: pointer; transition: all 0.15s; }
+.nation-card:hover { border-color: var(--teal-border); background: var(--bg-hover); }
+.nation-card.selected { border-color: var(--teal); background: var(--teal-faint); }
+.nation-card__header { display: flex; align-items: center; gap: 10px; }
+.nation-card__flag { width: 34px; height: 22px; object-fit: cover; border: 1px solid var(--border-1); background: var(--bg-3); flex: 0 0 auto; }
+.nation-card__name { font-family: var(--font-ui); font-size: 14px; font-weight: 600; color: var(--text-bright); }
+.nation-card__gov { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); margin-top: 6px; }
+.empty { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); padding: 40px 0; text-align: center; }
+
+.footer { position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-1); border-top: 1px solid var(--border-1);
+  padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.footer__sel { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+.footer__sel b { color: var(--teal); }
+.confirm-btn { font-family: var(--font-mono); font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; background: var(--teal-faint); color: var(--teal); border: 1px solid var(--teal-border);
+  padding: 12px 28px; cursor: pointer; transition: all 0.15s; }
+.confirm-btn:hover:not(:disabled) { background: var(--teal); color: var(--bg-0); }
+.confirm-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.loading { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); text-align: center; padding: 80px 20px; }
+</style>
+</head>
+<body>
+
+<div id="loading" class="loading">LOADING...</div>
+
+<div id="app" class="wrap" style="display:none;">
+  <button class="back-btn" id="back-btn">&larr; Back</button>
+
+  <div class="header">
+    <div class="eyebrow">Project Neptune</div>
+    <div class="title">Where is your politician from?</div>
+  </div>
+
+  <div class="continent-tabs" id="continent-tabs">
+    <div class="continent-tab active" data-continent="Crucera" data-desc="A vast and diverse continent in the Southern Hemisphere, rich in natural resources.">
+      <div class="continent-tab__name">Crucera</div>
+      <div class="continent-tab__desc">A vast and diverse continent, rich in natural resources.</div>
+    </div>
+    <div class="continent-tab" data-continent="Meridian" data-desc="The old world, home to diverse nations, cultures, and ancient traditions.">
+      <div class="continent-tab__name">Meridian</div>
+      <div class="continent-tab__desc">The old world of ancient kingdoms and republics.</div>
+    </div>
+    <div class="continent-tab" data-continent="Al-Makir" data-desc="A vast desert continent of ancient kingdoms, oil wealth, and deep traditions.">
+      <div class="continent-tab__name">Al-Makir</div>
+      <div class="continent-tab__desc">A desert continent of monarchies and oil wealth.</div>
+    </div>
+    <div class="continent-tab" data-continent="Faresia" data-desc="A new-world archipelago of high-tech island republics and globalist trade economies.">
+      <div class="continent-tab__name">Faresia</div>
+      <div class="continent-tab__desc">High-tech island republics and globalist trade.</div>
+    </div>
+  </div>
+
+  <div class="nations-grid" id="nations-grid"></div>
+</div>
+
+<div id="footer" class="footer" style="display:none;">
+  <div class="footer__sel" id="footer-sel">No nation selected</div>
+  <button class="confirm-btn" id="confirm-btn" disabled>Confirm</button>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+
+let allNations = [];
+let currentContinent = 'Crucera';
+let selectedNation = null;
+
+async function init() {
+  const { data: { user } } = await _supabase.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+  // Must have cleared the alpha gate.
+  if (sessionStorage.getItem('neptune_unlocked') !== '1') {
+    window.location.href = 'character-select.html';
+    return;
+  }
+
+  try {
+    const { data, error } = await _supabase
+      .from('nations')
+      .select('id, name, continent, government_type, capital, flag_url, nation_profiles(flag_url)')
+      .order('name');
+    if (error) throw error;
+    allNations = data || [];
+  } catch (err) {
+    console.error('first-steps: failed to load nations', err);
+    document.getElementById('loading').textContent = 'Failed to load nations. Please retry.';
+    return;
+  }
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('footer').style.display = 'flex';
+  renderNations();
+}
+
+function flagFor(n) {
+  return (n.nation_profiles && n.nation_profiles.flag_url) || n.flag_url || `assets/flags/${n.name}.png`;
+}
+
+function escAttr(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+
+function renderNations() {
+  const grid = document.getElementById('nations-grid');
+  const list = allNations.filter(n => (n.continent || '') === currentContinent);
+  if (!list.length) {
+    grid.innerHTML = '<div class="empty">No nations in this continent yet.</div>';
+    return;
+  }
+  grid.innerHTML = list.map(n => {
+    const sel = selectedNation && selectedNation.id === n.id ? ' selected' : '';
+    return `<div class="nation-card${sel}" data-id="${n.id}">
+      <div class="nation-card__header">
+        <img class="nation-card__flag" src="${escAttr(flagFor(n))}" alt="" onerror="this.style.visibility='hidden'">
+        <span class="nation-card__name">${escHtml(n.name)}</span>
+      </div>
+      <div class="nation-card__gov">${escHtml(n.government_type || '—')}</div>
+    </div>`;
+  }).join('');
+  grid.querySelectorAll('.nation-card').forEach(card => {
+    card.addEventListener('click', () => selectNation(card.dataset.id));
+  });
+}
+
+function switchContinent(continent) {
+  currentContinent = continent;
+  document.querySelectorAll('.continent-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.continent === continent));
+  renderNations();
+}
+
+function selectNation(id) {
+  selectedNation = allNations.find(n => n.id === id) || null;
+  renderNations();
+  const sel = document.getElementById('footer-sel');
+  const btn = document.getElementById('confirm-btn');
+  if (selectedNation) {
+    sel.innerHTML = `Selected: <b>${escHtml(selectedNation.name)}</b>`;
+    btn.disabled = false;
+  } else {
+    sel.textContent = 'No nation selected';
+    btn.disabled = true;
+  }
+}
+
+function confirmSelection() {
+  if (!selectedNation) return;
+  sessionStorage.setItem('neptune_nation', JSON.stringify({
+    id: selectedNation.id, name: selectedNation.name,
+    continent: selectedNation.continent, government_type: selectedNation.government_type
+  }));
+  // NOTE: the next politician-creation step (gender, name, stats) is not yet
+  // designed/built. For now, confirm just persists the chosen nation and
+  // acknowledges the selection so the flow is testable end-to-end.
+  const sel = document.getElementById('footer-sel');
+  sel.innerHTML = `Locked in: <b>${escHtml(selectedNation.name)}</b> — next step coming soon.`;
+  document.getElementById('confirm-btn').disabled = true;
+}
+
+document.getElementById('back-btn').addEventListener('click', () => { window.location.href = 'character-select.html'; });
+document.getElementById('confirm-btn').addEventListener('click', confirmSelection);
+document.querySelectorAll('.continent-tab').forEach(tab => {
+  tab.addEventListener('click', () => switchContinent(tab.dataset.continent));
+});
+
+init();
+</script>
+</body>
+</html>
