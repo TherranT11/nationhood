@@ -41,13 +41,12 @@
 /* Movement card list — one row per movement party (faction_type='movement_party')
    in the politician's nation. Compact and readable; uses the party's color as a
    left-rail accent so a player can tell parties apart at a glance. The whole
-   row is a link to movement.html?id=<uuid>. */
-.mv-card-link { display:block; text-decoration:none; color:inherit; }
+   row is a link to the party detail page. */
 .mv-card { display:flex; align-items:center; gap:16px; padding:18px 20px;
   background:#0e1212; border:0.5px solid rgba(255,255,255,0.08); border-radius:6px;
-  margin-bottom:10px; border-left:3px solid #5aafa5;
-  cursor:pointer; transition:background 0.15s, border-color 0.15s; }
-.mv-card-link:hover .mv-card { background:#111616; border-color:rgba(255,255,255,0.14); }
+  margin-bottom:10px; border-left:3px solid #5aafa5; cursor:pointer;
+  transition:background 0.12s, border-color 0.12s; }
+.mv-card:hover { background:#11181a; border-color:rgba(255,255,255,0.14); }
 .mv-card .badge { width:46px; height:46px; flex-shrink:0; border-radius:4px;
   display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.04);
   color:#d4d4d4; font-size:17px; font-weight:600; font-family:monospace; letter-spacing:0.05em; }
@@ -238,6 +237,8 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
+import { safeHexColor, factionInitials } from './js/utils.js';
+import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 
@@ -334,14 +335,6 @@ function renderTab(tab) {
   list.innerHTML = `<div class="empty">${EMPTY_BY_TAB[tab] || 'No active movements yet.'}</div>`;
 }
 
-// Hex-color only — party_color is admin-supplied (trusted today, but escHtml
-// doesn't escape CSS context, so anything non-hex would still let a stray
-// "; background:url(...)" through into the style attribute). Anything that
-// isn't a 3/6/8-digit hex falls back to the brand teal.
-function safeHexColor(c) {
-  return /^#[0-9a-f]{3}([0-9a-f]{3}([0-9a-f]{2})?)?$/i.test(c || '') ? c : '#5aafa5';
-}
-
 function renderPartyCard(p) {
   const accent = safeHexColor(p.party_color);
   const leader = [p.leader_first_name, p.leader_last_name].filter(Boolean).join(' ');
@@ -349,22 +342,22 @@ function renderPartyCard(p) {
   if (leader) subParts.push(`Led by ${escHtml(leader)}`);
   if (p.party_description) subParts.push(escHtml(p.party_description));
   const sub = subParts.join(' &middot; ');
+  const href = `party.html?id=${encodeURIComponent(p.id)}`;
   // popularity_pct is nation-level for movements. Rendered only when
-  // present so a future non-movement reuse of this card doesn't show
-  // a misleading 0%.
+  // present so a future non-movement reuse of this card doesn't show a
+  // misleading 0%. loadMovementParties() must keep it in the SELECT for
+  // the value to surface here.
   const pop = (p.popularity_pct != null)
     ? `<div class="popularity">Popularity<strong>${Math.round(Number(p.popularity_pct))}%</strong></div>`
     : '';
-  return `<a class="mv-card-link" href="movement.html?id=${encodeURIComponent(p.id)}">
-    <div class="mv-card" style="border-left-color:${accent};">
-      <div class="badge">${escHtml(p.abbreviation || '—')}</div>
-      <div class="body">
-        <div class="title">${escHtml(p.faction_name)}</div>
-        <div class="sub">${sub || '<em>No description on record.</em>'}</div>
-      </div>
-      <div class="seats">Seats<strong>${Number(p.seats) || 0}</strong></div>
-      ${pop}
+  return `<a class="mv-card" href="${href}" style="border-left-color:${accent}; text-decoration:none; color:inherit;">
+    <div class="badge">${escHtml(p.abbreviation || '—')}</div>
+    <div class="body">
+      <div class="title">${escHtml(p.faction_name)}</div>
+      <div class="sub">${sub || '<em>No description on record.</em>'}</div>
     </div>
+    <div class="seats">Seats<strong>${Number(p.seats) || 0}</strong></div>
+    ${pop}
   </a>`;
 }
 
@@ -409,13 +402,6 @@ function renderJoinList() {
   });
 }
 
-function partyInitials(name, abbr) {
-  if (abbr) return abbr.slice(0, 3).toUpperCase();
-  const parts = (name || '').split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return (name || '??').slice(0, 2).toUpperCase();
-}
-
 function renderJoinRow(p) {
   const accent = safeHexColor(p.party_color);
   const leaderName = [p.leader_first_name, p.leader_last_name].filter(Boolean).join(' ');
@@ -434,7 +420,7 @@ function renderJoinRow(p) {
   const logoStyle = `background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;`;
   return `<div class="jp-party">
     <div class="jp-row">
-      <div class="jp-logo" style="${logoStyle}">${escHtml(partyInitials(p.faction_name, p.abbreviation))}</div>
+      <div class="jp-logo" style="${logoStyle}">${escHtml(factionInitials(p.faction_name, p.abbreviation))}</div>
       <div>
         <div class="jp-name">${escHtml(p.faction_name)}</div>
         <div class="jp-abbr">${escHtml(p.abbreviation || '')}</div>
@@ -452,27 +438,17 @@ async function handleJoinClick(btn) {
   const partyId = btn.dataset.partyId;
   const mode    = btn.dataset.mode;
   // Leave is destructive (-5 Influence). Confirm before firing the RPC.
-  if (mode === 'leave' && !confirm('Leave your political party? This costs 5 Influence.')) return;
+  if (mode === 'leave' && !confirm(LEAVE_PARTY_CONFIRM)) return;
   const prevTxt = btn.textContent;
   btn.disabled = true; btn.textContent = mode === 'leave' ? 'Leaving…' : 'Joining…';
-  try {
-    const rpc = mode === 'leave'
-      ? _supabase.rpc('politician_leave_party', { p_politician_id: _politicianId })
-      : _supabase.rpc('politician_join_party',  { p_politician_id: _politicianId, p_party_id: partyId });
-    const { data, error } = await rpc;
-    if (error) throw error;
-    if (!data || !data.success) {
-      alert((mode === 'leave' ? 'Could not leave: ' : 'Could not join: ') + (data?.reason || 'unknown'));
-      btn.disabled = false; btn.textContent = prevTxt;
-      return;
-    }
-    // Reload so topbar (Influence pill) + career page state all reflect the change.
-    location.reload();
-  } catch (err) {
-    console.error('politician-movements: join/leave failed', err);
-    alert((mode === 'leave' ? 'Could not leave: ' : 'Could not join: ') + (err.message || err));
+  const res = await callPartyAction(mode, _politicianId, partyId);
+  if (!res.ok) {
+    alert((mode === 'leave' ? 'Could not leave: ' : 'Could not join: ') + res.reason);
     btn.disabled = false; btn.textContent = prevTxt;
+    return;
   }
+  // Reload so topbar (Influence pill) + career page state all reflect the change.
+  location.reload();
 }
 
 init();
