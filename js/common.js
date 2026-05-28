@@ -891,13 +891,17 @@ export function updateTopBarInfo(faction, shard, nation) {
                 <span class="faction-dropdown__name">Become an Entrepreneur</span>
             </div>`;
         }
-        // Project Neptune (Politician alpha). Always available; gated by an alpha
-        // code on character-select.html. Remembers the current page so Cancel
-        // can return the player to where they were.
-        html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search); window.location.href='character-select.html'">
-            <span class="faction-dropdown__type" style="color:var(--teal,#5aafa5)">+</span>
-            <span class="faction-dropdown__name">Join Project Neptune</span>
-        </div>`;
+        // Project Neptune (Politician alpha). Shown only when the user doesn't
+        // already hold a politician — matches the "Found a Party"/"Become an
+        // Entrepreneur" hide-once-claimed pattern above. Alpha-gated on the
+        // next page; remembers the current page so Cancel returns there.
+        const hasPolitician = _userFactions.some(f => f.faction_type === 'politician');
+        if (!hasPolitician) {
+            html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search); window.location.href='character-select.html'">
+                <span class="faction-dropdown__type" style="color:var(--teal,#5aafa5)">+</span>
+                <span class="faction-dropdown__name">Join Project Neptune</span>
+            </div>`;
+        }
         dropdown.innerHTML = html;
     }
 
