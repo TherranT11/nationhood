@@ -5,11 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Politician | Nationhood Alpha</title>
 <style>
-/* Topbar — same structure / sizing / classes as the entrepreneur topbar
-   (js/entrepreneur-topbar.js), just teal where entrepreneur uses green. Kept
-   inline because politician-home is currently the only politician page; if
-   more land, extract to js/politician-topbar.js the way entrepreneur did. */
-body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; margin:0; min-height:100vh; }
+/* Topbar / nav / body styling — same shape as the entrepreneur side
+   (js/entrepreneur-topbar.js + entrepreneur-dashboard.html), just teal where
+   entrepreneur uses green. Kept inline because politician-home is currently
+   the only politician page; if more land, extract to a shared topbar module
+   the way entrepreneur did. */
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; min-height:100vh; }
+
 .pol-topbar { display:flex; align-items:center; gap:24px; padding:12px 28px;
   border-bottom:0.5px solid rgba(255,255,255,0.08); font-size:11px; letter-spacing:0.05em; }
 .pol-topbar .brand { display:flex; align-items:center; gap:10px; }
@@ -43,6 +46,45 @@ body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sa
 .pol-util { color:#666; font-size:11px; cursor:pointer; }
 .pol-util:hover { color:#d4d4d4; }
 
+/* Nav strip — single HOME entry for now. */
+.pol-nav { display:flex; gap:32px; padding:0 28px; border-bottom:0.5px solid rgba(255,255,255,0.08);
+  font-size:11px; letter-spacing:0.08em; }
+.pol-nav a { padding:14px 0; color:#888; text-decoration:none; cursor:pointer; }
+.pol-nav a:not(.active):hover { color:#d4d4d4; }
+.pol-nav a.active { color:#5aafa5; border-bottom:1px solid #5aafa5; }
+
+/* Body content — mirrors entrepreneur-dashboard.html .hero + .stats-row. */
+.content { padding:32px 24px 24px; }
+.hero { display:grid; grid-template-columns:1fr auto; gap:32px; margin-bottom:28px; }
+.identity { display:flex; align-items:flex-start; gap:20px; }
+.identity-portrait { width:88px; height:88px;
+  background:linear-gradient(135deg, #2a2a25, #1a1a17);
+  border:0.5px solid rgba(90,175,165,0.3); border-radius:4px;
+  display:flex; align-items:center; justify-content:center;
+  color:#5aafa5; font-size:28px; font-weight:500; letter-spacing:0.03em; flex-shrink:0; }
+.identity-body .eyebrow { color:#5aafa5; font-size:10px; letter-spacing:0.15em; margin-bottom:6px; }
+.identity-body .name { display:flex; align-items:baseline; gap:10px; margin-bottom:10px; }
+.identity-body .name .first { font-size:44px; font-weight:500; color:#fff; letter-spacing:-0.02em; line-height:1; }
+.identity-body .name .last  { font-family:Georgia,'Times New Roman',serif; font-size:44px; font-style:italic;
+  color:#5aafa5; letter-spacing:-0.01em; line-height:1; }
+.meta-row { display:flex; gap:28px; font-size:11px; letter-spacing:0.08em; color:#888; margin-bottom:12px; }
+.meta-row .label { color:#555; margin-right:6px; }
+.meta-row .val   { color:#d4d4d4; }
+
+.anchor { text-align:right; padding-left:28px;
+  border-left:0.5px solid rgba(255,255,255,0.08); min-width:280px; }
+.anchor-label { color:#555; font-size:10px; letter-spacing:0.15em; margin-bottom:6px; }
+.anchor-message { color:#888; font-size:14px; font-style:italic; line-height:1.5; max-width:280px; margin-left:auto; }
+
+.stats-row { display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:28px; }
+.stat-card { background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px; padding:14px 16px; }
+.stat-card.accent { border-top:2px solid #5aafa5; }
+.stat-card .stat-label { color:#666; font-size:10px; letter-spacing:0.13em; margin-bottom:8px; }
+.stat-card .stat-value { font-size:24px; font-weight:500; color:#fff; line-height:1; }
+.stat-card .stat-value.text { font-size:18px; color:#5aafa5; }
+
+.loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
+
 @media (max-width:700px) {
   .pol-topbar { flex-wrap:wrap; row-gap:8px; gap:10px; padding:10px 12px; }
   .pol-topbar .brand { flex:1 1 auto; min-width:0; }
@@ -54,19 +96,12 @@ body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sa
   .pol-topbar .cash-pill, .pol-pill { font-size:10px; padding:4px 8px; }
   .pol-util { font-size:10px; }
   .pol-dd { min-width:200px; max-width:calc(100vw - 24px); }
-}
-
-.loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
-
-/* Nav strip — same shape as .ent-nav, teal active. Only HOME for now;
-   add entries as more politician pages land. */
-.pol-nav { display:flex; gap:32px; padding:0 28px; border-bottom:0.5px solid rgba(255,255,255,0.08);
-  font-size:11px; letter-spacing:0.08em; }
-.pol-nav a { padding:14px 0; color:#888; text-decoration:none; cursor:pointer; }
-.pol-nav a:not(.active):hover { color:#d4d4d4; }
-.pol-nav a.active { color:#5aafa5; border-bottom:1px solid #5aafa5; }
-@media (max-width:700px) {
   .pol-nav { padding:0 12px; gap:18px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .hero { grid-template-columns:1fr; gap:18px; }
+  .anchor { text-align:left; padding-left:0; border-left:none; border-top:0.5px solid rgba(255,255,255,0.08); padding-top:14px; }
+  .anchor-message { margin-left:0; }
+  .stats-row { grid-template-columns:repeat(2, 1fr); }
+  .identity-body .name .first, .identity-body .name .last { font-size:32px; }
 }
 </style>
 </head>
@@ -83,7 +118,6 @@ body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sa
   <div class="meta">
     <div><div class="label">AGE</div><div class="value" id="pol-age">—</div></div>
     <div><div class="label">NATION</div><div class="value" id="pol-nation">—</div></div>
-    <div><div class="label">CAREER</div><div class="value" id="pol-career">—</div></div>
     <div><div class="label">GAME DATE</div><div class="value" id="pol-date">—</div></div>
     <div><div class="label">TICK</div><div class="value" id="pol-tick">—</div></div>
     <div><div class="label">NEXT TICK</div><div class="value" id="pol-next-tick">—</div></div>
@@ -102,6 +136,32 @@ body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sa
   <a class="active" href="politician-home.html">HOME</a>
 </nav>
 
+<div id="content" class="content" style="display:none;">
+  <div class="hero">
+    <div class="identity">
+      <div class="identity-portrait" id="hero-portrait">—</div>
+      <div class="identity-body">
+        <div class="eyebrow">— POLITICIAN —</div>
+        <div class="name">
+          <span class="first" id="hero-first">—</span>
+          <span class="last"  id="hero-last"></span>
+        </div>
+        <div class="meta-row">
+          <div><span class="label">AGE</span><span class="val" id="hero-age">—</span></div>
+          <div><span class="label">NATION</span><span class="val" id="hero-nation">—</span></div>
+          <div><span class="label">CAREER</span><span class="val" id="hero-career">—</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="anchor">
+      <div class="anchor-label">AFFILIATION</div>
+      <div class="anchor-message" id="hero-affiliation">This character has no affiliation.</div>
+    </div>
+  </div>
+
+  <div class="stats-row" id="stats-row"></div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { APP_VERSION, hfFmtBig } from './js/utils.js';
@@ -109,6 +169,7 @@ import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactio
 
 const START_AGE = 25;
 const TICKS_PER_AGE_YEAR = 12;
+const NO_AFFILIATION_MESSAGE = 'This character has no affiliation.';
 
 let politician = null;
 let otherFactions = [];
@@ -124,7 +185,7 @@ async function init() {
   try {
     const [facRes, shardRes] = await Promise.all([
       _supabase.from('factions')
-        .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, founded_tick, party_funds, abandoned_at, is_banned, politician_career')
+        .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, founded_tick, party_funds, abandoned_at, is_banned, politician_career, politician_charisma, politician_reputation, politician_credibility')
         .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
       _supabase.from('shard').select('current_tick, current_date, next_tick_at').eq('name', 'Alpha Shard').single(),
     ]);
@@ -166,6 +227,7 @@ async function init() {
   document.getElementById('loading').style.display = 'none';
   document.getElementById('topbar').style.display = 'flex';
   document.getElementById('pol-nav').style.display = 'flex';
+  document.getElementById('content').style.display = 'block';
   startCountdown(shard.next_tick_at);
 }
 
@@ -189,13 +251,15 @@ function render(shard) {
   const ini = (((first[0] || '') + (last[0] || '')).toUpperCase()) || '—';
   const display = (first || last) ? (first + ' ' + last).trim() : (politician.faction_name || 'Politician');
   const pillLabel = last ? `${(first[0] || '').toUpperCase()}. ${last}` : (first || 'Politician');
+  const career = politician.politician_career || 'Independent';
+  const age = String(currentAge(shard.current_tick || 0));
 
+  // Topbar
   document.getElementById('pol-crest').textContent = ini;
   document.getElementById('pol-name').textContent = display;
   document.getElementById('pol-version').textContent = APP_VERSION;
   document.getElementById('pol-pill-label').textContent = pillLabel;
-  document.getElementById('pol-age').textContent = String(currentAge(shard.current_tick || 0));
-  document.getElementById('pol-career').textContent = politician.politician_career || 'Independent';
+  document.getElementById('pol-age').textContent = age;
   document.getElementById('pol-cash').textContent = hfFmtBig(Number(politician.party_funds) || 0);
   document.getElementById('pol-date').textContent = shard.current_date || '—';
   document.getElementById('pol-tick').textContent = shard.current_tick != null ? String(shard.current_tick) : '—';
@@ -206,6 +270,33 @@ function render(shard) {
   } else {
     natEl.textContent = '—';
   }
+
+  // Hero (body)
+  document.getElementById('hero-portrait').textContent = ini;
+  document.getElementById('hero-first').textContent = first || display;
+  document.getElementById('hero-last').textContent  = first ? last : '';
+  document.getElementById('hero-age').textContent = age;
+  document.getElementById('hero-nation').textContent = (nation && nation.name) || '—';
+  document.getElementById('hero-career').textContent = career;
+  // Affiliation: derived from career. Independent → the no-affiliation message;
+  // any other career string IS the affiliation (party / union / movement name).
+  document.getElementById('hero-affiliation').textContent =
+    career === 'Independent' ? NO_AFFILIATION_MESSAGE : career;
+
+  // Stat cards — 3 numerical (Charisma / Reputation / Credibility) + 1 text
+  // (Career). First card gets the teal accent stripe, mirroring entrepreneur.
+  const stats = [
+    { label: 'CHARISMA',    value: politician.politician_charisma    ?? 1, kind: 'num' },
+    { label: 'REPUTATION',  value: politician.politician_reputation  ?? 1, kind: 'num' },
+    { label: 'CREDIBILITY', value: politician.politician_credibility ?? 1, kind: 'num' },
+    { label: 'CAREER',      value: career,                                 kind: 'text' },
+  ];
+  document.getElementById('stats-row').innerHTML = stats.map((s, i) =>
+    `<div class="stat-card${i === 0 ? ' accent' : ''}">
+      <div class="stat-label">${escHtml(s.label)}</div>
+      <div class="stat-value${s.kind === 'text' ? ' text' : ''}">${escHtml(s.value)}</div>
+    </div>`
+  ).join('');
 
   // Switcher dropdown. NOTE: near-duplicate of the dropdown logic in
   // common.js and entrepreneur-topbar.js — three inline copies live in the
