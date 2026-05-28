@@ -47,18 +47,18 @@ function ensureStyles() {
     .wr-cell-big .cm{font-size:8px;letter-spacing:0.14em;margin-top:8px;color:#c87a7a;font-weight:700;}
     .wr-clash-vs{align-self:center;font-size:20px;color:#c89e6e;flex:none;padding:0 2px;}
     .wr-engagement{display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:10px;margin-top:6px;}
-    .wr-force-col,.wr-events-col{background:#0a0a0a;border:0.5px solid rgba(255,255,255,0.08);border-radius:5px;padding:12px;min-height:130px;}
+    .wr-force-col,.wr-events-col{background:#0a0a0a;border:0.5px solid rgba(255,255,255,0.08);border-radius:5px;padding:12px;min-height:130px;min-width:0;}
     .wr-force-col.mine{border-top:2px solid #c87a7a;}
     .wr-force-col.theirs{border-top:2px solid #7a9aab;}
     .wr-events-col{border-top:2px solid #c89e6e;}
     .wr-force-head,.wr-events-head{font-size:9px;letter-spacing:0.14em;color:#888;margin-bottom:10px;text-transform:uppercase;font-weight:700;}
     .wr-army-card{padding:9px 10px;background:#111;border:0.5px solid rgba(255,255,255,0.06);border-radius:3px;margin-bottom:7px;}
     .wr-army-card:last-child{margin-bottom:0;}
-    .wr-army-card .nm{font-size:11px;font-weight:600;color:#fff;}
+    .wr-army-card .nm{font-size:11px;font-weight:600;color:#fff;overflow-wrap:anywhere;}
     .wr-army-card .meta{font-size:8px;letter-spacing:0.06em;color:#888;margin-top:3px;text-transform:uppercase;}
     .wr-army-card .meta .sup{margin-left:6px;font-weight:700;}
     .wr-army-card .meta .sup.ok{color:#46c46a;} .wr-army-card .meta .sup.short{color:#e5534b;}
-    .wr-army-card .unit-row{font-size:9px;color:#aaa;margin-top:5px;padding:3px 0 3px 8px;border-left:1px solid rgba(255,255,255,0.08);}
+    .wr-army-card .unit-row{font-size:9px;color:#aaa;margin-top:5px;padding:3px 0 3px 8px;border-left:1px solid rgba(255,255,255,0.08);overflow-wrap:anywhere;}
     .wr-army-card .unit-row .u-nm{color:#ccc;}
     .wr-army-card .unit-row .u-comp{color:#888;}
     .wr-events-empty{font-size:10px;color:#666;text-align:center;padding:24px 10px;font-style:italic;line-height:1.6;}
