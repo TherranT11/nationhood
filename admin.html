@@ -43,7 +43,6 @@ import { _supabase } from './js/supabase-client.js';
 import { fmtBudgetCurrency, escapeHtml, escapeAttr } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS } from './js/game/config.js';
 import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isGovernmentPresidential } from './js/game/government-types.js'
-import { ARCHETYPES, STRONGHOLD_POPULARITY_TIERS } from './js/game/archetypes.js';
 import { RAW_SCALING_DIVISORS } from './js/game/diplomacy-constants.js';
 import { FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, applyGdpGrowth, calculateNationalBudget } from './js/game/budget.js';
 import { processElections, processGovernmentVacancy, resolveNoConfidence, runManualElectionByGovernmentType } from './js/game/elections.js';
@@ -2121,16 +2120,16 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     }
 
     // ==================== ADD PARTY TAB ====================
+    // Creates a Politician Movement Party (faction_type='movement_party') —
+    // surfaces on politician-movements.html, hidden from every legacy parties
+    // surface. The archetype/stronghold mechanic is parties-only and doesn't
+    // apply here, so the form has no archetype input.
     function loadAddPartyInit() {
         // Nation dropdown — reuse the shared `nations` list (already loaded by
         // loadElectionNations earlier in loadAllData) instead of re-querying.
         const sel = document.getElementById('ap-nation');
         if (sel) sel.innerHTML = '<option value="">-- Choose a nation --</option>' +
             nations.map(n => `<option value="${n.id}">${escHtml(n.name)}</option>`).join('');
-        // Archetype dropdown — sourced from the canonical ARCHETYPES list.
-        const arch = document.getElementById('ap-archetype');
-        if (arch) arch.innerHTML = '<option value="">(none)</option>' +
-            ARCHETYPES.map(a => `<option value="${a.name}">${a.name}</option>`).join('');
     }
 
     async function createParty(btn) {
@@ -2154,15 +2153,6 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
             leader_last_name: nnVal('ap-leader-last'),
             leader_age: nnVal('ap-leader-age'),
         };
-        const archName = nnVal('ap-archetype');
-        if (archName) {
-            const arch = ARCHETYPES.find(a => a.name === archName);
-            if (arch) {
-                payload.archetype_name = arch.name;
-                payload.sector_keys = arch.strongholds;
-                payload.popularities = STRONGHOLD_POPULARITY_TIERS;
-            }
-        }
 
         await withButtonLock(btn, async () => {
             try {
@@ -2170,8 +2160,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
                 if (error) throw error;
                 if (!data || !data.success) return setErr('Create failed: ' + (data?.reason || 'unknown'));
                 statusEl.style.color = '#81c784';
-                statusEl.textContent = `Created "${data.faction_name}" [${data.abbreviation}] — ${data.seats} seats` +
-                    (data.archetype ? `, ${data.archetype} archetype.` : '.');
+                statusEl.textContent = `Created movement party "${data.faction_name}" [${data.abbreviation}] — ${data.seats} seats.`;
                 document.getElementById('ap-name').value = '';
                 document.getElementById('ap-abbr').value = '';
                 document.getElementById('ap-desc').value = '';
