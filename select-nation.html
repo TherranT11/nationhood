@@ -785,7 +785,7 @@ body {
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { escapeHtml, countEligibleParties } from './js/utils.js';
+import { escapeHtml, countEligibleParties, hfFmtBig, fmtBig } from './js/utils.js';
 import { BRANCH_DASHBOARDS } from './js/game/factions.js';
 import { getNationNames, isFemaleName, processArmyManpower } from './js/game/political-actions.js';
 import { NATION_DESCRIPTIONS } from './js/game/nation-descriptions.js';
@@ -819,6 +819,10 @@ let activeContinent = 'Crucera';
 let cachedPartiesByNation = {};
 let cachedCrisesByNation = {};
 let cachedMilitaryByNation = {};
+// Entrepreneurs are nation-agnostic (nation_id = null) but carry their origin
+// in the `nation` text column; this map counts active entrepreneurs by origin
+// nation name, used in the entrepreneur picker's per-nation stat block.
+let cachedEntrepreneursByNation = {};
 let pendingFactionType = null;
 let pendingMilitaryNationId = null;
 let militaryJoinInFlight = false;
@@ -905,21 +909,24 @@ function switchContinent(continent) {
 }
 
 async function loadNations() {
-  const [nationsRes, partiesRes, crisesRes, militaryRes] = await Promise.all([
+  const [nationsRes, partiesRes, crisesRes, militaryRes, entRes] = await Promise.all([
     _supabase.from('nations').select('*, nation_profiles(flag_url)'),
     _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, seats, nation_id, party_color').eq('faction_type', 'party'),
     _supabase.from('active_crises').select('nation_id, crisis_id, crisis_templates(name)'),
     _supabase.from('factions').select('id, nation_id, branch').eq('faction_type', 'military').is('abandoned_at', null),
+    _supabase.from('factions').select('nation').eq('faction_type', 'entrepreneur').is('abandoned_at', null),
   ]);
 
   const nations = nationsRes.data || [];
   const parties = partiesRes.data || [];
   const crises = crisesRes.data || [];
   const military = militaryRes.data || [];
+  const entrepreneurs = entRes.data || [];
 
   cachedPartiesByNation = {};
   cachedCrisesByNation = {};
   cachedMilitaryByNation = {};
+  cachedEntrepreneursByNation = {};
 
   for (const p of parties) {
     if (!cachedPartiesByNation[p.nation_id]) cachedPartiesByNation[p.nation_id] = [];
@@ -932,6 +939,10 @@ async function loadNations() {
   for (const m of military) {
     if (!cachedMilitaryByNation[m.nation_id]) cachedMilitaryByNation[m.nation_id] = {};
     if (m.branch) cachedMilitaryByNation[m.nation_id][m.branch] = m;
+  }
+  for (const e of entrepreneurs) {
+    if (!e.nation) continue;
+    cachedEntrepreneursByNation[e.nation] = (cachedEntrepreneursByNation[e.nation] || 0) + 1;
   }
 
   allNations = nations;
@@ -1035,9 +1046,12 @@ function renderNations(nations, partiesByNation, crisesByNation) {
           </div>
           <div class="nation-card__body">
             ${NATION_DESCRIPTIONS[nation.name] ? `<div style="font-size:10px;color:var(--text-dim);line-height:1.5;margin-bottom:8px;font-style:italic;">${escapeHtml(NATION_DESCRIPTIONS[nation.name])}</div>` : ''}
+            <div class="stat-row"><span class="stat-row__label">GDP</span><span class="stat-row__value" style="color:var(--text-secondary);">${hfFmtBig(Number(nation.gdp) || 0)}</span></div>
+            <div class="stat-row"><span class="stat-row__label">Population</span><span class="stat-row__value" style="color:var(--text-secondary);">${fmtBig(nation.population)}</span></div>
+            <div class="stat-row"><span class="stat-row__label">Active Entrepreneurs</span><span class="stat-row__value" style="color:var(--text-secondary);">${cachedEntrepreneursByNation[nation.name] || 0}</span></div>
             ${locked
-              ? `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;">Locked — you hold a Party or Military Branch here</div>`
-              : `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--purple,#8b5cf6);text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;">Businessman from ${escapeHtml(nation.name)}</div>`}
+              ? `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Locked — you hold a Party or Military Branch here</div>`
+              : `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--purple,#8b5cf6);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Businessman from ${escapeHtml(nation.name)}</div>`}
           </div>
         </div>
       `;

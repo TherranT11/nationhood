@@ -62,7 +62,11 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 .nation-card__desc { font-size: 11px; color: var(--text-dim); line-height: 1.5;
   margin-bottom: 8px; font-style: italic; }
 .nation-card__action { font-family: var(--font-mono); font-size: 10px; font-weight: 700;
-  color: var(--teal); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
+  color: var(--teal); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 6px; }
+.stat-row { display: flex; justify-content: space-between; align-items: center;
+  padding: 3px 0; font-family: var(--font-mono); font-size: 10px; }
+.stat-row__label { color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.stat-row__value { color: var(--text-secondary); font-weight: 600; }
 .empty { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); padding: 40px 0; text-align: center; }
 
 .gender-row { display: flex; gap: 12px; max-width: 420px; margin: 0 auto; }
@@ -169,10 +173,12 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
+import { hfFmtBig, fmtBig } from './js/utils.js';
 import { getNationNames, isFemaleName } from './js/game/political-actions.js';
 import { NATION_DESCRIPTIONS } from './js/game/nation-descriptions.js';
 
 let allNations = [];
+let politiciansByNation = {};  // nation_id → count of active politicians
 let currentContinent = 'Crucera';
 let selectedNation = null;
 let selectedGender = null;
@@ -193,16 +199,23 @@ async function init() {
   }
 
   try {
-    const [{ data: nations, error: natErr }, { data: shard, error: shardErr }] = await Promise.all([
-      _supabase.from('nations').select('id, name, continent, government_type, flag_url, nation_profiles(flag_url)').order('name'),
+    const [{ data: nations, error: natErr }, { data: shard, error: shardErr }, { data: pols, error: polErr }] = await Promise.all([
+      _supabase.from('nations').select('id, name, continent, government_type, population, gdp, flag_url, nation_profiles(flag_url)').order('name'),
       _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+      _supabase.from('factions').select('nation_id').eq('faction_type', 'politician').is('abandoned_at', null),
     ]);
     if (natErr) throw natErr;
     if (shardErr) throw shardErr;
+    if (polErr) throw polErr;
     allNations = nations || [];
     currentTick = shard?.current_tick || 0;
+    politiciansByNation = {};
+    for (const p of (pols || [])) {
+      if (!p.nation_id) continue;
+      politiciansByNation[p.nation_id] = (politiciansByNation[p.nation_id] || 0) + 1;
+    }
   } catch (err) {
-    console.error('first-steps: failed to load nations/shard', err);
+    console.error('first-steps: failed to load nations/shard/politicians', err);
     document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
     return;
   }
@@ -280,6 +293,9 @@ function renderNations() {
       </div>
       <div class="nation-card__body">
         ${desc ? `<div class="nation-card__desc">${escHtml(desc)}</div>` : ''}
+        <div class="stat-row"><span class="stat-row__label">GDP</span><span class="stat-row__value">${hfFmtBig(Number(n.gdp) || 0)}</span></div>
+        <div class="stat-row"><span class="stat-row__label">Population</span><span class="stat-row__value">${fmtBig(n.population)}</span></div>
+        <div class="stat-row"><span class="stat-row__label">Active Politicians</span><span class="stat-row__value">${politiciansByNation[n.id] || 0}</span></div>
         <div class="nation-card__action">Politician from ${escHtml(n.name)}</div>
       </div>
     </div>`;
