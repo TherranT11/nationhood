@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Politician — Career</title>
+<style>
+/* Topbar / nav / body base live in js/politician-topbar.js. This page styles
+   the career-brief card (amber, regal — matches the Nation card vocabulary)
+   plus the Ladders of Power list. */
+* { box-sizing:border-box; margin:0; padding:0; }
+.content { padding:32px 24px 24px; }
+
+.career-card { background:#0d0d0c; border:0.5px solid rgba(200,166,78,0.15);
+  border-radius:6px; padding:24px; margin-bottom:24px; }
+.career-card__top { display:flex; align-items:flex-start; gap:18px; margin-bottom:20px; }
+.career-card__portrait { width:64px; height:64px; flex-shrink:0;
+  background:linear-gradient(135deg, #2a2a25, #1a1a17);
+  border:0.5px solid rgba(200,166,78,0.3); border-radius:4px;
+  display:flex; align-items:center; justify-content:center;
+  color:#c8a64e; font-size:20px; font-weight:500; letter-spacing:0.04em; }
+.career-card__title { flex:1; min-width:0; }
+.career-card__title .eyebrow { color:#666; font-size:10px; letter-spacing:0.18em; margin-bottom:6px; }
+.career-card__title h1 { font-size:26px; font-weight:500; color:#fff; line-height:1.1; margin-bottom:6px;
+  letter-spacing:-0.01em; }
+.career-card__title h1 .tail { font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#c8a64e; }
+.career-card__subtitle { font-size:12px; color:#888; line-height:1.5; }
+.career-card__subtitle .note { color:#c87a7a; }
+
+.info-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px;
+  padding-top:14px; border-top:0.5px solid rgba(255,255,255,0.06); }
+.info-cell .label { font-size:9px; letter-spacing:0.13em; color:#666; margin-bottom:6px; text-transform:uppercase; }
+.info-cell .value { font-size:18px; font-weight:500; color:#fff; line-height:1.2; }
+.info-cell .sub   { font-size:11px; color:#888; margin-top:4px; line-height:1.4; }
+
+/* Ladders of Power — a section heading + a stack of collapsibles. Each summary
+   carries an icon, the ladder's name, and the current rung (or "—") on the
+   right; the body lists the rungs once we have data to seed. */
+.ladders-heading { display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:14px; padding-top:6px; }
+.ladders-heading .ttl { font-size:11px; letter-spacing:0.15em; color:#888; text-transform:uppercase; }
+.ladders-heading .sub { font-size:10px; letter-spacing:0.08em; color:#555; text-transform:uppercase; }
+
+.ladder { background:#0d0d0c; border:0.5px solid rgba(255,255,255,0.08);
+  border-radius:6px; margin-bottom:10px; }
+.ladder summary { padding:14px 18px; cursor:pointer; list-style:none;
+  display:flex; align-items:center; gap:12px; }
+.ladder summary::-webkit-details-marker { display:none; }
+.ladder summary::before { content:'\\25B8'; color:#555; font-size:10px; transition:transform 0.2s; }
+.ladder[open] summary::before { transform:rotate(90deg); display:inline-block; }
+.ladder .icon { font-size:16px; line-height:1; }
+.ladder .name { font-size:14px; font-weight:500; color:#fff; flex:1; }
+.ladder .rung { font-size:11px; color:#5aafa5; display:flex; align-items:center; gap:6px; }
+.ladder .rung.empty { color:#555; }
+.ladder .rung .dot { display:inline-block; width:6px; height:6px; background:#5aafa5; border-radius:50%; }
+.ladder .body  { padding:0 18px 18px; }
+.ladder .empty { color:#555; font-size:12px; font-style:italic; text-align:center; padding:14px 0 6px; }
+
+.loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
+
+@media (max-width:700px) {
+  .content { padding:18px 12px 16px; }
+  .career-card { padding:16px; }
+  .career-card__top { flex-direction:column; gap:12px; }
+  .career-card__portrait { width:48px; height:48px; font-size:16px; }
+  .career-card__title h1 { font-size:22px; }
+  .info-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
+  .info-cell .value { font-size:16px; }
+  .ladder summary { padding:12px 14px; gap:8px; }
+  .ladder .body { padding:0 14px 14px; }
+}
+@media (max-width:420px) {
+  .info-grid { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+
+<div id="pol-topbar-container"></div>
+
+<div class="content" id="content" style="display:none;">
+  <div class="career-card">
+    <div class="career-card__top">
+      <div class="career-card__portrait" id="cc-portrait">—</div>
+      <div class="career-card__title">
+        <div class="eyebrow">— CURRENT STANDING —</div>
+        <h1><span id="cc-title-lead">—</span> <span class="tail" id="cc-title-tail"></span></h1>
+        <div class="career-card__subtitle" id="cc-subtitle">—</div>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-cell">
+        <div class="label">Positions Held</div>
+        <div class="value" id="cc-positions">0</div>
+        <div class="sub"   id="cc-positions-sub">—</div>
+      </div>
+      <div class="info-cell">
+        <div class="label">Affiliations</div>
+        <div class="value" id="cc-affiliations">None</div>
+        <div class="sub"   id="cc-affiliations-sub">no parties, no movements</div>
+      </div>
+      <div class="info-cell">
+        <div class="label">Career Length</div>
+        <div class="value" id="cc-length">0 Years</div>
+        <div class="sub">since founding</div>
+      </div>
+      <div class="info-cell">
+        <div class="label">Suspicion</div>
+        <div class="value" id="cc-suspicion">Low</div>
+        <div class="sub"   id="cc-suspicion-sub">no one is watching</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ladders-heading">
+    <span class="ttl">Ladders of Power</span>
+    <span class="sub">Your rung unlocks actions · higher rungs preview what you'd gain</span>
+  </div>
+
+  <div id="ladders"></div>
+</div>
+
+<div id="loading" class="loading">LOADING...</div>
+
+<script type="module">
+import { bootstrapPolitician } from './js/politician-topbar.js';
+
+const START_AGE = 25;
+const TICKS_PER_AGE_YEAR = 12;
+
+// The five career ladders a politician can climb. Each has an icon, a display
+// name, and (when wired) a flow that turns the player's actions on that ladder
+// into the current-rung label on the right of the summary. For now every
+// ladder ships with no current rung — the body just notes "Not on this ladder
+// yet." until we design what the rungs look like.
+const LADDERS = [
+  { id: 'govt',       icon: '\u{1F451}', name: 'Government & State' },
+  { id: 'party',      icon: '\u{1F6A9}', name: 'Party Office' },
+  { id: 'legislature',icon: '⚖️', name: 'Legislature' },
+  { id: 'civil',      icon: '\u{1F91D}', name: 'Civil Society' },
+  { id: 'underground',icon: '\u{1F3AD}', name: 'Underground' },
+];
+
+// Suspicion sub-text by level — read once the value lands on the page so the
+// copy isn't repeated through the renderer.
+const SUSPICION_SUB = {
+  Low:     'no one is watching',
+  Watched: 'your name is on a list',
+  High:    'investigators are close',
+  Severe:  'an arrest is plausible',
+};
+
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+
+function initials(first, last, faction_name) {
+  const a = (first || '').trim();
+  const b = (last  || '').trim();
+  if (a || b) return ((a[0] || '') + (b[0] || '')).toUpperCase() || '—';
+  const w = String(faction_name || '').trim().split(/\s+/).filter(Boolean);
+  return ((w[0]?.[0] || '') + (w[1]?.[0] || '')).toUpperCase() || '—';
+}
+
+// Split a career string into a bold lead and an italic "of …" tail when one
+// exists ("Deputy Minister of Trade" → lead "Deputy Minister", tail "of Trade").
+// Falls back to lead-only for single-phrase careers like "Independent".
+function splitCareerTitle(career) {
+  if (!career) return { lead: 'Independent', tail: '' };
+  const m = String(career).match(/^(.+?)\s+(of\s+.+)$/i);
+  if (m) return { lead: m[1], tail: m[2] };
+  return { lead: career, tail: '' };
+}
+
+function careerYears(politician, currentTick) {
+  if (politician?.founded_tick == null || currentTick == null) return 0;
+  const elapsed = Math.max(0, Number(currentTick) - Number(politician.founded_tick));
+  return Math.floor(elapsed / TICKS_PER_AGE_YEAR);
+}
+
+function ageNow(politician, currentTick) {
+  if (politician?.founded_tick == null || currentTick == null) return START_AGE;
+  const elapsed = Math.max(0, Number(currentTick) - Number(politician.founded_tick));
+  return START_AGE + Math.floor(elapsed / TICKS_PER_AGE_YEAR);
+}
+
+async function init() {
+  let ctx = null;
+  try { ctx = await bootstrapPolitician('career'); }
+  catch (err) {
+    console.error('politician-career: bootstrap failed', err);
+    document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
+    return;
+  }
+  if (!ctx) return;
+
+  render(ctx.faction, ctx.shard, ctx.nation);
+  renderLadders();
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+}
+
+function render(politician, shard, nation) {
+  const career = politician.politician_career || 'Independent';
+  const { lead, tail } = splitCareerTitle(career);
+  const ini = initials(politician.leader_first_name, politician.leader_last_name, politician.faction_name);
+  const age = ageNow(politician, shard?.current_tick);
+  const years = careerYears(politician, shard?.current_tick);
+  const nationName = nation?.name || 'Unknown';
+  const suspicion = politician.politician_suspicion || 'Low';
+
+  document.getElementById('cc-portrait').textContent = ini;
+  document.getElementById('cc-title-lead').textContent = lead;
+  document.getElementById('cc-title-tail').textContent = tail;
+
+  // Subtitle: age · nation · current-position note. Independent gets the
+  // explicit "no current position" line so the mock's "serving in the
+  // Ministry of …" slot doesn't render empty.
+  const positionNote = career === 'Independent' ? 'no current position' : `serving as ${career}`;
+  document.getElementById('cc-subtitle').textContent =
+    `Age ${age} · ${nationName} · ${positionNote}`;
+
+  // Positions held — derived once positions data exists; 0 for now.
+  document.getElementById('cc-positions').textContent = '0';
+  document.getElementById('cc-positions-sub').textContent = '—';
+
+  // Affiliations — the Independent → "None" mapping is the same rule the
+  // home page uses for the AFFILIATION anchor message, intentionally
+  // mirrored so the two surfaces agree.
+  if (career === 'Independent') {
+    document.getElementById('cc-affiliations').textContent = 'None';
+    document.getElementById('cc-affiliations-sub').textContent = 'no parties, no movements';
+  } else {
+    document.getElementById('cc-affiliations').textContent = career;
+    document.getElementById('cc-affiliations-sub').textContent = 'active affiliation';
+  }
+
+  document.getElementById('cc-length').textContent = `${years} Year${years === 1 ? '' : 's'}`;
+
+  document.getElementById('cc-suspicion').textContent = suspicion;
+  document.getElementById('cc-suspicion-sub').textContent =
+    SUSPICION_SUB[suspicion] || 'level not recognised';
+}
+
+function renderLadders() {
+  const host = document.getElementById('ladders');
+  host.innerHTML = LADDERS.map(l => `
+    <details class="ladder">
+      <summary>
+        <span class="icon">${l.icon}</span>
+        <span class="name">${escHtml(l.name)}</span>
+        <span class="rung empty">—</span>
+      </summary>
+      <div class="body">
+        <div class="empty">Not on this ladder yet.</div>
+      </div>
+    </details>
+  `).join('');
+}
+
+init();
+</script>
+</body>
+</html>

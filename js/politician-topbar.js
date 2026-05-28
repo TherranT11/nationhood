@@ -11,7 +11,7 @@ const POL_TABS = [
   { id: 'home',      label: 'HOME',      href: 'politician-home.html' },
   { id: 'movements', label: 'MOVEMENTS', href: 'politician-movements.html' },
   { id: 'nation',    label: 'NATION',    href: 'politician-nation.html' },
-  { id: 'actions',   label: 'ACTIONS',   href: 'politician-actions.html' },
+  { id: 'career',    label: 'CAREER',    href: 'politician-career.html' },
   { id: 'character', label: 'CHARACTER', href: 'politician-character.html' },
 ];
 
@@ -212,7 +212,7 @@ export async function bootstrapPolitician(activeTab) {
 
   const [facRes, shardRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, founded_tick, party_funds, abandoned_at, is_banned, politician_career, politician_charisma, politician_reputation, politician_credibility, politician_influence')
+      .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, founded_tick, party_funds, abandoned_at, is_banned, politician_career, politician_charisma, politician_reputation, politician_credibility, politician_influence, politician_suspicion')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
     _supabase.from('shard').select('current_tick, current_date, next_tick_at').eq('name', 'Alpha Shard').single(),
   ]);
