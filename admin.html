@@ -42,7 +42,8 @@
 import { _supabase } from './js/supabase-client.js';
 import { fmtBudgetCurrency, escapeHtml, escapeAttr } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS } from './js/game/config.js';
-import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isGovernmentPresidential } from './js/game/government-types.js';
+import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isGovernmentPresidential } from './js/game/government-types.js'
+import { ARCHETYPES, STRONGHOLD_POPULARITY_TIERS } from './js/game/archetypes.js';
 import { RAW_SCALING_DIVISORS } from './js/game/diplomacy-constants.js';
 import { FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, applyGdpGrowth, calculateNationalBudget } from './js/game/budget.js';
 import { processElections, processGovernmentVacancy, resolveNoConfidence, runManualElectionByGovernmentType } from './js/game/elections.js';
@@ -151,6 +152,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         await loadInspectorNations();
         await loadMinistryConfig();
         await loadAddNationInit();
+        await loadAddPartyInit();
     }
 
     // ==================== SHARD TAB ====================
@@ -2112,6 +2114,69 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         await loadAddNationPolicies();
     }
 
+    // ==================== ADD PARTY TAB ====================
+    function loadAddPartyInit() {
+        // Nation dropdown — reuse the shared `nations` list (already loaded by
+        // loadElectionNations earlier in loadAllData) instead of re-querying.
+        const sel = document.getElementById('ap-nation');
+        if (sel) sel.innerHTML = '<option value="">-- Choose a nation --</option>' +
+            nations.map(n => `<option value="${n.id}">${escHtml(n.name)}</option>`).join('');
+        // Archetype dropdown — sourced from the canonical ARCHETYPES list.
+        const arch = document.getElementById('ap-archetype');
+        if (arch) arch.innerHTML = '<option value="">(none)</option>' +
+            ARCHETYPES.map(a => `<option value="${a.name}">${a.name}</option>`).join('');
+    }
+
+    async function createParty(btn) {
+        const statusEl = document.getElementById('ap-status');
+        const setErr = m => { statusEl.style.color = '#e57373'; statusEl.textContent = m; };
+        statusEl.textContent = '';
+        if (!nnVal('ap-nation')) return setErr('Pick a nation.');
+        if (nnVal('ap-name').length < 2) return setErr('Party name must be at least 2 characters.');
+        if (nnVal('ap-abbr').length < 1) return setErr('Abbreviation is required.');
+
+        const payload = {
+            nation_id: nnVal('ap-nation'),
+            faction_name: nnVal('ap-name'),
+            abbreviation: nnVal('ap-abbr'),
+            seats: nnVal('ap-seats'),
+            party_color: nnVal('ap-color'),
+            party_logo: nnVal('ap-logo'),
+            custom_logo_url: nnVal('ap-logo-url'),
+            party_description: nnVal('ap-desc'),
+            leader_first_name: nnVal('ap-leader-first'),
+            leader_last_name: nnVal('ap-leader-last'),
+            leader_age: nnVal('ap-leader-age'),
+        };
+        const archName = nnVal('ap-archetype');
+        if (archName) {
+            const arch = ARCHETYPES.find(a => a.name === archName);
+            if (arch) {
+                payload.archetype_name = arch.name;
+                payload.sector_keys = arch.strongholds;
+                payload.popularities = STRONGHOLD_POPULARITY_TIERS;
+            }
+        }
+
+        await withButtonLock(btn, async () => {
+            try {
+                const { data, error } = await _supabase.rpc('admin_create_party', { p_payload: payload });
+                if (error) throw error;
+                if (!data || !data.success) return setErr('Create failed: ' + (data?.reason || 'unknown'));
+                statusEl.style.color = '#81c784';
+                statusEl.textContent = `Created "${data.faction_name}" [${data.abbreviation}] — ${data.seats} seats` +
+                    (data.archetype ? `, ${data.archetype} archetype.` : '.');
+                document.getElementById('ap-name').value = '';
+                document.getElementById('ap-abbr').value = '';
+                document.getElementById('ap-desc').value = '';
+                await loadNations();
+            } catch (err) {
+                console.error('createParty failed', err);
+                setErr('Create failed: ' + (err.message || String(err)));
+            }
+        });
+    }
+
     // ==================== SECTORS TAB — PHASE 1: POPULARITY EDITOR + DIAGNOSTICS ====================
 
     let sectorPopFactions = [];
@@ -2651,6 +2716,7 @@ window.fillNationDefaults = fillNationDefaults;
 window.renderAddNationStats = renderAddNationStats;
 window.filterAddNationPolicies = filterAddNationPolicies;
 window.createNation = createNation;
+window.createParty = createParty;
 window.loadFactionPopularityEditor = loadFactionPopularityEditor;
 window.onPopularityCellInput = onPopularityCellInput;
 window.saveFactionPopularityChanges = saveFactionPopularityChanges;
