@@ -101,7 +101,7 @@ async function init() {
   try {
     const [{ data: facs, error: facErr }, { data: shard, error: shardErr }] = await Promise.all([
       _supabase.from('factions')
-        .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, leader_age, founded_tick, party_funds, abandoned_at, is_banned, linked_user_id')
+        .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, founded_tick, party_funds, abandoned_at, is_banned')
         .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
       _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
     ]);
@@ -146,8 +146,10 @@ function fmtCash(n) {
 }
 
 function currentAge(currentTick) {
-  const founded = Number(politician.founded_tick) || 0;
-  const elapsed = Math.max(0, currentTick - founded);
+  // No founded_tick recorded (legacy rows / data drift) → show the starting
+  // age rather than (current_tick / 12) of garbage.
+  if (politician.founded_tick == null) return START_AGE;
+  const elapsed = Math.max(0, currentTick - Number(politician.founded_tick));
   return START_AGE + Math.floor(elapsed / TICKS_PER_AGE_YEAR);
 }
 
@@ -161,6 +163,11 @@ function render(currentTick) {
   document.getElementById('pol-age').textContent = String(currentAge(currentTick));
   document.getElementById('pol-cash').textContent = fmtCash(politician.party_funds);
 
+  // Faction-switcher dropdown render. NOTE: near-duplicate of the
+  // dropdown logic in common.js (party topbar) and entrepreneur-topbar.js.
+  // Three inline copies live in the codebase; consolidating them into a
+  // shared renderer is the right fix but touches all three live topbars,
+  // so it's deferred to a focused pass rather than smuggled in here.
   const dd = document.getElementById('pol-dd');
   if (!otherFactions.length) {
     dd.innerHTML = '<div class="pol-dd__empty">No other factions.</div>';

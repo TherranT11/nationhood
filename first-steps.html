@@ -247,8 +247,11 @@ function renderNations() {
   grid.querySelectorAll('.nation-card').forEach(card => {
     card.addEventListener('click', () => {
       const n = allNations.find(x => x.id === card.dataset.id);
-      // Picking a different nation invalidates the generated names.
-      if (selectedNation && n && selectedNation.id !== n.id) generatedNames = [];
+      // Different nation → different name pool, so any prior name pick is stale.
+      if (selectedNation && n && selectedNation.id !== n.id) {
+        generatedNames = [];
+        selectedName = null;
+      }
       selectedNation = n || null;
       renderStep();
     });
@@ -324,9 +327,6 @@ function confirmStep() {
     renderStep();
   } else if (currentStep === 2) {
     if (!selectedGender) return;
-    // If the user changes gender, regenerate names on next render.
-    generatedNames = [];
-    selectedName = null;
     currentStep = 3;
     renderStep();
   } else if (currentStep === 3) {
@@ -392,7 +392,6 @@ async function createPolitician() {
     sessionStorage.setItem('active_faction_id', factionId);
     sessionStorage.removeItem('neptune_unlocked');
     sessionStorage.removeItem('neptune_return_url');
-    sessionStorage.removeItem('neptune_nation');
     window.location.href = 'politician-home.html';
   } catch (err) {
     console.error('createPolitician failed', err);
@@ -411,7 +410,15 @@ document.querySelectorAll('.continent-tab').forEach(tab => {
   tab.addEventListener('click', () => switchContinent(tab.dataset.continent));
 });
 document.querySelectorAll('.gender-btn').forEach(b => {
-  b.addEventListener('click', () => { selectedGender = b.dataset.gender; renderStep(); });
+  b.addEventListener('click', () => {
+    // Switching gender invalidates any previously-generated names.
+    if (b.dataset.gender !== selectedGender) {
+      generatedNames = [];
+      selectedName = null;
+    }
+    selectedGender = b.dataset.gender;
+    renderStep();
+  });
 });
 
 init();
