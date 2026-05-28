@@ -103,6 +103,9 @@ BEGIN
                          ELSE NULL END;
 
     -- ── 1. Base nations row (unset stats fall to their NOT NULL DEFAULT 50) ────
+    -- is_neptune_nation is set to TRUE so the select-nation party-flow filter
+    -- hides this nation from Political Parties (which are being sunsetted).
+    -- Politicians / Entrepreneurs / Military still see and can join it.
     INSERT INTO nations (
         name, government_type, total_seats, max_parties, capital, shard_id, continent,
         hos_election_method, head_of_state_title,
@@ -110,7 +113,8 @@ BEGIN
         dynasty_name, dynasty_established_tick,
         population, eligible_voters, gdp, debt,
         presidential_term_ticks, presidential_term_limit, parliamentary_term_ticks,
-        election_frequency, next_election_tick
+        election_frequency, next_election_tick,
+        is_neptune_nation
     ) VALUES (
         v_name, v_gov_type, v_total_seats,
         COALESCE(NULLIF(p_payload->>'max_parties', '')::int, 8),
@@ -133,7 +137,8 @@ BEGIN
         CASE WHEN v_include_pm
              THEN COALESCE(NULLIF(p_payload->>'parliamentary_term_ticks', '')::int, 48) END,
         COALESCE(NULLIF(p_payload->>'election_frequency', '')::int, 48),
-        v_next_elect
+        v_next_elect,
+        TRUE
     )
     RETURNING id INTO v_nation_id;
 

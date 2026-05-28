@@ -965,7 +965,15 @@ function getGovTypeLabel(govTypeOrNation) {
 
 function renderNations(nations, partiesByNation, crisesByNation) {
   const grid = document.getElementById('nations-grid');
-  const filtered = nations.filter(n => (n.continent || 'Crucera') === activeContinent);
+  // Neptune nations (admin-created via the Add Nation tool) are hidden from
+  // the Party founding flow — Parties are being sunsetted in favour of the
+  // Politician archetype. Entrepreneur / military / politician flows still
+  // see every nation.
+  const hideNeptune = pendingFactionType === 'party';
+  const filtered = nations.filter(n =>
+    (n.continent || 'Crucera') === activeContinent
+    && !(hideNeptune && n.is_neptune_nation)
+  );
 
   // Sort: nations with open spots first, then full nations. Within each group, by name.
   filtered.sort((a, b) => {
