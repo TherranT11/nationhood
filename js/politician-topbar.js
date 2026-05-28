@@ -12,7 +12,7 @@ const POL_TABS = [
   { id: 'movements', label: 'MOVEMENTS', href: 'politician-movements.html' },
   { id: 'nation',    label: 'NATION',    href: 'politician-nation.html' },
   { id: 'career',    label: 'CAREER',    href: 'politician-career.html' },
-  { id: 'character', label: 'CHARACTER', href: 'politician-character.html' },
+  { id: 'resources', label: 'RESOURCES', href: 'politician-resources.html' },
 ];
 
 const START_AGE = 25;
