@@ -111,6 +111,15 @@ body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sa
 .ev-body { font-size:11px; color:#888; line-height:1.5; }
 .ev-empty { color:#666; font-size:12px; padding:22px 4px; text-align:center; line-height:1.6; }
 
+/* Section heading + empty card — ports from entrepreneur-dashboard.html in teal. */
+.section-heading { display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
+.section-heading .roman { color:#555; font-size:11px; letter-spacing:0.1em; }
+.section-heading .sans  { font-size:22px; font-weight:500; color:#fff; }
+.section-heading .serif { font-size:22px; font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#5aafa5; }
+.section-heading .meta  { margin-left:auto; color:#555; font-size:10px; letter-spacing:0.1em; }
+.empty { background:#121212; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
+  padding:22px 18px; color:#666; font-size:12px; line-height:1.6; text-align:center; }
+
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
 @media (max-width:700px) {
@@ -205,7 +214,14 @@ body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sa
       </div>
       <ul class="ev-list" id="ev-list"><li class="ev-empty">Loading…</li></ul>
     </div>
-    <div class="content-right"><!-- Future politician panels go here (pressing issues, campaigns, etc.). --></div>
+    <div class="content-right">
+      <div class="section-heading">
+        <span class="roman">I.</span>
+        <span class="sans">Pressing</span>
+        <span class="serif">Issues</span>
+      </div>
+      <div class="empty">No pressing issues right now.</div>
+    </div>
   </div>
 </div>
 
