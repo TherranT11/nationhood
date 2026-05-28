@@ -72,6 +72,16 @@
 .empty { background:#121212; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
   padding:22px 18px; color:#666; font-size:12px; line-height:1.6; text-align:center; }
 
+/* Career log — one date-prefixed row per event, listed newest-first. */
+.career-events { background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
+  padding:6px 18px; }
+.career-event  { display:flex; gap:14px; padding:10px 0;
+  border-bottom:0.5px solid rgba(255,255,255,0.04); }
+.career-event:last-child { border-bottom:none; }
+.career-event .date { font-family:monospace; font-size:10px; color:#888;
+  letter-spacing:0.05em; flex-shrink:0; min-width:120px; padding-top:1px; }
+.career-event .text { font-size:12px; color:#d4d4d4; line-height:1.5; }
+
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
 @media (max-width:700px) {
@@ -135,6 +145,12 @@
         <span class="serif">Issues</span>
       </div>
       <div class="empty">No pressing issues right now.</div>
+
+      <div class="section-heading" style="margin-top:28px;">
+        <span class="roman">II.</span>
+        <span class="serif">Career</span>
+      </div>
+      <div class="career-events" id="career-events"></div>
     </div>
   </div>
 </div>
@@ -143,6 +159,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
+import { tickToDate } from './js/utils.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 
 const NO_AFFILIATION_MESSAGE = 'This character has no affiliation.';
@@ -186,6 +203,7 @@ async function init() {
 
   renderHero(ctx.shard);
   renderStats();
+  renderCareer();
   renderDispatches();
   bindDispatchTabs();
   document.getElementById('loading').style.display = 'none';
@@ -215,6 +233,38 @@ function renderHero(shard) {
   document.getElementById('hero-career').textContent = career;
   document.getElementById('hero-affiliation').textContent =
     career === 'Independent' ? NO_AFFILIATION_MESSAGE : career;
+}
+
+// Career log — derived from the politician's lifecycle today. Only one event
+// exists (the founding); future entries (joined party X, became MP, scandal,
+// etc.) get appended as those mechanics land and can write into the same list.
+// Sorted newest-first so a long career reads with the latest beat on top.
+function renderCareer() {
+  const first = politician.leader_first_name || '';
+  const last  = politician.leader_last_name  || '';
+  const display = (first || last) ? (first + ' ' + last).trim() : (politician.faction_name || 'This politician');
+  const nationName = (nation && nation.name) || 'an unknown nation';
+
+  const events = [];
+  if (politician.founded_tick != null) {
+    events.push({
+      tick: Number(politician.founded_tick),
+      text: `${display} began their career in the nation of ${nationName}.`,
+    });
+  }
+  events.sort((a, b) => b.tick - a.tick);
+
+  const host = document.getElementById('career-events');
+  if (!host) return;
+  if (!events.length) {
+    host.innerHTML = '<div class="career-event"><span class="text" style="color:#666; font-style:italic;">No career events recorded yet.</span></div>';
+    return;
+  }
+  host.innerHTML = events.map(ev => `
+    <div class="career-event">
+      <span class="date">${escHtml(tickToDate(ev.tick))}</span>
+      <span class="text">${escHtml(ev.text)}</span>
+    </div>`).join('');
 }
 
 function renderStats() {
