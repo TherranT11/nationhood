@@ -298,36 +298,13 @@
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 
-// Tier descriptors per scored stat. Stability and Civil Freedoms are the two
-// 0-100 bars in the politician-side card; the dollar-valued GDP / Budget /
-// Debt cells don't need a tier line. Index 0 = highest band, last = lowest;
-// each tuple is [min, label] and the first match wins on a descending walk.
-const TIERS = {
-  stability: [
-    [80, 'Iron · no challenge'],
-    [60, 'Firm · the order holds'],
-    [40, 'Tense · cracks visible'],
-    [20, 'Volatile · unrest brewing'],
-    [0,  'Breaking · revolt likely'],
-  ],
-  freedom: [
-    [80, 'Free · civic life thrives'],
-    [60, 'Open · most can speak'],
-    [40, 'Restricted · watch your words'],
-    [20, 'Repressive · dissent is risky'],
-    [0,  'Police state · silence enforced'],
-  ],
-};
-function tierLabel(stat, value) {
-  const v = Math.max(0, Math.min(100, Number(value) || 0));
-  for (const [min, label] of TIERS[stat]) if (v >= min) return label;
-  return '';
-}
-function barColor(value) {
-  const v = Number(value) || 0;
-  if (v >= 60) return '#5cb85c';
-  if (v >= 35) return '#c8a64e';
-  return '#d9534f';
+// Tier helpers — the scored stat rows in the top card and the prose cards
+// in the National Characteristics body both read from the same tier arrays
+// declared further down (STABILITY_TIERS / CIVIL_FREEDOMS_TIERS). The top
+// row uses tier.color for the bar fill and tier.label for the sub-line;
+// the body uses lead/accent/tail for the prose. One source per stat.
+function pickTier(tiers, value) {
+  return tiers.find(t => value >= t.min) || tiers[tiers.length - 1];
 }
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
@@ -516,8 +493,8 @@ function renderCard(n, pm) {
     { kind: 'money', label: 'GDP',            value: gdp },
     { kind: 'money', label: 'Budget',         value: budget },
     { kind: 'money', label: 'Debt',           value: debt },
-    { kind: 'score', label: 'Stability',      value: stability, tier: 'stability' },
-    { kind: 'score', label: 'Civil Freedoms', value: freedoms,  tier: 'freedom'   },
+    { kind: 'score', label: 'Stability',      value: stability, tiers: STABILITY_TIERS },
+    { kind: 'score', label: 'Civil Freedoms', value: freedoms,  tiers: CIVIL_FREEDOMS_TIERS },
   ];
 
   document.getElementById('nc-stats').innerHTML = stats.map(s => {
@@ -527,10 +504,11 @@ function renderCard(n, pm) {
         <span class="value">${escHtml(fmtMoney(s.value))}</span>
       </div>`;
     }
+    const tier = pickTier(s.tiers, s.value);
     return `<div class="stat-cell">
       <div class="row"><span class="label">${escHtml(s.label)}</span><span class="value">${Math.round(s.value)}</span></div>
-      <div class="bar"><div class="fill" style="width:${s.value}%; background:${barColor(s.value)};"></div></div>
-      <div class="sub">${escHtml(tierLabel(s.tier, s.value))}</div>
+      <div class="bar"><div class="fill" style="width:${s.value}%; background:${tier.color};"></div></div>
+      <div class="sub">${escHtml(tier.label)}</div>
     </div>`;
   }).join('');
 
@@ -678,10 +656,6 @@ const STAT_DESCRIPTIONS = {
   debt:           'total accumulated borrowing the nation owes. Manageable debt is normal for a developed economy; excessive debt service crowds out spending and raises the risk of default.',
   civil_freedoms: 'how freely citizens may speak, organise, protest, and dissent without state reprisal. High scores indicate open civic life; low scores signal censorship, surveillance, and risk to dissenters.',
 };
-
-function pickTier(tiers, value) {
-  return tiers.find(t => value >= t.min) || tiers[tiers.length - 1];
-}
 
 // National Characteristics body — one tier-colored card per stat with a
 // prose explanation that shifts as the value moves between bands. Reads the
