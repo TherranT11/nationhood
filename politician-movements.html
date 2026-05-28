@@ -41,18 +41,18 @@
 /* Movement card list — one row per movement party (faction_type='movement_party')
    in the politician's nation. Compact and readable; uses the party's color as a
    left-rail accent so a player can tell parties apart at a glance. */
-.mv-card { display:flex; align-items:center; gap:14px; padding:14px 16px;
+.mv-card { display:flex; align-items:center; gap:16px; padding:18px 20px;
   background:#0e1212; border:0.5px solid rgba(255,255,255,0.08); border-radius:6px;
   margin-bottom:10px; border-left:3px solid #5aafa5; }
-.mv-card .badge { width:36px; height:36px; flex-shrink:0; border-radius:4px;
+.mv-card .badge { width:46px; height:46px; flex-shrink:0; border-radius:4px;
   display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.04);
-  color:#d4d4d4; font-size:13px; font-weight:600; font-family:monospace; letter-spacing:0.05em; }
+  color:#d4d4d4; font-size:17px; font-weight:600; font-family:monospace; letter-spacing:0.05em; }
 .mv-card .body { flex:1; min-width:0; }
-.mv-card .title { font-size:14px; color:#fff; font-weight:500; margin-bottom:3px; }
-.mv-card .sub   { font-size:11px; color:#888; line-height:1.5; }
-.mv-card .seats { margin-left:auto; font-family:monospace; font-size:11px; color:#666;
+.mv-card .title { font-size:18px; color:#fff; font-weight:500; margin-bottom:4px; }
+.mv-card .sub   { font-size:14px; color:#888; line-height:1.5; }
+.mv-card .seats { margin-left:auto; font-family:monospace; font-size:14px; color:#666;
   letter-spacing:0.08em; text-transform:uppercase; white-space:nowrap; text-align:right; }
-.mv-card .seats strong { display:block; color:#d4d4d4; font-size:15px; font-weight:600; margin-top:2px; }
+.mv-card .seats strong { display:block; color:#d4d4d4; font-size:20px; font-weight:600; margin-top:3px; }
 
 /* Join Political Party action card needs to look active when the live
    feature is wired (the rest stay disabled with the Soon tag). */
@@ -435,6 +435,8 @@ async function handleJoinClick(btn) {
   if (!_politicianId) return;
   const partyId = btn.dataset.partyId;
   const mode    = btn.dataset.mode;
+  // Leave is destructive (-5 Influence). Confirm before firing the RPC.
+  if (mode === 'leave' && !confirm('Leave your political party? This costs 5 Influence.')) return;
   const prevTxt = btn.textContent;
   btn.disabled = true; btn.textContent = mode === 'leave' ? 'Leaving…' : 'Joining…';
   try {

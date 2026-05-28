@@ -210,7 +210,7 @@ const PARTY_OFFICE_RUNGS = [
   {
     name: 'Party Member',
     held:        (s) => !!s.partyId,
-    descIfHeld:  (s) => `You are a card-carrying member of ${s.partyName} here.`,
+    descIfHeld:  (s) => `You are a card-carrying member of ${s.partyName}.`,
     descIfNot:   ()  => 'You are not a member of a political party.',
     actionIfNot:  { label: 'Join Political Party',  kind: 'primary',   href: 'politician-movements.html?openJoin=1' },
     actionIfHeld: { label: 'Leave Political Party', kind: 'secondary', action: 'leave-party' },
@@ -417,26 +417,8 @@ async function init() {
   }
   if (!ctx) return;
 
-  // Affiliated party (movement_party row) for the Party Member rung's
-  // descIfHeld and the Leave button. Filters abandoned_at — if the party
-  // got abandoned the FK stays (ON DELETE SET NULL doesn't fire on
-  // abandon, only on hard delete), so without this filter the rung would
-  // show a ghost affiliation pointing at a dead party. Soft-fails to
-  // null on query error — the ladder just renders not-affiliated state.
-  let party = null;
-  if (ctx.faction?.politician_party_id) {
-    try {
-      const { data } = await _supabase.from('factions')
-        .select('id, faction_name, abbreviation')
-        .eq('id', ctx.faction.politician_party_id)
-        .is('abandoned_at', null)
-        .maybeSingle();
-      party = data || null;
-    } catch (_) { /* non-fatal */ }
-  }
-
   render(ctx.faction, ctx.shard, ctx.nation);
-  renderLadders(buildLadderState(ctx.faction, ctx.nation, party), ctx.faction.id);
+  renderLadders(buildLadderState(ctx.faction, ctx.nation, ctx.party), ctx.faction.id);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -585,7 +567,7 @@ function bindRungActions(politicianId) {
   document.querySelectorAll('.rung-btn[data-action="leave-party"]').forEach(btn => {
     btn.addEventListener('click', async () => {
       if (!politicianId) return;
-      if (!confirm('Leave your political party? Your influence stays where it is.')) return;
+      if (!confirm('Leave your political party? This costs 5 Influence.')) return;
       btn.disabled = true; btn.textContent = 'Leaving…';
       try {
         const { data, error } = await _supabase.rpc('politician_leave_party', { p_politician_id: politicianId });
