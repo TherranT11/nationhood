@@ -210,7 +210,7 @@ const PARTY_OFFICE_RUNGS = [
   {
     name: 'Party Member',
     held:        (s) => !!s.partyId,
-    descIfHeld:  (s) => `You are a card-carrying member of ${s.partyName} here.`,
+    descIfHeld:  (s) => `You are a card-carrying member of ${s.partyName}.`,
     descIfNot:   ()  => 'You are not a member of a political party.',
     actionIfNot:  { label: 'Join Political Party',  kind: 'primary',   href: 'politician-movements.html?openJoin=1' },
     actionIfHeld: { label: 'Leave Political Party', kind: 'secondary', action: 'leave-party' },
