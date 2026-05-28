@@ -2066,7 +2066,7 @@ async function loadTradeAgreements() {
     await loadAgreementShippingContracts();
 }
 
-let _shippingContractsByAgreement = {};  // agreementId → [{ id, energy_per_tick, delivery_priority, winner_faction_name, ... }]
+let _shippingContractsByAgreement = {};  // agreementId → [{ id, status, volume_required, commodity, winner_faction_name, winning_bids[], total_units_won, ... }]
 async function loadAgreementShippingContracts() {
     _shippingContractsByAgreement = {};
     const agreementIds = (_tradeAgreementsList || [])
@@ -2107,6 +2107,24 @@ async function loadAgreementShippingContracts() {
         });
         _shippingContractsByAgreement[c.trade_agreement_id] = list;
     }
+}
+
+// Single source — every consumer of "is this shipping contract delivering"
+// and "how much per tick" reads through these two helpers. Covers both the
+// multi-winner allocator's live state (winning_bids[], total_units_won) and
+// the legacy single-winner snapshot (status='awarded' + winner_faction_name).
+function isShippingContractActive(c) {
+    return (Array.isArray(c?.winning_bids) && c.winning_bids.length > 0)
+        || (c?.status === 'awarded' && !!c?.winner_faction_name);
+}
+function shippingContractDeliveredPerTick(c) {
+    if (Array.isArray(c?.winning_bids) && c.winning_bids.length > 0) {
+        return Number(c.total_units_won) || 0;
+    }
+    if (c?.status === 'awarded' && c?.winner_faction_name) {
+        return Number(c.volume_required) || 0;
+    }
+    return 0;
 }
 
 // Minimal shape compatible with the legacy callers (agreement-card
@@ -2250,14 +2268,13 @@ function renderTradeAgreements() {
         const hasEnergyArticle = (ag.articles || []).some(a =>
             a.article_type === 'trade_flow' && a.data?.commodity === 'energy');
         const phase4Contracts = _shippingContractsByAgreement[ag.id] || [];
-        const phase4Awarded   = phase4Contracts.filter(c => c.status === 'awarded');
+        const phase4Active    = phase4Contracts.filter(isShippingContractActive);
         let energyBadge = '';
         if (hasEnergyArticle) {
-            const totalDelivered = phase4Awarded.reduce((s, c) => s + (Number(c.energy_per_tick) || 0), 0);
-            // Phase 8: missed-payment heads-up when any awarded contract
-            // has a non-zero counter. Overrides the regular delivery
-            // badge so the player notices the problem before the totals.
-            const anyMissed = phase4Awarded.some(c => (Number(c.consecutive_missed_payments) || 0) > 0);
+            const totalDelivered = phase4Active.reduce((s, c) => s + shippingContractDeliveredPerTick(c), 0);
+            // Missed-payment heads-up if ANY contract (multi-winner or legacy)
+            // has a non-zero counter — overrides the regular delivery badge.
+            const anyMissed = phase4Contracts.some(c => (Number(c.consecutive_missed_payments) || 0) > 0);
             if (anyMissed) {
                 energyBadge = `<span class="tr-badge" style="color:var(--red);background:rgba(200,90,58,0.08);border-color:rgba(200,90,58,0.25);font-size:5px;">\u26A0 PAYMENT DELAYED</span>`;
             } else if (totalDelivered > 0) {
@@ -2544,9 +2561,9 @@ function computeCompatibility(myNationId, theirNationId) {
 // luxury_goods). Missing keys default to 0.
 //
 // Energy keeps the Phase-4 shipping-contract delivered-volume override
-// (winning bid's energy_per_tick wins over the agreement's stated
-// volume). Other commodities use the article's stated volume directly
-// — they have no per-commodity logistics override today.
+// (sum of actively delivered units/tick across all carriers wins over the
+// agreement's stated volume). Other commodities use the article's stated
+// volume directly — they have no per-commodity logistics override today.
 function getTradingVolumesByCommodity() {
     const out = { energy: 0, minerals: 0, food: 0, consumer_goods: 0, luxury_goods: 0 };
     const myId = _worldState?.nation?.id;
@@ -2564,7 +2581,7 @@ function getTradingVolumesByCommodity() {
         // only counts contracts that are actually delivering Energy.
         const hasLegacyLogistics = !!getAgreementShippingInfo(ag.id)?.hasLogistics;
         const phase4Contracts    = (_shippingContractsByAgreement[ag.id] || [])
-            .filter(c => c.status === 'awarded');
+            .filter(isShippingContractActive);
         const hasPhase4Logistics = phase4Contracts.length > 0;
         const shippingOk = !shipNeed.needsShipping || hasLegacyLogistics || hasPhase4Logistics;
         if (!shippingOk) continue;
@@ -2578,14 +2595,13 @@ function getTradingVolumesByCommodity() {
             const statedVolume = Number(d.volume) || 0;
             if (statedVolume <= 0) continue;
 
-            // Phase 4 shipping contracts only override Energy volume
-            // (their delivered figure lives in energy_per_tick). Other
-            // commodities use the article's stated volume directly —
-            // they have no per-commodity logistics override surface
-            // today.
+            // Phase 4 shipping contracts only override Energy volume —
+            // their actual per-tick delivery (multi-winner sum, or the
+            // legacy single-winner full-volume) takes precedence over the
+            // article's stated volume. Other commodities have no override.
             let volume = statedVolume;
             if (commodity === 'energy' && hasPhase4Logistics) {
-                volume = phase4Contracts.reduce((s, c) => s + (Number(c.energy_per_tick) || 0), 0);
+                volume = phase4Contracts.reduce((s, c) => s + shippingContractDeliveredPerTick(c), 0);
             }
             if (volume <= 0) continue;
 
