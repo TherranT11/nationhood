@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Politician — Character</title>
+<style>
+/* Topbar / nav / body base live in js/politician-topbar.js. Body
+   intentionally blank for now — the record / arc surface lands when
+   we've decided which history we actually want to track (sponsored
+   bills, scandals, leadership wins, promises kept/broken, etc.). */
+* { box-sizing:border-box; margin:0; padding:0; }
+.content { padding:32px 24px 24px; }
+.loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
+</style>
+</head>
+<body>
+
+<div id="pol-topbar-container"></div>
+
+<div class="content" id="content" style="display:none;"></div>
+
+<div id="loading" class="loading">LOADING...</div>
+
+<script type="module">
+import { bootstrapPolitician } from './js/politician-topbar.js';
+
+(async () => {
+  let ctx = null;
+  try { ctx = await bootstrapPolitician('character'); }
+  catch (err) {
+    console.error('politician-character: bootstrap failed', err);
+    document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
+    return;
+  }
+  if (!ctx) return;
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+})();
+</script>
+</body>
+</html>
