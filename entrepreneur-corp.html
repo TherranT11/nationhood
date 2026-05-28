@@ -274,11 +274,9 @@
   .ap-loan { display:grid; grid-template-columns:1fr auto; gap:12px; align-items:center;
     padding:11px 14px; background:#0d0d0d; border:0.5px solid rgba(122,154,171,0.18);
     border-radius:4px; margin-bottom:6px; }
-  .ap-loan.ineligible { opacity:0.45; }
   .ap-loan-info { min-width:0; }
   .ap-loan-who { font-size:13px; color:#fff; font-weight:500; line-height:1.2; }
   .ap-loan-sub { font-size:10px; color:#888; margin-top:3px; letter-spacing:0.04em; }
-  .ap-loan-grey { font-size:10px; color:#888; letter-spacing:0.08em; font-style:italic; }
 
   /* Corporate Finance section (v0 corp loans, 20270174) */
   .cf-launch { display:flex; align-items:center; justify-content:space-between; gap:14px;
@@ -458,6 +456,7 @@
     border-radius:4px; cursor:pointer; }
   .bm-type:hover { border-color:rgba(138,170,106,0.3); }
   .bm-type.sel { background:#131613; border-color:#6a8a4a; }
+  .bm-type.locked { opacity:0.4; cursor:not-allowed; }
   .bm-type .tn { color:#fff; font-size:13px; font-weight:500; }
   .bm-type .td { color:#888; font-size:10px; margin-top:3px; letter-spacing:0.04em; line-height:1.4; }
   /* Building-type pill on Active Projects rows */
@@ -1606,6 +1605,192 @@ function initials(s, n) {
         location.reload();
       } catch (e) {
         console.warn('[entrepreneur-corp] cancel engine order failed:', e?.message || e);
+        if (btn) { btn.disabled = false; btn.textContent = originalLabel || 'Decline'; }
+      }
+    }
+
+    // Aircraft trade (20270364): mirrors engines, but the seller picks a
+    // fulfilment_mode at Set Price time — 'stock' settles instantly from
+    // inventory_on_hand; 'build_to_order' queues a production run on a seller
+    // plant that delivers into the buyer's corp_aircraft over its run. Buyer
+    // pays full quote up front for either mode.
+    async function openBuyAircraftModal() {
+      const overlay = document.getElementById('ad-engtrade-overlay');
+      if (!overlay) return;
+      const { data: designs, error: dErr } = await _supabase.from('ent_aircraft_designs')
+        .select('id, name, airframe_class, passengers, range_nm, demand_score, safety_score, quality, cost_per_unit, owner:entrepreneur_corps!entrepreneur_corp_id(name)')
+        .eq('design_type', 'aircraft').eq('status', 'available').neq('entrepreneur_corp_id', id)
+        .in('airframe_class', ['regional', 'narrowbody', 'widebody']).order('name');
+      if (dErr) console.warn('[entrepreneur-corp] buy-aircraft fetch error:', dErr.message);
+      const opts = designs || [];
+      let submitting = false;
+      overlay.innerHTML = `
+        <div class="bm-modal" style="max-width:520px;">
+          <div class="bm-head"><div class="ti">Buy <em>Aircraft</em></div><div class="bm-x" id="ba-close">×</div></div>
+          <div class="bm-body">
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Request aircraft from a manufacturer. They name a price and pick delivery mode — from stock (instant) or build-to-order (delivered over the build window). You accept; the cash settles on accept either way. Bought aircraft join your fleet.</div>
+            ${opts.length ? `
+              <div class="bm-label">Aircraft</div>
+              <div class="be-engines" id="ba-design-list">${opts.map((d, i) => `
+                <div class="be-eng${i === 0 ? ' sel' : ''}" data-id="${d.id}">
+                  <div class="be-eng-top">
+                    <span class="be-eng-nm">${escapeHtml(d.name)}</span>
+                    <span class="be-eng-cost">${fmtUsd(Number(d.cost_per_unit) || 0)}/u</span>
+                  </div>
+                  <div class="be-eng-mfg">${escapeHtml(d.owner?.name || '—')}</div>
+                  <div class="be-eng-st">${escapeHtml(d.airframe_class || '')} · ${d.passengers} pax · range ${d.range_nm} · demand ${d.demand_score} · safety ${d.safety_score} · Q${d.quality}</div>
+                </div>`).join('')}</div>
+              <input type="hidden" id="ba-design" value="${opts[0].id}">
+              <div class="bm-label">Quantity</div>
+              <input type="number" class="bm-input" id="ba-qty" min="1" max="50" value="1">
+              <div style="font-size:11px;color:#8a8680;margin-top:8px;">The seller names a price and picks delivery mode (stock or build-to-order).</div>`
+              : `<div style="font-size:12px;color:#c98a8a;">No other manufacturers have an available aircraft design to sell yet.</div>`}
+            <div class="bm-err" id="ba-err"></div>
+          </div>
+          <div class="bm-foot">
+            <button class="bm-btn sec" id="ba-cancel">Cancel</button>
+            <button class="bm-btn pri" id="ba-submit"${opts.length ? '' : ' disabled'}>Request</button>
+          </div>
+        </div>`;
+      const close = () => overlay.classList.remove('open');
+      document.getElementById('ba-close').onclick = close;
+      document.getElementById('ba-cancel').onclick = close;
+      overlay.onclick = (e) => { if (e.target === overlay) close(); };
+      const list = document.getElementById('ba-design-list');
+      if (list) list.addEventListener('click', (ev) => {
+        const card = ev.target.closest('.be-eng');
+        if (!card) return;
+        list.querySelectorAll('.be-eng.sel').forEach(el => el.classList.remove('sel'));
+        card.classList.add('sel');
+        document.getElementById('ba-design').value = card.dataset.id;
+      });
+      const btn = document.getElementById('ba-submit');
+      if (btn && !btn.disabled) btn.onclick = async () => {
+        if (submitting) return;
+        const errEl = document.getElementById('ba-err');
+        const q = parseInt(document.getElementById('ba-qty').value, 10);
+        if (!(q >= 1 && q <= 50)) { errEl.textContent = 'Quantity must be 1–50.'; return; }
+        submitting = true; btn.disabled = true; btn.textContent = 'Requesting…'; errEl.textContent = '';
+        try {
+          const { data, error } = await _supabase.rpc('ent_request_aircraft_order', {
+            p_buyer_corp_id: id, p_aircraft_design_id: document.getElementById('ba-design').value, p_quantity: q });
+          if (error) throw error;
+          if (!data || !data.success) {
+            const R = { design_not_available: 'That aircraft is no longer available.', own_design: 'You already own that design.',
+              not_airline: 'Only airline corps can buy aircraft.', invalid_quantity: 'Quantity must be 1–50.',
+              class_not_supported: 'Business-jet purchases not yet supported through this flow.' };
+            errEl.textContent = R[data?.reason] || ('Failed: ' + (data?.reason || 'unknown'));
+            submitting = false; btn.disabled = false; btn.textContent = 'Request'; return;
+          }
+          btn.textContent = 'REQUESTED ✓'; setTimeout(() => location.reload(), 600);
+        } catch (e) { errEl.textContent = 'Failed: ' + (e?.message || e); submitting = false; btn.disabled = false; btn.textContent = 'Request'; }
+      };
+      overlay.classList.add('open');
+    }
+
+    // Seller sets a price + fulfilment_mode (mode 'price') or buyer accepts the
+    // priced offer (mode 'accept'). Seller modal pre-selects 'stock' if the
+    // seller's inventory_on_hand covers the order, else 'build_to_order'.
+    function openAircraftOrderModal(mode, o) {
+      const overlay = document.getElementById('ad-engtrade-overlay');
+      if (!overlay) return;
+      let submitting = false;
+      const isPrice = mode === 'price';
+      const total = (Number(o.price) || 0) * (Number(o.qty) || 0);
+      const stockOk = Number(o.stock || 0) >= Number(o.qty || 0);
+      const initialMode = stockOk ? 'stock' : 'build_to_order';
+      overlay.innerHTML = `
+        <div class="bm-modal" style="max-width:460px;">
+          <div class="bm-head"><div class="ti">${isPrice ? 'Set <em>Price</em>' : 'Accept <em>Offer</em>'}</div><div class="bm-x" id="ao-close">×</div></div>
+          <div class="bm-body">
+            <div style="font-size:12px;color:#cfcabf;margin-bottom:10px;">${o.qty}× <b>${escapeHtml(o.aircraft)}</b> ${isPrice ? `for ${escapeHtml(o.party)}` : `from ${escapeHtml(o.party)}`}</div>
+            ${isPrice ? `
+              <div class="bm-label">Price per unit</div>
+              <input type="number" class="bm-input" id="ao-price" min="0" step="1" value="">
+              <div id="ao-preview" style="font-size:12px;color:#8aaa6a;margin-top:8px;"></div>
+              <div class="bm-label">Fulfilment</div>
+              <div class="bm-types" style="grid-template-columns:1fr 1fr;">
+                <div class="bm-type ao-mode${initialMode === 'stock' ? ' sel' : ''}${stockOk ? '' : ' locked'}" data-mode="stock">
+                  <div class="tn">From Stock</div>
+                  <div class="td">${o.stock || 0} in inventory · instant delivery${stockOk ? '' : ' · not enough on hand'}</div>
+                </div>
+                <div class="bm-type ao-mode${initialMode === 'build_to_order' ? ' sel' : ''}" data-mode="build_to_order">
+                  <div class="tn">Build to Order</div>
+                  <div class="td">queues a production run · delivers over the build window</div>
+                </div>
+              </div>
+              <input type="hidden" id="ao-mode" value="${initialMode}">`
+              : `<div style="font-size:13px;color:#cfcabf;">Price <b>${fmtUsd(Number(o.price) || 0)}</b>/unit · Total <b style="color:#8aaa6a;">${fmtUsd(total)}</b><br><span style="font-size:11px;color:#8a8680;">${o.mode === 'stock' ? 'Stock: instant delivery into your fleet.' : 'Build-to-order: delivered into your fleet over the build window.'}</span></div>`}
+            <div class="bm-err" id="ao-err"></div>
+          </div>
+          <div class="bm-foot">
+            <button class="bm-btn sec" id="ao-cancel">Cancel</button>
+            <button class="bm-btn pri" id="ao-submit">${isPrice ? 'Send Price' : 'Accept & Pay'}</button>
+          </div>
+        </div>`;
+      const close = () => overlay.classList.remove('open');
+      document.getElementById('ao-close').onclick = close;
+      document.getElementById('ao-cancel').onclick = close;
+      overlay.onclick = (e) => { if (e.target === overlay) close(); };
+      if (isPrice) {
+        const pEl = document.getElementById('ao-price');
+        pEl.oninput = () => {
+          const p = Math.max(0, parseInt(pEl.value, 10) || 0);
+          document.getElementById('ao-preview').innerHTML = `Total <b>${fmtUsd(p * (Number(o.qty) || 0))}</b> for ${o.qty} unit${o.qty === 1 ? '' : 's'}`;
+        };
+        document.querySelectorAll('.ao-mode').forEach(el => el.addEventListener('click', () => {
+          if (el.classList.contains('locked')) return;
+          document.querySelectorAll('.ao-mode').forEach(m => m.classList.remove('sel'));
+          el.classList.add('sel');
+          document.getElementById('ao-mode').value = el.dataset.mode;
+        }));
+      }
+      const btn = document.getElementById('ao-submit');
+      btn.onclick = async () => {
+        if (submitting) return;
+        const errEl = document.getElementById('ao-err');
+        submitting = true; btn.disabled = true; btn.textContent = 'Working…'; errEl.textContent = '';
+        try {
+          let res;
+          if (isPrice) {
+            const p = parseInt(document.getElementById('ao-price').value, 10);
+            if (!(p >= 0)) { errEl.textContent = 'Enter a price.'; submitting = false; btn.disabled = false; btn.textContent = 'Send Price'; return; }
+            res = await _supabase.rpc('ent_price_aircraft_order', {
+              p_order_id: o.id, p_price_per_unit: p, p_fulfilment_mode: document.getElementById('ao-mode').value });
+          } else {
+            res = await _supabase.rpc('ent_accept_aircraft_order', { p_order_id: o.id });
+          }
+          if (res.error) throw res.error;
+          const data = res.data;
+          if (!data || !data.success) {
+            const R = { order_not_pending: 'This order is no longer awaiting a price.', order_not_priced: 'This order isn\'t ready to accept.',
+              insufficient_cash: data?.need != null ? `Need ${fmtUsd(Number(data.need))} to accept.` : 'Treasury too low.',
+              insufficient_inventory: 'Seller is short on stock — ask them to build-to-order.',
+              seller_insufficient_engines: 'Seller doesn\'t have enough engines on hand to start the build.',
+              no_seller_plant: 'Seller has no compatible plant available right now.',
+              not_seller: 'Only the seller can price this.', not_buyer: 'Only the buyer can accept this.',
+              order_not_found: 'Order not found.', invalid_mode: 'Pick a fulfilment mode.' };
+            errEl.textContent = R[data?.reason] || ('Failed: ' + (data?.reason || 'unknown'));
+            submitting = false; btn.disabled = false; btn.textContent = isPrice ? 'Send Price' : 'Accept & Pay'; return;
+          }
+          btn.textContent = '✓'; setTimeout(() => location.reload(), 500);
+        } catch (e) { errEl.textContent = 'Failed: ' + (e?.message || e); submitting = false; btn.disabled = false; btn.textContent = isPrice ? 'Send Price' : 'Accept & Pay'; }
+      };
+      overlay.classList.add('open');
+    }
+
+    // Decline / withdraw / reject an aircraft order. Mirrors cancelEngineOrder;
+    // ent_cancel_aircraft_order accepts either party. Preserves the button
+    // label so a failed Reject restores to 'Reject' (not 'Decline').
+    async function cancelAircraftOrder(orderId, btn) {
+      const originalLabel = btn ? btn.textContent : null;
+      if (btn) { btn.disabled = true; btn.textContent = '…'; }
+      try {
+        const { data, error } = await _supabase.rpc('ent_cancel_aircraft_order', { p_order_id: orderId });
+        if (error) throw error;
+        location.reload();
+      } catch (e) {
+        console.warn('[entrepreneur-corp] cancel aircraft order failed:', e?.message || e);
         if (btn) { btn.disabled = false; btn.textContent = originalLabel || 'Decline'; }
       }
     }
@@ -3300,36 +3485,24 @@ function initials(s, n) {
       }
 
       // Pending Loan Requests panel (Banking corps only). Shows EVERY
-      // pending loan request across the world; rows where this bank
-      // can act (owns a Banking Office in the borrower's HQ nation)
-      // get [Accept] buttons, others are greyed out with an
-      // ineligibility chip. Server enforces the same gate at accept
-      // time — UI here is just the visibility surface.
+      // Loan Requests panel (Banking corps only, any view). Lists every
+      // pending loan request across the world; any banking corp can make
+      // an offer back — banking is a global market, no per-nation gate.
       let loanRequestsHtml = '';
       if (c.industry === 'banking' && canView) {
-        const [reqsRes, mineBoRes] = await Promise.all([
-          _supabase.from('corp_loan_requests')
-            .select('id, principal, term_ticks, expires_at_tick, '
-                  + 'borrower:entrepreneur_corps!borrower_corp_id(id, name, hq_nation_id, '
-                    + 'hq:nations!hq_nation_id(name), '
-                    + 'owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name))')
-            .eq('status', 'pending')
-            .order('placed_at_tick', { ascending: false }),
-          _supabase.from('corp_buildings')
-            .select('nation_id')
-            .eq('owner_corp_id', id)
-            .eq('building_type', 'banking_office')
-            .eq('status', 'completed'),
-        ]);
-        if (reqsRes.error)   console.warn('[entrepreneur-corp] loan requests fetch error:', reqsRes.error.message);
-        if (mineBoRes.error) console.warn('[entrepreneur-corp] BO holdings fetch error:',    mineBoRes.error.message);
-        const myBoNationIds = new Set((mineBoRes.data || []).map(r => r.nation_id).filter(Boolean));
-        const loanReqs = (reqsRes.data || []).filter(r => r.borrower?.id !== id);
+        const { data: reqsData, error: reqsErr } = await _supabase.from('corp_loan_requests')
+          .select('id, principal, term_ticks, expires_at_tick, '
+                + 'borrower:entrepreneur_corps!borrower_corp_id(id, name, hq_nation_id, '
+                  + 'hq:nations!hq_nation_id(name), '
+                  + 'owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name))')
+          .eq('status', 'pending')
+          .order('placed_at_tick', { ascending: false });
+        if (reqsErr) console.warn('[entrepreneur-corp] loan requests fetch error:', reqsErr.message);
+        const loanReqs = (reqsData || []).filter(r => r.borrower?.id !== id);
         if (loanReqs.length) {
           loanRequestsHtml = `
             <div class="ap-loans-head">Pending Loan Requests · ${loanReqs.length}</div>
             ` + loanReqs.map(r => {
-              const eligible = myBoNationIds.has(r.borrower?.hq_nation_id);
               const ceo = r.borrower?.owner
                 ? [r.borrower.owner.leader_first_name, r.borrower.owner.leader_last_name].filter(Boolean).join(' ').trim() || r.borrower.owner.faction_name
                 : '';
@@ -3338,16 +3511,14 @@ function initials(s, n) {
               // numbers (those depend on what THIS bank chooses to
               // offer).
               return `
-                <div class="ap-loan ${eligible ? '' : 'ineligible'}">
+                <div class="ap-loan">
                   <div class="ap-loan-info">
                     <div class="ap-loan-who">${escapeHtml(r.borrower?.name || 'Unknown corp')} requests ${fmtUsd(Number(r.principal))}</div>
                     <div class="ap-loan-sub">
                       ${ceo ? escapeHtml(ceo) + ' · ' : ''}${escapeHtml(r.borrower?.hq?.name || '—')} · ${r.term_ticks}t term · expires T${r.expires_at_tick}
                     </div>
                   </div>
-                  ${eligible
-                    ? ownerOnly(`<button class="ap-btn-small accept cp-make-offer" data-rid="${r.id}" data-principal="${r.principal}" data-term="${r.term_ticks}" data-bname="${escapeHtml(r.borrower?.name || 'Unknown')}">Make Offer</button>`)
-                    : '<span class="ap-loan-grey">No Banking Office in their HQ nation</span>'}
+                  ${ownerOnly(`<button class="ap-btn-small accept cp-make-offer" data-rid="${r.id}" data-principal="${r.principal}" data-term="${r.term_ticks}" data-bname="${escapeHtml(r.borrower?.name || 'Unknown')}">Make Offer</button>`)}
                 </div>`;
             }).join('');
         }
@@ -3467,10 +3638,11 @@ function initials(s, n) {
         const fleetCard = `
           <div class="sh-section-head">Fleet</div>
           <div class="sh-fleet" style="grid-template-columns:1fr 1fr 1fr;">${fleetCells}</div>
-          ${ownerOnly(`<div class="al-form">
+          ${ownerOnly(`<div class="al-form" style="gap:8px;">
             <button class="sh-buy-btn" id="al-request-aircraft">Request Aircraft</button>
+            <button class="sh-buy-btn" id="al-buy-aircraft">Buy Aircraft</button>
           </div>`)}
-          <div class="al-hint">Cash: <b>${fmtUsd(corpCash)}</b>. Commission aircraft from Aviation Manufacturing corps — post an RFP (class · qty · per-unit budget); they bid a design + price, the lowest builds it to order and delivers. Paid on delivery.</div>
+          <div class="al-hint">Cash: <b>${fmtUsd(corpCash)}</b>. <b>Request Aircraft</b> posts an RFP (class · qty · per-unit budget); manufacturers bid a design + price, the lowest builds and delivers. <b>Buy Aircraft</b> targets a specific design — the seller names a price and picks stock-or-build-to-order; you accept and pay on the spot.</div>
           <div class="sh-section-head">Aircraft · ${aircraft.length}</div>
           ${acRowsHtml}
           <div class="al-hint">Flying aircraft lose condition each tick (6%/tick on routes). Overhaul restores condition (cost 0.5% of price — $300k/$450k/$600k; the cap falls 1% per cycle). Retire scraps a plane — no refund.</div>`;
@@ -3655,36 +3827,6 @@ function initials(s, n) {
             invData.map(r => `<div class="cf-row"><div class="who">${escapeHtml(r.engine?.name || 'Engine')}</div><span class="num green">${r.quantity} units</span></div>`).join('')
           : '';
 
-        // Engine orders where this corp is buyer or seller, still open.
-        const { data: ordData, error: ordErr } = await _supabase.from('ent_engine_orders')
-          .select('id, buyer_corp_id, seller_corp_id, quantity, price_per_unit, status, engine:ent_aircraft_designs!engine_design_id(name), buyer:entrepreneur_corps!buyer_corp_id(name), seller:entrepreneur_corps!seller_corp_id(name)')
-          .or(`buyer_corp_id.eq.${id},seller_corp_id.eq.${id}`).in('status', ['pending', 'priced'])
-          .order('created_at', { ascending: false });
-        if (ordErr) console.warn('[entrepreneur-corp] engine orders fetch error:', ordErr.message);
-        const ordRow = (o) => {
-          const eng = escapeHtml(o.engine?.name || 'Engine');
-          const da = `data-oid="${o.id}" data-eng="${eng}" data-qty="${o.quantity}" data-price="${Number(o.price_per_unit) || 0}"`;
-          if (o.seller_corp_id === id) {
-            // Incoming: I'm the seller. Pending → Set Price (responds with a
-            // price; buyer then accepts or declines) or Reject (kills the
-            // request via ent_cancel_engine_order, which permits either party).
-            const buyer = escapeHtml(o.buyer?.name || 'Buyer');
-            const act = o.status === 'pending'
-              ? `<div class="sh-row-actions" style="gap:6px;">${ownerOnly(`<button class="ap-btn-small list eo-price-btn" ${da} data-party="${buyer}">Set Price</button><button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Reject</button>`)}</div>`
-              : `<span class="num amber">${fmtUsd(Number(o.price_per_unit) || 0)}/u · sent</span>`;
-            return `<div class="cf-row"><div><div class="who">Sell ${o.quantity}× ${eng}</div><div class="sub">to ${buyer}</div></div>${act}</div>`;
-          }
-          // Outgoing: I'm the buyer.
-          const seller = escapeHtml(o.seller?.name || 'Seller');
-          const act = o.status === 'priced'
-            ? `<div class="sh-row-actions" style="gap:6px;">${ownerOnly(`<button class="ap-btn-small list eo-accept-btn" ${da} data-party="${seller}">Accept ${fmtUsd(Number(o.price_per_unit) || 0)}/u</button><button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Decline</button>`)}</div>`
-            : `<div class="sh-row-actions" style="gap:6px;"><span class="num muted">awaiting price</span>${ownerOnly(`<button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Cancel</button>`)}</div>`;
-          return `<div class="cf-row"><div><div class="who">Buy ${o.quantity}× ${eng}</div><div class="sub">from ${seller}</div></div>${act}</div>`;
-        };
-        const ordersSection = (ordData && ordData.length)
-          ? `<div class="section-heading"><span class="sans">Engine</span><span class="serif">Orders</span></div>${ordData.map(ordRow).join('')}`
-          : '';
-
         aviationPanelHtml = `
           <div class="section-heading"><span class="sans">Aircraft</span><span class="serif">Designs</span></div>
           <div class="cf-row" style="align-items:center;">
@@ -3698,8 +3840,109 @@ function initials(s, n) {
           ${designs.length ? designs.map(dRow).join('') : '<div class="sh-empty">No designs yet — design an engine, then an aircraft.</div>'}
           ${productionSection}
           ${inventorySection}
-          ${ordersSection}
           ${rfpBidSection}`;
+      }
+
+      // Open Orders panel — shared by airlines (aircraft buyers) and aviation
+      // manufacturers (engine + aircraft sellers, sometimes engine buyers). Pulls
+      // both order tables in parallel, merges by created_at desc, applies the
+      // same 24h-closed window the engine-only version did. Rendered after both
+      // industry-specific panels so a corp with no matching orders still gets
+      // the empty state and a missing section signals a real fetch failure.
+      let ordersPanelHtml = '';
+      if (canView && (c.industry === 'airline' || c.industry === 'aviation_manufacturing')) {
+        const closedCutoffIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const [engRes, acRes] = await Promise.all([
+          _supabase.from('ent_engine_orders')
+            .select('id, buyer_corp_id, seller_corp_id, quantity, price_per_unit, status, created_at, engine:ent_aircraft_designs!engine_design_id(name), buyer:entrepreneur_corps!buyer_corp_id(name), seller:entrepreneur_corps!seller_corp_id(name)')
+            .or(`buyer_corp_id.eq.${id},seller_corp_id.eq.${id}`)
+            .order('created_at', { ascending: false }).limit(30),
+          _supabase.from('ent_aircraft_orders')
+            .select('id, buyer_corp_id, seller_corp_id, quantity, price_per_unit, status, fulfilment_mode, created_at, aircraft:ent_aircraft_designs!aircraft_design_id(name, inventory_on_hand), buyer:entrepreneur_corps!buyer_corp_id(name), seller:entrepreneur_corps!seller_corp_id(name)')
+            .or(`buyer_corp_id.eq.${id},seller_corp_id.eq.${id}`)
+            .order('created_at', { ascending: false }).limit(30),
+        ]);
+        if (engRes.error) console.warn('[entrepreneur-corp] engine orders fetch error:', engRes.error.message);
+        if (acRes.error)  console.warn('[entrepreneur-corp] aircraft orders fetch error:', acRes.error.message);
+        const isRecent = (o) => o.status === 'pending' || o.status === 'priced' ||
+          ((o.status === 'cancelled' || o.status === 'completed') && o.created_at >= closedCutoffIso);
+        const merged = [
+          ...((engRes.data || []).filter(isRecent).map(o => ({ ...o, _kind: 'engine' }))),
+          ...((acRes.data  || []).filter(isRecent).map(o => ({ ...o, _kind: 'aircraft' }))),
+        ].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+
+        const ordRow = (o) => {
+          const closed = o.status === 'cancelled' || o.status === 'completed';
+          const rowStyle = closed ? ' style="opacity:0.55;"' : '';
+          if (o._kind === 'engine') {
+            const eng = escapeHtml(o.engine?.name || 'Engine');
+            const da = `data-oid="${o.id}" data-eng="${eng}" data-qty="${o.quantity}" data-price="${Number(o.price_per_unit) || 0}"`;
+            if (o.seller_corp_id === id) {
+              const buyer = escapeHtml(o.buyer?.name || 'Buyer');
+              let act;
+              if (o.status === 'pending') {
+                act = `<div class="sh-row-actions" style="gap:6px;">${ownerOnly(`<button class="ap-btn-small list eo-price-btn" ${da} data-party="${buyer}">Set Price</button><button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Reject</button>`)}</div>`;
+              } else if (o.status === 'priced') {
+                act = `<span class="num amber">${fmtUsd(Number(o.price_per_unit) || 0)}/u · sent</span>`;
+              } else if (o.status === 'cancelled') {
+                act = `<span class="num muted">cancelled</span>`;
+              } else {
+                act = `<span class="num green">sold · ${fmtUsd(Number(o.price_per_unit) || 0)}/u</span>`;
+              }
+              return `<div class="cf-row"${rowStyle}><div><div class="who">Sell ${o.quantity}× ${eng}</div><div class="sub">to ${buyer}</div></div>${act}</div>`;
+            }
+            const seller = escapeHtml(o.seller?.name || 'Seller');
+            let act;
+            if (o.status === 'priced') {
+              act = `<div class="sh-row-actions" style="gap:6px;">${ownerOnly(`<button class="ap-btn-small list eo-accept-btn" ${da} data-party="${seller}">Accept ${fmtUsd(Number(o.price_per_unit) || 0)}/u</button><button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Decline</button>`)}</div>`;
+            } else if (o.status === 'pending') {
+              act = `<div class="sh-row-actions" style="gap:6px;"><span class="num muted">awaiting price</span>${ownerOnly(`<button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Cancel</button>`)}</div>`;
+            } else if (o.status === 'cancelled') {
+              act = `<span class="num muted">cancelled</span>`;
+            } else {
+              act = `<span class="num green">bought · ${fmtUsd(Number(o.price_per_unit) || 0)}/u</span>`;
+            }
+            return `<div class="cf-row"${rowStyle}><div><div class="who">Buy ${o.quantity}× ${eng}</div><div class="sub">from ${seller}</div></div>${act}</div>`;
+          }
+          // Aircraft order. Same shape as engine; carries fulfilment_mode +
+          // seller inventory_on_hand for the Set Price modal's stock toggle.
+          const ac    = escapeHtml(o.aircraft?.name || 'Aircraft');
+          const stock = Number(o.aircraft?.inventory_on_hand) || 0;
+          const da    = `data-oid="${o.id}" data-ac="${ac}" data-qty="${o.quantity}" data-price="${Number(o.price_per_unit) || 0}" data-stock="${stock}" data-mode="${o.fulfilment_mode || ''}"`;
+          if (o.seller_corp_id === id) {
+            const buyer = escapeHtml(o.buyer?.name || 'Buyer');
+            let act;
+            if (o.status === 'pending') {
+              act = `<div class="sh-row-actions" style="gap:6px;">${ownerOnly(`<button class="ap-btn-small list ao-price-btn" ${da} data-party="${buyer}">Set Price</button><button class="ap-btn-small list ao-cancel-btn" data-oid="${o.id}">Reject</button>`)}</div>`;
+            } else if (o.status === 'priced') {
+              const modeLab = o.fulfilment_mode === 'stock' ? 'stock' : 'build-to-order';
+              act = `<span class="num amber">${fmtUsd(Number(o.price_per_unit) || 0)}/u · ${modeLab} · sent</span>`;
+            } else if (o.status === 'cancelled') {
+              act = `<span class="num muted">cancelled</span>`;
+            } else {
+              act = `<span class="num green">sold · ${fmtUsd(Number(o.price_per_unit) || 0)}/u</span>`;
+            }
+            return `<div class="cf-row"${rowStyle}><div><div class="who">Sell ${o.quantity}× ${ac}</div><div class="sub">to ${buyer}</div></div>${act}</div>`;
+          }
+          const seller = escapeHtml(o.seller?.name || 'Seller');
+          let act;
+          if (o.status === 'priced') {
+            const modeLab = o.fulfilment_mode === 'stock' ? 'stock' : 'build-to-order';
+            act = `<div class="sh-row-actions" style="gap:6px;">${ownerOnly(`<button class="ap-btn-small list ao-accept-btn" ${da} data-party="${seller}">Accept ${fmtUsd(Number(o.price_per_unit) || 0)}/u · ${modeLab}</button><button class="ap-btn-small list ao-cancel-btn" data-oid="${o.id}">Decline</button>`)}</div>`;
+          } else if (o.status === 'pending') {
+            act = `<div class="sh-row-actions" style="gap:6px;"><span class="num muted">awaiting price</span>${ownerOnly(`<button class="ap-btn-small list ao-cancel-btn" data-oid="${o.id}">Cancel</button>`)}</div>`;
+          } else if (o.status === 'cancelled') {
+            act = `<span class="num muted">cancelled</span>`;
+          } else {
+            act = `<span class="num green">bought · ${fmtUsd(Number(o.price_per_unit) || 0)}/u</span>`;
+          }
+          return `<div class="cf-row"${rowStyle}><div><div class="who">Buy ${o.quantity}× ${ac}</div><div class="sub">from ${seller}</div></div>${act}</div>`;
+        };
+        const ordersBody = merged.length
+          ? merged.map(ordRow).join('')
+          : `<div class="sh-empty">No incoming or outgoing orders.</div>`;
+        ordersPanelHtml =
+          `<div class="section-heading"><span class="sans">Open</span><span class="serif">Orders</span></div>${ordersBody}`;
       }
 
       // ── Request Construction panels (20270225). My commissioned requests
@@ -3745,9 +3988,16 @@ function initials(s, n) {
           // widened in 20270252); the Accept/Reject buttons inside bidCard stay
           // owner-only via ownerOnly().
           const badge = `<span class="num amber">bidding · ${bids.length} bid${bids.length === 1 ? '' : 's'}</span>`;
+          // Owner gets a Cancel button only while zero bids stand — the RPC
+          // re-checks under a FOR UPDATE lock so a bid landing concurrently
+          // bumps this back to has_bids; we just gate the affordance.
+          const emptyRow = `<div class="cb-bids"><div class="sh-empty" style="padding:6px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <span>No bids yet.</span>
+            ${ownerOnly(`<button class="ap-btn-small reject cr-cancel-btn" data-cid="${r.id}">Cancel Request</button>`)}
+          </div></div>`;
           const cards = bids.length
             ? `<div class="cb-bids">${bids.map(bidCard).join('')}</div>`
-            : '<div class="cb-bids"><div class="sh-empty" style="padding:6px 12px;">No bids yet.</div></div>';
+            : emptyRow;
           return head(badge) + cards;
         };
         requestPanelHtml += `
@@ -3802,7 +4052,7 @@ function initials(s, n) {
         requestPanelHtml += `<div class="section-heading"><span class="sans">Open</span><span class="serif">Build Requests</span></div>${openHtml}`;
       }
 
-      pj.innerHTML = launchBtn + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + airlinePanelHtml + aviationPanelHtml + requestPanelHtml;
+      pj.innerHTML = launchBtn + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + airlinePanelHtml + aviationPanelHtml + ordersPanelHtml + requestPanelHtml;
 
       if (isOwner && isConstructionCorp) {
         document.getElementById('cp-begin-construction').addEventListener('click', openBuildModal);
@@ -3836,6 +4086,7 @@ function initials(s, n) {
           openBidModal(btn.dataset.cid, btn.dataset.label, Number(btn.dataset.cost), Number(btn.dataset.budget))));
         pj.querySelectorAll('.cb-accept-btn').forEach(btn => btn.addEventListener('click', () => handleConstructionBid('accept', btn)));
         pj.querySelectorAll('.cb-reject-btn').forEach(btn => btn.addEventListener('click', () => handleConstructionBid('reject', btn)));
+        pj.querySelectorAll('.cr-cancel-btn').forEach(btn => btn.addEventListener('click', () => handleCancelConstructionRequest(btn)));
       }
 
       setupCorpChat();
@@ -3892,8 +4143,22 @@ function initials(s, n) {
         // Airline-corp handlers (al-*).
         const alReq = document.getElementById('al-request-aircraft');
         if (alReq) alReq.addEventListener('click', openAircraftRfpModal);
+        const alBuyAc = document.getElementById('al-buy-aircraft');
+        if (alBuyAc) alBuyAc.addEventListener('click', openBuyAircraftModal);
         pj.querySelectorAll('.ac-bid-btn').forEach(btn => btn.addEventListener('click', () =>
           openAircraftBidModal(btn.dataset.rid, btn.dataset.class, Number(btn.dataset.budget))));
+        // Aircraft-order action buttons (Open Orders panel). Same shape as the
+        // .eo-* engine handlers above but go through openAircraftOrderModal +
+        // cancelAircraftOrder so they target ent_aircraft_orders RPCs.
+        pj.querySelectorAll('.ao-price-btn').forEach(btn => btn.addEventListener('click', () =>
+          openAircraftOrderModal('price', { id: btn.dataset.oid, aircraft: btn.dataset.ac,
+            qty: Number(btn.dataset.qty), party: btn.dataset.party, stock: Number(btn.dataset.stock) })));
+        pj.querySelectorAll('.ao-accept-btn').forEach(btn => btn.addEventListener('click', () =>
+          openAircraftOrderModal('accept', { id: btn.dataset.oid, aircraft: btn.dataset.ac,
+            qty: Number(btn.dataset.qty), price: Number(btn.dataset.price), party: btn.dataset.party,
+            mode: btn.dataset.mode })));
+        pj.querySelectorAll('.ao-cancel-btn').forEach(btn => btn.addEventListener('click', () =>
+          cancelAircraftOrder(btn.dataset.oid, btn)));
         const alClaim = document.getElementById('al-claim');
         if (alClaim) alClaim.addEventListener('click', () => handleClaimTerminal(alClaim));
         const alOpen = document.getElementById('al-open-route');
@@ -4252,6 +4517,8 @@ function initials(s, n) {
       not_open: 'This request is no longer open.', bid_not_pending: 'That bid is no longer pending.',
       bid_not_found: 'Bid not found.', contract_not_found: 'Request not found.',
       bidder_at_capacity: 'That builder is at construction-yard capacity in this nation — pick another bid.',
+      has_bids: 'A bid has been placed on this request — reject it first, then cancel.',
+      not_private: 'This isn\'t a corp-issued request.',
     };
     const handleConstructionBid = async (action, btn) => {
       if (btn.disabled) return;
@@ -4275,10 +4542,34 @@ function initials(s, n) {
       }
     };
 
-    const openBidModal = (contractId, label, yourCost, budget) => {
-      const ov = document.getElementById('rcb-overlay');
-      if (!ov) return;
-      let submitting = false;
+// Cancel a construction request the issuer posted, only valid when no
+// pending bids stand. The RPC re-checks under a contract lock; if a bid
+// landed after the UI rendered we surface has_bids and reload so the
+// bidder shows up.
+const handleCancelConstructionRequest = async (btn) => {
+  if (btn.disabled) return;
+  if (!confirm('Cancel this construction request? You can post a fresh one any time.')) return;
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = '…';
+  try {
+    const { data, error } = await _supabase.rpc('ent_cancel_construction_request', { p_contract_id: btn.dataset.cid });
+    if (error) throw error;
+    if (!data || !data.success) {
+      alert('Could not cancel request: ' + (CB_REASON[data?.reason] || data?.reason || 'unknown'));
+      btn.disabled = false; btn.textContent = originalLabel; return;
+    }
+    location.reload();
+  } catch (e) {
+    alert('Could not cancel request: ' + (e?.message || e));
+    btn.disabled = false; btn.textContent = originalLabel;
+  }
+};
+
+const openBidModal = (contractId, label, yourCost, budget) => {
+  const ov = document.getElementById('rcb-overlay');
+  if (!ov) return;
+  let submitting = false;
       // Bids can sit anywhere from $1 to the issuer's budget cap. Below
       // your cost = loss (treasury absorbs the shortfall); above = profit.
       // Live preview of bid − cost so the player sees the margin sign.
@@ -4951,7 +5242,7 @@ function initials(s, n) {
 
       const launchBtn = isOwner
         ? `<div class="cf-launch">
-             <div class="lab">Need capital? <b>Broadcast a loan request</b> to Banking corps with a Banking Office in ${escapeHtml(c.hq?.name || 'your HQ nation')}. They respond with rates; you pick the one you like.</div>
+             <div class="lab">Need capital? <b>Broadcast a loan request</b> to every Banking corp. They respond with rates; you pick the one you like.</div>
              <button class="cf-btn" id="cp-request-loan">Request Loan</button>
            </div>`
         : '';
@@ -5228,12 +5519,8 @@ function initials(s, n) {
     };
 
     // ── Request Loan modal ──
-    // No bank picker (v0 broadcast model). The request becomes
-    // visible to every Banking corp; only those with a completed
-    // Banking Office in this corp's HQ nation can act on it
-    // (eligibility enforced server-side at accept time, surfaced
-    // client-side by greying out ineligible rows on the bank's
-    // Active Projects panel).
+    // No bank picker (broadcast model). The request becomes visible
+    // to every Banking corp and any of them may respond with an offer.
     const openRequestLoanModal = () => {
       const ov = document.getElementById('rl-overlay');
       const errEl = document.getElementById('rl-err');
@@ -5298,7 +5585,7 @@ function initials(s, n) {
         sumEl.innerHTML = `Set principal + term — eligible banks respond with their own APR.`;
         return;
       }
-      sumEl.innerHTML = `Broadcast to every Banking corp with a <b>Banking Office</b> in ${escapeHtml(c.hq?.name || 'your HQ nation')}. Each can propose their own APR over the next <b>6 ticks</b>; you pick the one you like.<br>` +
+      sumEl.innerHTML = `Broadcast to every Banking corp. Each can propose their own APR over the next <b>6 ticks</b>; you pick the one you like.<br>` +
         `Borrowing <b>${fmtUsd(principal)}</b> over <b>${term} ticks</b>.`;
     };
     ['rl-principal', 'rl-term'].forEach(id => {
@@ -5436,7 +5723,6 @@ function initials(s, n) {
             invalid_apr:                  'APR must be 0–50%.',
             request_not_pending:          'This request is no longer pending.',
             request_expired:              'This request has expired.',
-            no_banking_office_in_nation:  'Your corp doesn’t own a Banking Office in the borrower’s HQ nation.',
             cannot_self_loan:             'A corp can’t bid on its own loan request.',
             not_bank_corp_owner:          'You don’t own this corp.',
             not_banking_corp:             'Only Banking corps can submit loan offers.',
@@ -6160,10 +6446,8 @@ function initials(s, n) {
 <div class="bm-overlay" id="ar-overlay"></div>
 <div class="bm-overlay" id="arb-overlay"></div>
 
-<!-- Request Loan modal (v0 corp loans, 20270174). Borrower picks
-     eligible banks (Banking corps with a Banking Office in the
-     borrower's HQ nation), sets principal/term/APR. RPC:
-     submit_corp_loan_request. -->
+<!-- Request Loan modal. Borrower sets principal/term/APR; the request
+     broadcasts to every Banking corp via submit_corp_loan_request. -->
 <div class="rl-overlay" id="rl-overlay">
   <div class="rl-modal">
     <div class="rl-head">
