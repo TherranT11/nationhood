@@ -418,14 +418,19 @@ async function init() {
   if (!ctx) return;
 
   // Affiliated party (movement_party row) for the Party Member rung's
-  // descIfHeld and the Leave button. Soft-fails to null — the ladder
-  // just shows the not-affiliated state if this query trips.
+  // descIfHeld and the Leave button. Filters abandoned_at — if the party
+  // got abandoned the FK stays (ON DELETE SET NULL doesn't fire on
+  // abandon, only on hard delete), so without this filter the rung would
+  // show a ghost affiliation pointing at a dead party. Soft-fails to
+  // null on query error — the ladder just renders not-affiliated state.
   let party = null;
   if (ctx.faction?.politician_party_id) {
     try {
       const { data } = await _supabase.from('factions')
         .select('id, faction_name, abbreviation')
-        .eq('id', ctx.faction.politician_party_id).maybeSingle();
+        .eq('id', ctx.faction.politician_party_id)
+        .is('abandoned_at', null)
+        .maybeSingle();
       party = data || null;
     } catch (_) { /* non-fatal */ }
   }
@@ -440,9 +445,7 @@ async function init() {
 // directly, so the contract for each rung is one focused interface rather than
 // "we read whatever we want off faction."
 function buildLadderState(politician, nation, party) {
-  const career = politician?.politician_career || 'Independent';
   return {
-    career,
     // Affiliation source of truth — politician_party_id + the looked-up party
     // row. partyName is the display label for the descIfHeld message;
     // partyId drives the Party Member rung's held() check.
