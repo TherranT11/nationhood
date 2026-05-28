@@ -43,7 +43,9 @@
    left-rail accent so a player can tell parties apart at a glance. */
 .mv-card { display:flex; align-items:center; gap:16px; padding:18px 20px;
   background:#0e1212; border:0.5px solid rgba(255,255,255,0.08); border-radius:6px;
-  margin-bottom:10px; border-left:3px solid #5aafa5; }
+  margin-bottom:10px; border-left:3px solid #5aafa5; cursor:pointer;
+  transition:background 0.12s, border-color 0.12s; }
+.mv-card:hover { background:#11181a; border-color:rgba(255,255,255,0.14); }
 .mv-card .badge { width:46px; height:46px; flex-shrink:0; border-radius:4px;
   display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.04);
   color:#d4d4d4; font-size:17px; font-weight:600; font-family:monospace; letter-spacing:0.05em; }
@@ -335,14 +337,15 @@ function renderPartyCard(p) {
   if (leader) subParts.push(`Led by ${escHtml(leader)}`);
   if (p.party_description) subParts.push(escHtml(p.party_description));
   const sub = subParts.join(' &middot; ');
-  return `<div class="mv-card" style="border-left-color:${accent};">
+  const href = `party.html?id=${encodeURIComponent(p.id)}`;
+  return `<a class="mv-card" href="${href}" style="border-left-color:${accent}; text-decoration:none; color:inherit;">
     <div class="badge">${escHtml(p.abbreviation || '—')}</div>
     <div class="body">
       <div class="title">${escHtml(p.faction_name)}</div>
       <div class="sub">${sub || '<em>No description on record.</em>'}</div>
     </div>
     <div class="seats">Seats<strong>${Number(p.seats) || 0}</strong></div>
-  </div>`;
+  </a>`;
 }
 
 // ── Join modal ──────────────────────────────────────────────────────

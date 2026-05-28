@@ -179,7 +179,10 @@
   margin:6px 0 10px; padding-top:6px; border-top:0.5px solid rgba(255,255,255,0.05); }
 .party-row { display:flex; align-items:center; gap:14px; padding:13px 14px;
   border-radius:6px; border:0.5px solid rgba(255,255,255,0.07);
-  border-left-width:3px; background:#0a0a0a; margin-bottom:8px; }
+  border-left-width:3px; background:#0a0a0a; margin-bottom:8px;
+  text-decoration:none; color:inherit; cursor:pointer;
+  transition:background 0.12s, border-color 0.12s; }
+.party-row:hover { background:#101010; border-color:rgba(255,255,255,0.14); }
 .party-row:last-child { margin-bottom:0; }
 .party-badge { width:36px; height:36px; border-radius:5px; flex-shrink:0;
   display:flex; align-items:center; justify-content:center;
@@ -1037,7 +1040,8 @@ function renderPartyRow(p, totalSeats, governing, myPartyId) {
            : '<span class="status-pill opp">&#9679; Opposition</span>',
     isMine ? '<span class="status-pill you">&#9679; You</span>' : '',
   ].filter(Boolean).join(' ');
-  return `<div class="party-row" style="border-left-color:${accent};">
+  const href = `party.html?id=${encodeURIComponent(p.id)}`;
+  return `<a class="party-row" href="${href}" style="border-left-color:${accent};">
     <div class="party-badge" style="${badgeStyle}">${escHtml(factionInitials(p.faction_name, p.abbreviation))}</div>
     <div class="party-info">
       <div class="party-name">${escHtml(p.faction_name)} ${pills}</div>
@@ -1052,7 +1056,7 @@ function renderPartyRow(p, totalSeats, governing, myPartyId) {
       <div class="ps-of">of ${totalSeats}</div>
       <div class="ps-l">SEATS</div>
     </div>
-  </div>`;
+  </a>`;
 }
 
 init();
