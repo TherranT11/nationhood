@@ -38,6 +38,22 @@
 .empty { background:#121212; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
   padding:22px 18px; color:#666; font-size:12px; line-height:1.6; text-align:center; }
 
+/* Movement card list — one row per movement party (faction_type='movement_party')
+   in the politician's nation. Compact and readable; uses the party's color as a
+   left-rail accent so a player can tell parties apart at a glance. */
+.mv-card { display:flex; align-items:center; gap:14px; padding:14px 16px;
+  background:#0e1212; border:0.5px solid rgba(255,255,255,0.08); border-radius:6px;
+  margin-bottom:10px; border-left:3px solid #5aafa5; }
+.mv-card .badge { width:36px; height:36px; flex-shrink:0; border-radius:4px;
+  display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.04);
+  color:#d4d4d4; font-size:13px; font-weight:600; font-family:monospace; letter-spacing:0.05em; }
+.mv-card .body { flex:1; min-width:0; }
+.mv-card .title { font-size:14px; color:#fff; font-weight:500; margin-bottom:3px; }
+.mv-card .sub   { font-size:11px; color:#888; line-height:1.5; }
+.mv-card .seats { margin-left:auto; font-family:monospace; font-size:11px; color:#666;
+  letter-spacing:0.08em; text-transform:uppercase; white-space:nowrap; text-align:right; }
+.mv-card .seats strong { display:block; color:#d4d4d4; font-size:15px; font-weight:600; margin-top:2px; }
+
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
 @media (max-width:700px) {
@@ -124,13 +140,22 @@
 <div id="loading" class="loading">LOADING...</div>
 
 <script type="module">
+import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+
 const EMPTY_BY_TAB = {
-  party:     'No active political party affiliations yet.',
+  party:     'No active political party movements in this nation yet.',
   ngo:       'No active NGO affiliations yet.',
   dissident: 'No active dissident group affiliations yet.',
 };
+
+// Movement parties in the politician's nation — loaded once on init and
+// rendered when the Political Parties tab is active. NGO / Dissident tabs
+// stay empty for now (no faction_type for those yet).
+let _nationId = null;
+let _movementParties = [];
 
 async function init() {
   let ctx = null;
@@ -142,9 +167,30 @@ async function init() {
   }
   if (!ctx) return; // redirected
 
+  _nationId = ctx.faction?.nation_id || null;
+  await loadMovementParties();
   bindTabs();
+  renderTab('party');
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
+}
+
+async function loadMovementParties() {
+  if (!_nationId) { _movementParties = []; return; }
+  try {
+    const { data, error } = await _supabase.from('factions')
+      .select('id, faction_name, abbreviation, seats, party_color, party_description, leader_first_name, leader_last_name')
+      .eq('nation_id', _nationId)
+      .eq('faction_type', 'movement_party')
+      .is('abandoned_at', null)
+      .order('seats', { ascending: false })
+      .order('faction_name');
+    if (error) throw error;
+    _movementParties = data || [];
+  } catch (err) {
+    console.error('politician-movements: loadMovementParties failed', err);
+    _movementParties = [];
+  }
 }
 
 function bindTabs() {
@@ -155,10 +201,35 @@ function bindTabs() {
     if (!btn || btn.classList.contains('active')) return;
     bar.querySelectorAll('.mv-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    const tab = btn.dataset.tab;
-    document.getElementById('mv-list').innerHTML =
-      `<div class="empty">${EMPTY_BY_TAB[tab] || 'No active movements yet.'}</div>`;
+    renderTab(btn.dataset.tab);
   });
+}
+
+function renderTab(tab) {
+  const list = document.getElementById('mv-list');
+  if (!list) return;
+  if (tab === 'party' && _movementParties.length) {
+    list.innerHTML = _movementParties.map(renderPartyCard).join('');
+    return;
+  }
+  list.innerHTML = `<div class="empty">${EMPTY_BY_TAB[tab] || 'No active movements yet.'}</div>`;
+}
+
+function renderPartyCard(p) {
+  const accent = p.party_color || '#5aafa5';
+  const leader = [p.leader_first_name, p.leader_last_name].filter(Boolean).join(' ');
+  const subParts = [];
+  if (leader) subParts.push(`Led by ${escHtml(leader)}`);
+  if (p.party_description) subParts.push(escHtml(p.party_description));
+  const sub = subParts.join(' &middot; ');
+  return `<div class="mv-card" style="border-left-color:${escHtml(accent)};">
+    <div class="badge">${escHtml(p.abbreviation || '—')}</div>
+    <div class="body">
+      <div class="title">${escHtml(p.faction_name)}</div>
+      <div class="sub">${sub || '<em>No description on record.</em>'}</div>
+    </div>
+    <div class="seats">Seats<strong>${Number(p.seats) || 0}</strong></div>
+  </div>`;
 }
 
 init();

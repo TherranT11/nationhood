@@ -40,6 +40,14 @@
 .stat-cell .fill { height:100%; border-radius:3px; }
 .stat-cell .sub  { font-size:11px; color:#888; margin-top:6px; line-height:1.4; }
 
+/* Money variant — label small/dim above, dollar figure large and centered
+   below so the headline number reads as the focal point of the cell. */
+.stat-cell.money { text-align:center; }
+.stat-cell.money .label { display:block; font-size:10px; letter-spacing:0.13em;
+  color:#666; text-transform:uppercase; margin-bottom:8px; }
+.stat-cell.money .value { display:block; font-size:26px; font-weight:600;
+  color:#fff; font-family:monospace; letter-spacing:0.02em; }
+
 /* Jump nav: short pills that scroll to + open the matching collapsible. */
 .jump-nav { display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
 .jump-nav button { font-family:monospace; font-size:10px; letter-spacing:0.08em;
@@ -103,6 +111,7 @@
   .info-grid, .stats-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
   .info-cell .value { font-size:16px; }
   .stat-cell .row .value { font-size:13px; }
+  .stat-cell.money .value { font-size:20px; }
   .jump-nav { gap:4px; margin-bottom:12px; }
   .jump-nav button { font-size:9px; padding:6px 10px; letter-spacing:0.06em; }
   .sec summary { padding:12px 14px; font-size:11px; letter-spacing:0.06em; }
@@ -369,7 +378,7 @@ async function init() {
             head_of_state_title, head_of_state_first_name, head_of_state_last_name,
             population, dynasty_name,
             politician_gdp, politician_budget, politician_debt,
-            politician_stability, politician_civil_freedoms,
+            politician_stability, politician_civil_freedoms, politician_gdp_growth,
             nation_profiles(flag_url, official_name, motto, overview, founded_year)
           `)
           .eq('id', nid).maybeSingle(),
@@ -491,8 +500,9 @@ function renderCard(n, pm) {
 
   document.getElementById('nc-stats').innerHTML = stats.map(s => {
     if (s.kind === 'money') {
-      return `<div class="stat-cell">
-        <div class="row"><span class="label">${escHtml(s.label)}</span><span class="value">${escHtml(fmtMoney(s.value))}</span></div>
+      return `<div class="stat-cell money">
+        <span class="label">${escHtml(s.label)}</span>
+        <span class="value">${escHtml(fmtMoney(s.value))}</span>
       </div>`;
     }
     return `<div class="stat-cell">
@@ -505,6 +515,43 @@ function renderCard(n, pm) {
   renderNationalCharacteristics(n);
 }
 
+// National Characteristics tier flavors — five bands per stat. The renderer
+// reads the band off the current value so the description shifts as the
+// nation's fortunes change. Source of truth for the bands; do not duplicate.
+const STABILITY_TIERS = [
+  { min: 81, label: 'Firm',     text: 'The state functions as designed. The trains run, the courts sit, the police are visible without being feared. Politics happens in chambers, not in the streets.' },
+  { min: 61, label: 'Strained', text: 'Tensions are visible. Protests draw crowds; commentators speak of "this difficult moment." Things still work — but everyone can feel them being tested.' },
+  { min: 41, label: 'Unrest',   text: 'Riots break out in the cities. Curfews come and go. Going out after dark is no longer something one does without thinking.' },
+  { min: 21, label: 'Crisis',   text: 'Authority is contested. The provinces don’t always answer the capital. Whole neighborhoods are no-go zones; the security forces are exhausted, divided, or unreliable.' },
+  { min:  0, label: 'Collapse', text: 'Anarchy. The regime exists on paper. Power belongs to whoever holds the street, and that changes block by block.' },
+];
+
+const GDP_GROWTH_TIERS = [
+  { min: 81, label: 'Booming (roughly +4.5% to +7.5%)',          text: 'The economy roars. Construction cranes crowd the skyline, hiring signs are in every window, and the press writes admiring features about "the [name] miracle."' },
+  { min: 61, label: 'Healthy Growth (roughly +1.5% to +4.5%)',   text: 'The economy is doing what it’s supposed to. Jobs are added, prices behave, and most people end the year a little better off than they began.' },
+  { min: 41, label: 'Stagnant (roughly -1.5% to +1.5%)',         text: 'The numbers wobble around the line. Some quarters up, some down. People stop expecting things to get better and start expecting them to stay the same.' },
+  { min: 21, label: 'Recession (roughly -4.5% to -1.5%)',        text: 'The economy is shrinking. Layoffs make the news weekly; shops close; the property pages are full of foreclosures.' },
+  { min:  0, label: 'Depression (roughly -7.5% or worse)',       text: 'Whole industries die. Banks fail or are nationalized. Lines form for bread and for jobs that don’t exist.' },
+];
+
+function tierFor(tiers, value) {
+  const v = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+  return tiers.find(t => v >= t.min) || tiers[tiers.length - 1];
+}
+
+function stabilityDescription(value) {
+  const tier = tierFor(STABILITY_TIERS, value);
+  return `${tier.label} — ${tier.text}`;
+}
+
+// GDP Growth descriptions interpolate the nation's display name into the
+// "[name] miracle" line in the Booming tier so the flavor feels first-person.
+function gdpGrowthDescription(value, nationName) {
+  const tier = tierFor(GDP_GROWTH_TIERS, value);
+  const text = tier.text.replaceAll('[name]', nationName || 'national');
+  return `${tier.label} — ${text}`;
+}
+
 // National Characteristics body — the four headline stats again, this time
 // as a definition list with a one-line description so a player who's never
 // seen the game knows what each number means. Reads the same politician_*
@@ -512,11 +559,18 @@ function renderCard(n, pm) {
 function renderNationalCharacteristics(n) {
   const body = document.getElementById('sec-nation-body');
   if (!body) return;
+  const stabVal = Math.round(Number(n.politician_stability) || 0);
+  const gdpgVal = Math.round(Number(n.politician_gdp_growth) || 0);
   const stats = [
     {
       label: 'Stability',
-      value: String(Math.round(Number(n.politician_stability) || 0)),
-      desc:  'How firmly the state holds the public’s compliance. High stability means smooth governance and an institutional order that goes unchallenged; low stability means brewing dissent and the threat of revolt.',
+      value: String(stabVal),
+      desc:  stabilityDescription(stabVal),
+    },
+    {
+      label: 'GDP Growth',
+      value: String(gdpgVal),
+      desc:  gdpGrowthDescription(gdpgVal, n.name),
     },
     {
       label: 'Budget',

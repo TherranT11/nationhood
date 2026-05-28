@@ -43,7 +43,6 @@ import { _supabase } from './js/supabase-client.js';
 import { fmtBudgetCurrency, escapeHtml, escapeAttr } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS } from './js/game/config.js';
 import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isGovernmentPresidential } from './js/game/government-types.js'
-import { ARCHETYPES, STRONGHOLD_POPULARITY_TIERS } from './js/game/archetypes.js';
 import { RAW_SCALING_DIVISORS } from './js/game/diplomacy-constants.js';
 import { FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, applyGdpGrowth, calculateNationalBudget } from './js/game/budget.js';
 import { processElections, processGovernmentVacancy, resolveNoConfidence, runManualElectionByGovernmentType } from './js/game/elections.js';
@@ -1902,65 +1901,14 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     }
 
     // ==================== ADD NATION TAB ====================
-    // Stat keys are driven by the canonical NATION_STAT_COLUMNS list in
-    // js/game/stats.js — one source of truth. Labels and sensible defaults
-    // live in NN_STAT_META; if the canonical list grows, an unmapped key
-    // falls back to its raw name + a 50 default. gdp / debt are excluded
-    // because they're dollar values handled by the headline economy section,
-    // not this 0–100 stat grid.
-    const NN_STAT_META = {
-        gdp_growth:         ['GDP Growth',         50],
-        immigration:        ['Immigration',        35],
-        standard_of_living: ['Standard of Living', 60],
-        cost_of_living:     ['Cost of Living',     50],
-        budget:             ['Budget',             50],
-        state_apparatus:    ['State Apparatus',    55],
-        unrest:             ['Unrest',             25],
-        public_approval:    ['Public Approval',    50],
-        crown_authority:    ['Crown Authority',    50],
-        energy:             ['Energy',             55],
-        health:             ['Health',             60],
-        education:          ['Education',          55],
-        global_image:       ['Global Image',       50],
-        infrastructure:     ['Infrastructure',     55],
-        industry:           ['Industry',           50],
-        farmland:           ['Farmland',           50],
-        service_sector:     ['Service Sector',     50],
-        unskilled_workers:  ['Unskilled Workers',  50],
-        skilled_workers:    ['Skilled Workers',    50],
-        wages:              ['Wages',              50],
-        income_tax:         ['Income Tax',         40],
-        corporate_tax:      ['Corporate Tax',      35],
-        crime:              ['Crime',              30],
-        corruption:         ['Corruption',         30],
-        inequality:         ['Inequality',         45],
-        minerals:           ['Minerals',           45],
-    };
-    const NN_STAT_FIELDS = NATION_STAT_COLUMNS
-        .filter(k => k !== 'gdp' && k !== 'debt')
-        .map(k => {
-            const meta = NN_STAT_META[k] || [k, 50];
-            return [k, meta[0], meta[1]];
-        });
+    // Politician refocus: this form seeds nations for the Politician segment.
+    // The five politician_* columns are entered inline in the form HTML
+    // (companion migration 20270363); the legacy 26-stat 0-100 grid is gone.
+    // The legacy nations.gdp / nations.debt columns are mirrored server-side
+    // from politician_gdp / politician_debt inside admin_create_nation, so the
+    // (legacy) Parties surface keeps showing sensible numbers.
 
     let nnPolicyCache = [];
-
-    function renderAddNationStats() {
-        const grid = document.getElementById('nn-stats-grid');
-        if (!grid) return;
-        grid.innerHTML = NN_STAT_FIELDS.map(([key, label]) =>
-            `<div class="input-group" style="margin-bottom:4px;"><label style="font-size:0.75rem;">${label}</label>` +
-            `<input type="number" id="nn-stat-${key}" min="0" max="100" value="50"></div>`
-        ).join('');
-    }
-
-    function fillNationDefaults() {
-        renderAddNationStats();
-        NN_STAT_FIELDS.forEach(([key, , def]) => {
-            const el = document.getElementById('nn-stat-' + key);
-            if (el) el.value = def;
-        });
-    }
 
     // Single source of truth for which UI fields / payload keys each gov-type uses.
     function nnGovFlags(govKey) {
@@ -2094,11 +2042,6 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
 
         const { isPres, hasPM, isMonarchy } = nnGovFlags(govKey);
 
-        const stats = {};
-        NN_STAT_FIELDS.forEach(([key]) => {
-            const v = nnVal('nn-stat-' + key);
-            if (v !== '') stats[key] = v;
-        });
         const policies = [...document.querySelectorAll('.nn-pol:checked')].map(cb => {
             const sel = document.querySelector(`.nn-pol-opt[data-policy="${cb.value}"]`);
             return { id: cb.value, option_id: sel?.value || null };
@@ -2118,9 +2061,14 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
             head_of_state_last_name: nnVal('nn-hos_last'),
             head_of_state_age: nnVal('nn-hos_age'),
             population: nnVal('nn-population'),
-            eligible_voters: nnVal('nn-eligible_voters'),
-            gdp: nnVal('nn-gdp'),
-            debt: nnVal('nn-debt'),
+            // Politician-side stats — the only headline numbers the form collects.
+            // admin_create_nation mirrors politician_gdp/politician_debt into the
+            // legacy nations.gdp/nations.debt columns for the (legacy) parties view.
+            politician_gdp:             nnVal('nn-politician_gdp'),
+            politician_budget:          nnVal('nn-politician_budget'),
+            politician_debt:            nnVal('nn-politician_debt'),
+            politician_stability:       nnVal('nn-politician_stability'),
+            politician_civil_freedoms:  nnVal('nn-politician_civil_freedoms'),
             proximities: Object.fromEntries(
                 [...document.querySelectorAll('.nn-prox')].map(i => [i.dataset.nation, i.value])
             ),
@@ -2132,7 +2080,6 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
             founded_year: nnVal('nn-founded_year'),
             motto: nnVal('nn-motto'),
             overview: nnVal('nn-overview'),
-            stats,
             policies,
         };
         if (isMonarchy) payload.dynasty_name = nnVal('nn-dynasty_name');
@@ -2167,7 +2114,6 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     }
 
     async function loadAddNationInit() {
-        renderAddNationStats();
         onAddNationGovType();
         renderAddNationProximities();
         await loadAddNationContinents();
@@ -2175,16 +2121,16 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     }
 
     // ==================== ADD PARTY TAB ====================
+    // Creates a Politician Movement Party (faction_type='movement_party') —
+    // surfaces on politician-movements.html, hidden from every legacy parties
+    // surface. The archetype/stronghold mechanic is parties-only and doesn't
+    // apply here, so the form has no archetype input.
     function loadAddPartyInit() {
         // Nation dropdown — reuse the shared `nations` list (already loaded by
         // loadElectionNations earlier in loadAllData) instead of re-querying.
         const sel = document.getElementById('ap-nation');
         if (sel) sel.innerHTML = '<option value="">-- Choose a nation --</option>' +
             nations.map(n => `<option value="${n.id}">${escHtml(n.name)}</option>`).join('');
-        // Archetype dropdown — sourced from the canonical ARCHETYPES list.
-        const arch = document.getElementById('ap-archetype');
-        if (arch) arch.innerHTML = '<option value="">(none)</option>' +
-            ARCHETYPES.map(a => `<option value="${a.name}">${a.name}</option>`).join('');
     }
 
     async function createParty(btn) {
@@ -2208,15 +2154,6 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
             leader_last_name: nnVal('ap-leader-last'),
             leader_age: nnVal('ap-leader-age'),
         };
-        const archName = nnVal('ap-archetype');
-        if (archName) {
-            const arch = ARCHETYPES.find(a => a.name === archName);
-            if (arch) {
-                payload.archetype_name = arch.name;
-                payload.sector_keys = arch.strongholds;
-                payload.popularities = STRONGHOLD_POPULARITY_TIERS;
-            }
-        }
 
         await withButtonLock(btn, async () => {
             try {
@@ -2224,8 +2161,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
                 if (error) throw error;
                 if (!data || !data.success) return setErr('Create failed: ' + (data?.reason || 'unknown'));
                 statusEl.style.color = '#81c784';
-                statusEl.textContent = `Created "${data.faction_name}" [${data.abbreviation}] — ${data.seats} seats` +
-                    (data.archetype ? `, ${data.archetype} archetype.` : '.');
+                statusEl.textContent = `Created movement party "${data.faction_name}" [${data.abbreviation}] — ${data.seats} seats.`;
                 document.getElementById('ap-name').value = '';
                 document.getElementById('ap-abbr').value = '';
                 document.getElementById('ap-desc').value = '';
@@ -2772,8 +2708,6 @@ window.addProvince = addProvince;
 window.deleteProvince = deleteProvince;
 window.saveProvinceWeights = saveProvinceWeights;
 window.onAddNationGovType = onAddNationGovType;
-window.fillNationDefaults = fillNationDefaults;
-window.renderAddNationStats = renderAddNationStats;
 window.filterAddNationPolicies = filterAddNationPolicies;
 window.createNation = createNation;
 window.applyDefaultProximity = applyDefaultProximity;
