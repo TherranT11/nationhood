@@ -891,6 +891,13 @@ export function updateTopBarInfo(faction, shard, nation) {
                 <span class="faction-dropdown__name">Become an Entrepreneur</span>
             </div>`;
         }
+        // Project Neptune (Politician alpha). Always available; gated by an alpha
+        // code on character-select.html. Remembers the current page so Cancel
+        // can return the player to where they were.
+        html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search); window.location.href='character-select.html'">
+            <span class="faction-dropdown__type" style="color:var(--teal,#5aafa5)">+</span>
+            <span class="faction-dropdown__name">Join Project Neptune</span>
+        </div>`;
         dropdown.innerHTML = html;
     }
 
