@@ -212,7 +212,7 @@ export async function bootstrapPolitician(activeTab) {
 
   const [facRes, shardRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, founded_tick, party_funds, abandoned_at, is_banned, politician_career, politician_charisma, politician_reputation, politician_credibility, politician_influence, politician_suspicion')
+      .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, founded_tick, party_funds, abandoned_at, is_banned, politician_career, politician_charisma, politician_reputation, politician_credibility, politician_influence, politician_suspicion, politician_party_id')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
     _supabase.from('shard').select('current_tick, current_date, next_tick_at').eq('name', 'Alpha Shard').single(),
   ]);
@@ -241,6 +241,24 @@ export async function bootstrapPolitician(activeTab) {
     } catch (_) { /* nation is optional flair; absence falls back to '—' */ }
   }
 
+  // Affiliated movement_party (when politician_party_id is set). Soft-fails
+  // to null. Filters abandoned_at so a stale FK after a party's been
+  // abandoned doesn't render as a ghost affiliation; the rung / hero just
+  // show the not-affiliated state until the politician rejoins somewhere.
+  // One source of truth for all politician pages — home + career both read
+  // ctx.party rather than re-querying.
+  let party = null;
+  if (faction.politician_party_id) {
+    try {
+      const { data, error } = await _supabase.from('factions')
+        .select('id, faction_name, abbreviation')
+        .eq('id', faction.politician_party_id)
+        .is('abandoned_at', null)
+        .maybeSingle();
+      if (!error) party = data || null;
+    } catch (_) { /* non-fatal */ }
+  }
+
   const allUserFactions = factions.filter(f => f.id !== faction.id);
 
   const container = document.getElementById('pol-topbar-container');
@@ -248,5 +266,5 @@ export async function bootstrapPolitician(activeTab) {
     renderPoliticianTopbar(container, { faction, shard, nation, allUserFactions, activeTab });
   }
 
-  return { user, faction, shard, nation, allUserFactions };
+  return { user, faction, shard, nation, allUserFactions, party };
 }
