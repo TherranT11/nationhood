@@ -1,12 +1,12 @@
-// War Room — read-only view of the player's active wars (Phase 1).
+// War Room — read-only view of the player's active wars.
 //
 // Renders, per war the viewer's nation is in: a header (auto-titled "The X–Y
 // War" + duration), the three land fronts each as the contested front-line
 // pair plus a three-column engagement panel (Forces · Combat Events · Forces),
 // the air-war spectrum (war_fronts.air_status, shown from the viewer's POV),
-// and a greyed naval row when there's no sea front. The Combat Events column
-// is stubbed empty until the Phase 2 combat resolver writes into a per-tick
-// event log; everything else reflects state we already store.
+// and a greyed naval row when there's no sea front. Combat Events are written
+// by processCombat in js/game/military-units.js on each engagement that moves
+// the line; the prose templates that render them live further down this file.
 
 import { _supabase } from './supabase-client.js';
 import { escapeHtml, escapeAttr, tickToDate } from './utils.js';
@@ -47,21 +47,25 @@ function ensureStyles() {
     .wr-cell-big .cm{font-size:8px;letter-spacing:0.14em;margin-top:8px;color:#c87a7a;font-weight:700;}
     .wr-clash-vs{align-self:center;font-size:20px;color:#c89e6e;flex:none;padding:0 2px;}
     .wr-engagement{display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:10px;margin-top:6px;}
-    .wr-force-col,.wr-events-col{background:#0a0a0a;border:0.5px solid rgba(255,255,255,0.08);border-radius:5px;padding:12px;min-height:130px;}
+    .wr-force-col,.wr-events-col{background:#0a0a0a;border:0.5px solid rgba(255,255,255,0.08);border-radius:5px;padding:12px;min-height:130px;min-width:0;}
     .wr-force-col.mine{border-top:2px solid #c87a7a;}
     .wr-force-col.theirs{border-top:2px solid #7a9aab;}
-    .wr-events-col{border-top:2px solid #c89e6e;}
+    .wr-events-col{border-top:2px solid #c89e6e;max-height:560px;overflow-y:auto;}
     .wr-force-head,.wr-events-head{font-size:9px;letter-spacing:0.14em;color:#888;margin-bottom:10px;text-transform:uppercase;font-weight:700;}
     .wr-army-card{padding:9px 10px;background:#111;border:0.5px solid rgba(255,255,255,0.06);border-radius:3px;margin-bottom:7px;}
     .wr-army-card:last-child{margin-bottom:0;}
-    .wr-army-card .nm{font-size:11px;font-weight:600;color:#fff;}
+    .wr-army-card .nm{font-size:11px;font-weight:600;color:#fff;overflow-wrap:anywhere;}
     .wr-army-card .meta{font-size:8px;letter-spacing:0.06em;color:#888;margin-top:3px;text-transform:uppercase;}
     .wr-army-card .meta .sup{margin-left:6px;font-weight:700;}
     .wr-army-card .meta .sup.ok{color:#46c46a;} .wr-army-card .meta .sup.short{color:#e5534b;}
-    .wr-army-card .unit-row{font-size:9px;color:#aaa;margin-top:5px;padding:3px 0 3px 8px;border-left:1px solid rgba(255,255,255,0.08);}
+    .wr-army-card .unit-row{font-size:9px;color:#aaa;margin-top:5px;padding:3px 0 3px 8px;border-left:1px solid rgba(255,255,255,0.08);overflow-wrap:anywhere;}
     .wr-army-card .unit-row .u-nm{color:#ccc;}
     .wr-army-card .unit-row .u-comp{color:#888;}
     .wr-events-empty{font-size:10px;color:#666;text-align:center;padding:24px 10px;font-style:italic;line-height:1.6;}
+    .wr-event{padding:9px 11px;background:#111;border:0.5px solid rgba(255,255,255,0.06);border-radius:3px;margin-bottom:7px;}
+    .wr-event:last-child{margin-bottom:0;}
+    .wr-event-meta{font-size:8px;letter-spacing:0.12em;color:#888;margin-bottom:6px;text-transform:uppercase;font-weight:700;}
+    .wr-event-body{font-size:10px;line-height:1.55;color:#cfcfcf;white-space:pre-line;overflow-wrap:anywhere;}
     @media (max-width:720px){
         .wr-front{padding:14px;}
         .wr-clash{flex-direction:column;align-items:stretch;gap:8px;}
@@ -209,6 +213,7 @@ async function renderWar(w, nation, nameById, commandable, isHoG) {
     const sectorsByFront = new Map();
     const armiesByFront = new Map();   // front_id → { a:[], b:[] }
     const unitsByArmy = new Map();     // army_id → [unit, ...]
+    const eventsByFront = new Map();   // front_id → [combat_event, ...] newest first
     if (landIds.length) {
         const { data: secs } = await _supabase.from('war_sectors')
             .select('id, front_id, position, name, type, nation_id, is_border')
@@ -241,6 +246,21 @@ async function renderWar(w, nation, nameById, commandable, isHoG) {
                 unitsByArmy.get(u.army_id).push(u);
             }
         }
+
+        // Recent combat events per front — written by processCombat on each
+        // resolved engagement that moved the line. Per-front fetch in parallel
+        // so a hot front can't starve a quiet one of its 8-event window. Long
+        // history can come via a "see more" affordance later.
+        const evResults = await Promise.all(landIds.map(fid =>
+            _supabase.from('combat_events')
+                .select('id, tick, kind, terrain, pressor_nation_name, claimant_nation_name, sector_name, retreat_sector_name, army_name, unit_name, commander_name')
+                .eq('front_id', fid)
+                .order('tick', { ascending: false })
+                .limit(8)
+        ));
+        for (let i = 0; i < landIds.length; i++) {
+            eventsByFront.set(landIds[i], evResults[i].data || []);
+        }
     }
 
     // The engagement is always laid out nation_a (left) → nation_b (right);
@@ -252,9 +272,9 @@ async function renderWar(w, nation, nameById, commandable, isHoG) {
     // contested sectors at the dividing line (picked from line_position once
     // combat is live, or from the static is_border flag before initialisation),
     // followed by a three-column panel — Forces of nation_a · Combat Events ·
-    // Forces of nation_b — with the events column stubbed until the resolver
-    // lands. Rear sectors and capitals were dropped from this view; the
-    // territorial-control summary lives in the header score line.
+    // Forces of nation_b — where the events column reads the recent rows from
+    // combat_events. Rear sectors and capitals were dropped from this view;
+    // the territorial-control summary lives in the header score line.
     const actionLabel = (x) => x === 'assault' ? 'ASSAULT' : 'DEFEND';
     const frontsHtml = land.length ? land.map(f => {
         const secs = sectorsByFront.get(f.id) || [];
@@ -286,7 +306,7 @@ async function renderWar(w, nation, nameById, commandable, isHoG) {
 
         const engagementHtml = `<div class="wr-engagement">
             ${forcesColumnHtml(leftName, fa.a, unitsByArmy, youAreA)}
-            ${eventsColumnHtml()}
+            ${eventsColumnHtml(eventsByFront.get(f.id))}
             ${forcesColumnHtml(rightName, fa.b, unitsByArmy, !youAreA)}
         </div>`;
 
@@ -387,12 +407,62 @@ function forcesColumnHtml(nationName, armies, unitsByArmy, isMine) {
     </div>`;
 }
 
-function eventsColumnHtml() {
-    // Phase 2 combat resolver will write into combat_events; until then,
-    // this column is intentionally empty so the layout is in place when
-    // the data lands.
+function eventsColumnHtml(events) {
+    if (!events || !events.length) {
+        return `<div class="wr-events-col">
+            <div class="wr-events-head">Combat Events</div>
+            <div class="wr-events-empty">No engagements logged on this front.</div>
+        </div>`;
+    }
+    const items = events.map(ev => {
+        const kindLabel = ev.kind === 'breakthrough' ? 'BREAKTHROUGH' : 'MEETING';
+        const terrain = String(ev.terrain || '').toUpperCase();
+        return `<div class="wr-event">
+            <div class="wr-event-meta">Tick ${escapeHtml(String(ev.tick))} · ${escapeHtml(kindLabel)} · ${escapeHtml(terrain)}</div>
+            <div class="wr-event-body">${escapeHtml(renderCombatEvent(ev))}</div>
+        </div>`;
+    }).join('');
     return `<div class="wr-events-col">
         <div class="wr-events-head">Combat Events</div>
-        <div class="wr-events-empty">No engagements logged.<br/>Awaiting combat resolution.</div>
+        ${items}
     </div>`;
+}
+
+// Narrative templates for combat events. One per (kind, terrain) pair; terrains
+// outside the curated set (desert / jungle / coastal) fall back to plains since
+// it's the most generic open-terrain prose. Templates use the refined wording
+// the user sent on 2026-05-28 ("a sweeping engagement", not "of armour and
+// artillery") — the {unit} placeholder isn't guaranteed to be armour.
+const COMBAT_TEMPLATES = {
+    meeting: {
+        plains: `{pressor_nation} carries the field at {sector}.
+The {army}'s {unit}, under {commander}, met advancing {claimant_nation} columns in open country and broke them in a sweeping engagement. With no terrain to hide in and no time to dig, the {claimant_nation} formation lost cohesion under fire and gave ground; {pressor_nation} forces now hold the sector. The defeated brigades have fallen back toward {retreat_sector}.`,
+        mountains: `{pressor_nation} seizes the high ground at {sector}.
+Two advancing forces collided along the contested ridgeline, where the {army}'s {unit} proved faster to seize the commanding heights. From there, {commander}'s troops poured fire down on the {claimant_nation} columns still climbing below, forcing them off the slope. The fight cost both sides dearly, but the pass is now in {pressor_nation} hands. {claimant_nation} forces have withdrawn to {retreat_sector}.`,
+        urban: `{pressor_nation} takes {sector} after street-by-street fighting.
+Both armies pushed into the town at once, and what followed was a prolonged firefight through narrow streets, market squares, and the cellars beneath them. The {army}'s {unit} cleared the centre block by block under {commander}'s direction; the {claimant_nation} defenders, themselves on the offensive when the action began, never managed to consolidate. Survivors have pulled out to {retreat_sector}, leaving the smoking ruin behind them.`,
+    },
+    breakthrough: {
+        plains: `{pressor_nation} breaks through the {sector} line.
+The {army}'s {unit} drove through the {claimant_nation} defensive positions in a coordinated armoured push, rolling forward across open ground despite prepared fire from dug-in infantry and anti-tank batteries. {commander}'s decision to commit reserves at the seam between two defending brigades broke the line, and the {claimant_nation} formation could not seal the gap before it widened. The defenders' surviving units have fallen back toward {retreat_sector}.`,
+        mountains: `{pressor_nation} dislodges the defenders at {sector}.
+The {army}'s {unit} took the contested ridge after days of grinding ascent, clearing fortified positions one outcrop at a time. {claimant_nation} defenders fought from prepared sangars and pre-registered firing points, exacting a heavy toll — but {commander}'s flanking column found a goat-path the defenders had not fully covered, and the position became untenable once enfilade fire began. The defending {unit} has withdrawn down the reverse slope toward {retreat_sector}.`,
+        urban: `{pressor_nation} takes {sector} after a brutal house-to-house assault.
+The {army}'s {unit} fought through prepared defensive positions in the town, where the {claimant_nation} garrison had had weeks to mine the approaches, barricade the streets, and turn upper floors into firing posts. Progress was measured in blocks and paid for in casualties on both sides, but {commander}'s troops cleared the town hall and the railway station by the third day, and the defenders' line collapsed thereafter. The surviving {claimant_nation} elements have retreated to {retreat_sector}, leaving wounded behind.`,
+    },
+};
+
+function renderCombatEvent(ev) {
+    const kindTable = COMBAT_TEMPLATES[ev.kind] || COMBAT_TEMPLATES.meeting;
+    const terrainKey = kindTable[ev.terrain] ? ev.terrain : 'plains';
+    const subs = {
+        pressor_nation:  ev.pressor_nation_name  || '—',
+        claimant_nation: ev.claimant_nation_name || '—',
+        sector:          ev.sector_name          || '—',
+        retreat_sector:  ev.retreat_sector_name  || 'the rear',
+        army:            ev.army_name            || '—',
+        unit:            ev.unit_name            || '—',
+        commander:       ev.commander_name       || 'their commander',
+    };
+    return kindTable[terrainKey].replace(/\{(\w+)\}/g, (m, k) => subs[k] != null ? subs[k] : m);
 }
