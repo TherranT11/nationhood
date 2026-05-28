@@ -4,57 +4,59 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Politician | Nationhood Alpha</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <style>
-:root {
-  --bg-0: #0e0e0c; --bg-1: #1a1a1a; --bg-2: #1a1a17; --bg-3: #252525; --bg-hover: #282822;
-  --text-bright: #f0efe6; --text-primary: #c4c2b8; --text-secondary: #888;
-  --text-muted: #666; --text-dim: #4a4940;
-  --border-1: rgba(255,255,255,0.08); --border-2: rgba(255,255,255,0.12);
-  --red: #d9534f; --teal: #5aafa5; --teal-faint: rgba(90,175,165,0.08); --teal-border: rgba(90,175,165,0.3);
-  --amber: #c8a64e; --purple: #8b7ec8;
-  --font-mono: 'JetBrains Mono', monospace; --font-ui: 'IBM Plex Sans', -apple-system, sans-serif;
+/* Topbar — same structure / sizing / classes as the entrepreneur topbar
+   (js/entrepreneur-topbar.js), just teal where entrepreneur uses green. Kept
+   inline because politician-home is currently the only politician page; if
+   more land, extract to js/politician-topbar.js the way entrepreneur did. */
+body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; margin:0; min-height:100vh; }
+.pol-topbar { display:flex; align-items:center; gap:24px; padding:12px 28px;
+  border-bottom:0.5px solid rgba(255,255,255,0.08); font-size:11px; letter-spacing:0.05em; }
+.pol-topbar .brand { display:flex; align-items:center; gap:10px; }
+.pol-topbar .crest { width:24px; height:24px; background:rgba(90,175,165,0.08); border:0.5px solid rgba(90,175,165,0.5);
+  border-radius:3px; display:flex; align-items:center; justify-content:center; color:#5aafa5;
+  font-size:11px; font-weight:600; letter-spacing:0.05em; }
+.pol-topbar .player { color:#fff; font-weight:500; font-size:13px; }
+.pol-topbar__version { font-family:monospace; font-size:10px; color:#f0efe6; letter-spacing:0.5px; opacity:0.8; }
+.pol-topbar .meta { display:flex; gap:22px; color:#888; align-items:center; }
+.pol-topbar .meta .label { color:#555; font-size:9px; letter-spacing:0.13em; }
+.pol-topbar .meta .value { color:#d4d4d4; font-size:12px; margin-top:2px; display:flex; align-items:center; gap:6px; }
+.pol-topbar .meta .flag { width:18px; height:12px; object-fit:cover; border:0.5px solid rgba(255,255,255,0.1); }
+.pol-topbar .right { margin-left:auto; display:flex; align-items:center; gap:14px; position:relative; }
+.pol-topbar .cash-pill { border:0.5px solid rgba(90,175,165,0.5); padding:6px 12px; border-radius:3px; font-size:11px; }
+.pol-topbar .cash-pill .label { color:#888; }
+.pol-topbar .cash-pill .value { color:#5aafa5; font-weight:500; }
+.pol-switcher { position:relative; display:inline-block; }
+.pol-pill { border:0.5px solid rgba(255,255,255,0.15); padding:6px 12px; border-radius:3px;
+  font-size:11px; color:#5aafa5; cursor:pointer; white-space:nowrap; }
+.pol-dd { position:absolute; right:0; top:calc(100% + 8px); background:#0f0f0f;
+  border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; min-width:240px; max-width:340px;
+  display:none; z-index:100; overflow:hidden; }
+.pol-dd.open { display:block; }
+.pol-dd-item { display:flex; align-items:center; gap:10px; padding:10px 14px; font-size:11px;
+  color:#d4d4d4; cursor:pointer; border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.pol-dd-item:last-child { border-bottom:none; }
+.pol-dd-item:hover { background:#1a1a17; }
+.pol-dd-badge { font-size:9px; letter-spacing:0.06em; min-width:40px; }
+.pol-dd-name { flex:1; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pol-dd-empty { padding:10px; color:#666; font-size:10px; }
+.pol-util { color:#666; font-size:11px; cursor:pointer; }
+.pol-util:hover { color:#d4d4d4; }
+
+@media (max-width:700px) {
+  .pol-topbar { flex-wrap:wrap; row-gap:8px; gap:10px; padding:10px 12px; }
+  .pol-topbar .brand { flex:1 1 auto; min-width:0; }
+  .pol-topbar .player { font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pol-topbar .meta { order:99; width:100%; gap:14px; border-top:0.5px solid rgba(255,255,255,0.06); padding-top:8px; }
+  .pol-topbar .meta .label { font-size:8px; }
+  .pol-topbar .meta .value { font-size:11px; }
+  .pol-topbar .right { margin-left:auto; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+  .pol-topbar .cash-pill, .pol-pill { font-size:10px; padding:4px 8px; }
+  .pol-util { font-size:10px; }
+  .pol-dd { min-width:200px; max-width:calc(100vw - 24px); }
 }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: var(--bg-0); color: var(--text-primary); font-family: var(--font-ui); min-height: 100vh; }
 
-/* Navbar — mirrors the entrepreneur topbar layout. */
-.pol-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  padding: 10px 16px; background: var(--bg-1); border-bottom: 1px solid var(--border-1); }
-.pol-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.pol-crest { width: 28px; height: 28px; border: 1px solid var(--teal-border); background: var(--teal-faint);
-  color: var(--teal); display: flex; align-items: center; justify-content: center;
-  font-family: var(--font-mono); font-weight: 700; font-size: 11px; letter-spacing: 0.04em; }
-.pol-name { font-family: var(--font-ui); font-size: 14px; font-weight: 600; color: var(--text-bright);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
-.pol-meta { display: flex; gap: 18px; }
-.pol-meta__cell { text-align: center; }
-.pol-meta__label { font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--text-dim); }
-.pol-meta__value { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--text-primary); margin-top: 2px; }
-
-.pol-right { display: flex; align-items: center; gap: 10px; position: relative; }
-.pol-pill { border: 1px solid var(--teal-border); background: var(--teal-faint); color: var(--teal);
-  padding: 6px 12px; font-family: var(--font-mono); font-size: 11px; font-weight: 600; cursor: pointer;
-  display: flex; align-items: center; gap: 6px; }
-.pol-pill__cash { color: var(--text-secondary); }
-.pol-pill__amount { color: var(--teal); }
-.pol-dd { position: absolute; top: calc(100% + 6px); right: 0; min-width: 240px; background: var(--bg-2);
-  border: 1px solid var(--border-2); padding: 4px; display: none; z-index: 50; }
-.pol-dd.open { display: block; }
-.pol-dd__item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; transition: background 0.12s; }
-.pol-dd__item:hover { background: var(--bg-hover); }
-.pol-dd__item.active { background: var(--teal-faint); }
-.pol-dd__badge { font-family: var(--font-mono); font-size: 9px; font-weight: 700; letter-spacing: 0.06em; min-width: 36px; }
-.pol-dd__name { font-family: var(--font-ui); font-size: 12px; color: var(--text-primary); }
-.pol-dd__empty { padding: 10px; font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
-
-.pol-logout { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
-  text-transform: uppercase; background: transparent; color: var(--text-muted); border: 1px solid var(--border-1);
-  padding: 7px 14px; cursor: pointer; transition: all 0.15s; }
-.pol-logout:hover { color: var(--red); border-color: var(--red); }
-
-.loading { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); text-align: center; padding: 80px 20px; }
+.loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 </style>
 </head>
 <body>
@@ -62,26 +64,32 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 <div id="loading" class="loading">LOADING...</div>
 
 <div id="topbar" class="pol-topbar" style="display:none;">
-  <div class="pol-brand">
-    <div class="pol-crest" id="pol-crest">--</div>
-    <div class="pol-name" id="pol-name">Politician</div>
+  <div class="brand">
+    <div class="crest" id="pol-crest">--</div>
+    <span class="player" id="pol-name">Politician</span>
+    <span class="pol-topbar__version" id="pol-version"></span>
   </div>
-  <div class="pol-meta">
-    <div class="pol-meta__cell"><div class="pol-meta__label">Age</div><div class="pol-meta__value" id="pol-age">—</div></div>
+  <div class="meta">
+    <div><div class="label">AGE</div><div class="value" id="pol-age">—</div></div>
+    <div><div class="label">NATION</div><div class="value" id="pol-nation">—</div></div>
+    <div><div class="label">CAREER</div><div class="value" id="pol-career">—</div></div>
+    <div><div class="label">GAME DATE</div><div class="value" id="pol-date">—</div></div>
+    <div><div class="label">TICK</div><div class="value" id="pol-tick">—</div></div>
+    <div><div class="label">NEXT TICK</div><div class="value" id="pol-next-tick">—</div></div>
   </div>
-  <div class="pol-right">
-    <span class="pol-pill" id="pol-pill" title="Switch faction">
-      <span class="pol-pill__cash">POL</span>
-      <span class="pol-pill__amount" id="pol-cash">$0</span>
-      <span>&#x25BE;</span>
-    </span>
-    <div class="pol-dd" id="pol-dd"></div>
-    <button class="pol-logout" id="pol-logout">Logout</button>
+  <div class="right">
+    <div class="cash-pill"><span class="label">POL CASH: </span><span class="value" id="pol-cash">$0</span></div>
+    <div class="pol-switcher">
+      <span class="pol-pill" id="pol-pill" title="Switch faction"><span id="pol-pill-label">Politician</span> &#x25BE;</span>
+      <div class="pol-dd" id="pol-dd"></div>
+    </div>
+    <span class="pol-util" id="pol-logout">Logout</span>
   </div>
 </div>
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
+import { APP_VERSION } from './js/utils.js';
 import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl } from './js/game/factions.js';
 
 const START_AGE = 25;
@@ -89,26 +97,26 @@ const TICKS_PER_AGE_YEAR = 12;
 
 let politician = null;
 let otherFactions = [];
+let nation = null;
+let countdownTimer = null;
 
 async function init() {
   const { data: { user } } = await _supabase.auth.getUser();
   if (!user) { window.location.href = 'login.html'; return; }
 
-  // Load all this user's factions in one shot, then split off the active
-  // politician. The switcher shows the others.
   let factions = [];
-  let currentTick = 0;
+  let shard = null;
   try {
-    const [{ data: facs, error: facErr }, { data: shard, error: shardErr }] = await Promise.all([
+    const [facRes, shardRes] = await Promise.all([
       _supabase.from('factions')
-        .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, founded_tick, party_funds, abandoned_at, is_banned')
+        .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, founded_tick, party_funds, abandoned_at, is_banned, politician_career')
         .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
-      _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
+      _supabase.from('shard').select('current_tick, current_date, next_tick_at').eq('name', 'Alpha Shard').single(),
     ]);
-    if (facErr) throw facErr;
-    if (shardErr) throw shardErr;
-    factions = facs || [];
-    currentTick = shard?.current_tick || 0;
+    if (facRes.error) throw facRes.error;
+    if (shardRes.error) throw shardRes.error;
+    factions = facRes.data || [];
+    shard = shardRes.data || {};
   } catch (err) {
     console.error('politician-home: load failed', err);
     document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
@@ -116,27 +124,37 @@ async function init() {
   }
 
   const activeId = sessionStorage.getItem('active_faction_id');
-  // Prefer the explicitly-active faction if it's a politician; otherwise
-  // fall back to the user's first active politician.
   politician = factions.find(f => f.id === activeId && f.faction_type === 'politician' && !isFactionInactive(f))
             || factions.find(f => f.faction_type === 'politician' && !isFactionInactive(f))
             || null;
 
   if (!politician) {
-    // User landed here without a politician — send them back to the start.
     window.location.href = 'character-select.html';
     return;
+  }
+
+  // Fetch the politician's nation for the flag + name pill. Sequential because
+  // we only know nation_id after picking the active politician above.
+  if (politician.nation_id) {
+    try {
+      const { data, error } = await _supabase.from('nations')
+        .select('id, name, flag_url, nation_profiles(flag_url)')
+        .eq('id', politician.nation_id).maybeSingle();
+      if (!error) nation = data;
+    } catch (_) { /* nation is optional flair; absence falls back to '—' */ }
   }
 
   otherFactions = factions.filter(f =>
     f.id !== politician.id && !isFactionInactive(f) && !isHiddenFromSwitcher(f));
 
-  render(currentTick);
+  render(shard);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('topbar').style.display = 'flex';
+  startCountdown(shard.next_tick_at);
 }
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+function escAttr(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
 
 function fmtCash(n) {
   const v = Number(n) || 0;
@@ -146,40 +164,56 @@ function fmtCash(n) {
 }
 
 function currentAge(currentTick) {
-  // No founded_tick recorded (legacy rows / data drift) → show the starting
-  // age rather than (current_tick / 12) of garbage.
   if (politician.founded_tick == null) return START_AGE;
   const elapsed = Math.max(0, currentTick - Number(politician.founded_tick));
   return START_AGE + Math.floor(elapsed / TICKS_PER_AGE_YEAR);
 }
 
-function render(currentTick) {
+function flagFor(n) {
+  if (!n) return '';
+  return (n.nation_profiles && n.nation_profiles.flag_url) || n.flag_url || `assets/flags/${n.name}.png`;
+}
+
+function render(shard) {
   const first = politician.leader_first_name || '';
   const last  = politician.leader_last_name  || '';
   const ini = (((first[0] || '') + (last[0] || '')).toUpperCase()) || '—';
   const display = (first || last) ? (first + ' ' + last).trim() : (politician.faction_name || 'Politician');
+  const pillLabel = last ? `${(first[0] || '').toUpperCase()}. ${last}` : (first || 'Politician');
+
   document.getElementById('pol-crest').textContent = ini;
   document.getElementById('pol-name').textContent = display;
-  document.getElementById('pol-age').textContent = String(currentAge(currentTick));
+  document.getElementById('pol-version').textContent = APP_VERSION;
+  document.getElementById('pol-pill-label').textContent = pillLabel;
+  document.getElementById('pol-age').textContent = String(currentAge(shard.current_tick || 0));
+  document.getElementById('pol-career').textContent = politician.politician_career || 'Independent';
   document.getElementById('pol-cash').textContent = fmtCash(politician.party_funds);
+  document.getElementById('pol-date').textContent = shard.current_date || '—';
+  document.getElementById('pol-tick').textContent = shard.current_tick != null ? String(shard.current_tick) : '—';
 
-  // Faction-switcher dropdown render. NOTE: near-duplicate of the
-  // dropdown logic in common.js (party topbar) and entrepreneur-topbar.js.
-  // Three inline copies live in the codebase; consolidating them into a
-  // shared renderer is the right fix but touches all three live topbars,
-  // so it's deferred to a focused pass rather than smuggled in here.
+  const natEl = document.getElementById('pol-nation');
+  if (nation) {
+    natEl.innerHTML = `<img class="flag" src="${escAttr(flagFor(nation))}" alt="" onerror="this.style.visibility='hidden'">${escHtml(nation.name)}`;
+  } else {
+    natEl.textContent = '—';
+  }
+
+  // Switcher dropdown. NOTE: near-duplicate of the dropdown logic in
+  // common.js and entrepreneur-topbar.js — three inline copies live in the
+  // codebase; a shared renderer is the right fix but touches all three
+  // live topbars, so it's deferred to a focused pass.
   const dd = document.getElementById('pol-dd');
   if (!otherFactions.length) {
-    dd.innerHTML = '<div class="pol-dd__empty">No other factions.</div>';
+    dd.innerHTML = '<div class="pol-dd-empty">No other factions.</div>';
   } else {
     dd.innerHTML = otherFactions.map(f => {
       const { label, color } = getFactionTypeBadge(f.faction_type);
-      return `<div class="pol-dd__item" data-id="${f.id}">
-        <span class="pol-dd__badge" style="color:${color}">${label}</span>
-        <span class="pol-dd__name">${escHtml(f.faction_name || 'Unnamed')}</span>
+      return `<div class="pol-dd-item" data-id="${f.id}">
+        <span class="pol-dd-badge" style="color:${color}">${label}</span>
+        <span class="pol-dd-name">${escHtml(f.faction_name || 'Unnamed')}</span>
       </div>`;
     }).join('');
-    dd.querySelectorAll('.pol-dd__item').forEach(el => {
+    dd.querySelectorAll('.pol-dd-item').forEach(el => {
       el.addEventListener('click', () => {
         const f = otherFactions.find(x => x.id === el.dataset.id);
         if (!f) return;
@@ -190,6 +224,19 @@ function render(currentTick) {
   }
 }
 
+function startCountdown(nextTickAt) {
+  const el = document.getElementById('pol-next-tick');
+  if (!el || !nextTickAt) return;
+  const target = new Date(nextTickAt).getTime();
+  const tick = () => {
+    const diff = Math.max(0, target - Date.now());
+    el.textContent = `${Math.floor(diff / 3600000)}h ${Math.floor((diff % 3600000) / 60000)}m ${Math.floor((diff % 60000) / 1000)}s`;
+  };
+  tick();
+  if (countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = setInterval(tick, 1000);
+}
+
 const pill = document.getElementById('pol-pill');
 const dd = document.getElementById('pol-dd');
 pill.addEventListener('click', (e) => { e.stopPropagation(); dd.classList.toggle('open'); });
@@ -198,7 +245,7 @@ document.addEventListener('click', (e) => {
 });
 
 document.getElementById('pol-logout').addEventListener('click', async () => {
-  try { await _supabase.auth.signOut(); } catch (_) { /* swallow — redirect anyway */ }
+  try { await _supabase.auth.signOut(); } catch (e) { console.warn('[politician-home] signOut failed:', e?.message || e); }
   window.location.href = 'login.html';
 });
 
