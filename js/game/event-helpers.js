@@ -123,6 +123,47 @@ export async function fireBillEvent(supabase, triggerKey, bill, opts = {}) {
 }
 
 /**
+ * Broadcast a hand-written event to every nation (world news). Inserts one
+ * event_log row per nation with the supplied description. Mirrors the existing
+ * direct-insert pattern in issues.js (startWarFromIssue, spawnIncidentFromIssue)
+ * rather than the templated fire_system_event RPC, because these events are
+ * fully composed at the call site and don't need placeholder substitution.
+ *
+ * Non-blocking — swallows errors with a console warning. The triggering action
+ * has already succeeded; a missed event-log row shouldn't surface as a UI
+ * failure to the player.
+ *
+ * @param {object} supabase
+ * @param {object} opts
+ * @param {string} opts.eventName     - Display name on the event card.
+ * @param {string} opts.triggerKey    - Stable key for grouping/filtering.
+ * @param {string} opts.description   - Final user-visible line.
+ * @param {string} [opts.category]    - News section. Defaults to 'diplomacy'.
+ * @param {number} [opts.currentTick] - Tick stamp. Fetched from shard if omitted.
+ */
+export async function broadcastWorldEvent(supabase, { eventName, triggerKey, description, category = 'diplomacy', currentTick } = {}) {
+    try {
+        let tick = currentTick;
+        if (tick == null) {
+            const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
+            tick = shard?.current_tick || 0;
+        }
+        const { data: nations, error: natErr } = await supabase.from('nations').select('id');
+        if (natErr) throw natErr;
+        const ids = (nations || []).map(n => n.id);
+        if (!ids.length) return;
+        const rows = ids.map(nation_id => ({
+            nation_id, event_name: eventName, trigger_key: triggerKey,
+            description_chosen: description, category, fired_at_tick: tick,
+        }));
+        const { error } = await supabase.from('event_log').insert(rows);
+        if (error) console.warn('[broadcastWorldEvent] insert failed:', error.message);
+    } catch (e) {
+        console.warn('[broadcastWorldEvent] failed:', e?.message || e);
+    }
+}
+
+/**
  * Fire a system event to two nations simultaneously (e.g. bilateral aid/trade events).
  */
 export async function fireBilateralEvent(supabase, triggerKey, nationIdA, nationIdB, currentTick, placeholders) {
