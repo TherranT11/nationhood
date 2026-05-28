@@ -94,6 +94,16 @@ function ensureStyles() {
     .ent-nav a { padding:12px 0; white-space:nowrap; }
     .ent-content { padding:18px 12px; }
   }
+
+  /* Mobile refresh — phone-class viewport (~375px primary, 360px safe).
+     Topbar wraps already at 700px; this tightens container padding so
+     content gets every pixel of width at the narrow end. Used by every
+     entrepreneur page that wraps content in .ent-content. */
+  @media (max-width:360px) {
+    .ent-topbar { padding:8px 10px; gap:8px; }
+    .ent-nav { padding:0 10px; }
+    .ent-content { padding:14px 10px; }
+  }
   `;
   document.head.appendChild(s);
 }

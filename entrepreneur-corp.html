@@ -532,6 +532,37 @@
     .ap-loan { grid-template-columns:1fr; gap:8px; }
     .mk-row { grid-template-columns:1fr; gap:6px; padding:12px 14px; }
   }
+
+  /* Mobile refresh — phone-class viewport. The 900px + 700px rules above
+     stack main-grid / financials / modal contents; this block enforces
+     44px tap targets on every button class in the page, shrinks the
+     hero title to fit a 375px column, and uses 16px inputs so iOS
+     doesn't auto-zoom on focus. */
+  @media (max-width:640px) {
+    .corp-body .title { font-size:22px; }
+    .corp-body .eyebrow { font-size:9px; }
+    .pills { gap:6px; flex-wrap:wrap; }
+    /* Buttons: 44px floor on every button class used in this page. */
+    .tc-btn, .bm-btn, .ap-btn, .cf-btn, .mo-btn, .rl-btn, .sh-buy-btn {
+      min-height:44px; padding:12px 16px; font-size:11px;
+    }
+    /* Inputs: 16px so iOS Safari doesn't zoom the viewport on focus. */
+    .tc-qty, .bm-input, .mo-input, .rl-input, .bm-select, .cb-bid-amt {
+      font-size:16px; min-height:44px;
+    }
+    /* Active-projects offer grid keeps 2-up at 640px so accept/decline
+       pair stays paired; at 360px it stacks. */
+    .ap-row { padding:14px 14px; }
+  }
+  @media (max-width:360px) {
+    /* .ent-content padding tightens via topbar.js (the rule's owner). */
+    .breadcrumb { margin:-28px -10px 14px; padding:10px 10px; }
+    .corp-body .title { font-size:20px; }
+    .financials { grid-template-columns:1fr; }
+    .ap-offer { grid-template-columns:1fr; }
+    .bm-overlay, .ls-overlay, .rl-overlay { padding:8px; }
+    .bm-body, .rl-body { padding:14px; }
+  }
 </style>
 </head>
 <body>

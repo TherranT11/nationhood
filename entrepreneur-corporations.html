@@ -190,6 +190,37 @@
     /* Leave Board / Join Board rows */
     .ec-lr { grid-template-columns:1fr; gap:8px; padding:12px 14px; }
   }
+
+  /* Mobile refresh — phone-class viewport. The 700px rule above stacks
+     actions / directory / modal; this adds the missing .ec-corp stack,
+     brings every actionable control up to a 44px touch target, and
+     trims hero typography so the section headings don't dwarf cards. */
+  @media (max-width:640px) {
+    .ec-section .sans, .ec-section .serif { font-size:18px; }
+    .ec-action { padding:14px 16px; gap:12px; min-height:64px; }
+    .ec-action .nm { font-size:14px; }
+    .ec-action .cost { margin-left:0; }
+    .ec-filter { min-height:44px; padding:11px 14px; font-size:11px; }
+    /* Positions Held — collapse the 6-col layout same as the directory. */
+    .ec-corp { grid-template-columns:1fr; gap:8px; padding:14px 14px; }
+    .ec-corp > div { width:100%; text-align:left; }
+    .ec-corp .cl, .ec-corp .cv { text-align:left; }
+    .ec-corp .mid { align-items:flex-start; }
+    .ec-corp .arr { display:none; }
+    /* Buttons: 44px floor across primary / secondary / leave-row. */
+    .ec-btn { min-height:44px; padding:12px 18px; font-size:12px; }
+    .ec-lr .ec-btn.pri, .ec-jr .ec-btn.pri { min-height:44px; padding:12px 14px; font-size:12px; }
+    /* Modal overlay safe-area. */
+    .ec-overlay { padding:12px; }
+    .ec-modal { max-height:94vh; }
+    .ec-input { font-size:16px; }    /* prevent iOS auto-zoom on focus */
+  }
+  @media (max-width:360px) {
+    /* .ent-content padding tightens via topbar.js (the rule's owner). */
+    .ec-overlay { padding:8px; }
+    .ec-mh, .ec-mf { padding-left:14px; padding-right:14px; }
+    .ec-mb { padding:14px; }
+  }
 </style>
 </head>
 <body>

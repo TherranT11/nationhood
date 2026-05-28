@@ -46,6 +46,20 @@ h1 { font-family:var(--font-serif); font-size:26px; color:var(--text-bright); ma
   color:var(--text-dim); cursor:not-allowed; transition:all .15s; }
 .btn.on { background:rgba(139,92,246,0.12); border-color:var(--purple); color:var(--text-bright); cursor:pointer; }
 .err { display:none; font-family:var(--font-mono); font-size:11px; color:var(--red); margin-top:10px; line-height:1.5; }
+
+/* Mobile refresh — single-column flow already; just tighten padding and
+   shrink the heading so the card stack reads cleanly at 375px / 360px. */
+@media (max-width: 640px) {
+  body { padding: 24px 16px; }
+  h1 { font-size: 22px; }
+  .arch-card { padding: 16px; }
+  .arch-name { font-size: 14px; }
+  .stat-row { padding: 11px 14px; font-size: 12px; }
+}
+@media (max-width: 360px) {
+  body { padding: 20px 12px; }
+  .arch-card { padding: 14px; }
+}
 </style>
 </head>
 <body>
