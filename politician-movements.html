@@ -215,14 +215,22 @@ function renderTab(tab) {
   list.innerHTML = `<div class="empty">${EMPTY_BY_TAB[tab] || 'No active movements yet.'}</div>`;
 }
 
+// Hex-color only — party_color is admin-supplied (trusted today, but escHtml
+// doesn't escape CSS context, so anything non-hex would still let a stray
+// "; background:url(...)" through into the style attribute). Anything that
+// isn't a 3/6/8-digit hex falls back to the brand teal.
+function safeHexColor(c) {
+  return /^#[0-9a-f]{3}([0-9a-f]{3}([0-9a-f]{2})?)?$/i.test(c || '') ? c : '#5aafa5';
+}
+
 function renderPartyCard(p) {
-  const accent = p.party_color || '#5aafa5';
+  const accent = safeHexColor(p.party_color);
   const leader = [p.leader_first_name, p.leader_last_name].filter(Boolean).join(' ');
   const subParts = [];
   if (leader) subParts.push(`Led by ${escHtml(leader)}`);
   if (p.party_description) subParts.push(escHtml(p.party_description));
   const sub = subParts.join(' &middot; ');
-  return `<div class="mv-card" style="border-left-color:${escHtml(accent)};">
+  return `<div class="mv-card" style="border-left-color:${accent};">
     <div class="badge">${escHtml(p.abbreviation || '—')}</div>
     <div class="body">
       <div class="title">${escHtml(p.faction_name)}</div>
