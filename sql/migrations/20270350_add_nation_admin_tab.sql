@@ -104,7 +104,13 @@ SET value = REPLACE(
             <div class="input-group"><label>Overview</label><textarea id="nn-overview" rows="3" style="width:100%;"></textarea></div>
 
             <h3 style="margin:18px 0 6px; font-size:0.95rem;">Diplomacy</h3>
-            <div class="input-group" style="max-width:280px;"><label>Default Proximity to all nations (0 near &ndash; 100 far)</label><input type="number" id="nn-proximity" min="0" max="100" value="80"></div>
+            <p style="color:#888; font-size:0.8rem; margin-bottom:8px;">Proximity to each existing nation (0 near &ndash; 100 far). Use the bulk-set helper to fill them all, then tweak per pair.</p>
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+                <label style="margin:0;">Set all to:</label>
+                <input type="number" id="nn-proximity-default" min="0" max="100" value="80" style="width:64px;">
+                <button class="btn" onclick="applyDefaultProximity()">Apply to all</button>
+            </div>
+            <div id="nn-proximities" style="max-height:240px; overflow-y:auto; border:1px solid #333; padding:8px;">No nations yet.</div>
 
             <details style="margin-top:16px;">
                 <summary style="cursor:pointer; font-weight:600;">National Statistics (0&ndash;100 unless noted)</summary>

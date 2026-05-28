@@ -63,7 +63,6 @@ DECLARE
     v_include_pm  boolean;
     v_has_elect   boolean;
     v_next_elect  int;
-    v_proximity   int := COALESCE(NULLIF(p_payload->>'proximity', '')::int, 80);
     v_total_seats int := COALESCE(NULLIF(p_payload->>'total_seats', '')::int, 100);
     v_min_count   int;
     v_dipl_count  int;
@@ -214,11 +213,15 @@ BEGIN
        );
 
     -- ── 5. Diplomatic relations — neutral fan-out to every existing nation ─────
+    -- Per-pair proximity comes from p_payload->'proximities' (a JSON object
+    -- keyed by nation_id → 0-100 value). Missing entries fall back to 80.
     INSERT INTO diplomatic_relations (
         nation_a_id, nation_b_id, relation_type, relation_score, proximity
     )
-    SELECT LEAST(v_nation_id, n.id), GREATEST(v_nation_id, n.id),
-           'neutral', 30, v_proximity
+    SELECT
+        LEAST(v_nation_id, n.id), GREATEST(v_nation_id, n.id),
+        'neutral', 30,
+        COALESCE(NULLIF(p_payload->'proximities'->>n.id::text, '')::int, 80)
       FROM nations n
      WHERE n.id <> v_nation_id
     ON CONFLICT (nation_a_id, nation_b_id) DO NOTHING;

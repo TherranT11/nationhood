@@ -2037,6 +2037,29 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
             !q || (p.policy_name || '').toLowerCase().includes(q) || (p.major_sector || '').toLowerCase().includes(q)));
     }
 
+    // Diplomacy proximities — one input per existing nation, sourced from the
+    // shared `nations` array (already loaded by loadElectionNations earlier in
+    // loadAllData).
+    function renderAddNationProximities() {
+        const box = document.getElementById('nn-proximities');
+        if (!box) return;
+        const list = (nations || []).slice().sort((a, b) =>
+            (a.name || '').localeCompare(b.name || ''));
+        if (!list.length) { box.innerHTML = '<span style="color:#888;">No existing nations yet.</span>'; return; }
+        const def = document.getElementById('nn-proximity-default')?.value || '80';
+        box.innerHTML = list.map(n =>
+            `<div style="display:flex; justify-content:space-between; align-items:center; padding:3px 0; font-size:0.82rem;">` +
+            `<span>${escHtml(n.name)}</span>` +
+            `<input type="number" class="nn-prox" data-nation="${n.id}" min="0" max="100" value="${def}" style="width:60px;"></div>`
+        ).join('');
+    }
+
+    function applyDefaultProximity() {
+        const v = document.getElementById('nn-proximity-default')?.value;
+        if (v === undefined) return;
+        document.querySelectorAll('.nn-prox').forEach(inp => { inp.value = v; });
+    }
+
     async function loadAddNationContinents() {
         try {
             const { data } = await _supabase.from('nations').select('continent');
@@ -2097,7 +2120,9 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
             eligible_voters: nnVal('nn-eligible_voters'),
             gdp: nnVal('nn-gdp'),
             debt: nnVal('nn-debt'),
-            proximity: nnVal('nn-proximity'),
+            proximities: Object.fromEntries(
+                [...document.querySelectorAll('.nn-prox')].map(i => [i.dataset.nation, i.value])
+            ),
             flag_url: nnVal('nn-flag_url'),
             demonym: nnVal('nn-demonym'),
             currency_name: nnVal('nn-currency_name'),
@@ -2131,6 +2156,8 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
                 document.getElementById('nn-capital').value = '';
                 await Promise.all([loadSectorNations(), loadProvinceNations(), loadInspectorNations(),
                                    loadElectionNations(), loadAddNationContinents()]);
+                // Pick up the just-created nation in the per-nation proximity list.
+                renderAddNationProximities();
             } catch (err) {
                 console.error('createNation failed', err);
                 setErr('Create failed: ' + (err.message || String(err)));
@@ -2141,6 +2168,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     async function loadAddNationInit() {
         renderAddNationStats();
         onAddNationGovType();
+        renderAddNationProximities();
         await loadAddNationContinents();
         await loadAddNationPolicies();
     }
@@ -2747,6 +2775,7 @@ window.fillNationDefaults = fillNationDefaults;
 window.renderAddNationStats = renderAddNationStats;
 window.filterAddNationPolicies = filterAddNationPolicies;
 window.createNation = createNation;
+window.applyDefaultProximity = applyDefaultProximity;
 window.createParty = createParty;
 window.loadFactionPopularityEditor = loadFactionPopularityEditor;
 window.onPopularityCellInput = onPopularityCellInput;
