@@ -5,25 +5,180 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Politician — Nation</title>
 <style>
-/* Topbar / nav / body base live in js/politician-topbar.js. Body
-   intentionally blank for now — pages slot in as we design them. */
+/* Topbar / nav / body base live in js/politician-topbar.js. This page styles
+   the nation-brief card — amber-accented to read as "regal / sovereign", a
+   deliberate visual break from the teal politician chrome. */
 * { box-sizing:border-box; margin:0; padding:0; }
-.content { padding:32px 24px 24px; }
+.content { padding:32px 24px 24px; max-width:1200px; }
+
+.nation-card { background:#0d0d0c; border:0.5px solid rgba(200,166,78,0.15);
+  border-radius:6px; padding:24px; margin-bottom:24px; }
+.nation-card__top { display:flex; align-items:flex-start; gap:18px; margin-bottom:20px; }
+.nation-card__flag { width:88px; height:60px; object-fit:cover; border:0.5px solid rgba(255,255,255,0.1);
+  border-radius:3px; flex-shrink:0; background:#121212; }
+.nation-card__title { flex:1; min-width:0; }
+.nation-card__title h1 { font-size:26px; font-weight:500; color:#fff; line-height:1.1; margin-bottom:6px;
+  letter-spacing:-0.01em; }
+.nation-card__title h1 .name { font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#c8a64e; }
+.nation-card__title .subtitle { font-size:12px; color:#888; margin-bottom:10px; line-height:1.5; }
+.tags { display:flex; gap:6px; flex-wrap:wrap; }
+.tag { font-size:9px; letter-spacing:0.1em; text-transform:uppercase; color:#c8a64e;
+  border:0.5px solid rgba(200,166,78,0.4); padding:4px 10px; border-radius:3px; }
+
+.info-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px;
+  padding-top:14px; padding-bottom:14px; border-top:0.5px solid rgba(255,255,255,0.06);
+  border-bottom:0.5px solid rgba(255,255,255,0.06); margin-bottom:14px; }
+.info-cell .label { font-size:9px; letter-spacing:0.13em; color:#666; margin-bottom:6px; text-transform:uppercase; }
+.info-cell .value { font-size:18px; font-weight:500; color:#fff; line-height:1.2; }
+.info-cell .sub   { font-size:11px; color:#888; margin-top:4px; line-height:1.4; }
+
+.stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:18px; padding-top:6px; }
+.stat-cell .row { display:flex; justify-content:space-between; align-items:baseline; }
+.stat-cell .row .label { font-size:9px; letter-spacing:0.13em; color:#666; text-transform:uppercase; }
+.stat-cell .row .value { font-size:14px; font-weight:600; color:#fff; }
+.stat-cell .bar  { height:5px; background:rgba(255,255,255,0.06); border-radius:3px; margin-top:8px; overflow:hidden; }
+.stat-cell .fill { height:100%; border-radius:3px; }
+.stat-cell .sub  { font-size:11px; color:#888; margin-top:6px; line-height:1.4; }
+
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
+
+@media (max-width:700px) {
+  .nation-card__top { flex-direction:column; }
+  .info-grid, .stats-grid { grid-template-columns:repeat(2,1fr); }
+}
 </style>
 </head>
 <body>
 
 <div id="pol-topbar-container"></div>
 
-<div class="content" id="content" style="display:none;"></div>
+<div class="content" id="content" style="display:none;">
+  <div class="nation-card" id="nation-card">
+    <div class="nation-card__top">
+      <img class="nation-card__flag" id="nc-flag" alt="" onerror="this.style.visibility='hidden'">
+      <div class="nation-card__title">
+        <h1><span id="nc-title-prefix"></span><span class="name" id="nc-title-name">—</span></h1>
+        <div class="subtitle" id="nc-subtitle"></div>
+        <div class="tags" id="nc-tags"></div>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-cell">
+        <div class="label">Capital</div>
+        <div class="value" id="nc-capital">—</div>
+      </div>
+      <div class="info-cell">
+        <div class="label">Population</div>
+        <div class="value" id="nc-population">—</div>
+      </div>
+      <div class="info-cell">
+        <div class="label">Head of State</div>
+        <div class="value" id="nc-hos">—</div>
+        <div class="sub"   id="nc-hos-sub"></div>
+      </div>
+      <div class="info-cell">
+        <div class="label">Head of Gov't</div>
+        <div class="value" id="nc-hog">—</div>
+        <div class="sub"   id="nc-hog-sub"></div>
+      </div>
+    </div>
+
+    <div class="stats-grid" id="nc-stats"></div>
+  </div>
+</div>
 
 <div id="loading" class="loading">LOADING...</div>
 
 <script type="module">
+import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 
-(async () => {
+// Tier descriptors per stat — index 0 = highest band, last = lowest. Each tuple
+// is [min, label]; first match wins on a descending walk.
+const TIERS = {
+  stability: [
+    [80, 'Iron · no challenge'],
+    [60, 'Firm · the order holds'],
+    [40, 'Tense · cracks visible'],
+    [20, 'Volatile · unrest brewing'],
+    [0,  'Breaking · revolt likely'],
+  ],
+  approval: [
+    [80, 'Adored · the public is yours'],
+    [60, 'Well-regarded'],
+    [40, 'Mixed reception'],
+    [20, 'Disliked'],
+    [0,  'Despised'],
+  ],
+  treasury: [
+    [80, 'Flush · ample reserves'],
+    [60, 'Stable · within targets'],
+    [40, 'Strained · careful spending'],
+    [20, 'Thin · cuts required'],
+    [0,  'Empty · austerity'],
+  ],
+  freedom: [
+    [80, 'Free · civic life thrives'],
+    [60, 'Open · most can speak'],
+    [40, 'Restricted · watch your words'],
+    [20, 'Repressive · dissent is risky'],
+    [0,  'Police state · silence enforced'],
+  ],
+};
+function tierLabel(stat, value) {
+  const v = Math.max(0, Math.min(100, Number(value) || 0));
+  for (const [min, label] of TIERS[stat]) if (v >= min) return label;
+  return '';
+}
+function barColor(value) {
+  const v = Number(value) || 0;
+  if (v >= 60) return '#5cb85c';
+  if (v >= 35) return '#c8a64e';
+  return '#d9534f';
+}
+
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+function escAttr(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
+
+function formatPopulation(n) {
+  const v = Number(n) || 0;
+  if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + ' million';
+  if (v >= 1_000)     return (v / 1_000).toFixed(1).replace(/\.0$/, '') + ' thousand';
+  return String(v);
+}
+
+function govTypeLabel(govType) {
+  if (!govType) return '';
+  return String(govType).toUpperCase();
+}
+
+function approvalLabel(govType) {
+  if (govType === 'Absolute Monarchy') return 'Royal Approval';
+  if (govType === 'Presidential' || govType === 'Semi-Presidential') return 'Presidential Approval';
+  return 'Government Approval';
+}
+
+function splitOfficialName(officialName, fallbackName, govType) {
+  // Prefer the configured official_name (e.g. "Kingdom of Hajjara"); split off
+  // the trailing word for italic. Fall back to a gov-type-derived prefix.
+  if (officialName && officialName.includes(' ')) {
+    const idx = officialName.lastIndexOf(' ');
+    return { prefix: officialName.slice(0, idx + 1), name: officialName.slice(idx + 1) };
+  }
+  if (govType === 'Absolute Monarchy') return { prefix: 'Kingdom of ',  name: fallbackName || '' };
+  if (govType === 'Presidential' || govType === 'Semi-Presidential') return { prefix: 'Republic of ', name: fallbackName || '' };
+  return { prefix: '', name: fallbackName || officialName || '' };
+}
+
+function buildTags(nation, profile) {
+  const tags = [];
+  if (nation.government_type) tags.push(govTypeLabel(nation.government_type));
+  if (profile?.founded_year)  tags.push(`Founded ${profile.founded_year}`);
+  return tags;
+}
+
+async function init() {
   let ctx = null;
   try { ctx = await bootstrapPolitician('nation'); }
   catch (err) {
@@ -31,10 +186,105 @@ import { bootstrapPolitician } from './js/politician-topbar.js';
     document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
     return;
   }
-  if (!ctx) return; // redirected by bootstrap (no auth / no politician)
+  if (!ctx) return;
+
+  // Bootstrap already fetched a thin nation row (id, name, flag_url, profile flag).
+  // Refetch with the full surface we need for the brief card.
+  let nation = null;
+  if (ctx.faction?.nation_id) {
+    try {
+      const { data, error } = await _supabase.from('nations')
+        .select(`
+          id, name, government_type, capital,
+          head_of_state_title, head_of_state_first_name, head_of_state_last_name,
+          population, dynasty_name,
+          unrest, public_approval, budget, global_image,
+          nation_profiles(flag_url, official_name, motto, overview, founded_year)
+        `)
+        .eq('id', ctx.faction.nation_id).maybeSingle();
+      if (error) throw error;
+      nation = data;
+    } catch (err) {
+      console.error('politician-nation: nation fetch failed', err);
+    }
+  }
+
+  if (!nation) {
+    document.getElementById('loading').textContent = 'No nation associated with this politician.';
+    return;
+  }
+
+  renderCard(nation);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
-})();
+}
+
+function renderCard(n) {
+  const p = (n.nation_profiles && (Array.isArray(n.nation_profiles) ? n.nation_profiles[0] : n.nation_profiles)) || {};
+  const flag = p.flag_url || `assets/flags/${n.name}.png`;
+  const { prefix, name } = splitOfficialName(p.official_name, n.name, n.government_type);
+
+  document.getElementById('nc-flag').src = flag;
+  document.getElementById('nc-flag').alt = `${n.name} flag`;
+  document.getElementById('nc-title-prefix').textContent = prefix;
+  document.getElementById('nc-title-name').textContent = name;
+
+  const subtitleText = p.motto || (p.overview || '').split(/[.—]\s/)[0] || '';
+  document.getElementById('nc-subtitle').textContent = subtitleText;
+
+  const tags = buildTags(n, p);
+  document.getElementById('nc-tags').innerHTML = tags.map(t => `<span class="tag">${escHtml(t)}</span>`).join('');
+
+  document.getElementById('nc-capital').textContent = n.capital || '—';
+  document.getElementById('nc-population').textContent = formatPopulation(n.population);
+
+  // Head of State + subline (dynasty name for monarchies, role descriptor otherwise).
+  const hosTitle = n.head_of_state_title || (n.government_type === 'Absolute Monarchy' ? 'King' : 'President');
+  const hosFirst = n.head_of_state_first_name || '';
+  const hosLast  = n.head_of_state_last_name  || '';
+  const hosName  = `${hosFirst} ${hosLast}`.trim();
+  document.getElementById('nc-hos').textContent = hosName ? `${hosTitle} ${hosName}` : '—';
+  const hosSub = n.government_type === 'Absolute Monarchy'
+    ? (n.dynasty_name ? `Of the ${n.dynasty_name}` : 'Reigning monarch')
+    : (n.government_type === 'Presidential' || n.government_type === 'Semi-Presidential' ? 'Elected head of state' : 'Ceremonial head of state');
+  document.getElementById('nc-hos-sub').textContent = hosSub;
+
+  // Head of Gov't — gov-type-aware. Looking up the active PM by name lives one
+  // query deeper than this card needs today; placeholder copy keeps the slot
+  // honest until a PM lookup lands alongside the rest of the Nation surface.
+  if (n.government_type === 'Absolute Monarchy') {
+    document.getElementById('nc-hog').textContent = 'The Crown';
+    document.getElementById('nc-hog-sub').textContent = 'no separate premier';
+  } else if (n.government_type === 'Presidential') {
+    document.getElementById('nc-hog').textContent = hosName ? `${hosTitle} ${hosName}` : '—';
+    document.getElementById('nc-hog-sub').textContent = 'president leads the government';
+  } else {
+    document.getElementById('nc-hog').textContent = 'Prime Minister';
+    document.getElementById('nc-hog-sub').textContent = '—';
+  }
+
+  // Four stat bars. STABILITY is inverted from unrest (high unrest → low stability).
+  const stability = Math.max(0, Math.min(100, 100 - (Number(n.unrest) || 0)));
+  const approval  = Math.max(0, Math.min(100, Number(n.public_approval) || 0));
+  const treasury  = Math.max(0, Math.min(100, Number(n.budget) || 0));
+  const freedom   = Math.max(0, Math.min(100, Number(n.global_image) || 0));
+
+  const stats = [
+    { key: 'stability', label: 'Stability',                    value: stability },
+    { key: 'approval',  label: approvalLabel(n.government_type), value: approval  },
+    { key: 'treasury',  label: 'Treasury',                     value: treasury  },
+    { key: 'freedom',   label: 'Civil Freedom',                value: freedom   },
+  ];
+
+  document.getElementById('nc-stats').innerHTML = stats.map(s => `
+    <div class="stat-cell">
+      <div class="row"><span class="label">${escHtml(s.label)}</span><span class="value">${Math.round(s.value)}</span></div>
+      <div class="bar"><div class="fill" style="width:${s.value}%; background:${barColor(s.value)};"></div></div>
+      <div class="sub">${escHtml(tierLabel(s.key, s.value))}</div>
+    </div>`).join('');
+}
+
+init();
 </script>
 </body>
 </html>
