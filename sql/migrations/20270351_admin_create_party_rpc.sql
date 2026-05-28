@@ -19,9 +19,11 @@
 -- archetype step then raises the named strongholds to the passed tiers
 -- (JS sends STRONGHOLD_POPULARITY_TIERS = 40/35/30 = 4.0/3.5/3.0).
 --
--- Multiple NPC parties per nation are allowed: idx_factions_one_per_user_per_nation
--- keys on COALESCE(linked_user_id, id) — each NPC party has a unique id and null
--- linked_user_id, so they never collide.
+-- Multiple NPC parties per nation are allowed: the per-user uniqueness index
+-- (idx_factions_one_nonpolitician_per_user_per_nation post-20270371, renamed
+-- from idx_factions_one_per_user_per_nation) keys on COALESCE(linked_user_id,
+-- id) — each NPC party has a unique id and null linked_user_id, so they
+-- never collide.
 --
 -- Auth: SECURITY DEFINER, gated by is_admin().
 -- ═══════════════════════════════════════════════════════════════════════════════

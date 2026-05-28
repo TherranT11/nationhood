@@ -755,15 +755,18 @@ async function proceed() {
       age: 35 + Math.floor(Math.random() * 20)
     };
 
-    // One faction per user per nation. If the user already has an active
-    // faction (party or corp, primary or linked) in this nation, refuse
-    // to create another. DB-side backstop is the
-    // idx_factions_one_per_user_per_nation partial unique index.
+    // One non-politician faction per user per nation. A politician in this
+    // nation is FINE \u2014 they're an overlay character that can coexist with
+    // the user's party/corp/military (20270371 split the unique index into
+    // politician and non-politician slots). The DB-side backstop is the
+    // idx_factions_one_nonpolitician_per_user_per_nation partial unique
+    // index, which only fires on party/corp/military/entrepreneur dupes.
     const { data: existingInNation } = await _supabase
       .from('factions')
       .select('id, faction_type, faction_name')
       .or(`id.eq.${currentUser.id},linked_user_id.eq.${currentUser.id}`)
       .eq('nation_id', nationData.id)
+      .neq('faction_type', 'politician')
       .is('abandoned_at', null)
       .maybeSingle();
     if (existingInNation) {

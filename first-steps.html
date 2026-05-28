@@ -436,7 +436,10 @@ async function createPolitician() {
     const { error: writeErr } = await op;
     if (writeErr) {
       if (writeErr.code === '23505') {
-        errEl.textContent = 'You already hold a faction in this nation.';
+        // After 20270371 the politician slot is independent of party / corp /
+        // military / entrepreneur in a given nation, so the only 23505 this
+        // INSERT can hit is politician × politician for the same user.
+        errEl.textContent = 'You already hold a politician in this nation.';
       } else {
         errEl.textContent = 'Could not create politician: ' + (writeErr.message || 'unknown error');
       }
