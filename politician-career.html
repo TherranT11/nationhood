@@ -69,6 +69,11 @@
 .rung__name { font-size:13px; font-weight:500; color:#fff; margin-bottom:3px; }
 .rung__desc { font-size:11px; color:#888; line-height:1.5; }
 .rung__action { flex-shrink:0; align-self:center; }
+.rung__chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.rung-chip { font-family:monospace; font-size:9px; letter-spacing:0.06em;
+  text-transform:uppercase; padding:4px 8px; border-radius:3px;
+  background:rgba(255,255,255,0.03); color:#777;
+  border:0.5px solid rgba(255,255,255,0.08); cursor:not-allowed; }
 .rung-btn { font-family:monospace; font-size:10px; letter-spacing:0.08em;
   text-transform:uppercase; padding:7px 14px; border-radius:3px;
   background:transparent; cursor:pointer; transition:all 0.15s; }
@@ -150,18 +155,34 @@ import { bootstrapPolitician } from './js/politician-topbar.js';
 const START_AGE = 25;
 const TICKS_PER_AGE_YEAR = 12;
 
-// The five career ladders a politician can climb, in player-relevance order
-// (Party Office first, since most career arcs start there; Underground last).
-// Each has an icon, a display name, and a renderer for its body. Party Office
-// is the only ladder with rungs wired up so far; the others fall back to a
-// shared "Not on this ladder yet." placeholder until they're designed.
+// The five career ladders a politician can climb, in player-relevance order.
+// Each ladder may declare a `rungs` array; if present it's rendered via the
+// generic renderRungs() below. Ladders without rungs fall back to the shared
+// empty-state placeholder until their content is designed.
 const LADDERS = [
-  { id: 'party',      icon: '\u{1F6A9}', name: 'Party Office',       render: renderPartyOfficeRungs },
-  { id: 'legislature',icon: '⚖️',       name: 'Legislature' },
+  { id: 'party',      icon: '\u{1F6A9}', name: 'Party Office',       rungs: () => PARTY_OFFICE_RUNGS },
+  { id: 'legislature',icon: '⚖️',       name: 'Legislature',         rungs: () => LEGISLATURE_RUNGS },
   { id: 'govt',       icon: '\u{1F451}', name: 'Government & State' },
   { id: 'civil',      icon: '\u{1F91D}', name: 'Civil Society' },
   { id: 'underground',icon: '\u{1F3AD}', name: 'Underground' },
 ];
+
+// Shared rung shape consumed by renderRungs():
+//   name              → bold rung title.
+//   held(state)       → boolean. Filled indicator + "held" tag when true.
+//   descIfHeld(state) → body line shown when held.
+//   descIfNot(state)  → body line shown when not held.
+//   actions  (opt)    → string[] of small inline chips rendered beneath the
+//                       description. Always shown as a *preview* today (greyed,
+//                       cursor:not-allowed) — when the underlying flows land
+//                       they get wired and styled live for held rungs only.
+//   actionIfNot (opt) → right-side button to advance toward this rung when
+//                       not held. kind:'primary' is a live link via href;
+//                       kind:'disabled' renders greyed-out (no flow wired).
+//
+// Status logic today: politician_career === 'Independent' means "not in a
+// party," so only Party Member's held branch can fire. Every Legislature rung
+// stays not-held until positions / committees are tracked in the DB.
 
 // Party Office rungs — the canonical climb a card-carrying politician makes
 // inside a party. Each rung exposes:
@@ -217,6 +238,43 @@ const PARTY_OFFICE_RUNGS = [
     held:        ()  => false,
     descIfHeld:  ()  => 'You lead your party. The face of the movement.',
     descIfNot:   ()  => 'Lead a political party. The face of the movement.',
+  },
+];
+
+// Legislature rungs — Committee Member is the entry rung (its right-side
+// [Apply to Committee] is the only live advance action; you climb to Chair
+// from there). Each rung carries inline `actions` (the verbs available to
+// the holder) shown as greyed chips today; they activate when the underlying
+// committee / floor / chamber mechanics are wired.
+const LEGISLATURE_RUNGS = [
+  {
+    name: 'Committee Member',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Assigned to a standing committee. This is where real policy work happens away from the floor.',
+    descIfNot:   ()  => 'Assigned to a standing committee. This is where real policy work happens away from the floor.',
+    actions:     ['Vote on Committee', 'Amend Bill'],
+    actionIfNot: { label: 'Apply to Committee', kind: 'disabled' },
+  },
+  {
+    name: 'Committee Chair',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You run a committee — set its agenda, decide what gets examined.',
+    descIfNot:   ()  => 'You run a committee — set its agenda, decide what gets examined.',
+    actions:     ['Advance Bill'],
+  },
+  {
+    name: 'Deputy Speaker / Presiding Officer',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You help run the chamber itself — neutral-ish, procedural power.',
+    descIfNot:   ()  => 'You help run the chamber itself — neutral-ish, procedural power.',
+    actions:     ['Recognize Speaker', 'Schedule Debate'],
+  },
+  {
+    name: 'Speaker of the House',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'The top — institutional, not partisan.',
+    descIfNot:   ()  => 'The top — institutional, not partisan.',
+    actions:     ['Set Legislative Calendar', 'Convene Legislature'],
   },
 ];
 
@@ -336,7 +394,8 @@ function render(politician, shard, nation) {
 function renderLadders(state) {
   const host = document.getElementById('ladders');
   host.innerHTML = LADDERS.map(l => {
-    const body = l.render ? l.render(state) : '<div class="empty-row">Not on this ladder yet.</div>';
+    const rungs = typeof l.rungs === 'function' ? l.rungs() : l.rungs;
+    const body = rungs ? renderRungs(rungs, state) : '<div class="empty-row">Not on this ladder yet.</div>';
     return `
     <details class="ladder">
       <summary>
@@ -350,17 +409,23 @@ function renderLadders(state) {
   bindRungActions();
 }
 
-// Build the rung list for the Party Office ladder. Walks PARTY_OFFICE_RUNGS,
-// runs each rung's held() check against the state bag, and emits a row with
-// the appropriate description + right-side action. The action-button click
-// router is wired in bindRungActions below.
-function renderPartyOfficeRungs(state) {
-  return '<div class="rungs">' + PARTY_OFFICE_RUNGS.map(r => {
+// Generic rung-list renderer. Walks a ladder's rung array, runs each rung's
+// held() check against the state bag, and emits a row with indicator,
+// description, optional inline action chips, and either the "held" tag or
+// the right-side advance button. Click routing for primary advance buttons
+// lives in bindRungActions below.
+function renderRungs(rungs, state) {
+  return '<div class="rungs">' + rungs.map(r => {
     const isHeld = !!r.held(state);
     const desc   = isHeld ? r.descIfHeld(state) : r.descIfNot(state);
     const indicator = isHeld
       ? '<div class="rung__indicator held">●</div>'
       : '<div class="rung__indicator">○</div>';
+
+    const chipsHtml = (Array.isArray(r.actions) && r.actions.length)
+      ? `<div class="rung__chips">${r.actions.map(a => `<span class="rung-chip">${escHtml(a)}</span>`).join('')}</div>`
+      : '';
+
     let actionHtml = '';
     if (isHeld) {
       actionHtml = '<span class="rung-held">held</span>';
@@ -371,12 +436,14 @@ function renderPartyOfficeRungs(state) {
       const disabledAttr = a.kind === 'disabled' ? ' disabled' : '';
       actionHtml = `<button class="${cls}"${hrefAttr}${disabledAttr}>${escHtml(a.label)}</button>`;
     }
+
     return `
       <div class="rung">
         ${indicator}
         <div class="rung__body">
           <div class="rung__name">${escHtml(r.name)}</div>
           <div class="rung__desc">${escHtml(desc)}</div>
+          ${chipsHtml}
         </div>
         <div class="rung__action">${actionHtml}</div>
       </div>`;
