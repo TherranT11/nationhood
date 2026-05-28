@@ -2366,12 +2366,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // National debt — single rule. Bonds retired (2026-05).
         //   balance = tax revenue − expenditures (/12 per tick)
-        //   surplus → treasury up
-        //   deficit → paid from treasury first; only the shortfall beyond
-        //             available cash is borrowed (debt up). Trade/aid cash
-        //             already sits in the treasury (section 3.5f), so a
-        //             nation with a positive unified panel Balance stays out
-        //             of new debt. No bonds, no coupons, no printing.
+        //   surplus → treasury up (debt is paid down only via explicit pay-down)
+        //   deficit → debt up by the full shortfall; treasury is NOT a buffer.
+        //             Trade/aid cash still lands in the treasury via their own
+        //             processors (section 3.5f). No bonds, no coupons, no printing.
         try {
             const result = await processNationDebtTick(supabase, nation, activeCorpCount);
             if (result) {

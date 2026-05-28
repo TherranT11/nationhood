@@ -3616,7 +3616,7 @@ function initials(s, n) {
       let requestPanelHtml = '';
       if (canView) {
         const { data: myReqs, error: mrErr } = await _supabase.from('ent_construction_contracts')
-          .select('id, name, building_type, budget, build_cost, status, timeline_ticks, progress_ticks, winning_bid, nation:nations!nation_id(name)')
+          .select('id, name, building_type, budget, build_cost, status, timeline_ticks, progress_ticks, winning_bid, nation:nations!nation_id(name), winner:entrepreneur_corps!winner_corp_id(name)')
           .eq('issuer_corp_id', id).not('building_type', 'is', null)
           .in('status', ['open', 'active']).order('created_at_tick', { ascending: false });
         if (mrErr) console.warn('[entrepreneur-corp] my requests fetch error:', mrErr.message);
@@ -3640,8 +3640,12 @@ function initials(s, n) {
             <button class="ap-btn-small reject cb-reject-btn" data-bid="${b.bid_id}">Reject</button>
           </div>`)}</div>`;
         const mrRow = (r) => {
+          // Once a contract is awarded (status active), show the construction
+          // corp building it. winner may be null if that corp was since deleted.
+          const builderNote = (r.status !== 'open' && r.winner?.name)
+            ? ` · built by ${escapeHtml(r.winner.name)}` : '';
           const head = (badge) => `<div class="cf-row"><div><div class="who">${escapeHtml(buildingTypeLabel(r.building_type))} · ${escapeHtml(r.name)}</div>
-            <div class="sub">${escapeHtml(r.nation?.name || '—')} · budget ${fmtUsd(Number(r.budget) || 0)} · floor ${fmtUsd(Number(r.build_cost) || 0)}</div></div>${badge}</div>`;
+            <div class="sub">${escapeHtml(r.nation?.name || '—')} · budget ${fmtUsd(Number(r.budget) || 0)} · floor ${fmtUsd(Number(r.build_cost) || 0)}${builderNote}</div></div>${badge}</div>`;
           if (r.status !== 'open') {
             return head(`<span class="num green">building ${r.progress_ticks}/${r.timeline_ticks}${r.winning_bid ? ` · ${fmtUsd(Number(r.winning_bid))}` : ''}</span>`);
           }
