@@ -70,19 +70,19 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
   </div>
 
   <div class="continent-tabs" id="continent-tabs">
-    <div class="continent-tab active" data-continent="Crucera" data-desc="A vast and diverse continent in the Southern Hemisphere, rich in natural resources.">
+    <div class="continent-tab active" data-continent="Crucera">
       <div class="continent-tab__name">Crucera</div>
       <div class="continent-tab__desc">A vast and diverse continent, rich in natural resources.</div>
     </div>
-    <div class="continent-tab" data-continent="Meridian" data-desc="The old world, home to diverse nations, cultures, and ancient traditions.">
+    <div class="continent-tab" data-continent="Meridian">
       <div class="continent-tab__name">Meridian</div>
       <div class="continent-tab__desc">The old world of ancient kingdoms and republics.</div>
     </div>
-    <div class="continent-tab" data-continent="Al-Makir" data-desc="A vast desert continent of ancient kingdoms, oil wealth, and deep traditions.">
+    <div class="continent-tab" data-continent="Al-Makir">
       <div class="continent-tab__name">Al-Makir</div>
       <div class="continent-tab__desc">A desert continent of monarchies and oil wealth.</div>
     </div>
-    <div class="continent-tab" data-continent="Faresia" data-desc="A new-world archipelago of high-tech island republics and globalist trade economies.">
+    <div class="continent-tab" data-continent="Faresia">
       <div class="continent-tab__name">Faresia</div>
       <div class="continent-tab__desc">High-tech island republics and globalist trade.</div>
     </div>
@@ -115,13 +115,13 @@ async function init() {
   try {
     const { data, error } = await _supabase
       .from('nations')
-      .select('id, name, continent, government_type, capital, flag_url, nation_profiles(flag_url)')
+      .select('id, name, continent, government_type, flag_url, nation_profiles(flag_url)')
       .order('name');
     if (error) throw error;
     allNations = data || [];
   } catch (err) {
     console.error('first-steps: failed to load nations', err);
-    document.getElementById('loading').textContent = 'Failed to load nations. Please retry.';
+    document.getElementById('loading').textContent = 'Failed to load nations. Please reload the page.';
     return;
   }
 
