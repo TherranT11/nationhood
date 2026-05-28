@@ -4290,18 +4290,21 @@ async function openExpandInfrastructureModal(root, faction) {
             .eq('ministry_key', 'interior').eq('is_active', true).maybeSingle();
         const balance = Number(mRow?.discretionary_balance) || 0;
 
-        const { data: open } = await _supabase.from('corp_contracts')
-            .select('id, name, description, spec_category, budget, timeline_months, status, expires_at_tick, created_at_tick')
+        // Expand Infrastructure now posts to the entrepreneur construction-bid
+        // system (government ent_construction_contracts). Aliased to the field
+        // names the render below already uses.
+        const { data: open } = await _supabase.from('ent_construction_contracts')
+            .select('id, name, budget, status, spec_category:spec_tier, timeline_months:timeline_ticks, expires_at_tick:bidding_closes_tick, created_at_tick')
             .eq('issuer_nation_id', _state.nation.id)
-            .eq('project_subtype', 'Interior Infrastructure')
+            .eq('contract_type', 'government')
             .in('status', ['open', 'active'])
             .order('created_at_tick', { ascending: false }).limit(1).maybeSingle();
         bidsContract = open || null;
 
         bids = [];
         if (bidsContract && bidsContract.status !== 'active') {
-            const { data: bidRows } = await _supabase.from('corp_contract_bids')
-                .select('id, faction_id, bid_amount, quoted_timeline_months, status, created_at_tick, factions:faction_id(id, faction_name, nation_id, nations:nation_id(name))')
+            const { data: bidRows } = await _supabase.from('ent_construction_bids')
+                .select('id, bid_amount, status, created_tick, factions:entrepreneur_corps!bidder_corp_id(faction_name:name)')
                 .eq('contract_id', bidsContract.id)
                 .eq('status', 'pending')
                 .order('bid_amount', { ascending: true });
@@ -4352,27 +4355,33 @@ async function openExpandInfrastructureModal(root, faction) {
                 if (bids.length === 0) {
                     bodyHtml += `<div style="padding:14px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);font-style:italic;text-align:center;">Awaiting construction corporation bids…</div>`;
                 } else {
-                    bodyHtml += bids.map(b => {
+                    bodyHtml += `<div id="expand-infra-bids">` + bids.map(b => {
                         const corpName = b.factions?.faction_name || 'Unknown Corp';
-                        const hqNation = b.factions?.nations?.name || '—';
                         const price    = Number(b.bid_amount || 0);
                         const priceLabel = price >= 1e9 ? '$' + (price / 1e9).toFixed(2) + 'B'
                                          : price >= 1e6 ? '$' + (price / 1e6).toFixed(1) + 'M'
                                          : '$' + Math.round(price).toLocaleString();
-                        const timeline = Number(b.quoted_timeline_months || 0);
+                        const dis = (submitting || !isMinister) ? ' disabled' : '';
                         return `<div class="pa-action-item" style="cursor:default;">
                             <div class="pa-action-top">
                                 <div>
                                     <div style="font-size:13px;font-weight:700;color:var(--text-bright);">${esc(corpName)}</div>
-                                    <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">
-                                        HQ ${esc(hqNation)} · Bid ${priceLabel} · Timeline ${timeline} ticks
-                                    </div>
+                                    <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);margin-top:2px;">Bid ${priceLabel}</div>
                                 </div>
                             </div>
+                            ${isMinister ? `<div style="display:flex;gap:8px;margin-top:10px;">
+                                <button class="pa-modal-btn pa-modal-btn--submit" data-bid-action="accept" data-bid-id="${esc(b.id)}" style="flex:1;min-height:36px;background:#5aafa5;"${dis}>Accept</button>
+                                <button class="pa-modal-btn pa-modal-btn--cancel" data-bid-action="reject" data-bid-id="${esc(b.id)}" style="flex:1;min-height:36px;"${dis}>Reject</button>
+                            </div>` : ''}
                         </div>`;
-                    }).join('');
+                    }).join('') + `</div>`;
                 }
-                bodyHtml += `<div style="margin-top:10px;padding:8px 10px;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.08);">Auto-awarded to the best-scoring bid (cost, timeline, reputation) when the bid window closes.</div>`;
+                bodyHtml += `<div style="margin-top:10px;padding:8px 10px;font-family:var(--font-mono);font-size:9px;color:var(--text-dim);background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.08);">${isMinister
+                    ? 'Accept any bid to award immediately, or reject specific bidders. If no action is taken, the lowest remaining bid auto-wins when the window closes.'
+                    : 'The lowest qualifying bid wins automatically when the bid window closes.'}</div>`;
+                if (lastError) {
+                    bodyHtml += `<div style="margin-top:8px;padding:8px 10px;background:rgba(200,80,80,0.08);border:1px solid rgba(200,80,80,0.2);font-family:var(--font-mono);font-size:10px;color:var(--red);">${esc(lastError)}</div>`;
+                }
             }
         } else {
             // Tier-picking view.
@@ -4462,6 +4471,46 @@ async function openExpandInfrastructureModal(root, faction) {
                 }
             } catch (err) {
                 lastError = 'Posting failed: ' + (err?.message || err);
+            } finally {
+                submitting = false;
+                render();
+            }
+        });
+
+        // Minister Accept / Reject on a specific bid. Accept awards immediately
+        // (contract → 'active', bids list empties on next render); Reject flips
+        // the single bid to 'rejected' (removed from the next pending fetch).
+        // The shared `submitting` flag gates all bid actions to prevent
+        // double-fire across cards.
+        document.getElementById('expand-infra-bids')?.addEventListener('click', async (e) => {
+            const btn = e.target.closest('[data-bid-action]');
+            if (!btn || submitting) return;
+            const action = btn.dataset.bidAction;
+            const bidId  = btn.dataset.bidId;
+            if (!bidId || (action !== 'accept' && action !== 'reject')) return;
+            const rpcName = action === 'accept'
+                ? 'interior_accept_construction_bid'
+                : 'interior_reject_construction_bid';
+            const reasonLabel = {
+                not_minister:      'Only the active Interior Minister can act on these bids.',
+                not_open:          'This contract is no longer open.',
+                not_government:    'This is not a government contract.',
+                bid_not_pending:   'That bid is no longer pending.',
+                bid_not_found:     'That bid no longer exists.',
+                contract_not_found: 'Contract not found.',
+                bidder_at_capacity: 'That builder is at their construction-yard capacity.',
+                not_authenticated: 'Sign in to continue.',
+            };
+            submitting = true; lastError = null; render();
+            try {
+                const { data, error } = await _supabase.rpc(rpcName, { p_bid_id: bidId });
+                if (error) {
+                    lastError = error.message || `${action} failed`;
+                } else if (!data?.success) {
+                    lastError = reasonLabel[data?.reason] || `Could not ${action} bid (${data?.reason || 'unknown'}).`;
+                }
+            } catch (err) {
+                lastError = `${action === 'accept' ? 'Accept' : 'Reject'} failed: ` + (err?.message || err);
             } finally {
                 submitting = false;
                 render();

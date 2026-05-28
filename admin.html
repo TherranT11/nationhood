@@ -1765,7 +1765,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
                         <td style="padding:8px; text-align:center; color:#a3b07e; font-weight:bold;">${Number(s.weight) || 0}</td>`;
             provinceList.forEach(p => {
                 html += `<td style="padding:8px; text-align:center;">
-                            <input type="number" min="0" max="3" step="1"
+                            <input type="number" min="0" max="${Number(s.weight) || 0}" step="1"
                               data-prov-id="${p.id}" data-sector-id="${s.id}" data-field="pweight"
                               value="${provCellWeight(p.id, s.id)}"
                               oninput="recomputeProvinceBalance()"
@@ -1878,7 +1878,8 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
                 const inp = document.querySelector(`input[data-prov-id="${p.id}"][data-sector-id="${s.id}"][data-field="pweight"]`);
                 let v = inp ? parseInt(inp.value, 10) : 0;
                 if (isNaN(v) || v < 0) v = 0;
-                if (v > 3) v = 3;
+                const maxW = Number(s.weight) || 0;   // a province can't exceed the sector's nation weight
+                if (v > maxW) v = maxW;
                 rows.push({ province_id: p.id, sector_id: s.id, weight: v });
             });
         });

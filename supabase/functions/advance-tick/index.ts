@@ -2269,35 +2269,28 @@ async function processNationDebtTick(supabase, nation, activeCorpCount = 0) {
             return null;
         }
         nation.budget = newBudget;
-        return { mode: 'surplus_to_treasury', perTickBalance, newDebtRaw: currentDebt, newBudget };
+        return { mode: 'surplus_to_treasury', perTickBalance, newDebtRaw: currentDebt };
     }
 
-    // Deficit → draw from the treasury first; borrow only the shortfall.
-    // Trade/aid income has already landed in the treasury (the recurring
-    // transfer + aid processors run earlier this tick), so paying the
-    // operating deficit from cash instead of always borrowing keeps debt flat
-    // whenever the nation is solvent — which is what the budget panel's unified
-    // Balance (tax + trade/aid − costs) reflects. Net worth still moves by
-    // exactly that Balance; only its split between treasury and debt changes.
-    // Debt grows only once the treasury is exhausted.
+    // Deficit → debt grows by the full shortfall; treasury is NOT used as a
+    // buffer. The previous "drain treasury first" path silently absorbed
+    // years of overspend so debt never reflected the deficit on the budget
+    // panel. Trade/aid still credits the treasury separately (those
+    // processors run earlier this tick); debt now strictly tracks operating
+    // shortfall, which is what the panel's Balance shows.
     const deficit = -perTickBalance;
-    const fromTreasury = Math.min(deficit, Math.max(0, currentTreasury));
-    const borrow = deficit - fromTreasury;
-    const newBudget = currentTreasury - fromTreasury;
-    const newDebt = currentDebt + borrow;
+    const newDebt = currentDebt + deficit;
     const { error } = await supabase.from('nations')
-        .update({ budget: newBudget, debt: newDebt }).eq('id', nation.id);
+        .update({ debt: newDebt }).eq('id', nation.id);
     if (error) {
         console.warn(`[Debt] deficit update failed for ${nation.name}:`, error.message);
         return null;
     }
-    nation.budget = newBudget;
     nation.debt = newDebt;
     return {
-        mode: borrow > 0 ? 'deficit_borrow' : 'deficit_from_treasury',
+        mode: 'deficit_borrow',
         perTickBalance: -deficit,
         newDebtRaw: newDebt,
-        newBudget,
     };
 }
 
@@ -3941,13 +3934,20 @@ function calculateSectorContributions(factionId, sectors, popularityRows) {
 // grow when the underlying stat shrinks (e.g. Rural & Agricultural's
 // secondary is `urbanization_inverse`).
 //
-// Range: 1–3 per sector, soft-cap to 32 across the nation.
-// Stepped: stat ≥ 65 → 3, 35-65 → 2, < 35 → 1.
+// Range: 10–30 per sector, soft-cap to 320 across the nation.
+// Stepped: stat ≥ 65 → 30, 35-65 → 20, < 35 → 10.
 // Two-stat sectors blend 70/30 before stepping.
+//
+// The scale is 10× the natural 1/2/3 tiers: a coarser 1–3 forces province
+// partitions into whole thirds, whereas 10/20/30 lets the partition UI split
+// a sector finely across provinces. Because MIN, MID, MAX and the nation cap
+// all scale by the same 10×, every downstream computation (TWP, turnout, seat
+// shares) is identical — weight is only ever consumed as a relative share.
 
-const SECTOR_WEIGHT_MIN = 1;
-const SECTOR_WEIGHT_MAX = 3;
-const SECTOR_WEIGHT_NATION_CAP = 32;
+const SECTOR_WEIGHT_MIN = 10;
+const SECTOR_WEIGHT_MID = 20;
+const SECTOR_WEIGHT_MAX = 30;
+const SECTOR_WEIGHT_NATION_CAP = 320;
 const SECTOR_STAT_HIGH_THRESHOLD = 65;
 const SECTOR_STAT_LOW_THRESHOLD = 35;
 const SECTOR_PRIMARY_BLEND = 0.7;
@@ -3970,7 +3970,7 @@ function getStatValueForSector(nation, statKey) {
 function stepStatToWeight(blendedValue) {
     if (blendedValue == null || Number.isNaN(blendedValue)) return SECTOR_WEIGHT_MIN;
     if (blendedValue >= SECTOR_STAT_HIGH_THRESHOLD) return SECTOR_WEIGHT_MAX;
-    if (blendedValue >= SECTOR_STAT_LOW_THRESHOLD) return 2;
+    if (blendedValue >= SECTOR_STAT_LOW_THRESHOLD) return SECTOR_WEIGHT_MID;
     return SECTOR_WEIGHT_MIN;
 }
 
@@ -4004,7 +4004,7 @@ function computeSectorWeights(nation, sectors) {
 
         if (!s.primary_stat) { out[s.id] = existing; continue; }
 
-        // Admin override: stepStatToWeight only ever returns 1/2/3, so a
+        // Admin override: stepStatToWeight only ever returns 10/20/30, so a
         // value above MAX could only have come from an admin manually
         // setting it via admin.html. Skip the stat-driven recompute so
         // their override survives the next election. Without this,
@@ -12017,8 +12017,8 @@ async function runSectorElection(supabase, nation) {
     // Phase 1 dynamic sector weights: recompute and persist before TWP.
     // sectors carry primary_stat / secondary_stat keys (set by the
     // 20260430_sector_dynamic_weights migration); each weight is stepped
-    // from the nation's current stat values (≥65→3, 35-65→2, <35→1) and
-    // soft-capped to the nation total of 28. persistSectorWeights mutates
+    // from the nation's current stat values (≥65→30, 35-65→20, <35→10) and
+    // soft-capped to the nation total of 320. persistSectorWeights mutates
     // sectorList in place so the TWP math below reads the fresh values.
     try {
         const newWeights = computeSectorWeights(nation, sectorList);
@@ -29837,6 +29837,11 @@ const _pairKey = (x, y) => (x < y ? `${x}|${y}` : `${y}|${x}`);
 // the broken side's capital. line 0 / sector_count = a capital has fallen and
 // the front is decided (combat halts). DEFEND: ×1.5 power, ½ casualties,
 // 0.4× cohesion drain, cannot advance. Non-fatal; bails on partial reads.
+//
+// Side effect: each engagement that moves the line emits one combat_events
+// row (kind, terrain, pressor + claimant nations, seized sector, fall-back
+// sector, headline army + unit + commander) so the war room can render the
+// narrative. Defender-holds outcomes don't move the line and don't emit.
 async function processCombat(supabase, currentTick) {
     const { data: warRels, error: relErr } = await supabase
         .from('diplomatic_relations').select('id, nation_a_id, nation_b_id, war_score_a, war_score_b').eq('relation_type', 'war');
@@ -29858,7 +29863,7 @@ async function processCombat(supabase, currentTick) {
     const frontById = new Map(fronts.map(f => [f.id, f]));
 
     const { data: armyData, error: armyErr } = await supabase
-        .from('armies').select('id, faction_id, nation_id, assigned_front_id, supply_balance, commander_leadership, commander_discipline').in('assigned_front_id', frontIds);
+        .from('armies').select('id, name, faction_id, nation_id, assigned_front_id, supply_balance, commander_leadership, commander_discipline, commander_name').in('assigned_front_id', frontIds);
     if (armyErr) { console.error('[processCombat] armies load failed:', armyErr.message); return { battles: 0 }; }
     const armies = armyData || [];
     const armyIds = armies.map(a => a.id);
@@ -29867,7 +29872,7 @@ async function processCombat(supabase, currentTick) {
     let units = [], equip = [], facs = [];
     if (armyIds.length) {
         const uRes = await supabase.from('army_units')
-            .select('id, army_id, total_manpower, brigades').in('army_id', armyIds).eq('status', 'Active');
+            .select('id, name, army_id, total_manpower, brigades').in('army_id', armyIds).eq('status', 'Active');
         if (uRes.error) { console.error('[processCombat] units load failed:', uRes.error.message); return { battles: 0 }; }
         units = uRes.data || [];
         const unitIds = units.map(u => u.id);
@@ -29901,11 +29906,29 @@ async function processCombat(supabase, currentTick) {
         else if (ar.nation_id === f.nation_b_id) bucket.b.push(ar);
     }
 
+    // Sectors and nation names for the narrative log. Sectors are indexed by
+    // front_id then position so the resolver can name the seized sector + the
+    // sector the loser fell back to. Failure to load these only suppresses the
+    // narrative — combat itself still resolves normally.
+    const sectorsByFront = new Map();
+    const sRes = await supabase.from('war_sectors')
+        .select('front_id, position, name, type').in('front_id', frontIds);
+    if (sRes.error) console.error('[processCombat] sectors load failed (events suppressed):', sRes.error.message);
+    for (const s of (sRes.data || [])) {
+        if (!sectorsByFront.has(s.front_id)) sectorsByFront.set(s.front_id, new Map());
+        sectorsByFront.get(s.front_id).set(Number(s.position), s);
+    }
+    const nationIds = [...new Set(fronts.flatMap(f => [f.nation_a_id, f.nation_b_id]))];
+    const nRes = await supabase.from('nations').select('id, name').in('id', nationIds);
+    if (nRes.error) console.error('[processCombat] nations load failed (events suppressed):', nRes.error.message);
+    const nationNameById = new Map((nRes.data || []).map(n => [n.id, n.name]));
+
     // Mutable running state, flushed once at the end (a faction may fight on
     // several fronts in one tick — cohesion/manpower carry across them).
     const cohVal = new Map([...facById].map(([id, f]) => [id, Number(f.army_cohesion) || 0]));
     const unitMp = new Map(units.map(u => [u.id, Number(u.total_manpower) || 0]));
     const lineUpd = new Map();
+    const events = [];   // combat_events rows, flushed at the end
     let battles = 0;
 
     for (const f of fronts) {
@@ -29945,15 +29968,28 @@ async function processCombat(supabase, currentTick) {
         const bBroke = B.M <= 0 || sideCohesion(B, cohVal) <= 0;
         const rel = relByPair.get(_pairKey(f.nation_a_id, f.nation_b_id));
         if (bBroke && !aBroke && actA === 'assault') {
+            // nation_a seized the sector at OLD line+1 (B's frontline); B fell
+            // back to position line+2 — capture both BEFORE incrementing line.
+            const seizedPos = line + 1;
+            const retreatPos = line + 2;
             line = Math.min(N, line + 1);
             for (const fid of B.facIds) cohVal.set(fid, Math.max(cohVal.get(fid) || 0, rally(B.discipline)));
             lineUpd.set(f.id, line);
             if (rel) { rel.a += 1; rel.dirty = true; }   // nation_a seized a sector → +1 Conquest Point
+            emitCombatEvent(events, f, currentTick, actB,
+                f.nation_a_id, f.nation_b_id, buckets.a, seizedPos, retreatPos,
+                sectorsByFront, nationNameById, unitsByArmy, unitMp);
         } else if (aBroke && !bBroke && actB === 'assault') {
+            // Mirror: nation_b took A's frontline at OLD line; A fell back to line-1.
+            const seizedPos = line;
+            const retreatPos = line - 1;
             line = Math.max(0, line - 1);
             for (const fid of A.facIds) cohVal.set(fid, Math.max(cohVal.get(fid) || 0, rally(A.discipline)));
             lineUpd.set(f.id, line);
             if (rel) { rel.b += 1; rel.dirty = true; }   // nation_b seized a sector → +1 Conquest Point
+            emitCombatEvent(events, f, currentTick, actA,
+                f.nation_b_id, f.nation_a_id, buckets.b, seizedPos, retreatPos,
+                sectorsByFront, nationNameById, unitsByArmy, unitMp);
         }
         battles++;
     }
@@ -29974,8 +30010,67 @@ async function processCombat(supabase, currentTick) {
     for (const rel of relByPair.values()) {
         if (rel.dirty) await supabase.from('diplomatic_relations').update({ war_score_a: rel.a, war_score_b: rel.b }).eq('id', rel.id);
     }
+    if (events.length) {
+        const evRes = await supabase.from('combat_events').insert(events);
+        if (evRes.error) console.error('[processCombat] combat_events insert failed:', evRes.error.message);
+    }
 
     return { battles };
+}
+
+// One narrative row per resolved engagement that moved the line. Picks the
+// winning side's strongest army (max total manpower across its active units)
+// and its strongest unit as the headline force, snapshots all display fields
+// so the war-room renderer needs no joins. `loserAction` is whatever the
+// defeated side ordered: 'assault' on both sides = meeting engagement;
+// 'defend' on the loser = the attacker overran a dug-in defender (breakthrough).
+function emitCombatEvent(events, front, tick, loserAction,
+                        pressorNationId, claimantNationId, pressorArmies,
+                        seizedPos, retreatPos,
+                        sectorsByFront, nationNameById, unitsByArmy, unitMp) {
+    const frontSectors = sectorsByFront.get(front.id);
+    if (!frontSectors) return;   // sectors failed to load — suppress narrative
+    const seized = frontSectors.get(seizedPos);
+    if (!seized) return;          // seized sector missing — schema/data drift
+    const retreat = frontSectors.get(retreatPos) || null;   // null = past last sector (capital next)
+
+    // Strongest army by total live manpower; strongest unit within it.
+    let army = null, armyM = -1;
+    for (const ar of pressorArmies) {
+        let m = 0;
+        for (const u of (unitsByArmy.get(ar.id) || [])) m += (unitMp.get(u.id) || 0);
+        if (m > armyM) { armyM = m; army = ar; }
+    }
+    if (!army) return;            // no armies on the winning side — shouldn't happen
+    let unit = null, unitM = -1;
+    for (const u of (unitsByArmy.get(army.id) || [])) {
+        const m = unitMp.get(u.id) || 0;
+        if (m > unitM) { unitM = m; unit = u; }
+    }
+    if (!unit) return;            // no active units — shouldn't happen post-break
+
+    // Nation names are the headline of every template. If the nations fetch
+    // failed at the start of the tick, suppress the event rather than render
+    // a half-formed narrative with em-dash placeholders for who's fighting.
+    const pressorName = nationNameById.get(pressorNationId);
+    const claimantName = nationNameById.get(claimantNationId);
+    if (!pressorName || !claimantName) return;
+
+    events.push({
+        front_id: front.id,
+        tick,
+        kind: loserAction === 'assault' ? 'meeting' : 'breakthrough',
+        terrain: seized.type || 'plains',
+        pressor_nation_id: pressorNationId,
+        claimant_nation_id: claimantNationId,
+        pressor_nation_name: pressorName,
+        claimant_nation_name: claimantName,
+        sector_name: seized.name || '',
+        retreat_sector_name: retreat ? retreat.name : null,
+        army_name: army.name || '',
+        unit_name: unit.name || '',
+        commander_name: army.commander_name || null,
+    });
 }
 
 // One side's pooled strength. ECP per army: effective manpower (real rifles
@@ -32467,12 +32562,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // National debt — single rule. Bonds retired (2026-05).
         //   balance = tax revenue − expenditures (/12 per tick)
-        //   surplus → treasury up
-        //   deficit → paid from treasury first; only the shortfall beyond
-        //             available cash is borrowed (debt up). Trade/aid cash
-        //             already sits in the treasury (section 3.5f), so a
-        //             nation with a positive unified panel Balance stays out
-        //             of new debt. No bonds, no coupons, no printing.
+        //   surplus → treasury up (debt is paid down only via explicit pay-down)
+        //   deficit → debt up by the full shortfall; treasury is NOT a buffer.
+        //             Trade/aid cash still lands in the treasury via their own
+        //             processors (section 3.5f). No bonds, no coupons, no printing.
         try {
             const result = await processNationDebtTick(supabase, nation, activeCorpCount);
             if (result) {

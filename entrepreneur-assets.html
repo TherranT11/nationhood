@@ -25,10 +25,8 @@
   .ch-identity .meta-row .label { color:#555; margin-right:6px; }
   .ch-identity .meta-row .val { color:#d4d4d4; }
 
-  /* Current Location — concrete now (home/origin nation); a travel action
-     is planned, so the card leaves room for it without building anything. */
-  /* Status row: Current Location · Asset Status · Warrants — three equal
-     cards that wrap on narrow screens. */
+  /* Status row: Current Location (with the Travel action) · Asset Status ·
+     Warrants — three equal cards that wrap on narrow screens. */
   .ch-cards { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-top:20px; }
   .ch-card {
     min-width:0;
@@ -42,7 +40,6 @@
     font-size:9px; letter-spacing:0.1em; color:#8aaa6a; border:0.5px solid rgba(138,170,106,0.3);
     border-radius:3px; padding:2px 6px;
   }
-  .ch-loc-note { color:#555; font-size:10px; letter-spacing:0.06em; margin-top:8px; }
 
   /* Leaderboard row: shares the 3-column grid so the boards line up under the
      status cards (Reputable under Current Location, Net Worth under Asset
@@ -85,9 +82,66 @@
   .ch-liability .settle-btn:disabled { opacity:0.5; cursor:default; }
   .ch-liability .msg { font-size:10px; margin-top:8px; color:#888; min-height:12px; }
 
+  /* Travel — relocate the founder for $20k personal funds. */
+  .ch-travel-btn { margin-top:10px; font-size:11px; letter-spacing:0.05em; color:#d4b87a; background:#1a160d;
+    border:0.5px solid rgba(212,184,122,0.4); border-radius:3px; padding:7px 14px; cursor:pointer; font-family:inherit; }
+  .ch-travel-btn:hover { background:#221c10; }
+  .ch-travel-btn:disabled { opacity:0.5; cursor:default; }
+  .ch-travel-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:700;
+    align-items:center; justify-content:center; padding:30px; }
+  .ch-travel-overlay.show { display:flex; }
+  .ch-travel-modal { background:#0c0c0c; border:0.5px solid rgba(212,184,122,0.3); border-radius:6px; width:100%;
+    max-width:420px; font-family:var(--font-mono,monospace); overflow:hidden; }
+  .ch-travel-modal .ct-head { display:flex; align-items:center; justify-content:space-between; padding:14px 18px;
+    border-bottom:0.5px solid rgba(255,255,255,0.08); }
+  .ch-travel-modal .ct-eyebrow { color:#d4b87a; font-size:10px; letter-spacing:0.15em; }
+  .ch-travel-modal .ct-x { background:none; border:none; color:#888; font-size:18px; cursor:pointer; line-height:1; }
+  .ch-travel-modal .ct-title { font-size:20px; color:#fff; padding:14px 18px 2px; }
+  .ch-travel-modal .ct-sub { font-size:11px; color:#9a9a92; line-height:1.5; padding:0 18px 12px; }
+  .ch-travel-modal .ct-cost { font-size:11px; color:#888; padding:0 18px 12px; letter-spacing:0.03em; }
+  .ch-travel-modal .ct-cost b { color:#d4d4d4; } .ch-travel-modal .ct-cost b.ok { color:#8aaa6a; } .ch-travel-modal .ct-cost b.no { color:#d88d82; }
+  .ch-travel-modal .ct-select { width:calc(100% - 36px); margin:0 18px 12px; background:#161616; color:#d4d4d4;
+    border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; padding:9px 10px; font-size:13px; font-family:inherit; }
+  .ch-travel-modal .ct-empty { padding:0 18px 12px; font-size:12px; color:#888; }
+  .ch-travel-modal .ct-msg { padding:0 18px 10px; font-size:11px; color:#d88d82; }
+  .ch-travel-modal .ct-foot { display:flex; gap:8px; justify-content:flex-end; padding:14px 18px;
+    border-top:0.5px solid rgba(255,255,255,0.08); background:#0d0d0d; }
+  .ch-travel-modal .ct-btn { padding:9px 16px; font-size:11px; letter-spacing:0.06em; border-radius:3px; cursor:pointer; font-family:inherit; }
+  .ch-travel-modal .ct-btn.sec { border:0.5px solid rgba(255,255,255,0.15); color:#888; background:transparent; }
+  .ch-travel-modal .ct-btn.pri { background:#2a2210; border:0.5px solid #d4b87a; color:#e8d8b0; font-weight:600; }
+
   @media (max-width:600px) {
     .ch-identity .first, .ch-identity .last { font-size:34px; }
     .ch-identity .meta-row { gap:16px; }
+  }
+
+  /* Mobile refresh — phone-class viewport. Tighten container padding,
+     shrink the modal overlay safe-area, and bring every actionable
+     control up to a 44px tap target. The 860px / 600px rules above
+     handle stacking + hero shrink at tablet; this block is phone-only. */
+  @media (max-width:640px) {
+    .ch-content { padding:20px 14px 20px; }
+    .ch-identity { margin-bottom:20px; }
+    .ch-identity .first, .ch-identity .last { font-size:28px; }
+    .ch-cards, .ch-boards { gap:12px; margin-top:16px; }
+    .ch-card { padding:14px 14px; }
+    .ch-rep { height:360px; }
+
+    /* Touch targets: travel / settle / modal buttons hit 44px. */
+    .ch-travel-btn, .ch-liability .settle-btn,
+    .ch-travel-modal .ct-btn { min-height:44px; padding:12px 16px; font-size:12px; }
+    .ch-travel-modal .ct-x { min-width:44px; min-height:44px; font-size:22px; }
+    .ch-travel-modal .ct-select { min-height:44px; padding:11px 12px; font-size:14px; }
+
+    /* Modal overlay: drop the 30px safe-area down to 16px so the modal
+       has full viewport width minus a thin gutter. */
+    .ch-travel-overlay { padding:16px; }
+    .ch-travel-modal { max-width:100%; max-height:90vh; overflow:auto; }
+  }
+  @media (max-width:360px) {
+    .ch-content { padding:16px 10px 16px; }
+    .ch-identity .first, .ch-identity .last { font-size:24px; }
+    .ch-travel-overlay { padding:10px; }
   }
 </style>
 </head>
@@ -107,8 +161,8 @@
   <div class="ch-cards">
     <div class="ch-card">
       <div class="ch-card-label">CURRENT LOCATION</div>
-      <div class="ch-loc-value"><span id="ch-location">—</span><span class="ch-loc-tag">HOME</span></div>
-      <div class="ch-loc-note">Travel actions coming soon.</div>
+      <div class="ch-loc-value"><span id="ch-location">—</span><span class="ch-loc-tag" id="ch-loc-tag">HOME</span></div>
+      <button class="ch-travel-btn" id="ch-travel-btn">&#9992; Travel — $20,000</button>
     </div>
     <div class="ch-card">
       <div class="ch-card-label">ASSET STATUS</div>
@@ -139,6 +193,7 @@
     </div>
   </div>
 </div>
+<div class="ch-travel-overlay" id="ch-travel-overlay"></div>
 <script type="module">
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
@@ -161,8 +216,87 @@ import { _supabase } from './js/supabase-client.js';
   set('ch-age', f.leader_age != null ? String(f.leader_age) : '—');
   set('ch-origin', f.nation ? String(f.nation).toUpperCase() : '—');
   set('ch-archetype', arch ? arch.name : '—');
-  // Current location = the character's home (origin) nation until travel ships.
+  // Current location = factions.nation (mutable via Travel).
   set('ch-location', f.nation ? String(f.nation) : 'Home Nation');
+
+  // ── Travel: $20k personal funds relocates the founder to any nation. ──
+  // ORIGIN (birthplace) is immutable — read it from ent_origin_nation, falling
+  // back to the current nation if the column isn't migrated yet. (usd is defined
+  // above; esc below — both in scope by the time the modal renders on click.)
+  const TRAVEL_COST = 20000;
+  let originName = f.nation;
+  try {
+    const { data: o } = await _supabase.from('factions').select('ent_origin_nation').eq('id', f.id).maybeSingle();
+    if (o && o.ent_origin_nation) originName = o.ent_origin_nation;
+  } catch (_) { /* column not migrated yet → origin = current location */ }
+  set('ch-origin', originName ? String(originName).toUpperCase() : '—');
+  const locTag = document.getElementById('ch-loc-tag');
+  const setTag = (loc) => { if (locTag) locTag.textContent = (String(loc || '') === String(originName || '')) ? 'HOME' : 'ABROAD'; };
+  setTag(f.nation);
+
+  const travelBtn = document.getElementById('ch-travel-btn');
+  const tOverlay = document.getElementById('ch-travel-overlay');
+  if (travelBtn && tOverlay) {
+    let tBusy = false;
+    const closeT = () => { if (!tBusy) tOverlay.classList.remove('show'); };
+    let curLoc = f.nation;
+
+    function renderT(nations, funds, msg) {
+      const afford = funds >= TRAVEL_COST;
+      const opts = nations.map(n => `<option value="${esc(n.id)}">${esc(n.name)}</option>`).join('');
+      tOverlay.innerHTML = `<div class="ch-travel-modal">
+        <div class="ct-head"><span class="ct-eyebrow">— TRAVEL —</span><button class="ct-x" id="ct-x">&times;</button></div>
+        <div class="ct-title">Board a Plane</div>
+        <div class="ct-sub">Relocate your entrepreneur to any nation. Remember: you can only found a corporation in the nation you're currently in.</div>
+        <div class="ct-cost">Cost <b>${usd(TRAVEL_COST)}</b> &middot; Personal Funds <b class="${afford ? 'ok' : 'no'}">${usd(funds)}</b></div>
+        ${nations.length ? `<select id="ct-nation" class="ct-select">${opts}</select>` : `<div class="ct-empty">No other nation to travel to.</div>`}
+        ${msg ? `<div class="ct-msg">${esc(msg)}</div>` : ''}
+        <div class="ct-foot"><button class="ct-btn sec" id="ct-cancel">Cancel</button>${(nations.length && afford) ? `<button class="ct-btn pri" id="ct-board">Board Plane</button>` : ''}</div>
+      </div>`;
+      document.getElementById('ct-x').onclick = closeT;
+      document.getElementById('ct-cancel').onclick = closeT;
+      const board = document.getElementById('ct-board');
+      if (board) board.onclick = async () => {
+        if (tBusy) return;
+        const nid = document.getElementById('ct-nation')?.value;
+        if (!nid) return;
+        tBusy = true; board.disabled = true; board.textContent = 'Boarding…';
+        try {
+          const { data, error } = await _supabase.rpc('entrepreneur_travel', { p_nation_id: nid });
+          if (error || !data?.success) {
+            const r = data?.reason;
+            const m = error ? error.message
+              : r === 'insufficient_funds' ? `Not enough personal funds (have ${usd(data.have)}, need ${usd(data.cost)}).`
+              : r === 'already_there' ? 'You are already there.'
+              : 'Travel failed.';
+            tBusy = false; board.disabled = false; renderT(nations, funds, m); return;
+          }
+          curLoc = data.location;
+          set('ch-location', data.location); setTag(data.location);
+          tBusy = false; tOverlay.classList.remove('show');
+        } catch (e) {
+          tBusy = false; board.disabled = false; renderT(nations, funds, e?.message || 'Travel failed.');
+        }
+      };
+    }
+
+    travelBtn.onclick = async () => {
+      travelBtn.disabled = true;
+      let nations = [], funds = 0;
+      try {
+        const [nRes, fRes] = await Promise.all([
+          _supabase.from('nations').select('id, name').order('name'),
+          _supabase.from('factions').select('party_funds').eq('id', f.id).maybeSingle(),
+        ]);
+        nations = (nRes.data || []).filter(n => String(n.name) !== String(curLoc));
+        funds = Number(fRes.data?.party_funds) || 0;
+      } catch (_) { /* render with empty */ }
+      travelBtn.disabled = false;
+      renderT(nations, funds, '');
+      tOverlay.classList.add('show');
+    };
+    tOverlay.onclick = (e) => { if (e.target === tOverlay) closeT(); };
+  }
 
   // ── Personal liability (post-bankruptcy debt recourse). Shown only when the
   //    founder owes; settling from personal funds re-enables founding corps. ──

@@ -571,23 +571,61 @@ import { loadUnitsAndFunds, committedOf, brigadeCountOf } from './js/create-unit
 // Single source of truth: each entry's `key` matches the column on the
 // factions row populated by the 20270104 migration. Adding a ninth stat
 // is one entry here + one column there.
+// Each 0–100 stat carries five descriptors, one per value band:
+// [0–20, 21–40, 41–60, 61–80, 81–100]. modifierDesc picks by score.
+// Manpower is a raw headcount (no meter, no descriptor) so it has none.
 const ARMY_MODIFIERS = [
-    { key: 'army_manpower',       name: 'Manpower',          desc0: '<strong>No standing force.</strong> Recruitment required before any deployment.' },
-    { key: 'army_officer_corps',  name: 'Officer Corps',     desc0: '<strong>Hollow officer corps.</strong> Few competent commanders; units lack reliable leadership.' },
-    { key: 'army_training',       name: 'Training',          desc0: '<strong>Untrained.</strong> Conscripts and militias break easily under fire.' },
-    { key: 'army_equipment',      name: 'Equipment Quality', desc0: '<strong>Obsolete kit.</strong> Outdated arms and gear put soldiers at a critical disadvantage.' },
-    { key: 'army_cohesion',       name: 'Cohesion',          desc0: '<strong>Fractured ranks.</strong> Units fragment under pressure and cannot fight as one.' },
-    { key: 'army_professionalism', name: 'Professionalism',  desc0: '<strong>Amateur force.</strong> Lax discipline and standards undermine every operation.' },
-    { key: 'army_logistics',      name: 'Logistics',         desc0: '<strong>No supply chain.</strong> Forces cannot operate beyond home territory.' },
-    { key: 'army_supplies',       name: 'Supplies',          desc0: '<strong>Empty depots.</strong> Sustained combat is impossible.' },
+    { key: 'army_manpower',       name: 'Manpower' },
+    { key: 'army_officer_corps',  name: 'Officer Corps', descs: [
+        '<strong>Hollow officer corps.</strong> Few competent commanders; units lack reliable leadership.',
+        '<strong>Thin command bench.</strong> Junior officers improvise; orders stall and miscarry under pressure.',
+        '<strong>Serviceable command.</strong> A workable officer corps holds the line, if rarely more.',
+        '<strong>Capable command.</strong> Seasoned officers read the battlefield and act on their own initiative.',
+        '<strong>Elite command.</strong> A brilliant officer corps turns plans into decisive action.' ] },
+    { key: 'army_training',       name: 'Training', descs: [
+        '<strong>Untrained.</strong> Conscripts and militias break easily under fire.',
+        '<strong>Green troops.</strong> Basic drills only; soldiers hesitate when plans meet contact.',
+        '<strong>Competent troops.</strong> Soldiers hold their ground and execute standard maneuvers.',
+        '<strong>Well-drilled.</strong> Disciplined soldiers maneuver and shoot with confidence.',
+        '<strong>Battle-hardened.</strong> Veteran soldiers fight on instinct — fast and precise.' ] },
+    { key: 'army_equipment',      name: 'Equipment Quality', descs: [
+        '<strong>Obsolete kit.</strong> Outdated arms and gear put soldiers at a critical disadvantage.',
+        '<strong>Dated kit.</strong> Worn, mismatched equipment lags the modern battlefield.',
+        '<strong>Standard kit.</strong> Adequate arms and gear keep the force in the fight.',
+        '<strong>Modern kit.</strong> Quality arms and equipment give soldiers a real edge.',
+        '<strong>Cutting-edge kit.</strong> Top-tier arms and gear outmatch nearly any foe.' ] },
+    { key: 'army_cohesion',       name: 'Cohesion', descs: [
+        '<strong>Fractured ranks.</strong> Units fragment under pressure and cannot fight as one.',
+        '<strong>Brittle ranks.</strong> Coordination frays when the fighting gets hard.',
+        '<strong>Steady ranks.</strong> Units hold together through ordinary strain.',
+        '<strong>Tight ranks.</strong> Formations stay coordinated even under heavy pressure.',
+        '<strong>Unbreakable ranks.</strong> The force fights as one and never folds.' ] },
+    { key: 'army_professionalism', name: 'Professionalism', descs: [
+        '<strong>Amateur force.</strong> Lax discipline and standards undermine every operation.',
+        '<strong>Loose discipline.</strong> Inconsistent standards leave gaps an enemy can exploit.',
+        '<strong>Disciplined force.</strong> Reliable standards and conduct across the ranks.',
+        '<strong>Professional force.</strong> Rigorous discipline and standards in every operation.',
+        '<strong>Exemplary force.</strong> Flawless discipline sets the benchmark for the field.' ] },
+    { key: 'army_logistics',      name: 'Logistics', descs: [
+        '<strong>No supply chain.</strong> Forces cannot operate beyond home territory.',
+        '<strong>Strained supply lines.</strong> Reach is short and easily disrupted.',
+        '<strong>Functional logistics.</strong> The force can sustain operations at moderate range.',
+        '<strong>Robust logistics.</strong> Supply lines reach far and bend without breaking.',
+        '<strong>Seamless logistics.</strong> The force projects and sustains power almost anywhere.' ] },
+    { key: 'army_supplies',       name: 'Supplies', descs: [
+        '<strong>Empty depots.</strong> Sustained combat is impossible.',
+        '<strong>Low stores.</strong> Stockpiles run thin; prolonged fighting drains them fast.',
+        '<strong>Stocked depots.</strong> Enough on hand to sustain ordinary operations.',
+        '<strong>Full depots.</strong> Ample stockpiles support extended campaigns.',
+        '<strong>Overflowing depots.</strong> Reserves sustain the force through any campaign.' ] },
 ];
 
-// Floor-state descriptor. Every stat sits at 0 for Phase 1, so this only
-// returns desc0. When the actions that move stats up land, add `score` back
-// as a second arg and branch on tier ('Adequate' / 'Professional' /
-// 'World-class' etc.) — until then keep the signature minimal.
-function modifierDesc(stat) {
-    return stat.desc0;
+// Pick the descriptor for the stat's current value: bands of 20 →
+// [0–20, 21–40, 41–60, 61–80, 81–100].
+function modifierDesc(stat, score) {
+    if (!stat.descs) return '';
+    const i = score <= 20 ? 0 : score <= 40 ? 1 : score <= 60 ? 2 : score <= 80 ? 3 : 4;
+    return stat.descs[i];
 }
 
 function renderOperatingModifiers(faction) {
@@ -623,7 +661,7 @@ function renderOperatingModifiers(faction) {
                 <span class="om-card__value">${score}<span class="om-max">/100</span></span>
             </div>
             <div class="om-meter">${cells}</div>
-            <div class="om-card__desc">${modifierDesc(stat)}</div>
+            <div class="om-card__desc">${modifierDesc(stat, score)}</div>
         </div>`;
     }).join('');
 }
@@ -812,7 +850,7 @@ async function init() {
         .maybeSingle(),
       _supabase
         .from('shard')
-        .select('current_date, current_tick')
+        .select('current_date, current_tick, next_tick_at')
         .eq('name', 'Alpha Shard')
         .maybeSingle(),
       _supabase
