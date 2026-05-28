@@ -32,7 +32,7 @@
 .info-cell .value { font-size:18px; font-weight:500; color:#fff; line-height:1.2; }
 .info-cell .sub   { font-size:11px; color:#888; margin-top:4px; line-height:1.4; }
 
-.stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:18px; padding-top:6px; }
+.stats-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:18px; padding-top:6px; }
 .stat-cell .row { display:flex; justify-content:space-between; align-items:baseline; }
 .stat-cell .row .label { font-size:9px; letter-spacing:0.13em; color:#666; text-transform:uppercase; }
 .stat-cell .row .value { font-size:14px; font-weight:600; color:#fff; }
@@ -255,8 +255,10 @@
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 
-// Tier descriptors per stat — index 0 = highest band, last = lowest. Each tuple
-// is [min, label]; first match wins on a descending walk.
+// Tier descriptors per scored stat. Stability and Civil Freedoms are the two
+// 0-100 bars in the politician-side card; the dollar-valued GDP / Budget /
+// Debt cells don't need a tier line. Index 0 = highest band, last = lowest;
+// each tuple is [min, label] and the first match wins on a descending walk.
 const TIERS = {
   stability: [
     [80, 'Iron · no challenge'],
@@ -264,20 +266,6 @@ const TIERS = {
     [40, 'Tense · cracks visible'],
     [20, 'Volatile · unrest brewing'],
     [0,  'Breaking · revolt likely'],
-  ],
-  approval: [
-    [80, 'Adored · the public is yours'],
-    [60, 'Well-regarded'],
-    [40, 'Mixed reception'],
-    [20, 'Disliked'],
-    [0,  'Despised'],
-  ],
-  treasury: [
-    [80, 'Flush · ample reserves'],
-    [60, 'Stable · within targets'],
-    [40, 'Strained · careful spending'],
-    [20, 'Thin · cuts required'],
-    [0,  'Empty · austerity'],
   ],
   freedom: [
     [80, 'Free · civic life thrives'],
@@ -309,15 +297,20 @@ function formatPopulation(n) {
   return String(v);
 }
 
+// Compact money formatter for the politician-side GDP / Budget / Debt cells.
+// Trims trailing .0 so a round number reads "$441B", not "$441.00B".
+function fmtMoney(n) {
+  const abs = Math.abs(Number(n) || 0);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 1e9) return sign + '$' + (abs / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+  if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (abs >= 1e3) return sign + '$' + Math.round(abs / 1e3) + 'k';
+  return sign + '$' + Math.round(abs);
+}
+
 function govTypeLabel(govType) {
   if (!govType) return '';
   return String(govType).toUpperCase();
-}
-
-function approvalLabel(govType) {
-  if (govType === 'Absolute Monarchy') return 'Royal Approval';
-  if (govType === 'Presidential' || govType === 'Semi-Presidential') return 'Presidential Approval';
-  return 'Government Approval';
 }
 
 function splitOfficialName(officialName, fallbackName, govType) {
@@ -363,7 +356,8 @@ async function init() {
             id, name, government_type, capital,
             head_of_state_title, head_of_state_first_name, head_of_state_last_name,
             population, dynasty_name,
-            unrest, public_approval, budget, global_image,
+            politician_gdp, politician_budget, politician_debt,
+            politician_stability, politician_civil_freedoms,
             nation_profiles(flag_url, official_name, motto, overview, founded_year)
           `)
           .eq('id', nid).maybeSingle(),
@@ -465,25 +459,36 @@ function renderCard(n, pm) {
     hogSubEl.textContent = fac?.faction_name ? `${fac.faction_name}-led government` : 'Prime Minister';
   }
 
-  // Four stat bars. STABILITY is inverted from unrest (high unrest → low stability).
-  const stability = Math.max(0, Math.min(100, 100 - (Number(n.unrest) || 0)));
-  const approval  = Math.max(0, Math.min(100, Number(n.public_approval) || 0));
-  const treasury  = Math.max(0, Math.min(100, Number(n.budget) || 0));
-  const freedom   = Math.max(0, Math.min(100, Number(n.global_image) || 0));
+  // Politician-side stats: three dollar cells (GDP / Budget / Debt) and two
+  // 0-100 scored bars (Stability / Civil Freedoms). All five read from the
+  // dedicated politician_* columns added in 20270361 — independent of the
+  // legacy nations columns the parties surface still uses.
+  const gdp       = Number(n.politician_gdp)            || 0;
+  const budget    = Number(n.politician_budget)         || 0;
+  const debt      = Number(n.politician_debt)           || 0;
+  const stability = Math.max(0, Math.min(100, Number(n.politician_stability)      || 0));
+  const freedoms  = Math.max(0, Math.min(100, Number(n.politician_civil_freedoms) || 0));
 
   const stats = [
-    { key: 'stability', label: 'Stability',                    value: stability },
-    { key: 'approval',  label: approvalLabel(n.government_type), value: approval  },
-    { key: 'treasury',  label: 'Treasury',                     value: treasury  },
-    { key: 'freedom',   label: 'Global Image',                 value: freedom   },
+    { kind: 'money', label: 'GDP',            value: gdp },
+    { kind: 'money', label: 'Budget',         value: budget },
+    { kind: 'money', label: 'Debt',           value: debt },
+    { kind: 'score', label: 'Stability',      value: stability, tier: 'stability' },
+    { kind: 'score', label: 'Civil Freedoms', value: freedoms,  tier: 'freedom'   },
   ];
 
-  document.getElementById('nc-stats').innerHTML = stats.map(s => `
-    <div class="stat-cell">
+  document.getElementById('nc-stats').innerHTML = stats.map(s => {
+    if (s.kind === 'money') {
+      return `<div class="stat-cell">
+        <div class="row"><span class="label">${escHtml(s.label)}</span><span class="value">${escHtml(fmtMoney(s.value))}</span></div>
+      </div>`;
+    }
+    return `<div class="stat-cell">
       <div class="row"><span class="label">${escHtml(s.label)}</span><span class="value">${Math.round(s.value)}</span></div>
       <div class="bar"><div class="fill" style="width:${s.value}%; background:${barColor(s.value)};"></div></div>
-      <div class="sub">${escHtml(tierLabel(s.key, s.value))}</div>
-    </div>`).join('');
+      <div class="sub">${escHtml(tierLabel(s.tier, s.value))}</div>
+    </div>`;
+  }).join('');
 }
 
 init();
