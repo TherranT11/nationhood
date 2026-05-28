@@ -4,7 +4,7 @@
 // one-for-one — same patterns for styles, switcher, countdown, bootstrap —
 // just teal where entrepreneur uses green.
 import { _supabase } from './supabase-client.js';
-import { APP_VERSION, hfFmtBig } from './utils.js';
+import { APP_VERSION, fmtBig } from './utils.js';
 import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl } from './game/factions.js';
 
 const POL_TABS = [
@@ -148,7 +148,10 @@ export function renderPoliticianTopbar(container, { faction, shard, nation, allU
   const ini = (((first[0] || '') + (last[0] || '')).toUpperCase()) || '—';
   const display = (first || last) ? (first + ' ' + last).trim() : (f.faction_name || 'Politician');
   const pillLabel = last ? `${(first[0] || '').toUpperCase()}. ${last}` : (first || 'Politician');
-  const cash = hfFmtBig(Number(f.party_funds) || 0);
+  // Politician topbar shows an INFLUENCE score (was POL CASH). Sourced from
+  // factions.politician_influence (added in migration 20270357); fmtBig keeps
+  // small values plain ("0", "27") and magnitude-scales higher ones ("1.2k").
+  const influence = fmtBig(Number(f.politician_influence) || 0);
   const age = String(currentAge(f, s.current_tick || 0));
   const nationHtml = nation
     ? `<img class="flag" src="${escAttr(flagFor(nation))}" alt="" onerror="this.style.visibility='hidden'">${esc(nation.name)}`
@@ -169,7 +172,7 @@ export function renderPoliticianTopbar(container, { faction, shard, nation, allU
         <div><div class="label">NEXT TICK</div><div class="value" id="pol-next-tick">—</div></div>
       </div>
       <div class="right">
-        <div class="cash-pill"><span class="label">POL CASH: </span><span class="value">${esc(cash)}</span></div>
+        <div class="cash-pill"><span class="label">INFLUENCE: </span><span class="value">${esc(influence)}</span></div>
         <div class="pol-switcher">
           <span class="pol-pill" id="pol-pill" title="Switch faction">${esc(pillLabel)} &#x25BE;</span>
           <div class="pol-dd" id="pol-dd"></div>
@@ -209,7 +212,7 @@ export async function bootstrapPolitician(activeTab) {
 
   const [facRes, shardRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, founded_tick, party_funds, abandoned_at, is_banned, politician_career, politician_charisma, politician_reputation, politician_credibility')
+      .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, founded_tick, party_funds, abandoned_at, is_banned, politician_career, politician_charisma, politician_reputation, politician_credibility, politician_influence')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
     _supabase.from('shard').select('current_tick, current_date, next_tick_at').eq('name', 'Alpha Shard').single(),
   ]);
