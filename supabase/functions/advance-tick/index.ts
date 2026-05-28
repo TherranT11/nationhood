@@ -2261,32 +2261,26 @@ async function processNationDebtTick(supabase, nation, activeCorpCount = 0) {
         return { mode: 'surplus_to_treasury', perTickBalance, newDebtRaw: currentDebt, newBudget };
     }
 
-    // Deficit → draw from the treasury first; borrow only the shortfall.
-    // Trade/aid income has already landed in the treasury (the recurring
-    // transfer + aid processors run earlier this tick), so paying the
-    // operating deficit from cash instead of always borrowing keeps debt flat
-    // whenever the nation is solvent — which is what the budget panel's unified
-    // Balance (tax + trade/aid − costs) reflects. Net worth still moves by
-    // exactly that Balance; only its split between treasury and debt changes.
-    // Debt grows only once the treasury is exhausted.
+    // Deficit → debt grows by the full shortfall; treasury is NOT used as a
+    // buffer. The previous "drain treasury first" path silently absorbed
+    // years of overspend so debt never reflected the deficit on the budget
+    // panel. Trade/aid still credits the treasury separately (those
+    // processors run earlier this tick); debt now strictly tracks operating
+    // shortfall, which is what the panel's Balance shows.
     const deficit = -perTickBalance;
-    const fromTreasury = Math.min(deficit, Math.max(0, currentTreasury));
-    const borrow = deficit - fromTreasury;
-    const newBudget = currentTreasury - fromTreasury;
-    const newDebt = currentDebt + borrow;
+    const newDebt = currentDebt + deficit;
     const { error } = await supabase.from('nations')
-        .update({ budget: newBudget, debt: newDebt }).eq('id', nation.id);
+        .update({ debt: newDebt }).eq('id', nation.id);
     if (error) {
         console.warn(`[Debt] deficit update failed for ${nation.name}:`, error.message);
         return null;
     }
-    nation.budget = newBudget;
     nation.debt = newDebt;
     return {
-        mode: borrow > 0 ? 'deficit_borrow' : 'deficit_from_treasury',
+        mode: 'deficit_borrow',
         perTickBalance: -deficit,
         newDebtRaw: newDebt,
-        newBudget,
+        newBudget: currentTreasury,
     };
 }
 
@@ -32414,12 +32408,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // National debt — single rule. Bonds retired (2026-05).
         //   balance = tax revenue − expenditures (/12 per tick)
-        //   surplus → treasury up
-        //   deficit → paid from treasury first; only the shortfall beyond
-        //             available cash is borrowed (debt up). Trade/aid cash
-        //             already sits in the treasury (section 3.5f), so a
-        //             nation with a positive unified panel Balance stays out
-        //             of new debt. No bonds, no coupons, no printing.
+        //   surplus → treasury up (debt is paid down only via explicit pay-down)
+        //   deficit → debt up by the full shortfall; treasury is NOT a buffer.
+        //             Trade/aid cash still lands in the treasury via their own
+        //             processors (section 3.5f). No bonds, no coupons, no printing.
         try {
             const result = await processNationDebtTick(supabase, nation, activeCorpCount);
             if (result) {
