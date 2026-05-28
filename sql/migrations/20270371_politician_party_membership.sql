@@ -14,6 +14,12 @@
 -- you earned"). The career_events table doesn't enforce event_type so
 -- 'left_party' just slots in alongside the existing types.
 --
+-- Anti-grind: the +3 fires only on the politician's FIRST EVER join.
+-- Subsequent joins (after any leave + rejoin loop, or party-switching)
+-- log the event but grant no further influence. The existence of a
+-- prior 'joined_party' event in politician_career_events is the gate.
+-- This is why leave + rejoin doesn't farm influence.
+--
 -- Both RPCs are SECURITY DEFINER and verify the caller owns the politician
 -- via the canonical (id = auth.uid() OR linked_user_id = auth.uid()) test.
 -- Both verify the politician and the party are in the same nation; a
@@ -74,17 +80,28 @@ BEGIN
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
     v_tick := COALESCE(v_tick, 0);
 
-    UPDATE factions
-       SET politician_party_id = p_party_id,
-           politician_influence = COALESCE(politician_influence, 0) + 3
-     WHERE id = p_politician_id;
+    -- +3 influence ONLY on the politician's first ever joined_party event.
+    -- Re-joins (whether switching parties or leaving + rejoining) log the
+    -- event but grant nothing, so leave→rejoin can't farm influence.
+    DECLARE
+        v_first_join boolean := NOT EXISTS (
+            SELECT 1 FROM politician_career_events
+             WHERE faction_id = p_politician_id AND event_type = 'joined_party'
+        );
+    BEGIN
+        UPDATE factions
+           SET politician_party_id = p_party_id,
+               politician_influence = COALESCE(politician_influence, 0)
+                                    + CASE WHEN v_first_join THEN 3 ELSE 0 END
+         WHERE id = p_politician_id;
 
-    INSERT INTO politician_career_events (faction_id, event_tick, event_type, target_name)
-    VALUES (p_politician_id, v_tick, 'joined_party', v_party.faction_name);
+        INSERT INTO politician_career_events (faction_id, event_tick, event_type, target_name)
+        VALUES (p_politician_id, v_tick, 'joined_party', v_party.faction_name);
 
-    RETURN jsonb_build_object('success', true,
-        'party_id', p_party_id, 'party_name', v_party.faction_name,
-        'influence_delta', 3);
+        RETURN jsonb_build_object('success', true,
+            'party_id', p_party_id, 'party_name', v_party.faction_name,
+            'influence_delta', CASE WHEN v_first_join THEN 3 ELSE 0 END);
+    END;
 END;
 $$;
 

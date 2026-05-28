@@ -178,6 +178,7 @@ const CORPORATE_CATEGORIES = ['corporate','business','trade'];
 // they belong (a separate private dossier surface would house those).
 const CAREER_EVENT_TEMPLATES = {
   joined_party:  (name, target) => `${name} has registered their membership in the ${target || 'a political party'}.`,
+  left_party:    (name, target) => `${name} has resigned their membership in the ${target || 'their political party'}.`,
   founded_party: (name, target) => `The ${target || 'new political party'} was established by ${name}.`,
   joined_ngo:    (name, target) => `${name} has registered their membership in the ${target || 'a non-government organisation'}.`,
   founded_ngo:   (name, target) => `The ${target || 'new organisation'} was established by ${name}.`,
