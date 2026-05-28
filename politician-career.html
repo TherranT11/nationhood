@@ -567,7 +567,7 @@ function bindRungActions(politicianId) {
   document.querySelectorAll('.rung-btn[data-action="leave-party"]').forEach(btn => {
     btn.addEventListener('click', async () => {
       if (!politicianId) return;
-      if (!confirm('Leave your political party? Your influence stays where it is.')) return;
+      if (!confirm('Leave your political party? This costs 5 Influence.')) return;
       btn.disabled = true; btn.textContent = 'Leaving…';
       try {
         const { data, error } = await _supabase.rpc('politician_leave_party', { p_politician_id: politicianId });
