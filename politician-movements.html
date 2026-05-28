@@ -53,6 +53,9 @@
 .mv-card .seats { margin-left:auto; font-family:monospace; font-size:14px; color:#666;
   letter-spacing:0.08em; text-transform:uppercase; white-space:nowrap; text-align:right; }
 .mv-card .seats strong { display:block; color:#d4d4d4; font-size:20px; font-weight:600; margin-top:3px; }
+.mv-card .popularity { font-family:monospace; font-size:14px; color:#666;
+  letter-spacing:0.08em; text-transform:uppercase; white-space:nowrap; text-align:right; margin-left:18px; }
+.mv-card .popularity strong { display:block; color:#d4d4d4; font-size:20px; font-weight:600; margin-top:3px; }
 
 /* Join Political Party action card needs to look active when the live
    feature is wired (the rest stay disabled with the Soon tag). */
@@ -291,7 +294,7 @@ async function loadMovementParties() {
   if (!_nationId) { _movementParties = []; return; }
   try {
     const { data, error } = await _supabase.from('factions')
-      .select('id, faction_name, abbreviation, seats, party_color, party_description, leader_first_name, leader_last_name')
+      .select('id, faction_name, abbreviation, seats, popularity_pct, party_color, party_description, leader_first_name, leader_last_name')
       .eq('nation_id', _nationId)
       .eq('faction_type', 'movement_party')
       .is('abandoned_at', null)
@@ -342,6 +345,13 @@ function renderPartyCard(p) {
   if (leader) subParts.push(`Led by ${escHtml(leader)}`);
   if (p.party_description) subParts.push(escHtml(p.party_description));
   const sub = subParts.join(' &middot; ');
+  // popularity_pct is nation-level for movements (20270372). Rendered
+  // only when present so a future non-movement reuse of this card —
+  // or an older row that pre-dates the migration backfill — doesn't
+  // show "—%" or 0%.
+  const pop = (p.popularity_pct != null)
+    ? `<div class="popularity">Popularity<strong>${Math.round(Number(p.popularity_pct))}%</strong></div>`
+    : '';
   return `<div class="mv-card" style="border-left-color:${accent};">
     <div class="badge">${escHtml(p.abbreviation || '—')}</div>
     <div class="body">
@@ -349,6 +359,7 @@ function renderPartyCard(p) {
       <div class="sub">${sub || '<em>No description on record.</em>'}</div>
     </div>
     <div class="seats">Seats<strong>${Number(p.seats) || 0}</strong></div>
+    ${pop}
   </div>`;
 }
 
