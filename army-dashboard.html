@@ -850,7 +850,7 @@ async function init() {
         .maybeSingle(),
       _supabase
         .from('shard')
-        .select('current_date, current_tick')
+        .select('current_date, current_tick, next_tick_at')
         .eq('name', 'Alpha Shard')
         .maybeSingle(),
       _supabase

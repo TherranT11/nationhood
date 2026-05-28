@@ -374,7 +374,7 @@ export async function processNationDebtTick(supabase, nation, activeCorpCount = 
             return null;
         }
         nation.budget = newBudget;
-        return { mode: 'surplus_to_treasury', perTickBalance, newDebtRaw: currentDebt, newBudget };
+        return { mode: 'surplus_to_treasury', perTickBalance, newDebtRaw: currentDebt };
     }
 
     // Deficit → debt grows by the full shortfall; treasury is NOT used as a
@@ -396,7 +396,6 @@ export async function processNationDebtTick(supabase, nation, activeCorpCount = 
         mode: 'deficit_borrow',
         perTickBalance: -deficit,
         newDebtRaw: newDebt,
-        newBudget: currentTreasury,
     };
 }
 
