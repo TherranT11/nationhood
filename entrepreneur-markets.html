@@ -23,13 +23,27 @@
   .mkt .meta-row .val { color:#d4d4d4; }
   .mkt .meta-row .val.green { color:#8aaa6a; }
 
-  .mkt .toolbar { display:flex; align-items:center; margin-bottom:14px; }
+  .mkt .toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
   .mkt .search-box {
     margin-left:auto; background:#1a1a1a; border:0.5px solid rgba(255,255,255,0.12);
     color:#d4d4d4; padding:7px 12px; border-radius:3px; font-size:11px;
     letter-spacing:0.04em; width:260px; font-family:inherit;
   }
   .mkt .search-box::placeholder { color:#555; font-style:italic; }
+
+  /* Public / Private filter chips */
+  .mkt .mk-filters { display:flex; gap:6px; }
+  .mkt .mk-chip { font-size:10px; letter-spacing:0.08em; padding:6px 13px; border-radius:3px;
+    background:#121212; border:0.5px solid rgba(255,255,255,0.1); color:#888;
+    cursor:pointer; text-transform:uppercase; font-family:inherit; }
+  .mkt .mk-chip:hover { color:#d4d4d4; }
+  .mkt .mk-chip.active { background:#131613; border-color:#6a8a4a; color:#8aaa6a; font-weight:500; }
+
+  /* Sortable column headers */
+  .mkt .head .sortable { cursor:pointer; user-select:none; }
+  .mkt .head .sortable:hover,
+  .mkt .head .sortable.active { color:#8aaa6a; }
+  .mkt .head .sort-arrow { font-size:8px; margin-left:3px; }
 
   .mkt .listings { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px; overflow:hidden; }
   .mkt .grid {
@@ -224,18 +238,23 @@
     <!-- Corporations view (default) -->
     <div id="view-corps">
       <div class="toolbar">
+        <div class="mk-filters" id="mk-filters">
+          <button type="button" class="mk-chip active" data-filter="all">All</button>
+          <button type="button" class="mk-chip" data-filter="public">Public</button>
+          <button type="button" class="mk-chip" data-filter="private">Private</button>
+        </div>
         <input class="search-box" id="mk-search" placeholder="Search by name or CEO…" autocomplete="off" />
       </div>
 
       <div class="listings">
         <div class="grid head">
-          <div>CORPORATION</div>
-          <div>TYPE</div>
-          <div>CEO</div>
-          <div class="right">VALUATION</div>
-          <div class="right">SHARE PRICE</div>
-          <div class="right">AVAILABLE</div>
-          <div class="right">OWNERSHIP</div>
+          <div class="sortable" data-sort="name">CORPORATION<span class="sort-arrow"></span></div>
+          <div class="sortable" data-sort="type">TYPE<span class="sort-arrow"></span></div>
+          <div class="sortable" data-sort="ceo">CEO<span class="sort-arrow"></span></div>
+          <div class="right sortable" data-sort="valuation">VALUATION<span class="sort-arrow"></span></div>
+          <div class="right sortable" data-sort="price">SHARE PRICE<span class="sort-arrow"></span></div>
+          <div class="right sortable" data-sort="available">AVAILABLE<span class="sort-arrow"></span></div>
+          <div class="right sortable" data-sort="ownership">OWNERSHIP<span class="sort-arrow"></span></div>
           <div></div>
         </div>
         <div id="mk-rows"><div class="state">Loading directory…</div></div>
@@ -426,8 +445,8 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
       };
     });
 
-    const mine   = rows.filter(r => r.mine).sort((a, b) => (b.val.amount || 0) - (a.val.amount || 0));
-    const others = rows.filter(r => !r.mine).sort((a, b) => (b.val.amount || 0) - (a.val.amount || 0));
+    const mine   = rows.filter(r => r.mine);
+    const others = rows.filter(r => !r.mine);
 
     document.getElementById('mk-total').textContent   = String(corps.length);
     const publicN = corps.filter(c => c.listing === 'public').length;
@@ -521,14 +540,52 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
       return row;
     };
 
-    const render = (q) => {
-      const needle = q.trim().toLowerCase();
-      const match = (r) => !needle
-        || (r.c.name || '').toLowerCase().includes(needle)
-        || ownerDisplayName(r.c.owner).toLowerCase().includes(needle);
+    // Filter (All/Public/Private) + column sort. Default = valuation desc,
+    // which reproduces the directory's original ordering.
+    let filterMode = 'all';
+    let sortKey    = 'valuation';
+    let sortDir    = 'desc';
 
-      const m = mine.filter(match);
-      const o = others.filter(match);
+    // Value per sortable column. A null sorts to the bottom regardless of
+    // direction (e.g. a private corp has no share price / available float).
+    const SORT_EXT = {
+      name:      r => (r.c.name || '').toLowerCase(),
+      type:      r => (r.c.listing === 'public' ? 1 : 0),
+      ceo:       r => ownerDisplayName(r.c.owner).toLowerCase(),
+      valuation: r => r.val.amount,
+      price:     r => (r.c.listing === 'public' && r.c.share_price != null ? Number(r.c.share_price) : null),
+      available: r => r.available,
+      ownership: r => r.pct,
+    };
+    // First-click direction: names A→Z, everything numeric high→low.
+    const SORT_DEFAULT_DIR = { name: 'asc', ceo: 'asc' };
+
+    const sortRows = (arr) => {
+      const ext = SORT_EXT[sortKey] || SORT_EXT.valuation;
+      const dir = sortDir === 'asc' ? 1 : -1;
+      return arr.slice().sort((a, b) => {
+        const va = ext(a), vb = ext(b);
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;          // nulls last, both directions
+        if (vb == null) return -1;
+        const d = typeof va === 'string' ? va.localeCompare(vb) : (va - vb);
+        return d * dir;
+      });
+    };
+
+    const passesFilter = (r) =>
+      filterMode === 'all'
+      || (filterMode === 'public'  && r.c.listing === 'public')
+      || (filterMode === 'private' && r.c.listing !== 'public');
+
+    const render = () => {
+      const needle = (document.getElementById('mk-search').value || '').trim().toLowerCase();
+      const match = (r) => passesFilter(r) && (!needle
+        || (r.c.name || '').toLowerCase().includes(needle)
+        || ownerDisplayName(r.c.owner).toLowerCase().includes(needle));
+
+      const m = sortRows(mine.filter(match));
+      const o = sortRows(others.filter(match));
 
       document.getElementById('mk-foot').textContent =
         `CORPORATE REGISTRY · ${m.length + o.length} OF ${corps.length} SHOWN · UPDATED EACH TICK`;
@@ -539,7 +596,7 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
         s.className = 'state';
         s.textContent = corps.length === 0
           ? 'No corporations have been founded yet.'
-          : 'No corporations match your search.';
+          : 'No corporations match your filters.';
         rowsEl.appendChild(s);
         return;
       }
@@ -553,14 +610,45 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
       if (o.length) {
         const d = document.createElement('div');
         d.className = 'divider other';
-        d.textContent = `▸ ${mine.length ? 'OTHER ' : ''}CORPORATIONS · ${o.length}`;
+        d.textContent = `▸ ${m.length ? 'OTHER ' : ''}CORPORATIONS · ${o.length}`;
         rowsEl.appendChild(d);
         o.forEach(r => rowsEl.appendChild(makeRow(r)));
       }
     };
 
-    render('');
-    document.getElementById('mk-search').addEventListener('input', (e) => render(e.target.value));
+    document.getElementById('mk-search').addEventListener('input', render);
+
+    // Public / Private filter chips.
+    document.querySelectorAll('#mk-filters .mk-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        filterMode = chip.dataset.filter;
+        document.querySelectorAll('#mk-filters .mk-chip')
+          .forEach(c => c.classList.toggle('active', c === chip));
+        render();
+      });
+    });
+
+    // Click-to-sort column headers (re-click toggles direction).
+    const updateSortIndicators = () => {
+      document.querySelectorAll('#view-corps .head .sortable').forEach(h => {
+        const active = h.dataset.sort === sortKey;
+        h.classList.toggle('active', active);
+        const arrow = h.querySelector('.sort-arrow');
+        if (arrow) arrow.textContent = active ? (sortDir === 'asc' ? '▲' : '▼') : '';
+      });
+    };
+    document.querySelectorAll('#view-corps .head .sortable').forEach(h => {
+      h.addEventListener('click', () => {
+        const key = h.dataset.sort;
+        if (key === sortKey) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+        else { sortKey = key; sortDir = SORT_DEFAULT_DIR[key] || 'desc'; }
+        updateSortIndicators();
+        render();
+      });
+    });
+
+    updateSortIndicators();
+    render();
 
     // ───────────── Properties view ─────────────
     // Unified listing surface for any corp_buildings row with a
