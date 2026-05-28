@@ -186,6 +186,7 @@ const CAREER_EVENT_TEMPLATES = {
 
 let politician = null;
 let nation = null;
+let party = null;
 let allEvents = [];
 let evCurrentTab = 'politics';
 let evTickNow = 0;
@@ -203,6 +204,7 @@ async function init() {
 
   politician = ctx.faction;
   nation     = ctx.nation;
+  party      = ctx.party || null;
   evTickNow  = Number(ctx.shard?.current_tick) || 0;
 
   try {
@@ -257,8 +259,12 @@ function renderHero(shard) {
   document.getElementById('hero-age').textContent = age;
   document.getElementById('hero-nation').textContent = (nation && nation.name) || '—';
   document.getElementById('hero-career').textContent = career;
-  document.getElementById('hero-affiliation').textContent =
-    career === 'Independent' ? NO_AFFILIATION_MESSAGE : career;
+  // Affiliation reads from the looked-up movement_party (ctx.party set by
+  // bootstrapPolitician). politician_career is the career-title track and
+  // is unrelated to party membership; it's not a fallback here.
+  document.getElementById('hero-affiliation').textContent = party
+    ? `Party Member of ${party.faction_name}`
+    : NO_AFFILIATION_MESSAGE;
 }
 
 // Career log — derived from the politician's lifecycle today. Only one event

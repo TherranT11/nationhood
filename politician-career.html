@@ -417,26 +417,8 @@ async function init() {
   }
   if (!ctx) return;
 
-  // Affiliated party (movement_party row) for the Party Member rung's
-  // descIfHeld and the Leave button. Filters abandoned_at — if the party
-  // got abandoned the FK stays (ON DELETE SET NULL doesn't fire on
-  // abandon, only on hard delete), so without this filter the rung would
-  // show a ghost affiliation pointing at a dead party. Soft-fails to
-  // null on query error — the ladder just renders not-affiliated state.
-  let party = null;
-  if (ctx.faction?.politician_party_id) {
-    try {
-      const { data } = await _supabase.from('factions')
-        .select('id, faction_name, abbreviation')
-        .eq('id', ctx.faction.politician_party_id)
-        .is('abandoned_at', null)
-        .maybeSingle();
-      party = data || null;
-    } catch (_) { /* non-fatal */ }
-  }
-
   render(ctx.faction, ctx.shard, ctx.nation);
-  renderLadders(buildLadderState(ctx.faction, ctx.nation, party), ctx.faction.id);
+  renderLadders(buildLadderState(ctx.faction, ctx.nation, ctx.party), ctx.faction.id);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
