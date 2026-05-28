@@ -123,11 +123,16 @@ async function init() {
   // Movement row + members in parallel. The movement must be a
   // movement_party in the politician's nation; the members are every
   // politician whose politician_party_id points at this movement.
+  // Abandoned movements aren't reachable from the list (which filters
+  // them out) — a stale link still gets a clean "not found" message
+  // rather than rendering ghost state.
   const [movRes, memRes] = await Promise.all([
     _supabase.from('factions')
       .select('id, faction_name, faction_type, nation_id, abbreviation, seats, popularity_pct, '
             + 'party_color, party_description, leader_first_name, leader_last_name')
-      .eq('id', movementId).maybeSingle(),
+      .eq('id', movementId)
+      .is('abandoned_at', null)
+      .maybeSingle(),
     _supabase.from('factions')
       .select('id, faction_name, leader_first_name, leader_last_name, founded_tick')
       .eq('faction_type', 'politician')
