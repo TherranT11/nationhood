@@ -1170,9 +1170,15 @@ export async function processIssueTick(supabase, nationList, currentTick) {
         // ── 7. Territorial decision clock → war ──
         // Territorial disputes resolve via their decision clock, NOT passive
         // tension. At/after the deadline with nothing resolved, the dispute
-        // auto-goes to war (the clock running out IS the casus belli). go_to_war
-        // collapses the deadline to "now" so this same branch fires it. The war
-        // state is set by the one writer, setNationsAtWar, via startWarFromIssue.
+        // auto-goes to war (the clock running out IS the casus belli) — this
+        // branch handles the natural-deadline path via setNationsAtWar inside
+        // startWarFromIssue.
+        //
+        // Manual press: the go_to_war SQL RPC (20270354) flips the war state
+        // directly AND sets bilateral_issues.status='escalated' before returning,
+        // so the player experiences instant war. The `status !== 'escalated'`
+        // guard below makes that path skip this branch — no duplicate writes,
+        // no duplicate 'War Declared' event_log rows.
         let escalatedToWar = false;
         if (issue.issue_type === 'territorial_ownership' && issue.status !== 'escalated') {
             let deadline = issue.decision_deadline_tick;
