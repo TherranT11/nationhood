@@ -150,6 +150,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         await loadProvinceNations();
         await loadInspectorNations();
         await loadMinistryConfig();
+        await loadAddNationInit();
     }
 
     // ==================== SHARD TAB ====================
@@ -1898,6 +1899,219 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         });
     }
 
+    // ==================== ADD NATION TAB ====================
+    // Each entry: [stat_key, label, sensible_default]. Keys match the COALESCE
+    // columns in admin_create_nation (20270349). Baseline render value is 50;
+    // "Fill sensible defaults" applies the third element.
+    const NN_STAT_FIELDS = [
+        ['gdp_growth','GDP Growth',52],['debt_growth','Debt Growth',30],['inflation','Inflation',25],
+        ['interest_rates','Interest Rates',40],['trade_balance','Trade Balance',50],['currency_strength','Currency Strength',55],
+        ['foreign_investment','Foreign Investment',55],['credit','Credit',60],
+        ['income_tax','Income Tax',40],['corporate_tax','Corporate Tax',35],['sales_tax','Sales Tax',35],['tariffs','Tariffs',15],
+        ['unemployment','Unemployment',30],['labor_force_participation','Labor Force Participation',65],['minimum_wage','Minimum Wage',50],
+        ['union_strength','Union Strength',40],['poverty_rate','Poverty Rate',25],['income_inequality','Income Inequality',45],
+        ['population_growth','Population Growth',30],['median_age','Median Age (yrs)',40],['ethnic_diversity','Ethnic Diversity',40],
+        ['healthcare_quality','Healthcare Quality',60],['healthcare_accessibility','Healthcare Accessibility',60],['beds_per_100k','Beds per 100k',55],
+        ['lifespan','Lifespan',70],['drug_use','Drug Use',30],
+        ['literacy','Literacy',88],['higher_education','Higher Education',55],['education_accessibility','Education Accessibility',60],['academic_immigration','Academic Immigration',45],
+        ['physical_infrastructure','Physical Infrastructure',60],['digital_infrastructure','Digital Infrastructure',60],['rail_network','Rail Network',50],['urbanization','Urbanization',60],
+        ['energy_generation','Energy Generation',55],['renewable_energy_percentage','Renewable Energy %',25],['arable_land','Arable Land',45],['rare_minerals','Rare Minerals',40],['oil_and_gas','Oil & Gas',35],['fuel_prices','Fuel Prices',50],
+        ['pollution','Pollution',45],['carbon_emissions','Carbon Emissions',50],
+        ['standard_of_living','Standard of Living',60],['happiness','Happiness',58],['social_mobility','Social Mobility',55],['benefits','Benefits',50],
+        ['cost_of_living','Cost of Living',55],['housing_affordability','Housing Affordability',45],['manufacturing_output','Manufacturing Output',55],['service_output','Service Output',60],
+        ['crime_rate','Crime Rate',30],['incarceration_rate','Incarceration Rate',30],['religiosity','Religiosity',45],
+        ['stability','Stability',65],['legitimacy','Legitimacy',65],['efficiency','Efficiency',60],['gov_approval','Gov Approval',50],
+        ['corruption','Corruption',35],['press_freedom','Press Freedom',65],['judicial_independence','Judicial Independence',65],['freedom_index','Freedom Index',65],
+        ['polarization','Polarization',45],['civil_unrest','Civil Unrest',25],['terrorism','Terrorism',12],['political_violence','Political Violence',15],
+        ['immigration','Immigration',35],['illegal_immigration','Illegal Immigration',20],['emigration','Emigration',35],
+    ];
+
+    let nnPolicyCache = [];
+
+    function renderAddNationStats() {
+        const grid = document.getElementById('nn-stats-grid');
+        if (!grid) return;
+        grid.innerHTML = NN_STAT_FIELDS.map(([key, label]) =>
+            `<div class="input-group" style="margin-bottom:4px;"><label style="font-size:0.75rem;">${label}</label>` +
+            `<input type="number" id="nn-stat-${key}" min="0" max="100" value="50"></div>`
+        ).join('');
+    }
+
+    function fillNationDefaults() {
+        renderAddNationStats();
+        NN_STAT_FIELDS.forEach(([key, , def]) => {
+            const el = document.getElementById('nn-stat-' + key);
+            if (el) el.value = def;
+        });
+    }
+
+    // Single source of truth for which UI fields / payload keys each gov-type uses.
+    function nnGovFlags(govKey) {
+        return {
+            isPres: govKey === 'presidential' || govKey === 'semipresidential',
+            hasPM: govKey !== 'presidential',
+            isMonarchy: govKey === 'constitutional_monarchy' || govKey === 'absolute_monarchy',
+            isAbsolute: govKey === 'absolute_monarchy',
+        };
+    }
+
+    function onAddNationGovType() {
+        const t = document.getElementById('nn-govtype')?.value;
+        if (!t) return;
+        const { isMonarchy, isPres, isAbsolute, hasPM } = nnGovFlags(t);
+        const show = (id, on) => { const e = document.getElementById(id); if (e) e.style.display = on ? '' : 'none'; };
+        show('nn-dynasty-wrap', isMonarchy);
+        show('nn-presterm-wrap', isPres);
+        show('nn-preslimit-wrap', isPres);
+        show('nn-parlterm-wrap', hasPM && !isAbsolute);
+        const titleEl = document.getElementById('nn-hos_title');
+        if (titleEl && (titleEl.value === 'President' || titleEl.value === 'King' || titleEl.value === '')) {
+            titleEl.value = isMonarchy ? 'King' : 'President';
+        }
+        const note = document.getElementById('nn-election-note');
+        if (note) note.textContent = isAbsolute
+            ? 'Absolute Monarchy: no elections — seats are static and a caretaker royal government holds indefinitely.'
+            : 'First election fires 1–6 ticks after creation (caretaker handoff).';
+    }
+
+    async function loadAddNationPolicies() {
+        const box = document.getElementById('nn-policies-list');
+        if (!box) return;
+        try {
+            const { data, error } = await _supabase.from('policies')
+                .select('id, policy_name, major_sector, policy_type')
+                .order('major_sector').order('policy_name');
+            if (error) throw error;
+            nnPolicyCache = (data || []).filter(p => (p.policy_type || 'structural') === 'structural');
+            renderAddNationPolicies(nnPolicyCache);
+        } catch (err) {
+            console.error('loadAddNationPolicies failed', err);
+            box.innerHTML = '<span style="color:#e57373;">Failed to load policies.</span>';
+        }
+    }
+
+    function renderAddNationPolicies(list) {
+        const box = document.getElementById('nn-policies-list');
+        if (!box) return;
+        if (!list.length) { box.innerHTML = '<span style="color:#888;">No matching policies.</span>'; return; }
+        box.innerHTML = list.map(p =>
+            `<label style="display:block; font-size:0.82rem; padding:2px 0;">` +
+            `<input type="checkbox" class="nn-pol" value="${p.id}"> ` +
+            `<span style="color:#888;">[${p.major_sector || '—'}]</span> ${p.policy_name}</label>`
+        ).join('');
+    }
+
+    function filterAddNationPolicies() {
+        const q = (document.getElementById('nn-policy-filter')?.value || '').toLowerCase();
+        renderAddNationPolicies(nnPolicyCache.filter(p =>
+            !q || (p.policy_name || '').toLowerCase().includes(q) || (p.major_sector || '').toLowerCase().includes(q)));
+    }
+
+    async function loadAddNationContinents() {
+        try {
+            const { data } = await _supabase.from('nations').select('continent');
+            const dl = document.getElementById('nn-continent-list');
+            if (!dl) return;
+            const seen = [...new Set((data || []).map(n => n.continent).filter(Boolean))].sort();
+            dl.innerHTML = seen.map(c => `<option value="${c}">`).join('');
+        } catch (_) { /* non-fatal */ }
+    }
+
+    // Map the form's gov-type key to (government_type, hos_election_method).
+    const NN_GOVTYPE_MAP = {
+        parliamentary:          { gt: 'Parliamentary',     method: 'parliamentary' },
+        presidential:           { gt: 'Presidential',      method: 'direct_vote' },
+        semipresidential:       { gt: 'Semi-Presidential', method: 'direct_vote' },
+        constitutional_monarchy:{ gt: 'Parliamentary',     method: 'hereditary' },
+        absolute_monarchy:      { gt: 'Absolute Monarchy', method: 'hereditary' },
+    };
+
+    function nnVal(id) { const e = document.getElementById(id); return e ? e.value.trim() : ''; }
+
+    async function createNation(btn) {
+        const statusEl = document.getElementById('nn-status');
+        const setErr = m => { statusEl.style.color = '#e57373'; statusEl.textContent = m; };
+        statusEl.textContent = '';
+        const govKey = nnVal('nn-govtype');
+        const map = NN_GOVTYPE_MAP[govKey];
+        if (!map) return setErr('Pick a government type.');
+        if (nnVal('nn-name').length < 2) return setErr('Name must be at least 2 characters.');
+        if (nnVal('nn-capital').length < 2) return setErr('Capital is required.');
+
+        const { isPres, hasPM, isMonarchy } = nnGovFlags(govKey);
+
+        const stats = {};
+        NN_STAT_FIELDS.forEach(([key]) => {
+            const v = nnVal('nn-stat-' + key);
+            if (v !== '') stats[key] = v;
+        });
+        const policyIds = [...document.querySelectorAll('.nn-pol:checked')].map(c => c.value);
+
+        const payload = {
+            name: nnVal('nn-name'),
+            official_name: nnVal('nn-official_name'),
+            capital: nnVal('nn-capital'),
+            continent: nnVal('nn-continent'),
+            government_type: map.gt,
+            hos_election_method: map.method,
+            total_seats: nnVal('nn-total_seats'),
+            max_parties: nnVal('nn-max_parties'),
+            head_of_state_title: nnVal('nn-hos_title'),
+            head_of_state_first_name: nnVal('nn-hos_first'),
+            head_of_state_last_name: nnVal('nn-hos_last'),
+            head_of_state_age: nnVal('nn-hos_age'),
+            population: nnVal('nn-population'),
+            eligible_voters: nnVal('nn-eligible_voters'),
+            gdp: nnVal('nn-gdp'),
+            debt: nnVal('nn-debt'),
+            proximity: nnVal('nn-proximity'),
+            flag_url: nnVal('nn-flag_url'),
+            demonym: nnVal('nn-demonym'),
+            currency_name: nnVal('nn-currency_name'),
+            religion: nnVal('nn-religion'),
+            languages: nnVal('nn-languages'),
+            founded_year: nnVal('nn-founded_year'),
+            motto: nnVal('nn-motto'),
+            overview: nnVal('nn-overview'),
+            stats,
+            policy_ids: policyIds,
+        };
+        if (isMonarchy) payload.dynasty_name = nnVal('nn-dynasty_name');
+        if (isPres) {
+            payload.presidential_term_ticks = nnVal('nn-presidential_term_ticks');
+            payload.presidential_term_limit = nnVal('nn-presidential_term_limit');
+        }
+        if (hasPM) payload.parliamentary_term_ticks = nnVal('nn-parliamentary_term_ticks');
+
+        await withButtonLock(btn, async () => {
+            try {
+                const { data, error } = await _supabase.rpc('admin_create_nation', { p_payload: payload });
+                if (error) throw error;
+                if (!data || !data.success) {
+                    return setErr('Create failed: ' + (data?.reason || 'unknown'));
+                }
+                statusEl.style.color = '#81c784';
+                statusEl.textContent = `Created "${data.name}" (${data.government_type}) — ${data.ministries} ministries, ` +
+                    `${data.diplomatic_relations} relations, ${data.policies} policies` +
+                    (data.first_election_tick ? `, first election @ tick ${data.first_election_tick}.` : ' (no elections).');
+                document.getElementById('nn-name').value = '';
+                document.getElementById('nn-capital').value = '';
+                await Promise.all([loadSectorNations(), loadProvinceNations(), loadInspectorNations(),
+                                   loadElectionNations(), loadAddNationContinents()]);
+            } catch (err) {
+                console.error('createNation failed', err);
+                setErr('Create failed: ' + (err.message || String(err)));
+            }
+        });
+    }
+
+    async function loadAddNationInit() {
+        renderAddNationStats();
+        onAddNationGovType();
+        await loadAddNationContinents();
+        await loadAddNationPolicies();
+    }
+
     // ==================== SECTORS TAB — PHASE 1: POPULARITY EDITOR + DIAGNOSTICS ====================
 
     let sectorPopFactions = [];
@@ -2432,6 +2646,11 @@ window.recomputeProvinceBalance = recomputeProvinceBalance;
 window.addProvince = addProvince;
 window.deleteProvince = deleteProvince;
 window.saveProvinceWeights = saveProvinceWeights;
+window.onAddNationGovType = onAddNationGovType;
+window.fillNationDefaults = fillNationDefaults;
+window.renderAddNationStats = renderAddNationStats;
+window.filterAddNationPolicies = filterAddNationPolicies;
+window.createNation = createNation;
 window.loadFactionPopularityEditor = loadFactionPopularityEditor;
 window.onPopularityCellInput = onPopularityCellInput;
 window.saveFactionPopularityChanges = saveFactionPopularityChanges;
