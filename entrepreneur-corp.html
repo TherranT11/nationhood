@@ -3509,17 +3509,29 @@ function initials(s, n) {
 
       let aviationPanelHtml = '';
       if (c.industry === 'aviation_manufacturing' && canView) {
-        const { data: adData, error: adErr } = await _supabase.from('ent_aircraft_designs')
-          .select('id, design_type, name, status, research_ticks_total, research_ticks_remaining, quality, cost_per_unit, airframe_class, engine_count, passengers, range_nm, demand_score, safety_score, thrust, weight, efficiency, reliability, inventory_on_hand')
-          .eq('entrepreneur_corp_id', id).order('created_at', { ascending: false });
+        const [{ data: adData, error: adErr }, { data: invData, error: invErr }] = await Promise.all([
+          _supabase.from('ent_aircraft_designs')
+            .select('id, design_type, name, status, research_ticks_total, research_ticks_remaining, quality, cost_per_unit, airframe_class, engine_count, passengers, range_nm, demand_score, safety_score, thrust, weight, efficiency, reliability, inventory_on_hand')
+            .eq('entrepreneur_corp_id', id).order('created_at', { ascending: false }),
+          _supabase.from('ent_engine_inventory')
+            .select('engine_design_id, quantity, engine:ent_aircraft_designs!engine_design_id(name)')
+            .eq('entrepreneur_corp_id', id).gt('quantity', 0),
+        ]);
         if (adErr) console.warn('[entrepreneur-corp] designs fetch error:', adErr.message);
+        if (invErr) console.warn('[entrepreneur-corp] engine inventory fetch error:', invErr.message);
         const designs = adData || [];
+        // Engine stock — single source: ent_engine_inventory. Own-produced and
+        // bought-from-others both land here, so the design row reads from this
+        // map regardless of origin.
+        const engInvByDesign = new Map((invData || []).map(r => [r.engine_design_id, Number(r.quantity) || 0]));
         const dRow = (d) => {
           const prog = d.status === 'researching'
             ? `<span class="num amber">researching ${d.research_ticks_total - d.research_ticks_remaining}/${d.research_ticks_total}</span>`
             : (d.status === 'available' ? `<span class="num green">available</span>` : `<span class="num muted">${escapeHtml(d.status)}</span>`);
           const isAvail = d.status === 'available';
-          const stock = Number(d.inventory_on_hand) || 0;
+          const stock = d.design_type === 'engine'
+            ? (engInvByDesign.get(d.id) || 0)
+            : (Number(d.inventory_on_hand) || 0);
           const stats = d.design_type === 'engine'
             ? `thrust ${d.thrust} · weight ${d.weight} · eff ${d.efficiency} · rel ${d.reliability} · Q${d.quality}`
             : `${escapeHtml(d.airframe_class || '')} · ${d.engine_count}× eng · ${d.passengers} pax · range ${d.range_nm} · demand ${d.demand_score} · safety ${d.safety_score} · Q${d.quality}`;
@@ -3565,11 +3577,7 @@ function initials(s, n) {
           ? `<div class="section-heading"><span class="sans">Active</span><span class="serif">Production</span></div>${prData.map(prRow).join('')}`
           : '';
 
-        // Engine holdings (20270235): engines bought from other manufacturers.
-        const { data: invData, error: invErr } = await _supabase.from('ent_engine_inventory')
-          .select('quantity, engine:ent_aircraft_designs!engine_design_id(name)')
-          .eq('entrepreneur_corp_id', id).gt('quantity', 0);
-        if (invErr) console.warn('[entrepreneur-corp] engine inventory fetch error:', invErr.message);
+        // Engine holdings — own-produced + bought, single inventory source.
         const inventorySection = (invData && invData.length)
           ? `<div class="section-heading"><span class="sans">Engine</span><span class="serif">Holdings</span></div>` +
             invData.map(r => `<div class="cf-row"><div class="who">${escapeHtml(r.engine?.name || 'Engine')}</div><span class="num green">${r.quantity} units</span></div>`).join('')
