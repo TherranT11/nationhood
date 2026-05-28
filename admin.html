@@ -42,7 +42,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { fmtBudgetCurrency, escapeHtml, escapeAttr } from './js/utils.js';
 import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS } from './js/game/config.js';
-import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isGovernmentPresidential } from './js/game/government-types.js';
+import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, isGovernmentPresidential } from './js/game/government-types.js'
 import { RAW_SCALING_DIVISORS } from './js/game/diplomacy-constants.js';
 import { FISCAL_CATEGORIES, FISCAL_TO_MINISTRY_KEY, computeMinistryPolicyCost, getInflationMultiplier, buildBudgetData, applyTradeTariffOverride, applyGdpGrowth, calculateNationalBudget } from './js/game/budget.js';
 import { processElections, processGovernmentVacancy, resolveNoConfidence, runManualElectionByGovernmentType } from './js/game/elections.js';
@@ -150,6 +150,8 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         await loadProvinceNations();
         await loadInspectorNations();
         await loadMinistryConfig();
+        await loadAddNationInit();
+        await loadAddPartyInit();
     }
 
     // ==================== SHARD TAB ====================
@@ -1898,6 +1900,280 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         });
     }
 
+    // ==================== ADD NATION TAB ====================
+    // Politician refocus: this form seeds nations for the Politician segment.
+    // The five politician_* columns are entered inline in the form HTML
+    // (companion migration 20270363); the legacy 26-stat 0-100 grid is gone.
+    // The legacy nations.gdp / nations.debt columns are mirrored server-side
+    // from politician_gdp / politician_debt inside admin_create_nation, so the
+    // (legacy) Parties surface keeps showing sensible numbers.
+
+    let nnPolicyCache = [];
+
+    // Single source of truth for which UI fields / payload keys each gov-type uses.
+    function nnGovFlags(govKey) {
+        return {
+            isPres: govKey === 'presidential' || govKey === 'semipresidential',
+            hasPM: govKey !== 'presidential',
+            isMonarchy: govKey === 'constitutional_monarchy' || govKey === 'absolute_monarchy',
+            isAbsolute: govKey === 'absolute_monarchy',
+        };
+    }
+
+    function onAddNationGovType() {
+        const t = document.getElementById('nn-govtype')?.value;
+        if (!t) return;
+        const { isMonarchy, isPres, isAbsolute, hasPM } = nnGovFlags(t);
+        const show = (id, on) => { const e = document.getElementById(id); if (e) e.style.display = on ? '' : 'none'; };
+        show('nn-dynasty-wrap', isMonarchy);
+        show('nn-presterm-wrap', isPres);
+        show('nn-preslimit-wrap', isPres);
+        show('nn-parlterm-wrap', hasPM && !isAbsolute);
+        const titleEl = document.getElementById('nn-hos_title');
+        if (titleEl && (titleEl.value === 'President' || titleEl.value === 'King' || titleEl.value === '')) {
+            titleEl.value = isMonarchy ? 'King' : 'President';
+        }
+        const note = document.getElementById('nn-election-note');
+        if (note) note.textContent = isAbsolute
+            ? 'Absolute Monarchy: no elections — seats are static and a caretaker royal government holds indefinitely.'
+            : 'First election fires 1–6 ticks after creation (caretaker handoff).';
+    }
+
+    async function loadAddNationPolicies() {
+        const box = document.getElementById('nn-policies-list');
+        if (!box) return;
+        try {
+            const { data, error } = await _supabase.from('policies')
+                .select('id, policy_name, major_sector, policy_type, policy_options(id, option_name, option_order, is_active)')
+                .order('major_sector').order('policy_name');
+            if (error) throw error;
+            // Keep every policy (both 'structural' and 'lever'). Each carries its
+            // own active options sorted by option_order; the form renders an
+            // inline select per policy so the admin can pick the starting choice.
+            nnPolicyCache = (data || []).map(p => ({
+                ...p,
+                policy_options: (p.policy_options || [])
+                    .filter(o => o.is_active !== false)
+                    .sort((a, b) => (a.option_order ?? 0) - (b.option_order ?? 0)),
+            }));
+            renderAddNationPolicies(nnPolicyCache);
+        } catch (err) {
+            console.error('loadAddNationPolicies failed', err);
+            box.innerHTML = '<span style="color:#e57373;">Failed to load policies.</span>';
+        }
+    }
+
+    function renderAddNationPolicies(list) {
+        const box = document.getElementById('nn-policies-list');
+        if (!box) return;
+        if (!list.length) { box.innerHTML = '<span style="color:#888;">No matching policies.</span>'; return; }
+        box.innerHTML = list.map(p => {
+            const opts = p.policy_options || [];
+            const sel = opts.length
+                ? `<select class="nn-pol-opt" data-policy="${p.id}" style="font-size:0.72rem; max-width:220px; margin-left:6px;">` +
+                  opts.map((o, i) => `<option value="${o.id}"${i === 0 ? ' selected' : ''}>${o.option_name}</option>`).join('') +
+                  '</select>'
+                : '';
+            return `<div style="display:flex; align-items:center; gap:6px; padding:2px 0; font-size:0.82rem;">` +
+                `<label style="flex:1;"><input type="checkbox" class="nn-pol" value="${p.id}"> ` +
+                `<span style="color:#888;">[${p.major_sector || '—'}]</span> ${p.policy_name}</label>${sel}</div>`;
+        }).join('');
+    }
+
+    function filterAddNationPolicies() {
+        const q = (document.getElementById('nn-policy-filter')?.value || '').toLowerCase();
+        renderAddNationPolicies(nnPolicyCache.filter(p =>
+            !q || (p.policy_name || '').toLowerCase().includes(q) || (p.major_sector || '').toLowerCase().includes(q)));
+    }
+
+    // Diplomacy proximities — one input per existing nation, sourced from the
+    // shared `nations` array (already loaded by loadElectionNations earlier in
+    // loadAllData).
+    function renderAddNationProximities() {
+        const box = document.getElementById('nn-proximities');
+        if (!box) return;
+        const list = (nations || []).slice().sort((a, b) =>
+            (a.name || '').localeCompare(b.name || ''));
+        if (!list.length) { box.innerHTML = '<span style="color:#888;">No existing nations yet.</span>'; return; }
+        const def = document.getElementById('nn-proximity-default')?.value || '80';
+        box.innerHTML = list.map(n =>
+            `<div style="display:flex; justify-content:space-between; align-items:center; padding:3px 0; font-size:0.82rem;">` +
+            `<span>${escHtml(n.name)}</span>` +
+            `<input type="number" class="nn-prox" data-nation="${n.id}" min="0" max="100" value="${def}" style="width:60px;"></div>`
+        ).join('');
+    }
+
+    function applyDefaultProximity() {
+        const v = document.getElementById('nn-proximity-default')?.value;
+        if (v === undefined) return;
+        document.querySelectorAll('.nn-prox').forEach(inp => { inp.value = v; });
+    }
+
+    async function loadAddNationContinents() {
+        try {
+            const { data } = await _supabase.from('nations').select('continent');
+            const dl = document.getElementById('nn-continent-list');
+            if (!dl) return;
+            const seen = [...new Set((data || []).map(n => n.continent).filter(Boolean))].sort();
+            dl.innerHTML = seen.map(c => `<option value="${c}">`).join('');
+        } catch (_) { /* non-fatal */ }
+    }
+
+    // Map the form's gov-type key to (government_type, hos_election_method).
+    const NN_GOVTYPE_MAP = {
+        parliamentary:          { gt: 'Parliamentary',     method: 'parliamentary' },
+        presidential:           { gt: 'Presidential',      method: 'direct_vote' },
+        semipresidential:       { gt: 'Semi-Presidential', method: 'direct_vote' },
+        constitutional_monarchy:{ gt: 'Parliamentary',     method: 'hereditary' },
+        absolute_monarchy:      { gt: 'Absolute Monarchy', method: 'hereditary' },
+    };
+
+    function nnVal(id) { const e = document.getElementById(id); return e ? e.value.trim() : ''; }
+
+    async function createNation(btn) {
+        const statusEl = document.getElementById('nn-status');
+        const setErr = m => { statusEl.style.color = '#e57373'; statusEl.textContent = m; };
+        statusEl.textContent = '';
+        const govKey = nnVal('nn-govtype');
+        const map = NN_GOVTYPE_MAP[govKey];
+        if (!map) return setErr('Pick a government type.');
+        if (nnVal('nn-name').length < 2) return setErr('Name must be at least 2 characters.');
+        if (nnVal('nn-capital').length < 2) return setErr('Capital is required.');
+
+        const { isPres, hasPM, isMonarchy } = nnGovFlags(govKey);
+
+        const policies = [...document.querySelectorAll('.nn-pol:checked')].map(cb => {
+            const sel = document.querySelector(`.nn-pol-opt[data-policy="${cb.value}"]`);
+            return { id: cb.value, option_id: sel?.value || null };
+        });
+
+        const payload = {
+            name: nnVal('nn-name'),
+            official_name: nnVal('nn-official_name'),
+            capital: nnVal('nn-capital'),
+            continent: nnVal('nn-continent'),
+            government_type: map.gt,
+            hos_election_method: map.method,
+            total_seats: nnVal('nn-total_seats'),
+            max_parties: nnVal('nn-max_parties'),
+            head_of_state_title: nnVal('nn-hos_title'),
+            head_of_state_first_name: nnVal('nn-hos_first'),
+            head_of_state_last_name: nnVal('nn-hos_last'),
+            head_of_state_age: nnVal('nn-hos_age'),
+            population: nnVal('nn-population'),
+            // Politician-side stats — the only headline numbers the form collects.
+            // admin_create_nation mirrors politician_gdp/politician_debt into the
+            // legacy nations.gdp/nations.debt columns for the (legacy) parties view.
+            politician_gdp:             nnVal('nn-politician_gdp'),
+            politician_budget:          nnVal('nn-politician_budget'),
+            politician_debt:            nnVal('nn-politician_debt'),
+            politician_stability:       nnVal('nn-politician_stability'),
+            politician_civil_freedoms:  nnVal('nn-politician_civil_freedoms'),
+            politician_gdp_growth:      nnVal('nn-politician_gdp_growth'),
+            proximities: Object.fromEntries(
+                [...document.querySelectorAll('.nn-prox')].map(i => [i.dataset.nation, i.value])
+            ),
+            flag_url: nnVal('nn-flag_url'),
+            demonym: nnVal('nn-demonym'),
+            currency_name: nnVal('nn-currency_name'),
+            religion: nnVal('nn-religion'),
+            languages: nnVal('nn-languages'),
+            founded_year: nnVal('nn-founded_year'),
+            motto: nnVal('nn-motto'),
+            overview: nnVal('nn-overview'),
+            policies,
+        };
+        if (isMonarchy) payload.dynasty_name = nnVal('nn-dynasty_name');
+        if (isPres) {
+            payload.presidential_term_ticks = nnVal('nn-presidential_term_ticks');
+            payload.presidential_term_limit = nnVal('nn-presidential_term_limit');
+        }
+        if (hasPM) payload.parliamentary_term_ticks = nnVal('nn-parliamentary_term_ticks');
+
+        await withButtonLock(btn, async () => {
+            try {
+                const { data, error } = await _supabase.rpc('admin_create_nation', { p_payload: payload });
+                if (error) throw error;
+                if (!data || !data.success) {
+                    return setErr('Create failed: ' + (data?.reason || 'unknown'));
+                }
+                statusEl.style.color = '#81c784';
+                statusEl.textContent = `Created "${data.name}" (${data.government_type}) — ${data.ministries} ministries, ` +
+                    `${data.diplomatic_relations} relations, ${data.policies} policies` +
+                    (data.first_election_tick ? `, first election @ tick ${data.first_election_tick}.` : ' (no elections).');
+                document.getElementById('nn-name').value = '';
+                document.getElementById('nn-capital').value = '';
+                await Promise.all([loadSectorNations(), loadProvinceNations(), loadInspectorNations(),
+                                   loadElectionNations(), loadAddNationContinents()]);
+                // Pick up the just-created nation in the per-nation proximity list.
+                renderAddNationProximities();
+            } catch (err) {
+                console.error('createNation failed', err);
+                setErr('Create failed: ' + (err.message || String(err)));
+            }
+        });
+    }
+
+    async function loadAddNationInit() {
+        onAddNationGovType();
+        renderAddNationProximities();
+        await loadAddNationContinents();
+        await loadAddNationPolicies();
+    }
+
+    // ==================== ADD PARTY TAB ====================
+    // Creates a Politician Movement Party (faction_type='movement_party') —
+    // surfaces on politician-movements.html, hidden from every legacy parties
+    // surface. The archetype/stronghold mechanic is parties-only and doesn't
+    // apply here, so the form has no archetype input.
+    function loadAddPartyInit() {
+        // Nation dropdown — reuse the shared `nations` list (already loaded by
+        // loadElectionNations earlier in loadAllData) instead of re-querying.
+        const sel = document.getElementById('ap-nation');
+        if (sel) sel.innerHTML = '<option value="">-- Choose a nation --</option>' +
+            nations.map(n => `<option value="${n.id}">${escHtml(n.name)}</option>`).join('');
+    }
+
+    async function createParty(btn) {
+        const statusEl = document.getElementById('ap-status');
+        const setErr = m => { statusEl.style.color = '#e57373'; statusEl.textContent = m; };
+        statusEl.textContent = '';
+        if (!nnVal('ap-nation')) return setErr('Pick a nation.');
+        if (nnVal('ap-name').length < 2) return setErr('Party name must be at least 2 characters.');
+        if (nnVal('ap-abbr').length < 1) return setErr('Abbreviation is required.');
+
+        const payload = {
+            nation_id: nnVal('ap-nation'),
+            faction_name: nnVal('ap-name'),
+            abbreviation: nnVal('ap-abbr'),
+            seats: nnVal('ap-seats'),
+            party_color: nnVal('ap-color'),
+            party_logo: nnVal('ap-logo'),
+            custom_logo_url: nnVal('ap-logo-url'),
+            party_description: nnVal('ap-desc'),
+            leader_first_name: nnVal('ap-leader-first'),
+            leader_last_name: nnVal('ap-leader-last'),
+            leader_age: nnVal('ap-leader-age'),
+        };
+
+        await withButtonLock(btn, async () => {
+            try {
+                const { data, error } = await _supabase.rpc('admin_create_party', { p_payload: payload });
+                if (error) throw error;
+                if (!data || !data.success) return setErr('Create failed: ' + (data?.reason || 'unknown'));
+                statusEl.style.color = '#81c784';
+                statusEl.textContent = `Created movement party "${data.faction_name}" [${data.abbreviation}] — ${data.seats} seats.`;
+                document.getElementById('ap-name').value = '';
+                document.getElementById('ap-abbr').value = '';
+                document.getElementById('ap-desc').value = '';
+                await loadNations();
+            } catch (err) {
+                console.error('createParty failed', err);
+                setErr('Create failed: ' + (err.message || String(err)));
+            }
+        });
+    }
+
     // ==================== SECTORS TAB — PHASE 1: POPULARITY EDITOR + DIAGNOSTICS ====================
 
     let sectorPopFactions = [];
@@ -2432,6 +2708,11 @@ window.recomputeProvinceBalance = recomputeProvinceBalance;
 window.addProvince = addProvince;
 window.deleteProvince = deleteProvince;
 window.saveProvinceWeights = saveProvinceWeights;
+window.onAddNationGovType = onAddNationGovType;
+window.filterAddNationPolicies = filterAddNationPolicies;
+window.createNation = createNation;
+window.applyDefaultProximity = applyDefaultProximity;
+window.createParty = createParty;
 window.loadFactionPopularityEditor = loadFactionPopularityEditor;
 window.onPopularityCellInput = onPopularityCellInput;
 window.saveFactionPopularityChanges = saveFactionPopularityChanges;

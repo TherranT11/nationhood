@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Politician — Nation</title>
+<style>
+/* Topbar / nav / body base live in js/politician-topbar.js. This page styles
+   the nation-brief card — amber-accented to read as "regal / sovereign", a
+   deliberate visual break from the teal politician chrome. */
+* { box-sizing:border-box; margin:0; padding:0; }
+.content { padding:32px 24px 24px; }
+
+.nation-card { background:#0d0d0c; border:0.5px solid rgba(200,166,78,0.15);
+  border-radius:6px; padding:24px; margin-bottom:24px; }
+.nation-card__top { display:flex; align-items:flex-start; gap:18px; margin-bottom:20px; }
+.nation-card__flag { width:88px; height:60px; object-fit:cover; border:0.5px solid rgba(255,255,255,0.1);
+  border-radius:3px; flex-shrink:0; background:#121212; }
+.nation-card__title { flex:1; min-width:0; }
+.nation-card__title h1 { font-size:26px; font-weight:500; color:#fff; line-height:1.1; margin-bottom:6px;
+  letter-spacing:-0.01em; }
+.nation-card__title h1 .name { font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#c8a64e; }
+.nation-card__title .subtitle { font-size:12px; color:#888; margin-bottom:10px; line-height:1.5; }
+.tags { display:flex; gap:6px; flex-wrap:wrap; }
+.tag { font-size:9px; letter-spacing:0.1em; text-transform:uppercase; color:#c8a64e;
+  border:0.5px solid rgba(200,166,78,0.4); padding:4px 10px; border-radius:3px; }
+
+.info-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px;
+  padding-top:14px; padding-bottom:14px; border-top:0.5px solid rgba(255,255,255,0.06);
+  border-bottom:0.5px solid rgba(255,255,255,0.06); margin-bottom:14px; }
+.info-cell .label { font-size:9px; letter-spacing:0.13em; color:#666; margin-bottom:6px; text-transform:uppercase; }
+.info-cell .value { font-size:18px; font-weight:500; color:#fff; line-height:1.2; }
+.info-cell .sub   { font-size:11px; color:#888; margin-top:4px; line-height:1.4; }
+
+.stats-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:18px; padding-top:6px; }
+.stat-cell .row { display:flex; justify-content:space-between; align-items:baseline; }
+.stat-cell .row .label { font-size:9px; letter-spacing:0.13em; color:#666; text-transform:uppercase; }
+.stat-cell .row .value { font-size:14px; font-weight:600; color:#fff; }
+.stat-cell .bar  { height:5px; background:rgba(255,255,255,0.06); border-radius:3px; margin-top:8px; overflow:hidden; }
+.stat-cell .fill { height:100%; border-radius:3px; }
+.stat-cell .sub  { font-size:11px; color:#888; margin-top:6px; line-height:1.4; }
+
+/* Money variant — label small/dim above, dollar figure large and centered
+   below so the headline number reads as the focal point of the cell. */
+.stat-cell.money { text-align:center; }
+.stat-cell.money .label { display:block; font-size:10px; letter-spacing:0.13em;
+  color:#666; text-transform:uppercase; margin-bottom:8px; }
+.stat-cell.money .value { display:block; font-size:26px; font-weight:600;
+  color:#fff; font-family:monospace; letter-spacing:0.02em; }
+
+/* Jump nav: short pills that scroll to + open the matching collapsible. */
+.jump-nav { display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
+.jump-nav button { font-family:monospace; font-size:10px; letter-spacing:0.08em;
+  text-transform:uppercase; color:#888; background:#121212;
+  border:0.5px solid rgba(255,255,255,0.08); border-radius:3px;
+  padding:8px 14px; cursor:pointer; transition:all 0.15s; }
+.jump-nav button:hover { color:#5aafa5; border-color:rgba(90,175,165,0.4); }
+
+/* Collapsible sectors. Native <details> for free open/close + a chevron-style
+   indicator via summary::after. scroll-margin-top so the jump-nav doesn't
+   land flush against the viewport edge. */
+.sec { background:#0d0d0c; border:0.5px solid rgba(255,255,255,0.08);
+  border-radius:6px; margin-bottom:10px; scroll-margin-top:18px; }
+.sec summary { padding:14px 18px; cursor:pointer; list-style:none;
+  font-size:12px; letter-spacing:0.1em; text-transform:uppercase;
+  color:#888; font-weight:600;
+  display:flex; align-items:center; justify-content:space-between; }
+.sec summary::-webkit-details-marker { display:none; }
+.sec summary::after { content:'+'; color:#555; font-size:16px; font-weight:400; }
+.sec[open] summary { color:#d4d4d4; border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.sec[open] summary::after { content:'−'; }
+.sec-body  { padding:18px; }
+.sec-empty { color:#555; font-size:12px; font-style:italic; text-align:center; padding:24px 0; }
+
+/* Back-to-Top button — bottom-right of every section body. Scrolls the
+   page back up to the jump nav so the section list is in view again. */
+.sec-foot { display:flex; justify-content:flex-end; margin-top:14px;
+  padding-top:12px; border-top:0.5px solid rgba(255,255,255,0.04); }
+.back-to-top { font-family:monospace; font-size:10px; letter-spacing:0.08em;
+  text-transform:uppercase; color:#888; background:transparent;
+  border:0.5px solid rgba(255,255,255,0.08); border-radius:3px;
+  padding:6px 12px; cursor:pointer; transition:all 0.15s;
+  display:inline-flex; align-items:center; gap:6px; }
+.back-to-top:hover { color:#5aafa5; border-color:rgba(90,175,165,0.4); }
+
+/* National Characteristics body — one row per stat: a tier-colored value
+   card on the left, a bold lead + colored accent + prose continuation on
+   the right, and the baseline italic description underneath. The tier
+   color (good / mid / bad) is set inline per row via the --tier custom
+   property so border, labels, and accent text all read together. */
+.nat-list { display:flex; flex-direction:column; }
+.nat-row  { display:grid; grid-template-columns:170px 1fr; gap:24px;
+  padding:14px 0; align-items:start;
+  border-bottom:0.5px solid rgba(255,255,255,0.04); }
+.nat-row:last-child { border-bottom:none; }
+
+.nat-card { background:#0e1212; border:1px solid var(--tier, #5aafa5);
+  border-radius:6px; padding:12px 14px; min-height:96px; }
+.nat-card__label { font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
+  color:var(--tier, #5aafa5); font-weight:600; margin-bottom:8px; }
+.nat-card__value { font-size:30px; font-weight:600; color:#fff;
+  font-family:monospace; line-height:1.05; letter-spacing:0.01em; }
+.nat-card__scale { font-size:11px; color:#666; margin-left:4px; font-family:monospace; }
+.nat-card__tier  { display:flex; align-items:center; gap:6px; margin-top:10px;
+  font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
+  color:var(--tier, #5aafa5); font-weight:600; }
+.nat-card__tier::before { content:'●'; font-size:8px; line-height:1; }
+
+.nat-body { padding-top:2px; }
+.nat-body__head   { font-size:13px; color:#d4d4d4; line-height:1.6; }
+.nat-body__head strong { color:#fff; font-weight:600; }
+.nat-body__accent { color:var(--tier, #5aafa5); font-weight:500; }
+.nat-body__desc   { font-style:italic; font-size:11px; color:#666;
+  line-height:1.55; margin-top:10px; }
+
+/* Corporations list — one row per entrepreneur corp HQ'd in this nation.
+   Logo (industry-coloured 2-letter badge) · name + sector · listing pill ·
+   CEO · valuation. Valuation uses the same computeEntrepreneurValuation
+   helper the entrepreneur-corporations page does — one source. */
+.corp-list { display:flex; flex-direction:column; }
+.corp-head { display:grid; grid-template-columns:44px 2fr 90px 1.3fr 110px;
+  align-items:center; gap:14px; padding:0 4px 8px;
+  border-bottom:0.5px solid rgba(255,255,255,0.10);
+  font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
+  color:#666; font-weight:600; }
+.corp-head .right { text-align:right; }
+.corp-row  { display:grid; grid-template-columns:44px 2fr 90px 1.3fr 110px;
+  align-items:center; gap:14px; padding:11px 4px;
+  border-bottom:0.5px solid rgba(255,255,255,0.05); }
+.corp-row:last-child { border-bottom:none; }
+.corp-badge { width:36px; height:36px; border-radius:4px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:monospace; font-size:13px; font-weight:600; letter-spacing:0.05em;
+  color:#cfcabf; background:rgba(255,255,255,0.06); }
+.corp-badge.construction            { background:#1a2218; color:#8aaa6a; }
+.corp-badge.banking                 { background:#171f28; color:#7a9aab; }
+.corp-badge.shipping                { background:#221d14; color:#c89e6e; }
+.corp-badge.real_estate             { background:#211a21; color:#aa7aaa; }
+.corp-badge.airline                 { background:#152028; color:#7ab8d0; }
+.corp-badge.aviation_manufacturing  { background:#221615; color:#c88a8a; }
+.corp-name { font-size:13px; color:#fff; font-weight:500; line-height:1.2; }
+.corp-sub  { font-size:9px; letter-spacing:0.1em; text-transform:uppercase;
+  color:#888; margin-top:3px; font-weight:500; }
+.corp-listing { display:inline-block; font-size:10px; letter-spacing:0.08em;
+  text-transform:uppercase; padding:3px 9px; border-radius:3px;
+  font-weight:500; text-align:center; }
+.corp-listing.public  { background:#1a2535; color:#7a9aab; }
+.corp-listing.private { background:#1f1f1f; color:#888; }
+.corp-ceo { font-size:12px; color:#d4d4d4; }
+.corp-val { font-size:13px; color:#cfcabf; font-family:monospace;
+  text-align:right; font-variant-numeric:tabular-nums; }
+
+.loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
+
+/* Mobile refresh — tighter padding on the whole content, wrap the hero,
+   collapse the info / stats grids to 2 columns, shrink the jump-nav pills
+   and the section padding so the page breathes on a phone. */
+@media (max-width:700px) {
+  .content { padding:18px 12px 16px; }
+  .nation-card { padding:16px; }
+  .nation-card__top { flex-direction:column; gap:12px; margin-bottom:14px; }
+  .nation-card__flag { width:64px; height:44px; }
+  .nation-card__title h1 { font-size:22px; }
+  .nation-card__title .subtitle { font-size:11px; }
+  .tag { font-size:8.5px; padding:3px 8px; }
+  .info-grid, .stats-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
+  .info-cell .value { font-size:16px; }
+  .stat-cell .row .value { font-size:13px; }
+  .stat-cell.money .value { font-size:20px; }
+  .jump-nav { gap:4px; margin-bottom:12px; }
+  .jump-nav button { font-size:9px; padding:6px 10px; letter-spacing:0.06em; }
+  .sec summary { padding:12px 14px; font-size:11px; letter-spacing:0.06em; }
+  .sec-body { padding:14px; }
+  .nat-row { grid-template-columns:1fr; gap:10px; }
+  .nat-card { min-height:auto; }
+  .nat-card__value { font-size:24px; }
+  .nat-body__head { font-size:12px; }
+  .corp-row, .corp-head { grid-template-columns:36px 1fr auto; gap:10px; }
+  .corp-row { padding:10px 2px; }
+  .corp-head .col-type, .corp-head .col-ceo,
+  .corp-row .corp-listing, .corp-row .corp-ceo { display:none; }
+}
+@media (max-width:420px) {
+  .info-grid, .stats-grid { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+
+<div id="pol-topbar-container"></div>
+
+<div class="content" id="content" style="display:none;">
+  <div class="nation-card" id="nation-card">
+    <div class="nation-card__top">
+      <img class="nation-card__flag" id="nc-flag" alt="" onerror="this.style.visibility='hidden'">
+      <div class="nation-card__title">
+        <h1><span id="nc-title-prefix"></span><span class="name" id="nc-title-name">—</span></h1>
+        <div class="subtitle" id="nc-subtitle"></div>
+        <div class="tags" id="nc-tags"></div>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-cell">
+        <div class="label">Capital</div>
+        <div class="value" id="nc-capital">—</div>
+      </div>
+      <div class="info-cell">
+        <div class="label">Population</div>
+        <div class="value" id="nc-population">—</div>
+      </div>
+      <div class="info-cell">
+        <div class="label">Head of State</div>
+        <div class="value" id="nc-hos">—</div>
+        <div class="sub"   id="nc-hos-sub"></div>
+      </div>
+      <div class="info-cell">
+        <div class="label">Head of Gov't</div>
+        <div class="value" id="nc-hog">—</div>
+        <div class="sub"   id="nc-hog-sub"></div>
+      </div>
+    </div>
+
+    <div class="stats-grid" id="nc-stats"></div>
+  </div>
+
+  <nav class="jump-nav" id="jump-nav">
+    <button data-target="sec-nation">Nation</button>
+    <button data-target="sec-govt">Govt</button>
+    <button data-target="sec-elections">Elections</button>
+    <button data-target="sec-committees">Committees</button>
+    <button data-target="sec-laws">Laws</button>
+    <button data-target="sec-parties">Parties</button>
+    <button data-target="sec-economy">Economy</button>
+    <button data-target="sec-corp">Corporations</button>
+    <button data-target="sec-military">Military</button>
+    <button data-target="sec-conflicts">Conflicts</button>
+    <button data-target="sec-world">World Orgs</button>
+    <button data-target="sec-ngos">NGOs</button>
+    <button data-target="sec-dissident">Dissident</button>
+  </nav>
+
+  <details id="sec-nation" class="sec">
+    <summary>National Characteristics</summary>
+    <div class="sec-body" id="sec-nation-body">
+      <div class="sec-empty">Loading…</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-govt" class="sec">
+    <summary>Government &amp; Politics</summary>
+    <div class="sec-body">
+      <div class="sec-empty">Nothing recorded yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-elections" class="sec">
+    <summary>Elections</summary>
+    <div class="sec-body">
+      <div class="sec-empty">No elections recorded yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-committees" class="sec">
+    <summary>Committees</summary>
+    <div class="sec-body">
+      <div class="sec-empty">No committees recorded yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-laws" class="sec">
+    <summary>Laws</summary>
+    <div class="sec-body">
+      <div class="sec-empty">No laws recorded yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-parties" class="sec">
+    <summary>Political Parties</summary>
+    <div class="sec-body">
+      <div class="sec-empty">No parties listed yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-economy" class="sec">
+    <summary>Economy &amp; Trade</summary>
+    <div class="sec-body">
+      <div class="sec-empty">Nothing recorded yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-corp" class="sec">
+    <summary>Corporations</summary>
+    <div class="sec-body" id="sec-corp-body">
+      <div class="sec-empty">Loading…</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-military" class="sec">
+    <summary>Armed Forces</summary>
+    <div class="sec-body">
+      <div class="sec-empty">Nothing recorded yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-conflicts" class="sec">
+    <summary>Conflicts &amp; Issues</summary>
+    <div class="sec-body">
+      <div class="sec-empty">No active conflicts or open issues yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-world" class="sec">
+    <summary>World Organizations</summary>
+    <div class="sec-body">
+      <div class="sec-empty">No international memberships recorded yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-ngos" class="sec">
+    <summary>NGOs &amp; Civil Society</summary>
+    <div class="sec-body">
+      <div class="sec-empty">No NGOs listed yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-dissident" class="sec">
+    <summary>Dissident Groups</summary>
+    <div class="sec-body">
+      <div class="sec-empty">No dissident groups listed yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+</div>
+
+<div id="loading" class="loading">LOADING...</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { bootstrapPolitician } from './js/politician-topbar.js';
+import { industryLabel, ownerDisplayName, fmtValuation } from './js/utils.js';
+import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
+import { fetchCorpBookAggregates } from './js/corp-book-value.js';
+
+// Tier helpers — the scored stat rows in the top card and the prose cards
+// in the National Characteristics body both read from the same tier arrays
+// declared further down (STABILITY_TIERS / CIVIL_FREEDOMS_TIERS). The top
+// row uses tier.color for the bar fill and tier.label for the sub-line;
+// the body uses lead/accent/tail for the prose. One source per stat.
+function pickTier(tiers, value) {
+  return tiers.find(t => value >= t.min) || tiers[tiers.length - 1];
+}
+
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+function escAttr(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
+
+function formatPopulation(n) {
+  const v = Number(n) || 0;
+  if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + ' million';
+  if (v >= 1_000)     return (v / 1_000).toFixed(1).replace(/\.0$/, '') + ' thousand';
+  return String(v);
+}
+
+// Compact money formatter for the politician-side GDP / Budget / Debt cells.
+// Trims trailing .0 so a round number reads "$441B", not "$441.00B".
+function fmtMoney(n) {
+  const abs = Math.abs(Number(n) || 0);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 1e9) return sign + '$' + (abs / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+  if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (abs >= 1e3) return sign + '$' + Math.round(abs / 1e3) + 'k';
+  return sign + '$' + Math.round(abs);
+}
+
+function govTypeLabel(govType) {
+  if (!govType) return '';
+  return String(govType).toUpperCase();
+}
+
+function splitOfficialName(officialName, fallbackName, govType) {
+  // Prefer the configured official_name (e.g. "Kingdom of Hajjara"); split off
+  // the trailing word for italic. Fall back to a gov-type-derived prefix.
+  if (officialName && officialName.includes(' ')) {
+    const idx = officialName.lastIndexOf(' ');
+    return { prefix: officialName.slice(0, idx + 1), name: officialName.slice(idx + 1) };
+  }
+  if (govType === 'Absolute Monarchy') return { prefix: 'Kingdom of ',  name: fallbackName || '' };
+  if (govType === 'Presidential' || govType === 'Semi-Presidential') return { prefix: 'Republic of ', name: fallbackName || '' };
+  return { prefix: '', name: fallbackName || officialName || '' };
+}
+
+function buildTags(nation, profile) {
+  const tags = [];
+  if (nation.government_type) tags.push(govTypeLabel(nation.government_type));
+  if (profile?.founded_year)  tags.push(`Founded ${profile.founded_year}`);
+  return tags;
+}
+
+async function init() {
+  let ctx = null;
+  try { ctx = await bootstrapPolitician('nation'); }
+  catch (err) {
+    console.error('politician-nation: bootstrap failed', err);
+    document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
+    return;
+  }
+  if (!ctx) return;
+
+  // Bootstrap already fetched a thin nation row (id, name, flag_url, profile flag).
+  // Refetch with the full surface we need for the brief card, plus the active
+  // Prime Minister row for the Head-of-Gov't cell.
+  let nation = null;
+  let pmMinistry = null;
+  if (ctx.faction?.nation_id) {
+    const nid = ctx.faction.nation_id;
+    try {
+      const [natRes, pmRes] = await Promise.all([
+        _supabase.from('nations')
+          .select(`
+            id, name, government_type, capital,
+            head_of_state_title, head_of_state_first_name, head_of_state_last_name,
+            population, dynasty_name,
+            politician_gdp, politician_budget, politician_debt,
+            politician_stability, politician_civil_freedoms, politician_gdp_growth,
+            nation_profiles(flag_url, official_name, motto, overview, founded_year)
+          `)
+          .eq('id', nid).maybeSingle(),
+        _supabase.from('ministries')
+          .select('minister_first_name, minister_last_name, party_id, factions(faction_name, leader_first_name, leader_last_name)')
+          .eq('nation_id', nid).eq('ministry_key', 'prime_minister').eq('is_active', true).maybeSingle(),
+      ]);
+      if (natRes.error) throw natRes.error;
+      nation = natRes.data;
+      if (!pmRes.error) pmMinistry = pmRes.data;  // PM is optional flair — soft-fail.
+    } catch (err) {
+      console.error('politician-nation: nation fetch failed', err);
+    }
+  }
+
+  if (!nation) {
+    document.getElementById('loading').textContent = 'No nation associated with this politician.';
+    return;
+  }
+
+  renderCard(nation, pmMinistry);
+  bindJumpNav();
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+  // Side panels that hit the DB. Fire-and-forget — failures render an
+  // empty state in their own section without blocking the page.
+  renderCorporations(nation.id);
+}
+
+// Jump-nav clicks open the matching <details> and scroll it into view.
+// Back-to-Top clicks just scroll to the target (the jump-nav itself) — no
+// open / close. scroll-margin-top in CSS keeps the section flush below the
+// topbar / nav rather than pinned to the viewport edge.
+function bindJumpNav() {
+  document.querySelectorAll('#jump-nav button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const det = document.getElementById(btn.dataset.target);
+      if (!det) return;
+      det.open = true;
+      det.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+  // Single delegated handler for every Back-to-Top button across all sections.
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.back-to-top');
+    if (!btn) return;
+    const target = document.getElementById(btn.dataset.target);
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
+function renderCard(n, pm) {
+  const p = (n.nation_profiles && (Array.isArray(n.nation_profiles) ? n.nation_profiles[0] : n.nation_profiles)) || {};
+  const flag = p.flag_url || `assets/flags/${n.name}.png`;
+  const { prefix, name } = splitOfficialName(p.official_name, n.name, n.government_type);
+
+  document.getElementById('nc-flag').src = flag;
+  document.getElementById('nc-flag').alt = `${n.name} flag`;
+  document.getElementById('nc-title-prefix').textContent = prefix;
+  document.getElementById('nc-title-name').textContent = name;
+
+  const subtitleText = p.motto || (p.overview || '').split(/[.—]\s/)[0] || '';
+  document.getElementById('nc-subtitle').textContent = subtitleText;
+
+  const tags = buildTags(n, p);
+  document.getElementById('nc-tags').innerHTML = tags.map(t => `<span class="tag">${escHtml(t)}</span>`).join('');
+
+  document.getElementById('nc-capital').textContent = n.capital || '—';
+  document.getElementById('nc-population').textContent = formatPopulation(n.population);
+
+  // Head of State + subline (dynasty name for monarchies, role descriptor otherwise).
+  const hosTitle = n.head_of_state_title || (n.government_type === 'Absolute Monarchy' ? 'King' : 'President');
+  const hosFirst = n.head_of_state_first_name || '';
+  const hosLast  = n.head_of_state_last_name  || '';
+  const hosName  = `${hosFirst} ${hosLast}`.trim();
+  document.getElementById('nc-hos').textContent = hosName ? `${hosTitle} ${hosName}` : '—';
+  const hosSub = n.government_type === 'Absolute Monarchy'
+    ? (n.dynasty_name ? `Of the ${n.dynasty_name}` : 'Reigning monarch')
+    : (n.government_type === 'Presidential' || n.government_type === 'Semi-Presidential' ? 'Elected head of state' : 'Ceremonial head of state');
+  document.getElementById('nc-hos-sub').textContent = hosSub;
+
+  // Head of Gov't — gov-type-aware. Parliamentary / Semi-Presidential /
+  // Constitutional Monarchy (which stores government_type='Parliamentary') all
+  // have a separate PM, looked up via ministries.ministry_key='prime_minister'.
+  // Presidential systems fuse HoS + HoG. Absolute monarchy has no premier.
+  const hogEl    = document.getElementById('nc-hog');
+  const hogSubEl = document.getElementById('nc-hog-sub');
+  if (n.government_type === 'Absolute Monarchy') {
+    hogEl.textContent = 'The Crown';
+    hogSubEl.textContent = 'no separate premier';
+  } else if (n.government_type === 'Presidential') {
+    hogEl.textContent = hosName ? `${hosTitle} ${hosName}` : '—';
+    hogSubEl.textContent = 'president leads the government';
+  } else {
+    // Prefer the minister fields on the ministry row; fall back to the seated
+    // party's leader if those aren't set. Final fallback: "Vacant".
+    const fac = pm && (Array.isArray(pm.factions) ? pm.factions[0] : pm.factions);
+    const pmFirst = pm?.minister_first_name || fac?.leader_first_name || '';
+    const pmLast  = pm?.minister_last_name  || fac?.leader_last_name  || '';
+    const pmName  = `${pmFirst} ${pmLast}`.trim();
+    hogEl.textContent = pmName ? `PM ${pmName}` : 'Vacant';
+    hogSubEl.textContent = fac?.faction_name ? `${fac.faction_name}-led government` : 'Prime Minister';
+  }
+
+  // Politician-side stats: three dollar cells (GDP / Budget / Debt) and two
+  // 0-100 scored bars (Stability / Civil Freedoms). All five read from the
+  // dedicated politician_* columns added in 20270361 — independent of the
+  // legacy nations columns the parties surface still uses.
+  const gdp       = Number(n.politician_gdp)            || 0;
+  const budget    = Number(n.politician_budget)         || 0;
+  const debt      = Number(n.politician_debt)           || 0;
+  const stability = Math.max(0, Math.min(100, Number(n.politician_stability)      || 0));
+  const freedoms  = Math.max(0, Math.min(100, Number(n.politician_civil_freedoms) || 0));
+
+  const stats = [
+    { kind: 'money', label: 'GDP',            value: gdp },
+    { kind: 'money', label: 'Budget',         value: budget },
+    { kind: 'money', label: 'Debt',           value: debt },
+    { kind: 'score', label: 'Stability',      value: stability, tiers: STABILITY_TIERS },
+    { kind: 'score', label: 'Civil Freedoms', value: freedoms,  tiers: CIVIL_FREEDOMS_TIERS },
+  ];
+
+  document.getElementById('nc-stats').innerHTML = stats.map(s => {
+    if (s.kind === 'money') {
+      return `<div class="stat-cell money">
+        <span class="label">${escHtml(s.label)}</span>
+        <span class="value">${escHtml(fmtMoney(s.value))}</span>
+      </div>`;
+    }
+    const tier = pickTier(s.tiers, s.value);
+    return `<div class="stat-cell">
+      <div class="row"><span class="label">${escHtml(s.label)}</span><span class="value">${Math.round(s.value)}</span></div>
+      <div class="bar"><div class="fill" style="width:${s.value}%; background:${tier.color};"></div></div>
+      <div class="sub">${escHtml(tier.label)}</div>
+    </div>`;
+  }).join('');
+
+  renderNationalCharacteristics(n);
+}
+
+// National Characteristics — tier definitions per stat. Each tier carries
+// the threshold (min value for score stats, min ratio for money stats), a
+// short label for the card bullet, a color, and a three-part body:
+//   lead   — bold opening fragment of the sentence
+//   accent — the colored phrase (uses the tier color)
+//   tail   — regular-weight prose continuation
+// The renderer composes <strong>{lead}</strong><span class=accent>{accent}</span>{tail}.
+// Adding tiers? Highest threshold first; the matcher walks top-down.
+const TIER_COLOR = {
+  green:    '#4ec98a',
+  teal:     '#5aafa5',
+  amber:    '#c8a64e',
+  orange:   '#d68a4e',
+  red:      '#d97070',
+  deepRed:  '#a85050',
+};
+
+const STABILITY_TIERS = [
+  { min: 81, label: 'Firm',     color: TIER_COLOR.green,
+    lead: 'The state functions as designed.',
+    accent: ' Politics happens in chambers, not in the streets',
+    tail: ' — protests stay civic, the security forces are visible without being feared, and government decisions translate smoothly into action.' },
+  { min: 61, label: 'Strained', color: TIER_COLOR.teal,
+    lead: 'Tensions are visible.',
+    accent: ' Protests draw crowds; commentators speak of "this difficult moment."',
+    tail: ' Things still work — but everyone can feel them being tested.' },
+  { min: 41, label: 'Unrest',   color: TIER_COLOR.amber,
+    lead: 'Riots break out in the cities.',
+    accent: ' Curfews come and go.',
+    tail: ' Going out after dark is no longer something one does without thinking.' },
+  { min: 21, label: 'Crisis',   color: TIER_COLOR.red,
+    lead: 'Authority is contested.',
+    accent: ' The provinces don’t always answer the capital.',
+    tail: ' Whole neighborhoods are no-go zones; the security forces are exhausted, divided, or unreliable.' },
+  { min:  0, label: 'Collapse', color: TIER_COLOR.deepRed,
+    lead: 'Anarchy.',
+    accent: ' The regime exists on paper.',
+    tail: ' Power belongs to whoever holds the street, and that changes block by block.' },
+];
+
+const GDP_GROWTH_TIERS = [
+  { min: 81, label: 'Booming',    color: TIER_COLOR.green,
+    lead: 'The economy roars.',
+    accent: ' Construction cranes crowd the skyline,',
+    tail: ' hiring signs are in every window, and the press writes admiring features about "the [name] miracle."' },
+  { min: 61, label: 'Healthy',    color: TIER_COLOR.teal,
+    lead: 'The economy is doing what it’s supposed to.',
+    accent: ' Jobs are added, prices behave,',
+    tail: ' and most people end the year a little better off than they began.' },
+  { min: 41, label: 'Stagnant',   color: TIER_COLOR.amber,
+    lead: 'The numbers wobble around the line.',
+    accent: ' Some quarters up, some down.',
+    tail: ' People stop expecting things to get better and start expecting them to stay the same.' },
+  { min: 21, label: 'Recession',  color: TIER_COLOR.red,
+    lead: 'The economy is shrinking.',
+    accent: ' Layoffs make the news weekly;',
+    tail: ' shops close; the property pages are full of foreclosures.' },
+  { min:  0, label: 'Depression', color: TIER_COLOR.deepRed,
+    lead: 'Whole industries die.',
+    accent: ' Banks fail or are nationalized.',
+    tail: ' Lines form for bread and for jobs that don’t exist.' },
+];
+
+const CIVIL_FREEDOMS_TIERS = [
+  { min: 81, label: 'Free',       color: TIER_COLOR.green,
+    lead: 'Speech and assembly are',
+    accent: ' fully protected and routinely exercised.',
+    tail: ' Journalists publish without permission, demonstrations are a normal feature of public life, and the courts back the citizen against the state.' },
+  { min: 61, label: 'Permissive', color: TIER_COLOR.teal,
+    lead: 'Most criticism is tolerated.',
+    accent: ' Dissent is legal, if sometimes uncomfortable.',
+    tail: ' Major outlets operate freely; small frictions exist but the basic freedoms hold.' },
+  { min: 41, label: 'Restricted', color: TIER_COLOR.red,
+    lead: 'Speech and assembly are',
+    accent: ' tolerated only where they do not threaten the state.',
+    tail: ' Critical journalists are warned, then prosecuted; protests need permits the authorities can refuse. Dissenters operate with one eye over their shoulder.' },
+  { min: 21, label: 'Repressed',  color: TIER_COLOR.deepRed,
+    lead: 'The press is licensed.',
+    accent: ' Independent reporting is criminal.',
+    tail: ' Public protest is broken up; the prisons hold writers, lawyers, and clergy who said the wrong thing in the wrong room.' },
+  { min:  0, label: 'Closed',     color: TIER_COLOR.deepRed,
+    lead: 'There is no public criticism of the regime.',
+    accent: ' All media is state-owned or state-approved.',
+    tail: ' Speaking against power, even privately, can mean disappearance.' },
+];
+
+// Budget tiers — keyed on budget/GDP ratio so flush/strained read consistently
+// across nations of different scale. A nation with no GDP falls to the bottom.
+const BUDGET_TIERS = [
+  { min: 0.20, label: 'Surplus',  color: TIER_COLOR.green,
+    lead: 'The treasury is',
+    accent: ' flush.',
+    tail: ' There is room for ambitious policy — new programmes, rapid response to crises, and long-term investment without immediate austerity.' },
+  { min: 0.10, label: 'Healthy',  color: TIER_COLOR.teal,
+    lead: 'The treasury is',
+    accent: ' comfortable.',
+    tail: ' Ministries are funded, capital projects move on schedule, and the finance minister sleeps soundly.' },
+  { min: 0.03, label: 'Tight',    color: TIER_COLOR.amber,
+    lead: 'Money is',
+    accent: ' tight.',
+    tail: ' Every spending request is contested. Ministers are asked to find efficiencies before new line items are approved.' },
+  { min: 0,    label: 'Strained', color: TIER_COLOR.red,
+    lead: 'The treasury is',
+    accent: ' nearly empty.',
+    tail: ' Payroll waits on revenue receipts; capital projects are deferred; the bond market watches.' },
+];
+
+// Debt tiers — keyed on debt/GDP ratio. Higher ratio is worse, so the bands
+// step down from Unsustainable through Trivial.
+const DEBT_TIERS = [
+  { min: 1.50, label: 'Unsustainable', color: TIER_COLOR.deepRed,
+    lead: 'Debt has',
+    accent: ' overrun the economy.',
+    tail: ' Service costs crowd out essential spending; restructuring or default is on the table.' },
+  { min: 0.90, label: 'Crushing',      color: TIER_COLOR.red,
+    lead: 'Debt service is',
+    accent: ' eating the budget.',
+    tail: ' Each new bond auction tightens the noose; rating agencies are circling.' },
+  { min: 0.50, label: 'Heavy',         color: TIER_COLOR.orange,
+    lead: 'Debt is',
+    accent: ' a real constraint.',
+    tail: ' Lenders demand higher yields. A bad year would force unwelcome trade-offs.' },
+  { min: 0.20, label: 'Manageable',    color: TIER_COLOR.amber,
+    lead: 'Debt is',
+    accent: ' sizeable but serviceable',
+    tail: ' — comparable to a year’s revenue. Bondholders are calm. Continued growth keeps it in proportion; a downturn would make it bite.' },
+  { min: 0,    label: 'Trivial',       color: TIER_COLOR.green,
+    lead: 'Debt is',
+    accent: ' a non-issue.',
+    tail: ' The state could borrow heavily at favourable rates if it ever needed to.' },
+];
+
+// Baseline italic description per stat — the "what does this number mean"
+// line that sits under the prose. Same text regardless of tier.
+const STAT_DESCRIPTIONS = {
+  stability:      'how firmly the state holds the public’s compliance. High stability means smooth governance and an institutional order that goes unchallenged; low stability means brewing dissent and the threat of revolt.',
+  gdp_growth:     'the year-on-year change in national output. Sustained growth funds wages, taxes, and ambition; contraction hollows out budgets, payrolls, and public mood.',
+  budget:         'the treasury balance — cash on hand for ministries, programmes, and emergencies. A flush budget funds ambitious policy and rapid response; a thin budget forces austerity and crowds out long-term investment.',
+  debt:           'total accumulated borrowing the nation owes. Manageable debt is normal for a developed economy; excessive debt service crowds out spending and raises the risk of default.',
+  civil_freedoms: 'how freely citizens may speak, organise, protest, and dissent without state reprisal. High scores indicate open civic life; low scores signal censorship, surveillance, and risk to dissenters.',
+};
+
+// National Characteristics body — one tier-colored card per stat with a
+// prose explanation that shifts as the value moves between bands. Reads the
+// same politician_* columns the stat row at the top of the card does; both
+// renderers move together.
+function renderNationalCharacteristics(n) {
+  const body = document.getElementById('sec-nation-body');
+  if (!body) return;
+
+  const stabVal = Math.max(0, Math.min(100, Math.round(Number(n.politician_stability)      || 0)));
+  const gdpgVal = Math.max(0, Math.min(100, Math.round(Number(n.politician_gdp_growth)     || 0)));
+  const civVal  = Math.max(0, Math.min(100, Math.round(Number(n.politician_civil_freedoms) || 0)));
+  const gdpDol  = Number(n.politician_gdp)    || 0;
+  const bgtDol  = Number(n.politician_budget) || 0;
+  const debtDol = Number(n.politician_debt)   || 0;
+  const bgtRatio  = gdpDol > 0 ? bgtDol  / gdpDol : 0;
+  const debtRatio = gdpDol > 0 ? debtDol / gdpDol : 0;
+
+  // Allow the Booming GDP Growth tier to name the nation in its flavor line.
+  const gdpgTier = { ...pickTier(GDP_GROWTH_TIERS, gdpgVal) };
+  gdpgTier.tail  = gdpgTier.tail.replaceAll('[name]', n.name || 'national');
+
+  const rows = [
+    { label: 'Stability',      key: 'stability',      value: String(stabVal), scale: '/ 100', tier: pickTier(STABILITY_TIERS,      stabVal) },
+    { label: 'GDP Growth',     key: 'gdp_growth',     value: String(gdpgVal), scale: '/ 100', tier: gdpgTier },
+    { label: 'Budget',         key: 'budget',         value: fmtMoney(bgtDol),  scale: '',     tier: pickTier(BUDGET_TIERS,        bgtRatio) },
+    { label: 'Debt',           key: 'debt',           value: fmtMoney(debtDol), scale: '',     tier: pickTier(DEBT_TIERS,          debtRatio) },
+    { label: 'Civil Freedoms', key: 'civil_freedoms', value: String(civVal),  scale: '/ 100', tier: pickTier(CIVIL_FREEDOMS_TIERS, civVal) },
+  ];
+
+  body.innerHTML = `<div class="nat-list">${rows.map(r => `
+    <div class="nat-row" style="--tier:${r.tier.color};">
+      <div class="nat-card">
+        <div class="nat-card__label">${escHtml(r.label)}</div>
+        <div class="nat-card__value">${escHtml(r.value)}${r.scale ? `<span class="nat-card__scale">${escHtml(r.scale)}</span>` : ''}</div>
+        <div class="nat-card__tier">${escHtml(r.tier.label)}</div>
+      </div>
+      <div class="nat-body">
+        <div class="nat-body__head"><strong>${escHtml(r.tier.lead)}</strong><span class="nat-body__accent">${escHtml(r.tier.accent)}</span>${escHtml(r.tier.tail)}</div>
+        <div class="nat-body__desc"><em>${escHtml(r.label)} — ${escHtml(STAT_DESCRIPTIONS[r.key])}</em></div>
+      </div>
+    </div>`).join('')}</div>
+  <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>`;
+}
+
+// Corporations section — every entrepreneur corp HQ'd in this nation.
+// Logo (industry-colored 2-letter badge) · name + sector · listing pill ·
+// CEO · valuation. computeEntrepreneurValuation is the single source for
+// the valuation figure — same helper the entrepreneur-corporations page
+// uses, so the number reads identically on both surfaces.
+async function renderCorporations(nationId) {
+  const body = document.getElementById('sec-corp-body');
+  if (!body) return;
+  const footer = '<div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>';
+  try {
+    const { data, error } = await _supabase.from('entrepreneur_corps')
+      .select('id, name, industry, listing, owner_faction_id, share_price, shares_outstanding, starting_capital, treasury_cash, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name)')
+      .eq('hq_nation_id', nationId)
+      .order('name');
+    if (error) throw error;
+    const corps = data || [];
+    if (!corps.length) {
+      body.innerHTML = '<div class="sec-empty">No corporations headquartered here yet.</div>' + footer;
+      return;
+    }
+    // Private corps need building/debt aggregates for the book-value path
+    // inside computeEntrepreneurValuation; public corps read share price ×
+    // shares outstanding and skip this call entirely.
+    const privateCorps = corps.filter(c => c.listing !== 'public');
+    if (privateCorps.length) {
+      const bookAgg = await fetchCorpBookAggregates(privateCorps.map(c => c.id));
+      for (const c of privateCorps) {
+        c.bookAgg = bookAgg.get(c.id) || { buildingCostPaid: 0, outstandingDebt: 0 };
+      }
+    }
+    const header = `<div class="corp-head">
+      <div></div>
+      <div>Corporation</div>
+      <div class="col-type">Type</div>
+      <div class="col-ceo">CEO</div>
+      <div class="right">Valuation</div>
+    </div>`;
+    body.innerHTML = `<div class="corp-list">${header}${corps.map(renderCorpRow).join('')}</div>` + footer;
+  } catch (err) {
+    console.error('politician-nation: corporations fetch failed', err);
+    body.innerHTML = '<div class="sec-empty">Could not load corporations.</div>' + footer;
+  }
+}
+
+function corpInitials(name) {
+  const parts = (name || '').split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return (name || '??').substring(0, 2).toUpperCase();
+}
+
+function renderCorpRow(c) {
+  const val = computeEntrepreneurValuation(c, c.bookAgg);
+  const ind = (c.industry || '').toLowerCase();
+  const listing = (c.listing || 'private').toLowerCase();
+  return `<div class="corp-row">
+    <div class="corp-badge ${escHtml(ind)}">${escHtml(corpInitials(c.name))}</div>
+    <div>
+      <div class="corp-name">${escHtml(c.name || 'Corporation')}</div>
+      <div class="corp-sub">${escHtml(industryLabel(c.industry))}</div>
+    </div>
+    <div><span class="corp-listing ${escHtml(listing)}">${escHtml(listing.toUpperCase())}</span></div>
+    <div class="corp-ceo">${escHtml(ownerDisplayName(c.owner))}</div>
+    <div class="corp-val">${escHtml(fmtValuation(val.amount))}</div>
+  </div>`;
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Politician — Career</title>
+<style>
+/* Topbar / nav / body base live in js/politician-topbar.js. This page styles
+   the career-brief card (amber, regal — matches the Nation card vocabulary)
+   plus the Ladders of Power list. */
+* { box-sizing:border-box; margin:0; padding:0; }
+.content { padding:32px 24px 24px; }
+
+.career-card { background:#0d0d0c; border:0.5px solid rgba(200,166,78,0.15);
+  border-radius:6px; padding:24px; margin-bottom:24px; }
+.career-card__top { display:flex; align-items:flex-start; gap:18px; margin-bottom:20px; }
+.career-card__portrait { width:64px; height:64px; flex-shrink:0;
+  background:linear-gradient(135deg, #2a2a25, #1a1a17);
+  border:0.5px solid rgba(200,166,78,0.3); border-radius:4px;
+  display:flex; align-items:center; justify-content:center;
+  color:#c8a64e; font-size:20px; font-weight:500; letter-spacing:0.04em; }
+.career-card__title { flex:1; min-width:0; }
+.career-card__title .eyebrow { color:#666; font-size:10px; letter-spacing:0.18em; margin-bottom:6px; }
+.career-card__title h1 { font-size:26px; font-weight:500; color:#fff; line-height:1.1; margin-bottom:6px;
+  letter-spacing:-0.01em; }
+.career-card__title h1 .tail { font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#c8a64e; }
+.career-card__subtitle { font-size:12px; color:#888; line-height:1.5; }
+.career-card__subtitle .note { color:#c87a7a; }
+
+.info-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px;
+  padding-top:14px; border-top:0.5px solid rgba(255,255,255,0.06); }
+.info-cell .label { font-size:9px; letter-spacing:0.13em; color:#666; margin-bottom:6px; text-transform:uppercase; }
+.info-cell .value { font-size:18px; font-weight:500; color:#fff; line-height:1.2; }
+.info-cell .sub   { font-size:11px; color:#888; margin-top:4px; line-height:1.4; }
+
+/* Ladders of Power — a section heading + a stack of collapsibles. Each summary
+   carries an icon, the ladder's name, and the current rung (or "—") on the
+   right; the body lists the rungs once we have data to seed. */
+.ladders-heading { display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:14px; padding-top:6px; }
+.ladders-heading .ttl { font-size:11px; letter-spacing:0.15em; color:#888; text-transform:uppercase; }
+.ladders-heading .sub { font-size:10px; letter-spacing:0.08em; color:#555; text-transform:uppercase; }
+
+.ladder { background:#0d0d0c; border:0.5px solid rgba(255,255,255,0.08);
+  border-radius:6px; margin-bottom:10px; }
+.ladder summary { padding:14px 18px; cursor:pointer; list-style:none;
+  display:flex; align-items:center; gap:12px; }
+.ladder summary::-webkit-details-marker { display:none; }
+.ladder summary::before { content:'▸'; color:#555; font-size:10px; display:inline-block; transition:transform 0.2s; }
+.ladder[open] summary::before { transform:rotate(90deg); }
+.ladder .icon { font-size:16px; line-height:1; }
+.ladder .name { font-size:14px; font-weight:500; color:#fff; flex:1; }
+.ladder .rung { font-size:11px; color:#5aafa5; display:flex; align-items:center; gap:6px; }
+.ladder .rung.empty { color:#555; }
+.ladder .rung .dot { display:inline-block; width:6px; height:6px; background:#5aafa5; border-radius:50%; }
+.ladder .body  { padding:0 18px 14px; }
+.ladder .empty-row { color:#555; font-size:12px; font-style:italic; text-align:center; padding:14px 0 6px; }
+
+/* Per-rung rows inside a ladder body. Mirrors the brief-mock layout: a
+   small indicator + name/description on the left, an action button or
+   "held" tag on the right. */
+.rungs { display:flex; flex-direction:column; }
+.rung { display:flex; align-items:flex-start; gap:12px; padding:12px 0;
+  border-bottom:0.5px solid rgba(255,255,255,0.04); }
+.rung:last-child { border-bottom:none; }
+.rung__indicator { color:#555; font-size:14px; line-height:1.2; flex-shrink:0; width:14px; text-align:center; padding-top:1px; }
+.rung__indicator.held { color:#5aafa5; }
+.rung__body { flex:1; min-width:0; }
+.rung__name { font-size:13px; font-weight:500; color:#fff; margin-bottom:3px; }
+.rung__desc { font-size:11px; color:#888; line-height:1.5; }
+.rung__action { flex-shrink:0; align-self:center; }
+.rung__chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.rung-chip { font-family:monospace; font-size:9px; letter-spacing:0.06em;
+  text-transform:uppercase; padding:4px 8px; border-radius:3px;
+  background:rgba(255,255,255,0.03); color:#777;
+  border:0.5px solid rgba(255,255,255,0.08); cursor:not-allowed; }
+.rung-btn { font-family:monospace; font-size:10px; letter-spacing:0.08em;
+  text-transform:uppercase; padding:7px 14px; border-radius:3px;
+  background:transparent; cursor:pointer; transition:all 0.15s; }
+.rung-btn--primary { color:#5aafa5; border:0.5px solid rgba(90,175,165,0.4); }
+.rung-btn--primary:hover { border-color:#5aafa5; background:rgba(90,175,165,0.08); }
+.rung-btn--disabled { color:#555; border:0.5px solid rgba(255,255,255,0.06); cursor:not-allowed; }
+.rung-held { font-size:10px; color:#888; letter-spacing:0.08em; text-transform:uppercase; }
+/* Ladder-level footer note — italic flavor line beneath the rung list. */
+.ladder__footer { font-size:11px; font-style:italic; color:#888; line-height:1.5;
+  padding:14px 0 4px; margin-top:4px; border-top:0.5px solid rgba(255,255,255,0.04); }
+
+.loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
+
+@media (max-width:700px) {
+  .content { padding:18px 12px 16px; }
+  .career-card { padding:16px; }
+  .career-card__top { flex-direction:column; gap:12px; }
+  .career-card__portrait { width:48px; height:48px; font-size:16px; }
+  .career-card__title h1 { font-size:22px; }
+  .info-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
+  .info-cell .value { font-size:16px; }
+  .ladder summary { padding:12px 14px; gap:8px; }
+  .ladder .body { padding:0 14px 14px; }
+}
+@media (max-width:420px) {
+  .info-grid { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+
+<div id="pol-topbar-container"></div>
+
+<div class="content" id="content" style="display:none;">
+  <div class="career-card">
+    <div class="career-card__top">
+      <div class="career-card__portrait" id="cc-portrait">—</div>
+      <div class="career-card__title">
+        <div class="eyebrow">— CURRENT STANDING —</div>
+        <h1><span id="cc-title-lead">—</span> <span class="tail" id="cc-title-tail"></span></h1>
+        <div class="career-card__subtitle" id="cc-subtitle">—</div>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-cell">
+        <div class="label">Positions Held</div>
+        <div class="value" id="cc-positions">0</div>
+        <div class="sub"   id="cc-positions-sub">—</div>
+      </div>
+      <div class="info-cell">
+        <div class="label">Affiliations</div>
+        <div class="value" id="cc-affiliations">None</div>
+        <div class="sub"   id="cc-affiliations-sub">no parties, no movements</div>
+      </div>
+      <div class="info-cell">
+        <div class="label">Career Length</div>
+        <div class="value" id="cc-length">0 Years</div>
+        <div class="sub">since founding</div>
+      </div>
+      <div class="info-cell">
+        <div class="label">Suspicion</div>
+        <div class="value" id="cc-suspicion">Low</div>
+        <div class="sub"   id="cc-suspicion-sub">no one is watching</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ladders-heading">
+    <span class="ttl">Ladders of Power</span>
+    <span class="sub">Your rung unlocks actions · higher rungs preview what you'd gain</span>
+  </div>
+
+  <div id="ladders"></div>
+</div>
+
+<div id="loading" class="loading">LOADING...</div>
+
+<script type="module">
+import { bootstrapPolitician } from './js/politician-topbar.js';
+
+const START_AGE = 25;
+const TICKS_PER_AGE_YEAR = 12;
+
+// The five career ladders a politician can climb, in player-relevance order.
+// Each ladder may declare a `rungs` array; if present it's rendered via the
+// generic renderRungs() below. Ladders without rungs fall back to the shared
+// empty-state placeholder until their content is designed.
+const LADDERS = [
+  { id: 'party',      icon: '\u{1F6A9}', name: 'Party Office',       rungs: () => PARTY_OFFICE_RUNGS },
+  { id: 'legislature',icon: '⚖️',       name: 'Legislature',         rungs: () => LEGISLATURE_RUNGS },
+  { id: 'govt',       icon: '\u{1F451}', name: 'Government & State', rungs: () => GOVERNMENT_RUNGS },
+  { id: 'judiciary',  icon: '\u{1F3DB}\u{FE0F}', name: 'Judiciary',  rungs: () => JUDICIARY_RUNGS,
+    footer: 'The judiciary does not campaign or command — it waits for cases, then rules. Its power is reactive but absolute: a Chief Justice can undo what the Legislature passed, jail a Minister, or declare a war footing unlawful. The only limit is the independence that makes those rulings stick.' },
+  { id: 'civil',      icon: '\u{1F91D}', name: 'Civil Society' },
+  { id: 'underground',icon: '\u{1F3AD}', name: 'Underground' },
+];
+
+// Shared rung shape consumed by renderRungs():
+//   name              → bold rung title.
+//   held(state)       → boolean. Filled indicator + "held" tag when true.
+//   descIfHeld(state) → body line shown when held.
+//   descIfNot(state)  → body line shown when not held.
+//   actions  (opt)    → string[] of small inline chips rendered beneath the
+//                       description. Always shown as a *preview* today (greyed,
+//                       cursor:not-allowed) — when the underlying flows land
+//                       they get wired and styled live for held rungs only.
+//   actionIfNot (opt) → right-side button to advance toward this rung when
+//                       not held. kind:'primary' is a live link via href;
+//                       kind:'disabled' renders greyed-out (no flow wired).
+//
+// Status logic today: politician_career === 'Independent' means "not in a
+// party," so only Party Member's held branch can fire. Every Legislature rung
+// stays not-held until positions / committees are tracked in the DB.
+
+// Party Office rungs — the canonical climb a card-carrying politician makes
+// inside a party. Each rung exposes:
+//   held(state)            → boolean, true when the politician currently holds
+//                            this rung (or higher).
+//   descIfHeld(state)      → the body line to show when held.
+//   descIfNot()            → the body line to show when not held.
+//   actionIfNot (optional) → right-side button for the not-held state.
+//     kind 'primary'  → live link (uses href).
+//     kind 'disabled' → greyed out, no action wired yet.
+//
+// Status logic today: politician_career === 'Independent' means "not in a
+// party," so only Party Member's held branch can fire when that column carries
+// a non-Independent value. Everything above Party Member is greyed-out until
+// the corresponding game mechanics land.
+const PARTY_OFFICE_RUNGS = [
+  {
+    name: 'Party Member',
+    held:        (s) => s.career && s.career !== 'Independent',
+    descIfHeld:  (s) => `You are a card-carrying member of ${s.partyName} here.`,
+    descIfNot:   ()  => 'You are not a member of a political party.',
+    actionIfNot: { label: 'Join Political Party', kind: 'primary', href: 'politician-movements.html' },
+  },
+  {
+    name: 'Election Candidate',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Standing for election in the next cycle.',
+    descIfNot:   ()  => 'Run for a legislative seat or a mayoralty.',
+    actionIfNot: { label: 'Stand for Election', kind: 'disabled' },
+  },
+  {
+    name: 'Member of Parliament or Mayor',
+    held:        ()  => false,
+    descIfHeld:  (s) => s.holdsMayoralty
+      ? `You are the mayor of ${s.cityName || 'a city'} in the nation of ${s.nation}.`
+      : `You are a member of the legislative body of ${s.nation}.`,
+    descIfNot:   ()  => 'Win a parliamentary seat or a mayoralty to climb here.',
+  },
+  {
+    name: 'High Ranking Party Member',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You hold a senior position in your party.',
+    descIfNot:   ()  => 'Earn whip, secretary, or treasurer roles within your party.',
+  },
+  {
+    name: 'Deputy Party Leader',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You are the deputy leader of your party.',
+    descIfNot:   ()  => 'The second-in-command of a party — one heartbeat from leadership.',
+  },
+  {
+    name: 'Party Leader',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You lead your party. The face of the movement.',
+    descIfNot:   ()  => 'Lead a political party. The face of the movement.',
+  },
+];
+
+// Legislature rungs — Committee Member is the entry rung (its right-side
+// [Apply to Committee] is the only live advance action; you climb to Chair
+// from there). Each rung carries inline `actions` (the verbs available to
+// the holder) shown as greyed chips today; they activate when the underlying
+// committee / floor / chamber mechanics are wired.
+const LEGISLATURE_RUNGS = [
+  {
+    name: 'Committee Member',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Assigned to a standing committee. This is where real policy work happens away from the floor.',
+    descIfNot:   ()  => 'Assigned to a standing committee. This is where real policy work happens away from the floor.',
+    actions:     ['Vote on Committee', 'Amend Bill'],
+    actionIfNot: { label: 'Apply to Committee', kind: 'disabled' },
+  },
+  {
+    name: 'Committee Chair',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You run a committee — set its agenda, decide what gets examined.',
+    descIfNot:   ()  => 'You run a committee — set its agenda, decide what gets examined.',
+    actions:     ['Advance Bill'],
+  },
+  {
+    name: 'Deputy Speaker / Presiding Officer',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You help run the chamber itself — neutral-ish, procedural power.',
+    descIfNot:   ()  => 'You help run the chamber itself — neutral-ish, procedural power.',
+    actions:     ['Recognize Speaker', 'Schedule Debate'],
+  },
+  {
+    name: 'Speaker of the House',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'The top — institutional, not partisan.',
+    descIfNot:   ()  => 'The top — institutional, not partisan.',
+    actions:     ['Set Legislative Calendar', 'Convene Legislature'],
+  },
+];
+
+// Government & State rungs — the executive arc. Civil Servant is the entry
+// (right-side [Join the Civil Service]; you climb to Department Head from
+// there). The top, Prime Minister / President, is where casus-belli actions
+// like "Press a Claim" live alongside cabinet-level levers.
+const GOVERNMENT_RUNGS = [
+  {
+    name: 'Civil Servant',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Join the bureaucracy. A functionary in a ministry — the realistic first step for someone seeking the state’s notice.',
+    descIfNot:   ()  => 'Join the bureaucracy. A functionary in a ministry — the realistic first step for someone seeking the state’s notice.',
+    actions:     ['Process Casework', 'Draft Memos', 'Build Connections'],
+    actionIfNot: { label: 'Join the Civil Service', kind: 'disabled' },
+  },
+  {
+    name: 'Department Head',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Run a department within a ministry — a unit with staff beneath you. You’ve proven competent and been promoted.',
+    descIfNot:   ()  => 'Run a department within a ministry — a unit with staff beneath you. You’ve proven competent and been promoted.',
+    actions:     ['Manage the Department', 'Draft Technical Policy', 'Brief the Minister’s Office', 'Request Budget'],
+  },
+  {
+    name: 'Deputy Minister',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Second in the ministry — a named political figure now, running the day-to-day under the minister.',
+    descIfNot:   ()  => 'Second in the ministry — a named political figure now, running the day-to-day under the minister.',
+    actions:     ['Draft Policy', 'Allocate Budget', 'Court the Minister', 'Lobby the Legislature'],
+  },
+  {
+    name: 'Minister',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Hold a full cabinet portfolio (Trade, Interior, Defence, Foreign, Finance) at the head of government’s pleasure.',
+    descIfNot:   ()  => 'Hold a full cabinet portfolio (Trade, Interior, Defence, Foreign, Finance) at the head of government’s pleasure.',
+    actions:     ['Direct the Ministry', 'Issue National Policy', 'Set the Budget', 'Sit in Cabinet'],
+  },
+  {
+    name: 'Prime Minister / President',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Head of government. Command the cabinet and the machinery of state.',
+    descIfNot:   ()  => 'Head of government. Command the cabinet and the machinery of state.',
+    actions:     ['Appoint the Cabinet', '⚔ Press a Claim', 'Set the National Agenda', 'Declare Emergency'],
+  },
+];
+
+// Judiciary rungs — the bench arc. Advocate is the entry (right-side
+// [Seek the Bar]). Chief Justice is reached by appointment, not by climbing,
+// so its right-side tag reads "appointed" instead of carrying an entry
+// button. The ladder closes with a footer note (rendered via ladder.footer
+// in LADDERS) explaining the judiciary's reactive-but-absolute character.
+const JUDICIARY_RUNGS = [
+  {
+    name: 'Advocate',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Practiced law and argued before the courts. Cleared.',
+    descIfNot:   ()  => 'Practice law and argue before the courts — the realistic first step on the bench.',
+    actionIfNot: { label: 'Seek the Bar', kind: 'disabled' },
+  },
+  {
+    name: 'Magistrate',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Presided over a lower court. Cleared.',
+    descIfNot:   ()  => 'Preside over a lower court — district or municipal jurisdiction.',
+  },
+  {
+    name: 'Appellate Justice',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Sit on a higher court that reviews lower rulings. Your judgments bind the courts beneath you.',
+    descIfNot:   ()  => 'Sit on a higher court that reviews lower rulings. Your judgments bind the courts beneath you.',
+    actions:     ['Hear an Appeal', '§ Set Precedent', '↩ Overturn a Ruling'],
+  },
+  {
+    name: 'Chief Justice',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Lead the highest court in the land. Your word on the law is final — and binds the other branches.',
+    descIfNot:   ()  => 'Lead the highest court in the land. Your word on the law is final — and binds the other branches.',
+    actions:     ['Rule on Constitutionality', 'Strike Down Legislation', 'Try a High Official', 'Void State Action'],
+    accessNote:  'appointed',
+  },
+];
+
+// Suspicion sub-text by level — read once the value lands on the page so the
+// copy isn't repeated through the renderer.
+const SUSPICION_SUB = {
+  Low:     'no one is watching',
+  Watched: 'your name is on a list',
+  High:    'investigators are close',
+  Severe:  'an arrest is plausible',
+};
+
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+
+function initials(first, last, faction_name) {
+  const a = (first || '').trim();
+  const b = (last  || '').trim();
+  if (a || b) return ((a[0] || '') + (b[0] || '')).toUpperCase() || '—';
+  const w = String(faction_name || '').trim().split(/\s+/).filter(Boolean);
+  return ((w[0]?.[0] || '') + (w[1]?.[0] || '')).toUpperCase() || '—';
+}
+
+// Split a career string into a bold lead and an italic "of …" tail when one
+// exists ("Deputy Minister of Trade" → lead "Deputy Minister", tail "of Trade").
+// Falls back to lead-only for single-phrase careers like "Independent".
+function splitCareerTitle(career) {
+  if (!career) return { lead: 'Independent', tail: '' };
+  const m = String(career).match(/^(.+?)\s+(of\s+.+)$/i);
+  if (m) return { lead: m[1], tail: m[2] };
+  return { lead: career, tail: '' };
+}
+
+function careerYears(politician, currentTick) {
+  if (politician?.founded_tick == null || currentTick == null) return 0;
+  const elapsed = Math.max(0, Number(currentTick) - Number(politician.founded_tick));
+  return Math.floor(elapsed / TICKS_PER_AGE_YEAR);
+}
+
+function ageNow(politician, currentTick) {
+  if (politician?.founded_tick == null || currentTick == null) return START_AGE;
+  const elapsed = Math.max(0, Number(currentTick) - Number(politician.founded_tick));
+  return START_AGE + Math.floor(elapsed / TICKS_PER_AGE_YEAR);
+}
+
+async function init() {
+  let ctx = null;
+  try { ctx = await bootstrapPolitician('career'); }
+  catch (err) {
+    console.error('politician-career: bootstrap failed', err);
+    document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
+    return;
+  }
+  if (!ctx) return;
+
+  render(ctx.faction, ctx.shard, ctx.nation);
+  renderLadders(buildLadderState(ctx.faction, ctx.nation));
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+}
+
+// State bag passed to every rung renderer — the bag, not the politician row
+// directly, so the contract for each rung is one focused interface rather than
+// "we read whatever we want off faction."
+function buildLadderState(politician, nation) {
+  const career = politician?.politician_career || 'Independent';
+  return {
+    career,
+    partyName: career === 'Independent' ? '' : career,
+    nation: nation?.name || 'this nation',
+    holdsMayoralty: false,   // not yet tracked
+    cityName: null,
+  };
+}
+
+function render(politician, shard, nation) {
+  const career = politician.politician_career || 'Independent';
+  const { lead, tail } = splitCareerTitle(career);
+  const ini = initials(politician.leader_first_name, politician.leader_last_name, politician.faction_name);
+  const age = ageNow(politician, shard?.current_tick);
+  const years = careerYears(politician, shard?.current_tick);
+  const nationName = nation?.name || 'Unknown';
+  const suspicion = politician.politician_suspicion || 'Low';
+
+  document.getElementById('cc-portrait').textContent = ini;
+  document.getElementById('cc-title-lead').textContent = lead;
+  document.getElementById('cc-title-tail').textContent = tail;
+
+  // Subtitle: age · nation · current-position note. Independent gets the
+  // explicit "no current position" line so the mock's "serving in the
+  // Ministry of …" slot doesn't render empty.
+  const positionNote = career === 'Independent' ? 'no current position' : `serving as ${career}`;
+  document.getElementById('cc-subtitle').textContent =
+    `Age ${age} · ${nationName} · ${positionNote}`;
+
+  // Positions held — derived once positions data exists; 0 for now.
+  document.getElementById('cc-positions').textContent = '0';
+  document.getElementById('cc-positions-sub').textContent = '—';
+
+  // Affiliations — the Independent → "None" mapping is the same rule the
+  // home page uses for the AFFILIATION anchor message, intentionally
+  // mirrored so the two surfaces agree.
+  if (career === 'Independent') {
+    document.getElementById('cc-affiliations').textContent = 'None';
+    document.getElementById('cc-affiliations-sub').textContent = 'no parties, no movements';
+  } else {
+    document.getElementById('cc-affiliations').textContent = career;
+    document.getElementById('cc-affiliations-sub').textContent = 'active affiliation';
+  }
+
+  document.getElementById('cc-length').textContent = `${years} Year${years === 1 ? '' : 's'}`;
+
+  document.getElementById('cc-suspicion').textContent = suspicion;
+  document.getElementById('cc-suspicion-sub').textContent =
+    SUSPICION_SUB[suspicion] || 'level not recognised';
+}
+
+function renderLadders(state) {
+  const host = document.getElementById('ladders');
+  host.innerHTML = LADDERS.map(l => {
+    const rungs = typeof l.rungs === 'function' ? l.rungs() : l.rungs;
+    const body  = rungs ? renderRungs(rungs, state) : '<div class="empty-row">Not on this ladder yet.</div>';
+    const footer = l.footer ? `<div class="ladder__footer">${escHtml(l.footer)}</div>` : '';
+    return `
+    <details class="ladder">
+      <summary>
+        <span class="icon">${l.icon}</span>
+        <span class="name">${escHtml(l.name)}</span>
+        <span class="rung empty">—</span>
+      </summary>
+      <div class="body">${body}${footer}</div>
+    </details>`;
+  }).join('');
+  bindRungActions();
+}
+
+// Generic rung-list renderer. Walks a ladder's rung array, runs each rung's
+// held() check against the state bag, and emits a row with indicator,
+// description, optional inline action chips, and either the "held" tag or
+// the right-side advance button. Click routing for primary advance buttons
+// lives in bindRungActions below.
+function renderRungs(rungs, state) {
+  return '<div class="rungs">' + rungs.map(r => {
+    const isHeld = !!r.held(state);
+    const desc   = isHeld ? r.descIfHeld(state) : r.descIfNot(state);
+    const indicator = isHeld
+      ? '<div class="rung__indicator held">●</div>'
+      : '<div class="rung__indicator">○</div>';
+
+    const chipsHtml = (Array.isArray(r.actions) && r.actions.length)
+      ? `<div class="rung__chips">${r.actions.map(a => `<span class="rung-chip">${escHtml(a)}</span>`).join('')}</div>`
+      : '';
+
+    let actionHtml = '';
+    if (isHeld) {
+      actionHtml = '<span class="rung-held">held</span>';
+    } else if (r.actionIfNot) {
+      const a = r.actionIfNot;
+      const cls = a.kind === 'primary' ? 'rung-btn rung-btn--primary' : 'rung-btn rung-btn--disabled';
+      const hrefAttr = a.kind === 'primary' && a.href ? ` data-href="${escHtml(a.href)}"` : '';
+      const disabledAttr = a.kind === 'disabled' ? ' disabled' : '';
+      actionHtml = `<button class="${cls}"${hrefAttr}${disabledAttr}>${escHtml(a.label)}</button>`;
+    } else if (r.accessNote) {
+      // Rungs reached by appointment / external selection rather than by
+      // climbing (e.g. Chief Justice) carry an accessNote instead of an
+      // entry button. Rendered with the same dim tag styling as the
+      // "held" marker on the right side.
+      actionHtml = `<span class="rung-held">${escHtml(r.accessNote)}</span>`;
+    }
+
+    return `
+      <div class="rung">
+        ${indicator}
+        <div class="rung__body">
+          <div class="rung__name">${escHtml(r.name)}</div>
+          <div class="rung__desc">${escHtml(desc)}</div>
+          ${chipsHtml}
+        </div>
+        <div class="rung__action">${actionHtml}</div>
+      </div>`;
+  }).join('') + '</div>';
+}
+
+// Single event handler for every rung's primary button — looks up data-href
+// and navigates. Disabled buttons carry the disabled attribute so they no-op
+// on their own.
+function bindRungActions() {
+  document.querySelectorAll('.rung-btn--primary[data-href]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const href = btn.dataset.href;
+      if (href) window.location.href = href;
+    });
+  });
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Politician — Movements</title>
+<style>
+/* Topbar / nav / body base live in js/politician-topbar.js. This page only
+   styles its own body content. Action card shape mirrors entrepreneur-
+   corporations.html's .ec-action in teal. */
+* { box-sizing:border-box; margin:0; padding:0; }
+.content { padding:32px 24px 24px; }
+
+.pm-actions { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:14px; }
+.pm-action  { background:#0e1212; border:0.5px solid rgba(90,175,165,0.2); border-radius:6px;
+  padding:18px 20px; display:flex; align-items:center; gap:14px; cursor:not-allowed; opacity:0.85; }
+.pm-action .ic { width:38px; height:38px; flex-shrink:0; border-radius:4px; display:flex;
+  align-items:center; justify-content:center; background:rgba(90,175,165,0.08);
+  border:0.5px solid rgba(90,175,165,0.4); color:#5aafa5; font-size:18px; font-weight:500; }
+.pm-action .body { flex:1; min-width:0; }
+.pm-action .nm   { font-size:15px; font-weight:500; color:#fff; margin-bottom:3px; }
+.pm-action .ds   { font-size:11px; color:#888; line-height:1.5; }
+.pm-action .tag  { margin-left:auto; font-size:10px; color:#666; letter-spacing:0.08em;
+  text-transform:uppercase; white-space:nowrap; }
+
+.section-heading { display:flex; align-items:baseline; gap:10px; margin:28px 0 14px; }
+.section-heading .roman { color:#555; font-size:11px; letter-spacing:0.1em; }
+.section-heading .sans  { font-size:22px; font-weight:500; color:#fff; }
+.section-heading .serif { font-size:22px; font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#5aafa5; }
+.section-heading .meta  { margin-left:auto; color:#555; font-size:10px; letter-spacing:0.1em; }
+
+.mv-tabs { display:flex; gap:6px; margin-bottom:14px; }
+.mv-tab { padding:8px 16px; font-size:11px; letter-spacing:0.08em; color:#888;
+  background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:3px; cursor:pointer; }
+.mv-tab:hover:not(.active) { color:#d4d4d4; }
+.mv-tab.active { color:#5aafa5; border-color:rgba(90,175,165,0.4); background:#121613; }
+
+.empty { background:#121212; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
+  padding:22px 18px; color:#666; font-size:12px; line-height:1.6; text-align:center; }
+
+/* Movement card list — one row per movement party (faction_type='movement_party')
+   in the politician's nation. Compact and readable; uses the party's color as a
+   left-rail accent so a player can tell parties apart at a glance. */
+.mv-card { display:flex; align-items:center; gap:14px; padding:14px 16px;
+  background:#0e1212; border:0.5px solid rgba(255,255,255,0.08); border-radius:6px;
+  margin-bottom:10px; border-left:3px solid #5aafa5; }
+.mv-card .badge { width:36px; height:36px; flex-shrink:0; border-radius:4px;
+  display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.04);
+  color:#d4d4d4; font-size:13px; font-weight:600; font-family:monospace; letter-spacing:0.05em; }
+.mv-card .body { flex:1; min-width:0; }
+.mv-card .title { font-size:14px; color:#fff; font-weight:500; margin-bottom:3px; }
+.mv-card .sub   { font-size:11px; color:#888; line-height:1.5; }
+.mv-card .seats { margin-left:auto; font-family:monospace; font-size:11px; color:#666;
+  letter-spacing:0.08em; text-transform:uppercase; white-space:nowrap; text-align:right; }
+.mv-card .seats strong { display:block; color:#d4d4d4; font-size:15px; font-weight:600; margin-top:2px; }
+
+.loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
+
+@media (max-width:700px) {
+  .pm-actions { grid-template-columns:1fr; gap:10px; }
+}
+</style>
+</head>
+<body>
+
+<div id="pol-topbar-container"></div>
+
+<div class="content" id="content" style="display:none;">
+  <div class="pm-actions">
+    <div class="pm-action" data-action="join-party">
+      <div class="ic">&#x2197;</div>
+      <div class="body">
+        <div class="nm">Join a Political Party</div>
+        <div class="ds">Apply to join an existing political party in your nation.</div>
+      </div>
+      <div class="tag">Soon</div>
+    </div>
+    <div class="pm-action" data-action="join-ngo">
+      <div class="ic">&#x2197;</div>
+      <div class="body">
+        <div class="nm">Join a Non-Government Organization</div>
+        <div class="ds">Apply to a union, advocacy group, or charity.</div>
+      </div>
+      <div class="tag">Soon</div>
+    </div>
+    <div class="pm-action" data-action="join-dissident">
+      <div class="ic">&#x2197;</div>
+      <div class="body">
+        <div class="nm">Join a Dissident Group</div>
+        <div class="ds">Approach an underground organisation.</div>
+      </div>
+      <div class="tag">Soon</div>
+    </div>
+  </div>
+
+  <div class="pm-actions">
+    <div class="pm-action" data-action="start-party">
+      <div class="ic">+</div>
+      <div class="body">
+        <div class="nm">Start a Political Party</div>
+        <div class="ds">Found a new political party in your nation.</div>
+      </div>
+      <div class="tag">Soon</div>
+    </div>
+    <div class="pm-action" data-action="start-ngo">
+      <div class="ic">+</div>
+      <div class="body">
+        <div class="nm">Start a Non-Government Organization</div>
+        <div class="ds">Found a union, advocacy group, or charity.</div>
+      </div>
+      <div class="tag">Soon</div>
+    </div>
+    <div class="pm-action" data-action="start-dissident">
+      <div class="ic">+</div>
+      <div class="body">
+        <div class="nm">Start a Dissident Group</div>
+        <div class="ds">Begin underground organising.</div>
+      </div>
+      <div class="tag">Soon</div>
+    </div>
+  </div>
+
+  <div class="section-heading">
+    <span class="roman">I.</span>
+    <span class="sans">Active</span>
+    <span class="serif">Movements</span>
+  </div>
+
+  <div class="mv-tabs" id="mv-tabs">
+    <div class="mv-tab active" data-tab="party">Political Parties</div>
+    <div class="mv-tab" data-tab="ngo">NGO</div>
+    <div class="mv-tab" data-tab="dissident">Dissident Groups</div>
+  </div>
+
+  <div id="mv-list">
+    <div class="empty">No active political party affiliations yet.</div>
+  </div>
+</div>
+
+<div id="loading" class="loading">LOADING...</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { bootstrapPolitician } from './js/politician-topbar.js';
+
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+
+const EMPTY_BY_TAB = {
+  party:     'No active political party movements in this nation yet.',
+  ngo:       'No active NGO affiliations yet.',
+  dissident: 'No active dissident group affiliations yet.',
+};
+
+// Movement parties in the politician's nation — loaded once on init and
+// rendered when the Political Parties tab is active. NGO / Dissident tabs
+// stay empty for now (no faction_type for those yet).
+let _nationId = null;
+let _movementParties = [];
+
+async function init() {
+  let ctx = null;
+  try { ctx = await bootstrapPolitician('movements'); }
+  catch (err) {
+    console.error('politician-movements: bootstrap failed', err);
+    document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
+    return;
+  }
+  if (!ctx) return; // redirected
+
+  _nationId = ctx.faction?.nation_id || null;
+  await loadMovementParties();
+  bindTabs();
+  renderTab('party');
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+}
+
+async function loadMovementParties() {
+  if (!_nationId) { _movementParties = []; return; }
+  try {
+    const { data, error } = await _supabase.from('factions')
+      .select('id, faction_name, abbreviation, seats, party_color, party_description, leader_first_name, leader_last_name')
+      .eq('nation_id', _nationId)
+      .eq('faction_type', 'movement_party')
+      .is('abandoned_at', null)
+      .order('seats', { ascending: false })
+      .order('faction_name');
+    if (error) throw error;
+    _movementParties = data || [];
+  } catch (err) {
+    console.error('politician-movements: loadMovementParties failed', err);
+    _movementParties = [];
+  }
+}
+
+function bindTabs() {
+  const bar = document.getElementById('mv-tabs');
+  if (!bar) return;
+  bar.addEventListener('click', (e) => {
+    const btn = e.target.closest('.mv-tab');
+    if (!btn || btn.classList.contains('active')) return;
+    bar.querySelectorAll('.mv-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderTab(btn.dataset.tab);
+  });
+}
+
+function renderTab(tab) {
+  const list = document.getElementById('mv-list');
+  if (!list) return;
+  if (tab === 'party' && _movementParties.length) {
+    list.innerHTML = _movementParties.map(renderPartyCard).join('');
+    return;
+  }
+  list.innerHTML = `<div class="empty">${EMPTY_BY_TAB[tab] || 'No active movements yet.'}</div>`;
+}
+
+// Hex-color only — party_color is admin-supplied (trusted today, but escHtml
+// doesn't escape CSS context, so anything non-hex would still let a stray
+// "; background:url(...)" through into the style attribute). Anything that
+// isn't a 3/6/8-digit hex falls back to the brand teal.
+function safeHexColor(c) {
+  return /^#[0-9a-f]{3}([0-9a-f]{3}([0-9a-f]{2})?)?$/i.test(c || '') ? c : '#5aafa5';
+}
+
+function renderPartyCard(p) {
+  const accent = safeHexColor(p.party_color);
+  const leader = [p.leader_first_name, p.leader_last_name].filter(Boolean).join(' ');
+  const subParts = [];
+  if (leader) subParts.push(`Led by ${escHtml(leader)}`);
+  if (p.party_description) subParts.push(escHtml(p.party_description));
+  const sub = subParts.join(' &middot; ');
+  return `<div class="mv-card" style="border-left-color:${accent};">
+    <div class="badge">${escHtml(p.abbreviation || '—')}</div>
+    <div class="body">
+      <div class="title">${escHtml(p.faction_name)}</div>
+      <div class="sub">${sub || '<em>No description on record.</em>'}</div>
+    </div>
+    <div class="seats">Seats<strong>${Number(p.seats) || 0}</strong></div>
+  </div>`;
+}
+
+init();
+</script>
+</body>
+</html>

@@ -214,6 +214,14 @@ export function renderMilitaryTopBar(container, opts = {}) {
             <span class="mil-dd-name">Become an Entrepreneur</span>
         </div>`;
     }
+    // Project Neptune (Politician alpha) — hidden once the user holds a politician.
+    const hasPolitician = (allUserFactions || []).some(f => f.faction_type === 'politician');
+    if (!hasPolitician) {
+        dropdownHtml += `<div class="mil-dd-item mil-dd-item--create" data-action="join-neptune">
+            <span class="mil-dd-type" style="color:var(--teal,#5aafa5)">+</span>
+            <span class="mil-dd-name">Join Project Neptune</span>
+        </div>`;
+    }
 
     // Nav tabs — only Home for now. Active tab dashboard URL is read off
     // BRANCH_DASHBOARDS so adding navy/air-force pages later is one entry.
@@ -289,6 +297,11 @@ export function renderMilitaryTopBar(container, opts = {}) {
             if (item.dataset.action === 'become-entrepreneur') {
                 sessionStorage.setItem('pending_faction_type', 'entrepreneur');
                 window.location.href = 'faction-select.html';
+                return;
+            }
+            if (item.dataset.action === 'join-neptune') {
+                sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search);
+                window.location.href = 'character-select.html';
                 return;
             }
             const fid = item.dataset.factionId;
