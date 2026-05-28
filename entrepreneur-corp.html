@@ -274,11 +274,9 @@
   .ap-loan { display:grid; grid-template-columns:1fr auto; gap:12px; align-items:center;
     padding:11px 14px; background:#0d0d0d; border:0.5px solid rgba(122,154,171,0.18);
     border-radius:4px; margin-bottom:6px; }
-  .ap-loan.ineligible { opacity:0.45; }
   .ap-loan-info { min-width:0; }
   .ap-loan-who { font-size:13px; color:#fff; font-weight:500; line-height:1.2; }
   .ap-loan-sub { font-size:10px; color:#888; margin-top:3px; letter-spacing:0.04em; }
-  .ap-loan-grey { font-size:10px; color:#888; letter-spacing:0.08em; font-style:italic; }
 
   /* Corporate Finance section (v0 corp loans, 20270174) */
   .cf-launch { display:flex; align-items:center; justify-content:space-between; gap:14px;
@@ -3487,36 +3485,24 @@ function initials(s, n) {
       }
 
       // Pending Loan Requests panel (Banking corps only). Shows EVERY
-      // pending loan request across the world; rows where this bank
-      // can act (owns a Banking Office in the borrower's HQ nation)
-      // get [Accept] buttons, others are greyed out with an
-      // ineligibility chip. Server enforces the same gate at accept
-      // time — UI here is just the visibility surface.
+      // Loan Requests panel (Banking corps only, any view). Lists every
+      // pending loan request across the world; any banking corp can make
+      // an offer back — banking is a global market, no per-nation gate.
       let loanRequestsHtml = '';
       if (c.industry === 'banking' && canView) {
-        const [reqsRes, mineBoRes] = await Promise.all([
-          _supabase.from('corp_loan_requests')
-            .select('id, principal, term_ticks, expires_at_tick, '
-                  + 'borrower:entrepreneur_corps!borrower_corp_id(id, name, hq_nation_id, '
-                    + 'hq:nations!hq_nation_id(name), '
-                    + 'owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name))')
-            .eq('status', 'pending')
-            .order('placed_at_tick', { ascending: false }),
-          _supabase.from('corp_buildings')
-            .select('nation_id')
-            .eq('owner_corp_id', id)
-            .eq('building_type', 'banking_office')
-            .eq('status', 'completed'),
-        ]);
-        if (reqsRes.error)   console.warn('[entrepreneur-corp] loan requests fetch error:', reqsRes.error.message);
-        if (mineBoRes.error) console.warn('[entrepreneur-corp] BO holdings fetch error:',    mineBoRes.error.message);
-        const myBoNationIds = new Set((mineBoRes.data || []).map(r => r.nation_id).filter(Boolean));
-        const loanReqs = (reqsRes.data || []).filter(r => r.borrower?.id !== id);
+        const { data: reqsData, error: reqsErr } = await _supabase.from('corp_loan_requests')
+          .select('id, principal, term_ticks, expires_at_tick, '
+                + 'borrower:entrepreneur_corps!borrower_corp_id(id, name, hq_nation_id, '
+                  + 'hq:nations!hq_nation_id(name), '
+                  + 'owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name))')
+          .eq('status', 'pending')
+          .order('placed_at_tick', { ascending: false });
+        if (reqsErr) console.warn('[entrepreneur-corp] loan requests fetch error:', reqsErr.message);
+        const loanReqs = (reqsData || []).filter(r => r.borrower?.id !== id);
         if (loanReqs.length) {
           loanRequestsHtml = `
             <div class="ap-loans-head">Pending Loan Requests · ${loanReqs.length}</div>
             ` + loanReqs.map(r => {
-              const eligible = myBoNationIds.has(r.borrower?.hq_nation_id);
               const ceo = r.borrower?.owner
                 ? [r.borrower.owner.leader_first_name, r.borrower.owner.leader_last_name].filter(Boolean).join(' ').trim() || r.borrower.owner.faction_name
                 : '';
@@ -3525,16 +3511,14 @@ function initials(s, n) {
               // numbers (those depend on what THIS bank chooses to
               // offer).
               return `
-                <div class="ap-loan ${eligible ? '' : 'ineligible'}">
+                <div class="ap-loan">
                   <div class="ap-loan-info">
                     <div class="ap-loan-who">${escapeHtml(r.borrower?.name || 'Unknown corp')} requests ${fmtUsd(Number(r.principal))}</div>
                     <div class="ap-loan-sub">
                       ${ceo ? escapeHtml(ceo) + ' · ' : ''}${escapeHtml(r.borrower?.hq?.name || '—')} · ${r.term_ticks}t term · expires T${r.expires_at_tick}
                     </div>
                   </div>
-                  ${eligible
-                    ? ownerOnly(`<button class="ap-btn-small accept cp-make-offer" data-rid="${r.id}" data-principal="${r.principal}" data-term="${r.term_ticks}" data-bname="${escapeHtml(r.borrower?.name || 'Unknown')}">Make Offer</button>`)
-                    : '<span class="ap-loan-grey">No Banking Office in their HQ nation</span>'}
+                  ${ownerOnly(`<button class="ap-btn-small accept cp-make-offer" data-rid="${r.id}" data-principal="${r.principal}" data-term="${r.term_ticks}" data-bname="${escapeHtml(r.borrower?.name || 'Unknown')}">Make Offer</button>`)}
                 </div>`;
             }).join('');
         }
@@ -5258,7 +5242,7 @@ const openBidModal = (contractId, label, yourCost, budget) => {
 
       const launchBtn = isOwner
         ? `<div class="cf-launch">
-             <div class="lab">Need capital? <b>Broadcast a loan request</b> to Banking corps with a Banking Office in ${escapeHtml(c.hq?.name || 'your HQ nation')}. They respond with rates; you pick the one you like.</div>
+             <div class="lab">Need capital? <b>Broadcast a loan request</b> to every Banking corp. They respond with rates; you pick the one you like.</div>
              <button class="cf-btn" id="cp-request-loan">Request Loan</button>
            </div>`
         : '';
@@ -5535,12 +5519,8 @@ const openBidModal = (contractId, label, yourCost, budget) => {
     };
 
     // ── Request Loan modal ──
-    // No bank picker (v0 broadcast model). The request becomes
-    // visible to every Banking corp; only those with a completed
-    // Banking Office in this corp's HQ nation can act on it
-    // (eligibility enforced server-side at accept time, surfaced
-    // client-side by greying out ineligible rows on the bank's
-    // Active Projects panel).
+    // No bank picker (broadcast model). The request becomes visible
+    // to every Banking corp and any of them may respond with an offer.
     const openRequestLoanModal = () => {
       const ov = document.getElementById('rl-overlay');
       const errEl = document.getElementById('rl-err');
@@ -5605,7 +5585,7 @@ const openBidModal = (contractId, label, yourCost, budget) => {
         sumEl.innerHTML = `Set principal + term — eligible banks respond with their own APR.`;
         return;
       }
-      sumEl.innerHTML = `Broadcast to every Banking corp with a <b>Banking Office</b> in ${escapeHtml(c.hq?.name || 'your HQ nation')}. Each can propose their own APR over the next <b>6 ticks</b>; you pick the one you like.<br>` +
+      sumEl.innerHTML = `Broadcast to every Banking corp. Each can propose their own APR over the next <b>6 ticks</b>; you pick the one you like.<br>` +
         `Borrowing <b>${fmtUsd(principal)}</b> over <b>${term} ticks</b>.`;
     };
     ['rl-principal', 'rl-term'].forEach(id => {
@@ -5743,7 +5723,6 @@ const openBidModal = (contractId, label, yourCost, budget) => {
             invalid_apr:                  'APR must be 0–50%.',
             request_not_pending:          'This request is no longer pending.',
             request_expired:              'This request has expired.',
-            no_banking_office_in_nation:  'Your corp doesn’t own a Banking Office in the borrower’s HQ nation.',
             cannot_self_loan:             'A corp can’t bid on its own loan request.',
             not_bank_corp_owner:          'You don’t own this corp.',
             not_banking_corp:             'Only Banking corps can submit loan offers.',
@@ -6467,10 +6446,8 @@ const openBidModal = (contractId, label, yourCost, budget) => {
 <div class="bm-overlay" id="ar-overlay"></div>
 <div class="bm-overlay" id="arb-overlay"></div>
 
-<!-- Request Loan modal (v0 corp loans, 20270174). Borrower picks
-     eligible banks (Banking corps with a Banking Office in the
-     borrower's HQ nation), sets principal/term/APR. RPC:
-     submit_corp_loan_request. -->
+<!-- Request Loan modal. Borrower sets principal/term/APR; the request
+     broadcasts to every Banking corp via submit_corp_loan_request. -->
 <div class="rl-overlay" id="rl-overlay">
   <div class="rl-modal">
     <div class="rl-head">
