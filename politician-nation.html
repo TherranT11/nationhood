@@ -40,6 +40,30 @@
 .stat-cell .fill { height:100%; border-radius:3px; }
 .stat-cell .sub  { font-size:11px; color:#888; margin-top:6px; line-height:1.4; }
 
+/* Jump nav: short pills that scroll to + open the matching collapsible. */
+.jump-nav { display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
+.jump-nav button { font-family:monospace; font-size:10px; letter-spacing:0.08em;
+  text-transform:uppercase; color:#888; background:#121212;
+  border:0.5px solid rgba(255,255,255,0.08); border-radius:3px;
+  padding:8px 14px; cursor:pointer; transition:all 0.15s; }
+.jump-nav button:hover { color:#5aafa5; border-color:rgba(90,175,165,0.4); }
+
+/* Collapsible sectors. Native <details> for free open/close + a chevron-style
+   indicator via summary::after. scroll-margin-top so the jump-nav doesn't
+   land flush against the viewport edge. */
+.sec { background:#0d0d0c; border:0.5px solid rgba(255,255,255,0.08);
+  border-radius:6px; margin-bottom:10px; scroll-margin-top:18px; }
+.sec summary { padding:14px 18px; cursor:pointer; list-style:none;
+  font-size:12px; letter-spacing:0.1em; text-transform:uppercase;
+  color:#888; font-weight:600;
+  display:flex; align-items:center; justify-content:space-between; }
+.sec summary::-webkit-details-marker { display:none; }
+.sec summary::after { content:'+'; color:#555; font-size:16px; font-weight:400; }
+.sec[open] summary { color:#d4d4d4; border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.sec[open] summary::after { content:'−'; }
+.sec-body  { padding:18px; }
+.sec-empty { color:#555; font-size:12px; font-style:italic; text-align:center; padding:24px 0; }
+
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
 @media (max-width:700px) {
@@ -86,6 +110,45 @@
 
     <div class="stats-grid" id="nc-stats"></div>
   </div>
+
+  <nav class="jump-nav" id="jump-nav">
+    <button data-target="sec-nation">Nation</button>
+    <button data-target="sec-govt">Govt</button>
+    <button data-target="sec-parties">Parties</button>
+    <button data-target="sec-military">Military</button>
+    <button data-target="sec-economy">Economy</button>
+    <button data-target="sec-ngos">NGOs</button>
+    <button data-target="sec-dissident">Dissident</button>
+  </nav>
+
+  <details id="sec-nation" class="sec">
+    <summary>National Characteristics</summary>
+    <div class="sec-body"><div class="sec-empty">Nothing recorded yet.</div></div>
+  </details>
+  <details id="sec-govt" class="sec">
+    <summary>Government &amp; Politics</summary>
+    <div class="sec-body"><div class="sec-empty">Nothing recorded yet.</div></div>
+  </details>
+  <details id="sec-parties" class="sec">
+    <summary>Political Parties</summary>
+    <div class="sec-body"><div class="sec-empty">No parties listed yet.</div></div>
+  </details>
+  <details id="sec-military" class="sec">
+    <summary>Armed Forces</summary>
+    <div class="sec-body"><div class="sec-empty">Nothing recorded yet.</div></div>
+  </details>
+  <details id="sec-economy" class="sec">
+    <summary>Economy &amp; Trade</summary>
+    <div class="sec-body"><div class="sec-empty">Nothing recorded yet.</div></div>
+  </details>
+  <details id="sec-ngos" class="sec">
+    <summary>NGOs &amp; Civil Society</summary>
+    <div class="sec-body"><div class="sec-empty">No NGOs listed yet.</div></div>
+  </details>
+  <details id="sec-dissident" class="sec">
+    <summary>Dissident Groups</summary>
+    <div class="sec-body"><div class="sec-empty">No dissident groups listed yet.</div></div>
+  </details>
 </div>
 
 <div id="loading" class="loading">LOADING...</div>
@@ -189,21 +252,30 @@ async function init() {
   if (!ctx) return;
 
   // Bootstrap already fetched a thin nation row (id, name, flag_url, profile flag).
-  // Refetch with the full surface we need for the brief card.
+  // Refetch with the full surface we need for the brief card, plus the active
+  // Prime Minister row for the Head-of-Gov't cell.
   let nation = null;
+  let pmMinistry = null;
   if (ctx.faction?.nation_id) {
+    const nid = ctx.faction.nation_id;
     try {
-      const { data, error } = await _supabase.from('nations')
-        .select(`
-          id, name, government_type, capital,
-          head_of_state_title, head_of_state_first_name, head_of_state_last_name,
-          population, dynasty_name,
-          unrest, public_approval, budget, global_image,
-          nation_profiles(flag_url, official_name, motto, overview, founded_year)
-        `)
-        .eq('id', ctx.faction.nation_id).maybeSingle();
-      if (error) throw error;
-      nation = data;
+      const [natRes, pmRes] = await Promise.all([
+        _supabase.from('nations')
+          .select(`
+            id, name, government_type, capital,
+            head_of_state_title, head_of_state_first_name, head_of_state_last_name,
+            population, dynasty_name,
+            unrest, public_approval, budget, global_image,
+            nation_profiles(flag_url, official_name, motto, overview, founded_year)
+          `)
+          .eq('id', nid).maybeSingle(),
+        _supabase.from('ministries')
+          .select('minister_first_name, minister_last_name, party_id, factions(faction_name, leader_first_name, leader_last_name)')
+          .eq('nation_id', nid).eq('ministry_key', 'prime_minister').eq('is_active', true).maybeSingle(),
+      ]);
+      if (natRes.error) throw natRes.error;
+      nation = natRes.data;
+      if (!pmRes.error) pmMinistry = pmRes.data;  // PM is optional flair — soft-fail.
     } catch (err) {
       console.error('politician-nation: nation fetch failed', err);
     }
@@ -214,12 +286,27 @@ async function init() {
     return;
   }
 
-  renderCard(nation);
+  renderCard(nation, pmMinistry);
+  bindJumpNav();
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
 
-function renderCard(n) {
+// Open the matching <details> and scroll it into view. scroll-margin-top in
+// CSS keeps the section flush below the topbar/nav rather than pinned to the
+// viewport edge.
+function bindJumpNav() {
+  document.querySelectorAll('#jump-nav button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const det = document.getElementById(btn.dataset.target);
+      if (!det) return;
+      det.open = true;
+      det.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+}
+
+function renderCard(n, pm) {
   const p = (n.nation_profiles && (Array.isArray(n.nation_profiles) ? n.nation_profiles[0] : n.nation_profiles)) || {};
   const flag = p.flag_url || `assets/flags/${n.name}.png`;
   const { prefix, name } = splitOfficialName(p.official_name, n.name, n.government_type);
@@ -249,18 +336,27 @@ function renderCard(n) {
     : (n.government_type === 'Presidential' || n.government_type === 'Semi-Presidential' ? 'Elected head of state' : 'Ceremonial head of state');
   document.getElementById('nc-hos-sub').textContent = hosSub;
 
-  // Head of Gov't — gov-type-aware. Looking up the active PM by name lives one
-  // query deeper than this card needs today; placeholder copy keeps the slot
-  // honest until a PM lookup lands alongside the rest of the Nation surface.
+  // Head of Gov't — gov-type-aware. Parliamentary / Semi-Presidential /
+  // Constitutional Monarchy (which stores government_type='Parliamentary') all
+  // have a separate PM, looked up via ministries.ministry_key='prime_minister'.
+  // Presidential systems fuse HoS + HoG. Absolute monarchy has no premier.
+  const hogEl    = document.getElementById('nc-hog');
+  const hogSubEl = document.getElementById('nc-hog-sub');
   if (n.government_type === 'Absolute Monarchy') {
-    document.getElementById('nc-hog').textContent = 'The Crown';
-    document.getElementById('nc-hog-sub').textContent = 'no separate premier';
+    hogEl.textContent = 'The Crown';
+    hogSubEl.textContent = 'no separate premier';
   } else if (n.government_type === 'Presidential') {
-    document.getElementById('nc-hog').textContent = hosName ? `${hosTitle} ${hosName}` : '—';
-    document.getElementById('nc-hog-sub').textContent = 'president leads the government';
+    hogEl.textContent = hosName ? `${hosTitle} ${hosName}` : '—';
+    hogSubEl.textContent = 'president leads the government';
   } else {
-    document.getElementById('nc-hog').textContent = 'Prime Minister';
-    document.getElementById('nc-hog-sub').textContent = '—';
+    // Prefer the minister fields on the ministry row; fall back to the seated
+    // party's leader if those aren't set. Final fallback: "Vacant".
+    const fac = pm && (Array.isArray(pm.factions) ? pm.factions[0] : pm.factions);
+    const pmFirst = pm?.minister_first_name || fac?.leader_first_name || '';
+    const pmLast  = pm?.minister_last_name  || fac?.leader_last_name  || '';
+    const pmName  = `${pmFirst} ${pmLast}`.trim();
+    hogEl.textContent = pmName ? `PM ${pmName}` : 'Vacant';
+    hogSubEl.textContent = fac?.faction_name ? `${fac.faction_name}-led government` : 'Prime Minister';
   }
 
   // Four stat bars. STABILITY is inverted from unrest (high unrest → low stability).
@@ -273,7 +369,7 @@ function renderCard(n) {
     { key: 'stability', label: 'Stability',                    value: stability },
     { key: 'approval',  label: approvalLabel(n.government_type), value: approval  },
     { key: 'treasury',  label: 'Treasury',                     value: treasury  },
-    { key: 'freedom',   label: 'Civil Freedom',                value: freedom   },
+    { key: 'freedom',   label: 'Global Image',                 value: freedom   },
   ];
 
   document.getElementById('nc-stats').innerHTML = stats.map(s => `
