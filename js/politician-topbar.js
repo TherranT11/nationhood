@@ -11,6 +11,8 @@ const POL_TABS = [
   { id: 'home',      label: 'HOME',      href: 'politician-home.html' },
   { id: 'movements', label: 'MOVEMENTS', href: 'politician-movements.html' },
   { id: 'nation',    label: 'NATION',    href: 'politician-nation.html' },
+  { id: 'actions',   label: 'ACTIONS',   href: 'politician-actions.html' },
+  { id: 'character', label: 'CHARACTER', href: 'politician-character.html' },
 ];
 
 const START_AGE = 25;
@@ -24,13 +26,18 @@ function ensureStyles() {
   s.textContent = `
   body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; margin:0; min-height:100vh; }
   .pol-topbar { display:flex; align-items:center; gap:24px; padding:12px 28px;
-    border-bottom:0.5px solid rgba(255,255,255,0.08); font-size:11px; letter-spacing:0.05em; }
+    border-bottom:0.5px solid rgba(255,255,255,0.08); font-size:11px; letter-spacing:0.05em;
+    position:relative; }
   .pol-topbar .brand { display:flex; align-items:center; gap:10px; }
   .pol-topbar .crest { width:24px; height:24px; background:rgba(90,175,165,0.08); border:0.5px solid rgba(90,175,165,0.5);
     border-radius:3px; display:flex; align-items:center; justify-content:center; color:#5aafa5;
     font-size:11px; font-weight:600; letter-spacing:0.05em; }
   .pol-topbar .player { color:#fff; font-weight:500; font-size:13px; }
-  .pol-topbar__version { font-family:monospace; font-size:10px; color:#f0efe6; letter-spacing:0.5px; opacity:0.8; }
+  /* Absolute-centred so the version sits dead-centre regardless of how meta /
+     right items pack on either side. */
+  .pol-topbar__version { position:absolute; left:50%; top:50%; transform:translate(-50%, -50%);
+    font-family:monospace; font-size:10px; color:#f0efe6; letter-spacing:0.5px; opacity:0.8;
+    pointer-events:none; }
   .pol-topbar .meta { display:flex; gap:22px; color:#888; align-items:center; }
   .pol-topbar .meta .label { color:#555; font-size:9px; letter-spacing:0.13em; }
   .pol-topbar .meta .value { color:#d4d4d4; font-size:12px; margin-top:2px; display:flex; align-items:center; gap:6px; }
@@ -65,6 +72,8 @@ function ensureStyles() {
     .pol-topbar { flex-wrap:wrap; row-gap:8px; gap:10px; padding:10px 12px; }
     .pol-topbar .brand { flex:1 1 auto; min-width:0; }
     .pol-topbar .player { font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    /* Absolute-centred version doesn't make sense once the bar wraps; hide it. */
+    .pol-topbar__version { display:none; }
     .pol-topbar .meta { order:99; width:100%; gap:14px; border-top:0.5px solid rgba(255,255,255,0.06); padding-top:8px; }
     .pol-topbar .meta .label { font-size:8px; }
     .pol-topbar .meta .value { font-size:11px; }
@@ -150,8 +159,8 @@ export function renderPoliticianTopbar(container, { faction, shard, nation, allU
       <div class="brand">
         <div class="crest">${esc(ini)}</div>
         <span class="player">${esc(display)}</span>
-        <span class="pol-topbar__version">${esc(APP_VERSION)}</span>
       </div>
+      <span class="pol-topbar__version">${esc(APP_VERSION)}</span>
       <div class="meta">
         <div><div class="label">AGE</div><div class="value">${esc(age)}</div></div>
         <div><div class="label">NATION</div><div class="value">${nationHtml}</div></div>
