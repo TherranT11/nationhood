@@ -40,6 +40,14 @@
 .stat-cell .fill { height:100%; border-radius:3px; }
 .stat-cell .sub  { font-size:11px; color:#888; margin-top:6px; line-height:1.4; }
 
+/* Money variant — label small/dim above, dollar figure large and centered
+   below so the headline number reads as the focal point of the cell. */
+.stat-cell.money { text-align:center; }
+.stat-cell.money .label { display:block; font-size:10px; letter-spacing:0.13em;
+  color:#666; text-transform:uppercase; margin-bottom:8px; }
+.stat-cell.money .value { display:block; font-size:26px; font-weight:600;
+  color:#fff; font-family:monospace; letter-spacing:0.02em; }
+
 /* Jump nav: short pills that scroll to + open the matching collapsible. */
 .jump-nav { display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
 .jump-nav button { font-family:monospace; font-size:10px; letter-spacing:0.08em;
@@ -103,6 +111,7 @@
   .info-grid, .stats-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
   .info-cell .value { font-size:16px; }
   .stat-cell .row .value { font-size:13px; }
+  .stat-cell.money .value { font-size:20px; }
   .jump-nav { gap:4px; margin-bottom:12px; }
   .jump-nav button { font-size:9px; padding:6px 10px; letter-spacing:0.06em; }
   .sec summary { padding:12px 14px; font-size:11px; letter-spacing:0.06em; }
@@ -491,8 +500,9 @@ function renderCard(n, pm) {
 
   document.getElementById('nc-stats').innerHTML = stats.map(s => {
     if (s.kind === 'money') {
-      return `<div class="stat-cell">
-        <div class="row"><span class="label">${escHtml(s.label)}</span><span class="value">${escHtml(fmtMoney(s.value))}</span></div>
+      return `<div class="stat-cell money">
+        <span class="label">${escHtml(s.label)}</span>
+        <span class="value">${escHtml(fmtMoney(s.value))}</span>
       </div>`;
     }
     return `<div class="stat-cell">
