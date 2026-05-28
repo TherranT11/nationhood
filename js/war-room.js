@@ -1,12 +1,12 @@
-// War Room — read-only view of the player's active wars (Phase 1).
+// War Room — read-only view of the player's active wars.
 //
 // Renders, per war the viewer's nation is in: a header (auto-titled "The X–Y
 // War" + duration), the three land fronts each as the contested front-line
 // pair plus a three-column engagement panel (Forces · Combat Events · Forces),
 // the air-war spectrum (war_fronts.air_status, shown from the viewer's POV),
-// and a greyed naval row when there's no sea front. The Combat Events column
-// is stubbed empty until the Phase 2 combat resolver writes into a per-tick
-// event log; everything else reflects state we already store.
+// and a greyed naval row when there's no sea front. Combat Events are written
+// by processCombat in js/game/military-units.js on each engagement that moves
+// the line; the prose templates that render them live further down this file.
 
 import { _supabase } from './supabase-client.js';
 import { escapeHtml, escapeAttr, tickToDate } from './utils.js';
@@ -272,9 +272,9 @@ async function renderWar(w, nation, nameById, commandable, isHoG) {
     // contested sectors at the dividing line (picked from line_position once
     // combat is live, or from the static is_border flag before initialisation),
     // followed by a three-column panel — Forces of nation_a · Combat Events ·
-    // Forces of nation_b — with the events column stubbed until the resolver
-    // lands. Rear sectors and capitals were dropped from this view; the
-    // territorial-control summary lives in the header score line.
+    // Forces of nation_b — where the events column reads the recent rows from
+    // combat_events. Rear sectors and capitals were dropped from this view;
+    // the territorial-control summary lives in the header score line.
     const actionLabel = (x) => x === 'assault' ? 'ASSAULT' : 'DEFEND';
     const frontsHtml = land.length ? land.map(f => {
         const secs = sectorsByFront.get(f.id) || [];

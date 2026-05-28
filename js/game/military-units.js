@@ -171,6 +171,11 @@ const _pairKey = (x, y) => (x < y ? `${x}|${y}` : `${y}|${x}`);
 // the broken side's capital. line 0 / sector_count = a capital has fallen and
 // the front is decided (combat halts). DEFEND: ×1.5 power, ½ casualties,
 // 0.4× cohesion drain, cannot advance. Non-fatal; bails on partial reads.
+//
+// Side effect: each engagement that moves the line emits one combat_events
+// row (kind, terrain, pressor + claimant nations, seized sector, fall-back
+// sector, headline army + unit + commander) so the war room can render the
+// narrative. Defender-holds outcomes don't move the line and don't emit.
 export async function processCombat(supabase, currentTick) {
     const { data: warRels, error: relErr } = await supabase
         .from('diplomatic_relations').select('id, nation_a_id, nation_b_id, war_score_a, war_score_b').eq('relation_type', 'war');
@@ -378,6 +383,13 @@ function emitCombatEvent(events, front, tick, loserAction,
     }
     if (!unit) return;            // no active units — shouldn't happen post-break
 
+    // Nation names are the headline of every template. If the nations fetch
+    // failed at the start of the tick, suppress the event rather than render
+    // a half-formed narrative with em-dash placeholders for who's fighting.
+    const pressorName = nationNameById.get(pressorNationId);
+    const claimantName = nationNameById.get(claimantNationId);
+    if (!pressorName || !claimantName) return;
+
     events.push({
         front_id: front.id,
         tick,
@@ -385,8 +397,8 @@ function emitCombatEvent(events, front, tick, loserAction,
         terrain: seized.type || 'plains',
         pressor_nation_id: pressorNationId,
         claimant_nation_id: claimantNationId,
-        pressor_nation_name: nationNameById.get(pressorNationId) || '',
-        claimant_nation_name: nationNameById.get(claimantNationId) || '',
+        pressor_nation_name: pressorName,
+        claimant_nation_name: claimantName,
         sector_name: seized.name || '',
         retreat_sector_name: retreat ? retreat.name : null,
         army_name: army.name || '',
