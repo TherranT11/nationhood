@@ -192,7 +192,7 @@ export async function processCombat(supabase, currentTick) {
     const frontById = new Map(fronts.map(f => [f.id, f]));
 
     const { data: armyData, error: armyErr } = await supabase
-        .from('armies').select('id, faction_id, nation_id, assigned_front_id, supply_balance, commander_leadership, commander_discipline').in('assigned_front_id', frontIds);
+        .from('armies').select('id, name, faction_id, nation_id, assigned_front_id, supply_balance, commander_leadership, commander_discipline, commander_name').in('assigned_front_id', frontIds);
     if (armyErr) { console.error('[processCombat] armies load failed:', armyErr.message); return { battles: 0 }; }
     const armies = armyData || [];
     const armyIds = armies.map(a => a.id);
@@ -201,7 +201,7 @@ export async function processCombat(supabase, currentTick) {
     let units = [], equip = [], facs = [];
     if (armyIds.length) {
         const uRes = await supabase.from('army_units')
-            .select('id, army_id, total_manpower, brigades').in('army_id', armyIds).eq('status', 'Active');
+            .select('id, name, army_id, total_manpower, brigades').in('army_id', armyIds).eq('status', 'Active');
         if (uRes.error) { console.error('[processCombat] units load failed:', uRes.error.message); return { battles: 0 }; }
         units = uRes.data || [];
         const unitIds = units.map(u => u.id);
@@ -235,11 +235,29 @@ export async function processCombat(supabase, currentTick) {
         else if (ar.nation_id === f.nation_b_id) bucket.b.push(ar);
     }
 
+    // Sectors and nation names for the narrative log. Sectors are indexed by
+    // front_id then position so the resolver can name the seized sector + the
+    // sector the loser fell back to. Failure to load these only suppresses the
+    // narrative — combat itself still resolves normally.
+    const sectorsByFront = new Map();
+    const sRes = await supabase.from('war_sectors')
+        .select('front_id, position, name, type').in('front_id', frontIds);
+    if (sRes.error) console.error('[processCombat] sectors load failed (events suppressed):', sRes.error.message);
+    for (const s of (sRes.data || [])) {
+        if (!sectorsByFront.has(s.front_id)) sectorsByFront.set(s.front_id, new Map());
+        sectorsByFront.get(s.front_id).set(Number(s.position), s);
+    }
+    const nationIds = [...new Set(fronts.flatMap(f => [f.nation_a_id, f.nation_b_id]))];
+    const nRes = await supabase.from('nations').select('id, name').in('id', nationIds);
+    if (nRes.error) console.error('[processCombat] nations load failed (events suppressed):', nRes.error.message);
+    const nationNameById = new Map((nRes.data || []).map(n => [n.id, n.name]));
+
     // Mutable running state, flushed once at the end (a faction may fight on
     // several fronts in one tick — cohesion/manpower carry across them).
     const cohVal = new Map([...facById].map(([id, f]) => [id, Number(f.army_cohesion) || 0]));
     const unitMp = new Map(units.map(u => [u.id, Number(u.total_manpower) || 0]));
     const lineUpd = new Map();
+    const events = [];   // combat_events rows, flushed at the end
     let battles = 0;
 
     for (const f of fronts) {
@@ -279,15 +297,28 @@ export async function processCombat(supabase, currentTick) {
         const bBroke = B.M <= 0 || sideCohesion(B, cohVal) <= 0;
         const rel = relByPair.get(_pairKey(f.nation_a_id, f.nation_b_id));
         if (bBroke && !aBroke && actA === 'assault') {
+            // nation_a seized the sector at OLD line+1 (B's frontline); B fell
+            // back to position line+2 — capture both BEFORE incrementing line.
+            const seizedPos = line + 1;
+            const retreatPos = line + 2;
             line = Math.min(N, line + 1);
             for (const fid of B.facIds) cohVal.set(fid, Math.max(cohVal.get(fid) || 0, rally(B.discipline)));
             lineUpd.set(f.id, line);
             if (rel) { rel.a += 1; rel.dirty = true; }   // nation_a seized a sector → +1 Conquest Point
+            emitCombatEvent(events, f, currentTick, actB,
+                f.nation_a_id, f.nation_b_id, buckets.a, seizedPos, retreatPos,
+                sectorsByFront, nationNameById, unitsByArmy, unitMp);
         } else if (aBroke && !bBroke && actB === 'assault') {
+            // Mirror: nation_b took A's frontline at OLD line; A fell back to line-1.
+            const seizedPos = line;
+            const retreatPos = line - 1;
             line = Math.max(0, line - 1);
             for (const fid of A.facIds) cohVal.set(fid, Math.max(cohVal.get(fid) || 0, rally(A.discipline)));
             lineUpd.set(f.id, line);
             if (rel) { rel.b += 1; rel.dirty = true; }   // nation_b seized a sector → +1 Conquest Point
+            emitCombatEvent(events, f, currentTick, actA,
+                f.nation_b_id, f.nation_a_id, buckets.b, seizedPos, retreatPos,
+                sectorsByFront, nationNameById, unitsByArmy, unitMp);
         }
         battles++;
     }
@@ -308,8 +339,60 @@ export async function processCombat(supabase, currentTick) {
     for (const rel of relByPair.values()) {
         if (rel.dirty) await supabase.from('diplomatic_relations').update({ war_score_a: rel.a, war_score_b: rel.b }).eq('id', rel.id);
     }
+    if (events.length) {
+        const evRes = await supabase.from('combat_events').insert(events);
+        if (evRes.error) console.error('[processCombat] combat_events insert failed:', evRes.error.message);
+    }
 
     return { battles };
+}
+
+// One narrative row per resolved engagement that moved the line. Picks the
+// winning side's strongest army (max total manpower across its active units)
+// and its strongest unit as the headline force, snapshots all display fields
+// so the war-room renderer needs no joins. `loserAction` is whatever the
+// defeated side ordered: 'assault' on both sides = meeting engagement;
+// 'defend' on the loser = the attacker overran a dug-in defender (breakthrough).
+function emitCombatEvent(events, front, tick, loserAction,
+                        pressorNationId, claimantNationId, pressorArmies,
+                        seizedPos, retreatPos,
+                        sectorsByFront, nationNameById, unitsByArmy, unitMp) {
+    const frontSectors = sectorsByFront.get(front.id);
+    if (!frontSectors) return;   // sectors failed to load — suppress narrative
+    const seized = frontSectors.get(seizedPos);
+    if (!seized) return;          // seized sector missing — schema/data drift
+    const retreat = frontSectors.get(retreatPos) || null;   // null = past last sector (capital next)
+
+    // Strongest army by total live manpower; strongest unit within it.
+    let army = null, armyM = -1;
+    for (const ar of pressorArmies) {
+        let m = 0;
+        for (const u of (unitsByArmy.get(ar.id) || [])) m += (unitMp.get(u.id) || 0);
+        if (m > armyM) { armyM = m; army = ar; }
+    }
+    if (!army) return;            // no armies on the winning side — shouldn't happen
+    let unit = null, unitM = -1;
+    for (const u of (unitsByArmy.get(army.id) || [])) {
+        const m = unitMp.get(u.id) || 0;
+        if (m > unitM) { unitM = m; unit = u; }
+    }
+    if (!unit) return;            // no active units — shouldn't happen post-break
+
+    events.push({
+        front_id: front.id,
+        tick,
+        kind: loserAction === 'assault' ? 'meeting' : 'breakthrough',
+        terrain: seized.type || 'plains',
+        pressor_nation_id: pressorNationId,
+        claimant_nation_id: claimantNationId,
+        pressor_nation_name: nationNameById.get(pressorNationId) || '',
+        claimant_nation_name: nationNameById.get(claimantNationId) || '',
+        sector_name: seized.name || '',
+        retreat_sector_name: retreat ? retreat.name : null,
+        army_name: army.name || '',
+        unit_name: unit.name || '',
+        commander_name: army.commander_name || null,
+    });
 }
 
 // One side's pooled strength. ECP per army: effective manpower (real rifles
