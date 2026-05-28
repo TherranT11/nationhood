@@ -2114,17 +2114,12 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     }
 
     // ==================== ADD PARTY TAB ====================
-    async function loadAddPartyInit() {
-        // Nation dropdown
-        try {
-            const { data, error } = await _supabase.from('nations').select('id, name').order('name');
-            if (error) throw error;
-            const sel = document.getElementById('ap-nation');
-            if (sel) sel.innerHTML = '<option value="">-- Choose a nation --</option>' +
-                (data || []).map(n => `<option value="${n.id}">${n.name}</option>`).join('');
-        } catch (err) {
-            console.error('loadAddPartyInit (nations) failed', err);
-        }
+    function loadAddPartyInit() {
+        // Nation dropdown — reuse the shared `nations` list (already loaded by
+        // loadElectionNations earlier in loadAllData) instead of re-querying.
+        const sel = document.getElementById('ap-nation');
+        if (sel) sel.innerHTML = '<option value="">-- Choose a nation --</option>' +
+            nations.map(n => `<option value="${n.id}">${escHtml(n.name)}</option>`).join('');
         // Archetype dropdown — sourced from the canonical ARCHETYPES list.
         const arch = document.getElementById('ap-archetype');
         if (arch) arch.innerHTML = '<option value="">(none)</option>' +
