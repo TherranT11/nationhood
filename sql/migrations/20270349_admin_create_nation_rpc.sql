@@ -60,7 +60,6 @@ DECLARE
     v_cur_date    text;
     v_nation_id   uuid;
     v_stats       jsonb := COALESCE(p_payload->'stats', '{}'::jsonb);
-    v_policy_ids  uuid[];
     v_include_pm  boolean;
     v_has_elect   boolean;
     v_next_elect  int;
@@ -247,22 +246,24 @@ BEGIN
        );
 
     -- ── 7. Pre-activate selected catalog policies as already-baked law ─────────
-    IF jsonb_typeof(p_payload->'policy_ids') = 'array' THEN
-        SELECT array_agg(elem::uuid)
-          INTO v_policy_ids
-          FROM jsonb_array_elements_text(p_payload->'policy_ids') AS elem
-         WHERE elem <> '';
-    END IF;
-
-    IF v_policy_ids IS NOT NULL AND array_length(v_policy_ids, 1) > 0 THEN
+    -- Payload: 'policies' is an array of { id, option_id }. option_id is the
+    -- policy_options row chosen as the starting variant (null when a policy
+    -- carries no options). Categorisation is copied from the policies catalog
+    -- row so it never drifts from the source.
+    IF jsonb_typeof(p_payload->'policies') = 'array' THEN
         INSERT INTO nation_policies (
-            nation_id, policy_id, major_sector, law_category, fiscal_category,
+            nation_id, policy_id, selected_option_id,
+            major_sector, law_category, fiscal_category,
             status, activated_at_tick, effects_started, effects_completed, ticks_elapsed
         )
-        SELECT v_nation_id, p.id, p.major_sector, p.law_category, p.fiscal_category,
-               'active', 0, true, true, 48
-          FROM policies p
-         WHERE p.id = ANY(v_policy_ids)
+        SELECT
+            v_nation_id,
+            (elem->>'id')::uuid,
+            NULLIF(elem->>'option_id', '')::uuid,
+            p.major_sector, p.law_category, p.fiscal_category,
+            'active', 0, true, true, 48
+          FROM jsonb_array_elements(p_payload->'policies') AS elem
+          JOIN policies p ON p.id = (elem->>'id')::uuid
         ON CONFLICT DO NOTHING;
     END IF;
 

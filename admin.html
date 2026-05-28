@@ -1995,10 +1995,18 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         if (!box) return;
         try {
             const { data, error } = await _supabase.from('policies')
-                .select('id, policy_name, major_sector, policy_type')
+                .select('id, policy_name, major_sector, policy_type, policy_options(id, option_name, option_order, is_active)')
                 .order('major_sector').order('policy_name');
             if (error) throw error;
-            nnPolicyCache = (data || []).filter(p => (p.policy_type || 'structural') === 'structural');
+            // Keep every policy (both 'structural' and 'lever'). Each carries its
+            // own active options sorted by option_order; the form renders an
+            // inline select per policy so the admin can pick the starting choice.
+            nnPolicyCache = (data || []).map(p => ({
+                ...p,
+                policy_options: (p.policy_options || [])
+                    .filter(o => o.is_active !== false)
+                    .sort((a, b) => (a.option_order ?? 0) - (b.option_order ?? 0)),
+            }));
             renderAddNationPolicies(nnPolicyCache);
         } catch (err) {
             console.error('loadAddNationPolicies failed', err);
@@ -2010,11 +2018,17 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         const box = document.getElementById('nn-policies-list');
         if (!box) return;
         if (!list.length) { box.innerHTML = '<span style="color:#888;">No matching policies.</span>'; return; }
-        box.innerHTML = list.map(p =>
-            `<label style="display:block; font-size:0.82rem; padding:2px 0;">` +
-            `<input type="checkbox" class="nn-pol" value="${p.id}"> ` +
-            `<span style="color:#888;">[${p.major_sector || '—'}]</span> ${p.policy_name}</label>`
-        ).join('');
+        box.innerHTML = list.map(p => {
+            const opts = p.policy_options || [];
+            const sel = opts.length
+                ? `<select class="nn-pol-opt" data-policy="${p.id}" style="font-size:0.72rem; max-width:220px; margin-left:6px;">` +
+                  opts.map((o, i) => `<option value="${o.id}"${i === 0 ? ' selected' : ''}>${o.option_name}</option>`).join('') +
+                  '</select>'
+                : '';
+            return `<div style="display:flex; align-items:center; gap:6px; padding:2px 0; font-size:0.82rem;">` +
+                `<label style="flex:1;"><input type="checkbox" class="nn-pol" value="${p.id}"> ` +
+                `<span style="color:#888;">[${p.major_sector || '—'}]</span> ${p.policy_name}</label>${sel}</div>`;
+        }).join('');
     }
 
     function filterAddNationPolicies() {
@@ -2061,7 +2075,10 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
             const v = nnVal('nn-stat-' + key);
             if (v !== '') stats[key] = v;
         });
-        const policyIds = [...document.querySelectorAll('.nn-pol:checked')].map(c => c.value);
+        const policies = [...document.querySelectorAll('.nn-pol:checked')].map(cb => {
+            const sel = document.querySelector(`.nn-pol-opt[data-policy="${cb.value}"]`);
+            return { id: cb.value, option_id: sel?.value || null };
+        });
 
         const payload = {
             name: nnVal('nn-name'),
@@ -2090,7 +2107,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
             motto: nnVal('nn-motto'),
             overview: nnVal('nn-overview'),
             stats,
-            policy_ids: policyIds,
+            policies,
         };
         if (isMonarchy) payload.dynasty_name = nnVal('nn-dynasty_name');
         if (isPres) {
