@@ -110,7 +110,7 @@ SET value = REPLACE(
                 <summary style="cursor:pointer; font-weight:600;">National Statistics (0&ndash;100 unless noted)</summary>
                 <div style="margin:10px 0;">
                     <button class="btn" onclick="fillNationDefaults()">Fill sensible defaults</button>
-                    <button class="btn" onclick="renderAddNationStats(true)">Reset all to 50</button>
+                    <button class="btn" onclick="renderAddNationStats()">Reset all to 50</button>
                 </div>
                 <div id="nn-stats-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:8px;"></div>
             </details>

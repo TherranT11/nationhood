@@ -1944,13 +1944,20 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         });
     }
 
+    // Single source of truth for which UI fields / payload keys each gov-type uses.
+    function nnGovFlags(govKey) {
+        return {
+            isPres: govKey === 'presidential' || govKey === 'semipresidential',
+            hasPM: govKey !== 'presidential',
+            isMonarchy: govKey === 'constitutional_monarchy' || govKey === 'absolute_monarchy',
+            isAbsolute: govKey === 'absolute_monarchy',
+        };
+    }
+
     function onAddNationGovType() {
         const t = document.getElementById('nn-govtype')?.value;
         if (!t) return;
-        const isMonarchy = (t === 'constitutional_monarchy' || t === 'absolute_monarchy');
-        const isPres = (t === 'presidential' || t === 'semipresidential');
-        const isAbsolute = (t === 'absolute_monarchy');
-        const hasPM = (t !== 'presidential');
+        const { isMonarchy, isPres, isAbsolute, hasPM } = nnGovFlags(t);
         const show = (id, on) => { const e = document.getElementById(id); if (e) e.style.display = on ? '' : 'none'; };
         show('nn-dynasty-wrap', isMonarchy);
         show('nn-presterm-wrap', isPres);
@@ -2030,9 +2037,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         if (nnVal('nn-name').length < 2) return setErr('Name must be at least 2 characters.');
         if (nnVal('nn-capital').length < 2) return setErr('Capital is required.');
 
-        const isPres = (govKey === 'presidential' || govKey === 'semipresidential');
-        const hasPM = (govKey !== 'presidential');
-        const isMonarchy = (govKey === 'constitutional_monarchy' || govKey === 'absolute_monarchy');
+        const { isPres, hasPM, isMonarchy } = nnGovFlags(govKey);
 
         const stats = {};
         NN_STAT_FIELDS.forEach(([key]) => {
