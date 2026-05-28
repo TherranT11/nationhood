@@ -32,7 +32,7 @@
 .info-cell .value { font-size:18px; font-weight:500; color:#fff; line-height:1.2; }
 .info-cell .sub   { font-size:11px; color:#888; margin-top:4px; line-height:1.4; }
 
-.stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:18px; padding-top:6px; }
+.stats-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:18px; padding-top:6px; }
 .stat-cell .row { display:flex; justify-content:space-between; align-items:baseline; }
 .stat-cell .row .label { font-size:9px; letter-spacing:0.13em; color:#666; text-transform:uppercase; }
 .stat-cell .row .value { font-size:14px; font-weight:600; color:#fff; }
@@ -63,6 +63,17 @@
 .sec[open] summary::after { content:'−'; }
 .sec-body  { padding:18px; }
 .sec-empty { color:#555; font-size:12px; font-style:italic; text-align:center; padding:24px 0; }
+
+/* Back-to-Top button — bottom-right of every section body. Scrolls the
+   page back up to the jump nav so the section list is in view again. */
+.sec-foot { display:flex; justify-content:flex-end; margin-top:14px;
+  padding-top:12px; border-top:0.5px solid rgba(255,255,255,0.04); }
+.back-to-top { font-family:monospace; font-size:10px; letter-spacing:0.08em;
+  text-transform:uppercase; color:#888; background:transparent;
+  border:0.5px solid rgba(255,255,255,0.08); border-radius:3px;
+  padding:6px 12px; cursor:pointer; transition:all 0.15s;
+  display:inline-flex; align-items:center; gap:6px; }
+.back-to-top:hover { color:#5aafa5; border-color:rgba(90,175,165,0.4); }
 
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
@@ -132,9 +143,13 @@
   <nav class="jump-nav" id="jump-nav">
     <button data-target="sec-nation">Nation</button>
     <button data-target="sec-govt">Govt</button>
+    <button data-target="sec-elections">Elections</button>
+    <button data-target="sec-committees">Committees</button>
+    <button data-target="sec-laws">Laws</button>
     <button data-target="sec-parties">Parties</button>
-    <button data-target="sec-military">Military</button>
     <button data-target="sec-economy">Economy</button>
+    <button data-target="sec-corp">Corporations</button>
+    <button data-target="sec-military">Military</button>
     <button data-target="sec-conflicts">Conflicts</button>
     <button data-target="sec-world">World Orgs</button>
     <button data-target="sec-ngos">NGOs</button>
@@ -143,39 +158,94 @@
 
   <details id="sec-nation" class="sec">
     <summary>National Characteristics</summary>
-    <div class="sec-body"><div class="sec-empty">Nothing recorded yet.</div></div>
+    <div class="sec-body">
+      <div class="sec-empty">Nothing recorded yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
   </details>
   <details id="sec-govt" class="sec">
     <summary>Government &amp; Politics</summary>
-    <div class="sec-body"><div class="sec-empty">Nothing recorded yet.</div></div>
+    <div class="sec-body">
+      <div class="sec-empty">Nothing recorded yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-elections" class="sec">
+    <summary>Elections</summary>
+    <div class="sec-body">
+      <div class="sec-empty">No elections recorded yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-committees" class="sec">
+    <summary>Committees</summary>
+    <div class="sec-body">
+      <div class="sec-empty">No committees recorded yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-laws" class="sec">
+    <summary>Laws</summary>
+    <div class="sec-body">
+      <div class="sec-empty">No laws recorded yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
   </details>
   <details id="sec-parties" class="sec">
     <summary>Political Parties</summary>
-    <div class="sec-body"><div class="sec-empty">No parties listed yet.</div></div>
-  </details>
-  <details id="sec-military" class="sec">
-    <summary>Armed Forces</summary>
-    <div class="sec-body"><div class="sec-empty">Nothing recorded yet.</div></div>
+    <div class="sec-body">
+      <div class="sec-empty">No parties listed yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
   </details>
   <details id="sec-economy" class="sec">
     <summary>Economy &amp; Trade</summary>
-    <div class="sec-body"><div class="sec-empty">Nothing recorded yet.</div></div>
+    <div class="sec-body">
+      <div class="sec-empty">Nothing recorded yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-corp" class="sec">
+    <summary>Corporations</summary>
+    <div class="sec-body">
+      <div class="sec-empty">No corporations recorded yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-military" class="sec">
+    <summary>Armed Forces</summary>
+    <div class="sec-body">
+      <div class="sec-empty">Nothing recorded yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
   </details>
   <details id="sec-conflicts" class="sec">
     <summary>Conflicts &amp; Issues</summary>
-    <div class="sec-body"><div class="sec-empty">No active conflicts or open issues yet.</div></div>
+    <div class="sec-body">
+      <div class="sec-empty">No active conflicts or open issues yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
   </details>
   <details id="sec-world" class="sec">
     <summary>World Organizations</summary>
-    <div class="sec-body"><div class="sec-empty">No international memberships recorded yet.</div></div>
+    <div class="sec-body">
+      <div class="sec-empty">No international memberships recorded yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
   </details>
   <details id="sec-ngos" class="sec">
     <summary>NGOs &amp; Civil Society</summary>
-    <div class="sec-body"><div class="sec-empty">No NGOs listed yet.</div></div>
+    <div class="sec-body">
+      <div class="sec-empty">No NGOs listed yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
   </details>
   <details id="sec-dissident" class="sec">
     <summary>Dissident Groups</summary>
-    <div class="sec-body"><div class="sec-empty">No dissident groups listed yet.</div></div>
+    <div class="sec-body">
+      <div class="sec-empty">No dissident groups listed yet.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
   </details>
 </div>
 
@@ -185,8 +255,10 @@
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 
-// Tier descriptors per stat — index 0 = highest band, last = lowest. Each tuple
-// is [min, label]; first match wins on a descending walk.
+// Tier descriptors per scored stat. Stability and Civil Freedoms are the two
+// 0-100 bars in the politician-side card; the dollar-valued GDP / Budget /
+// Debt cells don't need a tier line. Index 0 = highest band, last = lowest;
+// each tuple is [min, label] and the first match wins on a descending walk.
 const TIERS = {
   stability: [
     [80, 'Iron · no challenge'],
@@ -194,20 +266,6 @@ const TIERS = {
     [40, 'Tense · cracks visible'],
     [20, 'Volatile · unrest brewing'],
     [0,  'Breaking · revolt likely'],
-  ],
-  approval: [
-    [80, 'Adored · the public is yours'],
-    [60, 'Well-regarded'],
-    [40, 'Mixed reception'],
-    [20, 'Disliked'],
-    [0,  'Despised'],
-  ],
-  treasury: [
-    [80, 'Flush · ample reserves'],
-    [60, 'Stable · within targets'],
-    [40, 'Strained · careful spending'],
-    [20, 'Thin · cuts required'],
-    [0,  'Empty · austerity'],
   ],
   freedom: [
     [80, 'Free · civic life thrives'],
@@ -239,15 +297,20 @@ function formatPopulation(n) {
   return String(v);
 }
 
+// Compact money formatter for the politician-side GDP / Budget / Debt cells.
+// Trims trailing .0 so a round number reads "$441B", not "$441.00B".
+function fmtMoney(n) {
+  const abs = Math.abs(Number(n) || 0);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 1e9) return sign + '$' + (abs / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+  if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (abs >= 1e3) return sign + '$' + Math.round(abs / 1e3) + 'k';
+  return sign + '$' + Math.round(abs);
+}
+
 function govTypeLabel(govType) {
   if (!govType) return '';
   return String(govType).toUpperCase();
-}
-
-function approvalLabel(govType) {
-  if (govType === 'Absolute Monarchy') return 'Royal Approval';
-  if (govType === 'Presidential' || govType === 'Semi-Presidential') return 'Presidential Approval';
-  return 'Government Approval';
 }
 
 function splitOfficialName(officialName, fallbackName, govType) {
@@ -293,7 +356,8 @@ async function init() {
             id, name, government_type, capital,
             head_of_state_title, head_of_state_first_name, head_of_state_last_name,
             population, dynasty_name,
-            unrest, public_approval, budget, global_image,
+            politician_gdp, politician_budget, politician_debt,
+            politician_stability, politician_civil_freedoms,
             nation_profiles(flag_url, official_name, motto, overview, founded_year)
           `)
           .eq('id', nid).maybeSingle(),
@@ -320,9 +384,10 @@ async function init() {
   document.getElementById('content').style.display = 'block';
 }
 
-// Open the matching <details> and scroll it into view. scroll-margin-top in
-// CSS keeps the section flush below the topbar/nav rather than pinned to the
-// viewport edge.
+// Jump-nav clicks open the matching <details> and scroll it into view.
+// Back-to-Top clicks just scroll to the target (the jump-nav itself) — no
+// open / close. scroll-margin-top in CSS keeps the section flush below the
+// topbar / nav rather than pinned to the viewport edge.
 function bindJumpNav() {
   document.querySelectorAll('#jump-nav button').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -331,6 +396,13 @@ function bindJumpNav() {
       det.open = true;
       det.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
+  });
+  // Single delegated handler for every Back-to-Top button across all sections.
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.back-to-top');
+    if (!btn) return;
+    const target = document.getElementById(btn.dataset.target);
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 }
 
@@ -387,25 +459,36 @@ function renderCard(n, pm) {
     hogSubEl.textContent = fac?.faction_name ? `${fac.faction_name}-led government` : 'Prime Minister';
   }
 
-  // Four stat bars. STABILITY is inverted from unrest (high unrest → low stability).
-  const stability = Math.max(0, Math.min(100, 100 - (Number(n.unrest) || 0)));
-  const approval  = Math.max(0, Math.min(100, Number(n.public_approval) || 0));
-  const treasury  = Math.max(0, Math.min(100, Number(n.budget) || 0));
-  const freedom   = Math.max(0, Math.min(100, Number(n.global_image) || 0));
+  // Politician-side stats: three dollar cells (GDP / Budget / Debt) and two
+  // 0-100 scored bars (Stability / Civil Freedoms). All five read from the
+  // dedicated politician_* columns added in 20270361 — independent of the
+  // legacy nations columns the parties surface still uses.
+  const gdp       = Number(n.politician_gdp)            || 0;
+  const budget    = Number(n.politician_budget)         || 0;
+  const debt      = Number(n.politician_debt)           || 0;
+  const stability = Math.max(0, Math.min(100, Number(n.politician_stability)      || 0));
+  const freedoms  = Math.max(0, Math.min(100, Number(n.politician_civil_freedoms) || 0));
 
   const stats = [
-    { key: 'stability', label: 'Stability',                    value: stability },
-    { key: 'approval',  label: approvalLabel(n.government_type), value: approval  },
-    { key: 'treasury',  label: 'Treasury',                     value: treasury  },
-    { key: 'freedom',   label: 'Global Image',                 value: freedom   },
+    { kind: 'money', label: 'GDP',            value: gdp },
+    { kind: 'money', label: 'Budget',         value: budget },
+    { kind: 'money', label: 'Debt',           value: debt },
+    { kind: 'score', label: 'Stability',      value: stability, tier: 'stability' },
+    { kind: 'score', label: 'Civil Freedoms', value: freedoms,  tier: 'freedom'   },
   ];
 
-  document.getElementById('nc-stats').innerHTML = stats.map(s => `
-    <div class="stat-cell">
+  document.getElementById('nc-stats').innerHTML = stats.map(s => {
+    if (s.kind === 'money') {
+      return `<div class="stat-cell">
+        <div class="row"><span class="label">${escHtml(s.label)}</span><span class="value">${escHtml(fmtMoney(s.value))}</span></div>
+      </div>`;
+    }
+    return `<div class="stat-cell">
       <div class="row"><span class="label">${escHtml(s.label)}</span><span class="value">${Math.round(s.value)}</span></div>
       <div class="bar"><div class="fill" style="width:${s.value}%; background:${barColor(s.value)};"></div></div>
-      <div class="sub">${escHtml(tierLabel(s.key, s.value))}</div>
-    </div>`).join('');
+      <div class="sub">${escHtml(tierLabel(s.tier, s.value))}</div>
+    </div>`;
+  }).join('');
 }
 
 init();
