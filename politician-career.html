@@ -79,6 +79,8 @@
   background:transparent; cursor:pointer; transition:all 0.15s; }
 .rung-btn--primary { color:#5aafa5; border:0.5px solid rgba(90,175,165,0.4); }
 .rung-btn--primary:hover { border-color:#5aafa5; background:rgba(90,175,165,0.08); }
+.rung-btn--secondary { color:#c89e6e; border:0.5px solid rgba(200,158,110,0.35); }
+.rung-btn--secondary:hover { border-color:#c89e6e; background:rgba(200,158,110,0.08); }
 .rung-btn--disabled { color:#555; border:0.5px solid rgba(255,255,255,0.06); cursor:not-allowed; }
 .rung-held { font-size:10px; color:#888; letter-spacing:0.08em; text-transform:uppercase; }
 /* Ladder-level footer note — italic flavor line beneath the rung list. */
@@ -153,6 +155,7 @@
 <div id="loading" class="loading">LOADING...</div>
 
 <script type="module">
+import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 
 const START_AGE = 25;
@@ -206,10 +209,11 @@ const LADDERS = [
 const PARTY_OFFICE_RUNGS = [
   {
     name: 'Party Member',
-    held:        (s) => s.career && s.career !== 'Independent',
+    held:        (s) => !!s.partyId,
     descIfHeld:  (s) => `You are a card-carrying member of ${s.partyName} here.`,
     descIfNot:   ()  => 'You are not a member of a political party.',
-    actionIfNot: { label: 'Join Political Party', kind: 'primary', href: 'politician-movements.html' },
+    actionIfNot:  { label: 'Join Political Party',  kind: 'primary',   href: 'politician-movements.html?openJoin=1' },
+    actionIfHeld: { label: 'Leave Political Party', kind: 'secondary', action: 'leave-party' },
   },
   {
     name: 'Election Candidate',
@@ -413,8 +417,21 @@ async function init() {
   }
   if (!ctx) return;
 
+  // Affiliated party (movement_party row) for the Party Member rung's
+  // descIfHeld and the Leave button. Soft-fails to null — the ladder
+  // just shows the not-affiliated state if this query trips.
+  let party = null;
+  if (ctx.faction?.politician_party_id) {
+    try {
+      const { data } = await _supabase.from('factions')
+        .select('id, faction_name, abbreviation')
+        .eq('id', ctx.faction.politician_party_id).maybeSingle();
+      party = data || null;
+    } catch (_) { /* non-fatal */ }
+  }
+
   render(ctx.faction, ctx.shard, ctx.nation);
-  renderLadders(buildLadderState(ctx.faction, ctx.nation));
+  renderLadders(buildLadderState(ctx.faction, ctx.nation, party), ctx.faction.id);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -422,11 +439,15 @@ async function init() {
 // State bag passed to every rung renderer — the bag, not the politician row
 // directly, so the contract for each rung is one focused interface rather than
 // "we read whatever we want off faction."
-function buildLadderState(politician, nation) {
+function buildLadderState(politician, nation, party) {
   const career = politician?.politician_career || 'Independent';
   return {
     career,
-    partyName: career === 'Independent' ? '' : career,
+    // Affiliation source of truth — politician_party_id + the looked-up party
+    // row. partyName is the display label for the descIfHeld message;
+    // partyId drives the Party Member rung's held() check.
+    partyId:   party?.id || null,
+    partyName: party?.faction_name || '',
     nation: nation?.name || 'this nation',
     holdsMayoralty: false,   // not yet tracked
     cityName: null,
@@ -475,7 +496,7 @@ function render(politician, shard, nation) {
     SUSPICION_SUB[suspicion] || 'level not recognised';
 }
 
-function renderLadders(state) {
+function renderLadders(state, politicianId) {
   const host = document.getElementById('ladders');
   host.innerHTML = LADDERS.map(l => {
     const rungs = typeof l.rungs === 'function' ? l.rungs() : l.rungs;
@@ -491,7 +512,7 @@ function renderLadders(state) {
       <div class="body">${body}${footer}</div>
     </details>`;
   }).join('');
-  bindRungActions();
+  bindRungActions(politicianId);
 }
 
 // Generic rung-list renderer. Walks a ladder's rung array, runs each rung's
@@ -512,7 +533,14 @@ function renderRungs(rungs, state) {
       : '';
 
     let actionHtml = '';
-    if (isHeld) {
+    if (isHeld && r.actionIfHeld) {
+      // Rungs that stay actionable while held (e.g. Party Member → Leave).
+      const a = r.actionIfHeld;
+      const cls = a.kind === 'primary' ? 'rung-btn rung-btn--primary' : 'rung-btn rung-btn--secondary';
+      const actionAttr = a.action ? ` data-action="${escHtml(a.action)}"` : '';
+      const hrefAttr   = a.kind === 'primary' && a.href ? ` data-href="${escHtml(a.href)}"` : '';
+      actionHtml = `<button class="${cls}"${hrefAttr}${actionAttr}>${escHtml(a.label)}</button>`;
+    } else if (isHeld) {
       actionHtml = '<span class="rung-held">held</span>';
     } else if (r.actionIfNot) {
       const a = r.actionIfNot;
@@ -544,11 +572,32 @@ function renderRungs(rungs, state) {
 // Single event handler for every rung's primary button — looks up data-href
 // and navigates. Disabled buttons carry the disabled attribute so they no-op
 // on their own.
-function bindRungActions() {
+function bindRungActions(politicianId) {
   document.querySelectorAll('.rung-btn--primary[data-href]').forEach(btn => {
     btn.addEventListener('click', () => {
       const href = btn.dataset.href;
       if (href) window.location.href = href;
+    });
+  });
+  document.querySelectorAll('.rung-btn[data-action="leave-party"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!politicianId) return;
+      if (!confirm('Leave your political party? Your influence stays where it is.')) return;
+      btn.disabled = true; btn.textContent = 'Leaving…';
+      try {
+        const { data, error } = await _supabase.rpc('politician_leave_party', { p_politician_id: politicianId });
+        if (error) throw error;
+        if (!data || !data.success) {
+          alert('Could not leave: ' + (data?.reason || 'unknown'));
+          btn.disabled = false; btn.textContent = 'Leave Political Party';
+          return;
+        }
+        location.reload();
+      } catch (err) {
+        console.error('politician-career: leave party failed', err);
+        alert('Could not leave: ' + (err.message || err));
+        btn.disabled = false; btn.textContent = 'Leave Political Party';
+      }
     });
   });
 }
