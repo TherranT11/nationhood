@@ -3655,7 +3655,10 @@ function initials(s, n) {
             invData.map(r => `<div class="cf-row"><div class="who">${escapeHtml(r.engine?.name || 'Engine')}</div><span class="num green">${r.quantity} units</span></div>`).join('')
           : '';
 
-        // Engine orders where this corp is buyer or seller, still open.
+        // Orders this corp is party to (engines today; aircraft will slot
+        // into the same section as that flow lands). Always rendered with an
+        // empty state when the fetch comes back clean — otherwise a missing
+        // section is indistinguishable from a silent fetch failure.
         const { data: ordData, error: ordErr } = await _supabase.from('ent_engine_orders')
           .select('id, buyer_corp_id, seller_corp_id, quantity, price_per_unit, status, engine:ent_aircraft_designs!engine_design_id(name), buyer:entrepreneur_corps!buyer_corp_id(name), seller:entrepreneur_corps!seller_corp_id(name)')
           .or(`buyer_corp_id.eq.${id},seller_corp_id.eq.${id}`).in('status', ['pending', 'priced'])
@@ -3681,9 +3684,11 @@ function initials(s, n) {
             : `<div class="sh-row-actions" style="gap:6px;"><span class="num muted">awaiting price</span>${ownerOnly(`<button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Cancel</button>`)}</div>`;
           return `<div class="cf-row"><div><div class="who">Buy ${o.quantity}× ${eng}</div><div class="sub">from ${seller}</div></div>${act}</div>`;
         };
-        const ordersSection = (ordData && ordData.length)
-          ? `<div class="section-heading"><span class="sans">Engine</span><span class="serif">Orders</span></div>${ordData.map(ordRow).join('')}`
-          : '';
+        const ordersBody = (ordData && ordData.length)
+          ? ordData.map(ordRow).join('')
+          : `<div class="sh-empty">No incoming or outgoing orders.</div>`;
+        const ordersSection =
+          `<div class="section-heading"><span class="sans">Open</span><span class="serif">Orders</span></div>${ordersBody}`;
 
         aviationPanelHtml = `
           <div class="section-heading"><span class="sans">Aircraft</span><span class="serif">Designs</span></div>
