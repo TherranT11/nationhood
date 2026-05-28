@@ -1901,31 +1901,46 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     }
 
     // ==================== ADD NATION TAB ====================
-    // Each entry: [stat_key, label, sensible_default]. Keys match the COALESCE
-    // columns in admin_create_nation (20270349). Baseline render value is 50;
-    // "Fill sensible defaults" applies the third element.
-    const NN_STAT_FIELDS = [
-        ['gdp_growth','GDP Growth',52],['debt_growth','Debt Growth',30],['inflation','Inflation',25],
-        ['interest_rates','Interest Rates',40],['trade_balance','Trade Balance',50],['currency_strength','Currency Strength',55],
-        ['foreign_investment','Foreign Investment',55],['credit','Credit',60],
-        ['income_tax','Income Tax',40],['corporate_tax','Corporate Tax',35],['sales_tax','Sales Tax',35],['tariffs','Tariffs',15],
-        ['unemployment','Unemployment',30],['labor_force_participation','Labor Force Participation',65],['minimum_wage','Minimum Wage',50],
-        ['union_strength','Union Strength',40],['poverty_rate','Poverty Rate',25],['income_inequality','Income Inequality',45],
-        ['population_growth','Population Growth',30],['median_age','Median Age (yrs)',40],['ethnic_diversity','Ethnic Diversity',40],
-        ['healthcare_quality','Healthcare Quality',60],['healthcare_accessibility','Healthcare Accessibility',60],['beds_per_100k','Beds per 100k',55],
-        ['lifespan','Lifespan',70],['drug_use','Drug Use',30],
-        ['literacy','Literacy',88],['higher_education','Higher Education',55],['education_accessibility','Education Accessibility',60],['academic_immigration','Academic Immigration',45],
-        ['physical_infrastructure','Physical Infrastructure',60],['digital_infrastructure','Digital Infrastructure',60],['rail_network','Rail Network',50],['urbanization','Urbanization',60],
-        ['energy_generation','Energy Generation',55],['renewable_energy_percentage','Renewable Energy %',25],['arable_land','Arable Land',45],['rare_minerals','Rare Minerals',40],['oil_and_gas','Oil & Gas',35],['fuel_prices','Fuel Prices',50],
-        ['pollution','Pollution',45],['carbon_emissions','Carbon Emissions',50],
-        ['standard_of_living','Standard of Living',60],['happiness','Happiness',58],['social_mobility','Social Mobility',55],['benefits','Benefits',50],
-        ['cost_of_living','Cost of Living',55],['housing_affordability','Housing Affordability',45],['manufacturing_output','Manufacturing Output',55],['service_output','Service Output',60],
-        ['crime_rate','Crime Rate',30],['incarceration_rate','Incarceration Rate',30],['religiosity','Religiosity',45],
-        ['stability','Stability',65],['legitimacy','Legitimacy',65],['efficiency','Efficiency',60],['gov_approval','Gov Approval',50],
-        ['corruption','Corruption',35],['press_freedom','Press Freedom',65],['judicial_independence','Judicial Independence',65],['freedom_index','Freedom Index',65],
-        ['polarization','Polarization',45],['civil_unrest','Civil Unrest',25],['terrorism','Terrorism',12],['political_violence','Political Violence',15],
-        ['immigration','Immigration',35],['illegal_immigration','Illegal Immigration',20],['emigration','Emigration',35],
-    ];
+    // Stat keys are driven by the canonical NATION_STAT_COLUMNS list in
+    // js/game/stats.js — one source of truth. Labels and sensible defaults
+    // live in NN_STAT_META; if the canonical list grows, an unmapped key
+    // falls back to its raw name + a 50 default. gdp / debt are excluded
+    // because they're dollar values handled by the headline economy section,
+    // not this 0–100 stat grid.
+    const NN_STAT_META = {
+        gdp_growth:         ['GDP Growth',         50],
+        immigration:        ['Immigration',        35],
+        standard_of_living: ['Standard of Living', 60],
+        cost_of_living:     ['Cost of Living',     50],
+        budget:             ['Budget',             50],
+        state_apparatus:    ['State Apparatus',    55],
+        unrest:             ['Unrest',             25],
+        public_approval:    ['Public Approval',    50],
+        crown_authority:    ['Crown Authority',    50],
+        energy:             ['Energy',             55],
+        health:             ['Health',             60],
+        education:          ['Education',          55],
+        global_image:       ['Global Image',       50],
+        infrastructure:     ['Infrastructure',     55],
+        industry:           ['Industry',           50],
+        farmland:           ['Farmland',           50],
+        service_sector:     ['Service Sector',     50],
+        unskilled_workers:  ['Unskilled Workers',  50],
+        skilled_workers:    ['Skilled Workers',    50],
+        wages:              ['Wages',              50],
+        income_tax:         ['Income Tax',         40],
+        corporate_tax:      ['Corporate Tax',      35],
+        crime:              ['Crime',              30],
+        corruption:         ['Corruption',         30],
+        inequality:         ['Inequality',         45],
+        minerals:           ['Minerals',           45],
+    };
+    const NN_STAT_FIELDS = NATION_STAT_COLUMNS
+        .filter(k => k !== 'gdp' && k !== 'debt')
+        .map(k => {
+            const meta = NN_STAT_META[k] || [k, 50];
+            return [k, meta[0], meta[1]];
+        });
 
     let nnPolicyCache = [];
 
