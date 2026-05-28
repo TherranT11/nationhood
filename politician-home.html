@@ -57,6 +57,17 @@ body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sa
 }
 
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
+
+/* Nav strip — same shape as .ent-nav, teal active. Only HOME for now;
+   add entries as more politician pages land. */
+.pol-nav { display:flex; gap:32px; padding:0 28px; border-bottom:0.5px solid rgba(255,255,255,0.08);
+  font-size:11px; letter-spacing:0.08em; }
+.pol-nav a { padding:14px 0; color:#888; text-decoration:none; cursor:pointer; }
+.pol-nav a:not(.active):hover { color:#d4d4d4; }
+.pol-nav a.active { color:#5aafa5; border-bottom:1px solid #5aafa5; }
+@media (max-width:700px) {
+  .pol-nav { padding:0 12px; gap:18px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+}
 </style>
 </head>
 <body>
@@ -87,9 +98,13 @@ body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sa
   </div>
 </div>
 
+<nav id="pol-nav" class="pol-nav" style="display:none;">
+  <a class="active" href="politician-home.html">HOME</a>
+</nav>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { APP_VERSION } from './js/utils.js';
+import { APP_VERSION, hfFmtBig } from './js/utils.js';
 import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl } from './js/game/factions.js';
 
 const START_AGE = 25;
@@ -150,18 +165,12 @@ async function init() {
   render(shard);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('topbar').style.display = 'flex';
+  document.getElementById('pol-nav').style.display = 'flex';
   startCountdown(shard.next_tick_at);
 }
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 function escAttr(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
-
-function fmtCash(n) {
-  const v = Number(n) || 0;
-  if (v >= 1_000_000) return '$' + (v / 1_000_000).toFixed(1) + 'M';
-  if (v >= 1_000)     return '$' + Math.round(v / 1_000) + 'k';
-  return '$' + v;
-}
 
 function currentAge(currentTick) {
   if (politician.founded_tick == null) return START_AGE;
@@ -187,7 +196,7 @@ function render(shard) {
   document.getElementById('pol-pill-label').textContent = pillLabel;
   document.getElementById('pol-age').textContent = String(currentAge(shard.current_tick || 0));
   document.getElementById('pol-career').textContent = politician.politician_career || 'Independent';
-  document.getElementById('pol-cash').textContent = fmtCash(politician.party_funds);
+  document.getElementById('pol-cash').textContent = hfFmtBig(Number(politician.party_funds) || 0);
   document.getElementById('pol-date').textContent = shard.current_date || '—';
   document.getElementById('pol-tick').textContent = shard.current_tick != null ? String(shard.current_tick) : '—';
 
