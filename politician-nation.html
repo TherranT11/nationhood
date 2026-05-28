@@ -75,6 +75,18 @@
   display:inline-flex; align-items:center; gap:6px; }
 .back-to-top:hover { color:#5aafa5; border-color:rgba(90,175,165,0.4); }
 
+/* National Characteristics body — four stat rows, each leading with its
+   current value in monospace brackets, followed by the stat name (bold)
+   and a one-line description. */
+.nat-stats { display:flex; flex-direction:column; }
+.nat-stat  { display:flex; gap:14px; align-items:flex-start; padding:12px 0;
+  border-bottom:0.5px solid rgba(255,255,255,0.04); }
+.nat-stat:last-child { border-bottom:none; }
+.nat-stat__value { font-family:monospace; font-size:13px; color:#5aafa5;
+  min-width:80px; flex-shrink:0; text-align:right; padding-top:1px; }
+.nat-stat__body  { flex:1; font-size:12px; color:#888; line-height:1.6; }
+.nat-stat__name  { font-weight:600; color:#fff; margin-right:4px; }
+
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
 /* Mobile refresh — tighter padding on the whole content, wrap the hero,
@@ -158,8 +170,8 @@
 
   <details id="sec-nation" class="sec">
     <summary>National Characteristics</summary>
-    <div class="sec-body">
-      <div class="sec-empty">Nothing recorded yet.</div>
+    <div class="sec-body" id="sec-nation-body">
+      <div class="sec-empty">Loading…</div>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
@@ -489,6 +501,45 @@ function renderCard(n, pm) {
       <div class="sub">${escHtml(tierLabel(s.tier, s.value))}</div>
     </div>`;
   }).join('');
+
+  renderNationalCharacteristics(n);
+}
+
+// National Characteristics body — the four headline stats again, this time
+// as a definition list with a one-line description so a player who's never
+// seen the game knows what each number means. Reads the same politician_*
+// columns the stat row above does; both renderers move together.
+function renderNationalCharacteristics(n) {
+  const body = document.getElementById('sec-nation-body');
+  if (!body) return;
+  const stats = [
+    {
+      label: 'Stability',
+      value: String(Math.round(Number(n.politician_stability) || 0)),
+      desc:  'How firmly the state holds the public’s compliance. High stability means smooth governance and an institutional order that goes unchallenged; low stability means brewing dissent and the threat of revolt.',
+    },
+    {
+      label: 'Budget',
+      value: fmtMoney(Number(n.politician_budget) || 0),
+      desc:  'The treasury balance — cash on hand for ministries, programmes, and emergencies. A flush budget funds ambitious policy and rapid response; a thin budget forces austerity and crowds out long-term investment.',
+    },
+    {
+      label: 'Debt',
+      value: fmtMoney(Number(n.politician_debt) || 0),
+      desc:  'Total accumulated borrowing the nation owes. Manageable debt is normal for a developed economy; excessive debt service crowds out spending and raises the risk of default.',
+    },
+    {
+      label: 'Civil Freedoms',
+      value: String(Math.round(Number(n.politician_civil_freedoms) || 0)),
+      desc:  'How freely citizens may speak, organise, protest, and dissent without state reprisal. High scores indicate open civic life; low scores signal censorship, surveillance, and risk to dissenters.',
+    },
+  ];
+  body.innerHTML = `<div class="nat-stats">${stats.map(s => `
+    <div class="nat-stat">
+      <div class="nat-stat__value">[${escHtml(s.value)}]</div>
+      <div class="nat-stat__body"><span class="nat-stat__name">${escHtml(s.label)}:</span>${escHtml(s.desc)}</div>
+    </div>`).join('')}</div>
+  <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>`;
 }
 
 init();
