@@ -4004,9 +4004,16 @@ function initials(s, n) {
           // widened in 20270252); the Accept/Reject buttons inside bidCard stay
           // owner-only via ownerOnly().
           const badge = `<span class="num amber">bidding · ${bids.length} bid${bids.length === 1 ? '' : 's'}</span>`;
+          // Owner gets a Cancel button only while zero bids stand — the RPC
+          // re-checks under a FOR UPDATE lock so a bid landing concurrently
+          // bumps this back to has_bids; we just gate the affordance.
+          const emptyRow = `<div class="cb-bids"><div class="sh-empty" style="padding:6px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <span>No bids yet.</span>
+            ${ownerOnly(`<button class="ap-btn-small reject cr-cancel-btn" data-cid="${r.id}">Cancel Request</button>`)}
+          </div></div>`;
           const cards = bids.length
             ? `<div class="cb-bids">${bids.map(bidCard).join('')}</div>`
-            : '<div class="cb-bids"><div class="sh-empty" style="padding:6px 12px;">No bids yet.</div></div>';
+            : emptyRow;
           return head(badge) + cards;
         };
         requestPanelHtml += `
@@ -4095,6 +4102,7 @@ function initials(s, n) {
           openBidModal(btn.dataset.cid, btn.dataset.label, Number(btn.dataset.cost), Number(btn.dataset.budget))));
         pj.querySelectorAll('.cb-accept-btn').forEach(btn => btn.addEventListener('click', () => handleConstructionBid('accept', btn)));
         pj.querySelectorAll('.cb-reject-btn').forEach(btn => btn.addEventListener('click', () => handleConstructionBid('reject', btn)));
+        pj.querySelectorAll('.cr-cancel-btn').forEach(btn => btn.addEventListener('click', () => handleCancelConstructionRequest(btn)));
       }
 
       setupCorpChat();
@@ -4525,6 +4533,8 @@ function initials(s, n) {
       not_open: 'This request is no longer open.', bid_not_pending: 'That bid is no longer pending.',
       bid_not_found: 'Bid not found.', contract_not_found: 'Request not found.',
       bidder_at_capacity: 'That builder is at construction-yard capacity in this nation — pick another bid.',
+      has_bids: 'A bid has been placed on this request — reject it first, then cancel.',
+      not_private: 'This isn\'t a corp-issued request.',
     };
     const handleConstructionBid = async (action, btn) => {
       if (btn.disabled) return;
@@ -4548,10 +4558,36 @@ function initials(s, n) {
       }
     };
 
-    const openBidModal = (contractId, label, yourCost, budget) => {
-      const ov = document.getElementById('rcb-overlay');
-      if (!ov) return;
-      let submitting = false;
+};
+
+// Cancel a construction request the issuer posted, only valid when no
+// pending bids stand. The RPC re-checks under a contract lock; if a bid
+// landed after the UI rendered we surface has_bids and reload so the
+// bidder shows up.
+const handleCancelConstructionRequest = async (btn) => {
+  if (btn.disabled) return;
+  if (!confirm('Cancel this construction request? You can post a fresh one any time.')) return;
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = '…';
+  try {
+    const { data, error } = await _supabase.rpc('ent_cancel_construction_request', { p_contract_id: btn.dataset.cid });
+    if (error) throw error;
+    if (!data || !data.success) {
+      alert('Could not cancel request: ' + (CB_REASON[data?.reason] || data?.reason || 'unknown'));
+      btn.disabled = false; btn.textContent = originalLabel; return;
+    }
+    location.reload();
+  } catch (e) {
+    alert('Could not cancel request: ' + (e?.message || e));
+    btn.disabled = false; btn.textContent = originalLabel;
+  }
+};
+
+const openBidModal = (contractId, label, yourCost, budget) => {
+  const ov = document.getElementById('rcb-overlay');
+  if (!ov) return;
+  let submitting = false;
       // Bids can sit anywhere from $1 to the issuer's budget cap. Below
       // your cost = loss (treasury absorbs the shortfall); above = profit.
       // Live preview of bid − cost so the player sees the margin sign.
