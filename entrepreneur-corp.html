@@ -3655,37 +3655,61 @@ function initials(s, n) {
             invData.map(r => `<div class="cf-row"><div class="who">${escapeHtml(r.engine?.name || 'Engine')}</div><span class="num green">${r.quantity} units</span></div>`).join('')
           : '';
 
-        // Orders this corp is party to (engines today; aircraft will slot
-        // into the same section as that flow lands). Always rendered with an
-        // empty state when the fetch comes back clean — otherwise a missing
+        // Orders this corp is party to. The fetch pulls every open row
+        // (pending/priced) plus closed rows (cancelled/completed) from the
+        // last 24h so a seller still gets a paper trail when a buyer pulls a
+        // request before they can act — closed rows render dimmer + non-
+        // interactive. Capped at 30 to keep payload small; bumps to a paged
+        // history view if/when traffic warrants. Always rendered: a missing
         // section is indistinguishable from a silent fetch failure.
+        const closedCutoffIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         const { data: ordData, error: ordErr } = await _supabase.from('ent_engine_orders')
-          .select('id, buyer_corp_id, seller_corp_id, quantity, price_per_unit, status, engine:ent_aircraft_designs!engine_design_id(name), buyer:entrepreneur_corps!buyer_corp_id(name), seller:entrepreneur_corps!seller_corp_id(name)')
-          .or(`buyer_corp_id.eq.${id},seller_corp_id.eq.${id}`).in('status', ['pending', 'priced'])
-          .order('created_at', { ascending: false });
+          .select('id, buyer_corp_id, seller_corp_id, quantity, price_per_unit, status, created_at, engine:ent_aircraft_designs!engine_design_id(name), buyer:entrepreneur_corps!buyer_corp_id(name), seller:entrepreneur_corps!seller_corp_id(name)')
+          .or(`buyer_corp_id.eq.${id},seller_corp_id.eq.${id}`)
+          .order('created_at', { ascending: false })
+          .limit(30);
         if (ordErr) console.warn('[entrepreneur-corp] engine orders fetch error:', ordErr.message);
+        const ordRows = (ordData || []).filter(o =>
+          o.status === 'pending' || o.status === 'priced' ||
+          ((o.status === 'cancelled' || o.status === 'completed') && o.created_at >= closedCutoffIso));
         const ordRow = (o) => {
           const eng = escapeHtml(o.engine?.name || 'Engine');
           const da = `data-oid="${o.id}" data-eng="${eng}" data-qty="${o.quantity}" data-price="${Number(o.price_per_unit) || 0}"`;
+          const closed = o.status === 'cancelled' || o.status === 'completed';
+          const rowStyle = closed ? ' style="opacity:0.55;"' : '';
           if (o.seller_corp_id === id) {
             // Incoming: I'm the seller. Pending → Set Price (responds with a
             // price; buyer then accepts or declines) or Reject (kills the
             // request via ent_cancel_engine_order, which permits either party).
             const buyer = escapeHtml(o.buyer?.name || 'Buyer');
-            const act = o.status === 'pending'
-              ? `<div class="sh-row-actions" style="gap:6px;">${ownerOnly(`<button class="ap-btn-small list eo-price-btn" ${da} data-party="${buyer}">Set Price</button><button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Reject</button>`)}</div>`
-              : `<span class="num amber">${fmtUsd(Number(o.price_per_unit) || 0)}/u · sent</span>`;
-            return `<div class="cf-row"><div><div class="who">Sell ${o.quantity}× ${eng}</div><div class="sub">to ${buyer}</div></div>${act}</div>`;
+            let act;
+            if (o.status === 'pending') {
+              act = `<div class="sh-row-actions" style="gap:6px;">${ownerOnly(`<button class="ap-btn-small list eo-price-btn" ${da} data-party="${buyer}">Set Price</button><button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Reject</button>`)}</div>`;
+            } else if (o.status === 'priced') {
+              act = `<span class="num amber">${fmtUsd(Number(o.price_per_unit) || 0)}/u · sent</span>`;
+            } else if (o.status === 'cancelled') {
+              act = `<span class="num muted">cancelled</span>`;
+            } else {
+              act = `<span class="num green">sold · ${fmtUsd(Number(o.price_per_unit) || 0)}/u</span>`;
+            }
+            return `<div class="cf-row"${rowStyle}><div><div class="who">Sell ${o.quantity}× ${eng}</div><div class="sub">to ${buyer}</div></div>${act}</div>`;
           }
           // Outgoing: I'm the buyer.
           const seller = escapeHtml(o.seller?.name || 'Seller');
-          const act = o.status === 'priced'
-            ? `<div class="sh-row-actions" style="gap:6px;">${ownerOnly(`<button class="ap-btn-small list eo-accept-btn" ${da} data-party="${seller}">Accept ${fmtUsd(Number(o.price_per_unit) || 0)}/u</button><button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Decline</button>`)}</div>`
-            : `<div class="sh-row-actions" style="gap:6px;"><span class="num muted">awaiting price</span>${ownerOnly(`<button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Cancel</button>`)}</div>`;
-          return `<div class="cf-row"><div><div class="who">Buy ${o.quantity}× ${eng}</div><div class="sub">from ${seller}</div></div>${act}</div>`;
+          let act;
+          if (o.status === 'priced') {
+            act = `<div class="sh-row-actions" style="gap:6px;">${ownerOnly(`<button class="ap-btn-small list eo-accept-btn" ${da} data-party="${seller}">Accept ${fmtUsd(Number(o.price_per_unit) || 0)}/u</button><button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Decline</button>`)}</div>`;
+          } else if (o.status === 'pending') {
+            act = `<div class="sh-row-actions" style="gap:6px;"><span class="num muted">awaiting price</span>${ownerOnly(`<button class="ap-btn-small list eo-cancel-btn" data-oid="${o.id}">Cancel</button>`)}</div>`;
+          } else if (o.status === 'cancelled') {
+            act = `<span class="num muted">cancelled</span>`;
+          } else {
+            act = `<span class="num green">bought · ${fmtUsd(Number(o.price_per_unit) || 0)}/u</span>`;
+          }
+          return `<div class="cf-row"${rowStyle}><div><div class="who">Buy ${o.quantity}× ${eng}</div><div class="sub">from ${seller}</div></div>${act}</div>`;
         };
-        const ordersBody = (ordData && ordData.length)
-          ? ordData.map(ordRow).join('')
+        const ordersBody = ordRows.length
+          ? ordRows.map(ordRow).join('')
           : `<div class="sh-empty">No incoming or outgoing orders.</div>`;
         const ordersSection =
           `<div class="section-heading"><span class="sans">Open</span><span class="serif">Orders</span></div>${ordersBody}`;
