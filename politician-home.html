@@ -72,11 +72,13 @@
 .empty { background:#121212; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
   padding:22px 18px; color:#666; font-size:12px; line-height:1.6; text-align:center; }
 
-/* Career log — one date-prefixed row per event, listed newest-first. */
-.career-events { background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
-  padding:6px 18px; }
-.career-event  { display:flex; gap:14px; padding:10px 0;
-  border-bottom:0.5px solid rgba(255,255,255,0.04); }
+/* Career log — one date-prefixed row per event, listed newest-first. Visual
+   weight tuned to match the Pressing Issues card above it: same background,
+   same border opacity, similar internal padding. */
+.career-events { background:#121212; border:0.5px solid rgba(255,255,255,0.12); border-radius:4px;
+  padding:4px 18px; }
+.career-event  { display:flex; gap:14px; padding:14px 0;
+  border-bottom:0.5px solid rgba(255,255,255,0.06); }
 .career-event:last-child { border-bottom:none; }
 .career-event .date { font-family:monospace; font-size:10px; color:#888;
   letter-spacing:0.05em; flex-shrink:0; min-width:120px; padding-top:1px; }
@@ -148,6 +150,7 @@
 
       <div class="section-heading" style="margin-top:28px;">
         <span class="roman">II.</span>
+        <span class="sans">Political</span>
         <span class="serif">Career</span>
       </div>
       <div class="career-events" id="career-events"></div>
