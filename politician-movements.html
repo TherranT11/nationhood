@@ -342,23 +342,15 @@ function renderPartyCard(p) {
   if (p.party_description) subParts.push(escHtml(p.party_description));
   const sub = subParts.join(' &middot; ');
   const href = `party.html?id=${encodeURIComponent(p.id)}`;
-  // popularity_pct is the nation-level movement popularity (added on main).
-  // Rendered only when present so an older row that pre-dates the column,
-  // or a future reuse of this card for non-movement faction types, doesn't
-  // show "—%" or 0%. If you want the value to surface in this list, ensure
-  // popularity_pct is in the loadMovementParties() SELECT.
+  // popularity_pct is the nation-level movement popularity (column added on
+  // main in 20270375). Rendered only when present so an older row that
+  // pre-dates the migration backfill — or a future non-movement reuse of
+  // this card — doesn't show "—%" or 0%. If you want the value to surface,
+  // ensure popularity_pct is in the loadMovementParties() SELECT.
   const pop = (p.popularity_pct != null)
     ? `<div class="popularity">Popularity<strong>${Math.round(Number(p.popularity_pct))}%</strong></div>`
     : '';
   return `<a class="mv-card" href="${href}" style="border-left-color:${accent}; text-decoration:none; color:inherit;">
-  // popularity_pct is nation-level for movements (20270372). Rendered
-  // only when present so a future non-movement reuse of this card —
-  // or an older row that pre-dates the migration backfill — doesn't
-  // show "—%" or 0%.
-  const pop = (p.popularity_pct != null)
-    ? `<div class="popularity">Popularity<strong>${Math.round(Number(p.popularity_pct))}%</strong></div>`
-    : '';
-  return `<div class="mv-card" style="border-left-color:${accent};">
     <div class="badge">${escHtml(p.abbreviation || '—')}</div>
     <div class="body">
       <div class="title">${escHtml(p.faction_name)}</div>
@@ -367,7 +359,6 @@ function renderPartyCard(p) {
     <div class="seats">Seats<strong>${Number(p.seats) || 0}</strong></div>
     ${pop}
   </a>`;
-  </div>`;
 }
 
 // ── Join modal ──────────────────────────────────────────────────────
