@@ -2074,40 +2074,36 @@ async function loadAgreementShippingContracts() {
         .map(a => a.id);
     if (agreementIds.length === 0) return;
 
-    // Pull every spawned contract for these agreements (open, awarded,
-    // completed, cancelled — all states matter for the agreement card
-    // status surfacing). Phase 7 also embeds the accepted bid for
-    // route_risk_delta + energy_per_tick + the winner faction name.
-    const { data, error } = await _supabase.from('shipping_contracts')
-        .select(`
-            id, trade_agreement_id, status, winner_faction_id, revenue_per_tick,
-            volume_required, delivery_priority, expires_at_tick, commodity,
-            consecutive_missed_payments,
-            winner:factions!winner_faction_id(faction_name, abbreviation),
-            shipping_contract_bids!contract_id(energy_per_tick, route_risk_delta, status)
-        `)
-        .in('trade_agreement_id', agreementIds);
+    // Single source: get_trade_agreement_shipping ranks pending bids via
+    // the shipping_contract_winners helper, so the nation card sees the
+    // same live winners the entrepreneur dashboard does. Legacy fields
+    // (winner_faction_name, revenue_per_tick) are still returned so any
+    // old single-winner 'awarded' contract keeps rendering.
+    const { data, error } = await _supabase.rpc('get_trade_agreement_shipping', { p_agreement_ids: agreementIds });
     if (error) {
-        console.warn('[diplomacy] agreement shipping contracts fetch failed:', error.message);
+        console.warn('[diplomacy] agreement shipping RPC failed:', error.message);
         return;
     }
-    for (const c of (data || [])) {
+    if (!data || !data.success) {
+        console.warn('[diplomacy] agreement shipping RPC returned no success:', data?.reason);
+        return;
+    }
+    for (const c of (data.contracts || [])) {
         if (!c.trade_agreement_id) continue;
-        const acceptedBid = (c.shipping_contract_bids || []).find(b => b.status === 'accepted');
-        const energyPerTick = Number(acceptedBid?.energy_per_tick) || 0;
         const list = _shippingContractsByAgreement[c.trade_agreement_id] || [];
         list.push({
             id:                          c.id,
             status:                      c.status,
-            energy_per_tick:             energyPerTick,
             volume_required:             Number(c.volume_required) || 0,
             delivery_priority:           c.delivery_priority || null,
             expires_at_tick:             Number(c.expires_at_tick) || null,
             commodity:                   c.commodity || null,
             winner_faction_id:           c.winner_faction_id,
-            winner_faction_name:         c.winner?.faction_name || null,
+            winner_faction_name:         c.winner_faction_name || null,
             revenue_per_tick:            Number(c.revenue_per_tick) || 0,
             consecutive_missed_payments: Number(c.consecutive_missed_payments) || 0,
+            winning_bids:                Array.isArray(c.winning_bids) ? c.winning_bids : [],
+            total_units_won:             Number(c.total_units_won) || 0,
         });
         _shippingContractsByAgreement[c.trade_agreement_id] = list;
     }
@@ -2383,13 +2379,27 @@ function renderTradeAgreements() {
                     let lineColor, lineLabel;
                     const missed = Number(c.consecutive_missed_payments) || 0;
                     const commodityLabel = (c.commodity || 'units').replace(/_/g, ' ');
-                    if (c.status === 'awarded' && c.winner_faction_name) {
+                    const winners = Array.isArray(c.winning_bids) ? c.winning_bids : [];
+                    if (winners.length > 0) {
+                        // Live multi-winner: list each carrier and the slots they fill.
+                        const totalWon = Number(c.total_units_won) || 0;
+                        const demand   = Number(c.volume_required) || 0;
+                        const carriers = winners
+                            .map(w => `${w.corp_name || 'Corp'} ${Number(w.units_won) || 0}×`)
+                            .join(', ');
+                        const prefix = missed > 0 ? `⚠ ` : '';
+                        lineColor = missed > 0 ? 'var(--red)'
+                                  : (totalWon >= demand ? 'var(--green)' : 'var(--amber, #b8860b)');
+                        lineLabel = `${prefix}${totalWon}/${demand} ${commodityLabel}/tick · ${carriers}` +
+                                    (missed > 0 ? ` · ${missed} missed payment${missed === 1 ? '' : 's'}` : '');
+                    } else if (c.status === 'awarded' && c.winner_faction_name) {
+                        // Legacy single-winner fallback (older 'awarded' contracts).
                         if (missed > 0) {
                             lineColor = 'var(--red)';
-                            lineLabel = `⚠ ${c.energy_per_tick} ${commodityLabel}/tick · ${c.winner_faction_name} · ${missed} missed payment${missed === 1 ? '' : 's'}`;
+                            lineLabel = `⚠ ${c.volume_required} ${commodityLabel}/tick · ${c.winner_faction_name} · ${missed} missed payment${missed === 1 ? '' : 's'}`;
                         } else {
                             lineColor = 'var(--green)';
-                            lineLabel = `${c.energy_per_tick} ${commodityLabel}/tick · ${c.winner_faction_name}`;
+                            lineLabel = `${c.volume_required} ${commodityLabel}/tick · ${c.winner_faction_name}`;
                         }
                     } else if (c.status === 'open') {
                         lineColor = 'var(--amber, #b8860b)';
