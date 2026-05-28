@@ -46,15 +46,36 @@
 .ladder summary { padding:14px 18px; cursor:pointer; list-style:none;
   display:flex; align-items:center; gap:12px; }
 .ladder summary::-webkit-details-marker { display:none; }
-.ladder summary::before { content:'\\25B8'; color:#555; font-size:10px; transition:transform 0.2s; }
-.ladder[open] summary::before { transform:rotate(90deg); display:inline-block; }
+.ladder summary::before { content:'▸'; color:#555; font-size:10px; display:inline-block; transition:transform 0.2s; }
+.ladder[open] summary::before { transform:rotate(90deg); }
 .ladder .icon { font-size:16px; line-height:1; }
 .ladder .name { font-size:14px; font-weight:500; color:#fff; flex:1; }
 .ladder .rung { font-size:11px; color:#5aafa5; display:flex; align-items:center; gap:6px; }
 .ladder .rung.empty { color:#555; }
 .ladder .rung .dot { display:inline-block; width:6px; height:6px; background:#5aafa5; border-radius:50%; }
-.ladder .body  { padding:0 18px 18px; }
-.ladder .empty { color:#555; font-size:12px; font-style:italic; text-align:center; padding:14px 0 6px; }
+.ladder .body  { padding:0 18px 14px; }
+.ladder .empty-row { color:#555; font-size:12px; font-style:italic; text-align:center; padding:14px 0 6px; }
+
+/* Per-rung rows inside a ladder body. Mirrors the brief-mock layout: a
+   small indicator + name/description on the left, an action button or
+   "held" tag on the right. */
+.rungs { display:flex; flex-direction:column; }
+.rung { display:flex; align-items:flex-start; gap:12px; padding:12px 0;
+  border-bottom:0.5px solid rgba(255,255,255,0.04); }
+.rung:last-child { border-bottom:none; }
+.rung__indicator { color:#555; font-size:14px; line-height:1.2; flex-shrink:0; width:14px; text-align:center; padding-top:1px; }
+.rung__indicator.held { color:#5aafa5; }
+.rung__body { flex:1; min-width:0; }
+.rung__name { font-size:13px; font-weight:500; color:#fff; margin-bottom:3px; }
+.rung__desc { font-size:11px; color:#888; line-height:1.5; }
+.rung__action { flex-shrink:0; align-self:center; }
+.rung-btn { font-family:monospace; font-size:10px; letter-spacing:0.08em;
+  text-transform:uppercase; padding:7px 14px; border-radius:3px;
+  background:transparent; cursor:pointer; transition:all 0.15s; }
+.rung-btn--primary { color:#5aafa5; border:0.5px solid rgba(90,175,165,0.4); }
+.rung-btn--primary:hover { border-color:#5aafa5; background:rgba(90,175,165,0.08); }
+.rung-btn--disabled { color:#555; border:0.5px solid rgba(255,255,255,0.06); cursor:not-allowed; }
+.rung-held { font-size:10px; color:#888; letter-spacing:0.08em; text-transform:uppercase; }
 
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
@@ -129,17 +150,74 @@ import { bootstrapPolitician } from './js/politician-topbar.js';
 const START_AGE = 25;
 const TICKS_PER_AGE_YEAR = 12;
 
-// The five career ladders a politician can climb. Each has an icon, a display
-// name, and (when wired) a flow that turns the player's actions on that ladder
-// into the current-rung label on the right of the summary. For now every
-// ladder ships with no current rung — the body just notes "Not on this ladder
-// yet." until we design what the rungs look like.
+// The five career ladders a politician can climb, in player-relevance order
+// (Party Office first, since most career arcs start there; Underground last).
+// Each has an icon, a display name, and a renderer for its body. Party Office
+// is the only ladder with rungs wired up so far; the others fall back to a
+// shared "Not on this ladder yet." placeholder until they're designed.
 const LADDERS = [
+  { id: 'party',      icon: '\u{1F6A9}', name: 'Party Office',       render: renderPartyOfficeRungs },
+  { id: 'legislature',icon: '⚖️',       name: 'Legislature' },
   { id: 'govt',       icon: '\u{1F451}', name: 'Government & State' },
-  { id: 'party',      icon: '\u{1F6A9}', name: 'Party Office' },
-  { id: 'legislature',icon: '⚖️', name: 'Legislature' },
   { id: 'civil',      icon: '\u{1F91D}', name: 'Civil Society' },
   { id: 'underground',icon: '\u{1F3AD}', name: 'Underground' },
+];
+
+// Party Office rungs — the canonical climb a card-carrying politician makes
+// inside a party. Each rung exposes:
+//   held(state)            → boolean, true when the politician currently holds
+//                            this rung (or higher).
+//   descIfHeld(state)      → the body line to show when held.
+//   descIfNot()            → the body line to show when not held.
+//   actionIfNot (optional) → right-side button for the not-held state.
+//     kind 'primary'  → live link (uses href).
+//     kind 'disabled' → greyed out, no action wired yet.
+//
+// Status logic today: politician_career === 'Independent' means "not in a
+// party," so only Party Member's held branch can fire when that column carries
+// a non-Independent value. Everything above Party Member is greyed-out until
+// the corresponding game mechanics land.
+const PARTY_OFFICE_RUNGS = [
+  {
+    name: 'Party Member',
+    held:        (s) => s.career && s.career !== 'Independent',
+    descIfHeld:  (s) => `You are a card-carrying member of ${s.partyName} here.`,
+    descIfNot:   ()  => 'You are not a member of a political party.',
+    actionIfNot: { label: 'Join Political Party', kind: 'primary', href: 'politician-movements.html' },
+  },
+  {
+    name: 'Election Candidate',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Standing for election in the next cycle.',
+    descIfNot:   ()  => 'Run for a legislative seat or a mayoralty.',
+    actionIfNot: { label: 'Stand for Election', kind: 'disabled' },
+  },
+  {
+    name: 'Member of Parliament or Mayor',
+    held:        ()  => false,
+    descIfHeld:  (s) => s.holdsMayoralty
+      ? `You are the mayor of ${s.cityName || 'a city'} in the nation of ${s.nation}.`
+      : `You are a member of the legislative body of ${s.nation}.`,
+    descIfNot:   ()  => 'Win a parliamentary seat or a mayoralty to climb here.',
+  },
+  {
+    name: 'High Ranking Party Member',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You hold a senior position in your party.',
+    descIfNot:   ()  => 'Earn whip, secretary, or treasurer roles within your party.',
+  },
+  {
+    name: 'Deputy Party Leader',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You are the deputy leader of your party.',
+    descIfNot:   ()  => 'The second-in-command of a party — one heartbeat from leadership.',
+  },
+  {
+    name: 'Party Leader',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You lead your party. The face of the movement.',
+    descIfNot:   ()  => 'Lead a political party. The face of the movement.',
+  },
 ];
 
 // Suspicion sub-text by level — read once the value lands on the page so the
@@ -194,9 +272,23 @@ async function init() {
   if (!ctx) return;
 
   render(ctx.faction, ctx.shard, ctx.nation);
-  renderLadders();
+  renderLadders(buildLadderState(ctx.faction, ctx.nation));
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
+}
+
+// State bag passed to every rung renderer — the bag, not the politician row
+// directly, so the contract for each rung is one focused interface rather than
+// "we read whatever we want off faction."
+function buildLadderState(politician, nation) {
+  const career = politician?.politician_career || 'Independent';
+  return {
+    career,
+    partyName: career === 'Independent' ? '' : career,
+    nation: nation?.name || 'this nation',
+    holdsMayoralty: false,   // not yet tracked
+    cityName: null,
+  };
 }
 
 function render(politician, shard, nation) {
@@ -241,20 +333,66 @@ function render(politician, shard, nation) {
     SUSPICION_SUB[suspicion] || 'level not recognised';
 }
 
-function renderLadders() {
+function renderLadders(state) {
   const host = document.getElementById('ladders');
-  host.innerHTML = LADDERS.map(l => `
+  host.innerHTML = LADDERS.map(l => {
+    const body = l.render ? l.render(state) : '<div class="empty-row">Not on this ladder yet.</div>';
+    return `
     <details class="ladder">
       <summary>
         <span class="icon">${l.icon}</span>
         <span class="name">${escHtml(l.name)}</span>
         <span class="rung empty">—</span>
       </summary>
-      <div class="body">
-        <div class="empty">Not on this ladder yet.</div>
-      </div>
-    </details>
-  `).join('');
+      <div class="body">${body}</div>
+    </details>`;
+  }).join('');
+  bindRungActions();
+}
+
+// Build the rung list for the Party Office ladder. Walks PARTY_OFFICE_RUNGS,
+// runs each rung's held() check against the state bag, and emits a row with
+// the appropriate description + right-side action. The action-button click
+// router is wired in bindRungActions below.
+function renderPartyOfficeRungs(state) {
+  return '<div class="rungs">' + PARTY_OFFICE_RUNGS.map(r => {
+    const isHeld = !!r.held(state);
+    const desc   = isHeld ? r.descIfHeld(state) : r.descIfNot(state);
+    const indicator = isHeld
+      ? '<div class="rung__indicator held">●</div>'
+      : '<div class="rung__indicator">○</div>';
+    let actionHtml = '';
+    if (isHeld) {
+      actionHtml = '<span class="rung-held">held</span>';
+    } else if (r.actionIfNot) {
+      const a = r.actionIfNot;
+      const cls = a.kind === 'primary' ? 'rung-btn rung-btn--primary' : 'rung-btn rung-btn--disabled';
+      const hrefAttr = a.kind === 'primary' && a.href ? ` data-href="${escHtml(a.href)}"` : '';
+      const disabledAttr = a.kind === 'disabled' ? ' disabled' : '';
+      actionHtml = `<button class="${cls}"${hrefAttr}${disabledAttr}>${escHtml(a.label)}</button>`;
+    }
+    return `
+      <div class="rung">
+        ${indicator}
+        <div class="rung__body">
+          <div class="rung__name">${escHtml(r.name)}</div>
+          <div class="rung__desc">${escHtml(desc)}</div>
+        </div>
+        <div class="rung__action">${actionHtml}</div>
+      </div>`;
+  }).join('') + '</div>';
+}
+
+// Single event handler for every rung's primary button — looks up data-href
+// and navigates. Disabled buttons carry the disabled attribute so they no-op
+// on their own.
+function bindRungActions() {
+  document.querySelectorAll('.rung-btn--primary[data-href]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const href = btn.dataset.href;
+      if (href) window.location.href = href;
+    });
+  });
 }
 
 init();
