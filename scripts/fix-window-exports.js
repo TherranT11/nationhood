@@ -42,7 +42,6 @@ const windowExports = {
     'editPolicy', 'duplicatePolicy', 'deletePolicy', 'toggleStartingNation',
     'removeStatEffect', 'removeOpposedSlot'
   ],
-  // 'crisisadmin.html' lived here pre-Phase-5 deletion
   'avelia.html': ['goBack', 'continueToPartyCreation'],
   'melizea.html': ['goBack', 'continueToPartyCreation'],
   'sangreza.html': ['goBack', 'continueToPartyCreation'],
