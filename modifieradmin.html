@@ -206,52 +206,52 @@ const SEVERITIES = [
   { key: 'red',    label: 'Red'    },
 ];
 
-// Triggerable nation stats — curated for the New System the modifier
-// trigger surface targets. Order mirrors the design list; keys map to
-// the live alpha columns on the nations table (NATION_STAT_COLUMNS in
-// js/game/stats.js), so the runtime evaluator (js/game/modifiers.js)
-// reads nation[key] directly. Labels are the in-game design names —
-// "Stability" surfaces state_apparatus, "Manufacturing Sector"
-// surfaces industry — without renaming the underlying columns, which
-// remain stable for every other consumer (policies, events, etc).
+// Triggerable nation stats — full New System set. Order mirrors the
+// design list; keys map to the live alpha columns on the nations
+// table (NATION_STAT_COLUMNS in js/game/stats.js), so the runtime
+// evaluator (js/game/modifiers.js) reads nation[key] directly.
+// Labels are the in-game design names — "Stability" surfaces
+// state_apparatus, "Manufacturing Sector" surfaces industry —
+// without renaming the underlying columns, which remain stable for
+// every other consumer (policies, events, etc).
 //
-// MISSING from the New System (columns the engine doesn't track yet):
-//   • Civil Liberties
-//   • Energy Generation
-//   • Food (on hand)        ← farmland exists, but it's land area, not food
-//   • Food Generation
-//   • Mineral Generation
-//   • Consumer Goods
-//   • Goods Generation
-//   • Luxury Goods
-//   • Luxury Generation
-//   • Population Growth     ← was dropped by the alpha refactor
-//
-// Triggers on those would never evaluate (no column to read), so they're
-// deliberately absent from the dropdown until a schema migration adds
-// them. Add an entry here once the column exists; the runtime evaluator
-// doesn't need any other change.
+// The Generation / on-hand pairs and civil_liberties / food /
+// consumer_goods / luxury_goods / population_growth landed via
+// migration 20270393. They start as pure state (no tick mechanics);
+// modifier triggers anchored on them only fire once something
+// (policy, event, ministry action, manual update) starts moving
+// the column.
 const NATION_STATS = [
-  { key: 'state_apparatus',    label: 'Stability' },
-  { key: 'gdp',                label: 'GDP' },
-  { key: 'gdp_growth',         label: 'GDP_Growth' },
-  { key: 'budget',             label: 'Budget' },
-  { key: 'debt',               label: 'Debt' },
-  { key: 'health',             label: 'Health' },
-  { key: 'education',          label: 'Education' },
-  { key: 'infrastructure',     label: 'Infrastructure' },
-  { key: 'industry',           label: 'Manufacturing Sector' },
-  { key: 'skilled_workers',    label: 'Skilled Worker' },
-  { key: 'service_sector',     label: 'Service Sector' },
-  { key: 'income_tax',         label: 'Income Tax' },
-  { key: 'corporate_tax',      label: 'Corporate Tax' },
-  { key: 'wages',              label: 'Wages' },
-  { key: 'crime',              label: 'Crime' },
-  { key: 'corruption',         label: 'Corruption' },
-  { key: 'energy',             label: 'Energy (on hand)' },
-  { key: 'minerals',           label: 'Minerals (on hand)' },
-  { key: 'standard_of_living', label: 'Standard of Living' },
-  { key: 'cost_of_living',     label: 'Cost of Living' },
+  { key: 'state_apparatus',     label: 'Stability' },
+  { key: 'gdp',                 label: 'GDP' },
+  { key: 'gdp_growth',          label: 'GDP_Growth' },
+  { key: 'budget',              label: 'Budget' },
+  { key: 'debt',                label: 'Debt' },
+  { key: 'civil_liberties',     label: 'Civil Liberties' },
+  { key: 'health',              label: 'Health' },
+  { key: 'education',           label: 'Education' },
+  { key: 'infrastructure',      label: 'Infrastructure' },
+  { key: 'industry',            label: 'Manufacturing Sector' },
+  { key: 'skilled_workers',     label: 'Skilled Worker' },
+  { key: 'service_sector',      label: 'Service Sector' },
+  { key: 'income_tax',          label: 'Income Tax' },
+  { key: 'corporate_tax',       label: 'Corporate Tax' },
+  { key: 'wages',               label: 'Wages' },
+  { key: 'crime',               label: 'Crime' },
+  { key: 'corruption',          label: 'Corruption' },
+  { key: 'energy',              label: 'Energy (on hand)' },
+  { key: 'energy_generation',   label: 'Energy Generation' },
+  { key: 'food',                label: 'Food (on hand)' },
+  { key: 'food_generation',     label: 'Food Generation' },
+  { key: 'minerals',            label: 'Minerals (on hand)' },
+  { key: 'minerals_generation', label: 'Mineral Generation' },
+  { key: 'consumer_goods',      label: 'Consumer Goods' },
+  { key: 'goods_generation',    label: 'Goods Generation' },
+  { key: 'luxury_goods',        label: 'Luxury Goods' },
+  { key: 'luxury_generation',   label: 'Luxury Generation' },
+  { key: 'standard_of_living',  label: 'Standard of Living' },
+  { key: 'cost_of_living',      label: 'Cost of Living' },
+  { key: 'population_growth',   label: 'Population Growth' },
 ];
 
 const TRIGGER_OPERATORS = [

@@ -126,6 +126,18 @@ export const NATION_STAT_COLUMNS = [
     'service_sector', 'unskilled_workers', 'skilled_workers', 'wages',
     'income_tax', 'corporate_tax', 'crime', 'corruption',
     'inequality', 'minerals',
+    // New System stats added in migration 20270393. Pure state — the
+    // tick processor does not move them yet; whoever wires policies /
+    // events / ministry actions decides their dynamics. The modifier
+    // evaluator (js/game/modifiers.js) reads nation[key] generically,
+    // so triggers anchored on these columns will start firing the
+    // moment any future system writes to them.
+    'civil_liberties', 'energy_generation',
+    'food', 'food_generation',
+    'minerals_generation',
+    'consumer_goods', 'goods_generation',
+    'luxury_goods', 'luxury_generation',
+    'population_growth',
 ];
 
 export const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
@@ -226,12 +238,13 @@ export const STAT_KEY_ALIASES = {
     academic_immigration:       null,
     oil_and_gas:                null,
     rare_minerals:              null,
-    energy_generation:          null,
+    // energy_generation and population_growth — column now exists
+    // (20270393). Alias entries removed so the key resolves to itself
+    // and legacy stat-effect rows targeting them apply directly.
     fuel_prices:                null,
     pollution:                  null,
     social_mobility:            null,
     benefits:                   null,
-    population_growth:          null,
     debt_growth:                null,
     union_strength:             null,
     illegal_immigration:        null,
