@@ -69,6 +69,12 @@
 .section-heading .sans  { font-size:22px; font-weight:500; color:#fff; }
 .section-heading .serif { font-size:22px; font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#5aafa5; }
 .section-heading .meta  { margin-left:auto; color:#555; font-size:10px; letter-spacing:0.1em; }
+.retire-btn { margin-left:auto; font-family:monospace; font-size:10px; letter-spacing:0.08em;
+  text-transform:uppercase; font-weight:600; padding:7px 13px; border-radius:4px;
+  background:transparent; color:#c87a7a; border:0.5px solid rgba(200,122,122,0.4);
+  cursor:pointer; transition:background 0.12s, border-color 0.12s; }
+.retire-btn:hover    { background:rgba(200,122,122,0.10); border-color:#c87a7a; }
+.retire-btn:disabled { color:#555; border-color:rgba(255,255,255,0.06); cursor:not-allowed; background:transparent; }
 .empty { background:#121212; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
   padding:22px 18px; color:#666; font-size:12px; line-height:1.6; text-align:center; }
 
@@ -152,6 +158,7 @@
         <span class="roman">II.</span>
         <span class="sans">Political</span>
         <span class="serif">Career</span>
+        <button class="retire-btn" id="retire-btn" title="End this politician's career">Retire</button>
       </div>
       <div class="career-events" id="career-events"></div>
     </div>
@@ -164,6 +171,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { tickToDate, fmtBig } from './js/utils.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
+import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
 
 const NO_AFFILIATION_MESSAGE = 'This character has no affiliation.';
 // Dispatch bucket categories — mirror entrepreneur-dashboard.html so the same
@@ -234,8 +242,46 @@ async function init() {
   renderCareer();
   renderDispatches();
   bindDispatchTabs();
+  bindRetireButton(ctx.allUserFactions || []);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
+}
+
+// Retire — soft-deletes the politician via the politician_retire RPC and
+// hands the user off to whatever other active faction they have (via the
+// shared getFactionDashboardUrl), falling back to login.html when there
+// isn't one. Mirrors the topbar switcher's redirect logic so the same
+// active_faction_id contract carries over.
+function bindRetireButton(allFactions) {
+  const btn = document.getElementById('retire-btn');
+  if (!btn || !politician?.id) return;
+  btn.addEventListener('click', async () => {
+    const name = [politician.leader_first_name, politician.leader_last_name].filter(Boolean).join(' ') || 'this politician';
+    if (!confirm(`Retire ${name}? Their career ends and the page redirects. This cannot be undone.`)) return;
+    btn.disabled = true; btn.textContent = 'Retiring…';
+    try {
+      const { data, error } = await _supabase.rpc('politician_retire', { p_politician_id: politician.id });
+      if (error) throw error;
+      if (!data || !data.success) {
+        alert('Could not retire: ' + (data?.reason || 'unknown'));
+        btn.disabled = false; btn.textContent = 'Retire';
+        return;
+      }
+      // Hand off to another active faction if the user has one, else login.
+      const next = (allFactions || []).find(f => !isFactionInactive(f));
+      if (next) {
+        sessionStorage.setItem('active_faction_id', next.id);
+        window.location.href = getFactionDashboardUrl(next) || 'login.html';
+      } else {
+        sessionStorage.removeItem('active_faction_id');
+        window.location.href = 'login.html';
+      }
+    } catch (err) {
+      console.error('politician-home: retire failed', err);
+      alert('Could not retire: ' + (err.message || err));
+      btn.disabled = false; btn.textContent = 'Retire';
+    }
+  });
 }
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
