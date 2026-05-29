@@ -641,6 +641,11 @@ function openFoundModal() {
   if (_foundedMovementId) {
     gateEl.textContent = 'You already lead an active movement. Abandon it before founding another.';
     gateEl.classList.add('bad');
+  } else if (_myPartyId) {
+    // Founding is restricted to independents so it can't double as a free
+    // exit from an existing party (the -5 leave cost would be skipped).
+    gateEl.textContent = 'Leave your current party first — founding while affiliated would skip the -5 leave cost.';
+    gateEl.classList.add('bad');
   } else if (_myInfluence < 100) {
     gateEl.textContent = `Requires 100 Influence. You have ${_myInfluence}. (Founding does not deduct.)`;
     gateEl.classList.add('bad');
@@ -701,7 +706,7 @@ function updateFoundPreview() {
   logo.style.color        = a.color;
   logo.style.borderColor  = `${a.color}66`;
 
-  const canFound = !_foundedMovementId && _myInfluence >= 100
+  const canFound = !_foundedMovementId && !_myPartyId && _myInfluence >= 100
                 && name.length >= 2 && abbr.length >= 1;
   document.getElementById('fp-submit').disabled = !canFound;
 }
@@ -736,6 +741,7 @@ async function submitFound() {
       const reason = data?.reason || 'unknown';
       const msg = ({
         insufficient_influence: `Need 100 Influence to found. You have ${data?.have || 0}.`,
+        already_affiliated:     'Leave your current party first — founding while affiliated would skip the -5 leave cost.',
         already_founded:        'You already lead an active movement. Abandon it before founding another.',
         invalid_name:           'Party name must be 2–80 characters.',
         invalid_abbreviation:   'Abbreviation must be 1–8 characters.',

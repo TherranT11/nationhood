@@ -94,6 +94,15 @@ BEGIN
             'required', 100, 'have', COALESCE(v_pol.politician_influence, 0));
     END IF;
 
+    -- Must be independent. Founding while affiliated would silently flip the
+    -- politician's politician_party_id without logging a 'left_party' event
+    -- or charging the -5 leave cost — that would let founding double as a
+    -- free escape hatch from any existing party. Force the player to leave
+    -- explicitly (paying -5) before they can found.
+    IF v_pol.politician_party_id IS NOT NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'already_affiliated');
+    END IF;
+
     -- One active movement per politician (shared across all movement types).
     IF EXISTS (
         SELECT 1 FROM factions
