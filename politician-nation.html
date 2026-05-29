@@ -323,8 +323,8 @@
   </details>
   <details id="sec-elections" class="sec">
     <summary>Elections</summary>
-    <div class="sec-body">
-      <div class="sec-empty">No elections recorded yet.</div>
+    <div class="sec-body" id="sec-elections-body">
+      <div class="sec-empty">Loading…</div>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
@@ -561,8 +561,55 @@ async function init() {
   _viewerMyPartyId = ctx.faction?.politician_party_id || null;
   _viewerNation    = nation;
   _viewerPm        = pmMinistry;
+  renderElections(nation, Number(ctx.shard?.current_tick) || 0);
   loadParliament(nation, pmMinistry);
   bindLazySections(nation);
+}
+
+// Elections — eager render because everything we need (next_election_tick,
+// election_frequency, total_seats, current_tick) is already loaded by the
+// bootstrap. No DB fetch. Two states:
+//   • Scheduled (next_election_tick set) → countdown card + seats-at-stake
+//     + Upcoming Special Elections list (empty for now).
+//   • Unscheduled (NULL — Hajjara and other monarchies) → flat "No
+//     elections in {nation}" notice. Matches the model where the throne
+//     sets the chamber without ballots.
+function renderElections(n, currentTick) {
+  const body = document.getElementById('sec-elections-body');
+  if (!body) return;
+  const footer = '<div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>';
+
+  const nextTick = Number(n.next_election_tick);
+  if (!Number.isFinite(nextTick) || nextTick <= 0) {
+    body.innerHTML = `<div class="govt-empty">
+      <div class="head">No <span class="serif">elections</span> in ${escHtml(n.name)}.</div>
+    </div>` + footer;
+    return;
+  }
+
+  const ticksAway  = nextTick - Number(currentTick);
+  const year       = tickToYear(nextTick);
+  const totalSeats = Math.max(0, Number(n.total_seats) || 0);
+  const countdown  = ticksAway <= 0
+    ? 'overdue &mdash; pending'
+    : ticksAway === 1
+      ? 'in 1 tick'
+      : `in ${ticksAway} ticks`;
+  const stake = totalSeats > 0
+    ? `all ${totalSeats} seats of the Assembly at stake`
+    : 'every seat at stake';
+
+  body.innerHTML = `
+    <div class="gov-strip" style="grid-template-columns:1fr;">
+      <div class="gov-card gov">
+        <div class="gck">NEXT GENERAL ELECTION</div>
+        <div class="gcv">${year}</div>
+        <div class="gcd">${countdown} &middot; ${stake}</div>
+      </div>
+    </div>
+    <div class="parties-lab">Upcoming Special Elections</div>
+    <div class="sec-empty">No special elections scheduled.</div>
+  ` + footer;
 }
 
 // One-shot fetch guards keyed off the section's <details> toggle.

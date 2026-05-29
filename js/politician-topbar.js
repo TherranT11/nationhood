@@ -242,6 +242,7 @@ export async function bootstrapPolitician(activeTab) {
       const { data, error } = await _supabase.from('nations')
         .select(`
           id, name, flag_url, government_type, capital, total_seats,
+          election_frequency, next_election_tick,
           head_of_state_title, head_of_state_first_name, head_of_state_last_name,
           population, dynasty_name,
           politician_gdp, politician_budget, politician_debt,
