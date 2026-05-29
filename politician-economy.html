@@ -83,6 +83,20 @@
   .ind-name{font-size:13.5px;font-weight:600;color:#fff;letter-spacing:-0.005em;}
   .ind-blurb{font-size:10px;color:var(--mut);margin-top:3px;line-height:1.5;font-style:italic;}
 
+  /* Trade-asset line under each industry blurb. Compact row of label
+     + asset name + per-unit recipient deltas (1 traded away → N of
+     each stat on the receiver). Chips green for positive deltas, red
+     for negative — same palette the page already uses for strength
+     tiers so the language reads consistently. */
+  .ind-trade{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px;font-size:10px;}
+  .ind-trade-icon{color:#8a8a8a;font-size:11px;}
+  .ind-trade-label{color:#5a5a5a;letter-spacing:0.1em;font-weight:600;text-transform:uppercase;}
+  .ind-trade-name{color:#cfcabf;font-weight:600;}
+  .ind-trade-arrow{color:#444;}
+  .ind-trade-boost{font-family:monospace;font-size:9.5px;padding:1px 5px;border-radius:3px;letter-spacing:0.02em;}
+  .ind-trade-boost.up{color:var(--green);border:0.5px solid rgba(106,176,122,0.3);background:rgba(106,176,122,0.06);}
+  .ind-trade-boost.down{color:var(--red);border:0.5px solid rgba(200,122,122,0.3);background:rgba(200,122,122,0.06);}
+
   .ind-strength{display:flex;align-items:center;gap:11px;flex-shrink:0;}
   .str-formula{font-size:9px;color:var(--mut);font-family:monospace;text-align:right;line-height:1.5;}
   .str-formula .base{color:#bbb;}
@@ -167,13 +181,18 @@ import { escapeHtml, industryLabel } from './js/utils.js';
 // just with no corp roster). Adding a new corp enum is one line in
 // the matching industry's corpEnums.
 //
-// Strength is intentionally hard-zeroed for now per design — base and
-// bonus both stay at 0 until per-nation natural-base values land.
-// renderStrength reads base + bonus from the industry row, so when
-// those values become real, the formula text + tier color light up
-// automatically without touching the render path.
-const INDUSTRY_BASE_DEFAULT = 0;
-
+// `base` strength is sourced from nation_industry_bases (20270410)
+// at render time, falling back to 0 when no row exists for a
+// (nation, industry) pair. Adding a new industry key here requires
+// a matching seed row per nation in that table.
+//
+// `tradeAsset` defines what this industry exports + what stats the
+// RECEIVING nation gains (positive delta) or loses (negative delta)
+// per unit traded. The design is "1 → 2": one unit traded away
+// applies a delta of 2 (or whatever delta is set) to each listed
+// stat on the recipient. Display-only today; the actual trade
+// mechanic lands as a separate feature and will read this same
+// table for its effects.
 const SECTORS = [
   {
     key: 'extract',
@@ -181,10 +200,14 @@ const SECTORS = [
     icon: '☧',
     subtitle: 'primary resource extraction',
     industries: [
-      { key: 'oil_gas',      name: 'Oil & Gas',              blurb: 'Petroleum extraction and refining.',                                       corpEnums: [] },
-      { key: 'mining',       name: 'Mining & Metals',        blurb: 'Hard mineral extraction — base metals, precious metals, industrial minerals.', corpEnums: [] },
-      { key: 'timber',       name: 'Timber & Forestry',      blurb: 'Logging concessions and forest products.',                                  corpEnums: [] },
-      { key: 'fisheries',    name: 'Commercial Fisheries',   blurb: 'Industrial fishing fleet and coastal operations.',                          corpEnums: [] },
+      { key: 'oil_gas',   name: 'Oil & Gas',            blurb: 'Petroleum extraction and refining.',                                          corpEnums: [],
+        tradeAsset: { name: 'Crude Oil', boosts: [{ stat: 'energy_generation', delta: 2 }, { stat: 'energy', delta: 2 }] } },
+      { key: 'mining',    name: 'Mining & Metals',      blurb: 'Hard mineral extraction — base metals, precious metals, industrial minerals.',corpEnums: [],
+        tradeAsset: { name: 'Ore & Metals', boosts: [{ stat: 'minerals_generation', delta: 2 }, { stat: 'minerals', delta: 2 }] } },
+      { key: 'timber',    name: 'Timber & Forestry',    blurb: 'Logging concessions and forest products.',                                    corpEnums: [],
+        tradeAsset: { name: 'Lumber', boosts: [{ stat: 'goods_generation', delta: 2 }] } },
+      { key: 'fisheries', name: 'Commercial Fisheries', blurb: 'Industrial fishing fleet and coastal operations.',                            corpEnums: [],
+        tradeAsset: { name: 'Catch', boosts: [{ stat: 'food_generation', delta: 2 }, { stat: 'food', delta: 2 }] } },
     ],
   },
   {
@@ -193,10 +216,14 @@ const SECTORS = [
     icon: '☲',
     subtitle: 'banking, markets, and capital flows',
     industries: [
-      { key: 'commercial_banking', name: 'Commercial Banking',             blurb: 'Retail and commercial banks operating in this nation.', corpEnums: ['banking'] },
-      { key: 'insurance',          name: 'Insurance',                      blurb: 'Life, property, and casualty insurance.',                corpEnums: [] },
-      { key: 'capital_markets',    name: 'Capital Markets & Brokerage',    blurb: 'Equity markets, brokerages, investment advisory.',        corpEnums: [] },
-      { key: 'currency_exchange',  name: 'Currency Exchange & Remittances',blurb: 'FX dealers and money-transfer operators.',                corpEnums: [] },
+      { key: 'commercial_banking', name: 'Commercial Banking',              blurb: 'Retail and commercial banks operating in this nation.', corpEnums: ['banking'],
+        tradeAsset: { name: 'Credit Lines', boosts: [{ stat: 'gdp_growth', delta: 2 }] } },
+      { key: 'insurance',          name: 'Insurance',                       blurb: 'Life, property, and casualty insurance.',                corpEnums: [],
+        tradeAsset: { name: 'Insurance Coverage', boosts: [{ stat: 'standard_of_living', delta: 2 }] } },
+      { key: 'capital_markets',    name: 'Capital Markets & Brokerage',     blurb: 'Equity markets, brokerages, investment advisory.',        corpEnums: [],
+        tradeAsset: { name: 'Listed Securities', boosts: [{ stat: 'gdp', delta: 2 }] } },
+      { key: 'currency_exchange',  name: 'Currency Exchange & Remittances', blurb: 'FX dealers and money-transfer operators.',                corpEnums: [],
+        tradeAsset: { name: 'FX Liquidity', boosts: [{ stat: 'budget', delta: 2 }] } },
     ],
   },
   {
@@ -205,10 +232,14 @@ const SECTORS = [
     icon: '✈',
     subtitle: 'moving goods and people',
     industries: [
-      { key: 'shipping',     name: 'Shipping & Maritime Logistics', blurb: 'Ocean shipping and port operations.',           corpEnums: ['shipping'] },
-      { key: 'aviation',     name: 'Civil Aviation',                blurb: 'Passenger and cargo airlines.',                  corpEnums: ['airline'] },
-      { key: 'trucking',     name: 'Trucking & Road Freight',       blurb: 'Long-haul and regional road freight.',           corpEnums: [] },
-      { key: 'rail_transit', name: 'Rail & Public Transit',         blurb: 'Rail freight and public transit operators.',     corpEnums: [] },
+      { key: 'shipping',     name: 'Shipping & Maritime Logistics', blurb: 'Ocean shipping and port operations.',           corpEnums: ['shipping'],
+        tradeAsset: { name: 'Shipping Capacity', boosts: [{ stat: 'goods_generation', delta: 2 }] } },
+      { key: 'aviation',     name: 'Civil Aviation',                blurb: 'Passenger and cargo airlines.',                  corpEnums: ['airline'],
+        tradeAsset: { name: 'Flight Routes', boosts: [{ stat: 'service_sector', delta: 2 }] } },
+      { key: 'trucking',     name: 'Trucking & Road Freight',       blurb: 'Long-haul and regional road freight.',           corpEnums: [],
+        tradeAsset: { name: 'Freight Capacity', boosts: [{ stat: 'consumer_goods', delta: 2 }] } },
+      { key: 'rail_transit', name: 'Rail & Public Transit',         blurb: 'Rail freight and public transit operators.',     corpEnums: [],
+        tradeAsset: { name: 'Rail Network Access', boosts: [{ stat: 'infrastructure', delta: 2 }] } },
     ],
   },
   {
@@ -217,10 +248,14 @@ const SECTORS = [
     icon: '⚙',
     subtitle: 'industry, building, manufacturing',
     industries: [
-      { key: 'construction',  name: 'Construction & Engineering',          blurb: 'General contracting and civil engineering.',            corpEnums: ['construction'] },
-      { key: 'heavy_mfg',     name: 'Heavy Manufacturing',                 blurb: 'Steel, machinery, vehicle assembly, defence manufacturing.', corpEnums: ['aviation_manufacturing'] },
-      { key: 'petrochem',     name: 'Petrochemicals & Refining Products',  blurb: 'Plastics, fertilizers, industrial chemicals.',          corpEnums: [] },
-      { key: 'textiles',      name: 'Textiles & Garments',                 blurb: 'Apparel and textile manufacturing.',                    corpEnums: [] },
+      { key: 'construction',  name: 'Construction & Engineering',          blurb: 'General contracting and civil engineering.',            corpEnums: ['construction'],
+        tradeAsset: { name: 'Construction Services', boosts: [{ stat: 'infrastructure', delta: 2 }] } },
+      { key: 'heavy_mfg',     name: 'Heavy Manufacturing',                 blurb: 'Steel, machinery, vehicle assembly, defence manufacturing.', corpEnums: ['aviation_manufacturing'],
+        tradeAsset: { name: 'Manufactured Goods', boosts: [{ stat: 'industry', delta: 2 }, { stat: 'consumer_goods', delta: 2 }] } },
+      { key: 'petrochem',     name: 'Petrochemicals & Refining Products',  blurb: 'Plastics, fertilizers, industrial chemicals.',          corpEnums: [],
+        tradeAsset: { name: 'Petrochem Products', boosts: [{ stat: 'goods_generation', delta: 2 }] } },
+      { key: 'textiles',      name: 'Textiles & Garments',                 blurb: 'Apparel and textile manufacturing.',                    corpEnums: [],
+        tradeAsset: { name: 'Textile Goods', boosts: [{ stat: 'consumer_goods', delta: 2 }] } },
     ],
   },
   {
@@ -229,13 +264,49 @@ const SECTORS = [
     icon: '⛺',
     subtitle: 'consumer markets and services',
     industries: [
-      { key: 'real_estate',  name: 'Real Estate & Development',     blurb: 'Residential, commercial, industrial property.', corpEnums: ['real_estate'] },
-      { key: 'retail',       name: 'Retail & Distribution',         blurb: 'Consumer retail and wholesale distribution.',    corpEnums: [] },
-      { key: 'hospitality',  name: 'Hospitality & Tourism',         blurb: 'Hotels, restaurants, tour operators.',           corpEnums: [] },
-      { key: 'media_telecom',name: 'Media & Telecommunications',    blurb: 'Broadcasting, publishing, telecoms.',            corpEnums: [] },
+      { key: 'real_estate',   name: 'Real Estate & Development',  blurb: 'Residential, commercial, industrial property.', corpEnums: ['real_estate'],
+        tradeAsset: { name: 'Property Holdings', boosts: [{ stat: 'standard_of_living', delta: 2 }] } },
+      { key: 'retail',        name: 'Retail & Distribution',      blurb: 'Consumer retail and wholesale distribution.',    corpEnums: [],
+        tradeAsset: { name: 'Consumer Distribution', boosts: [{ stat: 'consumer_goods', delta: 2 }] } },
+      { key: 'hospitality',   name: 'Hospitality & Tourism',      blurb: 'Hotels, restaurants, tour operators.',           corpEnums: [],
+        tradeAsset: { name: 'Tourism Services', boosts: [{ stat: 'service_sector', delta: 2 }] } },
+      { key: 'media_telecom', name: 'Media & Telecommunications', blurb: 'Broadcasting, publishing, telecoms.',            corpEnums: [],
+        tradeAsset: { name: 'Media & Comms', boosts: [{ stat: 'education', delta: 2 }] } },
     ],
   },
 ];
+
+// Stat-key → display label. Subset of modifieradmin.html's
+// NATION_STATS list (one source today; if a third surface needs the
+// same labels we promote to a shared module). Falls back to the raw
+// key with underscores stripped if a future stat lands here.
+const STAT_LABEL = {
+  energy:              'Energy',
+  energy_generation:   'Energy Generation',
+  food:                'Food',
+  food_generation:     'Food Generation',
+  minerals:            'Minerals',
+  minerals_generation: 'Mineral Generation',
+  consumer_goods:      'Consumer Goods',
+  goods_generation:    'Goods Generation',
+  luxury_goods:        'Luxury Goods',
+  luxury_generation:   'Luxury Generation',
+  industry:            'Manufacturing',
+  service_sector:      'Service Sector',
+  skilled_workers:     'Skilled Workers',
+  gdp:                 'GDP',
+  gdp_growth:          'GDP Growth',
+  budget:              'Budget',
+  debt:                'Debt',
+  infrastructure:      'Infrastructure',
+  health:              'Health',
+  education:           'Education',
+  standard_of_living:  'Standard of Living',
+  cost_of_living:      'Cost of Living',
+  civil_liberties:     'Civil Liberties',
+  population_growth:   'Population Growth',
+};
+const statLabel = (k) => STAT_LABEL[k] || String(k || '').replace(/_/g, ' ');
 
 // One source of truth for the enum → industry-key lookup, derived
 // from SECTORS once. Adding a corp enum to an industry above
@@ -312,6 +383,22 @@ async function renderEconomy(nationId) {
     return;
   }
 
+  // Per-nation natural-base strengths from 20270410. Missing rows
+  // fall through to base 0 on the strengthFor side — same fallback
+  // a nation that hasn't been authored yet uses. Soft-fail logs and
+  // keeps rendering; the corps + bonus still surface.
+  const baseByKey = new Map();
+  try {
+    const { data, error } = await _supabase
+      .from('nation_industry_bases')
+      .select('industry_key, base')
+      .eq('nation_id', nationId);
+    if (error) throw error;
+    for (const row of (data || [])) baseByKey.set(row.industry_key, row.base);
+  } catch (err) {
+    console.warn('politician-economy: nation_industry_bases fetch failed (defaulting to 0)', err);
+  }
+
   // Bucket every corp into its industry slot. Unmapped enums (any
   // value not declared on a sector's corpEnums) drop silently — same
   // pattern other surfaces use against future enum additions.
@@ -331,7 +418,7 @@ async function renderEconomy(nationId) {
     for (const ind of sector.industries) {
       const indCorps = corpsByIndustry.get(ind.key) || [];
       corpCount += indCorps.length;
-      const { final } = strengthFor(ind, indCorps.length);
+      const { final } = strengthFor(baseByKey.get(ind.key) ?? 0, indCorps.length);
       strengthSum += final;
     }
     const avg = sector.industries.length ? (strengthSum / sector.industries.length) : 0;
@@ -343,19 +430,18 @@ async function renderEconomy(nationId) {
   }
 
   summaryHost.innerHTML = SECTORS.map(s => renderSummaryCard(s, sectorAgg.get(s.key))).join('');
-  sectorsHost.innerHTML = SECTORS.map(s => renderSectorSection(s, sectorAgg.get(s.key), corpsByIndustry)).join('');
+  sectorsHost.innerHTML = SECTORS.map(s => renderSectorSection(s, sectorAgg.get(s.key), corpsByIndustry, baseByKey)).join('');
 }
 
-// Strength formula. Base values come from the SECTORS taxonomy (zero
-// today, per the design note above); bonus is floor(corps / 2) per
-// "+1 strength per two corporations"; cap at 10 so a future high-corp
-// sector doesn't render an off-scale number. Returns numeric pieces
-// so renderStrength can format them.
-function strengthFor(industry, corpCount) {
-  const base  = industry.base != null ? industry.base : INDUSTRY_BASE_DEFAULT;
+// Strength formula: base (per-nation, per-industry from
+// nation_industry_bases) + floor(corps / 2), capped at 10. The base
+// is passed in by the caller so this function stays pure — the
+// lookup happens once in renderEconomy, the value threads through.
+function strengthFor(base, corpCount) {
+  const safeBase = Number.isFinite(Number(base)) ? Number(base) : 0;
   const bonus = Math.floor((corpCount || 0) / 2);
-  const final = Math.min(10, base + bonus);
-  return { base, bonus, final };
+  const final = Math.min(10, safeBase + bonus);
+  return { base: safeBase, bonus, final };
 }
 
 function strengthTierClass(final) {
@@ -375,10 +461,11 @@ function renderSummaryCard(sector, agg) {
   );
 }
 
-function renderSectorSection(sector, agg, corpsByIndustry) {
+function renderSectorSection(sector, agg, corpsByIndustry, baseByKey) {
   const indHtml = sector.industries.map(ind => {
     const indCorps = corpsByIndustry.get(ind.key) || [];
-    return renderIndustryCard(sector, ind, indCorps);
+    const base = baseByKey.get(ind.key) ?? 0;
+    return renderIndustryCard(sector, ind, indCorps, base);
   }).join('');
   return (
     `<div class="cat-section">` +
@@ -392,8 +479,8 @@ function renderSectorSection(sector, agg, corpsByIndustry) {
   );
 }
 
-function renderIndustryCard(sector, ind, corps) {
-  const { base, bonus, final } = strengthFor(ind, corps.length);
+function renderIndustryCard(sector, ind, corps, baseValue) {
+  const { base, bonus, final } = strengthFor(baseValue, corps.length);
   const tier = strengthTierClass(final);
   const corpsHtml = corps.length
     ? corps.map(c => renderCorpRow(sector, c)).join('')
@@ -407,6 +494,7 @@ function renderIndustryCard(sector, ind, corps) {
         `<div class="ind-name-block">` +
           `<div class="ind-name">${escapeHtml(ind.name)}</div>` +
           `<div class="ind-blurb">${escapeHtml(ind.blurb)}</div>` +
+          renderTradeLine(ind) +
         `</div>` +
         `<div class="ind-strength">` +
           `<div class="str-formula"><span class="base">base ${base}</span> <span class="plus">+ ${bonus}</span>${noteHtml}</div>` +
@@ -417,6 +505,34 @@ function renderIndustryCard(sector, ind, corps) {
         `<div class="corps-lab">CORPORATIONS IN THIS INDUSTRY</div>` +
         `<div class="corp-list">${corpsHtml}</div>` +
       `</div>` +
+    `</div>`
+  );
+}
+
+// Trade-line under the industry blurb. Reads industry.tradeAsset:
+//   { name, boosts: [{ stat, delta }, ...] }
+// Each boost renders as a small chip — green for positive delta
+// (recipient gains), red for negative (recipient loses). The "1
+// traded away → delta applied to recipient" framing is implicit:
+// the chip just shows the per-unit effect on the receiving nation.
+// Missing tradeAsset (e.g. a future industry that has no export)
+// hides the line entirely.
+function renderTradeLine(ind) {
+  const ta = ind.tradeAsset;
+  if (!ta || !Array.isArray(ta.boosts) || !ta.boosts.length) return '';
+  const chips = ta.boosts.map(b => {
+    const delta = Number(b.delta) || 0;
+    const cls   = delta < 0 ? 'down' : 'up';
+    const sign  = delta > 0 ? '+' : '';
+    return `<span class="ind-trade-boost ${cls}">${sign}${delta} ${escapeHtml(statLabel(b.stat))}</span>`;
+  }).join('');
+  return (
+    `<div class="ind-trade">` +
+      `<span class="ind-trade-icon">&#8646;</span>` +
+      `<span class="ind-trade-label">TRADE</span>` +
+      `<span class="ind-trade-name">${escapeHtml(ta.name)}</span>` +
+      `<span class="ind-trade-arrow">&rarr;</span>` +
+      chips +
     `</div>`
   );
 }
