@@ -523,34 +523,23 @@ async function init() {
   }
   if (!ctx) return;
 
-  // Bootstrap already fetched a thin nation row (id, name, flag_url, profile flag).
-  // Refetch with the full surface we need for the brief card, plus the active
-  // Prime Minister row for the Head-of-Gov't cell.
-  let nation = null;
+  // Nation comes from ctx — bootstrap already fetched the full surface
+  // (politician-topbar select is the superset for all politician pages),
+  // so this page just reads it. Only the page-specific PM ministry
+  // lookup needs its own fetch.
+  const nation = ctx.nation;
   let pmMinistry = null;
   if (ctx.faction?.nation_id) {
-    const nid = ctx.faction.nation_id;
     try {
-      const [natRes, pmRes] = await Promise.all([
-        _supabase.from('nations')
-          .select(`
-            id, name, government_type, capital, total_seats,
-            head_of_state_title, head_of_state_first_name, head_of_state_last_name,
-            population, dynasty_name,
-            politician_gdp, politician_budget, politician_debt,
-            politician_stability, politician_civil_freedoms, politician_gdp_growth,
-            nation_profiles(flag_url, official_name, motto, overview, founded_year)
-          `)
-          .eq('id', nid).maybeSingle(),
-        _supabase.from('ministries')
-          .select('minister_first_name, minister_last_name, party_id, factions(faction_name, leader_first_name, leader_last_name)')
-          .eq('nation_id', nid).eq('ministry_key', 'prime_minister').eq('is_active', true).maybeSingle(),
-      ]);
-      if (natRes.error) throw natRes.error;
-      nation = natRes.data;
-      if (!pmRes.error) pmMinistry = pmRes.data;  // PM is optional flair — soft-fail.
+      const { data, error } = await _supabase.from('ministries')
+        .select('minister_first_name, minister_last_name, party_id, factions(faction_name, leader_first_name, leader_last_name)')
+        .eq('nation_id', ctx.faction.nation_id)
+        .eq('ministry_key', 'prime_minister')
+        .eq('is_active', true)
+        .maybeSingle();
+      if (!error) pmMinistry = data;  // PM is optional flair — soft-fail.
     } catch (err) {
-      console.error('politician-nation: nation fetch failed', err);
+      console.warn('politician-nation: PM ministry fetch failed', err);
     }
   }
 
@@ -563,10 +552,47 @@ async function init() {
   bindJumpNav();
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
-  // Side panels that hit the DB. Fire-and-forget — failures render an
+  // Side-panel data is lazy: Corporations skips the fetch entirely
+  // until the user expands its section; Government keeps the parties
+  // + admin fetch eager (so patchHeadOfGov can update the nation
+  // header's Head of Gov't cell on initial load) but defers the DOM
+  // build until expand. Both fire-and-forget — failures render an
   // empty state in their own section without blocking the page.
-  renderCorporations(nation.id);
-  renderGovernment(nation, pmMinistry, ctx.faction?.politician_party_id || null);
+  _viewerMyPartyId = ctx.faction?.politician_party_id || null;
+  _viewerNation    = nation;
+  _viewerPm        = pmMinistry;
+  loadParliament(nation, pmMinistry);
+  bindLazySections(nation);
+}
+
+// One-shot fetch guards keyed off the section's <details> toggle.
+// Corporations defers everything; Government re-renders the body on
+// open (the eager loadParliament call may finish before or after, so
+// the body falls back to a Loading placeholder until data settles).
+let _viewerMyPartyId = null;
+let _viewerNation    = null;
+let _viewerPm        = null;
+let _corpsLoaded     = false;
+function bindLazySections(nation) {
+  const govSec  = document.getElementById('sec-govt');
+  const corpSec = document.getElementById('sec-corp');
+  if (govSec) {
+    govSec.addEventListener('toggle', () => {
+      if (govSec.open) renderParliamentBody();
+    });
+    if (govSec.open) renderParliamentBody();
+  }
+  if (corpSec) {
+    corpSec.addEventListener('toggle', () => {
+      if (!corpSec.open || _corpsLoaded) return;
+      _corpsLoaded = true;
+      renderCorporations(nation.id);
+    });
+    if (corpSec.open && !_corpsLoaded) {
+      _corpsLoaded = true;
+      renderCorporations(nation.id);
+    }
+  }
 }
 
 // Jump-nav clicks open the matching <details> and scroll it into view.
@@ -924,14 +950,19 @@ function renderCorpRow(c) {
 // Government & Politics — gate is "no parties" rather than gov_type,
 // since Absolute Monarchies still have parties + a chamber, they just
 // don't run elections (seats are set by the throne rather than the
-// ballot box). Same parliament UI for any nation with parties seated;
-// the only short-circuit now is the early empty state when no parties
-// exist.
-async function renderGovernment(n, pm, myPartyId) {
-  const body = document.getElementById('sec-govt-body');
-  if (!body) return;
-  const footer = '<div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>';
-
+// ballot box). Split into two phases so the section's DOM render is
+// lazy without losing the eager Head-of-Gov't patch on the nation
+// header:
+//   • loadParliament — fires from init, fetches parties + admin in
+//     parallel, computes the coalition / pmParty / opposition / tenure
+//     surface, patches HoG, and stashes everything in _parliamentState
+//     for the body render.
+//   • renderParliamentBody — fires on first sec-govt expand, builds
+//     the chamber arc / gov strip / party rows from _parliamentState.
+//     Shows a Loading placeholder if expand happens before the fetch
+//     settles; the fetch's tail re-renders the body in that case.
+let _parliamentState = { phase: 'loading' };
+async function loadParliament(n, pm) {
   try {
     const [partiesRes, adminRes] = await Promise.all([
       _supabase.from('factions')
@@ -950,14 +981,8 @@ async function renderGovernment(n, pm, myPartyId) {
     ]);
     if (partiesRes.error) throw partiesRes.error;
     const parties = partiesRes.data || [];
-
-    if (parties.length === 0) {
-      body.innerHTML = `<div class="govt-empty">
-        <div class="head">No <span class="serif">parties</span> in ${escHtml(n.name)}.</div>
-        <div class="note">When parties register they'll appear here.</div>
-      </div>` + footer;
-      return;
-    }
+    if (adminRes.error) console.warn('politician-nation: administration fetch failed', adminRes.error);
+    const admin = adminRes.data?.[0] || null;
 
     const totalSeats = Math.max(0, Number(n.total_seats) || 0);
     const majority   = totalSeats > 0 ? Math.floor(totalSeats / 2) + 1 : 0;
@@ -967,8 +992,6 @@ async function renderGovernment(n, pm, myPartyId) {
     // formation; we re-key against the live parties list so display names +
     // seat counts stay current. Soft-fail to single-party majority detection
     // when no administration row is present (data lag, autocracy, etc.).
-    if (adminRes.error) console.warn('politician-nation: administration fetch failed', adminRes.error);
-    const admin = adminRes.data?.[0] || null;
     const coalitionIds = new Set(
       (admin?.coalition_parties || []).map(p => p?.party_id).filter(Boolean)
     );
@@ -989,20 +1012,62 @@ async function renderGovernment(n, pm, myPartyId) {
     // card was wrong and gets updated in place.
     patchHeadOfGov(n, pm, pmParty);
 
-    body.innerHTML = `
-      <div class="parl-head">
-        <div class="parl-title">National <span class="serif">Assembly</span></div>
-        <div class="parl-meta"><strong>${totalSeats}</strong> seats &middot; <strong>${majority}</strong> needed for a majority</div>
-      </div>
-      <div class="chamber-wrap">${renderChamberArc(parties, totalSeats)}</div>
-      ${renderGovStrip(coalition, pmParty, opposition, pm, totalSeats, majority, pmYear)}
-      <div class="parties-lab">Parties in the Assembly &middot; ordered by seat share</div>
-      ${parties.map(p => renderPartyRow(p, totalSeats, pmParty, coalitionIds, myPartyId)).join('')}
-    ` + footer;
+    _parliamentState = {
+      phase: 'ready',
+      parties, totalSeats, majority,
+      coalition, pmParty, opposition, coalitionIds, pmYear,
+    };
   } catch (err) {
     console.error('politician-nation: government fetch failed', err);
-    body.innerHTML = '<div class="sec-empty">Could not load the parliament.</div>' + footer;
+    _parliamentState = { phase: 'error' };
   }
+
+  // If the user already opened the section before the fetch returned,
+  // swap the Loading placeholder for the real body now.
+  const sec = document.getElementById('sec-govt');
+  const body = document.getElementById('sec-govt-body');
+  if (sec?.open && body) {
+    body.dataset.rendered = '';
+    renderParliamentBody();
+  }
+}
+
+function renderParliamentBody() {
+  const body = document.getElementById('sec-govt-body');
+  if (!body || body.dataset.rendered === '1') return;
+  const footer = '<div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>';
+
+  if (_parliamentState.phase === 'loading') {
+    body.innerHTML = '<div class="sec-empty">Loading the parliament…</div>';
+    return;  // rendered flag stays unset; the fetch tail re-renders us
+  }
+
+  body.dataset.rendered = '1';
+
+  if (_parliamentState.phase === 'error') {
+    body.innerHTML = '<div class="sec-empty">Could not load the parliament.</div>' + footer;
+    return;
+  }
+
+  const { parties, totalSeats, majority, coalition, pmParty, opposition, coalitionIds, pmYear } = _parliamentState;
+  if (parties.length === 0) {
+    body.innerHTML = `<div class="govt-empty">
+      <div class="head">No <span class="serif">parties</span> in ${escHtml(_viewerNation?.name || 'this nation')}.</div>
+      <div class="note">When parties register they'll appear here.</div>
+    </div>` + footer;
+    return;
+  }
+
+  body.innerHTML = `
+    <div class="parl-head">
+      <div class="parl-title">National <span class="serif">Assembly</span></div>
+      <div class="parl-meta"><strong>${totalSeats}</strong> seats &middot; <strong>${majority}</strong> needed for a majority</div>
+    </div>
+    <div class="chamber-wrap">${renderChamberArc(parties, totalSeats)}</div>
+    ${renderGovStrip(coalition, pmParty, opposition, _viewerPm, totalSeats, majority, pmYear)}
+    <div class="parties-lab">Parties in the Assembly &middot; ordered by seat share</div>
+    ${parties.map(p => renderPartyRow(p, totalSeats, pmParty, coalitionIds, _viewerMyPartyId)).join('')}
+  ` + footer;
 }
 
 // Half-annulus arc, one circle per seat. Lays seats out in concentric rows

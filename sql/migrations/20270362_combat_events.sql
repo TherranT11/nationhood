@@ -48,3 +48,5 @@ ALTER TABLE public.combat_events ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS combat_events_read ON public.combat_events;
 CREATE POLICY combat_events_read ON public.combat_events FOR SELECT TO authenticated USING (true);
 -- No write policies: RPC / edge-function only (advance-tick uses service_role).
+
+NOTIFY pgrst, 'reload schema';

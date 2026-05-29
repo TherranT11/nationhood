@@ -34,31 +34,35 @@ function ensureStyles() {
     .wr-cf-btn.accept{background:#0e1610;border-color:rgba(138,170,106,0.5);color:#8aaa6a;}
     .wr-cf-btn.reject{background:#160e0e;border-color:rgba(200,122,122,0.45);color:#c87a7a;}
     .wr-sec{font-size:10px;letter-spacing:0.16em;color:#666;margin:18px 0 10px;padding-bottom:6px;border-bottom:0.5px solid rgba(255,255,255,0.08);}
-    .wr-front{background:#0d0d0d;border:0.5px solid rgba(255,255,255,0.08);border-radius:6px;padding:18px 20px;margin-bottom:14px;}
+    .wr-front{background:#0d0d0d;border:0.5px solid rgba(255,255,255,0.08);border-radius:6px;padding:22px 24px;margin-bottom:14px;}
     .wr-front-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px;flex-wrap:wrap;gap:6px;}
-    .wr-front-name{font-size:15px;font-weight:600;color:#fff;letter-spacing:0.02em;}
-    .wr-front-sub{font-size:10px;letter-spacing:0.06em;color:#888;}
+    .wr-front-name{font-size:17px;font-weight:600;color:#fff;letter-spacing:0.02em;}
+    .wr-front-sub{font-size:11px;letter-spacing:0.06em;color:#888;}
     .wr-clash{display:flex;gap:14px;align-items:stretch;justify-content:center;margin-bottom:14px;}
     .wr-cell-big{flex:1;max-width:300px;min-width:0;background:#111;border:0.5px solid rgba(255,255,255,0.08);border-radius:5px;padding:14px 16px;border-top-width:3px;}
     .wr-cell-big.mine{border-top-color:#c87a7a;}
     .wr-cell-big.theirs{border-top-color:#7a9aab;}
-    .wr-cell-big .cn{font-size:14px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-    .wr-cell-big .ct{font-size:9px;letter-spacing:0.1em;color:#888;margin-top:4px;}
-    .wr-cell-big .cm{font-size:8px;letter-spacing:0.14em;margin-top:8px;color:#c87a7a;font-weight:700;}
+    .wr-cell-big .cn{font-size:16px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .wr-cell-big .ct{font-size:10px;letter-spacing:0.1em;color:#888;margin-top:4px;}
+    .wr-cell-big .cm{font-size:10px;letter-spacing:0.14em;margin-top:8px;color:#c87a7a;font-weight:700;}
     .wr-clash-vs{align-self:center;font-size:20px;color:#c89e6e;flex:none;padding:0 2px;}
     .wr-engagement{display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:10px;margin-top:6px;}
-    .wr-force-col,.wr-events-col{background:#0a0a0a;border:0.5px solid rgba(255,255,255,0.08);border-radius:5px;padding:12px;min-height:130px;min-width:0;}
+    .wr-force-col,.wr-events-col{background:#0a0a0a;border:0.5px solid rgba(255,255,255,0.08);border-radius:5px;padding:14px;min-height:130px;min-width:0;display:flex;flex-direction:column;}
     .wr-force-col.mine{border-top:2px solid #c87a7a;}
     .wr-force-col.theirs{border-top:2px solid #7a9aab;}
     .wr-events-col{border-top:2px solid #c89e6e;max-height:560px;overflow-y:auto;}
-    .wr-force-head,.wr-events-head{font-size:9px;letter-spacing:0.14em;color:#888;margin-bottom:10px;text-transform:uppercase;font-weight:700;}
-    .wr-army-card{padding:9px 10px;background:#111;border:0.5px solid rgba(255,255,255,0.06);border-radius:3px;margin-bottom:7px;}
+    .wr-force-head,.wr-events-head{font-size:11px;letter-spacing:0.14em;color:#888;margin-bottom:11px;text-transform:uppercase;font-weight:700;}
+    .wr-force-armies{flex:1;}
+    .wr-force-foot{margin-top:12px;padding-top:11px;border-top:0.5px solid rgba(255,255,255,0.06);display:flex;justify-content:space-between;align-items:baseline;}
+    .wr-force-foot .lab{font-size:9px;letter-spacing:0.14em;color:#666;text-transform:uppercase;font-weight:700;}
+    .wr-force-foot .val{font-size:15px;font-weight:700;color:#cfcabf;font-variant-numeric:tabular-nums;letter-spacing:0.02em;}
+    .wr-army-card{padding:11px 13px;background:#111;border:0.5px solid rgba(255,255,255,0.06);border-radius:3px;margin-bottom:8px;}
     .wr-army-card:last-child{margin-bottom:0;}
-    .wr-army-card .nm{font-size:11px;font-weight:600;color:#fff;overflow-wrap:anywhere;}
-    .wr-army-card .meta{font-size:8px;letter-spacing:0.06em;color:#888;margin-top:3px;text-transform:uppercase;}
+    .wr-army-card .nm{font-size:13px;font-weight:600;color:#fff;overflow-wrap:anywhere;}
+    .wr-army-card .meta{font-size:10px;letter-spacing:0.06em;color:#888;margin-top:4px;text-transform:uppercase;}
     .wr-army-card .meta .sup{margin-left:6px;font-weight:700;}
     .wr-army-card .meta .sup.ok{color:#46c46a;} .wr-army-card .meta .sup.short{color:#e5534b;}
-    .wr-army-card .unit-row{font-size:9px;color:#aaa;margin-top:5px;padding:3px 0 3px 8px;border-left:1px solid rgba(255,255,255,0.08);overflow-wrap:anywhere;}
+    .wr-army-card .unit-row{font-size:11px;color:#aaa;margin-top:6px;padding:3px 0 3px 8px;border-left:1px solid rgba(255,255,255,0.08);overflow-wrap:anywhere;}
     .wr-army-card .unit-row .u-nm{color:#ccc;}
     .wr-army-card .unit-row .u-comp{color:#888;}
     .wr-events-empty{font-size:10px;color:#666;text-align:center;padding:24px 10px;font-style:italic;line-height:1.6;}
@@ -380,6 +384,7 @@ function bigCellHtml(s, nation, controllerId) {
 }
 
 function forcesColumnHtml(nationName, armies, unitsByArmy, isMine) {
+    let totalSoldiers = 0;
     const cards = (armies || []).map(ar => {
         const sb = ar.supply_balance;
         const sup = (sb === null || sb === undefined) ? ''
@@ -388,6 +393,7 @@ function forcesColumnHtml(nationName, armies, unitsByArmy, isMine) {
                 : `<span class="sup ok">+${Number(sb)}</span>`);
         const armyType = String(ar.army_type || 'regular').replace(/^./, c => c.toUpperCase());
         const units = unitsByArmy.get(ar.id) || [];
+        for (const u of units) totalSoldiers += Number(u.total_manpower) || 0;
         const unitsHtml = units.length
             ? units.map(u => `<div class="unit-row">
                     <span class="u-nm">${escapeHtml(u.name || 'Unit')}</span>
@@ -403,7 +409,11 @@ function forcesColumnHtml(nationName, armies, unitsByArmy, isMine) {
     const body = cards || `<div class="wr-events-empty" style="padding:14px 6px;">No forces assigned to this front.</div>`;
     return `<div class="wr-force-col ${isMine ? 'mine' : 'theirs'}">
         <div class="wr-force-head">Forces of ${escapeHtml(nationName)}</div>
-        ${body}
+        <div class="wr-force-armies">${body}</div>
+        <div class="wr-force-foot">
+            <span class="lab">Soldiers</span>
+            <span class="val">${totalSoldiers.toLocaleString()}</span>
+        </div>
     </div>`;
 }
 

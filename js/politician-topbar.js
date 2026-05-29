@@ -234,8 +234,20 @@ export async function bootstrapPolitician(activeTab) {
   let nation = null;
   if (faction.nation_id) {
     try {
+      // Superset select: covers the topbar's needs (id/name/flag),
+      // politician-nation's full surface, and politician-movements'
+      // total_seats. Reading ctx.nation across politician pages saves
+      // a per-page nations refetch — one round-trip back regardless
+      // of which page consumes which columns.
       const { data, error } = await _supabase.from('nations')
-        .select('id, name, flag_url, nation_profiles(flag_url)')
+        .select(`
+          id, name, flag_url, government_type, capital, total_seats,
+          head_of_state_title, head_of_state_first_name, head_of_state_last_name,
+          population, dynasty_name,
+          politician_gdp, politician_budget, politician_debt,
+          politician_stability, politician_civil_freedoms, politician_gdp_growth,
+          nation_profiles(flag_url, official_name, motto, overview, founded_year)
+        `)
         .eq('id', faction.nation_id).maybeSingle();
       if (!error) nation = data;
     } catch (_) { /* nation is optional flair; absence falls back to '—' */ }
