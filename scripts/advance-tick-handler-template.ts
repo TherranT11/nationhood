@@ -2246,32 +2246,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         }
 
-        // Debt-to-GDP band crises: maintain the Strained/Crisis/Collapse
-        // active_crises row for this nation BEFORE processCrises runs, so
-        // any newly-active band's effects apply in the same tick.
-        try {
-            await processDebtToGdpBands(supabase, nation, newTick);
-        } catch (debtBandErr) {
-            console.error(`[advanceTick] Debt-to-GDP band processing failed for ${nation.name} (non-fatal):`, debtBandErr);
-        }
-
-        // Crises (persistent negative events that apply effects every tick)
-        // Runs BEFORE approval calculations so crisis stat/event effects propagate in the same tick.
-        try {
-            const crisisResults = await processCrises(supabase, nation, newTick);
-            if (crisisResults.length > 0) {
-                summary.crises = summary.crises || [];
-                summary.crises.push({ nation: nation.name, crises: crisisResults });
-            }
-        } catch (crisisErr) {
-            console.error(`[advanceTick] Crisis processing failed for ${nation.name} (non-fatal):`, crisisErr);
-        }
-
         // National Modifiers (characterization layer — no per-tick stat changes).
         // Flips active_modifiers rows on/off based on triggers / end-triggers.
-        // Independent of approval / collapse — order with crises here doesn't
-        // matter, but kept adjacent so the two characterizing systems sit
-        // together in the tick.
+        // Sole occupant of the "characterizing systems" slot after the crisis
+        // system was sunset (Phase 1, 20270394 onward): processDebtToGdpBands
+        // and processCrises were dropped — modifier_triggers handles the
+        // equivalent firing logic.
         try {
             const modifierResults = await processNationalModifiers(supabase, nation, newTick);
             if (modifierResults.length > 0) {
