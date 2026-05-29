@@ -51,7 +51,7 @@
 .act-btn.disabled { color:#555; border-color:rgba(255,255,255,0.06); cursor:not-allowed; }
 
 /* Stats strip below the identity card. */
-.stats-strip { display:grid; grid-template-columns:repeat(4,1fr); }
+.stats-strip { display:grid; grid-template-columns:repeat(5,1fr); }
 .ss { padding:16px 22px; border-right:0.5px solid rgba(255,255,255,0.07); }
 .ss:last-child { border-right:none; }
 .ss .k { font-size:8px; letter-spacing:0.12em; color:#666; margin-bottom:6px; }
@@ -67,16 +67,22 @@
 .about-text { font-size:13px; color:#d4d4d4; line-height:1.65; }
 .about-text em { color:#888; font-style:italic; }
 
-/* Leadership card — only Leader for now; deputies / ranking come when
-   the schema carries them. */
-.lead-card { display:flex; gap:14px; align-items:center;
-  padding:14px 0; border-top:0.5px solid rgba(255,255,255,0.04); }
-.lead-card:first-of-type { border-top:none; padding-top:6px; }
+/* Leadership panel — Leader / Deputy / Whip rendered as a 3-up grid so
+   the three named officers sit side by side under Party Leadership.
+   Collapses to a single column on mobile. */
+.lead-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+.lead-card { display:flex; gap:14px; align-items:center; min-width:0;
+  padding:6px 0; }
 .lead-portrait { width:44px; height:44px; border-radius:5px; flex-shrink:0;
   display:flex; align-items:center; justify-content:center;
   font-size:13px; font-weight:700; font-family:monospace; }
-.lead-name { font-size:14px; color:#fff; font-weight:600; }
+.lead-body { min-width:0; }
+.lead-name { font-size:14px; color:#fff; font-weight:600;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .lead-meta { font-size:10px; color:#888; margin-top:3px; letter-spacing:0.04em; }
+.lead-card.vacant .lead-portrait { color:#444; background:rgba(255,255,255,0.03);
+  border:0.5px solid rgba(255,255,255,0.06); }
+.lead-card.vacant .lead-name { color:#666; font-style:italic; font-weight:500; }
 
 /* Members list — every politician faction whose politician_party_id is
    this party. Sorted by politician_influence desc. */
@@ -111,6 +117,7 @@
   .stats-strip { grid-template-columns:1fr 1fr; }
   .ss { border-right:none; border-bottom:0.5px solid rgba(255,255,255,0.07); }
   .ss:nth-child(odd) { border-right:0.5px solid rgba(255,255,255,0.07); }
+  .lead-grid { grid-template-columns:1fr; }
   .mem-row { grid-template-columns:30px 1fr auto; }
   .mem-row .mem-career { display:none; }
 }
@@ -171,7 +178,7 @@ async function init() {
   // typo'd politician_party_id on a different faction kind can't leak in.
   const [partyRes, membersRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_name, abbreviation, seats, party_color, party_description, leader_first_name, leader_last_name, leader_age, founded_tick, nation_id, nation:nations!nation_id(id, name, total_seats, government_type)')
+      .select('id, faction_name, abbreviation, seats, popularity_pct, party_color, party_description, leader_first_name, leader_last_name, leader_age, deputy_first_name, deputy_last_name, whip_first_name, whip_last_name, founded_tick, nation_id, nation:nations!nation_id(id, name, total_seats, government_type)')
       .eq('id', partyId)
       .eq('faction_type', 'movement_party')
       .is('abandoned_at', null)
@@ -241,6 +248,8 @@ function render(party, members) {
         ${statCell('Seats in Assembly', totalSeats > 0 ? `${seats}<span class="of">/ ${totalSeats}</span>` : String(seats), totalSeats > 0
           ? `${pctOfChamber(seats, totalSeats)} of chamber`
           : 'No assembly')}
+        ${statCell('Popularity', party.popularity_pct != null ? `${Math.round(Number(party.popularity_pct))}%` : '—',
+          party.popularity_pct != null ? 'nation-wide support' : 'unrated')}
         ${statCell('Status', isGov ? 'In Power' : (totalSeats > 0 ? 'Opposition' : '—'),
           isGov ? `holds majority (${majority} needed)` : (totalSeats > 0 ? `${majority - seats} short of majority` : ''))}
         ${statCell('Founded', party.founded_tick != null ? String(tickToYear(party.founded_tick)) : '—',
@@ -317,18 +326,42 @@ function renderAbout(party) {
 
 function renderLeadership(party, accent) {
   const host = document.getElementById('leadership-host');
-  const leader = [party.leader_first_name, party.leader_last_name].filter(Boolean).join(' ');
-  if (!leader) {
+  const leaderName = [party.leader_first_name, party.leader_last_name].filter(Boolean).join(' ');
+  const deputyName = [party.deputy_first_name, party.deputy_last_name].filter(Boolean).join(' ');
+  const whipName   = [party.whip_first_name,   party.whip_last_name].filter(Boolean).join(' ');
+  // Empty state matches the Members panel — every other faction surface
+  // says "No leader on record." when leader_* is null, so we keep that
+  // language even when deputy/whip are vacant.
+  if (!leaderName && !deputyName && !whipName) {
     host.innerHTML = '<div class="mem-empty">No leader on record.</div>';
     return;
   }
-  const ini = factionInitials(leader, null);
-  const ageBit = party.leader_age ? ` &middot; age ${Number(party.leader_age)}` : '';
-  host.innerHTML = `<div class="lead-card">
+  const leaderMeta = party.leader_age
+    ? `Party Leader · age ${Number(party.leader_age)}`
+    : 'Party Leader';
+  host.innerHTML = `<div class="lead-grid">
+    ${leadCard(leaderName, leaderMeta, accent)}
+    ${leadCard(deputyName, 'Deputy Leader',   accent)}
+    ${leadCard(whipName,   'Party Whip',      accent)}
+  </div>`;
+}
+
+function leadCard(name, role, accent) {
+  if (!name) {
+    return `<div class="lead-card vacant">
+      <div class="lead-portrait">&mdash;</div>
+      <div class="lead-body">
+        <div class="lead-name">Vacant</div>
+        <div class="lead-meta">${escHtml(role)}</div>
+      </div>
+    </div>`;
+  }
+  const ini = factionInitials(name, null);
+  return `<div class="lead-card">
     <div class="lead-portrait" style="background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;">${escHtml(ini)}</div>
-    <div>
-      <div class="lead-name">${escHtml(leader)}</div>
-      <div class="lead-meta">Party Leader${ageBit}</div>
+    <div class="lead-body">
+      <div class="lead-name">${escHtml(name)}</div>
+      <div class="lead-meta">${escHtml(role)}</div>
     </div>
   </div>`;
 }
