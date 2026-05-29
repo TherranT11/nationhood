@@ -194,6 +194,7 @@
 .status-pill { font-size:8px; letter-spacing:0.11em; padding:2px 7px; border-radius:2px;
   text-transform:uppercase; font-weight:600; }
 .status-pill.gov   { background:#0e1611; color:#8aaa6a; border:0.5px solid rgba(122,170,106,0.35); }
+.status-pill.coal  { background:#0d1418; color:#7aa3c0; border:0.5px solid rgba(122,163,192,0.35); }
 .status-pill.opp   { background:#161208; color:#c89e6e; border:0.5px solid rgba(200,158,110,0.25); }
 .status-pill.you   { background:#0e1416; color:#5aafa5; border:0.5px solid rgba(90,175,165,0.4); }
 .party-meta { display:flex; flex-direction:column; gap:6px; font-size:10px;
@@ -404,7 +405,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { industryLabel, ownerDisplayName, fmtValuation, safeHexColor, factionInitials } from './js/utils.js';
+import { industryLabel, ownerDisplayName, fmtValuation, safeHexColor, factionInitials, tickToYear } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 import { fetchCorpBookAggregates } from './js/corp-book-value.js';
 
@@ -905,21 +906,45 @@ async function renderGovernment(n, pm, myPartyId) {
   }
 
   try {
-    const { data, error } = await _supabase.from('factions')
-      .select('id, faction_name, abbreviation, seats, party_color, party_description, leader_first_name, leader_last_name')
-      .eq('nation_id', n.id)
-      .eq('faction_type', 'movement_party')
-      .is('abandoned_at', null)
-      .order('seats', { ascending: false })
-      .order('faction_name');
-    if (error) throw error;
-    const parties = data || [];
+    const [partiesRes, adminRes] = await Promise.all([
+      _supabase.from('factions')
+        .select('id, faction_name, abbreviation, seats, party_color, party_description, leader_first_name, leader_last_name')
+        .eq('nation_id', n.id)
+        .eq('faction_type', 'movement_party')
+        .is('abandoned_at', null)
+        .order('seats', { ascending: false })
+        .order('faction_name'),
+      _supabase.from('administrations')
+        .select('pm_party_id, coalition_parties, started_at_tick')
+        .eq('nation_id', n.id)
+        .is('ended_at_tick', null)
+        .order('started_at_tick', { ascending: false })
+        .limit(1),
+    ]);
+    if (partiesRes.error) throw partiesRes.error;
+    const parties = partiesRes.data || [];
     const totalSeats = Math.max(0, Number(n.total_seats) || 0);
     const majority   = totalSeats > 0 ? Math.floor(totalSeats / 2) + 1 : 0;
-    // Governing party = first one with > 50% seats. No coalition logic —
-    // when nobody has a majority, the strip says "No majority government".
-    const governing = parties.find(p => (Number(p.seats) || 0) >= majority && totalSeats > 0) || null;
-    const opposition = parties.find(p => !governing || p.id !== governing.id) || null;
+
+    // Active administration drives coalition + PM tenure. coalition_parties
+    // is a jsonb array of { party_id, party_name, seats } captured at
+    // formation; we re-key against the live parties list so display names +
+    // seat counts stay current. Soft-fail to single-party majority detection
+    // when no administration row is present (data lag, autocracy, etc.).
+    const admin = (!adminRes.error && adminRes.data?.[0]) || null;
+    const coalitionIds = new Set(
+      (admin?.coalition_parties || []).map(p => p?.party_id).filter(Boolean)
+    );
+    const pmPartyId = admin?.pm_party_id || null;
+    const pmYear    = admin?.started_at_tick != null ? tickToYear(admin.started_at_tick) : null;
+
+    let coalition = parties.filter(p => coalitionIds.has(p.id));
+    if (!coalition.length && totalSeats > 0) {
+      const solo = parties.find(p => (Number(p.seats) || 0) >= majority);
+      if (solo) coalition = [solo];
+    }
+    const pmParty    = parties.find(p => p.id === pmPartyId) || coalition[0] || null;
+    const opposition = parties.find(p => !coalitionIds.has(p.id) && p.id !== pmParty?.id) || null;
 
     body.innerHTML = `
       <div class="parl-head">
@@ -927,10 +952,10 @@ async function renderGovernment(n, pm, myPartyId) {
         <div class="parl-meta"><strong>${totalSeats}</strong> seats &middot; <strong>${majority}</strong> needed for a majority</div>
       </div>
       <div class="chamber-wrap">${renderChamberArc(parties, totalSeats)}</div>
-      ${renderGovStrip(governing, opposition, pm, totalSeats)}
+      ${renderGovStrip(coalition, pmParty, opposition, pm, totalSeats, majority, pmYear)}
       <div class="parties-lab">Parties in the Assembly &middot; ordered by seat share</div>
       ${parties.length
-        ? parties.map(p => renderPartyRow(p, totalSeats, governing, myPartyId)).join('')
+        ? parties.map(p => renderPartyRow(p, totalSeats, pmParty, coalitionIds, myPartyId)).join('')
         : '<div class="sec-empty">No parties have been seated yet.</div>'}
     ` + footer;
   } catch (err) {
@@ -991,12 +1016,24 @@ function renderChamberArc(parties, totalSeats) {
   return `<svg class="chamber" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${svg}</svg>`;
 }
 
-function renderGovStrip(governing, opposition, pm, totalSeats) {
-  const govCard = governing
+// Coalition list → human-readable governing label: 1 → "A", 2 → "A & B",
+// 3+ → "A, B & C". Parties enter already sorted by seats desc, so the
+// largest partner reads first.
+function joinCoalitionNames(coalition) {
+  const names = coalition.map(p => p.faction_name).filter(Boolean);
+  if (!names.length) return '';
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} & ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}`;
+}
+
+function renderGovStrip(coalition, pmParty, opposition, pm, totalSeats, majority, pmYear) {
+  const coalitionSeats = coalition.reduce((s, p) => s + (Number(p.seats) || 0), 0);
+  const govCard = coalition.length
     ? `<div class="gov-card gov">
-         <div class="gck">GOVERNING PARTY</div>
-         <div class="gcv">${escHtml(governing.faction_name)}</div>
-         <div class="gcd">${governing.seats} of ${totalSeats} seats &middot; majority government</div>
+         <div class="gck">GOVERNING ${coalition.length > 1 ? 'COALITION' : 'PARTY'}</div>
+         <div class="gcv">${escHtml(joinCoalitionNames(coalition))}</div>
+         <div class="gcd">${coalitionSeats} of ${totalSeats} seats &middot; ${coalitionSeats >= majority && majority > 0 ? 'majority' : 'minority'} government</div>
        </div>`
     : `<div class="gov-card">
          <div class="gck">GOVERNING PARTY</div>
@@ -1005,10 +1042,15 @@ function renderGovStrip(governing, opposition, pm, totalSeats) {
        </div>`;
 
   const { name: pmName, partyName } = resolvePm(pm);
+  const pmPartyName = pmParty?.faction_name || partyName;
+  const pmDetail = [
+    pmPartyName ? `leader of ${escHtml(pmPartyName)}` : 'awaiting appointment',
+    pmYear ? `in office since ${pmYear}` : '',
+  ].filter(Boolean).join(' &middot; ');
   const pmCard = `<div class="gov-card">
     <div class="gck">PRIME MINISTER</div>
     <div class="gcv">${pmName ? escHtml(pmName) : 'Vacant'}</div>
-    <div class="gcd">${partyName ? `leader of ${escHtml(partyName)}` : 'awaiting appointment'}</div>
+    <div class="gcd">${pmDetail}</div>
   </div>`;
 
   const oppLeaderName = opposition
@@ -1029,17 +1071,20 @@ function renderGovStrip(governing, opposition, pm, totalSeats) {
   return `<div class="gov-strip">${govCard}${pmCard}${oppCard}</div>`;
 }
 
-function renderPartyRow(p, totalSeats, governing, myPartyId) {
+function renderPartyRow(p, totalSeats, pmParty, coalitionIds, myPartyId) {
   const accent = safeHexColor(p.party_color);
-  const isGov  = governing && governing.id === p.id;
+  const isGov  = pmParty && pmParty.id === p.id;
+  const isCoal = !isGov && coalitionIds.has(p.id);
   const isMine = myPartyId && myPartyId === p.id;
   const leader = [p.leader_first_name, p.leader_last_name].filter(Boolean).join(' ');
   const badgeStyle = `background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;`;
-  const pills = [
-    isGov  ? '<span class="status-pill gov">&#9679; Governing</span>'
-           : '<span class="status-pill opp">&#9679; Opposition</span>',
-    isMine ? '<span class="status-pill you">&#9679; You</span>' : '',
-  ].filter(Boolean).join(' ');
+  const statusPill = isGov
+    ? '<span class="status-pill gov">&#9679; Governing</span>'
+    : isCoal
+      ? '<span class="status-pill coal">&#9679; Coalition</span>'
+      : '<span class="status-pill opp">&#9679; Opposition</span>';
+  const pills = [statusPill, isMine ? '<span class="status-pill you">&#9679; You</span>' : '']
+    .filter(Boolean).join(' ');
   const href = `party.html?id=${encodeURIComponent(p.id)}`;
   return `<a class="party-row" href="${href}" style="border-left-color:${accent};">
     <div class="party-badge" style="${badgeStyle}">${escHtml(factionInitials(p.faction_name, p.abbreviation))}</div>
