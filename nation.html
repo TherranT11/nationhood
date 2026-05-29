@@ -342,9 +342,8 @@ async function loadStatEffectSources(nationId, nation) {
         _supabase.from('active_laws')
             .select('is_reversal, passed_tick, effects_applied_through_tick, policies(policy_name), selected_option:policy_options!selected_option_id(option_name, stat_effects, is_target_based, stat_targets)')
             .eq('nation_id', nationId),
-        _supabase.from('active_crises')
-            .select('crisis_id, crisis_templates(name, crisis_effects(stat_key, change_per_tick, target))')
-            .eq('nation_id', nationId),
+        // Crisis sunset (Phase 3): active_crises read + parseCrisisEffects
+        // pass dropped from the Affected-By panel.
         _supabase.from('ministry_action_log')
             .select('action_key, stat_effects, applied_at_tick')
             .eq('nation_id', nationId)
@@ -367,12 +366,11 @@ async function loadStatEffectSources(nationId, nation) {
     var map = {};
     parsePolicyEffects(results[0].data || [], map, currentTick);
     parseTargetBasedPolicyEffects(results[0].data || [], map, nation);
-    parseCrisisEffects(results[1].data || [], map);
-    parseMinistryEffects(results[2].data || [], map, currentTick);
-    parseDiplomaticEffects(results[3].data || [], map, currentTick);
-    parseLeaderTraitEffects(results[4], map);
+    parseMinistryEffects(results[1].data || [], map, currentTick);
+    parseDiplomaticEffects(results[2].data || [], map, currentTick);
+    parseLeaderTraitEffects(results[3], map);
     parseDebtPressureEffects(nation, map);
-    rawStatConnections = results[5].data || [];
+    rawStatConnections = results[4].data || [];
     parseStatConnectionEffects(rawStatConnections, nation, map);
     parseTradeSystemEffects(nation, map);
     parseDecayEffects(nation, map);
@@ -525,21 +523,6 @@ function parsePolicyEffects(laws, map, currentTick) {
         if (!Number.isFinite(legacyRate)) legacyRate = 1;
         var legacyRemaining = legacyDur - ticksSince;
         addEffectToMap(map, legacyTr.stat_key, label, legacyDir, 'Policy', legacyRate, legacyRemaining);
-    }
-}
-
-function parseCrisisEffects(crises, map) {
-    for (var i = 0; i < crises.length; i++) {
-        var c = crises[i];
-        var t = c.crisis_templates;
-        if (!t) continue;
-        var effects = t.crisis_effects || [];
-        for (var j = 0; j < effects.length; j++) {
-            var eff = effects[j];
-            if (eff.target !== 'nation' || !eff.stat_key) continue;
-            var dir = eff.change_per_tick > 0 ? 'up' : 'down';
-            addEffectToMap(map, eff.stat_key, t.name, dir, 'Crisis');
-        }
     }
 }
 

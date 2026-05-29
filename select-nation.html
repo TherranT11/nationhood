@@ -348,35 +348,9 @@ body {
   text-align: right;
 }
 
-/* Crisis section */
-.crisis-section {
-  margin-top: 8px;
-}
-.crisis-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 0;
-}
-.crisis-pip {
-  width: 3px;
-  height: 14px;
-  background: var(--red);
-  flex-shrink: 0;
-}
-.crisis-name {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--red);
-}
-.no-crisis {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--text-muted);
-  padding: 2px 0;
-  font-style: italic;
-}
+/* Crisis sunset (Phase 3): .crisis-section / .crisis-row / .crisis-pip /
+   .crisis-name / .no-crisis CSS rules removed along with the
+   active_crises read + render block. */
 
 /* Card footer */
 .nation-card__footer {
@@ -817,7 +791,6 @@ let allNations = [];
 let selectedNationId = null;
 let activeContinent = 'Crucera';
 let cachedPartiesByNation = {};
-let cachedCrisesByNation = {};
 let cachedMilitaryByNation = {};
 // Entrepreneurs are nation-agnostic (nation_id = null) but carry their origin
 // in the `nation` text column; this map counts active entrepreneurs by origin
@@ -905,36 +878,31 @@ function switchContinent(continent) {
   document.querySelectorAll('.continent-tab').forEach(tab => {
     tab.classList.toggle('active', tab.dataset.continent === continent);
   });
-  renderNations(allNations, cachedPartiesByNation, cachedCrisesByNation);
+  renderNations(allNations, cachedPartiesByNation);
 }
 
 async function loadNations() {
-  const [nationsRes, partiesRes, crisesRes, militaryRes, entRes] = await Promise.all([
+  // Crisis sunset (Phase 3): active_crises read + cachedCrisesByNation
+  // dropped. Cards no longer display per-nation crisis pips.
+  const [nationsRes, partiesRes, militaryRes, entRes] = await Promise.all([
     _supabase.from('nations').select('*, nation_profiles(flag_url)'),
     _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, seats, nation_id, party_color').eq('faction_type', 'party'),
-    _supabase.from('active_crises').select('nation_id, crisis_id, crisis_templates(name)'),
     _supabase.from('factions').select('id, nation_id, branch').eq('faction_type', 'military').is('abandoned_at', null),
     _supabase.from('factions').select('nation').eq('faction_type', 'entrepreneur').is('abandoned_at', null),
   ]);
 
   const nations = nationsRes.data || [];
   const parties = partiesRes.data || [];
-  const crises = crisesRes.data || [];
   const military = militaryRes.data || [];
   const entrepreneurs = entRes.data || [];
 
   cachedPartiesByNation = {};
-  cachedCrisesByNation = {};
   cachedMilitaryByNation = {};
   cachedEntrepreneursByNation = {};
 
   for (const p of parties) {
     if (!cachedPartiesByNation[p.nation_id]) cachedPartiesByNation[p.nation_id] = [];
     cachedPartiesByNation[p.nation_id].push(p);
-  }
-  for (const c of crises) {
-    if (!cachedCrisesByNation[c.nation_id]) cachedCrisesByNation[c.nation_id] = [];
-    cachedCrisesByNation[c.nation_id].push(c);
   }
   for (const m of military) {
     if (!cachedMilitaryByNation[m.nation_id]) cachedMilitaryByNation[m.nation_id] = {};
@@ -946,7 +914,7 @@ async function loadNations() {
   }
 
   allNations = nations;
-  renderNations(nations, cachedPartiesByNation, cachedCrisesByNation);
+  renderNations(nations, cachedPartiesByNation);
 }
 
 function getGovTypeClass(govType) {
@@ -963,7 +931,7 @@ function getGovTypeLabel(govTypeOrNation) {
   return 'PARLIAMENTARY';
 }
 
-function renderNations(nations, partiesByNation, crisesByNation) {
+function renderNations(nations, partiesByNation) {
   const grid = document.getElementById('nations-grid');
   // Neptune nations (admin-created via the Add Nation tool) are hidden from
   // the Party founding flow — Parties are being sunsetted in favour of the
@@ -992,7 +960,6 @@ function renderNations(nations, partiesByNation, crisesByNation) {
 
   grid.innerHTML = filtered.map(nation => {
     const nParties = partiesByNation[nation.id] || [];
-    const nCrises = crisesByNation[nation.id] || [];
     const totalSeats = nation.total_seats || 100;
     const maxParties = nation.max_parties || 8;
     const eligiblePartyCount = countEligibleParties(nParties, nation.id);
@@ -1029,15 +996,6 @@ function renderNations(nations, partiesByNation, crisesByNation) {
         </div>
       `;
     }).join('');
-
-    const crisisRows = nCrises.length > 0
-      ? nCrises.map(c => `
-        <div class="crisis-row">
-          <span class="crisis-pip"></span>
-          <span class="crisis-name">${escapeHtml(c.crisis_templates?.name || 'Unknown Crisis')}</span>
-        </div>
-      `).join('')
-      : '<div class="no-crisis">No active crises</div>';
 
     if (pendingFactionType === 'military') {
       return renderMilitaryNationCard(nation, flagUrl, govClass, govLabel, needsAlphaCode);
@@ -1104,11 +1062,6 @@ function renderNations(nations, partiesByNation, crisesByNation) {
             ${partyRows}
           </div>
           ` : '<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-ghost);padding:6px 0;">No factions yet — be the first</div>'}
-
-          <div class="crisis-section">
-            <div class="party-list__header">Active Crises</div>
-            ${crisisRows}
-          </div>
         </div>
         <div class="nation-card__footer">
           <span class="join-label">${isFull ? 'NATION FULL' : 'JOIN THIS NATION'}</span>

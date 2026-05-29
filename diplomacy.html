@@ -3372,7 +3372,7 @@ async function selectWorldNation(nationId) {
         _worldAgreements = agreeResult.data || [];
     }
 
-    // Fetch government + crisis data for the selected nation
+    // Fetch government data for the selected nation
     const govData = await fetchNationGovernmentData(nation.id);
     const extraData = { gov: govData, tradeData: null };
     renderNationHighlight(nation, _worldState, _worldRelations, _worldAgreements, extraData);
@@ -3393,12 +3393,15 @@ async function selectWorldNation(nationId) {
 }
 
 /**
- * Fetch head of government, coalition parties, and active crises for a nation.
- * Returns { leader, leaderParty, coalitionParties, crises }
+ * Fetch head of government and coalition parties for a nation.
+ * Returns { leader, leaderParty, coalitionParties }
+ *
+ * Crisis sunset (Phase 3): the active_crises read + crises return field
+ * are gone, along with the Active Crises render block below.
  */
 async function fetchNationGovernmentData(nationId) {
     try {
-    const [hogRes, presRes, coalRes, crisisRes, partiesRes] = await Promise.all([
+    const [hogRes, presRes, coalRes, partiesRes] = await Promise.all([
         _supabase.from('head_of_government')
             .select('first_name, last_name, faction_id')
             .eq('nation_id', nationId)
@@ -3418,9 +3421,6 @@ async function fetchNationGovernmentData(nationId) {
             .order('formed_at', { ascending: false })
             .limit(1)
             .maybeSingle(),
-        _supabase.from('active_crises')
-            .select('crisis_id, crisis_templates(name)')
-            .eq('nation_id', nationId),
         _supabase.from('factions')
             .select('id, faction_name, abbreviation, party_color, seats')
             .eq('nation_id', nationId)
@@ -3459,15 +3459,10 @@ async function fetchNationGovernmentData(nationId) {
             .filter(Boolean);
     }
 
-    // Crises
-    const crises = (crisisRes.data || [])
-        .map(c => c.crisis_templates?.name || 'Unknown Crisis')
-        .filter(Boolean);
-
-    return { leader, leaderParty, coalitionParties, crises };
+    return { leader, leaderParty, coalitionParties };
     } catch (err) {
         console.error('[World] fetchNationGovernmentData failed:', err);
-        return { leader: null, leaderParty: null, coalitionParties: [], crises: [] };
+        return { leader: null, leaderParty: null, coalitionParties: [] };
     }
 }
 
@@ -3643,21 +3638,10 @@ function renderNationHighlight(nation, state, relations, agreements, extraData) 
         <span class="world-highlight-stat-value" style="${s.color ? 'color:' + s.color : ''}">${s.value}</span>
     </div>`).join('');
 
-    // ── ACTIVE CRISES ──
-    if (gov.crises && gov.crises.length > 0) {
-        html += `<div class="world-highlight-stat-row">
-            <span class="world-highlight-stat-label">Active Crises</span>
-            <span class="world-highlight-stat-value" style="color:var(--red);">${gov.crises.length}</span>
-        </div>`;
-        for (const c of gov.crises) {
-            html += `<div style="font-family:var(--font-mono);font-size:8px;color:var(--red);padding:1px 0 1px 8px;">\u26A0 ${escapeHtml(c)}</div>`;
-        }
-    } else {
-        html += `<div class="world-highlight-stat-row">
-            <span class="world-highlight-stat-label">Active Crises</span>
-            <span class="world-highlight-stat-value" style="color:var(--green);">None</span>
-        </div>`;
-    }
+    // Crisis sunset (Phase 3): the Active Crises row in the world
+    // highlight panel is gone — fetchNationGovernmentData no longer
+    // reads active_crises.
+
 
     // ── DIPLOMATIC RELATIONS (foreign nations only) ──
     let relScore = null;

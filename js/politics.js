@@ -115,11 +115,8 @@ initPage('politics', async (state) => {
         if ((f.seats || 0) >= _majorityThreshold) role = 'Lead — Governing';
     }
 
-    // Fetch active crises
-    const { data: activeCrises } = await _supabase
-        .from('active_crises')
-        .select('id, started_at_tick, crisis_templates(name, description)')
-        .eq('nation_id', nation.id);
+    // Crisis sunset (Phase 3): the active_crises read for the party-tab
+    // National Mood box is gone (the crisis-list section was removed).
 
     const issueStateMapInit = {};
 
@@ -245,7 +242,6 @@ initPage('politics', async (state) => {
         currentTick,
         officerNames,
         allParties,
-        activeCrises,
         nextElection,
         prevApproval,
         lastParliamentary,
@@ -289,7 +285,7 @@ function generateOfficerNames(factionId, nationName = '') {
 async function renderPartyTab(f, nation, data) {
     const {
         shard, totalSeats, mySeats, voteSharePct, lastElectionDate,
-        seatDelta, role, officerNames, allParties, coalition, activeCrises, currentTick,
+        seatDelta, role, officerNames, allParties, coalition, currentTick,
         nextElection, prevApproval,
         lastParliamentary, lastPresidential, scheduledElections,
         president, administration,
@@ -380,7 +376,7 @@ async function renderPartyTab(f, nation, data) {
         </div>
 
         <div class="pol-row-2">
-        ${renderNationalMoodBox(nation, activeCrises, currentTick, issueStateMapInit)}
+        ${renderNationalMoodBox(nation, currentTick, issueStateMapInit)}
         ${renderStrongholdsBox(strongholds)}
         ${renderEditIdentityBox(f, currentTick)}
         </div>
@@ -903,23 +899,9 @@ function renderStrongholdsBox(strongholds) {
         </div>`;
 }
 
-function renderNationalMoodBox(nation, activeCrises, currentTick, issueStateMap) {
-    const crises = activeCrises || [];
-
-    // Crises section
-    let crisesHtml;
-    if (crises.length === 0) {
-        crisesHtml = '<div class="pol-mood-no-crises">No active crises</div>';
-    } else {
-        crisesHtml = crises.map(c => {
-            const name = c.crisis_templates?.name || 'Unknown Crisis';
-            const dur = currentTick - (c.started_at_tick || 0);
-            return `<div class="pol-mood-crisis">
-                <span class="pol-mood-crisis-name">${escapeHtml(name)}</span>
-                <span class="pol-mood-crisis-dur">${dur}t</span>
-            </div>`;
-        }).join('');
-    }
+function renderNationalMoodBox(nation, currentTick, issueStateMap) {
+    // Crisis sunset (Phase 3): the "Active Crises" header block above
+    // the Electorate Issues panel is gone.
 
     // Issues section — uses ISSUE_DEFS + salience from issue_state (same source as Take Stance modal)
     const issues = ISSUE_IDS.map(id => {
@@ -959,7 +941,6 @@ function renderNationalMoodBox(nation, activeCrises, currentTick, issueStateMap)
             </div>
             <div class="pol-box-body">
             <div class="pol-mood-subtitle">Shows which issues matter most to the electorate.</div>
-            ${crisesHtml}
             ${issuesHtml}
             </div>
         </div>`;
@@ -2188,14 +2169,15 @@ let _caResult = null;     // last action result for display
 let _caAttackVectors = null;  // cached built vectors
 
 // Protest action state
-let _protestTab = 'minister';       // 'minister' | 'activeCrisis' | 'statFailure'
+let _protestTab = 'minister';       // 'minister' | 'statFailure' (Phase 3: 'activeCrisis' tab removed)
 let _protestTarget = null;          // selected grievance target object
 let _protestState = null;           // null | 'resolving' | 'result' | 'active' | 'locked' | 'cooldown'
 let _protestActiveData = null;      // active protest_log row (if any)
 let _endorseableProtest = null;     // another party's resolving protest that we can endorse
 let _alreadyEndorsed = false;       // whether we already endorsed the current endorseable protest
 let _protestCachedMinisters = null;
-let _protestCachedCrises = null;
+// Crisis sunset (Phase 3): _protestCachedCrises dropped; Active Crisis
+// target tab is gone.
 let _protestCachedStats = null;
 let _protestLoading = false;
 let _govProtestCrisis = null;       // active protest crisis for governing party PA row
@@ -2228,7 +2210,7 @@ function caReset() {
     _caRival = null; _caVector = null;
     _caAttackVectors = null;
     _protestTab = 'minister'; _protestTarget = null;
-    _protestCachedMinisters = null; _protestCachedCrises = null; _protestCachedStats = null;
+    _protestCachedMinisters = null; _protestCachedStats = null;
     _protestLoading = false;
 }
 
@@ -2689,17 +2671,8 @@ async function loadProtestData(nation, faction, tick) {
         _protestCachedMinisters = ministers || [];
     }
 
-    // Load active crises in the nation
-    if (!_protestCachedCrises) {
-        const { data: crises } = await _supabase
-            .from('active_crises')
-            .select('id, started_at_tick, crisis_templates(name, description)')
-            .eq('nation_id', nation.id);
-        _protestCachedCrises = (crises || []).map(c => ({
-            ...c,
-            duration: tick - (c.started_at_tick || 0),
-        }));
-    }
+    // Crisis sunset (Phase 3): active_crises read for the "Active Crisis"
+    // protest target tab removed (the tab itself is gone).
 
     // Load stat failure data
     if (!_protestCachedStats) {
@@ -2920,9 +2893,10 @@ function renderProtestConfig(nation, tick) {
     html += `</div>`;
 
     // Grievance type tabs
+    // Crisis sunset (Phase 3): 'activeCrisis' tab dropped along with
+    // renderProtestCrisisTargets.
     const tabs = [
         { id: 'minister', label: 'Minister' },
-        { id: 'activeCrisis', label: 'Active Crisis' },
         { id: 'statFailure', label: 'Stat Failure' },
     ];
     html += `<div class="protest-tabs">`;
@@ -2935,8 +2909,6 @@ function renderProtestConfig(nation, tick) {
     html += `<div class="protest-target-list" id="protest-target-list">`;
     if (_protestTab === 'minister') {
         html += renderProtestMinisterTargets();
-    } else if (_protestTab === 'activeCrisis') {
-        html += renderProtestCrisisTargets();
     } else if (_protestTab === 'statFailure') {
         html += renderProtestStatTargets(nation, tick);
     }
@@ -2981,35 +2953,8 @@ function renderProtestMinisterTargets() {
     return html;
 }
 
-function renderProtestCrisisTargets() {
-    const crises = _protestCachedCrises;
-    if (!crises) return `<div class="protest-empty">Loading active crises...</div>`;
-    if (crises.length === 0) return `<div class="protest-empty">No active crises in this nation.</div>`;
-
-    let html = '';
-    for (const c of crises) {
-        const isSel = _protestTarget?.id === c.id;
-        const name = c.crisis_templates?.name || 'Unknown Crisis';
-        const desc = c.crisis_templates?.description || '';
-        const dur = c.duration || 0;
-        const demandLabel = `The government must resolve the ${name} crisis.`;
-        const targetData = JSON.stringify({
-            id: c.id,
-            type: 'activeCrisis',
-            label: name,
-            demandLabel,
-            grievanceData: { crisisId: c.id, name, duration: dur },
-        }).replace(/"/g, '&quot;');
-
-        html += `<div class="protest-target${isSel ? ' selected' : ''}" data-protest-target="${targetData}">
-            <div>
-                <div class="protest-target__name">${escapeHtml(name)}</div>
-                <div class="protest-target__meta">${escapeHtml(desc ? desc.slice(0, 80) : '')}${dur ? ' · ' + dur + 't active' : ''}</div>
-            </div>
-        </div>`;
-    }
-    return html;
-}
+// Crisis sunset (Phase 3): renderProtestCrisisTargets removed (Active
+// Crisis protest target tab is gone).
 
 function renderProtestStatTargets(nation, tick) {
     const stats = _protestCachedStats?.failingStats;
@@ -3240,7 +3185,6 @@ function wireCampaignConfig(container, f, n, ap, otherParties, tick, protestChec
             console.error('[Protest] loadProtestData failed:', err);
             _protestLoading = false;
             _protestCachedMinisters = _protestCachedMinisters || [];
-            _protestCachedCrises = _protestCachedCrises || [];
             _protestCachedStats = _protestCachedStats || { failingStats: [], _fatigueLevel: { label: '—', color: '#4a4840' } };
             rerender();
         });

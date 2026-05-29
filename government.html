@@ -1390,7 +1390,7 @@ function renderAdministrationTab(container) {
             <div id="adm2-hos-card"></div>
             <div id="adm2-exec-card"></div>
             <div id="adm2-hog-card"></div>
-            <div id="adm2-nation-card"></div>
+            <!-- Crisis sunset (Phase 3): adm2-nation-card removed (was crisis-only) -->
         </div>
         <div class="adm2-center">
             <section class="adm2-pressing">
@@ -1422,7 +1422,7 @@ function renderAdministrationTab(container) {
     adm2RenderHosCard();
     adm2RenderExecCard();
     adm2RenderHogCard();
-    adm2RenderNationCard();
+    // Crisis sunset (Phase 3): adm2RenderNationCard() call removed
     adm2RenderTimeline();
     adm2RenderCabinet();
     adm2MountPetitionPressingIssue();
@@ -1801,119 +1801,9 @@ let _timelineEvents = [];              // currently-rendered events
 let _timelineEmptyReason = '';         // text shown when the list is empty
 let _timelineCache = new Map();        // contextKey -> { events }
 
-// ── Nation card — crises (Phase 2 will wire real data) ──────────────
-// Crises are cached per (nationId, tick). Subtab re-clicks during the same
-// tick hit cache; tick advance invalidates automatically so a newly-triggered
-// crisis shows up without a page refresh.
-let _adm2CrisesCache = null;    // { nationId, tick, crises: [...] }
-
-async function adm2LoadCrises(nationId) {
-    if (!nationId) return [];
-    if (_adm2CrisesCache
-        && _adm2CrisesCache.nationId === nationId
-        && _adm2CrisesCache.tick === currentTick) {
-        return _adm2CrisesCache.crises;
-    }
-    try {
-        // Read active_crises with its real columns only — name lives on
-        // crisis_templates, NOT here. The previous select asked for
-        // active_crises.name and 400'd against PostgREST every page
-        // load (column doesn't exist), which made adm2LoadCrises return
-        // [] and the Nation card forever read "No active crises"
-        // regardless of state. We hydrate names + descriptions via a
-        // second lookup against crisis_templates so missing template
-        // access still leaves the crisis_id + start tick visible.
-        const { data: crisesRows, error: crisesErr } = await _supabase
-            .from('active_crises')
-            .select('id, crisis_id, started_at_tick')
-            .eq('nation_id', nationId);
-        if (crisesErr) throw crisesErr;
-        const rows = crisesRows || [];
-
-        let templateById = new Map();
-        if (rows.length > 0) {
-            const ids = [...new Set(rows.map(r => r.crisis_id).filter(Boolean))];
-            if (ids.length > 0) {
-                const { data: tmplRows, error: tmplErr } = await _supabase
-                    .from('crisis_templates')
-                    .select('id, name, description')
-                    .in('id', ids);
-                if (tmplErr) {
-                    console.warn('[Administration] crisis_templates lookup failed:', tmplErr.message);
-                } else {
-                    for (const t of (tmplRows || [])) templateById.set(t.id, t);
-                }
-            }
-        }
-
-        const crises = rows.map(r => {
-            const tmpl = templateById.get(r.crisis_id);
-            return {
-                name: tmpl?.name || 'Crisis',
-                description: tmpl?.description || '',
-                started_at_tick: r.started_at_tick,
-            };
-        });
-        _adm2CrisesCache = { nationId, tick: currentTick, crises };
-        return crises;
-    } catch (err) {
-        console.warn('[Administration] Crisis load failed:', err?.message || err);
-        return [];
-    }
-}
-
-function adm2RenderNationCard() {
-    const el = document.getElementById('adm2-nation-card');
-    if (!el) return;
-    const nationId = currentNation?.id;
-
-    // Empty shell renders first with a loading note; real data fills in async.
-    el.innerHTML = `<div class="adm2-panel">
-        <div class="adm2-panel-head"><span class="sq" style="background:var(--red);"></span>Nation</div>
-        <div class="adm2-crisis-empty">Loading crises…</div>
-    </div>`;
-
-    adm2LoadCrises(nationId).then(crises => {
-        // Re-check that the same container is still on-screen (subtab may have changed).
-        const still = document.getElementById('adm2-nation-card');
-        if (!still) return;
-
-        if (!crises.length) {
-            still.innerHTML = `<div class="adm2-panel">
-                <div class="adm2-panel-head"><span class="sq" style="background:var(--green);"></span>Nation</div>
-                <div class="adm2-crisis-empty">No active crises.</div>
-            </div>`;
-            return;
-        }
-
-        const items = crises.map(c => {
-            const startTick = Number(c.started_at_tick);
-            let meta = '';
-            if (typeof startTick === 'number' && typeof currentTick === 'number' && currentTick >= startTick) {
-                const months = Math.max(0, currentTick - startTick);
-                const startLabel = tickToDate(startTick);
-                meta = `<div class="meta">
-                    <span>${months === 1 ? '1 Month' : months + ' Months'}</span>
-                    <span class="sep">·</span>
-                    <span>Since ${escapeHtml(startLabel || '—')}</span>
-                </div>`;
-            }
-            return `<div class="adm2-crisis-item">
-                <div class="top">
-                    <span class="name"><span class="ic">▲</span>${escapeHtml(c.name)}</span>
-                    <span class="status">Ongoing</span>
-                </div>
-                ${c.description ? `<div class="desc">${escapeHtml(c.description)}</div>` : ''}
-                ${meta}
-            </div>`;
-        }).join('');
-
-        still.innerHTML = `<div class="adm2-panel">
-            <div class="adm2-panel-head"><span class="sq" style="background:var(--red);"></span>Nation · ${crises.length} active</div>
-            ${items}
-        </div>`;
-    });
-}
+// Crisis sunset (Phase 3): adm2LoadCrises + adm2RenderNationCard
+// removed. The Administration Nation panel was crisis-only; with the
+// active_crises read gone there's nothing left to render.
 
 // ── Timeline ────────────────────────────────────────────────────────
 function adm2RenderTimeline() {
