@@ -246,7 +246,16 @@
         </div>
         <div class="chat-thread" id="chat-thread"></div>
         <div class="chat-footnote" id="chat-footnote"></div>
-        <form class="chat-form" id="chat-form" autocomplete="off">
+        <!-- onsubmit="return false;" is a defensive guard for the brief
+             window between content render and the JS submit handler
+             attachment. Without it, typing + Enter during that window
+             does a default GET to the current URL — and the chat
+             input has no name attribute, so the resulting URL strips
+             the ?id= query string and lands on party.html's empty
+             "No party id in URL." state. The JS form.onsubmit
+             assignment later overrides this inline handler with the
+             real send-to-RPC flow. -->
+        <form class="chat-form" id="chat-form" autocomplete="off" onsubmit="return false;">
           <input class="chat-input" id="chat-input" type="text" maxlength="2000" placeholder="Message the party…">
           <button class="chat-send" id="chat-send" type="submit">Send</button>
         </form>
