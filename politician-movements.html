@@ -59,6 +59,17 @@
 .mv-card .popularity { font-family:monospace; font-size:14px; color:#666;
   letter-spacing:0.08em; text-transform:uppercase; white-space:nowrap; text-align:right; margin-left:18px; }
 .mv-card .popularity strong { display:block; color:#d4d4d4; font-size:20px; font-weight:600; margin-top:3px; }
+/* Status badge — admin-set on the Add Party form (20270394) as a
+   display label for the party's coalition posture. Three colours:
+   teal for Governing, amber for Coalition, muted grey for Opposition.
+   Hidden entirely when party_status is null. */
+.mv-card .status-badge { display:inline-block; margin-left:10px; padding:2px 8px;
+  font-family:monospace; font-size:10px; font-weight:700; letter-spacing:0.08em;
+  text-transform:uppercase; vertical-align:middle; border-radius:3px;
+  border:0.5px solid currentColor; }
+.mv-card .status-badge.governing  { color:#5aafa5; background:rgba(90,175,165,0.10); }
+.mv-card .status-badge.coalition  { color:#c89e6e; background:rgba(200,158,110,0.10); }
+.mv-card .status-badge.opposition { color:#888;    background:rgba(150,150,150,0.06); }
 
 /* Join Political Party action card needs to look active when the live
    feature is wired (the rest stay disabled with the Soon tag). */
@@ -291,7 +302,7 @@ async function loadMovementParties() {
   if (!_nationId) { _movementParties = []; return; }
   try {
     const { data, error } = await _supabase.from('factions')
-      .select('id, faction_name, abbreviation, seats, popularity_pct, party_color, party_description, leader_first_name, leader_last_name')
+      .select('id, faction_name, abbreviation, seats, popularity_pct, party_color, party_description, leader_first_name, leader_last_name, archetype, party_status')
       .eq('nation_id', _nationId)
       .eq('faction_type', 'movement_party')
       .is('abandoned_at', null)
@@ -331,10 +342,21 @@ function renderPartyCard(p) {
   const accent = safeHexColor(p.party_color);
   const leader = [p.leader_first_name, p.leader_last_name].filter(Boolean).join(' ');
   const subParts = [];
-  if (leader) subParts.push(`Led by ${escHtml(leader)}`);
+  if (leader)              subParts.push(`Led by ${escHtml(leader)}`);
+  if (p.archetype)         subParts.push(escHtml(p.archetype));
   if (p.party_description) subParts.push(escHtml(p.party_description));
   const sub = subParts.join(' &middot; ');
   const href = `party.html?id=${encodeURIComponent(p.id)}`;
+  // Status badge — colour-keyed off the admin-set party_status. The
+  // DB CHECK on factions.party_status (20270394) pins the column to
+  // {Governing, Coalition, Opposition, NULL}, so deriving the class
+  // by lowercasing avoids a fourth place the 3 labels live (column
+  // CHECK + RPC guard + admin-form SELECT options are already three).
+  // Hidden entirely when null so an unset party doesn't carry a
+  // neutral chip that reads like a fourth state.
+  const statusBadge = p.party_status
+    ? `<span class="status-badge ${String(p.party_status).toLowerCase()}">${escHtml(p.party_status)}</span>`
+    : '';
   // popularity_pct is nation-level for movements. Rendered only when
   // present so a future non-movement reuse of this card doesn't show a
   // misleading 0%. loadMovementParties() must keep it in the SELECT for
@@ -345,7 +367,7 @@ function renderPartyCard(p) {
   return `<a class="mv-card" href="${href}" style="border-left-color:${accent}; text-decoration:none; color:inherit;">
     <div class="badge">${escHtml(p.abbreviation || '—')}</div>
     <div class="body">
-      <div class="title">${escHtml(p.faction_name)}</div>
+      <div class="title">${escHtml(p.faction_name)}${statusBadge}</div>
       <div class="sub">${sub || '<em>No description on record.</em>'}</div>
     </div>
     <div class="seats">Seats<strong>${Number(p.seats) || 0}</strong></div>
