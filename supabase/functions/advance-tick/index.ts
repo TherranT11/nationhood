@@ -20276,6 +20276,20 @@ let _historyColumnsCache = null;
 // each cold-start of the edge function (or on manual cache bust).
 async function getHistorySnapshotColumns(supabase) {
     if (_historyColumnsCache) return _historyColumnsCache;
+    // Self-heal nations_history schema before caching the column list.
+    // sync_nations_history_columns() ADDs every nations numeric column
+    // that isn't already mirrored — idempotent, so when nothing drifted
+    // it's a single function call that returns 0. Runs once per warm
+    // process (same lifecycle as the column-list cache), and clearing
+    // _historyMissingCols here pairs with the fresh schema fetch so a
+    // previous warm session's skip-list can't poison the next cold one.
+    try {
+        const { error: syncErr } = await supabase.rpc('sync_nations_history_columns');
+        if (syncErr) console.warn('[snapshotNationHistory] sync_nations_history_columns failed:', syncErr.message);
+    } catch (e) {
+        console.warn('[snapshotNationHistory] sync_nations_history_columns threw:', e?.message || e);
+    }
+    _historyMissingCols.clear();
     const { data, error } = await supabase.rpc('nation_history_columns');
     if (error || !Array.isArray(data) || data.length === 0) {
         console.warn('[snapshotNationHistory] nation_history_columns RPC unavailable, falling back to in-code list:', error?.message || 'empty result');
