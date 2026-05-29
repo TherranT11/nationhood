@@ -73,6 +73,9 @@
 .mv-card .status-badge.governing   { color:#5aafa5; background:rgba(90,175,165,0.10); }
 .mv-card .status-badge.coalition   { color:#c89e6e; background:rgba(200,158,110,0.10); }
 .mv-card .status-badge.opposition  { color:#888;    background:rgba(150,150,150,0.06); }
+/* Gold chip — matches the Tier 0 MEMBERSHIP accent on the Career page
+   so "Your Party" reads as the same personal-affiliation cue. */
+.mv-card .your-party-badge         { color:#c8a64e; background:rgba(200,166,78,0.10); border-color:rgba(200,166,78,0.30); }
 
 /* Join Political Party action card needs to look active when the live
    feature is wired (the rest stay disabled with the Soon tag). */
@@ -312,7 +315,14 @@ async function loadMovementParties() {
       .order('seats', { ascending: false })
       .order('faction_name');
     if (error) throw error;
-    _movementParties = data || [];
+    // Pin the politician's own party to the top — the rest stays in the
+    // server's seats-desc / name-asc order. Done once here rather than
+    // in renderTab so any future surface that reads _movementParties
+    // (e.g. a count or hero) sees the same order.
+    const rows = data || [];
+    _movementParties = _myPartyId
+      ? [...rows.filter(p => p.id === _myPartyId), ...rows.filter(p => p.id !== _myPartyId)]
+      : rows;
   } catch (err) {
     console.error('politician-movements: loadMovementParties failed', err);
     _movementParties = [];
@@ -349,10 +359,17 @@ function renderPartyCard(p) {
   if (p.party_description) subParts.push(escHtml(p.party_description));
   const sub = subParts.join(' &middot; ');
   const href = `party.html?id=${encodeURIComponent(p.id)}`;
+  // Your-party badge — gold chip on the politician's own party row so
+  // a glance at the list answers "which one is mine?". Rendered first
+  // so the order reads:
+  //   {Party Name} [Your Party] [Archetype] [Status]
+  const youBadge = (_myPartyId && p.id === _myPartyId)
+    ? `<span class="mv-badge your-party-badge">Your Party</span>`
+    : '';
   // Archetype badge — uniform slate-blue chip. Hidden when null so
   // an unset party doesn't carry an empty placeholder. Rendered
   // before the status badge so the order reads
-  //   {Party Name} [Archetype] [Status]
+  //   {Party Name} [Your Party] [Archetype] [Status]
   // which mirrors the Add Party form's vertical order.
   const archetypeBadge = p.archetype
     ? `<span class="mv-badge archetype-badge">${escHtml(p.archetype)}</span>`
@@ -377,7 +394,7 @@ function renderPartyCard(p) {
   return `<a class="mv-card" href="${href}" style="border-left-color:${accent}; text-decoration:none; color:inherit;">
     <div class="badge">${escHtml(p.abbreviation || '—')}</div>
     <div class="body">
-      <div class="title">${escHtml(p.faction_name)}${archetypeBadge}${statusBadge}</div>
+      <div class="title">${escHtml(p.faction_name)}${youBadge}${archetypeBadge}${statusBadge}</div>
       <div class="sub">${sub || '<em>No description on record.</em>'}</div>
     </div>
     <div class="seats">Seats<strong>${Number(p.seats) || 0}</strong></div>
