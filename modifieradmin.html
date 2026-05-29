@@ -200,11 +200,18 @@ const CATEGORIES = [
   'Workforce', 'Military', 'Politics', 'Diplomacy',
 ];
 
+// DB schema stores the colour key ('green' / 'yellow' / 'red'); every
+// player-facing label now reads as "positive / neutral / negative" per
+// the design's narrative framing. The CHECK constraint and every
+// existing row stay on the colour keys, so no migration is needed.
+// One array drives the dropdown, the badge text in the list, and any
+// future re-use — a single source for the mapping.
 const SEVERITIES = [
-  { key: 'green',  label: 'Green'  },
-  { key: 'yellow', label: 'Yellow' },
-  { key: 'red',    label: 'Red'    },
+  { key: 'green',  label: 'Positive' },
+  { key: 'yellow', label: 'Neutral'  },
+  { key: 'red',    label: 'Negative' },
 ];
+const SEVERITY_LABEL_BY_KEY = new Map(SEVERITIES.map(s => [s.key, s.label]));
 
 // Triggerable nation stats — full New System set. Order mirrors the
 // design list; keys map to the live alpha columns on the nations
@@ -335,7 +342,7 @@ function renderModList(mods) {
         `<div class="mod-card-left">` +
           `<div class="mod-card-name">${escapeHtml(m.name)}</div>` +
           `<div class="mod-card-meta">` +
-            `<span class="tag tag-sev-${sev}">${sev.toUpperCase()}</span>` +
+            `<span class="tag tag-sev-${sev}">${escapeHtml((SEVERITY_LABEL_BY_KEY.get(sev) || sev).toUpperCase())}</span>` +
             `<span class="tag tag-cat">${escapeHtml(m.category)}</span>` +
             `<span class="tag tag-trig">${trigN} trigger${trigN === 1 ? '' : 's'}</span>` +
             `<span class="tag tag-end">${endN} end</span>` +
