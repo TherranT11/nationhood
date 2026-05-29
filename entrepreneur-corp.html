@@ -651,12 +651,16 @@
           </div>
         </div>
       </div>
-      <!-- Founder-only withdrawal (private corps): pull corp treasury into
-           personal Cash on Hand. Shown by JS for the owner of a private corp. -->
-      <div id="cp-withdraw" style="display:none;align-self:center;min-width:200px;">
-        <div class="role-eyebrow" style="text-align:center;">WITHDRAW TO CASH ON HAND</div>
+      <!-- Founder-only treasury pump (private corps): WITHDRAW pulls corp
+           treasury into personal Cash on Hand; INVEST pushes personal Cash
+           on Hand into corp treasury. Shared amount input; the button
+           clicked picks the direction. Shown by JS for the owner of a
+           private corp. -->
+      <div id="cp-withdraw" style="display:none;align-self:center;min-width:260px;">
+        <div class="role-eyebrow" style="text-align:center;">PERSONAL FUNDS &harr; TREASURY</div>
         <div class="tc-row" style="margin-top:8px;justify-content:center;">
           <input id="cp-wd-amt" class="tc-qty" type="number" min="1" step="1" placeholder="Amount" />
+          <button id="cp-iv-btn" class="tc-btn">INVEST</button>
           <button id="cp-wd-btn" class="tc-btn">WITHDRAW</button>
         </div>
         <div class="tc-msg" id="cp-wd-msg" style="text-align:center;"></div>
@@ -1913,45 +1917,80 @@ function initials(s, n) {
 
     // [Withdraw to Cash on Hand] — header action for the founder of a PRIVATE
     // corp. Pulls corp treasury_cash → personal party_funds via
-    // withdraw_corp_treasury. Public corps distribute via the dividend card.
+    // withdraw_corp_treasury + invest_into_corp — the founder-only
+    // treasury pump on a private corp. Two buttons share one amount
+    // input; a single `busy` flag prevents either action from firing
+    // while the other is in flight (otherwise a fast double-click
+    // could race against the same number with both directions).
+    // Public corps distribute via the dividend card / float, not
+    // this box — both RPCs reject listing='public'.
     const cpWd = document.getElementById('cp-withdraw');
     if (cpWd && !isPublic && isOwner) {
       cpWd.style.display = 'block';
       const wdBtn = document.getElementById('cp-wd-btn');
+      const ivBtn = document.getElementById('cp-iv-btn');
       const wdAmt = document.getElementById('cp-wd-amt');
       const wdMsg = document.getElementById('cp-wd-msg');
-      let withdrawing = false;
-      wdBtn.addEventListener('click', async () => {
-        if (withdrawing) return;
+      let busy = false;
+      const runTreasuryAction = async (button, rpcName, buildReasonMap, fallbackMsg) => {
+        if (busy) return;
         const amount = parseInt(wdAmt.value, 10);
-        if (!Number.isFinite(amount) || amount < 1) { wdMsg.textContent = 'Enter an amount of at least 1.'; return; }
-        withdrawing = true; wdBtn.disabled = true; const prev = wdBtn.textContent;
-        wdBtn.textContent = '…'; wdMsg.textContent = '';
+        if (!Number.isFinite(amount) || amount < 1) {
+          wdMsg.textContent = 'Enter an amount of at least 1.';
+          return;
+        }
+        busy = true;
+        wdBtn.disabled = true; ivBtn.disabled = true;
+        const prev = button.textContent;
+        button.textContent = '…'; wdMsg.textContent = '';
         try {
-          const { data, error: rpcErr } = await _supabase.rpc('withdraw_corp_treasury', { p_corp_id: id, p_amount: amount });
+          const { data, error: rpcErr } = await _supabase.rpc(rpcName, { p_corp_id: id, p_amount: amount });
           if (rpcErr) throw rpcErr;
           if (!data || !data.success) {
-            const REASON = {
-              not_authenticated:     'You are not signed in.',
-              no_entrepreneur:       'No entrepreneur faction found.',
-              corp_not_found:        'Corporation not found.',
-              not_owner:             'Only the founder can withdraw from this corporation.',
-              use_dividend:          'Public corps pay out via dividends, not direct withdrawals.',
-              invalid_amount:        'Enter a valid amount.',
-              exceeds_withdrawable:  `Only $${data && data.have != null ? data.have : '?'} is withdrawable — the treasury holds $${data && data.treasury != null ? data.treasury : '?'} but $${data && data.debt != null ? data.debt : '?'} is owed on active loans.`,
-            };
-            wdMsg.textContent = REASON[data && data.reason] || 'Withdrawal failed.';
+            const REASON = buildReasonMap(data || {});
+            wdMsg.textContent = REASON[data && data.reason] || fallbackMsg;
             return;
           }
-          // Success — reload so the corp treasury + top-bar Cash on Hand both
-          // repaint from the DB (mirrors the Go Public reload convention).
+          // Success — reload so corp treasury + top-bar Cash on Hand
+          // both repaint from the DB (mirrors the Go Public + dividend
+          // reload convention).
           location.reload();
         } catch (e) {
-          wdMsg.textContent = e?.message || 'Withdrawal failed.';
+          wdMsg.textContent = e?.message || fallbackMsg;
         } finally {
-          withdrawing = false; wdBtn.disabled = false; wdBtn.textContent = prev;
+          busy = false;
+          wdBtn.disabled = false; ivBtn.disabled = false;
+          button.textContent = prev;
         }
-      });
+      };
+
+      wdBtn.addEventListener('click', () => runTreasuryAction(
+        wdBtn, 'withdraw_corp_treasury',
+        (data) => ({
+          not_authenticated:    'You are not signed in.',
+          no_entrepreneur:      'No entrepreneur faction found.',
+          corp_not_found:       'Corporation not found.',
+          not_owner:            'Only the founder can withdraw from this corporation.',
+          use_dividend:         'Public corps pay out via dividends, not direct withdrawals.',
+          invalid_amount:       'Enter a valid amount.',
+          exceeds_withdrawable: `Only $${data.have != null ? data.have : '?'} is withdrawable — the treasury holds $${data.treasury != null ? data.treasury : '?'} but $${data.debt != null ? data.debt : '?'} is owed on active loans.`,
+        }),
+        'Withdrawal failed.'
+      ));
+
+      ivBtn.addEventListener('click', () => runTreasuryAction(
+        ivBtn, 'invest_into_corp',
+        (data) => ({
+          not_authenticated:   'You are not signed in.',
+          no_entrepreneur:     'No entrepreneur faction found.',
+          corp_not_found:      'Corporation not found.',
+          not_owner:           'Only the founder can invest in this corporation.',
+          use_share_issuance:  'Public corps raise capital by issuing shares, not founder injections.',
+          invalid_amount:      'Enter a valid amount.',
+          insufficient_funds:  `You have $${data.have != null ? data.have : '?'} on hand — $${data.need != null ? data.need : '?'} required.`,
+        }),
+        'Investment failed.'
+      ));
     }
 
     // ── Put Up for Sale / Make Offer (private corps only) ──
