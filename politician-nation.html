@@ -189,6 +189,36 @@
 .party-seats .ps-of { font-size:9px; color:#888; margin-top:3px; }
 .party-seats .ps-l  { font-size:8px; letter-spacing:0.11em; color:#666; margin-top:5px; }
 
+/* Special-election row — one row per politician_active_election in
+   this nation, surfaced under "Upcoming Special Elections". Border-
+   left accent comes from the politician's party_color (inline style);
+   .sp-elec-tier badge tints by race tier so MP races read at a
+   glance against community ones. */
+.sp-elec-row { display:flex; align-items:center; gap:14px; padding:13px 14px;
+  border-radius:6px; border:0.5px solid rgba(255,255,255,0.07);
+  border-left-width:3px; background:#0a0a0a; margin-bottom:8px;
+  transition:background 0.12s, border-color 0.12s; }
+.sp-elec-row:hover { background:#101010; border-color:rgba(255,255,255,0.14); }
+.sp-elec-row:last-child { margin-bottom:0; }
+.sp-elec-tier { font-size:8px; letter-spacing:0.13em; font-weight:700;
+  text-transform:uppercase; padding:3px 8px; border-radius:3px;
+  flex-shrink:0; white-space:nowrap; }
+.sp-elec-row.sp-elec-parl     .sp-elec-tier { background:#161208; color:#c89e6e;
+  border:0.5px solid rgba(200,158,110,0.35); }
+.sp-elec-row.sp-elec-community .sp-elec-tier { background:#0e1416; color:#5aafa5;
+  border:0.5px solid rgba(90,175,165,0.40); }
+.sp-elec-main { flex:1; min-width:0; }
+.sp-elec-name { font-size:13px; color:#fff; font-weight:500;
+  display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+.sp-elec-name strong { font-weight:600; }
+.sp-elec-party { font-size:10px; font-weight:600; letter-spacing:0.04em; }
+.sp-elec-desc { font-size:10.5px; color:#888; margin-top:4px; line-height:1.5; }
+.sp-elec-desc strong { color:#cfcabf; font-weight:500; }
+.sp-elec-opp-party { color:#666; font-size:10px; }
+.sp-elec-when { font-size:10px; color:#7a9aab; letter-spacing:0.04em;
+  text-align:right; flex-shrink:0; min-width:110px;
+  font-variant-numeric:tabular-nums; }
+
 .govt-empty { padding:24px 8px; text-align:center; }
 .govt-empty .head { font-size:14px; color:#fff; font-weight:500; margin-bottom:8px; }
 .govt-empty .head .serif { font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#c89e6e; }
@@ -223,6 +253,8 @@
   .gov-strip { grid-template-columns:1fr; gap:8px; }
   .party-row { flex-wrap:wrap; }
   .party-meta { padding-left:0; min-width:0; width:100%; flex-direction:row; gap:14px; }
+  .sp-elec-row { flex-wrap:wrap; }
+  .sp-elec-when { min-width:0; text-align:left; padding-top:4px; }
 }
 @media (max-width:420px) {
   .info-grid, .stats-grid { grid-template-columns:1fr; }
@@ -575,8 +607,91 @@ function renderElections(n, currentTick) {
       </div>
     </div>
     <div class="parties-lab">Upcoming Special Elections</div>
-    <div class="sec-empty">No special elections scheduled.</div>
+    <div id="special-elections-host" class="sec-empty">Loading special elections…</div>
   ` + footer;
+
+  // Async patch — pull every active race in this nation and replace
+  // the loading placeholder. Errors fall back to an empty-state line
+  // so a failed fetch never blanks the rest of the Elections section.
+  loadSpecialElections(n, currentTick);
+}
+
+// Special Elections list — every politician_active_election row for a
+// politician whose nation_id matches this page's nation. Includes the
+// viewer's own race; the Pressing Issues card on the home page is the
+// primary surface for the viewer, but listing them here keeps the
+// nation-level picture honest. Sorted by resolve_tick so the next
+// race to resolve sits at the top.
+async function loadSpecialElections(n, currentTick) {
+  const host = document.getElementById('special-elections-host');
+  if (!host) return;
+  try {
+    // Two-stage filter: PostgREST embeds don't filter parents by an
+    // embedded column, so we fetch faction ids in this nation first,
+    // then pull active races whose politician_id is in that set.
+    const { data: polRows, error: polErr } = await _supabase.from('factions')
+      .select('id, leader_first_name, leader_last_name, politician_party_id')
+      .eq('faction_type', 'politician')
+      .eq('nation_id', n.id)
+      .is('abandoned_at', null);
+    if (polErr) throw polErr;
+    const polIds = (polRows || []).map(p => p.id);
+    if (!polIds.length) {
+      host.outerHTML = '<div class="sec-empty">No special elections in progress.</div>';
+      return;
+    }
+
+    const { data: races, error: raceErr } = await _supabase.from('politician_active_election')
+      .select('politician_id, race_tier, district, opp_first, opp_last, opp_party_name, resolve_tick')
+      .in('politician_id', polIds)
+      .order('resolve_tick', { ascending: true });
+    if (raceErr) throw raceErr;
+    if (!races || !races.length) {
+      host.outerHTML = '<div class="sec-empty">No special elections in progress.</div>';
+      return;
+    }
+
+    // Per-politician lookup for the row render: name + party colour.
+    const polById = new Map((polRows || []).map(p => [p.id, p]));
+    const partyIds = [...new Set((polRows || []).map(p => p.politician_party_id).filter(Boolean))];
+    let partyById = new Map();
+    if (partyIds.length) {
+      const { data: partyRows } = await _supabase.from('factions')
+        .select('id, faction_name, abbreviation, party_color')
+        .in('id', partyIds);
+      partyById = new Map((partyRows || []).map(p => [p.id, p]));
+    }
+
+    host.outerHTML = races.map(r =>
+      renderSpecialElectionRow(r, polById.get(r.politician_id), partyById, Number(currentTick) || 0)
+    ).join('');
+  } catch (err) {
+    console.warn('politician-nation: special elections fetch failed', err);
+    host.outerHTML = '<div class="sec-empty">Could not load special elections.</div>';
+  }
+}
+
+function renderSpecialElectionRow(race, pol, partyById, currentTick) {
+  const tierLabel = race.race_tier === 'parliament' ? 'MP RACE' : 'COMMUNITY RACE';
+  const tierClass = race.race_tier === 'parliament' ? 'parl'      : 'community';
+  const polName = pol
+    ? [pol.leader_first_name, pol.leader_last_name].filter(Boolean).join(' ').trim() || 'A politician'
+    : 'A politician';
+  const party   = pol?.politician_party_id ? partyById.get(pol.politician_party_id) : null;
+  const partyName  = party?.faction_name || 'Independent';
+  const partyAccent = safeHexColor(party?.party_color);
+  const oppName = [race.opp_first, race.opp_last].filter(Boolean).join(' ').trim() || 'an opponent';
+  const oppParty = race.opp_party_name || 'Independent';
+  const ticks = Math.max(0, Number(race.resolve_tick) - currentTick);
+  const when  = ticks === 0 ? 'resolves this tick' : `resolves in ${ticks} tick${ticks === 1 ? '' : 's'}`;
+  return `<div class="sp-elec-row sp-elec-${tierClass}" style="border-left-color:${partyAccent || 'rgba(255,255,255,0.10)'};">
+    <div class="sp-elec-tier">${tierLabel}</div>
+    <div class="sp-elec-main">
+      <div class="sp-elec-name"><strong>${escHtml(polName)}</strong> <span class="sp-elec-party" style="color:${partyAccent};">${escHtml(partyName)}</span></div>
+      <div class="sp-elec-desc">${escHtml(race.district)} &middot; vs <strong>${escHtml(oppName)}</strong> <span class="sp-elec-opp-party">(${escHtml(oppParty)})</span></div>
+    </div>
+    <div class="sp-elec-when">${escHtml(when)}</div>
+  </div>`;
 }
 
 // One-shot fetch guards keyed off the section's <details> toggle.
