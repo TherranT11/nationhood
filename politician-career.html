@@ -66,6 +66,11 @@
 .rung__indicator { color:#555; font-size:14px; line-height:1.2; flex-shrink:0; width:14px; text-align:center; padding-top:1px; }
 .rung__indicator.held { color:#5aafa5; }
 .rung__body { flex:1; min-width:0; }
+.rung__tier { font-size:9px; letter-spacing:0.13em; color:#666; font-weight:600;
+  text-transform:uppercase; margin-bottom:4px; }
+.rung__tier.first       { color:#5aafa5; }
+.rung__tier.apex        { color:#c8a64e; }
+.rung__tier.membership  { color:#c8a64e; }
 .rung__name { font-size:13px; font-weight:500; color:#fff; margin-bottom:3px; }
 .rung__desc { font-size:11px; color:#888; line-height:1.5; }
 .rung__action { flex-shrink:0; align-self:center; }
@@ -86,6 +91,35 @@
 /* Ladder-level footer note — italic flavor line beneath the rung list. */
 .ladder__footer { font-size:11px; font-style:italic; color:#888; line-height:1.5;
   padding:14px 0 4px; margin-top:4px; border-top:0.5px solid rgba(255,255,255,0.04); }
+
+/* Tier 0 (Party Member) — always-visible above the branch pair. The
+   .ladder base styles (background, border, padding) carry over from
+   the other ladders; we just skip the <summary>/collapse markup. */
+
+/* Stand for Election — single CTA above the branching ladders. Hidden
+   in HTML (no .stand-block) when there's an active race and the
+   in-flight surface lives on the home page Pressing Issues card. */
+.stand-block { margin:6px 0 14px; text-align:center; }
+.stand-btn { font-family:monospace; font-size:11px; letter-spacing:0.1em;
+  text-transform:uppercase; background:rgba(200,166,78,0.08);
+  border:0.5px solid rgba(200,166,78,0.45); color:#c8a64e;
+  padding:11px 22px; border-radius:4px; cursor:pointer; transition:all 0.15s; }
+.stand-btn:hover:not(:disabled) { background:rgba(200,166,78,0.15); border-color:#c8a64e; }
+.stand-btn:disabled { opacity:0.4; cursor:not-allowed; }
+.stand-hint { font-size:10px; color:#666; margin-top:6px; font-style:italic; }
+.stand-active { padding:13px 18px; background:rgba(90,175,165,0.06);
+  border:0.5px solid rgba(90,175,165,0.25); border-radius:5px;
+  color:#aaa; font-size:11.5px; line-height:1.55; text-align:center; }
+.stand-active strong { color:#5aafa5; font-weight:600; }
+
+/* Two-column branch — Party Office | Government & State directly under
+   Tier 0. Collapses to single column on narrow viewports so the rungs
+   stay readable. Both branches are open by default; the rest of the
+   ladders below stay in single-column collapsibles as before. */
+.ladder-branch { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+@media (max-width:780px) {
+  .ladder-branch { grid-template-columns:1fr; }
+}
 
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
@@ -347,14 +381,13 @@ import { _supabase } from './js/supabase-client.js';
 const START_AGE = 25;
 const TICKS_PER_AGE_YEAR = 12;
 
-// The five career ladders a politician can climb, in player-relevance order.
-// Each ladder may declare a `rungs` array; if present it's rendered via the
-// generic renderRungs() below. Ladders without rungs fall back to the shared
-// empty-state placeholder until their content is designed.
+// Career ladders. `branch: true` ladders render as a two-column pair
+// (Party Office | Government & State) directly under the Tier 0 Party
+// Member rung; everything else stacks below in single-column collapsibles.
 const LADDERS = [
-  { id: 'party',      icon: '\u{1F6A9}', name: 'Party Office',       rungs: () => PARTY_OFFICE_RUNGS },
+  { id: 'party',      icon: '\u{1F6A9}', name: 'Party Office',       rungs: () => PARTY_OFFICE_RUNGS, branch: true },
+  { id: 'govt',       icon: '\u{1F451}', name: 'Government & State', rungs: () => GOVERNMENT_RUNGS,   branch: true },
   { id: 'legislature',icon: '⚖️',       name: 'Legislature',         rungs: () => LEGISLATURE_RUNGS },
-  { id: 'govt',       icon: '\u{1F451}', name: 'Government & State', rungs: () => GOVERNMENT_RUNGS },
   { id: 'judiciary',  icon: '\u{1F3DB}\u{FE0F}', name: 'Judiciary',  rungs: () => JUDICIARY_RUNGS,
     footer: 'The judiciary does not campaign or command — it waits for cases, then rules. Its power is reactive but absolute: a Chief Justice can undo what the Legislature passed, jail a Minister, or declare a war footing unlawful. The only limit is the independence that makes those rulings stick.' },
   { id: 'civil',      icon: '\u{1F91D}', name: 'Civil Society' },
@@ -363,107 +396,91 @@ const LADDERS = [
 
 // Shared rung shape consumed by renderRungs():
 //   name              → bold rung title.
+//   tierName (opt)    → "FIRST OFFICE" / "APEX" / "MEMBERSHIP" badge text;
+//                       falls through to no badge when absent.
+//   tierNum  (opt)    → overrides the index-derived tier number (Tier 0
+//                       Party Member is the only current consumer).
 //   held(state)       → boolean. Filled indicator + "held" tag when true.
 //   descIfHeld(state) → body line shown when held.
 //   descIfNot(state)  → body line shown when not held.
-//   actions  (opt)    → string[] of small inline chips rendered beneath the
-//                       description. Always shown as a *preview* today (greyed,
-//                       cursor:not-allowed) — when the underlying flows land
-//                       they get wired and styled live for held rungs only.
-//   actionIfNot (opt) → right-side button to advance toward this rung when
-//                       not held. kind:'primary' is a live link via href;
-//                       kind:'disabled' renders greyed-out (no flow wired).
+//   actions  (opt)    → string[] of small inline chips rendered beneath
+//                       the description. Always shown as a preview today
+//                       (greyed, cursor:not-allowed); wiring lands when
+//                       the underlying flows do.
+//   actionIfNot (opt) → right-side button when not held. kind:'primary'
+//                       is a live link via href OR data-action; kind:
+//                       'disabled' renders greyed-out (no flow wired).
+//   actionIfHeld(opt) → right-side button when held (e.g. Tier 0 Party
+//                       Member → Leave). Same shape as actionIfNot.
 //
-// Status logic today: politician_career === 'Independent' means "not in a
-// party," so only Party Member's held branch can fire. Every Legislature rung
-// stays not-held until positions / committees are tracked in the DB.
+// Only the Tier 0 Party Member rung's held() flips on live data today —
+// every other rung returns false until office-tracking schema lands.
 
-// Party Office rungs — the canonical climb a card-carrying politician makes
-// inside a party. Each rung exposes:
-//   held(state)            → boolean, true when the politician currently holds
-//                            this rung (or higher).
-//   descIfHeld(state)      → the body line to show when held.
-//   descIfNot()            → the body line to show when not held.
-//   actionIfNot (optional) → right-side button for the not-held state.
-//     kind 'primary'  → live link (uses href).
-//     kind 'disabled' → greyed out, no action wired yet.
+// Party Office rungs — the parliamentary + party-seniority climb a
+// card-carrying politician makes. Tier 1 (MP) is reached by winning a
+// parliament-tier race; tiers above need office-tracking schema that
+// hasn't landed yet, so held() returns false for all of them and the
+// rungs render as inert flavor until those mechanics land.
 //
-// Status logic today: politician_career === 'Independent' means "not in a
-// party," so only Party Member's held branch can fire when that column carries
-// a non-Independent value. Everything above Party Member is greyed-out until
-// the corresponding game mechanics land.
+// tierName carries the special badge text the renderer surfaces next
+// to the tier number — "FIRST OFFICE" for Tier 1, "APEX" for the top.
 const PARTY_OFFICE_RUNGS = [
   {
-    name: 'Party Member',
-    held:        (s) => !!s.partyId,
-    descIfHeld:  (s) => `You are a card-carrying member of ${s.partyName}.`,
-    descIfNot:   ()  => 'You are not a member of a political party.',
-    actionIfNot:  { label: 'Join Political Party',  kind: 'primary',   href: 'politician-movements.html?openJoin=1' },
-    actionIfHeld: { label: 'Leave Political Party', kind: 'secondary', action: 'leave-party' },
-  },
-  {
-    // "Held" here means "currently standing in a race." Wins don't park
-    // the politician on this rung — they get logged as career events
-    // (won_election / lost_election) and resolved by
-    // politician_resolve_due_elections on next page load. Climbing rungs
-    // beyond Party Member needs office-tracking schema; for now we
-    // surface the in-flight race as the held state and let the player
-    // see the win/loss in the result banner + Career container.
-    //
-    // availableWhen gates the action button: standing for election
-    // requires party membership. Non-members see the rung greyed out
-    // with descIfNot pointing them at the prerequisite.
-    name: 'Election Candidate',
-    held:        (s) => !!s.activeRace,
-    descIfHeld:  (s) => {
-      // ticks here = "act windows remaining including this one". The
-      // resolve RPC fires when current > resolve_tick (strictly past),
-      // so the resolve_tick itself is the player's final act window.
-      const ticks = Math.max(0, (s.activeRace?.resolve_tick ?? 0) - (s.currentTick ?? 0));
-      const where = s.activeRace?.district || 'an election';
-      const opp   = (s.activeRace?.opp_first || '') + ' ' + (s.activeRace?.opp_last || '');
-      const when  = ticks <= 0 ? 'final tick — act now' : `${ticks} tick${ticks === 1 ? '' : 's'} of campaigning left`;
-      return `Standing in the ${where} race against ${opp.trim() || 'an opponent'} — ${when}.`;
-    },
-    descIfNot:   (s) => s.partyId
-      ? 'Run for a legislative seat or a mayoralty.'
-      : 'Join a political party to stand for election.',
-    availableWhen: (s) => !!s.partyId,
-    actionIfNot:   { label: 'Stand for Election', kind: 'primary', action: 'stand-for-election' },
-  },
-  {
-    name: 'Member of Parliament or Mayor',
+    name: 'Member of Parliament',
+    tierName: 'FIRST OFFICE',
     held:        ()  => false,
-    descIfHeld:  (s) => s.holdsMayoralty
-      ? `You are the mayor of ${s.cityName || 'a city'} in the nation of ${s.nation}.`
-      : `You are a member of the legislative body of ${s.nation}.`,
-    descIfNot:   ()  => 'Win a parliamentary seat or a mayoralty to climb here.',
+    descIfHeld:  ()  => 'You hold a seat in the National Assembly.',
+    descIfNot:   ()  => 'Win a seat in the National Assembly. You are now in the chamber, voting on the laws of the republic.',
+  },
+  {
+    name: 'Senior MP',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You are a senior MP — committee assignments and a name the press knows.',
+    descIfNot:   ()  => 'A second-term backbencher with committee assignments and a name the press knows.',
   },
   {
     name: 'High Ranking Party Member',
     held:        ()  => false,
-    descIfHeld:  ()  => 'You hold a senior position in your party.',
-    descIfNot:   ()  => 'Earn secretary or treasurer roles within your party.',
+    descIfHeld:  ()  => 'You hold a senior position in your party — a real voice in caucus.',
+    descIfNot:   ()  => 'Secretary, treasurer, or factional leader within your party — a real voice in caucus.',
   },
   {
     name: 'Party Whip',
     held:        ()  => false,
-    descIfHeld:  ()  => 'You are the party whip — keeping members in line on the chamber floor.',
-    descIfNot:   ()  => 'The party whip — enforces discipline on legislative votes.',
+    descIfHeld:  ()  => 'You are the party whip — the muscle of the parliamentary party.',
+    descIfNot:   ()  => 'Enforces discipline on legislative votes — the muscle of the parliamentary party.',
   },
   {
     name: 'Deputy Party Leader',
     held:        ()  => false,
-    descIfHeld:  ()  => 'You are the deputy leader of your party.',
-    descIfNot:   ()  => 'The second-in-command of a party — one heartbeat from leadership.',
+    descIfHeld:  ()  => 'You are the deputy leader of your party — one heartbeat from leadership.',
+    descIfNot:   ()  => 'Second-in-command of the party — one heartbeat from leadership.',
   },
   {
     name: 'Party Leader',
+    tierName: 'APEX',
     held:        ()  => false,
-    descIfHeld:  ()  => 'You lead your party. The face of the movement.',
-    descIfNot:   ()  => 'Lead a political party. The face of the movement.',
+    descIfHeld:  ()  => 'You lead your party. The face of the movement — and the candidate for Prime Minister.',
+    descIfNot:   ()  => 'Lead a political party. The face of the movement — and the candidate for Prime Minister.',
   },
 ];
+
+// Tier 0 — Party Membership. Renders ABOVE the branch into Party Office
+// and Government & State; both ladders' Tier 1 races require being a
+// party member. The rung shape mirrors any LADDERS rung so the same
+// renderRungs() can render it; tierNum is overridden to 0 so the
+// rendered label reads "TIER 0 · MEMBERSHIP" rather than the default
+// index-derived tier.
+const PARTY_MEMBER_TIER0 = {
+  name: 'Party Member',
+  tierNum: 0,
+  tierName: 'MEMBERSHIP',
+  held:        (s) => !!s.partyId,
+  descIfHeld:  (s) => `You are a card-carrying member of ${s.partyName}.`,
+  descIfNot:   ()  => 'You are not a member of a political party. Membership unlocks both office ladders below.',
+  actionIfNot:  { label: 'Join Political Party',  kind: 'primary',   href: 'politician-movements.html?openJoin=1' },
+  actionIfHeld: { label: 'Leave Political Party', kind: 'secondary', action: 'leave-party' },
+};
 
 // Legislature rungs — Committee Member is the entry rung (its right-side
 // [Apply to Committee] is the only live advance action; you climb to Chair
@@ -502,46 +519,52 @@ const LEGISLATURE_RUNGS = [
   },
 ];
 
-// Government & State rungs — the executive arc. Civil Servant is the entry
-// (right-side [Join the Civil Service]; you climb to Department Head from
-// there). The top, Prime Minister / President, is where casus-belli actions
-// like "Press a Claim" live alongside cabinet-level levers.
+// Government & State rungs — the local executive arc, climbed by
+// winning community-tier races. Tier 1 (Community Organizer) is reached
+// by winning a community election; tiers above need office-tracking
+// schema that hasn't landed yet, so held() returns false for all of
+// them and the rungs render as inert flavor until those mechanics land.
+// Replaced the previous Civil Servant → Prime Minister civil-service
+// ladder; a national-executive climb may return as a separate track
+// when its mechanics are designed.
 const GOVERNMENT_RUNGS = [
   {
-    name: 'Civil Servant',
+    name: 'Community Organizer',
+    tierName: 'FIRST OFFICE',
     held:        ()  => false,
-    descIfHeld:  ()  => 'Join the bureaucracy. A functionary in a ministry — the realistic first step for someone seeking the state’s notice.',
-    descIfNot:   ()  => 'Join the bureaucracy. A functionary in a ministry — the realistic first step for someone seeking the state’s notice.',
-    actions:     ['Process Casework', 'Draft Memos', 'Build Connections'],
-    actionIfNot: { label: 'Join the Civil Service', kind: 'disabled' },
+    descIfHeld:  ()  => 'You hold the neighborhood seat — small but real.',
+    descIfNot:   ()  => 'A neighborhood seat. Small but real — most political careers begin here.',
   },
   {
-    name: 'Department Head',
+    name: 'City Council Member',
     held:        ()  => false,
-    descIfHeld:  ()  => 'Run a department within a ministry — a unit with staff beneath you. You’ve proven competent and been promoted.',
-    descIfNot:   ()  => 'Run a department within a ministry — a unit with staff beneath you. You’ve proven competent and been promoted.',
-    actions:     ['Manage the Department', 'Draft Technical Policy', 'Brief the Minister’s Office', 'Request Budget'],
+    descIfHeld:  ()  => 'You hold an elected seat on the city council, voting on budgets and ordinances.',
+    descIfNot:   ()  => 'An elected seat on a city or town council. You vote on local budgets and ordinances.',
   },
   {
-    name: 'Deputy Minister',
+    name: 'City Council President',
     held:        ()  => false,
-    descIfHeld:  ()  => 'Second in the ministry — a named political figure now, running the day-to-day under the minister.',
-    descIfNot:   ()  => 'Second in the ministry — a named political figure now, running the day-to-day under the minister.',
-    actions:     ['Draft Policy', 'Allocate Budget', 'Court the Minister', 'Lobby the Legislature'],
+    descIfHeld:  ()  => 'You lead the city council — setting the agenda and brokering the votes.',
+    descIfNot:   ()  => 'Leadership of the council — you set the agenda and broker the votes.',
   },
   {
-    name: 'Minister',
+    name: 'Mayor',
     held:        ()  => false,
-    descIfHeld:  ()  => 'Hold a full cabinet portfolio (Trade, Interior, Defence, Foreign, Finance) at the head of government’s pleasure.',
-    descIfNot:   ()  => 'Hold a full cabinet portfolio (Trade, Interior, Defence, Foreign, Finance) at the head of government’s pleasure.',
-    actions:     ['Direct the Ministry', 'Issue National Policy', 'Set the Budget', 'Sit in Cabinet'],
+    descIfHeld:  ()  => 'You are the mayor — running the city’s executive branch.',
+    descIfNot:   ()  => 'Executive of a city. Budget, police, contracts, appointments — you run the place.',
   },
   {
-    name: 'Prime Minister / President',
+    name: 'Mayor of the Capital',
     held:        ()  => false,
-    descIfHeld:  ()  => 'Head of government. Command the cabinet and the machinery of state.',
-    descIfNot:   ()  => 'Head of government. Command the cabinet and the machinery of state.',
-    actions:     ['Appoint the Cabinet', '⚔ Press a Claim', 'Set the National Agenda', 'Declare Emergency'],
+    descIfHeld:  ()  => 'You are the mayor of the capital — the biggest mayoralty in the country.',
+    descIfNot:   ()  => 'The biggest mayoralty in the country. Often more visible on the national stage than ministers.',
+  },
+  {
+    name: 'Regional Leader',
+    tierName: 'APEX',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You are the regional leader — commanding a regional budget and returning the Prime Minister’s calls.',
+    descIfNot:   ()  => 'Executive of a province or region. Commands a regional budget, returns the Prime Minister’s calls.',
   },
 ];
 
@@ -647,16 +670,17 @@ async function init() {
     }
   } catch (_) { /* non-fatal — banner just won't show */ }
 
-  // Active race row (if any) — drives the Election Candidate rung's held
-  // state. Read directly via PostgREST; the RPCs are write paths and
-  // returning the full state from get-offer would conflate two surfaces.
-  // Only the four fields the rung's descIfHeld actually renders are
-  // pulled — everything else stays in the DB until a surface needs it.
+  // Active race row (if any) — drives the Stand for Election callout
+  // swap (CTA → "race in progress" pointer to Pressing Issues). Read
+  // directly via PostgREST; the RPCs are write paths and returning the
+  // full state from get-offer would conflate two surfaces. Only the
+  // district is rendered here today, but the rest of the columns stay
+  // free for surfaces that consume them later.
   let activeRace = null;
   try {
     const { data, error } = await _supabase
       .from('politician_active_election')
-      .select('district, opp_first, opp_last, resolve_tick')
+      .select('district, resolve_tick')
       .eq('politician_id', ctx.faction.id)
       .maybeSingle();
     if (error) console.error('politician-career: active_election fetch failed', error);
@@ -667,7 +691,7 @@ async function init() {
 
   render(ctx.faction, ctx.shard, ctx.nation);
   if (resolution) renderResolutionBanner(resolution);
-  renderLadders(buildLadderState(ctx.faction, ctx.nation, ctx.party, ctx.shard, activeRace), ctx);
+  renderLadders(buildLadderState(ctx.party, activeRace), ctx);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -730,24 +754,17 @@ function renderResolutionBanner(r) {
   setTimeout(() => banner.remove(), 12000);
 }
 
-// State bag passed to every rung renderer — the bag, not the politician row
-// directly, so the contract for each rung is one focused interface rather than
-// "we read whatever we want off faction."
-function buildLadderState(politician, nation, party, shard, activeRace) {
+// State bag passed to every rung renderer — focused interface so each
+// rung's contract is "I read these named fields" rather than "I rummage
+// through faction." Today's surface is small:
+//   partyId / partyName → Tier 0 Party Member held() + descIfHeld.
+//   activeRace          → renderStandForElection swap (CTA → "race in
+//                         progress" callout).
+function buildLadderState(party, activeRace) {
   return {
-    // Affiliation source of truth — politician_party_id + the looked-up party
-    // row. partyName is the display label for the descIfHeld message;
-    // partyId drives the Party Member rung's held() check.
-    partyId:   party?.id || null,
-    partyName: party?.faction_name || '',
-    nation: nation?.name || 'this nation',
-    holdsMayoralty: false,   // not yet tracked
-    cityName: null,
-    // Election state — drives the Election Candidate rung's held() check
-    // and the "resolves in N ticks" descIfHeld copy. currentTick is read
-    // off the shard so the countdown is honest.
+    partyId:    party?.id || null,
+    partyName:  party?.faction_name || '',
     activeRace: activeRace || null,
-    currentTick: shard?.current_tick ?? 0,
   };
 }
 
@@ -795,12 +812,23 @@ function render(politician, shard, nation) {
 
 function renderLadders(state, ctx) {
   const host = document.getElementById('ladders');
-  host.innerHTML = LADDERS.map(l => {
+  // 1) Tier 0 — Party Member, always visible above the branch.
+  const tier0Html = `
+    <div class="ladder ladder--tier0">
+      <div class="body">${renderRungs([PARTY_MEMBER_TIER0], state)}</div>
+    </div>`;
+  // 2) Stand for Election — single button above the branch pair.
+  const standHtml = renderStandForElection(state);
+  // 3) Branch pair (Party Office | Government & State) and the remaining
+  //    stacked ladders below.
+  const branchLadders = LADDERS.filter(l => l.branch);
+  const restLadders   = LADDERS.filter(l => !l.branch);
+  const ladderHtmlFor = (l, open) => {
     const rungs = typeof l.rungs === 'function' ? l.rungs() : l.rungs;
     const body  = rungs ? renderRungs(rungs, state) : '<div class="empty-row">Not on this ladder yet.</div>';
     const footer = l.footer ? `<div class="ladder__footer">${escHtml(l.footer)}</div>` : '';
     return `
-    <details class="ladder">
+    <details class="ladder"${open ? ' open' : ''}>
       <summary>
         <span class="icon">${l.icon}</span>
         <span class="name">${escHtml(l.name)}</span>
@@ -808,22 +836,65 @@ function renderLadders(state, ctx) {
       </summary>
       <div class="body">${body}${footer}</div>
     </details>`;
-  }).join('');
+  };
+  const branchHtml = branchLadders.length
+    ? `<div class="ladder-branch">${branchLadders.map(l => ladderHtmlFor(l, true)).join('')}</div>`
+    : '';
+  const restHtml = restLadders.map(l => ladderHtmlFor(l, false)).join('');
+
+  host.innerHTML = tier0Html + standHtml + branchHtml + restHtml;
   bindRungActions(ctx);
 }
 
+// Stand for Election callout — single button gated by party membership
+// and by "no active race in flight". When a race is active the button
+// is replaced with a pointer to Pressing Issues; the in-flight race
+// surface lives on the home page.
+function renderStandForElection(state) {
+  if (state.activeRace) {
+    const where = state.activeRace.district || 'a district';
+    return `
+      <div class="stand-block">
+        <div class="stand-active">You are standing in the <strong>${escHtml(where)}</strong> race. See <strong>Pressing Issues</strong> on your home page for live polling and campaign actions.</div>
+      </div>`;
+  }
+  if (!state.partyId) {
+    return `
+      <div class="stand-block">
+        <button class="stand-btn" type="button" disabled>&#9873; Stand for Election</button>
+        <div class="stand-hint">Join a political party to stand for election.</div>
+      </div>`;
+  }
+  return `
+    <div class="stand-block">
+      <button class="stand-btn" type="button" data-action="stand-for-election">&#9873; Stand for Election</button>
+    </div>`;
+}
+
 // Generic rung-list renderer. Walks a ladder's rung array, runs each rung's
-// held() check against the state bag, and emits a row with indicator,
-// description, optional inline action chips, and either the "held" tag or
-// the right-side advance button. Click routing for primary advance buttons
-// lives in bindRungActions below.
+// held() check against the state bag, and emits a row with tier label,
+// indicator, description, optional inline action chips, and either the
+// "held" tag or the right-side advance button. Click routing for primary
+// advance buttons lives in bindRungActions below.
+//
+// Tier label: derived from array position by default (idx + 1). A rung
+// can override with `tierNum` (the Tier 0 Party Member rung uses this).
+// `tierName` is the badge suffix — "FIRST OFFICE" / "APEX" / "MEMBERSHIP".
 function renderRungs(rungs, state) {
-  return '<div class="rungs">' + rungs.map(r => {
+  return '<div class="rungs">' + rungs.map((r, idx) => {
     const isHeld = !!r.held(state);
     const desc   = isHeld ? r.descIfHeld(state) : r.descIfNot(state);
     const indicator = isHeld
       ? '<div class="rung__indicator held">●</div>'
       : '<div class="rung__indicator">○</div>';
+
+    const tierNum   = r.tierNum ?? (idx + 1);
+    const tierName  = r.tierName || '';
+    const tierClass = tierName === 'APEX'         ? 'apex'
+                    : tierName === 'FIRST OFFICE' ? 'first'
+                    : tierName === 'MEMBERSHIP'   ? 'membership'
+                    : '';
+    const tierHtml = `<div class="rung__tier ${tierClass}">${escHtml(`TIER ${tierNum}${tierName ? ' · ' + tierName : ''}`)}</div>`;
 
     const chipsHtml = (Array.isArray(r.actions) && r.actions.length)
       ? `<div class="rung__chips">${r.actions.map(a => `<span class="rung-chip">${escHtml(a)}</span>`).join('')}</div>`
@@ -841,19 +912,13 @@ function renderRungs(rungs, state) {
       actionHtml = '<span class="rung-held">held</span>';
     } else if (r.actionIfNot) {
       const a = r.actionIfNot;
-      // availableWhen lets a rung declare a prerequisite (e.g. Election
-      // Candidate requires Party Member). When gated, the button still
-      // renders so the player sees the affordance, but as disabled
-      // regardless of declared kind — descIfNot is where the rung
-      // explains why. A primary actionIfNot can fire either a navigation
-      // (href) or an in-page action (data-action); the Stand for Election
-      // rung uses the data-action path to open the election modal.
-      const gated = !!(r.availableWhen && !r.availableWhen(state));
-      const kind  = gated ? 'disabled' : a.kind;
-      const cls   = kind === 'primary' ? 'rung-btn rung-btn--primary' : 'rung-btn rung-btn--disabled';
-      const hrefAttr     = kind === 'primary' && a.href   ? ` data-href="${escHtml(a.href)}"`     : '';
-      const actionAttr   = kind === 'primary' && a.action ? ` data-action="${escHtml(a.action)}"` : '';
-      const disabledAttr = kind === 'disabled' ? ' disabled' : '';
+      const cls = a.kind === 'primary' ? 'rung-btn rung-btn--primary' : 'rung-btn rung-btn--disabled';
+      // A primary actionIfNot can fire either a navigation (href) or an
+      // in-page action (data-action). Today only the Tier 0 Party Member
+      // rung's Join button uses href; further wiring can add data-action.
+      const hrefAttr     = a.kind === 'primary' && a.href   ? ` data-href="${escHtml(a.href)}"`     : '';
+      const actionAttr   = a.kind === 'primary' && a.action ? ` data-action="${escHtml(a.action)}"` : '';
+      const disabledAttr = a.kind === 'disabled' ? ' disabled' : '';
       actionHtml = `<button class="${cls}"${hrefAttr}${actionAttr}${disabledAttr}>${escHtml(a.label)}</button>`;
     } else if (r.accessNote) {
       // Rungs reached by appointment / external selection rather than by
@@ -867,6 +932,7 @@ function renderRungs(rungs, state) {
       <div class="rung">
         ${indicator}
         <div class="rung__body">
+          ${tierHtml}
           <div class="rung__name">${escHtml(r.name)}</div>
           <div class="rung__desc">${escHtml(desc)}</div>
           ${chipsHtml}
@@ -902,7 +968,10 @@ function bindRungActions(ctx) {
       location.reload();
     });
   });
-  document.querySelectorAll('.rung-btn[data-action="stand-for-election"]').forEach(btn => {
+  // Stand for Election now lives on a standalone button above the
+  // ladder-branch (not in a rung), so the selector matches by data-action
+  // alone rather than by .rung-btn class.
+  document.querySelectorAll('[data-action="stand-for-election"]').forEach(btn => {
     btn.addEventListener('click', () => openElectionModal(ctx));
   });
 }
@@ -1144,8 +1213,8 @@ async function confirmElection(ctx) {
     return;
   }
   closeElectionModal();
-  // Reload to flip the Election Candidate rung to held state + reflect
-  // the consumed 1-per-turn gate everywhere it's read.
+  // Reload so the Stand for Election callout swaps to "race in progress"
+  // and the 1-per-turn gate is reflected everywhere it's read.
   location.reload();
 }
 
