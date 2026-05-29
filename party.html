@@ -25,13 +25,27 @@
 .actions-sub, .chat-sub { text-transform:none; letter-spacing:0.02em; font-size:9px; color:#555;
   display:inline-flex; align-items:center; gap:6px; font-weight:500; }
 .chat-dot { width:6px; height:6px; border-radius:50%; background:#5aafa5; display:inline-block; }
-.actions-body { display:flex; flex-direction:column; align-items:center; gap:12px;
-  padding:22px 0 14px; text-align:center; }
-.actions-icon { width:28px; height:28px; border-radius:50%; border:0.5px solid rgba(255,255,255,0.18); }
-.actions-empty { font-size:13px; color:#d4d4d4; font-weight:500; }
-.actions-desc { font-size:11px; color:#888; line-height:1.55; max-width:280px; }
-.actions-rung { font-size:9px; letter-spacing:0.16em; color:#c87a7a; text-transform:uppercase;
-  font-weight:600; padding-top:6px; }
+.actions-body { display:flex; flex-direction:column; gap:8px; padding:10px 0 4px; }
+.act-card { background:#101010; border:0.5px solid rgba(255,255,255,0.08);
+  border-radius:5px; padding:11px 13px; cursor:pointer; text-align:left;
+  transition:background 0.12s, border-color 0.12s; }
+.act-card:hover { background:#141414; border-color:rgba(255,255,255,0.16); }
+.act-card.disabled { cursor:not-allowed; opacity:0.55; }
+.act-card.disabled:hover { background:#101010; border-color:rgba(255,255,255,0.08); }
+.act-card.loading { opacity:0.7; cursor:wait; }
+.act-row { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.act-name { font-size:12px; color:#fff; font-weight:600; letter-spacing:0.02em; }
+.act-meta { font-size:10.5px; color:#888; margin-top:5px; line-height:1.5; }
+.act-cd { font-size:8px; letter-spacing:0.11em; color:#888;
+  text-transform:uppercase; font-weight:600; flex-shrink:0; }
+.act-cd.ready { color:#5aafa5; }
+.act-result { font-size:11px; line-height:1.5; padding:8px 11px;
+  border-radius:4px; background:#0e0e0e; border:0.5px solid rgba(255,255,255,0.05);
+  color:#cfcabf; display:none; margin-top:2px; }
+.act-result.show { display:block; }
+.act-result.good { background:#0e1611; color:#a5c79a; border-color:rgba(122,170,106,0.3); }
+.act-result.ok   { background:#0e1416; color:#9cb9c4; border-color:rgba(90,150,180,0.3); }
+.act-result.bad  { background:#1a0e0e; color:#c89e9e; border-color:rgba(200,110,110,0.3); }
 
 /* Chat thread: scrolling column of messages, oldest at top. Newest
    slides in at the bottom via the JS append; the thread auto-scrolls
@@ -254,6 +268,10 @@ function escHtml(s) { const d = document.createElement('div'); d.textContent = s
 let _viewerPolId = null;
 let _viewerPartyId = null;
 let _viewerCareer = null;
+let _viewerCharisma = 0;
+let _viewerInfluence = 0;
+let _viewerSpeechReadyAt = 0;
+let _shardTick = 0;
 let _chatPollId = null;
 
 async function init() {
@@ -270,9 +288,13 @@ async function init() {
   }
   if (!ctx) return; // bootstrap redirected (no auth / no politician)
 
-  _viewerPolId   = ctx.faction?.id || null;
-  _viewerPartyId = ctx.faction?.politician_party_id || null;
-  _viewerCareer  = ctx.faction?.politician_career || null;
+  _viewerPolId         = ctx.faction?.id || null;
+  _viewerPartyId       = ctx.faction?.politician_party_id || null;
+  _viewerCareer        = ctx.faction?.politician_career || null;
+  _viewerCharisma      = Number(ctx.faction?.politician_charisma) || 0;
+  _viewerInfluence     = Number(ctx.faction?.politician_influence) || 0;
+  _viewerSpeechReadyAt = Number(ctx.faction?.speech_cooldown_until_tick) || 0;
+  _shardTick           = Number(ctx.shard?.current_tick) || 0;
 
   // Party + members in parallel. Members filter on faction_type so a
   // typo'd politician_party_id on a different faction kind can't leak in.
@@ -383,13 +405,116 @@ function renderSidebar(party, isMine) {
   loadAndPollChat(party).catch(err => console.warn('[party] chat init failed', err));
 }
 
+// Member-only Actions panel. Two ground-floor actions: Door Knocking
+// (slow trickle, no cooldown) and Give a Speech (1d6 + Charisma,
+// 3-tick cooldown). First call wires the scaffold (cards container +
+// result node); subsequent calls only rewrite #act-list so the flash
+// row from the last action stays put across re-renders. Each card's
+// click handler in onMemberAction flips .loading to guard against
+// double-fire and mutates the in-memory viewer stats from the RPC
+// return.
 function renderActionsPanel() {
-  const rung = _viewerCareer && _viewerCareer !== 'Independent' ? _viewerCareer : 'Party Member';
-  document.getElementById('actions-body').innerHTML =
-    `<div class="actions-icon"></div>
-     <div class="actions-empty">No actions available yet</div>
-     <div class="actions-desc">As a rank-and-file member, your hands are full just being on the rolls. Climb the Party Office ladder to unlock recruitment, candidacy, and party-building actions.</div>
-     <div class="actions-rung">Current Rung · ${escHtml(rung)}</div>`;
+  const body = document.getElementById('actions-body');
+  if (!body.querySelector('#act-list')) {
+    body.innerHTML = '<div class="act-list" id="act-list"></div><div class="act-result" id="act-result"></div>';
+  }
+  const list = document.getElementById('act-list');
+  const remaining = Math.max(0, _viewerSpeechReadyAt - _shardTick);
+  const speechReady = remaining === 0;
+  list.innerHTML = `
+    <div class="act-card" data-action="door_knock">
+      <div class="act-row">
+        <div class="act-name">Door Knocking</div>
+        <div class="act-cd ready">Ready</div>
+      </div>
+      <div class="act-meta">+0.1 Influence &middot; +0.1 Party Popularity. No cooldown.</div>
+    </div>
+    <div class="act-card${speechReady ? '' : ' disabled'}" data-action="give_speech">
+      <div class="act-row">
+        <div class="act-name">Give a Speech</div>
+        <div class="act-cd${speechReady ? ' ready' : ''}">${speechReady ? 'Ready' : `Ready in ${remaining} tick${remaining === 1 ? '' : 's'}`}</div>
+      </div>
+      <div class="act-meta">1d6 + Charisma (yours: ${_viewerCharisma}). 3-tick cooldown.</div>
+    </div>
+  `;
+  list.querySelectorAll('.act-card').forEach(card => {
+    card.onclick = () => onMemberAction(card.dataset.action, card);
+  });
+}
+
+async function onMemberAction(actionKey, card) {
+  if (card.classList.contains('disabled') || card.classList.contains('loading')) return;
+  card.classList.add('loading');
+  try {
+    if (actionKey === 'door_knock') {
+      const { data, error } = await _supabase.rpc('politician_door_knock', { p_party_id: _viewerPartyId });
+      if (error) throw error;
+      if (!data?.success) { flashActionResult(`Door knock failed: ${data?.reason || 'unknown'}.`, 'bad'); return; }
+      _viewerInfluence = Number(data.politician_influence) || 0;
+      patchPopularityCell(Number(data.popularity_pct));
+      patchViewerInfluenceCell(_viewerInfluence);
+      flashActionResult('Door knock landed. +0.1 Influence &middot; +0.1 Popularity.', 'ok');
+    } else if (actionKey === 'give_speech') {
+      const { data, error } = await _supabase.rpc('politician_give_speech', { p_party_id: _viewerPartyId });
+      if (error) throw error;
+      if (!data?.success) { flashActionResult(`Speech failed: ${data?.reason || 'unknown'}.`, 'bad'); return; }
+      _viewerInfluence     = Number(data.politician_influence) || 0;
+      _viewerSpeechReadyAt = Number(data.cooldown_until_tick) || 0;
+      patchPopularityCell(Number(data.popularity_pct));
+      patchViewerInfluenceCell(_viewerInfluence);
+      const popDelta = Number(data.popularity_delta) || 0;
+      const infDelta = Number(data.influence_delta) || 0;
+      const deltas = [
+        popDelta ? `${popDelta > 0 ? '+' : ''}${popDelta} Popularity` : '',
+        infDelta ? `${infDelta > 0 ? '+' : ''}${infDelta} Influence` : '',
+      ].filter(Boolean).join(' &middot; ') || 'no change';
+      flashActionResult(
+        `Rolled ${data.roll} + ${data.charisma} Charisma = ${data.total}. ${deltas}.`,
+        data.bracket === 'good' ? 'good' : (data.bracket === 'bad' ? 'bad' : 'ok')
+      );
+    }
+  } catch (err) {
+    console.warn(`[party] ${actionKey} failed`, err);
+    flashActionResult('Action failed. Try again.', 'bad');
+  } finally {
+    card.classList.remove('loading');
+    renderActionsPanel();
+  }
+}
+
+function flashActionResult(html, kind) {
+  const el = document.getElementById('act-result');
+  if (!el) return;
+  el.innerHTML = html;
+  el.className = `act-result show ${kind || ''}`;
+}
+
+// Patch the Popularity stat-strip cell in-place after an action moves
+// the percentage. Cheaper than re-rendering the identity card and
+// keeps the rest of the strip (seats, status, founded, members)
+// untouched.
+function patchPopularityCell(newPct) {
+  if (!Number.isFinite(newPct)) return;
+  document.querySelectorAll('.stats-strip .ss').forEach(cell => {
+    const k = cell.querySelector('.k');
+    if (k && k.textContent.trim() === 'Popularity') {
+      const v = cell.querySelector('.v');
+      if (v) v.innerHTML = `${Math.round(newPct)}%`;
+    }
+  });
+}
+
+// Update the viewer's own influence cell in the Members panel after
+// an action. Finds the viewer's row by the "You" badge marker, so
+// the rest of the members list stays untouched.
+function patchViewerInfluenceCell(newInf) {
+  if (!Number.isFinite(newInf)) return;
+  document.querySelectorAll('#members-host .mem-row').forEach(row => {
+    if (row.querySelector('.mem-name .you')) {
+      const cell = row.querySelector('.mem-inf');
+      if (cell) cell.textContent = newInf;
+    }
+  });
 }
 
 async function loadAndPollChat(party) {
