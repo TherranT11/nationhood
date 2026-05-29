@@ -160,8 +160,22 @@ export async function mountWarRoom(container, nation) {
             console.warn('[war-room] HoG check failed:', e?.message || e);
         }
 
+        // The Monthly Casualties box (in eventsAndCasualtiesColumnHtml)
+        // matches combat-event rows by tick === shard.current_tick. Fetch
+        // once here and thread it through renderWar; missing/failed read
+        // falls back to 0 so the casualties box renders empty rather than
+        // crashing the whole room.
+        let currentTick = 0;
+        try {
+            const { data: shard } = await _supabase.from('shard')
+                .select('current_tick').eq('name', 'Alpha Shard').single();
+            currentTick = Number(shard?.current_tick) || 0;
+        } catch (e) {
+            console.warn('[war-room] shard fetch failed:', e?.message || e);
+        }
+
         const blocks = [];
-        for (const w of wars) blocks.push(await renderWar(w, nation, nameById, commandable, isHoG));
+        for (const w of wars) blocks.push(await renderWar(w, nation, nameById, commandable, isHoG, currentTick));
         container.innerHTML = blocks.join('');
 
         // Inline ASSAULT/DEFEND order buttons → set_front_action, then re-mount.
@@ -204,7 +218,7 @@ export async function mountWarRoom(container, nation) {
     }
 }
 
-async function renderWar(w, nation, nameById, commandable, isHoG) {
+async function renderWar(w, nation, nameById, commandable, isHoG, currentTick) {
     const a = w.nation_a_id, b = w.nation_b_id;   // canonical (a<b)
     const enemyId = a === nation.id ? b : a;
     const enemyName = nameById.get(enemyId) || 'the enemy';
@@ -325,7 +339,7 @@ async function renderWar(w, nation, nameById, commandable, isHoG) {
         // Monthly Casualties & Losses box underneath summing the current
         // tick's row. Stalemate rows feed the casualties box only.
         const frontEvents = eventsByFront.get(f.id) || [];
-        const middleHtml = eventsAndCasualtiesColumnHtml(frontEvents, currentTk, a, b, leftName, rightName, youAreA);
+        const middleHtml = eventsAndCasualtiesColumnHtml(frontEvents, currentTick, a, b, leftName, rightName, youAreA);
         const engagementHtml = `<div class="wr-engagement">
             ${forcesColumnHtml(leftName, fa.a, unitsByArmy, youAreA)}
             ${middleHtml}
