@@ -1054,7 +1054,7 @@ function renderNations(nations, partiesByNation, crisesByNation) {
           </div>
           <div class="nation-card__body">
             ${NATION_DESCRIPTIONS[nation.name] ? `<div style="font-size:10px;color:var(--text-dim);line-height:1.5;margin-bottom:8px;font-style:italic;">${escapeHtml(NATION_DESCRIPTIONS[nation.name])}</div>` : ''}
-            <div class="stat-row"><span class="stat-row__label">GDP</span><span class="stat-row__value" style="color:var(--text-secondary);">${hfFmtBig(Number(nation.gdp) || 0)}</span></div>
+            <div class="stat-row"><span class="stat-row__label">GDP</span><span class="stat-row__value" style="color:var(--text-secondary);">${hfFmtBig(Number(nation.politician_gdp) || 0)}</span></div>
             <div class="stat-row"><span class="stat-row__label">Population</span><span class="stat-row__value" style="color:var(--text-secondary);">${fmtBig(nation.population)}</span></div>
             <div class="stat-row"><span class="stat-row__label">Active Entrepreneurs</span><span class="stat-row__value" style="color:var(--text-secondary);">${cachedEntrepreneursByNation[nation.name] || 0}</span></div>
             ${locked

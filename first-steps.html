@@ -229,7 +229,7 @@ async function init() {
       { data: pols,    error: polErr },
       { data: parties, error: partyErr },
     ] = await Promise.all([
-      _supabase.from('nations').select('id, name, continent, government_type, population, gdp, flag_url, nation_profiles(flag_url)').order('name'),
+      _supabase.from('nations').select('id, name, continent, government_type, population, politician_gdp, flag_url, nation_profiles(flag_url)').order('name'),
       _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
       _supabase.from('factions').select('nation_id').eq('faction_type', 'politician').is('abandoned_at', null),
       // Movement parties feed the Political Parties section on each
@@ -358,7 +358,7 @@ function renderNations() {
       </div>
       <div class="nation-card__body">
         ${desc ? `<div class="nation-card__desc">${escHtml(desc)}</div>` : ''}
-        <div class="stat-row"><span class="stat-row__label">GDP</span><span class="stat-row__value">${hfFmtBig(Number(n.gdp) || 0)}</span></div>
+        <div class="stat-row"><span class="stat-row__label">GDP</span><span class="stat-row__value">${hfFmtBig(Number(n.politician_gdp) || 0)}</span></div>
         <div class="stat-row"><span class="stat-row__label">Population</span><span class="stat-row__value">${fmtBig(n.population)}</span></div>
         <div class="stat-row"><span class="stat-row__label">Active Politicians</span><span class="stat-row__value">${politiciansByNation[n.id] || 0}</span></div>
         <div class="parties-section">
