@@ -206,39 +206,71 @@ const SEVERITIES = [
   { key: 'red',    label: 'Red'    },
 ];
 
-// Triggerable nation stats — the live alpha columns (see
-// NATION_STAT_COLUMNS in js/game/stats.js). Deleted stats like
-// inflation / foreign_investment are deliberately absent: the
-// engine doesn't track them, so a trigger referencing them would
-// never evaluate. Matches the crisisadmin NATION_STATS list.
+// Triggerable nation stats. Politician-system stats come first — every
+// stat in the canonical politician list (politician_stability /
+// politician_gdp / politician_gdp_growth / politician_budget /
+// politician_debt / politician_civil_freedoms) is exposed under its
+// canonical politician label, plus the legacy 0-100 columns the
+// politician system inherits unchanged (health / education /
+// infrastructure / industry as Manufacturing Sector / skilled_workers /
+// service_sector / income_tax / corporate_tax / wages / crime /
+// corruption / energy / minerals / standard_of_living / cost_of_living).
+//
+// Legacy section below carries the parties-side stats that aren't in
+// the politician canonical list (unrest, public_approval, crown_authority,
+// state_apparatus, immigration, farmland, unskilled_workers, inequality,
+// global_image) so any modifier_templates created before the politician
+// fork still edit cleanly. They can be pruned once the parties surface
+// is fully retired.
+//
+// Not yet exposed (the canonical list calls them out but no backing
+// column / tick math exists yet): Energy Generation, Food (on hand),
+// Food Generation, Mineral Generation, Consumer Goods, Goods Generation,
+// Luxury Goods, Luxury Generation, Population Growth. Adding them as
+// inert dropdown entries would silently produce never-firing triggers,
+// so they're held back until the schema + tick processor catch up.
 const NATION_STATS = [
-  // Fiscal
-  { key: 'budget', label: 'Budget' }, { key: 'debt', label: 'Debt' },
-  { key: 'gdp', label: 'GDP' }, { key: 'gdp_growth', label: 'GDP Growth' },
-  { key: 'income_tax', label: 'Income Tax' }, { key: 'corporate_tax', label: 'Corporate Tax' },
-  // Governance
-  { key: 'state_apparatus', label: 'State Apparatus' },
-  { key: 'public_approval', label: 'Public Approval' },
-  { key: 'crown_authority', label: 'Crown Authority' },
-  { key: 'corruption', label: 'Corruption' },
-  // Stability
-  { key: 'unrest', label: 'Unrest' }, { key: 'crime', label: 'Crime' },
-  // Population
-  { key: 'immigration', label: 'Immigration' },
-  // Wellbeing
-  { key: 'health', label: 'Health' }, { key: 'education', label: 'Education' },
+  // ── Politician headline (politician_* columns) ─────────────────────
+  { key: 'politician_stability',      label: 'Stability' },
+  { key: 'politician_gdp',            label: 'GDP' },
+  { key: 'politician_gdp_growth',     label: 'GDP Growth' },
+  { key: 'politician_budget',         label: 'Budget' },
+  { key: 'politician_debt',           label: 'Debt' },
+  { key: 'politician_civil_freedoms', label: 'Civil Liberties' },
+  // ── Wellbeing & services ───────────────────────────────────────────
+  { key: 'health',             label: 'Health' },
+  { key: 'education',          label: 'Education' },
   { key: 'standard_of_living', label: 'Standard of Living' },
-  { key: 'cost_of_living', label: 'Cost of Living' },
-  { key: 'inequality', label: 'Inequality' },
-  // Productive base
-  { key: 'infrastructure', label: 'Infrastructure' }, { key: 'industry', label: 'Industry' },
-  { key: 'farmland', label: 'Farmland' }, { key: 'service_sector', label: 'Service Sector' },
-  { key: 'unskilled_workers', label: 'Unskilled Workers' },
-  { key: 'skilled_workers',   label: 'Skilled Workers' },
-  { key: 'wages', label: 'Wages' },
-  { key: 'energy', label: 'Energy' }, { key: 'minerals', label: 'Minerals' },
-  // International
-  { key: 'global_image', label: 'Global Image' },
+  { key: 'cost_of_living',     label: 'Cost of Living' },
+  // ── Economy (labels follow the politician canonical list) ──────────
+  { key: 'infrastructure',  label: 'Infrastructure' },
+  { key: 'industry',        label: 'Manufacturing Sector' },
+  { key: 'skilled_workers', label: 'Skilled Workers' },
+  { key: 'service_sector',  label: 'Service Sector' },
+  { key: 'wages',           label: 'Wages' },
+  { key: 'energy',          label: 'Energy (on hand)' },
+  { key: 'minerals',        label: 'Minerals (on hand)' },
+  // ── Fiscal ─────────────────────────────────────────────────────────
+  { key: 'income_tax',    label: 'Income Tax' },
+  { key: 'corporate_tax', label: 'Corporate Tax' },
+  // ── Society ────────────────────────────────────────────────────────
+  { key: 'crime',      label: 'Crime' },
+  { key: 'corruption', label: 'Corruption' },
+  // ── Legacy parties-side columns (kept so older modifier_templates
+  //    that reference them still edit; prune after parties is retired)
+  { key: 'budget',            label: 'Budget (legacy)' },
+  { key: 'debt',              label: 'Debt (legacy)' },
+  { key: 'gdp',               label: 'GDP (legacy)' },
+  { key: 'gdp_growth',        label: 'GDP Growth (legacy)' },
+  { key: 'unrest',            label: 'Unrest (legacy)' },
+  { key: 'public_approval',   label: 'Public Approval (legacy)' },
+  { key: 'crown_authority',   label: 'Crown Authority (legacy)' },
+  { key: 'state_apparatus',   label: 'State Apparatus (legacy)' },
+  { key: 'immigration',       label: 'Immigration (legacy)' },
+  { key: 'farmland',          label: 'Farmland (legacy)' },
+  { key: 'unskilled_workers', label: 'Unskilled Workers (legacy)' },
+  { key: 'inequality',        label: 'Inequality (legacy)' },
+  { key: 'global_image',      label: 'Global Image (legacy)' },
 ];
 
 const TRIGGER_OPERATORS = [
