@@ -250,7 +250,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { hfFmtBig, escapeHtml, escapeAttr, titleCase, fmtValuation, pctOwned } from './js/utils.js';
-import { computeEntrepreneurValuation, corpShareLiquidationValue } from './js/game/corp-valuation.js';
+import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 import { fetchCorpBookAggregates } from './js/corp-book-value.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
@@ -359,10 +359,12 @@ function initials(first, last, fallbackName) {
 // founded-then-IPO'd corp shows once. Fields: industry, type
 // (private/public), HQ, ownership, status, valuation.
 //
-// NET WORTH is deliberately unchanged: cash + Σ(share-position value
-// only). A private corp's book value and a public corp's market cap are
-// shown for context but are NOT added to net worth (a founder's equity
-// isn't a liquid personal asset; we don't fold it into net worth).
+// NET WORTH is computed server-side by get_my_net_worth_breakdown()
+// (sql/migrations/20270387) — see loadNetWorth below. That RPC and the
+// leaderboard's get_entrepreneur_net_worth() both delegate to the same
+// SQL helper, so the home-page headline can never drift from the
+// leaderboard. This module no longer computes the net-worth total
+// client-side.
 function renderHoldings(positions) {
   const listEl = document.getElementById('ch-list');
   const countEl = document.getElementById('ch-count');
@@ -412,14 +414,31 @@ function renderHoldings(positions) {
   }).join('')}</div>`;
 }
 
-async function loadHoldings(entId, cash) {
+// Server-side net worth: cash + held public stock (sell-side liquidation
+// value) + held private stakes (book proportion) + private founded corps
+// with no share model (full book to owner). All four come back as
+// components in one RPC, so the headline and the "cash $X · holdings $Y"
+// subline read from the same source as the leaderboard. On failure the
+// baseline cash figure init() already wrote stays put.
+async function loadNetWorth() {
+  const { data, error } = await _supabase.rpc('get_my_net_worth_breakdown');
+  if (error || !data || data.success === false) {
+    if (error) console.warn('[entrepreneur-dashboard] net-worth RPC failed:', error.message);
+    setText('net-worth-sub', 'holdings unavailable — showing cash only');
+    return;
+  }
+  const cash     = Number(data.cash) || 0;
+  const holdings = (Number(data.public_holdings)        || 0)
+                 + (Number(data.private_holdings_share) || 0)
+                 + (Number(data.private_holdings_own)   || 0);
+  setText('net-worth', hfFmtBig(Number(data.total) || (cash + holdings)));
+  setText('net-worth-sub', `cash ${hfFmtBig(cash)} · holdings ${hfFmtBig(holdings)}`);
+}
+
+async function loadHoldings(entId) {
   const listEl = document.getElementById('ch-list');
   if (!listEl) return;
-  const setNetWorth = (holdingsValue) => {
-    setText('net-worth', hfFmtBig(cash + holdingsValue));
-    setText('net-worth-sub', `cash ${hfFmtBig(cash)} · holdings ${hfFmtBig(holdingsValue)}`);
-  };
-  if (!entId) { renderHoldings([]); setNetWorth(0); return; }
+  if (!entId) { renderHoldings([]); return; }
 
   const CORP_COLS = 'id, name, industry, listing, starting_capital, treasury_cash, share_price, shares_outstanding, hq:nations!hq_nation_id(name)';
   // Two sources, merged by corp id: founded corps + share positions.
@@ -438,8 +457,7 @@ async function loadHoldings(entId, cash) {
     const countEl = document.getElementById('ch-count');
     if (countEl) countEl.textContent = '—';
     listEl.innerHTML = '<div class="empty">Failed to load holdings.</div>';
-    setText('net-worth-sub', 'holdings unavailable — showing cash only');
-    return;   // net-worth value stays at the cash baseline set by init
+    return;   // net-worth is set independently by loadNetWorth
   }
 
   // One row per corp, keyed by id. Founded first; a matching share
@@ -447,27 +465,19 @@ async function loadHoldings(entId, cash) {
   const byId = new Map();
   for (const c of (foundedRes.data || [])) {
     if (!c) continue;
-    byId.set(c.id, { corp: c, relationship: 'founder', shares: 0, pct: null, netWorthValue: 0 });
+    byId.set(c.id, { corp: c, relationship: 'founder', shares: 0, pct: null });
   }
   for (const r of (sharesRes.data || [])) {
     if (!r.corp) continue;   // FK guarantees corp resolves; defensive
     const shares = Number(r.shares) || 0;
-    const price = Number(r.corp.share_price) || 0;
-    // Public holdings count at sell-side liquidation value (can't be pumped);
-    // private holdings keep their existing marking. Mirrors get_entrepreneur_net_worth.
-    const value = r.corp.listing === 'public'
-      ? corpShareLiquidationValue(shares, price)
-      : shares * price;
     const existing = byId.get(r.corp.id);
     if (existing) {
       existing.shares = shares;
       existing.pct = pctOwned(shares, Number(r.corp.shares_outstanding) || 0);
-      existing.netWorthValue = value;   // founder who also holds shares
     } else {
       byId.set(r.corp.id, {
         corp: r.corp, relationship: 'shareholder', shares,
         pct: pctOwned(shares, Number(r.corp.shares_outstanding) || 0),
-        netWorthValue: value,
       });
     }
   }
@@ -488,13 +498,12 @@ async function loadHoldings(entId, cash) {
     p.valuation = computeEntrepreneurValuation(p.corp, bookAgg.get(p.corp.id));
   }
 
-  // Sort: biggest economic stake first — realised share value if any,
-  // else the corp's own valuation figure.
-  const sortVal = (p) => p.netWorthValue > 0 ? p.netWorthValue : (p.valuation.amount || 0);
-  const positions = [...byId.values()].sort((a, b) => sortVal(b) - sortVal(a));
+  // Sort by corp valuation (book value, pump-proof). The headline
+  // net worth is set by loadNetWorth from the server RPC and is no
+  // longer summed from this list.
+  const positions = [...byId.values()].sort(
+    (a, b) => (b.valuation.amount || 0) - (a.valuation.amount || 0));
   renderHoldings(positions);
-  // Net worth unchanged: only realised share-position value counts.
-  setNetWorth(positions.reduce((s, p) => s + p.netWorthValue, 0));
 }
 
 (async () => {
@@ -518,8 +527,9 @@ async function loadHoldings(entId, cash) {
     setText('archetype', arch ? arch.name : '—');
     document.getElementById('bio').textContent = arch ? `"${arch.description}"` : '';
 
-    const cash = Number(f.party_funds) || 0;
-    setText('net-worth', hfFmtBig(cash));   // baseline; loadHoldings adds holdings
+    // Baseline so the headline isn't blank while loadNetWorth's RPC is
+    // in flight. loadNetWorth replaces both lines once the server answers.
+    setText('net-worth', hfFmtBig(Number(f.party_funds) || 0));
 
     // Real stats — the four set at archetype selection. Total is derived.
     const stats = [
@@ -541,7 +551,8 @@ async function loadHoldings(entId, cash) {
     loadDispatches();
 
     const entId = ctx.faction?.id;
-    loadHoldings(entId, cash);
+    loadHoldings(entId);
+    loadNetWorth();
 
     // Pressing Issues: two sources share this column — open acquisition
     // negotiations (2.6.8.3) and pending Board-Join votes (20270160).
