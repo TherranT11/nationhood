@@ -113,7 +113,7 @@
         <div class="meta-row">
           <div><span class="label">AGE</span><span class="val" id="hero-age">—</span></div>
           <div><span class="label">NATION</span><span class="val" id="hero-nation">—</span></div>
-          <div><span class="label">CAREER</span><span class="val" id="hero-career">—</span></div>
+          <div><span class="label">AFFILIATION</span><span class="val" id="hero-career">—</span></div>
         </div>
       </div>
     </div>
@@ -246,7 +246,12 @@ function renderHero(shard) {
   const last  = politician.leader_last_name  || '';
   const ini = (((first[0] || '') + (last[0] || '')).toUpperCase()) || '—';
   const display = (first || last) ? (first + ' ' + last).trim() : (politician.faction_name || 'Politician');
-  const career = politician.politician_career || 'Independent';
+  // Hero pill repurposed: was "Career" sourced from politician_career,
+  // now "Affiliation" with a "Member of the Party" baseline when no
+  // specific party position (Leader / Deputy / Whip) is in flight.
+  // politician_career still acts as the override when set so existing
+  // career-track values keep surfacing; only the unset default moves.
+  const career = politician.politician_career || 'Member of the Party';
   // Politicians age 1 year per 12 ticks, starting at 25. Same formula as the
   // topbar's currentAge (kept inline here because this page renders age into
   // the body too; if we ever need a third reader, extract to a helper).
