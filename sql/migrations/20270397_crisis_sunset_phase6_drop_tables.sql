@@ -365,8 +365,6 @@ $$;
 GRANT EXECUTE ON FUNCTION public.hold_rally(UUID) TO authenticated;
 
 COMMENT ON FUNCTION public.hold_rally(UUID) IS
-
-COMMENT ON FUNCTION public.hold_rally(UUID) IS
     'Hold a Rally campaign action. SECURITY DEFINER (faction_sector_popularity is admin-write-only). Gates auth + one-per-tick + escalating $50k/+$25k party_funds cost atomically (FOR UPDATE on the faction). Weighted 1-of-6 outcome shifts the chosen sector''s popularity (tenths, clamp 0..100); divisive/counter bleed -0.2 to other sectors. crowd_pleaser/wooden_speaker shift weights; telegenic/crowd_pleaser scale positive results. Logs to campaign_actions; returns the result payload for the client.';
 
 -- ── 2. Drop the crisis tables (children first, CASCADE for safety) ──
