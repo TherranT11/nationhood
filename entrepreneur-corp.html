@@ -512,25 +512,35 @@
   .bm-btn.pri:hover { background:#243a1f; }
   .bm-btn.pri:disabled { opacity:0.45; cursor:not-allowed; }
 
-  @media (max-width:900px) { .main-grid { grid-template-columns:1fr; } .financials { grid-template-columns:repeat(2,1fr); } }
+  /* ── Tablet (≤900px): main grid stacks; financials go 2-up; and the
+     corp-header collapses so the ownership block can't squeeze the
+     identity row at a tablet-portrait width. */
+  @media (max-width:900px) {
+    .main-grid { grid-template-columns:1fr; }
+    .financials { grid-template-columns:repeat(2,1fr); }
+    .corp-header { flex-direction:column; gap:18px; padding-bottom:18px; margin-bottom:20px; }
+    .role-block { text-align:left; padding-left:0; border-left:none; min-width:0;
+      border-top:0.5px solid rgba(255,255,255,0.08); padding-top:16px; }
+    /* The conditional header-inline controls (Withdraw / Put Up for Sale /
+       Acquire / Bankrupt / Director Actions) go full-width once the
+       header stacks; otherwise they cluster in a narrow center column. */
+    #cp-withdraw, #cp-forsale, #cp-acquire, #cp-bankrupt, #cp-director-actions {
+      min-width:0; width:100%; align-self:stretch;
+    }
+  }
 
-  /* ── Mobile (≤700px): stack header vertically, collapse financials
-     to one column, narrow modals + tighter modal padding. */
+  /* ── Mobile (≤700px): tighten padding, stack grid-row layouts,
+     wrap long-content elements so nothing overflows the column. */
   @media (max-width:700px) {
     .ent-content { padding-left:12px; padding-right:12px; }
     .breadcrumb { margin:-28px -12px 16px; padding:10px 12px; }
-    .corp-header { flex-direction:column; gap:18px; padding-bottom:18px; margin-bottom:20px; }
     .corp-body .title { font-size:26px; }
-    .role-block { text-align:left; padding-left:0; border-left:none; min-width:0;
-      border-top:0.5px solid rgba(255,255,255,0.08); padding-top:16px; }
-    /* Sidebar stacks below the main column; financials go 2-up instead of
-       one tall column per card. */
-    .main-grid { grid-template-columns:1fr; gap:18px; }
-    .financials { grid-template-columns:1fr 1fr; gap:8px; margin-bottom:20px; }
+    .main-grid { gap:18px; }
+    .financials { gap:8px; margin-bottom:20px; }
     .fin-card { padding:12px 14px; }
-    /* Header-inline owner controls (Withdraw / Put Up for Sale) go full-width
-       once the header stacks. */
-    #cp-withdraw, #cp-forsale { min-width:0; width:100%; }
+    /* Long monetary values (e.g. $840M debt) can shrink rather than
+       overflow the card. */
+    .fin-card .val { overflow-wrap:anywhere; word-break:break-word; }
     /* All modals: full-width with smaller padding */
     .bm-overlay, .ls-overlay, .rl-overlay { padding:12px; }
     .bm-overlay { padding:12px; }
@@ -547,37 +557,65 @@
     .ap-offer { grid-template-columns:1fr 1fr; gap:8px; padding:8px; }
     .ap-loan { grid-template-columns:1fr; gap:8px; }
     .mk-row { grid-template-columns:1fr; gap:6px; padding:12px 14px; }
+    /* Active Projects row head: building name + tier tag stack instead of
+       overflowing right when the district name is long. */
+    .ap-row-head { flex-wrap:wrap; }
+    /* Shipping/Airline fleet grid: 5 cells across is illegible on phone;
+       go 2-up so each cell keeps its label + value readable. */
+    .sh-fleet { grid-template-columns:1fr 1fr; padding:12px 14px; }
+    /* Price-history event row: tighter columns + smaller type so the
+       tick / desc / price / delta stay on one line at narrow widths. */
+    .pc-event { grid-template-columns:38px 1fr auto 50px; font-size:11px; gap:8px; }
+    /* Board roster row: don't double-indent the green left border. */
+    .board-row { padding:11px 14px; padding-left:14px; gap:8px; }
+    /* Corp Details rows: when label + value won't fit on one line, the
+       value drops underneath rather than overflowing right. */
+    .ds-row { flex-wrap:wrap; gap:4px 14px; }
+    .ds-row .val { text-align:left; flex-basis:auto; }
+    /* Share-price card padding matches the others on mobile. */
+    .price-card { padding:14px 16px; }
   }
 
-  /* Mobile refresh — phone-class viewport. The 900px + 700px rules above
-     stack main-grid / financials / modal contents; this block enforces
-     44px tap targets on every button class in the page, shrinks the
-     hero title to fit a 375px column, and uses 16px inputs so iOS
-     doesn't auto-zoom on focus. */
+  /* ── Mobile UX (≤640px): 44px tap-target floor + 16px inputs so iOS
+     doesn't auto-zoom on focus. Pure UX hardening; no layout changes. */
   @media (max-width:640px) {
     .corp-body .title { font-size:22px; }
     .corp-body .eyebrow { font-size:9px; }
     .pills { gap:6px; flex-wrap:wrap; }
-    /* Buttons: 44px floor on every button class used in this page. */
     .tc-btn, .bm-btn, .ap-btn, .cf-btn, .mo-btn, .rl-btn, .sh-buy-btn {
       min-height:44px; padding:12px 16px; font-size:11px;
     }
-    /* Inputs: 16px so iOS Safari doesn't zoom the viewport on focus. */
     .tc-qty, .bm-input, .mo-input, .rl-input, .bm-select, .cb-bid-amt {
       font-size:16px; min-height:44px;
     }
-    /* Active-projects offer grid keeps 2-up at 640px so accept/decline
-       pair stays paired; at 360px it stacks. */
     .ap-row { padding:14px 14px; }
   }
-  @media (max-width:360px) {
-    /* .ent-content padding tightens via topbar.js (the rule's owner). */
-    .breadcrumb { margin:-28px -10px 14px; padding:10px 10px; }
+
+  /* ── Phone-class (≤480px): single-column everything, smaller hero +
+     stake type, and tighter cards so the layout breathes. */
+  @media (max-width:480px) {
+    .breadcrumb { margin:-28px -10px 14px; padding:10px 10px; font-size:9px; }
     .corp-body .title { font-size:20px; }
+    .role-block .stake { font-size:32px; }
+    .role-block .stake .pct { font-size:15px; }
     .financials { grid-template-columns:1fr; }
+    .fin-card { padding:11px 13px; }
+    .fin-card .val { font-size:18px; }
+    .sh-fleet { grid-template-columns:1fr; gap:8px; padding:10px 12px; }
+    .pc-event { font-size:10px; gap:6px; grid-template-columns:32px 1fr auto 46px; }
+    .pc-tick { font-size:9px; }
+    .pc-cur-val { font-size:16px; }
+    .board-row { padding:10px 12px; padding-left:12px; gap:8px; }
+    .board-info .bname { font-size:11px; }
+    .ap-name { font-size:13px; }
+    .ap-row { padding:12px; }
     .ap-offer { grid-template-columns:1fr; }
     .bm-overlay, .ls-overlay, .rl-overlay { padding:8px; }
     .bm-body, .rl-body { padding:14px; }
+    /* Reduce the corp crest so it doesn't dominate the row when the
+       title shrinks underneath it. */
+    .corp-crest { width:56px; height:56px; font-size:18px; }
+    .corp-id { gap:14px; }
   }
 </style>
 </head>
