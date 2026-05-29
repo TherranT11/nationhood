@@ -83,35 +83,16 @@
   display:inline-flex; align-items:center; gap:6px; }
 .back-to-top:hover { color:#5aafa5; border-color:rgba(90,175,165,0.4); }
 
-/* National Characteristics body — one row per stat: a tier-colored value
-   card on the left, a bold lead + colored accent + prose continuation on
-   the right, and the baseline italic description underneath. The tier
-   color (good / mid / bad) is set inline per row via the --tier custom
-   property so border, labels, and accent text all read together. */
-.nat-list { display:flex; flex-direction:column; }
-.nat-row  { display:grid; grid-template-columns:170px 1fr; gap:24px;
-  padding:14px 0; align-items:start;
-  border-bottom:0.5px solid rgba(255,255,255,0.04); }
-.nat-row:last-child { border-bottom:none; }
-
-.nat-card { background:#0e1212; border:1px solid var(--tier, #5aafa5);
-  border-radius:6px; padding:12px 14px; min-height:96px; }
-.nat-card__label { font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
-  color:var(--tier, #5aafa5); font-weight:600; margin-bottom:8px; }
-.nat-card__value { font-size:30px; font-weight:600; color:#fff;
-  font-family:monospace; line-height:1.05; letter-spacing:0.01em; }
-.nat-card__scale { font-size:11px; color:#666; margin-left:4px; font-family:monospace; }
-.nat-card__tier  { display:flex; align-items:center; gap:6px; margin-top:10px;
-  font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
-  color:var(--tier, #5aafa5); font-weight:600; }
-.nat-card__tier::before { content:'●'; font-size:8px; line-height:1; }
-
-.nat-body { padding-top:2px; }
-.nat-body__head   { font-size:13px; color:#d4d4d4; line-height:1.6; }
-.nat-body__head strong { color:#fff; font-weight:600; }
-.nat-body__accent { color:var(--tier, #5aafa5); font-weight:500; }
-.nat-body__desc   { font-style:italic; font-size:11px; color:#666;
-  line-height:1.55; margin-top:10px; }
+/* National Characteristics is its own page (politician-characteristics.html);
+   the section body here just holds a CTA card linking to it. */
+.sec-cta { display:flex; align-items:center; gap:18px; padding:18px 20px;
+  background:#0e1212; border:0.5px solid rgba(90,175,165,0.25); border-radius:6px;
+  text-decoration:none; color:inherit;
+  transition:background 0.12s, border-color 0.12s; }
+.sec-cta:hover { background:#11181a; border-color:rgba(90,175,165,0.5); }
+.sec-cta .cta-arrow { font-size:24px; color:#5aafa5; line-height:1; flex-shrink:0; }
+.sec-cta .cta-title { font-size:14px; font-weight:600; color:#fff; letter-spacing:0.02em; }
+.sec-cta .cta-sub   { font-size:11px; color:#888; margin-top:5px; line-height:1.5; }
 
 /* Corporations list — one row per entrepreneur corp HQ'd in this nation.
    Logo (industry-coloured 2-letter badge) · name + sector · listing pill ·
@@ -235,10 +216,6 @@
   .jump-nav button { font-size:9px; padding:6px 10px; letter-spacing:0.06em; }
   .sec summary { padding:12px 14px; font-size:11px; letter-spacing:0.06em; }
   .sec-body { padding:14px; }
-  .nat-row { grid-template-columns:1fr; gap:10px; }
-  .nat-card { min-height:auto; }
-  .nat-card__value { font-size:24px; }
-  .nat-body__head { font-size:12px; }
   .corp-row, .corp-head { grid-template-columns:36px 1fr auto; gap:10px; }
   .corp-row { padding:10px 2px; }
   .corp-head .col-type, .corp-head .col-ceo,
@@ -310,7 +287,13 @@
   <details id="sec-nation" class="sec">
     <summary>National Characteristics</summary>
     <div class="sec-body" id="sec-nation-body">
-      <div class="sec-empty">Loading…</div>
+      <a class="sec-cta" href="politician-characteristics.html">
+        <div class="cta-arrow">&rsaquo;</div>
+        <div>
+          <div class="cta-title">Open National Characteristics</div>
+          <div class="cta-sub">Stability, GDP growth, treasury, debt, and civil freedoms — full prose &amp; tier analysis on its own page.</div>
+        </div>
+      </a>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
@@ -405,18 +388,16 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { industryLabel, ownerDisplayName, fmtValuation, safeHexColor, factionInitials, tickToYear } from './js/utils.js';
+import { industryLabel, ownerDisplayName, fmtValuation, safeHexColor, factionInitials, tickToYear, fmtMoney } from './js/utils.js';
+import { STABILITY_TIERS, CIVIL_FREEDOMS_TIERS, pickTier } from './js/game/national-characteristics.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 import { fetchCorpBookAggregates } from './js/corp-book-value.js';
 
-// Tier helpers — the scored stat rows in the top card and the prose cards
-// in the National Characteristics body both read from the same tier arrays
-// declared further down (STABILITY_TIERS / CIVIL_FREEDOMS_TIERS). The top
-// row uses tier.color for the bar fill and tier.label for the sub-line;
-// the body uses lead/accent/tail for the prose. One source per stat.
-function pickTier(tiers, value) {
-  return tiers.find(t => value >= t.min) || tiers[tiers.length - 1];
-}
+// pickTier + the tier arrays live in js/game/national-characteristics.js
+// so the dedicated politician-characteristics page reads from the same
+// source. The brief stat strip on the nation card imports STABILITY_TIERS
+// + CIVIL_FREEDOMS_TIERS from there; the full prose body lives entirely
+// on the dedicated page.
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 function escAttr(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
@@ -480,14 +461,8 @@ function formatPopulation(n) {
 
 // Compact money formatter for the politician-side GDP / Budget / Debt cells.
 // Trims trailing .0 so a round number reads "$441B", not "$441.00B".
-function fmtMoney(n) {
-  const abs = Math.abs(Number(n) || 0);
-  const sign = n < 0 ? '-' : '';
-  if (abs >= 1e9) return sign + '$' + (abs / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
-  if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
-  if (abs >= 1e3) return sign + '$' + Math.round(abs / 1e3) + 'k';
-  return sign + '$' + Math.round(abs);
-}
+// fmtMoney lives in utils.js — both this page and the dedicated
+// National Characteristics page read it through there.
 
 function govTypeLabel(govType) {
   if (!govType) return '';
@@ -744,195 +719,8 @@ function renderCard(n, pm) {
       <div class="sub">${escHtml(tier.label)}</div>
     </div>`;
   }).join('');
-
-  renderNationalCharacteristics(n);
 }
 
-// National Characteristics — tier definitions per stat. Each tier carries
-// the threshold (min value for score stats, min ratio for money stats), a
-// short label for the card bullet, a color, and a three-part body:
-//   lead   — bold opening fragment of the sentence
-//   accent — the colored phrase (uses the tier color)
-//   tail   — regular-weight prose continuation
-// The renderer composes <strong>{lead}</strong><span class=accent>{accent}</span>{tail}.
-// Adding tiers? Highest threshold first; the matcher walks top-down.
-const TIER_COLOR = {
-  green:    '#4ec98a',
-  teal:     '#5aafa5',
-  amber:    '#c8a64e',
-  orange:   '#d68a4e',
-  red:      '#d97070',
-  deepRed:  '#a85050',
-};
-
-const STABILITY_TIERS = [
-  { min: 81, label: 'Firm',     color: TIER_COLOR.green,
-    lead: 'The state functions as designed.',
-    accent: ' Politics happens in chambers, not in the streets',
-    tail: ' — protests stay civic, the security forces are visible without being feared, and government decisions translate smoothly into action.' },
-  { min: 61, label: 'Strained', color: TIER_COLOR.teal,
-    lead: 'Tensions are visible.',
-    accent: ' Protests draw crowds; commentators speak of "this difficult moment."',
-    tail: ' Things still work — but everyone can feel them being tested.' },
-  { min: 41, label: 'Unrest',   color: TIER_COLOR.amber,
-    lead: 'Riots break out in the cities.',
-    accent: ' Curfews come and go.',
-    tail: ' Going out after dark is no longer something one does without thinking.' },
-  { min: 21, label: 'Crisis',   color: TIER_COLOR.red,
-    lead: 'Authority is contested.',
-    accent: ' The provinces don’t always answer the capital.',
-    tail: ' Whole neighborhoods are no-go zones; the security forces are exhausted, divided, or unreliable.' },
-  { min:  0, label: 'Collapse', color: TIER_COLOR.deepRed,
-    lead: 'Anarchy.',
-    accent: ' The regime exists on paper.',
-    tail: ' Power belongs to whoever holds the street, and that changes block by block.' },
-];
-
-const GDP_GROWTH_TIERS = [
-  { min: 81, label: 'Booming',    color: TIER_COLOR.green,
-    lead: 'The economy roars.',
-    accent: ' Construction cranes crowd the skyline,',
-    tail: ' hiring signs are in every window, and the press writes admiring features about "the [name] miracle."' },
-  { min: 61, label: 'Healthy',    color: TIER_COLOR.teal,
-    lead: 'The economy is doing what it’s supposed to.',
-    accent: ' Jobs are added, prices behave,',
-    tail: ' and most people end the year a little better off than they began.' },
-  { min: 41, label: 'Stagnant',   color: TIER_COLOR.amber,
-    lead: 'The numbers wobble around the line.',
-    accent: ' Some quarters up, some down.',
-    tail: ' People stop expecting things to get better and start expecting them to stay the same.' },
-  { min: 21, label: 'Recession',  color: TIER_COLOR.red,
-    lead: 'The economy is shrinking.',
-    accent: ' Layoffs make the news weekly;',
-    tail: ' shops close; the property pages are full of foreclosures.' },
-  { min:  0, label: 'Depression', color: TIER_COLOR.deepRed,
-    lead: 'Whole industries die.',
-    accent: ' Banks fail or are nationalized.',
-    tail: ' Lines form for bread and for jobs that don’t exist.' },
-];
-
-const CIVIL_FREEDOMS_TIERS = [
-  { min: 81, label: 'Free',       color: TIER_COLOR.green,
-    lead: 'Speech and assembly are',
-    accent: ' fully protected and routinely exercised.',
-    tail: ' Journalists publish without permission, demonstrations are a normal feature of public life, and the courts back the citizen against the state.' },
-  { min: 61, label: 'Permissive', color: TIER_COLOR.teal,
-    lead: 'Most criticism is tolerated.',
-    accent: ' Dissent is legal, if sometimes uncomfortable.',
-    tail: ' Major outlets operate freely; small frictions exist but the basic freedoms hold.' },
-  { min: 41, label: 'Restricted', color: TIER_COLOR.red,
-    lead: 'Speech and assembly are',
-    accent: ' tolerated only where they do not threaten the state.',
-    tail: ' Critical journalists are warned, then prosecuted; protests need permits the authorities can refuse. Dissenters operate with one eye over their shoulder.' },
-  { min: 21, label: 'Repressed',  color: TIER_COLOR.deepRed,
-    lead: 'The press is licensed.',
-    accent: ' Independent reporting is criminal.',
-    tail: ' Public protest is broken up; the prisons hold writers, lawyers, and clergy who said the wrong thing in the wrong room.' },
-  { min:  0, label: 'Closed',     color: TIER_COLOR.deepRed,
-    lead: 'There is no public criticism of the regime.',
-    accent: ' All media is state-owned or state-approved.',
-    tail: ' Speaking against power, even privately, can mean disappearance.' },
-];
-
-// Budget tiers — keyed on budget/GDP ratio so flush/strained read consistently
-// across nations of different scale. A nation with no GDP falls to the bottom.
-const BUDGET_TIERS = [
-  { min: 0.20, label: 'Surplus',  color: TIER_COLOR.green,
-    lead: 'The treasury is',
-    accent: ' flush.',
-    tail: ' There is room for ambitious policy — new programmes, rapid response to crises, and long-term investment without immediate austerity.' },
-  { min: 0.10, label: 'Healthy',  color: TIER_COLOR.teal,
-    lead: 'The treasury is',
-    accent: ' comfortable.',
-    tail: ' Ministries are funded, capital projects move on schedule, and the finance minister sleeps soundly.' },
-  { min: 0.03, label: 'Tight',    color: TIER_COLOR.amber,
-    lead: 'Money is',
-    accent: ' tight.',
-    tail: ' Every spending request is contested. Ministers are asked to find efficiencies before new line items are approved.' },
-  { min: 0,    label: 'Strained', color: TIER_COLOR.red,
-    lead: 'The treasury is',
-    accent: ' nearly empty.',
-    tail: ' Payroll waits on revenue receipts; capital projects are deferred; the bond market watches.' },
-];
-
-// Debt tiers — keyed on debt/GDP ratio. Higher ratio is worse, so the bands
-// step down from Unsustainable through Trivial.
-const DEBT_TIERS = [
-  { min: 1.50, label: 'Unsustainable', color: TIER_COLOR.deepRed,
-    lead: 'Debt has',
-    accent: ' overrun the economy.',
-    tail: ' Service costs crowd out essential spending; restructuring or default is on the table.' },
-  { min: 0.90, label: 'Crushing',      color: TIER_COLOR.red,
-    lead: 'Debt service is',
-    accent: ' eating the budget.',
-    tail: ' Each new bond auction tightens the noose; rating agencies are circling.' },
-  { min: 0.50, label: 'Heavy',         color: TIER_COLOR.orange,
-    lead: 'Debt is',
-    accent: ' a real constraint.',
-    tail: ' Lenders demand higher yields. A bad year would force unwelcome trade-offs.' },
-  { min: 0.20, label: 'Manageable',    color: TIER_COLOR.amber,
-    lead: 'Debt is',
-    accent: ' sizeable but serviceable',
-    tail: ' — comparable to a year’s revenue. Bondholders are calm. Continued growth keeps it in proportion; a downturn would make it bite.' },
-  { min: 0,    label: 'Trivial',       color: TIER_COLOR.green,
-    lead: 'Debt is',
-    accent: ' a non-issue.',
-    tail: ' The state could borrow heavily at favourable rates if it ever needed to.' },
-];
-
-// Baseline italic description per stat — the "what does this number mean"
-// line that sits under the prose. Same text regardless of tier.
-const STAT_DESCRIPTIONS = {
-  stability:      'how firmly the state holds the public’s compliance. High stability means smooth governance and an institutional order that goes unchallenged; low stability means brewing dissent and the threat of revolt.',
-  gdp_growth:     'the year-on-year change in national output. Sustained growth funds wages, taxes, and ambition; contraction hollows out budgets, payrolls, and public mood.',
-  budget:         'the treasury balance — cash on hand for ministries, programmes, and emergencies. A flush budget funds ambitious policy and rapid response; a thin budget forces austerity and crowds out long-term investment.',
-  debt:           'total accumulated borrowing the nation owes. Manageable debt is normal for a developed economy; excessive debt service crowds out spending and raises the risk of default.',
-  civil_freedoms: 'how freely citizens may speak, organise, protest, and dissent without state reprisal. High scores indicate open civic life; low scores signal censorship, surveillance, and risk to dissenters.',
-};
-
-// National Characteristics body — one tier-colored card per stat with a
-// prose explanation that shifts as the value moves between bands. Reads the
-// same politician_* columns the stat row at the top of the card does; both
-// renderers move together.
-function renderNationalCharacteristics(n) {
-  const body = document.getElementById('sec-nation-body');
-  if (!body) return;
-
-  const stabVal = Math.max(0, Math.min(100, Math.round(Number(n.politician_stability)      || 0)));
-  const gdpgVal = Math.max(0, Math.min(100, Math.round(Number(n.politician_gdp_growth)     || 0)));
-  const civVal  = Math.max(0, Math.min(100, Math.round(Number(n.politician_civil_freedoms) || 0)));
-  const gdpDol  = Number(n.politician_gdp)    || 0;
-  const bgtDol  = Number(n.politician_budget) || 0;
-  const debtDol = Number(n.politician_debt)   || 0;
-  const bgtRatio  = gdpDol > 0 ? bgtDol  / gdpDol : 0;
-  const debtRatio = gdpDol > 0 ? debtDol / gdpDol : 0;
-
-  // Allow the Booming GDP Growth tier to name the nation in its flavor line.
-  const gdpgTier = { ...pickTier(GDP_GROWTH_TIERS, gdpgVal) };
-  gdpgTier.tail  = gdpgTier.tail.replaceAll('[name]', n.name || 'national');
-
-  const rows = [
-    { label: 'Stability',      key: 'stability',      value: String(stabVal), scale: '/ 100', tier: pickTier(STABILITY_TIERS,      stabVal) },
-    { label: 'GDP Growth',     key: 'gdp_growth',     value: String(gdpgVal), scale: '/ 100', tier: gdpgTier },
-    { label: 'Budget',         key: 'budget',         value: fmtMoney(bgtDol),  scale: '',     tier: pickTier(BUDGET_TIERS,        bgtRatio) },
-    { label: 'Debt',           key: 'debt',           value: fmtMoney(debtDol), scale: '',     tier: pickTier(DEBT_TIERS,          debtRatio) },
-    { label: 'Civil Freedoms', key: 'civil_freedoms', value: String(civVal),  scale: '/ 100', tier: pickTier(CIVIL_FREEDOMS_TIERS, civVal) },
-  ];
-
-  body.innerHTML = `<div class="nat-list">${rows.map(r => `
-    <div class="nat-row" style="--tier:${r.tier.color};">
-      <div class="nat-card">
-        <div class="nat-card__label">${escHtml(r.label)}</div>
-        <div class="nat-card__value">${escHtml(r.value)}${r.scale ? `<span class="nat-card__scale">${escHtml(r.scale)}</span>` : ''}</div>
-        <div class="nat-card__tier">${escHtml(r.tier.label)}</div>
-      </div>
-      <div class="nat-body">
-        <div class="nat-body__head"><strong>${escHtml(r.tier.lead)}</strong><span class="nat-body__accent">${escHtml(r.tier.accent)}</span>${escHtml(r.tier.tail)}</div>
-        <div class="nat-body__desc"><em>${escHtml(r.label)} — ${escHtml(STAT_DESCRIPTIONS[r.key])}</em></div>
-      </div>
-    </div>`).join('')}</div>
-  <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>`;
-}
 
 // Corporations section — every entrepreneur corp HQ'd in this nation.
 // Logo (industry-colored 2-letter badge) · name + sector · listing pill ·
