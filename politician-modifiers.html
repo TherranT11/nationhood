@@ -106,6 +106,18 @@ import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 
+// Severity chip text. The DB schema stores 'green' / 'yellow' / 'red'
+// (modifier_templates.severity CHECK constraint, plus all existing
+// rows); the player-facing surface renders the design's preferred
+// "positive / neutral / negative" framing on the card. Same colour
+// keying — only the label changes. Unknown severities fall back to
+// the raw key so a future schema add lands visibly rather than blank.
+const SEVERITY_LABELS = {
+  green:  'Positive',
+  yellow: 'Neutral',
+  red:    'Negative',
+};
+
 // Fixed category order — matches the CHECK constraint on
 // modifier_templates.category. Sections render in this order;
 // categories with zero active modifiers are omitted entirely.
@@ -232,7 +244,7 @@ function renderCard(m) {
     `<div class="mod-card" data-sev="${sev}">` +
       `<div class="mod-card__top">` +
         `<div class="mod-card__name">${escapeHtml(m.name)}</div>` +
-        `<div class="mod-card__sev">${sev}</div>` +
+        `<div class="mod-card__sev">${escapeHtml(SEVERITY_LABELS[sev] || sev)}</div>` +
       `</div>` +
       (desc ? `<div class="mod-card__desc">${escapeHtml(desc)}</div>` : '') +
       effectsHtml +
