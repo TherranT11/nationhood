@@ -534,7 +534,7 @@ async function init() {
       const [natRes, pmRes] = await Promise.all([
         _supabase.from('nations')
           .select(`
-            id, name, government_type, capital,
+            id, name, government_type, capital, total_seats,
             head_of_state_title, head_of_state_first_name, head_of_state_last_name,
             population, dynasty_name,
             politician_gdp, politician_budget, politician_debt,
