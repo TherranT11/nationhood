@@ -887,23 +887,16 @@ function renderCorpRow(c) {
   </div>`;
 }
 
-// Government & Politics — parliament block for parliamentary nations,
-// crown-rule notice for Absolute Monarchies. Reads movement_party rows
-// in the politician's nation (the same source the Movements page reads),
-// so seat counts and governing/opposition status stay in lockstep across
-// surfaces. Soft-fails to an error empty state on query failure.
+// Government & Politics — gate is "no parties" rather than gov_type,
+// since Absolute Monarchies still have parties + a chamber, they just
+// don't run elections (seats are set by the throne rather than the
+// ballot box). Same parliament UI for any nation with parties seated;
+// the only short-circuit now is the early empty state when no parties
+// exist.
 async function renderGovernment(n, pm, myPartyId) {
   const body = document.getElementById('sec-govt-body');
   if (!body) return;
   const footer = '<div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>';
-
-  if (n.government_type === 'Absolute Monarchy') {
-    body.innerHTML = `<div class="govt-empty">
-      <div class="head">There is no <span class="serif">parliament</span> in ${escHtml(n.name)}.</div>
-      <div class="note">Political authority flows from the throne. The monarch governs through ministers of their choosing; parties are prohibited, there are no elections, no constituencies, and no chamber to seat them.</div>
-    </div>` + footer;
-    return;
-  }
 
   try {
     const [partiesRes, adminRes] = await Promise.all([
@@ -923,6 +916,15 @@ async function renderGovernment(n, pm, myPartyId) {
     ]);
     if (partiesRes.error) throw partiesRes.error;
     const parties = partiesRes.data || [];
+
+    if (parties.length === 0) {
+      body.innerHTML = `<div class="govt-empty">
+        <div class="head">No <span class="serif">parties</span> in ${escHtml(n.name)}.</div>
+        <div class="note">When parties register they'll appear here.</div>
+      </div>` + footer;
+      return;
+    }
+
     const totalSeats = Math.max(0, Number(n.total_seats) || 0);
     const majority   = totalSeats > 0 ? Math.floor(totalSeats / 2) + 1 : 0;
 
@@ -955,9 +957,7 @@ async function renderGovernment(n, pm, myPartyId) {
       <div class="chamber-wrap">${renderChamberArc(parties, totalSeats)}</div>
       ${renderGovStrip(coalition, pmParty, opposition, pm, totalSeats, majority, pmYear)}
       <div class="parties-lab">Parties in the Assembly &middot; ordered by seat share</div>
-      ${parties.length
-        ? parties.map(p => renderPartyRow(p, totalSeats, pmParty, coalitionIds, myPartyId)).join('')
-        : '<div class="sec-empty">No parties have been seated yet.</div>'}
+      ${parties.map(p => renderPartyRow(p, totalSeats, pmParty, coalitionIds, myPartyId)).join('')}
     ` + footer;
   } catch (err) {
     console.error('politician-nation: government fetch failed', err);
