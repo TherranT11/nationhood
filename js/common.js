@@ -1279,7 +1279,10 @@ export async function mountWarBanner(nation) {
 
     const banner = document.createElement('div');
     banner.id = 'war-banner';
-    banner.style.cssText = 'background:#7a1f1f;color:#f5e9e9;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;padding:8px 16px;text-align:center;border-bottom:1px solid #a33;letter-spacing:0.03em;display:flex;flex-direction:column;gap:2px;align-items:center;';
+    // flex:0 0 auto pins the banner to content height — dashboard.css:186
+    // gives every unnamed direct body child flex:1, which would otherwise
+    // stretch the banner to fill the entire below-topbar viewport.
+    banner.style.cssText = 'flex:0 0 auto;background:#7a1f1f;color:#f5e9e9;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;padding:8px 16px;text-align:center;border-bottom:1px solid #a33;letter-spacing:0.03em;display:flex;flex-direction:column;gap:2px;align-items:center;';
     for (const r of rels) {
         const enemyId = r.nation_a_id === nation.id ? r.nation_b_id : r.nation_a_id;
         const enemy = nameById.get(enemyId) || 'a neighbouring nation';
