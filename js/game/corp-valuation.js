@@ -33,28 +33,6 @@
 //      shares_outstanding) — see computeEntrepreneurValuation below
 //      for why that was retired in favour of book value.
 
-// Sell-side (liquidation) value of a held public-stock position under
-// corp_trade's 1%-per-share flat-fill LINEAR curve (20270199). A single trade
-// fills the whole quantity at the current price and moves new_price = P·(1
-// − 0.01·N), capped at N = 99 (anything ≥ 100 would drive new_price ≤ 0 per
-// 20270199:132-136). To liquidate S shares, greedy 99-per-trade is optimal
-// because the slippage term is symmetric in trade sizes.
-//
-// Closed form with k = ⌊S/99⌋, r = S − 99·k:
-//   liquidation(S, P) = 100·P · (1 − 0.01^k · (1 − 0.01·r))
-//   Sanity: S=1 → P; S=99 → 99·P; S=100 → 99.01·P; S→∞ → 100·P (asymptote).
-//
-// Mirror of SQL corp_share_liquidation_value (latest body in 20270367). Both
-// MUST move together if corp_trade's v_pct ever changes off 0.01.
-export function corpShareLiquidationValue(shares, price) {
-    const s = Number(shares) || 0;
-    const p = Number(price) || 0;
-    if (s <= 0 || p <= 0) return 0;
-    const k = Math.floor(s / 99);
-    const r = s - 99 * k;
-    return 100 * p * (1 - Math.pow(0.01, k) * (1 - 0.01 * r));
-}
-
 // National HQ value/quality formulas. The HQ is now persisted as a
 // real corp_properties row at corp founding (see corp-nation-select.html)
 // and backfilled for existing corps via
