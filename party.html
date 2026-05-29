@@ -278,7 +278,7 @@ async function init() {
   // typo'd politician_party_id on a different faction kind can't leak in.
   const [partyRes, membersRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_name, abbreviation, seats, popularity_pct, party_color, party_description, leader_first_name, leader_last_name, leader_age, deputy_first_name, deputy_last_name, deputy_age, whip_first_name, whip_last_name, whip_age, founded_tick, nation_id, nation:nations!nation_id(id, name, total_seats, government_type)')
+      .select('id, faction_name, abbreviation, seats, popularity_pct, party_color, party_description, leader_first_name, leader_last_name, leader_age, deputy_first_name, deputy_last_name, deputy_age, whip_first_name, whip_last_name, whip_age, founded_tick, nation_id, nation:nations!nation_id(id, name, population, total_seats, government_type)')
       .eq('id', partyId)
       .eq('faction_type', 'movement_party')
       .is('abandoned_at', null)
@@ -354,7 +354,8 @@ function render(party, members) {
           isGov ? `holds majority (${majority} needed)` : (totalSeats > 0 ? `${majority - seats} short of majority` : ''))}
         ${statCell('Founded', party.founded_tick != null ? String(tickToYear(party.founded_tick)) : '—',
           party.founded_tick != null ? `tick ${party.founded_tick}` : 'unknown')}
-        ${statCell('Members', String(members.length), `${members.length === 1 ? 'politician' : 'politicians'} on file`)}
+        ${statCell('Members', fmtMembers(membershipCount(members.length, party.nation?.population)),
+          `${members.length === 1 ? '1 politician' : `${members.length} politicians`} on file`)}
       </div>
     </div>`;
 
@@ -489,6 +490,29 @@ function formatChatTime(iso) {
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
   return `${hh}:${mm}`;
+}
+
+// Card-carrying membership count. Rule: each politician on file represents
+// 3% of the nation's population in members; clamped at the full population
+// so very-large parties don't claim more members than there are humans.
+const MEMBERS_PER_POLITICIAN_PCT = 0.03;
+function membershipCount(politicianCount, population) {
+  const n = Math.max(0, Number(politicianCount) || 0);
+  const pop = Math.max(0, Number(population) || 0);
+  return Math.round(Math.min(pop, n * MEMBERS_PER_POLITICIAN_PCT * pop));
+}
+
+// Compact number for the stats strip: 1.2M / 300K / 850 / etc. Single-decimal
+// precision below 10K / 10M; round to integer above so the digit-count stays
+// stable across the four stat cells. Threshold boundaries account for the
+// scaled-value rounding so 999500..999999 reads "1M" instead of "1000K".
+function fmtMembers(n) {
+  const v = Math.round(Number(n) || 0);
+  if (v >= 9_950_000) return Math.round(v / 1e6) + 'M';
+  if (v >=   999_500) return (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (v >=     9_950) return Math.round(v / 1e3) + 'K';
+  if (v >=       999) return (v / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(v);
 }
 
 function statCell(label, value, detail) {
