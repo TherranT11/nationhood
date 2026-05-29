@@ -640,15 +640,20 @@ async function init() {
   // Active race row (if any) — drives the Election Candidate rung's held
   // state. Read directly via PostgREST; the RPCs are write paths and
   // returning the full state from get-offer would conflate two surfaces.
+  // Only the four fields the rung's descIfHeld actually renders are
+  // pulled — everything else stays in the DB until a surface needs it.
   let activeRace = null;
   try {
-    const { data } = await _supabase
+    const { data, error } = await _supabase
       .from('politician_active_election')
-      .select('race_tier, district, opp_first, opp_last, opp_party_name, win_odds_pct, stake_win, stake_lose, committed_tick, resolve_tick')
+      .select('district, opp_first, opp_last, resolve_tick')
       .eq('politician_id', ctx.faction.id)
       .maybeSingle();
+    if (error) console.error('politician-career: active_election fetch failed', error);
     activeRace = data || null;
-  } catch (_) { /* non-fatal */ }
+  } catch (err) {
+    console.error('politician-career: active_election fetch threw', err);
+  }
 
   render(ctx.faction, ctx.shard, ctx.nation);
   if (resolution) renderResolutionBanner(resolution);
@@ -862,10 +867,8 @@ function bindRungActions(ctx) {
 // the consumed action gate.
 
 let emSelectedTier = 'community';
-let emOpenCtx = null;
 
 function openElectionModal(ctx) {
-  emOpenCtx = ctx;
   const modal = document.getElementById('electionModal');
   if (!modal) return;
   // Subtitle = party name affiliation. Falls back to a generic line if the
@@ -983,18 +986,16 @@ function renderOptionCard(tier, race, eyebrow, titleLead, blurb, resolveTicks) {
   const odds = Number(race.odds_pct) || 0;
   const oddsClass = odds >= 60 ? 'fav' : (odds >= 40 ? 'even' : 'long');
   const oppFull = `${race.opp_first || ''} ${race.opp_last || ''}`.trim() || '—';
-  const titleSerif = tier === 'community' ? race.district : race.district;
   const statLabel  = tier === 'community' ? 'Credibility' : 'Charisma';
   const isParl     = tier === 'parliament';
   const partyName  = isParl ? (race.opp_party_name || 'Independent') : 'Independent';
-  const partyAbbr  = isParl ? (race.opp_party_abbr || (race.opp_party_name ? race.opp_party_name.slice(0, 2).toUpperCase() : 'IND')) : 'IND';
   const partyColor = isParl ? race.opp_party_color : null;
-  const safeHex    = /^#[0-9a-f]{6}$/i;
-  // Opponent badge uses the party's color when safe; falls back to a
-  // neutral steel for Independents and any unsafe hex.
-  const badgeBg    = safeHex.test(partyColor || '') ? partyColor : '#101010';
-  const badgeFg    = safeHex.test(partyColor || '') ? '#fff' : '#9a9a9a';
-  const badgeBorder = safeHex.test(partyColor || '') ? partyColor : 'rgba(255,255,255,0.07)';
+  // Opponent badge uses the party's color when it's a safe hex; falls
+  // back to neutral steel for Independents and any unsafe value.
+  const hasColor   = /^#[0-9a-f]{6}$/i.test(partyColor || '');
+  const badgeBg    = hasColor ? partyColor : '#101010';
+  const badgeFg    = hasColor ? '#fff' : '#9a9a9a';
+  const badgeBorder = hasColor ? partyColor : 'rgba(255,255,255,0.07)';
   const stakeWin   = Number(race.stake_win)  || 0;
   const stakeLose  = Number(race.stake_lose) || 0;
   const winValTxt  = `+${stakeWin} Influence`;
@@ -1005,7 +1006,7 @@ function renderOptionCard(tier, race, eyebrow, titleLead, blurb, resolveTicks) {
     <div class="em-opt ${tier}" data-tier="${tier}">
       <div class="em-opt-head">
         <div class="em-opt-eyebrow">${escHtml(eyebrow)}</div>
-        <div class="em-opt-title">${escHtml(titleLead)} · <span class="serif">${escHtml(titleSerif || '')}</span></div>
+        <div class="em-opt-title">${escHtml(titleLead)} · <span class="serif">${escHtml(race.district || '')}</span></div>
         <div class="em-opt-blurb">${escHtml(blurb)}</div>
       </div>
       <div class="em-opt-detail">
