@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Politician — National Characteristics</title>
+<title>Politician — National Modifiers</title>
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
 .content { padding:32px 24px 24px; }
@@ -23,32 +23,9 @@
   font-family:Georgia,'Times New Roman',serif; font-style:italic; }
 .page-sub { font-size:13px; color:#888; margin-top:8px; letter-spacing:0.02em; }
 
-/* National Characteristics body — same styling rules the hub uses so the
-   tier card / prose / italic-description trio reads identically. */
-.nat-list { display:flex; flex-direction:column; }
-.nat-row  { display:grid; grid-template-columns:170px 1fr; gap:24px;
-  padding:14px 0; align-items:start;
-  border-bottom:0.5px solid rgba(255,255,255,0.04); }
-.nat-row:last-child { border-bottom:none; }
-
-.nat-card { background:#0e1212; border:1px solid var(--tier, #5aafa5);
-  border-radius:6px; padding:12px 14px; min-height:96px; }
-.nat-card__label { font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
-  color:var(--tier, #5aafa5); font-weight:600; margin-bottom:8px; }
-.nat-card__value { font-size:30px; font-weight:600; color:#fff;
-  font-family:monospace; line-height:1.05; letter-spacing:0.01em; }
-.nat-card__scale { font-size:11px; color:#666; margin-left:4px; font-family:monospace; }
-.nat-card__tier  { display:flex; align-items:center; gap:6px; margin-top:10px;
-  font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
-  color:var(--tier, #5aafa5); font-weight:600; }
-.nat-card__tier::before { content:'●'; font-size:8px; line-height:1; }
-
-.nat-body { padding-top:2px; }
-.nat-body__head   { font-size:13px; color:#d4d4d4; line-height:1.6; }
-.nat-body__head strong { color:#fff; font-weight:600; }
-.nat-body__accent { color:var(--tier, #5aafa5); font-weight:500; }
-.nat-body__desc   { font-style:italic; font-size:11px; color:#666;
-  line-height:1.55; margin-top:10px; }
+.mod-empty { padding:80px 20px; text-align:center; color:#5a5a5a;
+  font-size:13px; line-height:1.55; max-width:520px; margin:0 auto; }
+.mod-empty strong { color:#888; font-weight:600; }
 
 .loading { font-family:monospace; font-size:11px; color:#4a4940;
   text-align:center; padding:80px 20px; }
@@ -58,10 +35,6 @@
 @media (max-width:700px) {
   .content { padding:20px 14px 16px; }
   .page-title { font-size:24px; }
-  .nat-row { grid-template-columns:1fr; gap:10px; }
-  .nat-card { min-height:auto; }
-  .nat-card__value { font-size:24px; }
-  .nat-body__head { font-size:12px; }
 }
 </style>
 </head>
@@ -73,27 +46,31 @@
   <div class="crumb">
     <a href="politician-nation.html">NATION</a>
     <span class="sep">&rsaquo;</span>
-    <span class="here">NATIONAL CHARACTERISTICS</span>
+    <span class="here">NATIONAL MODIFIERS</span>
   </div>
   <div class="page-head">
-    <div class="page-eyebrow" id="ph-eyebrow">— Sovereign Profile —</div>
-    <div class="page-title">National <span style="font-style:normal;font-family:inherit;color:#fff;">Characteristics</span></div>
+    <div class="page-eyebrow" id="ph-eyebrow">— Active Situations —</div>
+    <div class="page-title">National <span style="font-style:normal;font-family:inherit;color:#fff;">Modifiers</span></div>
     <div class="page-sub" id="ph-sub">—</div>
   </div>
-  <div id="nat-host"></div>
+  <div id="mod-host">
+    <div class="mod-empty">
+      <strong>No modifiers active.</strong><br>
+      Modifiers describe characterizing situations a nation is in — Green, Yellow, or Red — and surface here when the nation's stats match their trigger conditions. None match right now.
+    </div>
+  </div>
 </div>
 
 <div id="loading" class="loading">LOADING...</div>
 
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { renderNationalCharacteristics } from './js/game/national-characteristics.js';
 
 async function init() {
   let ctx = null;
   try { ctx = await bootstrapPolitician('nation'); }
   catch (err) {
-    console.error('politician-characteristics: bootstrap failed', err);
+    console.error('politician-modifiers: bootstrap failed', err);
     document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
     return;
   }
@@ -105,10 +82,11 @@ async function init() {
     return;
   }
 
-  document.title = `${nation.name} — National Characteristics`;
+  document.title = `${nation.name} — National Modifiers`;
   document.getElementById('ph-sub').textContent =
     `${nation.name}${nation.capital ? ` · capital ${nation.capital}` : ''}`;
-  renderNationalCharacteristics(document.getElementById('nat-host'), nation);
+  // Modifier rendering lands in commit 3 — body stays on the empty
+  // state placeholder until then.
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';

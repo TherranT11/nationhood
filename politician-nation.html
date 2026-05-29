@@ -83,7 +83,7 @@
   display:inline-flex; align-items:center; gap:6px; }
 .back-to-top:hover { color:#5aafa5; border-color:rgba(90,175,165,0.4); }
 
-/* National Characteristics is its own page (politician-characteristics.html);
+/* National Modifiers is its own page (politician-modifiers.html);
    the section body here just holds a CTA card linking to it. */
 .sec-cta { display:flex; align-items:center; gap:18px; padding:18px 20px;
   background:#0e1212; border:0.5px solid rgba(90,175,165,0.25); border-radius:6px;
@@ -285,13 +285,13 @@
   </nav>
 
   <details id="sec-nation" class="sec">
-    <summary>National Characteristics</summary>
+    <summary>National Modifiers</summary>
     <div class="sec-body" id="sec-nation-body">
-      <a class="sec-cta" href="politician-characteristics.html">
+      <a class="sec-cta" href="politician-modifiers.html">
         <div class="cta-arrow">&rsaquo;</div>
         <div>
-          <div class="cta-title">Open National Characteristics</div>
-          <div class="cta-sub">Stability, GDP growth, treasury, debt, and civil freedoms — full prose &amp; tier analysis on its own page.</div>
+          <div class="cta-title">Open National Modifiers</div>
+          <div class="cta-sub">Active situations characterizing the nation &mdash; Green, Yellow, and Red modifiers triggered by current stat levels.</div>
         </div>
       </a>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
@@ -394,10 +394,10 @@ import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 import { fetchCorpBookAggregates } from './js/corp-book-value.js';
 
 // pickTier + the tier arrays live in js/game/national-characteristics.js
-// so the dedicated politician-characteristics page reads from the same
-// source. The brief stat strip on the nation card imports STABILITY_TIERS
-// + CIVIL_FREEDOMS_TIERS from there; the full prose body lives entirely
-// on the dedicated page.
+// (kept under that filename for now — the stat-strip on this page is its
+// only remaining consumer; the National Modifiers page no longer renders
+// per-stat prose). Imports STABILITY_TIERS + CIVIL_FREEDOMS_TIERS for the
+// brief stat strip on the nation card.
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 function escAttr(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
