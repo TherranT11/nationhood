@@ -523,34 +523,23 @@ async function init() {
   }
   if (!ctx) return;
 
-  // Bootstrap already fetched a thin nation row (id, name, flag_url, profile flag).
-  // Refetch with the full surface we need for the brief card, plus the active
-  // Prime Minister row for the Head-of-Gov't cell.
-  let nation = null;
+  // Nation comes from ctx — bootstrap already fetched the full surface
+  // (politician-topbar select is the superset for all politician pages),
+  // so this page just reads it. Only the page-specific PM ministry
+  // lookup needs its own fetch.
+  const nation = ctx.nation;
   let pmMinistry = null;
   if (ctx.faction?.nation_id) {
-    const nid = ctx.faction.nation_id;
     try {
-      const [natRes, pmRes] = await Promise.all([
-        _supabase.from('nations')
-          .select(`
-            id, name, government_type, capital, total_seats,
-            head_of_state_title, head_of_state_first_name, head_of_state_last_name,
-            population, dynasty_name,
-            politician_gdp, politician_budget, politician_debt,
-            politician_stability, politician_civil_freedoms, politician_gdp_growth,
-            nation_profiles(flag_url, official_name, motto, overview, founded_year)
-          `)
-          .eq('id', nid).maybeSingle(),
-        _supabase.from('ministries')
-          .select('minister_first_name, minister_last_name, party_id, factions(faction_name, leader_first_name, leader_last_name)')
-          .eq('nation_id', nid).eq('ministry_key', 'prime_minister').eq('is_active', true).maybeSingle(),
-      ]);
-      if (natRes.error) throw natRes.error;
-      nation = natRes.data;
-      if (!pmRes.error) pmMinistry = pmRes.data;  // PM is optional flair — soft-fail.
+      const { data, error } = await _supabase.from('ministries')
+        .select('minister_first_name, minister_last_name, party_id, factions(faction_name, leader_first_name, leader_last_name)')
+        .eq('nation_id', ctx.faction.nation_id)
+        .eq('ministry_key', 'prime_minister')
+        .eq('is_active', true)
+        .maybeSingle();
+      if (!error) pmMinistry = data;  // PM is optional flair — soft-fail.
     } catch (err) {
-      console.error('politician-nation: nation fetch failed', err);
+      console.warn('politician-nation: PM ministry fetch failed', err);
     }
   }
 

@@ -272,15 +272,7 @@ async function init() {
   _nationId     = ctx.faction?.nation_id || null;
   _nationName   = ctx.nation?.name || '';
   _myPartyId    = ctx.faction?.politician_party_id || null;
-
-  // total_seats is part of the modal subtitle. Cheap, one-shot fetch.
-  if (_nationId) {
-    try {
-      const { data } = await _supabase.from('nations')
-        .select('total_seats').eq('id', _nationId).maybeSingle();
-      _totalSeats = Number(data?.total_seats) || 0;
-    } catch (_) { /* non-fatal */ }
-  }
+  _totalSeats   = Number(ctx.nation?.total_seats) || 0;
 
   await loadMovementParties();
   bindTabs();
