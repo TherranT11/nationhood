@@ -42,8 +42,8 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
   margin-top: 3px; line-height: 1.4; }
 .continent-tab.active .continent-tab__desc { color: var(--text-muted); }
 
-/* Nation cards — header (flag + name + gov-type badge), body (description +
-   "POLITICIAN FROM …" action line), full card click target. */
+/* Nation cards — header (flag + name + gov-type badge), body (description,
+   stat rows, Political Parties section), full card click target. */
 .nations-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
 .nation-card { background: var(--bg-2); border: 1px solid var(--border-1); cursor: pointer; transition: border-color 0.15s; }
 .nation-card:hover { border-color: var(--teal-border); }
@@ -61,8 +61,17 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 .nation-card__body { padding: 10px 12px; }
 .nation-card__desc { font-size: 11px; color: var(--text-dim); line-height: 1.5;
   margin-bottom: 8px; font-style: italic; }
-.nation-card__action { font-family: var(--font-mono); font-size: 10px; font-weight: 700;
-  color: var(--teal); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 6px; }
+.parties-section { margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,0.05); }
+.parties-section__head { font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;
+  margin-bottom: 4px; }
+.party-row { font-family: var(--font-mono); font-size: 10px;
+  color: var(--text-secondary); padding: 2px 0; line-height: 1.4; }
+.party-row__name { color: var(--text-bright, #fff); font-weight: 600; }
+.party-row__meta { color: var(--text-dim); }
+.parties-section__empty { font-family: var(--font-mono); font-size: 10px;
+  color: var(--text-dim); font-style: italic; padding: 2px 0; }
 .stat-row { display: flex; justify-content: space-between; align-items: center;
   padding: 3px 0; font-family: var(--font-mono); font-size: 10px; }
 .stat-row__label { color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -179,6 +188,7 @@ import { NATION_DESCRIPTIONS } from './js/game/nation-descriptions.js';
 
 let allNations = [];
 let politiciansByNation = {};  // nation_id → count of active politicians
+let partiesByNation = {};      // nation_id → [{name, archetype, seats, popularity_pct}], sorted seats DESC
 let currentContinent = 'Crucera';
 let selectedNation = null;
 let selectedGender = null;
@@ -199,14 +209,27 @@ async function init() {
   }
 
   try {
-    const [{ data: nations, error: natErr }, { data: shard, error: shardErr }, { data: pols, error: polErr }] = await Promise.all([
+    const [
+      { data: nations, error: natErr },
+      { data: shard,   error: shardErr },
+      { data: pols,    error: polErr },
+      { data: parties, error: partyErr },
+    ] = await Promise.all([
       _supabase.from('nations').select('id, name, continent, government_type, population, gdp, flag_url, nation_profiles(flag_url)').order('name'),
       _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
       _supabase.from('factions').select('nation_id').eq('faction_type', 'politician').is('abandoned_at', null),
+      // Movement parties feed the Political Parties section on each
+      // nation card. Sort happens client-side (seats DESC) so a nation
+      // with multiple parties shows its largest first.
+      _supabase.from('factions')
+        .select('nation_id, faction_name, archetype, seats, popularity_pct')
+        .eq('faction_type', 'movement_party')
+        .is('abandoned_at', null),
     ]);
     if (natErr) throw natErr;
     if (shardErr) throw shardErr;
     if (polErr) throw polErr;
+    if (partyErr) throw partyErr;
     allNations = nations || [];
     currentTick = shard?.current_tick || 0;
     politiciansByNation = {};
@@ -214,8 +237,16 @@ async function init() {
       if (!p.nation_id) continue;
       politiciansByNation[p.nation_id] = (politiciansByNation[p.nation_id] || 0) + 1;
     }
+    partiesByNation = {};
+    for (const pty of (parties || [])) {
+      if (!pty.nation_id) continue;
+      (partiesByNation[pty.nation_id] = partiesByNation[pty.nation_id] || []).push(pty);
+    }
+    for (const arr of Object.values(partiesByNation)) {
+      arr.sort((a, b) => (Number(b.seats) || 0) - (Number(a.seats) || 0));
+    }
   } catch (err) {
-    console.error('first-steps: failed to load nations/shard/politicians', err);
+    console.error('first-steps: failed to load nations/shard/politicians/parties', err);
     document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
     return;
   }
@@ -285,6 +316,21 @@ function renderNations() {
     const sel = selectedNation && selectedNation.id === n.id ? ' selected' : '';
     const { cls, label } = govBadge(n.government_type);
     const desc = NATION_DESCRIPTIONS[n.name] || '';
+    // Political Parties block — sorted seats DESC at load time. Empty
+    // state renders an italic "None yet" line so the section header
+    // doesn't dangle.
+    const parties = partiesByNation[n.id] || [];
+    const partiesBody = parties.length
+      ? parties.map(p => {
+          const arch  = p.archetype ? escHtml(p.archetype) : '—';
+          const seats = (Number(p.seats) || 0);
+          const pop   = (p.popularity_pct == null) ? '—' : (Math.round(Number(p.popularity_pct)) + '%');
+          return `<div class="party-row">
+            <span class="party-row__name">${escHtml(p.faction_name || 'Party')}</span>
+            <span class="party-row__meta"> · ${arch} · ${seats} seat${seats === 1 ? '' : 's'} · ${pop}</span>
+          </div>`;
+        }).join('')
+      : `<div class="parties-section__empty">None yet.</div>`;
     return `<div class="nation-card${sel}" data-id="${n.id}">
       <div class="nation-card__header">
         <img class="nation-card__flag" src="${escAttr(flagFor(n))}" alt="" onerror="this.style.visibility='hidden'">
@@ -296,7 +342,10 @@ function renderNations() {
         <div class="stat-row"><span class="stat-row__label">GDP</span><span class="stat-row__value">${hfFmtBig(Number(n.gdp) || 0)}</span></div>
         <div class="stat-row"><span class="stat-row__label">Population</span><span class="stat-row__value">${fmtBig(n.population)}</span></div>
         <div class="stat-row"><span class="stat-row__label">Active Politicians</span><span class="stat-row__value">${politiciansByNation[n.id] || 0}</span></div>
-        <div class="nation-card__action">Politician from ${escHtml(n.name)}</div>
+        <div class="parties-section">
+          <div class="parties-section__head">Political Parties</div>
+          ${partiesBody}
+        </div>
       </div>
     </div>`;
   }).join('');
