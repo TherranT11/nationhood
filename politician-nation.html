@@ -931,7 +931,8 @@ async function renderGovernment(n, pm, myPartyId) {
     // formation; we re-key against the live parties list so display names +
     // seat counts stay current. Soft-fail to single-party majority detection
     // when no administration row is present (data lag, autocracy, etc.).
-    const admin = (!adminRes.error && adminRes.data?.[0]) || null;
+    if (adminRes.error) console.warn('politician-nation: administration fetch failed', adminRes.error);
+    const admin = adminRes.data?.[0] || null;
     const coalitionIds = new Set(
       (admin?.coalition_parties || []).map(p => p?.party_id).filter(Boolean)
     );
