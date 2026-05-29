@@ -199,8 +199,12 @@ export async function mountWarRoom(container, nation) {
             mountWarRoom(container, nation);
         };
     } catch (e) {
-        console.warn('[war-room] render failed:', e?.message || e);
-        container.innerHTML = `<div class="wr-empty">Could not render the war room.</div>`;
+        // Surface the underlying error so the page is debuggable from the UI
+        // — a bare "Could not render" stalls the user and the warning ends up
+        // buried in console.
+        const msg = e?.message || String(e);
+        console.warn('[war-room] render failed:', msg, e?.stack || '');
+        container.innerHTML = `<div class="wr-empty">Could not render the war room.<br><span style="color:#a44;font-size:10px;">${escapeHtml(msg)}</span></div>`;
     }
 }
 

@@ -16,8 +16,7 @@
 // No per-tick stat changes. Modifiers are pure characterization —
 // the `effects` column on modifier_templates is a free-text array
 // of prose labels rendered on the user-facing page, NOT structured
-// stat deltas. Compare crisis_effects, which IS a per-tick stat
-// delta pipeline (see processCrises in political-actions.js).
+// stat deltas.
 //
 // Stat key resolution
 // ───────────────────
@@ -25,16 +24,14 @@
 // legacy aliases (e.g. workforce → unskilled_workers) keep working
 // if an admin ever types one. Unknown / DELETED stat keys (where
 // the alias maps to null) cause the modifier to NEVER trigger —
-// the trigger check fails and the modifier stays inactive. Same
-// failure mode as processCrises for the same reason: we don't
+// the trigger check fails and the modifier stays inactive. We don't
 // silently activate on a missing-stat lookup.
 //
 // Call site
 // ─────────
 // Invoked once per nation per tick from the advance-tick edge
-// function handler (scripts/advance-tick-handler-template.ts),
-// alongside processCrises. Bundled into the edge function via
-// scripts/sync-edge-function.js.
+// function handler (scripts/advance-tick-handler-template.ts).
+// Bundled into the edge function via scripts/sync-edge-function.js.
 
 import { normalizeNationStatKey } from './stats.js';
 

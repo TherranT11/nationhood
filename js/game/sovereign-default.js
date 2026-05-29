@@ -9,11 +9,9 @@
 
 // ==================== CONSTANTS ====================
 
-// Stable UUIDs for programmatically managed crises (match SQL migration)
-export const SOVEREIGN_DEFAULT_CRISIS_ID = '00000000-0000-0000-0000-000000000002';
-export const SOVEREIGN_DEBT_CRISIS_ID    = '00000000-0000-0000-0000-000000000003';
-export const ECONOMIC_COLLAPSE_CRISIS_ID = '00000000-0000-0000-0000-000000000010';
-export const FAILED_STATE_CRISIS_ID     = '00000000-0000-0000-0000-000000000011';
+// Crisis sunset (Phase 2): SOVEREIGN_DEFAULT_CRISIS_ID, SOVEREIGN_DEBT_CRISIS_ID,
+// ECONOMIC_COLLAPSE_CRISIS_ID, FAILED_STATE_CRISIS_ID UUID exports
+// removed — all writers into active_crises have been stripped.
 
 export const SOVEREIGN_DEFAULT_CONFIG = {
     // ── Proposal requirements ──

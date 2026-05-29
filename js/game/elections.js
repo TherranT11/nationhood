@@ -3343,19 +3343,12 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
 
     // ── Presidential transition: clean slate for new administration ──
 
-    // 1. End "The Big One" crisis (protest tier 7) — new president gets a fresh start
-    const BIG_ONE_CRISIS_ID = '00000000-0000-0000-0000-000000000021';
-    const { error: crisisErr } = await supabase.from('active_crises')
-        .delete()
-        .eq('nation_id', nationId)
-        .eq('crisis_id', BIG_ONE_CRISIS_ID);
-    if (crisisErr) {
-        console.error(`[inauguratePresident] Failed to end The Big One crisis:`, crisisErr.message);
-    } else {
-        console.log(`[inauguratePresident] Ended The Big One crisis for ${nationId} (if active)`);
-    }
+    // Crisis sunset (Phase 2): "The Big One" (Tier-7 protest crisis)
+    // active_crises cleanup removed. The protest tier-7 crisis writer
+    // in resolveProtest is also gone, so there's nothing for a new
+    // presidency to clear here.
 
-    // 2. Reset executive overreach counter — new president starts with clean record
+    // Reset executive overreach counter — new president starts with clean record
     const { error: overreachErr } = await supabase.from('nations')
         .update({ overreach_count: 0 })
         .eq('id', nationId);
@@ -3363,7 +3356,7 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         console.error(`[inauguratePresident] Failed to reset overreach_count:`, overreachErr.message);
     }
 
-    // 3. Reset government approval to 50 — new administration starts with clean slate
+    // Reset government approval to 50 — new administration starts with clean slate
     const { error: approvalResetErr } = await supabase.from('nations')
         .update({ gov_approval: 50, gov_approval_events: 0 })
         .eq('id', nationId);
@@ -3371,7 +3364,7 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         console.error(`[inauguratePresident] Failed to reset gov_approval:`, approvalResetErr.message);
     }
 
-    // 4. Remove all acting ministers — new president appoints their own cabinet
+    // Remove all acting ministers — new president appoints their own cabinet
     const { error: actingErr } = await supabase.from('ministries')
         .update({
             minister_first_name: null,
@@ -3398,8 +3391,8 @@ export async function inauguratePresident(supabase, candidate, nationId, faction
         console.error(`[inauguratePresident] Failed to deactivate acting minister EOs:`, actingEoErr.message);
     }
 
-    // 5. Active executive orders from previous presidents are kept —
-    //    new president can undo them via their own executive actions.
+    // Active executive orders from previous presidents are kept —
+    // new president can undo them via their own executive actions.
 
     // Get faction info for administration record
     const { data: faction } = await supabase.from('factions').select('faction_name, seats, approval_rating').eq('id', factionId).single();

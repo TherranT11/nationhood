@@ -1117,9 +1117,9 @@ function nationStatCap(key) { return NATION_STAT_CAP[key] ?? 100; }
  * If a legacy key exists in the database, add it to STAT_KEY_ALIASES below
  * so normalizeNationStatKey() can resolve it.
  *
- * Used by: processStatEffects, processCrises, processEvents,
- *          processMinistryActions, processPMTraitEffects, auditStatKeys,
- *          snapshotNationHistory, administration snapshots.
+ * Used by: processStatEffects, processEvents, processMinistryActions,
+ *          processPMTraitEffects, auditStatKeys, snapshotNationHistory,
+ *          administration snapshots.
  *
  * CANONICAL STAT KEY REFERENCE:
  *   --- Economic ---
@@ -2851,60 +2851,13 @@ async function applyGdpGrowth(_supabase, _nation, _currentTick) {
     return;
 }
 
-// Activate Economic Collapse mega-crisis: clears other economic crises, applies political penalties
-async function activateEconomicCollapse(supabase, nation, currentTick) {
-    try {
-        // 1. Skip if already active
-        const { data: existing, error: existErr } = await supabase.from('active_crises')
-            .select('id').eq('nation_id', nation.id)
-            .eq('crisis_id', ECONOMIC_COLLAPSE_CRISIS_ID);
-        if (existErr) return; // fail safe — don't double-activate
-        if (existing?.length > 0) return;
-
-        // 2. Clear existing economic crises
-        const econCrisisNames = ['Currency Collapse', 'Hyperinflation Emergency'];
-        const { data: econTemplates } = await supabase.from('crisis_templates')
-            .select('id').in('name', econCrisisNames);
-        const econIds = (econTemplates || []).map(t => t.id)
-            .concat([SOVEREIGN_DEBT_CRISIS_ID, SOVEREIGN_DEFAULT_CRISIS_ID]);
-        await supabase.from('active_crises')
-            .delete().eq('nation_id', nation.id).in('crisis_id', econIds);
-
-        // 3. Political penalties: -25 gov approval, -6 party_approval & -0.15 credibility to all coalition parties
-        await adjustGovernmentApprovalEvent(supabase, nation.id, -25, 'crisis:economic_collapse');
-
-        const coalition = await fetchActiveCoalition(supabase, nation.id);
-        for (const partyId of (coalition?.party_ids || [])) {
-            await supabase.rpc('adjust_momentum', { p_faction_id: partyId, p_delta: -6, p_label: 'Sovereign default (-6)', p_tick: currentTick });
-            await adjustCredibility(supabase, partyId, nation.id, -0.15, 12, currentTick, { source: 'sovereign_default' });
-        }
-
-        // 4. Reset gdp_growth to neutral (stop the bleeding) — critical to prevent re-trigger loop
-        nation.gdp_growth = 50;
-        await supabase.from('nations').update({ gdp_growth: 50 }).eq('id', nation.id);
-
-        // 5. Insert Economic Collapse crisis
-        await supabase.from('active_crises').insert({
-            crisis_id: ECONOMIC_COLLAPSE_CRISIS_ID,
-            nation_id: nation.id,
-            started_at_tick: currentTick,
-            effects_applied_log: []
-        });
-
-        // 6. Event log
-        await supabase.from('event_log').insert({
-            nation_id: nation.id,
-            event_name: 'CRISIS_STARTED: Economic Collapse',
-            trigger_key: 'crisis_started',
-            description_used: `${nation.name}'s economy has collapsed. GDP has fallen to critical levels. Emergency economic restructuring is underway.`,
-            category: 'crisis',
-            effects_applied: [],
-            fired_at_tick: currentTick
-        });
-    } catch (err) {
-        // Non-fatal — GDP is already clamped at floor by caller
-    }
-}
+// Crisis sunset (Phase 2): activateEconomicCollapse removed. It was
+// already orphaned by Phase 1's processCrises deletion and fired the
+// Economic Collapse / Currency Collapse / Hyperinflation Emergency
+// mega-crisis chain plus a -25 gov approval and -6 momentum / -0.15
+// credibility hit to every coalition party. Reintroduce via a
+// modifier_template plus a one-shot SQL RPC if the bleed-out behavior
+// is wanted back.
 
 /**
  * Per-tick GDP drift driven by the gdp_growth stat.
@@ -8515,33 +8468,21 @@ async function enactBill(supabase, bill, currentTick) {
 
         // ── Apply tax-change approval effects to gov_approval_events ──
         // Tax increases hurt approval, tax cuts boost it.
-        // Approval gain is reduced by 20% per active crisis.
+        // Crisis sunset (Phase 2): the "−20% approval gain per active
+        // crisis" multiplier is gone. If the dampening is wanted back,
+        // count active_modifiers with severity='red' here and scale by
+        // 1 − Math.min(1, count * 0.20).
         if (bill.proposed_by) {
-            // Count active crises to scale approval impact
-            let crisisCount = 0;
-            try {
-                const { count } = await supabase
-                    .from('active_crises').select('id', { count: 'exact', head: true })
-                    .eq('nation_id', bill.nation_id);
-                crisisCount = count || 0;
-            } catch (e) {
-                console.warn('[enactBill] Could not count active crises:', e.message);
-            }
-            const crisisPenalty = Math.min(1, crisisCount * 0.20); // cap at 100%
-
             for (const [taxKey, newRate] of Object.entries(taxUpdates)) {
                 const oldRate = Number(nation[taxKey] ?? 0);
                 const rateDiff = newRate - oldRate;
                 if (rateDiff === 0) continue;
 
                 // Tax increase: -2 per point raised. Tax cut: +1 per point lowered.
-                let approvalImpact = rateDiff > 0 ? rateDiff * -2 : Math.abs(rateDiff) * 1;
-                if (approvalImpact > 0 && crisisPenalty > 0) {
-                    approvalImpact = Math.round(approvalImpact * (1 - crisisPenalty));
-                }
+                const approvalImpact = rateDiff > 0 ? rateDiff * -2 : Math.abs(rateDiff) * 1;
                 if (approvalImpact !== 0) {
                     await adjustGovernmentApprovalEvent(supabase, bill.nation_id, approvalImpact, `tax:${taxKey}`);
-                    console.log(`[enactBill] ${taxKey} gov_approval_events: ${approvalImpact} (crises: ${crisisCount}, penalty: ${Math.round(crisisPenalty * 100)}%)`);
+                    console.log(`[enactBill] ${taxKey} gov_approval_events: ${approvalImpact}`);
                 }
             }
         }
@@ -13406,19 +13347,12 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
 
     // ── Presidential transition: clean slate for new administration ──
 
-    // 1. End "The Big One" crisis (protest tier 7) — new president gets a fresh start
-    const BIG_ONE_CRISIS_ID = '00000000-0000-0000-0000-000000000021';
-    const { error: crisisErr } = await supabase.from('active_crises')
-        .delete()
-        .eq('nation_id', nationId)
-        .eq('crisis_id', BIG_ONE_CRISIS_ID);
-    if (crisisErr) {
-        console.error(`[inauguratePresident] Failed to end The Big One crisis:`, crisisErr.message);
-    } else {
-        console.log(`[inauguratePresident] Ended The Big One crisis for ${nationId} (if active)`);
-    }
+    // Crisis sunset (Phase 2): "The Big One" (Tier-7 protest crisis)
+    // active_crises cleanup removed. The protest tier-7 crisis writer
+    // in resolveProtest is also gone, so there's nothing for a new
+    // presidency to clear here.
 
-    // 2. Reset executive overreach counter — new president starts with clean record
+    // Reset executive overreach counter — new president starts with clean record
     const { error: overreachErr } = await supabase.from('nations')
         .update({ overreach_count: 0 })
         .eq('id', nationId);
@@ -13426,7 +13360,7 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         console.error(`[inauguratePresident] Failed to reset overreach_count:`, overreachErr.message);
     }
 
-    // 3. Reset government approval to 50 — new administration starts with clean slate
+    // Reset government approval to 50 — new administration starts with clean slate
     const { error: approvalResetErr } = await supabase.from('nations')
         .update({ gov_approval: 50, gov_approval_events: 0 })
         .eq('id', nationId);
@@ -13434,7 +13368,7 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         console.error(`[inauguratePresident] Failed to reset gov_approval:`, approvalResetErr.message);
     }
 
-    // 4. Remove all acting ministers — new president appoints their own cabinet
+    // Remove all acting ministers — new president appoints their own cabinet
     const { error: actingErr } = await supabase.from('ministries')
         .update({
             minister_first_name: null,
@@ -13461,8 +13395,8 @@ async function inauguratePresident(supabase, candidate, nationId, factionId, cur
         console.error(`[inauguratePresident] Failed to deactivate acting minister EOs:`, actingEoErr.message);
     }
 
-    // 5. Active executive orders from previous presidents are kept —
-    //    new president can undo them via their own executive actions.
+    // Active executive orders from previous presidents are kept —
+    // new president can undo them via their own executive actions.
 
     // Get faction info for administration record
     const { data: faction } = await supabase.from('factions').select('faction_name, seats, approval_rating').eq('id', factionId).single();
@@ -16423,9 +16357,8 @@ const PROTEST_CONFIG = {
     CALL_OFF_AP: 1,
     CALL_OFF_WIND_DOWN_TICKS: 2,
 
-    // Crisis template IDs
-    TIER6_CRISIS_ID: '00000000-0000-0000-0000-000000000020',
-    TIER7_CRISIS_ID: '00000000-0000-0000-0000-000000000021',
+    // Crisis sunset (Phase 2): TIER6_CRISIS_ID / TIER7_CRISIS_ID
+    // (UUIDs '...20'/'...21') removed — no more active_crises writers.
 
     // Unresolved grievance penalty at election
     UNRESOLVED_GRIEVANCE_PENALTY: -5,
@@ -17467,11 +17400,9 @@ async function executePublicAddress(supabase, factionId, nationId, protestId, cu
             public_address_last_tick: currentTick,
         }, true, protest.faction_id, currentTick + PROTEST_CONFIG.CALLING_PARTY_COOLDOWN);
 
-        // Remove active crisis
-        const crisisId = protest.tier === 7 ? PROTEST_CONFIG.TIER7_CRISIS_ID : PROTEST_CONFIG.TIER6_CRISIS_ID;
-        await supabase.from('active_crises').delete()
-            .eq('nation_id', nationId)
-            .eq('crisis_id', crisisId);
+        // Crisis sunset (Phase 2): the matching active_crises row delete
+        // (TIER6 or TIER7 protest crisis) is gone — the crisis row no
+        // longer exists. Protest state still lives in protest_log.status.
 
         const headline = pickHeadline('protest_public_address');
         const lede = 'The government\'s public address resonated with the people. The protest crisis has ended peacefully.';
@@ -17576,11 +17507,8 @@ async function executeEPOOnCrisis(supabase, factionId, nationId, protestId, curr
             ],
         }, true, protest.faction_id, currentTick + PROTEST_CONFIG.CALLING_PARTY_COOLDOWN);
 
-        // Remove active crisis (no RLS on active_crises)
-        const { error: delErr } = await supabase.from('active_crises').delete()
-            .eq('nation_id', nationId)
-            .eq('crisis_id', PROTEST_CONFIG.TIER6_CRISIS_ID);
-        if (delErr) console.error('[Protest] Failed to delete T6 crisis:', delErr);
+        // Crisis sunset (Phase 2): matching TIER6 active_crises delete
+        // removed. Protest state lives in protest_log.status.
 
         // 1d6 government approval boost for resolving crisis via EPO
         const epoResolveBoost = Math.ceil(Math.random() * 6);
@@ -17592,35 +17520,12 @@ async function executeEPOOnCrisis(supabase, factionId, nationId, protestId, curr
         fireProtestEvent(supabase, nationId, 'protest:epo_resolved', currentTick, { protest_id: protestId });
         return { success: true, outcome: 'resolved', newAp };
     } else {
-        // Escalation: T6 → T7 — only if 2+ crises are active (excluding the T6 being replaced)
-        const { data: activeCrises } = await supabase
-            .from('active_crises')
-            .select('id')
-            .eq('nation_id', nationId)
-            .neq('crisis_id', PROTEST_CONFIG.TIER6_CRISIS_ID);
-        if ((activeCrises || []).length < 2) {
-            // Not enough active crises — EPO fails but stays at T6 instead of escalating
-            const failHeadline = pickHeadline('protest_epo_escalated');
-            dispatchProtestArticle(supabase, nationId, 'protest_epo_failed', failHeadline,
-                'The Interior Ministry\'s enforcement action failed to end the crisis, but conditions are not severe enough for further escalation.',
-                1, currentTick, protestId);
-            fireProtestEvent(supabase, nationId, 'protest:epo_failed', currentTick, { protest_id: protestId });
-            return { success: true, outcome: 'failed', newAp };
-        }
-
-        // Remove T6 crisis, create T7
-        const { error: delT6Err } = await supabase.from('active_crises').delete()
-            .eq('nation_id', nationId)
-            .eq('crisis_id', PROTEST_CONFIG.TIER6_CRISIS_ID);
-        if (delT6Err) console.error('[Protest] Failed to delete T6 crisis during escalation:', delT6Err);
-
-        const { error: insT7Err } = await supabase.from('active_crises').insert({
-            crisis_id: PROTEST_CONFIG.TIER7_CRISIS_ID,
-            nation_id: nationId,
-            started_at_tick: currentTick,
-            effects_applied_log: [],
-        });
-        if (insT7Err) console.error('[Protest] Failed to insert T7 crisis:', insT7Err);
+        // Escalation: T6 → T7. Crisis sunset (Phase 2): the original
+        // "2+ other active_crises rows must exist" gate (an active_crises
+        // SELECT) has been removed — EPO failure now always escalates.
+        // The T6 → T7 active_crises row swap is also gone; protest tier
+        // promotion still happens via protest_log so the in-protest T7
+        // demand mechanic continues to work.
 
         // Generate T7 demand
         const { data: statRows } = await supabase
@@ -17734,9 +17639,9 @@ async function executeNationalEmergencyOnProtest(supabase, factionId, nationId, 
     if (newAp < 0) return { success: false, error: `Insufficient AP. Need ${neCost}.` };
 
     // ── 5. End the crisis immediately ──
-    const crisisId = protest.tier === 7 ? PROTEST_CONFIG.TIER7_CRISIS_ID : PROTEST_CONFIG.TIER6_CRISIS_ID;
-    await supabase.from('active_crises').delete()
-        .eq('nation_id', nationId).eq('crisis_id', crisisId);
+    // Crisis sunset (Phase 2): the matching T6/T7 active_crises row
+    // delete is gone; protest_log.status='resolved' is the canonical
+    // end signal.
 
     // Single RPC handles protest_log + lockouts + cooldown
     await protestUpdate(supabase, protestId, {
@@ -17842,28 +17747,13 @@ async function resolveProtest(supabase, protest, nationStats, currentTick) {
     let tier = getTurnoutTier(turnoutScore);
     tier = checkEscalationPath(tier, turnoutScore, historyForEscalation, currentTick);
 
-    // Gate Tier 6/7 based on active crisis count + 50% chance roll.
-    // T6 requires 1+ active crisis. T7 requires 3+ active crises.
-    if (tier >= 6) {
-        const { data: activeCrises } = await supabase
-            .from('active_crises')
-            .select('id')
-            .eq('nation_id', nationId);
-        const crisisCount = (activeCrises || []).length;
-
-        if (tier >= 7) {
-            // T7: needs 3+ crises AND 50% chance
-            if (crisisCount < 3 || Math.random() >= 0.5) {
-                tier = 6; // downgrade to T6 check
-            }
-        }
-        if (tier >= 6) {
-            // T6: needs 1+ crisis AND 50% chance
-            if (crisisCount < 1 || Math.random() >= 0.5) {
-                tier = 5; // downgrade to T5
-            }
-        }
-    }
+    // Crisis sunset (Phase 2): the T6/T7 active_crises count gate
+    // (T6 needs 1+ crisis, T7 needs 3+ crises, each + 50% downgrade
+    // roll) is removed — turnout-driven tier now stands on its own.
+    // Reintroduce by counting active_modifiers (severity='red') if a
+    // "stacking unrest" damper is wanted back.
+    if (tier >= 7 && Math.random() >= 0.5) tier = 6;
+    if (tier >= 6 && Math.random() >= 0.5) tier = 5;
 
     // ── 8. Apply tier effects ──
     const effects = computeTierEffects(tier, { govApproval: nationStats.gov_approval });
@@ -17909,9 +17799,13 @@ async function resolveProtest(supabase, protest, nationStats, currentTick) {
     }
 
     // ── 9. Tier 6/7: create crisis ──
+    // Crisis sunset (Phase 2): the active_crises INSERT (TIER6 / TIER7
+    // crisis row keyed by PROTEST_CONFIG.TIER*_CRISIS_ID) is removed.
+    // The protest itself still becomes "crisis_active" via protest_log
+    // below, which is what the protest mechanic reads. Cross-system
+    // visibility (politics.js display, etc.) goes away with the table.
     let crisisCreated = false;
     if (effects.isCrisis) {
-        const crisisId = tier === 6 ? PROTEST_CONFIG.TIER6_CRISIS_ID : PROTEST_CONFIG.TIER7_CRISIS_ID;
         // T6 fizzles after 1d6 ticks, T7 after 1d12 ticks
         let duration = tier === 6
             ? (1 + Math.floor(Math.random() * 6))    // 1d6: 1-6 ticks
@@ -17931,13 +17825,6 @@ async function resolveProtest(supabase, protest, nationStats, currentTick) {
                 }
             }
         } catch (_) { /* non-fatal */ }
-
-        await supabase.from('active_crises').insert({
-            crisis_id: crisisId,
-            nation_id: nationId,
-            started_at_tick: currentTick,
-            effects_applied_log: [],
-        });
 
         // Update protest_log to crisis_active
         await supabase.from('protest_log').update({
@@ -19939,12 +19826,10 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
     }
     if (!ministries || ministries.length === 0) return [];
 
-    // Count active crises — ministers decay faster when the nation is in crisis
-    const { count: activeCrisisCount } = await supabase
-        .from('active_crises')
-        .select('id', { count: 'exact', head: true })
-        .eq('nation_id', nation.id);
-    const crisisMultiplier = 1 + (activeCrisisCount || 0);
+    // Crisis-decay multiplier removed with the crisis-system sunset
+    // (Phase 1). The "ministers decay faster while a crisis is active"
+    // flavor went with it. If we want it back, count active_modifiers
+    // with severity='red' here and multiply BASELINE_DECAY by it.
 
     const results = [];
 
@@ -19987,8 +19872,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
         let newApproval = oldApproval;
 
         // Baseline decay always applies — approval erodes unless stats improve.
-        // During crises, decay is multiplied: 1 crisis = 2×, 2 crises = 3×, etc.
-        newApproval += cfg.BASELINE_DECAY * crisisMultiplier;
+        newApproval += cfg.BASELINE_DECAY;
         // Apply delta-based movement on top of baseline decay.
         // Baselines are permanent (appointment snapshot), so cap the cumulative delta
         // to prevent runaway approval. ±5 cap means max ±3/tick from stat performance.
@@ -20547,583 +20431,6 @@ async function processEvents(supabase, nation, currentTick) {
 
     return firedEvents;
 }
-
-
-// ==================== DEBT-TO-GDP BAND CRISES ====================
-
-// Programmatic activation for the three debt-band crisis templates
-// seeded by migration 20261230. Mirrors stat-triggered crises, but
-// the trigger is a computed ratio (debt / gdp) which the generic
-// crisis_triggers system can't express.
-//
-// Storage: post-migrations 20261206 + 20261207, both nation.debt and
-// nation.gdp are abstract integers in $B. So ratio = debt / gdp
-// directly. A nation with debt=768, gdp=443.4 → 173% → Crisis band.
-//
-// Bands are mutually exclusive — only one row exists for a nation at
-// a time. processCrises (below) then applies the band's crisis_effects
-// rows like any other crisis. Templates are is_active=false so
-// processCrises doesn't try to auto-activate them.
-const DEBT_BAND_TEMPLATES = [
-    { id: '00000000-0000-0000-0000-000000000040', name: 'Public Debt Warning',  minPct: 100 },
-    { id: '00000000-0000-0000-0000-000000000041', name: 'Debt Crisis',          minPct: 200 },
-    { id: '00000000-0000-0000-0000-000000000042', name: 'Sovereign Collapse',   minPct: 300 },
-];
-const DEBT_BAND_IDS = DEBT_BAND_TEMPLATES.map(b => b.id);
-
-async function processDebtToGdpBands(supabase, nation, currentTick) {
-    const debt = Number(nation?.debt) || 0;
-    const gdp  = Number(nation?.gdp)  || 0;
-    // Can't compute a ratio without GDP. Treat as no-band (delete any
-    // existing band rows so the state is consistent).
-    const pct = gdp > 0 ? (debt / gdp) * 100 : 0;
-
-    // Pick the highest band whose threshold is crossed.
-    let targetBand = null;
-    for (const band of DEBT_BAND_TEMPLATES) {
-        if (pct >= band.minPct) targetBand = band;
-    }
-    const targetId = targetBand?.id || null;
-
-    // Read any existing debt-band rows for this nation.
-    const { data: existing, error: readErr } = await supabase
-        .from('active_crises')
-        .select('id, crisis_id')
-        .eq('nation_id', nation.id)
-        .in('crisis_id', DEBT_BAND_IDS);
-    if (readErr) {
-        console.warn(`[DebtBands] read failed for ${nation.name}: ${readErr.message}`);
-        return;
-    }
-    const rows = existing || [];
-    const alreadyActive = rows.some(r => r.crisis_id === targetId);
-
-    // Delete any band rows that don't match the current target.
-    const stale = rows.filter(r => r.crisis_id !== targetId);
-    if (stale.length > 0) {
-        const { error: delErr } = await supabase
-            .from('active_crises')
-            .delete()
-            .in('id', stale.map(r => r.id));
-        if (delErr) {
-            console.warn(`[DebtBands] delete failed for ${nation.name}: ${delErr.message}`);
-        }
-    }
-
-    // Insert the new band row + fire a one-time event_log entry for
-    // the threshold crossing. Only fires on a NEW band — staying in
-    // the same band tick-over-tick doesn't re-fire.
-    if (targetId && !alreadyActive) {
-        const { error: insErr } = await supabase
-            .from('active_crises')
-            .insert({
-                crisis_id: targetId,
-                nation_id: nation.id,
-                started_at_tick: currentTick,
-                effects_applied_log: [],
-            });
-        if (insErr) {
-            console.warn(`[DebtBands] insert failed for ${nation.name}: ${insErr.message}`);
-            return;
-        }
-        const { error: logErr } = await supabase.from('event_log').insert({
-            nation_id: nation.id,
-            event_name: 'CRISIS_STARTED: ' + targetBand.name,
-            trigger_key: 'debt_band_crossing',
-            description_used: `Debt-to-GDP at ${pct.toFixed(0)}% — ${targetBand.name}.`,
-            category: 'crisis',
-            effects_applied: [],
-            fired_at_tick: currentTick,
-        });
-        if (logErr) {
-            console.warn(`[DebtBands] event_log insert failed for ${nation.name}: ${logErr.message}`);
-        }
-        console.log(`[DebtBands] ${nation.name} → ${targetBand.name} (${pct.toFixed(1)}%)`);
-    }
-}
-
-// ==================== CRISIS TICK PROCESSOR ====================
-
-/**
- * Process persistent crises for a nation.
- * - Activates crises when ALL trigger conditions are met
- * - Applies effects every tick while active
- * - Deactivates crises when ALL recovery conditions are met
- * - Effects cascade: nation stats, government/coalition approval, minister approval
- */
-async function processCrises(supabase, nation, currentTick) {
-    // 1. Load all crisis templates (including is_active=false for programmatic crises like Sovereign Debt/Default)
-    const { data: crisisTemplates } = await supabase
-        .from('crisis_templates')
-        .select('*, crisis_triggers(*), crisis_effects(*), crisis_end_triggers(*)');
-
-    if (!crisisTemplates || crisisTemplates.length === 0) return [];
-
-    // 2. Load currently active crises for this nation
-    const { data: activeCrisisRecords } = await supabase
-        .from('active_crises')
-        .select('*')
-        .eq('nation_id', nation.id);
-
-    const activeMap = {};
-    for (const ac of (activeCrisisRecords || [])) {
-        activeMap[ac.crisis_id] = ac;
-    }
-
-    const crisisEvents = [];
-    const nationUpdates = {};
-    const statBounds = {}; // { stat_key: { floor: highestFloor, ceiling: lowestCeiling } }
-
-    // 3. Check inactive crises for activation (skip programmatic crises with is_active=false)
-    for (const template of crisisTemplates) {
-        if (activeMap[template.id]) continue; // already active
-        if (!template.is_active) continue; // programmatic crises are activated elsewhere, not by stat triggers
-
-        let allTriggersMet = false;
-
-        if (template.crisis_type === 'ministry') {
-            // Ministry crises previously gated on institution funding levels.
-            // Institutions are removed; ministry crises no longer auto-activate
-            // until the rework lands.
-            continue;
-        } else {
-            // Stat-based crisis: check crisis_triggers
-            const triggers = template.crisis_triggers || [];
-            if (triggers.length === 0) continue;
-
-            allTriggersMet = true;
-            for (const trigger of triggers) {
-                const resolvedKey = normalizeNationStatKey(trigger.stat_key) || trigger.stat_key;
-                const statValue = nation[resolvedKey];
-                if (statValue === null || statValue === undefined) {
-                    allTriggersMet = false;
-                    break;
-                }
-                const val = Number(statValue);
-                if (trigger.operator === 'gte' && val < Number(trigger.threshold)) {
-                    allTriggersMet = false;
-                    break;
-                }
-                if (trigger.operator === 'lte' && val > Number(trigger.threshold)) {
-                    allTriggersMet = false;
-                    break;
-                }
-            }
-        }
-
-        if (!allTriggersMet) continue;
-
-        // Activate the crisis
-        const { data: newActive, error: insertErr } = await supabase
-            .from('active_crises')
-            .insert({
-                crisis_id: template.id,
-                nation_id: nation.id,
-                started_at_tick: currentTick,
-                effects_applied_log: []
-            })
-            .select()
-            .single();
-
-        if (insertErr) {
-            console.warn('Crisis activation insert failed:', insertErr.message);
-            continue;
-        }
-
-        activeMap[template.id] = newActive;
-
-        // Log to event_log
-        await supabase.from('event_log').insert({
-            nation_id: nation.id,
-            event_name: 'CRISIS_STARTED: ' + template.name,
-            trigger_key: 'crisis_started',
-            description_used: template.description || template.name,
-            category: 'crisis',
-            effects_applied: [],
-            fired_at_tick: currentTick
-        });
-
-        crisisEvents.push({
-            type: 'crisis_started',
-            crisisName: template.name,
-            description: template.description,
-            tick: currentTick
-        });
-
-        console.log(`Crisis activated: "${template.name}" in ${nation.name} (tick ${currentTick})`);
-    }
-
-    // 4. Process active crises: apply effects first, then check end triggers
-    //    (Applying effects before deactivation check prevents crisis flicker when
-    //     a crisis's own effects push a stat to exactly the deactivation threshold.)
-    for (const template of crisisTemplates) {
-        const activeRecord = activeMap[template.id];
-        if (!activeRecord) continue;
-
-        // 4a. Idempotency guard: skip if effects already applied for this tick
-        const priorLog = activeRecord.effects_applied_log || [];
-        if (priorLog.some(entry => entry.tick === currentTick)) {
-            console.log(`[processCrises] Skipping "${template.name}" for ${nation.name} — already applied at tick ${currentTick}`);
-            continue;
-        }
-
-        // 4b. Apply effects every tick
-        const effects = template.crisis_effects || [];
-        const appliedEffects = [];
-
-        for (const effect of effects) {
-            const changePT = Number(effect.change_per_tick);
-            if (!Number.isFinite(changePT)) {
-                console.warn(`[processCrises] Skipping effect with non-numeric change_per_tick: "${effect.change_per_tick}" in crisis "${template.name}" for ${nation.name}`);
-                continue;
-            }
-            const hasFloor = effect.stat_floor !== null && effect.stat_floor !== undefined;
-            const floorVal = hasFloor ? Number(effect.stat_floor) : null;
-
-            // Helper: clamp value respecting the per-effect floor/ceiling (for non-nation targets)
-            // Round to 1dp to match processStatEffects and prevent floating-point drift.
-            function clampWithFloor(current, raw) {
-                if (isNaN(raw) || isNaN(current)) return current ?? 50;
-                let v = Math.round(Math.max(0, Math.min(100, raw)) * 10) / 10;
-                if (hasFloor) {
-                    if (changePT < 0) v = Math.max(floorVal, v);   // floor
-                    else if (changePT > 0) v = Math.min(floorVal, v); // ceiling
-                }
-                return v;
-            }
-
-            // Normalize + validate stat_key for nation targets
-            const rawStatKey = effect.stat_key;
-            const statKey = (effect.target === 'nation') ? normalizeNationStatKey(rawStatKey) : rawStatKey;
-            if (effect.target === 'nation' && (!statKey || !NATION_STAT_COLUMN_SET.has(statKey))) {
-                console.warn(`[processCrises] Skipping invalid stat_key "${rawStatKey}" in crisis "${template.name}" for ${nation.name}`);
-                continue;
-            }
-
-            if (effect.target === 'nation') {
-                // GDP and debt are driven by dedicated systems — skip
-                if (STAT_PROCESSOR_SKIP.has(statKey)) continue;
-                const currentVal = nationUpdates[statKey] !== undefined
-                    ? nationUpdates[statKey]
-                    : (nation[statKey] !== undefined && nation[statKey] !== null
-                        ? Number(nation[statKey]) : 50);
-
-                // Raw-value stats (population) must not be clamped to 0-100
-                let newVal;
-                if (RAW_SCALING_DIVISORS[statKey]) {
-                    const scaledCrisisChange = changePT * RAW_SCALING_DIVISORS[statKey];
-                    newVal = Math.max(0, currentVal + scaledCrisisChange);
-                } else {
-                    newVal = Math.round(Math.max(0, Math.min(100, currentVal + changePT)) * 10) / 10;
-                }
-                nationUpdates[statKey] = newVal;
-                nation[statKey] = newVal;
-
-                // Accumulate most-restrictive floor/ceiling bounds for final enforcement
-                if (hasFloor) {
-                    if (!statBounds[statKey]) statBounds[statKey] = {};
-                    if (changePT < 0) {
-                        const prev = statBounds[statKey].floor;
-                        statBounds[statKey].floor = (prev !== undefined) ? Math.max(prev, floorVal) : floorVal;
-                    } else if (changePT > 0) {
-                        const prev = statBounds[statKey].ceiling;
-                        statBounds[statKey].ceiling = (prev !== undefined) ? Math.min(prev, floorVal) : floorVal;
-                    }
-                }
-
-                appliedEffects.push({
-                    stat: statKey, change: changePT,
-                    target: 'nation', old: currentVal, new: newVal
-                });
-
-            } else if (effect.target === 'government_approval' || effect.target === 'coalition_approval') {
-                // Floor/ceiling enforcement for gov approval events modifier.
-                // Note: only floor (negative changePT) is enforced; ceiling for positive changePT not implemented.
-                let effectiveGovChange = changePT;
-                if (hasFloor && changePT < 0) {
-                    const { data: govNat, error: govErr } = await supabase.from('nations').select('gov_approval_events').eq('id', nation.id).single();
-                    if (govErr) {
-                        console.warn(`[processCrises] Failed to read gov_approval_events for floor check: ${govErr.message}`);
-                    } else {
-                        const curEvents = Number(govNat?.gov_approval_events ?? 0);
-                        const eventsFloor = -(floorVal);
-                        if (curEvents <= eventsFloor) {
-                            effectiveGovChange = 0;
-                        } else if (curEvents + changePT < eventsFloor) {
-                            effectiveGovChange = eventsFloor - curEvents;
-                        }
-                    }
-                }
-                if (effectiveGovChange !== 0) {
-                    const coalition = await fetchActiveCoalition(supabase, nation.id);
-                    const partyIds = coalition?.party_ids || [];
-                    for (const partyId of partyIds) {
-                        const scaledDelta = _round2(effectiveGovChange * 0.3);
-                        await _adjustMomentum(supabase, partyId, nation.id, scaledDelta, 'crisis:' + template.name, currentTick);
-                        appliedEffects.push({
-                            stat: 'party_approval', change: scaledDelta,
-                            target: effect.target, faction_id: partyId
-                        });
-                    }
-                    // Also push to gov approval events component
-                    await adjustGovernmentApprovalEvent(supabase, nation.id, effectiveGovChange, 'crisis:' + template.name);
-                }
-
-            } else if (effect.target === 'pm_approval') {
-                const { data: pmMinistry } = await supabase
-                    .from('ministries')
-                    .select('minister_approval, party_id')
-                    .eq('nation_id', nation.id)
-                    .eq('ministry_key', 'prime_minister')
-                    .eq('is_active', true)
-                    .maybeSingle();
-
-                if (pmMinistry) {
-                    const currentVal = pmMinistry.minister_approval ?? MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL;
-                    const newVal = clampWithFloor(currentVal, currentVal + changePT);
-                    const { error: pmUpdErr } = await supabase.from('ministries')
-                        .update({ minister_approval: newVal })
-                        .eq('nation_id', nation.id)
-                        .eq('ministry_key', 'prime_minister')
-                        .eq('is_active', true);
-                    if (pmUpdErr) console.error(`[processCrises] Failed to update PM approval for ${nation.name}:`, pmUpdErr.message);
-
-                    appliedEffects.push({
-                        stat: 'minister_approval', change: changePT,
-                        target: 'pm_approval', minister_key: 'prime_minister',
-                        old: currentVal, new: newVal
-                    });
-
-                    // Cascade PM approval loss to party_approval (scaled)
-                    if (changePT < 0 && pmMinistry.party_id) {
-                        const cascadeDelta = _round2(-(Math.abs(changePT) * 0.5));
-                        await _adjustMomentum(supabase, pmMinistry.party_id, nation.id, cascadeDelta, 'crisis:cascade:pm', currentTick);
-
-                        appliedEffects.push({
-                            stat: 'party_approval', change: cascadeDelta,
-                            target: 'minister_cascade', faction_id: pmMinistry.party_id,
-                            minister_key: 'prime_minister'
-                        });
-                    }
-                }
-
-            } else if (effect.target === 'minister_approval') {
-                const { data: ministry } = await supabase
-                    .from('ministries')
-                    .select('minister_approval, party_id')
-                    .eq('nation_id', nation.id)
-                    .eq('ministry_key', effect.minister_key)
-                    .eq('is_active', true)
-                    .maybeSingle();
-
-                if (ministry) {
-                    const currentVal = ministry.minister_approval ?? MINISTER_APPROVAL_CONFIG.NEW_MINISTER_APPROVAL;
-                    const newVal = clampWithFloor(currentVal, currentVal + changePT);
-                    const { error: minUpdErr } = await supabase.from('ministries')
-                        .update({ minister_approval: newVal })
-                        .eq('nation_id', nation.id)
-                        .eq('ministry_key', effect.minister_key)
-                        .eq('is_active', true);
-                    if (minUpdErr) console.error(`[processCrises] Failed to update ${effect.minister_key} approval for ${nation.name}:`, minUpdErr.message);
-
-                    appliedEffects.push({
-                        stat: 'minister_approval', change: changePT,
-                        target: 'minister_approval', minister_key: effect.minister_key,
-                        old: currentVal, new: newVal
-                    });
-
-                    // Cascade minister approval loss to party_approval (scaled; PM 0.5x, others 0.25x)
-                    if (changePT < 0 && ministry.party_id) {
-                        const loss = Math.abs(changePT);
-                        const multiplier = effect.minister_key === 'prime_minister' ? 0.5 : 0.25;
-                        const cascadeDelta = _round2(-(loss * multiplier));
-                        await _adjustMomentum(supabase, ministry.party_id, nation.id, cascadeDelta, 'crisis:cascade:ministry', currentTick);
-
-                        appliedEffects.push({
-                            stat: 'party_approval', change: cascadeDelta,
-                            target: 'minister_cascade', faction_id: ministry.party_id,
-                            minister_key: effect.minister_key
-                        });
-                    }
-                }
-            }
-        }
-
-        // Update effects log on the active crisis record
-        const logEntry = { tick: currentTick, effects: appliedEffects };
-        const existingLog = activeRecord.effects_applied_log || [];
-        // Keep last 50 entries to prevent unbounded growth
-        if (existingLog.length >= 50) existingLog.shift();
-        existingLog.push(logEntry);
-        await supabase.from('active_crises')
-            .update({ effects_applied_log: existingLog })
-            .eq('id', activeRecord.id);
-
-        if (appliedEffects.length > 0) {
-            crisisEvents.push({
-                type: 'crisis_effects',
-                crisisName: template.name,
-                effects: appliedEffects,
-                tick: currentTick
-            });
-        }
-
-        // 4c. Check end / recovery triggers AFTER effects applied (prevents flicker)
-        let allEndConditionsMet = false;
-
-        if (template.crisis_type === 'ministry') {
-            // Ministry crisis recovery previously gated on institution funding
-            // levels. Institutions are removed; ministry crises that were
-            // already active before this change resolve only on duration
-            // fizzle (handled below) or via legacy admin tools.
-            allEndConditionsMet = false;
-        } else {
-            // Stat-based crisis: check crisis_end_triggers
-            const endTriggers = template.crisis_end_triggers || [];
-            allEndConditionsMet = endTriggers.length > 0;
-
-            for (const endTrigger of endTriggers) {
-                const resolvedEndKey = normalizeNationStatKey(endTrigger.stat_key) || endTrigger.stat_key;
-                const statValue = nation[resolvedEndKey];
-                if (statValue === null || statValue === undefined) {
-                    allEndConditionsMet = false;
-                    break;
-                }
-                const val = Number(statValue);
-                if (endTrigger.operator === 'gte' && val < Number(endTrigger.threshold)) {
-                    allEndConditionsMet = false;
-                    break;
-                }
-                if (endTrigger.operator === 'lte' && val > Number(endTrigger.threshold)) {
-                    allEndConditionsMet = false;
-                    break;
-                }
-            }
-        }
-
-        // Protest crisis fizzle: T6/T7 crises auto-resolve when their
-        // duration expires (1d6 ticks for T6, 1d12 for T7).
-        if (!allEndConditionsMet && (template.id === PROTEST_CONFIG.TIER6_CRISIS_ID || template.id === PROTEST_CONFIG.TIER7_CRISIS_ID)) {
-            try {
-                const { data: protestRow } = await supabase.from('protest_log')
-                    .select('id, crisis_started_tick, crisis_duration, faction_id')
-                    .eq('nation_id', nation.id)
-                    .eq('status', 'crisis_active')
-                    .order('crisis_started_tick', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
-                if (protestRow && protestRow.crisis_started_tick != null && protestRow.crisis_duration != null) {
-                    const ticksElapsed = currentTick - protestRow.crisis_started_tick;
-                    if (ticksElapsed >= protestRow.crisis_duration) {
-                        allEndConditionsMet = true;
-                        // Mark protest as fizzled
-                        await supabase.from('protest_log').update({
-                            status: 'resolved',
-                            tick_resolved: currentTick,
-                        }).eq('id', protestRow.id);
-                        // Clear lockouts
-                        if (protestRow.faction_id) {
-                            await supabase.from('factions')
-                                .update({ action_lockout_until_tick: null })
-                                .eq('id', protestRow.faction_id);
-                        }
-                        const tierLabel = template.id === PROTEST_CONFIG.TIER7_CRISIS_ID ? 'Tier 7' : 'Tier 6';
-                        console.log(`[processCrises] Protest ${tierLabel} crisis fizzled in ${nation.name} after ${ticksElapsed} ticks`);
-                        // Fire world-visible fizzle event
-                        await supabase.from('event_log').insert({
-                            nation_id: nation.id,
-                            event_name: `Protest Crisis Fizzles`,
-                            trigger_key: 'protest:crisis_fizzled',
-                            description_chosen: `The ${tierLabel} protest crisis in ${nation.name} has fizzled out after ${ticksElapsed} ticks. Stability returning.`,
-                            category: 'protest',
-                            fired_at_tick: currentTick
-                        });
-                    }
-                }
-            } catch (fizzleErr) {
-                console.warn('[processCrises] Protest fizzle check failed (non-fatal):', fizzleErr);
-            }
-        }
-
-        if (allEndConditionsMet) {
-            // Deactivate the crisis (effects already applied this final tick)
-            await supabase.from('active_crises').delete().eq('id', activeRecord.id);
-            delete activeMap[template.id];
-
-            await supabase.from('event_log').insert({
-                nation_id: nation.id,
-                event_name: 'CRISIS_RESOLVED: ' + template.name,
-                trigger_key: 'crisis_ended',
-                description_used: 'The crisis "' + template.name + '" has been resolved.',
-                category: 'crisis',
-                effects_applied: [],
-                fired_at_tick: currentTick
-            });
-
-            // 1d6 government approval boost for resolving a crisis
-            const crisisResolveBoost = Math.ceil(Math.random() * 6);
-            await adjustGovernmentApprovalEvent(supabase, nation.id, crisisResolveBoost, `crisis:resolved:${template.name}`);
-
-            // +8 momentum to governing coalition parties for resolving the crisis
-            try {
-                const { data: govFormation } = await supabase
-                    .from('government_formations')
-                    .select('party_ids')
-                    .eq('nation_id', nation.id)
-                    .in('status', ['formed', 'active', 'caretaker'])
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle();
-                if (govFormation?.party_ids) {
-                    for (const pid of govFormation.party_ids) {
-                        await supabase.rpc('adjust_momentum', {
-                            p_faction_id: pid,
-                            p_delta: 3,
-                            p_label: `Crisis resolved: ${template.name} (+3)`,
-                            p_tick: currentTick
-                        });
-                    }
-                }
-            } catch (momErr) {
-                console.warn(`[Crisis] Momentum boost failed for crisis resolution:`, momErr.message);
-            }
-
-            crisisEvents.push({
-                type: 'crisis_resolved',
-                crisisName: template.name,
-                duration: currentTick - activeRecord.started_at_tick,
-                tick: currentTick
-            });
-
-            console.log(`Crisis resolved: "${template.name}" in ${nation.name} (tick ${currentTick}, duration: ${currentTick - activeRecord.started_at_tick} ticks, gov approval +${crisisResolveBoost})`);
-        }
-    }
-
-    // 4d. Enforce most-restrictive floor/ceiling bounds across all crises
-    for (const [stat, bounds] of Object.entries(statBounds)) {
-        let val = nationUpdates[stat];
-        if (val === undefined) continue;
-        if (bounds.floor !== undefined) val = Math.max(bounds.floor, val);
-        if (bounds.ceiling !== undefined) val = Math.min(bounds.ceiling, val);
-        val = Math.round(val * 10) / 10;
-        nationUpdates[stat] = val;
-        nation[stat] = val;
-    }
-
-    // 5. Bulk update nation stats
-    if (Object.keys(nationUpdates).length > 0) {
-        const { error: crisisUpdateErr } = await supabase.from('nations').update(nationUpdates).eq('id', nation.id);
-        if (crisisUpdateErr) {
-            console.error(`[processCrises] Nation stat update FAILED for ${nation.name}:`, crisisUpdateErr.message, JSON.stringify(nationUpdates));
-        } else {
-            console.log(`[processCrises] Nation stats updated for ${nation.name}:`, JSON.stringify(nationUpdates));
-        }
-    }
-
-    return crisisEvents;
-}
-
-
 // ==================== UTILITY FORMATTERS ====================
 // (Democratic revolution and seize-autocratic-power systems removed — autocracy scrapped)
 
@@ -24802,11 +24109,9 @@ async function processEnergyOilBuildCycles(supabase, nation, currentTick) {
 
 // ==================== CONSTANTS ====================
 
-// Stable UUIDs for programmatically managed crises (match SQL migration)
-const SOVEREIGN_DEFAULT_CRISIS_ID = '00000000-0000-0000-0000-000000000002';
-const SOVEREIGN_DEBT_CRISIS_ID    = '00000000-0000-0000-0000-000000000003';
-const ECONOMIC_COLLAPSE_CRISIS_ID = '00000000-0000-0000-0000-000000000010';
-const FAILED_STATE_CRISIS_ID     = '00000000-0000-0000-0000-000000000011';
+// Crisis sunset (Phase 2): SOVEREIGN_DEFAULT_CRISIS_ID, SOVEREIGN_DEBT_CRISIS_ID,
+// ECONOMIC_COLLAPSE_CRISIS_ID, FAILED_STATE_CRISIS_ID UUID exports
+// removed — all writers into active_crises have been stripped.
 
 const SOVEREIGN_DEFAULT_CONFIG = {
     // ── Proposal requirements ──
@@ -30304,8 +29609,7 @@ const DEFAULT_MISSED_THRESHOLD = 4;
 // No per-tick stat changes. Modifiers are pure characterization —
 // the `effects` column on modifier_templates is a free-text array
 // of prose labels rendered on the user-facing page, NOT structured
-// stat deltas. Compare crisis_effects, which IS a per-tick stat
-// delta pipeline (see processCrises in political-actions).
+// stat deltas.
 //
 // Stat key resolution
 // ───────────────────
@@ -30313,16 +29617,14 @@ const DEFAULT_MISSED_THRESHOLD = 4;
 // legacy aliases (e.g. workforce → unskilled_workers) keep working
 // if an admin ever types one. Unknown / DELETED stat keys (where
 // the alias maps to null) cause the modifier to NEVER trigger —
-// the trigger check fails and the modifier stays inactive. Same
-// failure mode as processCrises for the same reason: we don't
+// the trigger check fails and the modifier stays inactive. We don't
 // silently activate on a missing-stat lookup.
 //
 // Call site
 // ─────────
 // Invoked once per nation per tick from the advance-tick edge
-// function handler (scripts/advance-tick-handler-template.ts),
-// alongside processCrises. Bundled into the edge function via
-// scripts/sync-edge-function.js.
+// function handler (scripts/advance-tick-handler-template.ts).
+// Bundled into the edge function via scripts/sync-edge-function.js.
 
 // Internal: ALL rows must evaluate true. Returns false on the first
 // failure, or if there are zero rows (so freshly-created modifiers
@@ -30685,35 +29987,12 @@ async function auditStatKeys(supabase) {
         }
     }
 
-    // 2. Crisis effects
-    const { data: crisisEffects } = await supabase.from('crisis_effects').select('id, crisis_template_id, stat_key, target');
-    for (const ce of (crisisEffects || [])) {
-        if (ce.target !== 'nation') continue;
-        const resolved = normalizeNationStatKey(ce.stat_key);
-        if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
-            invalid.push({ source: 'crisis_effect', id: ce.id, template_id: ce.crisis_template_id, bad_key: ce.stat_key });
-        }
-    }
+    // Crisis sunset (Phase 2): crisis_effects / crisis_triggers /
+    // crisis_end_triggers audit passes removed. The modifier system
+    // (modifier_effects / modifier_triggers / modifier_end_triggers)
+    // already has its own stat-key validation pipeline.
 
-    // 3. Crisis triggers
-    const { data: crisisTriggers } = await supabase.from('crisis_triggers').select('id, crisis_template_id, stat_key');
-    for (const ct of (crisisTriggers || [])) {
-        const resolved = normalizeNationStatKey(ct.stat_key);
-        if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
-            invalid.push({ source: 'crisis_trigger', id: ct.id, template_id: ct.crisis_template_id, bad_key: ct.stat_key });
-        }
-    }
-
-    // 4. Crisis end triggers
-    const { data: crisisEndTriggers } = await supabase.from('crisis_end_triggers').select('id, crisis_template_id, stat_key');
-    for (const cet of (crisisEndTriggers || [])) {
-        const resolved = normalizeNationStatKey(cet.stat_key);
-        if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
-            invalid.push({ source: 'crisis_end_trigger', id: cet.id, template_id: cet.crisis_template_id, bad_key: cet.stat_key });
-        }
-    }
-
-    // 5. Event effects
+    // Event effects
     const { data: eventEffects } = await supabase.from('event_effects').select('id, event_id, stat_key, target');
     for (const ee of (eventEffects || [])) {
         if (ee.target !== 'nation') continue;
@@ -30723,7 +30002,7 @@ async function auditStatKeys(supabase) {
         }
     }
 
-    // 6. Event triggers
+    // Event triggers
     const { data: eventTriggers } = await supabase.from('event_triggers').select('id, event_id, stat_key');
     for (const et of (eventTriggers || [])) {
         if (!et.stat_key) continue;
@@ -30830,18 +30109,17 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
 // ==================== SOVEREIGN DEFAULT — TICK-ONLY HELPERS ====================
 
 /**
- * Per-tick debt mechanics: update debt_service_burden and trigger a
- * Sovereign Debt Crisis when the debt-to-budget ratio breaches the
- * configured threshold. Credit-based gating was removed when the
- * `nations.credit` column was dropped in the alpha refactor; the
- * trigger is now ratio-only.
+ * Per-tick debt mechanics: update debt_service_burden based on the
+ * debt-to-budget ratio. Credit-based gating was removed when the
+ * `nations.credit` column was dropped in the alpha refactor, and the
+ * Sovereign Debt Crisis trigger was sunsetted in Phase 2 (modifier
+ * system replaces it).
  */
 async function processSovereignDebtMechanics(supabase, nation, currentTick) {
     const ratio = getDebtToGDP(nation);
     if (!isFinite(ratio)) return null;
 
     const burden = calculateDebtServiceBurden(nation);
-    const cfg = SOVEREIGN_DEFAULT_CONFIG;
 
     const updates: any = {};
     const results: any = { nationId: nation.id, ratio, burden };
@@ -30863,39 +30141,14 @@ async function processSovereignDebtMechanics(supabase, nation, currentTick) {
         Object.assign(nation, updates);
     }
 
-    // 2. Programmatically trigger Sovereign Debt Crisis when the
-    //    debt-to-budget ratio breaches DEBT_CRISIS_MIN_RATIO and no
-    //    crisis is already active.
-    if (ratio >= cfg.DEBT_CRISIS_MIN_RATIO) {
-        const { data: existing } = await supabase
-            .from('active_crises')
-            .select('id')
-            .eq('nation_id', nation.id)
-            .eq('crisis_id', SOVEREIGN_DEBT_CRISIS_ID);
+    // Crisis sunset (Phase 2): programmatic Sovereign Debt Crisis
+    // trigger removed. The debt-to-budget ratio still drives debt
+    // service burden above. If you want the old "ratio >=
+    // DEBT_CRISIS_MIN_RATIO → red flag" behavior back, configure a
+    // modifier_template with a debt_service_burden / debt-ratio
+    // trigger via modifieradmin.html.
 
-        if (!existing || existing.length === 0) {
-            const { error: insertErr } = await supabase.from('active_crises').insert({
-                crisis_id: SOVEREIGN_DEBT_CRISIS_ID,
-                nation_id: nation.id,
-                started_at_tick: currentTick,
-                effects_applied_log: []
-            });
-            if (!insertErr) {
-                results.debtCrisisTriggered = true;
-                console.log(`[SovereignDebt] Debt Crisis triggered for ${nation.name} (ratio=${(ratio * 100).toFixed(0)}%)`);
-                await supabase.from('event_log').insert({
-                    nation_id: nation.id,
-                    event_name: 'CRISIS_STARTED: Sovereign Debt Crisis',
-                    description_used: `Crushing debt (${(ratio * 100).toFixed(0)}% of GDP) has triggered a sovereign debt crisis.`,
-                    category: 'crisis',
-                    effects_applied: [],
-                    fired_at_tick: currentTick
-                });
-            }
-        }
-    }
-
-    if (results.burdenChanged || results.debtCrisisTriggered) {
+    if (results.burdenChanged) {
         console.log(`[SovereignDebt] ${nation.name}: ratio=${(ratio * 100).toFixed(0)}% burden=${burden.toFixed(3)}`);
     }
 
@@ -31009,24 +30262,14 @@ async function enactSovereignDefault(supabase, bill, currentTick) {
         resolved_at_tick: currentTick
     }).eq('id', resolution.id);
 
-    // 9. Start Sovereign Default Crisis
-    const { data: existingCrisis } = await supabase
-        .from('active_crises')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('crisis_id', SOVEREIGN_DEFAULT_CRISIS_ID);
+    // Crisis sunset (Phase 2): Sovereign Default Crisis insert into
+    // active_crises removed. The default itself is still recorded in
+    // default_history and last_default_tick, and the event log entry
+    // below still fires. For the recurring "this nation just defaulted"
+    // characterization, create a modifier_template keyed off
+    // last_default_tick via modifieradmin.html.
 
-    if (!existingCrisis || existingCrisis.length === 0) {
-        await supabase.from('active_crises').insert({
-            crisis_id: SOVEREIGN_DEFAULT_CRISIS_ID,
-            nation_id: nation.id,
-            started_at_tick: currentTick,
-            effects_applied_log: []
-        });
-        console.log(`[enactSovereignDefault] Sovereign Default Crisis started for ${nation.name}`);
-    }
-
-    // 10. Event log
+    // Event log
     await supabase.from('event_log').insert({
         nation_id: nation.id,
         event_name: 'CRISIS_STARTED: Sovereign Default',
@@ -31971,10 +31214,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // deletion is discoverable in git blame instead of looking like
         // a missing call site.
 
-        // Sovereign debt mechanics (burden, credit deterioration, lockout, debt crisis trigger)
+        // Sovereign debt mechanics (debt service burden updates only —
+        // crisis trigger sunsetted in Phase 2; credit deterioration was
+        // dropped earlier when the credit column was deleted).
         try {
             const debtResult = await processSovereignDebtMechanics(supabase, nation, newTick);
-            if (debtResult && (debtResult.burdenChanged || debtResult.creditDeterioration || debtResult.debtCrisisTriggered)) {
+            if (debtResult && debtResult.burdenChanged) {
                 summary.sovereignDebt = summary.sovereignDebt || [];
                 summary.sovereignDebt.push({ nation: nation.name, ...debtResult });
             }
@@ -32675,32 +31920,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         }
 
-        // Debt-to-GDP band crises: maintain the Strained/Crisis/Collapse
-        // active_crises row for this nation BEFORE processCrises runs, so
-        // any newly-active band's effects apply in the same tick.
-        try {
-            await processDebtToGdpBands(supabase, nation, newTick);
-        } catch (debtBandErr) {
-            console.error(`[advanceTick] Debt-to-GDP band processing failed for ${nation.name} (non-fatal):`, debtBandErr);
-        }
-
-        // Crises (persistent negative events that apply effects every tick)
-        // Runs BEFORE approval calculations so crisis stat/event effects propagate in the same tick.
-        try {
-            const crisisResults = await processCrises(supabase, nation, newTick);
-            if (crisisResults.length > 0) {
-                summary.crises = summary.crises || [];
-                summary.crises.push({ nation: nation.name, crises: crisisResults });
-            }
-        } catch (crisisErr) {
-            console.error(`[advanceTick] Crisis processing failed for ${nation.name} (non-fatal):`, crisisErr);
-        }
-
         // National Modifiers (characterization layer — no per-tick stat changes).
         // Flips active_modifiers rows on/off based on triggers / end-triggers.
-        // Independent of approval / collapse — order with crises here doesn't
-        // matter, but kept adjacent so the two characterizing systems sit
-        // together in the tick.
+        // Sole occupant of the "characterizing systems" slot after the
+        // crisis-system sunset (Phase 1, source-only — no migration number):
+        // processDebtToGdpBands and processCrises were dropped from
+        // js/game/political-actions. modifier_triggers handles the
+        // equivalent firing logic.
         try {
             const modifierResults = await processNationalModifiers(supabase, nation, newTick);
             if (modifierResults.length > 0) {

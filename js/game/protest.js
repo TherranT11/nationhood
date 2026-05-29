@@ -97,9 +97,8 @@ export const PROTEST_CONFIG = {
     CALL_OFF_AP: 1,
     CALL_OFF_WIND_DOWN_TICKS: 2,
 
-    // Crisis template IDs
-    TIER6_CRISIS_ID: '00000000-0000-0000-0000-000000000020',
-    TIER7_CRISIS_ID: '00000000-0000-0000-0000-000000000021',
+    // Crisis sunset (Phase 2): TIER6_CRISIS_ID / TIER7_CRISIS_ID
+    // (UUIDs '...20'/'...21') removed — no more active_crises writers.
 
     // Unresolved grievance penalty at election
     UNRESOLVED_GRIEVANCE_PENALTY: -5,
@@ -1141,11 +1140,9 @@ export async function executePublicAddress(supabase, factionId, nationId, protes
             public_address_last_tick: currentTick,
         }, true, protest.faction_id, currentTick + PROTEST_CONFIG.CALLING_PARTY_COOLDOWN);
 
-        // Remove active crisis
-        const crisisId = protest.tier === 7 ? PROTEST_CONFIG.TIER7_CRISIS_ID : PROTEST_CONFIG.TIER6_CRISIS_ID;
-        await supabase.from('active_crises').delete()
-            .eq('nation_id', nationId)
-            .eq('crisis_id', crisisId);
+        // Crisis sunset (Phase 2): the matching active_crises row delete
+        // (TIER6 or TIER7 protest crisis) is gone — the crisis row no
+        // longer exists. Protest state still lives in protest_log.status.
 
         const headline = pickHeadline('protest_public_address');
         const lede = 'The government\'s public address resonated with the people. The protest crisis has ended peacefully.';
@@ -1250,11 +1247,8 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
             ],
         }, true, protest.faction_id, currentTick + PROTEST_CONFIG.CALLING_PARTY_COOLDOWN);
 
-        // Remove active crisis (no RLS on active_crises)
-        const { error: delErr } = await supabase.from('active_crises').delete()
-            .eq('nation_id', nationId)
-            .eq('crisis_id', PROTEST_CONFIG.TIER6_CRISIS_ID);
-        if (delErr) console.error('[Protest] Failed to delete T6 crisis:', delErr);
+        // Crisis sunset (Phase 2): matching TIER6 active_crises delete
+        // removed. Protest state lives in protest_log.status.
 
         // 1d6 government approval boost for resolving crisis via EPO
         const epoResolveBoost = Math.ceil(Math.random() * 6);
@@ -1266,35 +1260,12 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
         fireProtestEvent(supabase, nationId, 'protest:epo_resolved', currentTick, { protest_id: protestId });
         return { success: true, outcome: 'resolved', newAp };
     } else {
-        // Escalation: T6 → T7 — only if 2+ crises are active (excluding the T6 being replaced)
-        const { data: activeCrises } = await supabase
-            .from('active_crises')
-            .select('id')
-            .eq('nation_id', nationId)
-            .neq('crisis_id', PROTEST_CONFIG.TIER6_CRISIS_ID);
-        if ((activeCrises || []).length < 2) {
-            // Not enough active crises — EPO fails but stays at T6 instead of escalating
-            const failHeadline = pickHeadline('protest_epo_escalated');
-            dispatchProtestArticle(supabase, nationId, 'protest_epo_failed', failHeadline,
-                'The Interior Ministry\'s enforcement action failed to end the crisis, but conditions are not severe enough for further escalation.',
-                1, currentTick, protestId);
-            fireProtestEvent(supabase, nationId, 'protest:epo_failed', currentTick, { protest_id: protestId });
-            return { success: true, outcome: 'failed', newAp };
-        }
-
-        // Remove T6 crisis, create T7
-        const { error: delT6Err } = await supabase.from('active_crises').delete()
-            .eq('nation_id', nationId)
-            .eq('crisis_id', PROTEST_CONFIG.TIER6_CRISIS_ID);
-        if (delT6Err) console.error('[Protest] Failed to delete T6 crisis during escalation:', delT6Err);
-
-        const { error: insT7Err } = await supabase.from('active_crises').insert({
-            crisis_id: PROTEST_CONFIG.TIER7_CRISIS_ID,
-            nation_id: nationId,
-            started_at_tick: currentTick,
-            effects_applied_log: [],
-        });
-        if (insT7Err) console.error('[Protest] Failed to insert T7 crisis:', insT7Err);
+        // Escalation: T6 → T7. Crisis sunset (Phase 2): the original
+        // "2+ other active_crises rows must exist" gate (an active_crises
+        // SELECT) has been removed — EPO failure now always escalates.
+        // The T6 → T7 active_crises row swap is also gone; protest tier
+        // promotion still happens via protest_log so the in-protest T7
+        // demand mechanic continues to work.
 
         // Generate T7 demand
         const { data: statRows } = await supabase
@@ -1408,9 +1379,9 @@ export async function executeNationalEmergencyOnProtest(supabase, factionId, nat
     if (newAp < 0) return { success: false, error: `Insufficient AP. Need ${neCost}.` };
 
     // ── 5. End the crisis immediately ──
-    const crisisId = protest.tier === 7 ? PROTEST_CONFIG.TIER7_CRISIS_ID : PROTEST_CONFIG.TIER6_CRISIS_ID;
-    await supabase.from('active_crises').delete()
-        .eq('nation_id', nationId).eq('crisis_id', crisisId);
+    // Crisis sunset (Phase 2): the matching T6/T7 active_crises row
+    // delete is gone; protest_log.status='resolved' is the canonical
+    // end signal.
 
     // Single RPC handles protest_log + lockouts + cooldown
     await protestUpdate(supabase, protestId, {
@@ -1516,28 +1487,13 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
     let tier = getTurnoutTier(turnoutScore);
     tier = checkEscalationPath(tier, turnoutScore, historyForEscalation, currentTick);
 
-    // Gate Tier 6/7 based on active crisis count + 50% chance roll.
-    // T6 requires 1+ active crisis. T7 requires 3+ active crises.
-    if (tier >= 6) {
-        const { data: activeCrises } = await supabase
-            .from('active_crises')
-            .select('id')
-            .eq('nation_id', nationId);
-        const crisisCount = (activeCrises || []).length;
-
-        if (tier >= 7) {
-            // T7: needs 3+ crises AND 50% chance
-            if (crisisCount < 3 || Math.random() >= 0.5) {
-                tier = 6; // downgrade to T6 check
-            }
-        }
-        if (tier >= 6) {
-            // T6: needs 1+ crisis AND 50% chance
-            if (crisisCount < 1 || Math.random() >= 0.5) {
-                tier = 5; // downgrade to T5
-            }
-        }
-    }
+    // Crisis sunset (Phase 2): the T6/T7 active_crises count gate
+    // (T6 needs 1+ crisis, T7 needs 3+ crises, each + 50% downgrade
+    // roll) is removed — turnout-driven tier now stands on its own.
+    // Reintroduce by counting active_modifiers (severity='red') if a
+    // "stacking unrest" damper is wanted back.
+    if (tier >= 7 && Math.random() >= 0.5) tier = 6;
+    if (tier >= 6 && Math.random() >= 0.5) tier = 5;
 
     // ── 8. Apply tier effects ──
     const effects = computeTierEffects(tier, { govApproval: nationStats.gov_approval });
@@ -1583,9 +1539,13 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
     }
 
     // ── 9. Tier 6/7: create crisis ──
+    // Crisis sunset (Phase 2): the active_crises INSERT (TIER6 / TIER7
+    // crisis row keyed by PROTEST_CONFIG.TIER*_CRISIS_ID) is removed.
+    // The protest itself still becomes "crisis_active" via protest_log
+    // below, which is what the protest mechanic reads. Cross-system
+    // visibility (politics.js display, etc.) goes away with the table.
     let crisisCreated = false;
     if (effects.isCrisis) {
-        const crisisId = tier === 6 ? PROTEST_CONFIG.TIER6_CRISIS_ID : PROTEST_CONFIG.TIER7_CRISIS_ID;
         // T6 fizzles after 1d6 ticks, T7 after 1d12 ticks
         let duration = tier === 6
             ? (1 + Math.floor(Math.random() * 6))    // 1d6: 1-6 ticks
@@ -1605,13 +1565,6 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
                 }
             }
         } catch (_) { /* non-fatal */ }
-
-        await supabase.from('active_crises').insert({
-            crisis_id: crisisId,
-            nation_id: nationId,
-            started_at_tick: currentTick,
-            effects_applied_log: [],
-        });
 
         // Update protest_log to crisis_active
         await supabase.from('protest_log').update({

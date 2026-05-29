@@ -542,28 +542,25 @@ async function renderCardBilateralIntel(issue) {
     const ourName = currentNation.name;
     const theirName = issue.nation_a_id === ourNationId ? (issue.nation_b?.name || 'Unknown') : (issue.nation_a?.name || 'Unknown');
 
-    const [theirRes, ourHogRes, theirHogRes, ourCrisesRes, theirCrisesRes] = await Promise.allSettled([
+    // Crisis sunset (Phase 3): the two per-nation active_crises reads
+    // + the Active Crises row in the intel card are gone. Reintroduce
+    // via active_modifiers if a "what's burning over there" panel is
+    // wanted on the conflict modal.
+    const [theirRes, ourHogRes, theirHogRes] = await Promise.allSettled([
         _supabase.from('nations').select('gov_approval, state_apparatus, power').eq('id', theirNationId).single(),
         _supabase.from('head_of_government').select('first_name, last_name, factions:faction_id(faction_name, abbreviation)').eq('nation_id', ourNationId).eq('active', true).maybeSingle(),
         _supabase.from('head_of_government').select('first_name, last_name, factions:faction_id(faction_name, abbreviation)').eq('nation_id', theirNationId).eq('active', true).maybeSingle(),
-        _supabase.from('active_crises').select('id, crisis_templates(name)').eq('nation_id', ourNationId),
-        _supabase.from('active_crises').select('id, crisis_templates(name)').eq('nation_id', theirNationId),
     ]);
 
     const theirNation = theirRes.status === 'fulfilled' ? theirRes.value.data : null;
     const ourHog = ourHogRes.status === 'fulfilled' ? ourHogRes.value.data : null;
     const theirHog = theirHogRes.status === 'fulfilled' ? theirHogRes.value.data : null;
-    const ourCrises = ourCrisesRes.status === 'fulfilled' ? (ourCrisesRes.value.data || []) : [];
-    const theirCrises = theirCrisesRes.status === 'fulfilled' ? (theirCrisesRes.value.data || []) : [];
 
-    function intelCard(name, color, hog, approval, control, power, crises) {
+    function intelCard(name, color, hog, approval, control, power) {
         const hogName = hog ? `<strong>${escapeHtml(hog.first_name)} ${escapeHtml(hog.last_name)}</strong>` : '<em>Vacant</em>';
         const hogParty = hog?.factions?.abbreviation ? `<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);margin-left:4px;">[${escapeHtml(hog.factions.abbreviation)}]</span>` : '';
         const approvalColor = approval >= 60 ? 'var(--teal)' : approval >= 40 ? 'var(--amber)' : 'var(--red)';
         const controlColor = control >= 60 ? 'var(--teal)' : control >= 40 ? 'var(--amber)' : 'var(--red)';
-        let crisesHtml = '';
-        if (crises.length === 0) crisesHtml = '<span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">None</span>';
-        else crisesHtml = crises.map(c => `<div style="font-size:9.5px;color:var(--text-muted);padding-left:10px;position:relative;margin-top:1px;"><span style="position:absolute;left:0;top:5px;width:4px;height:4px;border-radius:50%;background:var(--amber);"></span>${escapeHtml(c.crisis_templates?.name || 'Crisis')}</div>`).join('');
 
         return `<div style="flex:1;padding:6px 20px 8px;">
             <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px;color:${color};">${escapeHtml(name)}</div>
@@ -571,8 +568,6 @@ async function renderCardBilateralIntel(issue) {
             <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Gov. Approval</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:${approvalColor};">${Math.round(approval)}</span></div>
             <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">State Apparatus</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;color:${controlColor};">${Math.round(control)}</span></div>
             <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Foreign Affairs</span><span style="font-family:var(--font-mono);font-size:11px;font-weight:600;">${Math.round(power)}</span></div>
-            <div style="display:flex;align-items:baseline;padding:1px 0;"><span style="font-family:var(--font-mono);font-size:7.5px;color:var(--text-dim);text-transform:uppercase;min-width:125px;">Active Crises</span></div>
-            ${crisesHtml}
         </div>`;
     }
 
@@ -584,7 +579,7 @@ async function renderCardBilateralIntel(issue) {
     const theirPower = Number(theirNation?.power ?? 50);
 
     el.style.display = '';
-    el.innerHTML = `<div style="display:flex;">${intelCard(ourName, 'var(--blue,#6b8cae)', ourHog, ourApproval, ourControl, ourPower, ourCrises)}<div style="border-left:1px solid rgba(200,196,184,0.06);"></div>${intelCard(theirName, 'var(--red,#a65d5d)', theirHog, theirApproval, theirControl, theirPower, theirCrises)}</div>`;
+    el.innerHTML = `<div style="display:flex;">${intelCard(ourName, 'var(--blue,#6b8cae)', ourHog, ourApproval, ourControl, ourPower)}<div style="border-left:1px solid rgba(200,196,184,0.06);"></div>${intelCard(theirName, 'var(--red,#a65d5d)', theirHog, theirApproval, theirControl, theirPower)}</div>`;
 }
 
 // The nation that holds Initiative on an issue (the side whose id matches

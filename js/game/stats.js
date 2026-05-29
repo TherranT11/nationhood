@@ -13,9 +13,9 @@
  * If a legacy key exists in the database, add it to STAT_KEY_ALIASES below
  * so normalizeNationStatKey() can resolve it.
  *
- * Used by: processStatEffects, processCrises, processEvents,
- *          processMinistryActions, processPMTraitEffects, auditStatKeys,
- *          snapshotNationHistory, administration snapshots.
+ * Used by: processStatEffects, processEvents, processMinistryActions,
+ *          processPMTraitEffects, auditStatKeys, snapshotNationHistory,
+ *          administration snapshots.
  *
  * CANONICAL STAT KEY REFERENCE:
  *   --- Economic ---

@@ -3441,24 +3441,10 @@ async function runStatAudit() {
         }
     }
 
-    // 5. Active crises
-    heading('ACTIVE CRISES');
-    const { data: crises } = await _supabase.from('active_crises')
-        .select('crisis_id, started_tick, crisis_templates(name, crisis_effects(stat_key, change_per_tick, target))')
-        .eq('nation_id', nationId);
-    const hitCrises = (crises || []).filter(c =>
-        c.crisis_templates?.crisis_effects?.some(e => e.target === 'nation' && normalizeNationStatKey(e.stat_key) === sk)
-    );
-    if (hitCrises.length === 0) {
-        log('  None affecting this stat.', '#888');
-    }
-    for (const c of hitCrises) {
-        const effs = c.crisis_templates.crisis_effects.filter(e => e.target === 'nation' && normalizeNationStatKey(e.stat_key) === sk);
-        for (const e of effs) {
-            log(`  [ACTIVE] "${c.crisis_templates.name}" | change_per_tick=${e.change_per_tick} | started tick ${c.started_tick}`,
-                e.change_per_tick < 0 ? '#f44' : '#4f4');
-        }
-    }
+    // Crisis sunset (Phase 3): the ACTIVE CRISES section (active_crises
+    // + crisis_templates + crisis_effects join) is removed. Stat impact
+    // from modifiers should land here when the modifier diagnostic
+    // surface lands.
 
     // 6. Ministry actions
     heading('MINISTRY ACTIONS (unprocessed)');
@@ -3527,12 +3513,8 @@ async function runStatAudit() {
         }
         total += c.target_dir === 'down' ? -effMag : +effMag;
     }
-    // Crises
-    for (const c of hitCrises) {
-        for (const e of c.crisis_templates.crisis_effects.filter(e => e.target === 'nation' && normalizeNationStatKey(e.stat_key) === sk)) {
-            total += Number(e.change_per_tick);
-        }
-    }
+    // Crisis sunset (Phase 3): crisis contribution to per-tick impact
+    // removed (active_crises read is gone above).
     // Target-based policy convergence (the modern model)
     total += tbDelta;
     total = Math.round(total * 100) / 100;

@@ -256,35 +256,12 @@ async function auditStatKeys(supabase) {
         }
     }
 
-    // 2. Crisis effects
-    const { data: crisisEffects } = await supabase.from('crisis_effects').select('id, crisis_template_id, stat_key, target');
-    for (const ce of (crisisEffects || [])) {
-        if (ce.target !== 'nation') continue;
-        const resolved = normalizeNationStatKey(ce.stat_key);
-        if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
-            invalid.push({ source: 'crisis_effect', id: ce.id, template_id: ce.crisis_template_id, bad_key: ce.stat_key });
-        }
-    }
+    // Crisis sunset (Phase 2): crisis_effects / crisis_triggers /
+    // crisis_end_triggers audit passes removed. The modifier system
+    // (modifier_effects / modifier_triggers / modifier_end_triggers)
+    // already has its own stat-key validation pipeline.
 
-    // 3. Crisis triggers
-    const { data: crisisTriggers } = await supabase.from('crisis_triggers').select('id, crisis_template_id, stat_key');
-    for (const ct of (crisisTriggers || [])) {
-        const resolved = normalizeNationStatKey(ct.stat_key);
-        if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
-            invalid.push({ source: 'crisis_trigger', id: ct.id, template_id: ct.crisis_template_id, bad_key: ct.stat_key });
-        }
-    }
-
-    // 4. Crisis end triggers
-    const { data: crisisEndTriggers } = await supabase.from('crisis_end_triggers').select('id, crisis_template_id, stat_key');
-    for (const cet of (crisisEndTriggers || [])) {
-        const resolved = normalizeNationStatKey(cet.stat_key);
-        if (!resolved || !NATION_STAT_COLUMN_SET.has(resolved)) {
-            invalid.push({ source: 'crisis_end_trigger', id: cet.id, template_id: cet.crisis_template_id, bad_key: cet.stat_key });
-        }
-    }
-
-    // 5. Event effects
+    // Event effects
     const { data: eventEffects } = await supabase.from('event_effects').select('id, event_id, stat_key, target');
     for (const ee of (eventEffects || [])) {
         if (ee.target !== 'nation') continue;
@@ -294,7 +271,7 @@ async function auditStatKeys(supabase) {
         }
     }
 
-    // 6. Event triggers
+    // Event triggers
     const { data: eventTriggers } = await supabase.from('event_triggers').select('id, event_id, stat_key');
     for (const et of (eventTriggers || [])) {
         if (!et.stat_key) continue;
@@ -401,18 +378,17 @@ async function processPurgeDecay(supabase, nationId, currentTick) {
 // ==================== SOVEREIGN DEFAULT — TICK-ONLY HELPERS ====================
 
 /**
- * Per-tick debt mechanics: update debt_service_burden and trigger a
- * Sovereign Debt Crisis when the debt-to-budget ratio breaches the
- * configured threshold. Credit-based gating was removed when the
- * `nations.credit` column was dropped in the alpha refactor; the
- * trigger is now ratio-only.
+ * Per-tick debt mechanics: update debt_service_burden based on the
+ * debt-to-budget ratio. Credit-based gating was removed when the
+ * `nations.credit` column was dropped in the alpha refactor, and the
+ * Sovereign Debt Crisis trigger was sunsetted in Phase 2 (modifier
+ * system replaces it).
  */
 async function processSovereignDebtMechanics(supabase, nation, currentTick) {
     const ratio = getDebtToGDP(nation);
     if (!isFinite(ratio)) return null;
 
     const burden = calculateDebtServiceBurden(nation);
-    const cfg = SOVEREIGN_DEFAULT_CONFIG;
 
     const updates: any = {};
     const results: any = { nationId: nation.id, ratio, burden };
@@ -434,39 +410,14 @@ async function processSovereignDebtMechanics(supabase, nation, currentTick) {
         Object.assign(nation, updates);
     }
 
-    // 2. Programmatically trigger Sovereign Debt Crisis when the
-    //    debt-to-budget ratio breaches DEBT_CRISIS_MIN_RATIO and no
-    //    crisis is already active.
-    if (ratio >= cfg.DEBT_CRISIS_MIN_RATIO) {
-        const { data: existing } = await supabase
-            .from('active_crises')
-            .select('id')
-            .eq('nation_id', nation.id)
-            .eq('crisis_id', SOVEREIGN_DEBT_CRISIS_ID);
+    // Crisis sunset (Phase 2): programmatic Sovereign Debt Crisis
+    // trigger removed. The debt-to-budget ratio still drives debt
+    // service burden above. If you want the old "ratio >=
+    // DEBT_CRISIS_MIN_RATIO → red flag" behavior back, configure a
+    // modifier_template with a debt_service_burden / debt-ratio
+    // trigger via modifieradmin.html.
 
-        if (!existing || existing.length === 0) {
-            const { error: insertErr } = await supabase.from('active_crises').insert({
-                crisis_id: SOVEREIGN_DEBT_CRISIS_ID,
-                nation_id: nation.id,
-                started_at_tick: currentTick,
-                effects_applied_log: []
-            });
-            if (!insertErr) {
-                results.debtCrisisTriggered = true;
-                console.log(`[SovereignDebt] Debt Crisis triggered for ${nation.name} (ratio=${(ratio * 100).toFixed(0)}%)`);
-                await supabase.from('event_log').insert({
-                    nation_id: nation.id,
-                    event_name: 'CRISIS_STARTED: Sovereign Debt Crisis',
-                    description_used: `Crushing debt (${(ratio * 100).toFixed(0)}% of GDP) has triggered a sovereign debt crisis.`,
-                    category: 'crisis',
-                    effects_applied: [],
-                    fired_at_tick: currentTick
-                });
-            }
-        }
-    }
-
-    if (results.burdenChanged || results.debtCrisisTriggered) {
+    if (results.burdenChanged) {
         console.log(`[SovereignDebt] ${nation.name}: ratio=${(ratio * 100).toFixed(0)}% burden=${burden.toFixed(3)}`);
     }
 
@@ -580,24 +531,14 @@ async function enactSovereignDefault(supabase, bill, currentTick) {
         resolved_at_tick: currentTick
     }).eq('id', resolution.id);
 
-    // 9. Start Sovereign Default Crisis
-    const { data: existingCrisis } = await supabase
-        .from('active_crises')
-        .select('id')
-        .eq('nation_id', nation.id)
-        .eq('crisis_id', SOVEREIGN_DEFAULT_CRISIS_ID);
+    // Crisis sunset (Phase 2): Sovereign Default Crisis insert into
+    // active_crises removed. The default itself is still recorded in
+    // default_history and last_default_tick, and the event log entry
+    // below still fires. For the recurring "this nation just defaulted"
+    // characterization, create a modifier_template keyed off
+    // last_default_tick via modifieradmin.html.
 
-    if (!existingCrisis || existingCrisis.length === 0) {
-        await supabase.from('active_crises').insert({
-            crisis_id: SOVEREIGN_DEFAULT_CRISIS_ID,
-            nation_id: nation.id,
-            started_at_tick: currentTick,
-            effects_applied_log: []
-        });
-        console.log(`[enactSovereignDefault] Sovereign Default Crisis started for ${nation.name}`);
-    }
-
-    // 10. Event log
+    // Event log
     await supabase.from('event_log').insert({
         nation_id: nation.id,
         event_name: 'CRISIS_STARTED: Sovereign Default',
@@ -1542,10 +1483,12 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         // deletion is discoverable in git blame instead of looking like
         // a missing call site.
 
-        // Sovereign debt mechanics (burden, credit deterioration, lockout, debt crisis trigger)
+        // Sovereign debt mechanics (debt service burden updates only —
+        // crisis trigger sunsetted in Phase 2; credit deterioration was
+        // dropped earlier when the credit column was deleted).
         try {
             const debtResult = await processSovereignDebtMechanics(supabase, nation, newTick);
-            if (debtResult && (debtResult.burdenChanged || debtResult.creditDeterioration || debtResult.debtCrisisTriggered)) {
+            if (debtResult && debtResult.burdenChanged) {
                 summary.sovereignDebt = summary.sovereignDebt || [];
                 summary.sovereignDebt.push({ nation: nation.name, ...debtResult });
             }
@@ -2246,32 +2189,13 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         }
 
-        // Debt-to-GDP band crises: maintain the Strained/Crisis/Collapse
-        // active_crises row for this nation BEFORE processCrises runs, so
-        // any newly-active band's effects apply in the same tick.
-        try {
-            await processDebtToGdpBands(supabase, nation, newTick);
-        } catch (debtBandErr) {
-            console.error(`[advanceTick] Debt-to-GDP band processing failed for ${nation.name} (non-fatal):`, debtBandErr);
-        }
-
-        // Crises (persistent negative events that apply effects every tick)
-        // Runs BEFORE approval calculations so crisis stat/event effects propagate in the same tick.
-        try {
-            const crisisResults = await processCrises(supabase, nation, newTick);
-            if (crisisResults.length > 0) {
-                summary.crises = summary.crises || [];
-                summary.crises.push({ nation: nation.name, crises: crisisResults });
-            }
-        } catch (crisisErr) {
-            console.error(`[advanceTick] Crisis processing failed for ${nation.name} (non-fatal):`, crisisErr);
-        }
-
         // National Modifiers (characterization layer — no per-tick stat changes).
         // Flips active_modifiers rows on/off based on triggers / end-triggers.
-        // Independent of approval / collapse — order with crises here doesn't
-        // matter, but kept adjacent so the two characterizing systems sit
-        // together in the tick.
+        // Sole occupant of the "characterizing systems" slot after the
+        // crisis-system sunset (Phase 1, source-only — no migration number):
+        // processDebtToGdpBands and processCrises were dropped from
+        // js/game/political-actions.js. modifier_triggers handles the
+        // equivalent firing logic.
         try {
             const modifierResults = await processNationalModifiers(supabase, nation, newTick);
             if (modifierResults.length > 0) {
