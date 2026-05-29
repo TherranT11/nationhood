@@ -253,6 +253,8 @@ const CORPORATE_CATEGORIES = ['corporate','business','trade'];
 
 // Career-log templates — keyed by politician_career_events.event_type. Adding
 // a new beat is one entry here plus whatever inserts the row server-side.
+// Each template gets (name, target_name, metadata); metadata defaults to
+// {} so older entries that don't use it can ignore the third arg.
 // Dissident-group joins / founds are deliberately omitted: underground
 // affiliations are illegal in-fiction and the public career log isn't where
 // they belong (a separate private dossier surface would house those).
@@ -262,6 +264,18 @@ const CAREER_EVENT_TEMPLATES = {
   founded_party: (name, target) => `The ${target || 'new political party'} was established by ${name}.`,
   joined_ngo:    (name, target) => `${name} has registered their membership in the ${target || 'a non-government organisation'}.`,
   founded_ngo:   (name, target) => `The ${target || 'new organisation'} was established by ${name}.`,
+  // stood_for_election: written by politician_stand_for_election (20270402).
+  // metadata.race_tier ('community' | 'parliament') picks the template
+  // shape; metadata.opponent carries the snapshot full name. Falls back
+  // gracefully if either is missing so the row still renders something
+  // sensible if the metadata shape changes later.
+  stood_for_election: (name, target, meta = {}) => {
+    const opp  = meta.opponent || 'an opponent';
+    const seat = target || 'a contested district';
+    return meta.race_tier === 'parliament'
+      ? `${name} has decided to stand for an election, running for the ${seat} seat against ${opp}.`
+      : `${name} has decided to stand for an election, running to be a community organizer in ${seat} against ${opp}.`;
+  },
   won_election:  (name, target) => `${name} won the election in ${target || 'a contested district'}.`,
   lost_election: (name, target) => `${name} lost the election in ${target || 'a contested district'}.`,
 };
@@ -310,7 +324,7 @@ async function init() {
         .order('fired_at_tick', { ascending: false })
         .limit(200),
       _supabase.from('politician_career_events')
-        .select('event_tick, event_type, target_name')
+        .select('event_tick, event_type, target_name, metadata')
         .eq('faction_id', politician.id)
         .order('event_tick', { ascending: false }),
       // Pulls only the columns the Pressing Issues card renders. resolve_due
@@ -397,12 +411,13 @@ function renderCareer() {
     });
   }
   // Persistent career rows (joined_party / founded_party / joined_ngo /
-  // founded_ngo today). Unknown event_types are skipped so a future row
-  // shape lands silently rather than rendering "[object Object]".
+  // founded_ngo / stood_for_election / won_election / lost_election today).
+  // Unknown event_types are skipped so a future row shape lands silently
+  // rather than rendering "[object Object]".
   for (const row of careerRows) {
     const fn = CAREER_EVENT_TEMPLATES[row.event_type];
     if (!fn) continue;
-    events.push({ tick: Number(row.event_tick), text: fn(display, row.target_name) });
+    events.push({ tick: Number(row.event_tick), text: fn(display, row.target_name, row.metadata || {}) });
   }
   events.sort((a, b) => b.tick - a.tick);
 
