@@ -212,7 +212,7 @@ export async function bootstrapPolitician(activeTab) {
 
   const [facRes, shardRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, founded_tick, party_funds, abandoned_at, is_banned, politician_career, politician_charisma, politician_reputation, politician_credibility, politician_influence, politician_suspicion, politician_party_id')
+      .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, founded_tick, party_funds, abandoned_at, is_banned, politician_career, politician_charisma, politician_reputation, politician_credibility, politician_influence, politician_suspicion, politician_party_id, speech_cooldown_until_tick, next_member_action_tick')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
     _supabase.from('shard').select('current_tick, current_date, next_tick_at').eq('name', 'Alpha Shard').single(),
   ]);
@@ -234,8 +234,21 @@ export async function bootstrapPolitician(activeTab) {
   let nation = null;
   if (faction.nation_id) {
     try {
+      // Superset select: covers the topbar's needs (id/name/flag),
+      // politician-nation's full surface, and politician-movements'
+      // total_seats. Reading ctx.nation across politician pages saves
+      // a per-page nations refetch — one round-trip back regardless
+      // of which page consumes which columns.
       const { data, error } = await _supabase.from('nations')
-        .select('id, name, flag_url, nation_profiles(flag_url)')
+        .select(`
+          id, name, flag_url, government_type, capital, total_seats,
+          election_frequency, next_election_tick,
+          head_of_state_title, head_of_state_first_name, head_of_state_last_name,
+          population, dynasty_name,
+          politician_gdp, politician_budget, politician_debt,
+          politician_stability, politician_civil_freedoms, politician_gdp_growth,
+          nation_profiles(flag_url, official_name, motto, overview, founded_year)
+        `)
         .eq('id', faction.nation_id).maybeSingle();
       if (!error) nation = data;
     } catch (_) { /* nation is optional flair; absence falls back to '—' */ }

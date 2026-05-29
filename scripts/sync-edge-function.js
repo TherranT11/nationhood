@@ -70,6 +70,7 @@ const MODULE_FILES = [
     'military-loyalty.js',
     'military-units.js',
     'loan-math.js',
+    'modifiers.js',
 ];
 
 // Read and process each module

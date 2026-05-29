@@ -2267,6 +2267,21 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Crisis processing failed for ${nation.name} (non-fatal):`, crisisErr);
         }
 
+        // National Modifiers (characterization layer — no per-tick stat changes).
+        // Flips active_modifiers rows on/off based on triggers / end-triggers.
+        // Independent of approval / collapse — order with crises here doesn't
+        // matter, but kept adjacent so the two characterizing systems sit
+        // together in the tick.
+        try {
+            const modifierResults = await processNationalModifiers(supabase, nation, newTick);
+            if (modifierResults.length > 0) {
+                summary.modifiers = summary.modifiers || [];
+                summary.modifiers.push({ nation: nation.name, modifiers: modifierResults });
+            }
+        } catch (modifierErr) {
+            console.error(`[advanceTick] National modifier processing failed for ${nation.name} (non-fatal):`, modifierErr);
+        }
+
         // Population growth: apply population change based on current population_growth stat.
         try {
             const popGrowthResult = await processPopulationGrowth(supabase, nation);

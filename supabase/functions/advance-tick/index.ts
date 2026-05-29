@@ -3598,34 +3598,16 @@ async function fireBilateralEvent(supabase, triggerKey, nationIdA, nationIdB, cu
 //      server-side mirror is required.
 //
 //   3. Entrepreneur-facing valuation — computeEntrepreneurValuation
-//      (+ computeCorpBookValue). The book-value/market figure shown on
+//      (+ computeCorpBookValue). The book-value figure shown on
 //      entrepreneur-dashboard.html, entrepreneur-corporations.html,
-//      entrepreneur-corp.html and entrepreneur-markets.html.
+//      entrepreneur-corp.html, entrepreneur-markets.html, and on the
+//      bid-list valuation column returned by get_my_construction_bids.
 //      Deliberately NOT the section-1 engine valuation ("the founding
 //      cash was already spent; we don't invent a valuation"); it is
 //      display-only and never feeds net worth or the tick processor.
-
-// Sell-side (liquidation) value of a held public-stock position under
-// corp_trade's 1%-per-share flat-fill LINEAR curve (20270199). A single trade
-// fills the whole quantity at the current price and moves new_price = P·(1
-// − 0.01·N), capped at N = 99 (anything ≥ 100 would drive new_price ≤ 0 per
-// 20270199:132-136). To liquidate S shares, greedy 99-per-trade is optimal
-// because the slippage term is symmetric in trade sizes.
-//
-// Closed form with k = ⌊S/99⌋, r = S − 99·k:
-//   liquidation(S, P) = 100·P · (1 − 0.01^k · (1 − 0.01·r))
-//   Sanity: S=1 → P; S=99 → 99·P; S=100 → 99.01·P; S→∞ → 100·P (asymptote).
-//
-// Mirror of SQL corp_share_liquidation_value (latest body in 20270367). Both
-// MUST move together if corp_trade's v_pct ever changes off 0.01.
-function corpShareLiquidationValue(shares, price) {
-    const s = Number(shares) || 0;
-    const p = Number(price) || 0;
-    if (s <= 0 || p <= 0) return 0;
-    const k = Math.floor(s / 99);
-    const r = s - 99 * k;
-    return 100 * p * (1 - Math.pow(0.01, k) * (1 - 0.01 * r));
-}
+//      Public corps used to surface as market cap (share_price ×
+//      shares_outstanding) — see computeEntrepreneurValuation below
+//      for why that was retired in favour of book value.
 
 // National HQ value/quality formulas. The HQ is now persisted as a
 // real corp_properties row at corp founding (see corp-nation-select.html)
@@ -3756,20 +3738,24 @@ function computeCorpBookValue({ treasury, buildingCostPaid, outstandingDebt } = 
 }
 
 // See header §3. Display-only valuation for the entrepreneur surface —
-// public → MARKET CAP (share_price × shares_outstanding); private (or
-// unlisted) → dynamic BOOK VALUE (computeCorpBookValue). The caller
-// supplies the building/loan aggregates via `opts` (they aren't on the
-// corp row); absent them the figure falls back to treasury alone so it is
-// never blank or stale. Returns the raw figure + kind so each surface
-// formats/labels itself; the rule lives only here.
+// always BOOK VALUE (computeCorpBookValue), for both private and public
+// listings. The caller supplies the building/loan aggregates via `opts`
+// (they aren't on the corp row); absent them the figure falls back to
+// treasury alone so it is never blank or stale. Returns the raw figure +
+// kind so each surface formats/labels itself; the rule lives only here.
+//
+// History: public corps used to surface as share_price × shares_outstanding
+// (market cap). Pulled in favour of book value because a founder can
+// self-buy from the float to pump share_price 1% per share without any
+// real assets backing the figure (corp_trade flat-fill curve) — the
+// dividend round-trip nets the cash out but leaves market cap inflated,
+// turning leaderboards / directories into vanity rankings. Book value
+// reads treasury + building book − outstanding debt, all of which move
+// with real economic activity. The share_price / shares_outstanding pair
+// is still rendered on the corp's own detail page (trading panel), so
+// the per-share trading view is unaffected.
 function computeEntrepreneurValuation(corp, opts) {
     const c = corp || {};
-    if (c.listing === 'public') {
-        if (c.share_price != null && c.shares_outstanding != null) {
-            return { kind: 'market', amount: Number(c.share_price) * Number(c.shares_outstanding) };
-        }
-        return { kind: 'none', amount: null };
-    }
     return {
         kind: 'book',
         amount: computeCorpBookValue({
@@ -20276,6 +20262,20 @@ let _historyColumnsCache = null;
 // each cold-start of the edge function (or on manual cache bust).
 async function getHistorySnapshotColumns(supabase) {
     if (_historyColumnsCache) return _historyColumnsCache;
+    // Self-heal nations_history schema before caching the column list.
+    // sync_nations_history_columns() ADDs every nations numeric column
+    // that isn't already mirrored — idempotent, so when nothing drifted
+    // it's a single function call that returns 0. Runs once per warm
+    // process (same lifecycle as the column-list cache), and clearing
+    // _historyMissingCols here pairs with the fresh schema fetch so a
+    // previous warm session's skip-list can't poison the next cold one.
+    try {
+        const { error: syncErr } = await supabase.rpc('sync_nations_history_columns');
+        if (syncErr) console.warn('[snapshotNationHistory] sync_nations_history_columns failed:', syncErr.message);
+    } catch (e) {
+        console.warn('[snapshotNationHistory] sync_nations_history_columns threw:', e?.message || e);
+    }
+    _historyMissingCols.clear();
     const { data, error } = await supabase.rpc('nation_history_columns');
     if (error || !Array.isArray(data) || data.length === 0) {
         console.warn('[snapshotNationHistory] nation_history_columns RPC unavailable, falling back to in-code list:', error?.message || 'empty result');
@@ -30226,6 +30226,172 @@ function collateralRecoveryRate(collateralType) {
 //   4 missed  -> defaulted
 const DEFAULT_MISSED_THRESHOLD = 4;
 
+// ────────── modifiers ──────────
+
+// National Modifiers — characterization layer for nations.
+//
+// Each modifier_template defines a named situation a nation can be
+// in (e.g. "Booming Economy"). The runtime here flips that template
+// on/off for a nation by maintaining an active_modifiers row:
+//
+//   ACTIVATE   when ALL of the template's modifier_triggers      hold
+//   DEACTIVATE when ALL of the template's modifier_end_triggers  hold
+//
+// End triggers use DIFFERENT thresholds from activation triggers
+// (hysteresis — trigger at GDP >= 6, end at GDP <= 3) so a nation
+// sitting right on the boundary doesn't flicker on/off every tick.
+//
+// What this module does NOT do
+// ────────────────────────────
+// No per-tick stat changes. Modifiers are pure characterization —
+// the `effects` column on modifier_templates is a free-text array
+// of prose labels rendered on the user-facing page, NOT structured
+// stat deltas. Compare crisis_effects, which IS a per-tick stat
+// delta pipeline (see processCrises in political-actions).
+//
+// Stat key resolution
+// ───────────────────
+// Trigger stat_keys are routed through normalizeNationStatKey so
+// legacy aliases (e.g. workforce → unskilled_workers) keep working
+// if an admin ever types one. Unknown / DELETED stat keys (where
+// the alias maps to null) cause the modifier to NEVER trigger —
+// the trigger check fails and the modifier stays inactive. Same
+// failure mode as processCrises for the same reason: we don't
+// silently activate on a missing-stat lookup.
+//
+// Call site
+// ─────────
+// Invoked once per nation per tick from the advance-tick edge
+// function handler (scripts/advance-tick-handler-template.ts),
+// alongside processCrises. Bundled into the edge function via
+// scripts/sync-edge-function.js.
+
+// Internal: ALL rows must evaluate true. Returns false on the first
+// failure, or if there are zero rows (so freshly-created modifiers
+// without configured triggers don't auto-activate or auto-deactivate).
+function allConditionsHold(rows, nation) {
+    if (!Array.isArray(rows) || rows.length === 0) return false;
+    for (const row of rows) {
+        const resolved = normalizeNationStatKey(row.stat_key) || row.stat_key;
+        const raw = nation[resolved];
+        if (raw === null || raw === undefined) return false;
+        const val = Number(raw);
+        if (!Number.isFinite(val)) return false;
+        const thr = Number(row.threshold);
+        if (row.operator === 'gte' && val < thr) return false;
+        if (row.operator === 'lte' && val > thr) return false;
+    }
+    return true;
+}
+
+// Process one nation's modifier state for the current tick.
+//
+//   - Loads all active modifier_templates with their triggers + end_triggers
+//   - Loads currently-active modifier rows for this nation
+//   - For each inactive template: insert active_modifiers row if
+//     activation triggers hold
+//   - For each active row: delete it if end triggers hold
+//
+// Returns an array of {type, modifierName, severity, category, tick}
+// events for the tick summary. The caller (tick handler) collects
+// these into summary.modifiers; they don't get written to event_log
+// (modifiers are passive characterization, not in-world events).
+async function processNationalModifiers(supabase, nation, currentTick) {
+    const events = [];
+
+    // 1. Load all enabled templates with their conditions
+    const { data: templates, error: tmplErr } = await supabase
+        .from('modifier_templates')
+        .select('id, name, category, severity, is_active, modifier_triggers(*), modifier_end_triggers(*)')
+        .eq('is_active', true);
+
+    if (tmplErr) {
+        console.warn(`[processNationalModifiers] template load failed for ${nation.name}: ${tmplErr.message}`);
+        return events;
+    }
+    if (!templates || templates.length === 0) return events;
+
+    // 2. Load currently-active modifier rows for this nation
+    const { data: activeRows, error: activeErr } = await supabase
+        .from('active_modifiers')
+        .select('id, modifier_id')
+        .eq('nation_id', nation.id);
+
+    if (activeErr) {
+        console.warn(`[processNationalModifiers] active_modifiers load failed for ${nation.name}: ${activeErr.message}`);
+        return events;
+    }
+
+    const activeMap = {};
+    for (const row of (activeRows || [])) {
+        activeMap[row.modifier_id] = row;
+    }
+
+    // 3. Walk every template. Activate inactive ones whose triggers
+    //    hold; deactivate active ones whose end-triggers hold.
+    for (const tmpl of templates) {
+        const isActive    = !!activeMap[tmpl.id];
+        const triggers    = tmpl.modifier_triggers     || [];
+        const endTriggers = tmpl.modifier_end_triggers || [];
+
+        if (!isActive) {
+            // Activation check
+            if (!allConditionsHold(triggers, nation)) continue;
+
+            const { error: insErr } = await supabase
+                .from('active_modifiers')
+                .insert({
+                    modifier_id:     tmpl.id,
+                    nation_id:       nation.id,
+                    started_at_tick: currentTick,
+                });
+
+            if (insErr) {
+                // Most likely the unique constraint — another concurrent
+                // tick beat us. Log and move on.
+                console.warn(`[processNationalModifiers] activate "${tmpl.name}" failed for ${nation.name}: ${insErr.message}`);
+                continue;
+            }
+
+            events.push({
+                type:         'modifier_activated',
+                modifierName: tmpl.name,
+                severity:     tmpl.severity,
+                category:     tmpl.category,
+                tick:         currentTick,
+            });
+            console.log(`[processNationalModifiers] Activated "${tmpl.name}" on ${nation.name} (tick ${currentTick})`);
+        } else {
+            // Deactivation check — only if end-triggers exist AND all hold.
+            // A template with zero end-triggers is "sticky" and will only
+            // come off via admin delete. That's intentional (matches the
+            // semantics of allConditionsHold for empty arrays).
+            if (!allConditionsHold(endTriggers, nation)) continue;
+
+            const { error: delErr } = await supabase
+                .from('active_modifiers')
+                .delete()
+                .eq('id', activeMap[tmpl.id].id);
+
+            if (delErr) {
+                console.warn(`[processNationalModifiers] deactivate "${tmpl.name}" failed for ${nation.name}: ${delErr.message}`);
+                continue;
+            }
+
+            events.push({
+                type:         'modifier_deactivated',
+                modifierName: tmpl.name,
+                severity:     tmpl.severity,
+                category:     tmpl.category,
+                tick:         currentTick,
+            });
+            console.log(`[processNationalModifiers] Deactivated "${tmpl.name}" on ${nation.name} (tick ${currentTick})`);
+        }
+    }
+
+    return events;
+}
+
 
 
 // ===== END GAME LOGIC =====
@@ -32470,6 +32636,21 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             }
         } catch (crisisErr) {
             console.error(`[advanceTick] Crisis processing failed for ${nation.name} (non-fatal):`, crisisErr);
+        }
+
+        // National Modifiers (characterization layer — no per-tick stat changes).
+        // Flips active_modifiers rows on/off based on triggers / end-triggers.
+        // Independent of approval / collapse — order with crises here doesn't
+        // matter, but kept adjacent so the two characterizing systems sit
+        // together in the tick.
+        try {
+            const modifierResults = await processNationalModifiers(supabase, nation, newTick);
+            if (modifierResults.length > 0) {
+                summary.modifiers = summary.modifiers || [];
+                summary.modifiers.push({ nation: nation.name, modifiers: modifierResults });
+            }
+        } catch (modifierErr) {
+            console.error(`[advanceTick] National modifier processing failed for ${nation.name} (non-fatal):`, modifierErr);
         }
 
         // Population growth: apply population change based on current population_growth stat.

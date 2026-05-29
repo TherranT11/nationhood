@@ -22,34 +22,16 @@
 //      server-side mirror is required.
 //
 //   3. Entrepreneur-facing valuation — computeEntrepreneurValuation
-//      (+ computeCorpBookValue). The book-value/market figure shown on
+//      (+ computeCorpBookValue). The book-value figure shown on
 //      entrepreneur-dashboard.html, entrepreneur-corporations.html,
-//      entrepreneur-corp.html and entrepreneur-markets.html.
+//      entrepreneur-corp.html, entrepreneur-markets.html, and on the
+//      bid-list valuation column returned by get_my_construction_bids.
 //      Deliberately NOT the section-1 engine valuation ("the founding
 //      cash was already spent; we don't invent a valuation"); it is
 //      display-only and never feeds net worth or the tick processor.
-
-// Sell-side (liquidation) value of a held public-stock position under
-// corp_trade's 1%-per-share flat-fill LINEAR curve (20270199). A single trade
-// fills the whole quantity at the current price and moves new_price = P·(1
-// − 0.01·N), capped at N = 99 (anything ≥ 100 would drive new_price ≤ 0 per
-// 20270199:132-136). To liquidate S shares, greedy 99-per-trade is optimal
-// because the slippage term is symmetric in trade sizes.
-//
-// Closed form with k = ⌊S/99⌋, r = S − 99·k:
-//   liquidation(S, P) = 100·P · (1 − 0.01^k · (1 − 0.01·r))
-//   Sanity: S=1 → P; S=99 → 99·P; S=100 → 99.01·P; S→∞ → 100·P (asymptote).
-//
-// Mirror of SQL corp_share_liquidation_value (latest body in 20270367). Both
-// MUST move together if corp_trade's v_pct ever changes off 0.01.
-export function corpShareLiquidationValue(shares, price) {
-    const s = Number(shares) || 0;
-    const p = Number(price) || 0;
-    if (s <= 0 || p <= 0) return 0;
-    const k = Math.floor(s / 99);
-    const r = s - 99 * k;
-    return 100 * p * (1 - Math.pow(0.01, k) * (1 - 0.01 * r));
-}
+//      Public corps used to surface as market cap (share_price ×
+//      shares_outstanding) — see computeEntrepreneurValuation below
+//      for why that was retired in favour of book value.
 
 // National HQ value/quality formulas. The HQ is now persisted as a
 // real corp_properties row at corp founding (see corp-nation-select.html)
@@ -180,20 +162,24 @@ export function computeCorpBookValue({ treasury, buildingCostPaid, outstandingDe
 }
 
 // See header §3. Display-only valuation for the entrepreneur surface —
-// public → MARKET CAP (share_price × shares_outstanding); private (or
-// unlisted) → dynamic BOOK VALUE (computeCorpBookValue). The caller
-// supplies the building/loan aggregates via `opts` (they aren't on the
-// corp row); absent them the figure falls back to treasury alone so it is
-// never blank or stale. Returns the raw figure + kind so each surface
-// formats/labels itself; the rule lives only here.
+// always BOOK VALUE (computeCorpBookValue), for both private and public
+// listings. The caller supplies the building/loan aggregates via `opts`
+// (they aren't on the corp row); absent them the figure falls back to
+// treasury alone so it is never blank or stale. Returns the raw figure +
+// kind so each surface formats/labels itself; the rule lives only here.
+//
+// History: public corps used to surface as share_price × shares_outstanding
+// (market cap). Pulled in favour of book value because a founder can
+// self-buy from the float to pump share_price 1% per share without any
+// real assets backing the figure (corp_trade flat-fill curve) — the
+// dividend round-trip nets the cash out but leaves market cap inflated,
+// turning leaderboards / directories into vanity rankings. Book value
+// reads treasury + building book − outstanding debt, all of which move
+// with real economic activity. The share_price / shares_outstanding pair
+// is still rendered on the corp's own detail page (trading panel), so
+// the per-share trading view is unaffected.
 export function computeEntrepreneurValuation(corp, opts) {
     const c = corp || {};
-    if (c.listing === 'public') {
-        if (c.share_price != null && c.shares_outstanding != null) {
-            return { kind: 'market', amount: Number(c.share_price) * Number(c.shares_outstanding) };
-        }
-        return { kind: 'none', amount: null };
-    }
     return {
         kind: 'book',
         amount: computeCorpBookValue({

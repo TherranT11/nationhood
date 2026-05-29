@@ -83,35 +83,16 @@
   display:inline-flex; align-items:center; gap:6px; }
 .back-to-top:hover { color:#5aafa5; border-color:rgba(90,175,165,0.4); }
 
-/* National Characteristics body — one row per stat: a tier-colored value
-   card on the left, a bold lead + colored accent + prose continuation on
-   the right, and the baseline italic description underneath. The tier
-   color (good / mid / bad) is set inline per row via the --tier custom
-   property so border, labels, and accent text all read together. */
-.nat-list { display:flex; flex-direction:column; }
-.nat-row  { display:grid; grid-template-columns:170px 1fr; gap:24px;
-  padding:14px 0; align-items:start;
-  border-bottom:0.5px solid rgba(255,255,255,0.04); }
-.nat-row:last-child { border-bottom:none; }
-
-.nat-card { background:#0e1212; border:1px solid var(--tier, #5aafa5);
-  border-radius:6px; padding:12px 14px; min-height:96px; }
-.nat-card__label { font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
-  color:var(--tier, #5aafa5); font-weight:600; margin-bottom:8px; }
-.nat-card__value { font-size:30px; font-weight:600; color:#fff;
-  font-family:monospace; line-height:1.05; letter-spacing:0.01em; }
-.nat-card__scale { font-size:11px; color:#666; margin-left:4px; font-family:monospace; }
-.nat-card__tier  { display:flex; align-items:center; gap:6px; margin-top:10px;
-  font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
-  color:var(--tier, #5aafa5); font-weight:600; }
-.nat-card__tier::before { content:'●'; font-size:8px; line-height:1; }
-
-.nat-body { padding-top:2px; }
-.nat-body__head   { font-size:13px; color:#d4d4d4; line-height:1.6; }
-.nat-body__head strong { color:#fff; font-weight:600; }
-.nat-body__accent { color:var(--tier, #5aafa5); font-weight:500; }
-.nat-body__desc   { font-style:italic; font-size:11px; color:#666;
-  line-height:1.55; margin-top:10px; }
+/* National Modifiers is its own page (politician-modifiers.html);
+   the section body here just holds a CTA card linking to it. */
+.sec-cta { display:flex; align-items:center; gap:18px; padding:18px 20px;
+  background:#0e1212; border:0.5px solid rgba(90,175,165,0.25); border-radius:6px;
+  text-decoration:none; color:inherit;
+  transition:background 0.12s, border-color 0.12s; }
+.sec-cta:hover { background:#11181a; border-color:rgba(90,175,165,0.5); }
+.sec-cta .cta-arrow { font-size:24px; color:#5aafa5; line-height:1; flex-shrink:0; }
+.sec-cta .cta-title { font-size:14px; font-weight:600; color:#fff; letter-spacing:0.02em; }
+.sec-cta .cta-sub   { font-size:11px; color:#888; margin-top:5px; line-height:1.5; }
 
 /* Corporations list — one row per entrepreneur corp HQ'd in this nation.
    Logo (industry-coloured 2-letter badge) · name + sector · listing pill ·
@@ -161,7 +142,7 @@
 .parl-meta  { font-size:10px; color:#888; letter-spacing:0.04em; }
 .parl-meta strong { color:#fff; }
 .chamber-wrap { display:flex; justify-content:center; padding:14px 0 6px; }
-.chamber { width:100%; max-width:760px; height:auto; }
+.chamber { width:100%; max-width:380px; height:auto; }
 
 .gov-strip { display:grid; grid-template-columns:repeat(3,1fr); gap:10px;
   padding-top:14px; margin-bottom:16px; }
@@ -194,6 +175,7 @@
 .status-pill { font-size:8px; letter-spacing:0.11em; padding:2px 7px; border-radius:2px;
   text-transform:uppercase; font-weight:600; }
 .status-pill.gov   { background:#0e1611; color:#8aaa6a; border:0.5px solid rgba(122,170,106,0.35); }
+.status-pill.coal  { background:#0d1418; color:#7aa3c0; border:0.5px solid rgba(122,163,192,0.35); }
 .status-pill.opp   { background:#161208; color:#c89e6e; border:0.5px solid rgba(200,158,110,0.25); }
 .status-pill.you   { background:#0e1416; color:#5aafa5; border:0.5px solid rgba(90,175,165,0.4); }
 .party-meta { display:flex; flex-direction:column; gap:6px; font-size:10px;
@@ -234,10 +216,6 @@
   .jump-nav button { font-size:9px; padding:6px 10px; letter-spacing:0.06em; }
   .sec summary { padding:12px 14px; font-size:11px; letter-spacing:0.06em; }
   .sec-body { padding:14px; }
-  .nat-row { grid-template-columns:1fr; gap:10px; }
-  .nat-card { min-height:auto; }
-  .nat-card__value { font-size:24px; }
-  .nat-body__head { font-size:12px; }
   .corp-row, .corp-head { grid-template-columns:36px 1fr auto; gap:10px; }
   .corp-row { padding:10px 2px; }
   .corp-head .col-type, .corp-head .col-ceo,
@@ -307,9 +285,15 @@
   </nav>
 
   <details id="sec-nation" class="sec">
-    <summary>National Characteristics</summary>
+    <summary>National Modifiers</summary>
     <div class="sec-body" id="sec-nation-body">
-      <div class="sec-empty">Loading…</div>
+      <a class="sec-cta" href="politician-modifiers.html">
+        <div class="cta-arrow">&rsaquo;</div>
+        <div>
+          <div class="cta-title">Open National Modifiers</div>
+          <div class="cta-sub">Active situations characterizing the nation &mdash; Green, Yellow, and Red modifiers triggered by current stat levels.</div>
+        </div>
+      </a>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
@@ -322,8 +306,8 @@
   </details>
   <details id="sec-elections" class="sec">
     <summary>Elections</summary>
-    <div class="sec-body">
-      <div class="sec-empty">No elections recorded yet.</div>
+    <div class="sec-body" id="sec-elections-body">
+      <div class="sec-empty">Loading…</div>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
@@ -404,18 +388,16 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { industryLabel, ownerDisplayName, fmtValuation, safeHexColor, factionInitials } from './js/utils.js';
+import { industryLabel, ownerDisplayName, fmtValuation, safeHexColor, factionInitials, tickToYear, fmtMoney } from './js/utils.js';
+import { STABILITY_TIERS, CIVIL_FREEDOMS_TIERS, pickTier } from './js/game/national-characteristics.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 import { fetchCorpBookAggregates } from './js/corp-book-value.js';
 
-// Tier helpers — the scored stat rows in the top card and the prose cards
-// in the National Characteristics body both read from the same tier arrays
-// declared further down (STABILITY_TIERS / CIVIL_FREEDOMS_TIERS). The top
-// row uses tier.color for the bar fill and tier.label for the sub-line;
-// the body uses lead/accent/tail for the prose. One source per stat.
-function pickTier(tiers, value) {
-  return tiers.find(t => value >= t.min) || tiers[tiers.length - 1];
-}
+// pickTier + the tier arrays live in js/game/national-characteristics.js
+// (kept under that filename for now — the stat-strip on this page is its
+// only remaining consumer; the National Modifiers page no longer renders
+// per-stat prose). Imports STABILITY_TIERS + CIVIL_FREEDOMS_TIERS for the
+// brief stat strip on the nation card.
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 function escAttr(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
@@ -436,6 +418,40 @@ function resolvePm(pm) {
   };
 }
 
+// One-stop PM resolver used by both the Head of Gov't card and the
+// parliament's PM card. Ministry PM wins when one exists; otherwise
+// the governing party's leader stands in (a monarchy with a clear
+// majority party still has a "PM" in our model, just not a formally
+// appointed one). Returns {name:'', partyName:''} when neither
+// source has a name to offer — callers decide what to render as the
+// fallback (e.g. "The Crown" for monarchies, "Vacant" elsewhere).
+function resolveDisplayedPm(pm, pmParty) {
+  const ministry = resolvePm(pm);
+  const derivedName = pmParty
+    ? `${pmParty.leader_first_name || ''} ${pmParty.leader_last_name || ''}`.trim()
+    : '';
+  return {
+    name:      ministry.name || derivedName,
+    partyName: ministry.partyName || pmParty?.faction_name || '',
+  };
+}
+
+// Update the Head of Gov't card on the nation header after the
+// parliament fetch returns. renderCard runs before pmParty is known
+// and falls back to gov_type-specific defaults (The Crown for
+// monarchies, Vacant elsewhere); this overwrites those defaults when
+// the governing party gives us a derived PM. Presidential is left
+// alone — it fused HoS + HoG correctly at first render.
+function patchHeadOfGov(n, pm, pmParty) {
+  if (n.government_type === 'Presidential') return;
+  const { name: pmName, partyName } = resolveDisplayedPm(pm, pmParty);
+  if (!pmName) return;
+  const hogEl    = document.getElementById('nc-hog');
+  const hogSubEl = document.getElementById('nc-hog-sub');
+  if (hogEl)    hogEl.textContent    = `PM ${pmName}`;
+  if (hogSubEl) hogSubEl.textContent = partyName ? `${partyName}-led government` : 'Prime Minister';
+}
+
 function formatPopulation(n) {
   const v = Number(n) || 0;
   if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + ' million';
@@ -445,14 +461,8 @@ function formatPopulation(n) {
 
 // Compact money formatter for the politician-side GDP / Budget / Debt cells.
 // Trims trailing .0 so a round number reads "$441B", not "$441.00B".
-function fmtMoney(n) {
-  const abs = Math.abs(Number(n) || 0);
-  const sign = n < 0 ? '-' : '';
-  if (abs >= 1e9) return sign + '$' + (abs / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
-  if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
-  if (abs >= 1e3) return sign + '$' + Math.round(abs / 1e3) + 'k';
-  return sign + '$' + Math.round(abs);
-}
+// fmtMoney lives in utils.js — both this page and the dedicated
+// National Characteristics page read it through there.
 
 function govTypeLabel(govType) {
   if (!govType) return '';
@@ -488,34 +498,23 @@ async function init() {
   }
   if (!ctx) return;
 
-  // Bootstrap already fetched a thin nation row (id, name, flag_url, profile flag).
-  // Refetch with the full surface we need for the brief card, plus the active
-  // Prime Minister row for the Head-of-Gov't cell.
-  let nation = null;
+  // Nation comes from ctx — bootstrap already fetched the full surface
+  // (politician-topbar select is the superset for all politician pages),
+  // so this page just reads it. Only the page-specific PM ministry
+  // lookup needs its own fetch.
+  const nation = ctx.nation;
   let pmMinistry = null;
   if (ctx.faction?.nation_id) {
-    const nid = ctx.faction.nation_id;
     try {
-      const [natRes, pmRes] = await Promise.all([
-        _supabase.from('nations')
-          .select(`
-            id, name, government_type, capital,
-            head_of_state_title, head_of_state_first_name, head_of_state_last_name,
-            population, dynasty_name,
-            politician_gdp, politician_budget, politician_debt,
-            politician_stability, politician_civil_freedoms, politician_gdp_growth,
-            nation_profiles(flag_url, official_name, motto, overview, founded_year)
-          `)
-          .eq('id', nid).maybeSingle(),
-        _supabase.from('ministries')
-          .select('minister_first_name, minister_last_name, party_id, factions(faction_name, leader_first_name, leader_last_name)')
-          .eq('nation_id', nid).eq('ministry_key', 'prime_minister').eq('is_active', true).maybeSingle(),
-      ]);
-      if (natRes.error) throw natRes.error;
-      nation = natRes.data;
-      if (!pmRes.error) pmMinistry = pmRes.data;  // PM is optional flair — soft-fail.
+      const { data, error } = await _supabase.from('ministries')
+        .select('minister_first_name, minister_last_name, party_id, factions(faction_name, leader_first_name, leader_last_name)')
+        .eq('nation_id', ctx.faction.nation_id)
+        .eq('ministry_key', 'prime_minister')
+        .eq('is_active', true)
+        .maybeSingle();
+      if (!error) pmMinistry = data;  // PM is optional flair — soft-fail.
     } catch (err) {
-      console.error('politician-nation: nation fetch failed', err);
+      console.warn('politician-nation: PM ministry fetch failed', err);
     }
   }
 
@@ -528,10 +527,94 @@ async function init() {
   bindJumpNav();
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
-  // Side panels that hit the DB. Fire-and-forget — failures render an
+  // Side-panel data is lazy: Corporations skips the fetch entirely
+  // until the user expands its section; Government keeps the parties
+  // + admin fetch eager (so patchHeadOfGov can update the nation
+  // header's Head of Gov't cell on initial load) but defers the DOM
+  // build until expand. Both fire-and-forget — failures render an
   // empty state in their own section without blocking the page.
-  renderCorporations(nation.id);
-  renderGovernment(nation, pmMinistry, ctx.faction?.politician_party_id || null);
+  _viewerMyPartyId = ctx.faction?.politician_party_id || null;
+  _viewerNation    = nation;
+  _viewerPm        = pmMinistry;
+  renderElections(nation, Number(ctx.shard?.current_tick) || 0);
+  loadParliament(nation, pmMinistry);
+  bindLazySections(nation);
+}
+
+// Elections — eager render because everything we need (next_election_tick,
+// election_frequency, total_seats, current_tick) is already loaded by the
+// bootstrap. No DB fetch. Two states:
+//   • Scheduled (next_election_tick set) → countdown card + seats-at-stake
+//     + Upcoming Special Elections list (empty for now).
+//   • Unscheduled (NULL — Hajjara and other monarchies) → flat "No
+//     elections in {nation}" notice. Matches the model where the throne
+//     sets the chamber without ballots.
+function renderElections(n, currentTick) {
+  const body = document.getElementById('sec-elections-body');
+  if (!body) return;
+  const footer = '<div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>';
+
+  const nextTick = Number(n.next_election_tick);
+  if (!Number.isFinite(nextTick) || nextTick <= 0) {
+    body.innerHTML = `<div class="govt-empty">
+      <div class="head">No <span class="serif">elections</span> in ${escHtml(n.name)}.</div>
+    </div>` + footer;
+    return;
+  }
+
+  const ticksAway  = nextTick - Number(currentTick);
+  const year       = tickToYear(nextTick);
+  const totalSeats = Math.max(0, Number(n.total_seats) || 0);
+  const countdown  = ticksAway <= 0
+    ? 'overdue &mdash; pending'
+    : ticksAway === 1
+      ? 'in 1 tick'
+      : `in ${ticksAway} ticks`;
+  const stake = totalSeats > 0
+    ? `all ${totalSeats} seats of the Assembly at stake`
+    : 'every seat at stake';
+
+  body.innerHTML = `
+    <div class="gov-strip" style="grid-template-columns:1fr;">
+      <div class="gov-card gov">
+        <div class="gck">NEXT GENERAL ELECTION</div>
+        <div class="gcv">${year}</div>
+        <div class="gcd">${countdown} &middot; ${stake}</div>
+      </div>
+    </div>
+    <div class="parties-lab">Upcoming Special Elections</div>
+    <div class="sec-empty">No special elections scheduled.</div>
+  ` + footer;
+}
+
+// One-shot fetch guards keyed off the section's <details> toggle.
+// Corporations defers everything; Government re-renders the body on
+// open (the eager loadParliament call may finish before or after, so
+// the body falls back to a Loading placeholder until data settles).
+let _viewerMyPartyId = null;
+let _viewerNation    = null;
+let _viewerPm        = null;
+let _corpsLoaded     = false;
+function bindLazySections(nation) {
+  const govSec  = document.getElementById('sec-govt');
+  const corpSec = document.getElementById('sec-corp');
+  if (govSec) {
+    govSec.addEventListener('toggle', () => {
+      if (govSec.open) renderParliamentBody();
+    });
+    if (govSec.open) renderParliamentBody();
+  }
+  if (corpSec) {
+    corpSec.addEventListener('toggle', () => {
+      if (!corpSec.open || _corpsLoaded) return;
+      _corpsLoaded = true;
+      renderCorporations(nation.id);
+    });
+    if (corpSec.open && !_corpsLoaded) {
+      _corpsLoaded = true;
+      renderCorporations(nation.id);
+    }
+  }
 }
 
 // Jump-nav clicks open the matching <details> and scroll it into view.
@@ -636,195 +719,8 @@ function renderCard(n, pm) {
       <div class="sub">${escHtml(tier.label)}</div>
     </div>`;
   }).join('');
-
-  renderNationalCharacteristics(n);
 }
 
-// National Characteristics — tier definitions per stat. Each tier carries
-// the threshold (min value for score stats, min ratio for money stats), a
-// short label for the card bullet, a color, and a three-part body:
-//   lead   — bold opening fragment of the sentence
-//   accent — the colored phrase (uses the tier color)
-//   tail   — regular-weight prose continuation
-// The renderer composes <strong>{lead}</strong><span class=accent>{accent}</span>{tail}.
-// Adding tiers? Highest threshold first; the matcher walks top-down.
-const TIER_COLOR = {
-  green:    '#4ec98a',
-  teal:     '#5aafa5',
-  amber:    '#c8a64e',
-  orange:   '#d68a4e',
-  red:      '#d97070',
-  deepRed:  '#a85050',
-};
-
-const STABILITY_TIERS = [
-  { min: 81, label: 'Firm',     color: TIER_COLOR.green,
-    lead: 'The state functions as designed.',
-    accent: ' Politics happens in chambers, not in the streets',
-    tail: ' — protests stay civic, the security forces are visible without being feared, and government decisions translate smoothly into action.' },
-  { min: 61, label: 'Strained', color: TIER_COLOR.teal,
-    lead: 'Tensions are visible.',
-    accent: ' Protests draw crowds; commentators speak of "this difficult moment."',
-    tail: ' Things still work — but everyone can feel them being tested.' },
-  { min: 41, label: 'Unrest',   color: TIER_COLOR.amber,
-    lead: 'Riots break out in the cities.',
-    accent: ' Curfews come and go.',
-    tail: ' Going out after dark is no longer something one does without thinking.' },
-  { min: 21, label: 'Crisis',   color: TIER_COLOR.red,
-    lead: 'Authority is contested.',
-    accent: ' The provinces don’t always answer the capital.',
-    tail: ' Whole neighborhoods are no-go zones; the security forces are exhausted, divided, or unreliable.' },
-  { min:  0, label: 'Collapse', color: TIER_COLOR.deepRed,
-    lead: 'Anarchy.',
-    accent: ' The regime exists on paper.',
-    tail: ' Power belongs to whoever holds the street, and that changes block by block.' },
-];
-
-const GDP_GROWTH_TIERS = [
-  { min: 81, label: 'Booming',    color: TIER_COLOR.green,
-    lead: 'The economy roars.',
-    accent: ' Construction cranes crowd the skyline,',
-    tail: ' hiring signs are in every window, and the press writes admiring features about "the [name] miracle."' },
-  { min: 61, label: 'Healthy',    color: TIER_COLOR.teal,
-    lead: 'The economy is doing what it’s supposed to.',
-    accent: ' Jobs are added, prices behave,',
-    tail: ' and most people end the year a little better off than they began.' },
-  { min: 41, label: 'Stagnant',   color: TIER_COLOR.amber,
-    lead: 'The numbers wobble around the line.',
-    accent: ' Some quarters up, some down.',
-    tail: ' People stop expecting things to get better and start expecting them to stay the same.' },
-  { min: 21, label: 'Recession',  color: TIER_COLOR.red,
-    lead: 'The economy is shrinking.',
-    accent: ' Layoffs make the news weekly;',
-    tail: ' shops close; the property pages are full of foreclosures.' },
-  { min:  0, label: 'Depression', color: TIER_COLOR.deepRed,
-    lead: 'Whole industries die.',
-    accent: ' Banks fail or are nationalized.',
-    tail: ' Lines form for bread and for jobs that don’t exist.' },
-];
-
-const CIVIL_FREEDOMS_TIERS = [
-  { min: 81, label: 'Free',       color: TIER_COLOR.green,
-    lead: 'Speech and assembly are',
-    accent: ' fully protected and routinely exercised.',
-    tail: ' Journalists publish without permission, demonstrations are a normal feature of public life, and the courts back the citizen against the state.' },
-  { min: 61, label: 'Permissive', color: TIER_COLOR.teal,
-    lead: 'Most criticism is tolerated.',
-    accent: ' Dissent is legal, if sometimes uncomfortable.',
-    tail: ' Major outlets operate freely; small frictions exist but the basic freedoms hold.' },
-  { min: 41, label: 'Restricted', color: TIER_COLOR.red,
-    lead: 'Speech and assembly are',
-    accent: ' tolerated only where they do not threaten the state.',
-    tail: ' Critical journalists are warned, then prosecuted; protests need permits the authorities can refuse. Dissenters operate with one eye over their shoulder.' },
-  { min: 21, label: 'Repressed',  color: TIER_COLOR.deepRed,
-    lead: 'The press is licensed.',
-    accent: ' Independent reporting is criminal.',
-    tail: ' Public protest is broken up; the prisons hold writers, lawyers, and clergy who said the wrong thing in the wrong room.' },
-  { min:  0, label: 'Closed',     color: TIER_COLOR.deepRed,
-    lead: 'There is no public criticism of the regime.',
-    accent: ' All media is state-owned or state-approved.',
-    tail: ' Speaking against power, even privately, can mean disappearance.' },
-];
-
-// Budget tiers — keyed on budget/GDP ratio so flush/strained read consistently
-// across nations of different scale. A nation with no GDP falls to the bottom.
-const BUDGET_TIERS = [
-  { min: 0.20, label: 'Surplus',  color: TIER_COLOR.green,
-    lead: 'The treasury is',
-    accent: ' flush.',
-    tail: ' There is room for ambitious policy — new programmes, rapid response to crises, and long-term investment without immediate austerity.' },
-  { min: 0.10, label: 'Healthy',  color: TIER_COLOR.teal,
-    lead: 'The treasury is',
-    accent: ' comfortable.',
-    tail: ' Ministries are funded, capital projects move on schedule, and the finance minister sleeps soundly.' },
-  { min: 0.03, label: 'Tight',    color: TIER_COLOR.amber,
-    lead: 'Money is',
-    accent: ' tight.',
-    tail: ' Every spending request is contested. Ministers are asked to find efficiencies before new line items are approved.' },
-  { min: 0,    label: 'Strained', color: TIER_COLOR.red,
-    lead: 'The treasury is',
-    accent: ' nearly empty.',
-    tail: ' Payroll waits on revenue receipts; capital projects are deferred; the bond market watches.' },
-];
-
-// Debt tiers — keyed on debt/GDP ratio. Higher ratio is worse, so the bands
-// step down from Unsustainable through Trivial.
-const DEBT_TIERS = [
-  { min: 1.50, label: 'Unsustainable', color: TIER_COLOR.deepRed,
-    lead: 'Debt has',
-    accent: ' overrun the economy.',
-    tail: ' Service costs crowd out essential spending; restructuring or default is on the table.' },
-  { min: 0.90, label: 'Crushing',      color: TIER_COLOR.red,
-    lead: 'Debt service is',
-    accent: ' eating the budget.',
-    tail: ' Each new bond auction tightens the noose; rating agencies are circling.' },
-  { min: 0.50, label: 'Heavy',         color: TIER_COLOR.orange,
-    lead: 'Debt is',
-    accent: ' a real constraint.',
-    tail: ' Lenders demand higher yields. A bad year would force unwelcome trade-offs.' },
-  { min: 0.20, label: 'Manageable',    color: TIER_COLOR.amber,
-    lead: 'Debt is',
-    accent: ' sizeable but serviceable',
-    tail: ' — comparable to a year’s revenue. Bondholders are calm. Continued growth keeps it in proportion; a downturn would make it bite.' },
-  { min: 0,    label: 'Trivial',       color: TIER_COLOR.green,
-    lead: 'Debt is',
-    accent: ' a non-issue.',
-    tail: ' The state could borrow heavily at favourable rates if it ever needed to.' },
-];
-
-// Baseline italic description per stat — the "what does this number mean"
-// line that sits under the prose. Same text regardless of tier.
-const STAT_DESCRIPTIONS = {
-  stability:      'how firmly the state holds the public’s compliance. High stability means smooth governance and an institutional order that goes unchallenged; low stability means brewing dissent and the threat of revolt.',
-  gdp_growth:     'the year-on-year change in national output. Sustained growth funds wages, taxes, and ambition; contraction hollows out budgets, payrolls, and public mood.',
-  budget:         'the treasury balance — cash on hand for ministries, programmes, and emergencies. A flush budget funds ambitious policy and rapid response; a thin budget forces austerity and crowds out long-term investment.',
-  debt:           'total accumulated borrowing the nation owes. Manageable debt is normal for a developed economy; excessive debt service crowds out spending and raises the risk of default.',
-  civil_freedoms: 'how freely citizens may speak, organise, protest, and dissent without state reprisal. High scores indicate open civic life; low scores signal censorship, surveillance, and risk to dissenters.',
-};
-
-// National Characteristics body — one tier-colored card per stat with a
-// prose explanation that shifts as the value moves between bands. Reads the
-// same politician_* columns the stat row at the top of the card does; both
-// renderers move together.
-function renderNationalCharacteristics(n) {
-  const body = document.getElementById('sec-nation-body');
-  if (!body) return;
-
-  const stabVal = Math.max(0, Math.min(100, Math.round(Number(n.politician_stability)      || 0)));
-  const gdpgVal = Math.max(0, Math.min(100, Math.round(Number(n.politician_gdp_growth)     || 0)));
-  const civVal  = Math.max(0, Math.min(100, Math.round(Number(n.politician_civil_freedoms) || 0)));
-  const gdpDol  = Number(n.politician_gdp)    || 0;
-  const bgtDol  = Number(n.politician_budget) || 0;
-  const debtDol = Number(n.politician_debt)   || 0;
-  const bgtRatio  = gdpDol > 0 ? bgtDol  / gdpDol : 0;
-  const debtRatio = gdpDol > 0 ? debtDol / gdpDol : 0;
-
-  // Allow the Booming GDP Growth tier to name the nation in its flavor line.
-  const gdpgTier = { ...pickTier(GDP_GROWTH_TIERS, gdpgVal) };
-  gdpgTier.tail  = gdpgTier.tail.replaceAll('[name]', n.name || 'national');
-
-  const rows = [
-    { label: 'Stability',      key: 'stability',      value: String(stabVal), scale: '/ 100', tier: pickTier(STABILITY_TIERS,      stabVal) },
-    { label: 'GDP Growth',     key: 'gdp_growth',     value: String(gdpgVal), scale: '/ 100', tier: gdpgTier },
-    { label: 'Budget',         key: 'budget',         value: fmtMoney(bgtDol),  scale: '',     tier: pickTier(BUDGET_TIERS,        bgtRatio) },
-    { label: 'Debt',           key: 'debt',           value: fmtMoney(debtDol), scale: '',     tier: pickTier(DEBT_TIERS,          debtRatio) },
-    { label: 'Civil Freedoms', key: 'civil_freedoms', value: String(civVal),  scale: '/ 100', tier: pickTier(CIVIL_FREEDOMS_TIERS, civVal) },
-  ];
-
-  body.innerHTML = `<div class="nat-list">${rows.map(r => `
-    <div class="nat-row" style="--tier:${r.tier.color};">
-      <div class="nat-card">
-        <div class="nat-card__label">${escHtml(r.label)}</div>
-        <div class="nat-card__value">${escHtml(r.value)}${r.scale ? `<span class="nat-card__scale">${escHtml(r.scale)}</span>` : ''}</div>
-        <div class="nat-card__tier">${escHtml(r.tier.label)}</div>
-      </div>
-      <div class="nat-body">
-        <div class="nat-body__head"><strong>${escHtml(r.tier.lead)}</strong><span class="nat-body__accent">${escHtml(r.tier.accent)}</span>${escHtml(r.tier.tail)}</div>
-        <div class="nat-body__desc"><em>${escHtml(r.label)} — ${escHtml(STAT_DESCRIPTIONS[r.key])}</em></div>
-      </div>
-    </div>`).join('')}</div>
-  <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>`;
-}
 
 // Corporations section — every entrepreneur corp HQ'd in this nation.
 // Logo (industry-colored 2-letter badge) · name + sector · listing pill ·
@@ -846,15 +742,14 @@ async function renderCorporations(nationId) {
       body.innerHTML = '<div class="sec-empty">No corporations headquartered here yet.</div>' + footer;
       return;
     }
-    // Private corps need building/debt aggregates for the book-value path
-    // inside computeEntrepreneurValuation; public corps read share price ×
-    // shares outstanding and skip this call entirely.
-    const privateCorps = corps.filter(c => c.listing !== 'public');
-    if (privateCorps.length) {
-      const bookAgg = await fetchCorpBookAggregates(privateCorps.map(c => c.id));
-      for (const c of privateCorps) {
-        c.bookAgg = bookAgg.get(c.id) || { buildingCostPaid: 0, outstandingDebt: 0 };
-      }
+    // Every corp needs building/debt aggregates for the book-value path
+    // inside computeEntrepreneurValuation, regardless of listing. Public
+    // corps used to skip this fetch (they surfaced as market cap), now
+    // included so leaderboard-style directories like this one can't be
+    // gamed by self-pumping a public corp's share_price.
+    const bookAgg = await fetchCorpBookAggregates(corps.map(c => c.id));
+    for (const c of corps) {
+      c.bookAgg = bookAgg.get(c.id) || { buildingCostPaid: 0, outstandingDebt: 0 };
     }
     const header = `<div class="corp-head">
       <div></div>
@@ -886,57 +781,127 @@ function renderCorpRow(c) {
   </div>`;
 }
 
-// Government & Politics — parliament block for parliamentary nations,
-// crown-rule notice for Absolute Monarchies. Reads movement_party rows
-// in the politician's nation (the same source the Movements page reads),
-// so seat counts and governing/opposition status stay in lockstep across
-// surfaces. Soft-fails to an error empty state on query failure.
-async function renderGovernment(n, pm, myPartyId) {
+// Government & Politics — gate is "no parties" rather than gov_type,
+// since Absolute Monarchies still have parties + a chamber, they just
+// don't run elections (seats are set by the throne rather than the
+// ballot box). Split into two phases so the section's DOM render is
+// lazy without losing the eager Head-of-Gov't patch on the nation
+// header:
+//   • loadParliament — fires from init, fetches parties + admin in
+//     parallel, computes the coalition / pmParty / opposition / tenure
+//     surface, patches HoG, and stashes everything in _parliamentState
+//     for the body render.
+//   • renderParliamentBody — fires on first sec-govt expand, builds
+//     the chamber arc / gov strip / party rows from _parliamentState.
+//     Shows a Loading placeholder if expand happens before the fetch
+//     settles; the fetch's tail re-renders the body in that case.
+let _parliamentState = { phase: 'loading' };
+async function loadParliament(n, pm) {
+  try {
+    const [partiesRes, adminRes] = await Promise.all([
+      _supabase.from('factions')
+        .select('id, faction_name, abbreviation, seats, party_color, party_description, leader_first_name, leader_last_name')
+        .eq('nation_id', n.id)
+        .eq('faction_type', 'movement_party')
+        .is('abandoned_at', null)
+        .order('seats', { ascending: false })
+        .order('faction_name'),
+      _supabase.from('administrations')
+        .select('pm_party_id, coalition_parties, started_at_tick')
+        .eq('nation_id', n.id)
+        .is('ended_at_tick', null)
+        .order('started_at_tick', { ascending: false })
+        .limit(1),
+    ]);
+    if (partiesRes.error) throw partiesRes.error;
+    const parties = partiesRes.data || [];
+    if (adminRes.error) console.warn('politician-nation: administration fetch failed', adminRes.error);
+    const admin = adminRes.data?.[0] || null;
+
+    const totalSeats = Math.max(0, Number(n.total_seats) || 0);
+    const majority   = totalSeats > 0 ? Math.floor(totalSeats / 2) + 1 : 0;
+
+    // Active administration drives coalition + PM tenure. coalition_parties
+    // is a jsonb array of { party_id, party_name, seats } captured at
+    // formation; we re-key against the live parties list so display names +
+    // seat counts stay current. Soft-fail to single-party majority detection
+    // when no administration row is present (data lag, autocracy, etc.).
+    const coalitionIds = new Set(
+      (admin?.coalition_parties || []).map(p => p?.party_id).filter(Boolean)
+    );
+    const pmPartyId = admin?.pm_party_id || null;
+    const pmYear    = admin?.started_at_tick != null ? tickToYear(admin.started_at_tick) : null;
+
+    let coalition = parties.filter(p => coalitionIds.has(p.id));
+    if (!coalition.length && totalSeats > 0) {
+      const solo = parties.find(p => (Number(p.seats) || 0) >= majority);
+      if (solo) coalition = [solo];
+    }
+    const pmParty    = parties.find(p => p.id === pmPartyId) || coalition[0] || null;
+    const opposition = parties.find(p => !coalitionIds.has(p.id) && p.id !== pmParty?.id) || null;
+
+    // Patch the nation card's Head of Gov't now that pmParty is known.
+    // renderCard ran with only the ministry PM (often empty for
+    // monarchies); if the governing party gives us a derived PM, the
+    // card was wrong and gets updated in place.
+    patchHeadOfGov(n, pm, pmParty);
+
+    _parliamentState = {
+      phase: 'ready',
+      parties, totalSeats, majority,
+      coalition, pmParty, opposition, coalitionIds, pmYear,
+    };
+  } catch (err) {
+    console.error('politician-nation: government fetch failed', err);
+    _parliamentState = { phase: 'error' };
+  }
+
+  // If the user already opened the section before the fetch returned,
+  // swap the Loading placeholder for the real body now.
+  const sec = document.getElementById('sec-govt');
   const body = document.getElementById('sec-govt-body');
-  if (!body) return;
+  if (sec?.open && body) {
+    body.dataset.rendered = '';
+    renderParliamentBody();
+  }
+}
+
+function renderParliamentBody() {
+  const body = document.getElementById('sec-govt-body');
+  if (!body || body.dataset.rendered === '1') return;
   const footer = '<div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>';
 
-  if (n.government_type === 'Absolute Monarchy') {
+  if (_parliamentState.phase === 'loading') {
+    body.innerHTML = '<div class="sec-empty">Loading the parliament…</div>';
+    return;  // rendered flag stays unset; the fetch tail re-renders us
+  }
+
+  body.dataset.rendered = '1';
+
+  if (_parliamentState.phase === 'error') {
+    body.innerHTML = '<div class="sec-empty">Could not load the parliament.</div>' + footer;
+    return;
+  }
+
+  const { parties, totalSeats, majority, coalition, pmParty, opposition, coalitionIds, pmYear } = _parliamentState;
+  if (parties.length === 0) {
     body.innerHTML = `<div class="govt-empty">
-      <div class="head">There is no <span class="serif">parliament</span> in ${escHtml(n.name)}.</div>
-      <div class="note">Political authority flows from the throne. The monarch governs through ministers of their choosing; parties are prohibited, there are no elections, no constituencies, and no chamber to seat them.</div>
+      <div class="head">No <span class="serif">parties</span> in ${escHtml(_viewerNation?.name || 'this nation')}.</div>
+      <div class="note">When parties register they'll appear here.</div>
     </div>` + footer;
     return;
   }
 
-  try {
-    const { data, error } = await _supabase.from('factions')
-      .select('id, faction_name, abbreviation, seats, party_color, party_description, leader_first_name, leader_last_name')
-      .eq('nation_id', n.id)
-      .eq('faction_type', 'movement_party')
-      .is('abandoned_at', null)
-      .order('seats', { ascending: false })
-      .order('faction_name');
-    if (error) throw error;
-    const parties = data || [];
-    const totalSeats = Math.max(0, Number(n.total_seats) || 0);
-    const majority   = totalSeats > 0 ? Math.floor(totalSeats / 2) + 1 : 0;
-    // Governing party = first one with > 50% seats. No coalition logic —
-    // when nobody has a majority, the strip says "No majority government".
-    const governing = parties.find(p => (Number(p.seats) || 0) >= majority && totalSeats > 0) || null;
-    const opposition = parties.find(p => !governing || p.id !== governing.id) || null;
-
-    body.innerHTML = `
-      <div class="parl-head">
-        <div class="parl-title">National <span class="serif">Assembly</span></div>
-        <div class="parl-meta"><strong>${totalSeats}</strong> seats &middot; <strong>${majority}</strong> needed for a majority</div>
-      </div>
-      <div class="chamber-wrap">${renderChamberArc(parties, totalSeats)}</div>
-      ${renderGovStrip(governing, opposition, pm, totalSeats)}
-      <div class="parties-lab">Parties in the Assembly &middot; ordered by seat share</div>
-      ${parties.length
-        ? parties.map(p => renderPartyRow(p, totalSeats, governing, myPartyId)).join('')
-        : '<div class="sec-empty">No parties have been seated yet.</div>'}
-    ` + footer;
-  } catch (err) {
-    console.error('politician-nation: government fetch failed', err);
-    body.innerHTML = '<div class="sec-empty">Could not load the parliament.</div>' + footer;
-  }
+  body.innerHTML = `
+    <div class="parl-head">
+      <div class="parl-title">National <span class="serif">Assembly</span></div>
+      <div class="parl-meta"><strong>${totalSeats}</strong> seats &middot; <strong>${majority}</strong> needed for a majority</div>
+    </div>
+    <div class="chamber-wrap">${renderChamberArc(parties, totalSeats)}</div>
+    ${renderGovStrip(coalition, pmParty, opposition, _viewerPm, totalSeats, majority, pmYear)}
+    <div class="parties-lab">Parties in the Assembly &middot; ordered by seat share</div>
+    ${parties.map(p => renderPartyRow(p, totalSeats, pmParty, coalitionIds, _viewerMyPartyId)).join('')}
+  ` + footer;
 }
 
 // Half-annulus arc, one circle per seat. Lays seats out in concentric rows
@@ -991,12 +956,24 @@ function renderChamberArc(parties, totalSeats) {
   return `<svg class="chamber" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${svg}</svg>`;
 }
 
-function renderGovStrip(governing, opposition, pm, totalSeats) {
-  const govCard = governing
+// Coalition list → human-readable governing label: 1 → "A", 2 → "A & B",
+// 3+ → "A, B & C". Parties enter already sorted by seats desc, so the
+// largest partner reads first.
+function joinCoalitionNames(coalition) {
+  const names = coalition.map(p => p.faction_name).filter(Boolean);
+  if (!names.length) return '';
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} & ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}`;
+}
+
+function renderGovStrip(coalition, pmParty, opposition, pm, totalSeats, majority, pmYear) {
+  const coalitionSeats = coalition.reduce((s, p) => s + (Number(p.seats) || 0), 0);
+  const govCard = coalition.length
     ? `<div class="gov-card gov">
-         <div class="gck">GOVERNING PARTY</div>
-         <div class="gcv">${escHtml(governing.faction_name)}</div>
-         <div class="gcd">${governing.seats} of ${totalSeats} seats &middot; majority government</div>
+         <div class="gck">GOVERNING ${coalition.length > 1 ? 'COALITION' : 'PARTY'}</div>
+         <div class="gcv">${escHtml(joinCoalitionNames(coalition))}</div>
+         <div class="gcd">${coalitionSeats} of ${totalSeats} seats &middot; ${coalitionSeats >= majority && majority > 0 ? 'majority' : 'minority'} government</div>
        </div>`
     : `<div class="gov-card">
          <div class="gck">GOVERNING PARTY</div>
@@ -1004,11 +981,15 @@ function renderGovStrip(governing, opposition, pm, totalSeats) {
          <div class="gcd">no party holds &gt; 50% of seats</div>
        </div>`;
 
-  const { name: pmName, partyName } = resolvePm(pm);
+  const { name: pmName, partyName: pmPartyName } = resolveDisplayedPm(pm, pmParty);
+  const pmDetail = [
+    pmPartyName ? `leader of ${escHtml(pmPartyName)}` : 'awaiting appointment',
+    (pmPartyName && pmYear) ? `in office since ${pmYear}` : '',
+  ].filter(Boolean).join(' &middot; ');
   const pmCard = `<div class="gov-card">
     <div class="gck">PRIME MINISTER</div>
     <div class="gcv">${pmName ? escHtml(pmName) : 'Vacant'}</div>
-    <div class="gcd">${partyName ? `leader of ${escHtml(partyName)}` : 'awaiting appointment'}</div>
+    <div class="gcd">${pmDetail}</div>
   </div>`;
 
   const oppLeaderName = opposition
@@ -1029,17 +1010,20 @@ function renderGovStrip(governing, opposition, pm, totalSeats) {
   return `<div class="gov-strip">${govCard}${pmCard}${oppCard}</div>`;
 }
 
-function renderPartyRow(p, totalSeats, governing, myPartyId) {
+function renderPartyRow(p, totalSeats, pmParty, coalitionIds, myPartyId) {
   const accent = safeHexColor(p.party_color);
-  const isGov  = governing && governing.id === p.id;
+  const isGov  = pmParty && pmParty.id === p.id;
+  const isCoal = !isGov && coalitionIds.has(p.id);
   const isMine = myPartyId && myPartyId === p.id;
   const leader = [p.leader_first_name, p.leader_last_name].filter(Boolean).join(' ');
   const badgeStyle = `background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;`;
-  const pills = [
-    isGov  ? '<span class="status-pill gov">&#9679; Governing</span>'
-           : '<span class="status-pill opp">&#9679; Opposition</span>',
-    isMine ? '<span class="status-pill you">&#9679; You</span>' : '',
-  ].filter(Boolean).join(' ');
+  const statusPill = isGov
+    ? '<span class="status-pill gov">&#9679; Governing</span>'
+    : isCoal
+      ? '<span class="status-pill coal">&#9679; Coalition</span>'
+      : '<span class="status-pill opp">&#9679; Opposition</span>';
+  const pills = [statusPill, isMine ? '<span class="status-pill you">&#9679; You</span>' : '']
+    .filter(Boolean).join(' ');
   const href = `party.html?id=${encodeURIComponent(p.id)}`;
   return `<a class="party-row" href="${href}" style="border-left-color:${accent};">
     <div class="party-badge" style="${badgeStyle}">${escHtml(factionInitials(p.faction_name, p.abbreviation))}</div>

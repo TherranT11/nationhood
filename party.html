@@ -11,7 +11,82 @@
    so the surfaces feel like one product. Sections gated on real data:
    anything we don't have a column for yet doesn't render. */
 * { box-sizing:border-box; margin:0; padding:0; }
-.content { padding:32px 24px 24px; max-width:1180px; margin:0 auto; }
+.content { padding:32px 24px 24px; max-width:1400px; margin:0 auto; }
+
+/* Two-column body grid below the identity card. The right column shows
+   only when the viewer is a party member (display toggled in JS); for
+   everyone else the grid collapses to a single centered column. */
+.body-grid { display:grid; grid-template-columns:1fr; gap:14px; }
+.body-grid.has-side { grid-template-columns:minmax(0, 1fr) 380px; }
+.main-col { min-width:0; }
+.side-col { display:flex; flex-direction:column; gap:14px; }
+.side-panel { padding:16px 18px; }
+.actions-head, .chat-head { display:flex; align-items:baseline; justify-content:space-between; }
+.actions-sub, .chat-sub { text-transform:none; letter-spacing:0.02em; font-size:9px; color:#555;
+  display:inline-flex; align-items:center; gap:6px; font-weight:500; }
+.chat-dot { width:6px; height:6px; border-radius:50%; background:#5aafa5; display:inline-block; }
+.actions-body { display:flex; flex-direction:column; gap:8px; padding:10px 0 4px; }
+.act-card { background:#101010; border:0.5px solid rgba(255,255,255,0.08);
+  border-radius:5px; padding:11px 13px; cursor:pointer; text-align:left;
+  transition:background 0.12s, border-color 0.12s; }
+.act-card:hover { background:#141414; border-color:rgba(255,255,255,0.16); }
+.act-card.disabled { cursor:not-allowed; opacity:0.55; }
+.act-card.disabled:hover { background:#101010; border-color:rgba(255,255,255,0.08); }
+.act-card.loading { opacity:0.7; cursor:wait; }
+.act-row { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.act-name { font-size:12px; color:#fff; font-weight:600; letter-spacing:0.02em; }
+.act-meta { font-size:10.5px; color:#888; margin-top:5px; line-height:1.5; }
+.act-cd { font-size:8px; letter-spacing:0.11em; color:#888;
+  text-transform:uppercase; font-weight:600; flex-shrink:0; }
+.act-cd.ready { color:#5aafa5; }
+.act-result { font-size:11px; line-height:1.5; padding:8px 11px;
+  border-radius:4px; background:#0e0e0e; border:0.5px solid rgba(255,255,255,0.05);
+  color:#cfcabf; display:none; margin-top:2px; }
+.act-result.show { display:block; }
+.act-result.good { background:#0e1611; color:#a5c79a; border-color:rgba(122,170,106,0.3); }
+.act-result.ok   { background:#0e1416; color:#9cb9c4; border-color:rgba(90,150,180,0.3); }
+.act-result.bad  { background:#1a0e0e; color:#c89e9e; border-color:rgba(200,110,110,0.3); }
+
+/* Chat thread: scrolling column of messages, oldest at top. Newest
+   slides in at the bottom via the JS append; the thread auto-scrolls
+   to the bottom after each render. */
+.chat-thread { max-height:380px; overflow-y:auto; padding:6px 0; display:flex;
+  flex-direction:column; gap:14px; }
+.chat-msg { display:grid; grid-template-columns:32px 1fr; gap:10px; }
+.chat-avatar { width:32px; height:32px; border-radius:5px; display:flex;
+  align-items:center; justify-content:center; font-family:monospace;
+  font-size:11px; font-weight:700; letter-spacing:0.04em; flex-shrink:0; }
+.chat-body { min-width:0; }
+.chat-meta { display:flex; align-items:baseline; gap:7px; flex-wrap:wrap;
+  font-size:11px; color:#888; line-height:1.2; margin-bottom:3px; }
+.chat-name { color:#fff; font-weight:600; }
+.chat-role { font-size:9px; letter-spacing:0.08em; color:#888; text-transform:uppercase; }
+.chat-role.leader { color:#c87a7a; }
+.chat-role.deputy { color:#c89e6e; }
+.chat-role.whip   { color:#c4a86a; }
+.chat-role.you    { color:#5aafa5; }
+.chat-time { margin-left:auto; font-family:monospace; font-size:9px; color:#555;
+  letter-spacing:0.04em; }
+.chat-text { font-size:12px; color:#cfcabf; line-height:1.55; word-break:break-word; }
+.chat-empty { color:#666; font-size:11px; font-style:italic; text-align:center;
+  padding:24px 0; }
+.chat-footnote { font-size:9px; color:#5a5040; letter-spacing:0.05em; padding:8px 0 0;
+  display:flex; align-items:center; gap:6px; }
+.chat-footnote::before { content:'\1F512'; font-size:10px; }
+.chat-form { display:flex; gap:8px; padding-top:10px;
+  border-top:0.5px solid rgba(255,255,255,0.06); margin-top:10px; }
+.chat-input { flex:1; min-width:0; background:transparent;
+  border:0.5px solid rgba(255,255,255,0.10); color:#fff; padding:8px 11px;
+  border-radius:4px; font-family:inherit; font-size:12px; outline:none; }
+.chat-input:focus { border-color:rgba(90,175,165,0.5); }
+.chat-input::placeholder { color:#555; }
+.chat-send { padding:8px 16px; font-size:10px; letter-spacing:0.08em;
+  font-family:monospace; font-weight:600; cursor:pointer; background:transparent;
+  color:#c87a7a; border:0.5px solid rgba(200,122,122,0.4); border-radius:4px;
+  text-transform:uppercase; }
+.chat-send:hover { background:rgba(200,122,122,0.10); border-color:#c87a7a; }
+.chat-send:disabled { color:#555; border-color:rgba(255,255,255,0.06);
+  cursor:not-allowed; background:transparent; }
 
 .crumb { font-size:9px; letter-spacing:0.13em; color:#666; margin-bottom:14px; }
 .crumb a { color:#888; text-decoration:none; cursor:pointer; }
@@ -51,7 +126,7 @@
 .act-btn.disabled { color:#555; border-color:rgba(255,255,255,0.06); cursor:not-allowed; }
 
 /* Stats strip below the identity card. */
-.stats-strip { display:grid; grid-template-columns:repeat(4,1fr); }
+.stats-strip { display:grid; grid-template-columns:repeat(5,1fr); }
 .ss { padding:16px 22px; border-right:0.5px solid rgba(255,255,255,0.07); }
 .ss:last-child { border-right:none; }
 .ss .k { font-size:8px; letter-spacing:0.12em; color:#666; margin-bottom:6px; }
@@ -67,20 +142,26 @@
 .about-text { font-size:13px; color:#d4d4d4; line-height:1.65; }
 .about-text em { color:#888; font-style:italic; }
 
-/* Leadership card — only Leader for now; deputies / ranking come when
-   the schema carries them. */
-.lead-card { display:flex; gap:14px; align-items:center;
-  padding:14px 0; border-top:0.5px solid rgba(255,255,255,0.04); }
-.lead-card:first-of-type { border-top:none; padding-top:6px; }
+/* Leadership panel — Leader / Deputy / Whip rendered as a 3-up grid so
+   the three named officers sit side by side under Party Leadership.
+   Collapses to a single column on mobile. */
+.lead-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+.lead-card { display:flex; gap:14px; align-items:center; min-width:0;
+  padding:6px 0; }
 .lead-portrait { width:44px; height:44px; border-radius:5px; flex-shrink:0;
   display:flex; align-items:center; justify-content:center;
   font-size:13px; font-weight:700; font-family:monospace; }
-.lead-name { font-size:14px; color:#fff; font-weight:600; }
+.lead-body { min-width:0; }
+.lead-name { font-size:14px; color:#fff; font-weight:600;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .lead-meta { font-size:10px; color:#888; margin-top:3px; letter-spacing:0.04em; }
+.lead-card.vacant .lead-portrait { color:#444; background:rgba(255,255,255,0.03);
+  border:0.5px solid rgba(255,255,255,0.06); }
+.lead-card.vacant .lead-name { color:#666; font-style:italic; font-weight:500; }
 
 /* Members list — every politician faction whose politician_party_id is
    this party. Sorted by politician_influence desc. */
-.mem-row { display:grid; grid-template-columns:38px 1fr 1fr 80px;
+.mem-row { display:grid; grid-template-columns:38px 1fr 60px 1fr 80px;
   gap:14px; align-items:center; padding:11px 4px;
   border-bottom:0.5px solid rgba(255,255,255,0.04); font-size:12px; }
 .mem-row:last-child { border-bottom:none; }
@@ -95,6 +176,7 @@
   background:#0e1416; color:#5aafa5; border:0.5px solid rgba(90,175,165,0.4);
   padding:2px 6px; border-radius:2px; text-transform:uppercase; }
 .mem-career { color:#888; font-size:11px; }
+.mem-age { color:#888; font-size:11px; font-variant-numeric:tabular-nums; }
 .mem-inf { text-align:right; color:#cfcabf; font-family:monospace;
   font-variant-numeric:tabular-nums; }
 .mem-empty { color:#666; font-size:12px; font-style:italic; text-align:center; padding:18px 0; }
@@ -111,8 +193,11 @@
   .stats-strip { grid-template-columns:1fr 1fr; }
   .ss { border-right:none; border-bottom:0.5px solid rgba(255,255,255,0.07); }
   .ss:nth-child(odd) { border-right:0.5px solid rgba(255,255,255,0.07); }
+  .lead-grid { grid-template-columns:1fr; }
+  .body-grid.has-side { grid-template-columns:1fr; }
+  .chat-thread { max-height:300px; }
   .mem-row { grid-template-columns:30px 1fr auto; }
-  .mem-row .mem-career { display:none; }
+  .mem-row .mem-career, .mem-row .mem-age { display:none; }
 }
 </style>
 </head>
@@ -123,17 +208,50 @@
 <div class="content" id="content" style="display:none;">
   <div class="crumb" id="crumb"></div>
   <div id="identity-host"></div>
-  <div class="panel" id="about-panel" style="display:none;">
-    <div class="panel-lab">About the Party</div>
-    <div class="about-text" id="about-text"></div>
-  </div>
-  <div class="panel">
-    <div class="panel-lab">Party Leadership</div>
-    <div id="leadership-host"></div>
-  </div>
-  <div class="panel">
-    <div class="panel-lab">Members <span id="members-count" style="color:#888; font-weight:500; letter-spacing:0.04em; text-transform:none; font-size:10px; margin-left:8px;"></span></div>
-    <div id="members-host"></div>
+  <div class="body-grid" id="body-grid">
+    <div class="main-col">
+      <div class="panel" id="about-panel" style="display:none;">
+        <div class="panel-lab">About the Party</div>
+        <div class="about-text" id="about-text"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-lab">Party Leadership</div>
+        <div id="leadership-host"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-lab">Party Blocs</div>
+        <div class="mem-empty">No blocs on record yet.</div>
+      </div>
+      <div class="panel">
+        <div class="panel-lab">Members of Parliament</div>
+        <div class="mem-empty">No MPs on record yet.</div>
+      </div>
+      <div class="panel">
+        <div class="panel-lab">Members <span id="members-count" style="color:#888; font-weight:500; letter-spacing:0.04em; text-transform:none; font-size:10px; margin-left:8px;"></span></div>
+        <div id="members-host"></div>
+      </div>
+    </div>
+    <aside class="side-col" id="side-col" style="display:none;">
+      <div class="panel side-panel actions-panel" id="actions-panel">
+        <div class="panel-lab actions-head">
+          <span>Party Members</span>
+          <span class="actions-sub">1 action per turn</span>
+        </div>
+        <div class="actions-body" id="actions-body"></div>
+      </div>
+      <div class="panel side-panel chat-panel" id="chat-panel">
+        <div class="panel-lab chat-head">
+          <span>Party Chat</span>
+          <span class="chat-sub"><span class="chat-dot"></span>members only</span>
+        </div>
+        <div class="chat-thread" id="chat-thread"></div>
+        <div class="chat-footnote" id="chat-footnote"></div>
+        <form class="chat-form" id="chat-form" autocomplete="off">
+          <input class="chat-input" id="chat-input" type="text" maxlength="2000" placeholder="Message the party…">
+          <button class="chat-send" id="chat-send" type="submit">Send</button>
+        </form>
+      </div>
+    </aside>
   </div>
 </div>
 
@@ -149,6 +267,13 @@ function escHtml(s) { const d = document.createElement('div'); d.textContent = s
 
 let _viewerPolId = null;
 let _viewerPartyId = null;
+let _viewerCareer = null;
+let _viewerCharisma = 0;
+let _viewerInfluence = 0;
+let _viewerSpeechReadyAt = 0;
+let _viewerNextActionAt = 0;
+let _shardTick = 0;
+let _chatPollId = null;
 
 async function init() {
   const params  = new URLSearchParams(location.search);
@@ -164,20 +289,26 @@ async function init() {
   }
   if (!ctx) return; // bootstrap redirected (no auth / no politician)
 
-  _viewerPolId   = ctx.faction?.id || null;
-  _viewerPartyId = ctx.faction?.politician_party_id || null;
+  _viewerPolId         = ctx.faction?.id || null;
+  _viewerPartyId       = ctx.faction?.politician_party_id || null;
+  _viewerCareer        = ctx.faction?.politician_career || null;
+  _viewerCharisma      = Number(ctx.faction?.politician_charisma) || 0;
+  _viewerInfluence     = Number(ctx.faction?.politician_influence) || 0;
+  _viewerSpeechReadyAt = Number(ctx.faction?.speech_cooldown_until_tick) || 0;
+  _viewerNextActionAt  = Number(ctx.faction?.next_member_action_tick) || 0;
+  _shardTick           = Number(ctx.shard?.current_tick) || 0;
 
   // Party + members in parallel. Members filter on faction_type so a
   // typo'd politician_party_id on a different faction kind can't leak in.
   const [partyRes, membersRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_name, abbreviation, seats, party_color, party_description, leader_first_name, leader_last_name, leader_age, founded_tick, nation_id, nation:nations!nation_id(id, name, total_seats, government_type)')
+      .select('id, faction_name, abbreviation, seats, popularity_pct, party_color, party_description, leader_first_name, leader_last_name, leader_age, deputy_first_name, deputy_last_name, deputy_age, whip_first_name, whip_last_name, whip_age, founded_tick, nation_id, nation:nations!nation_id(id, name, population, total_seats, government_type)')
       .eq('id', partyId)
       .eq('faction_type', 'movement_party')
       .is('abandoned_at', null)
       .maybeSingle(),
     _supabase.from('factions')
-      .select('id, leader_first_name, leader_last_name, politician_career, politician_influence')
+      .select('id, leader_first_name, leader_last_name, leader_age, politician_career, politician_influence')
       .eq('politician_party_id', partyId)
       .eq('faction_type', 'politician')
       .is('abandoned_at', null)
@@ -241,11 +372,14 @@ function render(party, members) {
         ${statCell('Seats in Assembly', totalSeats > 0 ? `${seats}<span class="of">/ ${totalSeats}</span>` : String(seats), totalSeats > 0
           ? `${pctOfChamber(seats, totalSeats)} of chamber`
           : 'No assembly')}
+        ${statCell('Popularity', party.popularity_pct != null ? `${Math.round(Number(party.popularity_pct))}%` : '—',
+          party.popularity_pct != null ? 'nation-wide support' : 'unrated')}
         ${statCell('Status', isGov ? 'In Power' : (totalSeats > 0 ? 'Opposition' : '—'),
           isGov ? `holds majority (${majority} needed)` : (totalSeats > 0 ? `${majority - seats} short of majority` : ''))}
         ${statCell('Founded', party.founded_tick != null ? String(tickToYear(party.founded_tick)) : '—',
           party.founded_tick != null ? `tick ${party.founded_tick}` : 'unknown')}
-        ${statCell('Members', String(members.length), `${members.length === 1 ? 'politician' : 'politicians'} on file`)}
+        ${statCell('Members', fmtMembers(membershipCount(members.length, party.nation?.population)),
+          `${members.length === 1 ? '1 politician' : `${members.length} politicians`} on file`)}
       </div>
     </div>`;
 
@@ -253,6 +387,265 @@ function render(party, members) {
   renderAbout(party);
   renderLeadership(party, accent);
   renderMembers(members, accent);
+  renderSidebar(party, isMine);
+}
+
+// Right sidebar — Actions + Party Chat. Only shown when the viewer is a
+// party member. Non-members get a single-column layout instead.
+function renderSidebar(party, isMine) {
+  const side = document.getElementById('side-col');
+  const bodyGrid = document.getElementById('body-grid');
+  if (!isMine) {
+    side.style.display = 'none';
+    bodyGrid.classList.remove('has-side');
+    if (_chatPollId) { clearInterval(_chatPollId); _chatPollId = null; }
+    return;
+  }
+  side.style.display = 'flex';
+  bodyGrid.classList.add('has-side');
+  renderActionsPanel();
+  loadAndPollChat(party).catch(err => console.warn('[party] chat init failed', err));
+}
+
+// Party-Members panel. Two ground-floor actions back the climb:
+// Door Knocking (1-tick cooldown) and Give a Speech (1d6 + Charisma,
+// 3-tick cooldown). Both gated by the universal 1-per-turn rule via
+// next_member_action_tick; Speech also gates on its own 3-tick
+// cooldown via speech_cooldown_until_tick. First call wires the
+// scaffold (cards container + result node); subsequent calls only
+// rewrite #act-list so the flash row from the last action stays put
+// across re-renders. Click handler in onMemberAction flips .loading
+// to guard against double-fire and mutates the in-memory viewer
+// stats from the RPC return.
+function renderActionsPanel() {
+  const body = document.getElementById('actions-body');
+  if (!body.querySelector('#act-list')) {
+    body.innerHTML = '<div class="act-list" id="act-list"></div><div class="act-result" id="act-result"></div>';
+  }
+  const list = document.getElementById('act-list');
+  const dkRemaining     = Math.max(0, _viewerNextActionAt - _shardTick);
+  const speechRemaining = Math.max(0, Math.max(_viewerNextActionAt, _viewerSpeechReadyAt) - _shardTick);
+  const dkReady     = dkRemaining === 0;
+  const speechReady = speechRemaining === 0;
+  list.innerHTML = `
+    <div class="act-card${dkReady ? '' : ' disabled'}" data-action="door_knock">
+      <div class="act-row">
+        <div class="act-name">Door Knocking</div>
+        <div class="act-cd${dkReady ? ' ready' : ''}">${dkReady ? 'Ready' : `Ready in ${dkRemaining} tick${dkRemaining === 1 ? '' : 's'}`}</div>
+      </div>
+      <div class="act-meta">+0.1 Influence &middot; +0.1 Party Popularity. 1-tick cooldown.</div>
+    </div>
+    <div class="act-card${speechReady ? '' : ' disabled'}" data-action="give_speech">
+      <div class="act-row">
+        <div class="act-name">Give a Speech</div>
+        <div class="act-cd${speechReady ? ' ready' : ''}">${speechReady ? 'Ready' : `Ready in ${speechRemaining} tick${speechRemaining === 1 ? '' : 's'}`}</div>
+      </div>
+      <div class="act-meta">1d6 + Charisma (yours: ${_viewerCharisma}). 3-tick cooldown.</div>
+    </div>
+  `;
+  list.querySelectorAll('.act-card').forEach(card => {
+    card.onclick = () => onMemberAction(card.dataset.action, card);
+  });
+}
+
+async function onMemberAction(actionKey, card) {
+  if (card.classList.contains('disabled') || card.classList.contains('loading')) return;
+  card.classList.add('loading');
+  try {
+    if (actionKey === 'door_knock') {
+      const { data, error } = await _supabase.rpc('politician_door_knock', { p_party_id: _viewerPartyId });
+      if (error) throw error;
+      if (!data?.success) { flashActionResult(`Door knock failed: ${data?.reason || 'unknown'}.`, 'bad'); return; }
+      _viewerInfluence    = Number(data.politician_influence) || 0;
+      _viewerNextActionAt = Number(data.next_member_action_tick) || 0;
+      patchPopularityCell(Number(data.popularity_pct));
+      patchViewerInfluenceCell(_viewerInfluence);
+      flashActionResult('Door knock landed. +0.1 Influence &middot; +0.1 Popularity.', 'ok');
+    } else if (actionKey === 'give_speech') {
+      const { data, error } = await _supabase.rpc('politician_give_speech', { p_party_id: _viewerPartyId });
+      if (error) throw error;
+      if (!data?.success) { flashActionResult(`Speech failed: ${data?.reason || 'unknown'}.`, 'bad'); return; }
+      _viewerInfluence     = Number(data.politician_influence) || 0;
+      _viewerSpeechReadyAt = Number(data.cooldown_until_tick) || 0;
+      _viewerNextActionAt  = Number(data.next_member_action_tick) || 0;
+      patchPopularityCell(Number(data.popularity_pct));
+      patchViewerInfluenceCell(_viewerInfluence);
+      const popDelta = Number(data.popularity_delta) || 0;
+      const infDelta = Number(data.influence_delta) || 0;
+      const deltas = [
+        popDelta ? `${popDelta > 0 ? '+' : ''}${popDelta} Popularity` : '',
+        infDelta ? `${infDelta > 0 ? '+' : ''}${infDelta} Influence` : '',
+      ].filter(Boolean).join(' &middot; ') || 'no change';
+      flashActionResult(
+        `Rolled ${data.roll} + ${data.charisma} Charisma = ${data.total}. ${deltas}.`,
+        data.bracket === 'good' ? 'good' : (data.bracket === 'bad' ? 'bad' : 'ok')
+      );
+    }
+  } catch (err) {
+    console.warn(`[party] ${actionKey} failed`, err);
+    flashActionResult('Action failed. Try again.', 'bad');
+  } finally {
+    card.classList.remove('loading');
+    renderActionsPanel();
+  }
+}
+
+function flashActionResult(html, kind) {
+  const el = document.getElementById('act-result');
+  if (!el) return;
+  el.innerHTML = html;
+  el.className = `act-result show ${kind || ''}`;
+}
+
+// Patch the Popularity stat-strip cell in-place after an action moves
+// the percentage. Cheaper than re-rendering the identity card and
+// keeps the rest of the strip (seats, status, founded, members)
+// untouched.
+function patchPopularityCell(newPct) {
+  if (!Number.isFinite(newPct)) return;
+  document.querySelectorAll('.stats-strip .ss').forEach(cell => {
+    const k = cell.querySelector('.k');
+    if (k && k.textContent.trim() === 'Popularity') {
+      const v = cell.querySelector('.v');
+      if (v) v.innerHTML = `${Math.round(newPct)}%`;
+    }
+  });
+}
+
+// Update the viewer's own influence cell in the Members panel after
+// an action. Finds the viewer's row by the "You" badge marker, so
+// the rest of the members list stays untouched.
+function patchViewerInfluenceCell(newInf) {
+  if (!Number.isFinite(newInf)) return;
+  document.querySelectorAll('#members-host .mem-row').forEach(row => {
+    if (row.querySelector('.mem-name .you')) {
+      const cell = row.querySelector('.mem-inf');
+      if (cell) cell.textContent = newInf;
+    }
+  });
+}
+
+async function loadAndPollChat(party) {
+  const { data: chatRes, error: chatErr } = await _supabase.rpc('ensure_party_chat', { p_party_id: party.id });
+  if (chatErr || !chatRes || !chatRes.success) {
+    console.warn('[party] ensure_party_chat:', chatErr?.message || chatRes?.reason);
+    return;
+  }
+  const chatId = chatRes.chat_id;
+  document.getElementById('chat-footnote').textContent =
+    `visible to party members only · assume monitored under ${party.nation?.name || 'national'} law`;
+
+  await refreshChat(chatId, party);
+
+  if (_chatPollId) clearInterval(_chatPollId);
+  _chatPollId = setInterval(() => refreshChat(chatId, party).catch(() => {}), 4000);
+
+  const form = document.getElementById('chat-form');
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const input = document.getElementById('chat-input');
+    const send  = document.getElementById('chat-send');
+    const text  = input.value.trim();
+    if (!text) return;
+    send.disabled = true;
+    try {
+      const { data, error } = await _supabase.rpc('send_party_message', { p_chat_id: chatId, p_message: text });
+      if (error) throw error;
+      if (data?.success) {
+        input.value = '';
+        await refreshChat(chatId, party);
+      } else {
+        console.warn('[party] send rejected:', data?.reason);
+      }
+    } catch (err) {
+      console.warn('[party] send failed:', err?.message || err);
+    } finally {
+      send.disabled = false;
+    }
+  };
+}
+
+async function refreshChat(chatId, party) {
+  const { data, error } = await _supabase.from('group_chat_messages')
+    .select('id, message_text, created_at, sender_id, sender:factions!sender_id(leader_first_name, leader_last_name)')
+    .eq('chat_id', chatId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) {
+    console.warn('[party] chat fetch error:', error.message);
+    return;
+  }
+  renderChatThread((data || []).slice().reverse(), party);
+}
+
+function renderChatThread(messages, party) {
+  const thread = document.getElementById('chat-thread');
+  if (!messages.length) {
+    thread.innerHTML = '<div class="chat-empty">No messages yet. Be the first.</div>';
+    return;
+  }
+  const accent = safeHexColor(party.party_color);
+  const norm = s => (s || '').trim().toLowerCase();
+  const leaderName = norm(`${party.leader_first_name || ''} ${party.leader_last_name || ''}`);
+  const deputyName = norm(`${party.deputy_first_name || ''} ${party.deputy_last_name || ''}`);
+  const whipName   = norm(`${party.whip_first_name   || ''} ${party.whip_last_name   || ''}`);
+
+  thread.innerHTML = messages.map(m => {
+    const senderName = [m.sender?.leader_first_name, m.sender?.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
+    const senderLower = norm(senderName);
+    const isYou = m.sender_id === _viewerPolId;
+    let role = 'Member', roleClass = '';
+    if      (senderLower && senderLower === leaderName) { role = 'Leader'; roleClass = 'leader'; }
+    else if (senderLower && senderLower === deputyName) { role = 'Deputy'; roleClass = 'deputy'; }
+    else if (senderLower && senderLower === whipName)   { role = 'Whip';   roleClass = 'whip';   }
+    else if (isYou)                                      { role = 'Member (you)'; roleClass = 'you'; }
+    const ini = factionInitials(senderName, null);
+    return `<div class="chat-msg">
+      <div class="chat-avatar" style="background:${accent}1f; color:${accent}; border:0.5px solid ${accent}66;">${escHtml(ini)}</div>
+      <div class="chat-body">
+        <div class="chat-meta">
+          <span class="chat-name">${escHtml(senderName)}</span>
+          <span class="chat-role ${roleClass}">${escHtml(role)}</span>
+          <span class="chat-time">${escHtml(formatChatTime(m.created_at))}</span>
+        </div>
+        <div class="chat-text">${escHtml(m.message_text)}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function formatChatTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+// Card-carrying membership count. Rule: each politician on file represents
+// 3% of the nation's population in members; clamped at the full population
+// so very-large parties don't claim more members than there are humans.
+const MEMBERS_PER_POLITICIAN_PCT = 0.03;
+function membershipCount(politicianCount, population) {
+  const n = Math.max(0, Number(politicianCount) || 0);
+  const pop = Math.max(0, Number(population) || 0);
+  return Math.round(Math.min(pop, n * MEMBERS_PER_POLITICIAN_PCT * pop));
+}
+
+// Compact number for the stats strip: 1.2M / 300K / 850 / etc. Single-decimal
+// precision below 10K / 10M; round to integer above so the digit-count stays
+// stable across the four stat cells. Threshold boundaries account for the
+// scaled-value rounding so 999500..999999 reads "1M" instead of "1000K".
+function fmtMembers(n) {
+  const v = Math.round(Number(n) || 0);
+  if (v >= 9_950_000) return Math.round(v / 1e6) + 'M';
+  if (v >=   999_500) return (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (v >=     9_950) return Math.round(v / 1e3) + 'K';
+  if (v >=       999) return (v / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(v);
 }
 
 function statCell(label, value, detail) {
@@ -317,18 +710,43 @@ function renderAbout(party) {
 
 function renderLeadership(party, accent) {
   const host = document.getElementById('leadership-host');
-  const leader = [party.leader_first_name, party.leader_last_name].filter(Boolean).join(' ');
-  if (!leader) {
+  const leaderName = [party.leader_first_name, party.leader_last_name].filter(Boolean).join(' ');
+  const deputyName = [party.deputy_first_name, party.deputy_last_name].filter(Boolean).join(' ');
+  const whipName   = [party.whip_first_name,   party.whip_last_name].filter(Boolean).join(' ');
+  // Empty state matches the Members panel — every other faction surface
+  // says "No leader on record." when leader_* is null, so we keep that
+  // language even when deputy/whip are vacant.
+  if (!leaderName && !deputyName && !whipName) {
     host.innerHTML = '<div class="mem-empty">No leader on record.</div>';
     return;
   }
-  const ini = factionInitials(leader, null);
-  const ageBit = party.leader_age ? ` &middot; age ${Number(party.leader_age)}` : '';
-  host.innerHTML = `<div class="lead-card">
+  host.innerHTML = `<div class="lead-grid">
+    ${leadCard(leaderName, roleMeta('Party Leader',   party.leader_age), accent)}
+    ${leadCard(deputyName, roleMeta('Deputy Leader',  party.deputy_age), accent)}
+    ${leadCard(whipName,   roleMeta('Party Whip',     party.whip_age),   accent)}
+  </div>`;
+}
+
+function roleMeta(role, age) {
+  return (age != null) ? `${role} · age ${Number(age)}` : role;
+}
+
+function leadCard(name, role, accent) {
+  if (!name) {
+    return `<div class="lead-card vacant">
+      <div class="lead-portrait">&mdash;</div>
+      <div class="lead-body">
+        <div class="lead-name">Vacant</div>
+        <div class="lead-meta">${escHtml(role)}</div>
+      </div>
+    </div>`;
+  }
+  const ini = factionInitials(name, null);
+  return `<div class="lead-card">
     <div class="lead-portrait" style="background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;">${escHtml(ini)}</div>
-    <div>
-      <div class="lead-name">${escHtml(leader)}</div>
-      <div class="lead-meta">Party Leader${ageBit}</div>
+    <div class="lead-body">
+      <div class="lead-name">${escHtml(name)}</div>
+      <div class="lead-meta">${escHtml(role)}</div>
     </div>
   </div>`;
 }
@@ -344,15 +762,17 @@ function renderMembers(members, accent) {
   const rows = members.map(m => {
     const name = [m.leader_first_name, m.leader_last_name].filter(Boolean).join(' ') || '—';
     const youBadge = m.id === _viewerPolId ? ' <span class="you">You</span>' : '';
+    const age = (m.leader_age != null) ? String(Number(m.leader_age)) : '—';
     return `<div class="mem-row">
       <div class="mem-badge" style="background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;">${escHtml(factionInitials(name, null))}</div>
       <div class="mem-name">${escHtml(name)}${youBadge}</div>
+      <div class="mem-age">${escHtml(age)}</div>
       <div class="mem-career">${escHtml(m.politician_career || 'Independent')}</div>
       <div class="mem-inf">${Number(m.politician_influence) || 0}</div>
     </div>`;
   }).join('');
   host.innerHTML = `<div class="mem-row header">
-    <span></span><span>Name</span><span>Career</span><span style="text-align:right;">Influence</span>
+    <span></span><span>Name</span><span>Age</span><span>Career</span><span style="text-align:right;">Influence</span>
   </div>${rows}`;
 }
 

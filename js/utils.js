@@ -199,6 +199,22 @@ export function fmtUsd(n) {
 }
 
 /**
+ * Compact money formatter that drops trailing .0 — "$441B" not
+ * "$441.00B", "$25k" not "$25.5k". Used by the politician-side
+ * nation-card stat strip + National Characteristics body where the
+ * tighter visual reads better than hfFmtBig's two-decimal precision.
+ * Same B/M/k scaling, same negative-sign handling.
+ */
+export function fmtMoney(n) {
+    const abs = Math.abs(Number(n) || 0);
+    const sign = n < 0 ? '-' : '';
+    if (abs >= 1e9) return sign + '$' + (abs / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+    if (abs >= 1e6) return sign + '$' + (abs / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (abs >= 1e3) return sign + '$' + Math.round(abs / 1e3) + 'k';
+    return sign + '$' + Math.round(abs);
+}
+
+/**
  * Display string for an entrepreneur corp valuation — the single
  * source for HOW valuation is rendered, paired with
  * computeEntrepreneurValuation (the single source for the NUMBER).
