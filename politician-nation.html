@@ -742,15 +742,14 @@ async function renderCorporations(nationId) {
       body.innerHTML = '<div class="sec-empty">No corporations headquartered here yet.</div>' + footer;
       return;
     }
-    // Private corps need building/debt aggregates for the book-value path
-    // inside computeEntrepreneurValuation; public corps read share price ×
-    // shares outstanding and skip this call entirely.
-    const privateCorps = corps.filter(c => c.listing !== 'public');
-    if (privateCorps.length) {
-      const bookAgg = await fetchCorpBookAggregates(privateCorps.map(c => c.id));
-      for (const c of privateCorps) {
-        c.bookAgg = bookAgg.get(c.id) || { buildingCostPaid: 0, outstandingDebt: 0 };
-      }
+    // Every corp needs building/debt aggregates for the book-value path
+    // inside computeEntrepreneurValuation, regardless of listing. Public
+    // corps used to skip this fetch (they surfaced as market cap), now
+    // included so leaderboard-style directories like this one can't be
+    // gamed by self-pumping a public corp's share_price.
+    const bookAgg = await fetchCorpBookAggregates(corps.map(c => c.id));
+    for (const c of corps) {
+      c.bookAgg = bookAgg.get(c.id) || { buildingCostPaid: 0, outstandingDebt: 0 };
     }
     const header = `<div class="corp-head">
       <div></div>

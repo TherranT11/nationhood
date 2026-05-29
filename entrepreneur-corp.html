@@ -2394,20 +2394,21 @@ function initials(s, n) {
     set('cp-cash-delta', '— corp treasury');
 
     // VALUATION from the shared single source (js/game/corp-valuation.js
-    // §3). Private corps show dynamic BOOK VALUE — feed the building/loan
-    // aggregates so it matches the recommended sale/buyback price. The
-    // engine valuation is deliberately a separate surface and is
-    // intentionally not used on the entrepreneur pages.
-    const valAgg = isPublic ? null : await fetchOneCorpBookAggregates(id).catch(() => null);
+    // §3). Both private and public corps show dynamic BOOK VALUE — feed
+    // the building/loan aggregates so it matches the recommended sale/
+    // buyback price. The engine valuation is deliberately a separate
+    // surface and is intentionally not used on the entrepreneur pages.
+    // The per-share trading detail (share_price × shares_outstanding,
+    // shareholder list, etc.) still renders in the public market panel
+    // below; only the headline switched to book value.
+    const valAgg = await fetchOneCorpBookAggregates(id).catch(() => null);
     const val = computeEntrepreneurValuation(c, valAgg);
     const valEl = document.getElementById('cp-val');
     if (valEl) {
       valEl.classList.remove('muted');
       valEl.textContent = fmtValuation(val.amount);
     }
-    set('cp-val-delta', val.kind === 'market'
-      ? `${Number(c.shares_outstanding) || 0} sh × ${fmtUsd(Number(c.share_price) || 0)}`
-      : val.kind === 'book' ? '— book value' : '— not yet valued');
+    set('cp-val-delta', val.kind === 'book' ? '— book value' : '— not yet valued');
 
     // Public-only market view. The share state is the one source
     // (entrepreneur_corps.share_price / shares_outstanding /

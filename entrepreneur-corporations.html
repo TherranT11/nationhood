@@ -389,15 +389,18 @@ import { fmtM, fmtUsd, fmtValuation, titleCase, ownerDisplayName, viewerStakePct
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash } from './js/game/corp-valuation.js';
 import { fetchCorpBookAggregates } from './js/corp-book-value.js';
 
-// Attach book-value aggregates to each PRIVATE corp in `corps` as c.bookAgg
+// Attach book-value aggregates to every corp in `corps` as c.bookAgg
 // (via the shared fetchCorpBookAggregates), so computeEntrepreneurValuation
-// can show dynamic book value (not stale seed). Public corps show market cap
-// and are skipped. Mutates and returns the same array.
+// can show dynamic book value (not stale seed). Public corps used to be
+// skipped here — they surfaced as market cap and didn't need the building
+// / debt rollups — but the valuation switched to book value for both
+// listings to stop self-pumped market cap polluting leaderboards. Mutates
+// and returns the same array.
 async function attachCorpBookAggregates(corps) {
-  const privateCorps = (corps || []).filter(c => c && c.listing !== 'public');
-  if (!privateCorps.length) return corps;
-  const bookAgg = await fetchCorpBookAggregates(privateCorps.map(c => c.id));
-  for (const c of privateCorps) {
+  const list = (corps || []).filter(Boolean);
+  if (!list.length) return corps;
+  const bookAgg = await fetchCorpBookAggregates(list.map(c => c.id));
+  for (const c of list) {
     c.bookAgg = bookAgg.get(c.id) || { buildingCostPaid: 0, outstandingDebt: 0 };
   }
   return corps;
@@ -516,8 +519,7 @@ function renderPositions(corps, filter) {
     const val = computeEntrepreneurValuation(c, c.bookAgg);
     const valCell = document.createElement('div'); valCell.className = 'mid';
     const vl = document.createElement('div'); vl.className = 'cl';
-    vl.textContent = val.kind === 'market' ? 'MARKET CAP'
-                   : val.kind === 'book'   ? 'BOOK VALUE' : 'VALUATION';
+    vl.textContent = val.kind === 'book' ? 'BOOK VALUE' : 'VALUATION';
     const vv = document.createElement('div'); vv.className = 'cv'; vv.textContent = fmtValuation(val.amount);
     valCell.append(vl, vv);
 

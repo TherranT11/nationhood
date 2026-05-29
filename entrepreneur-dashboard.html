@@ -391,9 +391,7 @@ function renderHoldings(positions) {
     }
 
     // Valuation figure computed once in loadHoldings (pos.valuation).
-    const valKey = pos.valuation.kind === 'market' ? 'MARKET CAP'
-                 : pos.valuation.kind === 'book'   ? 'BOOK VALUE'
-                 : 'VALUATION';
+    const valKey = pos.valuation.kind === 'book' ? 'BOOK VALUE' : 'VALUATION';
     const valVal = fmtValuation(pos.valuation.amount);
 
     return `
@@ -474,11 +472,14 @@ async function loadHoldings(entId, cash) {
     }
   }
 
-  // Book-value aggregates for PRIVATE holdings (public corps show market
-  // cap) — fetched once via the shared fetchCorpBookAggregates so each
-  // private corp shows its dynamic book value, not stale seed capital.
+  // Book-value aggregates for every held corp — fetched once via the
+  // shared fetchCorpBookAggregates so each corp's headline figure is
+  // dynamic book value, not stale seed capital. Public corps were
+  // previously skipped (they surfaced as market cap), now included for
+  // the same reason as the directory pages: market cap can be self-
+  // pumped via the corp_trade flat-fill curve.
   const bookAgg = await fetchCorpBookAggregates(
-    [...byId.values()].filter(p => p.corp && p.corp.listing !== 'public').map(p => p.corp.id));
+    [...byId.values()].filter(p => p.corp).map(p => p.corp.id));
 
   // Per-corp valuation from the shared single source (see
   // js/game/corp-valuation.js §3). Read by render + sort below;

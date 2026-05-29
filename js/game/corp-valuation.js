@@ -22,12 +22,16 @@
 //      server-side mirror is required.
 //
 //   3. Entrepreneur-facing valuation — computeEntrepreneurValuation
-//      (+ computeCorpBookValue). The book-value/market figure shown on
+//      (+ computeCorpBookValue). The book-value figure shown on
 //      entrepreneur-dashboard.html, entrepreneur-corporations.html,
-//      entrepreneur-corp.html and entrepreneur-markets.html.
+//      entrepreneur-corp.html, entrepreneur-markets.html, and on the
+//      bid-list valuation column returned by get_my_construction_bids.
 //      Deliberately NOT the section-1 engine valuation ("the founding
 //      cash was already spent; we don't invent a valuation"); it is
 //      display-only and never feeds net worth or the tick processor.
+//      Public corps used to surface as market cap (share_price ×
+//      shares_outstanding) — see computeEntrepreneurValuation below
+//      for why that was retired in favour of book value.
 
 // Sell-side (liquidation) value of a held public-stock position under
 // corp_trade's 1%-per-share flat-fill LINEAR curve (20270199). A single trade
@@ -180,20 +184,24 @@ export function computeCorpBookValue({ treasury, buildingCostPaid, outstandingDe
 }
 
 // See header §3. Display-only valuation for the entrepreneur surface —
-// public → MARKET CAP (share_price × shares_outstanding); private (or
-// unlisted) → dynamic BOOK VALUE (computeCorpBookValue). The caller
-// supplies the building/loan aggregates via `opts` (they aren't on the
-// corp row); absent them the figure falls back to treasury alone so it is
-// never blank or stale. Returns the raw figure + kind so each surface
-// formats/labels itself; the rule lives only here.
+// always BOOK VALUE (computeCorpBookValue), for both private and public
+// listings. The caller supplies the building/loan aggregates via `opts`
+// (they aren't on the corp row); absent them the figure falls back to
+// treasury alone so it is never blank or stale. Returns the raw figure +
+// kind so each surface formats/labels itself; the rule lives only here.
+//
+// History: public corps used to surface as share_price × shares_outstanding
+// (market cap). Pulled in favour of book value because a founder can
+// self-buy from the float to pump share_price 1% per share without any
+// real assets backing the figure (corp_trade flat-fill curve) — the
+// dividend round-trip nets the cash out but leaves market cap inflated,
+// turning leaderboards / directories into vanity rankings. Book value
+// reads treasury + building book − outstanding debt, all of which move
+// with real economic activity. The share_price / shares_outstanding pair
+// is still rendered on the corp's own detail page (trading panel), so
+// the per-share trading view is unaffected.
 export function computeEntrepreneurValuation(corp, opts) {
     const c = corp || {};
-    if (c.listing === 'public') {
-        if (c.share_price != null && c.shares_outstanding != null) {
-            return { kind: 'market', amount: Number(c.share_price) * Number(c.shares_outstanding) };
-        }
-        return { kind: 'none', amount: null };
-    }
     return {
         kind: 'book',
         amount: computeCorpBookValue({
