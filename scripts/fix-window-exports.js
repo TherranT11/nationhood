@@ -42,11 +42,6 @@ const windowExports = {
     'editPolicy', 'duplicatePolicy', 'deletePolicy', 'toggleStartingNation',
     'removeStatEffect', 'removeOpposedSlot'
   ],
-  'crisisadmin.html': [
-    'createNewCrisis', 'applyFilters', 'editCrisis', 'cancelEditor',
-    'deleteCrisis', 'addTrigger', 'addEffect', 'addEndTrigger', 'saveCrisis',
-    'removeTrigger', 'removeEffect', 'removeEndTrigger'
-  ],
   'avelia.html': ['goBack', 'continueToPartyCreation'],
   'melizea.html': ['goBack', 'continueToPartyCreation'],
   'sangreza.html': ['goBack', 'continueToPartyCreation'],

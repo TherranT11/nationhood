@@ -66,12 +66,6 @@ const imports = {
     `import { initGameConfigForNation, generatePMCandidates, selectPMCandidate, selectPresidentCandidate, isPresidentialRepublic, fetchActiveCoalition, loadSeats, syncVoteTallies, deductAP, adjustMomentumAll, GAME_CONFIG } from './js/game-common.js';`,
   ],
 
-  // GROUP B: CDN + supabase-client + game-common (no common.js)
-  'crisisadmin.html': [
-    `import { _supabase } from './js/supabase-client.js';`,
-    `import { NATION_STAT_COLUMNS, formatStatName } from './js/game-common.js';`,
-  ],
-
   // GROUP C: CDN + game-common only
   'admin.html': [
     `import { createClient } from '@supabase/supabase-js';`,
