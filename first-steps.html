@@ -61,6 +61,12 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 .nation-card__body { padding: 10px 12px; }
 .nation-card__desc { font-size: 11px; color: var(--text-dim); line-height: 1.5;
   margin-bottom: 8px; font-style: italic; }
+/* Nations not yet open for politician origin render disabled — visibly
+   dim, ignore clicks. Allowlist lives in POLITICIAN_ALLOWED_NATIONS
+   (single source). Click-target on a disabled card no-ops in the
+   render handler too, so the visual + behavioural sides agree. */
+.nation-card.disabled { opacity: 0.35; cursor: not-allowed; }
+.nation-card.disabled:hover { background: inherit; border-color: var(--border-1); }
 .parties-section { margin-top: 8px; padding-top: 8px;
   border-top: 1px solid rgba(255,255,255,0.05); }
 .parties-section__head { font-family: var(--font-mono); font-size: 10px; font-weight: 700;
@@ -192,6 +198,11 @@ import { NATION_DESCRIPTIONS } from './js/game/nation-descriptions.js';
 let allNations = [];
 let politiciansByNation = {};  // nation_id → count of active politicians
 let partiesByNation = {};      // nation_id → [{name, archetype, seats, popularity_pct}], sorted seats DESC
+
+// Nations open for politician origin. Cards for every other nation
+// render disabled (visually dim + click ignored). Extend the set as
+// new nations open up — one place to edit.
+const POLITICIAN_ALLOWED_NATIONS = new Set(['Melizea', 'Avelia']);
 let currentContinent = 'Crucera';
 let selectedNation = null;
 let selectedGender = null;
@@ -317,6 +328,7 @@ function renderNations() {
   }
   grid.innerHTML = list.map(n => {
     const sel = selectedNation && selectedNation.id === n.id ? ' selected' : '';
+    const dis = POLITICIAN_ALLOWED_NATIONS.has(n.name) ? '' : ' disabled';
     const { cls, label } = govBadge(n.government_type);
     const desc = NATION_DESCRIPTIONS[n.name] || '';
     // Political Parties block — sorted seats DESC at load time. Empty
@@ -338,7 +350,7 @@ function renderNations() {
           </div>`;
         }).join('')
       : `<div class="parties-section__empty">None yet.</div>`;
-    return `<div class="nation-card${sel}" data-id="${n.id}">
+    return `<div class="nation-card${sel}${dis}" data-id="${n.id}">
       <div class="nation-card__header">
         <img class="nation-card__flag" src="${escAttr(flagFor(n))}" alt="" onerror="this.style.visibility='hidden'">
         <span class="nation-card__name">${escHtml(n.name)}</span>
@@ -358,6 +370,10 @@ function renderNations() {
   }).join('');
   grid.querySelectorAll('.nation-card').forEach(card => {
     card.addEventListener('click', () => {
+      // No-op on disabled cards. CSS sets cursor:not-allowed so the
+      // user can tell from the hover state; the early return keeps
+      // selection state untouched if they click through.
+      if (card.classList.contains('disabled')) return;
       const n = allNations.find(x => x.id === card.dataset.id);
       // Different nation → different name pool, so any prior name pick is stale.
       if (selectedNation && n && selectedNation.id !== n.id) {
