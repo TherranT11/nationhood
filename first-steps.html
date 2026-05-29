@@ -67,9 +67,12 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
   color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;
   margin-bottom: 4px; }
 .party-row { font-family: var(--font-mono); font-size: 10px;
-  color: var(--text-secondary); padding: 2px 0; line-height: 1.4; }
-.party-row__name { color: var(--text-bright, #fff); font-weight: 600; }
-.party-row__meta { color: var(--text-dim); }
+  color: #fff; padding: 2px 0; line-height: 1.4; }
+/* .party-row__name gets its colour inline from the party's party_color
+   column (safe-hex regex'd in renderNations), so each party reads in
+   its own brand. .party-row__meta stays uniformly white. */
+.party-row__name { font-weight: 600; }
+.party-row__meta { color: #fff; }
 .parties-section__empty { font-family: var(--font-mono); font-size: 10px;
   color: var(--text-dim); font-style: italic; padding: 2px 0; }
 .stat-row { display: flex; justify-content: space-between; align-items: center;
@@ -222,7 +225,7 @@ async function init() {
       // nation card. Sort happens client-side (seats DESC) so a nation
       // with multiple parties shows its largest first.
       _supabase.from('factions')
-        .select('nation_id, faction_name, archetype, seats, popularity_pct')
+        .select('nation_id, faction_name, archetype, seats, popularity_pct, party_color')
         .eq('faction_type', 'movement_party')
         .is('abandoned_at', null),
     ]);
@@ -325,8 +328,12 @@ function renderNations() {
           const arch  = p.archetype ? escHtml(p.archetype) : '—';
           const seats = (Number(p.seats) || 0);
           const pop   = (p.popularity_pct == null) ? '—' : (Math.round(Number(p.popularity_pct)) + '%');
+          // safe-hex check before inlining the colour in a style attr —
+          // anything else falls back to white. Single-use guard; no
+          // shared helper added.
+          const color = /^#[0-9a-f]{6}$/i.test(p.party_color || '') ? p.party_color : '#fff';
           return `<div class="party-row">
-            <span class="party-row__name">${escHtml(p.faction_name || 'Party')}</span>
+            <span class="party-row__name" style="color:${color};">${escHtml(p.faction_name || 'Party')}</span>
             <span class="party-row__meta"> · ${arch} · ${seats} seat${seats === 1 ? '' : 's'} · ${pop}</span>
           </div>`;
         }).join('')
