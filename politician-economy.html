@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Politician — Industries &amp; Corporations</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  :root{
+    --bg:#080808; --panel:#0d0d0d; --panel2:#101010;
+    --green:#6ab07a; --green-dim:#3a5a42; --green-bg:#0e1611;
+    --amber:#d4b87a; --amber-dim:#5a4d2e; --amber-bg:#161208;
+    --steel:#7a9aab; --steel-dim:#3a5060; --steel-bg:#0e1218;
+    --red:#c87a7a; --red-dim:#5a3030; --red-bg:#160e0e;
+    --line:rgba(255,255,255,0.07); --txt:#d4d4d4; --mut:#888; --faint:#666;
+    /* category colors */
+    --extract:#d4926a; --extract-bg:#160e08; --extract-dim:#5a3a1e;
+    --finance:#7a9aab; --finance-bg:#0e1218; --finance-dim:#3a5060;
+    --transport:#9aab7a; --transport-bg:#13160e; --transport-dim:#4a5a3a;
+    --industry:#c89e6e; --industry-bg:#130f0c; --industry-dim:#5a4530;
+    --service:#b9a2d4; --service-bg:#100e16; --service-dim:#3e3055;
+  }
+  body{background:var(--bg);color:var(--txt);font-family:-apple-system,system-ui,sans-serif;min-height:100vh;}
+  .content{padding:30px 22px;}
+  .wrap{max-width:1280px;margin:0 auto;}
+
+  .crumb{font-size:9px;letter-spacing:0.13em;color:var(--faint);margin-bottom:16px;text-transform:uppercase;}
+  .crumb a{color:var(--mut);text-decoration:none;}
+  .crumb a:hover{color:var(--extract);}
+  .crumb .sep{margin:0 7px;color:#3a3a3a;}
+  .crumb .here{color:var(--extract);}
+
+  .page-head{margin-bottom:22px;}
+  .page-eyebrow{font-size:9px;letter-spacing:0.16em;color:var(--extract);margin-bottom:7px;text-transform:uppercase;}
+  .page-title{font-size:28px;font-weight:500;color:#fff;letter-spacing:-0.012em;}
+  .page-title .serif{font-family:Georgia,serif;font-style:italic;color:var(--extract);}
+  .page-sub{font-size:11.5px;color:var(--mut);margin-top:6px;line-height:1.5;max-width:780px;}
+  .page-sub strong{color:#d4d4d4;font-weight:600;}
+
+  .summary{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-bottom:24px;}
+  .sm-card{background:var(--panel);border:0.5px solid var(--line);border-radius:6px;padding:13px 15px;border-left-width:3px;border-left-style:solid;}
+  .sm-card.extract{border-left-color:var(--extract);}
+  .sm-card.finance{border-left-color:var(--finance);}
+  .sm-card.transport{border-left-color:var(--transport);}
+  .sm-card.industry{border-left-color:var(--industry);}
+  .sm-card.service{border-left-color:var(--service);}
+  .sm-lab{font-size:8px;letter-spacing:0.12em;font-weight:600;margin-bottom:6px;text-transform:uppercase;}
+  .sm-card.extract .sm-lab{color:var(--extract);}
+  .sm-card.finance .sm-lab{color:var(--finance);}
+  .sm-card.transport .sm-lab{color:var(--transport);}
+  .sm-card.industry .sm-lab{color:var(--industry);}
+  .sm-card.service .sm-lab{color:var(--service);}
+  .sm-val{font-size:18px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums;line-height:1;}
+  .sm-val .of{font-size:10px;color:var(--mut);font-weight:500;}
+  .sm-foot{font-size:9px;color:var(--mut);margin-top:5px;}
+
+  .cat-section{margin-bottom:26px;}
+  .cat-head{display:flex;align-items:center;gap:11px;padding:11px 16px;border-radius:6px;margin-bottom:12px;border:0.5px solid;}
+  .cat-head.extract{background:var(--extract-bg);border-color:var(--extract-dim);}
+  .cat-head.finance{background:var(--finance-bg);border-color:var(--finance-dim);}
+  .cat-head.transport{background:var(--transport-bg);border-color:var(--transport-dim);}
+  .cat-head.industry{background:var(--industry-bg);border-color:var(--industry-dim);}
+  .cat-head.service{background:var(--service-bg);border-color:var(--service-dim);}
+  .cat-icon{font-size:16px;}
+  .cat-head.extract .cat-icon{color:var(--extract);}
+  .cat-head.finance .cat-icon{color:var(--finance);}
+  .cat-head.transport .cat-icon{color:var(--transport);}
+  .cat-head.industry .cat-icon{color:var(--industry);}
+  .cat-head.service .cat-icon{color:var(--service);}
+  .cat-name{font-size:13px;font-weight:600;color:#fff;letter-spacing:-0.005em;flex:1;}
+  .cat-stats{font-size:9px;color:var(--mut);letter-spacing:0.04em;}
+  .cat-stats strong{color:#fff;font-weight:600;}
+
+  .industry{background:var(--panel);border:0.5px solid var(--line);border-radius:6px;margin-bottom:10px;overflow:hidden;border-left:3px solid;}
+  .industry.extract{border-left-color:var(--extract);}
+  .industry.finance{border-left-color:var(--finance);}
+  .industry.transport{border-left-color:var(--transport);}
+  .industry.industry{border-left-color:var(--industry);}
+  .industry.service{border-left-color:var(--service);}
+
+  .ind-row{display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:0.5px solid var(--line);}
+  .ind-name-block{flex:1;}
+  .ind-name{font-size:13.5px;font-weight:600;color:#fff;letter-spacing:-0.005em;}
+  .ind-blurb{font-size:10px;color:var(--mut);margin-top:3px;line-height:1.5;font-style:italic;}
+
+  .ind-strength{display:flex;align-items:center;gap:11px;flex-shrink:0;}
+  .str-formula{font-size:9px;color:var(--mut);font-family:monospace;text-align:right;line-height:1.5;}
+  .str-formula .base{color:#bbb;}
+  .str-formula .plus{color:var(--green);font-weight:600;}
+  .str-formula .note{font-size:8px;color:var(--faint);}
+  .str-final{font-size:22px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums;line-height:1;}
+  .str-of{font-size:10px;color:var(--faint);font-weight:500;}
+  .str-final.low{color:var(--red);}
+  .str-final.mid{color:var(--amber);}
+  .str-final.high{color:var(--green);}
+
+  .corps{padding:12px 18px 14px;background:#0a0a0a;}
+  .corps-lab{font-size:8px;letter-spacing:0.13em;color:var(--faint);margin-bottom:9px;}
+  .corp-list{display:flex;flex-direction:column;gap:5px;}
+  .corp{display:flex;align-items:center;gap:11px;padding:8px 11px;background:#0d0d0d;border:0.5px solid var(--line);border-radius:5px;}
+  .corp-badge{width:28px;height:28px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0;}
+  .corp-info{flex:1;min-width:0;}
+  .corp-name{font-size:11.5px;font-weight:600;color:#fff;line-height:1.2;}
+  .corp-meta{font-size:9.5px;color:var(--mut);margin-top:2px;}
+  .corp-type{font-size:8px;letter-spacing:0.1em;font-weight:600;padding:3px 7px;border-radius:3px;flex-shrink:0;}
+  .corp-type.public{background:var(--steel-bg);color:var(--steel);border:0.5px solid var(--steel-dim);}
+  .corp-type.private{background:#0d0d0d;color:var(--mut);border:0.5px solid var(--line);}
+  .corp-type.state{background:var(--amber-bg);color:var(--amber);border:0.5px solid var(--amber-dim);}
+  .corp-val{font-size:11px;color:#fff;font-variant-numeric:tabular-nums;text-align:right;width:78px;flex-shrink:0;font-weight:500;}
+  .corp-val .m{color:var(--mut);font-weight:400;}
+
+  .cb-extract{background:#160e08;border:0.5px solid #5a3a1e;color:var(--extract);}
+  .cb-finance{background:#0e1218;border:0.5px solid #3a5060;color:var(--finance);}
+  .cb-transport{background:#13160e;border:0.5px solid #4a5a3a;color:var(--transport);}
+  .cb-industry{background:#130f0c;border:0.5px solid #5a4530;color:var(--industry);}
+  .cb-service{background:#100e16;border:0.5px solid #3e3055;color:var(--service);}
+
+  .no-corps{font-size:10px;color:var(--faint);font-style:italic;padding:6px 0;text-align:center;}
+  .loading{font-family:monospace;font-size:11px;color:#4a4940;text-align:center;padding:80px 20px;}
+  .fail{font-family:monospace;font-size:11px;color:#c87a7a;text-align:center;padding:80px 20px;}
+
+  @media (max-width:780px){
+    .summary{grid-template-columns:repeat(2,1fr);}
+    .ind-row{flex-wrap:wrap;}
+    .ind-strength{margin-left:auto;}
+  }
+</style>
+</head>
+<body>
+
+<div id="pol-topbar-container"></div>
+
+<div class="content" id="content" style="display:none;">
+  <div class="wrap">
+
+    <div class="crumb">
+      <a href="politician-nation.html" id="cr-nation">NATION</a>
+      <span class="sep">&rsaquo;</span><a href="politician-nation.html">ECONOMY</a>
+      <span class="sep">&rsaquo;</span><span class="here">INDUSTRIES &amp; CORPORATIONS</span>
+    </div>
+
+    <div class="page-head">
+      <div class="page-eyebrow" id="ph-eyebrow">— INDUSTRIES &amp; CORPORATIONS —</div>
+      <div class="page-title">The Sectors of the <span class="serif">Economy</span></div>
+      <div class="page-sub" id="ph-sub">All industries operating in this nation, ranked by strength on a scale of 0 to 10. Strength is built from a sector's natural base in this country plus the corporations operating in it — <strong>+1 strength per two corporations</strong>.</div>
+    </div>
+
+    <div class="summary" id="summary-host"></div>
+
+    <div id="sectors-host"></div>
+
+  </div>
+</div>
+
+<div id="loading" class="loading">LOADING...</div>
+
+<script type="module">
+import { bootstrapPolitician } from './js/politician-topbar.js';
+import { _supabase } from './js/supabase-client.js';
+import { escapeHtml, industryLabel } from './js/utils.js';
+
+// ── Sector / industry roster ─────────────────────────────────────────
+// The full taxonomy displayed on this page — 5 sectors × 4 industries
+// each. Industry → entrepreneur_corps.industry mapping uses the
+// `corpEnums` array per industry; an empty array means no current
+// corp enum slots into that industry (the industry still renders,
+// just with no corp roster). Adding a new corp enum is one line in
+// the matching industry's corpEnums.
+//
+// Strength is intentionally hard-zeroed for now per design — base and
+// bonus both stay at 0 until per-nation natural-base values land.
+// renderStrength reads base + bonus from the industry row, so when
+// those values become real, the formula text + tier color light up
+// automatically without touching the render path.
+const INDUSTRY_BASE_DEFAULT = 0;
+
+const SECTORS = [
+  {
+    key: 'extract',
+    label: 'Extractive',
+    icon: '☧',
+    subtitle: 'primary resource extraction',
+    industries: [
+      { key: 'oil_gas',      name: 'Oil & Gas',              blurb: 'Petroleum extraction and refining.',                                       corpEnums: [] },
+      { key: 'mining',       name: 'Mining & Metals',        blurb: 'Hard mineral extraction — base metals, precious metals, industrial minerals.', corpEnums: [] },
+      { key: 'timber',       name: 'Timber & Forestry',      blurb: 'Logging concessions and forest products.',                                  corpEnums: [] },
+      { key: 'fisheries',    name: 'Commercial Fisheries',   blurb: 'Industrial fishing fleet and coastal operations.',                          corpEnums: [] },
+    ],
+  },
+  {
+    key: 'finance',
+    label: 'Finance',
+    icon: '☲',
+    subtitle: 'banking, markets, and capital flows',
+    industries: [
+      { key: 'commercial_banking', name: 'Commercial Banking',             blurb: 'Retail and commercial banks operating in this nation.', corpEnums: ['banking'] },
+      { key: 'insurance',          name: 'Insurance',                      blurb: 'Life, property, and casualty insurance.',                corpEnums: [] },
+      { key: 'capital_markets',    name: 'Capital Markets & Brokerage',    blurb: 'Equity markets, brokerages, investment advisory.',        corpEnums: [] },
+      { key: 'currency_exchange',  name: 'Currency Exchange & Remittances',blurb: 'FX dealers and money-transfer operators.',                corpEnums: [] },
+    ],
+  },
+  {
+    key: 'transport',
+    label: 'Transportation & Logistics',
+    icon: '✈',
+    subtitle: 'moving goods and people',
+    industries: [
+      { key: 'shipping',     name: 'Shipping & Maritime Logistics', blurb: 'Ocean shipping and port operations.',           corpEnums: ['shipping'] },
+      { key: 'aviation',     name: 'Civil Aviation',                blurb: 'Passenger and cargo airlines.',                  corpEnums: ['airline'] },
+      { key: 'trucking',     name: 'Trucking & Road Freight',       blurb: 'Long-haul and regional road freight.',           corpEnums: [] },
+      { key: 'rail_transit', name: 'Rail & Public Transit',         blurb: 'Rail freight and public transit operators.',     corpEnums: [] },
+    ],
+  },
+  {
+    key: 'industry',
+    label: 'Industrial & Construction',
+    icon: '⚙',
+    subtitle: 'industry, building, manufacturing',
+    industries: [
+      { key: 'construction',  name: 'Construction & Engineering',          blurb: 'General contracting and civil engineering.',            corpEnums: ['construction'] },
+      { key: 'heavy_mfg',     name: 'Heavy Manufacturing',                 blurb: 'Steel, machinery, vehicle assembly, defence manufacturing.', corpEnums: ['aviation_manufacturing'] },
+      { key: 'petrochem',     name: 'Petrochemicals & Refining Products',  blurb: 'Plastics, fertilizers, industrial chemicals.',          corpEnums: [] },
+      { key: 'textiles',      name: 'Textiles & Garments',                 blurb: 'Apparel and textile manufacturing.',                    corpEnums: [] },
+    ],
+  },
+  {
+    key: 'service',
+    label: 'Consumer & Service',
+    icon: '⛺',
+    subtitle: 'consumer markets and services',
+    industries: [
+      { key: 'real_estate',  name: 'Real Estate & Development',     blurb: 'Residential, commercial, industrial property.', corpEnums: ['real_estate'] },
+      { key: 'retail',       name: 'Retail & Distribution',         blurb: 'Consumer retail and wholesale distribution.',    corpEnums: [] },
+      { key: 'hospitality',  name: 'Hospitality & Tourism',         blurb: 'Hotels, restaurants, tour operators.',           corpEnums: [] },
+      { key: 'media_telecom',name: 'Media & Telecommunications',    blurb: 'Broadcasting, publishing, telecoms.',            corpEnums: [] },
+    ],
+  },
+];
+
+// One source of truth for the enum → industry slot lookup, derived
+// from SECTORS once. Adding a corp enum to an industry above
+// automatically wires the bucketing here without a second edit.
+const INDUSTRY_BY_ENUM = new Map();
+for (const sector of SECTORS) {
+  for (const ind of sector.industries) {
+    for (const enumKey of ind.corpEnums) {
+      INDUSTRY_BY_ENUM.set(enumKey, { sectorKey: sector.key, industryKey: ind.key });
+    }
+  }
+}
+
+async function init() {
+  let ctx = null;
+  try { ctx = await bootstrapPolitician('nation'); }
+  catch (err) {
+    console.error('politician-economy: bootstrap failed', err);
+    document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
+    return;
+  }
+  if (!ctx) return;
+
+  const nation = ctx.nation;
+  if (!nation) {
+    document.getElementById('loading').textContent = 'No nation associated with this politician.';
+    return;
+  }
+
+  document.title = `${nation.name} — Industries & Corporations`;
+  // Header copy adapts the nation name in three places: the crumb's
+  // first link, the eyebrow line, and the subtitle. The page title
+  // ("The Sectors of the Economy") is nation-agnostic.
+  document.getElementById('cr-nation').textContent = (nation.name || 'NATION').toUpperCase();
+  document.getElementById('ph-eyebrow').textContent =
+    `— INDUSTRIES & CORPORATIONS · ${(nation.name || '').toUpperCase()} —`;
+  document.getElementById('ph-sub').innerHTML =
+    `All industries operating in ${escapeHtml(nation.name)}, ranked by strength on a scale of 0 to 10. ` +
+    `Strength is built from a sector's natural base in this country plus the corporations operating in it — ` +
+    `<strong>+1 strength per two corporations</strong>.`;
+
+  await renderEconomy(nation.id);
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+}
+
+async function renderEconomy(nationId) {
+  const summaryHost = document.getElementById('summary-host');
+  const sectorsHost = document.getElementById('sectors-host');
+
+  // Pull every corp in this nation in one round-trip; joined to the
+  // owner faction for CEO name. Filter: HQ'd in this nation, not
+  // abandoned. Sort by starting_capital desc as the headline value.
+  let corps = [];
+  try {
+    const { data, error } = await _supabase
+      .from('entrepreneur_corps')
+      .select(`
+        id, name, industry, listing, starting_capital, treasury_cash,
+        owner:factions!owner_faction_id(leader_first_name, leader_last_name, faction_name)
+      `)
+      .eq('hq_nation_id', nationId)
+      .order('starting_capital', { ascending: false });
+    if (error) throw error;
+    corps = data || [];
+  } catch (err) {
+    console.error('politician-economy: corps fetch failed', err);
+    sectorsHost.innerHTML =
+      `<div class="fail">Failed to load corporations.<br>${escapeHtml(err.message || '')}</div>`;
+    return;
+  }
+
+  // Bucket every corp into its industry slot. Unmapped enums (any
+  // value not declared on a sector's corpEnums) drop silently — same
+  // pattern other surfaces use against future enum additions.
+  const corpsByIndustry = new Map();
+  for (const c of corps) {
+    const slot = INDUSTRY_BY_ENUM.get(c.industry);
+    if (!slot) continue;
+    const key = slot.industryKey;
+    if (!corpsByIndustry.has(key)) corpsByIndustry.set(key, []);
+    corpsByIndustry.get(key).push(c);
+  }
+
+  // Per-sector aggregates for the summary bar and the cat-head stats.
+  const sectorAgg = new Map();
+  for (const sector of SECTORS) {
+    let corpCount = 0;
+    let strengthSum = 0;
+    for (const ind of sector.industries) {
+      const indCorps = corpsByIndustry.get(ind.key) || [];
+      corpCount += indCorps.length;
+      const { final } = strengthFor(ind, indCorps.length);
+      strengthSum += final;
+    }
+    const avg = sector.industries.length ? (strengthSum / sector.industries.length) : 0;
+    sectorAgg.set(sector.key, {
+      corpCount,
+      industryCount: sector.industries.length,
+      avg,
+    });
+  }
+
+  summaryHost.innerHTML = SECTORS.map(s => renderSummaryCard(s, sectorAgg.get(s.key))).join('');
+  sectorsHost.innerHTML = SECTORS.map(s => renderSectorSection(s, sectorAgg.get(s.key), corpsByIndustry)).join('');
+}
+
+// Strength formula. Base values come from the SECTORS taxonomy (zero
+// today, per the design note above); bonus is floor(corps / 2) per
+// "+1 strength per two corporations"; cap at 10 so a future high-corp
+// sector doesn't render an off-scale number. Returns numeric pieces
+// so renderStrength can format them.
+function strengthFor(industry, corpCount) {
+  const base  = industry.base != null ? industry.base : INDUSTRY_BASE_DEFAULT;
+  const bonus = Math.floor((corpCount || 0) / 2);
+  const final = Math.min(10, base + bonus);
+  return { base, bonus, final };
+}
+
+function strengthTierClass(final) {
+  if (final <= 3) return 'low';
+  if (final <= 6) return 'mid';
+  return 'high';
+}
+
+function renderSummaryCard(sector, agg) {
+  const avgStr = (agg && agg.corpCount > 0) ? agg.avg.toFixed(1) : '0.0';
+  return (
+    `<div class="sm-card ${sector.key}">` +
+      `<div class="sm-lab">${escapeHtml(sector.label)}</div>` +
+      `<div class="sm-val">${avgStr}<span class="of"> avg</span></div>` +
+      `<div class="sm-foot">${agg.industryCount} industries · ${agg.corpCount} corps</div>` +
+    `</div>`
+  );
+}
+
+function renderSectorSection(sector, agg, corpsByIndustry) {
+  const indHtml = sector.industries.map(ind => {
+    const indCorps = corpsByIndustry.get(ind.key) || [];
+    return renderIndustryCard(sector, ind, indCorps);
+  }).join('');
+  return (
+    `<div class="cat-section">` +
+      `<div class="cat-head ${sector.key}">` +
+        `<span class="cat-icon">${sector.icon}</span>` +
+        `<span class="cat-name">${escapeHtml(sector.label)}</span>` +
+        `<span class="cat-stats"><strong>${agg.industryCount} industries</strong> · <strong>${agg.corpCount} corporations</strong> · ${escapeHtml(sector.subtitle)}</span>` +
+      `</div>` +
+      indHtml +
+    `</div>`
+  );
+}
+
+function renderIndustryCard(sector, ind, corps) {
+  const { base, bonus, final } = strengthFor(ind, corps.length);
+  const tier = strengthTierClass(final);
+  const corpsHtml = corps.length
+    ? corps.map(c => renderCorpRow(sector, c)).join('')
+    : `<div class="no-corps">No corporations operating in this industry.</div>`;
+  const noteHtml = bonus > 0
+    ? `<br><span class="note">(${corps.length} corps ÷ 2)</span>`
+    : '';
+  return (
+    `<div class="industry ${sector.key}">` +
+      `<div class="ind-row">` +
+        `<div class="ind-name-block">` +
+          `<div class="ind-name">${escapeHtml(ind.name)}</div>` +
+          `<div class="ind-blurb">${escapeHtml(ind.blurb)}</div>` +
+        `</div>` +
+        `<div class="ind-strength">` +
+          `<div class="str-formula"><span class="base">base ${base}</span> <span class="plus">+ ${bonus}</span>${noteHtml}</div>` +
+          `<div class="str-final ${tier}">${final}<span class="str-of">/10</span></div>` +
+        `</div>` +
+      `</div>` +
+      `<div class="corps">` +
+        `<div class="corps-lab">CORPORATIONS IN THIS INDUSTRY</div>` +
+        `<div class="corp-list">${corpsHtml}</div>` +
+      `</div>` +
+    `</div>`
+  );
+}
+
+function renderCorpRow(sector, corp) {
+  const badge = corpInitials(corp.name);
+  // CEO name + corp's industry as a short flavour line. Falls back
+  // cleanly when the owner faction is missing or has no leader name.
+  const ceo = corp.owner
+    ? [corp.owner.leader_first_name, corp.owner.leader_last_name].filter(Boolean).join(' ').trim()
+    : '';
+  const ceoLine = ceo ? `CEO: ${ceo}` : 'No CEO on file';
+  const flavour = corp.industry ? industryLabel(corp.industry) : '';
+  const meta = flavour ? `${ceoLine} · ${flavour}` : ceoLine;
+
+  // Listing → type pill. The 'state' bucket isn't an enum value on
+  // entrepreneur_corps today, but the CSS supports it for when state-
+  // owned corps land. Default falls through to "private".
+  const listing = String(corp.listing || '').toLowerCase();
+  const typeClass = listing === 'public' ? 'public' : listing === 'state' ? 'state' : 'private';
+  const typeLabel = typeClass.toUpperCase();
+
+  // Headline value: treasury_cash if present (live cash), else
+  // starting_capital. Both stored as raw dollars; fmtMoneyCompact
+  // renders e.g. 4_200_000_000 → "4.2B".
+  const raw = Number(corp.treasury_cash || corp.starting_capital || 0);
+  const valHtml = fmtMoneyCompact(raw);
+
+  return (
+    `<div class="corp">` +
+      `<div class="corp-badge cb-${sector.key}">${escapeHtml(badge)}</div>` +
+      `<div class="corp-info">` +
+        `<div class="corp-name">${escapeHtml(corp.name)}</div>` +
+        `<div class="corp-meta">${escapeHtml(meta)}</div>` +
+      `</div>` +
+      `<div class="corp-type ${typeClass}">${escapeHtml(typeLabel)}</div>` +
+      `<div class="corp-val">${valHtml}</div>` +
+    `</div>`
+  );
+}
+
+function corpInitials(name) {
+  const s = String(name || '').trim();
+  if (!s) return '—';
+  const parts = s.split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// Dollar formatter matching the mockup: "$4.2B", "$890M", "$72M".
+// Sub-million falls back to "$N" with thousands separators so a tiny
+// corp doesn't render as "$0.0M". Returns the value-with-unit-span
+// HTML used in the corp row.
+function fmtMoneyCompact(n) {
+  const v = Number(n) || 0;
+  if (v >= 1e9) return `$${(v / 1e9).toFixed(1)}<span class="m">B</span>`;
+  if (v >= 1e6) return `$${Math.round(v / 1e6)}<span class="m">M</span>`;
+  if (v >= 1e3) return `$${Math.round(v / 1e3)}<span class="m">K</span>`;
+  return `$${v.toLocaleString()}`;
+}
+
+init();
+</script>
+</body>
+</html>
