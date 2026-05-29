@@ -6,9 +6,6 @@
 import { GAME_CONFIG } from './config.js';
 import { unitUpkeepPerTick } from './military-units.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS } from './diplomacy-constants.js';
-import { adjustGovernmentApprovalEvent, adjustCredibility } from './momentum.js';
-import { fetchActiveCoalition } from './government-structure.js';
-import { SOVEREIGN_DEFAULT_CRISIS_ID, SOVEREIGN_DEBT_CRISIS_ID, ECONOMIC_COLLAPSE_CRISIS_ID } from './sovereign-default.js';
 import { MINISTER_APPROVAL_CONFIG } from './stats.js';
 import { hasElectedPresident, isAbsoluteMonarchy } from './government-types.js';
 import { fireBilateralEvent } from './event-helpers.js';
@@ -943,60 +940,13 @@ export async function applyGdpGrowth(_supabase, _nation, _currentTick) {
     return;
 }
 
-// Activate Economic Collapse mega-crisis: clears other economic crises, applies political penalties
-async function activateEconomicCollapse(supabase, nation, currentTick) {
-    try {
-        // 1. Skip if already active
-        const { data: existing, error: existErr } = await supabase.from('active_crises')
-            .select('id').eq('nation_id', nation.id)
-            .eq('crisis_id', ECONOMIC_COLLAPSE_CRISIS_ID);
-        if (existErr) return; // fail safe — don't double-activate
-        if (existing?.length > 0) return;
-
-        // 2. Clear existing economic crises
-        const econCrisisNames = ['Currency Collapse', 'Hyperinflation Emergency'];
-        const { data: econTemplates } = await supabase.from('crisis_templates')
-            .select('id').in('name', econCrisisNames);
-        const econIds = (econTemplates || []).map(t => t.id)
-            .concat([SOVEREIGN_DEBT_CRISIS_ID, SOVEREIGN_DEFAULT_CRISIS_ID]);
-        await supabase.from('active_crises')
-            .delete().eq('nation_id', nation.id).in('crisis_id', econIds);
-
-        // 3. Political penalties: -25 gov approval, -6 party_approval & -0.15 credibility to all coalition parties
-        await adjustGovernmentApprovalEvent(supabase, nation.id, -25, 'crisis:economic_collapse');
-
-        const coalition = await fetchActiveCoalition(supabase, nation.id);
-        for (const partyId of (coalition?.party_ids || [])) {
-            await supabase.rpc('adjust_momentum', { p_faction_id: partyId, p_delta: -6, p_label: 'Sovereign default (-6)', p_tick: currentTick });
-            await adjustCredibility(supabase, partyId, nation.id, -0.15, 12, currentTick, { source: 'sovereign_default' });
-        }
-
-        // 4. Reset gdp_growth to neutral (stop the bleeding) — critical to prevent re-trigger loop
-        nation.gdp_growth = 50;
-        await supabase.from('nations').update({ gdp_growth: 50 }).eq('id', nation.id);
-
-        // 5. Insert Economic Collapse crisis
-        await supabase.from('active_crises').insert({
-            crisis_id: ECONOMIC_COLLAPSE_CRISIS_ID,
-            nation_id: nation.id,
-            started_at_tick: currentTick,
-            effects_applied_log: []
-        });
-
-        // 6. Event log
-        await supabase.from('event_log').insert({
-            nation_id: nation.id,
-            event_name: 'CRISIS_STARTED: Economic Collapse',
-            trigger_key: 'crisis_started',
-            description_used: `${nation.name}'s economy has collapsed. GDP has fallen to critical levels. Emergency economic restructuring is underway.`,
-            category: 'crisis',
-            effects_applied: [],
-            fired_at_tick: currentTick
-        });
-    } catch (err) {
-        // Non-fatal — GDP is already clamped at floor by caller
-    }
-}
+// Crisis sunset (Phase 2): activateEconomicCollapse removed. It was
+// already orphaned by Phase 1's processCrises deletion and fired the
+// Economic Collapse / Currency Collapse / Hyperinflation Emergency
+// mega-crisis chain plus a -25 gov approval and -6 momentum / -0.15
+// credibility hit to every coalition party. Reintroduce via a
+// modifier_template plus a one-shot SQL RPC if the bleed-out behavior
+// is wanted back.
 
 /**
  * Per-tick GDP drift driven by the gdp_growth stat.

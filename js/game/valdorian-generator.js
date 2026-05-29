@@ -64,83 +64,11 @@ export function trackTopics(nationId, tick, topicTags) {
     return developingStory;
 }
 
-// ════════════════════════════════════════════════════════════════
-// CRISIS EVENT BUILDERS
-// ════════════════════════════════════════════════════════════════
-
-/**
- * Build a Valdorian event object from an active_crises record + crisis_template.
- */
-export function buildCrisisStartedEvent(template, nationName, pmName, currentTick) {
-    const triggers = template.crisis_triggers || [];
-    const triggerDesc = triggers.map(t =>
-        `${t.stat_key.replace(/_/g, ' ')} ${t.operator === 'gte' ? 'rose above' : 'fell below'} ${t.threshold}`
-    ).join(' and ');
-
-    const effects = template.crisis_effects || [];
-    const worstEffect = effects.reduce((worst, e) =>
-        Math.abs(e.change_per_tick) > Math.abs(worst?.change_per_tick || 0) ? e : worst
-    , effects[0]);
-
-    return {
-        event_type: 'crisis_started',
-        section: isFiscalCrisis(template.name) ? 'economy' : 'politics',
-        tier: 1,
-        topic_tags: ['crisis', guessCrisisTopic(template.name)],
-        nation_name: nationName,
-        pm_name: pmName || 'the Prime Minister',
-        crisis_name: template.name,
-        crisis_type: template.crisis_type || 'stat',
-        severity: guessSeverity(effects),
-        trigger_description: triggerDesc || 'key indicators crossing critical thresholds',
-        worst_affected_stat: worstEffect ? worstEffect.stat_key?.replace(/_/g, ' ') : 'multiple indicators',
-        tick: currentTick,
-    };
-}
-
-export function buildCrisisOngoingEvent(template, activeRecord, nationName, pmName, currentTick) {
-    const duration = currentTick - (activeRecord.started_at_tick || currentTick);
-    const effects = template.crisis_effects || [];
-    const worstEffect = effects.reduce((worst, e) =>
-        Math.abs(e.change_per_tick) > Math.abs(worst?.change_per_tick || 0) ? e : worst
-    , effects[0]);
-
-    return {
-        event_type: 'crisis_ongoing',
-        section: isFiscalCrisis(template.name) ? 'economy' : 'politics',
-        tier: duration > 5 ? 1 : 2,
-        topic_tags: ['crisis', guessCrisisTopic(template.name)],
-        nation_name: nationName,
-        pm_name: pmName || 'the Prime Minister',
-        crisis_name: template.name,
-        duration_ticks: duration,
-        worst_affected_stat: worstEffect ? worstEffect.stat_key?.replace(/_/g, ' ') : 'multiple indicators',
-        approval_delta: 0,
-        tick: currentTick,
-    };
-}
-
-export function buildCrisisResolvedEvent(template, activeRecord, nationName, pmName, currentTick) {
-    const duration = currentTick - (activeRecord.started_at_tick || currentTick);
-    const effects = template.crisis_effects || [];
-    const worstEffect = effects.reduce((worst, e) =>
-        Math.abs(e.change_per_tick) > Math.abs(worst?.change_per_tick || 0) ? e : worst
-    , effects[0]);
-
-    return {
-        event_type: 'crisis_resolved',
-        section: isFiscalCrisis(template.name) ? 'economy' : 'politics',
-        tier: 2,
-        topic_tags: ['crisis', guessCrisisTopic(template.name)],
-        nation_name: nationName,
-        pm_name: pmName || 'the Prime Minister',
-        crisis_name: template.name,
-        duration_ticks: duration,
-        worst_affected_stat: worstEffect ? worstEffect.stat_key?.replace(/_/g, ' ') : 'multiple indicators',
-        tick: currentTick,
-    };
-}
-
+// Crisis sunset (Phase 2): buildCrisisStartedEvent /
+// buildCrisisOngoingEvent / buildCrisisResolvedEvent builders removed
+// (no callers — processCrises was the only consumer and went away in
+// Phase 1). Reintroduce as modifier-based article generators if you
+// want characterization arcs back in The Valdorian.
 
 /**
  * Build a sovereign default event object.
@@ -403,12 +331,6 @@ export function generateTickArticles(events) {
 // HELPERS
 // ════════════════════════════════════════════════════════════════
 
-function isFiscalCrisis(name) {
-    const fiscal = ['currency', 'inflation', 'debt', 'default', 'budget', 'economic', 'recession', 'gdp'];
-    const lower = (name || '').toLowerCase();
-    return fiscal.some(k => lower.includes(k));
-}
-
 function guessCrisisTopic(name) {
     const lower = (name || '').toLowerCase();
     if (lower.includes('inflation') || lower.includes('currency') || lower.includes('debt') || lower.includes('gdp') || lower.includes('economic')) return 'economy';
@@ -418,15 +340,6 @@ function guessCrisisTopic(name) {
     if (lower.includes('crime') || lower.includes('unrest')) return 'crime';
     if (lower.includes('environment') || lower.includes('pollution')) return 'environment';
     return 'governance';
-}
-
-function guessSeverity(effects) {
-    if (!effects || effects.length === 0) return 'moderate';
-    const totalDamage = effects.reduce((s, e) => s + Math.abs(e.change_per_tick || 0), 0);
-    if (totalDamage >= 8) return 'critical';
-    if (totalDamage >= 5) return 'severe';
-    if (totalDamage >= 2) return 'moderate';
-    return 'minor';
 }
 
 // ════════════════════════════════════════════════════════════════
