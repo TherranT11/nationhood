@@ -1361,7 +1361,10 @@ function _laneShipCountFor(partnerId, sector) {
             || (ag.nation_b_id === myId && ag.nation_a_id === partnerId);
         if (!matchesPair) continue;
         for (const c of (_shippingContractsByAgreement[ag.id] || [])) {
-            if (c.status === 'awarded') count++;
+            // Same fix as _agreementEfficiency / getAgreementShippingInfo —
+            // multi-winner contracts deliver via winning_bids[] without ever
+            // flipping to status='awarded', so a legacy-only filter undercounts.
+            if (isShippingContractActive(c)) count++;
         }
     }
     return count;
@@ -1401,7 +1404,14 @@ function _laneEfficiencyFor(partnerId, sector) {
 // 100% and don't need shipping.
 function _agreementEfficiency(agreementId, partnerId) {
     const contracts = _shippingContractsByAgreement[agreementId] || [];
-    const awarded = contracts.filter(c => c.status === 'awarded');
+    // BUG FIX: was filtering `status === 'awarded'`, which only counts
+    // legacy single-winner contracts. Multi-winner contracts (winning_bids[]
+    // populated by the new allocator) were invisible — efficiency dropped
+    // to the 85% default whenever every article had moved off the legacy
+    // path. isShippingContractActive() is the canonical "is this delivering?"
+    // check, same one shippingContractDeliveredPerTick() and the Phase 4
+    // render block use, so all three surfaces agree on what counts.
+    const awarded = contracts.filter(isShippingContractActive);
     if (awarded.length === 0) {
         // No shipping awarded on this agreement yet. Land-adjacent pairs
         // still read 100% via the partner's shipping need; everyone else
@@ -2146,17 +2156,34 @@ function shippingContractDeliveredPerTick(c) {
 // carries the winner display info the badge needs.
 function getAgreementShippingInfo(agreementId) {
     const contracts = _shippingContractsByAgreement[agreementId] || [];
-    const awarded = contracts.filter(c => c.status === 'awarded');
-    if (awarded.length === 0) return null;
+    // BUG FIX: was filtering `status === 'awarded'` and reading only
+    // winner_faction_id — that missed every multi-winner contract (which
+    // carries winners in winning_bids[] instead of the single
+    // winner_faction_name field). Result: Route Efficiency showed only
+    // legacy single-winner carriers and silently dropped every Calder /
+    // Starliner pair. Now uses the same isShippingContractActive() filter
+    // as the rest of the surface and walks winning_bids[] when present,
+    // falling back to the legacy single-winner snapshot otherwise.
+    const active = contracts.filter(isShippingContractActive);
+    if (active.length === 0) return null;
     const corps = [];
     const seen = new Set();
-    for (const c of awarded) {
-        if (!c.winner_faction_id || seen.has(c.winner_faction_id)) continue;
-        seen.add(c.winner_faction_id);
-        corps.push({ name: c.winner_faction_name || 'Corp', color: '#5cc55c' });
+    for (const c of active) {
+        if (Array.isArray(c.winning_bids) && c.winning_bids.length > 0) {
+            for (const w of c.winning_bids) {
+                const name = w.corp_name || 'Corp';
+                if (seen.has(name)) continue;
+                seen.add(name);
+                corps.push({ name, color: '#5cc55c' });
+            }
+        } else if (c.winner_faction_name) {
+            if (seen.has(c.winner_faction_name)) continue;
+            seen.add(c.winner_faction_name);
+            corps.push({ name: c.winner_faction_name, color: '#5cc55c' });
+        }
     }
     return {
-        routeCount: awarded.length,
+        routeCount: active.length,
         corps,
         hasLogistics: corps.length > 0,
     };
