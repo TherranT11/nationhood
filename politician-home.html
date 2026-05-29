@@ -182,6 +182,8 @@ const CAREER_EVENT_TEMPLATES = {
   founded_party: (name, target) => `The ${target || 'new political party'} was established by ${name}.`,
   joined_ngo:    (name, target) => `${name} has registered their membership in the ${target || 'a non-government organisation'}.`,
   founded_ngo:   (name, target) => `The ${target || 'new organisation'} was established by ${name}.`,
+  won_election:  (name, target) => `${name} won the election in ${target || 'a contested district'}.`,
+  lost_election: (name, target) => `${name} lost the election in ${target || 'a contested district'}.`,
 };
 
 let politician = null;
@@ -206,6 +208,18 @@ async function init() {
   nation     = ctx.nation;
   party      = ctx.party || null;
   evTickNow  = Number(ctx.shard?.current_tick) || 0;
+
+  // Resolve any due election so the influence card on this page is honest
+  // even when the player visits home before career. The career page is
+  // where the result banner is shown; here we just want the side effects
+  // (influence delta + career_events row) to land. Soft-fails so a
+  // missing RPC during early dev doesn't break the home page.
+  try {
+    const { data, error } = await _supabase.rpc('politician_resolve_due_elections');
+    if (!error && data?.resolved) {
+      politician.politician_influence = data.politician_influence;
+    }
+  } catch (_) { /* non-fatal */ }
 
   try {
     const [evRes, careerRes] = await Promise.all([

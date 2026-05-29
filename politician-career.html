@@ -103,6 +103,160 @@
 @media (max-width:420px) {
   .info-grid { grid-template-columns:1fr; }
 }
+
+/* ─── Election result banner — sits above the career card after a queued
+   race resolves. Win = teal accent, lose = red. Auto-dismissed by JS;
+   the × button is a manual escape hatch. */
+.election-banner { position:relative; border-radius:6px; padding:14px 44px 14px 18px;
+  margin-bottom:18px; border:0.5px solid; background:#0d0d0c; }
+.election-banner.win  { border-color:rgba(90,175,165,0.5); background:#0c1715; }
+.election-banner.lose { border-color:rgba(200,122,122,0.5); background:#170c0c; }
+.election-banner .eb-head { font-size:10px; letter-spacing:0.14em; font-weight:600; margin-bottom:6px; }
+.election-banner.win  .eb-head { color:#5aafa5; }
+.election-banner.lose .eb-head { color:#c87a7a; }
+.election-banner .eb-body { font-size:12px; color:#ccc; line-height:1.5; }
+.election-banner .eb-close { position:absolute; top:8px; right:10px; width:24px; height:24px;
+  background:transparent; border:none; color:#666; cursor:pointer; font-size:18px; line-height:1; }
+.election-banner .eb-close:hover { color:#fff; }
+
+/* ─── STAND FOR ELECTION MODAL ─────────────────────────────────────
+   Hidden by default; toggled visible by openElectionModal(). All
+   selectors are scoped under #electionModal so the modal cannot collide
+   with future modals elsewhere. Visual vocabulary follows the design
+   spec sent with the task: party-red accents on the header + confirm
+   button, tier-low (greenish) for community, tier-high (steel) for
+   parliament. The footer surfaces the politician's three live stats so
+   the player sees their numbers without leaving the modal.
+*/
+#electionModal { position:fixed; inset:0; background:rgba(0,0,0,0.72);
+  display:none; align-items:flex-start; justify-content:center; padding:30px 22px;
+  z-index:200; overflow-y:auto; }
+#electionModal.open { display:flex; }
+#electionModal .em-modal { width:100%; max-width:920px; background:#0d0d0d;
+  border:0.5px solid rgba(255,255,255,0.1); border-radius:10px; overflow:hidden;
+  box-shadow:0 24px 80px rgba(0,0,0,0.6); }
+#electionModal .em-head { display:flex; align-items:center; justify-content:space-between;
+  padding:17px 24px; border-bottom:0.5px solid rgba(255,255,255,0.07); }
+#electionModal .em-titles .eyebrow { font-size:9px; letter-spacing:0.16em; color:#e07070; margin-bottom:5px; }
+#electionModal .em-titles .title { font-size:20px; font-weight:500; color:#fff; }
+#electionModal .em-titles .title .serif { font-family:Georgia,serif; font-style:italic; color:#e07070; }
+#electionModal .em-titles .sub { font-size:10px; color:#888; margin-top:3px; }
+#electionModal .em-close { width:28px; height:28px; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:5px; display:flex; align-items:center; justify-content:center;
+  color:#888; font-size:14px; cursor:pointer; background:transparent; }
+#electionModal .em-body { padding:20px 22px; }
+#electionModal .em-intro { font-size:11.5px; color:#888; line-height:1.6; margin-bottom:18px;
+  font-style:italic; border-left:2px solid #e07070; padding-left:13px; }
+#electionModal .em-intro strong { color:#bbb; font-style:normal; }
+#electionModal .em-intro .cred { color:#9aab7a; }
+#electionModal .em-intro .cha  { color:#7a9aab; }
+
+#electionModal .em-options { display:grid; grid-template-columns:1fr 1fr; gap:11px; margin-bottom:16px; }
+#electionModal .em-opt { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:8px; cursor:pointer; transition:all 0.15s; overflow:hidden; border-top:3px solid; }
+#electionModal .em-opt.community  { border-top-color:#9aab7a; }
+#electionModal .em-opt.parliament { border-top-color:#7a9aab; }
+#electionModal .em-opt:hover { background:#0d0d0d; }
+#electionModal .em-opt.selected.community  { background:#13160e; border-color:#4a5a3a; border-top-color:#9aab7a; }
+#electionModal .em-opt.selected.parliament { background:#0e1218; border-color:#3a5060; border-top-color:#7a9aab; }
+#electionModal .em-opt-head { padding:15px 17px 12px; }
+#electionModal .em-opt-eyebrow { font-size:8px; letter-spacing:0.14em; font-weight:600;
+  margin-bottom:7px; display:flex; align-items:center; gap:5px; }
+#electionModal .em-opt.community  .em-opt-eyebrow { color:#9aab7a; }
+#electionModal .em-opt.parliament .em-opt-eyebrow { color:#7a9aab; }
+#electionModal .em-opt-title { font-size:16px; font-weight:600; color:#fff; letter-spacing:-0.005em; line-height:1.25; }
+#electionModal .em-opt-title .serif { font-family:Georgia,serif; font-style:italic; }
+#electionModal .em-opt.community  .em-opt-title .serif { color:#9aab7a; }
+#electionModal .em-opt.parliament .em-opt-title .serif { color:#7a9aab; }
+#electionModal .em-opt-blurb { font-size:11px; color:#888; margin-top:6px; line-height:1.55; }
+#electionModal .em-opt-detail { padding:13px 17px; border-top:0.5px solid rgba(255,255,255,0.06);
+  background:rgba(0,0,0,0.25); }
+#electionModal .em-det-row { display:flex; align-items:flex-start; gap:9px; padding:7px 0; font-size:11px; }
+#electionModal .em-det-lab { font-size:8px; letter-spacing:0.11em; color:#666; width:72px; flex-shrink:0; padding-top:1px; }
+#electionModal .em-det-val { color:#fff; font-weight:500; flex:1; line-height:1.4; }
+#electionModal .em-det-val .dim { color:#888; }
+
+#electionModal .em-opp-block { display:flex; align-items:center; gap:9px; padding:8px 10px;
+  background:#0a0a0a; border-radius:5px; border:0.5px solid rgba(255,255,255,0.07); width:100%; }
+#electionModal .em-opp-badge { width:30px; height:30px; border-radius:4px;
+  display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; flex-shrink:0; }
+#electionModal .em-opp-info { flex:1; min-width:0; }
+#electionModal .em-opp-name { font-size:11.5px; font-weight:600; color:#fff; line-height:1.2; }
+#electionModal .em-opp-from { font-size:9px; color:#888; margin-top:2px; }
+
+#electionModal .em-matchup { padding:12px 14px; background:#0a0a0a; border-radius:5px;
+  border:0.5px solid rgba(255,255,255,0.07); margin-top:9px; }
+#electionModal .em-match-lab { font-size:8px; letter-spacing:0.11em; color:#666; margin-bottom:9px; text-align:center; }
+#electionModal .em-match-row { display:flex; align-items:center; gap:14px; }
+#electionModal .em-match-side { flex:1; text-align:center; }
+#electionModal .em-match-who  { font-size:8px; letter-spacing:0.07em; color:#888; margin-bottom:5px; }
+#electionModal .em-match-you .em-match-who { color:#e07070; }
+#electionModal .em-match-stat { font-size:9px; color:#888; letter-spacing:0.04em; }
+#electionModal .em-match-val  { font-size:24px; font-weight:600; color:#fff; font-variant-numeric:tabular-nums; line-height:1; margin-top:2px; margin-bottom:4px; }
+#electionModal .em-match-you .em-match-val { color:#e07070; }
+#electionModal .em-match-vs   { font-size:9px; letter-spacing:0.13em; color:#666; font-weight:600; flex-shrink:0; }
+
+#electionModal .em-odds-row { margin-top:12px; }
+#electionModal .em-odds-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+#electionModal .em-odds-lab { font-size:8px; letter-spacing:0.13em; color:#666; }
+#electionModal .em-odds-pct { font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; }
+#electionModal .em-odds-pct.fav  { color:#6ab07a; }
+#electionModal .em-odds-pct.even { color:#d4b87a; }
+#electionModal .em-odds-pct.long { color:#c87a7a; }
+#electionModal .em-odds-bar  { height:6px; border-radius:3px; background:#1a1a1a; overflow:hidden; }
+#electionModal .em-odds-fill { height:100%; border-radius:3px; }
+#electionModal .em-odds-fill.fav  { background:#6ab07a; }
+#electionModal .em-odds-fill.even { background:#d4b87a; }
+#electionModal .em-odds-fill.long { background:#c87a7a; }
+
+#electionModal .em-stakes { display:flex; gap:6px; margin-top:12px; padding-top:12px;
+  border-top:0.5px solid rgba(255,255,255,0.05); }
+#electionModal .em-stake { flex:1; text-align:center; padding:9px 7px; border-radius:4px; border:0.5px solid; }
+#electionModal .em-stake.win  { background:#0e1611; border-color:#3a5a42; }
+#electionModal .em-stake.lose { background:#160e0e; border-color:#5a3030; }
+#electionModal .em-stake.zero { background:#101010; border-color:rgba(255,255,255,0.07); }
+#electionModal .em-stake-lab { font-size:7px; letter-spacing:0.11em; font-weight:600; }
+#electionModal .em-stake.win  .em-stake-lab { color:#6ab07a; }
+#electionModal .em-stake.lose .em-stake-lab { color:#c87a7a; }
+#electionModal .em-stake.zero .em-stake-lab { color:#888; }
+#electionModal .em-stake-val { font-size:14px; font-weight:600; margin-top:4px; }
+#electionModal .em-stake.win  .em-stake-val { color:#6ab07a; }
+#electionModal .em-stake.lose .em-stake-val { color:#c87a7a; }
+#electionModal .em-stake.zero .em-stake-val { color:#888; }
+
+#electionModal .em-confirm-band { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:7px; padding:13px 16px; margin-bottom:11px; display:flex; align-items:center; gap:13px; }
+#electionModal .em-cb-icon { font-size:17px; color:#d4b87a; flex-shrink:0; }
+#electionModal .em-cb-text { flex:1; font-size:11px; color:#bbb; line-height:1.55; }
+#electionModal .em-cb-text strong { color:#fff; font-weight:600; }
+#electionModal .em-cb-text .warn { color:#c87a7a; }
+
+#electionModal .em-footer { display:flex; align-items:center; justify-content:space-between;
+  padding:14px 22px; border-top:0.5px solid rgba(255,255,255,0.07); background:#0a0a0a; }
+#electionModal .em-your-stats { display:flex; align-items:center; gap:22px; }
+#electionModal .em-stat-block .li { font-size:8px; letter-spacing:0.09em; color:#666; }
+#electionModal .em-stat-block .lv { font-size:15px; font-weight:600; color:#fff; font-variant-numeric:tabular-nums; }
+#electionModal .em-stat-block .lv.infl { color:#e07070; }
+#electionModal .em-stat-block .lv.cha  { color:#7a9aab; }
+#electionModal .em-stat-block .lv.cred { color:#9aab7a; }
+#electionModal .em-footer-buttons { display:flex; gap:9px; }
+#electionModal .em-btn { font-size:10px; letter-spacing:0.08em; padding:11px 19px; border-radius:5px;
+  cursor:pointer; border:0.5px solid; background:transparent; }
+#electionModal .em-btn.cancel  { border-color:rgba(255,255,255,0.07); color:#888; }
+#electionModal .em-btn.cancel:hover { color:#fff; }
+#electionModal .em-btn.confirm { background:#1a0c0c; border-color:#e07070; color:#e07070; font-weight:600; }
+#electionModal .em-btn.confirm:hover { background:#241010; color:#fff; }
+#electionModal .em-btn.confirm[disabled] { opacity:0.45; cursor:not-allowed; }
+
+#electionModal .em-loading { padding:60px 0; text-align:center; color:#666;
+  font-family:monospace; font-size:11px; letter-spacing:0.1em; }
+#electionModal .em-error   { padding:32px 0; text-align:center; color:#c87a7a; font-size:12px; }
+
+@media (max-width:700px) {
+  #electionModal .em-options { grid-template-columns:1fr; }
+  #electionModal .em-footer  { flex-direction:column; gap:12px; align-items:stretch; }
+  #electionModal .em-your-stats { justify-content:space-around; }
+}
 </style>
 </head>
 <body>
@@ -154,9 +308,41 @@
 
 <div id="loading" class="loading">LOADING...</div>
 
+<!-- Stand for Election modal. Hidden by default; opened by the Election
+     Candidate rung's [Stand for Election] button via openElectionModal().
+     Innards are rendered dynamically once politician_get_election_offer
+     returns. -->
+<div id="electionModal" aria-hidden="true">
+  <div class="em-modal" role="dialog" aria-modal="true" aria-labelledby="em-title">
+    <div class="em-head">
+      <div class="em-titles">
+        <div class="eyebrow">— PARTY OFFICE · STAND FOR ELECTION —</div>
+        <div class="title" id="em-title">Run for <span class="serif">Office</span></div>
+        <div class="sub" id="em-subtitle">—</div>
+      </div>
+      <button class="em-close" type="button" aria-label="Close" data-em-close>&times;</button>
+    </div>
+    <div class="em-body" id="em-body">
+      <div class="em-loading">LOADING…</div>
+    </div>
+    <div class="em-footer" id="em-footer" style="display:none;">
+      <div class="em-your-stats">
+        <div class="em-stat-block"><div class="li">INFLUENCE</div><div class="lv infl" id="em-stat-infl">—</div></div>
+        <div class="em-stat-block"><div class="li">CHARISMA</div><div class="lv cha"  id="em-stat-cha" >—</div></div>
+        <div class="em-stat-block"><div class="li">CREDIBILITY</div><div class="lv cred" id="em-stat-cred">—</div></div>
+      </div>
+      <div class="em-footer-buttons">
+        <button class="em-btn cancel"  type="button" data-em-close>CANCEL</button>
+        <button class="em-btn confirm" type="button" id="em-confirm" disabled>&#9873; STAND FOR ELECTION</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
+import { _supabase } from './js/supabase-client.js';
 
 const START_AGE = 25;
 const TICKS_PER_AGE_YEAR = 12;
@@ -216,11 +402,24 @@ const PARTY_OFFICE_RUNGS = [
     actionIfHeld: { label: 'Leave Political Party', kind: 'secondary', action: 'leave-party' },
   },
   {
+    // "Held" here means "currently standing in a race." Wins don't park
+    // the politician on this rung — they get logged as career events
+    // (won_election / lost_election) and resolved by
+    // politician_resolve_due_elections on next page load. Climbing rungs
+    // beyond Party Member needs office-tracking schema; for now we
+    // surface the in-flight race as the held state and let the player
+    // see the win/loss in the result banner + Career container.
     name: 'Election Candidate',
-    held:        ()  => false,
-    descIfHeld:  ()  => 'Standing for election in the next cycle.',
+    held:        (s) => !!s.activeRace,
+    descIfHeld:  (s) => {
+      const ticks = Math.max(0, (s.activeRace?.resolve_tick ?? 0) - (s.currentTick ?? 0));
+      const where = s.activeRace?.district || 'an election';
+      const opp   = (s.activeRace?.opp_first || '') + ' ' + (s.activeRace?.opp_last || '');
+      const when  = ticks <= 0 ? 'resolves this tick' : `resolves in ${ticks} tick${ticks === 1 ? '' : 's'}`;
+      return `Standing in the ${where} race against ${opp.trim() || 'an opponent'} — ${when}.`;
+    },
     descIfNot:   ()  => 'Run for a legislative seat or a mayoralty.',
-    actionIfNot: { label: 'Stand for Election', kind: 'disabled' },
+    actionIfNot: { label: 'Stand for Election', kind: 'primary', action: 'stand-for-election' },
   },
   {
     name: 'Member of Parliament or Mayor',
@@ -423,16 +622,70 @@ async function init() {
   }
   if (!ctx) return;
 
+  // Resolve any election whose tick has come. The RPC no-ops when there's
+  // no due race, so we always call it on load — race results have to
+  // surface even if the player came from a different page.
+  let resolution = null;
+  try {
+    const { data, error } = await _supabase.rpc('politician_resolve_due_elections');
+    if (!error && data?.resolved) resolution = data;
+    if (resolution) {
+      // Reflect the post-resolution influence in ctx.faction immediately
+      // so the topbar / mock-up stat readout don't lag a tick behind the
+      // banner copy.
+      ctx.faction.politician_influence = resolution.politician_influence;
+    }
+  } catch (_) { /* non-fatal — banner just won't show */ }
+
+  // Active race row (if any) — drives the Election Candidate rung's held
+  // state. Read directly via PostgREST; the RPCs are write paths and
+  // returning the full state from get-offer would conflate two surfaces.
+  let activeRace = null;
+  try {
+    const { data } = await _supabase
+      .from('politician_active_election')
+      .select('race_tier, district, opp_first, opp_last, opp_party_name, win_odds_pct, stake_win, stake_lose, committed_tick, resolve_tick')
+      .eq('politician_id', ctx.faction.id)
+      .maybeSingle();
+    activeRace = data || null;
+  } catch (_) { /* non-fatal */ }
+
   render(ctx.faction, ctx.shard, ctx.nation);
-  renderLadders(buildLadderState(ctx.faction, ctx.nation, ctx.party), ctx.faction.id);
+  if (resolution) renderResolutionBanner(resolution);
+  renderLadders(buildLadderState(ctx.faction, ctx.nation, ctx.party, ctx.shard, activeRace), ctx);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
+}
+
+// Resolution banner — surfaced once on the visit after a queued election
+// resolves, then dismissable. Auto-dismisses after 12s. Uses the page's
+// amber-on-dark palette and sits above the career-brief card.
+function renderResolutionBanner(r) {
+  const won = !!r.won;
+  const opp = r.opponent || 'your opponent';
+  const tier = r.race_tier === 'parliament' ? 'parliamentary' : 'community';
+  const delta = Number(r.influence_delta || 0);
+  const deltaLabel = delta === 0 ? '' : (delta > 0 ? `+${delta}` : `${delta}`);
+  const headline = won ? 'ELECTION — VICTORY' : 'ELECTION — DEFEAT';
+  const body = won
+    ? `You won the ${tier} race in ${escHtml(r.district)} against ${escHtml(opp)} (rolled ${r.roll}, needed ≤ ${r.win_odds_pct}).`
+    : `You lost the ${tier} race in ${escHtml(r.district)} to ${escHtml(opp)} (rolled ${r.roll}, needed ≤ ${r.win_odds_pct}).`;
+  const banner = document.createElement('div');
+  banner.className = 'election-banner ' + (won ? 'win' : 'lose');
+  banner.innerHTML = `
+    <div class="eb-head">${escHtml(headline)}</div>
+    <div class="eb-body">${body}${deltaLabel ? ` Influence ${deltaLabel}.` : ''}</div>
+    <button class="eb-close" type="button" aria-label="Dismiss">×</button>`;
+  const content = document.getElementById('content');
+  content.insertBefore(banner, content.firstChild);
+  banner.querySelector('.eb-close').addEventListener('click', () => banner.remove());
+  setTimeout(() => banner.remove(), 12000);
 }
 
 // State bag passed to every rung renderer — the bag, not the politician row
 // directly, so the contract for each rung is one focused interface rather than
 // "we read whatever we want off faction."
-function buildLadderState(politician, nation, party) {
+function buildLadderState(politician, nation, party, shard, activeRace) {
   return {
     // Affiliation source of truth — politician_party_id + the looked-up party
     // row. partyName is the display label for the descIfHeld message;
@@ -442,6 +695,11 @@ function buildLadderState(politician, nation, party) {
     nation: nation?.name || 'this nation',
     holdsMayoralty: false,   // not yet tracked
     cityName: null,
+    // Election state — drives the Election Candidate rung's held() check
+    // and the "resolves in N ticks" descIfHeld copy. currentTick is read
+    // off the shard so the countdown is honest.
+    activeRace: activeRace || null,
+    currentTick: shard?.current_tick ?? 0,
   };
 }
 
@@ -487,7 +745,7 @@ function render(politician, shard, nation) {
     SUSPICION_SUB[suspicion] || 'level not recognised';
 }
 
-function renderLadders(state, politicianId) {
+function renderLadders(state, ctx) {
   const host = document.getElementById('ladders');
   host.innerHTML = LADDERS.map(l => {
     const rungs = typeof l.rungs === 'function' ? l.rungs() : l.rungs;
@@ -503,7 +761,7 @@ function renderLadders(state, politicianId) {
       <div class="body">${body}${footer}</div>
     </details>`;
   }).join('');
-  bindRungActions(politicianId);
+  bindRungActions(ctx);
 }
 
 // Generic rung-list renderer. Walks a ladder's rung array, runs each rung's
@@ -536,9 +794,13 @@ function renderRungs(rungs, state) {
     } else if (r.actionIfNot) {
       const a = r.actionIfNot;
       const cls = a.kind === 'primary' ? 'rung-btn rung-btn--primary' : 'rung-btn rung-btn--disabled';
-      const hrefAttr = a.kind === 'primary' && a.href ? ` data-href="${escHtml(a.href)}"` : '';
+      // A primary actionIfNot can fire either a navigation (href) or an
+      // in-page action (data-action). The Stand for Election rung uses
+      // the data-action path to open the election modal in-place.
+      const hrefAttr     = a.kind === 'primary' && a.href   ? ` data-href="${escHtml(a.href)}"`     : '';
+      const actionAttr   = a.kind === 'primary' && a.action ? ` data-action="${escHtml(a.action)}"` : '';
       const disabledAttr = a.kind === 'disabled' ? ' disabled' : '';
-      actionHtml = `<button class="${cls}"${hrefAttr}${disabledAttr}>${escHtml(a.label)}</button>`;
+      actionHtml = `<button class="${cls}"${hrefAttr}${actionAttr}${disabledAttr}>${escHtml(a.label)}</button>`;
     } else if (r.accessNote) {
       // Rungs reached by appointment / external selection rather than by
       // climbing (e.g. Chief Justice) carry an accessNote instead of an
@@ -562,8 +824,10 @@ function renderRungs(rungs, state) {
 
 // Single event handler for every rung's primary button — looks up data-href
 // and navigates. Disabled buttons carry the disabled attribute so they no-op
-// on their own.
-function bindRungActions(politicianId) {
+// on their own. Data-action buttons route to the in-page handlers below
+// (leave-party + stand-for-election today; more as the ladder fills out).
+function bindRungActions(ctx) {
+  const politicianId = ctx?.faction?.id || null;
   document.querySelectorAll('.rung-btn--primary[data-href]').forEach(btn => {
     btn.addEventListener('click', () => {
       const href = btn.dataset.href;
@@ -584,6 +848,255 @@ function bindRungActions(politicianId) {
       location.reload();
     });
   });
+  document.querySelectorAll('.rung-btn[data-action="stand-for-election"]').forEach(btn => {
+    btn.addEventListener('click', () => openElectionModal(ctx));
+  });
+}
+
+// ─── Stand for Election modal ─────────────────────────────────────
+// Selected tier persists across re-opens within the same page load (a
+// player who closes the modal and reopens it sees their last selection
+// highlighted). On confirm, the selected tier is committed via
+// politician_stand_for_election; the page reloads so the rung flips to
+// its in-race state and any other actions (door-knock, speech) reflect
+// the consumed action gate.
+
+let emSelectedTier = 'community';
+let emOpenCtx = null;
+
+function openElectionModal(ctx) {
+  emOpenCtx = ctx;
+  const modal = document.getElementById('electionModal');
+  if (!modal) return;
+  // Subtitle = party name affiliation. Falls back to a generic line if the
+  // party row didn't come through (politician should always be a member to
+  // see this button, but defend anyway).
+  const partyName = ctx?.party?.faction_name || 'your party';
+  document.getElementById('em-subtitle').textContent = `As a member of ${partyName} · choose your race`;
+  document.getElementById('em-body').innerHTML = '<div class="em-loading">LOADING…</div>';
+  document.getElementById('em-footer').style.display = 'none';
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+
+  // Wire close buttons + ESC + overlay click (once per open; safe to
+  // re-attach since handlers are idempotent on the static buttons).
+  modal.querySelectorAll('[data-em-close]').forEach(btn => {
+    btn.onclick = closeElectionModal;
+  });
+  modal.onclick = (e) => { if (e.target === modal) closeElectionModal(); };
+  document.addEventListener('keydown', emEscHandler);
+
+  loadElectionOffer(ctx);
+}
+
+function closeElectionModal() {
+  const modal = document.getElementById('electionModal');
+  if (!modal) return;
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
+  document.removeEventListener('keydown', emEscHandler);
+}
+
+function emEscHandler(e) {
+  if (e.key === 'Escape') closeElectionModal();
+}
+
+async function loadElectionOffer(ctx) {
+  const partyId = ctx?.party?.id || ctx?.faction?.politician_party_id || null;
+  if (!partyId) {
+    showElectionError('You need to be a party member to stand for election.');
+    return;
+  }
+  const { data, error } = await _supabase.rpc('politician_get_election_offer', { p_party_id: partyId });
+  if (error) {
+    console.error('politician_get_election_offer error', error);
+    showElectionError('Could not load races. ' + (error.message || 'Try again later.'));
+    return;
+  }
+  if (!data?.success) {
+    const reason = data?.reason || 'unknown';
+    const human = {
+      not_authenticated: 'You are not signed in.',
+      not_member:        'You are not a member of this party.',
+      no_shard:          'Shard not found.',
+      no_nation:         'Your nation could not be loaded.',
+      race_in_progress:  'You are already standing in a race. Wait for it to resolve before entering another.',
+    }[reason] || `Could not load races (${reason}).`;
+    showElectionError(human);
+    return;
+  }
+  renderElectionOffer(data, ctx);
+}
+
+function showElectionError(msg) {
+  document.getElementById('em-body').innerHTML =
+    `<div class="em-error">${escHtml(msg)}</div>`;
+  document.getElementById('em-footer').style.display = 'none';
+}
+
+function renderElectionOffer(offer, ctx) {
+  const com  = offer.community  || {};
+  const parl = offer.parliament || {};
+
+  // Footer stats are read live off ctx.faction so they match the topbar
+  // / mockup. influence is numeric in the DB; floor to int for display.
+  const f = ctx.faction || {};
+  const inf  = Math.floor(Number(f.politician_influence)   || 0);
+  const cha  = Number(f.politician_charisma)    || 0;
+  const cred = Number(f.politician_credibility) || 0;
+  document.getElementById('em-stat-infl').textContent = inf;
+  document.getElementById('em-stat-cha' ).textContent = cha;
+  document.getElementById('em-stat-cred').textContent = cred;
+
+  const body = document.getElementById('em-body');
+  body.innerHTML = `
+    <div class="em-intro"><strong>Two races are open to you.</strong> The Community board is a low-stakes way to learn the trade — you cannot lose anything but a tick or two. Parliament is the national stage: the most you can win, the most you can lose. <span class="cred">Credibility</span> drives community races; <span class="cha">Charisma</span> drives parliamentary ones.</div>
+    <div class="em-options">
+      ${renderOptionCard('community',  com,  'LOW STAKES · COMMUNITY',     'Community Organizer', 'A volunteer seat on your neighborhood association. A small race, but real — you’d be elected by your block. Most political careers begin here.', 1)}
+      ${renderOptionCard('parliament', parl, 'HIGH STAKES · NATIONAL',     'Member of Parliament','A vacant Assembly seat in a working-class district of the capital. National-level race, national-level attention.', 2)}
+    </div>
+    <div class="em-confirm-band">
+      <span class="em-cb-icon">&#9888;</span>
+      <div class="em-cb-text">Standing for office is <strong>a public commitment</strong>. Once you enter a race, you cannot withdraw without political damage. <span class="warn">A parliamentary loss costs more than a win earns — choose carefully.</span></div>
+    </div>`;
+
+  document.getElementById('em-footer').style.display = '';
+  document.getElementById('em-confirm').disabled = false;
+
+  // Selection wiring — click a card to mark it selected; CONFIRM commits
+  // whichever is currently selected. Default to whatever was last chosen
+  // in this page load (or community on first open).
+  body.querySelectorAll('.em-opt').forEach(el => {
+    el.addEventListener('click', () => {
+      emSelectedTier = el.dataset.tier;
+      body.querySelectorAll('.em-opt').forEach(o => o.classList.toggle('selected', o === el));
+    });
+  });
+  body.querySelector(`.em-opt[data-tier="${emSelectedTier}"]`)?.classList.add('selected');
+
+  document.getElementById('em-confirm').onclick = () => confirmElection(ctx);
+}
+
+function renderOptionCard(tier, race, eyebrow, titleLead, blurb, resolveTicks) {
+  const odds = Number(race.odds_pct) || 0;
+  const oddsClass = odds >= 60 ? 'fav' : (odds >= 40 ? 'even' : 'long');
+  const oppFull = `${race.opp_first || ''} ${race.opp_last || ''}`.trim() || '—';
+  const titleSerif = tier === 'community' ? race.district : race.district;
+  const statLabel  = tier === 'community' ? 'Credibility' : 'Charisma';
+  const isParl     = tier === 'parliament';
+  const partyName  = isParl ? (race.opp_party_name || 'Independent') : 'Independent';
+  const partyAbbr  = isParl ? (race.opp_party_abbr || (race.opp_party_name ? race.opp_party_name.slice(0, 2).toUpperCase() : 'IND')) : 'IND';
+  const partyColor = isParl ? race.opp_party_color : null;
+  const safeHex    = /^#[0-9a-f]{6}$/i;
+  // Opponent badge uses the party's color when safe; falls back to a
+  // neutral steel for Independents and any unsafe hex.
+  const badgeBg    = safeHex.test(partyColor || '') ? partyColor : '#101010';
+  const badgeFg    = safeHex.test(partyColor || '') ? '#fff' : '#9a9a9a';
+  const badgeBorder = safeHex.test(partyColor || '') ? partyColor : 'rgba(255,255,255,0.07)';
+  const stakeWin   = Number(race.stake_win)  || 0;
+  const stakeLose  = Number(race.stake_lose) || 0;
+  const winValTxt  = `+${stakeWin} Influence`;
+  const loseValTxt = stakeLose === 0 ? 'No cost' : `${stakeLose} Influence`;
+  const loseClass  = stakeLose === 0 ? 'zero' : 'lose';
+  const initials   = ((race.opp_first || '')[0] || '') + ((race.opp_last || '')[0] || '');
+  return `
+    <div class="em-opt ${tier}" data-tier="${tier}">
+      <div class="em-opt-head">
+        <div class="em-opt-eyebrow">${escHtml(eyebrow)}</div>
+        <div class="em-opt-title">${escHtml(titleLead)} · <span class="serif">${escHtml(titleSerif || '')}</span></div>
+        <div class="em-opt-blurb">${escHtml(blurb)}</div>
+      </div>
+      <div class="em-opt-detail">
+        <div class="em-det-row">
+          <span class="em-det-lab">OPPONENT</span>
+          <div style="flex:1;">
+            <div class="em-opp-block">
+              <div class="em-opp-badge" style="background:${badgeBg};color:${badgeFg};border:0.5px solid ${badgeBorder};">${escHtml((initials || '?').toUpperCase())}</div>
+              <div class="em-opp-info">
+                <div class="em-opp-name">${escHtml(oppFull)}</div>
+                <div class="em-opp-from">${escHtml(partyName)} · ${escHtml(race.opp_blurb || '')}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="em-det-row">
+          <span class="em-det-lab">TIMEFRAME</span>
+          <span class="em-det-val">${resolveTicks} tick${resolveTicks === 1 ? '' : 's'}</span>
+        </div>
+        <div class="em-matchup">
+          <div class="em-match-lab">${escHtml(statLabel.toUpperCase())} MATCHUP</div>
+          <div class="em-match-row">
+            <div class="em-match-side em-match-you">
+              <div class="em-match-who">YOU</div>
+              <div class="em-match-val">${Number(race.your_stat) || 0}</div>
+              <div class="em-match-stat">${escHtml(statLabel)}</div>
+            </div>
+            <span class="em-match-vs">VS</span>
+            <div class="em-match-side">
+              <div class="em-match-who">${escHtml((race.opp_last || 'OPPONENT').toUpperCase())}</div>
+              <div class="em-match-val">${Number(race.opp_stat) || 0}</div>
+              <div class="em-match-stat">${escHtml(statLabel)}</div>
+            </div>
+          </div>
+        </div>
+        <div class="em-odds-row">
+          <div class="em-odds-top">
+            <span class="em-odds-lab">ODDS OF WINNING</span>
+            <span class="em-odds-pct ${oddsClass}">${odds}%</span>
+          </div>
+          <div class="em-odds-bar"><div class="em-odds-fill ${oddsClass}" style="width:${odds}%"></div></div>
+        </div>
+        <div class="em-stakes">
+          <div class="em-stake win">
+            <div class="em-stake-lab">IF YOU WIN</div>
+            <div class="em-stake-val">${escHtml(winValTxt)}</div>
+          </div>
+          <div class="em-stake ${loseClass}">
+            <div class="em-stake-lab">IF YOU LOSE</div>
+            <div class="em-stake-val">${escHtml(loseValTxt)}</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function confirmElection(ctx) {
+  const partyId = ctx?.party?.id || ctx?.faction?.politician_party_id || null;
+  const btn = document.getElementById('em-confirm');
+  if (!partyId || !btn) return;
+  btn.disabled = true;
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Submitting…';
+  const { data, error } = await _supabase.rpc('politician_stand_for_election', {
+    p_party_id: partyId,
+    p_tier:     emSelectedTier,
+  });
+  if (error) {
+    alert('Could not stand for election: ' + (error.message || 'unknown error'));
+    btn.disabled = false; btn.textContent = originalLabel;
+    return;
+  }
+  if (!data?.success) {
+    const reason = data?.reason || 'unknown';
+    const human = {
+      not_authenticated: 'You are not signed in.',
+      not_member:        'You are not a member of this party.',
+      invalid_tier:      'Invalid race type.',
+      no_shard:          'Shard not found.',
+      no_offer:          'The race offer expired. Close and reopen the modal.',
+      race_in_progress:  'You are already standing in a race.',
+      cooldown:          `You have already taken your action this tick. Next action ready at tick ${data?.ready_at_tick ?? '?'}.`,
+    }[reason] || `Could not stand for election (${reason}).`;
+    alert(human);
+    btn.disabled = false; btn.textContent = originalLabel;
+    return;
+  }
+  closeElectionModal();
+  // Reload to flip the Election Candidate rung to held state + reflect
+  // the consumed 1-per-turn gate everywhere it's read.
+  location.reload();
 }
 
 init();
