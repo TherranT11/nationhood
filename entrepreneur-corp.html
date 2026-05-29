@@ -398,6 +398,11 @@
     border:0.5px solid rgba(122,154,171,0.25); border-radius:4px; font-size:12px;
     color:#aaa; line-height:1.6; }
   .mo-preview b { color:#7a9aab; font-weight:500; }
+  .mo-floor { display:none; margin-top:8px; padding:8px 11px; background:#22150d;
+    border:0.5px solid rgba(200,158,110,0.35); border-radius:3px; font-size:11px;
+    color:#c89e6e; line-height:1.5; }
+  .mo-floor.show { display:block; }
+  .mo-floor b { color:#e0b888; font-weight:600; }
   .mo-err { color:#c98a8a; font-size:11px; margin-top:10px; min-height:14px; }
   .mo-foot { padding:14px 22px; border-top:0.5px solid rgba(255,255,255,0.08);
     background:#0d0d0d; display:flex; gap:10px; justify-content:flex-end; }
@@ -3491,13 +3496,28 @@ function initials(s, n) {
       // Pending Loan Requests panel (Banking corps only). Shows EVERY
       // Loan Requests panel (Banking corps only, any view). Lists every
       // pending loan request across the world; any banking corp can make
-      // an offer back — banking is a global market, no per-nation gate.
+      // an offer back. Lenders without a completed Banking Office in the
+      // borrower's HQ nation face an APR floor of CB rate + 1% (enforced
+      // server-side in offer_loan, 20270392). The floor is computed here
+      // at render time and stamped onto each Make Offer button so the
+      // modal can surface it without an extra round-trip.
       let loanRequestsHtml = '';
       if (c.industry === 'banking' && canView) {
+        // This bank corp's completed Banking Offices — drives the
+        // "local office" set for the remote-floor check. Cheap one-off
+        // fetch; the set lives in scope for the loan-requests render
+        // below.
+        const { data: officeRows } = await _supabase.from('corp_buildings')
+          .select('nation_id')
+          .eq('owner_corp_id', id)
+          .eq('building_type', 'banking_office')
+          .eq('status', 'completed');
+        const localOfficeNations = new Set((officeRows || []).map(o => o.nation_id));
+
         const { data: reqsData, error: reqsErr } = await _supabase.from('corp_loan_requests')
           .select('id, principal, term_ticks, expires_at_tick, '
                 + 'borrower:entrepreneur_corps!borrower_corp_id(id, name, hq_nation_id, '
-                  + 'hq:nations!hq_nation_id(name), '
+                  + 'hq:nations!hq_nation_id(name, central_bank_interest_rate), '
                   + 'owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name))')
           .eq('status', 'pending')
           .order('placed_at_tick', { ascending: false });
@@ -3510,6 +3530,17 @@ function initials(s, n) {
               const ceo = r.borrower?.owner
                 ? [r.borrower.owner.leader_first_name, r.borrower.owner.leader_last_name].filter(Boolean).join(' ').trim() || r.borrower.owner.faction_name
                 : '';
+              // Remote-floor stamp on the button. floor_pct = 0 when this
+              // bank has a completed Banking Office in the borrower's HQ
+              // nation (no penalty); else CB rate + 1 from the joined
+              // nation row. The modal reads these data attrs straight
+              // through without a second query.
+              const borrowerNationId = r.borrower?.hq_nation_id || '';
+              const cbRate = Number(r.borrower?.hq?.central_bank_interest_rate);
+              const hasLocalOffice = borrowerNationId && localOfficeNations.has(borrowerNationId);
+              const floorPct = hasLocalOffice ? 0
+                : (Number.isFinite(cbRate) ? cbRate + 1 : 6);   // 6 = 5% default CB + 1%
+              const nationName = r.borrower?.hq?.name || '—';
               // v1: request no longer carries an APR — banks set the
               // rate in their offer. Sub-line drops the APR + per-tick
               // numbers (those depend on what THIS bank chooses to
@@ -3519,10 +3550,10 @@ function initials(s, n) {
                   <div class="ap-loan-info">
                     <div class="ap-loan-who">${escapeHtml(r.borrower?.name || 'Unknown corp')} requests ${fmtUsd(Number(r.principal))}</div>
                     <div class="ap-loan-sub">
-                      ${ceo ? escapeHtml(ceo) + ' · ' : ''}${escapeHtml(r.borrower?.hq?.name || '—')} · ${r.term_ticks}t term · expires T${r.expires_at_tick}
+                      ${ceo ? escapeHtml(ceo) + ' · ' : ''}${escapeHtml(nationName)} · ${r.term_ticks}t term · expires T${r.expires_at_tick}
                     </div>
                   </div>
-                  ${ownerOnly(`<button class="ap-btn-small accept cp-make-offer" data-rid="${r.id}" data-principal="${r.principal}" data-term="${r.term_ticks}" data-bname="${escapeHtml(r.borrower?.name || 'Unknown')}">Make Offer</button>`)}
+                  ${ownerOnly(`<button class="ap-btn-small accept cp-make-offer" data-rid="${r.id}" data-principal="${r.principal}" data-term="${r.term_ticks}" data-bname="${escapeHtml(r.borrower?.name || 'Unknown')}" data-floor-pct="${floorPct.toFixed(2)}" data-nation-name="${escapeHtml(nationName)}" data-cb-rate="${Number.isFinite(cbRate) ? cbRate.toFixed(2) : '5.00'}">Make Offer</button>`)}
                 </div>`;
             }).join('');
         }
@@ -5669,16 +5700,31 @@ const openBidModal = (contractId, label, yourCost, budget) => {
     let moPrincipal  = 0;
     let moTermTicks  = 0;
     let moBorrower   = '';
+    let moFloorPct   = 0;   // 0 when this bank has a local office in the borrower nation
 
     const openMakeOfferModal = (btn) => {
       moRequestId = btn.dataset.rid;
       moPrincipal = Number(btn.dataset.principal) || 0;
       moTermTicks = Number(btn.dataset.term) || 0;
       moBorrower  = btn.dataset.bname || 'borrower';
+      moFloorPct  = Number(btn.dataset.floorPct) || 0;
+      const nationName = btn.dataset.nationName || '—';
+      const cbRate     = Number(btn.dataset.cbRate);
       document.getElementById('mo-borrower').textContent = moBorrower;
       document.getElementById('mo-principal').textContent = fmtUsd(moPrincipal);
       document.getElementById('mo-term').textContent = `${moTermTicks} ticks`;
-      document.getElementById('mo-apr').value = '5';
+      // Default APR: floor when remote, 5% baseline when local. Keeps
+      // the modal opening with a value the server will accept rather
+      // than bouncing the user back on first submit.
+      document.getElementById('mo-apr').value = (moFloorPct > 0 ? moFloorPct : 5).toString();
+      const floorEl = document.getElementById('mo-floor');
+      if (moFloorPct > 0 && Number.isFinite(cbRate)) {
+        floorEl.classList.add('show');
+        floorEl.innerHTML = `Your corp has no Banking Office in <b>${escapeHtml(nationName)}</b> — minimum APR is <b>${moFloorPct.toFixed(2)}%</b> (${cbRate.toFixed(2)}% Central Bank rate + 1% remote-lender penalty).`;
+      } else {
+        floorEl.classList.remove('show');
+        floorEl.textContent = '';
+      }
       document.getElementById('mo-err').textContent = '';
       updateMakeOfferPreview();
       document.getElementById('mo-overlay').classList.add('open');
@@ -5691,23 +5737,36 @@ const openBidModal = (contractId, label, yourCost, budget) => {
       if (e.target.id === 'mo-overlay') closeMakeOfferModal();
     });
     const updateMakeOfferPreview = () => {
-      const apr = Number((document.getElementById('mo-apr').value || '').trim()) / 100;
+      const aprPct = Number((document.getElementById('mo-apr').value || '').trim());
+      const apr = aprPct / 100;
       const sumEl = document.getElementById('mo-preview');
       if (!Number.isFinite(apr) || apr < 0 || apr > 0.5 || !moPrincipal || !moTermTicks) {
         sumEl.innerHTML = `Set an APR between 0% and 50% to preview the per-tick payment.`;
         return;
       }
+      if (moFloorPct > 0 && aprPct < moFloorPct) {
+        sumEl.innerHTML = `APR is below the ${moFloorPct.toFixed(2)}% floor for this loan — raise it to preview.`;
+        return;
+      }
       const { perTick, total } = corpLoanQuote(moPrincipal, apr, moTermTicks);
-      sumEl.innerHTML = `Borrower repays <b>${fmtUsd(total)}</b> over <b>${moTermTicks} ticks</b> at <b>${(apr * 100).toFixed(2)}%</b> APR · <b>${fmtUsd(perTick)}/tick</b> back to your corp.`;
+      sumEl.innerHTML = `Borrower repays <b>${fmtUsd(total)}</b> over <b>${moTermTicks} ticks</b> at <b>${aprPct.toFixed(2)}%</b> APR · <b>${fmtUsd(perTick)}/tick</b> back to your corp.`;
     };
     document.getElementById('mo-apr').addEventListener('input', updateMakeOfferPreview);
 
     document.getElementById('mo-submit').addEventListener('click', async () => {
       if (loanActionInFlight) return;
       const errEl = document.getElementById('mo-err');
-      const apr = Number((document.getElementById('mo-apr').value || '').trim()) / 100;
+      const aprPct = Number((document.getElementById('mo-apr').value || '').trim());
+      const apr = aprPct / 100;
       if (!Number.isFinite(apr) || apr < 0 || apr > 0.5) {
         errEl.textContent = 'APR must be 0–50%.';
+        return;
+      }
+      // Client-side floor pre-check — server enforces the same rule,
+      // but bouncing it here saves a round-trip and gives an immediate
+      // error message anchored to the exact floor number.
+      if (moFloorPct > 0 && aprPct < moFloorPct) {
+        errEl.textContent = `Minimum APR for this loan is ${moFloorPct.toFixed(2)}%.`;
         return;
       }
       loanActionInFlight = true;
@@ -5731,7 +5790,14 @@ const openBidModal = (contractId, label, yourCost, budget) => {
             not_bank_corp_owner:          'You don’t own this corp.',
             not_banking_corp:             'Only Banking corps can submit loan offers.',
           };
-          errEl.textContent = REASON[data?.reason] || ('Could not submit: ' + (data?.reason || 'unknown'));
+          if (data?.reason === 'apr_below_remote_floor') {
+            const serverFloor = Number(data.floor_pct);
+            errEl.textContent = Number.isFinite(serverFloor)
+              ? `Minimum APR for this loan is ${serverFloor.toFixed(2)}%.`
+              : 'APR is below the remote-lender floor for this loan.';
+          } else {
+            errEl.textContent = REASON[data?.reason] || ('Could not submit: ' + (data?.reason || 'unknown'));
+          }
           loanActionInFlight = false; btn.disabled = false; btn.textContent = prev;
           return;
         }
@@ -6526,6 +6592,11 @@ const openBidModal = (contractId, label, yourCost, budget) => {
 
       <div class="mo-label">APR (%)</div>
       <input type="text" class="mo-input" id="mo-apr" placeholder="e.g. 5" inputmode="decimal" value="5">
+
+      <!-- Floor notice: visible only when this bank has no local Banking
+           Office in the borrower nation. openMakeOfferModal toggles
+           .show and fills the inline numbers. -->
+      <div class="mo-floor" id="mo-floor"></div>
 
       <div class="mo-preview" id="mo-preview">Set an APR between 0% and 50% to preview the per-tick payment.</div>
       <div class="mo-err" id="mo-err"></div>
