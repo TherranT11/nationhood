@@ -5804,12 +5804,18 @@ const openBidModal = (contractId, label, yourCost, budget) => {
             cannot_self_loan:             'A corp can’t bid on its own loan request.',
             not_bank_corp_owner:          'You don’t own this corp.',
             not_banking_corp:             'Only Banking corps can submit loan offers.',
+            apr_below_remote_floor:       'APR is below the remote-lender floor for this loan.',
           };
-          if (data?.reason === 'apr_below_remote_floor') {
-            const serverFloor = Number(data.floor_pct);
-            errEl.textContent = Number.isFinite(serverFloor)
-              ? `Minimum APR for this loan is ${serverFloor.toFixed(2)}%.`
-              : 'APR is below the remote-lender floor for this loan.';
+          // Whenever the server returns a floor_pct (only set on the
+          // remote-lender path today, but defensive against future
+          // additions), use it as the user-facing error directly so
+          // the lender always sees the exact minimum. Beats relying on
+          // reason-string matching, which silently degrades to the
+          // generic "Could not submit: ..." fallback if the reason
+          // drifts or a stale client doesn't recognise it.
+          const serverFloor = Number(data?.floor_pct);
+          if (Number.isFinite(serverFloor) && serverFloor > 0) {
+            errEl.textContent = `Minimum APR for this loan is ${serverFloor.toFixed(2)}%.`;
           } else {
             errEl.textContent = REASON[data?.reason] || ('Could not submit: ' + (data?.reason || 'unknown'));
           }
