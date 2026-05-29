@@ -70,6 +70,13 @@ function ensureStyles() {
     .wr-event:last-child{margin-bottom:0;}
     .wr-event-meta{font-size:8px;letter-spacing:0.12em;color:#888;margin-bottom:6px;text-transform:uppercase;font-weight:700;}
     .wr-event-body{font-size:10px;line-height:1.55;color:#cfcfcf;white-space:pre-line;overflow-wrap:anywhere;}
+    .wr-casualties{margin-top:11px;padding-top:11px;border-top:0.5px solid rgba(255,255,255,0.06);}
+    .wr-casualties .wr-events-head{margin-bottom:8px;}
+    .wr-cas-row{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;font-size:10px;}
+    .wr-cas-row:not(:last-child){border-bottom:0.5px solid rgba(255,255,255,0.04);}
+    .wr-cas-nation{color:#cfcabf;font-weight:600;}
+    .wr-cas-val{color:#c87a7a;font-variant-numeric:tabular-nums;letter-spacing:0.01em;}
+    .wr-cas-empty{font-size:9px;color:#666;font-style:italic;text-align:center;padding:6px 0 0;}
     @media (max-width:720px){
         .wr-front{padding:14px;}
         .wr-clash{flex-direction:column;align-items:stretch;gap:8px;}
@@ -256,12 +263,17 @@ async function renderWar(w, nation, nameById, commandable, isHoG) {
         }
 
         // Recent combat events per front — written by processCombat on each
-        // resolved engagement that moved the line. Per-front fetch in parallel
-        // so a hot front can't starve a quiet one of its 8-event window. Long
-        // history can come via a "see more" affordance later.
+        // resolved engagement (including stalemates after 20270391). The
+        // narrative column filters to meeting / breakthrough; the
+        // Monthly Casualties box reads stalemate rows too. Per-front fetch
+        // in parallel so a hot front can't starve a quiet one of its
+        // 8-event window. Long history can come via a "see more"
+        // affordance later. cas_pressor / cas_claimant feed the
+        // casualties box; pressor_nation_id / claimant_nation_id let the
+        // box map per-tick casualties back to each nation by id.
         const evResults = await Promise.all(landIds.map(fid =>
             _supabase.from('combat_events')
-                .select('id, tick, kind, terrain, pressor_nation_name, claimant_nation_name, sector_name, retreat_sector_name, army_name, unit_name, commander_name')
+                .select('id, tick, kind, terrain, pressor_nation_id, claimant_nation_id, pressor_nation_name, claimant_nation_name, sector_name, retreat_sector_name, army_name, unit_name, commander_name, cas_pressor, cas_claimant')
                 .eq('front_id', fid)
                 .order('tick', { ascending: false })
                 .limit(8)
@@ -312,9 +324,15 @@ async function renderWar(w, nation, nameById, commandable, isHoG) {
                 ${bigCellHtml(rightSec, nation, controllerOf(rightSec))}
             </div>` : `<div class="wr-events-empty" style="padding:14px;">Front line not yet established for this front.</div>`;
 
+        // Combat events column splits in two stacked boxes after 20270391:
+        // the narrative feed (meeting / breakthrough only) on top, and the
+        // Monthly Casualties & Losses box underneath summing the current
+        // tick's row. Stalemate rows feed the casualties box only.
+        const frontEvents = eventsByFront.get(f.id) || [];
+        const middleHtml = eventsAndCasualtiesColumnHtml(frontEvents, currentTk, a, b, leftName, rightName, youAreA);
         const engagementHtml = `<div class="wr-engagement">
             ${forcesColumnHtml(leftName, fa.a, unitsByArmy, youAreA)}
-            ${eventsColumnHtml(eventsByFront.get(f.id))}
+            ${middleHtml}
             ${forcesColumnHtml(rightName, fa.b, unitsByArmy, !youAreA)}
         </div>`;
 
@@ -421,24 +439,64 @@ function forcesColumnHtml(nationName, armies, unitsByArmy, isMine) {
     </div>`;
 }
 
-function eventsColumnHtml(events) {
-    if (!events || !events.length) {
-        return `<div class="wr-events-col">
-            <div class="wr-events-head">Combat Events</div>
-            <div class="wr-events-empty">No engagements logged on this front.</div>
-        </div>`;
+// Middle column of the per-front engagement panel — narrative events feed
+// on top, Monthly Casualties & Losses box underneath.
+//
+// The narrative feed only renders meeting / breakthrough rows; stalemate
+// rows are persisted so the casualties tally is honest but never get a
+// prose render (the COMBAT_TEMPLATES table doesn't define stalemate
+// variants, and the renderer's silent fall-back to the meeting template
+// would print garbage). They land in the casualties box only.
+//
+// Monthly tick math: 20270391 + utils.tickToDate confirm 1 tick = 1
+// month. "Monthly Casualties" therefore = casualties at the row whose
+// tick equals the shard's current tick (processCombat writes one row per
+// front per tick after the new stalemate branch). No additional date
+// arithmetic; null when no engagement happened this tick on this front.
+function eventsAndCasualtiesColumnHtml(events, currentTick, aId, bId, leftName, rightName, youAreA) {
+    const list = Array.isArray(events) ? events : [];
+
+    // Narrative feed: filter out stalemate rows so the prose column stays
+    // clean. Display order is already tick DESC from the SQL query.
+    const narrative = list.filter(ev => ev.kind === 'meeting' || ev.kind === 'breakthrough');
+    const eventsBox = narrative.length === 0
+        ? `<div class="wr-events-empty">No engagements logged on this front.</div>`
+        : narrative.map(ev => {
+            const kindLabel = ev.kind === 'breakthrough' ? 'BREAKTHROUGH' : 'MEETING';
+            const terrain = String(ev.terrain || '').toUpperCase();
+            return `<div class="wr-event">
+                <div class="wr-event-meta">Tick ${escapeHtml(String(ev.tick))} · ${escapeHtml(kindLabel)} · ${escapeHtml(terrain)}</div>
+                <div class="wr-event-body">${escapeHtml(renderCombatEvent(ev))}</div>
+            </div>`;
+        }).join('');
+
+    // Casualties: pull the row for the current tick (at most one per
+    // front per tick) and map cas_pressor / cas_claimant back to the
+    // two nation ids. Mapping by id rather than positional keeps the
+    // panel honest if pressor/claimant flip between rows (winner of a
+    // meeting/breakthrough vs the nation_a convention used by stalemate).
+    const thisMonth = list.find(ev => Number(ev.tick) === Number(currentTick));
+    let aLoss = 0, bLoss = 0;
+    if (thisMonth) {
+        const cp = Number(thisMonth.cas_pressor)  || 0;
+        const cc = Number(thisMonth.cas_claimant) || 0;
+        if (thisMonth.pressor_nation_id  === aId) aLoss += cp;
+        if (thisMonth.pressor_nation_id  === bId) bLoss += cp;
+        if (thisMonth.claimant_nation_id === aId) aLoss += cc;
+        if (thisMonth.claimant_nation_id === bId) bLoss += cc;
     }
-    const items = events.map(ev => {
-        const kindLabel = ev.kind === 'breakthrough' ? 'BREAKTHROUGH' : 'MEETING';
-        const terrain = String(ev.terrain || '').toUpperCase();
-        return `<div class="wr-event">
-            <div class="wr-event-meta">Tick ${escapeHtml(String(ev.tick))} · ${escapeHtml(kindLabel)} · ${escapeHtml(terrain)}</div>
-            <div class="wr-event-body">${escapeHtml(renderCombatEvent(ev))}</div>
-        </div>`;
-    }).join('');
+    const fmt = n => Number(n || 0).toLocaleString();
+    const casualtiesBox = `<div class="wr-casualties">
+        <div class="wr-events-head">Monthly Casualties & Losses</div>
+        <div class="wr-cas-row"><span class="wr-cas-nation">${escapeHtml(leftName)}</span><span class="wr-cas-val">${fmt(aLoss)} soldiers lost</span></div>
+        <div class="wr-cas-row"><span class="wr-cas-nation">${escapeHtml(rightName)}</span><span class="wr-cas-val">${fmt(bLoss)} soldiers lost</span></div>
+        ${!thisMonth ? `<div class="wr-cas-empty">No engagement this month.</div>` : ''}
+    </div>`;
+
     return `<div class="wr-events-col">
         <div class="wr-events-head">Combat Events</div>
-        ${items}
+        ${eventsBox}
+        ${casualtiesBox}
     </div>`;
 }
 

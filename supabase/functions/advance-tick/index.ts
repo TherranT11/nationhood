@@ -1230,6 +1230,18 @@ const NATION_STAT_COLUMNS = [
     'service_sector', 'unskilled_workers', 'skilled_workers', 'wages',
     'income_tax', 'corporate_tax', 'crime', 'corruption',
     'inequality', 'minerals',
+    // New System stats added in migration 20270393. Pure state — the
+    // tick processor does not move them yet; whoever wires policies /
+    // events / ministry actions decides their dynamics. The modifier
+    // evaluator (js/game/modifiers) reads nation[key] generically,
+    // so triggers anchored on these columns will start firing the
+    // moment any future system writes to them.
+    'civil_liberties', 'energy_generation',
+    'food', 'food_generation',
+    'minerals_generation',
+    'consumer_goods', 'goods_generation',
+    'luxury_goods', 'luxury_generation',
+    'population_growth',
 ];
 
 const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
@@ -1330,12 +1342,13 @@ const STAT_KEY_ALIASES = {
     academic_immigration:       null,
     oil_and_gas:                null,
     rare_minerals:              null,
-    energy_generation:          null,
+    // energy_generation and population_growth — column now exists
+    // (20270393). Alias entries removed so the key resolves to itself
+    // and legacy stat-effect rows targeting them apply directly.
     fuel_prices:                null,
     pollution:                  null,
     social_mobility:            null,
     benefits:                   null,
-    population_growth:          null,
     debt_growth:                null,
     union_strength:             null,
     illegal_immigration:        null,
@@ -29152,10 +29165,14 @@ const _pairKey = (x, y) => (x < y ? `${x}|${y}` : `${y}|${x}`);
 // the front is decided (combat halts). DEFEND: ×1.5 power, ½ casualties,
 // 0.4× cohesion drain, cannot advance. Non-fatal; bails on partial reads.
 //
-// Side effect: each engagement that moves the line emits one combat_events
-// row (kind, terrain, pressor + claimant nations, seized sector, fall-back
-// sector, headline army + unit + commander) so the war room can render the
-// narrative. Defender-holds outcomes don't move the line and don't emit.
+// Side effect: each engagement emits one combat_events row per front per
+// tick. Line-moving outcomes get kind='meeting' or 'breakthrough' with
+// full narrative fields (seized sector, fall-back sector, headline army +
+// unit + commander) for the war-room prose feed. Engagements that bleed
+// but don't move the line get kind='stalemate' with narrative fields
+// null — the war-room filters those out of the prose feed but counts
+// their cas_pressor / cas_claimant in the Monthly Casualties box
+// (20270391). Quiet ticks (neither side assaulting) emit nothing.
 async function processCombat(supabase, currentTick) {
     const { data: warRels, error: relErr } = await supabase
         .from('diplomatic_relations').select('id, nation_a_id, nation_b_id, war_score_a, war_score_b').eq('relation_type', 'war');
@@ -29267,8 +29284,13 @@ async function processCombat(supabase, currentTick) {
         if (total <= 0) continue;
 
         const minM = Math.min(A.M || B.M, B.M || A.M);
-        applyCasualties(A, COMBAT.INTENSITY * minM * (ecpB / total) * 2 * (actA === 'defend' ? COMBAT.DEF_CAS : 1), unitMp);
-        applyCasualties(B, COMBAT.INTENSITY * minM * (ecpA / total) * 2 * (actB === 'defend' ? COMBAT.DEF_CAS : 1), unitMp);
+        // Capture casualties before applying so combat_events can record
+        // them (20270391). The float math here is the same the allocator
+        // ran on unit_mp; rounding to int only happens at emit time.
+        const casA = COMBAT.INTENSITY * minM * (ecpB / total) * 2 * (actA === 'defend' ? COMBAT.DEF_CAS : 1);
+        const casB = COMBAT.INTENSITY * minM * (ecpA / total) * 2 * (actB === 'defend' ? COMBAT.DEF_CAS : 1);
+        applyCasualties(A, casA, unitMp);
+        applyCasualties(B, casB, unitMp);
 
         // DISCIPLINE resists cohesion drain (×0.5 at 100, ×1.5 at 1; neutral 50 = ×1.0).
         const cohA = COMBAT.COH_BASE * (ecpB / total) * 2 * (actA === 'defend' ? COMBAT.DEF_COH : 1) * (1.5 - A.discipline / 100);
@@ -29284,6 +29306,7 @@ async function processCombat(supabase, currentTick) {
         if (bBroke && !aBroke && actA === 'assault') {
             // nation_a seized the sector at OLD line+1 (B's frontline); B fell
             // back to position line+2 — capture both BEFORE incrementing line.
+            // Pressor = A (advancing winner), so cas_pressor = A's casualties.
             const seizedPos = line + 1;
             const retreatPos = line + 2;
             line = Math.min(N, line + 1);
@@ -29292,9 +29315,11 @@ async function processCombat(supabase, currentTick) {
             if (rel) { rel.a += 1; rel.dirty = true; }   // nation_a seized a sector → +1 Conquest Point
             emitCombatEvent(events, f, currentTick, actB,
                 f.nation_a_id, f.nation_b_id, buckets.a, seizedPos, retreatPos,
+                casA, casB,
                 sectorsByFront, nationNameById, unitsByArmy, unitMp);
         } else if (aBroke && !bBroke && actB === 'assault') {
             // Mirror: nation_b took A's frontline at OLD line; A fell back to line-1.
+            // Pressor = B (advancing winner), so cas_pressor = B's casualties.
             const seizedPos = line;
             const retreatPos = line - 1;
             line = Math.max(0, line - 1);
@@ -29303,7 +29328,37 @@ async function processCombat(supabase, currentTick) {
             if (rel) { rel.b += 1; rel.dirty = true; }   // nation_b seized a sector → +1 Conquest Point
             emitCombatEvent(events, f, currentTick, actA,
                 f.nation_b_id, f.nation_a_id, buckets.b, seizedPos, retreatPos,
+                casB, casA,
                 sectorsByFront, nationNameById, unitsByArmy, unitMp);
+        } else {
+            // Stalemate: applyCasualties already drained both sides above,
+            // but neither broke (or both broke) so the line didn't move.
+            // Record a non-narrative row so Monthly Casualties can sum the
+            // bleed — without this, grinding fights that never resolve
+            // would undercount. Convention: pressor = nation_a, claimant =
+            // nation_b (so the column mapping stays positional). The events
+            // feed filters stalemate rows out before rendering prose.
+            const pressorName  = nationNameById.get(f.nation_a_id);
+            const claimantName = nationNameById.get(f.nation_b_id);
+            if (pressorName && claimantName && (casA > 0 || casB > 0)) {
+                events.push({
+                    front_id:             f.id,
+                    tick:                 currentTick,
+                    kind:                 'stalemate',
+                    terrain:              'plains',   // generic placeholder; not rendered for stalemate
+                    pressor_nation_id:    f.nation_a_id,
+                    claimant_nation_id:   f.nation_b_id,
+                    pressor_nation_name:  pressorName,
+                    claimant_nation_name: claimantName,
+                    sector_name:          null,
+                    retreat_sector_name:  null,
+                    army_name:            null,
+                    unit_name:            null,
+                    commander_name:       null,
+                    cas_pressor:          Math.round(casA),
+                    cas_claimant:         Math.round(casB),
+                });
+            }
         }
         battles++;
     }
@@ -29341,6 +29396,7 @@ async function processCombat(supabase, currentTick) {
 function emitCombatEvent(events, front, tick, loserAction,
                         pressorNationId, claimantNationId, pressorArmies,
                         seizedPos, retreatPos,
+                        casPressor, casClaimant,
                         sectorsByFront, nationNameById, unitsByArmy, unitMp) {
     const frontSectors = sectorsByFront.get(front.id);
     if (!frontSectors) return;   // sectors failed to load — suppress narrative
@@ -29384,6 +29440,8 @@ function emitCombatEvent(events, front, tick, loserAction,
         army_name: army.name || '',
         unit_name: unit.name || '',
         commander_name: army.commander_name || null,
+        cas_pressor:  Math.round(casPressor),
+        cas_claimant: Math.round(casClaimant),
     });
 }
 

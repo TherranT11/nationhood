@@ -2124,8 +2124,12 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     // ==================== ADD PARTY TAB ====================
     // Creates a Politician Movement Party (faction_type='movement_party') —
     // surfaces on politician-movements.html, hidden from every legacy parties
-    // surface. The archetype/stronghold mechanic is parties-only and doesn't
-    // apply here, so the form has no archetype input.
+    // surface. The form carries an Archetype label dropdown + Status dropdown
+    // (Governing / Coalition / Opposition) added in 20270394; both are
+    // display-only — no stronghold seeding, no coalition-system wiring.
+    // The "Head of Government?" checkbox, when set with a leader filled in,
+    // overwrites the chosen nation's head_of_state_first_name / last_name
+    // (silent server-side update; the form copy warns the admin).
     function loadAddPartyInit() {
         // Nation dropdown — reuse the shared `nations` list (already loaded by
         // loadElectionNations earlier in loadAllData) instead of re-querying.
@@ -2180,14 +2184,21 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         if (nnVal('ap-name').length < 2) return setErr('Party name must be at least 2 characters.');
         if (nnVal('ap-abbr').length < 1) return setErr('Abbreviation is required.');
 
+        // Logo Icon / Custom Logo URL inputs were removed from the form
+        // (20270394). The RPC still accepts the fields for non-form
+        // callers; from this surface we just omit them and let the
+        // server default party_logo='star' / custom_logo_url=NULL.
+        const hogEl = document.getElementById('ap-hog');
         const payload = {
             nation_id: nnVal('ap-nation'),
             faction_name: nnVal('ap-name'),
             abbreviation: nnVal('ap-abbr'),
             seats: nnVal('ap-seats'),
+            popularity_pct: nnVal('ap-popularity'),
             party_color: nnVal('ap-color'),
-            party_logo: nnVal('ap-logo'),
-            custom_logo_url: nnVal('ap-logo-url'),
+            archetype: nnVal('ap-archetype'),
+            party_status: nnVal('ap-party-status'),
+            is_head_of_government: !!(hogEl && hogEl.checked),
             party_description: nnVal('ap-desc'),
             leader_first_name: nnVal('ap-leader-first'),
             leader_last_name: nnVal('ap-leader-last'),
@@ -2206,10 +2217,17 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
                 if (error) throw error;
                 if (!data || !data.success) return setErr('Create failed: ' + (data?.reason || 'unknown'));
                 statusEl.style.color = '#81c784';
-                statusEl.textContent = `Created movement party "${data.faction_name}" [${data.abbreviation}] — ${data.seats} seats.`;
+                const hogNote = data.head_of_government_set ? ' · Head of Government replaced.' : '';
+                statusEl.textContent = `Created movement party "${data.faction_name}" [${data.abbreviation}] — ${data.seats} seats.${hogNote}`;
                 document.getElementById('ap-name').value = '';
                 document.getElementById('ap-abbr').value = '';
                 document.getElementById('ap-desc').value = '';
+                // Uncheck HoG so an immediate re-submit doesn't silently
+                // overwrite the head of state we just set. Archetype +
+                // Status stay set so the admin can spin up a batch of
+                // parties with the same posture without re-picking.
+                const hogReset = document.getElementById('ap-hog');
+                if (hogReset) hogReset.checked = false;
                 await loadNations();
             } catch (err) {
                 console.error('createParty failed', err);
