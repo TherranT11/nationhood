@@ -27,6 +27,38 @@
   font-size:13px; line-height:1.55; max-width:520px; margin:0 auto; }
 .mod-empty strong { color:#888; font-weight:600; }
 
+/* Per-category section */
+.mod-section { margin-bottom:28px; }
+.mod-section__head { font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
+  color:#7a7468; font-weight:600; padding-bottom:8px; margin-bottom:12px;
+  border-bottom:0.5px solid rgba(255,255,255,0.06); }
+
+/* Modifier card */
+.mod-card { background:#0f1212; border:0.5px solid rgba(255,255,255,0.05);
+  border-left:4px solid var(--sev, #5aafa5);
+  border-radius:6px; padding:14px 18px; margin-bottom:10px; }
+.mod-card[data-sev="green"]  { --sev:#4ec98a; }
+.mod-card[data-sev="yellow"] { --sev:#c8a64e; }
+.mod-card[data-sev="red"]    { --sev:#d97070; }
+
+.mod-card__top { display:flex; justify-content:space-between; align-items:baseline;
+  gap:12px; flex-wrap:wrap; }
+.mod-card__name { font-size:15px; color:#fff; font-weight:600; letter-spacing:0.01em; }
+.mod-card__sev { font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
+  font-weight:700; color:var(--sev); padding:2px 8px;
+  border:0.5px solid var(--sev); border-radius:3px;
+  background:rgba(255,255,255,0.02); }
+.mod-card__desc { font-style:italic; font-size:12px; color:#888; line-height:1.55;
+  margin-top:8px; }
+
+.mod-effects { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;
+  padding-top:10px; border-top:0.5px dashed rgba(255,255,255,0.05); }
+.mod-effects__label { font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
+  color:#5a5a5a; font-weight:600; align-self:center; margin-right:4px; }
+.mod-chip { font-size:11px; color:var(--sev, #cfcabf); background:rgba(255,255,255,0.03);
+  border:0.5px solid rgba(255,255,255,0.08); border-radius:3px;
+  padding:3px 9px; letter-spacing:0.01em; }
+
 .loading { font-family:monospace; font-size:11px; color:#4a4940;
   text-align:center; padding:80px 20px; }
 .fail { font-family:monospace; font-size:11px; color:#c87a7a;
@@ -35,6 +67,7 @@
 @media (max-width:700px) {
   .content { padding:20px 14px 16px; }
   .page-title { font-size:24px; }
+  .mod-card { padding:12px 14px; }
 }
 </style>
 </head>
@@ -53,18 +86,23 @@
     <div class="page-title">National <span style="font-style:normal;font-family:inherit;color:#fff;">Modifiers</span></div>
     <div class="page-sub" id="ph-sub">—</div>
   </div>
-  <div id="mod-host">
-    <div class="mod-empty">
-      <strong>No modifiers active.</strong><br>
-      Modifiers describe characterizing situations a nation is in — Green, Yellow, or Red — and surface here when the nation's stats match their trigger conditions. None match right now.
-    </div>
-  </div>
+  <div id="mod-host"></div>
 </div>
 
 <div id="loading" class="loading">LOADING...</div>
 
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
+import { _supabase } from './js/supabase-client.js';
+import { escapeHtml } from './js/utils.js';
+
+// Fixed category order — matches the CHECK constraint on
+// modifier_templates.category. Sections render in this order;
+// categories with zero active modifiers are omitted entirely.
+const CATEGORIES = [
+  'Economy', 'Standard of Living', 'Public Order', 'Industry & Resources',
+  'Workforce', 'Military', 'Politics', 'Diplomacy',
+];
 
 async function init() {
   let ctx = null;
@@ -85,11 +123,109 @@ async function init() {
   document.title = `${nation.name} — National Modifiers`;
   document.getElementById('ph-sub').textContent =
     `${nation.name}${nation.capital ? ` · capital ${nation.capital}` : ''}`;
-  // Modifier rendering lands in commit 3 — body stays on the empty
-  // state placeholder until then.
+
+  await renderModifiers(nation.id);
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
+}
+
+async function renderModifiers(nationId) {
+  const host = document.getElementById('mod-host');
+
+  // Pull active modifiers for this nation, joined with their template
+  // (name, category, severity, description, effects). Inactive
+  // templates are intentionally NOT filtered out — if a row is in
+  // active_modifiers it's currently true of the nation regardless of
+  // whether new activations are paused at the template level.
+  const { data, error } = await _supabase
+    .from('active_modifiers')
+    .select(`
+      id,
+      started_at_tick,
+      modifier_templates (
+        id, name, category, severity, description, effects
+      )
+    `)
+    .eq('nation_id', nationId);
+
+  if (error) {
+    console.error('politician-modifiers: load failed', error);
+    host.innerHTML =
+      `<div class="fail">Failed to load modifiers.<br>` +
+      `${escapeHtml(error.message || '')}</div>`;
+    return;
+  }
+
+  // Flatten + drop any rows whose template-side join came back null
+  // (would happen if the FK row was deleted between the active row's
+  // insertion and our read, before the CASCADE ran).
+  const rows = (data || [])
+    .map(r => r.modifier_templates ? { ...r.modifier_templates, started_at_tick: r.started_at_tick } : null)
+    .filter(Boolean);
+
+  if (rows.length === 0) {
+    host.innerHTML =
+      `<div class="mod-empty">` +
+        `<strong>No modifiers active.</strong><br>` +
+        `Modifiers describe characterizing situations a nation is in — Green, Yellow, or Red — and surface here when the nation's stats match their trigger conditions. None match right now.` +
+      `</div>`;
+    return;
+  }
+
+  // Bucket by category, then render in the fixed CATEGORIES order.
+  // Anything in an unknown category falls through into a tail bucket
+  // labeled "Other" — shouldn't happen given the DB CHECK constraint,
+  // but degrades gracefully if a future migration adds a value.
+  const buckets = new Map(CATEGORIES.map(c => [c, []]));
+  const other = [];
+  for (const m of rows) {
+    (buckets.has(m.category) ? buckets.get(m.category) : other).push(m);
+  }
+  // Stable sort within a category: by name, alphabetical.
+  for (const arr of buckets.values()) arr.sort((a, b) => a.name.localeCompare(b.name));
+  other.sort((a, b) => a.name.localeCompare(b.name));
+
+  let html = '';
+  for (const cat of CATEGORIES) {
+    const mods = buckets.get(cat);
+    if (!mods.length) continue;
+    html += renderSection(cat, mods);
+  }
+  if (other.length) html += renderSection('Other', other);
+
+  host.innerHTML = html;
+}
+
+function renderSection(category, mods) {
+  return (
+    `<div class="mod-section">` +
+      `<div class="mod-section__head">${escapeHtml(category)}</div>` +
+      mods.map(renderCard).join('') +
+    `</div>`
+  );
+}
+
+function renderCard(m) {
+  const sev = m.severity || 'green';
+  const effects = Array.isArray(m.effects) ? m.effects.filter(e => e && e.trim()) : [];
+  const effectsHtml = effects.length
+    ? `<div class="mod-effects">` +
+        `<span class="mod-effects__label">Current Effects</span>` +
+        effects.map(e => `<span class="mod-chip">${escapeHtml(e)}</span>`).join('') +
+      `</div>`
+    : '';
+  const desc = (m.description || '').trim();
+  return (
+    `<div class="mod-card" data-sev="${sev}">` +
+      `<div class="mod-card__top">` +
+        `<div class="mod-card__name">${escapeHtml(m.name)}</div>` +
+        `<div class="mod-card__sev">${sev}</div>` +
+      `</div>` +
+      (desc ? `<div class="mod-card__desc">${escapeHtml(desc)}</div>` : '') +
+      effectsHtml +
+    `</div>`
+  );
 }
 
 init();
