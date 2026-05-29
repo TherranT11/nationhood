@@ -4113,7 +4113,7 @@ function initials(s, n) {
         pj.querySelectorAll('.ap-btn-small.accept:not(.cp-make-offer):not(.sh-edit-bid):not(.sh-broker-reprice):not(.al-overhaul):not(.cb-accept-btn)').forEach(btn => {
           btn.addEventListener('click', () => handleAcceptOffer(btn, btn.dataset.oid));
         });
-        pj.querySelectorAll('.ap-btn-small.reject:not(.sh-withdraw-bid):not(.sh-broker-withdraw):not(.al-retire):not(.al-release):not(.al-close):not(.cb-reject-btn)').forEach(btn => {
+        pj.querySelectorAll('.ap-btn-small.reject:not(.sh-withdraw-bid):not(.sh-broker-withdraw):not(.al-retire):not(.al-release):not(.al-close):not(.cb-reject-btn):not(.cr-cancel-btn)').forEach(btn => {
           btn.addEventListener('click', () => handleRejectOffer(btn, btn.dataset.oid));
         });
         pj.querySelectorAll('.cp-make-offer').forEach(btn => {
