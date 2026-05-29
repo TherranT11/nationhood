@@ -2045,9 +2045,6 @@ async function loadAgreementShippingContracts() {
             consecutive_missed_payments: Number(c.consecutive_missed_payments) || 0,
             winning_bids:                Array.isArray(c.winning_bids) ? c.winning_bids : [],
             total_units_won:             Number(c.total_units_won) || 0,
-            // 20270380: each pending bid carries accepted/vetoed state so the
-            // MoT can act on it inline from the agreement view.
-            pending_bids:                Array.isArray(c.pending_bids) ? c.pending_bids : [],
         });
         _shippingContractsByAgreement[c.trade_agreement_id] = list;
     }
