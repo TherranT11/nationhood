@@ -679,18 +679,42 @@ function renderResolutionBanner(r) {
   const won = !!r.won;
   const opp = r.opponent || 'your opponent';
   const tier = r.race_tier === 'parliament' ? 'parliamentary' : 'community';
+  const district = r.district || 'a district';
+  const pollYou = Number(r.polling_you);
+  const pollOpp = Number(r.polling_opp);
   const delta = Number(r.influence_delta || 0);
   const deltaLabel = delta === 0 ? '' : (delta > 0 ? `+${delta}` : `${delta}`);
   const headline = won ? 'ELECTION — VICTORY' : 'ELECTION — DEFEAT';
-  const body = won
-    ? `You won the ${tier} race in ${escHtml(r.district)} against ${escHtml(opp)} (rolled ${r.roll}, needed ≤ ${r.win_odds_pct}).`
-    : `You lost the ${tier} race in ${escHtml(r.district)} to ${escHtml(opp)} (rolled ${r.roll}, needed ≤ ${r.win_odds_pct}).`;
+
+  // Compose the body as discrete sentences so each clause renders only
+  // when it has something to say. Party-reward + influence sentences
+  // tail-append; they're suppressed for losses (no party reward, and
+  // influence delta of 0 in a community loss).
+  const sentences = [];
+  sentences.push(won
+    ? `You won the ${tier} race in ${escHtml(district)} against ${escHtml(opp)}.`
+    : `You lost the ${tier} race in ${escHtml(district)} to ${escHtml(opp)}.`);
+  if (Number.isFinite(pollYou) && Number.isFinite(pollOpp)) {
+    sentences.push(`Final polling: you ${pollYou}% vs ${pollOpp}%.`);
+  }
+  const reward = r.party_reward;
+  if (won && reward && reward.party_name) {
+    if (reward.kind === 'seats') {
+      sentences.push(`${escHtml(reward.party_name)} gained +1 parliamentary seat (now ${Number(reward.new_value) || 0}).`);
+    } else if (reward.kind === 'popularity') {
+      sentences.push(`${escHtml(reward.party_name)} gained +2 approval (now ${Math.round(Number(reward.new_value) || 0)}%).`);
+    }
+  }
+  if (deltaLabel) {
+    sentences.push(`Influence ${deltaLabel}.`);
+  }
+
   const banner = document.createElement('div');
   banner.className = 'election-banner ' + (won ? 'win' : 'lose');
   banner.innerHTML = `
     <div class="eb-head">${escHtml(headline)}</div>
-    <div class="eb-body">${body}${deltaLabel ? ` Influence ${deltaLabel}.` : ''}</div>
-    <button class="eb-close" type="button" aria-label="Dismiss">×</button>`;
+    <div class="eb-body">${sentences.join(' ')}</div>
+    <button class="eb-close" type="button" aria-label="Dismiss">&times;</button>`;
   const content = document.getElementById('content');
   content.insertBefore(banner, content.firstChild);
   banner.querySelector('.eb-close').addEventListener('click', () => banner.remove());
