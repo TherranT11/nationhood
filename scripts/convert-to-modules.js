@@ -67,10 +67,7 @@ const imports = {
   ],
 
   // GROUP B: CDN + supabase-client + game-common (no common.js)
-  'crisisadmin.html': [
-    `import { _supabase } from './js/supabase-client.js';`,
-    `import { NATION_STAT_COLUMNS, formatStatName } from './js/game-common.js';`,
-  ],
+  // (crisisadmin.html lived here pre-Phase-5 deletion)
 
   // GROUP C: CDN + game-common only
   'admin.html': [
