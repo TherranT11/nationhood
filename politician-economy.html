@@ -237,14 +237,17 @@ const SECTORS = [
   },
 ];
 
-// One source of truth for the enum → industry slot lookup, derived
+// One source of truth for the enum → industry-key lookup, derived
 // from SECTORS once. Adding a corp enum to an industry above
 // automatically wires the bucketing here without a second edit.
+// Value is the industry key directly — the sector for any corp is
+// recovered later by walking SECTORS in the render pass, so a stored
+// sectorKey here would be unused state.
 const INDUSTRY_BY_ENUM = new Map();
 for (const sector of SECTORS) {
   for (const ind of sector.industries) {
     for (const enumKey of ind.corpEnums) {
-      INDUSTRY_BY_ENUM.set(enumKey, { sectorKey: sector.key, industryKey: ind.key });
+      INDUSTRY_BY_ENUM.set(enumKey, ind.key);
     }
   }
 }
@@ -296,7 +299,7 @@ async function renderEconomy(nationId) {
       .from('entrepreneur_corps')
       .select(`
         id, name, industry, listing, starting_capital, treasury_cash,
-        owner:factions!owner_faction_id(leader_first_name, leader_last_name, faction_name)
+        owner:factions!owner_faction_id(leader_first_name, leader_last_name)
       `)
       .eq('hq_nation_id', nationId)
       .order('starting_capital', { ascending: false });
@@ -314,11 +317,10 @@ async function renderEconomy(nationId) {
   // pattern other surfaces use against future enum additions.
   const corpsByIndustry = new Map();
   for (const c of corps) {
-    const slot = INDUSTRY_BY_ENUM.get(c.industry);
-    if (!slot) continue;
-    const key = slot.industryKey;
-    if (!corpsByIndustry.has(key)) corpsByIndustry.set(key, []);
-    corpsByIndustry.get(key).push(c);
+    const industryKey = INDUSTRY_BY_ENUM.get(c.industry);
+    if (!industryKey) continue;
+    if (!corpsByIndustry.has(industryKey)) corpsByIndustry.set(industryKey, []);
+    corpsByIndustry.get(industryKey).push(c);
   }
 
   // Per-sector aggregates for the summary bar and the cat-head stats.
@@ -437,10 +439,13 @@ function renderCorpRow(sector, corp) {
   const typeClass = listing === 'public' ? 'public' : listing === 'state' ? 'state' : 'private';
   const typeLabel = typeClass.toUpperCase();
 
-  // Headline value: treasury_cash if present (live cash), else
-  // starting_capital. Both stored as raw dollars; fmtMoneyCompact
-  // renders e.g. 4_200_000_000 → "4.2B".
-  const raw = Number(corp.treasury_cash || corp.starting_capital || 0);
+  // Headline value: treasury_cash when present (live cash), else
+  // starting_capital. Use ?? not || so a corp with literally $0 in
+  // the treasury renders $0 — || would treat 0 as "no data" and fall
+  // through to starting_capital, hiding the real state. Both columns
+  // store raw dollars; fmtMoneyCompact renders e.g. 4_200_000_000 →
+  // "4.2B".
+  const raw = Number((corp.treasury_cash ?? corp.starting_capital) || 0);
   const valHtml = fmtMoneyCompact(raw);
 
   return (
