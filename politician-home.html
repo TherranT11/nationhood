@@ -78,6 +78,86 @@
 .empty { background:#121212; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
   padding:22px 18px; color:#666; font-size:12px; line-height:1.6; text-align:center; }
 
+/* ─── Active Campaign card (Pressing Issues) ─────────────────────────
+   Rendered when politician_active_election has a row for the current
+   politician. Visual vocabulary matches the rest of the page (teal
+   politician accent, monospaced labels, 0.5px borders); the partisan
+   red accent appears only on the YOU side of the matchup and the
+   party-name string in the description. All selectors prefixed with
+   .ci- ("campaign issue") so the card is portable and won't collide
+   with future Pressing-Issues sources. */
+.ci-camp { background:#121212; border:0.5px solid rgba(255,255,255,0.12); border-radius:6px;
+  overflow:hidden; border-left:3px solid #c8a64e; }
+.ci-top { display:flex; align-items:flex-start; gap:14px; padding:14px 16px;
+  border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.ci-top-titles { flex:1; min-width:0; }
+.ci-eyebrow { font-size:8.5px; letter-spacing:0.14em; color:#c8a64e; font-weight:600; margin-bottom:4px; }
+.ci-name { font-size:14px; font-weight:600; color:#fff; letter-spacing:-0.005em; line-height:1.25; }
+.ci-name .serif { font-family:Georgia,serif; font-style:italic; color:#c8a64e; }
+.ci-sub { font-size:10.5px; color:#888; margin-top:5px; line-height:1.5; }
+.ci-sub strong { color:#c87a7a; font-weight:600; }
+.ci-meta { flex-shrink:0; text-align:right; }
+.ci-time { font-size:18px; font-weight:600; color:#fff; font-variant-numeric:tabular-nums; line-height:1; }
+.ci-time-l { font-size:7.5px; letter-spacing:0.1em; color:#666; margin-top:4px; }
+.ci-time-l.final { color:#d4b87a; font-weight:600; }
+
+.ci-poll { padding:14px 16px; border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.ci-poll-lab { font-size:8.5px; letter-spacing:0.13em; color:#666; margin-bottom:9px; }
+.ci-poll-nums { display:flex; justify-content:space-between; gap:8px; font-size:10px; margin-bottom:5px; }
+.ci-poll-nums .v { font-family:monospace; font-size:10px; }
+.ci-pn-you { color:#c87a7a; font-weight:600; }
+.ci-pn-opp { color:#6ac4c4; font-weight:600; }
+.ci-pn-und { color:#888; }
+.ci-poll-bar { height:9px; border-radius:3px; background:#1a1a1a; overflow:hidden; display:flex; }
+.ci-pb-you { background:#c87a7a; }
+.ci-pb-opp { background:#6ac4c4; }
+.ci-pb-und { background:#3a3a3a; }
+
+.ci-match { padding:14px 16px; border-bottom:0.5px solid rgba(255,255,255,0.06); display:flex; align-items:center; gap:12px; }
+.ci-side { flex:1; text-align:center; }
+.ci-side .ci-who { font-size:8px; letter-spacing:0.08em; color:#888; margin-bottom:4px; }
+.ci-side.you .ci-who { color:#c87a7a; font-weight:600; }
+.ci-side.opp .ci-who { color:#6ac4c4; font-weight:600; }
+.ci-portrait { width:32px; height:32px; border-radius:5px; display:flex; align-items:center; justify-content:center;
+  font-size:10px; font-weight:700; margin:0 auto 5px; }
+.ci-portrait.you { background:#1a0c0c; border:0.5px solid #6a2a2a; color:#c87a7a; }
+.ci-portrait.opp { background:#0e1414; border:0.5px solid #2e5252; color:#6ac4c4; }
+.ci-side .ci-pname { font-size:10px; color:#fff; font-weight:500; line-height:1.2; }
+.ci-vs { font-size:9px; letter-spacing:0.13em; color:#666; font-weight:600; flex-shrink:0; }
+.ci-stat { padding:8px 11px; background:#0a0a0a; border-radius:4px; border:0.5px solid rgba(255,255,255,0.06);
+  display:flex; flex-direction:column; align-items:center; gap:4px; min-width:90px; flex-shrink:0; }
+.ci-stat-lab { font-size:7.5px; letter-spacing:0.1em; color:#666; }
+.ci-stat-row { display:flex; align-items:baseline; gap:8px; font-variant-numeric:tabular-nums; font-weight:600; }
+.ci-stat-row .you { color:#c87a7a; font-size:15px; }
+.ci-stat-row .vs  { color:#555; font-size:8px; letter-spacing:0.08em; }
+.ci-stat-row .opp { color:#6ac4c4; font-size:15px; }
+
+.ci-events { padding:14px 16px; border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.ci-events-lab { font-size:8.5px; letter-spacing:0.13em; color:#666; margin-bottom:9px; }
+.ci-ev-row { display:flex; align-items:flex-start; gap:10px; padding:6px 0; font-size:11px; color:#bbb; line-height:1.45; }
+.ci-ev-icon { width:18px; flex-shrink:0; color:#888; font-size:11px; text-align:center; padding-top:1px; }
+.ci-ev-text strong { color:#fff; }
+
+.ci-actions { padding:14px 16px; background:#0a0a0a; }
+.ci-actions-lab { font-size:8.5px; letter-spacing:0.13em; color:#666; margin-bottom:9px;
+  display:flex; justify-content:space-between; align-items:baseline; }
+.ci-actions-lab .remind { color:#888; font-style:italic; font-size:8.5px; letter-spacing:0.04em; text-transform:none; }
+.ci-act-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; }
+.ci-act { padding:10px 11px; background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:5px;
+  text-align:left; cursor:pointer; transition:all 0.15s; font:inherit; color:inherit; }
+.ci-act:hover:not(:disabled) { background:#161616; border-color:rgba(255,255,255,0.16); }
+.ci-act:disabled { cursor:not-allowed; opacity:0.4; }
+.ci-act-head { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+.ci-act-icon { font-size:12px; }
+.ci-act-name { font-size:11px; font-weight:600; color:#fff; flex:1; }
+.ci-act-blurb { font-size:9.5px; color:#888; line-height:1.4; margin-bottom:6px; }
+.ci-act-meta { display:flex; justify-content:space-between; font-size:8.5px; letter-spacing:0.04em; }
+.ci-act-effect { color:#6ab07a; font-weight:600; }
+.ci-act-effect.var { color:#d4b87a; }
+.ci-act-cost { color:#666; }
+.ci-act-lockmsg { padding:8px 11px; margin-top:8px; background:#0a0a0a; border-radius:4px;
+  border:0.5px dashed rgba(255,255,255,0.08); font-size:10px; color:#888; text-align:center; }
+
 /* Career log — one date-prefixed row per event, listed newest-first. Visual
    weight tuned to match the Pressing Issues card above it: same background,
    same border opacity, similar internal padding. */
@@ -152,7 +232,7 @@
         <span class="sans">Pressing</span>
         <span class="serif">Issues</span>
       </div>
-      <div class="empty">No pressing issues right now.</div>
+      <div id="pressing-issues"></div>
 
       <div class="section-heading" style="margin-top:28px;">
         <span class="roman">II.</span>
@@ -190,6 +270,8 @@ const CAREER_EVENT_TEMPLATES = {
   founded_party: (name, target) => `The ${target || 'new political party'} was established by ${name}.`,
   joined_ngo:    (name, target) => `${name} has registered their membership in the ${target || 'a non-government organisation'}.`,
   founded_ngo:   (name, target) => `The ${target || 'new organisation'} was established by ${name}.`,
+  won_election:  (name, target) => `${name} won the election in ${target || 'a contested district'}.`,
+  lost_election: (name, target) => `${name} lost the election in ${target || 'a contested district'}.`,
 };
 
 let politician = null;
@@ -199,6 +281,7 @@ let allEvents = [];
 let evCurrentTab = 'politics';
 let evTickNow = 0;
 let careerRows = [];  // persistent rows from politician_career_events; merged with the derived founding event at render time.
+let activeRace = null; // politician_active_election row when one exists; drives the Pressing Issues campaign card.
 
 async function init() {
   let ctx = null;
@@ -215,8 +298,20 @@ async function init() {
   party      = ctx.party || null;
   evTickNow  = Number(ctx.shard?.current_tick) || 0;
 
+  // Resolve any due election so the influence card on this page is honest
+  // even when the player visits home before career. The career page is
+  // where the result banner is shown; here we just want the side effects
+  // (influence delta + career_events row) to land. Soft-fails so a
+  // missing RPC during early dev doesn't break the home page.
   try {
-    const [evRes, careerRes] = await Promise.all([
+    const { data, error } = await _supabase.rpc('politician_resolve_due_elections');
+    if (!error && data?.resolved) {
+      politician.politician_influence = data.politician_influence;
+    }
+  } catch (_) { /* non-fatal */ }
+
+  try {
+    const [evRes, careerRes, raceRes] = await Promise.all([
       _supabase.from('event_log')
         .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
         .not('category', 'is', null)
@@ -226,19 +321,31 @@ async function init() {
         .select('event_tick, event_type, target_name')
         .eq('faction_id', politician.id)
         .order('event_tick', { ascending: false }),
+      // Pulls only the columns the Pressing Issues card renders. resolve_due
+      // ran above, so a just-resolved race has already been deleted by the
+      // time this fetch runs (Promise.all does not enforce order; here
+      // ordering doesn't matter because resolve happened in a prior await).
+      _supabase.from('politician_active_election')
+        .select('race_tier, district, opp_first, opp_last, opp_blurb, opp_party_name, your_stat, opp_stat, win_odds_pct, stake_win, stake_lose, resolve_tick, polling_you_pct, polling_opp_pct, polling_undecided_pct, created_at')
+        .eq('politician_id', politician.id)
+        .maybeSingle(),
     ]);
     if (evRes.error) throw evRes.error;
     if (careerRes.error) throw careerRes.error;
+    if (raceRes.error) console.error('politician-home: active_election fetch failed', raceRes.error);
     allEvents  = evRes.data || [];
     careerRows = careerRes.data || [];
+    activeRace = raceRes.data || null;
   } catch (err) {
     console.error('politician-home: event_log / career-events fetch failed', err);
     allEvents = [];
     careerRows = [];
+    activeRace = null;
   }
 
   renderHero(ctx.shard);
   renderStats();
+  renderPressingIssues(ctx);
   renderCareer();
   renderDispatches();
   bindDispatchTabs();
@@ -371,6 +478,204 @@ function renderStats() {
       <div class="stat-value${s.kind === 'text' ? ' text' : ''}">${escHtml(s.value)}</div>
     </div>`
   ).join('');
+}
+
+// ── Pressing Issues ─────────────────────────────────────────────────
+// Renders the active-campaign card when politician_active_election has
+// a row, otherwise the empty placeholder. Only one source of Pressing
+// Issues today (the active race); when other sources land (legislative
+// votes, scandals, etc.) they each render their own block into the
+// same container.
+function renderPressingIssues(ctx) {
+  const host = document.getElementById('pressing-issues');
+  if (!host) return;
+  if (!activeRace) {
+    host.innerHTML = '<div class="empty">No pressing issues right now.</div>';
+    return;
+  }
+  host.innerHTML = renderCampaignCard(ctx);
+  bindCampaignActions(ctx);
+}
+
+// Two-or-three-letter abbreviation derived from a party name: first
+// letter of each whitespace-separated word, uppercased, capped at 3.
+// Returns 'IND' for empty/null (Independent challenger).
+function partyAbbrFrom(name) {
+  if (!name) return 'IND';
+  const letters = String(name).trim().split(/\s+/).map(w => (w[0] || '')).join('').toUpperCase();
+  return letters.slice(0, 3) || 'IND';
+}
+
+function renderCampaignCard(ctx) {
+  const tier = activeRace.race_tier;
+  const isParl = tier === 'parliament';
+  const currentTick = Number(ctx.shard?.current_tick) || 0;
+  // ticks_remaining is "act windows you still have including this one".
+  // resolve_due fires when current > resolve_tick (strictly past), so the
+  // resolve_tick itself is the player's final act window — display
+  // "FINAL TICK" instead of "0 TICKS REMAINING".
+  const ticksRemaining = Math.max(0, Number(activeRace.resolve_tick) - currentTick);
+  const eyebrow = isParl ? 'ACTIVE CAMPAIGN · HIGH-STAKES · NATIONAL'
+                         : 'ACTIVE CAMPAIGN · LOW-STAKES · COMMUNITY';
+  const titleLead = isParl ? 'Member of Parliament' : 'Community Organizer';
+  const partyName = ctx.party?.faction_name || 'your party';
+  const oppPartyName = activeRace.opp_party_name || 'an independent challenger';
+  const baseBlurb = isParl
+    ? `An Assembly seat in ${escHtml(ctx.nation?.name || 'the capital')}.`
+    : 'A volunteer seat on your neighborhood association.';
+  const subline = `${baseBlurb} Running as a member of <strong>${escHtml(partyName)}</strong> against ${escHtml(oppPartyName)}.`;
+  const timeBlock = ticksRemaining > 0
+    ? `<div class="ci-time">${ticksRemaining}</div><div class="ci-time-l">TICK${ticksRemaining === 1 ? '' : 'S'} REMAINING</div>`
+    : `<div class="ci-time">!</div><div class="ci-time-l final">FINAL TICK</div>`;
+
+  // Stat label tracks the tier — community uses Credibility, parliament Charisma.
+  const statLabel = isParl ? 'CHARISMA' : 'CREDIBILITY';
+
+  const youFirst = politician.leader_first_name || '';
+  const youLast  = politician.leader_last_name  || '';
+  const youInit  = ((youFirst[0] || '') + (youLast[0] || '')).toUpperCase() || '—';
+  const oppFirst = activeRace.opp_first || '';
+  const oppLast  = activeRace.opp_last  || '';
+  const oppInit  = ((oppFirst[0] || '') + (oppLast[0] || '')).toUpperCase() || '—';
+  const oppFull  = `${oppFirst} ${oppLast}`.trim() || '—';
+
+  const pollYou = Math.max(0, Math.min(100, Number(activeRace.polling_you_pct) || 0));
+  const pollOpp = Math.max(0, Math.min(100, Number(activeRace.polling_opp_pct) || 0));
+  const pollUnd = Math.max(0, Math.min(100, Number(activeRace.polling_undecided_pct) || 0));
+
+  return `
+    <div class="ci-camp">
+      <div class="ci-top">
+        <div class="ci-top-titles">
+          <div class="ci-eyebrow">&#9670; ${escHtml(eyebrow)}</div>
+          <div class="ci-name">${escHtml(titleLead)} &middot; <span class="serif">${escHtml(activeRace.district || '')}</span></div>
+          <div class="ci-sub">${subline}</div>
+        </div>
+        <div class="ci-meta">${timeBlock}</div>
+      </div>
+
+      <div class="ci-poll">
+        <div class="ci-poll-lab">CURRENT POLLING</div>
+        <div class="ci-poll-nums">
+          <span class="ci-pn-you">YOU <span class="v">${pollYou}%</span></span>
+          <span class="ci-pn-opp">${escHtml((oppLast || 'OPP').toUpperCase())} <span class="v">${pollOpp}%</span></span>
+          <span class="ci-pn-und">UNDECIDED <span class="v">${pollUnd}%</span></span>
+        </div>
+        <div class="ci-poll-bar">
+          <div class="ci-pb-you" style="width:${pollYou}%"></div>
+          <div class="ci-pb-und" style="width:${pollUnd}%"></div>
+          <div class="ci-pb-opp" style="width:${pollOpp}%"></div>
+        </div>
+      </div>
+
+      <div class="ci-match">
+        <div class="ci-side you">
+          <div class="ci-portrait you">${escHtml(youInit)}</div>
+          <div class="ci-who">YOU</div>
+          <div class="ci-pname">${escHtml(`${youFirst} ${youLast}`.trim() || '—')}</div>
+        </div>
+        <span class="ci-vs">VS</span>
+        <div class="ci-side opp">
+          <div class="ci-portrait opp">${escHtml(oppInit)}</div>
+          <div class="ci-who">${escHtml(partyAbbrFrom(activeRace.opp_party_name))}</div>
+          <div class="ci-pname">${escHtml(oppFull)}</div>
+        </div>
+        <div class="ci-stat">
+          <div class="ci-stat-lab">${escHtml(statLabel)}</div>
+          <div class="ci-stat-row">
+            <span class="you">${Number(activeRace.your_stat) || 0}</span>
+            <span class="vs">VS</span>
+            <span class="opp">${Number(activeRace.opp_stat) || 0}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ci-events">
+        <div class="ci-events-lab">RECENT CAMPAIGN EVENTS</div>
+        <div class="ci-ev-row">
+          <div class="ci-ev-icon">&#9873;</div>
+          <div class="ci-ev-text">You <strong>entered the race</strong> in ${escHtml(activeRace.district || 'the district')} against ${escHtml(oppFull)}.</div>
+        </div>
+      </div>
+
+      ${renderCampaignActions(ctx)}
+    </div>`;
+}
+
+function renderCampaignActions(ctx) {
+  const partyId = ctx.party?.id || null;
+  const currentTick = Number(ctx.shard?.current_tick) || 0;
+  const gateTick    = Number(politician.next_member_action_tick) || 0;
+  const speechTick  = Number(politician.speech_cooldown_until_tick) || 0;
+  const universalLocked = gateTick > currentTick;
+  const speechLocked    = universalLocked || speechTick > currentTick;
+  // No party = no actions. The Stand-for-Election flow on politician-career
+  // gates by the same rule, so if there's an active race the politician
+  // should still be a member; this is the defensive fallback.
+  if (!partyId) {
+    return `<div class="ci-actions"><div class="ci-actions-lab">YOUR NEXT MOVE</div>
+      <div class="ci-act-lockmsg">Rejoin a party to take campaign actions.</div></div>`;
+  }
+  const knockBtn = `
+    <button class="ci-act" type="button" data-camp-action="knock" ${universalLocked ? 'disabled' : ''}>
+      <div class="ci-act-head"><span class="ci-act-icon" style="color:#7a9aab;">&#9994;</span><span class="ci-act-name">Door Knocking</span></div>
+      <div class="ci-act-blurb">Walk a district, meet voters. Slow but reliable.</div>
+      <div class="ci-act-meta"><span class="ci-act-effect">+2 polling</span><span class="ci-act-cost">1 tick</span></div>
+    </button>`;
+  const speechBtn = `
+    <button class="ci-act" type="button" data-camp-action="speech" ${speechLocked ? 'disabled' : ''}>
+      <div class="ci-act-head"><span class="ci-act-icon" style="color:#d4b87a;">&#128226;</span><span class="ci-act-name">Give a Speech</span></div>
+      <div class="ci-act-blurb">Rally the faithful and reach the press. High variance.</div>
+      <div class="ci-act-meta"><span class="ci-act-effect var">&minus;2 to +5 polling</span><span class="ci-act-cost">3-tick cooldown</span></div>
+    </button>`;
+  const lockMsg = (() => {
+    if (universalLocked) return `Already campaigned this tick &mdash; next action at tick ${gateTick}.`;
+    if (speechLocked)    return `Speech cooling down until tick ${speechTick}; door knocking is still available.`;
+    return '';
+  })();
+  return `
+    <div class="ci-actions">
+      <div class="ci-actions-lab"><span>YOUR NEXT MOVE</span><span class="remind">1 action per tick</span></div>
+      <div class="ci-act-grid">${knockBtn}${speechBtn}</div>
+      ${lockMsg ? `<div class="ci-act-lockmsg">${lockMsg}</div>` : ''}
+    </div>`;
+}
+
+function bindCampaignActions(ctx) {
+  const partyId = ctx.party?.id || null;
+  if (!partyId) return;
+  document.querySelectorAll('.ci-act[data-camp-action]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      // Disable the sibling too so the player can't double-spend the
+      // 1-per-turn gate while the first call is in flight.
+      btn.parentElement?.querySelectorAll('.ci-act').forEach(b => { b.disabled = true; });
+      const fn = btn.dataset.campAction === 'speech'
+        ? 'politician_give_speech'
+        : 'politician_door_knock';
+      const { data, error } = await _supabase.rpc(fn, { p_party_id: partyId });
+      if (error) {
+        alert('Action failed: ' + (error.message || 'unknown error'));
+        location.reload();
+        return;
+      }
+      if (!data?.success) {
+        const reason = data?.reason || 'unknown';
+        const human = {
+          not_authenticated: 'You are not signed in.',
+          not_member:        'You are no longer a member of this party.',
+          party_not_found:   'Party not found.',
+          no_shard:          'Shard not found.',
+          cooldown:          `Action on cooldown until tick ${data?.ready_at_tick ?? '?'}.`,
+        }[reason] || `Action failed (${reason}).`;
+        alert(human);
+        location.reload();
+        return;
+      }
+      location.reload();
+    });
+  });
 }
 
 // ── Dispatches: classify, filter, render. Mirrors entrepreneur-dashboard.html
