@@ -405,7 +405,6 @@ function escHtml(s) { const d = document.createElement('div'); d.textContent = s
 
 let _viewerPolId = null;
 let _viewerPartyId = null;
-let _viewerCareer = null;
 let _viewerCharisma = 0;
 let _viewerInfluence = 0;
 let _viewerSpeechReadyAt = 0;
@@ -429,7 +428,6 @@ async function init() {
 
   _viewerPolId         = ctx.faction?.id || null;
   _viewerPartyId       = ctx.faction?.politician_party_id || null;
-  _viewerCareer        = ctx.faction?.politician_career || null;
   _viewerCharisma      = Number(ctx.faction?.politician_charisma) || 0;
   _viewerInfluence     = Number(ctx.faction?.politician_influence) || 0;
   _viewerSpeechReadyAt = Number(ctx.faction?.speech_cooldown_until_tick) || 0;
