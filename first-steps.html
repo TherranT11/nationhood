@@ -35,6 +35,8 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
   text-align: center; }
 .continent-tab:hover { background: var(--bg-3); }
 .continent-tab.active { background: var(--bg-3); border-color: var(--border-2); border-bottom: 2px solid var(--teal); }
+.continent-tab.disabled { opacity: 0.35; cursor: not-allowed; }
+.continent-tab.disabled:hover { background: var(--bg-2); }
 .continent-tab__name { font-family: var(--font-mono); font-size: 12px; font-weight: 700;
   color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .continent-tab.active .continent-tab__name { color: var(--text-bright); }
@@ -114,22 +116,22 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
     <div class="header">
       <div class="eyebrow">Project Neptune</div>
       <div class="title">Where is your politician from?</div>
-      <div class="subtitle">Pick the nation your politician hails from. This only sets your origin and name.</div>
+      <div class="subtitle">Pick the nation your politician hails from. This only sets your origin and name. Politicians can only originate in Crucera for now — other continents will open later.</div>
     </div>
     <div class="continent-tabs" id="continent-tabs">
       <div class="continent-tab active" data-continent="Crucera">
         <div class="continent-tab__name">Crucera</div>
         <div class="continent-tab__desc">A vast and diverse continent, rich in natural resources.</div>
       </div>
-      <div class="continent-tab" data-continent="Meridian">
+      <div class="continent-tab disabled" data-continent="Meridian" title="Politicians can only originate in Crucera for now.">
         <div class="continent-tab__name">Meridian</div>
         <div class="continent-tab__desc">The old world of ancient kingdoms and republics.</div>
       </div>
-      <div class="continent-tab" data-continent="Al-Makir">
+      <div class="continent-tab disabled" data-continent="Al-Makir" title="Politicians can only originate in Crucera for now.">
         <div class="continent-tab__name">Al-Makir</div>
         <div class="continent-tab__desc">A desert continent of monarchies and oil wealth.</div>
       </div>
-      <div class="continent-tab" data-continent="Faresia">
+      <div class="continent-tab disabled" data-continent="Faresia" title="Politicians can only originate in Crucera for now.">
         <div class="continent-tab__name">Faresia</div>
         <div class="continent-tab__desc">High-tech island republics and globalist trade.</div>
       </div>
@@ -469,7 +471,13 @@ document.getElementById('goback-btn').addEventListener('click', goBack);
 document.getElementById('cancel-btn').addEventListener('click', cancelJourney);
 document.getElementById('confirm-btn').addEventListener('click', confirmStep);
 document.querySelectorAll('.continent-tab').forEach(tab => {
-  tab.addEventListener('click', () => switchContinent(tab.dataset.continent));
+  tab.addEventListener('click', () => {
+    // Politicians can only originate in Crucera today; other continent tabs
+    // are marked .disabled and ignore the click. See the design note in the
+    // subtitle and the title= tooltip on each disabled tab.
+    if (tab.classList.contains('disabled')) return;
+    switchContinent(tab.dataset.continent);
+  });
 });
 document.querySelectorAll('.gender-btn').forEach(b => {
   b.addEventListener('click', () => {
