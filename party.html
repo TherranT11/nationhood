@@ -86,7 +86,7 @@
 
 /* Members list — every politician faction whose politician_party_id is
    this party. Sorted by politician_influence desc. */
-.mem-row { display:grid; grid-template-columns:38px 1fr 1fr 80px;
+.mem-row { display:grid; grid-template-columns:38px 1fr 60px 1fr 80px;
   gap:14px; align-items:center; padding:11px 4px;
   border-bottom:0.5px solid rgba(255,255,255,0.04); font-size:12px; }
 .mem-row:last-child { border-bottom:none; }
@@ -101,6 +101,7 @@
   background:#0e1416; color:#5aafa5; border:0.5px solid rgba(90,175,165,0.4);
   padding:2px 6px; border-radius:2px; text-transform:uppercase; }
 .mem-career { color:#888; font-size:11px; }
+.mem-age { color:#888; font-size:11px; font-variant-numeric:tabular-nums; }
 .mem-inf { text-align:right; color:#cfcabf; font-family:monospace;
   font-variant-numeric:tabular-nums; }
 .mem-empty { color:#666; font-size:12px; font-style:italic; text-align:center; padding:18px 0; }
@@ -119,7 +120,7 @@
   .ss:nth-child(odd) { border-right:0.5px solid rgba(255,255,255,0.07); }
   .lead-grid { grid-template-columns:1fr; }
   .mem-row { grid-template-columns:30px 1fr auto; }
-  .mem-row .mem-career { display:none; }
+  .mem-row .mem-career, .mem-row .mem-age { display:none; }
 }
 </style>
 </head>
@@ -137,6 +138,14 @@
   <div class="panel">
     <div class="panel-lab">Party Leadership</div>
     <div id="leadership-host"></div>
+  </div>
+  <div class="panel">
+    <div class="panel-lab">Party Blocs</div>
+    <div class="mem-empty">No blocs on record yet.</div>
+  </div>
+  <div class="panel">
+    <div class="panel-lab">Members of Parliament</div>
+    <div class="mem-empty">No MPs on record yet.</div>
   </div>
   <div class="panel">
     <div class="panel-lab">Members <span id="members-count" style="color:#888; font-weight:500; letter-spacing:0.04em; text-transform:none; font-size:10px; margin-left:8px;"></span></div>
@@ -178,13 +187,13 @@ async function init() {
   // typo'd politician_party_id on a different faction kind can't leak in.
   const [partyRes, membersRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_name, abbreviation, seats, popularity_pct, party_color, party_description, leader_first_name, leader_last_name, leader_age, deputy_first_name, deputy_last_name, whip_first_name, whip_last_name, founded_tick, nation_id, nation:nations!nation_id(id, name, total_seats, government_type)')
+      .select('id, faction_name, abbreviation, seats, popularity_pct, party_color, party_description, leader_first_name, leader_last_name, leader_age, deputy_first_name, deputy_last_name, deputy_age, whip_first_name, whip_last_name, whip_age, founded_tick, nation_id, nation:nations!nation_id(id, name, total_seats, government_type)')
       .eq('id', partyId)
       .eq('faction_type', 'movement_party')
       .is('abandoned_at', null)
       .maybeSingle(),
     _supabase.from('factions')
-      .select('id, leader_first_name, leader_last_name, politician_career, politician_influence')
+      .select('id, leader_first_name, leader_last_name, leader_age, politician_career, politician_influence')
       .eq('politician_party_id', partyId)
       .eq('faction_type', 'politician')
       .is('abandoned_at', null)
@@ -336,14 +345,15 @@ function renderLeadership(party, accent) {
     host.innerHTML = '<div class="mem-empty">No leader on record.</div>';
     return;
   }
-  const leaderMeta = party.leader_age
-    ? `Party Leader · age ${Number(party.leader_age)}`
-    : 'Party Leader';
   host.innerHTML = `<div class="lead-grid">
-    ${leadCard(leaderName, leaderMeta, accent)}
-    ${leadCard(deputyName, 'Deputy Leader',   accent)}
-    ${leadCard(whipName,   'Party Whip',      accent)}
+    ${leadCard(leaderName, roleMeta('Party Leader',   party.leader_age), accent)}
+    ${leadCard(deputyName, roleMeta('Deputy Leader',  party.deputy_age), accent)}
+    ${leadCard(whipName,   roleMeta('Party Whip',     party.whip_age),   accent)}
   </div>`;
+}
+
+function roleMeta(role, age) {
+  return (age != null) ? `${role} · age ${Number(age)}` : role;
 }
 
 function leadCard(name, role, accent) {
@@ -377,15 +387,17 @@ function renderMembers(members, accent) {
   const rows = members.map(m => {
     const name = [m.leader_first_name, m.leader_last_name].filter(Boolean).join(' ') || '—';
     const youBadge = m.id === _viewerPolId ? ' <span class="you">You</span>' : '';
+    const age = (m.leader_age != null) ? String(Number(m.leader_age)) : '—';
     return `<div class="mem-row">
       <div class="mem-badge" style="background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;">${escHtml(factionInitials(name, null))}</div>
       <div class="mem-name">${escHtml(name)}${youBadge}</div>
+      <div class="mem-age">${escHtml(age)}</div>
       <div class="mem-career">${escHtml(m.politician_career || 'Independent')}</div>
       <div class="mem-inf">${Number(m.politician_influence) || 0}</div>
     </div>`;
   }).join('');
   host.innerHTML = `<div class="mem-row header">
-    <span></span><span>Name</span><span>Career</span><span style="text-align:right;">Influence</span>
+    <span></span><span>Name</span><span>Age</span><span>Career</span><span style="text-align:right;">Influence</span>
   </div>${rows}`;
 }
 
