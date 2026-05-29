@@ -420,12 +420,11 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
 
     const corps = corpRes.data || [];
 
-    // Book-value aggregates for PRIVATE corps (public corps show market cap,
-    // not book value) — fetched once via the shared fetchCorpBookAggregates
-    // and fed into computeEntrepreneurValuation so each private corp shows
-    // its dynamic book value, not stale seed capital.
-    const bookAgg = await fetchCorpBookAggregates(
-      corps.filter(c => c.listing !== 'public').map(c => c.id));
+    // Book-value aggregates for every corp — fetched once via the
+    // shared fetchCorpBookAggregates and fed into
+    // computeEntrepreneurValuation so each corp shows its dynamic book
+    // value, not stale seed capital or self-pumpable market cap.
+    const bookAgg = await fetchCorpBookAggregates(corps.map(c => c.id));
 
     // Aggregate holdings once: total per corp (for Available) + the
     // viewer's per-corp shares (for Ownership). Same definition of
