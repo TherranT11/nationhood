@@ -11,7 +11,68 @@
    so the surfaces feel like one product. Sections gated on real data:
    anything we don't have a column for yet doesn't render. */
 * { box-sizing:border-box; margin:0; padding:0; }
-.content { padding:32px 24px 24px; max-width:1180px; margin:0 auto; }
+.content { padding:32px 24px 24px; max-width:1400px; margin:0 auto; }
+
+/* Two-column body grid below the identity card. The right column shows
+   only when the viewer is a party member (display toggled in JS); for
+   everyone else the grid collapses to a single centered column. */
+.body-grid { display:grid; grid-template-columns:1fr; gap:14px; }
+.body-grid.has-side { grid-template-columns:minmax(0, 1fr) 380px; }
+.main-col { min-width:0; }
+.side-col { display:flex; flex-direction:column; gap:14px; }
+.side-panel { padding:16px 18px; }
+.actions-head, .chat-head { display:flex; align-items:baseline; justify-content:space-between; }
+.actions-sub, .chat-sub { text-transform:none; letter-spacing:0.02em; font-size:9px; color:#555;
+  display:inline-flex; align-items:center; gap:6px; font-weight:500; }
+.chat-dot { width:6px; height:6px; border-radius:50%; background:#5aafa5; display:inline-block; }
+.actions-body { display:flex; flex-direction:column; align-items:center; gap:12px;
+  padding:22px 0 14px; text-align:center; }
+.actions-icon { width:28px; height:28px; border-radius:50%; border:0.5px solid rgba(255,255,255,0.18); }
+.actions-empty { font-size:13px; color:#d4d4d4; font-weight:500; }
+.actions-desc { font-size:11px; color:#888; line-height:1.55; max-width:280px; }
+.actions-rung { font-size:9px; letter-spacing:0.16em; color:#c87a7a; text-transform:uppercase;
+  font-weight:600; padding-top:6px; }
+
+/* Chat thread: scrolling column of messages, oldest at top. Newest
+   slides in at the bottom via the JS append; the thread auto-scrolls
+   to the bottom after each render. */
+.chat-thread { max-height:380px; overflow-y:auto; padding:6px 0; display:flex;
+  flex-direction:column; gap:14px; }
+.chat-msg { display:grid; grid-template-columns:32px 1fr; gap:10px; }
+.chat-avatar { width:32px; height:32px; border-radius:5px; display:flex;
+  align-items:center; justify-content:center; font-family:monospace;
+  font-size:11px; font-weight:700; letter-spacing:0.04em; flex-shrink:0; }
+.chat-body { min-width:0; }
+.chat-meta { display:flex; align-items:baseline; gap:7px; flex-wrap:wrap;
+  font-size:11px; color:#888; line-height:1.2; margin-bottom:3px; }
+.chat-name { color:#fff; font-weight:600; }
+.chat-role { font-size:9px; letter-spacing:0.08em; color:#888; text-transform:uppercase; }
+.chat-role.leader { color:#c87a7a; }
+.chat-role.deputy { color:#c89e6e; }
+.chat-role.whip   { color:#c4a86a; }
+.chat-role.you    { color:#5aafa5; }
+.chat-time { margin-left:auto; font-family:monospace; font-size:9px; color:#555;
+  letter-spacing:0.04em; }
+.chat-text { font-size:12px; color:#cfcabf; line-height:1.55; word-break:break-word; }
+.chat-empty { color:#666; font-size:11px; font-style:italic; text-align:center;
+  padding:24px 0; }
+.chat-footnote { font-size:9px; color:#5a5040; letter-spacing:0.05em; padding:8px 0 0;
+  display:flex; align-items:center; gap:6px; }
+.chat-footnote::before { content:'\1F512'; font-size:10px; }
+.chat-form { display:flex; gap:8px; padding-top:10px;
+  border-top:0.5px solid rgba(255,255,255,0.06); margin-top:10px; }
+.chat-input { flex:1; min-width:0; background:transparent;
+  border:0.5px solid rgba(255,255,255,0.10); color:#fff; padding:8px 11px;
+  border-radius:4px; font-family:inherit; font-size:12px; outline:none; }
+.chat-input:focus { border-color:rgba(90,175,165,0.5); }
+.chat-input::placeholder { color:#555; }
+.chat-send { padding:8px 16px; font-size:10px; letter-spacing:0.08em;
+  font-family:monospace; font-weight:600; cursor:pointer; background:transparent;
+  color:#c87a7a; border:0.5px solid rgba(200,122,122,0.4); border-radius:4px;
+  text-transform:uppercase; }
+.chat-send:hover { background:rgba(200,122,122,0.10); border-color:#c87a7a; }
+.chat-send:disabled { color:#555; border-color:rgba(255,255,255,0.06);
+  cursor:not-allowed; background:transparent; }
 
 .crumb { font-size:9px; letter-spacing:0.13em; color:#666; margin-bottom:14px; }
 .crumb a { color:#888; text-decoration:none; cursor:pointer; }
@@ -119,6 +180,8 @@
   .ss { border-right:none; border-bottom:0.5px solid rgba(255,255,255,0.07); }
   .ss:nth-child(odd) { border-right:0.5px solid rgba(255,255,255,0.07); }
   .lead-grid { grid-template-columns:1fr; }
+  .body-grid.has-side { grid-template-columns:1fr; }
+  .chat-thread { max-height:300px; }
   .mem-row { grid-template-columns:30px 1fr auto; }
   .mem-row .mem-career, .mem-row .mem-age { display:none; }
 }
@@ -131,25 +194,50 @@
 <div class="content" id="content" style="display:none;">
   <div class="crumb" id="crumb"></div>
   <div id="identity-host"></div>
-  <div class="panel" id="about-panel" style="display:none;">
-    <div class="panel-lab">About the Party</div>
-    <div class="about-text" id="about-text"></div>
-  </div>
-  <div class="panel">
-    <div class="panel-lab">Party Leadership</div>
-    <div id="leadership-host"></div>
-  </div>
-  <div class="panel">
-    <div class="panel-lab">Party Blocs</div>
-    <div class="mem-empty">No blocs on record yet.</div>
-  </div>
-  <div class="panel">
-    <div class="panel-lab">Members of Parliament</div>
-    <div class="mem-empty">No MPs on record yet.</div>
-  </div>
-  <div class="panel">
-    <div class="panel-lab">Members <span id="members-count" style="color:#888; font-weight:500; letter-spacing:0.04em; text-transform:none; font-size:10px; margin-left:8px;"></span></div>
-    <div id="members-host"></div>
+  <div class="body-grid" id="body-grid">
+    <div class="main-col">
+      <div class="panel" id="about-panel" style="display:none;">
+        <div class="panel-lab">About the Party</div>
+        <div class="about-text" id="about-text"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-lab">Party Leadership</div>
+        <div id="leadership-host"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-lab">Party Blocs</div>
+        <div class="mem-empty">No blocs on record yet.</div>
+      </div>
+      <div class="panel">
+        <div class="panel-lab">Members of Parliament</div>
+        <div class="mem-empty">No MPs on record yet.</div>
+      </div>
+      <div class="panel">
+        <div class="panel-lab">Members <span id="members-count" style="color:#888; font-weight:500; letter-spacing:0.04em; text-transform:none; font-size:10px; margin-left:8px;"></span></div>
+        <div id="members-host"></div>
+      </div>
+    </div>
+    <aside class="side-col" id="side-col" style="display:none;">
+      <div class="panel side-panel actions-panel" id="actions-panel">
+        <div class="panel-lab actions-head">
+          <span>Actions</span>
+          <span class="actions-sub">your moves as a member</span>
+        </div>
+        <div class="actions-body" id="actions-body"></div>
+      </div>
+      <div class="panel side-panel chat-panel" id="chat-panel">
+        <div class="panel-lab chat-head">
+          <span>Party Chat</span>
+          <span class="chat-sub"><span class="chat-dot"></span>members only</span>
+        </div>
+        <div class="chat-thread" id="chat-thread"></div>
+        <div class="chat-footnote" id="chat-footnote"></div>
+        <form class="chat-form" id="chat-form" autocomplete="off">
+          <input class="chat-input" id="chat-input" type="text" maxlength="2000" placeholder="Message the party…">
+          <button class="chat-send" id="chat-send" type="submit">Send</button>
+        </form>
+      </div>
+    </aside>
   </div>
 </div>
 
@@ -165,6 +253,8 @@ function escHtml(s) { const d = document.createElement('div'); d.textContent = s
 
 let _viewerPolId = null;
 let _viewerPartyId = null;
+let _viewerCareer = null;
+let _chatPollId = null;
 
 async function init() {
   const params  = new URLSearchParams(location.search);
@@ -182,12 +272,13 @@ async function init() {
 
   _viewerPolId   = ctx.faction?.id || null;
   _viewerPartyId = ctx.faction?.politician_party_id || null;
+  _viewerCareer  = ctx.faction?.politician_career || null;
 
   // Party + members in parallel. Members filter on faction_type so a
   // typo'd politician_party_id on a different faction kind can't leak in.
   const [partyRes, membersRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_name, abbreviation, seats, popularity_pct, party_color, party_description, leader_first_name, leader_last_name, leader_age, deputy_first_name, deputy_last_name, deputy_age, whip_first_name, whip_last_name, whip_age, founded_tick, nation_id, nation:nations!nation_id(id, name, total_seats, government_type)')
+      .select('id, faction_name, abbreviation, seats, popularity_pct, party_color, party_description, leader_first_name, leader_last_name, leader_age, deputy_first_name, deputy_last_name, deputy_age, whip_first_name, whip_last_name, whip_age, founded_tick, nation_id, nation:nations!nation_id(id, name, population, total_seats, government_type)')
       .eq('id', partyId)
       .eq('faction_type', 'movement_party')
       .is('abandoned_at', null)
@@ -263,7 +354,8 @@ function render(party, members) {
           isGov ? `holds majority (${majority} needed)` : (totalSeats > 0 ? `${majority - seats} short of majority` : ''))}
         ${statCell('Founded', party.founded_tick != null ? String(tickToYear(party.founded_tick)) : '—',
           party.founded_tick != null ? `tick ${party.founded_tick}` : 'unknown')}
-        ${statCell('Members', String(members.length), `${members.length === 1 ? 'politician' : 'politicians'} on file`)}
+        ${statCell('Members', fmtMembers(membershipCount(members.length, party.nation?.population)),
+          `${members.length === 1 ? '1 politician' : `${members.length} politicians`} on file`)}
       </div>
     </div>`;
 
@@ -271,6 +363,156 @@ function render(party, members) {
   renderAbout(party);
   renderLeadership(party, accent);
   renderMembers(members, accent);
+  renderSidebar(party, isMine);
+}
+
+// Right sidebar — Actions + Party Chat. Only shown when the viewer is a
+// party member. Non-members get a single-column layout instead.
+function renderSidebar(party, isMine) {
+  const side = document.getElementById('side-col');
+  const bodyGrid = document.getElementById('body-grid');
+  if (!isMine) {
+    side.style.display = 'none';
+    bodyGrid.classList.remove('has-side');
+    if (_chatPollId) { clearInterval(_chatPollId); _chatPollId = null; }
+    return;
+  }
+  side.style.display = 'flex';
+  bodyGrid.classList.add('has-side');
+  renderActionsPanel();
+  loadAndPollChat(party).catch(err => console.warn('[party] chat init failed', err));
+}
+
+function renderActionsPanel() {
+  const rung = _viewerCareer && _viewerCareer !== 'Independent' ? _viewerCareer : 'Party Member';
+  document.getElementById('actions-body').innerHTML =
+    `<div class="actions-icon"></div>
+     <div class="actions-empty">No actions available yet</div>
+     <div class="actions-desc">As a rank-and-file member, your hands are full just being on the rolls. Climb the Party Office ladder to unlock recruitment, candidacy, and party-building actions.</div>
+     <div class="actions-rung">Current Rung · ${escHtml(rung)}</div>`;
+}
+
+async function loadAndPollChat(party) {
+  const { data: chatRes, error: chatErr } = await _supabase.rpc('ensure_party_chat', { p_party_id: party.id });
+  if (chatErr || !chatRes || !chatRes.success) {
+    console.warn('[party] ensure_party_chat:', chatErr?.message || chatRes?.reason);
+    return;
+  }
+  const chatId = chatRes.chat_id;
+  document.getElementById('chat-footnote').textContent =
+    `visible to party members only · assume monitored under ${party.nation?.name || 'national'} law`;
+
+  await refreshChat(chatId, party);
+
+  if (_chatPollId) clearInterval(_chatPollId);
+  _chatPollId = setInterval(() => refreshChat(chatId, party).catch(() => {}), 4000);
+
+  const form = document.getElementById('chat-form');
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const input = document.getElementById('chat-input');
+    const send  = document.getElementById('chat-send');
+    const text  = input.value.trim();
+    if (!text) return;
+    send.disabled = true;
+    try {
+      const { data, error } = await _supabase.rpc('send_party_message', { p_chat_id: chatId, p_message: text });
+      if (error) throw error;
+      if (data?.success) {
+        input.value = '';
+        await refreshChat(chatId, party);
+      } else {
+        console.warn('[party] send rejected:', data?.reason);
+      }
+    } catch (err) {
+      console.warn('[party] send failed:', err?.message || err);
+    } finally {
+      send.disabled = false;
+    }
+  };
+}
+
+async function refreshChat(chatId, party) {
+  const { data, error } = await _supabase.from('group_chat_messages')
+    .select('id, message_text, created_at, sender_id, sender:factions!sender_id(leader_first_name, leader_last_name)')
+    .eq('chat_id', chatId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) {
+    console.warn('[party] chat fetch error:', error.message);
+    return;
+  }
+  renderChatThread((data || []).slice().reverse(), party);
+}
+
+function renderChatThread(messages, party) {
+  const thread = document.getElementById('chat-thread');
+  if (!messages.length) {
+    thread.innerHTML = '<div class="chat-empty">No messages yet. Be the first.</div>';
+    return;
+  }
+  const accent = safeHexColor(party.party_color);
+  const norm = s => (s || '').trim().toLowerCase();
+  const leaderName = norm(`${party.leader_first_name || ''} ${party.leader_last_name || ''}`);
+  const deputyName = norm(`${party.deputy_first_name || ''} ${party.deputy_last_name || ''}`);
+  const whipName   = norm(`${party.whip_first_name   || ''} ${party.whip_last_name   || ''}`);
+
+  thread.innerHTML = messages.map(m => {
+    const senderName = [m.sender?.leader_first_name, m.sender?.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
+    const senderLower = norm(senderName);
+    const isYou = m.sender_id === _viewerPolId;
+    let role = 'Member', roleClass = '';
+    if      (senderLower && senderLower === leaderName) { role = 'Leader'; roleClass = 'leader'; }
+    else if (senderLower && senderLower === deputyName) { role = 'Deputy'; roleClass = 'deputy'; }
+    else if (senderLower && senderLower === whipName)   { role = 'Whip';   roleClass = 'whip';   }
+    else if (isYou)                                      { role = 'Member (you)'; roleClass = 'you'; }
+    const ini = factionInitials(senderName, null);
+    return `<div class="chat-msg">
+      <div class="chat-avatar" style="background:${accent}1f; color:${accent}; border:0.5px solid ${accent}66;">${escHtml(ini)}</div>
+      <div class="chat-body">
+        <div class="chat-meta">
+          <span class="chat-name">${escHtml(senderName)}</span>
+          <span class="chat-role ${roleClass}">${escHtml(role)}</span>
+          <span class="chat-time">${escHtml(formatChatTime(m.created_at))}</span>
+        </div>
+        <div class="chat-text">${escHtml(m.message_text)}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function formatChatTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+// Card-carrying membership count. Rule: each politician on file represents
+// 3% of the nation's population in members; clamped at the full population
+// so very-large parties don't claim more members than there are humans.
+const MEMBERS_PER_POLITICIAN_PCT = 0.03;
+function membershipCount(politicianCount, population) {
+  const n = Math.max(0, Number(politicianCount) || 0);
+  const pop = Math.max(0, Number(population) || 0);
+  return Math.round(Math.min(pop, n * MEMBERS_PER_POLITICIAN_PCT * pop));
+}
+
+// Compact number for the stats strip: 1.2M / 300K / 850 / etc. Single-decimal
+// precision below 10K / 10M; round to integer above so the digit-count stays
+// stable across the four stat cells. Threshold boundaries account for the
+// scaled-value rounding so 999500..999999 reads "1M" instead of "1000K".
+function fmtMembers(n) {
+  const v = Math.round(Number(n) || 0);
+  if (v >= 9_950_000) return Math.round(v / 1e6) + 'M';
+  if (v >=   999_500) return (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (v >=     9_950) return Math.round(v / 1e3) + 'K';
+  if (v >=       999) return (v / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(v);
 }
 
 function statCell(label, value, detail) {
