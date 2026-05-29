@@ -19927,10 +19927,9 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
     if (!ministries || ministries.length === 0) return [];
 
     // Crisis-decay multiplier removed with the crisis-system sunset
-    // (Phase 1). Ministers no longer decay faster during active crises.
-    // If we want to bring this flavor back, the natural analog is an
-    // active_modifiers count with severity='red'.
-    const crisisMultiplier = 1;
+    // (Phase 1). The "ministers decay faster while a crisis is active"
+    // flavor went with it. If we want it back, count active_modifiers
+    // with severity='red' here and multiply BASELINE_DECAY by it.
 
     const results = [];
 
@@ -19973,8 +19972,7 @@ async function updateMinisterApprovals(supabase, nation, currentTick) {
         let newApproval = oldApproval;
 
         // Baseline decay always applies — approval erodes unless stats improve.
-        // During crises, decay is multiplied: 1 crisis = 2×, 2 crises = 3×, etc.
-        newApproval += cfg.BASELINE_DECAY * crisisMultiplier;
+        newApproval += cfg.BASELINE_DECAY;
         // Apply delta-based movement on top of baseline decay.
         // Baselines are permanent (appointment snapshot), so cap the cumulative delta
         // to prevent runaway approval. ±5 cap means max ±3/tick from stat performance.
@@ -32038,9 +32036,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // National Modifiers (characterization layer — no per-tick stat changes).
         // Flips active_modifiers rows on/off based on triggers / end-triggers.
-        // Sole occupant of the "characterizing systems" slot after the crisis
-        // system was sunset (Phase 1, 20270394 onward): processDebtToGdpBands
-        // and processCrises were dropped — modifier_triggers handles the
+        // Sole occupant of the "characterizing systems" slot after the
+        // crisis-system sunset (Phase 1, source-only — no migration number):
+        // processDebtToGdpBands and processCrises were dropped from
+        // js/game/political-actions. modifier_triggers handles the
         // equivalent firing logic.
         try {
             const modifierResults = await processNationalModifiers(supabase, nation, newTick);

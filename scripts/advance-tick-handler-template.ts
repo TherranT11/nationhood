@@ -2248,9 +2248,10 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
 
         // National Modifiers (characterization layer — no per-tick stat changes).
         // Flips active_modifiers rows on/off based on triggers / end-triggers.
-        // Sole occupant of the "characterizing systems" slot after the crisis
-        // system was sunset (Phase 1, 20270394 onward): processDebtToGdpBands
-        // and processCrises were dropped — modifier_triggers handles the
+        // Sole occupant of the "characterizing systems" slot after the
+        // crisis-system sunset (Phase 1, source-only — no migration number):
+        // processDebtToGdpBands and processCrises were dropped from
+        // js/game/political-actions.js. modifier_triggers handles the
         // equivalent firing logic.
         try {
             const modifierResults = await processNationalModifiers(supabase, nation, newTick);
