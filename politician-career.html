@@ -234,7 +234,13 @@ const PARTY_OFFICE_RUNGS = [
     name: 'High Ranking Party Member',
     held:        ()  => false,
     descIfHeld:  ()  => 'You hold a senior position in your party.',
-    descIfNot:   ()  => 'Earn whip, secretary, or treasurer roles within your party.',
+    descIfNot:   ()  => 'Earn secretary or treasurer roles within your party.',
+  },
+  {
+    name: 'Party Whip',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You are the party whip — keeping members in line on the chamber floor.',
+    descIfNot:   ()  => 'The party whip — enforces discipline on legislative votes.',
   },
   {
     name: 'Deputy Party Leader',

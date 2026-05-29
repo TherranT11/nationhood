@@ -40,7 +40,8 @@
 
 /* Movement card list — one row per movement party (faction_type='movement_party')
    in the politician's nation. Compact and readable; uses the party's color as a
-   left-rail accent so a player can tell parties apart at a glance. */
+   left-rail accent so a player can tell parties apart at a glance. The whole
+   row is a link to the party detail page. */
 .mv-card { display:flex; align-items:center; gap:16px; padding:18px 20px;
   background:#0e1212; border:0.5px solid rgba(255,255,255,0.08); border-radius:6px;
   margin-bottom:10px; border-left:3px solid #5aafa5; cursor:pointer;
@@ -342,11 +343,10 @@ function renderPartyCard(p) {
   if (p.party_description) subParts.push(escHtml(p.party_description));
   const sub = subParts.join(' &middot; ');
   const href = `party.html?id=${encodeURIComponent(p.id)}`;
-  // popularity_pct is the nation-level movement popularity (column added on
-  // main in 20270375). Rendered only when present so an older row that
-  // pre-dates the migration backfill — or a future non-movement reuse of
-  // this card — doesn't show "—%" or 0%. If you want the value to surface,
-  // ensure popularity_pct is in the loadMovementParties() SELECT.
+  // popularity_pct is nation-level for movements. Rendered only when
+  // present so a future non-movement reuse of this card doesn't show a
+  // misleading 0%. loadMovementParties() must keep it in the SELECT for
+  // the value to surface here.
   const pop = (p.popularity_pct != null)
     ? `<div class="popularity">Popularity<strong>${Math.round(Number(p.popularity_pct))}%</strong></div>`
     : '';
