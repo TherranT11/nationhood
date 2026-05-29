@@ -437,6 +437,40 @@ function resolvePm(pm) {
   };
 }
 
+// One-stop PM resolver used by both the Head of Gov't card and the
+// parliament's PM card. Ministry PM wins when one exists; otherwise
+// the governing party's leader stands in (a monarchy with a clear
+// majority party still has a "PM" in our model, just not a formally
+// appointed one). Returns {name:'', partyName:''} when neither
+// source has a name to offer — callers decide what to render as the
+// fallback (e.g. "The Crown" for monarchies, "Vacant" elsewhere).
+function resolveDisplayedPm(pm, pmParty) {
+  const ministry = resolvePm(pm);
+  const derivedName = pmParty
+    ? `${pmParty.leader_first_name || ''} ${pmParty.leader_last_name || ''}`.trim()
+    : '';
+  return {
+    name:      ministry.name || derivedName,
+    partyName: ministry.partyName || pmParty?.faction_name || '',
+  };
+}
+
+// Update the Head of Gov't card on the nation header after the
+// parliament fetch returns. renderCard runs before pmParty is known
+// and falls back to gov_type-specific defaults (The Crown for
+// monarchies, Vacant elsewhere); this overwrites those defaults when
+// the governing party gives us a derived PM. Presidential is left
+// alone — it fused HoS + HoG correctly at first render.
+function patchHeadOfGov(n, pm, pmParty) {
+  if (n.government_type === 'Presidential') return;
+  const { name: pmName, partyName } = resolveDisplayedPm(pm, pmParty);
+  if (!pmName) return;
+  const hogEl    = document.getElementById('nc-hog');
+  const hogSubEl = document.getElementById('nc-hog-sub');
+  if (hogEl)    hogEl.textContent    = `PM ${pmName}`;
+  if (hogSubEl) hogSubEl.textContent = partyName ? `${partyName}-led government` : 'Prime Minister';
+}
+
 function formatPopulation(n) {
   const v = Number(n) || 0;
   if (v >= 1_000_000) return (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + ' million';
@@ -949,6 +983,12 @@ async function renderGovernment(n, pm, myPartyId) {
     const pmParty    = parties.find(p => p.id === pmPartyId) || coalition[0] || null;
     const opposition = parties.find(p => !coalitionIds.has(p.id) && p.id !== pmParty?.id) || null;
 
+    // Patch the nation card's Head of Gov't now that pmParty is known.
+    // renderCard ran with only the ministry PM (often empty for
+    // monarchies); if the governing party gives us a derived PM, the
+    // card was wrong and gets updated in place.
+    patchHeadOfGov(n, pm, pmParty);
+
     body.innerHTML = `
       <div class="parl-head">
         <div class="parl-title">National <span class="serif">Assembly</span></div>
@@ -1042,11 +1082,10 @@ function renderGovStrip(coalition, pmParty, opposition, pm, totalSeats, majority
          <div class="gcd">no party holds &gt; 50% of seats</div>
        </div>`;
 
-  const { name: pmName, partyName } = resolvePm(pm);
-  const pmPartyName = pmParty?.faction_name || partyName;
+  const { name: pmName, partyName: pmPartyName } = resolveDisplayedPm(pm, pmParty);
   const pmDetail = [
     pmPartyName ? `leader of ${escHtml(pmPartyName)}` : 'awaiting appointment',
-    pmYear ? `in office since ${pmYear}` : '',
+    (pmPartyName && pmYear) ? `in office since ${pmYear}` : '',
   ].filter(Boolean).join(' &middot; ');
   const pmCard = `<div class="gov-card">
     <div class="gck">PRIME MINISTER</div>
