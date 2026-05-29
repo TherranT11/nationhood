@@ -3507,12 +3507,23 @@ function initials(s, n) {
         // "local office" set for the remote-floor check. Cheap one-off
         // fetch; the set lives in scope for the loan-requests render
         // below.
-        const { data: officeRows } = await _supabase.from('corp_buildings')
+        //
+        // On fetch failure we default to PERMISSIVE (assume local
+        // office everywhere) rather than restrictive. The server's
+        // offer_loan gate is authoritative; the data-floor-pct attr
+        // here is purely a UX hint. A failed prefetch shouldn't lock
+        // a local-office bank out of its normal rates — far better
+        // to let them submit, hit the server check, and get the real
+        // floor back in the error response than to silently impose
+        // a phantom floor the server doesn't enforce.
+        const { data: officeRows, error: officeErr } = await _supabase.from('corp_buildings')
           .select('nation_id')
           .eq('owner_corp_id', id)
           .eq('building_type', 'banking_office')
           .eq('status', 'completed');
+        if (officeErr) console.warn('[entrepreneur-corp] banking offices fetch error:', officeErr.message);
         const localOfficeNations = new Set((officeRows || []).map(o => o.nation_id));
+        const officeFetchFailed  = !!officeErr;
 
         const { data: reqsData, error: reqsErr } = await _supabase.from('corp_loan_requests')
           .select('id, principal, term_ticks, expires_at_tick, '
@@ -3537,7 +3548,11 @@ function initials(s, n) {
               // through without a second query.
               const borrowerNationId = r.borrower?.hq_nation_id || '';
               const cbRate = Number(r.borrower?.hq?.central_bank_interest_rate);
-              const hasLocalOffice = borrowerNationId && localOfficeNations.has(borrowerNationId);
+              // officeFetchFailed → treat as local (permissive — see the
+              // prefetch comment above). Otherwise require a hit in the
+              // verified Set.
+              const hasLocalOffice = officeFetchFailed
+                || (borrowerNationId && localOfficeNations.has(borrowerNationId));
               const floorPct = hasLocalOffice ? 0
                 : (Number.isFinite(cbRate) ? cbRate + 1 : 6);   // 6 = 5% default CB + 1%
               const nationName = r.borrower?.hq?.name || '—';
