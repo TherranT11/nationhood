@@ -160,8 +160,12 @@
 .lead-card.vacant .lead-name { color:#666; font-style:italic; font-weight:500; }
 
 /* Members list — every politician faction whose politician_party_id is
-   this party. Sorted by politician_influence desc. */
-.mem-row { display:grid; grid-template-columns:38px 1fr 60px 1fr 80px;
+   this party. Sorted by politician_influence desc. The per-member
+   "Career" column was dropped along with politician_career: every row
+   on this surface is by definition a member of THIS party, so the cell
+   carried no per-row signal. When held-office tracking lands (MP /
+   Whip / Senator / Minister), a new column slots back in here. */
+.mem-row { display:grid; grid-template-columns:38px 1fr 60px 80px;
   gap:14px; align-items:center; padding:11px 4px;
   border-bottom:0.5px solid rgba(255,255,255,0.04); font-size:12px; }
 .mem-row:last-child { border-bottom:none; }
@@ -175,7 +179,6 @@
 .mem-name .you { font-size:8px; letter-spacing:0.1em; margin-left:8px;
   background:#0e1416; color:#5aafa5; border:0.5px solid rgba(90,175,165,0.4);
   padding:2px 6px; border-radius:2px; text-transform:uppercase; }
-.mem-career { color:#888; font-size:11px; }
 .mem-age { color:#888; font-size:11px; font-variant-numeric:tabular-nums; }
 .mem-inf { text-align:right; color:#cfcabf; font-family:monospace;
   font-variant-numeric:tabular-nums; }
@@ -296,7 +299,7 @@
   .body-grid.has-side { grid-template-columns:1fr; }
   .chat-thread { max-height:300px; }
   .mem-row { grid-template-columns:30px 1fr auto; }
-  .mem-row .mem-career, .mem-row .mem-age { display:none; }
+  .mem-row .mem-age { display:none; }
   .biz-grid { grid-template-columns:1fr; }
   .biz-modal { max-width:100%; }
 }
@@ -444,7 +447,7 @@ async function init() {
       .is('abandoned_at', null)
       .maybeSingle(),
     _supabase.from('factions')
-      .select('id, leader_first_name, leader_last_name, leader_age, politician_career, politician_influence')
+      .select('id, leader_first_name, leader_last_name, leader_age, politician_influence')
       .eq('politician_party_id', partyId)
       .eq('faction_type', 'politician')
       .is('abandoned_at', null)
@@ -921,12 +924,11 @@ function renderMembers(members, accent) {
       <div class="mem-badge" style="background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;">${escHtml(factionInitials(name, null))}</div>
       <div class="mem-name">${escHtml(name)}${youBadge}</div>
       <div class="mem-age">${escHtml(age)}</div>
-      <div class="mem-career">${escHtml(m.politician_career || 'Independent')}</div>
       <div class="mem-inf">${Number(m.politician_influence) || 0}</div>
     </div>`;
   }).join('');
   host.innerHTML = `<div class="mem-row header">
-    <span></span><span>Name</span><span>Age</span><span>Career</span><span style="text-align:right;">Influence</span>
+    <span></span><span>Name</span><span>Age</span><span style="text-align:right;">Influence</span>
   </div>${rows}`;
 }
 
