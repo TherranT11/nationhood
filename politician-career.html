@@ -409,6 +409,10 @@ const PARTY_OFFICE_RUNGS = [
     // beyond Party Member needs office-tracking schema; for now we
     // surface the in-flight race as the held state and let the player
     // see the win/loss in the result banner + Career container.
+    //
+    // availableWhen gates the action button: standing for election
+    // requires party membership. Non-members see the rung greyed out
+    // with descIfNot pointing them at the prerequisite.
     name: 'Election Candidate',
     held:        (s) => !!s.activeRace,
     descIfHeld:  (s) => {
@@ -418,8 +422,11 @@ const PARTY_OFFICE_RUNGS = [
       const when  = ticks <= 0 ? 'resolves this tick' : `resolves in ${ticks} tick${ticks === 1 ? '' : 's'}`;
       return `Standing in the ${where} race against ${opp.trim() || 'an opponent'} — ${when}.`;
     },
-    descIfNot:   ()  => 'Run for a legislative seat or a mayoralty.',
-    actionIfNot: { label: 'Stand for Election', kind: 'primary', action: 'stand-for-election' },
+    descIfNot:   (s) => s.partyId
+      ? 'Run for a legislative seat or a mayoralty.'
+      : 'Join a political party to stand for election.',
+    availableWhen: (s) => !!s.partyId,
+    actionIfNot:   { label: 'Stand for Election', kind: 'primary', action: 'stand-for-election' },
   },
   {
     name: 'Member of Parliament or Mayor',
@@ -798,13 +805,19 @@ function renderRungs(rungs, state) {
       actionHtml = '<span class="rung-held">held</span>';
     } else if (r.actionIfNot) {
       const a = r.actionIfNot;
-      const cls = a.kind === 'primary' ? 'rung-btn rung-btn--primary' : 'rung-btn rung-btn--disabled';
-      // A primary actionIfNot can fire either a navigation (href) or an
-      // in-page action (data-action). The Stand for Election rung uses
-      // the data-action path to open the election modal in-place.
-      const hrefAttr     = a.kind === 'primary' && a.href   ? ` data-href="${escHtml(a.href)}"`     : '';
-      const actionAttr   = a.kind === 'primary' && a.action ? ` data-action="${escHtml(a.action)}"` : '';
-      const disabledAttr = a.kind === 'disabled' ? ' disabled' : '';
+      // availableWhen lets a rung declare a prerequisite (e.g. Election
+      // Candidate requires Party Member). When gated, the button still
+      // renders so the player sees the affordance, but as disabled
+      // regardless of declared kind — descIfNot is where the rung
+      // explains why. A primary actionIfNot can fire either a navigation
+      // (href) or an in-page action (data-action); the Stand for Election
+      // rung uses the data-action path to open the election modal.
+      const gated = !!(r.availableWhen && !r.availableWhen(state));
+      const kind  = gated ? 'disabled' : a.kind;
+      const cls   = kind === 'primary' ? 'rung-btn rung-btn--primary' : 'rung-btn rung-btn--disabled';
+      const hrefAttr     = kind === 'primary' && a.href   ? ` data-href="${escHtml(a.href)}"`     : '';
+      const actionAttr   = kind === 'primary' && a.action ? ` data-action="${escHtml(a.action)}"` : '';
+      const disabledAttr = kind === 'disabled' ? ' disabled' : '';
       actionHtml = `<button class="${cls}"${hrefAttr}${actionAttr}${disabledAttr}>${escHtml(a.label)}</button>`;
     } else if (r.accessNote) {
       // Rungs reached by appointment / external selection rather than by
@@ -907,7 +920,7 @@ function emEscHandler(e) {
 }
 
 async function loadElectionOffer(ctx) {
-  const partyId = ctx?.party?.id || ctx?.faction?.politician_party_id || null;
+  const partyId = ctx?.party?.id || null;
   if (!partyId) {
     showElectionError('You need to be a party member to stand for election.');
     return;
@@ -1064,7 +1077,7 @@ function renderOptionCard(tier, race, eyebrow, titleLead, blurb, resolveTicks) {
 }
 
 async function confirmElection(ctx) {
-  const partyId = ctx?.party?.id || ctx?.faction?.politician_party_id || null;
+  const partyId = ctx?.party?.id || null;
   const btn = document.getElementById('em-confirm');
   if (!partyId || !btn) return;
   btn.disabled = true;
