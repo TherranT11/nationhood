@@ -413,12 +413,14 @@ function renderHero(shard) {
   const last  = politician.leader_last_name  || '';
   const ini = (((first[0] || '') + (last[0] || '')).toUpperCase()) || '—';
   const display = (first || last) ? (first + ' ' + last).trim() : (politician.faction_name || 'Politician');
-  // Hero pill repurposed: was "Career" sourced from politician_career,
-  // now "Affiliation" with a "Member of the Party" baseline when no
-  // specific party position (Leader / Deputy / Whip) is in flight.
-  // politician_career still acts as the override when set so existing
-  // career-track values keep surfacing; only the unset default moves.
-  const career = politician.politician_career || 'Member of the Party';
+  // Hero pill — Affiliation. Derives from the live party FK
+  // (politician_party_id → `party`), not from the politician_career
+  // text column. The text column was added in 20270355 with DEFAULT
+  // 'Independent' and is never updated by the join / leave flow, so
+  // it goes stale the moment a politician joins. Reading the joined
+  // party row keeps this in agreement with the Tier 0 rung on the
+  // Career page and the party-member surfaces.
+  const career = party?.faction_name || 'Independent';
   // Politicians age 1 year per 12 ticks, starting at 25. Same formula as the
   // topbar's currentAge (kept inline here because this page renders age into
   // the body too; if we ever need a third reader, extract to a helper).

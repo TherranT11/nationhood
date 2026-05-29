@@ -689,7 +689,7 @@ async function init() {
     console.error('politician-career: active_election fetch threw', err);
   }
 
-  render(ctx.faction, ctx.shard, ctx.nation);
+  render(ctx.faction, ctx.shard, ctx.nation, ctx.party);
   if (resolution) renderResolutionBanner(resolution);
   renderLadders(buildLadderState(ctx.party, activeRace), ctx);
   document.getElementById('loading').style.display = 'none';
@@ -768,8 +768,14 @@ function buildLadderState(party, activeRace) {
   };
 }
 
-function render(politician, shard, nation) {
-  const career = politician.politician_career || 'Independent';
+function render(politician, shard, nation, party) {
+  // Career label derives from the live party FK (politician_party_id
+  // → ctx.party), not from the politician_career text column. The
+  // text column was added in 20270355 with DEFAULT 'Independent' and
+  // is never updated by the join / leave flow, so it goes stale the
+  // moment a politician joins a party. The Tier 0 Party Member rung
+  // already reads the live FK; this brings the header into agreement.
+  const career = party?.faction_name || 'Independent';
   const { lead, tail } = splitCareerTitle(career);
   const ini = initials(politician.leader_first_name, politician.leader_last_name, politician.faction_name);
   const age = ageNow(politician, shard?.current_tick);
@@ -781,10 +787,12 @@ function render(politician, shard, nation) {
   document.getElementById('cc-title-lead').textContent = lead;
   document.getElementById('cc-title-tail').textContent = tail;
 
-  // Subtitle: age · nation · current-position note. Independent gets the
-  // explicit "no current position" line so the mock's "serving in the
-  // Ministry of …" slot doesn't render empty.
-  const positionNote = career === 'Independent' ? 'no current position' : `serving as ${career}`;
+  // Subtitle: age · nation · affiliation note. Independents get the
+  // explicit "no current position" line so the mock's "serving in
+  // the Ministry of …" slot doesn't render empty; party members read
+  // "member of {party}". When the column grows to carry a held
+  // office (Senator / MP / Whip), the position takes precedence here.
+  const positionNote = party ? `member of ${party.faction_name}` : 'no current position';
   document.getElementById('cc-subtitle').textContent =
     `Age ${age} · ${nationName} · ${positionNote}`;
 
@@ -792,15 +800,15 @@ function render(politician, shard, nation) {
   document.getElementById('cc-positions').textContent = '0';
   document.getElementById('cc-positions-sub').textContent = '—';
 
-  // Affiliations — the Independent → "None" mapping is the same rule the
-  // home page uses for the AFFILIATION anchor message, intentionally
-  // mirrored so the two surfaces agree.
-  if (career === 'Independent') {
+  // Affiliations — derived from the same party FK as the title above,
+  // matching the home page AFFILIATION anchor's rule (also FK-derived)
+  // so the two surfaces never disagree.
+  if (party) {
+    document.getElementById('cc-affiliations').textContent = party.faction_name;
+    document.getElementById('cc-affiliations-sub').textContent = 'active affiliation';
+  } else {
     document.getElementById('cc-affiliations').textContent = 'None';
     document.getElementById('cc-affiliations-sub').textContent = 'no parties, no movements';
-  } else {
-    document.getElementById('cc-affiliations').textContent = career;
-    document.getElementById('cc-affiliations-sub').textContent = 'active affiliation';
   }
 
   document.getElementById('cc-length').textContent = `${years} Year${years === 1 ? '' : 's'}`;

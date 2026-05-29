@@ -32,6 +32,13 @@
 .mod-section__head { font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
   color:#7a7468; font-weight:600; padding-bottom:8px; margin-bottom:12px;
   border-bottom:0.5px solid rgba(255,255,255,0.06); }
+/* Two-up grid for the cards within a category: first card sits on the
+   left half, the next on the right; subsequent rows wrap the same way.
+   The grid gap replaces the per-card bottom margin so spacing is even
+   in both directions; .mod-card keeps its 10px margin for any
+   non-gridded reuse. Single column on phone. */
+.mod-section__grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+.mod-section__grid > .mod-card { margin-bottom:0; }
 
 /* Modifier card */
 .mod-card { background:#0f1212; border:0.5px solid rgba(255,255,255,0.05);
@@ -68,6 +75,7 @@
   .content { padding:20px 14px 16px; }
   .page-title { font-size:24px; }
   .mod-card { padding:12px 14px; }
+  .mod-section__grid { grid-template-columns:1fr; }
 }
 </style>
 </head>
@@ -201,7 +209,9 @@ function renderSection(category, mods) {
   return (
     `<div class="mod-section">` +
       `<div class="mod-section__head">${escapeHtml(category)}</div>` +
-      mods.map(renderCard).join('') +
+      `<div class="mod-section__grid">` +
+        mods.map(renderCard).join('') +
+      `</div>` +
     `</div>`
   );
 }
