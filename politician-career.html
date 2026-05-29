@@ -705,6 +705,15 @@ function renderResolutionBanner(r) {
       sentences.push(`${escHtml(reward.party_name)} gained +2 approval (now ${Math.round(Number(reward.new_value) || 0)}%).`);
     }
   }
+  const statReward = r.stat_reward;
+  if (won && statReward) {
+    const statLabel = statReward.kind === 'charisma' ? 'Charisma'
+                    : statReward.kind === 'credibility' ? 'Credibility'
+                    : null;
+    if (statLabel) {
+      sentences.push(`Your ${statLabel} rose to ${Number(statReward.new_value) || 0}.`);
+    }
+  }
   if (deltaLabel) {
     sentences.push(`Influence ${deltaLabel}.`);
   }
