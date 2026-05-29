@@ -416,10 +416,13 @@ const PARTY_OFFICE_RUNGS = [
     name: 'Election Candidate',
     held:        (s) => !!s.activeRace,
     descIfHeld:  (s) => {
+      // ticks here = "act windows remaining including this one". The
+      // resolve RPC fires when current > resolve_tick (strictly past),
+      // so the resolve_tick itself is the player's final act window.
       const ticks = Math.max(0, (s.activeRace?.resolve_tick ?? 0) - (s.currentTick ?? 0));
       const where = s.activeRace?.district || 'an election';
       const opp   = (s.activeRace?.opp_first || '') + ' ' + (s.activeRace?.opp_last || '');
-      const when  = ticks <= 0 ? 'resolves this tick' : `resolves in ${ticks} tick${ticks === 1 ? '' : 's'}`;
+      const when  = ticks <= 0 ? 'final tick — act now' : `${ticks} tick${ticks === 1 ? '' : 's'} of campaigning left`;
       return `Standing in the ${where} race against ${opp.trim() || 'an opponent'} — ${when}.`;
     },
     descIfNot:   (s) => s.partyId
