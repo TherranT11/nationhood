@@ -770,11 +770,10 @@ function buildLadderState(party, activeRace) {
 
 function render(politician, shard, nation, party) {
   // Career label derives from the live party FK (politician_party_id
-  // → ctx.party), not from the politician_career text column. The
-  // text column was added in 20270355 with DEFAULT 'Independent' and
-  // is never updated by the join / leave flow, so it goes stale the
-  // moment a politician joins a party. The Tier 0 Party Member rung
-  // already reads the live FK; this brings the header into agreement.
+  // → ctx.party). The old factions.politician_career text column was
+  // dropped after every surface stopped reading it (see commit log
+  // around 20270410); the Tier 0 Party Member rung reads the same FK
+  // so the header and the rung always agree.
   const career = party?.faction_name || 'Independent';
   const { lead, tail } = splitCareerTitle(career);
   const ini = initials(politician.leader_first_name, politician.leader_last_name, politician.faction_name);

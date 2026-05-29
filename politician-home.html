@@ -433,9 +433,9 @@ function renderHero(shard) {
   document.getElementById('hero-age').textContent = age;
   document.getElementById('hero-nation').textContent = (nation && nation.name) || '—';
   document.getElementById('hero-career').textContent = career;
-  // Affiliation reads from the looked-up movement_party (ctx.party set by
-  // bootstrapPolitician). politician_career is the career-title track and
-  // is unrelated to party membership; it's not a fallback here.
+  // Affiliation reads from the looked-up movement_party (ctx.party set
+  // by bootstrapPolitician). Same source the AFFILIATION pill above
+  // reads, so the two surfaces never disagree.
   document.getElementById('hero-affiliation').textContent = party
     ? `Party Member of ${party.faction_name}`
     : NO_AFFILIATION_MESSAGE;
