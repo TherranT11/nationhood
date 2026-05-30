@@ -436,7 +436,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle } from './js/utils.js';
+import { officeTitle, tickToDate } from './js/utils.js';
 
 const START_AGE = 25;
 const TICKS_PER_AGE_YEAR = 12;
@@ -552,12 +552,29 @@ const PARTY_OFFICE_RUNGS = [
 // renderRungs() can render it; tierNum is overridden to 0 so the
 // rendered label reads "TIER 0 · MEMBERSHIP" rather than the default
 // index-derived tier.
+// Term-end tick by office. Member of Parliament's term tracks the
+// nation's general-election cycle (same tick the assembly reseats);
+// Community Organizer's is a flat 12-tick term from when they won.
+// Returns null when no term applies (no office, or office without a
+// scheduled end).
+function termEndTickFor(state) {
+  if (state.office === 'member_of_parliament') return state.nextGeneralElectionTick || null;
+  if (state.office === 'community_organizer')  return (state.officeWonAtTick || 0) + 12;
+  return null;
+}
+
 const PARTY_MEMBER_TIER0 = {
   name: 'Party Member',
   tierNum: 0,
   tierName: 'MEMBERSHIP',
   held:        (s) => !!s.partyId,
-  descIfHeld:  (s) => `You are a card-carrying member of ${s.partyName}.`,
+  descIfHeld:  (s) => {
+    const base = `You are a card-carrying member of ${s.partyName}.`;
+    const endTick = termEndTickFor(s);
+    if (!endTick) return base;
+    const remaining = Math.max(0, endTick - s.currentTick);
+    return `${base} Term Ends: ${tickToDate(endTick)} (${remaining} Tick${remaining === 1 ? '' : 's'} Remaining)`;
+  },
   descIfNot:   ()  => 'You are not a member of a political party. Membership unlocks both office ladders below.',
   actionIfNot:  { label: 'Join Political Party',  kind: 'primary',   href: 'politician-movements.html?openJoin=1' },
   actionIfHeld: { label: 'Leave Political Party', kind: 'secondary', action: 'leave-party' },
