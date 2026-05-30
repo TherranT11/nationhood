@@ -23,7 +23,7 @@
 -- Same multiplier 20270172_nation_cost_scaling.sql's begin_construction
 -- uses:
 --   col_factor = 0.5 + cost_of_living / 100              (0.5 .. 1.5)
---   inf_factor = 0.5 + (100 − physical_infrastructure) / 100
+--   inf_factor = 0.5 + (100 − infrastructure) / 100
 --                                                        (0.5 .. 1.5)
 --   multiplier = col_factor × inf_factor                 (0.25 .. 2.25)
 -- A high-CoL, low-infrastructure nation makes founding ~2x as
@@ -61,7 +61,7 @@ RETURNS numeric
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
 AS $$
     SELECT (0.5 + COALESCE(cost_of_living, 50) / 100.0)
-         * (0.5 + (100 - COALESCE(physical_infrastructure, 50)) / 100.0)
+         * (0.5 + (100 - COALESCE(infrastructure, 50)) / 100.0)
       FROM nations WHERE id = p_nation_id;
 $$;
 GRANT EXECUTE ON FUNCTION public.nation_construction_cost_multiplier(uuid) TO authenticated;
