@@ -165,9 +165,11 @@
    on this surface is by definition a member of THIS party, so the cell
    carried no per-row signal. When held-office tracking lands (MP /
    Whip / Senator / Minister), a new column slots back in here. */
-.mem-row { display:grid; grid-template-columns:38px 1fr 60px 80px;
+.mem-row { display:grid; grid-template-columns:38px 1fr 150px 60px 80px;
   gap:14px; align-items:center; padding:11px 4px;
   border-bottom:0.5px solid rgba(255,255,255,0.04); font-size:12px; }
+.mem-affil { color:#cfcabf; font-size:11px; }
+.mem-affil.office { color:#7a9aab; }
 .mem-row:last-child { border-bottom:none; }
 .mem-row.header { font-size:8px; letter-spacing:0.11em; color:#666;
   border-bottom-color:rgba(255,255,255,0.08); padding-bottom:8px;
@@ -299,7 +301,7 @@
   .body-grid.has-side { grid-template-columns:1fr; }
   .chat-thread { max-height:300px; }
   .mem-row { grid-template-columns:30px 1fr auto; }
-  .mem-row .mem-age { display:none; }
+  .mem-row .mem-age, .mem-row .mem-affil { display:none; }
   .biz-grid { grid-template-columns:1fr; }
   .biz-modal { max-width:100%; }
 }
@@ -401,7 +403,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { safeHexColor, factionInitials, tickToYear } from './js/utils.js';
+import { safeHexColor, factionInitials, tickToYear, officeTitle } from './js/utils.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
@@ -447,7 +449,7 @@ async function init() {
       .is('abandoned_at', null)
       .maybeSingle(),
     _supabase.from('factions')
-      .select('id, leader_first_name, leader_last_name, leader_age, politician_influence')
+      .select('id, leader_first_name, leader_last_name, leader_age, politician_influence, politician_office')
       .eq('politician_party_id', partyId)
       .eq('faction_type', 'politician')
       .is('abandoned_at', null)
@@ -920,15 +922,23 @@ function renderMembers(members, accent) {
     const name = [m.leader_first_name, m.leader_last_name].filter(Boolean).join(' ') || '—';
     const youBadge = m.id === _viewerPolId ? ' <span class="you">You</span>' : '';
     const age = (m.leader_age != null) ? String(Number(m.leader_age)) : '—';
+    // Affiliation = office title when an office is held (Community
+    // Organizer / Member of Parliament — see OFFICE_TITLES in
+    // js/utils.js); otherwise plain "Party Member". Office-holders get
+    // an accent color so they pop out of the list.
+    const office = m.politician_office || null;
+    const affilText = office ? officeTitle(office) : 'Party Member';
+    const affilCls  = office ? 'mem-affil office' : 'mem-affil';
     return `<div class="mem-row">
       <div class="mem-badge" style="background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;">${escHtml(factionInitials(name, null))}</div>
       <div class="mem-name">${escHtml(name)}${youBadge}</div>
+      <div class="${affilCls}">${escHtml(affilText)}</div>
       <div class="mem-age">${escHtml(age)}</div>
       <div class="mem-inf">${Number(m.politician_influence) || 0}</div>
     </div>`;
   }).join('');
   host.innerHTML = `<div class="mem-row header">
-    <span></span><span>Name</span><span>Age</span><span style="text-align:right;">Influence</span>
+    <span></span><span>Name</span><span>Affiliation</span><span>Age</span><span style="text-align:right;">Influence</span>
   </div>${rows}`;
 }
 
