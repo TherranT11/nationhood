@@ -90,6 +90,8 @@
 .bill-card__change { font-size:11px; color:#888; margin:6px 0; line-height:1.5; }
 .bill-card__change .from { color:#666; }
 .bill-card__change .to   { color:#7a9aab; font-weight:500; }
+.bill-card__meta { font-size:10px; color:#666; margin:4px 0 6px;
+  letter-spacing:0.03em; }
 .bill-card__stance { font-size:10px; color:#666; margin-bottom:8px;
   letter-spacing:0.04em; line-height:1.6; }
 .bill-card__stance .pos { color:#7ac3a1; }
@@ -333,7 +335,9 @@ async function renderBillsAndPropose(nationId, ctx) {
                status, proposed_at_tick, close_at_tick, yes_seats, no_seats, created_at,
                policy:policies!policy_id(policy_name, major_sector),
                current:policy_options!current_option_id(option_name),
-               proposed:policy_options!proposed_option_id(option_name)`)
+               proposed:policy_options!proposed_option_id(option_name),
+               proposer:factions!proposer_politician_id(leader_first_name, leader_last_name),
+               proposer_party:factions!proposer_party_id(faction_name)`)
       .eq('nation_id', nationId)
       .order('created_at', { ascending: false })
       .limit(10),
@@ -487,6 +491,17 @@ function renderBillCard(b, viewerVote, currentTick) {
       </div>`;
   }
 
+  // Proposer attribution: "Mariana Castillo · Partido Patria Roja"
+  // when both name and party are present; falls back gracefully if
+  // either is missing (joined faction was abandoned, party deleted).
+  const proposerName = [b.proposer?.leader_first_name, b.proposer?.leader_last_name].filter(Boolean).join(' ').trim();
+  const partyName    = b.proposer_party?.faction_name || '';
+  const propTxt = proposerName && partyName ? `${proposerName} · ${partyName}`
+                : proposerName               ? proposerName
+                : partyName                  ? partyName
+                :                              '';
+  const propRow = propTxt ? `<div class="bill-card__meta">Proposed by ${escapeHtml(propTxt)}</div>` : '';
+
   return `<div class="bill-card ${isVoting ? 'voting' : ''}">
     <div class="bill-card__head">
       <div class="bill-card__policy">${escapeHtml(policyName)}</div>
@@ -495,6 +510,7 @@ function renderBillCard(b, viewerVote, currentTick) {
     <div class="bill-card__change">
       <span class="from">${escapeHtml(fromName)}</span> → <span class="to">${escapeHtml(toName)}</span>
     </div>
+    ${propRow}
     ${fmtStance(b.archetype_alignment)}
     ${row}
   </div>`;
