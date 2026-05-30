@@ -98,12 +98,7 @@
   .ind-trade-boost.down{color:var(--red);border:0.5px solid rgba(200,122,122,0.3);background:rgba(200,122,122,0.06);}
 
   .ind-strength{display:flex;align-items:center;gap:11px;flex-shrink:0;}
-  .str-formula{font-size:9px;color:var(--mut);font-family:monospace;text-align:right;line-height:1.5;}
-  .str-formula .base{color:#bbb;}
-  .str-formula .plus{color:var(--green);font-weight:600;}
-  .str-formula .note{font-size:8px;color:var(--faint);}
   .str-final{font-size:22px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums;line-height:1;}
-  .str-of{font-size:10px;color:var(--faint);font-weight:500;}
   .str-final.low{color:var(--red);}
   .str-final.mid{color:var(--amber);}
   .str-final.high{color:var(--green);}
@@ -347,9 +342,8 @@ async function init() {
   document.getElementById('ph-eyebrow').textContent =
     `— INDUSTRIES & CORPORATIONS · ${(nation.name || '').toUpperCase()} —`;
   document.getElementById('ph-sub').innerHTML =
-    `All industries operating in ${escapeHtml(nation.name)}, ranked by strength on a scale of 0 to 10. ` +
-    `Strength is built from a sector's natural base in this country plus the corporations operating in it — ` +
-    `<strong>+1 strength per two corporations</strong>.`;
+    `All industries operating in ${escapeHtml(nation.name)}, ranked by strength &mdash; ` +
+    `the natural standing of each sector in this country.`;
 
   await renderEconomy(nation.id);
 
@@ -384,9 +378,9 @@ async function renderEconomy(nationId) {
   }
 
   // Per-nation natural-base strengths from 20270410. Missing rows
-  // fall through to base 0 on the strengthFor side — same fallback
-  // a nation that hasn't been authored yet uses. Soft-fail logs and
-  // keeps rendering; the corps + bonus still surface.
+  // fall through to base 0 via baseOf() — same fallback a nation
+  // that hasn't been authored yet uses. Soft-fail logs and keeps
+  // rendering; the corps list under each industry still surfaces.
   const baseByKey = new Map();
   try {
     const { data, error } = await _supabase
@@ -411,6 +405,9 @@ async function renderEconomy(nationId) {
   }
 
   // Per-sector aggregates for the summary bar and the cat-head stats.
+  // Strength is the per-industry base (nation_industry_bases) as-is —
+  // no corp bonus, no upper cap; corp counts still aggregate as a
+  // separate signal under the sector header.
   const sectorAgg = new Map();
   for (const sector of SECTORS) {
     let corpCount = 0;
@@ -418,8 +415,7 @@ async function renderEconomy(nationId) {
     for (const ind of sector.industries) {
       const indCorps = corpsByIndustry.get(ind.key) || [];
       corpCount += indCorps.length;
-      const { final } = strengthFor(baseByKey.get(ind.key) ?? 0, indCorps.length);
-      strengthSum += final;
+      strengthSum += baseOf(baseByKey.get(ind.key));
     }
     const avg = sector.industries.length ? (strengthSum / sector.industries.length) : 0;
     sectorAgg.set(sector.key, {
@@ -433,20 +429,20 @@ async function renderEconomy(nationId) {
   sectorsHost.innerHTML = SECTORS.map(s => renderSectorSection(s, sectorAgg.get(s.key), corpsByIndustry, baseByKey)).join('');
 }
 
-// Strength formula: base (per-nation, per-industry from
-// nation_industry_bases) + floor(corps / 2), capped at 10. The base
-// is passed in by the caller so this function stays pure — the
-// lookup happens once in renderEconomy, the value threads through.
-function strengthFor(base, corpCount) {
-  const safeBase = Number.isFinite(Number(base)) ? Number(base) : 0;
-  const bonus = Math.floor((corpCount || 0) / 2);
-  const final = Math.min(10, safeBase + bonus);
-  return { base: safeBase, bonus, final };
+// One source for the base coercion: any non-numeric input (null,
+// undefined, string, NaN) falls to 0 so a missing nation_industry_bases
+// row degrades cleanly.
+function baseOf(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
 }
 
-function strengthTierClass(final) {
-  if (final <= 3) return 'low';
-  if (final <= 6) return 'mid';
+// Strength tier — colour-codes the number on the industry card so the
+// page reads at a glance. Thresholds match the 0..10 scale stored on
+// nation_industry_bases (CHECK constraint in 20270410).
+function strengthTierClass(strength) {
+  if (strength <= 3) return 'low';
+  if (strength <= 6) return 'mid';
   return 'high';
 }
 
@@ -480,14 +476,11 @@ function renderSectorSection(sector, agg, corpsByIndustry, baseByKey) {
 }
 
 function renderIndustryCard(sector, ind, corps, baseValue) {
-  const { base, bonus, final } = strengthFor(baseValue, corps.length);
-  const tier = strengthTierClass(final);
+  const strength = baseOf(baseValue);
+  const tier = strengthTierClass(strength);
   const corpsHtml = corps.length
     ? corps.map(c => renderCorpRow(sector, c)).join('')
     : `<div class="no-corps">No corporations operating in this industry.</div>`;
-  const noteHtml = bonus > 0
-    ? `<br><span class="note">(${corps.length} corps ÷ 2)</span>`
-    : '';
   return (
     `<div class="industry ${sector.key}">` +
       `<div class="ind-row">` +
@@ -497,8 +490,7 @@ function renderIndustryCard(sector, ind, corps, baseValue) {
           renderTradeLine(ind) +
         `</div>` +
         `<div class="ind-strength">` +
-          `<div class="str-formula"><span class="base">base ${base}</span> <span class="plus">+ ${bonus}</span>${noteHtml}</div>` +
-          `<div class="str-final ${tier}">${final}<span class="str-of">/10</span></div>` +
+          `<div class="str-final ${tier}">${strength}</div>` +
         `</div>` +
       `</div>` +
       `<div class="corps">` +
