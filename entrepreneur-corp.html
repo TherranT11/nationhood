@@ -4084,7 +4084,7 @@ function initials(s, n) {
       let requestPanelHtml = '';
       if (canView) {
         const { data: myReqs, error: mrErr } = await _supabase.from('ent_construction_contracts')
-          .select('id, name, building_type, budget, build_cost, status, timeline_ticks, progress_ticks, winning_bid, nation:nations!nation_id(name), winner:entrepreneur_corps!winner_corp_id(name)')
+          .select('id, name, building_type, build_cost, status, timeline_ticks, progress_ticks, winning_bid, nation:nations!nation_id(name), winner:entrepreneur_corps!winner_corp_id(name)')
           .eq('issuer_corp_id', id).not('building_type', 'is', null)
           .in('status', ['open', 'active']).order('created_at_tick', { ascending: false });
         if (mrErr) console.warn('[entrepreneur-corp] my requests fetch error:', mrErr.message);
@@ -4113,7 +4113,7 @@ function initials(s, n) {
           const builderNote = (r.status !== 'open' && r.winner?.name)
             ? ` · built by ${escapeHtml(r.winner.name)}` : '';
           const head = (badge) => `<div class="cf-row"><div><div class="who">${escapeHtml(buildingTypeLabel(r.building_type))} · ${escapeHtml(r.name)}</div>
-            <div class="sub">${escapeHtml(r.nation?.name || '—')} · budget ${fmtUsd(Number(r.budget) || 0)} · local-build cost ${fmtUsd(Number(r.build_cost) || 0)}</div></div>${badge}</div>`;
+            <div class="sub">${escapeHtml(r.nation?.name || '—')} · local-build cost ${fmtUsd(Number(r.build_cost) || 0)}</div></div>${badge}</div>`;
           if (r.status !== 'open') {
             return head(`<span class="num green">building ${r.progress_ticks}/${r.timeline_ticks}${r.winning_bid ? ` · ${fmtUsd(Number(r.winning_bid))}` : ''}</span>`);
           }
@@ -4149,7 +4149,7 @@ function initials(s, n) {
         // formula mirrors construction_distance_multiplier() in
         // 20270369 and the SQL settlement is the canonical source.
         const { data: openReqs, error: orErr } = await _supabase.from('ent_construction_contracts')
-          .select('id, name, building_type, budget, build_cost, issuer_name, nation_id, nation:nations!nation_id(name), mybid:ent_construction_bids(bid_amount, bidder_corp_id)')
+          .select('id, name, building_type, build_cost, issuer_name, nation_id, nation:nations!nation_id(name), mybid:ent_construction_bids(bid_amount, bidder_corp_id)')
           .eq('status', 'open').not('building_type', 'is', null)
           .neq('issuer_corp_id', id).order('bidding_closes_tick', { ascending: true });
         if (orErr) console.warn('[entrepreneur-corp] open requests fetch error:', orErr.message);
@@ -4177,9 +4177,9 @@ function initials(s, n) {
           const label = buildingTypeLabel(r.building_type);
           const base = Number(r.build_cost) || 0;
           const yourCost = Math.ceil(base * costMultiplierFor(r.nation_id, myHq, proxByNation));
-          const bidBtn = ownerOnly(`<button class="ap-btn-small list rc-bid-btn" data-cid="${r.id}" data-label="${escapeHtml(label)}" data-cost="${yourCost}" data-budget="${Number(r.budget) || 0}">${mine ? `bid ${fmtUsd(Number(mine.bid_amount))}` : 'Bid'}</button>`);
+          const bidBtn = ownerOnly(`<button class="ap-btn-small list rc-bid-btn" data-cid="${r.id}" data-label="${escapeHtml(label)}" data-cost="${yourCost}">${mine ? `bid ${fmtUsd(Number(mine.bid_amount))}` : 'Bid'}</button>`);
           return `<div class="cf-row"><div><div class="who">${escapeHtml(label)} · ${escapeHtml(r.name)}</div>
-            <div class="sub">${escapeHtml(r.nation?.name || '—')} · by ${escapeHtml(r.issuer_name || '—')} · your cost ${fmtUsd(yourCost)} · budget ${fmtUsd(Number(r.budget) || 0)}</div></div>
+            <div class="sub">${escapeHtml(r.nation?.name || '—')} · by ${escapeHtml(r.issuer_name || '—')} · your cost ${fmtUsd(yourCost)}</div></div>
             ${bidBtn}</div>`;
         };
         const openHtml = open.length ? open.map(orRow).join('') : '<div class="sh-empty">No open construction requests.</div>';
@@ -4217,7 +4217,7 @@ function initials(s, n) {
         const rcBtn = document.getElementById('rc-open-btn');
         if (rcBtn) rcBtn.addEventListener('click', openRequestModal);
         pj.querySelectorAll('.rc-bid-btn').forEach(btn => btn.addEventListener('click', () =>
-          openBidModal(btn.dataset.cid, btn.dataset.label, Number(btn.dataset.cost), Number(btn.dataset.budget))));
+          openBidModal(btn.dataset.cid, btn.dataset.label, Number(btn.dataset.cost))));
         pj.querySelectorAll('.cb-accept-btn').forEach(btn => btn.addEventListener('click', () => handleConstructionBid('accept', btn)));
         pj.querySelectorAll('.cb-reject-btn').forEach(btn => btn.addEventListener('click', () => handleConstructionBid('reject', btn)));
         pj.querySelectorAll('.cr-cancel-btn').forEach(btn => btn.addEventListener('click', () => handleCancelConstructionRequest(btn)));
@@ -4517,7 +4517,6 @@ function initials(s, n) {
     const reqTicks = (t, tier) => isPlantType(t) ? (PLANT_PROFILE[t]?.ticks || 0) : (TIER_TABLE[tier]?.ticks || 0);
     const RC_REASON = {
       wrong_sector: 'Your corp can’t own this building type.',
-      budget_below_floor: 'Budget must cover the construction cost.',
       insufficient_funds: 'Your treasury can’t cover the construction cost.',
       invalid_tier: 'Pick a valid tier.', invalid_rhq_tier: 'Regional HQs are Small/Medium/Large only.',
       nation_not_found: 'That nation no longer exists.', not_owner: 'Only the corp owner can request.',
@@ -4569,8 +4568,6 @@ function initials(s, n) {
             <select class="bm-select" id="rc-nation">${natOpts || '<option value="">No nations</option>'}</select>
             <div class="bm-label" id="rc-tier-label">Tier</div>
             <select class="bm-select" id="rc-tier"></select>
-            <div class="bm-label">Budget cap ($)</div>
-            <input type="number" class="bm-input" id="rc-budget" min="0" step="1000000">
             <div class="bm-label">Bidding window (ticks)</div>
             <input type="number" class="bm-input" id="rc-bidding" min="1" max="48" value="6">
             <div id="rc-preview" style="font-size:12px;color:#8aaa6a;margin:12px 0 0;line-height:1.5;"></div>
@@ -4588,7 +4585,6 @@ function initials(s, n) {
       const typeEl = document.getElementById('rc-type');
       const tierEl = document.getElementById('rc-tier');
       const tierLabel = document.getElementById('rc-tier-label');
-      const budgetEl = document.getElementById('rc-budget');
       const curNation = () => nationMap.get(document.getElementById('rc-nation').value);
       const renderTier = () => {
         const t = typeEl.value;
@@ -4606,10 +4602,8 @@ function initials(s, n) {
         const nation = curNation();
         const baseCost = scaledCost(reqBase(t, tier), nation);
         const dur   = scaledDuration(reqTicks(t, tier), nation);
-        if (!budgetEl.value || Number(budgetEl.value) < baseCost) budgetEl.value = baseCost;
-        budgetEl.min = baseCost;
         document.getElementById('rc-preview').innerHTML =
-          `Local-build cost: <b>${fmtUsd(baseCost)}</b> · build time ~<b>${dur} ticks</b><br>Every construction corp can bid; distant builders pay more (cost scales with proximity from their HQ). Any bid ≤ your budget is valid — bidders can bid at a loss if they want the work. Lowest qualifying bid wins at close.`;
+          `Local-build cost: <b>${fmtUsd(baseCost)}</b> · build time ~<b>${dur} ticks</b><br>Every construction corp can bid at any positive price — even below their own distance-adjusted cost. Lowest accepted bid wins at close (you can accept manually before then).`;
       };
       typeEl.onchange = () => { renderTier(); upd(); };
       tierEl.onchange = upd;
@@ -4624,19 +4618,16 @@ function initials(s, n) {
         if (!nationId) { errEl.textContent = 'Pick a nation.'; return; }
         const t = typeEl.value;
         const tier = isPlantType(t) ? 'small' : tierEl.value;   // server pins plant tier
-        const budget = Math.round(Number(budgetEl.value) || 0);
         const bidding = Math.max(1, Math.round(Number(document.getElementById('rc-bidding').value) || 6));
         submitting = true;
         const btn = document.getElementById('rc-submit'); btn.disabled = true; btn.textContent = 'Posting…'; errEl.textContent = '';
         try {
           const { data, error } = await _supabase.rpc('request_building_construction', {
             p_corp_id: id, p_name: name, p_building_type: t, p_nation_id: nationId,
-            p_tier: tier, p_budget: budget, p_bidding_ticks: bidding });
+            p_tier: tier, p_bidding_ticks: bidding });
           if (error) throw error;
           if (!data || !data.success) {
-            errEl.textContent = data?.reason === 'budget_below_floor'
-              ? `Budget must be at least ${fmtUsd(Number(data.floor) || 0)} (the construction cost).`
-              : (RC_REASON[data?.reason] || ('Failed: ' + (data?.reason || 'unknown')));
+            errEl.textContent = RC_REASON[data?.reason] || ('Failed: ' + (data?.reason || 'unknown'));
             submitting = false; btn.disabled = false; btn.textContent = 'Post Request'; return;
           }
           btn.textContent = 'POSTED ✓'; setTimeout(() => location.reload(), 600);
@@ -4700,20 +4691,20 @@ const handleCancelConstructionRequest = async (btn) => {
   }
 };
 
-const openBidModal = (contractId, label, yourCost, budget) => {
+const openBidModal = (contractId, label, yourCost) => {
   const ov = document.getElementById('rcb-overlay');
   if (!ov) return;
   let submitting = false;
-      // Bids can sit anywhere from $1 to the issuer's budget cap. Below
-      // your cost = loss (treasury absorbs the shortfall); above = profit.
-      // Live preview of bid − cost so the player sees the margin sign.
+      // Bids accept any positive amount — bidders may go above (profit),
+      // at (breakeven), or below (loss) their own distance-adjusted cost.
+      // Live preview shows the margin sign.
       ov.innerHTML = `
         <div class="bm-modal" style="max-width:420px;">
           <div class="bm-head"><div class="ti">Bid on <em>${escapeHtml(label)}</em></div><div class="bm-x" id="rcb-close">×</div></div>
           <div class="bm-body">
-            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Your cost to deliver: <b style="color:#cfcabf;">${fmtUsd(yourCost)}</b> (scales with distance from your HQ). Issuer budget cap: <b style="color:#cfcabf;">${fmtUsd(budget)}</b>. Bidding below your cost is allowed — the loss is real. Issuer may Accept any bid directly; otherwise the lowest qualifying bid wins at close.</div>
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Your cost to deliver: <b style="color:#cfcabf;">${fmtUsd(yourCost)}</b> (scales with distance from your HQ). Bid any positive amount — above your cost is profit, below is a real loss the treasury absorbs. Issuer may Accept your bid directly; otherwise the lowest accepted bid wins at close.</div>
             <div class="bm-label">Your bid ($)</div>
-            <input type="number" class="bm-input" id="rcb-amount" min="1" max="${budget}" step="1000000" value="${yourCost}">
+            <input type="number" class="bm-input" id="rcb-amount" min="1" step="1000000" value="${yourCost}">
             <div id="rcb-margin" style="font-size:11px;margin-top:6px;line-height:1.4;"></div>
             <div class="bm-err" id="rcb-err"></div>
           </div>
@@ -4746,9 +4737,7 @@ const openBidModal = (contractId, label, yourCost, budget) => {
             p_corp_id: id, p_contract_id: contractId, p_bid_amount: amount });
           if (error) throw error;
           if (!data || !data.success) {
-            errEl.textContent = data?.reason === 'over_budget'
-              ? `Bid exceeds the budget cap (${fmtUsd(Number(data.budget) || 0)}).`
-              : (RB_REASON[data?.reason] || ('Failed: ' + (data?.reason || 'unknown')));
+            errEl.textContent = RB_REASON[data?.reason] || ('Failed: ' + (data?.reason || 'unknown'));
             submitting = false; btn.disabled = false; btn.textContent = 'Place Bid'; return;
           }
           btn.textContent = 'BID PLACED ✓'; setTimeout(() => location.reload(), 600);
