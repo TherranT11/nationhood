@@ -277,7 +277,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { hfFmtBig, escapeHtml, escapeAttr, titleCase, fmtValuation, pctOwned } from './js/utils.js';
+import { hfFmtBig, escapeHtml, escapeAttr, titleCase, fmtValuation, pctOwned, industryTitleLabel } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 import { fetchCorpBookAggregates } from './js/corp-book-value.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
@@ -429,7 +429,7 @@ function renderHoldings(positions) {
       <div>
         <div class="ch-name">${escapeHtml(c.name || 'Corporation')}</div>
         <div class="ch-fields">
-          <span><span class="k">INDUSTRY</span><span class="v">${escapeHtml(titleCase(c.industry))}</span></span>
+          <span><span class="k">INDUSTRY</span><span class="v">${escapeHtml(industryTitleLabel(c.industry))}</span></span>
           <span><span class="k">TYPE</span><span class="v">${escapeHtml(typeLabel)}</span></span>
           <span><span class="k">HQ</span><span class="v">${escapeHtml(c.hq?.name || '—')}</span></span>
           <span><span class="k">OWNERSHIP</span><span class="v">${escapeHtml(ownership)}</span></span>

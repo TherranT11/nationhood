@@ -72,15 +72,44 @@ export function titleCase(s) {
 }
 
 /**
+ * Canonical title-case display names for entrepreneur corp industries.
+ * Single source — every site that shows an industry name reads from
+ * this map via industryLabel (uppercase pill form) or
+ * industryTitleLabel (title-case form for dashboards / dropdowns).
+ * Adding a new industry: add it here and both formatters pick it up.
+ */
+const INDUSTRY_LABELS = {
+    construction:           'Construction',
+    banking:                'Banking',
+    shipping:               'Shipping',
+    real_estate:            'Real Estate',
+    airline:                'Airline',
+    aviation_manufacturing: 'Aviation Manufacturing',
+    oil_and_gas:            'Oil & Gas',
+};
+
+/**
  * Display label for an entrepreneur corp industry / sector enum value.
- * Lowercase snake_case ('real_estate') → uppercase with spaces
- * ('REAL ESTATE'). NULL / empty → em-dash. Single source for the
- * transformation; all dashboard sites that show an industry pill or
- * subtitle should call this.
+ * Returns the canonical name in uppercase ('OIL & GAS', 'REAL ESTATE').
+ * NULL / empty → em-dash. Unknown industries fall back to a generic
+ * underscore→space transform so new industries aren't completely broken
+ * before they get added to INDUSTRY_LABELS.
  */
 export function industryLabel(s) {
     if (!s) return '—';
-    return String(s).toUpperCase().replace(/_/g, ' ');
+    const name = INDUSTRY_LABELS[s];
+    return name ? name.toUpperCase() : String(s).toUpperCase().replace(/_/g, ' ');
+}
+
+/**
+ * Title-case display label for an industry — used by the dashboard
+ * INDUSTRY field and the buyer-corp dropdowns where uppercase looks
+ * wrong. Same source map as industryLabel, so the two forms can't
+ * drift apart.
+ */
+export function industryTitleLabel(s) {
+    if (!s) return '—';
+    return INDUSTRY_LABELS[s] || titleCase(s);
 }
 
 /**
