@@ -465,6 +465,8 @@ const LADDERS = [
     } },
   { id: 'civil',      icon: '\u{1F91D}', name: 'Civil Society' },
   { id: 'underground',icon: '\u{1F3AD}', name: 'Underground' },
+  { id: 'navy',       icon: '\u{2693}',  name: 'Navy', rungs: () => NAVY_RUNGS,
+    footer: 'Admirals do not retire to fish. They retire to boards of directors, to ministries, to embassies — the Republic does not waste a man who has commanded the Fleet. Industry chairmanships, cabinet appointments, ambassadorial posts; the Fleet’s last command picks the path.' },
 ];
 
 // Shared rung shape consumed by renderRungs():
@@ -955,6 +957,81 @@ const NATIONAL_SECURITY_RUNGS = [
       { label: '☉ Set National Threat Doctrine', signature: true },
       { label: 'Authorize Black Programs', dark: true },
       'Sit on the NSC',
+    ],
+  },
+];
+
+// Navy rungs — the uniformed sea-service climb, Junior Officer through
+// Chief of Naval Operations. Mirrors the Army / Air Force pattern (when
+// those land): six tiers, rank in the title after a middle dot, combat-
+// flavoured actions painted as dark chips (boardings, blockades, hostile
+// engagements), the apex action painted as the steel-blue signature chip.
+// No naval office tracking yet, so every held() returns false; the rungs
+// render as inert flavor until that schema lands.
+const NAVY_RUNGS = [
+  {
+    name: 'Junior Officer · Lieutenant Junior Grade',
+    tierName: 'FIRST OFFICE',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You stand watches on the bridge of a warship of the Republic.',
+    descIfNot:   ()  => 'Fresh from the Naval Academy at Maldarra. Posted to a warship as a watch officer or division head — you stand watches on the bridge, run a small section of the crew, and learn the trade by doing it under the eye of officers who have done it longer.',
+    actions: [
+      'Stand the Watch',
+      { label: 'Lead a Boarding Party', dark: true },
+    ],
+  },
+  {
+    name: 'Department Head · Lieutenant Commander',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You run a department aboard a larger warship, or command a patrol craft of your own.',
+    descIfNot:   ()  => 'You run a department aboard a larger warship — operations, weapons, engineering, navigation — or you command a patrol craft of your own. Your first taste of real responsibility: men reporting to you, decisions you sign for, watches you set rather than stand.',
+    actions: [
+      'Command a Patrol Boat',
+      'Run a Department',
+    ],
+  },
+  {
+    name: 'Frigate Captain · Commander',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You hold command of a frigate or destroyer — a warship of the line.',
+    descIfNot:   ()  => 'Command of a frigate or destroyer — a warship of the line. Two hundred souls aboard. A ship’s worth of fuel, ammunition, electronics, and reputation in your hands. This is the rung where naval careers either take off or stall: captain a ship well and everything above is open to you; captain it badly and your career ends here.',
+    actions: [
+      'Command a Warship',
+      'Lead a Patrol Mission',
+      { label: 'Engage a Hostile Vessel', dark: true },
+    ],
+  },
+  {
+    name: 'Squadron Commander · Captain',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You direct multiple ships — a squadron in formation or a heavy cruiser with its auxiliaries.',
+    descIfNot:   ()  => 'Command of multiple ships — a squadron of three to five vessels operating in formation, or a heavy cruiser with its own auxiliaries. You no longer steer the ship; you direct ships. Officers junior to you have their own commands and report up.',
+    actions: [
+      'Command a Squadron',
+      'Lead a Naval Exercise',
+      { label: 'Conduct a Blockade', dark: true },
+    ],
+  },
+  {
+    name: 'Fleet Division Commander · Rear Admiral',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You command a fleet division — half the Navy answers to your operational orders.',
+    descIfNot:   ()  => 'Command of a fleet division — the entire Northern Fleet, or the entire Southern Fleet, depending on the Republic’s two-fleet structure. Strategic-level naval work. You attend Ministry briefings; foreign attachés know your name; you sign for the operational readiness of half the Navy.',
+    actions: [
+      'Command a Task Force',
+      'Plan a Fleet Operation',
+    ],
+  },
+  {
+    name: 'Chief of Naval Operations · Admiral',
+    tierName: 'APEX',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You head the Navy — the Fleet is yours to direct, modernize, commit, or keep in port.',
+    descIfNot:   ()  => 'The apex of the uniformed service. Head of the entire Navy. You sit at the table with the Chief of Army and the Air Marshal; you brief the Defense Council and the President; you carry the institutional voice of the Fleet in every room where naval interests are at stake.',
+    actions: [
+      { label: 'Command the Fleet', signature: true },
+      'Brief the Defense Council',
+      'Project Naval Power',
     ],
   },
 ];
