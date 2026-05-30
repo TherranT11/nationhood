@@ -38,8 +38,16 @@
 -- caller) reach it.
 --
 -- Bodies below = 20270433 with the inline gate replaced by the helper
--- call. Action math (rolls, stat updates, cooldown stamp, return
--- payload) is byte-for-byte identical.
+-- call. Dice rolls, stat thresholds, clamping, money math, and cooldown
+-- stamps are byte-for-byte identical.
+--
+-- One intentional payload tightening in floor_speech: 20270433 only
+-- populated party_name on the FAIL branch (via the ELSE clause's
+-- RETURNING) and returned NULL on PASS. 20270434 sources party_name
+-- from the helper context, so it's now set in both branches. The UI
+-- (fmtMpResult in politician-home.html) doesn't reference party_name
+-- on the PASS line, so this is invisible to players — but it makes
+-- the three RPCs' return shapes consistent.
 -- ════════════════════════════════════════════════════════════════════
 
 BEGIN;
