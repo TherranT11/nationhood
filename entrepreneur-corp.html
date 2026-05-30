@@ -4528,6 +4528,10 @@ function initials(s, n) {
       not_open: 'Bidding has closed.', contract_not_found: 'Request not found.',
       not_owner: 'Only the corp owner can bid.', invalid_amount: 'Enter a bid amount.',
       rejected: 'The issuer rejected your bid — you can’t bid on this request again.',
+      // Building requests posted after 20270429 have budget IS NULL so
+      // over_budget can't fire on them. Kept here as defensive coverage
+      // in case a legacy row (pre-backfill) or admin tooling sets one.
+      over_budget: 'That bid exceeds this request’s budget cap.',
     };
 
     // Per-bidder cost multiplier mirroring construction_distance_multiplier()
