@@ -403,7 +403,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { safeHexColor, factionInitials, tickToYear, officeTitle } from './js/utils.js';
+import { safeHexColor, factionInitials, officeTitle, fmtMoney } from './js/utils.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
@@ -445,7 +445,7 @@ async function init() {
   // typo'd politician_party_id on a different faction kind can't leak in.
   const [partyRes, membersRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_name, abbreviation, seats, popularity_pct, party_color, party_description, party_slogan, custom_logo_url, leader_first_name, leader_last_name, leader_age, deputy_first_name, deputy_last_name, deputy_age, whip_first_name, whip_last_name, whip_age, founded_tick, nation_id, nation:nations!nation_id(id, name, population, total_seats, government_type)')
+      .select('id, faction_name, abbreviation, seats, popularity_pct, party_color, party_description, party_slogan, custom_logo_url, leader_first_name, leader_last_name, leader_age, deputy_first_name, deputy_last_name, deputy_age, whip_first_name, whip_last_name, whip_age, party_funds, nation_id, nation:nations!nation_id(id, name, population, total_seats, government_type)')
       .eq('id', partyId)
       .eq('faction_type', 'movement_party')
       .is('abandoned_at', null)
@@ -496,7 +496,6 @@ function render(party, members) {
     isGov  ? '<span class="id-tag status-gov">&#9679; Governing</span>'
            : (totalSeats > 0 ? '<span class="id-tag status-opp">&#9679; Opposition</span>' : ''),
     isMine ? '<span class="id-tag you">&#9679; You are a member</span>' : '',
-    party.founded_tick != null ? `<span class="id-tag">Founded ${tickToYear(party.founded_tick)}</span>` : '',
     party.abbreviation ? `<span class="id-tag">${escHtml(party.abbreviation.toUpperCase())}</span>` : '',
   ].filter(Boolean).join(' ');
 
@@ -536,8 +535,8 @@ function render(party, members) {
           party.popularity_pct != null ? 'nation-wide support' : 'unrated')}
         ${statCell('Status', isGov ? 'In Power' : (totalSeats > 0 ? 'Opposition' : '—'),
           isGov ? `holds majority (${majority} needed)` : (totalSeats > 0 ? `${majority - seats} short of majority` : ''))}
-        ${statCell('Founded', party.founded_tick != null ? String(tickToYear(party.founded_tick)) : '—',
-          party.founded_tick != null ? `tick ${party.founded_tick}` : 'unknown')}
+        ${statCell('Party Funds', fmtMoney(Number(party.party_funds) || 0),
+          'in the party treasury')}
         ${statCell('Members', fmtMembers(membershipCount(members.length, party.nation?.population)),
           `${members.length === 1 ? '1 politician' : `${members.length} politicians`} on file`)}
       </div>
