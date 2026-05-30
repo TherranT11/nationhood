@@ -79,6 +79,11 @@
   text-transform:uppercase; padding:4px 8px; border-radius:3px;
   background:rgba(255,255,255,0.03); color:#777;
   border:0.5px solid rgba(255,255,255,0.08); cursor:not-allowed; }
+/* Steel-blue accent chip for a ladder's signature / apex action
+   (e.g. Foreign Service's Mediate a Press Claim). Triggered by
+   actions: [{ label, signature: true }] in the rung definition. */
+.rung-chip.rung-chip--signature { color:#7a9aab; background:#0e1218;
+  border-color:rgba(122,154,171,0.5); }
 .rung-btn { font-family:monospace; font-size:10px; letter-spacing:0.08em;
   text-transform:uppercase; padding:7px 14px; border-radius:3px;
   background:transparent; cursor:pointer; transition:all 0.15s; }
@@ -391,6 +396,7 @@ const LADDERS = [
   { id: 'legislature',icon: '⚖️',       name: 'Legislature',         rungs: () => LEGISLATURE_RUNGS },
   { id: 'judiciary',  icon: '\u{1F3DB}\u{FE0F}', name: 'Judiciary',  rungs: () => JUDICIARY_RUNGS,
     footer: 'The judiciary does not campaign or command — it waits for cases, then rules. Its power is reactive but absolute: a Chief Justice can undo what the Legislature passed, jail a Minister, or declare a war footing unlawful. The only limit is the independence that makes those rulings stick.' },
+  { id: 'foreign',    icon: '\u{1F30D}', name: 'Foreign Service',    rungs: () => FOREIGN_SERVICE_RUNGS },
   { id: 'civil',      icon: '\u{1F91D}', name: 'Civil Society' },
   { id: 'underground',icon: '\u{1F3AD}', name: 'Underground' },
 ];
@@ -602,6 +608,65 @@ const JUDICIARY_RUNGS = [
     descIfNot:   ()  => 'Lead the highest court in the land. Your word on the law is final — and binds the other branches.',
     actions:     ['Rule on Constitutionality', 'Strike Down Legislation', 'Try a High Official', 'Void State Action'],
     accessNote:  'appointed',
+  },
+];
+
+// Foreign Service rungs — the diplomatic arc. Tier 1 is the entry
+// (right-side [Join the Service]; greyed-out today, will wire when
+// the recruiting flow lands). Apex Tier 6 carries the signature
+// action 'Mediate a Press Claim' — flagged with signature:true so
+// renderRungs paints the chip in steel-blue to mark it as the
+// ladder's distinguishing power. Same held-always-false posture as
+// every other rung above Tier 0 today; office-tracking schema lights
+// the climb when it lands.
+const FOREIGN_SERVICE_RUNGS = [
+  {
+    name: 'Foreign Service Officer / Attaché',
+    tierName: 'FIRST OFFICE',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You hold a junior posting at an embassy abroad — files, contacts, the trade.',
+    descIfNot:   ()  => 'Junior posting to an embassy abroad. You file reports, cultivate contacts, and learn the trade.',
+    actions:     ['File a Report', 'Cultivate a Contact'],
+    actionIfNot: { label: 'Join the Service', kind: 'disabled' },
+  },
+  {
+    name: 'Consul / Cultural Attaché',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You run a consulate or hold a specialised role abroad — commercial, cultural, military.',
+    descIfNot:   ()  => 'Run a consulate or hold a specialised role abroad — commercial, cultural, military. You represent your nation in a defined sphere.',
+    actions:     ['Issue Visas', 'Host a Reception'],
+  },
+  {
+    name: 'Deputy Chief of Mission',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You are the second-in-command of an embassy, running the day-to-day.',
+    descIfNot:   ()  => 'Second-in-command of an embassy. You run the day-to-day while the Ambassador handles ceremony — real working diplomacy.',
+    actions:     ['Conduct Negotiations', 'Send Sensitive Cable'],
+  },
+  {
+    name: 'Ambassador',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You are your nation’s official representative to a foreign capital.',
+    descIfNot:   ()  => 'Your nation’s official representative to a foreign capital. You speak for your country in another country.',
+    actions:     ['Present Credentials', 'Lodge a Protest'],
+  },
+  {
+    name: 'Special Envoy / Roving Ambassador',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You are a mobile diplomat assigned to specific crises — peace talks, hostage negotiations.',
+    descIfNot:   ()  => 'A mobile diplomat assigned to specific crises — peace talks, hostage negotiations, mediating between third parties.',
+    actions:     ['Open a Channel', 'Shuttle Diplomacy'],
+  },
+  {
+    name: 'Director of the Diplomatic Corps / Secretary-General',
+    tierName: 'APEX',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You lead the Foreign Ministry — or chair a supranational body — shaping foreign policy at the highest level.',
+    descIfNot:   ()  => 'The apex — permanent professional head of the Foreign Ministry, or chief of a supranational body. You shape your nation’s foreign policy and represent it on the world stage.',
+    actions:     [
+      { label: '⚔ Mediate a Press Claim', signature: true },
+      'Direct the Corps',
+    ],
   },
 ];
 
@@ -904,8 +969,18 @@ function renderRungs(rungs, state) {
                     : '';
     const tierHtml = `<div class="rung__tier ${tierClass}">${escHtml(`TIER ${tierNum}${tierName ? ' · ' + tierName : ''}`)}</div>`;
 
+    // Action chips accept either a string ('Vote on Committee') or an
+    // object ({ label, signature: true }). signature=true paints the
+    // chip in steel-blue to mark the ladder's distinguishing apex
+    // action (e.g. Foreign Service's Mediate a Press Claim). String
+    // form stays the common case so the older ladders don't need a
+    // touch-up.
     const chipsHtml = (Array.isArray(r.actions) && r.actions.length)
-      ? `<div class="rung__chips">${r.actions.map(a => `<span class="rung-chip">${escHtml(a)}</span>`).join('')}</div>`
+      ? `<div class="rung__chips">${r.actions.map(a => {
+          const label = typeof a === 'string' ? a : (a.label || '');
+          const sig   = typeof a === 'object' && a !== null && a.signature ? ' rung-chip--signature' : '';
+          return `<span class="rung-chip${sig}">${escHtml(label)}</span>`;
+        }).join('')}</div>`
       : '';
 
     let actionHtml = '';
