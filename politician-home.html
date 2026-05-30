@@ -249,7 +249,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { tickToDate, fmtBig } from './js/utils.js';
+import { tickToDate, fmtBig, officeTitle } from './js/utils.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
 
@@ -434,10 +434,16 @@ function renderHero(shard) {
   document.getElementById('hero-nation').textContent = (nation && nation.name) || '—';
   document.getElementById('hero-career').textContent = career;
   // Affiliation reads from the looked-up movement_party (ctx.party set
-  // by bootstrapPolitician). Same source the AFFILIATION pill above
-  // reads, so the two surfaces never disagree.
+  // by bootstrapPolitician) plus the politician's office. When an
+  // office is held, the surface collapses to "{Office} · {Party}"
+  // (membership is implicit in holding the office). Same source as
+  // politician-career.html's affiliation block — single OFFICE_TITLES
+  // map in js/utils.js so the two surfaces never disagree.
+  const office = politician.politician_office || null;
   document.getElementById('hero-affiliation').textContent = party
-    ? `Party Member of ${party.faction_name}`
+    ? (office
+        ? `${officeTitle(office)} · ${party.faction_name}`
+        : `Party Member of ${party.faction_name}`)
     : NO_AFFILIATION_MESSAGE;
 }
 

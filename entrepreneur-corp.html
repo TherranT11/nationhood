@@ -3667,7 +3667,7 @@ function initials(s, n) {
             .eq('owner_corp_id', id),
           _supabase.from('airline_routes')
             .select(`id, ticket_price, route_type, origin_city_id, dest_city_id,
-                     aircraft_regional, aircraft_narrowbody, aircraft_widebody,
+                     aircraft_class,
                      last_tick_pax, last_tick_revenue, last_tick_spend,
                      origin:airline_cities!origin_city_id(name),
                      dest:airline_cities!dest_city_id(name)`)
@@ -3798,11 +3798,17 @@ function initials(s, n) {
           : `<div class="al-hint">You hold a terminal in every city.</div>`;
 
         // ── Routes: active list + open form ──
+        // Routes are single-class (20270417). Plane count comes from the
+        // aircraft list — each plane with route_id = this route counts.
+        const planeCountByRoute = new Map();
+        for (const a of aircraft) {
+          if (a.route_id) planeCountByRoute.set(a.route_id, (planeCountByRoute.get(a.route_id) || 0) + 1);
+        }
         const routeRowsHtml = routes.length
           ? routes.map(r => {
-              const planes = AIRCRAFT_CLASSES
-                .filter(k => Number(r['aircraft_' + k]) > 0)
-                .map(k => `${r['aircraft_' + k]}× ${AIRCRAFT[k].label}`).join(', ') || '—';
+              const cnt   = planeCountByRoute.get(r.id) || 0;
+              const label = AIRCRAFT[r.aircraft_class]?.label || r.aircraft_class || '—';
+              const planes = cnt > 0 ? `${cnt}× ${label}` : '—';
               const net = (Number(r.last_tick_revenue) || 0) - (Number(r.last_tick_spend) || 0);
               const netCls = net > 0 ? 'accent' : net < 0 ? 'red' : 'dim';
               // Lane competition: total passengers + per-airline last-tick pax
@@ -3836,17 +3842,18 @@ function initials(s, n) {
         // owns a terminal (open_route requires a terminal at both ends).
         const endpointOpts = terminals
           .map(t => `<option value="${t.city_id}">${escapeHtml(t.city?.name || 'City')}</option>`).join('');
+        const classOpts = AIRCRAFT_CLASSES
+          .map(k => `<option value="${k}">${escapeHtml(AIRCRAFT[k].label)}</option>`).join('');
         const openForm = terminals.length >= 2
           ? `<div class="al-form al-form-route">
                <label>From <select id="al-route-origin">${endpointOpts}</select></label>
                <label>To <select id="al-route-dest">${endpointOpts}</select></label>
-               <label>Ticket $<input type="number" id="al-route-ticket" min="0" max="500" value="200" /></label>
-               <label>Reg <input type="number" id="al-route-reg" min="0" value="0" /></label>
-               <label>Narrow <input type="number" id="al-route-nar" min="0" value="0" /></label>
-               <label>Wide <input type="number" id="al-route-wide" min="0" value="0" /></label>
+               <label>Ticket $<input type="number" id="al-route-ticket" min="0" value="200" /></label>
+               <label>Class <select id="al-route-class">${classOpts}</select></label>
+               <label>Aircraft <input type="number" id="al-route-count" min="1" value="1" /></label>
                <button class="sh-buy-btn" id="al-open-route">Open Route</button>
              </div>
-             <div class="al-hint">Regional/Narrowbody serve short lanes only; cross-nation routes need Widebodies. Ticket 0–500.</div>`
+             <div class="al-hint">One class per route. Regional/Narrowbody serve short lanes only; cross-nation routes need Widebodies. Cheaper tickets win a bigger share of the lane's passengers.</div>`
           : `<div class="al-hint">Claim a terminal in at least two cities to open a route.</div>`;
 
         // Aircraft RFPs this airline has posted (open = taking bids,
@@ -6087,25 +6094,26 @@ const openBidModal = (contractId, label, yourCost, budget) => {
       const origin = document.getElementById('al-route-origin')?.value;
       const dest   = document.getElementById('al-route-dest')?.value;
       const ticket = parseInt(document.getElementById('al-route-ticket')?.value, 10);
-      const reg    = parseInt(document.getElementById('al-route-reg')?.value, 10) || 0;
-      const nar    = parseInt(document.getElementById('al-route-nar')?.value, 10) || 0;
-      const wide   = parseInt(document.getElementById('al-route-wide')?.value, 10) || 0;
+      const klass  = document.getElementById('al-route-class')?.value;
+      const count  = parseInt(document.getElementById('al-route-count')?.value, 10);
       if (!origin || !dest) { alert('Pick both endpoints.'); return; }
       if (origin === dest)  { alert('Origin and destination must differ.'); return; }
-      if (!Number.isFinite(ticket) || ticket < 0 || ticket > 500) { alert('Ticket price must be 0–500.'); return; }
-      if (reg + nar + wide < 1) { alert('Assign at least one aircraft.'); return; }
+      if (!Number.isFinite(ticket) || ticket < 0) { alert('Ticket price must be ≥ 0.'); return; }
+      if (!klass) { alert('Pick an aircraft class.'); return; }
+      if (!Number.isFinite(count) || count < 1) { alert('Assign at least one aircraft.'); return; }
       airlineInFlight = true;
       const prev = btn.textContent; btn.disabled = true; btn.textContent = 'OPENING…';
       try {
         const { data, error: rpcErr } = await _supabase.rpc('entrepreneur_open_route', {
           p_corp_id: id, p_origin_city_id: origin, p_dest_city_id: dest,
-          p_ticket_price: ticket, p_regional: reg, p_narrowbody: nar, p_widebody: wide,
+          p_ticket_price: ticket, p_class: klass, p_count: count,
         });
         if (rpcErr) throw rpcErr;
         if (!data || !data.success) {
           const REASON = {
             same_city:                 'Origin and destination must differ.',
-            invalid_ticket_price:      'Ticket price must be 0–500.',
+            invalid_ticket_price:      'Ticket price must be ≥ 0.',
+            invalid_class:             'Pick a valid aircraft class.',
             no_aircraft_assigned:      'Assign at least one aircraft.',
             no_terminal_origin:        'You need a terminal at the origin city.',
             no_terminal_dest:          'You need a terminal at the destination city.',
@@ -6113,7 +6121,7 @@ const openBidModal = (contractId, label, yourCost, budget) => {
             no_range_data:             'No distance data for that city pair.',
             regional_out_of_range:     data?.range != null ? `Too far for Regional (range ${data.range} > ${data.class_max}). Use Narrowbody/Widebody.` : 'Regional aircraft cannot fly that far.',
             narrowbody_out_of_range:   data?.range != null ? `Too far for Narrowbody (range ${data.range} > ${data.class_max}). Use Widebody.` : 'Narrowbody aircraft cannot fly that far.',
-            insufficient_idle_aircraft:`Not enough idle aircraft — idle R${data?.idle_regional ?? 0}/N${data?.idle_narrowbody ?? 0}/W${data?.idle_widebody ?? 0}.`,
+            insufficient_idle_aircraft:`Not enough idle ${data?.class || 'aircraft'} — ${data?.idle ?? 0} idle, ${data?.requested ?? 0} requested.`,
             not_airline_corp:          'Only Airline corps can open routes.',
             not_owner:                 'Only the corp owner can do that.',
           };
