@@ -36,12 +36,29 @@
 -- * demand_pool = 0 (zero SoL / population / etc) → every route's
 --   exact_pax = 0, base = 0, leftover = 0 → all routes 0. Correct.
 -- * Route with seats = 0 → exact_pax = 0 → 0 pax. Correct.
--- * Lane with one route → base = FLOOR(lane_share), leftover gets
---   the route +1 if fractional ranks first (always does in lane-of-1).
---   Single-route lanes get FLOOR(lane_share) + (1 if frac > 0).
--- * Two routes tied on remainder → ORDER BY rem DESC, route_id
---   gives a stable winner (oldest-by-id). Comparable to election
---   seat allocator's tiebreak.
+-- * Lane with ONE route → leftover = FLOOR(lane_share) − FLOOR(lane_share)
+--   = 0 ALWAYS. The route gets FLOOR(lane_share); the fractional part
+--   of lane_share is lost. Largest-remainder helps multi-route lanes
+--   specifically; single-route lanes behave identically to the
+--   pre-20270431 FLOOR-only allocator.
+-- * Two routes tied on remainder → ORDER BY rem DESC, route_id gives
+--   a stable winner (oldest-by-id). Comparable to election seat
+--   allocator's tiebreak.
+--
+-- ── Conservative-FLOOR caveat ───────────────────────────────────────
+-- The "lane budget" is FLOOR(SUM(exact_pax)), not ROUND, so the
+-- allocator NEVER over-allocates a lane beyond its integer share. A
+-- lane with lane_share = 0.6 still allocates 0 pax across all routes
+-- (FLOOR(0.6) = 0). Lanes only start receiving any pax once their
+-- aggregate exact share crosses 1.0. The fix targets lanes where
+-- SUM(exact_pax) ≥ 1 but individual route shares were < 1 each —
+-- those previously lost everything to FLOOR; now the lane budget
+-- gets distributed via largest-remainder.
+--
+-- If the player still sees consistent 0 pax after this lands, the
+-- next dial is in nation_demand: the × 20 constant on demand_pool
+-- (single source) sets the overall passenger volume per nation.
+-- Bumping it lifts low-demand lanes above the 1-pax floor.
 -- ════════════════════════════════════════════════════════════════════
 
 BEGIN;
