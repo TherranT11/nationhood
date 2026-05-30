@@ -447,7 +447,13 @@ function strengthTierClass(strength) {
 }
 
 function renderSummaryCard(sector, agg) {
-  const avgStr = (agg && agg.corpCount > 0) ? agg.avg.toFixed(1) : '0.0';
+  // Strength avg comes from base values alone now, so render it
+  // whenever the aggregate exists — gating on corpCount was leftover
+  // logic from the base+corps formula and was hiding the real avg
+  // for sectors that have non-zero bases but no corps yet
+  // (Extractive on Melizea was the regression: bases 8/5/4/6 → 5.8
+  // avg, but the page showed 0.0 because corpCount was 0).
+  const avgStr = agg ? agg.avg.toFixed(1) : '0.0';
   return (
     `<div class="sm-card ${sector.key}">` +
       `<div class="sm-lab">${escapeHtml(sector.label)}</div>` +
