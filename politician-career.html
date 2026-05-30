@@ -947,10 +947,15 @@ function renderResolutionBanner(r) {
   }
   const reward = r.party_reward;
   if (won && reward && reward.party_name) {
+    // Delta comes from the resolver payload — never hardcode here, the
+    // popularity bump moved +2 → +1 in 20270418 and the seats bump
+    // stays +1; relying on reward.delta keeps the sentence and the
+    // server-side value as one source of truth.
+    const delta = Number(reward.delta) || 0;
     if (reward.kind === 'seats') {
-      sentences.push(`${escHtml(reward.party_name)} gained +1 parliamentary seat (now ${Number(reward.new_value) || 0}).`);
+      sentences.push(`${escHtml(reward.party_name)} gained +${delta} parliamentary seat (now ${Number(reward.new_value) || 0}).`);
     } else if (reward.kind === 'popularity') {
-      sentences.push(`${escHtml(reward.party_name)} gained +2 approval (now ${Math.round(Number(reward.new_value) || 0)}%).`);
+      sentences.push(`${escHtml(reward.party_name)} gained +${delta} approval (now ${Math.round(Number(reward.new_value) || 0)}%).`);
     }
   }
   const statReward = r.stat_reward;
@@ -964,6 +969,13 @@ function renderResolutionBanner(r) {
   }
   if (deltaLabel) {
     sentences.push(`Influence ${deltaLabel}.`);
+  }
+  // Office stamp — surfaces the new factions.politician_office value
+  // in the same banner that announced the win. The page reload that
+  // follows the banner picks up the rung-held + affiliation changes,
+  // but the player learns about the office change here.
+  if (won && r.office_gained) {
+    sentences.push(`You now hold ${officeTitle(r.office_gained)}.`);
   }
 
   const banner = document.createElement('div');

@@ -68,6 +68,15 @@ ALTER TABLE factions
 COMMENT ON COLUMN factions.politician_office IS
     'Office held by this politician (NULL = none). Today only the two First-Office tiers are tracked: ''community_organizer'' (Govt & State Tier 1) and ''member_of_parliament'' (Party Office Tier 1). Set by politician_resolve_due_elections on a win; read by politician-career.html rung held() + by politician_stand_for_election to gate re-entry. Extend the CHECK when higher tiers land.';
 
+-- Real economic value (locks the player out of further elections and
+-- flips a ladder rung). The "Factions update own" RLS policy (20260302)
+-- otherwise grants authenticated table-level UPDATE on factions, which
+-- without this revoke would let a client self-assign politician_office
+-- directly and skip the entire election system. Writes must go through
+-- politician_resolve_due_elections (SECURITY DEFINER → bypasses revoke).
+-- Same posture as the airline/treasury security-sensitive columns.
+REVOKE UPDATE (politician_office) ON factions FROM PUBLIC, anon, authenticated;
+
 -- ── 2. politician_resolve_due_elections ─────────────────────────────
 -- Body = 20270401 + two patches:
 --   • Community-tier party popularity bump: +2 → +1 (delta in jsonb
