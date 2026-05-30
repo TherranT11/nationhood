@@ -84,6 +84,59 @@
    actions: [{ label, signature: true }] in the rung definition. */
 .rung-chip.rung-chip--signature { color:#7a9aab; background:#0e1218;
   border-color:rgba(122,154,171,0.5); }
+/* Crimson accent chip for ethically dark actions (wet ops,
+   compromise an adversary, black programs — National Security
+   ladder). Triggered by actions: [{ label, dark: true }]. */
+.rung-chip.rung-chip--dark { color:#a05050; background:#160a0a;
+  border-color:rgba(168,88,88,0.35); }
+
+/* Per-ladder header banner — sits inside the .ladder body, above
+   the first rung. Today only National Security uses it (variant:
+   'ns'); other variants land here as new modifier classes. Opt-in
+   via the LADDERS entry's headerBanner property. */
+.ladder__banner { display:flex; align-items:flex-start; gap:10px;
+  padding:11px 14px; border-radius:4px; margin:0 0 14px; }
+.ladder__banner-icon { font-size:13px; flex-shrink:0; padding-top:1px; }
+.ladder__banner-title { font-size:10px; letter-spacing:0.08em; font-weight:600;
+  text-transform:uppercase; line-height:1.4; }
+.ladder__banner-sub { display:block; font-size:10px; font-weight:400;
+  color:#888; letter-spacing:0.02em; margin-top:4px; line-height:1.55;
+  text-transform:none; }
+.ladder__banner--ns { background:#160a0a; border:0.5px solid #4a2424; }
+.ladder__banner--ns .ladder__banner-icon  { color:#a85858; }
+.ladder__banner--ns .ladder__banner-title { color:#a85858; }
+
+/* Inline pills on a rung name. trackPill marks the rung's career-
+   track variant (field / appointed / apex on National Security);
+   visibilityPill renders a free-text label (with leading emoji if
+   passed in). Both opt-in per rung. */
+.rung__pill { display:inline-block; font-size:8px; letter-spacing:0.13em;
+  font-weight:600; padding:2px 7px; border-radius:3px; margin-left:6px;
+  vertical-align:middle; }
+.rung__pill--track-field    { background:#0e0e0e; color:#9a9a9a; border:0.5px solid #3a3a3a; }
+.rung__pill--track-command  { background:#160a0a; color:#a85858; border:0.5px solid #4a2424; }
+.rung__pill--track-apex     { background:#1a0a0a; color:#e09090; border:0.5px solid #6a3030; }
+.rung__pill--vis { color:#666; background:#0a0a0a;
+  border:0.5px solid rgba(255,255,255,0.07); }
+
+/* Transition divider — a rung-array entry with { transition: true,
+   icon, text, sub }. Renders in place of a rung row, indented to
+   line up with the rung body so it reads as a structural break in
+   the climb. Today National Security uses one between Tier 3 (field)
+   and Tier 4 (appointed). */
+.rung__transition { padding:14px 0; margin:6px 0;
+  border-top:0.5px dashed rgba(168,88,88,0.25);
+  border-bottom:0.5px dashed rgba(168,88,88,0.25);
+  background:rgba(168,88,88,0.025); }
+.rung__transition-row { display:flex; align-items:flex-start; gap:11px;
+  padding-left:64px; }
+.rung__transition-icon { font-size:13px; color:#a85858; flex-shrink:0;
+  padding-top:1px; }
+.rung__transition-text { font-size:10px; color:#a85858; letter-spacing:0.06em;
+  font-weight:600; text-transform:uppercase; line-height:1.4; }
+.rung__transition-sub { display:block; color:#888; font-size:10px;
+  font-weight:400; margin-top:4px; letter-spacing:0.02em; line-height:1.55;
+  text-transform:none; }
 .rung-btn { font-family:monospace; font-size:10px; letter-spacing:0.08em;
   text-transform:uppercase; padding:7px 14px; border-radius:3px;
   background:transparent; cursor:pointer; transition:all 0.15s; }
@@ -397,6 +450,13 @@ const LADDERS = [
   { id: 'judiciary',  icon: '\u{1F3DB}\u{FE0F}', name: 'Judiciary',  rungs: () => JUDICIARY_RUNGS,
     footer: 'The judiciary does not campaign or command — it waits for cases, then rules. Its power is reactive but absolute: a Chief Justice can undo what the Legislature passed, jail a Minister, or declare a war footing unlawful. The only limit is the independence that makes those rulings stick.' },
   { id: 'foreign',    icon: '\u{1F30D}', name: 'Foreign Service',    rungs: () => FOREIGN_SERVICE_RUNGS },
+  { id: 'national_security', icon: '\u{2609}', name: 'National Security', rungs: () => NATIONAL_SECURITY_RUNGS,
+    headerBanner: {
+      variant: 'ns',
+      icon:    '\u{1F512}',
+      title:   'CLASSIFIED · THE WORK YOU DO IS NOT PUBLIC',
+      sub:     'Climbing this ladder removes you from public view rather than raising your profile. Your name disappears from records. Your influence grows in proportion to what you know about others.',
+    } },
   { id: 'civil',      icon: '\u{1F91D}', name: 'Civil Society' },
   { id: 'underground',icon: '\u{1F3AD}', name: 'Underground' },
 ];
@@ -670,6 +730,103 @@ const FOREIGN_SERVICE_RUNGS = [
   },
 ];
 
+// National Security rungs — the clandestine arc. Two-track ladder:
+// tiers 1-3 are the FIELD/career half (analyst → station chief),
+// tiers 4-6 are the APPOINTED/command half (deputy director →
+// DNI). A transition row between them spells out that the upper
+// rungs are granted by the head of state rather than earned by
+// service alone. tierNum is set explicitly on each rung so the
+// transition row doesn't shift the idx-derived numbering.
+//
+// visibilityPill is the inverse of the other ladders' visible-
+// influence framing — climbing here REMOVES you from public view.
+// Dark action chips ({ dark: true }) mark the ethically darker
+// operational levers (wet ops, compromise, black programs). Apex
+// signature is "Set National Threat Doctrine" — analogous to
+// Foreign Service's "Mediate a Press Claim" but tinted crimson via
+// the rung-chip--signature styling that picks up the ladder
+// context (today the same steel-blue; the user can re-skin later
+// if signature-per-ladder colouring lands).
+const NATIONAL_SECURITY_RUNGS = [
+  {
+    tierNum: 1, tierName: 'FIRST OFFICE',
+    name: 'Intelligence Analyst / Field Officer',
+    trackPill:      { label: 'FIELD', kind: 'field' },
+    visibilityPill: '\u{1F440} LOW VISIBILITY',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You sift open-source intelligence and signals traffic — or run low-level surveillance from the field.',
+    descIfNot:   ()  => 'Either a desk analyst sifting open-source intelligence and signals traffic, or a junior field officer running low-level surveillance. The work is methodical, unglamorous, often dull — until it isn’t.',
+    actions:     ['Compile a Brief', 'Run Surveillance'],
+    actionIfNot: { label: 'Pass the Vetting', kind: 'disabled' },
+  },
+  {
+    tierNum: 2,
+    name: 'Section Officer / Case Officer',
+    trackPill:      { label: 'FIELD', kind: 'field' },
+    visibilityPill: '\u{1F440} LOW VISIBILITY',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You run assets — informants, sources, agents — inside foreign or domestic networks.',
+    descIfNot:   ()  => 'You run assets — informants, sources, agents inside foreign or domestic networks. Mid-career intelligence work. Good officers prove themselves here; bad ones get burned.',
+    actions:     ['Recruit an Asset', 'Conduct an Operation'],
+  },
+  {
+    tierNum: 3,
+    name: 'Station Chief / Division Head',
+    trackPill:      { label: 'FIELD', kind: 'field' },
+    visibilityPill: '\u{1F440} LOW VISIBILITY',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You run a station abroad or a whole division at headquarters — officers, operations, budget, briefings.',
+    descIfNot:   ()  => 'You run a station abroad or a whole division at headquarters. First level of real executive intelligence work — you command officers, run operations, account for budget, brief political superiors.',
+    actions:     [
+      'Command a Station',
+      { label: 'Authorize a Wet Op', dark: true },
+    ],
+  },
+  {
+    transition: true,
+    icon: '⚔️',
+    text: 'CAREER TRANSITION · COMMAND TIERS BEGIN HERE',
+    sub:  'Higher rungs are not earned through service alone — they are granted by the head of state. Loyalty matters as much as competence; sometimes more. Some are appointed from outside the service entirely (generals, party loyalists, trusted ministers).',
+  },
+  {
+    tierNum: 4,
+    name: 'Deputy Director',
+    trackPill:      { label: 'APPOINTED', kind: 'command' },
+    visibilityPill: '\u{1F440} NAME CLASSIFIED',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You are second-in-command of an intelligence agency, running the operational day-to-day.',
+    descIfNot:   ()  => 'Second-in-command of an intelligence agency. Mix of career and political appointment. Often the operational head while the Director handles politics — the agency’s actual day-to-day chief.',
+    actions:     ['Plan a Long Operation', 'Liaise with Foreign Services'],
+  },
+  {
+    tierNum: 5,
+    name: 'Director of Intelligence',
+    trackPill:      { label: 'APPOINTED', kind: 'command' },
+    visibilityPill: '\u{1F440} NAME CLASSIFIED',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You head an intelligence service — NSC seat, head-of-state briefings, the legislature’s intelligence committee.',
+    descIfNot:   ()  => 'Head of an intelligence service. You sit on the National Security Council, brief the head of state personally, manage relationships with foreign services and the legislature’s intelligence committee.',
+    actions:     [
+      'Brief the Head of State',
+      { label: 'Compromise an Adversary', dark: true },
+    ],
+  },
+  {
+    tierNum: 6, tierName: 'APEX',
+    name: 'Director of National Intelligence / National Security Advisor',
+    trackPill:      { label: 'APEX', kind: 'apex' },
+    visibilityPill: '\u{1F440} INVISIBLE',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You shape national threat doctrine and brief the head of state every morning — and hold files on everyone else.',
+    descIfNot:   ()  => 'The apex. Either the chief of a coordinating super-agency or the chief security advisor to the head of state. The most powerful unelected person in many countries — the one who briefs the leader every morning and holds files on everyone else.',
+    actions:     [
+      { label: '☉ Set National Threat Doctrine', signature: true },
+      { label: 'Authorize Black Programs', dark: true },
+      'Sit on the NSC',
+    ],
+  },
+];
+
 // Suspicion sub-text by level — read once the value lands on the page so the
 // copy isn't repeated through the renderer.
 const SUSPICION_SUB = {
@@ -900,6 +1057,18 @@ function renderLadders(state, ctx) {
     const rungs = typeof l.rungs === 'function' ? l.rungs() : l.rungs;
     const body  = rungs ? renderRungs(rungs, state) : '<div class="empty-row">Not on this ladder yet.</div>';
     const footer = l.footer ? `<div class="ladder__footer">${escHtml(l.footer)}</div>` : '';
+    // Optional header banner above the rungs (e.g. National Security's
+    // CLASSIFIED note). l.headerBanner = { variant, icon, title, sub }
+    // — variant maps to the CSS modifier class .ladder__banner--{x}.
+    const banner = l.headerBanner
+      ? `<div class="ladder__banner ladder__banner--${escHtml(l.headerBanner.variant || 'default')}">
+           <span class="ladder__banner-icon">${l.headerBanner.icon || ''}</span>
+           <div>
+             <div class="ladder__banner-title">${escHtml(l.headerBanner.title || '')}</div>
+             ${l.headerBanner.sub ? `<span class="ladder__banner-sub">${escHtml(l.headerBanner.sub)}</span>` : ''}
+           </div>
+         </div>`
+      : '';
     return `
     <details class="ladder"${open ? ' open' : ''}>
       <summary>
@@ -907,7 +1076,7 @@ function renderLadders(state, ctx) {
         <span class="name">${escHtml(l.name)}</span>
         <span class="rung empty">—</span>
       </summary>
-      <div class="body">${body}${footer}</div>
+      <div class="body">${banner}${body}${footer}</div>
     </details>`;
   };
   const branchHtml = branchLadders.length
@@ -955,6 +1124,23 @@ function renderStandForElection(state) {
 // `tierName` is the badge suffix — "FIRST OFFICE" / "APEX" / "MEMBERSHIP".
 function renderRungs(rungs, state) {
   return '<div class="rungs">' + rungs.map((r, idx) => {
+    // Transition divider — a non-rung entry in the array, used by
+    // National Security between Tier 3 (field) and Tier 4 (appointed)
+    // to mark the career → command shift. Renders in place of the
+    // rung row. Use explicit tierNum on the surrounding rungs so the
+    // idx-based numbering in this map doesn't go off by one.
+    if (r.transition) {
+      return `<div class="rung__transition">
+        <div class="rung__transition-row">
+          <span class="rung__transition-icon">${r.icon || ''}</span>
+          <div>
+            <div class="rung__transition-text">${escHtml(r.text || '')}</div>
+            ${r.sub ? `<span class="rung__transition-sub">${escHtml(r.sub)}</span>` : ''}
+          </div>
+        </div>
+      </div>`;
+    }
+
     const isHeld = !!r.held(state);
     const desc   = isHeld ? r.descIfHeld(state) : r.descIfNot(state);
     const indicator = isHeld
@@ -969,17 +1155,33 @@ function renderRungs(rungs, state) {
                     : '';
     const tierHtml = `<div class="rung__tier ${tierClass}">${escHtml(`TIER ${tierNum}${tierName ? ' · ' + tierName : ''}`)}</div>`;
 
+    // Inline pills next to the rung name. trackPill marks the rung's
+    // career-track variant on multi-track ladders (National Security's
+    // FIELD / APPOINTED / APEX); visibilityPill renders a free-text
+    // label (with leading emoji if passed in). Both opt-in per rung;
+    // existing ladders don't carry these and render unchanged.
+    const trackPillHtml = (r.trackPill && r.trackPill.kind)
+      ? `<span class="rung__pill rung__pill--track-${escHtml(r.trackPill.kind)}">${escHtml(r.trackPill.label || '')}</span>`
+      : '';
+    const visPillHtml = r.visibilityPill
+      ? `<span class="rung__pill rung__pill--vis">${escHtml(r.visibilityPill)}</span>`
+      : '';
+
     // Action chips accept either a string ('Vote on Committee') or an
-    // object ({ label, signature: true }). signature=true paints the
-    // chip in steel-blue to mark the ladder's distinguishing apex
-    // action (e.g. Foreign Service's Mediate a Press Claim). String
-    // form stays the common case so the older ladders don't need a
-    // touch-up.
+    // object ({ label, signature: true } | { label, dark: true }).
+    // signature paints steel-blue to mark a ladder's apex distinction;
+    // dark paints crimson for ethically darker operational levers
+    // (wet ops, compromise, black programs). String form stays the
+    // common case so the older ladders don't need a touch-up.
     const chipsHtml = (Array.isArray(r.actions) && r.actions.length)
       ? `<div class="rung__chips">${r.actions.map(a => {
           const label = typeof a === 'string' ? a : (a.label || '');
-          const sig   = typeof a === 'object' && a !== null && a.signature ? ' rung-chip--signature' : '';
-          return `<span class="rung-chip${sig}">${escHtml(label)}</span>`;
+          let mod = '';
+          if (typeof a === 'object' && a !== null) {
+            if (a.signature) mod = ' rung-chip--signature';
+            else if (a.dark) mod = ' rung-chip--dark';
+          }
+          return `<span class="rung-chip${mod}">${escHtml(label)}</span>`;
         }).join('')}</div>`
       : '';
 
@@ -1016,7 +1218,7 @@ function renderRungs(rungs, state) {
         ${indicator}
         <div class="rung__body">
           ${tierHtml}
-          <div class="rung__name">${escHtml(r.name)}</div>
+          <div class="rung__name">${escHtml(r.name)}${trackPillHtml}${visPillHtml}</div>
           <div class="rung__desc">${escHtml(desc)}</div>
           ${chipsHtml}
         </div>
