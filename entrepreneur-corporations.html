@@ -100,6 +100,9 @@
   .ec-cap { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:10px; }
   .ec-cap .amt { color:#8aaa6a; font-size:30px; font-weight:500; }
   .ec-cap .aft { color:#888; font-size:12px; }
+  .ec-fbreak { display:flex; gap:14px; flex-wrap:wrap; margin-top:10px;
+    font-size:11px; color:#888; }
+  .ec-fbreak b { color:#cfcabf; font-variant-numeric:tabular-nums; font-weight:500; }
   .ec-range { width:100%; accent-color:#8aaa6a; }
   .ec-rl { display:flex; justify-content:space-between; font-size:9px; color:#555; letter-spacing:0.1em; margin-top:6px; }
   .ec-ipo { margin-top:12px; font-size:11px; color:#888; line-height:1.6;
@@ -303,6 +306,11 @@
       </div>
       <input type="range" class="ec-range" id="ec-cap" min="5" max="500" step="1" value="20" />
       <div class="ec-rl"><span>MIN · $5M</span><span>MAX · $500M</span></div>
+      <div class="ec-fbreak" id="ec-fbreak">
+        <span>Founding fee (5%): <b id="ec-f-fee">—</b></span>
+        <span>Starter building: <b id="ec-f-bld">—</b></span>
+        <span>Total at founding: <b id="ec-f-total">—</b></span>
+      </div>
 
       <div class="ec-h">V. Listing <em>Structure</em></div>
       <div class="ec-grid3" id="ec-listing">
@@ -317,7 +325,7 @@
       <div class="st">STATUS: <b>READY TO INCORPORATE</b></div>
       <span class="ec-err" id="ec-err"></span>
       <button class="ec-btn sec" id="ec-cancel">CANCEL</button>
-      <button class="ec-btn pri" id="ec-found">FOUND CORPORATION — $21M →</button>
+      <button class="ec-btn pri" id="ec-found">FOUND CORPORATION →</button>
     </div>
   </div>
 </div>
@@ -406,10 +414,14 @@ async function attachCorpBookAggregates(corps) {
   return corps;
 }
 
-const FEE = 1_000_000;
+// Founding cost breakdown comes from public.entrepreneur_corp_founding_cost
+// (20270425) — single source for capital + 5% fee + nation-scaled
+// starter building cost. The breakdown is cached per (industry, nation)
+// and the per-cap fee is recomputed client-side (cap × 5/100, mirror of
+// the SQL) since refetching on every slider tick is wasteful.
+const FEE_PCT = 5;
 // Shares issued when a corp lists public. The authoritative value lives
-// in found_entrepreneur_corp (20270144); this is the modal-preview
-// mirror, same convention as FEE ↔ the RPC's v_fee. Keep in sync.
+// in found_entrepreneur_corp; this is the modal-preview mirror.
 const IPO_SHARES = 20;
 let entFunds = 0;
 let sel = { industry: 'construction', hqNationId: null, listing: 'private' };
@@ -466,11 +478,40 @@ function selectPick(containerId, e) {
   return card;
 }
 
-function refreshCost() {
-  const cap = capRaw();
-  const cost = cap + FEE;
+// Cached (industry, nation) → starter building cost in dollars. Refreshed
+// by fetchBuildingCost when the picker changes. Null = "not fetched yet"
+// (UI shows em-dash placeholders until the round-trip completes).
+let _bldCostCache = new Map(); // key: `${industry}|${nationId}` → bigint
+function bldCacheKey() { return `${sel.industry}|${sel.hqNationId || ''}`; }
+async function fetchBuildingCost() {
+  const key = bldCacheKey();
+  if (_bldCostCache.has(key)) return _bldCostCache.get(key);
+  if (!sel.industry || !sel.hqNationId) return null;
+  // Capital passes through unchanged from the slider since the per-cap
+  // fee math is mirrored client-side; we only need the building_cost
+  // field from the preview RPC. Any cap value works for that field.
+  const { data, error } = await _supabase.rpc('entrepreneur_corp_founding_cost', {
+    p_industry: sel.industry, p_hq_nation_id: sel.hqNationId, p_capital: capRaw(),
+  });
+  if (error) {
+    console.warn('[entrepreneur-corporations] founding-cost preview failed:', error.message);
+    return null;
+  }
+  const bld = Number(data?.building_cost) || 0;
+  _bldCostCache.set(key, bld);
+  return bld;
+}
+function feeFor(cap) { return Math.floor((cap * FEE_PCT) / 100); }
+async function refreshCost() {
+  const cap   = capRaw();
+  const fee   = feeFor(cap);
+  const bld   = (await fetchBuildingCost()) ?? null;
+  const total = cap + fee + (bld || 0);
   document.getElementById('ec-cap-amt').textContent = fmtM(cap);
-  document.getElementById('ec-cap-aft').textContent = fmtM(Math.max(0, entFunds - cost));
+  document.getElementById('ec-cap-aft').textContent = fmtM(Math.max(0, entFunds - total));
+  document.getElementById('ec-f-fee').textContent   = fmtM(fee);
+  document.getElementById('ec-f-bld').textContent   = bld == null ? '—' : fmtM(bld);
+  document.getElementById('ec-f-total').textContent = fmtM(total);
   const ipo = document.getElementById('ec-ipo');
   if (sel.listing === 'public') {
     ipo.style.display = 'block';
@@ -480,11 +521,19 @@ function refreshCost() {
     ipo.style.display = 'none';
   }
   const btn = document.getElementById('ec-found');
-  btn.textContent = `FOUND CORPORATION — ${fmtM(cost)} →`;
-  btn.disabled = cost > entFunds;
+  btn.textContent = `FOUND CORPORATION — ${fmtM(total)} →`;
+  // Disable only when the building cost has resolved AND we know the
+  // total exceeds funds. While the preview is still in flight (bld
+  // null) leave the button enabled — the server-side gate is the
+  // final word and any race is corrected by the alert path.
+  btn.disabled = bld != null && total > entFunds;
   const err = document.getElementById('ec-err');
-  if (cost > entFunds) { err.textContent = 'Insufficient cash for this capital + $1M fee.'; err.style.display = 'inline'; }
-  else err.style.display = 'none';
+  if (bld != null && total > entFunds) {
+    err.textContent = `Insufficient cash — need ${fmtM(total)} (capital ${fmtM(cap)} + ${FEE_PCT}% fee ${fmtM(fee)} + starter building ${fmtM(bld)}).`;
+    err.style.display = 'inline';
+  } else {
+    err.style.display = 'none';
+  }
 }
 
 function renderPositions(corps, filter) {
@@ -906,6 +955,7 @@ function renderPositions(corps, filter) {
       if (!card || !card.dataset.ind) return;
       sel.industry = card.dataset.ind;
       renderHqList();   // per-nation count is industry-specific
+      refreshCost();    // starter building cost depends on industry
     });
     document.getElementById('ec-conts').addEventListener('click', (e) => {
       const t = e.target.closest('.ec-cont');
@@ -919,6 +969,7 @@ function renderPositions(corps, filter) {
       const card = selectPick('ec-hq', e);
       if (!card || !card.dataset.nid) return;
       sel.hqNationId = card.dataset.nid;
+      refreshCost();    // building cost is nation-scaled
     });
     document.getElementById('ec-listing').addEventListener('click', (e) => {
       const card = selectPick('ec-listing', e);
@@ -949,6 +1000,9 @@ function renderPositions(corps, filter) {
             landlocked_no_shipping: 'Shipping corps need a coastline — pick a non-landlocked nation.',
             not_home_nation: 'You can only found corporations in your home nation. Expand to other nations by building a Regional HQ there first.',
             delinquent_debt: 'You owe personal debt from a bankrupt corporation. Settle it on your Character page before founding a new corporation.',
+            insufficient_funds: data?.have != null && data?.need != null
+              ? `Insufficient cash — need ${fmtM(data.need)}, have ${fmtM(data.have)}.`
+              : 'Insufficient cash for this founding.',
           };
           err.textContent = FRIENDLY[data?.reason] || ('Could not found: ' + ((data && data.reason) || 'unknown'));
           err.style.display = 'inline';

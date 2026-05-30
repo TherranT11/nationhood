@@ -112,6 +112,34 @@
   .ch-fields .k { color: #555; margin-right: 5px; }
   .ch-fields .v { color: #d4d4d4; }
   .ch-arrow { color: #555; font-size: 16px; }
+
+  /* Personal debt panel — same visual rhythm as ch-row + ch-fields
+     but with an amber accent strip and a payment form when active. */
+  .pd-card { background: #121212; border: 0.5px solid rgba(255,255,255,0.08);
+    border-left: 2px solid #c8a64e; border-radius: 4px; padding: 16px 18px; }
+  .pd-head { font-size: 11px; letter-spacing: 0.12em; color: #c8a64e;
+    text-transform: uppercase; margin-bottom: 10px; }
+  .pd-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+    margin-bottom: 14px; }
+  .pd-cell .k { font-size: 9px; letter-spacing: 0.13em; color: #555;
+    text-transform: uppercase; margin-bottom: 5px; }
+  .pd-cell .v { font-size: 18px; color: #fff; font-variant-numeric: tabular-nums; }
+  .pd-cell .sub { font-size: 10px; color: #666; margin-top: 2px; }
+  .pd-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+    border-top: 0.5px solid rgba(255,255,255,0.06); padding-top: 12px; }
+  .pd-form input { background: #0d0d0d; border: 0.5px solid rgba(255,255,255,0.15);
+    color: #cfcabf; padding: 8px 10px; font-size: 12px; border-radius: 3px;
+    width: 140px; font-family: inherit; font-variant-numeric: tabular-nums; }
+  .pd-form button { font-family: monospace; font-size: 9px; letter-spacing: 0.13em;
+    background: transparent; border: 0.5px solid rgba(200,166,78,0.5); color: #c8a64e;
+    padding: 8px 14px; border-radius: 3px; cursor: pointer; text-transform: uppercase; }
+  .pd-form button:hover:not(:disabled) { background: rgba(200,166,78,0.12); }
+  .pd-form button:disabled { opacity: 0.4; cursor: default; }
+  .pd-form .hint { font-size: 10px; color: #666; }
+  .pd-hint { font-size: 11px; color: #666; line-height: 1.55; margin-top: 10px; }
+  @media (max-width: 700px) {
+    .pd-grid { grid-template-columns: 1fr; }
+  }
   .footer-note {
     margin-top: 28px; padding-top: 14px;
     border-top: 0.5px solid rgba(255,255,255,0.05);
@@ -233,10 +261,10 @@
           <div>
             <div class="section-heading">
               <span class="roman">III.</span>
-              <span class="sans">Standing &amp;</span>
-              <span class="serif">Influence</span>
+              <span class="sans">Personal</span>
+              <span class="serif">Debt</span>
             </div>
-            <div class="empty">Standing &amp; influence mechanics are coming soon.</div>
+            <div id="pd-host"><div class="empty">Loading…</div></div>
           </div>
         </div>
       </div>
@@ -506,6 +534,127 @@ async function loadHoldings(entId) {
   renderHoldings(positions);
 }
 
+// Personal Debt panel — 20270426. Two states:
+//   no active loan  → "Request Personal Loan" form (principal input)
+//   active loan     → balance card + "Make Debt Payment" form
+// All math (interest accrual / split / total owed) is server-side via
+// get_my_personal_loan + make_personal_loan_payment. The page never
+// re-implements the formula.
+async function loadPersonalDebt() {
+  const host = document.getElementById('pd-host');
+  if (!host) return;
+  const { data, error } = await _supabase.rpc('get_my_personal_loan');
+  if (error) {
+    console.warn('[entrepreneur-dashboard] get_my_personal_loan failed:', error.message);
+    host.innerHTML = '<div class="empty">Could not load personal debt.</div>';
+    return;
+  }
+  if (data?.has_loan) renderActiveLoan(host, data);
+  else                renderLoanRequestForm(host);
+}
+
+function renderLoanRequestForm(host) {
+  host.innerHTML = `
+    <div class="pd-card">
+      <div class="pd-head">No Active Loan</div>
+      <div class="pd-hint">Borrow personal cash from a player-owned banking corp in your home nation. One active loan at a time, fixed <b>8% APR</b>, principal <b>$100K&ndash;$25M</b>. Interest accrues each tick on the remaining principal.</div>
+      <div class="pd-form" style="margin-top:14px;">
+        <span class="hint">Principal (USD)</span>
+        <input type="number" id="pd-req-amt" min="100000" max="25000000" step="100000" value="1000000" />
+        <button id="pd-req-btn" type="button">Request Loan</button>
+      </div>
+    </div>`;
+  document.getElementById('pd-req-btn').onclick = handleRequestLoan;
+}
+
+function renderActiveLoan(host, loan) {
+  // Server-supplied amounts. fmtBigUsd would be cleaner; the existing
+  // hfFmtBig produces "$1.20M" formatting which matches the rest of
+  // the page's money formatting.
+  const fmt = (n) => '$' + hfFmtBig(Number(n) || 0);
+  host.innerHTML = `
+    <div class="pd-card">
+      <div class="pd-head">Active Loan${loan.lender_corp_name ? ' &middot; from ' + escapeHtml(loan.lender_corp_name) : ''}</div>
+      <div class="pd-grid">
+        <div class="pd-cell"><div class="k">Principal Remaining</div><div class="v">${fmt(loan.principal_remaining)}</div><div class="sub">of ${fmt(loan.principal)} borrowed</div></div>
+        <div class="pd-cell"><div class="k">Accrued Interest</div><div class="v">${fmt(loan.accrued_interest)}</div><div class="sub">${Number(loan.apr_pct).toFixed(1)}% APR</div></div>
+        <div class="pd-cell"><div class="k">Total Owed</div><div class="v">${fmt(loan.total_owed)}</div><div class="sub">payments go to interest first</div></div>
+      </div>
+      <div class="pd-form">
+        <span class="hint">Payment (USD)</span>
+        <input type="number" id="pd-pay-amt" min="1" step="10000" value="${Math.max(1, Number(loan.total_owed) || 0)}" />
+        <button id="pd-pay-btn" type="button" data-loan-id="${escapeAttr(loan.loan_id)}">Make Debt Payment</button>
+      </div>
+    </div>`;
+  document.getElementById('pd-pay-btn').onclick = handleMakePayment;
+}
+
+async function handleRequestLoan() {
+  const btn = document.getElementById('pd-req-btn');
+  const amt = parseInt(document.getElementById('pd-req-amt').value, 10);
+  if (!Number.isFinite(amt) || amt < 100000 || amt > 25000000) {
+    alert('Principal must be between $100,000 and $25,000,000.');
+    return;
+  }
+  const prev = btn.textContent; btn.disabled = true; btn.textContent = 'REQUESTING…';
+  try {
+    const { data, error } = await _supabase.rpc('request_personal_loan', { p_principal: amt });
+    if (error) throw error;
+    if (!data?.success) {
+      const R = {
+        not_authenticated:   'Sign in to request a loan.',
+        no_entrepreneur:     'No entrepreneur faction on this account.',
+        no_nation:           'Your entrepreneur has no home nation.',
+        invalid_principal:   'Principal must be $100K–$25M.',
+        loan_already_active: 'You already have an active personal loan.',
+        no_bank_available:   'No banking corp in your home nation can fund this loan. Wait for one with sufficient cash to open.',
+        bank_funds_changed:  'A bank''s cash changed mid-request. Try again.',
+      };
+      alert(R[data?.reason] || ('Could not request: ' + (data?.reason || 'unknown')));
+      btn.disabled = false; btn.textContent = prev;
+      return;
+    }
+    location.reload();
+  } catch (e) {
+    alert('Failed: ' + (e?.message || e));
+    btn.disabled = false; btn.textContent = prev;
+  }
+}
+
+async function handleMakePayment(e) {
+  const btn = e.currentTarget;
+  const amt = parseInt(document.getElementById('pd-pay-amt').value, 10);
+  const loanId = btn.dataset.loanId;
+  if (!Number.isFinite(amt) || amt < 1) { alert('Payment amount must be at least $1.'); return; }
+  if (!loanId)                          { alert('Loan id missing — reload the page.'); return; }
+  const prev = btn.textContent; btn.disabled = true; btn.textContent = 'PAYING…';
+  try {
+    const { data, error } = await _supabase.rpc('make_personal_loan_payment',
+      { p_loan_id: loanId, p_amount: amt });
+    if (error) throw error;
+    if (!data?.success) {
+      const R = {
+        not_authenticated:  'Sign in to make a payment.',
+        no_entrepreneur:    'No entrepreneur faction on this account.',
+        not_borrower:       'You are not the borrower on this loan.',
+        invalid_amount:     'Payment must be at least $1.',
+        loan_not_found:     'Loan not found — reload the page.',
+        loan_not_active:    'Loan is no longer active.',
+        insufficient_funds: data?.have != null && data?.need != null
+          ? `Insufficient cash — need $${hfFmtBig(data.need)}, have $${hfFmtBig(data.have)}.`
+          : 'Insufficient cash for that payment.',
+      };
+      alert(R[data?.reason] || ('Payment failed: ' + (data?.reason || 'unknown')));
+      btn.disabled = false; btn.textContent = prev;
+      return;
+    }
+    location.reload();
+  } catch (e2) {
+    alert('Failed: ' + (e2?.message || e2));
+    btn.disabled = false; btn.textContent = prev;
+  }
+}
+
 (async () => {
   try {
     // Shared topbar (auth + fetch + render) — one source for every
@@ -553,6 +702,7 @@ async function loadHoldings(entId) {
     const entId = ctx.faction?.id;
     loadHoldings(entId);
     loadNetWorth();
+    loadPersonalDebt();
 
     // Pressing Issues: two sources share this column — open acquisition
     // negotiations (2.6.8.3) and pending Board-Join votes (20270160).
