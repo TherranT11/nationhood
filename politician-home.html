@@ -306,7 +306,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { tickToDate, fmtBig, officeTitle } from './js/utils.js';
+import { tickToDate, fmtBig, officeTitle, termEndTickFor } from './js/utils.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 
 const NO_AFFILIATION_MESSAGE = 'This character has no affiliation.';
@@ -614,13 +614,24 @@ function renderAffiliation(ctx) {
     ? variant.desc
     : (partyName ? variant.descIfPartyName(partyName) : variant.descIfNoParty());
 
-  // Tenure: only shown when an office is held (politician_office_won_at_tick
-  // is the canonical source). Party Member tenure has no source today.
+  // Term-end pill (top-right). Single source for term length is
+  // termEndTickFor() in utils.js — legislature seats reseat at the
+  // nation's next_election_tick; local seats run a 12-tick term from
+  // when they won. Renders nothing for offices without a scheduled
+  // end (no office, or office without term tracking).
   const wonAt = Number(ctx.faction?.politician_office_won_at_tick) || 0;
   const curr  = Number(ctx.shard?.current_tick) || 0;
-  const ticks = office && wonAt > 0 ? Math.max(0, curr - wonAt) : null;
-  const tenureHtml = ticks != null
-    ? `<div class="ah-tenure"><span class="ah-tenure-val">${ticks}</span><span class="ah-tenure-lab">TICKS IN ROLE</span></div>`
+  const endTick = termEndTickFor({
+    office,
+    nextGeneralElectionTick: Number(ctx.nation?.next_election_tick) || 0,
+    officeWonAtTick: wonAt,
+  });
+  const remaining = endTick != null ? Math.max(0, endTick - curr) : null;
+  const tenureHtml = endTick != null
+    ? `<div class="ah-tenure">
+         <span class="ah-tenure-val">${escHtml(tickToDate(endTick))}</span>
+         <span class="ah-tenure-lab">TERM ENDS · ${remaining} TICK${remaining === 1 ? '' : 'S'} REMAINING</span>
+       </div>`
     : '';
 
   // Optional rank label (placeholder — district / party abbrev would

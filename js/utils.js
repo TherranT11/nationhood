@@ -140,6 +140,27 @@ export function tickToYear(tick) {
     return 2000 + Math.floor((Number(tick) || 0) / 12);
 }
 
+/**
+ * Term-end tick by office — single source for "when does this seat
+ * reseat?" Legislature offices (member_of_parliament, senior_mp) track
+ * the nation's general-election cycle; local offices (community_organizer,
+ * city_council_member) run a flat 12-tick term from when they won.
+ * Returns null when no term applies (no office, or office without a
+ * scheduled end).
+ *
+ *   state = { office, nextGeneralElectionTick, officeWonAtTick }
+ */
+export function termEndTickFor(state) {
+    const office = state && state.office;
+    if (office === 'member_of_parliament' || office === 'senior_mp') {
+        return Number(state.nextGeneralElectionTick) || null;
+    }
+    if (office === 'community_organizer' || office === 'city_council_member') {
+        return (Number(state.officeWonAtTick) || 0) + 12;
+    }
+    return null;
+}
+
 // ===== FORMATTING =====
 
 /**
