@@ -40,7 +40,11 @@ Three possible outcomes:
 
 The CLI has never run against this project. Open
 `docs/baseline-schema-migrations.sql` in the repo, paste the entire
-contents into the Supabase SQL Editor, and Run.
+contents into the Supabase SQL Editor, and Run. Skip
+`docs/baseline-duplicate-prefix-fixup.sql` (superseded — see its
+header for why); the duplicate-prefix problem was resolved by
+renaming the 12 colliding files to unique prefixes, so a fresh
+baseline run no longer needs the follow-up insert.
 
 The file creates the `supabase_migrations.schema_migrations` table
 and inserts 133 rows — one per unique pre-session migration version

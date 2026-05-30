@@ -1,4 +1,16 @@
 -- ════════════════════════════════════════════════════════════════════
+-- ⚠ SUPERSEDED by docs/baseline-duplicate-prefix-rename.sql — do NOT
+-- run this file on a fresh project. The "register by full filename"
+-- approach below stopped working when the Supabase CLI tightened its
+-- version-extraction to leading-numeric-only, which made every
+-- subsequent `db push` fail with "Remote migration versions not
+-- found in local migrations directory." The rename file resolves
+-- the underlying duplicate-prefix problem by giving each file a
+-- unique short prefix. Kept here purely as historical context for
+-- the production DB that ran this once before the rename.
+-- ════════════════════════════════════════════════════════════════════
+
+-- ════════════════════════════════════════════════════════════════════
 -- FOLLOW-UP BASELINE — register the 12 duplicate-prefix files the CLI
 -- couldn't match against the first baseline.
 --
