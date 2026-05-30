@@ -3683,7 +3683,7 @@ function initials(s, n) {
           // Every active route, lane-wide, for the competitor breakdown on
           // each of this corp's routes (lanes are shared across airlines).
           _supabase.from('airline_routes')
-            .select('origin_city_id, dest_city_id, last_tick_pax, airline_corp_id, airline:entrepreneur_corps!airline_corp_id(name), faction:factions!airline_faction_id(faction_name)')
+            .select('origin_city_id, dest_city_id, last_tick_pax, airline_corp_id, airline:entrepreneur_corps!airline_corp_id(name)')
             .eq('status', 'active'),
         ]);
         if (termRes.error)     console.warn('[entrepreneur-corp] terminals fetch error:', termRes.error.message);
@@ -3708,7 +3708,7 @@ function initials(s, n) {
           const pax = Number(lr.last_tick_pax) || 0;
           lane.total += pax;
           const cname = lr.airline_corp_id === id ? 'You'
-            : (lr.airline?.name || lr.faction?.faction_name || 'Unknown airline');
+            : (lr.airline?.name || 'Unknown airline');
           lane.byCorp.set(cname, (lane.byCorp.get(cname) || 0) + pax);
         }
 
