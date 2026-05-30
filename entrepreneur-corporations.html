@@ -482,7 +482,6 @@ function selectPick(containerId, e) {
 // by fetchBuildingCost when the picker changes. Null = "not fetched yet"
 // (UI shows em-dash placeholders until the round-trip completes).
 let _bldCostCache = new Map(); // key: `${industry}|${nationId}` → bigint
-let _bldCostInFlight = null;
 function bldCacheKey() { return `${sel.industry}|${sel.hqNationId || ''}`; }
 async function fetchBuildingCost() {
   const key = bldCacheKey();
@@ -491,11 +490,9 @@ async function fetchBuildingCost() {
   // Capital passes through unchanged from the slider since the per-cap
   // fee math is mirrored client-side; we only need the building_cost
   // field from the preview RPC. Any cap value works for that field.
-  _bldCostInFlight = _supabase.rpc('entrepreneur_corp_founding_cost', {
+  const { data, error } = await _supabase.rpc('entrepreneur_corp_founding_cost', {
     p_industry: sel.industry, p_hq_nation_id: sel.hqNationId, p_capital: capRaw(),
   });
-  const { data, error } = await _bldCostInFlight;
-  _bldCostInFlight = null;
   if (error) {
     console.warn('[entrepreneur-corporations] founding-cost preview failed:', error.message);
     return null;
