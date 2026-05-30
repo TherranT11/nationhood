@@ -165,9 +165,11 @@
    on this surface is by definition a member of THIS party, so the cell
    carried no per-row signal. When held-office tracking lands (MP /
    Whip / Senator / Minister), a new column slots back in here. */
-.mem-row { display:grid; grid-template-columns:38px 1fr 60px 80px;
+.mem-row { display:grid; grid-template-columns:38px 1fr 150px 60px 80px;
   gap:14px; align-items:center; padding:11px 4px;
   border-bottom:0.5px solid rgba(255,255,255,0.04); font-size:12px; }
+.mem-affil { color:#cfcabf; font-size:11px; }
+.mem-affil.office { color:#7a9aab; }
 .mem-row:last-child { border-bottom:none; }
 .mem-row.header { font-size:8px; letter-spacing:0.11em; color:#666;
   border-bottom-color:rgba(255,255,255,0.08); padding-bottom:8px;
@@ -299,7 +301,7 @@
   .body-grid.has-side { grid-template-columns:1fr; }
   .chat-thread { max-height:300px; }
   .mem-row { grid-template-columns:30px 1fr auto; }
-  .mem-row .mem-age { display:none; }
+  .mem-row .mem-age, .mem-row .mem-affil { display:none; }
   .biz-grid { grid-template-columns:1fr; }
   .biz-modal { max-width:100%; }
 }
@@ -401,7 +403,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { safeHexColor, factionInitials, tickToYear } from './js/utils.js';
+import { safeHexColor, factionInitials, tickToYear, officeTitle } from './js/utils.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
@@ -412,6 +414,7 @@ let _viewerCharisma = 0;
 let _viewerInfluence = 0;
 let _viewerSpeechReadyAt = 0;
 let _viewerNextActionAt = 0;
+let _viewerNextMotionAt = 0;
 let _shardTick = 0;
 let _chatPollId = null;
 
@@ -435,6 +438,7 @@ async function init() {
   _viewerInfluence     = Number(ctx.faction?.politician_influence) || 0;
   _viewerSpeechReadyAt = Number(ctx.faction?.speech_cooldown_until_tick) || 0;
   _viewerNextActionAt  = Number(ctx.faction?.next_member_action_tick) || 0;
+  _viewerNextMotionAt  = Number(ctx.faction?.next_party_motion_tick) || 0;
   _shardTick           = Number(ctx.shard?.current_tick) || 0;
 
   // Party + members in parallel. Members filter on faction_type so a
@@ -447,7 +451,7 @@ async function init() {
       .is('abandoned_at', null)
       .maybeSingle(),
     _supabase.from('factions')
-      .select('id, leader_first_name, leader_last_name, leader_age, politician_influence')
+      .select('id, leader_first_name, leader_last_name, leader_age, politician_influence, politician_office')
       .eq('politician_party_id', partyId)
       .eq('faction_type', 'politician')
       .is('abandoned_at', null)
@@ -920,15 +924,23 @@ function renderMembers(members, accent) {
     const name = [m.leader_first_name, m.leader_last_name].filter(Boolean).join(' ') || '—';
     const youBadge = m.id === _viewerPolId ? ' <span class="you">You</span>' : '';
     const age = (m.leader_age != null) ? String(Number(m.leader_age)) : '—';
+    // Affiliation = office title when an office is held (Community
+    // Organizer / Member of Parliament — see OFFICE_TITLES in
+    // js/utils.js); otherwise plain "Party Member". Office-holders get
+    // an accent color so they pop out of the list.
+    const office = m.politician_office || null;
+    const affilText = office ? officeTitle(office) : 'Party Member';
+    const affilCls  = office ? 'mem-affil office' : 'mem-affil';
     return `<div class="mem-row">
       <div class="mem-badge" style="background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;">${escHtml(factionInitials(name, null))}</div>
       <div class="mem-name">${escHtml(name)}${youBadge}</div>
+      <div class="${affilCls}">${escHtml(affilText)}</div>
       <div class="mem-age">${escHtml(age)}</div>
       <div class="mem-inf">${Number(m.politician_influence) || 0}</div>
     </div>`;
   }).join('');
   host.innerHTML = `<div class="mem-row header">
-    <span></span><span>Name</span><span>Age</span><span style="text-align:right;">Influence</span>
+    <span></span><span>Name</span><span>Affiliation</span><span>Age</span><span style="text-align:right;">Influence</span>
   </div>${rows}`;
 }
 
@@ -983,6 +995,7 @@ const BIZ_FAIL_REASONS = {
   invalid_motion_type:   'That motion type is not recognised.',
   no_politician:         'No politician on file for this account.',
   not_member:            'You must be a party member to propose a motion.',
+  motion_cooldown:       'You proposed a motion recently. Try again in a few ticks.',
   empty_text:            'Proposed text cannot be empty.',
   description_too_long:  'Description is too long (max 2000 characters).',
   slogan_too_long:       'Slogan is too long (max 140 characters).',
@@ -1005,20 +1018,32 @@ function renderBusinessPanel(party, isMine) {
   // same petition flow. The intro carries that nuance so the eventual
   // rank-up doesn't read as inconsistent copy.
   document.getElementById('biz-sub').textContent = 'rank-and-file proposals';
-  document.getElementById('biz-intro').innerHTML =
-    'As <b>a rank-and-file member</b>, you may petition for the following motions. ' +
-    'Higher ranks will unlock direct vote-calling without a petition.';
 
+  // 3-tick cooldown shared across the three motions (20270419).
+  // ticksLeft drives both the intro copy and the card-disabled state;
+  // both surfaces read the same _viewerNextMotionAt so the page and
+  // the server-side gate agree.
+  const ticksLeft = Math.max(0, _viewerNextMotionAt - _shardTick);
+  const onCooldown = ticksLeft > 0;
+
+  document.getElementById('biz-intro').innerHTML = onCooldown
+    ? `You proposed a motion recently. Next proposal in <b>${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}</b>.`
+    : 'As <b>a rank-and-file member</b>, you may petition for the following motions. ' +
+      'Higher ranks will unlock direct vote-calling without a petition.';
+
+  const cardCls = onCooldown ? 'biz-card disabled' : 'biz-card';
   const grid = document.getElementById('biz-grid');
   grid.innerHTML = Object.entries(BIZ_MOTIONS).map(([key, m]) => `
-    <div class="biz-card" data-motion="${key}">
+    <div class="${cardCls}" data-motion="${key}">
       <div class="biz-tag">${escHtml(m.tag)}</div>
       <div class="biz-title">${escHtml(m.title)}</div>
       <div class="biz-meta">${escHtml(m.meta)}</div>
     </div>`).join('');
-  grid.querySelectorAll('.biz-card').forEach(card => {
-    card.onclick = () => openBizModal(card.dataset.motion);
-  });
+  if (!onCooldown) {
+    grid.querySelectorAll('.biz-card').forEach(card => {
+      card.onclick = () => openBizModal(card.dataset.motion);
+    });
+  }
 }
 
 function openBizModal(motionType) {
