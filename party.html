@@ -414,6 +414,7 @@ let _viewerCharisma = 0;
 let _viewerInfluence = 0;
 let _viewerSpeechReadyAt = 0;
 let _viewerNextActionAt = 0;
+let _viewerNextMotionAt = 0;
 let _shardTick = 0;
 let _chatPollId = null;
 
@@ -437,6 +438,7 @@ async function init() {
   _viewerInfluence     = Number(ctx.faction?.politician_influence) || 0;
   _viewerSpeechReadyAt = Number(ctx.faction?.speech_cooldown_until_tick) || 0;
   _viewerNextActionAt  = Number(ctx.faction?.next_member_action_tick) || 0;
+  _viewerNextMotionAt  = Number(ctx.faction?.next_party_motion_tick) || 0;
   _shardTick           = Number(ctx.shard?.current_tick) || 0;
 
   // Party + members in parallel. Members filter on faction_type so a
@@ -993,6 +995,7 @@ const BIZ_FAIL_REASONS = {
   invalid_motion_type:   'That motion type is not recognised.',
   no_politician:         'No politician on file for this account.',
   not_member:            'You must be a party member to propose a motion.',
+  motion_cooldown:       'You proposed a motion recently. Try again in a few ticks.',
   empty_text:            'Proposed text cannot be empty.',
   description_too_long:  'Description is too long (max 2000 characters).',
   slogan_too_long:       'Slogan is too long (max 140 characters).',
@@ -1015,20 +1018,32 @@ function renderBusinessPanel(party, isMine) {
   // same petition flow. The intro carries that nuance so the eventual
   // rank-up doesn't read as inconsistent copy.
   document.getElementById('biz-sub').textContent = 'rank-and-file proposals';
-  document.getElementById('biz-intro').innerHTML =
-    'As <b>a rank-and-file member</b>, you may petition for the following motions. ' +
-    'Higher ranks will unlock direct vote-calling without a petition.';
 
+  // 3-tick cooldown shared across the three motions (20270419).
+  // ticksLeft drives both the intro copy and the card-disabled state;
+  // both surfaces read the same _viewerNextMotionAt so the page and
+  // the server-side gate agree.
+  const ticksLeft = Math.max(0, _viewerNextMotionAt - _shardTick);
+  const onCooldown = ticksLeft > 0;
+
+  document.getElementById('biz-intro').innerHTML = onCooldown
+    ? `You proposed a motion recently. Next proposal in <b>${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}</b>.`
+    : 'As <b>a rank-and-file member</b>, you may petition for the following motions. ' +
+      'Higher ranks will unlock direct vote-calling without a petition.';
+
+  const cardCls = onCooldown ? 'biz-card disabled' : 'biz-card';
   const grid = document.getElementById('biz-grid');
   grid.innerHTML = Object.entries(BIZ_MOTIONS).map(([key, m]) => `
-    <div class="biz-card" data-motion="${key}">
+    <div class="${cardCls}" data-motion="${key}">
       <div class="biz-tag">${escHtml(m.tag)}</div>
       <div class="biz-title">${escHtml(m.title)}</div>
       <div class="biz-meta">${escHtml(m.meta)}</div>
     </div>`).join('');
-  grid.querySelectorAll('.biz-card').forEach(card => {
-    card.onclick = () => openBizModal(card.dataset.motion);
-  });
+  if (!onCooldown) {
+    grid.querySelectorAll('.biz-card').forEach(card => {
+      card.onclick = () => openBizModal(card.dataset.motion);
+    });
+  }
 }
 
 function openBizModal(motionType) {
