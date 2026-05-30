@@ -608,7 +608,7 @@ async function handleRequestLoan() {
         invalid_principal:   'Principal must be $100K–$25M.',
         loan_already_active: 'You already have an active personal loan.',
         no_bank_available:   'No banking corp in your home nation can fund this loan. Wait for one with sufficient cash to open.',
-        bank_funds_changed:  'A bank''s cash changed mid-request. Try again.',
+        bank_funds_changed:  "A bank's cash changed mid-request. Try again.",
       };
       alert(R[data?.reason] || ('Could not request: ' + (data?.reason || 'unknown')));
       btn.disabled = false; btn.textContent = prev;
