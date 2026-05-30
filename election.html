@@ -156,50 +156,26 @@ function showFail(msg) {
   if (el) { el.className = 'fail'; el.textContent = msg; }
 }
 
-// Largest-remainder seat projection — mirror of the SQL allocator in
-// resolve_due_general_elections() (20270421). Two intentional differences:
-//   1. Stable tiebreak by id (the SQL uses random()) so projections
-//      don't flicker between page reloads. The actual election still
-//      rolls random; projection / reality occasionally diverging in
-//      tie-rich scenarios is acceptable for v1.
-//   2. Coerces negative or NULL popularity to 0 before summing —
-//      same as the SQL's COALESCE(...,0) + WHERE pop > 0 filter.
-// Returns the input rows with `projected` (int) added.
-function projectSeats(parties, totalSeats) {
-  if (totalSeats <= 0 || !parties.length) {
-    return parties.map(p => ({ ...p, projected: 0 }));
-  }
-  const sumPop = parties.reduce((s, p) =>
-    s + Math.max(0, Number(p.popularity_pct) || 0), 0);
-  if (sumPop <= 0) return parties.map(p => ({ ...p, projected: 0 }));
-
-  const withShares = parties.map(p => {
-    const pop = Math.max(0, Number(p.popularity_pct) || 0);
-    const exact = pop > 0 ? (pop / sumPop) * totalSeats : 0;
-    const base = Math.floor(exact);
-    return { ...p, _exact: exact, _base: base, _rem: exact - base };
-  });
-  const used = withShares.reduce((s, p) => s + p._base, 0);
-  const leftover = totalSeats - used;
-  const ranked = [...withShares].sort((a, b) =>
-    b._rem - a._rem || (String(a.id) < String(b.id) ? -1 : 1));
-  const winnerSet = new Set(ranked.slice(0, Math.max(0, leftover)).map(p => p.id));
-  return withShares.map(p => ({
-    ...p,
-    projected: p._base + (winnerSet.has(p.id) ? 1 : 0),
-  }));
-}
-
 const url = new URL(window.location.href);
 const nationId = url.searchParams.get('nation');
 
-const ctx = await bootstrapPolitician('nation');
-if (!ctx) { /* topbar redirected */ }
-else if (!nationId) { showFail('Missing ?nation parameter.'); }
-else { await main(); }
+let ctx = null;
+try {
+  ctx = await bootstrapPolitician('nation');
+} catch (e) {
+  console.error('[election] bootstrap failed', e);
+  showFail('Could not load politician context. Try refreshing.');
+}
+if (ctx) {
+  if (!nationId) showFail('Missing ?nation parameter.');
+  else await main();
+}
 
 async function main() {
-  const [nationRes, partiesRes] = await Promise.all([
+  // Projection math lives in public.project_general_election (20270422) —
+  // single source of truth shared with the actual election resolver.
+  // The page renders whatever the server returns; no client-side math.
+  const [nationRes, partiesRes, projRes] = await Promise.all([
     _supabase.from('nations')
       .select('id, name, flag_url, total_seats, next_election_tick, population, government_type')
       .eq('id', nationId).maybeSingle(),
@@ -209,12 +185,21 @@ async function main() {
       .eq('faction_type', 'movement_party')
       .is('abandoned_at', null)
       .order('popularity_pct', { ascending: false }),
+    _supabase.rpc('project_general_election', { p_nation_id: nationId }),
   ]);
   if (nationRes.error) { showFail('Could not load nation.'); console.error(nationRes.error); return; }
   if (!nationRes.data) { showFail('Nation not found.'); return; }
   if (partiesRes.error) console.warn('[election] parties fetch failed', partiesRes.error);
+  if (projRes.error)    console.warn('[election] projection RPC failed', projRes.error);
 
-  render(nationRes.data, partiesRes.data || [], ctx.shard?.current_tick || 0);
+  // Merge projected_seats into each party row by id. The RPC returns
+  // one row per active movement_party in the nation; defaults to 0
+  // for any party the RPC didn't cover (defensive — current implementation
+  // always returns every active party).
+  const projMap = new Map((projRes.data || []).map(r => [r.party_id, r.projected_seats]));
+  const parties = (partiesRes.data || []).map(p => ({ ...p, projected: projMap.get(p.id) ?? 0 }));
+
+  render(nationRes.data, parties, ctx.shard?.current_tick || 0);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -222,9 +207,9 @@ async function main() {
 function render(nation, parties, currentTick) {
   document.title = `${nation.name} — Election`;
   const totalSeats = Math.max(0, Number(nation.total_seats) || 0);
-  const projected  = projectSeats(parties, totalSeats)
-    .sort((a, b) => b.projected - a.projected
-                 || (Number(b.popularity_pct) || 0) - (Number(a.popularity_pct) || 0));
+  const projected  = [...parties].sort((a, b) =>
+    b.projected - a.projected ||
+    (Number(b.popularity_pct) || 0) - (Number(a.popularity_pct) || 0));
   const nextTick   = Number(nation.next_election_tick);
   const hasElection = Number.isFinite(nextTick) && nextTick > 0;
   const ticksAway  = hasElection ? nextTick - currentTick : NaN;
