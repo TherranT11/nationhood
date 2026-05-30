@@ -2565,12 +2565,23 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     ];
     // Legacy corp pages removed (corp-cull Phase 2). No corp inspector pages.
     const _INSPECTOR_CORP_PAGES = [];
+    // Entrepreneur pages — nation-agnostic (entrepreneurs have no nation_id),
+    // inspected via ?faction_id= alone (see js/entrepreneur-topbar.js).
+    const _INSPECTOR_ENTREPRENEUR_PAGES = [
+        ['entrepreneur-dashboard.html',    '🏢 Home / Dashboard'],
+        ['entrepreneur-corporations.html', '🏭 Corporations'],
+        ['entrepreneur-markets.html',      '📈 Markets'],
+        ['entrepreneur-assets.html',       '👤 Character / Assets'],
+        ['entrepreneur-lobbying.html',     '🤝 Lobbying'],
+    ];
 
     function _renderInspectorPageOptions(type) {
         const sel = document.getElementById('inspector-page-select');
         if (!sel) return;
         const previousValue = sel.value;
-        const list = type === 'corp' ? _INSPECTOR_CORP_PAGES : _INSPECTOR_PARTY_PAGES;
+        const list = type === 'corp'         ? _INSPECTOR_CORP_PAGES
+                   : type === 'entrepreneur' ? _INSPECTOR_ENTREPRENEUR_PAGES
+                   : _INSPECTOR_PARTY_PAGES;
         sel.innerHTML = list.map(([val, label]) =>
             `<option value="${val}">${label}</option>`
         ).join('');
@@ -2583,6 +2594,30 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         const select = document.getElementById('inspector-faction-select');
         select.innerHTML = '<option value="">— Default (your account) —</option>';
         _renderInspectorPageOptions('party');
+
+        // Entrepreneurs are nation-agnostic, so they're listed regardless of
+        // (and before) the chosen nation. Loaded every call so they're always
+        // available — including with no nation selected.
+        try {
+            const { data: ents, error: entError } = await _supabase.from('factions')
+                .select('id, faction_name, leader_first_name, leader_last_name, status')
+                .eq('faction_type', 'entrepreneur')
+                .is('abandoned_at', null)
+                .order('faction_name');
+            if (entError) throw entError;
+            if ((ents || []).length > 0) {
+                select.innerHTML += '<optgroup label="Entrepreneurs">';
+                ents.forEach(f => {
+                    const nm = f.faction_name
+                        || `${f.leader_first_name || ''} ${f.leader_last_name || ''}`.trim()
+                        || 'Entrepreneur';
+                    const tag = String(f.status || '').toLowerCase() === 'arrested' ? ' 🔒 ARRESTED' : '';
+                    select.innerHTML += `<option value="${esc(f.id)}" data-type="entrepreneur">[Entrepreneur] ${esc(nm)}${tag}</option>`;
+                });
+                select.innerHTML += '</optgroup>';
+            }
+        } catch (error) { console.error('Inspector entrepreneurs error:', error); }
+
         if (!nationId) return;
         try {
             // Pull BOTH parties and corporations in parallel. The dropdown
@@ -2647,15 +2682,25 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
                 const type = opt?.getAttribute('data-type') || 'party';
                 _renderInspectorPageOptions(type);
             });
+            // Populate the nation-agnostic Entrepreneurs group up front so they
+            // can be inspected without first choosing a nation.
+            loadInspectorFactions();
         };
         document.addEventListener('admin-panel-loaded', attach);
     })();
 
+    function _inspectorSelectedFactionType() {
+        const sel = document.getElementById('inspector-faction-select');
+        return sel?.options[sel.selectedIndex]?.getAttribute('data-type') || '';
+    }
+
     function buildInspectorUrl(page) {
         const nationId = document.getElementById('inspector-nation-select').value;
         const factionId = document.getElementById('inspector-faction-select').value;
+        const isEnt = _inspectorSelectedFactionType() === 'entrepreneur';
         const params = [];
-        if (nationId) params.push('nation_id=' + nationId);
+        // Entrepreneurs are nation-agnostic — inspected by faction_id alone.
+        if (nationId && !isEnt) params.push('nation_id=' + nationId);
         if (factionId) params.push('faction_id=' + factionId);
         return page + (params.length ? '?' + params.join('&') : '');
     }
@@ -2664,28 +2709,33 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         const nationId = document.getElementById('inspector-nation-select').value;
         const page = document.getElementById('inspector-page-select').value;
         const factionId = document.getElementById('inspector-faction-select').value;
+        const isEnt = _inspectorSelectedFactionType() === 'entrepreneur';
 
-        if (!nationId) { alert('Select a nation first.'); return; }
+        if (!nationId && !isEnt) { alert('Select a nation first (or pick an entrepreneur).'); return; }
 
-        inspectorNationId = nationId;
+        // Entrepreneurs are nation-agnostic — don't carry a nation context for them.
+        inspectorNationId = isEnt ? '' : nationId;
         inspectorFactionId = factionId;
         inspectorPage = page;
 
         // Get names from dropdowns
         const nationSelect = document.getElementById('inspector-nation-select');
-        const nationName = nationSelect.options[nationSelect.selectedIndex].text;
+        const nationName = nationSelect.value ? nationSelect.options[nationSelect.selectedIndex].text : '';
         const factionSelect = document.getElementById('inspector-faction-select');
         const factionLabel = factionId ? ' as ' + factionSelect.options[factionSelect.selectedIndex].text : '';
 
         // Set localStorage so the embedded page reads the correct nation
-        localStorage.setItem('nation_id', nationId);
-        localStorage.setItem('nation_name', nationName);
+        // (skipped for entrepreneurs — they have no nation context).
+        if (nationId && !isEnt) {
+            localStorage.setItem('nation_id', nationId);
+            localStorage.setItem('nation_name', nationName);
+        }
 
         const frame = document.getElementById('inspector-frame');
         frame.src = buildInspectorUrl(page);
 
         document.getElementById('inspector-current-label').textContent =
-            nationName + factionLabel + '  →  ' + page;
+            ((nationName ? nationName : 'Entrepreneur') + factionLabel + '  →  ' + page);
         document.getElementById('inspector-current').classList.remove('hidden');
         document.getElementById('inspector-frame-container').classList.remove('hidden');
     }
@@ -2693,24 +2743,25 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     function openInspectorNewTab() {
         const nationId = document.getElementById('inspector-nation-select').value;
         const page = document.getElementById('inspector-page-select').value;
-        if (!nationId) { alert('Select a nation first.'); return; }
+        const isEnt = _inspectorSelectedFactionType() === 'entrepreneur';
+        if (!nationId && !isEnt) { alert('Select a nation first (or pick an entrepreneur).'); return; }
 
-        // Set localStorage so the page reads it on open
-        const nationSelect = document.getElementById('inspector-nation-select');
-        const nationName = nationSelect.options[nationSelect.selectedIndex].text;
-        localStorage.setItem('nation_id', nationId);
-        localStorage.setItem('nation_name', nationName);
+        // Set localStorage so the page reads it on open (nation pages only).
+        if (nationId && !isEnt) {
+            const nationSelect = document.getElementById('inspector-nation-select');
+            localStorage.setItem('nation_id', nationId);
+            localStorage.setItem('nation_name', nationSelect.options[nationSelect.selectedIndex].text);
+        }
 
         window.open(buildInspectorUrl(page), '_blank');
     }
 
     function reloadInspector() {
         const frame = document.getElementById('inspector-frame');
-        if (frame.src && inspectorNationId) {
-            // Re-set localStorage in case another tab changed it
-            localStorage.setItem('nation_id', inspectorNationId);
-            frame.contentWindow.location.reload();
-        }
+        if (!frame.src) return;
+        // Re-set localStorage in case another tab changed it (nation pages).
+        if (inspectorNationId) localStorage.setItem('nation_id', inspectorNationId);
+        frame.contentWindow.location.reload();
     }
 
     function resizeInspector(height) {

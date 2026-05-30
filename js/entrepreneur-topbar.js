@@ -221,7 +221,7 @@ function showArrestToast() {
   setTimeout(() => t.remove(), 3500);
 }
 
-export function applyArrestLock(faction) {
+function applyArrestLock(faction) {
   const arrested = !!faction && String(faction.status || '').toLowerCase() === 'arrested';
   if (!arrested) { document.body.classList.remove('ent-arrested'); return false; }
 
@@ -292,25 +292,54 @@ export function renderEntrepreneurTopbar(container, { faction, shard, allUserFac
     try { await _supabase.auth.signOut(); } catch (e) { console.warn('[entrepreneur-topbar] signOut failed:', e?.message || e); }
     window.location.href = 'login.html';
   });
-
-  applyArrestLock(f);
 }
 
 // Auth + fetch + render the topbar into #ent-topbar. Returns
 // { user, faction, shard, allUserFactions }. Redirects to login if not
 // authed, or to faction-select if the user has no entrepreneur faction.
 // Throws on a hard query failure so the caller can show a loud error.
+// Admin inspector override: when admin.html's Inspector loads an
+// entrepreneur page in its iframe it appends ?faction_id=<id>. Mirrors the
+// common.js convention — only honored for a server-verified admin, and the
+// id is stashed in sessionStorage so it survives in-iframe nav (the ENT_TABS
+// hrefs carry no query string). Returns the faction id to inspect, or null.
+async function getAdminFactionOverride() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get('faction_id');
+    const fid = fromUrl || sessionStorage.getItem('_admin_faction');
+    if (!fid) return null;                              // normal browsing — no RPC, no latency
+    if (fromUrl) sessionStorage.setItem('_admin_faction', fromUrl);
+    const { data } = await _supabase.rpc('verify_admin_access');
+    if (!data || !data.authorized) return null;         // not an admin — ignore the override
+    return fid;
+  } catch (e) {
+    console.warn('[entrepreneur-topbar] admin override check failed:', e?.message || e);
+    return null;
+  }
+}
+
+const ENT_FACTION_COLS =
+  'id, faction_name, leader_first_name, leader_last_name, leader_age, nation, ' +
+  'entrepreneur_archetype, ent_ambition, ent_cunning, ent_reputation, ent_vision, party_funds, status';
+
 export async function bootstrapEntrepreneur(activeTab) {
   const { data: { user } } = await _supabase.auth.getUser();
   if (!user) { window.location.href = 'login.html'; return null; }
 
+  // Admin inspecting a specific entrepreneur? Load that faction by id instead
+  // of resolving the caller's own. View-only: action RPCs still resolve by
+  // auth.uid() server-side, so an admin can browse but not act as them.
+  const overrideId = await getAdminFactionOverride();
+
   const [facRes, shardRes, allFacRes] = await Promise.all([
-    _supabase.from('factions')
-      .select('id, faction_name, leader_first_name, leader_last_name, leader_age, nation, entrepreneur_archetype, ent_ambition, ent_cunning, ent_reputation, ent_vision, party_funds, status')
-      .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
-      .eq('faction_type', 'entrepreneur')
-      .is('abandoned_at', null)
-      .limit(1).maybeSingle(),
+    overrideId
+      ? _supabase.from('factions').select(ENT_FACTION_COLS).eq('id', overrideId).maybeSingle()
+      : _supabase.from('factions').select(ENT_FACTION_COLS)
+          .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+          .eq('faction_type', 'entrepreneur')
+          .is('abandoned_at', null)
+          .limit(1).maybeSingle(),
     _supabase.from('shard').select('current_date, current_tick, next_tick_at').eq('name', 'Alpha Shard').maybeSingle(),
     _supabase.from('factions')
       .select('id, faction_type, faction_name, abbreviation, branch, nation_id, abandoned_at, is_banned, linked_user_id')
@@ -319,13 +348,19 @@ export async function bootstrapEntrepreneur(activeTab) {
 
   if (facRes.error) throw facRes.error;
   const faction = facRes.data;
-  if (!faction) { window.location.href = 'faction-select.html'; return null; }
+  if (!faction && !overrideId) { window.location.href = 'faction-select.html'; return null; }
+  if (!faction) console.warn('[entrepreneur-topbar] inspector faction not found:', overrideId);
   if (shardRes.error) console.warn('[entrepreneur-topbar] shard load failed:', shardRes.error.message);
   if (allFacRes.error) console.warn('[entrepreneur-topbar] factions load failed:', allFacRes.error.message);
 
   const shard = shardRes.data || {};
-  const allUserFactions = allFacRes.data || [];
+  // While inspecting, the switcher reflects the inspected entrepreneur, not
+  // the admin's own factions.
+  const allUserFactions = overrideId ? (faction ? [faction] : []) : (allFacRes.data || []);
   renderEntrepreneurTopbar(document.getElementById('ent-topbar'), { faction, shard, allUserFactions, activeTab });
-  applyArrestLock(faction);  // also enforce when the page has no #ent-topbar container
+  // Single source for the arrest lock — runs after the topbar exists so the
+  // banner can attach, and still applies the body-class lock on any page
+  // without an #ent-topbar container.
+  applyArrestLock(faction);
   return { user, faction, shard, allUserFactions };
 }
