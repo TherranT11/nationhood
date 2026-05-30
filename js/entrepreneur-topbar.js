@@ -175,6 +175,84 @@ function buildSwitcher(facs) {
   });
 }
 
+// ─── Arrest lock ───────────────────────────────────────────────────
+// When the entrepreneur's status is 'arrested' the server hard-blocks
+// every economic action (see migration 20270412). Here we make that
+// obvious and inert client-side: a persistent banner + a body class that
+// greys out and disables all action controls. The topbar / nav use
+// <span>/<a> (not button/input), so navigation, faction-switching and
+// logout stay live — only page action controls are locked.
+const ARREST_STYLE_ID = 'ent-arrest-styles';
+function ensureArrestStyles() {
+  if (document.getElementById(ARREST_STYLE_ID)) return;
+  const s = document.createElement('style');
+  s.id = ARREST_STYLE_ID;
+  s.textContent = `
+  .ent-banner { display:flex; align-items:center; gap:12px; padding:12px 28px;
+    background:repeating-linear-gradient(45deg,#2a0d0d,#2a0d0d 12px,#241010 12px,#241010 24px);
+    border-bottom:1px solid #7a2a2a; color:#ffb3b3; font-size:12px; letter-spacing:0.02em; line-height:1.5; }
+  .ent-banner .lock { font-size:18px; line-height:1; }
+  .ent-banner .title { color:#ff6b6b; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; }
+  .ent-banner .desc { color:#cf8c8c; }
+  @media (max-width:700px){ .ent-banner{ padding:10px 12px; } }
+  body.ent-arrested button,
+  body.ent-arrested input,
+  body.ent-arrested select,
+  body.ent-arrested textarea,
+  body.ent-arrested [role="button"] {
+    pointer-events:none !important; opacity:0.4 !important; cursor:not-allowed !important; filter:grayscale(0.5); }
+  body.ent-arrested #ent-banner,
+  body.ent-arrested .ent-arrested-allow,
+  body.ent-arrested .ent-arrested-allow * {
+    pointer-events:auto !important; opacity:1 !important; cursor:auto !important; filter:none !important; }
+  .ent-arrest-toast { position:fixed; left:50%; bottom:28px; transform:translateX(-50%);
+    background:#2a0d0d; border:1px solid #7a2a2a; color:#ffb3b3; padding:10px 16px; border-radius:6px;
+    font-size:12px; z-index:9999; box-shadow:0 6px 24px rgba(0,0,0,0.55); }
+  `;
+  document.head.appendChild(s);
+}
+
+let _arrestWired = false;
+function showArrestToast() {
+  const t = document.createElement('div');
+  t.className = 'ent-arrest-toast';
+  t.textContent = 'You are under arrest — this action is blocked.';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+export function applyArrestLock(faction) {
+  const arrested = !!faction && String(faction.status || '').toLowerCase() === 'arrested';
+  if (!arrested) { document.body.classList.remove('ent-arrested'); return false; }
+
+  ensureArrestStyles();
+  document.body.classList.add('ent-arrested');
+
+  // Banner sits below the nav, full-width, inside the topbar container.
+  const bar = document.getElementById('ent-topbar');
+  if (bar && !document.getElementById('ent-banner')) {
+    bar.insertAdjacentHTML('beforeend',
+      `<div class="ent-banner" id="ent-banner">
+         <span class="lock">🔒</span>
+         <span><span class="title">Under Arrest</span> — your assets are frozen. You cannot found or close
+         corporations, buy or sell shares, trade, invest, bid, or borrow. Existing businesses keep operating.
+         <span class="desc">Contact an administrator to appeal.</span></span>
+       </div>`);
+  }
+
+  // Belt-and-suspenders: stop keyboard/Enter form submits the CSS can't catch.
+  if (!_arrestWired) {
+    _arrestWired = true;
+    document.addEventListener('submit', (e) => {
+      if (document.body.classList.contains('ent-arrested') &&
+          !e.target.closest('#ent-banner, .ent-arrested-allow, .ent-topbar, .ent-nav')) {
+        e.preventDefault(); e.stopImmediatePropagation(); showArrestToast();
+      }
+    }, true);
+  }
+  return true;
+}
+
 export function renderEntrepreneurTopbar(container, { faction, shard, allUserFactions, activeTab }) {
   if (!container) return;
   ensureStyles();
@@ -214,6 +292,8 @@ export function renderEntrepreneurTopbar(container, { faction, shard, allUserFac
     try { await _supabase.auth.signOut(); } catch (e) { console.warn('[entrepreneur-topbar] signOut failed:', e?.message || e); }
     window.location.href = 'login.html';
   });
+
+  applyArrestLock(f);
 }
 
 // Auth + fetch + render the topbar into #ent-topbar. Returns
@@ -226,7 +306,7 @@ export async function bootstrapEntrepreneur(activeTab) {
 
   const [facRes, shardRes, allFacRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_name, leader_first_name, leader_last_name, leader_age, nation, entrepreneur_archetype, ent_ambition, ent_cunning, ent_reputation, ent_vision, party_funds')
+      .select('id, faction_name, leader_first_name, leader_last_name, leader_age, nation, entrepreneur_archetype, ent_ambition, ent_cunning, ent_reputation, ent_vision, party_funds, status')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
       .eq('faction_type', 'entrepreneur')
       .is('abandoned_at', null)
@@ -246,5 +326,6 @@ export async function bootstrapEntrepreneur(activeTab) {
   const shard = shardRes.data || {};
   const allUserFactions = allFacRes.data || [];
   renderEntrepreneurTopbar(document.getElementById('ent-topbar'), { faction, shard, allUserFactions, activeTab });
+  applyArrestLock(faction);  // also enforce when the page has no #ent-topbar container
   return { user, faction, shard, allUserFactions };
 }
