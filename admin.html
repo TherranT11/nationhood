@@ -2147,16 +2147,24 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         }
     }
 
-    // Pick a random element from a non-empty array, or '' if empty.
+    // Officer auto-fill formula — JS mirror of the SQL helpers in
+    // 20270415 (pick_random_pool_name + roll_officer_age). The two
+    // sites can't literally share a function across runtimes, so any
+    // change to the pool-pick rule or age range must land in both:
+    // here AND in 20270415's helper bodies. Inline here keeps the
+    // pre-fill local to the admin form; SQL is what every backend
+    // caller (admin_create_party today, future RPCs / backfills
+    // tomorrow) reads from.
     function _apPick(pool) {
         if (!pool || !pool.length) return '';
         return pool[Math.floor(Math.random() * pool.length)];
     }
+    function _apRollOfficerAge() {
+        return 35 + Math.floor(Math.random() * 31);   // 35..65 inclusive
+    }
 
     // Pre-fill Deputy Leader + Party Whip name + age fields from the chosen
     // nation's culture pool (js/game/political-actions.js getNationNames).
-    // Age range 35–65 inclusive — wide enough to vary across regenerations
-    // but tight enough that the picks always read like senior party officers.
     // Always overwrites whatever's in the fields: a nation switch implies a
     // culture switch, and stale Hajjaran names on an Avelian movement would
     // be confusing.
@@ -2167,13 +2175,12 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         if (!nationName) return;
         const pool = getNationNames(nationName);
         const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
-        const randAge = () => 35 + Math.floor(Math.random() * 31);   // 35..65 inclusive
         setVal('ap-deputy-first', _apPick(pool.firstNames));
         setVal('ap-deputy-last',  _apPick(pool.lastNames));
-        setVal('ap-deputy-age',   String(randAge()));
+        setVal('ap-deputy-age',   String(_apRollOfficerAge()));
         setVal('ap-whip-first',   _apPick(pool.firstNames));
         setVal('ap-whip-last',    _apPick(pool.lastNames));
-        setVal('ap-whip-age',     String(randAge()));
+        setVal('ap-whip-age',     String(_apRollOfficerAge()));
     }
 
     async function createParty(btn) {
