@@ -116,10 +116,9 @@
 .rung__pill--track-field    { background:#0e0e0e; color:#9a9a9a; border:0.5px solid #3a3a3a; }
 .rung__pill--track-command  { background:#160a0a; color:#a85858; border:0.5px solid #4a2424; }
 .rung__pill--track-apex     { background:#1a0a0a; color:#e09090; border:0.5px solid #6a3030; }
-/* Government Service ladder pills — grey civil-service tone (same
-   palette as field; separate class so the two ladders can diverge
-   later) and gold appointed/apex for executive appointments. */
-.rung__pill--track-civil      { background:#0e0e0e; color:#9a9a9a; border:0.5px solid #3a3a3a; }
+/* Government Service ladder — appointed/apex executive tier in gold.
+   The civil-service stem reuses the field pill (identical greys); when
+   the two ladders need to diverge visually, split into its own class. */
 .rung__pill--track-appointed  { background:#161208; color:#d4b87a; border:0.5px solid #5a4d2e; }
 .rung__pill--vis { color:#666; background:#0a0a0a;
   border:0.5px solid rgba(255,255,255,0.07); }
@@ -638,7 +637,7 @@ const GOVT_SERVICE_RUNGS = [
   {
     tierNum: 1, tierName: 'FIRST OFFICE',
     name: 'Civil Servant',
-    trackPill:   { label: 'CIVIL SERVICE', kind: 'civil' },
+    trackPill:   { label: 'CIVIL SERVICE', kind: 'field' },
     held:        ()  => false,
     descIfHeld:  ()  => 'You process cases, handle paperwork, and learn how the state actually works from the inside.',
     descIfNot:   ()  => 'Junior bureaucrat in a ministry. You process cases, handle paperwork, and learn how the state actually works from the inside.',
@@ -648,7 +647,7 @@ const GOVT_SERVICE_RUNGS = [
   {
     tierNum: 2,
     name: 'Senior Civil Servant / Section Head',
-    trackPill:   { label: 'CIVIL SERVICE', kind: 'civil' },
+    trackPill:   { label: 'CIVIL SERVICE', kind: 'field' },
     held:        ()  => false,
     descIfHeld:  ()  => 'You advise upward on policy detail but cannot decide alone.',
     descIfNot:   ()  => 'A middle-rank official running a section of a ministry. Real responsibility on policy detail; you advise upward but cannot decide alone.',
@@ -657,7 +656,7 @@ const GOVT_SERVICE_RUNGS = [
   {
     tierNum: 3,
     name: 'Department Head / Permanent Secretary',
-    trackPill:    { label: 'CIVIL SERVICE', kind: 'civil' },
+    trackPill:    { label: 'CIVIL SERVICE', kind: 'field' },
     held:         ()  => false,
     descIfHeld:   ()  => 'You run a ministry between political changes — the institutional memory.',
     descIfNot:    ()  => 'Top of the permanent civil service. You run a ministry between political changes — the institutional memory who tells whichever Minister gets appointed what is and is not possible.',
