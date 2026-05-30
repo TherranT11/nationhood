@@ -436,6 +436,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
+import { officeTitle } from './js/utils.js';
 
 const START_AGE = 25;
 const TICKS_PER_AGE_YEAR = 12;
@@ -495,7 +496,7 @@ const PARTY_OFFICE_RUNGS = [
   {
     name: 'Member of Parliament',
     tierName: 'FIRST OFFICE',
-    held:        ()  => false,
+    held:        (s) => s.office === 'member_of_parliament',
     descIfHeld:  ()  => 'You hold a seat in the National Assembly.',
     descIfNot:   ()  => 'Win a seat in the National Assembly. You are now in the chamber, voting on the laws of the republic.',
   },
@@ -598,7 +599,7 @@ const GOVERNMENT_RUNGS = [
   {
     name: 'Community Organizer',
     tierName: 'FIRST OFFICE',
-    held:        ()  => false,
+    held:        (s) => s.office === 'community_organizer',
     descIfHeld:  ()  => 'You hold the neighborhood seat — small but real.',
     descIfNot:   ()  => 'A neighborhood seat. Small but real — most political careers begin here.',
   },
@@ -914,7 +915,7 @@ async function init() {
 
   render(ctx.faction, ctx.shard, ctx.nation, ctx.party);
   if (resolution) renderResolutionBanner(resolution);
-  renderLadders(buildLadderState(ctx.party, activeRace), ctx);
+  renderLadders(buildLadderState(ctx.party, activeRace, ctx.faction?.politician_office), ctx);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -983,11 +984,15 @@ function renderResolutionBanner(r) {
 //   partyId / partyName → Tier 0 Party Member held() + descIfHeld.
 //   activeRace          → renderStandForElection swap (CTA → "race in
 //                         progress" callout).
-function buildLadderState(party, activeRace) {
+//   office              → Tier 1 rung held() check (Community Organizer
+//                         / Member of Parliament) + Stand-for-Election
+//                         lockout. NULL = no office held.
+function buildLadderState(party, activeRace, office) {
   return {
     partyId:    party?.id || null,
     partyName:  party?.faction_name || '',
     activeRace: activeRace || null,
+    office:     office || null,
   };
 }
 
@@ -1010,23 +1015,29 @@ function render(politician, shard, nation, party) {
   document.getElementById('cc-title-tail').textContent = tail;
 
   // Subtitle: age · nation · affiliation note. Independents get the
-  // explicit "no current position" line so the mock's "serving in
-  // the Ministry of …" slot doesn't render empty; party members read
-  // "member of {party}". When the column grows to carry a held
-  // office (Senator / MP / Whip), the position takes precedence here.
-  const positionNote = party ? `member of ${party.faction_name}` : 'no current position';
+  // explicit "no current position" line; office-holders read
+  // "{Office Title} of {party}"; un-officed members read
+  // "member of {party}". The office title comes from OFFICE_TITLES
+  // (the same map used in the Stand-for-Election lockout + Tier 1
+  // rung descriptions), so the surfaces never disagree.
+  const office = politician.politician_office || null;
+  const positionNote = office && party
+    ? `${officeTitle(office)} of ${party.faction_name}`
+    : (party ? `member of ${party.faction_name}` : 'no current position');
   document.getElementById('cc-subtitle').textContent =
     `Age ${age} · ${nationName} · ${positionNote}`;
 
-  // Positions held — derived once positions data exists; 0 for now.
-  document.getElementById('cc-positions').textContent = '0';
-  document.getElementById('cc-positions-sub').textContent = '—';
+  // Positions held — 1 when an office is held, 0 otherwise.
+  document.getElementById('cc-positions').textContent = office ? '1' : '0';
+  document.getElementById('cc-positions-sub').textContent = office ? officeTitle(office) : '—';
 
-  // Affiliations — derived from the same party FK as the title above,
-  // matching the home page AFFILIATION anchor's rule (also FK-derived)
-  // so the two surfaces never disagree.
+  // Affiliations — office · party when office held, else party-only
+  // (or None for independents). Same source as politician-home's hero
+  // affiliation so the two surfaces never disagree.
   if (party) {
-    document.getElementById('cc-affiliations').textContent = party.faction_name;
+    document.getElementById('cc-affiliations').textContent = office
+      ? `${officeTitle(office)} · ${party.faction_name}`
+      : party.faction_name;
     document.getElementById('cc-affiliations-sub').textContent = 'active affiliation';
   } else {
     document.getElementById('cc-affiliations').textContent = 'None';
@@ -1088,16 +1099,24 @@ function renderLadders(state, ctx) {
   bindRungActions(ctx);
 }
 
-// Stand for Election callout — single button gated by party membership
-// and by "no active race in flight". When a race is active the button
-// is replaced with a pointer to Pressing Issues; the in-flight race
-// surface lives on the home page.
+// Stand for Election callout — single button gated by party membership,
+// by office-held (Tier 1 winners are locked in), and by "no active race
+// in flight". When a race is active the button is replaced with a
+// pointer to Pressing Issues; the in-flight race surface lives on the
+// home page.
 function renderStandForElection(state) {
   if (state.activeRace) {
     const where = state.activeRace.district || 'a district';
     return `
       <div class="stand-block">
         <div class="stand-active">You are standing in the <strong>${escHtml(where)}</strong> race. See <strong>Pressing Issues</strong> on your home page for live polling and campaign actions.</div>
+      </div>`;
+  }
+  if (state.office) {
+    return `
+      <div class="stand-block">
+        <button class="stand-btn" type="button" disabled>&#9873; Stand for Election</button>
+        <div class="stand-hint">You hold <strong>${escHtml(officeTitle(state.office))}</strong>. Tier 1 office-holders cannot stand for a new election.</div>
       </div>`;
   }
   if (!state.partyId) {

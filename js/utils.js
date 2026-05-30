@@ -103,6 +103,18 @@ export function buildingTypeLabel(t) {
     }
 }
 
+// ===== POLITICIAN OFFICES =====
+// Single source of truth for factions.politician_office display labels.
+// Consumers: politician-career.html (Tier-1 rung descriptions, Stand-
+// for-Election lockout hint, affiliation subtitle), politician-home.html
+// (hero affiliation). Extend when new office values land on the CHECK
+// constraint (see migration 20270418).
+export const OFFICE_TITLES = {
+    community_organizer:  'Community Organizer',
+    member_of_parliament: 'Member of Parliament',
+};
+export function officeTitle(office) { return OFFICE_TITLES[office] || ''; }
+
 // ===== GAME DATE =====
 
 export const MONTHS = [
