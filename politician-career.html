@@ -436,7 +436,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle } from './js/utils.js';
+import { officeTitle, tickToDate } from './js/utils.js';
 
 const START_AGE = 25;
 const TICKS_PER_AGE_YEAR = 12;
@@ -502,9 +502,22 @@ const PARTY_OFFICE_RUNGS = [
   },
   {
     name: 'Senior MP',
-    held:        ()  => false,
+    held:        (s) => s.office === 'senior_mp',
     descIfHeld:  ()  => 'You are a senior MP — committee assignments and a name the press knows.',
     descIfNot:   ()  => 'A second-term backbencher with committee assignments and a name the press knows.',
+    // Eligible only when holding Member of Parliament AND within 3
+    // ticks of the nation's next general election. Same window the
+    // resolver ties to: the race itself resolves at the general-election
+    // tick. Returns null when the rung isn't the next-up for this
+    // ladder (e.g. holder is Community Organizer, not MP).
+    actionIfNot: (s) => {
+      if (s.office !== 'member_of_parliament') return null;
+      if (!s.nextGeneralElectionTick) return { label: 'No election scheduled', kind: 'disabled' };
+      const opens = s.nextGeneralElectionTick - 3;
+      if (s.currentTick > s.nextGeneralElectionTick) return { label: 'Window closed', kind: 'disabled' };
+      if (s.currentTick < opens) return { label: `Opens in ${opens - s.currentTick} ticks`, kind: 'disabled' };
+      return { label: 'Register', kind: 'primary', action: 'register-senior-mp' };
+    },
   },
   {
     name: 'High Ranking Party Member',
@@ -539,12 +552,29 @@ const PARTY_OFFICE_RUNGS = [
 // renderRungs() can render it; tierNum is overridden to 0 so the
 // rendered label reads "TIER 0 · MEMBERSHIP" rather than the default
 // index-derived tier.
+// Term-end tick by office. Member of Parliament's term tracks the
+// nation's general-election cycle (same tick the assembly reseats);
+// Community Organizer's is a flat 12-tick term from when they won.
+// Returns null when no term applies (no office, or office without a
+// scheduled end).
+function termEndTickFor(state) {
+  if (state.office === 'member_of_parliament') return state.nextGeneralElectionTick || null;
+  if (state.office === 'community_organizer')  return (state.officeWonAtTick || 0) + 12;
+  return null;
+}
+
 const PARTY_MEMBER_TIER0 = {
   name: 'Party Member',
   tierNum: 0,
   tierName: 'MEMBERSHIP',
   held:        (s) => !!s.partyId,
-  descIfHeld:  (s) => `You are a card-carrying member of ${s.partyName}.`,
+  descIfHeld:  (s) => {
+    const base = `You are a card-carrying member of ${s.partyName}.`;
+    const endTick = termEndTickFor(s);
+    if (!endTick) return base;
+    const remaining = Math.max(0, endTick - s.currentTick);
+    return `${base} Term Ends: ${tickToDate(endTick)} (${remaining} Tick${remaining === 1 ? '' : 's'} Remaining)`;
+  },
   descIfNot:   ()  => 'You are not a member of a political party. Membership unlocks both office ladders below.',
   actionIfNot:  { label: 'Join Political Party',  kind: 'primary',   href: 'politician-movements.html?openJoin=1' },
   actionIfHeld: { label: 'Leave Political Party', kind: 'secondary', action: 'leave-party' },
@@ -605,9 +635,19 @@ const GOVERNMENT_RUNGS = [
   },
   {
     name: 'City Council Member',
-    held:        ()  => false,
+    held:        (s) => s.office === 'city_council_member',
     descIfHeld:  ()  => 'You hold an elected seat on the city council, voting on budgets and ordinances.',
     descIfNot:   ()  => 'An elected seat on a city or town council. You vote on local budgets and ordinances.',
+    // Eligible only when holding Community Organizer AND ≥ 9 ticks
+    // since winning the seat. Returns null if the holder isn't on the
+    // Community Organizer rung (e.g. they're an MP) so the button
+    // doesn't render on the wrong ladder.
+    actionIfNot: (s) => {
+      if (s.office !== 'community_organizer') return null;
+      const opens = (s.officeWonAtTick || 0) + 9;
+      if (s.currentTick < opens) return { label: `Opens in ${opens - s.currentTick} ticks`, kind: 'disabled' };
+      return { label: 'Register to Run', kind: 'primary', action: 'register-city-council' };
+    },
   },
   {
     name: 'City Council President',
@@ -915,7 +955,7 @@ async function init() {
 
   render(ctx.faction, ctx.shard, ctx.nation, ctx.party);
   if (resolution) renderResolutionBanner(resolution);
-  renderLadders(buildLadderState(ctx.party, activeRace, ctx.faction?.politician_office), ctx);
+  renderLadders(buildLadderState(ctx.party, activeRace, ctx.faction?.politician_office, ctx), ctx);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -992,19 +1032,24 @@ function renderResolutionBanner(r) {
 
 // State bag passed to every rung renderer — focused interface so each
 // rung's contract is "I read these named fields" rather than "I rummage
-// through faction." Today's surface is small:
-//   partyId / partyName → Tier 0 Party Member held() + descIfHeld.
-//   activeRace          → renderStandForElection swap (CTA → "race in
-//                         progress" callout).
-//   office              → Tier 1 rung held() check (Community Organizer
-//                         / Member of Parliament) + Stand-for-Election
-//                         lockout. NULL = no office held.
-function buildLadderState(party, activeRace, office) {
+// through faction." Today's surface:
+//   partyId / partyName    → Tier 0 Party Member held() + descIfHeld.
+//   activeRace             → renderStandForElection swap (CTA → "race in
+//                            progress" callout).
+//   office                 → Tier 1 / Tier 2 rung held() checks.
+//   officeWonAtTick        → City Council eligibility window (opens 9
+//                            ticks after winning Community Organizer).
+//   currentTick            → both eligibility windows.
+//   nextGeneralElectionTick → Senior MP window (opens 3 ticks before).
+function buildLadderState(party, activeRace, office, ctx) {
   return {
-    partyId:    party?.id || null,
-    partyName:  party?.faction_name || '',
-    activeRace: activeRace || null,
-    office:     office || null,
+    partyId:                 party?.id || null,
+    partyName:               party?.faction_name || '',
+    activeRace:              activeRace || null,
+    office:                  office || null,
+    officeWonAtTick:         Number(ctx?.faction?.politician_office_won_at_tick) || 0,
+    currentTick:             Number(ctx?.shard?.current_tick) || 0,
+    nextGeneralElectionTick: Number(ctx?.nation?.next_election_tick) || 0,
   };
 }
 
@@ -1111,11 +1156,12 @@ function renderLadders(state, ctx) {
   bindRungActions(ctx);
 }
 
-// Stand for Election callout — single button gated by party membership,
-// by office-held (Tier 1 winners are locked in), and by "no active race
-// in flight". When a race is active the button is replaced with a
-// pointer to Pressing Issues; the in-flight race surface lives on the
-// home page.
+// Stand for Election callout — single button gated by party membership
+// and by "no active race in flight". Office-holders no longer see this
+// block at all (20270432): advancement happens via the per-rung
+// [Register to Run] / [Register] CTAs on the next-up rung in their
+// ladder. When a race is active the button is replaced with a pointer
+// to Pressing Issues; the in-flight race surface lives on the home page.
 function renderStandForElection(state) {
   if (state.activeRace) {
     const where = state.activeRace.district || 'a district';
@@ -1125,11 +1171,10 @@ function renderStandForElection(state) {
       </div>`;
   }
   if (state.office) {
-    return `
-      <div class="stand-block">
-        <button class="stand-btn" type="button" disabled>&#9873; Stand for Election</button>
-        <div class="stand-hint">You hold <strong>${escHtml(officeTitle(state.office))}</strong>. Tier 1 office-holders cannot stand for a new election.</div>
-      </div>`;
+    // Tier-1 office-holders advance via per-rung CTAs in the matching
+    // ladder. The global Stand block hides completely so the page
+    // doesn't carry a dangling control.
+    return '';
   }
   if (!state.partyId) {
     return `
@@ -1227,15 +1272,21 @@ function renderRungs(rungs, state) {
     } else if (isHeld) {
       actionHtml = '<span class="rung-held">held</span>';
     } else if (r.actionIfNot) {
-      const a = r.actionIfNot;
-      const cls = a.kind === 'primary' ? 'rung-btn rung-btn--primary' : 'rung-btn rung-btn--disabled';
-      // A primary actionIfNot can fire either a navigation (href) or an
-      // in-page action (data-action). Today only the Tier 0 Party Member
-      // rung's Join button uses href; further wiring can add data-action.
-      const hrefAttr     = a.kind === 'primary' && a.href   ? ` data-href="${escHtml(a.href)}"`     : '';
-      const actionAttr   = a.kind === 'primary' && a.action ? ` data-action="${escHtml(a.action)}"` : '';
-      const disabledAttr = a.kind === 'disabled' ? ' disabled' : '';
-      actionHtml = `<button class="${cls}"${hrefAttr}${actionAttr}${disabledAttr}>${escHtml(a.label)}</button>`;
+      // actionIfNot can be a static config or a function (state) → config.
+      // The function form lets Tier 2 rungs gate their CTA on live state
+      // (City Council eligibility opens 9 ticks after CO win; Senior MP
+      // window opens 3 ticks before the general election). A function
+      // returning null suppresses the right-side control entirely — used
+      // when this rung isn't the next-up for the holder's current ladder
+      // (e.g. Senior MP rung when the politician is on the Government track).
+      const a = typeof r.actionIfNot === 'function' ? r.actionIfNot(state) : r.actionIfNot;
+      if (a) {
+        const cls = a.kind === 'primary' ? 'rung-btn rung-btn--primary' : 'rung-btn rung-btn--disabled';
+        const hrefAttr     = a.kind === 'primary' && a.href   ? ` data-href="${escHtml(a.href)}"`     : '';
+        const actionAttr   = a.kind === 'primary' && a.action ? ` data-action="${escHtml(a.action)}"` : '';
+        const disabledAttr = a.kind === 'disabled' ? ' disabled' : '';
+        actionHtml = `<button class="${cls}"${hrefAttr}${actionAttr}${disabledAttr}>${escHtml(a.label)}</button>`;
+      }
     } else if (r.accessNote) {
       // Rungs reached by appointment / external selection rather than by
       // climbing (e.g. Chief Justice) carry an accessNote instead of an
@@ -1290,6 +1341,48 @@ function bindRungActions(ctx) {
   document.querySelectorAll('[data-action="stand-for-election"]').forEach(btn => {
     btn.addEventListener('click', () => openElectionModal(ctx));
   });
+
+  // Tier 2 per-rung registration. Both buttons hit the same RPC
+  // (politician_register_for_office) — only the target_office differs.
+  // Page reloads on success so the rung flips to "in race" and the
+  // Pressing Issues card picks up the new active race.
+  document.querySelectorAll('[data-action="register-city-council"], [data-action="register-senior-mp"]')
+    .forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const target = btn.dataset.action === 'register-city-council'
+          ? 'city_council_member'
+          : 'senior_mp';
+        const prev = btn.textContent;
+        btn.disabled = true; btn.textContent = 'Registering…';
+        try {
+          const { data, error } = await _supabase.rpc('politician_register_for_office',
+            { p_target_office: target });
+          if (error) throw error;
+          if (!data?.success) {
+            const REASON = {
+              not_authenticated:     'Sign in to register.',
+              not_in_party:          'Join a political party first.',
+              no_nation:             'Your politician has no nation.',
+              no_general_election:   'No general election scheduled in your nation.',
+              race_in_progress:      'You are already in a race.',
+              wrong_current_office:  'You can only register from the rung directly below.',
+              too_early:             data.opens_at_tick
+                ? `Registration opens at tick ${data.opens_at_tick}.`
+                : 'Registration window has not opened yet.',
+              window_closed:         'The registration window has closed for this election.',
+              invalid_target_office: 'Unknown target office.',
+            };
+            alert(REASON[data?.reason] || ('Could not register: ' + (data?.reason || 'unknown')));
+            btn.disabled = false; btn.textContent = prev;
+            return;
+          }
+          location.reload();
+        } catch (e) {
+          alert('Failed: ' + (e?.message || e));
+          btn.disabled = false; btn.textContent = prev;
+        }
+      });
+    });
 }
 
 // ─── Stand for Election modal ─────────────────────────────────────
