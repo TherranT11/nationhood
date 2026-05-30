@@ -221,7 +221,7 @@ function showArrestToast() {
   setTimeout(() => t.remove(), 3500);
 }
 
-export function applyArrestLock(faction) {
+function applyArrestLock(faction) {
   const arrested = !!faction && String(faction.status || '').toLowerCase() === 'arrested';
   if (!arrested) { document.body.classList.remove('ent-arrested'); return false; }
 
@@ -292,8 +292,6 @@ export function renderEntrepreneurTopbar(container, { faction, shard, allUserFac
     try { await _supabase.auth.signOut(); } catch (e) { console.warn('[entrepreneur-topbar] signOut failed:', e?.message || e); }
     window.location.href = 'login.html';
   });
-
-  applyArrestLock(f);
 }
 
 // Auth + fetch + render the topbar into #ent-topbar. Returns
@@ -360,6 +358,9 @@ export async function bootstrapEntrepreneur(activeTab) {
   // the admin's own factions.
   const allUserFactions = overrideId ? (faction ? [faction] : []) : (allFacRes.data || []);
   renderEntrepreneurTopbar(document.getElementById('ent-topbar'), { faction, shard, allUserFactions, activeTab });
-  applyArrestLock(faction);  // also enforce when the page has no #ent-topbar container
+  // Single source for the arrest lock — runs after the topbar exists so the
+  // banner can attach, and still applies the body-class lock on any page
+  // without an #ent-topbar container.
+  applyArrestLock(faction);
   return { user, faction, shard, allUserFactions };
 }

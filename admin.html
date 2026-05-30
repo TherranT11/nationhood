@@ -2599,11 +2599,12 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         // (and before) the chosen nation. Loaded every call so they're always
         // available — including with no nation selected.
         try {
-            const { data: ents } = await _supabase.from('factions')
+            const { data: ents, error: entError } = await _supabase.from('factions')
                 .select('id, faction_name, leader_first_name, leader_last_name, status')
                 .eq('faction_type', 'entrepreneur')
                 .is('abandoned_at', null)
                 .order('faction_name');
+            if (entError) throw entError;
             if ((ents || []).length > 0) {
                 select.innerHTML += '<optgroup label="Entrepreneurs">';
                 ents.forEach(f => {
@@ -2611,7 +2612,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
                         || `${f.leader_first_name || ''} ${f.leader_last_name || ''}`.trim()
                         || 'Entrepreneur';
                     const tag = String(f.status || '').toLowerCase() === 'arrested' ? ' 🔒 ARRESTED' : '';
-                    select.innerHTML += `<option value="${f.id}" data-type="entrepreneur">[Entrepreneur] ${nm}${tag}</option>`;
+                    select.innerHTML += `<option value="${esc(f.id)}" data-type="entrepreneur">[Entrepreneur] ${esc(nm)}${tag}</option>`;
                 });
                 select.innerHTML += '</optgroup>';
             }
@@ -2712,7 +2713,8 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
 
         if (!nationId && !isEnt) { alert('Select a nation first (or pick an entrepreneur).'); return; }
 
-        inspectorNationId = nationId;
+        // Entrepreneurs are nation-agnostic — don't carry a nation context for them.
+        inspectorNationId = isEnt ? '' : nationId;
         inspectorFactionId = factionId;
         inspectorPage = page;
 
