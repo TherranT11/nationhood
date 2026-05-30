@@ -560,11 +560,12 @@ function renderElections(n, currentTick) {
 
   body.innerHTML = `
     <div class="gov-strip" style="grid-template-columns:1fr;">
-      <div class="gov-card gov">
-        <div class="gck">NEXT GENERAL ELECTION</div>
+      <a class="gov-card gov" href="election.html?nation=${encodeURIComponent(n.id)}"
+         style="text-decoration:none; cursor:pointer;">
+        <div class="gck">NEXT GENERAL ELECTION &mdash; click for full breakdown</div>
         <div class="gcv">${year}</div>
         <div class="gcd">${countdown} &middot; ${stake}</div>
-      </div>
+      </a>
     </div>
     <div class="parties-lab">Upcoming Special Elections</div>
     <div id="special-elections-host" class="sec-empty">Loading special elections…</div>
