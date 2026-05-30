@@ -219,7 +219,14 @@
 
 .act-btn { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.07); border-radius:5px;
   padding:13px 14px; text-align:left; display:flex; flex-direction:column; gap:5px;
-  opacity:0.45; cursor:not-allowed; transition:none; }
+  cursor:pointer; transition:background 0.15s, border-color 0.15s; }
+.act-btn:not(.disabled):hover { background:#101010; border-color:var(--acc-dim); }
+.act-btn:not(.disabled):hover .act-name { color:var(--acc-bright); }
+.act-btn.disabled { opacity:0.45; cursor:not-allowed; transition:none; }
+.act-btn.disabled:hover { background:#0a0a0a; border-color:rgba(255,255,255,0.07); }
+.act-btn.cooldown { opacity:0.55; cursor:not-allowed; }
+.act-btn.cooldown:hover { background:#0a0a0a; border-color:rgba(255,255,255,0.07); }
+.act-cooldown { font-size:8.5px; letter-spacing:0.1em; color:#d4b87a; font-weight:600; font-family:monospace; margin-top:3px; }
 .act-head { display:flex; align-items:center; gap:8px; }
 .act-ic { font-size:13px; color:var(--acc-bright); flex-shrink:0; }
 .act-name { font-size:11px; font-weight:600; color:#fff; letter-spacing:0.04em; flex:1; }
@@ -589,9 +596,9 @@ const LOCAL_GOV_ACTIONS = [
   { ic: '☂', name: 'OFFICE HOURS',     cost: '−$50', desc: 'Set up at a storefront and let constituents come to you.' },
 ];
 const LEGISLATURE_ACTIONS = [
-  { ic: '☞', name: 'FLOOR SPEECH',       cost: 'no cost', desc: 'Rise on the Assembly floor and speak to a chosen issue. Visible, recorded, risked.' },
-  { ic: '⚗', name: 'COMMITTEE WORK',     cost: 'no cost', desc: 'Sit through a committee hearing. Question witnesses. Contribute to the report.' },
-  { ic: '\u{1F37E}', name: 'FUNDRAISING DINNER', cost: '−$300', desc: 'Work the room at a donor-class fundraiser. Court the wallets that matter.' },
+  { ic: '☞',         name: 'FLOOR SPEECH',       cost: 'no cost',           desc: 'Rise on the Assembly floor and speak to a chosen issue. Visible, recorded, risked.', action: 'floor-speech' },
+  { ic: '⚛',         name: 'HOLD A RALLY',       cost: '−$10K party funds', desc: 'Hold a rally with local party members to build support.',                             action: 'hold-rally' },
+  { ic: '\u{1F377}', name: 'FUNDRAISING DINNER', cost: 'no cost',           desc: 'Work the room at a donor-class fundraiser. Court the wallets that matter.',          action: 'fundraising-dinner' },
 ];
 
 const AFFIL_VARIANTS = {
@@ -627,6 +634,7 @@ const AFFIL_VARIANTS = {
     name:    'Member of Parliament',
     desc:    'You sit in the National Assembly representing your district. <strong>The work is institutional</strong> — speeches, votes, committee rooms, the whip’s office. Build a reputation here and you become someone the press calls, the leadership listens to, and the country knows.',
     actions: LEGISLATURE_ACTIONS,
+    actionsEnabled: true,  // wired to politician_mp_* RPCs (20270433)
   },
   senior_mp: {
     variant: 'var-leg',
@@ -634,7 +642,8 @@ const AFFIL_VARIANTS = {
     badge:   '⚛',
     name:    'Senior MP',
     desc:    'A second-term backbencher with committee assignments and a name the press knows. The same institutional levers, with more weight behind them.',
-    actions: LEGISLATURE_ACTIONS,  // placeholder — diverges when Tier 2 mechanics ship
+    actions: LEGISLATURE_ACTIONS,
+    actionsEnabled: true,  // Tier-2 MP keeps the same action set
   },
 };
 
@@ -666,17 +675,42 @@ function renderAffiliation(ctx) {
     ? '' // future: " · District N · {PARTY_ABBREV}"
     : (partyName ? ` <span class="ah-rank">· ${escHtml(partyName)}</span>` : '');
 
+  // Cooldown: shared across all three MP actions (20270433). When set
+  // in the future, current_tick >= next_mp_action_tick means ready.
+  // Other roles ignore this column.
+  const nextActionTick = Number(ctx.faction?.next_mp_action_tick) || 0;
+  const onCooldown = variant.actionsEnabled && nextActionTick > curr;
+  const cooldownLeft = onCooldown ? nextActionTick - curr : 0;
+
   const actionsCount = variant.actions.length;
   const colsClass = actionsCount === 2 ? ' cols-2' : '';
-  const actionsHtml = variant.actions.map(a => `
-    <div class="act-btn" aria-disabled="true" title="Action mechanics coming soon">
+  const actionsHtml = variant.actions.map(a => {
+    const enabled = !!variant.actionsEnabled && !!a.action;
+    let cls = 'act-btn';
+    let attrs = '';
+    if (!enabled) {
+      cls += ' disabled';
+      attrs = ' aria-disabled="true" title="Action mechanics coming soon"';
+    } else if (onCooldown) {
+      cls += ' cooldown';
+      attrs = ` aria-disabled="true" title="Cooldown — ${cooldownLeft} tick${cooldownLeft === 1 ? '' : 's'} remaining"`;
+    } else {
+      attrs = ` data-action="${escHtml(a.action)}"`;
+    }
+    const cooldownLine = enabled && onCooldown
+      ? `<div class="act-cooldown">Ready in ${cooldownLeft} tick${cooldownLeft === 1 ? '' : 's'}</div>`
+      : '';
+    return `
+    <div class="${cls}"${attrs}>
       <div class="act-head">
         <span class="act-ic">${a.ic}</span>
         <span class="act-name">${escHtml(a.name)}</span>
         <span class="act-cost">${escHtml(a.cost)}</span>
       </div>
       <div class="act-desc">${escHtml(a.desc)}</div>
-    </div>`).join('');
+      ${cooldownLine}
+    </div>`;
+  }).join('');
 
   host.innerHTML = `
     <div class="affil ${variant.variant}">
@@ -694,6 +728,86 @@ function renderAffiliation(ctx) {
         <div class="ar-buttons${colsClass}">${actionsHtml}</div>
       </div>
     </div>`;
+
+  // Wire enabled (non-cooldown, non-disabled) buttons to their RPCs.
+  // Each MP action consumes the shared 6-tick cooldown server-side; on
+  // success we reload so the cooldown / stat changes show immediately.
+  host.querySelectorAll('.act-btn[data-action]').forEach(btn => {
+    btn.addEventListener('click', () => handleMpAction(btn));
+  });
+}
+
+const MP_ACTION_RPC = {
+  'floor-speech':       'politician_mp_floor_speech',
+  'hold-rally':         'politician_mp_hold_rally',
+  'fundraising-dinner': 'politician_mp_fundraising_dinner',
+};
+const MP_ACTION_LABEL = {
+  'floor-speech':       'Floor Speech',
+  'hold-rally':         'Hold a Rally',
+  'fundraising-dinner': 'Fundraising Dinner',
+};
+
+function fmtMpResult(data) {
+  // Compose a player-facing one-sentence outcome line from the RPC's
+  // return jsonb. The dice + stat get surfaced so the player can see
+  // why they passed / failed.
+  const label = MP_ACTION_LABEL[data.action.replace(/_/g, '-')] || data.action;
+  const stake = data.total != null ? ` (rolled ${data.roll} + ${data.stat} = ${data.total})` : '';
+  if (data.action === 'floor_speech') {
+    return data.passed
+      ? `${label}: success${stake}. Your reputation is now ${data.new_reputation}.`
+      : `${label}: poorly received${stake}. ${data.party_name || 'Your party'}’s popularity dropped to ${data.new_party_popularity}%.`;
+  }
+  if (data.action === 'hold_rally') {
+    return data.passed
+      ? `${label}: success${stake}. ${data.party_name || 'Your party'}’s popularity rose to ${data.new_party_popularity}%.`
+      : `${label}: flopped${stake}. Your reputation dropped to ${data.new_reputation}.`;
+  }
+  if (data.action === 'fundraising_dinner') {
+    const money = `Raised $${Number(data.money_raised || 0).toLocaleString()} for ${data.party_name || 'your party'}`;
+    if (data.stat_delta === 'influence') return `${label}: ${money} — you embarrassed yourself${stake}. Influence dropped to ${data.new_influence}.`;
+    if (data.stat_delta === 'charisma')  return `${label}: ${money} — you owned the room${stake}. Charisma rose to ${data.new_charisma}.`;
+    return `${label}: ${money}${stake}.`;
+  }
+  return `${label}: done.`;
+}
+
+const MP_ACTION_REASON = {
+  not_authenticated:        'Sign in to act.',
+  no_politician:            'No politician on this account.',
+  wrong_office:             'Only sitting MPs can do this.',
+  not_in_party:             'You need to be in a party.',
+  party_not_found:          'Your party can’t be found.',
+  cooldown:                 'You’ve already used your action this cycle.',
+  insufficient_party_funds: 'Your party can’t cover the $10K rally cost.',
+};
+
+async function handleMpAction(btn) {
+  const slug = btn.dataset.action;
+  const rpc  = MP_ACTION_RPC[slug];
+  if (!rpc) return;
+  const prevHtml = btn.innerHTML;
+  btn.classList.add('cooldown');  // visually freeze
+  btn.removeAttribute('data-action');
+  try {
+    const { data, error } = await _supabase.rpc(rpc);
+    if (error) throw error;
+    if (!data?.success) {
+      alert(MP_ACTION_REASON[data?.reason] || ('Action failed: ' + (data?.reason || 'unknown')));
+      btn.classList.remove('cooldown');
+      btn.dataset.action = slug;
+      btn.innerHTML = prevHtml;
+      return;
+    }
+    alert(fmtMpResult(data));
+    location.reload();
+  } catch (e) {
+    alert('Failed: ' + (e?.message || e));
+    btn.classList.remove('cooldown');
+    btn.dataset.action = slug;
+    btn.innerHTML = prevHtml;
+  }
 }
 
 // ── Pressing Issues ─────────────────────────────────────────────────
