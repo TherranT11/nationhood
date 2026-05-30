@@ -38,26 +38,27 @@ Three possible outcomes:
 
 ### Outcome A — `schema_migrations` is empty or doesn't exist
 
-The CLI has never run against this project. Before enabling the
-workflow, baseline the table by marking every file in
-`supabase/migrations/` as already applied:
+The CLI has never run against this project. Open
+`docs/baseline-schema-migrations.sql` in the repo, paste the entire
+contents into the Supabase SQL Editor, and Run.
 
-```bash
-# Locally, with the Supabase CLI installed and logged in:
-supabase link --project-ref <project-ref>
+The file creates the `supabase_migrations.schema_migrations` table
+and inserts 133 rows — one per unique pre-session migration version
+(every file in `supabase/migrations/` dated before `20270392`). The
+24 migrations added in the most recent dev session (`20270392` →
+`20270415`) are INTENTIONALLY left unmarked so the next CI `db push`
+will actually apply them.
 
-# For EACH file in supabase/migrations/, mark it as applied without
-# running it. Bulk via shell:
-for f in supabase/migrations/*.sql; do
-  ts="${f##*/}"; ts="${ts%%_*}"
-  supabase migration repair --status applied "$ts"
-done
-```
+All 24 are idempotent (CREATE OR REPLACE / IF NOT EXISTS / WHERE-
+filtered UPDATE), so any that have already been pasted into the SQL
+Editor manually will be a no-op on re-apply — not a conflict.
 
-Now `schema_migrations` mirrors the canonical history. The next
-`db push` will be a no-op (nothing pending) — proving the baseline
-is clean — and any NEW migration you add will be the first thing it
-applies.
+Verify with the two SELECTs at the bottom of the baseline file:
+the first should return 133, the second should return 0.
+
+If the baseline file is missing or you want to regenerate it, the
+shell command at the top of the file (`ls supabase/migrations/*.sql
+| awk ... | sort`) reconstructs it from the current directory state.
 
 ### Outcome B — `schema_migrations` has SOME entries but not all 145
 
