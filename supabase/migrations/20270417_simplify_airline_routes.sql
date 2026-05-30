@@ -22,9 +22,8 @@
 --       behaviour where a uniformly-overpriced lane allocates zero
 --       passengers. Lanes always fully fill in proportion to weights;
 --       overpricing only hurts the overpricer (small share, low
---       capacity utilisation). v_lane_avg is computed in the function
---       for transparency / future display, but doesn't appear in the
---       pax math (it factors out).
+--       capacity utilisation). The allocator computes seats / ticket
+--       directly (lane_avg drops out as a common factor).
 --
 -- Also drops airline_routes.maintenance_tier. It's been pinned to
 -- 'basic' since v1 (20270204) — no player knob, vestigial column.
@@ -111,7 +110,6 @@ DECLARE
     v_my_weight    numeric;
     v_lane_share   numeric;
     v_my_seats     int;
-    v_lane_avg     numeric;   -- capacity-weighted avg ticket on lane
     v_my_attr      numeric;
     v_total_attr   numeric;
     v_my_demand    numeric;
@@ -176,34 +174,13 @@ BEGIN
           LEFT JOIN ent_aircraft_designs d ON d.id = ca.ent_design_id
          WHERE ca.route_id = v_route.id;
 
-        -- Capacity-weighted lane average ticket — informational here;
-        -- factors out of the proportional split below but kept so the
-        -- function's intent ("share ∝ seats × lane_avg / ticket") is
-        -- legible. Σ(seats × ticket) / Σ(seats).
-        SELECT COALESCE(SUM(rs.seats * ar.ticket_price), 0)
-                 / NULLIF(COALESCE(SUM(rs.seats), 0), 0)
-          INTO v_lane_avg
-          FROM airline_routes ar
-          JOIN (
-              SELECT ca.route_id,
-                     SUM(COALESCE(d.passengers,
-                                  ent_airline_seats((ca.aircraft_class = 'regional')::int,
-                                                    (ca.aircraft_class = 'narrowbody')::int,
-                                                    (ca.aircraft_class = 'widebody')::int)))::numeric AS seats
-                FROM corp_aircraft ca
-                LEFT JOIN ent_aircraft_designs d ON d.id = ca.ent_design_id
-               GROUP BY ca.route_id
-          ) rs ON rs.route_id = ar.id
-         WHERE ar.status = 'active'
-           AND ar.origin_city_id = v_route.origin_city_id
-           AND ar.dest_city_id   = v_route.dest_city_id;
-        v_lane_avg := COALESCE(v_lane_avg, 0);
-
-        -- Lane attractiveness Σ — using seats / ticket directly (the
-        -- lane_avg factors out). GREATEST(ticket, 1) guards the free-
-        -- ticket edge case (would otherwise divide by zero); a $1 fare
-        -- still represents an enormous weight and captures the lane,
-        -- which is the intended behaviour ("free seats win everything").
+        -- Lane attractiveness Σ — share ∝ seats / ticket per lane route
+        -- ("cheaper-per-seat wins more"). Equivalent to seats × (lane_avg
+        -- / ticket); lane_avg factors out of the proportional split, so
+        -- it isn't computed. GREATEST(ticket, 1) guards the free-ticket
+        -- edge case (would otherwise divide by zero); a $1 fare still
+        -- carries enormous weight and captures the lane, which is the
+        -- intended behaviour ("free seats win everything").
         SELECT COALESCE(SUM(
                  rs.seats / GREATEST(COALESCE(ar.ticket_price, 0), 1)::numeric), 0)
           INTO v_total_attr
@@ -460,9 +437,9 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.entrepreneur_open_route(uuid, uuid, uuid, int, int, text, int) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.entrepreneur_open_route(uuid, uuid, uuid, int, text, int) TO authenticated;
 
-COMMENT ON FUNCTION public.entrepreneur_open_route(uuid, uuid, uuid, int, int, text, int) IS
+COMMENT ON FUNCTION public.entrepreneur_open_route(uuid, uuid, uuid, int, text, int) IS
     'Open a single-class route. Requires a terminal at both endpoints + p_count idle aircraft of p_class. Range gates: regional ≤ 20, narrowbody ≤ 60, widebody any. ticket_price ≥ 0 (no upper cap — share allocator handles relative pricing).';
 
 -- ── 4. Drop the legacy denorm count + tier columns ──────────────────
