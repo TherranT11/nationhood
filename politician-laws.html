@@ -63,11 +63,73 @@
 .fail { font-family:monospace; font-size:11px; color:#c87a7a;
   text-align:center; padding:80px 20px; }
 
+/* Bills in vote — 20270423 voting MVP. Visual rhythm matches the
+   law-cards (slate accent) but borrowed amber from the elections
+   chrome for "in flight" bills to read as "live & time-pressured". */
+.bills-section { margin-bottom:30px; padding-bottom:22px;
+  border-bottom:0.5px solid rgba(255,255,255,0.07); }
+.bills-section__head { font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
+  color:#7a7468; font-weight:600; padding-bottom:8px; margin-bottom:12px;
+  border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.bills-empty { font-size:12px; color:#5a5a5a; font-style:italic;
+  padding:14px 0; }
+
+.bill-card { background:#0d0d0c; border:0.5px solid rgba(122,154,171,0.18);
+  border-left:2px solid rgba(122,154,171,0.4); border-radius:5px;
+  padding:14px 16px; margin-bottom:10px; }
+.bill-card.voting { border-left-color:#c8a64e; }
+.bill-card__head { display:flex; justify-content:space-between; align-items:baseline;
+  gap:10px; margin-bottom:6px; flex-wrap:wrap; }
+.bill-card__policy { font-size:13px; font-weight:600; color:#fff; }
+.bill-card__status { font-size:9px; letter-spacing:0.13em; text-transform:uppercase;
+  color:#888; font-family:monospace; }
+.bill-card__status.passed { color:#7ac3a1; }
+.bill-card__status.failed { color:#c87a7a; }
+.bill-card__status.voting { color:#c8a64e; }
+.bill-card__status.expired { color:#666; }
+.bill-card__change { font-size:11px; color:#888; margin:6px 0; line-height:1.5; }
+.bill-card__change .from { color:#666; }
+.bill-card__change .to   { color:#7a9aab; font-weight:500; }
+.bill-card__stance { font-size:10px; color:#666; margin-bottom:8px;
+  letter-spacing:0.04em; line-height:1.6; }
+.bill-card__stance .pos { color:#7ac3a1; }
+.bill-card__stance .neg { color:#c87a7a; }
+.bill-card__row { display:flex; justify-content:space-between; align-items:center;
+  margin-top:8px; gap:10px; flex-wrap:wrap; }
+.bill-card__tally { font-size:11px; color:#888; font-variant-numeric:tabular-nums; }
+.bill-card__tally .y { color:#7ac3a1; }
+.bill-card__tally .n { color:#c87a7a; }
+.bill-card__actions { display:flex; gap:6px; }
+.bill-vote-btn { font-family:monospace; font-size:9px; letter-spacing:0.13em;
+  background:transparent; border:0.5px solid rgba(255,255,255,0.2); color:#cfcabf;
+  padding:6px 12px; border-radius:3px; cursor:pointer; text-transform:uppercase; }
+.bill-vote-btn.yes:hover:not(:disabled) { border-color:#7ac3a1; color:#7ac3a1; }
+.bill-vote-btn.no:hover:not(:disabled)  { border-color:#c87a7a; color:#c87a7a; }
+.bill-vote-btn:disabled  { opacity:0.4; cursor:default; }
+.bill-vote-btn.cast.yes  { background:rgba(122,195,161,0.15); border-color:#7ac3a1; color:#7ac3a1; }
+.bill-vote-btn.cast.no   { background:rgba(200,122,122,0.15); border-color:#c87a7a; color:#c87a7a; }
+
+.propose-section { margin-top:32px; padding-top:18px;
+  border-top:0.5px solid rgba(255,255,255,0.07); }
+.propose-section__head { font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
+  color:#7a7468; font-weight:600; margin-bottom:10px; }
+.propose-form { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:8px; }
+.propose-form select { background:#0d0d0d; border:0.5px solid rgba(122,154,171,0.3);
+  color:#cfcabf; padding:8px 10px; font-size:11px; border-radius:3px; min-width:200px;
+  font-family:inherit; }
+.propose-form button { font-family:monospace; font-size:9px; letter-spacing:0.13em;
+  background:transparent; border:0.5px solid rgba(200,166,78,0.5); color:#c8a64e;
+  padding:8px 14px; border-radius:3px; cursor:pointer; text-transform:uppercase; }
+.propose-form button:hover:not(:disabled) { background:rgba(200,166,78,0.12); }
+.propose-form button:disabled { opacity:0.4; cursor:default; }
+.propose-hint { font-size:11px; color:#666; margin-top:8px; line-height:1.5; }
+
 @media (max-width:700px) {
   .content { padding:20px 14px 16px; }
   .page-title { font-size:24px; }
   .law-card { padding:18px 21px; }
   .law-section__grid { grid-template-columns:1fr; }
+  .propose-form select { min-width:0; flex:1; }
 }
 </style>
 </head>
@@ -86,7 +148,9 @@
     <div class="page-title">Active <span style="font-style:normal;font-family:inherit;color:#fff;">Laws</span></div>
     <div class="page-sub" id="ph-sub">—</div>
   </div>
+  <div id="bills-host"></div>
   <div id="law-host"></div>
+  <div id="propose-host"></div>
 </div>
 
 <div id="loading" class="loading">LOADING...</div>
@@ -126,6 +190,7 @@ async function init() {
     `${nation.name}${nation.capital ? ` · capital ${nation.capital}` : ''}`;
 
   await renderLaws(nation.id);
+  await renderBillsAndPropose(nation.id, ctx);
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
@@ -233,6 +298,206 @@ function renderCard(law) {
       (passedYear ? `<div class="law-card__meta">Passed ${escapeHtml(String(passedYear))}</div>` : '') +
     `</div>`
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Bills in vote — 20270423 voting MVP.
+// Renders any currently in-flight bills with yes/no buttons + a recent-
+// history strip below; plus the propose-bill form anchored to the
+// bottom of the page. Vote / propose go through the SECURITY DEFINER
+// RPCs so RLS doesn't have to grant client writes on assembly_bills /
+// assembly_bill_votes.
+// ─────────────────────────────────────────────────────────────────────
+
+function fmtStance(alignment) {
+  // alignment is {Archetype: ±1, …}; render as up-to-3 chips, positives
+  // first, negatives second, others (zero) suppressed. Empty stance →
+  // a muted "(no archetype tilt)" so the row reads complete.
+  if (!alignment || typeof alignment !== 'object') return '<span class="bill-card__stance">(no archetype tilt)</span>';
+  const entries = Object.entries(alignment).filter(([, v]) => Number(v) !== 0);
+  if (!entries.length) return '<span class="bill-card__stance">(no archetype tilt)</span>';
+  const pos = entries.filter(([, v]) => Number(v) > 0).map(([k]) => `<span class="pos">+${escapeHtml(k)}</span>`);
+  const neg = entries.filter(([, v]) => Number(v) < 0).map(([k]) => `<span class="neg">−${escapeHtml(k)}</span>`);
+  return `<div class="bill-card__stance">${[...pos, ...neg].join(' · ')}</div>`;
+}
+
+async function renderBillsAndPropose(nationId, ctx) {
+  const billsHost   = document.getElementById('bills-host');
+  const proposeHost = document.getElementById('propose-host');
+  const viewerPolId = ctx?.faction?.id || null;
+  const currentTick = Number(ctx?.shard?.current_tick) || 0;
+
+  const [billsRes, votesRes, policiesRes, optionsRes] = await Promise.all([
+    _supabase.from('assembly_bills')
+      .select(`id, policy_id, current_option_id, proposed_option_id, archetype_alignment,
+               status, proposed_at_tick, close_at_tick, yes_seats, no_seats, created_at,
+               policy:policies!policy_id(policy_name, major_sector),
+               current:policy_options!current_option_id(option_name),
+               proposed:policy_options!proposed_option_id(option_name)`)
+      .eq('nation_id', nationId)
+      .order('created_at', { ascending: false })
+      .limit(10),
+    viewerPolId
+      ? _supabase.from('assembly_bill_votes').select('bill_id, position').eq('politician_id', viewerPolId)
+      : Promise.resolve({ data: [], error: null }),
+    _supabase.from('policies').select('id, policy_name, major_sector').order('policy_name'),
+    _supabase.from('policy_options').select('id, policy_id, option_name').order('option_name'),
+  ]);
+  if (billsRes.error)    console.warn('[politician-laws] bills fetch failed', billsRes.error);
+  if (votesRes.error)    console.warn('[politician-laws] votes fetch failed', votesRes.error);
+  if (policiesRes.error) console.warn('[politician-laws] policies fetch failed', policiesRes.error);
+  if (optionsRes.error)  console.warn('[politician-laws] options fetch failed', optionsRes.error);
+
+  const bills    = billsRes.data || [];
+  const voteMap  = new Map((votesRes.data || []).map(v => [v.bill_id, v.position]));
+  const voting   = bills.filter(b => b.status === 'voting');
+  const recent   = bills.filter(b => b.status !== 'voting').slice(0, 5);
+
+  // Bills section header + voting cards + recent strip.
+  const votingHtml = voting.length
+    ? voting.map(b => renderBillCard(b, voteMap.get(b.id) || null, currentTick)).join('')
+    : '<div class="bills-empty">No bills currently up for vote.</div>';
+  const recentHtml = recent.length
+    ? `<div class="bills-section__head" style="margin-top:18px;">Recent</div>` +
+      recent.map(b => renderBillCard(b, voteMap.get(b.id) || null, currentTick)).join('')
+    : '';
+  billsHost.innerHTML = `
+    <div class="bills-section">
+      <div class="bills-section__head">Bills in Vote</div>
+      ${votingHtml}
+      ${recentHtml}
+    </div>`;
+
+  // Vote button handlers — delegated to the bills-host root.
+  billsHost.onclick = async (e) => {
+    const btn = e.target.closest('.bill-vote-btn');
+    if (!btn || btn.disabled) return;
+    const billId = btn.dataset.billId;
+    const pos    = btn.dataset.pos;
+    if (!billId || !pos) return;
+    billsHost.querySelectorAll(`[data-bill-id="${billId}"].bill-vote-btn`).forEach(b => b.disabled = true);
+    try {
+      const { data, error } = await _supabase.rpc('cast_vote_on_bill', { p_bill_id: billId, p_position: pos });
+      if (error) throw error;
+      if (!data?.success) { alert('Could not vote: ' + (data?.reason || 'unknown')); return; }
+      location.reload();
+    } catch (err) {
+      alert('Failed: ' + (err?.message || err));
+      billsHost.querySelectorAll(`[data-bill-id="${billId}"].bill-vote-btn`).forEach(b => b.disabled = false);
+    }
+  };
+
+  // ── Propose form ──────────────────────────────────────────────────
+  const policies = policiesRes.data || [];
+  const options  = optionsRes.data || [];
+  const optsByPolicy = new Map();
+  for (const o of options) {
+    if (!optsByPolicy.has(o.policy_id)) optsByPolicy.set(o.policy_id, []);
+    optsByPolicy.get(o.policy_id).push(o);
+  }
+  const cdReady = (Number(ctx?.faction?.next_bill_propose_tick) || 0) <= currentTick;
+  const inParty = !!ctx?.faction?.politician_party_id;
+  const policyOpts = policies.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.policy_name || '—')}</option>`).join('');
+  const cdNote = inParty
+    ? (cdReady ? '' : ` · ready at tick ${ctx.faction.next_bill_propose_tick}`)
+    : ' · join a party to propose';
+  proposeHost.innerHTML = `
+    <div class="propose-section">
+      <div class="propose-section__head">Propose a Bill${escapeHtml(cdNote)}</div>
+      <div class="propose-form">
+        <select id="propose-policy"><option value="">— pick a policy —</option>${policyOpts}</select>
+        <select id="propose-option" disabled><option value="">— pick a new option —</option></select>
+        <button id="propose-submit" type="button" ${(!inParty || !cdReady) ? 'disabled' : ''}>Propose</button>
+      </div>
+      <div class="propose-hint">Proposing a bill costs nothing today, but the 5-tick cooldown gates spam. Each bill enters a 3-tick voting window; on close, every party in the assembly gains or loses popularity per the diminishing-returns curve.</div>
+    </div>`;
+
+  const polSel = document.getElementById('propose-policy');
+  const optSel = document.getElementById('propose-option');
+  const submit = document.getElementById('propose-submit');
+  polSel.onchange = () => {
+    const opts = optsByPolicy.get(polSel.value) || [];
+    optSel.innerHTML = '<option value="">— pick a new option —</option>' +
+      opts.map(o => `<option value="${escapeHtml(o.id)}">${escapeHtml(o.option_name || '—')}</option>`).join('');
+    optSel.disabled = opts.length === 0;
+  };
+  submit.onclick = async () => {
+    if (!polSel.value || !optSel.value) { alert('Pick a policy and a new option.'); return; }
+    submit.disabled = true; const prev = submit.textContent; submit.textContent = 'PROPOSING…';
+    try {
+      const { data, error } = await _supabase.rpc('propose_bill', {
+        p_policy_id: polSel.value, p_option_id: optSel.value,
+      });
+      if (error) throw error;
+      if (!data?.success) {
+        const REASON = {
+          not_authenticated: 'Sign in to propose.',
+          no_politician:     'No politician on this account.',
+          no_nation:         'Your politician has no nation.',
+          not_in_party:      'You must be a party member to propose.',
+          cooldown:          `Cooldown — ready at tick ${data.ready_at_tick}.`,
+          invalid_option:    'That option is not part of the selected policy.',
+          already_active:    'That option is already the active law.',
+          bill_in_flight:    'A bill on this policy is already in vote.',
+        };
+        alert(REASON[data?.reason] || ('Could not propose: ' + (data?.reason || 'unknown')));
+        submit.disabled = false; submit.textContent = prev; return;
+      }
+      location.reload();
+    } catch (err) {
+      alert('Failed: ' + (err?.message || err));
+      submit.disabled = false; submit.textContent = prev;
+    }
+  };
+}
+
+function renderBillCard(b, viewerVote, currentTick) {
+  const policyName = b.policy?.policy_name || 'Unknown policy';
+  const fromName   = b.current?.option_name  || '(no current option)';
+  const toName     = b.proposed?.option_name || '(unknown option)';
+  const status     = b.status || 'voting';
+  const statusLabel = status === 'voting' ? 'In Vote'
+                    : status === 'passed'  ? 'Passed'
+                    : status === 'failed'  ? 'Failed'
+                    :                        'Expired';
+  const isVoting   = status === 'voting';
+  const ticksLeft  = isVoting ? Math.max(0, Number(b.close_at_tick) - currentTick) : null;
+  const closeNote  = isVoting
+    ? (ticksLeft === 0 ? 'closes this tick' : `closes in ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}`)
+    : '';
+
+  let row;
+  if (isVoting) {
+    const yesCls = (viewerVote === 'yes') ? 'bill-vote-btn yes cast' : 'bill-vote-btn yes';
+    const noCls  = (viewerVote === 'no')  ? 'bill-vote-btn no cast'  : 'bill-vote-btn no';
+    row = `<div class="bill-card__row">
+        <div class="bill-card__tally">${escapeHtml(closeNote)}</div>
+        <div class="bill-card__actions">
+          <button class="${yesCls}" data-bill-id="${escapeHtml(b.id)}" data-pos="yes">Yes</button>
+          <button class="${noCls}"  data-bill-id="${escapeHtml(b.id)}" data-pos="no">No</button>
+        </div>
+      </div>`;
+  } else {
+    const y = Number(b.yes_seats) || 0;
+    const n = Number(b.no_seats)  || 0;
+    row = `<div class="bill-card__row">
+        <div class="bill-card__tally">
+          <span class="y">${y} yes</span> · <span class="n">${n} no</span>
+        </div>
+      </div>`;
+  }
+
+  return `<div class="bill-card ${isVoting ? 'voting' : ''}">
+    <div class="bill-card__head">
+      <div class="bill-card__policy">${escapeHtml(policyName)}</div>
+      <div class="bill-card__status ${status}">${escapeHtml(statusLabel)}</div>
+    </div>
+    <div class="bill-card__change">
+      <span class="from">${escapeHtml(fromName)}</span> → <span class="to">${escapeHtml(toName)}</span>
+    </div>
+    ${fmtStance(b.archetype_alignment)}
+    ${row}
+  </div>`;
 }
 
 init();
