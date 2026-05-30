@@ -299,7 +299,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { tickToDate, fmtBig, officeTitle, escapeHtml } from './js/utils.js';
+import { tickToDate, fmtBig, officeTitle } from './js/utils.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 
 const NO_AFFILIATION_MESSAGE = 'This character has no affiliation.';
@@ -524,18 +524,39 @@ function renderStats() {
 // was to ship the role panel first and wire RPCs when each per-role
 // action mechanic lands. Tenure pill is suppressed for Party Member
 // (no canonical "joined party at tick" column to read from).
+//
+// Tier 2 (city_council_member, senior_mp) shares its Tier 1 action set
+// by reference — placeholder until each role's mechanics are specified.
+// When Tier 2 diverges, point each variant at its own array.
+//
+// Carry-over: politician-home has a local escHtml + utils.js exports a
+// canonical escapeHtml; new code uses the local helper to match the
+// rest of this file. Full consolidation to the imported version is a
+// future cleanup pass.
+const PARTY_MEMBER_ACTIONS = [
+  { ic: '⚑', name: 'DOOR KNOCKING', cost: 'no cost', desc: 'Walk a precinct. Talk to whoever opens the door.' },
+  { ic: '❕', name: 'GIVE A SPEECH', cost: 'no cost', desc: 'Climb a stump. Make the case to whoever’s listening.' },
+];
+const LOCAL_GOV_ACTIONS = [
+  { ic: '☎', name: 'FUNDRAISING CALL', cost: 'no cost', desc: 'Work the donor list by phone. Build the war chest.' },
+  { ic: '⛌', name: 'CIVIC MEETING',    cost: 'no cost', desc: 'Attend a tenants’ association, parish council, or union local.' },
+  { ic: '☂', name: 'OFFICE HOURS',     cost: '−$50', desc: 'Set up at a storefront and let constituents come to you.' },
+];
+const LEGISLATURE_ACTIONS = [
+  { ic: '☞', name: 'FLOOR SPEECH',       cost: 'no cost', desc: 'Rise on the Assembly floor and speak to a chosen issue. Visible, recorded, risked.' },
+  { ic: '⚗', name: 'COMMITTEE WORK',     cost: 'no cost', desc: 'Sit through a committee hearing. Question witnesses. Contribute to the report.' },
+  { ic: '\u{1F37E}', name: 'FUNDRAISING DINNER', cost: '−$300', desc: 'Work the room at a donor-class fundraiser. Court the wallets that matter.' },
+];
+
 const AFFIL_VARIANTS = {
   party_member: {
     variant: 'var-party',
     eyebrow: 'PARTY MEMBER · TIER 0',
     badge:   '⚑',  // flag
     name:    'Party Member',
-    descIfPartyName: (p) => `You hold a card in <strong>${escapeHtml(p)}</strong>. The work right now is on the ground — show up, make calls, become known to the people who get out the vote.`,
+    descIfPartyName: (p) => `You hold a card in <strong>${escHtml(p)}</strong>. The work right now is on the ground — show up, make calls, become known to the people who get out the vote.`,
     descIfNoParty:   ()  => 'You are an independent — no party card, no caucus. Join a party first; the action set opens once you do.',
-    actions: [
-      { ic: '⚑', name: 'DOOR KNOCKING', cost: 'no cost', desc: 'Walk a precinct. Talk to whoever opens the door.' },
-      { ic: '❕', name: 'GIVE A SPEECH', cost: 'no cost', desc: 'Climb a stump. Make the case to whoever’s listening.' },
-    ],
+    actions: PARTY_MEMBER_ACTIONS,
   },
   community_organizer: {
     variant: 'var-local',
@@ -543,11 +564,7 @@ const AFFIL_VARIANTS = {
     badge:   '☴',
     name:    'Community Organizer',
     desc:    'You represent a neighborhood seat in the local district council. <strong>The work is retail</strong> — you know the names; the names know you. Build a base now and the rest of the ladder is yours to climb.',
-    actions: [
-      { ic: '☎', name: 'FUNDRAISING CALL', cost: 'no cost', desc: 'Work the donor list by phone. Build the war chest.' },
-      { ic: '⛌', name: 'CIVIC MEETING',    cost: 'no cost', desc: 'Attend a tenants’ association, parish council, or union local.' },
-      { ic: '☂', name: 'OFFICE HOURS',     cost: '−$50', desc: 'Set up at a storefront and let constituents come to you.' },
-    ],
+    actions: LOCAL_GOV_ACTIONS,
   },
   city_council_member: {
     variant: 'var-local',
@@ -555,11 +572,7 @@ const AFFIL_VARIANTS = {
     badge:   '☴',
     name:    'City Council Member',
     desc:    'You hold an elected seat on the city council, voting on budgets and ordinances. The retail work continues — your district expects to see you — but the leverage is now municipal.',
-    actions: [
-      { ic: '☎', name: 'FUNDRAISING CALL', cost: 'no cost', desc: 'Work the donor list by phone. Build the war chest.' },
-      { ic: '⛌', name: 'CIVIC MEETING',    cost: 'no cost', desc: 'Attend a tenants’ association, parish council, or union local.' },
-      { ic: '☂', name: 'OFFICE HOURS',     cost: '−$50', desc: 'Set up at a storefront and let constituents come to you.' },
-    ],
+    actions: LOCAL_GOV_ACTIONS,  // placeholder — diverges when Tier 2 mechanics ship
   },
   member_of_parliament: {
     variant: 'var-leg',
@@ -567,11 +580,7 @@ const AFFIL_VARIANTS = {
     badge:   '⚛',
     name:    'Member of Parliament',
     desc:    'You sit in the National Assembly representing your district. <strong>The work is institutional</strong> — speeches, votes, committee rooms, the whip’s office. Build a reputation here and you become someone the press calls, the leadership listens to, and the country knows.',
-    actions: [
-      { ic: '☞', name: 'FLOOR SPEECH',       cost: 'no cost', desc: 'Rise on the Assembly floor and speak to a chosen issue. Visible, recorded, risked.' },
-      { ic: '⚗', name: 'COMMITTEE WORK',     cost: 'no cost', desc: 'Sit through a committee hearing. Question witnesses. Contribute to the report.' },
-      { ic: '\u{1F37E}', name: 'FUNDRAISING DINNER', cost: '−$300', desc: 'Work the room at a donor-class fundraiser. Court the wallets that matter.' },
-    ],
+    actions: LEGISLATURE_ACTIONS,
   },
   senior_mp: {
     variant: 'var-leg',
@@ -579,11 +588,7 @@ const AFFIL_VARIANTS = {
     badge:   '⚛',
     name:    'Senior MP',
     desc:    'A second-term backbencher with committee assignments and a name the press knows. The same institutional levers, with more weight behind them.',
-    actions: [
-      { ic: '☞', name: 'FLOOR SPEECH',       cost: 'no cost', desc: 'Rise on the Assembly floor and speak to a chosen issue. Visible, recorded, risked.' },
-      { ic: '⚗', name: 'COMMITTEE WORK',     cost: 'no cost', desc: 'Sit through a committee hearing. Question witnesses. Contribute to the report.' },
-      { ic: '\u{1F37E}', name: 'FUNDRAISING DINNER', cost: '−$300', desc: 'Work the room at a donor-class fundraiser. Court the wallets that matter.' },
-    ],
+    actions: LEGISLATURE_ACTIONS,  // placeholder — diverges when Tier 2 mechanics ship
   },
 };
 
@@ -613,7 +618,7 @@ function renderAffiliation(ctx) {
   // come from a future "office_placement" surface).
   const rankHtml = office
     ? '' // future: " · District N · {PARTY_ABBREV}"
-    : (partyName ? ` <span class="ah-rank">· ${escapeHtml(partyName)}</span>` : '');
+    : (partyName ? ` <span class="ah-rank">· ${escHtml(partyName)}</span>` : '');
 
   const actionsCount = variant.actions.length;
   const colsClass = actionsCount === 2 ? ' cols-2' : '';
@@ -621,10 +626,10 @@ function renderAffiliation(ctx) {
     <div class="act-btn" aria-disabled="true" title="Action mechanics coming soon">
       <div class="act-head">
         <span class="act-ic">${a.ic}</span>
-        <span class="act-name">${escapeHtml(a.name)}</span>
-        <span class="act-cost">${escapeHtml(a.cost)}</span>
+        <span class="act-name">${escHtml(a.name)}</span>
+        <span class="act-cost">${escHtml(a.cost)}</span>
       </div>
-      <div class="act-desc">${escapeHtml(a.desc)}</div>
+      <div class="act-desc">${escHtml(a.desc)}</div>
     </div>`).join('');
 
   host.innerHTML = `
@@ -632,8 +637,8 @@ function renderAffiliation(ctx) {
       <div class="ah-row">
         <div class="ah-badge">${variant.badge}</div>
         <div class="ah-info">
-          <div class="ah-eyebrow">${escapeHtml(variant.eyebrow)}</div>
-          <div class="ah-name">${escapeHtml(variant.name)}${rankHtml}</div>
+          <div class="ah-eyebrow">${escHtml(variant.eyebrow)}</div>
+          <div class="ah-name">${escHtml(variant.name)}${rankHtml}</div>
           <div class="ah-desc">${descHtml}</div>
         </div>
         ${tenureHtml}
