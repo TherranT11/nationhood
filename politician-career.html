@@ -113,9 +113,10 @@
 .stand-active strong { color:#5aafa5; font-weight:600; }
 
 /* Two-column branch — Party Office | Government & State directly under
-   Tier 0. Collapses to single column on narrow viewports so the rungs
-   stay readable. Both branches are open by default; the rest of the
-   ladders below stay in single-column collapsibles as before. */
+   Tier 0. Both ladders are <details> collapsibles like the rest of the
+   list and start closed on page load; the grid just controls how they
+   sit side-by-side when expanded. Collapses to single column on narrow
+   viewports so the rungs stay readable. */
 .ladder-branch { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
 @media (max-width:780px) {
   .ladder-branch { grid-template-columns:1fr; }
@@ -845,7 +846,7 @@ function renderLadders(state, ctx) {
     </details>`;
   };
   const branchHtml = branchLadders.length
-    ? `<div class="ladder-branch">${branchLadders.map(l => ladderHtmlFor(l, true)).join('')}</div>`
+    ? `<div class="ladder-branch">${branchLadders.map(l => ladderHtmlFor(l, false)).join('')}</div>`
     : '';
   const restHtml = restLadders.map(l => ladderHtmlFor(l, false)).join('');
 

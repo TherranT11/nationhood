@@ -466,8 +466,11 @@ function renderSummaryCard(sector, agg) {
 function renderSectorSection(sector, agg, corpsByIndustry, baseByKey) {
   const indHtml = sector.industries.map(ind => {
     const indCorps = corpsByIndustry.get(ind.key) || [];
-    const base = baseByKey.get(ind.key) ?? 0;
-    return renderIndustryCard(sector, ind, indCorps, base);
+    // baseByKey.get may return undefined for an unauthored industry;
+    // renderIndustryCard runs every base through baseOf() so we pass
+    // the raw value through and let that single coercion path handle
+    // it — same pattern the aggregate loop above uses.
+    return renderIndustryCard(sector, ind, indCorps, baseByKey.get(ind.key));
   }).join('');
   return (
     `<div class="cat-section">` +
