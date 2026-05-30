@@ -279,14 +279,17 @@ export async function bootstrapPolitician(activeTab) {
     renderPoliticianTopbar(container, { faction, shard, nation, allUserFactions, activeTab });
   }
 
-  // Fire-and-forget the due-general-elections sweep (20270421). Idempotent
-  // server-side via FOR UPDATE SKIP LOCKED + the next_election_tick advance,
-  // so concurrent loads from multiple players (or tabs) won't double-apply.
-  // No await — page render shouldn't block on it. Errors swallowed to a
-  // console warn since a transient RPC failure shouldn't break the bootstrap.
+  // Fire-and-forget the due-resolution sweeps. Both are idempotent
+  // server-side (FOR UPDATE SKIP LOCKED + status/tick advance), so
+  // concurrent loads from multiple players (or tabs) won't double-apply.
+  // No await — page render shouldn't block. Errors swallowed to console
+  // warn since transient RPC failure shouldn't break the bootstrap.
   _supabase.rpc('resolve_due_general_elections')
     .then(({ error }) => { if (error) console.warn('[politician-topbar] resolve_due_general_elections:', error.message); })
     .catch(e => console.warn('[politician-topbar] resolve_due_general_elections threw:', e?.message || e));
+  _supabase.rpc('resolve_due_bills')
+    .then(({ error }) => { if (error) console.warn('[politician-topbar] resolve_due_bills:', error.message); })
+    .catch(e => console.warn('[politician-topbar] resolve_due_bills threw:', e?.message || e));
 
   return { user, faction, shard, nation, allUserFactions, party };
 }
