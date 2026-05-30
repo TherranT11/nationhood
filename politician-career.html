@@ -116,6 +116,10 @@
 .rung__pill--track-field    { background:#0e0e0e; color:#9a9a9a; border:0.5px solid #3a3a3a; }
 .rung__pill--track-command  { background:#160a0a; color:#a85858; border:0.5px solid #4a2424; }
 .rung__pill--track-apex     { background:#1a0a0a; color:#e09090; border:0.5px solid #6a3030; }
+/* Government Service ladder — appointed/apex executive tier in gold.
+   The civil-service stem reuses the field pill (identical greys); when
+   the two ladders need to diverge visually, split into its own class. */
+.rung__pill--track-appointed  { background:#161208; color:#d4b87a; border:0.5px solid #5a4d2e; }
 .rung__pill--vis { color:#666; background:#0a0a0a;
   border:0.5px solid rgba(255,255,255,0.07); }
 
@@ -448,6 +452,7 @@ const LADDERS = [
   { id: 'party',      icon: '\u{1F6A9}', name: 'Party Office',       rungs: () => PARTY_OFFICE_RUNGS, branch: true },
   { id: 'govt',       icon: '\u{1F451}', name: 'Government & State', rungs: () => GOVERNMENT_RUNGS,   branch: true },
   { id: 'legislature',icon: '⚖️',       name: 'Legislature',         rungs: () => LEGISLATURE_RUNGS },
+  { id: 'govt_service', icon: '\u{265A}', name: 'Government Service', rungs: () => GOVT_SERVICE_RUNGS },
   { id: 'judiciary',  icon: '\u{1F3DB}\u{FE0F}', name: 'Judiciary',  rungs: () => JUDICIARY_RUNGS,
     footer: 'The judiciary does not campaign or command — it waits for cases, then rules. Its power is reactive but absolute: a Chief Justice can undo what the Legislature passed, jail a Minister, or declare a war footing unlawful. The only limit is the independence that makes those rulings stick.' },
   { id: 'foreign',    icon: '\u{1F30D}', name: 'Foreign Service',    rungs: () => FOREIGN_SERVICE_RUNGS },
@@ -614,6 +619,92 @@ const LEGISLATURE_RUNGS = [
     descIfHeld:  ()  => 'The top — institutional, not partisan.',
     descIfNot:   ()  => 'The top — institutional, not partisan.',
     actions:     ['Set Legislative Calendar', 'Convene Legislature'],
+  },
+];
+
+// Government Service rungs — the executive-branch arc, split into a
+// permanent civil-service stem (Tiers 1-3) and a political-appointment
+// canopy (Tiers 4-6) connected by a transition row. The civil-service
+// stem is climbed by service + exams; the political tiers are
+// APPOINTED — only available to elected MPs in the governing coalition
+// whom the Prime Minister names. No mechanics today: held() returns
+// false for every rung, descIfHeld/descIfNot collapse to flavor copy,
+// actionIfNot on Tier 1 ("Sit the Exam") + actionIfHeld on Tier 3
+// ("Resign — Enter Politics") are the documented entry/exit hooks
+// that the mechanics will wire when they ship.
+const GOVT_SERVICE_RUNGS = [
+  // ── CIVIL SERVICE STEM ─────────────────────────────────────────────
+  {
+    tierNum: 1, tierName: 'FIRST OFFICE',
+    name: 'Civil Servant',
+    trackPill:   { label: 'CIVIL SERVICE', kind: 'field' },
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You process cases, handle paperwork, and learn how the state actually works from the inside.',
+    descIfNot:   ()  => 'Junior bureaucrat in a ministry. You process cases, handle paperwork, and learn how the state actually works from the inside.',
+    actions:     ['Process a Case', 'Flag an Issue'],
+    actionIfNot: { label: 'Sit the Exam', kind: 'disabled' },
+  },
+  {
+    tierNum: 2,
+    name: 'Senior Civil Servant / Section Head',
+    trackPill:   { label: 'CIVIL SERVICE', kind: 'field' },
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You advise upward on policy detail but cannot decide alone.',
+    descIfNot:   ()  => 'A middle-rank official running a section of a ministry. Real responsibility on policy detail; you advise upward but cannot decide alone.',
+    actions:     ['Draft a Memo', 'Brief a Minister'],
+  },
+  {
+    tierNum: 3,
+    name: 'Department Head / Permanent Secretary',
+    trackPill:    { label: 'CIVIL SERVICE', kind: 'field' },
+    held:         ()  => false,
+    descIfHeld:   ()  => 'You run a ministry between political changes — the institutional memory.',
+    descIfNot:    ()  => 'Top of the permanent civil service. You run a ministry between political changes — the institutional memory who tells whichever Minister gets appointed what is and is not possible.',
+    actions:      ['Approve Policy', 'Implement Reform'],
+    // Held-state exit: surfaces once the held() check is wired so a
+    // Permanent Secretary can resign and stand for election.
+    actionIfHeld: { label: 'Resign · Enter Politics', kind: 'secondary' },
+  },
+
+  // ── CIVIL-SERVICE → APPOINTED TRANSITION ──────────────────────────
+  {
+    transition: true,
+    icon: '⚔️',
+    text: 'CAREER TRANSITION · POLITICAL APPOINTMENTS BEGIN HERE',
+    sub:  'Higher rungs are not climbed but appointed — you must be an elected MP in the governing coalition, and the Prime Minister must name you.',
+  },
+
+  // ── POLITICAL APPOINTMENT CANOPY ──────────────────────────────────
+  {
+    tierNum: 4,
+    name: 'Deputy Minister / Junior Minister',
+    trackPill:   { label: 'APPOINTED', kind: 'appointed' },
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You carry legislation through the chamber and answer for the Minister when absent.',
+    descIfNot:   ()  => 'An MP appointed to a junior executive role within a ministry. You learn the brief, carry legislation through the chamber, and answer for the Minister when they are absent.',
+    actions:     ['Carry a Bill', 'Answer Questions'],
+  },
+  {
+    tierNum: 5,
+    name: 'Minister / Cabinet Member',
+    trackPill:   { label: 'APPOINTED', kind: 'appointed' },
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You sit in Cabinet, set policy for your portfolio, and defend your budget.',
+    descIfNot:   ()  => 'Head of a ministry. You sit in Cabinet, set policy for your portfolio, defend your budget, and answer for your sector before the legislature and the press.',
+    actions:     ['Direct a Ministry', 'Defend the Budget'],
+  },
+  {
+    tierNum: 6, tierName: 'APEX',
+    name: 'Prime Minister',
+    trackPill:   { label: 'APEX', kind: 'appointed' },
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You head the government — name the Cabinet, set the agenda, face the legislature.',
+    descIfNot:   ()  => 'Head of government. You name the Cabinet, set the national agenda, face the legislature on behalf of the executive, and represent the nation abroad. Held only as long as your coalition holds.',
+    actions:     [
+      { label: 'Form a Cabinet', signature: true },
+      'Address the Nation',
+      'Call an Election',
+    ],
   },
 ];
 
