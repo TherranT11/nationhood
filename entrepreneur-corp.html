@@ -171,6 +171,13 @@
   .ap-meta { display:flex; justify-content:space-between; font-size:10px; color:#666;
     letter-spacing:0.08em; }
   .ap-meta .done { color:#8aaa6a; }
+  /* Apartment per-tick rent line — only renders on apartment_* rows. */
+  .ap-rent { display:flex; flex-wrap:wrap; gap:14px; font-size:10.5px; color:#999;
+    background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.06); border-radius:3px;
+    padding:7px 10px; margin-top:8px; letter-spacing:0.04em; }
+  .ap-rent b { color:#cfcabf; font-weight:600; }
+  .ap-rent .pos b { color:#8aaa6a; }
+  .ap-rent .neg b { color:#c87a6a; }
   .ap-empty { background:#0d0d0d; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
     padding:24px 18px; color:#666; font-size:12px; text-align:center; line-height:1.6;
     letter-spacing:0.03em; }
@@ -831,7 +838,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash, computeCorpBookValue } from './js/game/corp-valuation.js';
 import { fetchOneCorpBookAggregates } from './js/corp-book-value.js';
 import { GRIEVANCE_LABEL } from './js/game/lawsuit-types.js';
@@ -3185,7 +3192,7 @@ function initials(s, n) {
         .select('id, name, tier, building_type, nation_id, cost_paid, ambition_granted, status, '
               + 'started_at_tick, completes_at_tick, completed_at_tick, '
               + 'owner_corp_id, list_price, brokerage_offered, broker_corp_id, '
-              + 'nation:nations!nation_id(name), '
+              + 'nation:nations!nation_id(name, standard_of_living, infrastructure, stability), '
               + 'offers:building_offers!building_id(id, amount, status, placed_at_tick, '
                 + 'buyer:entrepreneur_corps!buyer_corp_id(id, name, '
                   + 'owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name)))')
@@ -3275,6 +3282,20 @@ function initials(s, n) {
                      }).join('')}
                    </div>`
                 : '';
+              // Apartment rent breakdown — live forecast against current
+              // nation stats. Mirrors process_apartment_rents (20270438);
+              // computeApartmentRent in utils.js is the JS-side single
+              // source. Negative net is shown red — that's the design's
+              // signal that holding this property is bleeding cash.
+              const rent = computeApartmentRent(b.building_type, b.nation);
+              const rentRow = rent
+                ? `<div class="ap-rent">
+                     <span>Occupancy <b>${Math.round(rent.occupancy * 100)}%</b></span>
+                     <span>Gross <b>${fmtUsd(rent.gross)}</b>/tick</span>
+                     <span>Maintenance <b>${fmtUsd(rent.maintenance)}</b>/tick</span>
+                     <span class="${rent.net < 0 ? 'neg' : 'pos'}">Net <b>${rent.net < 0 ? '−' : ''}${fmtUsd(Math.abs(rent.net))}</b>/tick</span>
+                   </div>`
+                : '';
               return `
                 <div class="ap-row completed">
                   <div class="ap-row-head">
@@ -3288,6 +3309,7 @@ function initials(s, n) {
                     <span>Cost ${fmtUsd(Number(b.cost_paid))}</span>
                     <span class="done">✓ +0.2 GDP Growth applied</span>
                   </div>
+                  ${rentRow}
                   ${actionRow}
                   ${offersRow}
                 </div>`;

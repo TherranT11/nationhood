@@ -262,6 +262,25 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
             console.warn('[EntrepreneurAirlines] allocator threw:', airThrow?.message || airThrow);
         }
 
+        // Apartment Complex rents — per-tick rent allocator (migration
+        // 20270438). One global call: computes gross × occupancy −
+        // maintenance per owned apartment, credits owner treasury,
+        // stamps corp_buildings.last_processed_tick. Idempotent within
+        // a tick. Net can go negative when nation stats sour — that's
+        // the landlord-risk lever the Phase 2 design ships.
+        try {
+            const { data: aptRes, error: aptErr } = await supabase.rpc(
+                'process_apartment_rents', { p_tick: currentTick });
+            if (aptErr) {
+                console.warn('[ApartmentRents] allocator RPC failed:', aptErr.message);
+            } else if (aptRes && aptRes.success && Number(aptRes.apartments_run) > 0) {
+                summary.apartmentRents = aptRes;
+                console.log(`[ApartmentRents] tick ${currentTick}: ${aptRes.apartments_run} apartments, $${aptRes.total_net_rent} net rent`);
+            }
+        } catch (aptThrow) {
+            console.warn('[ApartmentRents] allocator threw:', aptThrow?.message || aptThrow);
+        }
+
     } catch (shipErr) {
         console.error('[advance-corp-tick] FAILED shipping route processor:', shipErr);
         summary.errors.push({ scope: 'shipping_routes', error: String(shipErr) });

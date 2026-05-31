@@ -119,6 +119,45 @@ export function industryTitleLabel(s) {
  * My Offers grids read from here. NULL / unknown values fall back to
  * the generic 'Building' so unmapped future types still render.
  */
+/**
+ * Per-tick rent breakdown for an Apartment Complex. Mirrors the
+ * process_apartment_rents() server RPC (20270438) — keep the math
+ * in lockstep with that function.
+ *
+ *   gross       = base × (standard_of_living + infrastructure) / 100
+ *   occupancy   = clamp(0.4, 1.0, stability / 100)
+ *   maintenance = base × (100 - infrastructure) / 200
+ *   net         = round(gross × occupancy - maintenance)
+ *
+ * Returns { gross, maintenance, occupancy, net, basePerTick } as
+ * integers (dollars per tick) and occupancy as a 0-1 fraction.
+ * Unknown / non-apartment building types return null so callers can
+ * skip the row cleanly.
+ */
+const APARTMENT_BASE_RENT = {
+    apartment_basic:  40000,
+    apartment_modest: 90000,
+    apartment_luxury: 250000,
+};
+export function computeApartmentRent(buildingType, nation) {
+    const base = APARTMENT_BASE_RENT[buildingType];
+    if (!base) return null;
+    const sol  = Number(nation?.standard_of_living ?? 50);
+    const inf  = Number(nation?.infrastructure    ?? 50);
+    const stab = Number(nation?.stability         ?? 50);
+    const gross       = base * (sol + inf) / 100;
+    const occupancy   = Math.max(0.4, Math.min(1.0, stab / 100));
+    const maintenance = base * (100 - inf) / 200;
+    const net         = Math.round(gross * occupancy - maintenance);
+    return {
+        basePerTick: base,
+        gross:       Math.round(gross),
+        maintenance: Math.round(maintenance),
+        occupancy,
+        net,
+    };
+}
+
 export function buildingTypeLabel(t) {
     switch (t) {
         case 'regional_hq':        return 'Regional HQ';
