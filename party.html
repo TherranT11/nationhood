@@ -162,7 +162,7 @@
 .lead-card.vacant .lead-name { color:#666; font-style:italic; font-weight:500; }
 
 /* Members list — every politician faction whose politician_party_id is
-   this party. Sorted by politician_influence desc. The per-member
+   this party. Sorted by political_capital desc. The per-member
    "Career" column was dropped along with politician_career: every row
    on this surface is by definition a member of THIS party, so the cell
    carried no per-row signal. When held-office tracking lands (MP /
@@ -190,7 +190,7 @@
   font-variant-numeric:tabular-nums; }
 .mem-stat .of { color:#666; }
 .mem-age { color:#888; font-size:11px; font-variant-numeric:tabular-nums; }
-.mem-inf { text-align:right; color:#cfcabf; font-family:monospace;
+.mem-cap { text-align:right; color:#cfcabf; font-family:monospace;
   font-variant-numeric:tabular-nums; }
 .mem-empty { color:#666; font-size:12px; font-style:italic; text-align:center; padding:18px 0; }
 
@@ -420,7 +420,7 @@ let _viewerPolId = null;
 let _viewerPartyId = null;
 let _viewerCharisma = 0;
 let _viewerReputation = 0;
-let _viewerInfluence = 0;
+let _viewerPoliticalCapital = 0;
 let _viewerSpeechReadyAt = 0;
 let _viewerDoorKnockReadyAt = 0;
 let _viewerNextActionAt = 0;
@@ -447,7 +447,7 @@ async function init() {
   _viewerPartyId       = ctx.faction?.politician_party_id || null;
   _viewerCharisma         = Number(ctx.faction?.politician_charisma) || 0;
   _viewerReputation       = Number(ctx.faction?.politician_reputation) || 0;
-  _viewerInfluence        = Number(ctx.faction?.politician_influence) || 0;
+  _viewerPoliticalCapital = Number(ctx.faction?.political_capital) || 0;
   _viewerSpeechReadyAt    = Number(ctx.faction?.speech_cooldown_until_tick) || 0;
   _viewerDoorKnockReadyAt = Number(ctx.faction?.door_knock_cooldown_until_tick) || 0;
   _viewerNextActionAt     = Number(ctx.faction?.next_member_action_tick) || 0;
@@ -464,11 +464,11 @@ async function init() {
       .is('abandoned_at', null)
       .maybeSingle(),
     _supabase.from('factions')
-      .select('id, leader_first_name, leader_last_name, nickname, leader_age, politician_influence, politician_reputation, politician_credibility, politician_office, volunteers')
+      .select('id, leader_first_name, leader_last_name, nickname, leader_age, political_capital, politician_reputation, politician_credibility, politician_office, volunteers')
       .eq('politician_party_id', partyId)
       .eq('faction_type', 'politician')
       .is('abandoned_at', null)
-      .order('politician_influence', { ascending: false }),
+      .order('political_capital', { ascending: false }),
   ]);
 
   if (partyRes.error) {
@@ -610,7 +610,7 @@ function renderActionsPanel() {
         <div class="act-name">Door Knocking</div>
         <div class="act-cd${dkReady ? ' ready' : ''}">${dkReady ? 'Ready' : `Ready in ${dkRemaining} tick${dkRemaining === 1 ? '' : 's'}`}</div>
       </div>
-      <div class="act-meta">1d6 + Reputation (yours: ${_viewerReputation}). Hit: +0.2 Influence (+0.4 on nat 6). Miss: −0.5 Party Popularity (−1 on nat 1). 2-tick cooldown.</div>
+      <div class="act-meta">1d6 + Reputation (yours: ${_viewerReputation}). Hit: +0.2 Political Capital (+0.4 on nat 6). Miss: −0.5 Party Popularity (−1 on nat 1). 2-tick cooldown.</div>
     </div>
     <div class="act-card${speechReady ? '' : ' disabled'}" data-action="give_speech">
       <div class="act-row">
@@ -633,10 +633,10 @@ async function onMemberAction(actionKey, card) {
       const { data, error } = await _supabase.rpc('politician_door_knock', { p_party_id: _viewerPartyId });
       if (error) throw error;
       if (!data?.success) { flashActionResult(`Door knock failed: ${data?.reason || 'unknown'}.`, 'bad'); return; }
-      _viewerInfluence        = Number(data.politician_influence) || 0;
+      _viewerPoliticalCapital = Number(data.political_capital) || 0;
       _viewerDoorKnockReadyAt = Number(data.cooldown_until_tick) || 0;
       patchPopularityCell(Number(data.popularity_pct));
-      patchViewerInfluenceCell(_viewerInfluence);
+      patchViewerCapitalCell(_viewerPoliticalCapital);
       flashActionResult(formatActionMsg('Reputation', data), bracketKind(data.bracket));
     } else if (actionKey === 'give_speech') {
       const { data, error } = await _supabase.rpc('politician_give_speech', { p_party_id: _viewerPartyId });
@@ -674,7 +674,7 @@ function formatActionMsg(statLabel, data) {
   const stat = Number(data[statLabel.toLowerCase()]) || 0;
   const total = Number(data.total) || 0;
   const popDelta = Number(data.popularity_delta) || 0;
-  const infDelta = Number(data.influence_delta) || 0;
+  const capDelta = Number(data.political_capital_delta) || 0;
   const repDelta = Number(data.reputation_delta) || 0;
   const tag = data.bracket === 'crit'      ? ' &mdash; natural 6, electrifying!'
             : data.bracket === 'crit_fail' ? ' &mdash; natural 1, disaster!'
@@ -682,7 +682,7 @@ function formatActionMsg(statLabel, data) {
   const fmt = (n, label) => `${n > 0 ? '+' : ''}${n} ${label}`;
   const deltas = [
     popDelta ? fmt(popDelta, 'Party Popularity') : '',
-    infDelta ? fmt(infDelta, 'Influence') : '',
+    capDelta ? fmt(capDelta, 'Political Capital') : '',
     repDelta ? fmt(repDelta, 'Reputation') : '',
   ].filter(Boolean).join(' &middot; ') || 'no change';
   const header = `Rolled ${data.roll} + ${stat} ${statLabel} = ${total}${tag}`;
@@ -711,16 +711,16 @@ function patchPopularityCell(newPct) {
   });
 }
 
-// Update the viewer's own influence cell in the Members panel after
-// an action. Finds the viewer's row by the "You" badge marker, so
-// the rest of the members list stays untouched.
-function patchViewerInfluenceCell(newInf) {
-  if (!Number.isFinite(newInf)) return;
+// Update the viewer's own Political Capital cell in the Members panel
+// after an action. Finds the viewer's row by the "You" badge marker,
+// so the rest of the members list stays untouched.
+function patchViewerCapitalCell(newCap) {
+  if (!Number.isFinite(newCap)) return;
   // Viewer may sit in either panel — patch wherever the You badge lives.
   document.querySelectorAll('#mps-host .mem-row, #members-host .mem-row').forEach(row => {
     if (row.querySelector('.mem-name .you')) {
-      const cell = row.querySelector('.mem-inf');
-      if (cell) cell.textContent = newInf;
+      const cell = row.querySelector('.mem-cap');
+      if (cell) cell.textContent = newCap;
     }
   });
 }
@@ -1012,11 +1012,11 @@ function renderMemberPanel(host, countEl, rows, accent, emptyText, kind) {
       <div class="${affilCls}">${escHtml(affilText)}</div>
       <div class="mem-stat">${statNow} <span class="of">/ ${statCap}</span></div>
       <div class="mem-age">${escHtml(age)}</div>
-      <div class="mem-inf">${Number(m.politician_influence) || 0}</div>
+      <div class="mem-cap">${Number(m.political_capital) || 0}</div>
     </div>`;
   }).join('');
   host.innerHTML = `<div class="mem-row header">
-    <span></span><span>Name</span><span>Affiliation</span><span>${escHtml(statLabel)}</span><span>Age</span><span style="text-align:right;">Influence</span>
+    <span></span><span>Name</span><span>Affiliation</span><span>${escHtml(statLabel)}</span><span>Age</span><span style="text-align:right;">Pol. Capital</span>
   </div>${body}`;
 }
 
