@@ -4412,6 +4412,36 @@ function initials(s, n) {
         };
         const openHtml = open.length ? open.map(orRow).join('') : '<div class="sh-empty">No open construction requests.</div>';
         requestPanelHtml += `<div class="section-heading"><span class="sans">Open</span><span class="serif">Build Requests</span></div>${openHtml}`;
+
+        // Active Builds — contracts WHERE this corp is the winner. The
+        // bidder-side mirror of the issuer's Construction Requests panel
+        // above. Without this, a builder whose bid was accepted had no
+        // visibility on their own work-in-progress (the issuer's page
+        // shows it; the builder's didn't). Progress advances each tick
+        // in process_ent_construction_contracts (20270369).
+        const { data: myBuilds, error: mbErr } = await _supabase.from('ent_construction_contracts')
+          .select('id, name, building_type, timeline_ticks, progress_ticks, winning_bid, started_at_tick, nation:nations!nation_id(name), issuer:entrepreneur_corps!issuer_corp_id(name)')
+          .eq('winner_corp_id', id)
+          .eq('status', 'active')
+          .order('started_at_tick', { ascending: true });
+        if (mbErr) console.warn('[entrepreneur-corp] active builds fetch error:', mbErr.message);
+        const builds = myBuilds || [];
+        const buildRow = (b) => {
+          const total = Number(b.timeline_ticks) || 0;
+          const done  = Math.max(0, Math.min(total, Number(b.progress_ticks) || 0));
+          const left  = total - done;
+          return `<div class="cf-row">
+            <div>
+              <div class="who">${escapeHtml(buildingTypeLabel(b.building_type))} &middot; ${escapeHtml(b.name)}</div>
+              <div class="sub">${escapeHtml(b.nation?.name || '—')} &middot; for ${escapeHtml(b.issuer?.name || 'unknown client')} &middot; bid ${fmtUsd(Number(b.winning_bid) || 0)}</div>
+            </div>
+            <span class="num green">building ${done}/${total}${left > 0 ? ` &middot; ${left} tick${left === 1 ? '' : 's'} left` : ''}</span>
+          </div>`;
+        };
+        const buildsHtml = builds.length
+          ? builds.map(buildRow).join('')
+          : '<div class="sh-empty">No active builds. Win a bid above to start construction.</div>';
+        requestPanelHtml += `<div class="section-heading"><span class="sans">Active</span><span class="serif">Builds</span></div>${buildsHtml}`;
       }
 
       // Oil & Gas Operations panel — reserves + sell-to-spot buttons +
