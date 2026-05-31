@@ -464,7 +464,7 @@ async function init() {
       .is('abandoned_at', null)
       .maybeSingle(),
     _supabase.from('factions')
-      .select('id, leader_first_name, leader_last_name, nickname, leader_age, politician_influence, politician_reputation, politician_credibility, politician_office')
+      .select('id, leader_first_name, leader_last_name, nickname, leader_age, politician_influence, politician_reputation, politician_credibility, politician_office, volunteers')
       .eq('politician_party_id', partyId)
       .eq('faction_type', 'politician')
       .is('abandoned_at', null)
@@ -1001,13 +1001,16 @@ function renderMemberPanel(host, countEl, rows, accent, emptyText, kind) {
     const affilText = office ? officeTitle(office) : 'Party Member';
     const affilCls  = office ? 'mem-affil office' : 'mem-affil';
     // Allies cap = reputation × 3 (national); Volunteers cap = credibility × 3 (local).
+    // National Allies count isn't tracked yet — placeholder 0. Local
+    // Volunteers comes from the live column written by Civic Meeting.
     const driverStat = isNational ? m.politician_reputation : m.politician_credibility;
-    const statCap = Math.max(0, (Number(driverStat) || 0) * 3);
+    const statCap = Math.max(0, Math.round((Number(driverStat) || 0) * 3));
+    const statNow = isNational ? 0 : Math.round(Number(m.volunteers) || 0);
     return `<div class="mem-row">
       <div class="mem-badge" style="background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;">${escHtml(factionInitials(baseName, null))}</div>
       <div class="mem-name">${escHtml(name)}${youBadge}</div>
       <div class="${affilCls}">${escHtml(affilText)}</div>
-      <div class="mem-stat">0 <span class="of">/ ${statCap}</span></div>
+      <div class="mem-stat">${statNow} <span class="of">/ ${statCap}</span></div>
       <div class="mem-age">${escHtml(age)}</div>
       <div class="mem-inf">${Number(m.politician_influence) || 0}</div>
     </div>`;

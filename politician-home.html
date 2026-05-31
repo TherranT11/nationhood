@@ -638,9 +638,9 @@ const PARTY_MEMBER_ACTIONS = [
   { ic: '❕', name: 'GIVE A SPEECH', cost: 'no cost', desc: 'Climb a stump. A great line lifts the party — a bad one is your name in the paper, not theirs.' },
 ];
 const LOCAL_GOV_ACTIONS = [
-  { ic: '☎', name: 'FUNDRAISING CALL', cost: 'no cost', desc: 'Work the donor list by phone. Build the war chest.' },
-  { ic: '⛌', name: 'CIVIC MEETING',    cost: 'no cost', desc: 'Attend a tenants’ association, parish council, or union local.' },
-  { ic: '☂', name: 'OFFICE HOURS',     cost: '−$50', desc: 'Set up at a storefront and let constituents come to you.' },
+  { ic: '☎', name: 'FUNDRAISING CALL', cost: 'no cost',           desc: 'Work the donor list by phone. Build the war chest.',                       action: 'fundraising-call' },
+  { ic: '⛌', name: 'CIVIC MEETING',    cost: 'no cost',           desc: 'Attend a tenants’ association, parish council, or union local.',           action: 'civic-meeting' },
+  { ic: '☂', name: 'OFFICE HOURS',     cost: '−$5K party funds',  desc: 'Set up at a storefront and let constituents come to you.',                 action: 'office-hours' },
 ];
 const LEGISLATURE_ACTIONS = [
   { ic: '☞',         name: 'FLOOR SPEECH',       cost: 'no cost',           desc: 'Rise on the Assembly floor and speak to a chosen issue. Visible, recorded, risked.', action: 'floor-speech' },
@@ -665,6 +665,8 @@ const AFFIL_VARIANTS = {
     name:    'Community Organizer',
     desc:    'You represent a neighborhood seat in the local district council. <strong>The work is retail</strong> — you know the names; the names know you. Build a base now and the rest of the ladder is yours to climb.',
     actions: LOCAL_GOV_ACTIONS,
+    actionsEnabled: true,
+    cooldownColumn: 'next_local_action_tick',
   },
   city_council_member: {
     variant: 'var-local',
@@ -672,7 +674,9 @@ const AFFIL_VARIANTS = {
     badge:   '☴',
     name:    'City Council Member',
     desc:    'You hold an elected seat on the city council, voting on budgets and ordinances. The retail work continues — your district expects to see you — but the leverage is now municipal.',
-    actions: LOCAL_GOV_ACTIONS,  // placeholder — diverges when Tier 2 mechanics ship
+    actions: LOCAL_GOV_ACTIONS,  // Tier 2 keeps the Tier 1 action set
+    actionsEnabled: true,
+    cooldownColumn: 'next_local_action_tick',
   },
   member_of_parliament: {
     variant: 'var-leg',
@@ -733,10 +737,11 @@ function renderAffiliation(ctx) {
     ? '' // future: " · District N · {PARTY_ABBREV}"
     : (partyName ? ` <span class="ah-rank">· ${escHtml(partyName)}</span>` : '');
 
-  // Cooldown: shared across all three MP actions (20270433). When set
-  // in the future, current_tick >= next_mp_action_tick means ready.
-  // Other roles ignore this column.
-  const nextActionTick = Number(ctx.faction?.next_mp_action_tick) || 0;
+  // Cooldown: per-tier column. MP variants read next_mp_action_tick;
+  // local-tier variants read next_local_action_tick (20270461). Each
+  // tier's actions share a single column server-side.
+  const cooldownCol = variant.cooldownColumn || 'next_mp_action_tick';
+  const nextActionTick = Number(ctx.faction?.[cooldownCol]) || 0;
   const onCooldown = variant.actionsEnabled && nextActionTick > curr;
   const cooldownLeft = onCooldown ? nextActionTick - curr : 0;
 
@@ -795,22 +800,22 @@ function renderAffiliation(ctx) {
   });
 }
 
-const MP_ACTION_RPC = {
-  'floor-speech':       'politician_mp_floor_speech',
-  'hold-rally':         'politician_mp_hold_rally',
-  'fundraising-dinner': 'politician_mp_fundraising_dinner',
-};
-const MP_ACTION_LABEL = {
-  'floor-speech':       'Floor Speech',
-  'hold-rally':         'Hold a Rally',
-  'fundraising-dinner': 'Fundraising Dinner',
+// Unified action catalog — MP (20270433/20270460) + Local (20270461).
+// `needsParty` distinguishes the two RPC signatures: MP actions are
+// arg-less (the _mp_action_check helper resolves the party); local
+// actions take p_party_id explicitly. `format` produces the one-line
+// outcome alert for the action's result envelope.
+const ACTIONS = {
+  'floor-speech':       { rpc: 'politician_mp_floor_speech',       label: 'Floor Speech',       needsParty: false, format: fmtMpResult },
+  'hold-rally':         { rpc: 'politician_mp_hold_rally',         label: 'Hold a Rally',       needsParty: false, format: fmtMpResult },
+  'fundraising-dinner': { rpc: 'politician_mp_fundraising_dinner', label: 'Fundraising Dinner', needsParty: false, format: fmtMpResult },
+  'fundraising-call':   { rpc: 'politician_fundraising_call',      label: 'Fundraising Call',   needsParty: true,  format: fmtLocalResult },
+  'civic-meeting':      { rpc: 'politician_civic_meeting',         label: 'Civic Meeting',      needsParty: true,  format: fmtLocalResult },
+  'office-hours':       { rpc: 'politician_office_hours',          label: 'Office Hours',       needsParty: true,  format: fmtLocalResult },
 };
 
 function fmtMpResult(data) {
-  // Compose a player-facing one-sentence outcome line from the RPC's
-  // return jsonb. The dice + stat get surfaced so the player can see
-  // why they passed / failed.
-  const label = MP_ACTION_LABEL[data.action.replace(/_/g, '-')] || data.action;
+  const label = ACTIONS[data.action.replace(/_/g, '-')]?.label || data.action;
   const stake = data.total != null ? ` (rolled ${data.roll} + ${data.stat} = ${data.total})` : '';
   if (data.action === 'floor_speech') {
     return data.passed
@@ -831,34 +836,65 @@ function fmtMpResult(data) {
   return `${label}: done.`;
 }
 
-const MP_ACTION_REASON = {
+function fmtLocalResult(data) {
+  const slug  = data.action.replace(/_/g, '-');
+  const label = ACTIONS[slug]?.label || data.action;
+  if (data.action === 'fundraising_call') {
+    const stake = ` (rolled ${data.roll} + ${data.credibility} Credibility = ${data.total})`;
+    if (data.bracket === 'crit_fail') return `${label}: donor blacklisted you${stake}. Credibility dropped to ${data.new_credibility}.`;
+    if (data.bracket === 'fail')      return `${label}: slow day, no one bit${stake}. Nothing raised.`;
+    const money = `$${Number(data.money_raised || 0).toLocaleString()}`;
+    if (data.bracket === 'crit')      return `${label}: legendary round${stake}. Raised ${money} (2× with the volunteer bonus). Credibility rose to ${data.new_credibility}.`;
+    return `${label}: raised ${money}${stake}.`;
+  }
+  if (data.action === 'civic_meeting') {
+    const stake = ` (rolled ${data.roll} + ${data.credibility} Credibility = ${data.total})`;
+    if (data.bracket === 'crit_fail') return `${label}: said something off-key${stake}. Lost a volunteer (now ${data.new_volunteers}).`;
+    if (data.bracket === 'fail')      return `${label}: rough room${stake}. Credibility dropped to ${data.new_credibility}.`;
+    if (data.bracket === 'crit')      return `${label}: the whole room joined the cause${stake}. +2 Volunteers (now ${data.new_volunteers}), party popularity rose to ${data.new_popularity}%.`;
+    return `${label}: won a convert${stake}. Volunteers now ${data.new_volunteers}.`;
+  }
+  if (data.action === 'office_hours') {
+    const stake = ` (rolled ${data.roll} + ${data.reputation} Reputation = ${data.total})`;
+    if (data.bracket === 'crit_fail') return `${label}: someone leaked a bad story${stake}. Reputation dropped to ${data.new_reputation}.`;
+    if (data.bracket === 'fail')      return `${label}: nobody came${stake}. Party popularity dropped to ${data.new_popularity}%.`;
+    if (data.bracket === 'crit')      return `${label}: great constituent encounter${stake}. Reputation rose to ${data.new_reputation}.`;
+    return `${label}: showing up matters${stake}. Credibility rose to ${data.new_credibility}.`;
+  }
+  return `${label}: done.`;
+}
+
+const ACTION_REASON = {
   not_authenticated:        'Sign in to act.',
   no_politician:            'No politician on this account.',
-  wrong_office:             'Only sitting MPs can do this.',
+  not_member:               'You are no longer a member of this party.',
+  wrong_office:             'Wrong office for this action.',
   not_in_party:             'You need to be in a party.',
   party_not_found:          'Your party can’t be found.',
-  cooldown:                 'You’ve already used your action this cycle.',
-  insufficient_party_funds: 'Your party can’t cover the $10K rally cost.',
+  cooldown:                 'You’ve already used your action this tick.',
+  insufficient_party_funds: 'Your party can’t cover the cost.',
+  no_shard:                 'Shard not found.',
 };
 
 async function handleMpAction(btn) {
   const slug = btn.dataset.action;
-  const rpc  = MP_ACTION_RPC[slug];
-  if (!rpc) return;
+  const spec = ACTIONS[slug];
+  if (!spec) return;
   const prevHtml = btn.innerHTML;
-  btn.classList.add('cooldown');  // visually freeze
+  btn.classList.add('cooldown');
   btn.removeAttribute('data-action');
   try {
-    const { data, error } = await _supabase.rpc(rpc);
+    const args = spec.needsParty ? { p_party_id: party?.id || null } : undefined;
+    const { data, error } = await _supabase.rpc(spec.rpc, args);
     if (error) throw error;
     if (!data?.success) {
-      alert(MP_ACTION_REASON[data?.reason] || ('Action failed: ' + (data?.reason || 'unknown')));
+      alert(ACTION_REASON[data?.reason] || ('Action failed: ' + (data?.reason || 'unknown')));
       btn.classList.remove('cooldown');
       btn.dataset.action = slug;
       btn.innerHTML = prevHtml;
       return;
     }
-    alert(fmtMpResult(data));
+    alert(spec.format(data));
     location.reload();
   } catch (e) {
     alert('Failed: ' + (e?.message || e));
