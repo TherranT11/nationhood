@@ -491,13 +491,14 @@ function selectPick(containerId, e) {
 // Cached (industry, nation) → { bld, fleet } in dollars. Refreshed by
 // fetchFoundingCost when the picker changes. Null = "not fetched yet"
 // (UI shows em-dash placeholders until the round-trip completes).
-// fleet is non-zero only for airline (1 regional jet × $60M market —
-// see airline_starter_fleet_cost in 20270441).
-let _bldCostCache = new Map(); // key: `${industry}|${nationId}` → { bld, fleet }
-function bldCacheKey() { return `${sel.industry}|${sel.hqNationId || ''}`; }
+// fleet is non-zero only for airline (1 regional jet at the price
+// entrepreneur_aircraft_class_price('regional') returns — see
+// airline_starter_fleet_cost in 20270442).
+let _foundingCostCache = new Map(); // key: `${industry}|${nationId}` → { bld, fleet }
+function foundingCacheKey() { return `${sel.industry}|${sel.hqNationId || ''}`; }
 async function fetchFoundingCost() {
-  const key = bldCacheKey();
-  if (_bldCostCache.has(key)) return _bldCostCache.get(key);
+  const key = foundingCacheKey();
+  if (_foundingCostCache.has(key)) return _foundingCostCache.get(key);
   if (!sel.industry || !sel.hqNationId) return null;
   // Capital passes through unchanged from the slider since the per-cap
   // fee math is mirrored client-side; we only need building_cost +
@@ -513,7 +514,7 @@ async function fetchFoundingCost() {
     bld:   Number(data?.building_cost) || 0,
     fleet: Number(data?.fleet_cost)    || 0,
   };
-  _bldCostCache.set(key, entry);
+  _foundingCostCache.set(key, entry);
   return entry;
 }
 function feeFor(cap) { return Math.floor((cap * FEE_PCT) / 100); }
