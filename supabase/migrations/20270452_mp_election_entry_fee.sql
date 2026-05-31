@@ -64,7 +64,6 @@ DECLARE
     v_poll_opp  int;
     v_poll_und  int;
     v_party_funds_before bigint;
-    v_party_funds_after  bigint;
     v_entry_fee bigint := 50000;
 BEGIN
     IF v_uid IS NULL THEN
@@ -158,8 +157,7 @@ BEGIN
         END IF;
         UPDATE factions
            SET party_funds = party_funds - v_entry_fee
-         WHERE id = p_party_id
-        RETURNING party_funds INTO v_party_funds_after;
+         WHERE id = p_party_id;
     END IF;
 
     -- Polling seed (20270399).
@@ -213,9 +211,7 @@ BEGIN
         'next_member_action_tick', v_next,
         'polling_you_pct', v_poll_you,
         'polling_opp_pct', v_poll_opp,
-        'polling_undecided_pct', v_poll_und,
-        'entry_fee', CASE WHEN p_tier = 'parliament' THEN v_entry_fee ELSE 0 END,
-        'party_funds_after', v_party_funds_after
+        'polling_undecided_pct', v_poll_und
     );
 END;
 $$;
