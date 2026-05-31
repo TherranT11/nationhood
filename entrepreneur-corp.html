@@ -4420,7 +4420,7 @@ function initials(s, n) {
         // shows it; the builder's didn't). Progress advances each tick
         // in process_ent_construction_contracts (20270369).
         const { data: myBuilds, error: mbErr } = await _supabase.from('ent_construction_contracts')
-          .select('id, name, building_type, timeline_ticks, progress_ticks, winning_bid, started_at_tick, nation:nations!nation_id(name), issuer:entrepreneur_corps!issuer_corp_id(name)')
+          .select('name, building_type, timeline_ticks, progress_ticks, winning_bid, nation:nations!nation_id(name), issuer:entrepreneur_corps!issuer_corp_id(name)')
           .eq('winner_corp_id', id)
           .eq('status', 'active')
           .order('started_at_tick', { ascending: true });
