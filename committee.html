@@ -7,14 +7,9 @@
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
   :root {
-    --bg:#080808; --panel:#0d0d0d; --panel2:#101010;
-    --green:#6ab07a; --green-dim:#3a5a42; --green-bg:#0e1611;
-    --amber:#d4b87a; --amber-dim:#5a4d2e; --amber-bg:#161208;
-    --steel:#7a9aab; --steel-dim:#3a5060; --steel-bg:#0e1218;
-    --red:#c87a7a; --red-dim:#5a3030; --red-bg:#160e0e;
+    --bg:#080808; --panel:#0d0d0d;
     --line:rgba(255,255,255,0.07); --txt:#d4d4d4; --mut:#888; --faint:#666;
-    --comm:#c89070; --comm-dim:#5a3e2a; --comm-bg:#16100c;
-    --comm-bright:#dba88c;
+    --comm:#c89070; --comm-dim:#5a3e2a; --comm-bright:#dba88c;
   }
   body { background:var(--bg); color:var(--txt); font-family:-apple-system,system-ui,sans-serif;
     min-height:100vh; }
@@ -275,12 +270,22 @@ function renderCommittee(ctx, meta, members) {
       <div class="up-empty">No upcoming items.</div>
     </div>`;
 
-  // Action click stubs (until the actual apply / hearing / vote flow lands).
-  document.querySelectorAll('#comm-host .act-btn.enabled').forEach(btn => {
-    btn.addEventListener('click', () => alert('Committee action is not yet wired up.'));
+  // Click stubs until the apply / hearing / vote flows land. One
+  // delegated handler covers both the enabled action buttons and the
+  // observer-mode Apply link. preventDefault on the link stops the
+  // href="#" from scrolling to top.
+  document.getElementById('comm-host').addEventListener('click', (e) => {
+    const apply = e.target.closest('#comm-apply-cta');
+    if (apply) {
+      e.preventDefault();
+      alert('Committee application is not yet wired up.');
+      return;
+    }
+    const action = e.target.closest('.act-btn.enabled');
+    if (action) {
+      alert('Committee action is not yet wired up.');
+    }
   });
-  const applyBtn = document.getElementById('comm-apply-cta');
-  if (applyBtn) applyBtn.addEventListener('click', () => alert('Committee application is not yet wired up.'));
 }
 
 function renderMembers(members, viewerPolId) {
