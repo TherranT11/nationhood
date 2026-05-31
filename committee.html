@@ -190,7 +190,7 @@ async function init() {
   if (memErr) console.warn('committee: members fetch failed', memErr);
 
   renderCrumb(ctx, meta);
-  renderCommittee(ctx, meta, members || []);
+  renderCommittee(ctx, meta, members || [], committeeId);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -212,7 +212,7 @@ function renderCrumb(ctx, meta) {
     <span class="here">${escHtml(meta.name.toUpperCase())}</span>`;
 }
 
-function renderCommittee(ctx, meta, members) {
+function renderCommittee(ctx, meta, members, committeeId) {
   const viewerPolId = ctx.faction?.id || null;
   const isMP = ctx.faction?.politician_office === 'member_of_parliament';
   const onCommittee = members.some(m => m.politician_faction_id && m.politician_faction_id === viewerPolId);
@@ -270,15 +270,13 @@ function renderCommittee(ctx, meta, members) {
       <div class="up-empty">No upcoming items.</div>
     </div>`;
 
-  // Click stubs until the apply / hearing / vote flows land. One
-  // delegated handler covers both the enabled action buttons and the
-  // observer-mode Apply link. preventDefault on the link stops the
-  // href="#" from scrolling to top.
+  // Delegated click handler. Apply CTA fires the apply RPC; action
+  // buttons are still stub-alerted until hearing/vote/markup flows land.
   document.getElementById('comm-host').addEventListener('click', (e) => {
     const apply = e.target.closest('#comm-apply-cta');
     if (apply) {
       e.preventDefault();
-      alert('Committee application is not yet wired up.');
+      submitApplication(apply, committeeId);
       return;
     }
     const action = e.target.closest('.act-btn.enabled');
@@ -286,6 +284,39 @@ function renderCommittee(ctx, meta, members) {
       alert('Committee action is not yet wired up.');
     }
   });
+}
+
+async function submitApplication(link, committeeId) {
+  if (link.dataset.busy === '1') return;
+  link.dataset.busy = '1';
+  const originalText = link.textContent;
+  link.textContent = 'Submitting…';
+  try {
+    const { data, error } = await _supabase.rpc('apply_for_committee', { p_committee_id: committeeId });
+    if (error) throw new Error(error.message || 'rpc_failed');
+    if (!data?.success) {
+      const HUMAN = {
+        not_authenticated:   'You are not signed in.',
+        no_politician:       'No politician faction found.',
+        not_mp:              'Only Members of Parliament may apply.',
+        committee_not_found: 'Committee not found.',
+        wrong_nation:        'This committee is not in your nation.',
+        already_member:      'You are already a member of this committee.',
+        committee_cap:       'You are at the 2-committee cap.',
+        vote_pending:        'An admission vote is already in progress.',
+        no_open_seat:        'No open member seat on this committee right now.',
+      };
+      alert(HUMAN[data.reason] || `Could not apply (${data.reason}).`);
+      link.dataset.busy = ''; link.textContent = originalText;
+      return;
+    }
+    alert(`Admission vote opened. Resolves at tick ${data.resolve_at_tick}.`);
+    window.location.href = 'politician-nation.html#sec-voting';
+  } catch (err) {
+    console.warn('committee: apply_for_committee failed', err);
+    alert('Could not submit application. Try again.');
+    link.dataset.busy = ''; link.textContent = originalText;
+  }
 }
 
 function renderMembers(members, viewerPolId) {

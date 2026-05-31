@@ -588,7 +588,9 @@ const LEGISLATURE_RUNGS = [
     descIfHeld:  ()  => 'Assigned to a standing committee. This is where real policy work happens away from the floor.',
     descIfNot:   ()  => 'Assigned to a standing committee. This is where real policy work happens away from the floor.',
     actions:     ['Vote on Committee', 'Amend Bill'],
-    actionIfNot: { label: 'Apply to Committee', kind: 'disabled' },
+    actionIfNot: (s) => s.office === 'member_of_parliament'
+      ? { label: 'Apply to Committee', kind: 'primary',  href: 'politician-nation.html#sec-committees' }
+      : { label: 'Apply to Committee', kind: 'disabled' },
   },
   {
     name: 'Committee Chair',
