@@ -137,6 +137,19 @@
   .pd-form button:disabled { opacity: 0.4; cursor: default; }
   .pd-form .hint { font-size: 10px; color: #666; }
   .pd-hint { font-size: 11px; color: #666; line-height: 1.55; margin-top: 10px; }
+  /* Pending request — per-offer rows + accept buttons (20270448). */
+  .pd-offers { display: flex; flex-direction: column; gap: 6px; }
+  .pd-offer { display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 12px; background: #0d0d0d; border: 0.5px solid rgba(255,255,255,0.08);
+    border-radius: 4px; }
+  .pd-offer-bank { font-size: 12px; color: #cfcabf; font-weight: 600; }
+  .pd-offer-apr  { font-size: 10px; color: #888; letter-spacing: 0.04em; margin-top: 2px; }
+  .pd-offer-accept { font-family: monospace; font-size: 9px; letter-spacing: 0.13em;
+    padding: 6px 14px; background: transparent; color: #8aaa6a;
+    border: 0.5px solid #6a8a4a; border-radius: 3px; cursor: pointer; text-transform: uppercase; }
+  .pd-offer-accept:hover:not(:disabled) { background: rgba(138,170,106,0.12); }
+  .pd-offer-accept:disabled { opacity: 0.4; cursor: default; }
+  .pd-empty { font-size: 11px; color: #666; font-style: italic; padding: 8px 0; }
   @media (max-width: 700px) {
     .pd-grid { grid-template-columns: 1fr; }
   }
@@ -534,37 +547,103 @@ async function loadHoldings(entId) {
   renderHoldings(positions);
 }
 
-// Personal Debt panel — 20270426. Two states:
-//   no active loan  → "Request Personal Loan" form (principal input)
-//   active loan     → balance card + "Make Debt Payment" form
-// All math (interest accrual / split / total owed) is server-side via
-// get_my_personal_loan + make_personal_loan_payment. The page never
-// re-implements the formula.
-async function loadPersonalDebt() {
+// Personal Debt panel — 20270448 multi-bank bidding model. Three states:
+//   active loan                → balance card + "Make Debt Payment" form
+//   pending request, offers… → request card + per-offer Accept buttons + Cancel
+//   no loan and no request    → "Open Loan Request" form (principal + term + bidding window)
+// All math (interest accrual / per-tick payment / total owed) is
+// server-side via get_my_personal_loan + make_personal_loan_payment +
+// accept_personal_loan_offer. The page never re-implements the formula.
+async function loadPersonalDebt(borrowerFactionId) {
   const host = document.getElementById('pd-host');
   if (!host) return;
-  const { data, error } = await _supabase.rpc('get_my_personal_loan');
-  if (error) {
-    console.warn('[entrepreneur-dashboard] get_my_personal_loan failed:', error.message);
+
+  // Lazy expiry sweep — flips any pending requests past their deadline
+  // to 'expired' before we read them. No tick-handler dependency.
+  await _supabase.rpc('expire_stale_personal_loan_requests');
+
+  // Active loan takes priority over a pending request (you can't hold both).
+  const { data: loan, error: loanErr } = await _supabase.rpc('get_my_personal_loan');
+  if (loanErr) {
+    console.warn('[entrepreneur-dashboard] get_my_personal_loan failed:', loanErr.message);
     host.innerHTML = '<div class="empty">Could not load personal debt.</div>';
     return;
   }
-  if (data?.has_loan) renderActiveLoan(host, data);
-  else                renderLoanRequestForm(host);
+  if (loan?.has_loan) { renderActiveLoan(host, loan); return; }
+
+  // No active loan — check for a pending open request.
+  if (borrowerFactionId) {
+    const { data: req, error: reqErr } = await _supabase.from('personal_loan_requests')
+      .select('id, principal, term_ticks, placed_at_tick, expires_at_tick')
+      .eq('borrower_faction_id', borrowerFactionId)
+      .eq('status', 'pending')
+      .maybeSingle();
+    if (reqErr) console.warn('[entrepreneur-dashboard] pending request fetch:', reqErr.message);
+    if (req) {
+      const { data: offers, error: offersErr } = await _supabase.from('personal_loan_offers')
+        .select('id, apr, placed_at_tick, '
+              + 'bank:entrepreneur_corps!bank_corp_id(id, name)')
+        .eq('request_id', req.id)
+        .eq('status', 'pending')
+        .order('apr', { ascending: true });
+      if (offersErr) console.warn('[entrepreneur-dashboard] offers fetch:', offersErr.message);
+      renderPendingRequest(host, req, offers || []);
+      return;
+    }
+  }
+
+  renderLoanRequestForm(host);
 }
 
 function renderLoanRequestForm(host) {
   host.innerHTML = `
     <div class="pd-card">
       <div class="pd-head">No Active Loan</div>
-      <div class="pd-hint">Borrow personal cash from a player-owned banking corp in your home nation. One active loan at a time, fixed <b>8% APR</b>, principal <b>$100K&ndash;$25M</b>. Interest accrues each tick on the remaining principal.</div>
-      <div class="pd-form" style="margin-top:14px;">
+      <div class="pd-hint">Open a personal loan RFP — banking corps in your home nation that hold a completed Banking Office can compete for the rate. Principal <b>$100K&ndash;$25M</b>; term <b>12&ndash;240 ticks</b>; bidding window <b>1&ndash;48 ticks</b>. Pick the lowest offer you like, or cancel before any are placed.</div>
+      <div class="pd-form" style="margin-top:14px; gap:10px; flex-wrap:wrap;">
         <span class="hint">Principal (USD)</span>
-        <input type="number" id="pd-req-amt" min="100000" max="25000000" step="100000" value="1000000" />
-        <button id="pd-req-btn" type="button">Request Loan</button>
+        <input type="number" id="pd-req-amt"  min="100000" max="25000000" step="100000" value="1000000" />
+        <span class="hint">Term (ticks)</span>
+        <input type="number" id="pd-req-term" min="12" max="240" step="1" value="48" />
+        <span class="hint">Bidding window (ticks)</span>
+        <input type="number" id="pd-req-bid"  min="1" max="48" step="1" value="6" />
+        <button id="pd-req-btn" type="button">Open Loan Request</button>
       </div>
     </div>`;
-  document.getElementById('pd-req-btn').onclick = handleRequestLoan;
+  document.getElementById('pd-req-btn').onclick = handleOpenRequest;
+}
+
+function renderPendingRequest(host, req, offers) {
+  const fmt = (n) => '$' + hfFmtBig(Number(n) || 0);
+  const offersHtml = offers.length
+    ? offers.map(o => {
+        const bankName = o.bank?.name || 'Unknown bank';
+        const aprPct  = (Number(o.apr) * 100).toFixed(2);
+        return `
+          <div class="pd-offer">
+            <div class="pd-offer-info">
+              <div class="pd-offer-bank">${escapeHtml(bankName)}</div>
+              <div class="pd-offer-apr">${aprPct}% APR · placed T${o.placed_at_tick}</div>
+            </div>
+            <button class="pd-offer-accept" type="button" data-oid="${escapeAttr(o.id)}">Accept</button>
+          </div>`;
+      }).join('')
+    : '<div class="pd-empty">No offers yet — banks have until expiry to post.</div>';
+  host.innerHTML = `
+    <div class="pd-card">
+      <div class="pd-head">Open Request &middot; ${fmt(req.principal)} over ${req.term_ticks} ticks</div>
+      <div class="pd-hint">Bidding closes at T${req.expires_at_tick}. Lowest APR offer is at the top.</div>
+      <div class="pd-offers" style="margin-top:12px;">
+        ${offersHtml}
+      </div>
+      <div class="pd-form" style="margin-top:14px;">
+        <button id="pd-req-cancel" type="button" data-rid="${escapeAttr(req.id)}">Cancel Request</button>
+      </div>
+    </div>`;
+  document.querySelectorAll('.pd-offer-accept').forEach(btn => {
+    btn.addEventListener('click', handleAcceptOffer);
+  });
+  document.getElementById('pd-req-cancel').onclick = handleCancelRequest;
 }
 
 function renderActiveLoan(host, loan) {
@@ -589,34 +668,90 @@ function renderActiveLoan(host, loan) {
   document.getElementById('pd-pay-btn').onclick = handleMakePayment;
 }
 
-async function handleRequestLoan() {
-  const btn = document.getElementById('pd-req-btn');
-  const amt = parseInt(document.getElementById('pd-req-amt').value, 10);
-  if (!Number.isFinite(amt) || amt < 100000 || amt > 25000000) {
-    alert('Principal must be between $100,000 and $25,000,000.');
-    return;
-  }
-  const prev = btn.textContent; btn.disabled = true; btn.textContent = 'REQUESTING…';
+async function handleOpenRequest() {
+  const btn  = document.getElementById('pd-req-btn');
+  const amt  = parseInt(document.getElementById('pd-req-amt').value,  10);
+  const term = parseInt(document.getElementById('pd-req-term').value, 10);
+  const bid  = parseInt(document.getElementById('pd-req-bid').value,  10);
+  if (!Number.isFinite(amt)  || amt  < 100000 || amt  > 25000000) { alert('Principal must be $100K–$25M.'); return; }
+  if (!Number.isFinite(term) || term < 12     || term > 240)      { alert('Term must be 12–240 ticks.'); return; }
+  if (!Number.isFinite(bid)  || bid  < 1      || bid  > 48)       { alert('Bidding window must be 1–48 ticks.'); return; }
+  const prev = btn.textContent; btn.disabled = true; btn.textContent = 'OPENING…';
   try {
-    const { data, error } = await _supabase.rpc('request_personal_loan', { p_principal: amt });
+    const { data, error } = await _supabase.rpc('open_personal_loan_request', {
+      p_principal: amt, p_term_ticks: term, p_bidding_ticks: bid,
+    });
     if (error) throw error;
     if (!data?.success) {
       const R = {
-        not_authenticated:   'Sign in to request a loan.',
-        no_entrepreneur:     'No entrepreneur faction on this account.',
-        no_nation:           'Your entrepreneur has no home nation.',
-        invalid_principal:   'Principal must be $100K–$25M.',
-        loan_already_active: 'You already have an active personal loan.',
-        no_bank_available:   'No banking corp in your home nation can fund this loan. Wait for one with sufficient cash to open.',
-        bank_funds_changed:  "A bank's cash changed mid-request. Try again.",
+        not_authenticated:       'Sign in to open a request.',
+        no_entrepreneur:         'No entrepreneur faction on this account.',
+        no_nation:               'Your entrepreneur has no home nation.',
+        invalid_principal:       'Principal must be $100K–$25M.',
+        invalid_term:            'Term must be 12–240 ticks.',
+        invalid_bidding_window:  'Bidding window must be 1–48 ticks.',
+        loan_already_active:     'You already have an active personal loan.',
+        request_already_pending: 'You already have a pending request — cancel it before opening a new one.',
       };
-      alert(R[data?.reason] || ('Could not request: ' + (data?.reason || 'unknown')));
+      alert(R[data?.reason] || ('Could not open: ' + (data?.reason || 'unknown')));
       btn.disabled = false; btn.textContent = prev;
       return;
     }
     location.reload();
   } catch (e) {
     alert('Failed: ' + (e?.message || e));
+    btn.disabled = false; btn.textContent = prev;
+  }
+}
+
+async function handleAcceptOffer(e) {
+  const btn  = e.currentTarget;
+  const oid  = btn.dataset.oid;
+  if (!oid) { alert('Offer id missing — reload the page.'); return; }
+  if (!confirm('Accept this loan offer? Cash transfers immediately and other offers auto-decline.')) return;
+  const prev = btn.textContent; btn.disabled = true; btn.textContent = 'ACCEPTING…';
+  try {
+    const { data, error } = await _supabase.rpc('accept_personal_loan_offer', { p_offer_id: oid });
+    if (error) throw error;
+    if (!data?.success) {
+      const R = {
+        not_authenticated:       'Sign in to accept.',
+        offer_not_found:         'Offer no longer exists — reload.',
+        offer_not_pending:       'Offer is no longer pending.',
+        request_not_pending:     'Request is no longer pending.',
+        not_borrower:            'You are not the borrower on this request.',
+        bank_insufficient_funds: "The bank's owner no longer has the cash to fund this loan. Wait for another offer or cancel.",
+        bank_corp_not_found:     'Bank corp no longer exists — reload.',
+        bank_owner_not_found:    'Bank owner no longer exists — reload.',
+      };
+      alert(R[data?.reason] || ('Accept failed: ' + (data?.reason || 'unknown')));
+      btn.disabled = false; btn.textContent = prev;
+      return;
+    }
+    location.reload();
+  } catch (e2) {
+    alert('Failed: ' + (e2?.message || e2));
+    btn.disabled = false; btn.textContent = prev;
+  }
+}
+
+async function handleCancelRequest(e) {
+  const btn = e.currentTarget;
+  const rid = btn.dataset.rid;
+  if (!rid) { alert('Request id missing — reload the page.'); return; }
+  if (!confirm('Cancel this request? All pending offers will be auto-declined.')) return;
+  const prev = btn.textContent; btn.disabled = true; btn.textContent = 'CANCELLING…';
+  try {
+    const { data, error } = await _supabase.rpc('cancel_personal_loan_request', { p_request_id: rid });
+    if (error) throw error;
+    if (!data?.success) {
+      alert('Cancel failed: ' + (data?.reason || 'unknown'));
+      btn.disabled = false; btn.textContent = prev;
+      return;
+    }
+    location.reload();
+  } catch (e2) {
+    alert('Failed: ' + (e2?.message || e2));
     btn.disabled = false; btn.textContent = prev;
   }
 }
@@ -702,7 +837,7 @@ async function handleMakePayment(e) {
     const entId = ctx.faction?.id;
     loadHoldings(entId);
     loadNetWorth();
-    loadPersonalDebt();
+    loadPersonalDebt(entId);
 
     // Pressing Issues: two sources share this column — open acquisition
     // negotiations (2.6.8.3) and pending Board-Join votes (20270160).
