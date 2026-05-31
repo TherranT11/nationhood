@@ -584,7 +584,7 @@ const PARTY_MEMBER_TIER0 = {
 const LEGISLATURE_RUNGS = [
   {
     name: 'Committee Member',
-    held:        ()  => false,
+    held:        (s) => s.committeeCount > 0,
     descIfHeld:  ()  => 'Assigned to a standing committee. This is where real policy work happens away from the floor.',
     descIfNot:   ()  => 'Assigned to a standing committee. This is where real policy work happens away from the floor.',
     actions:     ['Vote on Committee', 'Amend Bill'],
@@ -1112,9 +1112,25 @@ async function init() {
     console.error('politician-career: active_election fetch threw', err);
   }
 
+  // Viewer's committee memberships — drives the Committee Member rung's
+  // held() check. One count is all we need; the rung doesn't care which
+  // committee. Soft-fail to 0 so an outage doesn't claim the rung is
+  // held when it isn't.
+  let committeeCount = 0;
+  try {
+    const { count, error } = await _supabase
+      .from('committee_members')
+      .select('id', { count: 'exact', head: true })
+      .eq('politician_faction_id', ctx.faction.id);
+    if (error) console.warn('politician-career: committee_members count failed', error);
+    committeeCount = Number(count) || 0;
+  } catch (err) {
+    console.warn('politician-career: committee_members count threw', err);
+  }
+
   render(ctx.faction, ctx.shard, ctx.nation, ctx.party);
   if (resolution) renderResolutionBanner(resolution);
-  renderLadders(buildLadderState(ctx.party, activeRace, ctx.faction?.politician_office, ctx), ctx);
+  renderLadders(buildLadderState(ctx.party, activeRace, ctx.faction?.politician_office, ctx, committeeCount), ctx);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -1206,7 +1222,7 @@ function renderResolutionBanner(r) {
 //                            ticks after winning Community Organizer).
 //   currentTick            → both eligibility windows.
 //   nextGeneralElectionTick → Senior MP window (opens 3 ticks before).
-function buildLadderState(party, activeRace, office, ctx) {
+function buildLadderState(party, activeRace, office, ctx, committeeCount) {
   return {
     partyId:                 party?.id || null,
     partyName:               party?.faction_name || '',
@@ -1215,6 +1231,7 @@ function buildLadderState(party, activeRace, office, ctx) {
     officeWonAtTick:         Number(ctx?.faction?.politician_office_won_at_tick) || 0,
     currentTick:             Number(ctx?.shard?.current_tick) || 0,
     nextGeneralElectionTick: Number(ctx?.nation?.next_election_tick) || 0,
+    committeeCount:          Number(committeeCount) || 0,
   };
 }
 
