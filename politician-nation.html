@@ -432,7 +432,7 @@
     <div class="sec-body" id="sec-committees-body">
       <div class="comm-card" data-committee="defense_foreign_affairs">
         <div class="comm-head">
-          <div class="comm-name">Defense &amp; Foreign Affairs <span class="serif">Committee</span></div>
+          <div class="comm-name">Defence &amp; Foreign Affairs <span class="serif">Committee</span></div>
           <span class="comm-req" data-req-chip>Member of Parliament required</span>
         </div>
         <div class="comm-desc">Description of this committee here.</div>
@@ -513,6 +513,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { safeHexColor, factionInitials, tickToYear, fmtMoney } from './js/utils.js';
+import { COMMITTEES, applyForCommittee } from './js/committees.js';
 import { STABILITY_TIERS, CIVIL_FREEDOMS_TIERS, pickTier } from './js/game/national-characteristics.js';
 
 // pickTier + the tier arrays live in js/game/national-characteristics.js
@@ -667,7 +668,7 @@ async function init() {
   let viewerMemberships = [];
   if (polId) {
     const { data, error } = await _supabase.from('committee_members')
-      .select('committee_id, role, committee:committees!committee_id(committee_key)')
+      .select('committee_id, committee:committees!committee_id(committee_key)')
       .eq('politician_faction_id', polId);
     if (error) console.warn('politician-nation: committee_members fetch failed', error);
     viewerMemberships = data || [];
@@ -685,11 +686,17 @@ async function init() {
   }
 
   renderCommittees(ctx.faction?.politician_office || null, viewerMemberships, pendingVoteKeys);
-  await loadVoting(nation.id, Number(ctx.shard?.current_tick) || 0);
-  openHashSection();
+  try {
+    await loadVoting(nation.id, Number(ctx.shard?.current_tick) || 0);
+  } catch (err) {
+    console.warn('politician-nation: loadVoting threw', err);
+  }
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
+  // Hash-deep-link runs AFTER content shows so scrollIntoView lands
+  // on a visible element rather than the hidden loader.
+  openHashSection();
   // Side-panel data: Government keeps the parties + admin fetch
   // eager (so patchHeadOfGov can update the nation header's Head
   // of Gov't cell on initial load) but defers the DOM
@@ -902,13 +909,14 @@ function renderCommittees(office, viewerMemberships, pendingVoteKeys) {
 }
 
 async function submitCommitteeApplication(card, btn, committeeKey) {
-  // Server validates the rules independently — UI gate is the first
-  // line of defense, RPC is the second. Locate the committee_id by
-  // ensure_committee (idempotent — returns the existing id when one
-  // is already seeded).
+  // Resolves committee_id via ensure_committee (idempotent — returns
+  // the existing id), then calls the shared apply helper. UI state
+  // (disable/restore + reload) is managed here; rules + error
+  // mapping live in js/committees.js.
   const originalLabel = btn.textContent;
   btn.disabled = true;
   btn.textContent = 'Submitting…';
+  let committeeId = null;
   try {
     const ensureRes = await _supabase.rpc('ensure_committee', {
       p_nation_id: _viewerNation?.id || null,
@@ -917,31 +925,20 @@ async function submitCommitteeApplication(card, btn, committeeKey) {
     if (ensureRes.error || !ensureRes.data?.success) {
       throw new Error(ensureRes.data?.reason || ensureRes.error?.message || 'committee_lookup_failed');
     }
-    const committeeId = ensureRes.data.committee_id;
-    const applyRes = await _supabase.rpc('apply_for_committee', { p_committee_id: committeeId });
-    if (applyRes.error) throw new Error(applyRes.error.message || 'rpc_failed');
-    if (!applyRes.data?.success) {
-      const HUMAN = {
-        not_authenticated:   'You are not signed in.',
-        no_politician:       'No politician faction found.',
-        not_mp:              'Only Members of Parliament may apply.',
-        committee_not_found: 'Committee not found.',
-        wrong_nation:        'This committee is not in your nation.',
-        already_member:      'You are already a member of this committee.',
-        committee_cap:       'You are at the 2-committee cap.',
-        vote_pending:        'An admission vote is already in progress.',
-        no_open_seat:        'No open member seat on this committee right now.',
-      };
-      alert(HUMAN[applyRes.data.reason] || `Could not apply (${applyRes.data.reason}).`);
-      btn.disabled = false; btn.textContent = originalLabel;
-      return;
-    }
-    location.reload();
+    committeeId = ensureRes.data.committee_id;
   } catch (err) {
-    console.warn('politician-nation: apply_for_committee failed', err);
-    alert('Could not submit application. Try again.');
+    console.warn('politician-nation: ensure_committee failed', err);
+    alert('Could not look up the committee. Try again.');
     btn.disabled = false; btn.textContent = originalLabel;
+    return;
   }
+  const res = await applyForCommittee(committeeId);
+  if (!res.success) {
+    alert(res.humanError);
+    btn.disabled = false; btn.textContent = originalLabel;
+    return;
+  }
+  location.reload();
 }
 
 // Hash-deep-link — opens the matching <details id="..."> section when
@@ -956,10 +953,6 @@ function openHashSection() {
     det.scrollIntoView({ behavior: 'auto', block: 'start' });
   }
 }
-
-const COMMITTEE_DISPLAY = {
-  defense_foreign_affairs: 'Defence & Foreign Affairs Committee',
-};
 
 async function loadVoting(nationId, currentTick) {
   const host = document.getElementById('sec-voting-body');
@@ -999,7 +992,7 @@ async function loadVoting(nationId, currentTick) {
 }
 
 function renderVoteCard(v, partyRows, currentTick) {
-  const committeeName = COMMITTEE_DISPLAY[v.committee?.committee_key] || 'Committee';
+  const committeeName = COMMITTEES[v.committee?.committee_key]?.fullName || 'Committee';
   const applicantFull = [v.applicant?.leader_first_name, v.applicant?.leader_last_name]
     .filter(Boolean).join(' ') || 'Unknown';
   const partyName  = v.party?.faction_name || 'Independent';
@@ -1014,7 +1007,6 @@ function renderVoteCard(v, partyRows, currentTick) {
   const unvoted = Math.max(0, chamber - cast - abstain);
   const threshold = Number(v.threshold_pct) || 51;
   const yesPctOfCast = cast > 0 ? Math.round((yes * 100) / cast) : 0;
-  const yesPctOfChamber = chamber > 0 ? Math.round((yes * 100) / chamber) : 0;
   const noPctOfCast  = cast > 0 ? Math.round((no  * 100) / cast) : 0;
   const aboveOrBelow = yesPctOfCast - threshold;
   return `

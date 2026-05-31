@@ -128,14 +128,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 import { safeHexColor, factionInitials } from './js/utils.js';
-
-const COMMITTEE_KEYS = {
-  defense_foreign_affairs: {
-    name: 'Defence & Foreign Affairs',
-    icon: '⚔',
-    desc: 'Oversees the military, foreign policy, and treaties. Reviews the Defence Ministry’s budget, scrutinises press claims, and ratifies settlements with foreign powers.',
-  },
-};
+import { COMMITTEES, applyForCommittee } from './js/committees.js';
 
 const ROLE_LABEL = {
   chair:            'CHAIR',
@@ -149,7 +142,7 @@ function escHtml(s) { const d = document.createElement('div'); d.textContent = s
 async function init() {
   const params = new URLSearchParams(location.search);
   const key    = params.get('key') || 'defense_foreign_affairs';
-  const meta   = COMMITTEE_KEYS[key];
+  const meta   = COMMITTEES[key];
   if (!meta) { showFail('Unknown committee.'); return; }
 
   let ctx = null;
@@ -291,32 +284,14 @@ async function submitApplication(link, committeeId) {
   link.dataset.busy = '1';
   const originalText = link.textContent;
   link.textContent = 'Submitting…';
-  try {
-    const { data, error } = await _supabase.rpc('apply_for_committee', { p_committee_id: committeeId });
-    if (error) throw new Error(error.message || 'rpc_failed');
-    if (!data?.success) {
-      const HUMAN = {
-        not_authenticated:   'You are not signed in.',
-        no_politician:       'No politician faction found.',
-        not_mp:              'Only Members of Parliament may apply.',
-        committee_not_found: 'Committee not found.',
-        wrong_nation:        'This committee is not in your nation.',
-        already_member:      'You are already a member of this committee.',
-        committee_cap:       'You are at the 2-committee cap.',
-        vote_pending:        'An admission vote is already in progress.',
-        no_open_seat:        'No open member seat on this committee right now.',
-      };
-      alert(HUMAN[data.reason] || `Could not apply (${data.reason}).`);
-      link.dataset.busy = ''; link.textContent = originalText;
-      return;
-    }
-    alert(`Admission vote opened. Resolves at tick ${data.resolve_at_tick}.`);
-    window.location.href = 'politician-nation.html#sec-voting';
-  } catch (err) {
-    console.warn('committee: apply_for_committee failed', err);
-    alert('Could not submit application. Try again.');
+  const res = await applyForCommittee(committeeId);
+  if (!res.success) {
+    alert(res.humanError);
     link.dataset.busy = ''; link.textContent = originalText;
+    return;
   }
+  alert(`Admission vote opened. Resolves at tick ${res.data.resolve_at_tick}.`);
+  window.location.href = 'politician-nation.html#sec-voting';
 }
 
 function renderMembers(members, viewerPolId) {
