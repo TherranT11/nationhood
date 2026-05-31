@@ -3752,6 +3752,12 @@ function initials(s, n) {
       // server-side in offer_loan, 20270392). The floor is computed here
       // at render time and stamped onto each Make Offer button so the
       // modal can surface it without an extra round-trip.
+      // Hoisted to the outer scope because both this corp-loan block
+      // and the personal-loan block below read it. Previously declared
+      // inside the corp-loan if, which broke the personal-loan block's
+      // reference (localOfficeNations is not defined).
+      let localOfficeNations = new Set();
+      let officeFetchFailed  = false;
       let loanRequestsHtml = '';
       if (c.industry === 'banking' && canView) {
         // This bank corp's completed Banking Offices — drives the
@@ -3773,8 +3779,8 @@ function initials(s, n) {
           .eq('building_type', 'banking_office')
           .eq('status', 'completed');
         if (officeErr) console.warn('[entrepreneur-corp] banking offices fetch error:', officeErr.message);
-        const localOfficeNations = new Set((officeRows || []).map(o => o.nation_id));
-        const officeFetchFailed  = !!officeErr;
+        localOfficeNations = new Set((officeRows || []).map(o => o.nation_id));
+        officeFetchFailed  = !!officeErr;
 
         const { data: reqsData, error: reqsErr } = await _supabase.from('corp_loan_requests')
           .select('id, principal, term_ticks, expires_at_tick, '
