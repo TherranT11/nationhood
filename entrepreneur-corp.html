@@ -3037,10 +3037,14 @@ function initials(s, n) {
     // developed markets and Basic remains viable everywhere.
     // Server-authoritative copy lives in corp_building_cost_profile;
     // keep these numbers in sync if either side moves.
+    // No `amb` field — apartments flow through the Request modal which
+    // doesn't render ambition; the BUILD modal (where TIER_TABLE.amb +
+    // PLANT_PROFILE.amb get displayed) is construction-corp-only and
+    // apartments don't go through it.
     const APARTMENT_PROFILE = {
-      apartment_basic:  { cost: 12000000, ticks: 24, amb: 1, sensitivity: 1.0 },
-      apartment_modest: { cost: 25000000, ticks: 27, amb: 2, sensitivity: 1.3 },
-      apartment_luxury: { cost: 60000000, ticks: 30, amb: 3, sensitivity: 1.7 },
+      apartment_basic:  { cost: 12000000, ticks: 24, sensitivity: 1.0 },
+      apartment_modest: { cost: 25000000, ticks: 27, sensitivity: 1.3 },
+      apartment_luxury: { cost: 60000000, ticks: 30, sensitivity: 1.7 },
     };
     const isApartmentType = (t) => t === 'apartment_basic' || t === 'apartment_modest' || t === 'apartment_luxury';
 
