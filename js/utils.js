@@ -171,7 +171,7 @@ export const APARTMENT_DEFS = {
  * Apartment occupancy as a function of nation stability. Single source —
  * computeApartmentRent below calls it for the live rent calc; the
  * occupancy sparkline in entrepreneur-corp.html calls it per-history-tick
- * via nations_history.stability. Nullish-coalesces to 50 (median) so
+ * via nations_history.politician_stability. Nullish-coalesces to 50 so
  * stability=0 stays 0 (correctly clamped to the 0.4 floor) rather than
  * being treated as missing.
  *
