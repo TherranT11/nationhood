@@ -449,8 +449,8 @@ const TICKS_PER_AGE_YEAR = 12;
 // (Party Office | Government & State) directly under the Tier 0 Party
 // Member rung; everything else stacks below in single-column collapsibles.
 const LADDERS = [
-  { id: 'party',      icon: '\u{1F6A9}', name: 'Party Office',       rungs: () => PARTY_OFFICE_RUNGS, branch: true },
-  { id: 'govt',       icon: '\u{1F451}', name: 'Government & State', rungs: () => GOVERNMENT_RUNGS,   branch: true },
+  { id: 'party',      icon: '\u{1F6A9}', name: 'National Politics',  rungs: () => PARTY_OFFICE_RUNGS, branch: true },
+  { id: 'govt',       icon: '\u{1F451}', name: 'Local Politics',     rungs: () => GOVERNMENT_RUNGS,   branch: true },
   { id: 'legislature',icon: '⚖️',       name: 'Legislature',         rungs: () => LEGISLATURE_RUNGS },
   { id: 'govt_service', icon: '\u{265A}', name: 'Government Service', rungs: () => GOVT_SERVICE_RUNGS },
   { id: 'judiciary',  icon: '\u{1F3DB}\u{FE0F}', name: 'Judiciary',  rungs: () => JUDICIARY_RUNGS,
@@ -1155,6 +1155,12 @@ function renderResolutionBanner(r) {
       sentences.push(`${escHtml(reward.party_name)} gained +${delta} approval (now ${Math.round(Number(reward.new_value) || 0)}%).`);
     }
   }
+  // Party penalty on parliament loss (20270452). Mirrors party_reward.
+  const penalty = r.party_penalty;
+  if (!won && penalty && penalty.party_name && penalty.kind === 'popularity') {
+    const dmag = Math.abs(Number(penalty.delta) || 0);
+    sentences.push(`${escHtml(penalty.party_name)} lost ${dmag} approval (now ${Math.round(Number(penalty.new_value) || 0)}%).`);
+  }
   const statReward = r.stat_reward;
   if (won && statReward) {
     const statLabel = statReward.kind === 'charisma' ? 'Charisma'
@@ -1683,8 +1689,22 @@ function renderOptionCard(tier, race, eyebrow, titleLead, blurb, resolveTicks) {
   const stakeWin   = Number(race.stake_win)  || 0;
   const stakeLose  = Number(race.stake_lose) || 0;
   const winValTxt  = `+${stakeWin} Influence`;
-  const loseValTxt = stakeLose === 0 ? 'No cost' : `${stakeLose} Influence`;
-  const loseClass  = stakeLose === 0 ? 'zero' : 'lose';
+  // Parliament loss also costs the party -0.5 Popularity (20270452).
+  // Community losses stay party-neutral. Magnitudes hardcoded here
+  // because they're rules-constant, not per-race dynamic.
+  const loseValTxt = isParl
+    ? (stakeLose === 0
+        ? '−0.5 Party Popularity'
+        : `${stakeLose} Influence · −0.5 Party Popularity`)
+    : (stakeLose === 0 ? 'No cost' : `${stakeLose} Influence`);
+  const loseClass  = (isParl || stakeLose !== 0) ? 'lose' : 'zero';
+  // Entry fee — parliament only, $50K from party treasury, win or lose.
+  const entryFeeRow = isParl
+    ? `<div class="em-det-row">
+         <span class="em-det-lab">ENTRY FEE</span>
+         <span class="em-det-val">−$50K from party funds</span>
+       </div>`
+    : '';
   const initials   = ((race.opp_first || '')[0] || '') + ((race.opp_last || '')[0] || '');
   return `
     <div class="em-opt ${tier}" data-tier="${tier}">
@@ -1710,6 +1730,7 @@ function renderOptionCard(tier, race, eyebrow, titleLead, blurb, resolveTicks) {
           <span class="em-det-lab">TIMEFRAME</span>
           <span class="em-det-val">${resolveTicks} tick${resolveTicks === 1 ? '' : 's'}</span>
         </div>
+        ${entryFeeRow}
         <div class="em-matchup">
           <div class="em-match-lab">${escHtml(statLabel.toUpperCase())} MATCHUP</div>
           <div class="em-match-row">
@@ -1773,6 +1794,9 @@ async function confirmElection(ctx) {
       no_offer:          'The race offer expired. Close and reopen the modal.',
       race_in_progress:  'You are already standing in a race.',
       cooldown:          `You have already taken your action this tick. Next action ready at tick ${data?.ready_at_tick ?? '?'}.`,
+      already_in_office: 'You already hold an elected office.',
+      party_not_found:   'The party could not be found.',
+      insufficient_party_funds: `Your party can't cover the $50K parliamentary entry fee (treasury: $${(Number(data?.have) || 0).toLocaleString()}).`,
     }[reason] || `Could not stand for election (${reason}).`;
     alert(human);
     btn.disabled = false; btn.textContent = originalLabel;
