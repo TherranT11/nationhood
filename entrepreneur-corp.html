@@ -3028,15 +3028,15 @@ function initials(s, n) {
     };
     const isPlantType = (t) => t === 'engine_assembly_plant' || t === 'light_assembly_plant';
 
-    // Apartment Complex tiers (Phase 1, 20270435). Single residential
-    // building class — Real Estate corps request via the construction-
-    // bid flow. Pattern B cost scaling: final = base × multiplier^sensitivity,
-    // where multiplier is the same nation col+inf curve every other
-    // building uses. Higher sensitivity → undeveloped nations punish
-    // cost disproportionately, so Luxury naturally clusters in
-    // developed markets and Basic remains viable everywhere.
-    // Server-authoritative copy lives in corp_building_cost_profile;
-    // keep these numbers in sync if either side moves.
+    // Apartment Complex tiers (Phase 1, 20270435 + 20270437). Single
+    // residential building class — Real Estate corps request via the
+    // construction-bid flow. Cost = base × nation_mult × infrastructure
+    // penalty, where the penalty = 1 + (sensitivity - 1) × (100 - inf)/100.
+    // Basic (sensitivity 1.0) collapses to the standard base × mult.
+    // Modest and Luxury carry an inf-scaled premium (Modest 6-24%,
+    // Luxury 14-56%) so low-infrastructure nations punish high-end
+    // construction. Server-authoritative copy lives in
+    // corp_building_cost_profile; keep these numbers in sync.
     // No `amb` field — apartments flow through the Request modal which
     // doesn't render ambition; the BUILD modal (where TIER_TABLE.amb +
     // PLANT_PROFILE.amb get displayed) is construction-corp-only and
@@ -3067,13 +3067,17 @@ function initials(s, n) {
     function scaledDuration(base, nation) {
       return Math.max(1, Math.round(base * nationCostMult(nation)));
     }
-    // Pattern B cost: base × multiplier^sensitivity. Mirrors the
-    // power(mult, v_sensitivity) branch in corp_building_cost_profile.
-    // sensitivity = 1.0 collapses to scaledCost (linear) — so this
-    // function is safe to use for any building type; apartments just
-    // pass a sensitivity > 1.
+    // Apartment cost preview: base × mult × infrastructure-penalty.
+    // Mirrors the v_apt_premium branch in corp_building_cost_profile
+    // (20270437). premium = 1 + (sensitivity - 1) × (100 - inf) / 100,
+    // so sensitivity = 1.0 collapses to base × mult (linear) — safe
+    // to call on any building type; Basic apartments + every existing
+    // building uses that linear path. Modest and Luxury get a 6-24%
+    // and 14-56% premium respectively, scaled by missing infrastructure.
     function patternBCost(base, nation, sensitivity) {
-      return Math.round(base * Math.pow(nationCostMult(nation), sensitivity));
+      const inf = Number(nation?.infrastructure ?? 50);
+      const premium = 1 + (sensitivity - 1) * (100 - inf) / 100;
+      return Math.round(base * nationCostMult(nation) * premium);
     }
     // RHQ profile limited to small/medium/large (server enforces).
     const RHQ_TIERS = ['small', 'medium', 'large'];
