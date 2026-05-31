@@ -188,6 +188,32 @@
 .govt-empty .note { font-size:11px; color:#888; line-height:1.6; font-style:italic;
   max-width:540px; margin:0 auto; }
 
+/* Committee card — one row per Assembly committee. Title + short
+   description + requirement chip + Apply CTA. CTA enabled only when
+   the viewer's politician_office matches the requirement. */
+.comm-card { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:6px; padding:16px 18px; margin-bottom:8px; }
+.comm-card:last-child { margin-bottom:0; }
+.comm-head { display:flex; align-items:baseline; justify-content:space-between;
+  gap:14px; margin-bottom:8px; }
+.comm-name { font-size:14px; font-weight:600; color:#fff; letter-spacing:-0.005em; }
+.comm-name .serif { font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#c89e6e; }
+.comm-desc { font-size:11.5px; color:#888; line-height:1.55; margin-bottom:12px; }
+.comm-req  { font-size:9px; letter-spacing:0.13em; text-transform:uppercase;
+  font-weight:600; padding:3px 8px; border-radius:3px; white-space:nowrap; }
+.comm-req.met     { background:#0e1611; color:#8aaa6a; border:0.5px solid rgba(122,170,106,0.35); }
+.comm-req.not-met { background:#161208; color:#c89e6e; border:0.5px solid rgba(200,158,110,0.35); }
+.comm-foot { display:flex; justify-content:flex-end; padding-top:10px;
+  border-top:0.5px solid rgba(255,255,255,0.05); }
+.comm-apply { font-family:monospace; font-size:10px; letter-spacing:0.08em;
+  text-transform:uppercase; color:#5aafa5; background:transparent;
+  border:0.5px solid rgba(90,175,165,0.4); border-radius:3px;
+  padding:7px 14px; cursor:pointer; transition:all 0.15s; }
+.comm-apply:hover:not(:disabled) { background:rgba(90,175,165,0.08);
+  border-color:rgba(90,175,165,0.7); color:#7ec5bd; }
+.comm-apply:disabled { color:#555; border-color:rgba(255,255,255,0.06);
+  cursor:not-allowed; }
+
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
 /* Mobile refresh — tighter padding on the whole content, wrap the hero,
@@ -302,8 +328,17 @@
   </details>
   <details id="sec-committees" class="sec">
     <summary>Committees</summary>
-    <div class="sec-body">
-      <div class="sec-empty">No committees recorded yet.</div>
+    <div class="sec-body" id="sec-committees-body">
+      <div class="comm-card" data-committee="defense_foreign_affairs">
+        <div class="comm-head">
+          <div class="comm-name">Defense &amp; Foreign Affairs <span class="serif">Committee</span></div>
+          <span class="comm-req" data-req-chip>Member of Parliament required</span>
+        </div>
+        <div class="comm-desc">Description of this committee here.</div>
+        <div class="comm-foot">
+          <button class="comm-apply" type="button" data-action="apply" disabled>Apply for Committee</button>
+        </div>
+      </div>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
@@ -510,6 +545,7 @@ async function init() {
 
   renderCard(nation, pmMinistry);
   bindJumpNav();
+  renderCommittees(ctx.faction?.politician_office || null);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
   // Side-panel data: Government keeps the parties + admin fetch
@@ -691,6 +727,28 @@ function bindJumpNav() {
     if (!btn) return;
     const target = document.getElementById(btn.dataset.target);
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
+// Gate committee Apply buttons by the viewer's politician_office.
+// One-shot pass: each .comm-card carries its requirement implicitly
+// (Defense & Foreign Affairs needs MP). Met → green chip, enabled
+// button. Not met → amber chip, disabled button. Click stub posts a
+// placeholder notice until the apply RPC lands.
+function renderCommittees(office) {
+  const isMP = office === 'member_of_parliament';
+  document.querySelectorAll('#sec-committees-body .comm-card').forEach(card => {
+    const chip = card.querySelector('[data-req-chip]');
+    const btn  = card.querySelector('[data-action="apply"]');
+    if (chip) {
+      chip.classList.toggle('met', isMP);
+      chip.classList.toggle('not-met', !isMP);
+      chip.textContent = isMP ? 'Member of Parliament' : 'Member of Parliament required';
+    }
+    if (btn) {
+      btn.disabled = !isMP;
+      btn.onclick = () => alert('Committee application is not yet wired up.');
+    }
   });
 }
 
