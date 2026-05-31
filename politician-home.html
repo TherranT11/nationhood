@@ -31,6 +31,23 @@
   border-left:0.5px solid rgba(255,255,255,0.08); min-width:280px; }
 .anchor-label   { color:#555; font-size:10px; letter-spacing:0.15em; margin-bottom:6px; }
 .anchor-message { color:#888; font-size:14px; font-style:italic; line-height:1.5; max-width:280px; margin-left:auto; }
+/* Player Nickname row — sits under the AFFILIATION block in the
+   anchor. Toggle between display + inline edit. The pencil opens
+   edit mode; ✓ saves, ✕ cancels. 12-char limit enforced both
+   client-side (maxlength) and server-side (CHECK constraint). */
+.anchor-nick      { margin-top:14px; padding-top:14px; border-top:0.5px solid rgba(255,255,255,0.06); }
+.anchor-nick-row  { display:flex; align-items:center; gap:8px; justify-content:flex-end; }
+.anchor-nick-val  { color:#cfcabf; font-size:13px; font-family:Georgia,'Times New Roman',serif;
+  font-style:italic; }
+.anchor-nick-val.empty { color:#555; }
+.anchor-nick-btn  { background:transparent; border:0.5px solid rgba(255,255,255,0.08);
+  border-radius:3px; padding:3px 6px; cursor:pointer; color:#888; font-size:11px;
+  transition:color 0.15s, border-color 0.15s; }
+.anchor-nick-btn:hover { color:#bbb; border-color:rgba(255,255,255,0.2); }
+.anchor-nick-input { background:#080808; border:0.5px solid rgba(255,255,255,0.15);
+  border-radius:3px; padding:4px 8px; color:#fff; font-size:13px; font-family:inherit;
+  width:130px; outline:none; }
+.anchor-nick-input:focus { border-color:#5aafa5; }
 
 .stats-row { display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:28px; }
 .stat-card { background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px; padding:14px 16px; }
@@ -257,6 +274,10 @@
     <div class="anchor">
       <div class="anchor-label">AFFILIATION</div>
       <div class="anchor-message" id="hero-affiliation">This character has no affiliation.</div>
+      <div class="anchor-nick">
+        <div class="anchor-label">PLAYER NICKNAME</div>
+        <div class="anchor-nick-row" id="nick-row"></div>
+      </div>
     </div>
   </div>
 
@@ -447,11 +468,16 @@ function renderHero(shard) {
   const age = String(25 + Math.floor(elapsed / 12));
 
   document.getElementById('hero-portrait').textContent = ini;
+  // Hero name shows "First Last (Nickname)" when nickname is set,
+  // appending the nickname as a third inline span so the visual
+  // hierarchy (first bold, last serif) stays intact.
+  const nick = (politician.nickname || '').trim();
   document.getElementById('hero-first').textContent = first || display;
-  document.getElementById('hero-last').textContent  = first ? last : '';
+  document.getElementById('hero-last').textContent  = first ? last + (nick ? ` (${nick})` : '') : (nick ? `(${nick})` : '');
   document.getElementById('hero-age').textContent = age;
   document.getElementById('hero-nation').textContent = (nation && nation.name) || '—';
   document.getElementById('hero-career').textContent = career;
+  renderNicknameRow(nick);
   // Affiliation reads from the looked-up movement_party (ctx.party set
   // by bootstrapPolitician) plus the politician's office. When an
   // office is held, the surface collapses to "{Office} · {Party}"
@@ -464,6 +490,70 @@ function renderHero(shard) {
         ? `${officeTitle(office)} · ${party.faction_name}`
         : `Party Member of ${party.faction_name}`)
     : NO_AFFILIATION_MESSAGE;
+}
+
+// Player nickname row in the anchor. Two states — display (current
+// nickname or em-dash + pencil) and edit (input + save/cancel).
+// Save UPDATEs factions.nickname via the linked_user_id RLS policy;
+// CHECK constraint catches over-12-char attempts server-side.
+function renderNicknameRow(currentNick) {
+  const row = document.getElementById('nick-row');
+  if (!row) return;
+  const nick = (currentNick || '').trim();
+  row.innerHTML = nick
+    ? `<span class="anchor-nick-val">${escHtml(nick)}</span>
+       <button class="anchor-nick-btn" data-edit-nick title="Edit nickname">&#9998;</button>`
+    : `<span class="anchor-nick-val empty">— not set —</span>
+       <button class="anchor-nick-btn" data-edit-nick title="Set nickname">&#9998;</button>`;
+  const editBtn = row.querySelector('[data-edit-nick]');
+  if (editBtn) editBtn.onclick = () => openNicknameEditor(nick);
+}
+
+function openNicknameEditor(currentNick) {
+  const row = document.getElementById('nick-row');
+  if (!row) return;
+  row.innerHTML = `
+    <input class="anchor-nick-input" type="text" id="nick-input" maxlength="12" value="${escHtml(currentNick || '')}" autocomplete="off" placeholder="Up to 12 chars">
+    <button class="anchor-nick-btn" data-save-nick title="Save">&#10003;</button>
+    <button class="anchor-nick-btn" data-cancel-nick title="Cancel">&times;</button>`;
+  const input = row.querySelector('#nick-input');
+  input?.focus();
+  input?.select();
+  row.querySelector('[data-save-nick]').onclick   = () => saveNickname(input.value);
+  row.querySelector('[data-cancel-nick]').onclick = () => renderNicknameRow(politician.nickname);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter')  { e.preventDefault(); saveNickname(input.value); }
+    if (e.key === 'Escape') { e.preventDefault(); renderNicknameRow(politician.nickname); }
+  });
+}
+
+async function saveNickname(raw) {
+  const next = (raw || '').trim().slice(0, 12);
+  // Empty string clears the nickname (NULL).
+  const value = next === '' ? null : next;
+  const row = document.getElementById('nick-row');
+  if (row) {
+    row.querySelectorAll('button').forEach(b => b.disabled = true);
+  }
+  try {
+    const { error } = await _supabase.from('factions')
+      .update({ nickname: value })
+      .eq('id', politician.id);
+    if (error) throw error;
+    politician.nickname = value;
+    renderNicknameRow(value);
+    // Refresh the hero name's parenthetical so the visible name and
+    // the nickname row stay in lockstep without a full reload.
+    const first = politician.leader_first_name || '';
+    const last  = politician.leader_last_name  || '';
+    document.getElementById('hero-last').textContent = first
+      ? last + (value ? ` (${value})` : '')
+      : (value ? `(${value})` : '');
+  } catch (err) {
+    console.warn('politician-home: nickname save failed', err);
+    alert('Could not save nickname. Try again.');
+    renderNicknameRow(politician.nickname);
+  }
 }
 
 // Career log — derived from the politician's lifecycle today. Only one event

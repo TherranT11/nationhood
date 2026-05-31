@@ -464,7 +464,7 @@ async function init() {
       .is('abandoned_at', null)
       .maybeSingle(),
     _supabase.from('factions')
-      .select('id, leader_first_name, leader_last_name, leader_age, politician_influence, politician_reputation, politician_credibility, politician_office')
+      .select('id, leader_first_name, leader_last_name, nickname, leader_age, politician_influence, politician_reputation, politician_credibility, politician_office')
       .eq('politician_party_id', partyId)
       .eq('faction_type', 'politician')
       .is('abandoned_at', null)
@@ -993,7 +993,9 @@ function renderMemberPanel(host, countEl, rows, accent, emptyText, kind) {
   const isNational = kind === 'national';
   const statLabel  = isNational ? 'Allies' : 'Volunteers';
   const body = rows.map(m => {
-    const name = [m.leader_first_name, m.leader_last_name].filter(Boolean).join(' ') || '—';
+    const baseName = [m.leader_first_name, m.leader_last_name].filter(Boolean).join(' ') || '—';
+    const nick = (m.nickname || '').trim();
+    const name = nick && baseName !== '—' ? `${baseName} (${nick})` : baseName;
     const youBadge = m.id === _viewerPolId ? ' <span class="you">You</span>' : '';
     const age = (m.leader_age != null) ? String(Number(m.leader_age)) : '—';
     const office = m.politician_office || null;
@@ -1003,7 +1005,7 @@ function renderMemberPanel(host, countEl, rows, accent, emptyText, kind) {
     const driverStat = isNational ? m.politician_reputation : m.politician_credibility;
     const statCap = Math.max(0, (Number(driverStat) || 0) * 3);
     return `<div class="mem-row">
-      <div class="mem-badge" style="background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;">${escHtml(factionInitials(name, null))}</div>
+      <div class="mem-badge" style="background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;">${escHtml(factionInitials(baseName, null))}</div>
       <div class="mem-name">${escHtml(name)}${youBadge}</div>
       <div class="${affilCls}">${escHtml(affilText)}</div>
       <div class="mem-stat">0 <span class="of">/ ${statCap}</span></div>

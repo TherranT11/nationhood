@@ -145,9 +145,12 @@ export function renderPoliticianTopbar(container, { faction, shard, nation, allU
   const s = shard || {};
   const first = f.leader_first_name || '';
   const last  = f.leader_last_name  || '';
+  const nick  = (f.nickname || '').trim();
   const ini = (((first[0] || '') + (last[0] || '')).toUpperCase()) || '—';
-  const display = (first || last) ? (first + ' ' + last).trim() : (f.faction_name || 'Politician');
-  const pillLabel = last ? `${(first[0] || '').toUpperCase()}. ${last}` : (first || 'Politician');
+  const fullName = (first || last) ? (first + ' ' + last).trim() : (f.faction_name || 'Politician');
+  const display = nick ? `${fullName} (${nick})` : fullName;
+  const baseLabel = last ? `${(first[0] || '').toUpperCase()}. ${last}` : (first || 'Politician');
+  const pillLabel = nick ? `${baseLabel} (${nick})` : baseLabel;
   // Politician topbar shows an INFLUENCE score (was POL CASH). Sourced from
   // factions.politician_influence (added in migration 20270357); fmtBig keeps
   // small values plain ("0", "27") and magnitude-scales higher ones ("1.2k").
@@ -212,7 +215,7 @@ export async function bootstrapPolitician(activeTab) {
 
   const [facRes, shardRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, founded_tick, party_funds, abandoned_at, is_banned, politician_charisma, politician_reputation, politician_credibility, politician_influence, politician_suspicion, politician_party_id, politician_office, politician_office_won_at_tick, speech_cooldown_until_tick, door_knock_cooldown_until_tick, next_member_action_tick, next_party_motion_tick, next_mp_action_tick')
+      .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, nickname, founded_tick, party_funds, abandoned_at, is_banned, politician_charisma, politician_reputation, politician_credibility, politician_influence, politician_suspicion, politician_party_id, politician_office, politician_office_won_at_tick, speech_cooldown_until_tick, door_knock_cooldown_until_tick, next_member_action_tick, next_party_motion_tick, next_mp_action_tick')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
     _supabase.from('shard').select('current_tick, current_date, next_tick_at').eq('name', 'Alpha Shard').single(),
   ]);

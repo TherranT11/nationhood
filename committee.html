@@ -177,7 +177,7 @@ async function init() {
   // Members with party join (party_color, faction_name, abbreviation).
   const { data: members, error: memErr } = await _supabase
     .from('committee_members')
-    .select('id, slot_idx, role, party_id, npc_first_name, npc_last_name, politician_faction_id, party:factions!party_id(faction_name, abbreviation, party_color)')
+    .select('id, slot_idx, role, party_id, npc_first_name, npc_last_name, politician_faction_id, party:factions!party_id(faction_name, abbreviation, party_color), politician:factions!politician_faction_id(leader_first_name, leader_last_name, nickname)')
     .eq('committee_id', committeeId)
     .order('slot_idx', { ascending: true });
   if (memErr) console.warn('committee: members fetch failed', memErr);
@@ -299,8 +299,16 @@ function renderMembers(members, viewerPolId) {
     return `<div class="mem-empty">No members seated yet.</div>`;
   }
   return members.map(m => {
-    const fullName = [m.npc_first_name, m.npc_last_name].filter(Boolean).join(' ').trim() || '—';
-    const initials = factionInitials(fullName, null);
+    // Real-player seats null the NPC name fields and populate the
+    // politician join. NPC seats keep npc_first/last. Either way we
+    // resolve a baseName + optional (nickname).
+    const baseName = m.politician_faction_id
+      ? [m.politician?.leader_first_name, m.politician?.leader_last_name].filter(Boolean).join(' ').trim()
+      : [m.npc_first_name, m.npc_last_name].filter(Boolean).join(' ').trim();
+    const nick = m.politician_faction_id ? (m.politician?.nickname || '').trim() : '';
+    const display = baseName || '—';
+    const fullName = nick && baseName ? `${display} (${nick})` : display;
+    const initials = factionInitials(display, null);
     const partyColor = safeHexColor(m.party?.party_color);
     const partyName = m.party?.faction_name || 'Independent';
     const isChair   = m.role === 'chair';
