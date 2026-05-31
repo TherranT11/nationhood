@@ -3259,7 +3259,7 @@ function initials(s, n) {
         (b.building_type === 'apartment_basic'  ||
          b.building_type === 'apartment_modest' ||
          b.building_type === 'apartment_luxury'));
-      const nationHistory = new Map();   // nation_id → [{tick, stability}, …]
+      const nationHistory = new Map();   // nation_id → [{tick, politician_stability}, …]
       if (aptRows.length) {
         const aptNationIds = [...new Set(aptRows.map(a => a.nation_id))];
         const lookback = 12;
@@ -4565,7 +4565,7 @@ function initials(s, n) {
     let buildSubmitting = false;
     let selectedBuildType = 'regional_hq';
     let corpRhqNationIds = new Set();    // owned RHQs (for non-RHQ filtering)
-    let nationMap = new Map();            // id → { id, name, cost_of_living, infrastructure, standard_of_living, stability }
+    let nationMap = new Map();            // id → { id, name, cost_of_living, infrastructure, standard_of_living, politician_stability }
 
     const currentNation = () => nationMap.get(document.getElementById('bm-nation').value);
 
@@ -4697,7 +4697,7 @@ function initials(s, n) {
       // open. Two tiny queries; result is reused across modal opens.
       if (nationMap.size === 0) {
         const { data: nats, error: nErr } = await _supabase.from('nations')
-          .select('id, name, cost_of_living, infrastructure, standard_of_living, stability')
+          .select('id, name, cost_of_living, infrastructure, standard_of_living, politician_stability')
           .not('continent', 'is', null).order('name');
         if (nErr) console.warn('[entrepreneur-corp] nations fetch error:', nErr.message);
         for (const n of (nats || [])) nationMap.set(n.id, n);
@@ -4808,7 +4808,7 @@ function initials(s, n) {
       if (!ov) return;
       if (nationMap.size === 0) {
         const { data: nats, error: nErr } = await _supabase.from('nations')
-          .select('id, name, cost_of_living, infrastructure, standard_of_living, stability').not('continent', 'is', null).order('name');
+          .select('id, name, cost_of_living, infrastructure, standard_of_living, politician_stability').not('continent', 'is', null).order('name');
         if (nErr) console.warn('[entrepreneur-corp] nations fetch error:', nErr.message);
         for (const n of (nats || [])) nationMap.set(n.id, n);
       }
