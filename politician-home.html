@@ -468,16 +468,11 @@ function renderHero(shard) {
   const age = String(25 + Math.floor(elapsed / 12));
 
   document.getElementById('hero-portrait').textContent = ini;
-  // Hero name shows "First Last (Nickname)" when nickname is set,
-  // appending the nickname as a third inline span so the visual
-  // hierarchy (first bold, last serif) stays intact.
-  const nick = (politician.nickname || '').trim();
-  document.getElementById('hero-first').textContent = first || display;
-  document.getElementById('hero-last').textContent  = first ? last + (nick ? ` (${nick})` : '') : (nick ? `(${nick})` : '');
+  paintHeroName(politician, display);
   document.getElementById('hero-age').textContent = age;
   document.getElementById('hero-nation').textContent = (nation && nation.name) || '—';
   document.getElementById('hero-career').textContent = career;
-  renderNicknameRow(nick);
+  renderNicknameRow((politician.nickname || '').trim());
   // Affiliation reads from the looked-up movement_party (ctx.party set
   // by bootstrapPolitician) plus the politician's office. When an
   // office is held, the surface collapses to "{Office} · {Party}"
@@ -490,6 +485,20 @@ function renderHero(shard) {
         ? `${officeTitle(office)} · ${party.faction_name}`
         : `Party Member of ${party.faction_name}`)
     : NO_AFFILIATION_MESSAGE;
+}
+
+// Paint the split hero name. first goes in the bold span, last + any
+// "(Nickname)" tail in the serif span. Called by renderHero on load
+// and by saveNickname after a successful UPDATE so the surface stays
+// in lockstep with politician.nickname without a full re-render.
+function paintHeroName(p, fallbackDisplay) {
+  const first = p.leader_first_name || '';
+  const last  = p.leader_last_name  || '';
+  const nick  = (p.nickname || '').trim();
+  document.getElementById('hero-first').textContent = first || fallbackDisplay;
+  document.getElementById('hero-last').textContent  = first
+    ? last + (nick ? ` (${nick})` : '')
+    : (nick ? `(${nick})` : '');
 }
 
 // Player nickname row in the anchor. Two states — display (current
@@ -542,13 +551,7 @@ async function saveNickname(raw) {
     if (error) throw error;
     politician.nickname = value;
     renderNicknameRow(value);
-    // Refresh the hero name's parenthetical so the visible name and
-    // the nickname row stay in lockstep without a full reload.
-    const first = politician.leader_first_name || '';
-    const last  = politician.leader_last_name  || '';
-    document.getElementById('hero-last').textContent = first
-      ? last + (value ? ` (${value})` : '')
-      : (value ? `(${value})` : '');
+    paintHeroName(politician, politician.faction_name || 'Politician');
   } catch (err) {
     console.warn('politician-home: nickname save failed', err);
     alert('Could not save nickname. Try again.');

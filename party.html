@@ -411,7 +411,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { safeHexColor, factionInitials, officeTitle, fmtMoney } from './js/utils.js';
+import { safeHexColor, factionInitials, officeTitle, fmtMoney, displayName } from './js/utils.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
@@ -994,8 +994,7 @@ function renderMemberPanel(host, countEl, rows, accent, emptyText, kind) {
   const statLabel  = isNational ? 'Allies' : 'Volunteers';
   const body = rows.map(m => {
     const baseName = [m.leader_first_name, m.leader_last_name].filter(Boolean).join(' ') || '—';
-    const nick = (m.nickname || '').trim();
-    const name = nick && baseName !== '—' ? `${baseName} (${nick})` : baseName;
+    const name = displayName(m) || '—';
     const youBadge = m.id === _viewerPolId ? ' <span class="you">You</span>' : '';
     const age = (m.leader_age != null) ? String(Number(m.leader_age)) : '—';
     const office = m.politician_office || null;

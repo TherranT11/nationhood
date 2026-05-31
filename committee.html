@@ -127,7 +127,7 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
-import { safeHexColor, factionInitials } from './js/utils.js';
+import { safeHexColor, factionInitials, displayName } from './js/utils.js';
 import { COMMITTEES, applyForCommittee } from './js/committees.js';
 
 const ROLE_LABEL = {
@@ -300,15 +300,15 @@ function renderMembers(members, viewerPolId) {
   }
   return members.map(m => {
     // Real-player seats null the NPC name fields and populate the
-    // politician join. NPC seats keep npc_first/last. Either way we
-    // resolve a baseName + optional (nickname).
-    const baseName = m.politician_faction_id
-      ? [m.politician?.leader_first_name, m.politician?.leader_last_name].filter(Boolean).join(' ').trim()
-      : [m.npc_first_name, m.npc_last_name].filter(Boolean).join(' ').trim();
-    const nick = m.politician_faction_id ? (m.politician?.nickname || '').trim() : '';
-    const display = baseName || '—';
-    const fullName = nick && baseName ? `${display} (${nick})` : display;
-    const initials = factionInitials(display, null);
+    // politician join; NPC seats keep npc_first/last. Build a
+    // faction-shaped object either way so displayName() does the
+    // "(Nickname)" formatting consistently. NPCs have no nickname.
+    const fac = m.politician_faction_id
+      ? m.politician
+      : { leader_first_name: m.npc_first_name, leader_last_name: m.npc_last_name };
+    const baseInitials = [fac?.leader_first_name, fac?.leader_last_name].filter(Boolean).join(' ').trim() || '—';
+    const fullName = displayName(fac) || '—';
+    const initials = factionInitials(baseInitials, null);
     const partyColor = safeHexColor(m.party?.party_color);
     const partyName = m.party?.faction_name || 'Independent';
     const isChair   = m.role === 'chair';

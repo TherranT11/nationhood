@@ -4,7 +4,7 @@
 // one-for-one — same patterns for styles, switcher, countdown, bootstrap —
 // just teal where entrepreneur uses green.
 import { _supabase } from './supabase-client.js';
-import { APP_VERSION, fmtBig } from './utils.js';
+import { APP_VERSION, fmtBig, displayName } from './utils.js';
 import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl } from './game/factions.js';
 
 const POL_TABS = [
@@ -147,8 +147,9 @@ export function renderPoliticianTopbar(container, { faction, shard, nation, allU
   const last  = f.leader_last_name  || '';
   const nick  = (f.nickname || '').trim();
   const ini = (((first[0] || '') + (last[0] || '')).toUpperCase()) || '—';
-  const fullName = (first || last) ? (first + ' ' + last).trim() : (f.faction_name || 'Politician');
-  const display = nick ? `${fullName} (${nick})` : fullName;
+  // Brand uses the shared displayName helper. Pill stays inline
+  // (abbreviated form — "F. Last" — doesn't fit the helper's shape).
+  const display = displayName(f) || 'Politician';
   const baseLabel = last ? `${(first[0] || '').toUpperCase()}. ${last}` : (first || 'Politician');
   const pillLabel = nick ? `${baseLabel} (${nick})` : baseLabel;
   // Politician topbar shows an INFLUENCE score (was POL CASH). Sourced from
