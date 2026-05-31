@@ -426,6 +426,7 @@ let _viewerDoorKnockReadyAt = 0;
 let _viewerNextActionAt = 0;
 let _viewerNextMotionAt = 0;
 let _shardTick = 0;
+let _partyPopCap = 40;
 let _chatPollId = null;
 
 async function init() {
@@ -457,7 +458,7 @@ async function init() {
   // typo'd politician_party_id on a different faction kind can't leak in.
   const [partyRes, membersRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_name, abbreviation, seats, popularity_pct, party_color, party_description, party_slogan, custom_logo_url, leader_first_name, leader_last_name, leader_age, deputy_first_name, deputy_last_name, deputy_age, whip_first_name, whip_last_name, whip_age, party_funds, nation_id, nation:nations!nation_id(id, name, population, total_seats, government_type)')
+      .select('id, faction_name, abbreviation, seats, popularity_pct, popularity_cap_pct, party_color, party_description, party_slogan, custom_logo_url, leader_first_name, leader_last_name, leader_age, deputy_first_name, deputy_last_name, deputy_age, whip_first_name, whip_last_name, whip_age, party_funds, nation_id, nation:nations!nation_id(id, name, population, total_seats, government_type)')
       .eq('id', partyId)
       .eq('faction_type', 'movement_party')
       .is('abandoned_at', null)
@@ -493,6 +494,7 @@ function render(party, members) {
   const initials   = factionInitials(party.faction_name, party.abbreviation);
   const totalSeats = Math.max(0, Number(party.nation?.total_seats) || 0);
   const majority   = totalSeats > 0 ? Math.floor(totalSeats / 2) + 1 : 0;
+  _partyPopCap     = Math.round(Number(party.popularity_cap_pct) || 40);
   const seats      = Math.max(0, Number(party.seats) || 0);
   const isGov      = totalSeats > 0 && seats >= majority;
   const isMine     = _viewerPartyId && _viewerPartyId === party.id;
@@ -543,8 +545,11 @@ function render(party, members) {
         ${statCell('Seats in Assembly', totalSeats > 0 ? `${seats}<span class="of">/ ${totalSeats}</span>` : String(seats), totalSeats > 0
           ? `${pctOfChamber(seats, totalSeats)} of chamber`
           : 'No assembly')}
-        ${statCell('Popularity', party.popularity_pct != null ? `${Math.round(Number(party.popularity_pct))}%` : '—',
-          party.popularity_pct != null ? 'nation-wide support' : 'unrated')}
+        ${statCell('Popularity',
+          party.popularity_pct != null
+            ? `${Math.round(Number(party.popularity_pct))}%<span class="of">/ ${Math.round(Number(party.popularity_cap_pct) || 40)}%</span>`
+            : '—',
+          party.popularity_pct != null ? `cap ${Math.round(Number(party.popularity_cap_pct) || 40)}%` : 'unrated')}
         ${statCell('Status', isGov ? 'In Power' : (totalSeats > 0 ? 'Opposition' : '—'),
           isGov ? `holds majority (${majority} needed)` : (totalSeats > 0 ? `${majority - seats} short of majority` : ''))}
         ${statCell('Party Funds', fmtMoney(Number(party.party_funds) || 0),
@@ -701,7 +706,7 @@ function patchPopularityCell(newPct) {
     const k = cell.querySelector('.k');
     if (k && k.textContent.trim() === 'Popularity') {
       const v = cell.querySelector('.v');
-      if (v) v.innerHTML = `${Math.round(newPct)}%`;
+      if (v) v.innerHTML = `${Math.round(newPct)}%<span class="of">/ ${_partyPopCap}%</span>`;
     }
   });
 }
