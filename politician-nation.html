@@ -205,14 +205,13 @@
 .comm-req.not-met { background:#161208; color:#c89e6e; border:0.5px solid rgba(200,158,110,0.35); }
 .comm-foot { display:flex; justify-content:flex-end; padding-top:10px;
   border-top:0.5px solid rgba(255,255,255,0.05); }
-.comm-apply { font-family:monospace; font-size:10px; letter-spacing:0.08em;
-  text-transform:uppercase; color:#5aafa5; background:transparent;
+.comm-apply { display:inline-block; font-family:monospace; font-size:10px;
+  letter-spacing:0.08em; text-transform:uppercase; color:#5aafa5;
+  background:transparent; text-decoration:none;
   border:0.5px solid rgba(90,175,165,0.4); border-radius:3px;
   padding:7px 14px; cursor:pointer; transition:all 0.15s; }
-.comm-apply:hover:not(:disabled) { background:rgba(90,175,165,0.08);
+.comm-apply:hover { background:rgba(90,175,165,0.08);
   border-color:rgba(90,175,165,0.7); color:#7ec5bd; }
-.comm-apply:disabled { color:#555; border-color:rgba(255,255,255,0.06);
-  cursor:not-allowed; }
 
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
@@ -344,7 +343,7 @@
         </div>
         <div class="comm-desc">Description of this committee here.</div>
         <div class="comm-foot">
-          <button class="comm-apply" type="button" data-action="apply" disabled>Apply for Committee</button>
+          <a class="comm-apply" href="committee.html?key=defense_foreign_affairs">View Committee</a>
         </div>
       </div>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
@@ -738,24 +737,18 @@ function bindJumpNav() {
   });
 }
 
-// Gate committee Apply buttons by the viewer's politician_office.
-// One-shot pass: each .comm-card carries its requirement implicitly
-// (Defense & Foreign Affairs needs MP). Met → green chip, enabled
-// button. Not met → amber chip, disabled button. Click stub posts a
-// placeholder notice until the apply RPC lands.
+// Tint the requirement chip on each committee card based on the
+// viewer's politician_office. The View Committee link itself is
+// always clickable — observer mode on the committee page handles
+// non-members. Met → green chip, not met → amber chip.
 function renderCommittees(office) {
   const isMP = office === 'member_of_parliament';
   document.querySelectorAll('#sec-committees-body .comm-card').forEach(card => {
     const chip = card.querySelector('[data-req-chip]');
-    const btn  = card.querySelector('[data-action="apply"]');
     if (chip) {
       chip.classList.toggle('met', isMP);
       chip.classList.toggle('not-met', !isMP);
       chip.textContent = isMP ? 'Member of Parliament' : 'Member of Parliament required';
-    }
-    if (btn) {
-      btn.disabled = !isMP;
-      btn.onclick = () => alert('Committee application is not yet wired up.');
     }
   });
 }
