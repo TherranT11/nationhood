@@ -587,10 +587,15 @@ const LEGISLATURE_RUNGS = [
     held:        (s) => s.committeeCount > 0,
     descIfHeld:  ()  => 'Assigned to a standing committee. This is where real policy work happens away from the floor.',
     descIfNot:   ()  => 'Assigned to a standing committee. This is where real policy work happens away from the floor.',
-    actions:     ['Vote on Committee', 'Amend Bill'],
-    actionIfNot: (s) => s.office === 'member_of_parliament'
-      ? { label: 'Apply to Committee', kind: 'primary',  href: 'politician-nation.html#sec-committees' }
-      : { label: 'Apply to Committee', kind: 'disabled' },
+    actions:     ['Hold a Hearing', 'Vote on Proposal', 'Amend Proposal'],
+    actionIfNot: (s) => {
+      if (s.committeeApplicationPending) {
+        return { label: 'Applied for Committee. Awaiting Vote.', kind: 'disabled' };
+      }
+      return s.office === 'member_of_parliament'
+        ? { label: 'Apply to Committee', kind: 'primary',  href: 'politician-nation.html#sec-committees' }
+        : { label: 'Apply to Committee', kind: 'disabled' };
+    },
   },
   {
     name: 'Committee Chair',
@@ -1128,9 +1133,25 @@ async function init() {
     console.warn('politician-career: committee_members count threw', err);
   }
 
+  // Pending committee admission vote — drives the rung's "Applied for
+  // Committee. Awaiting Vote." state. Any active admission vote where
+  // we're the applicant flips the rung from CTA to dim pending tag.
+  let committeeApplicationPending = false;
+  try {
+    const { count, error } = await _supabase
+      .from('committee_admission_votes')
+      .select('id', { count: 'exact', head: true })
+      .eq('applicant_faction_id', ctx.faction.id)
+      .eq('status', 'active');
+    if (error) console.warn('politician-career: pending admission count failed', error);
+    committeeApplicationPending = (Number(count) || 0) > 0;
+  } catch (err) {
+    console.warn('politician-career: pending admission count threw', err);
+  }
+
   render(ctx.faction, ctx.shard, ctx.nation, ctx.party);
   if (resolution) renderResolutionBanner(resolution);
-  renderLadders(buildLadderState(ctx.party, activeRace, ctx.faction?.politician_office, ctx, committeeCount), ctx);
+  renderLadders(buildLadderState(ctx.party, activeRace, ctx.faction?.politician_office, ctx, committeeCount, committeeApplicationPending), ctx);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -1222,7 +1243,7 @@ function renderResolutionBanner(r) {
 //                            ticks after winning Community Organizer).
 //   currentTick            → both eligibility windows.
 //   nextGeneralElectionTick → Senior MP window (opens 3 ticks before).
-function buildLadderState(party, activeRace, office, ctx, committeeCount) {
+function buildLadderState(party, activeRace, office, ctx, committeeCount, committeeApplicationPending) {
   return {
     partyId:                 party?.id || null,
     partyName:               party?.faction_name || '',
@@ -1232,6 +1253,7 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount) {
     currentTick:             Number(ctx?.shard?.current_tick) || 0,
     nextGeneralElectionTick: Number(ctx?.nation?.next_election_tick) || 0,
     committeeCount:          Number(committeeCount) || 0,
+    committeeApplicationPending: !!committeeApplicationPending,
   };
 }
 
