@@ -287,7 +287,16 @@
         <div class="ec-pick" data-ind="real_estate"><div class="pn">Real Estate</div><div class="pd">Acquire finished buildings from Construction corps and collect rent. Steady tenant revenue; scales with Reputation.</div></div>
         <div class="ec-pick" data-ind="airline"><div class="pn">Airline</div><div class="pd">Buy aircraft, claim terminals, and fly passenger routes. Demand scales with each nation's standard of living. Capital-intensive — founds with two regional jets and two starter terminals.</div></div>
         <div class="ec-pick" data-ind="aviation_manufacturing"><div class="pn">Aviation Manufacturing</div><div class="pd">Build aircraft and engines. Founds with one Assembly Plant in your HQ nation — a 1D6 roll: 1-5 a Light Assembly Plant, 6 the rarer Engine Assembly Plant.</div></div>
-        <div class="ec-pick" data-ind="oil_and_gas"><div class="pn">Oil &amp; Gas</div><div class="pd">Drill pump jacks for crude oil into reserve, refine through small/regular/large refineries, retail through gas stations. Vertical integration captures the full $20k → $130k spread per barrel; specialists sell crude or refined to spot market manually. $10M Operating License at founding (no starter assets — survey and tradeable drilling permits arrive in Phase 3).</div></div>
+        <div class="ec-pick" data-ind="oil_and_gas"><div class="pn">Oil &amp; Gas</div><div class="pd">Drill pump jacks for crude oil into reserve, refine through small/regular/large refineries, retail through gas stations. Vertical integration captures the full $20k → $130k spread per barrel; specialists sell crude or refined to spot market manually. $30M flat founding fee covers a 1D3 starter (Pump Jack / Small Refinery / 3 Gas Stations) — outcome is rolled once and locked.</div></div>
+      </div>
+      <!-- Oil & Gas starter notice — populated by oil_and_gas_starter_roll
+           RPC the first time the player picks Oil & Gas. Roll is saved
+           on the faction server-side, so closing this modal doesn't
+           reroll — every reopen shows the same starter. -->
+      <div id="ec-og-starter-wrap" style="display:none;margin-top:14px;padding:12px 14px;background:#1a0f08;border:0.5px solid #4a2418;border-radius:5px;">
+        <div style="font-size:10px;letter-spacing:0.12em;color:#c87a6a;font-weight:600;margin-bottom:6px;">YOUR STARTER ROLL</div>
+        <div style="font-size:14px;color:#cfcabf;margin-bottom:4px;"><b id="ec-og-starter-label">—</b> in your HQ nation</div>
+        <div style="font-size:11px;color:#8a8680;">Locked the first time you considered Oil &amp; Gas — closing this modal won't reroll. Founding this corp consumes the roll; the next Oil &amp; Gas founding rolls fresh.</div>
       </div>
 
       <div class="ec-h">II. <em>Headquarters</em></div>
@@ -513,6 +522,36 @@ async function fetchFoundingCost() {
   return entry;
 }
 function feeFor(cap) { return Math.floor((cap * FEE_PCT) / 100); }
+
+// Oil & Gas starter roll — fetched once per page load, then replayed
+// from cache. The server-side RPC is itself idempotent (returns the
+// saved faction roll, only generates one if NULL), so re-calls are
+// safe; the cache just avoids round-tripping when the player
+// switches industries back and forth.
+let _ogStarter = null; // { roll, label, fresh, rolled_at_tick } | null
+async function maybeShowOilGasStarter() {
+  const wrap = document.getElementById('ec-og-starter-wrap');
+  if (!wrap) return;
+  if (sel.industry !== 'oil_and_gas') { wrap.style.display = 'none'; return; }
+  if (_ogStarter == null) {
+    const { data, error } = await _supabase.rpc('oil_and_gas_starter_roll');
+    if (error) {
+      console.warn('[entrepreneur-corporations] oil_and_gas_starter_roll failed:', error.message);
+      wrap.style.display = 'none';
+      return;
+    }
+    if (!data?.success) {
+      console.warn('[entrepreneur-corporations] oil_and_gas_starter_roll rejected:', data?.reason);
+      wrap.style.display = 'none';
+      return;
+    }
+    _ogStarter = data;
+  }
+  const labelEl = document.getElementById('ec-og-starter-label');
+  if (labelEl) labelEl.textContent = _ogStarter.label || '—';
+  wrap.style.display = '';
+}
+
 async function refreshCost() {
   const cap     = capRaw();
   const fee     = feeFor(cap);
@@ -977,6 +1016,10 @@ function renderPositions(corps, filter) {
       const card = selectPick('ec-ind', e);
       if (!card || !card.dataset.ind) return;
       sel.industry = card.dataset.ind;
+      // Oil & Gas: fetch the saved starter roll (or generate one). The
+      // RPC is idempotent — closing this modal and re-opening replays
+      // the same outcome, only the actual founding consumes it.
+      maybeShowOilGasStarter();
       renderHqList();   // per-nation count is industry-specific
       refreshCost();    // starter building cost depends on industry
     });
