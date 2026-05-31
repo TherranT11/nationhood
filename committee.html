@@ -128,14 +128,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 import { safeHexColor, factionInitials } from './js/utils.js';
-
-const COMMITTEE_KEYS = {
-  defense_foreign_affairs: {
-    name: 'Defence & Foreign Affairs',
-    icon: '⚔',
-    desc: 'Oversees the military, foreign policy, and treaties. Reviews the Defence Ministry’s budget, scrutinises press claims, and ratifies settlements with foreign powers.',
-  },
-};
+import { COMMITTEES, applyForCommittee } from './js/committees.js';
 
 const ROLE_LABEL = {
   chair:            'CHAIR',
@@ -149,7 +142,7 @@ function escHtml(s) { const d = document.createElement('div'); d.textContent = s
 async function init() {
   const params = new URLSearchParams(location.search);
   const key    = params.get('key') || 'defense_foreign_affairs';
-  const meta   = COMMITTEE_KEYS[key];
+  const meta   = COMMITTEES[key];
   if (!meta) { showFail('Unknown committee.'); return; }
 
   let ctx = null;
@@ -190,7 +183,7 @@ async function init() {
   if (memErr) console.warn('committee: members fetch failed', memErr);
 
   renderCrumb(ctx, meta);
-  renderCommittee(ctx, meta, members || []);
+  renderCommittee(ctx, meta, members || [], committeeId);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -212,7 +205,7 @@ function renderCrumb(ctx, meta) {
     <span class="here">${escHtml(meta.name.toUpperCase())}</span>`;
 }
 
-function renderCommittee(ctx, meta, members) {
+function renderCommittee(ctx, meta, members, committeeId) {
   const viewerPolId = ctx.faction?.id || null;
   const isMP = ctx.faction?.politician_office === 'member_of_parliament';
   const onCommittee = members.some(m => m.politician_faction_id && m.politician_faction_id === viewerPolId);
@@ -270,15 +263,13 @@ function renderCommittee(ctx, meta, members) {
       <div class="up-empty">No upcoming items.</div>
     </div>`;
 
-  // Click stubs until the apply / hearing / vote flows land. One
-  // delegated handler covers both the enabled action buttons and the
-  // observer-mode Apply link. preventDefault on the link stops the
-  // href="#" from scrolling to top.
+  // Delegated click handler. Apply CTA fires the apply RPC; action
+  // buttons are still stub-alerted until hearing/vote/markup flows land.
   document.getElementById('comm-host').addEventListener('click', (e) => {
     const apply = e.target.closest('#comm-apply-cta');
     if (apply) {
       e.preventDefault();
-      alert('Committee application is not yet wired up.');
+      submitApplication(apply, committeeId);
       return;
     }
     const action = e.target.closest('.act-btn.enabled');
@@ -286,6 +277,21 @@ function renderCommittee(ctx, meta, members) {
       alert('Committee action is not yet wired up.');
     }
   });
+}
+
+async function submitApplication(link, committeeId) {
+  if (link.dataset.busy === '1') return;
+  link.dataset.busy = '1';
+  const originalText = link.textContent;
+  link.textContent = 'Submitting…';
+  const res = await applyForCommittee(committeeId);
+  if (!res.success) {
+    alert(res.humanError);
+    link.dataset.busy = ''; link.textContent = originalText;
+    return;
+  }
+  alert(`Admission vote opened. Resolves at tick ${res.data.resolve_at_tick}.`);
+  window.location.href = 'politician-nation.html#sec-voting';
 }
 
 function renderMembers(members, viewerPolId) {
