@@ -281,6 +281,25 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
             console.warn('[ApartmentRents] allocator threw:', aptThrow?.message || aptThrow);
         }
 
+        // Oil & Gas production loop — per-tick equipment runner
+        // (migration 20270443). Pumps → crude_reserve, refineries
+        // crude → refined, gas stations refined → treasury at retail.
+        // No automatic spot sales — player fires sell_crude_to_spot /
+        // sell_refined_to_spot manually. Idempotent within a tick via
+        // entrepreneur_corps.oil_last_processed_tick.
+        try {
+            const { data: ogRes, error: ogErr } = await supabase.rpc(
+                'process_oil_and_gas', { p_tick: currentTick });
+            if (ogErr) {
+                console.warn('[OilAndGas] production RPC failed:', ogErr.message);
+            } else if (ogRes && ogRes.success && Number(ogRes.corps_processed) > 0) {
+                summary.oilAndGas = ogRes;
+                console.log(`[OilAndGas] tick ${currentTick}: ${ogRes.corps_processed} corps, ${ogRes.crude_produced} crude produced, ${ogRes.refined_produced} refined produced, $${ogRes.retail_revenue} retail`);
+            }
+        } catch (ogThrow) {
+            console.warn('[OilAndGas] production threw:', ogThrow?.message || ogThrow);
+        }
+
     } catch (shipErr) {
         console.error('[advance-corp-tick] FAILED shipping route processor:', shipErr);
         summary.errors.push({ scope: 'shipping_routes', error: String(shipErr) });
