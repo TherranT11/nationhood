@@ -188,7 +188,7 @@ export function apartmentOccupancyFromStability(stab) {
  * in lockstep with that function.
  *
  *   gross       = base × (standard_of_living + infrastructure) / 100
- *   occupancy   = apartmentOccupancyFromStability(nation.stability)
+ *   occupancy   = apartmentOccupancyFromStability(nation.politician_stability)
  *   maintenance = base × (100 - infrastructure) / 200
  *   net         = round(gross × occupancy - maintenance)
  *
@@ -204,7 +204,7 @@ export function computeApartmentRent(buildingType, nation) {
     const sol  = Number(nation?.standard_of_living ?? 50);
     const inf  = Number(nation?.infrastructure    ?? 50);
     const gross       = base * (sol + inf) / 100;
-    const occupancy   = apartmentOccupancyFromStability(nation?.stability);
+    const occupancy   = apartmentOccupancyFromStability(nation?.politician_stability);
     const maintenance = base * (100 - inf) / 200;
     const net         = Math.round(gross * occupancy - maintenance);
     return {

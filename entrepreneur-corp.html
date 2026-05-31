@@ -3239,7 +3239,7 @@ function initials(s, n) {
         .select('id, name, tier, building_type, nation_id, cost_paid, ambition_granted, status, '
               + 'started_at_tick, completes_at_tick, completed_at_tick, '
               + 'owner_corp_id, list_price, brokerage_offered, broker_corp_id, '
-              + 'nation:nations!nation_id(name, standard_of_living, infrastructure, stability), '
+              + 'nation:nations!nation_id(name, standard_of_living, infrastructure, politician_stability), '
               + 'offers:building_offers!building_id(id, amount, status, placed_at_tick, '
                 + 'buyer:entrepreneur_corps!buyer_corp_id(id, name, '
                   + 'owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name)))')
