@@ -289,6 +289,11 @@
         <div class="ec-pick" data-ind="aviation_manufacturing"><div class="pn">Aviation Manufacturing</div><div class="pd">Build aircraft and engines. Founds with one Assembly Plant in your HQ nation — a 1D6 roll: 1-5 a Light Assembly Plant, 6 the rarer Engine Assembly Plant.</div></div>
         <div class="ec-pick" data-ind="oil_and_gas"><div class="pn">Oil &amp; Gas</div><div class="pd">Survey land, secure drilling permits, drill pump jacks, refine crude, and retail through gas stations. Tradeable permits let pure-play explorers monetize finds without building; refinery throughput tiers and gas-station consumption tie revenue to each nation's development. Mechanics arrive in Phase 2 — founding today reserves the company and its name.</div></div>
       </div>
+      <div id="ec-alpha-wrap" style="display:none;margin-top:14px;padding:12px 14px;background:#1a0e0a;border:0.5px solid #4a2418;border-radius:5px;">
+        <div style="font-size:10px;letter-spacing:0.12em;color:#c87a6a;font-weight:600;margin-bottom:6px;">ALPHA ACCESS REQUIRED</div>
+        <div style="font-size:11px;color:#8a8680;margin-bottom:8px;">Oil &amp; Gas is in alpha. Enter your access code to proceed.</div>
+        <input type="text" class="ec-input" id="ec-alpha" maxlength="40" placeholder="Access code" autocomplete="off" />
+      </div>
 
       <div class="ec-h">II. <em>Headquarters</em></div>
       <div id="ec-hq-note" style="font-size:11px;color:#8a8680;margin-bottom:8px;"></div>
@@ -958,6 +963,7 @@ function renderPositions(corps, filter) {
       const card = selectPick('ec-ind', e);
       if (!card || !card.dataset.ind) return;
       sel.industry = card.dataset.ind;
+      document.getElementById('ec-alpha-wrap').style.display = sel.industry === 'oil_and_gas' ? '' : 'none';
       renderHqList();   // per-nation count is industry-specific
       refreshCost();    // starter building cost depends on industry
     });
@@ -983,6 +989,9 @@ function renderPositions(corps, filter) {
     });
     document.getElementById('ec-cap').addEventListener('input', refreshCost);
 
+    // Alpha gate — client-side only; soft block while Oil & Gas
+    // mechanics are still in development.
+    const OIL_GAS_ALPHA_CODE = 'Vanderbilt1';
     let founding = false;
     document.getElementById('ec-found').addEventListener('click', async () => {
       if (founding) return;
@@ -990,6 +999,14 @@ function renderPositions(corps, filter) {
       const err = document.getElementById('ec-err');
       if (!name) { err.textContent = 'Enter a corporation name.'; err.style.display = 'inline'; return; }
       if (!sel.hqNationId) { err.textContent = 'Select a headquarters nation.'; err.style.display = 'inline'; return; }
+      if (sel.industry === 'oil_and_gas') {
+        const code = (document.getElementById('ec-alpha').value || '').trim();
+        if (code !== OIL_GAS_ALPHA_CODE) {
+          err.textContent = 'Alpha access code required for Oil & Gas.';
+          err.style.display = 'inline';
+          return;
+        }
+      }
       const cap = capRaw();
       founding = true;
       const btn = document.getElementById('ec-found');
