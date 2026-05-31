@@ -50,6 +50,7 @@
   .ec-pill.shipping     { background:#2a2419; color:#c89e6e; }
   .ec-pill.real_estate  { background:#2a1f2a; color:#aa7aaa; }
   .ec-pill.airline      { background:#16242e; color:#7ab8d0; }
+  .ec-pill.oil_and_gas  { background:#2a1612; color:#c87a6a; }
   .ec-pill.founder      { background:#1f2a1a; color:#8aaa6a; }
   .ec-pill.director     { background:#2a2419; color:#c89e6e; }
   .ec-pill.shareholder  { background:#1a2535; color:#7a9aab; }
@@ -142,6 +143,7 @@
   .ec-jr .sub.shipping     { color:#c89e6e; }
   .ec-jr .sub.real_estate  { color:#aa7aaa; }
   .ec-jr .sub.airline      { color:#7ab8d0; }
+  .ec-jr .sub.oil_and_gas  { color:#c87a6a; }
   .ec-jr .tp { display:inline-block; padding:3px 8px; border-radius:3px;
     font-size:9px; letter-spacing:0.12em; font-weight:500; }
   .ec-jr .tp.public  { background:#1a2535; color:#7a9aab; }
@@ -259,6 +261,7 @@
     <div class="ec-filter" data-f="shipping">SHIPPING</div>
     <div class="ec-filter" data-f="real_estate">REAL ESTATE</div>
     <div class="ec-filter" data-f="airline">AIRLINE</div>
+    <div class="ec-filter" data-f="oil_and_gas">OIL &amp; GAS</div>
   </div>
   <div class="ec-pos" id="ec-pos"><div class="ec-empty">Loading…</div></div>
 
@@ -284,6 +287,12 @@
         <div class="ec-pick" data-ind="real_estate"><div class="pn">Real Estate</div><div class="pd">Acquire finished buildings from Construction corps and collect rent. Steady tenant revenue; scales with Reputation.</div></div>
         <div class="ec-pick" data-ind="airline"><div class="pn">Airline</div><div class="pd">Buy aircraft, claim terminals, and fly passenger routes. Demand scales with each nation's standard of living. Capital-intensive — founds with two regional jets and two starter terminals.</div></div>
         <div class="ec-pick" data-ind="aviation_manufacturing"><div class="pn">Aviation Manufacturing</div><div class="pd">Build aircraft and engines. Founds with one Assembly Plant in your HQ nation — a 1D6 roll: 1-5 a Light Assembly Plant, 6 the rarer Engine Assembly Plant.</div></div>
+        <div class="ec-pick" data-ind="oil_and_gas"><div class="pn">Oil &amp; Gas</div><div class="pd">Survey land, secure drilling permits, drill pump jacks, refine crude, and retail through gas stations. Tradeable permits let pure-play explorers monetize finds without building; refinery throughput tiers and gas-station consumption tie revenue to each nation's development. Mechanics arrive in Phase 2 — founding today reserves the company and its name.</div></div>
+      </div>
+      <div id="ec-alpha-wrap" style="display:none;margin-top:14px;padding:12px 14px;background:#1a0e0a;border:0.5px solid #4a2418;border-radius:5px;">
+        <div style="font-size:10px;letter-spacing:0.12em;color:#c87a6a;font-weight:600;margin-bottom:6px;">ALPHA ACCESS REQUIRED</div>
+        <div style="font-size:11px;color:#8a8680;margin-bottom:8px;">Oil &amp; Gas is in alpha. Enter your access code to proceed.</div>
+        <input type="text" class="ec-input" id="ec-alpha" maxlength="40" placeholder="Access code" autocomplete="off" />
       </div>
 
       <div class="ec-h">II. <em>Headquarters</em></div>
@@ -309,6 +318,7 @@
       <div class="ec-fbreak" id="ec-fbreak">
         <span>Founding fee (5%): <b id="ec-f-fee">—</b></span>
         <span>Starter building: <b id="ec-f-bld">—</b></span>
+        <span id="ec-f-fleet-wrap" style="display:none;">Starter fleet: <b id="ec-f-fleet">—</b></span>
         <span>Total at founding: <b id="ec-f-total">—</b></span>
       </div>
 
@@ -478,18 +488,21 @@ function selectPick(containerId, e) {
   return card;
 }
 
-// Cached (industry, nation) → starter building cost in dollars. Refreshed
-// by fetchBuildingCost when the picker changes. Null = "not fetched yet"
+// Cached (industry, nation) → { bld, fleet } in dollars. Refreshed by
+// fetchFoundingCost when the picker changes. Null = "not fetched yet"
 // (UI shows em-dash placeholders until the round-trip completes).
-let _bldCostCache = new Map(); // key: `${industry}|${nationId}` → bigint
-function bldCacheKey() { return `${sel.industry}|${sel.hqNationId || ''}`; }
-async function fetchBuildingCost() {
-  const key = bldCacheKey();
-  if (_bldCostCache.has(key)) return _bldCostCache.get(key);
+// fleet is non-zero only for airline (1 regional jet at the price
+// entrepreneur_aircraft_class_price('regional') returns — see
+// airline_starter_fleet_cost in 20270442).
+let _foundingCostCache = new Map(); // key: `${industry}|${nationId}` → { bld, fleet }
+function foundingCacheKey() { return `${sel.industry}|${sel.hqNationId || ''}`; }
+async function fetchFoundingCost() {
+  const key = foundingCacheKey();
+  if (_foundingCostCache.has(key)) return _foundingCostCache.get(key);
   if (!sel.industry || !sel.hqNationId) return null;
   // Capital passes through unchanged from the slider since the per-cap
-  // fee math is mirrored client-side; we only need the building_cost
-  // field from the preview RPC. Any cap value works for that field.
+  // fee math is mirrored client-side; we only need building_cost +
+  // fleet_cost from the preview RPC. Any cap value works for those.
   const { data, error } = await _supabase.rpc('entrepreneur_corp_founding_cost', {
     p_industry: sel.industry, p_hq_nation_id: sel.hqNationId, p_capital: capRaw(),
   });
@@ -497,20 +510,35 @@ async function fetchBuildingCost() {
     console.warn('[entrepreneur-corporations] founding-cost preview failed:', error.message);
     return null;
   }
-  const bld = Number(data?.building_cost) || 0;
-  _bldCostCache.set(key, bld);
-  return bld;
+  const entry = {
+    bld:   Number(data?.building_cost) || 0,
+    fleet: Number(data?.fleet_cost)    || 0,
+  };
+  _foundingCostCache.set(key, entry);
+  return entry;
 }
 function feeFor(cap) { return Math.floor((cap * FEE_PCT) / 100); }
 async function refreshCost() {
-  const cap   = capRaw();
-  const fee   = feeFor(cap);
-  const bld   = (await fetchBuildingCost()) ?? null;
-  const total = cap + fee + (bld || 0);
+  const cap     = capRaw();
+  const fee     = feeFor(cap);
+  const costs   = await fetchFoundingCost();
+  const bld     = costs?.bld   ?? null;
+  const fleet   = costs?.fleet ?? 0;
+  const total   = cap + fee + (bld || 0) + fleet;
   document.getElementById('ec-cap-amt').textContent = fmtM(cap);
   document.getElementById('ec-cap-aft').textContent = fmtM(Math.max(0, entFunds - total));
   document.getElementById('ec-f-fee').textContent   = fmtM(fee);
   document.getElementById('ec-f-bld').textContent   = bld == null ? '—' : fmtM(bld);
+  // Starter fleet line only renders when the industry charges one
+  // (airline today; any future industry that returns fleet_cost > 0
+  // automatically picks up the line).
+  const fleetWrap = document.getElementById('ec-f-fleet-wrap');
+  if (fleet > 0) {
+    document.getElementById('ec-f-fleet').textContent = fmtM(fleet);
+    fleetWrap.style.display = '';
+  } else {
+    fleetWrap.style.display = 'none';
+  }
   document.getElementById('ec-f-total').textContent = fmtM(total);
   const ipo = document.getElementById('ec-ipo');
   if (sel.listing === 'public') {
@@ -954,6 +982,7 @@ function renderPositions(corps, filter) {
       const card = selectPick('ec-ind', e);
       if (!card || !card.dataset.ind) return;
       sel.industry = card.dataset.ind;
+      document.getElementById('ec-alpha-wrap').style.display = sel.industry === 'oil_and_gas' ? '' : 'none';
       renderHqList();   // per-nation count is industry-specific
       refreshCost();    // starter building cost depends on industry
     });
@@ -979,6 +1008,9 @@ function renderPositions(corps, filter) {
     });
     document.getElementById('ec-cap').addEventListener('input', refreshCost);
 
+    // Alpha gate — client-side only; soft block while Oil & Gas
+    // mechanics are still in development.
+    const OIL_GAS_ALPHA_CODE = 'Vanderbilt1';
     let founding = false;
     document.getElementById('ec-found').addEventListener('click', async () => {
       if (founding) return;
@@ -986,6 +1018,14 @@ function renderPositions(corps, filter) {
       const err = document.getElementById('ec-err');
       if (!name) { err.textContent = 'Enter a corporation name.'; err.style.display = 'inline'; return; }
       if (!sel.hqNationId) { err.textContent = 'Select a headquarters nation.'; err.style.display = 'inline'; return; }
+      if (sel.industry === 'oil_and_gas') {
+        const code = (document.getElementById('ec-alpha').value || '').trim();
+        if (code !== OIL_GAS_ALPHA_CODE) {
+          err.textContent = 'Alpha access code required for Oil & Gas.';
+          err.style.display = 'inline';
+          return;
+        }
+      }
       const cap = capRaw();
       founding = true;
       const btn = document.getElementById('ec-found');

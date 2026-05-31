@@ -171,6 +171,39 @@
   .ap-meta { display:flex; justify-content:space-between; font-size:10px; color:#666;
     letter-spacing:0.08em; }
   .ap-meta .done { color:#8aaa6a; }
+  /* Apartment per-tick rent line — only renders on apartment_* rows. */
+  .ap-rent { display:flex; flex-wrap:wrap; gap:14px; align-items:center; font-size:10.5px;
+    color:#999; background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.06);
+    border-radius:3px; padding:7px 10px; margin-top:8px; letter-spacing:0.04em; }
+  .ap-rent b { color:#cfcabf; font-weight:600; }
+  .ap-rent .pos b      { color:#8aaa6a; }
+  .ap-rent .neg b      { color:#c87a6a; }
+  .ap-rent .occ-good b { color:#8aaa6a; }
+  .ap-rent .occ-warn b { color:#c89e6e; }
+  .ap-rent .occ-bad  b { color:#c87a6a; }
+  /* Phase 3 occupancy sparkline — tiny 12-tick trend SVG sitting
+     next to the Occupancy badge. Stroke colour follows the latest
+     occupancy band so a glance tells current state + direction. */
+  .ap-spark { display:inline-block; width:56px; height:14px; vertical-align:middle;
+    margin-left:-6px; }
+  .ap-spark polyline { fill:none; stroke-width:1.2; stroke-linejoin:round; stroke-linecap:round; }
+  .ap-spark.occ-good polyline { stroke:#8aaa6a; }
+  .ap-spark.occ-warn polyline { stroke:#c89e6e; }
+  .ap-spark.occ-bad  polyline { stroke:#c87a6a; }
+  /* Rental Portfolio summary — one-line aggregate above the holdings
+     list for Real Estate corps with apartments. */
+  .rental-summary { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.06);
+    border-radius:4px; padding:10px 14px; margin-bottom:10px; }
+  .rental-summary .rs-lab { font-size:9px; letter-spacing:0.14em; color:#666;
+    font-weight:600; text-transform:uppercase; margin-bottom:6px; }
+  .rental-summary .rs-stats { display:flex; flex-wrap:wrap; gap:18px;
+    font-size:11px; color:#999; letter-spacing:0.04em; }
+  .rental-summary b           { color:#cfcabf; font-weight:600; }
+  .rental-summary .pos b      { color:#8aaa6a; }
+  .rental-summary .neg b      { color:#c87a6a; }
+  .rental-summary .occ-good b { color:#8aaa6a; }
+  .rental-summary .occ-warn b { color:#c89e6e; }
+  .rental-summary .occ-bad  b { color:#c87a6a; }
   .ap-empty { background:#0d0d0d; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
     padding:24px 18px; color:#666; font-size:12px; text-align:center; line-height:1.6;
     letter-spacing:0.03em; }
@@ -474,6 +507,10 @@
   .ap-btype.real_estate_office { background:#2a1f2a; color:#aa7aaa; }
   .ap-btype.engine_assembly_plant { background:#2a1a1a; color:#c88a8a; }
   .ap-btype.light_assembly_plant  { background:#2a261a; color:#c8b06e; }
+  /* Residential — slate-to-gold gradient by tier (Basic → Modest → Luxury). */
+  .ap-btype.apartment_basic    { background:#1c1d20; color:#8a98a8; }
+  .ap-btype.apartment_modest   { background:#1f1e1a; color:#b0a890; }
+  .ap-btype.apartment_luxury   { background:#26221a; color:#c8b878; }
   .bm-tiers { display:grid; grid-template-columns:1fr; gap:6px; }
   .bm-tier { display:grid; grid-template-columns:80px 1fr auto auto auto; gap:12px;
     padding:11px 14px; background:#121212; border:0.5px solid rgba(255,255,255,0.10);
@@ -831,7 +868,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent, apartmentOccupancyFromStability, APARTMENT_DEFS } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash, computeCorpBookValue } from './js/game/corp-valuation.js';
 import { fetchOneCorpBookAggregates } from './js/corp-book-value.js';
 import { GRIEVANCE_LABEL } from './js/game/lawsuit-types.js';
@@ -3028,6 +3065,15 @@ function initials(s, n) {
     };
     const isPlantType = (t) => t === 'engine_assembly_plant' || t === 'light_assembly_plant';
 
+    // Apartment Complex type definitions are imported from utils.js as
+    // APARTMENT_DEFS — single JS-side source paired with the server
+    // copies in corp_building_cost_profile (cost + sensitivity) and
+    // process_apartment_rents (baseRent). Cost preview here uses the
+    // Pattern-B exponent: cost = base × mult × (1 + (sens-1)(100-inf)/100).
+    // Basic (sensitivity 1.0) collapses to base × mult; Modest 6-24%
+    // premium; Luxury 14-56% premium scaled by missing infrastructure.
+    const isApartmentType = (t) => t === 'apartment_basic' || t === 'apartment_modest' || t === 'apartment_luxury';
+
     // Nation-aware cost / duration scaling (mirrors begin_construction
     // formula in 20270172/20270180). multiplier = (0.5 + col/100) ×
     // (0.5 + (100 - inf)/100). NULL stats → 50 (neutral, multiplier
@@ -3046,6 +3092,18 @@ function initials(s, n) {
     }
     function scaledDuration(base, nation) {
       return Math.max(1, Math.round(base * nationCostMult(nation)));
+    }
+    // Apartment cost preview: base × mult × infrastructure-penalty.
+    // Mirrors the v_apt_premium branch in corp_building_cost_profile
+    // (20270437). premium = 1 + (sensitivity - 1) × (100 - inf) / 100,
+    // so sensitivity = 1.0 collapses to base × mult (linear) — safe
+    // to call on any building type; Basic apartments + every existing
+    // building uses that linear path. Modest and Luxury get a 6-24%
+    // and 14-56% premium respectively, scaled by missing infrastructure.
+    function patternBCost(base, nation, sensitivity) {
+      const inf = Number(nation?.infrastructure ?? 50);
+      const premium = 1 + (sensitivity - 1) * (100 - inf) / 100;
+      return Math.round(base * nationCostMult(nation) * premium);
     }
     // RHQ profile limited to small/medium/large (server enforces).
     const RHQ_TIERS = ['small', 'medium', 'large'];
@@ -3153,7 +3211,7 @@ function initials(s, n) {
         .select('id, name, tier, building_type, nation_id, cost_paid, ambition_granted, status, '
               + 'started_at_tick, completes_at_tick, completed_at_tick, '
               + 'owner_corp_id, list_price, brokerage_offered, broker_corp_id, '
-              + 'nation:nations!nation_id(name), '
+              + 'nation:nations!nation_id(name, standard_of_living, infrastructure, stability), '
               + 'offers:building_offers!building_id(id, amount, status, placed_at_tick, '
                 + 'buyer:entrepreneur_corps!buyer_corp_id(id, name, '
                   + 'owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name)))')
@@ -3162,6 +3220,32 @@ function initials(s, n) {
       if (bErr) console.warn('[entrepreneur-corp] buildings fetch error:', bErr.message);
       const rows = bldgs || [];
       ownedBuildings = rows; // shared with renderAssets (section III)
+
+      // Phase 3 — apartment occupancy history for sparkline + trend.
+      // Fetches last 12 ticks of nation stability for every nation the
+      // corp has apartments in. One query, scoped to the nations we
+      // actually need; skipped entirely when the corp owns zero
+      // apartments (every other corp type pays nothing).
+      const aptRows = rows.filter(b =>
+        b.status === 'completed' &&
+        (b.building_type === 'apartment_basic'  ||
+         b.building_type === 'apartment_modest' ||
+         b.building_type === 'apartment_luxury'));
+      const nationHistory = new Map();   // nation_id → [{tick, stability}, …]
+      if (aptRows.length) {
+        const aptNationIds = [...new Set(aptRows.map(a => a.nation_id))];
+        const lookback = 12;
+        const { data: hist, error: hErr } = await _supabase.from('nations_history')
+          .select('nation_id, tick, stability')
+          .in('nation_id', aptNationIds)
+          .gte('tick', currentTick - lookback)
+          .order('tick', { ascending: true });
+        if (hErr) console.warn('[entrepreneur-corp] nations_history fetch error:', hErr.message);
+        for (const h of (hist || [])) {
+          if (!nationHistory.has(h.nation_id)) nationHistory.set(h.nation_id, []);
+          nationHistory.get(h.nation_id).push(h);
+        }
+      }
 
       let launchBtn = '';
       if (isOwner && isConstructionCorp) {
@@ -3174,6 +3258,53 @@ function initials(s, n) {
              <div class="lab">Real Estate corp — browse completed buildings on the market.</div>
              <button class="ap-btn" id="cp-browse-market">Browse Market</button>
            </div>`;
+      }
+
+      // Phase 3 helpers — occupancy color tint + 12-tick sparkline.
+      // Bands: ≥85% healthy (green), 70-84% caution (amber), <70% bleed
+      // (red). Same palette as the existing .ap-rent .pos / .neg.
+      // Sparkline reads stability history per nation; the same clamp
+      // (0.4–1.0) computeApartmentRent uses keeps the visual band
+      // consistent with the actual occupancy floor.
+      const occClass = (occ) => occ >= 0.85 ? 'occ-good' : (occ >= 0.70 ? 'occ-warn' : 'occ-bad');
+      const renderOccSparkline = (history) => {
+        if (!history || history.length < 2) return '';
+        const W = 56, H = 14;
+        const points = history.map((h, i) => {
+          const x = (i / (history.length - 1)) * (W - 2) + 1;
+          const occ = apartmentOccupancyFromStability(h.stability);
+          const y = (H - 2) - (occ - 0.4) / 0.6 * (H - 4);
+          return `${x.toFixed(1)},${y.toFixed(1)}`;
+        }).join(' ');
+        const lastOcc = apartmentOccupancyFromStability(history[history.length - 1].stability);
+        return `<svg class="ap-spark ${occClass(lastOcc)}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="Occupancy trend, last ${history.length} ticks"><polyline points="${points}" /></svg>`;
+      };
+
+      // Rental Portfolio summary — one-line aggregate above the
+      // properties list. Only renders for Real Estate corps holding
+      // ≥1 apartment; everything else gets no panel. Occupancy is
+      // gross-rent-weighted so larger holdings dominate the headline.
+      let portfolioHtml = '';
+      if (isOwner && isRealEstateCorp && aptRows.length) {
+        let pNet = 0, pOccW = 0, pOccTot = 0;
+        for (const apt of aptRows) {
+          const r = computeApartmentRent(apt.building_type, apt.nation);
+          if (!r) continue;
+          pNet    += r.net;
+          pOccW   += r.gross;
+          pOccTot += r.occupancy * r.gross;
+        }
+        const avgOcc = pOccW > 0 ? pOccTot / pOccW : 0;
+        const nationCount = new Set(aptRows.map(a => a.nation_id)).size;
+        portfolioHtml = `<div class="rental-summary">
+          <div class="rs-lab">Rental Portfolio</div>
+          <div class="rs-stats">
+            <span><b>${aptRows.length}</b> ${aptRows.length === 1 ? 'apartment' : 'apartments'}</span>
+            <span><b>${nationCount}</b> ${nationCount === 1 ? 'nation' : 'nations'}</span>
+            <span>Avg occupancy <b class="${occClass(avgOcc)}">${Math.round(avgOcc * 100)}%</b></span>
+            <span class="${pNet < 0 ? 'neg' : 'pos'}">Net rent <b>${pNet < 0 ? '−' : ''}${fmtUsd(Math.abs(pNet))}</b>/tick</span>
+          </div>
+        </div>`;
       }
 
       const listHtml = rows.length
@@ -3243,6 +3374,20 @@ function initials(s, n) {
                      }).join('')}
                    </div>`
                 : '';
+              // Apartment rent breakdown — live forecast against current
+              // nation stats. Mirrors process_apartment_rents (20270438);
+              // computeApartmentRent in utils.js is the JS-side single
+              // source. Negative net is shown red — that's the design's
+              // signal that holding this property is bleeding cash.
+              const rent = computeApartmentRent(b.building_type, b.nation);
+              const rentRow = rent
+                ? `<div class="ap-rent">
+                     <span class="${occClass(rent.occupancy)}">Occupancy <b>${Math.round(rent.occupancy * 100)}%</b></span>${renderOccSparkline(nationHistory.get(b.nation_id))}
+                     <span>Gross <b>${fmtUsd(rent.gross)}</b>/tick</span>
+                     <span>Maintenance <b>${fmtUsd(rent.maintenance)}</b>/tick</span>
+                     <span class="${rent.net < 0 ? 'neg' : 'pos'}">Net <b>${rent.net < 0 ? '−' : ''}${fmtUsd(Math.abs(rent.net))}</b>/tick</span>
+                   </div>`
+                : '';
               return `
                 <div class="ap-row completed">
                   <div class="ap-row-head">
@@ -3256,6 +3401,7 @@ function initials(s, n) {
                     <span>Cost ${fmtUsd(Number(b.cost_paid))}</span>
                     <span class="done">✓ +0.2 GDP Growth applied</span>
                   </div>
+                  ${rentRow}
                   ${actionRow}
                   ${offersRow}
                 </div>`;
@@ -4186,7 +4332,7 @@ function initials(s, n) {
         requestPanelHtml += `<div class="section-heading"><span class="sans">Open</span><span class="serif">Build Requests</span></div>${openHtml}`;
       }
 
-      pj.innerHTML = launchBtn + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + airlinePanelHtml + aviationPanelHtml + ordersPanelHtml + requestPanelHtml;
+      pj.innerHTML = launchBtn + portfolioHtml + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + airlinePanelHtml + aviationPanelHtml + ordersPanelHtml + requestPanelHtml;
 
       if (isOwner && isConstructionCorp) {
         document.getElementById('cp-begin-construction').addEventListener('click', openBuildModal);
@@ -4319,7 +4465,7 @@ function initials(s, n) {
     let buildSubmitting = false;
     let selectedBuildType = 'regional_hq';
     let corpRhqNationIds = new Set();    // owned RHQs (for non-RHQ filtering)
-    let nationMap = new Map();            // id → { id, name, cost_of_living, infrastructure }
+    let nationMap = new Map();            // id → { id, name, cost_of_living, infrastructure, standard_of_living, stability }
 
     const currentNation = () => nationMap.get(document.getElementById('bm-nation').value);
 
@@ -4451,7 +4597,7 @@ function initials(s, n) {
       // open. Two tiny queries; result is reused across modal opens.
       if (nationMap.size === 0) {
         const { data: nats, error: nErr } = await _supabase.from('nations')
-          .select('id, name, cost_of_living, infrastructure')
+          .select('id, name, cost_of_living, infrastructure, standard_of_living, stability')
           .not('continent', 'is', null).order('name');
         if (nErr) console.warn('[entrepreneur-corp] nations fetch error:', nErr.message);
         for (const n of (nats || [])) nationMap.set(n.id, n);
@@ -4510,11 +4656,16 @@ function initials(s, n) {
       construction_yard: 'construction', port: 'shipping', banking_office: 'banking',
       real_estate_office: 'real_estate', engine_assembly_plant: 'aviation_manufacturing',
       light_assembly_plant: 'aviation_manufacturing',
+      apartment_basic: 'real_estate', apartment_modest: 'real_estate', apartment_luxury: 'real_estate',
     };
     const requestableTypes = ['regional_hq'].concat(
       Object.keys(SECTOR_OF_TYPE).filter(t => SECTOR_OF_TYPE[t] === c.industry));
-    const reqBase  = (t, tier) => isPlantType(t) ? (PLANT_PROFILE[t]?.cost  || 0) : (TIER_TABLE[tier]?.cost  || 0);
-    const reqTicks = (t, tier) => isPlantType(t) ? (PLANT_PROFILE[t]?.ticks || 0) : (TIER_TABLE[tier]?.ticks || 0);
+    const reqBase  = (t, tier) => isPlantType(t)     ? (PLANT_PROFILE[t]?.cost  || 0)
+                                 : isApartmentType(t) ? (APARTMENT_DEFS[t]?.cost || 0)
+                                 : (TIER_TABLE[tier]?.cost  || 0);
+    const reqTicks = (t, tier) => isPlantType(t)     ? (PLANT_PROFILE[t]?.ticks || 0)
+                                 : isApartmentType(t) ? (APARTMENT_DEFS[t]?.ticks || 0)
+                                 : (TIER_TABLE[tier]?.ticks || 0);
     const RC_REASON = {
       wrong_sector: 'Your corp can’t own this building type.',
       insufficient_funds: 'Your treasury can’t cover the construction cost.',
@@ -4552,7 +4703,7 @@ function initials(s, n) {
       if (!ov) return;
       if (nationMap.size === 0) {
         const { data: nats, error: nErr } = await _supabase.from('nations')
-          .select('id, name, cost_of_living, infrastructure').not('continent', 'is', null).order('name');
+          .select('id, name, cost_of_living, infrastructure, standard_of_living, stability').not('continent', 'is', null).order('name');
         if (nErr) console.warn('[entrepreneur-corp] nations fetch error:', nErr.message);
         for (const n of (nats || [])) nationMap.set(n.id, n);
       }
@@ -4592,7 +4743,10 @@ function initials(s, n) {
       const curNation = () => nationMap.get(document.getElementById('rc-nation').value);
       const renderTier = () => {
         const t = typeEl.value;
-        if (isPlantType(t)) {
+        // Apartments + plants pin their own effective tier server-side
+        // (corp_building_cost_profile maps the type → eff_tier), so the
+        // tier selector is hidden for both.
+        if (isPlantType(t) || isApartmentType(t)) {
           tierEl.innerHTML = ''; tierEl.style.display = 'none'; tierLabel.style.display = 'none';
         } else {
           const keys = t === 'regional_hq' ? RHQ_TIERS : ALL_TIERS;
@@ -4602,12 +4756,30 @@ function initials(s, n) {
       };
       const upd = () => {
         const t = typeEl.value;
-        const tier = isPlantType(t) ? null : tierEl.value;
+        const tier = (isPlantType(t) || isApartmentType(t)) ? null : tierEl.value;
         const nation = curNation();
-        const baseCost = scaledCost(reqBase(t, tier), nation);
+        // Apartments use Pattern B cost (base × multiplier^sensitivity);
+        // everything else uses the linear scaledCost. patternBCost with
+        // sensitivity=1.0 would collapse to the same number, but routing
+        // non-apartments through scaledCost keeps the preview math
+        // exactly equal to the existing path for those types.
+        const baseCost = isApartmentType(t)
+          ? patternBCost(reqBase(t, null), nation, APARTMENT_DEFS[t].sensitivity)
+          : scaledCost(reqBase(t, tier), nation);
         const dur   = scaledDuration(reqTicks(t, tier), nation);
+        // Apartment-only forecast line: projected occupancy + net rent
+        // at the picked nation's current stats. Same single-source
+        // helper the property card reads from, so the prediction in
+        // the modal matches the number shown after delivery.
+        let forecastLine = '';
+        if (isApartmentType(t)) {
+          const rent = computeApartmentRent(t, nation);
+          if (rent) {
+            forecastLine = `<br>Projected occupancy <b>${Math.round(rent.occupancy * 100)}%</b> · net rent <b>${rent.net < 0 ? '−' : ''}${fmtUsd(Math.abs(rent.net))}</b>/tick at current nation stats.`;
+          }
+        }
         document.getElementById('rc-preview').innerHTML =
-          `Local-build cost: <b>${fmtUsd(baseCost)}</b> · build time ~<b>${dur} ticks</b><br>Every construction corp can bid at any positive price — even below their own distance-adjusted cost. Lowest accepted bid wins at close (you can accept manually before then).`;
+          `Local-build cost: <b>${fmtUsd(baseCost)}</b> · build time ~<b>${dur} ticks</b>${forecastLine}<br>Every construction corp can bid at any positive price — even below their own distance-adjusted cost. Lowest accepted bid wins at close (you can accept manually before then).`;
       };
       typeEl.onchange = () => { renderTier(); upd(); };
       tierEl.onchange = upd;
@@ -4621,7 +4793,7 @@ function initials(s, n) {
         const nationId = document.getElementById('rc-nation').value;
         if (!nationId) { errEl.textContent = 'Pick a nation.'; return; }
         const t = typeEl.value;
-        const tier = isPlantType(t) ? 'small' : tierEl.value;   // server pins plant tier
+        const tier = (isPlantType(t) || isApartmentType(t)) ? 'small' : tierEl.value;   // server pins plant + apartment tier
         const bidding = Math.max(1, Math.round(Number(document.getElementById('rc-bidding').value) || 6));
         submitting = true;
         const btn = document.getElementById('rc-submit'); btn.disabled = true; btn.textContent = 'Posting…'; errEl.textContent = '';

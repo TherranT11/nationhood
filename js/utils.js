@@ -72,15 +72,44 @@ export function titleCase(s) {
 }
 
 /**
+ * Canonical title-case display names for entrepreneur corp industries.
+ * Single source — every site that shows an industry name reads from
+ * this map via industryLabel (uppercase pill form) or
+ * industryTitleLabel (title-case form for dashboards / dropdowns).
+ * Adding a new industry: add it here and both formatters pick it up.
+ */
+const INDUSTRY_LABELS = {
+    construction:           'Construction',
+    banking:                'Banking',
+    shipping:               'Shipping',
+    real_estate:            'Real Estate',
+    airline:                'Airline',
+    aviation_manufacturing: 'Aviation Manufacturing',
+    oil_and_gas:            'Oil & Gas',
+};
+
+/**
  * Display label for an entrepreneur corp industry / sector enum value.
- * Lowercase snake_case ('real_estate') → uppercase with spaces
- * ('REAL ESTATE'). NULL / empty → em-dash. Single source for the
- * transformation; all dashboard sites that show an industry pill or
- * subtitle should call this.
+ * Returns the canonical name in uppercase ('OIL & GAS', 'REAL ESTATE').
+ * NULL / empty → em-dash. Unknown industries fall back to a generic
+ * underscore→space transform so new industries aren't completely broken
+ * before they get added to INDUSTRY_LABELS.
  */
 export function industryLabel(s) {
     if (!s) return '—';
-    return String(s).toUpperCase().replace(/_/g, ' ');
+    const name = INDUSTRY_LABELS[s];
+    return name ? name.toUpperCase() : String(s).toUpperCase().replace(/_/g, ' ');
+}
+
+/**
+ * Title-case display label for an industry — used by the dashboard
+ * INDUSTRY field and the buyer-corp dropdowns where uppercase looks
+ * wrong. Same source map as industryLabel, so the two forms can't
+ * drift apart.
+ */
+export function industryTitleLabel(s) {
+    if (!s) return '—';
+    return INDUSTRY_LABELS[s] || titleCase(s);
 }
 
 /**
@@ -90,6 +119,74 @@ export function industryLabel(s) {
  * My Offers grids read from here. NULL / unknown values fall back to
  * the generic 'Building' so unmapped future types still render.
  */
+/**
+ * Single source for the Apartment Complex tier definitions. Every fact
+ * that varies per apartment type lives here: construction cost base,
+ * build duration ticks, Pattern-B cost sensitivity (20270437), and the
+ * per-tick base rent (20270438). Both the entrepreneur-corp request
+ * modal preview (cost/ticks/sensitivity) and computeApartmentRent
+ * below (baseRent) read from this map — single JS-side source.
+ *
+ * Server-authoritative copies of these numbers live in:
+ *   corp_building_cost_profile  — cost + sensitivity (20270437)
+ *   process_apartment_rents      — baseRent (20270438)
+ * Keep them in sync.
+ */
+export const APARTMENT_DEFS = {
+    apartment_basic:  { cost: 12000000, ticks: 24, sensitivity: 1.0, baseRent: 40000  },
+    apartment_modest: { cost: 25000000, ticks: 27, sensitivity: 1.3, baseRent: 90000  },
+    apartment_luxury: { cost: 60000000, ticks: 30, sensitivity: 1.7, baseRent: 250000 },
+};
+
+/**
+ * Apartment occupancy as a function of nation stability. Single source —
+ * computeApartmentRent below calls it for the live rent calc; the
+ * occupancy sparkline in entrepreneur-corp.html calls it per-history-tick
+ * via nations_history.stability. Nullish-coalesces to 50 (median) so
+ * stability=0 stays 0 (correctly clamped to the 0.4 floor) rather than
+ * being treated as missing.
+ *
+ *   occupancy = clamp(0.4, 1.0, stability / 100)
+ */
+export function apartmentOccupancyFromStability(stab) {
+    const s = Number(stab ?? 50);
+    return Math.max(0.4, Math.min(1.0, s / 100));
+}
+
+/**
+ * Per-tick rent breakdown for an Apartment Complex. Mirrors the
+ * process_apartment_rents() server RPC (20270438) — keep the math
+ * in lockstep with that function.
+ *
+ *   gross       = base × (standard_of_living + infrastructure) / 100
+ *   occupancy   = apartmentOccupancyFromStability(nation.stability)
+ *   maintenance = base × (100 - infrastructure) / 200
+ *   net         = round(gross × occupancy - maintenance)
+ *
+ * Returns { gross, maintenance, occupancy, net, basePerTick } as
+ * integers (dollars per tick) and occupancy as a 0-1 fraction.
+ * Unknown / non-apartment building types return null so callers can
+ * skip the row cleanly.
+ */
+export function computeApartmentRent(buildingType, nation) {
+    const def = APARTMENT_DEFS[buildingType];
+    if (!def) return null;
+    const base = def.baseRent;
+    const sol  = Number(nation?.standard_of_living ?? 50);
+    const inf  = Number(nation?.infrastructure    ?? 50);
+    const gross       = base * (sol + inf) / 100;
+    const occupancy   = apartmentOccupancyFromStability(nation?.stability);
+    const maintenance = base * (100 - inf) / 200;
+    const net         = Math.round(gross * occupancy - maintenance);
+    return {
+        basePerTick: base,
+        gross:       Math.round(gross),
+        maintenance: Math.round(maintenance),
+        occupancy,
+        net,
+    };
+}
+
 export function buildingTypeLabel(t) {
     switch (t) {
         case 'regional_hq':        return 'Regional HQ';
@@ -99,6 +196,9 @@ export function buildingTypeLabel(t) {
         case 'real_estate_office': return 'Real Estate Office';
         case 'light_assembly_plant':  return 'Light Assembly Plant';
         case 'engine_assembly_plant': return 'Engine Assembly Plant';
+        case 'apartment_basic':    return 'Basic Apartments';
+        case 'apartment_modest':   return 'Modest Apartments';
+        case 'apartment_luxury':   return 'Luxury Apartments';
         default:                   return t ? String(t) : 'Building';
     }
 }
@@ -138,6 +238,27 @@ export function tickToDate(tick) {
  */
 export function tickToYear(tick) {
     return 2000 + Math.floor((Number(tick) || 0) / 12);
+}
+
+/**
+ * Term-end tick by office — single source for "when does this seat
+ * reseat?" Legislature offices (member_of_parliament, senior_mp) track
+ * the nation's general-election cycle; local offices (community_organizer,
+ * city_council_member) run a flat 12-tick term from when they won.
+ * Returns null when no term applies (no office, or office without a
+ * scheduled end).
+ *
+ *   state = { office, nextGeneralElectionTick, officeWonAtTick }
+ */
+export function termEndTickFor(state) {
+    const office = state && state.office;
+    if (office === 'member_of_parliament' || office === 'senior_mp') {
+        return Number(state.nextGeneralElectionTick) || null;
+    }
+    if (office === 'community_organizer' || office === 'city_council_member') {
+        return (Number(state.officeWonAtTick) || 0) + 12;
+    }
+    return null;
 }
 
 // ===== FORMATTING =====

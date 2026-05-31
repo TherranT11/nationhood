@@ -139,6 +139,8 @@
   border-radius:8px; padding:20px 24px; margin-bottom:14px; }
 .panel-lab { font-size:9px; letter-spacing:0.13em; color:#666; margin-bottom:10px;
   text-transform:uppercase; font-weight:600; }
+.panel-lab .count { color:#888; font-weight:500; letter-spacing:0.04em;
+  text-transform:none; font-size:10px; margin-left:8px; }
 .about-text { font-size:13px; color:#d4d4d4; line-height:1.65; }
 .about-text em { color:#888; font-style:italic; }
 
@@ -329,11 +331,11 @@
         <div class="mem-empty">No blocs on record yet.</div>
       </div>
       <div class="panel">
-        <div class="panel-lab">Members of Parliament</div>
-        <div class="mem-empty">No MPs on record yet.</div>
+        <div class="panel-lab">Members of Parliament <span id="mps-count" class="count"></span></div>
+        <div id="mps-host"></div>
       </div>
       <div class="panel">
-        <div class="panel-lab">Members <span id="members-count" style="color:#888; font-weight:500; letter-spacing:0.04em; text-transform:none; font-size:10px; margin-left:8px;"></span></div>
+        <div class="panel-lab">Members <span id="members-count" class="count"></span></div>
         <div id="members-host"></div>
       </div>
       <!-- Party Business — proposal cards. Hidden for non-members; the
@@ -677,7 +679,8 @@ function patchPopularityCell(newPct) {
 // the rest of the members list stays untouched.
 function patchViewerInfluenceCell(newInf) {
   if (!Number.isFinite(newInf)) return;
-  document.querySelectorAll('#members-host .mem-row').forEach(row => {
+  // Viewer may sit in either panel — patch wherever the You badge lives.
+  document.querySelectorAll('#mps-host .mem-row, #members-host .mem-row').forEach(row => {
     if (row.querySelector('.mem-name .you')) {
       const cell = row.querySelector('.mem-inf');
       if (cell) cell.textContent = newInf;
@@ -911,22 +914,50 @@ function leadCard(name, role, accent) {
   </div>`;
 }
 
+// MP offices that bubble a member up into the Members of Parliament panel.
+// Senior MP is included so a Tier 2 promotion stays in the MP list.
+const MP_OFFICES = new Set(['member_of_parliament', 'senior_mp']);
+
 function renderMembers(members, accent) {
-  const host = document.getElementById('members-host');
-  const countEl = document.getElementById('members-count');
-  countEl.textContent = members.length ? `${members.length} on file` : '';
-  if (!members.length) {
-    host.innerHTML = '<div class="mem-empty">No politicians have registered membership yet.</div>';
+  // Partition once: anyone holding an MP-class office goes to the MPs
+  // panel; everyone else stays in Members. Office is the only signal —
+  // keep this lookup in lockstep with MP_OFFICES.
+  const mps = members.filter(m => MP_OFFICES.has(m.politician_office));
+  const rest = members.filter(m => !MP_OFFICES.has(m.politician_office));
+  renderMemberPanel(
+    document.getElementById('mps-host'),
+    document.getElementById('mps-count'),
+    mps,
+    accent,
+    'No MPs on record yet.',
+  );
+  renderMemberPanel(
+    document.getElementById('members-host'),
+    document.getElementById('members-count'),
+    rest,
+    accent,
+    'No politicians have registered membership yet.',
+  );
+}
+
+// Shared renderer for both the MPs and the Members panels — same row
+// shape, same header, same empty-state styling. Affiliation column
+// stays visible in both: for MPs it always reads "Member of Parliament"
+// (or Senior MP); for the Members panel it varies by office.
+function renderMemberPanel(host, countEl, rows, accent, emptyText) {
+  if (!host) return;
+  if (countEl) countEl.textContent = rows.length ? `${rows.length} on file` : '';
+  if (!rows.length) {
+    host.innerHTML = `<div class="mem-empty">${escHtml(emptyText)}</div>`;
     return;
   }
-  const rows = members.map(m => {
+  const body = rows.map(m => {
     const name = [m.leader_first_name, m.leader_last_name].filter(Boolean).join(' ') || '—';
     const youBadge = m.id === _viewerPolId ? ' <span class="you">You</span>' : '';
     const age = (m.leader_age != null) ? String(Number(m.leader_age)) : '—';
-    // Affiliation = office title when an office is held (Community
-    // Organizer / Member of Parliament — see OFFICE_TITLES in
-    // js/utils.js); otherwise plain "Party Member". Office-holders get
-    // an accent color so they pop out of the list.
+    // Affiliation = office title when an office is held (see
+    // OFFICE_TITLES in js/utils.js); otherwise plain "Party Member".
+    // Office-holders get an accent color so they pop out of the list.
     const office = m.politician_office || null;
     const affilText = office ? officeTitle(office) : 'Party Member';
     const affilCls  = office ? 'mem-affil office' : 'mem-affil';
@@ -940,7 +971,7 @@ function renderMembers(members, accent) {
   }).join('');
   host.innerHTML = `<div class="mem-row header">
     <span></span><span>Name</span><span>Affiliation</span><span>Age</span><span style="text-align:right;">Influence</span>
-  </div>${rows}`;
+  </div>${body}`;
 }
 
 // ── Party Business ──────────────────────────────────────────────────
