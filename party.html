@@ -167,7 +167,7 @@
    on this surface is by definition a member of THIS party, so the cell
    carried no per-row signal. When held-office tracking lands (MP /
    Whip / Senator / Minister), a new column slots back in here. */
-.mem-row { display:grid; grid-template-columns:38px 1fr 90px 150px 60px 80px;
+.mem-row { display:grid; grid-template-columns:38px 1fr 150px 90px 60px 80px;
   gap:14px; align-items:center; padding:11px 4px;
   border-bottom:0.5px solid rgba(255,255,255,0.04); font-size:12px; }
 .mem-affil { color:#cfcabf; font-size:11px; }
@@ -183,9 +183,12 @@
 .mem-name .you { font-size:8px; letter-spacing:0.1em; margin-left:8px;
   background:#0e1416; color:#5aafa5; border:0.5px solid rgba(90,175,165,0.4);
   padding:2px 6px; border-radius:2px; text-transform:uppercase; }
-.mem-fol { color:#cfcabf; font-family:monospace; font-size:11px;
+/* .mem-stat carries Allies (national panel: reputation × 3) or
+   Volunteers (local panel: credibility × 3). Same N / cap shape,
+   header label varies by panel kind. */
+.mem-stat { color:#cfcabf; font-family:monospace; font-size:11px;
   font-variant-numeric:tabular-nums; }
-.mem-fol .of { color:#666; }
+.mem-stat .of { color:#666; }
 .mem-age { color:#888; font-size:11px; font-variant-numeric:tabular-nums; }
 .mem-inf { text-align:right; color:#cfcabf; font-family:monospace;
   font-variant-numeric:tabular-nums; }
@@ -306,7 +309,7 @@
   .body-grid.has-side { grid-template-columns:1fr; }
   .chat-thread { max-height:300px; }
   .mem-row { grid-template-columns:30px 1fr auto; }
-  .mem-row .mem-age, .mem-row .mem-affil, .mem-row .mem-fol { display:none; }
+  .mem-row .mem-age, .mem-row .mem-affil, .mem-row .mem-stat { display:none; }
   .biz-grid { grid-template-columns:1fr; }
   .biz-modal { max-width:100%; }
 }
@@ -334,11 +337,11 @@
         <div class="mem-empty">No blocs on record yet.</div>
       </div>
       <div class="panel">
-        <div class="panel-lab">Members of Parliament <span id="mps-count" class="count"></span></div>
+        <div class="panel-lab">National Government <span id="mps-count" class="count"></span></div>
         <div id="mps-host"></div>
       </div>
       <div class="panel">
-        <div class="panel-lab">Members <span id="members-count" class="count"></span></div>
+        <div class="panel-lab">Local Government <span id="members-count" class="count"></span></div>
         <div id="members-host"></div>
       </div>
       <!-- Party Business — proposal cards. Hidden for non-members; the
@@ -460,7 +463,7 @@ async function init() {
       .is('abandoned_at', null)
       .maybeSingle(),
     _supabase.from('factions')
-      .select('id, leader_first_name, leader_last_name, leader_age, politician_influence, politician_reputation, politician_office')
+      .select('id, leader_first_name, leader_last_name, leader_age, politician_influence, politician_reputation, politician_credibility, politician_office')
       .eq('politician_party_id', partyId)
       .eq('faction_type', 'politician')
       .is('abandoned_at', null)
@@ -948,9 +951,9 @@ function leadCard(name, role, accent) {
 const MP_OFFICES = new Set(['member_of_parliament', 'senior_mp']);
 
 function renderMembers(members, accent) {
-  // Partition once: anyone holding an MP-class office goes to the MPs
-  // panel; everyone else stays in Members. Office is the only signal —
-  // keep this lookup in lockstep with MP_OFFICES.
+  // Partition once: anyone holding an MP-class office goes to the
+  // National Government panel; everyone else stays in Local Government.
+  // Office is the only signal — keep this lookup in lockstep with MP_OFFICES.
   const mps = members.filter(m => MP_OFFICES.has(m.politician_office));
   const rest = members.filter(m => !MP_OFFICES.has(m.politician_office));
   renderMemberPanel(
@@ -958,7 +961,8 @@ function renderMembers(members, accent) {
     document.getElementById('mps-count'),
     mps,
     accent,
-    'No MPs on record yet.',
+    'No national officeholders on record yet.',
+    'national',
   );
   renderMemberPanel(
     document.getElementById('members-host'),
@@ -966,42 +970,44 @@ function renderMembers(members, accent) {
     rest,
     accent,
     'No politicians have registered membership yet.',
+    'local',
   );
 }
 
-// Shared renderer for both the MPs and the Members panels — same row
-// shape, same header, same empty-state styling. Affiliation column
-// stays visible in both: for MPs it always reads "Member of Parliament"
-// (or Senior MP); for the Members panel it varies by office.
-function renderMemberPanel(host, countEl, rows, accent, emptyText) {
+// Shared renderer for both panels. kind = 'national' uses Allies
+// (politician_reputation × 3); 'local' uses Volunteers (politician_
+// credibility × 3). Same row shape, label varies. Affiliation = office
+// title when held; "Party Member" otherwise (office-holders accent-tinted).
+function renderMemberPanel(host, countEl, rows, accent, emptyText, kind) {
   if (!host) return;
   if (countEl) countEl.textContent = rows.length ? `${rows.length} on file` : '';
   if (!rows.length) {
     host.innerHTML = `<div class="mem-empty">${escHtml(emptyText)}</div>`;
     return;
   }
+  const isNational = kind === 'national';
+  const statLabel  = isNational ? 'Allies' : 'Volunteers';
   const body = rows.map(m => {
     const name = [m.leader_first_name, m.leader_last_name].filter(Boolean).join(' ') || '—';
     const youBadge = m.id === _viewerPolId ? ' <span class="you">You</span>' : '';
     const age = (m.leader_age != null) ? String(Number(m.leader_age)) : '—';
-    // Affiliation = office title when an office is held (see
-    // OFFICE_TITLES in js/utils.js); otherwise plain "Party Member".
-    // Office-holders get an accent color so they pop out of the list.
     const office = m.politician_office || null;
     const affilText = office ? officeTitle(office) : 'Party Member';
     const affilCls  = office ? 'mem-affil office' : 'mem-affil';
-    const followerCap = Math.max(0, (Number(m.politician_reputation) || 0) * 3);
+    // Allies cap = reputation × 3 (national); Volunteers cap = credibility × 3 (local).
+    const driverStat = isNational ? m.politician_reputation : m.politician_credibility;
+    const statCap = Math.max(0, (Number(driverStat) || 0) * 3);
     return `<div class="mem-row">
       <div class="mem-badge" style="background:${accent}1f;color:${accent};border:0.5px solid ${accent}66;">${escHtml(factionInitials(name, null))}</div>
       <div class="mem-name">${escHtml(name)}${youBadge}</div>
-      <div class="mem-fol">0 <span class="of">/ ${followerCap}</span></div>
       <div class="${affilCls}">${escHtml(affilText)}</div>
+      <div class="mem-stat">0 <span class="of">/ ${statCap}</span></div>
       <div class="mem-age">${escHtml(age)}</div>
       <div class="mem-inf">${Number(m.politician_influence) || 0}</div>
     </div>`;
   }).join('');
   host.innerHTML = `<div class="mem-row header">
-    <span></span><span>Name</span><span>Followers</span><span>Affiliation</span><span>Age</span><span style="text-align:right;">Influence</span>
+    <span></span><span>Name</span><span>Affiliation</span><span>${escHtml(statLabel)}</span><span>Age</span><span style="text-align:right;">Influence</span>
   </div>${body}`;
 }
 
