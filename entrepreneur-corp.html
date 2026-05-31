@@ -3028,6 +3028,22 @@ function initials(s, n) {
     };
     const isPlantType = (t) => t === 'engine_assembly_plant' || t === 'light_assembly_plant';
 
+    // Apartment Complex tiers (Phase 1, 20270435). Single residential
+    // building class — Real Estate corps request via the construction-
+    // bid flow. Pattern B cost scaling: final = base × multiplier^sensitivity,
+    // where multiplier is the same nation col+inf curve every other
+    // building uses. Higher sensitivity → undeveloped nations punish
+    // cost disproportionately, so Luxury naturally clusters in
+    // developed markets and Basic remains viable everywhere.
+    // Server-authoritative copy lives in corp_building_cost_profile;
+    // keep these numbers in sync if either side moves.
+    const APARTMENT_PROFILE = {
+      apartment_basic:  { cost: 12000000, ticks: 24, amb: 1, sensitivity: 1.0 },
+      apartment_modest: { cost: 25000000, ticks: 27, amb: 2, sensitivity: 1.3 },
+      apartment_luxury: { cost: 60000000, ticks: 30, amb: 3, sensitivity: 1.7 },
+    };
+    const isApartmentType = (t) => t === 'apartment_basic' || t === 'apartment_modest' || t === 'apartment_luxury';
+
     // Nation-aware cost / duration scaling (mirrors begin_construction
     // formula in 20270172/20270180). multiplier = (0.5 + col/100) ×
     // (0.5 + (100 - inf)/100). NULL stats → 50 (neutral, multiplier
@@ -3046,6 +3062,14 @@ function initials(s, n) {
     }
     function scaledDuration(base, nation) {
       return Math.max(1, Math.round(base * nationCostMult(nation)));
+    }
+    // Pattern B cost: base × multiplier^sensitivity. Mirrors the
+    // power(mult, v_sensitivity) branch in corp_building_cost_profile.
+    // sensitivity = 1.0 collapses to scaledCost (linear) — so this
+    // function is safe to use for any building type; apartments just
+    // pass a sensitivity > 1.
+    function patternBCost(base, nation, sensitivity) {
+      return Math.round(base * Math.pow(nationCostMult(nation), sensitivity));
     }
     // RHQ profile limited to small/medium/large (server enforces).
     const RHQ_TIERS = ['small', 'medium', 'large'];
@@ -4510,11 +4534,16 @@ function initials(s, n) {
       construction_yard: 'construction', port: 'shipping', banking_office: 'banking',
       real_estate_office: 'real_estate', engine_assembly_plant: 'aviation_manufacturing',
       light_assembly_plant: 'aviation_manufacturing',
+      apartment_basic: 'real_estate', apartment_modest: 'real_estate', apartment_luxury: 'real_estate',
     };
     const requestableTypes = ['regional_hq'].concat(
       Object.keys(SECTOR_OF_TYPE).filter(t => SECTOR_OF_TYPE[t] === c.industry));
-    const reqBase  = (t, tier) => isPlantType(t) ? (PLANT_PROFILE[t]?.cost  || 0) : (TIER_TABLE[tier]?.cost  || 0);
-    const reqTicks = (t, tier) => isPlantType(t) ? (PLANT_PROFILE[t]?.ticks || 0) : (TIER_TABLE[tier]?.ticks || 0);
+    const reqBase  = (t, tier) => isPlantType(t)     ? (PLANT_PROFILE[t]?.cost  || 0)
+                                 : isApartmentType(t) ? (APARTMENT_PROFILE[t]?.cost || 0)
+                                 : (TIER_TABLE[tier]?.cost  || 0);
+    const reqTicks = (t, tier) => isPlantType(t)     ? (PLANT_PROFILE[t]?.ticks || 0)
+                                 : isApartmentType(t) ? (APARTMENT_PROFILE[t]?.ticks || 0)
+                                 : (TIER_TABLE[tier]?.ticks || 0);
     const RC_REASON = {
       wrong_sector: 'Your corp can’t own this building type.',
       insufficient_funds: 'Your treasury can’t cover the construction cost.',
@@ -4592,7 +4621,10 @@ function initials(s, n) {
       const curNation = () => nationMap.get(document.getElementById('rc-nation').value);
       const renderTier = () => {
         const t = typeEl.value;
-        if (isPlantType(t)) {
+        // Apartments + plants pin their own effective tier server-side
+        // (corp_building_cost_profile maps the type → eff_tier), so the
+        // tier selector is hidden for both.
+        if (isPlantType(t) || isApartmentType(t)) {
           tierEl.innerHTML = ''; tierEl.style.display = 'none'; tierLabel.style.display = 'none';
         } else {
           const keys = t === 'regional_hq' ? RHQ_TIERS : ALL_TIERS;
@@ -4602,9 +4634,16 @@ function initials(s, n) {
       };
       const upd = () => {
         const t = typeEl.value;
-        const tier = isPlantType(t) ? null : tierEl.value;
+        const tier = (isPlantType(t) || isApartmentType(t)) ? null : tierEl.value;
         const nation = curNation();
-        const baseCost = scaledCost(reqBase(t, tier), nation);
+        // Apartments use Pattern B cost (base × multiplier^sensitivity);
+        // everything else uses the linear scaledCost. patternBCost with
+        // sensitivity=1.0 would collapse to the same number, but routing
+        // non-apartments through scaledCost keeps the preview math
+        // exactly equal to the existing path for those types.
+        const baseCost = isApartmentType(t)
+          ? patternBCost(reqBase(t, null), nation, APARTMENT_PROFILE[t].sensitivity)
+          : scaledCost(reqBase(t, tier), nation);
         const dur   = scaledDuration(reqTicks(t, tier), nation);
         document.getElementById('rc-preview').innerHTML =
           `Local-build cost: <b>${fmtUsd(baseCost)}</b> · build time ~<b>${dur} ticks</b><br>Every construction corp can bid at any positive price — even below their own distance-adjusted cost. Lowest accepted bid wins at close (you can accept manually before then).`;
@@ -4621,7 +4660,7 @@ function initials(s, n) {
         const nationId = document.getElementById('rc-nation').value;
         if (!nationId) { errEl.textContent = 'Pick a nation.'; return; }
         const t = typeEl.value;
-        const tier = isPlantType(t) ? 'small' : tierEl.value;   // server pins plant tier
+        const tier = (isPlantType(t) || isApartmentType(t)) ? 'small' : tierEl.value;   // server pins plant + apartment tier
         const bidding = Math.max(1, Math.round(Number(document.getElementById('rc-bidding').value) || 6));
         submitting = true;
         const btn = document.getElementById('rc-submit'); btn.disabled = true; btn.textContent = 'Posting…'; errEl.textContent = '';
