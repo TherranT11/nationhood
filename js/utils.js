@@ -54,6 +54,21 @@ export function factionInitials(name, abbreviation) {
 }
 
 /**
+ * Player-facing character name. Appends "(Nickname)" when faction
+ * .nickname is set, else returns just "First Last". One source so
+ * every character-name surface (topbar, party panel, committee
+ * card, brief card, etc.) renders the same shape. Falls back to
+ * the faction's own name when first/last are absent.
+ */
+export function displayName(faction) {
+    const first = faction?.leader_first_name || '';
+    const last  = faction?.leader_last_name  || '';
+    const full  = (first + ' ' + last).trim() || faction?.faction_name || '';
+    const nick  = (faction?.nickname || '').trim();
+    return nick ? `${full} (${nick})` : full;
+}
+
+/**
  * Truncate a string to `max` characters, adding '...' if trimmed.
  */
 export function truncate(str, max) {
