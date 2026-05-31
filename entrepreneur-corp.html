@@ -511,6 +511,28 @@
   .ap-btype.apartment_basic    { background:#1c1d20; color:#8a98a8; }
   .ap-btype.apartment_modest   { background:#1f1e1a; color:#b0a890; }
   .ap-btype.apartment_luxury   { background:#26221a; color:#c8b878; }
+  /* Oil & Gas — shared deep-oil palette across the five building types. */
+  .ap-btype.pump_jack          { background:#2a1612; color:#c87a6a; }
+  .ap-btype.refinery_small     { background:#2a1612; color:#c87a6a; }
+  .ap-btype.refinery_regular   { background:#2a1612; color:#c87a6a; }
+  .ap-btype.refinery_large     { background:#2a1612; color:#c87a6a; }
+  .ap-btype.gas_station        { background:#2a1612; color:#c87a6a; }
+  /* Oil & Gas Operations panel — reserves, capacity, sell-to-spot. */
+  .og-panel { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08);
+    border-radius:5px; padding:14px 16px; margin-bottom:10px; }
+  .og-stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));
+    gap:14px; margin-bottom:12px; }
+  .og-stat .lab { font-size:9px; letter-spacing:0.14em; color:#666;
+    font-weight:600; text-transform:uppercase; margin-bottom:3px; }
+  .og-stat .val { font-size:18px; font-weight:600; color:#cfcabf;
+    font-variant-numeric:tabular-nums; line-height:1.15; }
+  .og-stat .val .unit { font-size:10px; font-weight:400; color:#888;
+    margin-left:4px; letter-spacing:0.04em; }
+  .og-prices { font-size:11px; color:#999; letter-spacing:0.04em;
+    border-top:0.5px solid rgba(255,255,255,0.06); padding-top:10px; margin-bottom:10px; }
+  .og-prices b { color:#cfcabf; font-variant-numeric:tabular-nums; }
+  .og-sell-row { display:flex; gap:8px; flex-wrap:wrap; }
+  .og-sell-row .ap-btn-small:disabled { opacity:0.4; cursor:not-allowed; }
   .bm-tiers { display:grid; grid-template-columns:1fr; gap:6px; }
   .bm-tier { display:grid; grid-template-columns:80px 1fr auto auto auto; gap:12px;
     padding:11px 14px; background:#121212; border:0.5px solid rgba(255,255,255,0.10);
@@ -868,7 +890,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent, apartmentOccupancyFromStability, APARTMENT_DEFS } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent, apartmentOccupancyFromStability, APARTMENT_DEFS, OIL_GAS_DEFS, OIL_GAS_PRICES } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash, computeCorpBookValue } from './js/game/corp-valuation.js';
 import { fetchOneCorpBookAggregates } from './js/corp-book-value.js';
 import { GRIEVANCE_LABEL } from './js/game/lawsuit-types.js';
@@ -884,7 +906,7 @@ function initials(s, n) {
     if (!id) { window.location.href = 'entrepreneur-corporations.html'; return; }
 
     const { data: c, error } = await _supabase.from('entrepreneur_corps')
-      .select('id, name, ticker, custom_logo_url, rebrand_cooldown_until_tick, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, freighters_owned, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
+      .select('id, name, ticker, custom_logo_url, rebrand_cooldown_until_tick, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, freighters_owned, crude_reserve, refined_reserve, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -3073,6 +3095,11 @@ function initials(s, n) {
     // Basic (sensitivity 1.0) collapses to base × mult; Modest 6-24%
     // premium; Luxury 14-56% premium scaled by missing infrastructure.
     const isApartmentType = (t) => t === 'apartment_basic' || t === 'apartment_modest' || t === 'apartment_luxury';
+    // Oil & Gas building types (Phase 2, 20270443). Same modal pattern as
+    // apartments — pinned eff_tier, fixed per-type cost, hide the tier
+    // picker in the Request Construction modal.
+    const isOilGasType = (t) => t === 'pump_jack' || t === 'refinery_small'
+      || t === 'refinery_regular' || t === 'refinery_large' || t === 'gas_station';
 
     // Nation-aware cost / duration scaling (mirrors begin_construction
     // formula in 20270172/20270180). multiplier = (0.5 + col/100) ×
@@ -3123,6 +3150,7 @@ function initials(s, n) {
     const isConstructionCorp = (c.industry === 'construction');
     const isRealEstateCorp   = (c.industry === 'real_estate');
     const isShippingCorp     = (c.industry === 'shipping');
+    const isOilGasCorp       = (c.industry === 'oil_and_gas');
 
     // Shipping economy constants — mirror entrepreneur_buy_freighter
     // ($2M per freighter, fleet cap = completed Ports × 4).
@@ -4332,7 +4360,80 @@ function initials(s, n) {
         requestPanelHtml += `<div class="section-heading"><span class="sans">Open</span><span class="serif">Build Requests</span></div>${openHtml}`;
       }
 
-      pj.innerHTML = launchBtn + portfolioHtml + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + airlinePanelHtml + aviationPanelHtml + ordersPanelHtml + requestPanelHtml;
+      // Oil & Gas Operations panel — reserves + sell-to-spot buttons +
+      // capacity readout. Renders for oil_and_gas corps only. Reserves
+      // read straight off `c` (corp_aircraft fetch already includes
+      // crude_reserve / refined_reserve). Capacity counts roll up from
+      // the buildings list already in scope (ownedBuildings → rows).
+      let oilGasPanelHtml = '';
+      if (isOilGasCorp && canView) {
+        const completed = (b) => b.status === 'completed';
+        const pumpCount = rows.filter(b => completed(b) && b.building_type === 'pump_jack').length;
+        const refineCap = rows.filter(completed).reduce((sum, b) => sum + (
+          b.building_type === 'refinery_small'   ? 4  :
+          b.building_type === 'refinery_regular' ? 10 :
+          b.building_type === 'refinery_large'   ? 20 : 0
+        ), 0);
+        const gasDemand = rows.filter(b => completed(b) && b.building_type === 'gas_station')
+          .reduce((sum, b) => {
+            const sol = Number(b.nation?.standard_of_living ?? 50);
+            const inf = Number(b.nation?.infrastructure    ?? 50);
+            return sum + Math.floor((sol + inf) / 20);
+          }, 0);
+        const crude   = Number(c.crude_reserve   ?? 0);
+        const refined = Number(c.refined_reserve ?? 0);
+        const ownerCtrls = isOwner ? `
+          <div class="og-sell-row">
+            <button class="ap-btn-small" id="og-sell-crude"   ${crude   > 0 ? '' : 'disabled'}>Sell All Crude → $${(crude   * OIL_GAS_PRICES.crudeSpot).toLocaleString()}</button>
+            <button class="ap-btn-small" id="og-sell-refined" ${refined > 0 ? '' : 'disabled'}>Sell All Refined → $${(refined * OIL_GAS_PRICES.refinedSpot).toLocaleString()}</button>
+          </div>` : '';
+        oilGasPanelHtml = `
+          <div class="section-heading"><span class="sans">Oil &amp; Gas</span><span class="serif">Operations</span></div>
+          <div class="og-panel">
+            <div class="og-stats">
+              <div class="og-stat"><div class="lab">Crude Reserve</div><div class="val">${crude.toLocaleString()} <span class="unit">bbl</span></div></div>
+              <div class="og-stat"><div class="lab">Refined Reserve</div><div class="val">${refined.toLocaleString()} <span class="unit">bbl</span></div></div>
+              <div class="og-stat"><div class="lab">Pumps</div><div class="val">${pumpCount} <span class="unit">× 3 bbl/tick</span></div></div>
+              <div class="og-stat"><div class="lab">Refining Capacity</div><div class="val">${refineCap} <span class="unit">bbl/tick</span></div></div>
+              <div class="og-stat"><div class="lab">Gas Station Demand</div><div class="val">${gasDemand} <span class="unit">bbl/tick</span></div></div>
+            </div>
+            <div class="og-prices">
+              Spot prices: crude <b>${fmtUsd(OIL_GAS_PRICES.crudeSpot)}</b>/bbl · refined <b>${fmtUsd(OIL_GAS_PRICES.refinedSpot)}</b>/bbl · retail (gas station) <b>${fmtUsd(OIL_GAS_PRICES.retail)}</b>/bbl
+            </div>
+            ${ownerCtrls}
+          </div>`;
+      }
+
+      pj.innerHTML = launchBtn + portfolioHtml + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + airlinePanelHtml + aviationPanelHtml + oilGasPanelHtml + ordersPanelHtml + requestPanelHtml;
+
+      // Wire the Oil & Gas sell buttons.
+      if (isOilGasCorp && isOwner) {
+        const sellCrude = document.getElementById('og-sell-crude');
+        const sellRefined = document.getElementById('og-sell-refined');
+        const fireSell = async (rpc, btn) => {
+          if (btn.disabled) return;
+          btn.disabled = true;
+          const original = btn.textContent;
+          btn.textContent = 'Selling…';
+          try {
+            const { data, error } = await _supabase.rpc(rpc, { p_corp_id: c.id, p_quantity: null });
+            if (error) throw error;
+            if (!data?.success) {
+              alert(`Sale failed: ${data?.reason || 'unknown'}`);
+              btn.disabled = false;
+              btn.textContent = original;
+              return;
+            }
+            location.reload();
+          } catch (e) {
+            alert(`Sale failed: ${e?.message || e}`);
+            btn.disabled = false;
+            btn.textContent = original;
+          }
+        };
+        if (sellCrude)   sellCrude.addEventListener('click',   () => fireSell('sell_crude_to_spot',   sellCrude));
+        if (sellRefined) sellRefined.addEventListener('click', () => fireSell('sell_refined_to_spot', sellRefined));
+      }
 
       if (isOwner && isConstructionCorp) {
         document.getElementById('cp-begin-construction').addEventListener('click', openBuildModal);
@@ -4657,14 +4758,19 @@ function initials(s, n) {
       real_estate_office: 'real_estate', engine_assembly_plant: 'aviation_manufacturing',
       light_assembly_plant: 'aviation_manufacturing',
       apartment_basic: 'real_estate', apartment_modest: 'real_estate', apartment_luxury: 'real_estate',
+      pump_jack: 'oil_and_gas', refinery_small: 'oil_and_gas',
+      refinery_regular: 'oil_and_gas', refinery_large: 'oil_and_gas',
+      gas_station: 'oil_and_gas',
     };
     const requestableTypes = ['regional_hq'].concat(
       Object.keys(SECTOR_OF_TYPE).filter(t => SECTOR_OF_TYPE[t] === c.industry));
     const reqBase  = (t, tier) => isPlantType(t)     ? (PLANT_PROFILE[t]?.cost  || 0)
                                  : isApartmentType(t) ? (APARTMENT_DEFS[t]?.cost || 0)
+                                 : isOilGasType(t)    ? (OIL_GAS_DEFS[t]?.cost  || 0)
                                  : (TIER_TABLE[tier]?.cost  || 0);
     const reqTicks = (t, tier) => isPlantType(t)     ? (PLANT_PROFILE[t]?.ticks || 0)
                                  : isApartmentType(t) ? (APARTMENT_DEFS[t]?.ticks || 0)
+                                 : isOilGasType(t)    ? (OIL_GAS_DEFS[t]?.ticks || 0)
                                  : (TIER_TABLE[tier]?.ticks || 0);
     const RC_REASON = {
       wrong_sector: 'Your corp can’t own this building type.',
@@ -4743,10 +4849,11 @@ function initials(s, n) {
       const curNation = () => nationMap.get(document.getElementById('rc-nation').value);
       const renderTier = () => {
         const t = typeEl.value;
-        // Apartments + plants pin their own effective tier server-side
-        // (corp_building_cost_profile maps the type → eff_tier), so the
-        // tier selector is hidden for both.
-        if (isPlantType(t) || isApartmentType(t)) {
+        // Apartments + plants + oil-and-gas types all pin their own
+        // effective tier server-side (corp_building_cost_profile maps
+        // the type → eff_tier), so the tier selector is hidden for all
+        // three families.
+        if (isPlantType(t) || isApartmentType(t) || isOilGasType(t)) {
           tierEl.innerHTML = ''; tierEl.style.display = 'none'; tierLabel.style.display = 'none';
         } else {
           const keys = t === 'regional_hq' ? RHQ_TIERS : ALL_TIERS;
@@ -4756,13 +4863,12 @@ function initials(s, n) {
       };
       const upd = () => {
         const t = typeEl.value;
-        const tier = (isPlantType(t) || isApartmentType(t)) ? null : tierEl.value;
+        const tier = (isPlantType(t) || isApartmentType(t) || isOilGasType(t)) ? null : tierEl.value;
         const nation = curNation();
-        // Apartments use Pattern B cost (base × multiplier^sensitivity);
-        // everything else uses the linear scaledCost. patternBCost with
-        // sensitivity=1.0 would collapse to the same number, but routing
-        // non-apartments through scaledCost keeps the preview math
-        // exactly equal to the existing path for those types.
+        // Apartments use Pattern B cost (base × multiplier × infrastructure
+        // premium); oil & gas + every other type use linear scaledCost
+        // (base × multiplier). Pattern-B with sensitivity 1.0 collapses
+        // to the linear path, so oil & gas types fall through cleanly.
         const baseCost = isApartmentType(t)
           ? patternBCost(reqBase(t, null), nation, APARTMENT_DEFS[t].sensitivity)
           : scaledCost(reqBase(t, tier), nation);
@@ -4793,7 +4899,7 @@ function initials(s, n) {
         const nationId = document.getElementById('rc-nation').value;
         if (!nationId) { errEl.textContent = 'Pick a nation.'; return; }
         const t = typeEl.value;
-        const tier = (isPlantType(t) || isApartmentType(t)) ? 'small' : tierEl.value;   // server pins plant + apartment tier
+        const tier = (isPlantType(t) || isApartmentType(t) || isOilGasType(t)) ? 'small' : tierEl.value;   // server pins plant + apartment + oil-and-gas tier
         const bidding = Math.max(1, Math.round(Number(document.getElementById('rc-bidding').value) || 6));
         submitting = true;
         const btn = document.getElementById('rc-submit'); btn.disabled = true; btn.textContent = 'Posting…'; errEl.textContent = '';

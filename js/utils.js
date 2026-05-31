@@ -72,6 +72,35 @@ export function titleCase(s) {
 }
 
 /**
+ * Single source for the Oil & Gas building type definitions (Phase 2,
+ * 20270443). Cost is the unscaled base ($) the SQL helper applies the
+ * nation construction multiplier to; ticks is build-time at median
+ * nation; per-tier production / capacity / demand math drives the
+ * tick processor.
+ *
+ * Server-authoritative copies live in:
+ *   corp_building_cost_profile       — cost
+ *   process_oil_and_gas              — output/capacity per tier
+ *   oil_gas_crude_spot_price()       — $20k crude spot
+ *   oil_gas_refined_spot_price()     — $100k refined spot
+ *   oil_gas_retail_price()           — $130k gas station retail
+ * Keep these mirrors in sync.
+ */
+export const OIL_GAS_DEFS = {
+    pump_jack:        { cost: 8000000,   ticks: 24, output:    3 },  // crude / tick
+    refinery_small:   { cost: 80000000,  ticks: 24, capacity:  4 },  // crude → refined / tick
+    refinery_regular: { cost: 170000000, ticks: 27, capacity: 10 },
+    refinery_large:   { cost: 300000000, ticks: 30, capacity: 20 },
+    gas_station:      { cost: 6000000,   ticks: 24 },                // consumes (SoL+inf)/20 refined / tick
+};
+
+export const OIL_GAS_PRICES = {
+    crudeSpot:   20000,
+    refinedSpot: 100000,
+    retail:      130000,
+};
+
+/**
  * Canonical title-case display names for entrepreneur corp industries.
  * Single source — every site that shows an industry name reads from
  * this map via industryLabel (uppercase pill form) or
@@ -199,6 +228,11 @@ export function buildingTypeLabel(t) {
         case 'apartment_basic':    return 'Basic Apartments';
         case 'apartment_modest':   return 'Modest Apartments';
         case 'apartment_luxury':   return 'Luxury Apartments';
+        case 'pump_jack':          return 'Pump Jack';
+        case 'refinery_small':     return 'Small Refinery';
+        case 'refinery_regular':   return 'Regular Refinery';
+        case 'refinery_large':     return 'Large Refinery';
+        case 'gas_station':        return 'Gas Station';
         default:                   return t ? String(t) : 'Building';
     }
 }
