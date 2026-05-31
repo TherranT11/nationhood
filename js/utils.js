@@ -120,6 +120,25 @@ export function industryTitleLabel(s) {
  * the generic 'Building' so unmapped future types still render.
  */
 /**
+ * Single source for the Apartment Complex tier definitions. Every fact
+ * that varies per apartment type lives here: construction cost base,
+ * build duration ticks, Pattern-B cost sensitivity (20270437), and the
+ * per-tick base rent (20270438). Both the entrepreneur-corp request
+ * modal preview (cost/ticks/sensitivity) and computeApartmentRent
+ * below (baseRent) read from this map — single JS-side source.
+ *
+ * Server-authoritative copies of these numbers live in:
+ *   corp_building_cost_profile  — cost + sensitivity (20270437)
+ *   process_apartment_rents      — baseRent (20270438)
+ * Keep them in sync.
+ */
+export const APARTMENT_DEFS = {
+    apartment_basic:  { cost: 12000000, ticks: 24, sensitivity: 1.0, baseRent: 40000  },
+    apartment_modest: { cost: 25000000, ticks: 27, sensitivity: 1.3, baseRent: 90000  },
+    apartment_luxury: { cost: 60000000, ticks: 30, sensitivity: 1.7, baseRent: 250000 },
+};
+
+/**
  * Per-tick rent breakdown for an Apartment Complex. Mirrors the
  * process_apartment_rents() server RPC (20270438) — keep the math
  * in lockstep with that function.
@@ -134,14 +153,10 @@ export function industryTitleLabel(s) {
  * Unknown / non-apartment building types return null so callers can
  * skip the row cleanly.
  */
-const APARTMENT_BASE_RENT = {
-    apartment_basic:  40000,
-    apartment_modest: 90000,
-    apartment_luxury: 250000,
-};
 export function computeApartmentRent(buildingType, nation) {
-    const base = APARTMENT_BASE_RENT[buildingType];
-    if (!base) return null;
+    const def = APARTMENT_DEFS[buildingType];
+    if (!def) return null;
+    const base = def.baseRent;
     const sol  = Number(nation?.standard_of_living ?? 50);
     const inf  = Number(nation?.infrastructure    ?? 50);
     const stab = Number(nation?.stability         ?? 50);

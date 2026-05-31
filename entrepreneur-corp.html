@@ -481,6 +481,10 @@
   .ap-btype.real_estate_office { background:#2a1f2a; color:#aa7aaa; }
   .ap-btype.engine_assembly_plant { background:#2a1a1a; color:#c88a8a; }
   .ap-btype.light_assembly_plant  { background:#2a261a; color:#c8b06e; }
+  /* Residential — slate-to-gold gradient by tier (Basic → Modest → Luxury). */
+  .ap-btype.apartment_basic    { background:#1c1d20; color:#8a98a8; }
+  .ap-btype.apartment_modest   { background:#1f1e1a; color:#b0a890; }
+  .ap-btype.apartment_luxury   { background:#26221a; color:#c8b878; }
   .bm-tiers { display:grid; grid-template-columns:1fr; gap:6px; }
   .bm-tier { display:grid; grid-template-columns:80px 1fr auto auto auto; gap:12px;
     padding:11px 14px; background:#121212; border:0.5px solid rgba(255,255,255,0.10);
@@ -838,7 +842,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent, APARTMENT_DEFS } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash, computeCorpBookValue } from './js/game/corp-valuation.js';
 import { fetchOneCorpBookAggregates } from './js/corp-book-value.js';
 import { GRIEVANCE_LABEL } from './js/game/lawsuit-types.js';
@@ -3035,24 +3039,13 @@ function initials(s, n) {
     };
     const isPlantType = (t) => t === 'engine_assembly_plant' || t === 'light_assembly_plant';
 
-    // Apartment Complex tiers (Phase 1, 20270435 + 20270437). Single
-    // residential building class — Real Estate corps request via the
-    // construction-bid flow. Cost = base × nation_mult × infrastructure
-    // penalty, where the penalty = 1 + (sensitivity - 1) × (100 - inf)/100.
-    // Basic (sensitivity 1.0) collapses to the standard base × mult.
-    // Modest and Luxury carry an inf-scaled premium (Modest 6-24%,
-    // Luxury 14-56%) so low-infrastructure nations punish high-end
-    // construction. Server-authoritative copy lives in
-    // corp_building_cost_profile; keep these numbers in sync.
-    // No `amb` field — apartments flow through the Request modal which
-    // doesn't render ambition; the BUILD modal (where TIER_TABLE.amb +
-    // PLANT_PROFILE.amb get displayed) is construction-corp-only and
-    // apartments don't go through it.
-    const APARTMENT_PROFILE = {
-      apartment_basic:  { cost: 12000000, ticks: 24, sensitivity: 1.0 },
-      apartment_modest: { cost: 25000000, ticks: 27, sensitivity: 1.3 },
-      apartment_luxury: { cost: 60000000, ticks: 30, sensitivity: 1.7 },
-    };
+    // Apartment Complex type definitions are imported from utils.js as
+    // APARTMENT_DEFS — single JS-side source paired with the server
+    // copies in corp_building_cost_profile (cost + sensitivity) and
+    // process_apartment_rents (baseRent). Cost preview here uses the
+    // Pattern-B exponent: cost = base × mult × (1 + (sens-1)(100-inf)/100).
+    // Basic (sensitivity 1.0) collapses to base × mult; Modest 6-24%
+    // premium; Luxury 14-56% premium scaled by missing infrastructure.
     const isApartmentType = (t) => t === 'apartment_basic' || t === 'apartment_modest' || t === 'apartment_luxury';
 
     // Nation-aware cost / duration scaling (mirrors begin_construction
@@ -4569,10 +4562,10 @@ function initials(s, n) {
     const requestableTypes = ['regional_hq'].concat(
       Object.keys(SECTOR_OF_TYPE).filter(t => SECTOR_OF_TYPE[t] === c.industry));
     const reqBase  = (t, tier) => isPlantType(t)     ? (PLANT_PROFILE[t]?.cost  || 0)
-                                 : isApartmentType(t) ? (APARTMENT_PROFILE[t]?.cost || 0)
+                                 : isApartmentType(t) ? (APARTMENT_DEFS[t]?.cost || 0)
                                  : (TIER_TABLE[tier]?.cost  || 0);
     const reqTicks = (t, tier) => isPlantType(t)     ? (PLANT_PROFILE[t]?.ticks || 0)
-                                 : isApartmentType(t) ? (APARTMENT_PROFILE[t]?.ticks || 0)
+                                 : isApartmentType(t) ? (APARTMENT_DEFS[t]?.ticks || 0)
                                  : (TIER_TABLE[tier]?.ticks || 0);
     const RC_REASON = {
       wrong_sector: 'Your corp can’t own this building type.',
@@ -4672,7 +4665,7 @@ function initials(s, n) {
         // non-apartments through scaledCost keeps the preview math
         // exactly equal to the existing path for those types.
         const baseCost = isApartmentType(t)
-          ? patternBCost(reqBase(t, null), nation, APARTMENT_PROFILE[t].sensitivity)
+          ? patternBCost(reqBase(t, null), nation, APARTMENT_DEFS[t].sensitivity)
           : scaledCost(reqBase(t, tier), nation);
         const dur   = scaledDuration(reqTicks(t, tier), nation);
         document.getElementById('rc-preview').innerHTML =
