@@ -868,7 +868,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent, APARTMENT_DEFS } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent, apartmentOccupancyFromStability, APARTMENT_DEFS } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash, computeCorpBookValue } from './js/game/corp-valuation.js';
 import { fetchOneCorpBookAggregates } from './js/corp-book-value.js';
 import { GRIEVANCE_LABEL } from './js/game/lawsuit-types.js';
@@ -3272,12 +3272,11 @@ function initials(s, n) {
         const W = 56, H = 14;
         const points = history.map((h, i) => {
           const x = (i / (history.length - 1)) * (W - 2) + 1;
-          const occ = Math.max(0.4, Math.min(1.0, (Number(h.stability) || 50) / 100));
+          const occ = apartmentOccupancyFromStability(h.stability);
           const y = (H - 2) - (occ - 0.4) / 0.6 * (H - 4);
           return `${x.toFixed(1)},${y.toFixed(1)}`;
         }).join(' ');
-        const lastStab = Number(history[history.length - 1].stability) || 50;
-        const lastOcc  = Math.max(0.4, Math.min(1.0, lastStab / 100));
+        const lastOcc = apartmentOccupancyFromStability(history[history.length - 1].stability);
         return `<svg class="ap-spark ${occClass(lastOcc)}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="Occupancy trend, last ${history.length} ticks"><polyline points="${points}" /></svg>`;
       };
 

@@ -139,12 +139,27 @@ export const APARTMENT_DEFS = {
 };
 
 /**
+ * Apartment occupancy as a function of nation stability. Single source —
+ * computeApartmentRent below calls it for the live rent calc; the
+ * occupancy sparkline in entrepreneur-corp.html calls it per-history-tick
+ * via nations_history.stability. Nullish-coalesces to 50 (median) so
+ * stability=0 stays 0 (correctly clamped to the 0.4 floor) rather than
+ * being treated as missing.
+ *
+ *   occupancy = clamp(0.4, 1.0, stability / 100)
+ */
+export function apartmentOccupancyFromStability(stab) {
+    const s = Number(stab ?? 50);
+    return Math.max(0.4, Math.min(1.0, s / 100));
+}
+
+/**
  * Per-tick rent breakdown for an Apartment Complex. Mirrors the
  * process_apartment_rents() server RPC (20270438) — keep the math
  * in lockstep with that function.
  *
  *   gross       = base × (standard_of_living + infrastructure) / 100
- *   occupancy   = clamp(0.4, 1.0, stability / 100)
+ *   occupancy   = apartmentOccupancyFromStability(nation.stability)
  *   maintenance = base × (100 - infrastructure) / 200
  *   net         = round(gross × occupancy - maintenance)
  *
@@ -159,9 +174,8 @@ export function computeApartmentRent(buildingType, nation) {
     const base = def.baseRent;
     const sol  = Number(nation?.standard_of_living ?? 50);
     const inf  = Number(nation?.infrastructure    ?? 50);
-    const stab = Number(nation?.stability         ?? 50);
     const gross       = base * (sol + inf) / 100;
-    const occupancy   = Math.max(0.4, Math.min(1.0, stab / 100));
+    const occupancy   = apartmentOccupancyFromStability(nation?.stability);
     const maintenance = base * (100 - inf) / 200;
     const net         = Math.round(gross * occupancy - maintenance);
     return {
