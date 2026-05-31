@@ -318,6 +318,7 @@
       <div class="ec-fbreak" id="ec-fbreak">
         <span>Founding fee (5%): <b id="ec-f-fee">—</b></span>
         <span>Starter building: <b id="ec-f-bld">—</b></span>
+        <span id="ec-f-fleet-wrap" style="display:none;">Starter fleet: <b id="ec-f-fleet">—</b></span>
         <span>Total at founding: <b id="ec-f-total">—</b></span>
       </div>
 
@@ -487,18 +488,20 @@ function selectPick(containerId, e) {
   return card;
 }
 
-// Cached (industry, nation) → starter building cost in dollars. Refreshed
-// by fetchBuildingCost when the picker changes. Null = "not fetched yet"
+// Cached (industry, nation) → { bld, fleet } in dollars. Refreshed by
+// fetchFoundingCost when the picker changes. Null = "not fetched yet"
 // (UI shows em-dash placeholders until the round-trip completes).
-let _bldCostCache = new Map(); // key: `${industry}|${nationId}` → bigint
+// fleet is non-zero only for airline (1 regional jet × $60M market —
+// see airline_starter_fleet_cost in 20270441).
+let _bldCostCache = new Map(); // key: `${industry}|${nationId}` → { bld, fleet }
 function bldCacheKey() { return `${sel.industry}|${sel.hqNationId || ''}`; }
-async function fetchBuildingCost() {
+async function fetchFoundingCost() {
   const key = bldCacheKey();
   if (_bldCostCache.has(key)) return _bldCostCache.get(key);
   if (!sel.industry || !sel.hqNationId) return null;
   // Capital passes through unchanged from the slider since the per-cap
-  // fee math is mirrored client-side; we only need the building_cost
-  // field from the preview RPC. Any cap value works for that field.
+  // fee math is mirrored client-side; we only need building_cost +
+  // fleet_cost from the preview RPC. Any cap value works for those.
   const { data, error } = await _supabase.rpc('entrepreneur_corp_founding_cost', {
     p_industry: sel.industry, p_hq_nation_id: sel.hqNationId, p_capital: capRaw(),
   });
@@ -506,20 +509,35 @@ async function fetchBuildingCost() {
     console.warn('[entrepreneur-corporations] founding-cost preview failed:', error.message);
     return null;
   }
-  const bld = Number(data?.building_cost) || 0;
-  _bldCostCache.set(key, bld);
-  return bld;
+  const entry = {
+    bld:   Number(data?.building_cost) || 0,
+    fleet: Number(data?.fleet_cost)    || 0,
+  };
+  _bldCostCache.set(key, entry);
+  return entry;
 }
 function feeFor(cap) { return Math.floor((cap * FEE_PCT) / 100); }
 async function refreshCost() {
-  const cap   = capRaw();
-  const fee   = feeFor(cap);
-  const bld   = (await fetchBuildingCost()) ?? null;
-  const total = cap + fee + (bld || 0);
+  const cap     = capRaw();
+  const fee     = feeFor(cap);
+  const costs   = await fetchFoundingCost();
+  const bld     = costs?.bld   ?? null;
+  const fleet   = costs?.fleet ?? 0;
+  const total   = cap + fee + (bld || 0) + fleet;
   document.getElementById('ec-cap-amt').textContent = fmtM(cap);
   document.getElementById('ec-cap-aft').textContent = fmtM(Math.max(0, entFunds - total));
   document.getElementById('ec-f-fee').textContent   = fmtM(fee);
   document.getElementById('ec-f-bld').textContent   = bld == null ? '—' : fmtM(bld);
+  // Starter fleet line only renders when the industry charges one
+  // (airline today; any future industry that returns fleet_cost > 0
+  // automatically picks up the line).
+  const fleetWrap = document.getElementById('ec-f-fleet-wrap');
+  if (fleet > 0) {
+    document.getElementById('ec-f-fleet').textContent = fmtM(fleet);
+    fleetWrap.style.display = '';
+  } else {
+    fleetWrap.style.display = 'none';
+  }
   document.getElementById('ec-f-total').textContent = fmtM(total);
   const ipo = document.getElementById('ec-ipo');
   if (sel.listing === 'public') {
