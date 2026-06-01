@@ -11,7 +11,7 @@
 * { box-sizing:border-box; margin:0; padding:0; }
 .content { padding:32px 24px 24px; }
 
-.hero { display:grid; grid-template-columns:1fr auto; gap:32px; margin-bottom:28px; }
+.hero { display:grid; grid-template-columns:1fr auto; gap:32px; margin-bottom:22px; }
 .identity { display:flex; align-items:flex-start; gap:20px; }
 .identity-portrait { width:88px; height:88px;
   background:linear-gradient(135deg, #2a2a25, #1a1a17);
@@ -49,37 +49,97 @@
   width:130px; outline:none; }
 .anchor-nick-input:focus { border-color:#5aafa5; }
 
+/* ── Top row: World Events + Nation Chat side-by-side ───────────────── */
+.top-row { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:24px; }
+.panel { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:7px; overflow:hidden; display:flex; flex-direction:column; height:520px; }
+.p-head { padding:13px 18px; background:#0a0a0a;
+  border-bottom:0.5px solid rgba(255,255,255,0.07);
+  display:flex; align-items:center; gap:11px; flex-shrink:0; }
+.p-titles { flex:1; min-width:0; }
+.p-eyebrow { font-size:8px; letter-spacing:0.14em; font-weight:600; margin-bottom:3px; color:#5aafa5;
+  text-transform:uppercase; }
+.p-title { font-size:13px; font-weight:600; color:#fff; letter-spacing:-0.005em;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.p-title .serif { font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#a0d8d8; }
+.p-right { font-size:9px; color:#888; letter-spacing:0.06em; flex-shrink:0; }
+
+/* World Events panel (formerly DISPATCHES, repositioned + widened) */
+.we-tabs { display:flex; gap:0; border-bottom:0.5px solid rgba(255,255,255,0.07);
+  padding:0 18px; background:#0a0a0a; flex-shrink:0; }
+.we-tab { font-size:8.5px; letter-spacing:0.12em; padding:9px 13px;
+  border-bottom:2px solid transparent; color:#888; font-weight:600; cursor:pointer; }
+.we-tab.active { color:#a0d8d8; border-bottom-color:#7ac8c8; }
+.we-feed { flex:1; overflow-y:auto; padding:14px 18px; display:flex; flex-direction:column; gap:13px;
+  list-style:none; }
+.we-item { padding:11px 0; border-bottom:0.5px solid rgba(255,255,255,0.04); }
+.we-item:last-child { border-bottom:none; }
+.we-meta { display:flex; align-items:center; justify-content:space-between;
+  font-size:7.5px; letter-spacing:0.12em; font-weight:600; margin-bottom:6px; }
+.we-cat { color:#7ac8c8; }
+.we-country { color:#888; font-weight:500; margin-left:6px; }
+.we-time { color:#666; font-family:monospace; letter-spacing:0.04em; }
+.we-title { font-size:11.5px; font-weight:600; color:#fff; margin-bottom:4px; line-height:1.3; }
+.we-body { font-size:10px; color:#888; line-height:1.55; }
+.we-empty { color:#666; font-size:11px; padding:22px 4px; text-align:center; font-style:italic; }
+
+/* Nation Chat panel — wired against group_chats (chat_type='nation') +
+   group_chat_messages. Politicians + movement_parties enroll via the
+   trigger in 20270400_nation_chat_includes_politicians.sql. */
+.nc .p-eyebrow { color:#e07070; }
+.nc .p-title .serif { color:#f0a0a0; }
+.nc-online { display:flex; align-items:center; gap:5px;
+  font-size:8.5px; color:#888; letter-spacing:0.06em; }
+.nc-online::before { content:""; width:5px; height:5px; border-radius:50%;
+  background:#6ab07a; box-shadow:0 0 4px #6ab07a; }
+.nc-feed { flex:1; padding:14px 18px;
+  display:flex; flex-direction:column-reverse;  /* newest-first stack */
+  gap:11px; overflow-y:auto; }
+.nc-empty { color:#666; font-size:11px; padding:22px 4px; text-align:center; font-style:italic; }
+
+.msg { display:flex; gap:10px; }
+.msg-badge { width:28px; height:28px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:9.5px; font-weight:700; color:#fff; flex-shrink:0;
+  background:#444; }
+.msg-body { flex:1; min-width:0; }
+.msg-head { display:flex; align-items:baseline; gap:7px; margin-bottom:3px; flex-wrap:wrap; }
+.msg-name { font-size:10.5px; font-weight:600; color:#fff; letter-spacing:-0.005em; }
+.msg-role { font-size:7.5px; letter-spacing:0.11em; font-weight:600;
+  padding:1px 5px; border-radius:2px; background:#1a1a1a; color:#888; }
+.msg-time { font-size:8.5px; color:#666; font-family:monospace;
+  letter-spacing:0.04em; margin-left:auto; }
+.msg-text { font-size:10.5px; color:#ccc; line-height:1.55; word-wrap:break-word; }
+.msg-system { font-style:italic; color:#888; font-size:10px; padding:6px 12px;
+  border-left:2px solid rgba(255,255,255,0.08); }
+
+.nc-input { padding:11px 18px; border-top:0.5px solid rgba(255,255,255,0.07);
+  background:#0a0a0a; display:flex; align-items:center; gap:9px; flex-shrink:0; }
+.nc-input-pill { display:flex; align-items:center; gap:6px;
+  padding:4px 9px; background:#0d0d0d;
+  border:0.5px solid rgba(255,255,255,0.07); border-radius:4px; flex-shrink:0; }
+.nc-input-badge { width:18px; height:18px; border-radius:50%;
+  background:#e07070; color:#fff;
+  display:flex; align-items:center; justify-content:center;
+  font-size:7.5px; font-weight:700; }
+.nc-input-name { font-size:9.5px; font-weight:600; color:#bbb; }
+.nc-input-field { flex:1; min-width:0; font-size:10px; padding:7px 11px;
+  background:#080808; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:4px; color:#d4d4d4; font-family:inherit; }
+.nc-input-field::placeholder { color:#555; font-style:italic; }
+.nc-input-send { font-size:8.5px; letter-spacing:0.1em;
+  padding:7px 13px; border-radius:3px;
+  background:rgba(224,112,112,0.1); border:0.5px solid #e07070;
+  color:#f0a0a0; font-weight:700; cursor:pointer; font-family:inherit; }
+.nc-input-send:disabled { opacity:0.5; cursor:not-allowed; }
+
+/* Stats row + cards (existing; minor mockup spacing tweak) */
 .stats-row { display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:28px; }
 .stat-card { background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px; padding:14px 16px; }
 .stat-card.accent { border-top:2px solid #5aafa5; }
 .stat-card .stat-label { color:#666; font-size:10px; letter-spacing:0.13em; margin-bottom:8px; }
 .stat-card .stat-value { font-size:24px; font-weight:500; color:#fff; line-height:1; }
 .stat-card .stat-value.text { font-size:18px; color:#5aafa5; }
-
-.main-grid { display:grid; grid-template-columns:320px 1fr; gap:22px; }
-.dispatch-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
-.dispatch-header .title { color:#5aafa5; font-size:11px; letter-spacing:0.15em; font-weight:500;
-  display:flex; align-items:center; gap:6px; }
-.dispatch-header .title .dot { display:inline-block; width:6px; height:6px; background:#5aafa5; border-radius:50%; }
-.dispatch-header .count { color:#555; font-size:10px; letter-spacing:0.1em; }
-.ev-tabs { display:flex; gap:4px; margin-bottom:12px; flex-wrap:wrap; }
-.ev-tab { flex:1 1 auto; min-width:0; padding:7px 0; text-align:center; font-size:10px; letter-spacing:0.1em;
-  color:#888; background:#121212; border:0.5px solid rgba(255,255,255,0.08);
-  border-radius:3px; cursor:pointer; }
-.ev-tab:hover:not(.active) { color:#d4d4d4; }
-.ev-tab.active { color:#5aafa5; border-color:rgba(90,175,165,0.4); background:#121613; }
-.ev-list { list-style:none; display:flex; flex-direction:column; max-height:600px; overflow-y:auto; }
-.ev-item { padding:12px 0; border-bottom:0.5px solid rgba(255,255,255,0.06); }
-.ev-item:last-child { border-bottom:none; }
-.ev-meta { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
-.ev-tag { font-size:9px; letter-spacing:0.08em; padding:2px 7px; border-radius:3px;
-  background:rgba(90,175,165,0.10); color:#5aafa5; text-transform:uppercase; }
-.ev-nation { font-size:9px; color:#888; letter-spacing:0.06em; display:flex; align-items:center; gap:4px; }
-.ev-nation img { width:12px; height:9px; object-fit:cover; border-radius:1px; }
-.ev-time { margin-left:auto; font-size:9px; color:#555; letter-spacing:0.1em; }
-.ev-head { font-size:13px; font-weight:500; color:#fff; margin-bottom:3px; }
-.ev-body { font-size:11px; color:#888; line-height:1.5; }
-.ev-empty { color:#666; font-size:12px; padding:22px 4px; text-align:center; line-height:1.6; }
 
 .section-heading { display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
 .section-heading .roman { color:#555; font-size:11px; letter-spacing:0.1em; }
@@ -93,8 +153,10 @@
 .retire-btn:hover    { background:rgba(200,122,122,0.10); border-color:#c87a7a; }
 .retire-btn:disabled { color:#555; border-color:rgba(255,255,255,0.06); cursor:not-allowed; background:transparent; }
 .empty { background:#121212; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
-  padding:22px 18px; color:#666; font-size:12px; line-height:1.6; text-align:center; }
+  padding:22px 18px; color:#666; font-size:12px; line-height:1.6; text-align:center;
+  margin-bottom:28px; }
 
+/* Career log — one date-prefixed row per event, listed newest-first. */
 /* ─── Active Campaign card (Pressing Issues) ─────────────────────────
    Rendered when politician_active_election has a row for the current
    politician. Visual vocabulary matches the rest of the page (teal
@@ -189,13 +251,15 @@
 
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
+@media (max-width:900px) {
+  .top-row { grid-template-columns:1fr; }
+}
 @media (max-width:700px) {
   .hero { grid-template-columns:1fr; gap:18px; }
   .anchor { text-align:left; padding-left:0; border-left:none; border-top:0.5px solid rgba(255,255,255,0.08); padding-top:14px; }
   .anchor-message { margin-left:0; }
   .stats-row { grid-template-columns:repeat(2, 1fr); }
   .identity-body .name .first, .identity-body .name .last { font-size:32px; }
-  .main-grid { grid-template-columns:1fr; }
 }
 
 /* ─── Current Affiliation panel ─────────────────────────────────────
@@ -287,23 +351,48 @@
     </div>
   </div>
 
-  <div class="stats-row" id="stats-row"></div>
+  <!-- TOP ROW: World Events + Nation Chat side-by-side -->
+  <div class="top-row">
 
-  <div class="main-grid">
-    <div class="dispatch-side">
-      <div class="dispatch-header">
-        <div class="title"><span class="dot"></span>DISPATCHES</div>
-        <div class="count" id="ev-count">—</div>
+    <!-- World Events -->
+    <div class="panel we">
+      <div class="p-head">
+        <div class="p-titles">
+          <div class="p-eyebrow">DISPATCHES &middot; ALL NATIONS</div>
+          <div class="p-title">World <span class="serif">Events</span></div>
+        </div>
+        <div class="p-right" id="ev-count">—</div>
       </div>
-      <div class="ev-tabs" id="ev-tabs">
-        <div class="ev-tab active" data-tab="politics">POLITICS</div>
-        <div class="ev-tab" data-tab="corporate">CORPORATE</div>
-        <div class="ev-tab" data-tab="military">MILITARY</div>
-        <div class="ev-tab" data-tab="nation">NATION</div>
-        <div class="ev-tab" data-tab="world">WORLD</div>
+      <div class="we-tabs" id="ev-tabs">
+        <div class="we-tab active" data-tab="politics">POLITICS</div>
+        <div class="we-tab" data-tab="corporate">CORPORATE</div>
+        <div class="we-tab" data-tab="military">MILITARY</div>
+        <div class="we-tab" data-tab="nation">NATION</div>
+        <div class="we-tab" data-tab="world">WORLD</div>
       </div>
-      <ul class="ev-list" id="ev-list"><li class="ev-empty">Loading…</li></ul>
+      <ul class="we-feed" id="ev-list"><li class="we-empty">Loading&hellip;</li></ul>
     </div>
+
+    <!-- Nation Chat (new — wired against group_chats nation chat) -->
+    <div class="panel nc">
+      <div class="p-head">
+        <div class="p-titles">
+          <div class="p-eyebrow" id="nc-eyebrow">POLITICAL CHATTER</div>
+          <div class="p-title">Nation <span class="serif">Floor</span></div>
+        </div>
+        <div class="p-right"><span class="nc-online" id="nc-online">—</span></div>
+      </div>
+      <div class="nc-feed" id="nc-feed">
+        <div class="nc-empty">Loading chat&hellip;</div>
+      </div>
+      <div class="nc-input">
+        <div class="nc-input-pill">
+          <span class="nc-input-badge" id="nc-self-badge">—</span>
+          <span class="nc-input-name" id="nc-self-name">—</span>
+        </div>
+        <input class="nc-input-field" id="nc-input-field" type="text"
+               placeholder="Post to the floor&hellip;" maxlength="500" />
+        <button class="nc-input-send" id="nc-input-send" disabled>POST</button>
     <div class="content-right">
       <div class="section-heading">
         <span class="roman">I.</span>
@@ -325,9 +414,25 @@
         <span class="serif">Career</span>
         <button class="retire-btn" id="retire-btn" title="End this politician's career">Retire</button>
       </div>
-      <div class="career-events" id="career-events"></div>
     </div>
   </div>
+
+  <div class="stats-row" id="stats-row"></div>
+
+  <div class="section-heading">
+    <span class="roman">I.</span>
+    <span class="sans">Pressing</span>
+    <span class="serif">Issues</span>
+  </div>
+  <div class="empty">No pressing issues right now.</div>
+
+  <div class="section-heading">
+    <span class="roman">II.</span>
+    <span class="sans">Political</span>
+    <span class="serif">Career</span>
+    <button class="retire-btn" id="retire-btn" title="End this politician's career">Retire</button>
+  </div>
+  <div class="career-events" id="career-events"></div>
 </div>
 
 <div id="loading" class="loading">LOADING...</div>
@@ -379,6 +484,11 @@ let party = null;
 let allEvents = [];
 let evCurrentTab = 'politics';
 let evTickNow = 0;
+let careerRows = [];  // persistent rows from politician_career_events.
+// Nation chat state. nationChatId is the group_chats.id for this nation's
+// chat_type='nation' row. Resolved during init; null = no chat available.
+let nationChatId = null;
+let chatSubscription = null;
 let careerRows = [];  // persistent rows from politician_career_events; merged with the derived founding event at render time.
 let activeRace = null; // politician_active_election row when one exists; drives the Pressing Issues campaign card.
 
@@ -450,15 +560,19 @@ async function init() {
   renderDispatches();
   bindDispatchTabs();
   bindRetireButton(ctx.allUserFactions || []);
+  // Nation Chat is fire-and-forget — chat panel renders its own loading
+  // and empty states; failure doesn't block the rest of the page.
+  initNationChat().catch(err => {
+    console.warn('politician-home: chat init failed', err?.message || err);
+    const feed = document.getElementById('nc-feed');
+    if (feed) feed.innerHTML = '<div class="nc-empty">Chat unavailable.</div>';
+  });
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
 
 // Retire — soft-deletes the politician via the politician_retire RPC and
-// hands the user off to whatever other active faction they have (via the
-// shared getFactionDashboardUrl), falling back to login.html when there
-// isn't one. Mirrors the topbar switcher's redirect logic so the same
-// active_faction_id contract carries over.
+// hands the user off to whatever other active faction they have.
 function bindRetireButton(allFactions) {
   const btn = document.getElementById('retire-btn');
   if (!btn || !politician?.id) return;
@@ -474,7 +588,6 @@ function bindRetireButton(allFactions) {
         btn.disabled = false; btn.textContent = 'Retire';
         return;
       }
-      // Hand off to another active faction if the user has one, else login.
       const next = (allFactions || []).find(f => !isFactionInactive(f));
       if (next) {
         sessionStorage.setItem('active_faction_id', next.id);
@@ -499,6 +612,7 @@ function renderHero(shard) {
   const last  = politician.leader_last_name  || '';
   const ini = (((first[0] || '') + (last[0] || '')).toUpperCase()) || '—';
   const display = (first || last) ? (first + ' ' + last).trim() : (politician.faction_name || 'Politician');
+  const career = politician.politician_career || 'Member of the Party';
   // Hero pill — Affiliation. Derives from the live party FK
   // (politician_party_id → `party`), not from the politician_career
   // text column. The text column was added in 20270355 with DEFAULT
@@ -648,7 +762,7 @@ function renderCareer() {
 
 function renderStats() {
   const stats = [
-    { label: 'CHARISMA',    value: politician.politician_charisma    ?? 1,           kind: 'num' },
+    { label: 'STANDING',    value: politician.politician_standing    ?? 1,           kind: 'num' },
     { label: 'REPUTATION',  value: politician.politician_reputation  ?? 1,           kind: 'num' },
     { label: 'CREDIBILITY', value: politician.politician_credibility ?? 1,           kind: 'num' },
     { label: 'POLITICAL CAPITAL', value: fmtBig(Number(politician.political_capital) || 0), kind: 'num' },
@@ -1170,9 +1284,9 @@ function bindDispatchTabs() {
   const bar = document.getElementById('ev-tabs');
   if (!bar) return;
   bar.addEventListener('click', (e) => {
-    const btn = e.target.closest('.ev-tab');
+    const btn = e.target.closest('.we-tab');
     if (!btn || btn.classList.contains('active')) return;
-    bar.querySelectorAll('.ev-tab').forEach(b => b.classList.remove('active'));
+    bar.querySelectorAll('.we-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     evCurrentTab = btn.dataset.tab;
     renderDispatches();
@@ -1185,7 +1299,7 @@ function renderDispatches() {
   const rows = allEvents.filter(r => eventMatchesTab(r, evCurrentTab)).slice(0, 30);
   if (countEl) countEl.textContent = rows.length === 0 ? 'NONE' : `${rows.length} ITEM${rows.length === 1 ? '' : 'S'}`;
   if (!rows.length) {
-    listEl.innerHTML = `<li class="ev-empty">No ${escHtml(evCurrentTab)} dispatches yet.</li>`;
+    listEl.innerHTML = `<li class="we-empty">No ${escHtml(evCurrentTab)} dispatches yet.</li>`;
     return;
   }
   listEl.innerHTML = rows.map(row => {
@@ -1193,19 +1307,212 @@ function renderDispatches() {
     const ago = Math.max(0, evTickNow - (Number(row.fired_at_tick) || 0));
     const timeStr = ago === 0 ? 'JUST NOW' : ago === 1 ? '1 TICK AGO' : `${ago} TICKS AGO`;
     const nationName = row.nations?.name || null;
-    const np = row.nations?.nation_profiles;
-    const flagUrl = (Array.isArray(np) ? np[0]?.flag_url : np?.flag_url) || null;
-    const nationBadge = nationName
-      ? `<span class="ev-nation">${flagUrl ? `<img src="${escAttr(flagUrl)}" alt="">` : ''}${escHtml(nationName)}</span>`
-      : '';
     const head = formatEventName(row.event_name) || 'Untitled dispatch';
     const body = (row.description_chosen || row.description_used || '').trim();
-    return `<li class="ev-item">
-      <div class="ev-meta"><span class="ev-tag">${escHtml(cat)}</span>${nationBadge}<span class="ev-time">${timeStr}</span></div>
-      <div class="ev-head">${escHtml(head)}</div>
-      ${body ? `<div class="ev-body">${escHtml(body)}</div>` : ''}
+    return `<li class="we-item">
+      <div class="we-meta">
+        <span><span class="we-cat">${escHtml(cat.toUpperCase())}</span>${nationName ? `<span class="we-country">&middot; ${escHtml(nationName)}</span>` : ''}</span>
+        <span class="we-time">${timeStr}</span>
+      </div>
+      <div class="we-title">${escHtml(head)}</div>
+      ${body ? `<div class="we-body">${escHtml(body)}</div>` : ''}
     </li>`;
   }).join('');
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Nation Chat — group_chats (chat_type='nation') + group_chat_messages
+// ════════════════════════════════════════════════════════════════════
+// Wiring: load chat id by nation_id, fetch last N messages + author rows,
+// render newest-first (CSS column-reverse), subscribe to INSERTs and
+// prepend live. Posting is a direct INSERT — RLS validates sender_id
+// matches the caller's faction.
+
+const CHAT_MSG_LIMIT = 50;
+
+async function initNationChat() {
+  const feed = document.getElementById('nc-feed');
+  if (!politician?.nation_id) {
+    if (feed) feed.innerHTML = '<div class="nc-empty">No nation context.</div>';
+    return;
+  }
+
+  // 1. Resolve this nation's chat row.
+  const { data: chatRow, error: chatErr } = await _supabase
+    .from('group_chats')
+    .select('id')
+    .eq('chat_type', 'nation')
+    .eq('nation_id', politician.nation_id)
+    .maybeSingle();
+  if (chatErr || !chatRow) {
+    if (feed) feed.innerHTML = '<div class="nc-empty">No chat for this nation.</div>';
+    return;
+  }
+  nationChatId = chatRow.id;
+
+  // 2. Eyebrow: "$NATION · POLITICAL CHATTER".
+  const ncEyebrow = document.getElementById('nc-eyebrow');
+  if (ncEyebrow && nation?.name) ncEyebrow.textContent = `${nation.name.toUpperCase()} · POLITICAL CHATTER`;
+
+  // 3. Self pill — initials + last name in the input bar.
+  const first = politician.leader_first_name || '';
+  const last  = politician.leader_last_name  || '';
+  const ini   = (((first[0] || '') + (last[0] || '')).toUpperCase()) || '·';
+  const selfBadge = document.getElementById('nc-self-badge');
+  const selfName  = document.getElementById('nc-self-name');
+  if (selfBadge) selfBadge.textContent = ini;
+  if (selfName)  selfName.textContent  = last || first || politician.faction_name || 'You';
+
+  // 4. Member count — fuzzy "X online" proxy until presence tracking lands.
+  const { count: memberCount, error: countErr } = await _supabase
+    .from('group_chat_members')
+    .select('faction_id', { count: 'exact', head: true })
+    .eq('chat_id', nationChatId);
+  const onlineEl = document.getElementById('nc-online');
+  if (onlineEl) {
+    if (countErr) onlineEl.textContent = '—';
+    else          onlineEl.textContent = `${memberCount || 0} MEMBER${memberCount === 1 ? '' : 'S'}`;
+  }
+
+  await loadChatMessages();
+  bindChatInput();
+  subscribeChatInserts();
+}
+
+async function loadChatMessages() {
+  const { data: msgs, error } = await _supabase
+    .from('group_chat_messages')
+    .select('id, sender_id, message_text, sent_at_tick, created_at, is_system, factions:sender_id(faction_name, leader_first_name, leader_last_name, faction_type, abbreviation, party_color)')
+    .eq('chat_id', nationChatId)
+    .order('created_at', { ascending: false })
+    .limit(CHAT_MSG_LIMIT);
+  if (error) {
+    console.warn('politician-home: chat load failed', error.message);
+    document.getElementById('nc-feed').innerHTML = '<div class="nc-empty">Could not load chat.</div>';
+    return;
+  }
+  renderChatMessages(msgs || []);
+}
+
+function renderChatMessages(rows) {
+  const feed = document.getElementById('nc-feed');
+  if (!feed) return;
+  if (!rows.length) {
+    feed.innerHTML = '<div class="nc-empty">No messages yet. Be the first to post.</div>';
+    return;
+  }
+  // Feed uses flex-direction: column-reverse — order rows newest-first
+  // (which is how we received them from the query). column-reverse will
+  // flip them visually so the latest message is at the bottom near the
+  // input bar, which is the chat convention.
+  feed.innerHTML = rows.map(messageHtml).join('');
+}
+
+function messageHtml(row) {
+  if (row.is_system || !row.factions) {
+    return `<div class="msg-system">${escHtml(row.message_text || '')}</div>`;
+  }
+  const f = row.factions;
+  const first = f.leader_first_name || '';
+  const last  = f.leader_last_name  || '';
+  const displayName = (first || last) ? (first + ' ' + last).trim() : (f.faction_name || 'Faction');
+  const ini = (((first[0] || '') + (last[0] || '')).toUpperCase())
+              || (f.faction_name || '·').slice(0, 2).toUpperCase();
+  const roleLabel = factionRoleLabel(f);
+  const time = chatTimeLabel(row);
+  const badgeColor = f.party_color || roleColor(f.faction_type);
+  return `<div class="msg">
+    <div class="msg-badge" style="background:${escAttr(badgeColor)};">${escHtml(ini)}</div>
+    <div class="msg-body">
+      <div class="msg-head">
+        <span class="msg-name">${escHtml(displayName)}</span>
+        ${roleLabel ? `<span class="msg-role">${escHtml(roleLabel)}</span>` : ''}
+        <span class="msg-time">${escHtml(time)}</span>
+      </div>
+      <div class="msg-text">${escHtml(row.message_text || '')}</div>
+    </div>
+  </div>`;
+}
+
+function factionRoleLabel(f) {
+  const t = (f.faction_type || '').toLowerCase();
+  const abbr = (f.abbreviation || '').trim();
+  if (t === 'politician')     return abbr ? `${abbr} · POLITICIAN` : 'POLITICIAN';
+  if (t === 'movement_party') return abbr ? `${abbr} · PARTY` : 'PARTY';
+  if (t === 'party')          return abbr ? `${abbr} · PARTY` : 'PARTY';
+  if (t === 'corporation')    return abbr ? `${abbr} · CORP` : 'CORP';
+  return t.toUpperCase();
+}
+
+function roleColor(factionType) {
+  const t = (factionType || '').toLowerCase();
+  if (t === 'politician')     return '#7a9aab';
+  if (t === 'movement_party') return '#9a8aaa';
+  if (t === 'party')          return '#e07070';
+  if (t === 'corporation')    return '#d4926a';
+  return '#555';
+}
+
+function chatTimeLabel(row) {
+  const tickAgo = evTickNow - (Number(row.sent_at_tick) || evTickNow);
+  if (tickAgo <= 0) return 'just now';
+  if (tickAgo === 1) return '1 tick';
+  return `${tickAgo} ticks`;
+}
+
+function bindChatInput() {
+  const field = document.getElementById('nc-input-field');
+  const btn   = document.getElementById('nc-input-send');
+  if (!field || !btn) return;
+  const refresh = () => { btn.disabled = !field.value.trim(); };
+  field.addEventListener('input', refresh);
+  field.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !btn.disabled) { e.preventDefault(); postChatMessage(); }
+  });
+  btn.addEventListener('click', postChatMessage);
+  refresh();
+}
+
+async function postChatMessage() {
+  const field = document.getElementById('nc-input-field');
+  const btn   = document.getElementById('nc-input-send');
+  if (!field || !btn || !nationChatId) return;
+  const text = (field.value || '').trim();
+  if (!text) return;
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'POSTING…';
+  try {
+    const { error } = await _supabase.from('group_chat_messages').insert({
+      chat_id: nationChatId,
+      sender_id: politician.id,
+      message_text: text.slice(0, 500),
+      sent_at_tick: evTickNow,
+      is_system: false,
+    });
+    if (error) throw error;
+    field.value = '';
+    // The realtime subscription will prepend the message. As a fallback in
+    // case the channel hasn't connected yet, reload the feed.
+    await loadChatMessages();
+  } catch (err) {
+    console.warn('politician-home: post failed', err?.message || err);
+    alert('Could not post: ' + (err?.message || err));
+  } finally {
+    btn.textContent = original;
+    btn.disabled = !field.value.trim();
+  }
+}
+
+function subscribeChatInserts() {
+  if (chatSubscription) chatSubscription.unsubscribe();
+  chatSubscription = _supabase.channel(`nation-chat-${nationChatId}`)
+    .on('postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'group_chat_messages',
+        filter: `chat_id=eq.${nationChatId}` },
+      () => { loadChatMessages(); }
+    )
+    .subscribe();
 }
 
 init();

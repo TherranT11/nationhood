@@ -54,7 +54,7 @@ initPage('politics', async (state) => {
     // Fetch total seats from all parties
     const { data: allParties } = await _supabase
         .from('factions')
-        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, standing, loyalty, last_seen_tick, leader_first_name, leader_last_name, leader_age, founded_tick, custom_logo_url, party_logo, party_description, momentum, momentum_log, bloc_id')
+        .select('id, seats, national_vote_share, faction_name, abbreviation, party_color, loyalty, last_seen_tick, leader_first_name, leader_last_name, leader_age, founded_tick, custom_logo_url, party_logo, party_description, momentum, momentum_log, bloc_id')
         .eq('nation_id', nation.id)
         .eq('faction_type', 'party');
 

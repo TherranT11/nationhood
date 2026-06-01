@@ -418,6 +418,9 @@ function escHtml(s) { const d = document.createElement('div'); d.textContent = s
 
 let _viewerPolId = null;
 let _viewerPartyId = null;
+let _viewerCareer = null;
+let _viewerStanding = 0;
+let _viewerInfluence = 0;
 let _viewerCharisma = 0;
 let _viewerReputation = 0;
 let _viewerPoliticalCapital = 0;
@@ -445,6 +448,11 @@ async function init() {
 
   _viewerPolId         = ctx.faction?.id || null;
   _viewerPartyId       = ctx.faction?.politician_party_id || null;
+  _viewerCareer        = ctx.faction?.politician_career || null;
+  _viewerStanding      = Number(ctx.faction?.politician_standing) || 0;
+  _viewerInfluence     = Number(ctx.faction?.politician_influence) || 0;
+  _viewerSpeechReadyAt = Number(ctx.faction?.speech_cooldown_until_tick) || 0;
+  _viewerNextActionAt  = Number(ctx.faction?.next_member_action_tick) || 0;
   _viewerCharisma         = Number(ctx.faction?.politician_charisma) || 0;
   _viewerReputation       = Number(ctx.faction?.politician_reputation) || 0;
   _viewerPoliticalCapital = Number(ctx.faction?.political_capital) || 0;
@@ -584,6 +592,16 @@ function renderSidebar(party, isMine) {
   loadAndPollChat(party).catch(err => console.warn('[party] chat init failed', err));
 }
 
+// Party-Members panel. Two ground-floor actions back the climb:
+// Door Knocking (1-tick cooldown) and Give a Speech (1d6 + Standing,
+// 3-tick cooldown). Both gated by the universal 1-per-turn rule via
+// next_member_action_tick; Speech also gates on its own 3-tick
+// cooldown via speech_cooldown_until_tick. First call wires the
+// scaffold (cards container + result node); subsequent calls only
+// rewrite #act-list so the flash row from the last action stays put
+// across re-renders. Click handler in onMemberAction flips .loading
+// to guard against double-fire and mutates the in-memory viewer
+// stats from the RPC return.
 // Party-Members panel. Two asymmetric ground-floor actions:
 // Door Knocking (1d6 + Reputation, 2-tick cooldown — personal upside
 // vs party-brand risk) and Give a Speech (1d6 + Charisma, 3-tick
@@ -617,6 +635,7 @@ function renderActionsPanel() {
         <div class="act-name">Give a Speech</div>
         <div class="act-cd${speechReady ? ' ready' : ''}">${speechReady ? 'Ready' : `Ready in ${speechRemaining} tick${speechRemaining === 1 ? '' : 's'}`}</div>
       </div>
+      <div class="act-meta">1d6 + Standing (yours: ${_viewerStanding}). 3-tick cooldown.</div>
       <div class="act-meta">1d6 + Charisma (yours: ${_viewerCharisma}). Hit: +0.2 Party Popularity (+0.4 on nat 6). Miss: −2 Reputation (−3 on nat 1). 3-tick cooldown.</div>
     </div>
   `;
@@ -645,6 +664,17 @@ async function onMemberAction(actionKey, card) {
       _viewerReputation    = Number(data.politician_reputation) || 0;
       _viewerSpeechReadyAt = Number(data.cooldown_until_tick) || 0;
       patchPopularityCell(Number(data.popularity_pct));
+      patchViewerInfluenceCell(_viewerInfluence);
+      const popDelta = Number(data.popularity_delta) || 0;
+      const infDelta = Number(data.influence_delta) || 0;
+      const deltas = [
+        popDelta ? `${popDelta > 0 ? '+' : ''}${popDelta} Popularity` : '',
+        infDelta ? `${infDelta > 0 ? '+' : ''}${infDelta} Influence` : '',
+      ].filter(Boolean).join(' &middot; ') || 'no change';
+      flashActionResult(
+        `Rolled ${data.roll} + ${data.standing} Standing = ${data.total}. ${deltas}.`,
+        data.bracket === 'good' ? 'good' : (data.bracket === 'bad' ? 'bad' : 'ok')
+      );
       flashActionResult(formatActionMsg('Charisma', data), bracketKind(data.bracket));
     }
   } catch (err) {
