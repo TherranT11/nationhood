@@ -158,22 +158,6 @@
    .ladder base styles (background, border, padding) carry over from
    the other ladders; we just skip the <summary>/collapse markup. */
 
-/* Stand for Election — single CTA above the branching ladders. Hidden
-   in HTML (no .stand-block) when there's an active race and the
-   in-flight surface lives on the home page Pressing Issues card. */
-.stand-block { margin:6px 0 14px; text-align:center; }
-.stand-btn { font-family:monospace; font-size:11px; letter-spacing:0.1em;
-  text-transform:uppercase; background:rgba(200,166,78,0.08);
-  border:0.5px solid rgba(200,166,78,0.45); color:#c8a64e;
-  padding:11px 22px; border-radius:4px; cursor:pointer; transition:all 0.15s; }
-.stand-btn:hover:not(:disabled) { background:rgba(200,166,78,0.15); border-color:#c8a64e; }
-.stand-btn:disabled { opacity:0.4; cursor:not-allowed; }
-.stand-hint { font-size:10px; color:#666; margin-top:6px; font-style:italic; }
-.stand-active { padding:13px 18px; background:rgba(90,175,165,0.06);
-  border:0.5px solid rgba(90,175,165,0.25); border-radius:5px;
-  color:#aaa; font-size:11.5px; line-height:1.55; text-align:center; }
-.stand-active strong { color:#5aafa5; font-weight:600; }
-
 /* Two-column branch — Party Office | Government & State directly under
    Tier 0. Both ladders are <details> collapsibles like the rest of the
    list and start closed on page load; the grid just controls how they
@@ -450,7 +434,7 @@
   <div class="em-modal" role="dialog" aria-modal="true" aria-labelledby="em-title">
     <div class="em-head">
       <div class="em-titles">
-        <div class="eyebrow">— PARTY OFFICE · STAND FOR ELECTION —</div>
+        <div class="eyebrow">— PARTY OFFICE · RUN FOR ELECTION —</div>
         <div class="title" id="em-title">Run for <span class="serif">Office</span></div>
         <div class="sub" id="em-subtitle">—</div>
       </div>
@@ -467,7 +451,7 @@
       </div>
       <div class="em-footer-buttons">
         <button class="em-btn cancel"  type="button" data-em-close>CANCEL</button>
-        <button class="em-btn confirm" type="button" id="em-confirm" disabled>&#9873; STAND FOR ELECTION</button>
+        <button class="em-btn confirm" type="button" id="em-confirm" disabled>&#9873; RUN FOR ELECTION</button>
       </div>
     </div>
   </div>
@@ -560,6 +544,16 @@ const PARTY_OFFICE_RUNGS = [
     held:        (s) => s.office === 'member_of_parliament',
     descIfHeld:  ()  => 'You hold a seat in the National Assembly.',
     descIfNot:   ()  => 'Win a seat in the National Assembly. You are now in the chamber, voting on the laws of the republic.',
+    // Run-for-Election entry — opens the race-picker modal where the
+    // player chooses parliament vs community. Same modal both ladders
+    // open; the rung-level placement just puts the button next to the
+    // matching first-office row instead of a single centered CTA.
+    actionIfNot: (s) => {
+      if (s.office)      return null;
+      if (s.activeRace)  return { label: 'Race in flight',     kind: 'disabled' };
+      if (!s.partyId)    return { label: 'Join a party first', kind: 'disabled' };
+      return { label: 'Run for Election', kind: 'primary', action: 'stand-for-election' };
+    },
   },
   {
     name: 'Senior MP',
@@ -788,6 +782,14 @@ const GOVERNMENT_RUNGS = [
     held:        (s) => s.office === 'community_organizer',
     descIfHeld:  ()  => 'You hold the neighborhood seat — small but real.',
     descIfNot:   ()  => 'A neighborhood seat. Small but real — most political careers begin here.',
+    // Run-for-Election entry — see the matching block on the Member
+    // of Parliament rung. Both buttons open the same picker modal.
+    actionIfNot: (s) => {
+      if (s.office)      return null;
+      if (s.activeRace)  return { label: 'Race in flight',     kind: 'disabled' };
+      if (!s.partyId)    return { label: 'Join a party first', kind: 'disabled' };
+      return { label: 'Run for Election', kind: 'primary', action: 'stand-for-election' };
+    },
   },
   {
     name: 'City Council Member',
@@ -1303,8 +1305,9 @@ function renderResolutionBanner(r) {
 // rung's contract is "I read these named fields" rather than "I rummage
 // through faction." Today's surface:
 //   partyId / partyName    → Tier 0 Party Member held() + descIfHeld.
-//   activeRace             → renderStandForElection swap (CTA → "race in
-//                            progress" callout).
+//   activeRace             → Run-for-Election actionIfNot on MP +
+//                            Community Organizer rungs (CTA → "Race
+//                            in flight" disabled hint).
 //   office                 → Tier 1 / Tier 2 rung held() checks.
 //   officeWonAtTick        → City Council eligibility window (opens 9
 //                            ticks after winning Community Organizer).
@@ -1394,10 +1397,10 @@ function renderLadders(state, ctx) {
     <div class="ladder ladder--tier0">
       <div class="body">${renderRungs([PARTY_MEMBER_TIER0], state)}</div>
     </div>`;
-  // 2) Stand for Election — single button above the branch pair.
-  const standHtml = renderStandForElection(state);
-  // 3) Branch pair (Party Office | Government & State) and the remaining
-  //    stacked ladders below.
+  // 2) Branch pair (Party Office | Government & State) and the remaining
+  //    stacked ladders below. Run-for-Election entry buttons now sit on
+  //    the Member of Parliament / Community Organizer rungs themselves
+  //    via per-rung actionIfNot; no separate centered CTA.
   const branchLadders = LADDERS.filter(l => l.branch);
   const restLadders   = LADDERS.filter(l => !l.branch);
   const ladderHtmlFor = (l, open) => {
@@ -1431,42 +1434,10 @@ function renderLadders(state, ctx) {
     : '';
   const restHtml = restLadders.map(l => ladderHtmlFor(l, false)).join('');
 
-  host.innerHTML = tier0Html + standHtml + branchHtml + restHtml;
+  host.innerHTML = tier0Html + branchHtml + restHtml;
   bindRungActions(ctx);
 }
 
-// Stand for Election callout — single button gated by party membership
-// and by "no active race in flight". Office-holders no longer see this
-// block at all (20270432): advancement happens via the per-rung
-// [Register to Run] / [Register] CTAs on the next-up rung in their
-// ladder. When a race is active the button is replaced with a pointer
-// to Pressing Issues; the in-flight race surface lives on the home page.
-function renderStandForElection(state) {
-  if (state.activeRace) {
-    const where = state.activeRace.district || 'a district';
-    return `
-      <div class="stand-block">
-        <div class="stand-active">You are standing in the <strong>${escHtml(where)}</strong> race. See <strong>Pressing Issues</strong> on your home page for live polling and campaign actions.</div>
-      </div>`;
-  }
-  if (state.office) {
-    // Tier-1 office-holders advance via per-rung CTAs in the matching
-    // ladder. The global Stand block hides completely so the page
-    // doesn't carry a dangling control.
-    return '';
-  }
-  if (!state.partyId) {
-    return `
-      <div class="stand-block">
-        <button class="stand-btn" type="button" disabled>&#9873; Stand for Election</button>
-        <div class="stand-hint">Join a political party to stand for election.</div>
-      </div>`;
-  }
-  return `
-    <div class="stand-block">
-      <button class="stand-btn" type="button" data-action="stand-for-election">&#9873; Stand for Election</button>
-    </div>`;
-}
 
 // Generic rung-list renderer. Walks a ladder's rung array, runs each rung's
 // held() check against the state bag, and emits a row with tier label,
