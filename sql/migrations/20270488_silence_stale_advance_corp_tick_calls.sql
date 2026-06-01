@@ -4,6 +4,7 @@
 -- calls into three things that have been removed from the DB:
 --
 --   public.corp_properties              dropped in 20270251 (corp cull 5B)
+--   public.corp_executives              dropped in 20270248 (corp cull 4g)
 --   public.loan_negotiations            dropped in 20270251 (corp cull 5B)
 --   public.process_lawsuit_deadlines    dropped in 20270247 (4f lawsuit
 --                                                            modernization)
@@ -12,6 +13,7 @@
 --
 -- Per-tick logs from those failed calls were filling the cron output:
 --   [advance-corp-tick] Regional HQ income failed (corp_properties missing)
+--   [advance-corp-tick] Exec expiry failed (corp_executives missing)
 --   [advance-corp-tick] loan-negotiation sweep failed (relation missing)
 --   [advance-corp-tick] lawsuit deadline sweep failed (function missing)
 --
@@ -59,6 +61,28 @@ CREATE POLICY "corp_properties_stub_read" ON public.corp_properties
 
 COMMENT ON TABLE public.corp_properties IS
     'STUB — silences stale advance-corp-tick selects/updates after the table was dropped in 20270251. Drop me after advance-corp-tick is redeployed.';
+
+-- ── corp_executives stub ────────────────────────────────────────────
+-- Columns match the deployed code's select + update shape:
+-- select salary_per_year filtered by (faction_id, status='active');
+-- update {status, updated_at} where (status='active', contract_end_tick
+-- < currentTick) returning (id, role, faction_id).
+CREATE TABLE IF NOT EXISTS public.corp_executives (
+    id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    faction_id          uuid,
+    role                text,
+    status              text,
+    salary_per_year     bigint  DEFAULT 0,
+    contract_end_tick   int,
+    updated_at          timestamptz DEFAULT NOW()
+);
+ALTER TABLE public.corp_executives ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "corp_executives_stub_read" ON public.corp_executives;
+CREATE POLICY "corp_executives_stub_read" ON public.corp_executives
+    FOR SELECT TO authenticated, service_role USING (true);
+
+COMMENT ON TABLE public.corp_executives IS
+    'STUB — silences stale advance-corp-tick selects/updates after the table was dropped in 20270248. Drop me after advance-corp-tick is redeployed.';
 
 -- ── loan_negotiations stub ──────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.loan_negotiations (
