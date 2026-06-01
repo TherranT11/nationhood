@@ -971,7 +971,7 @@ function initials(s, n) {
     if (!id) { window.location.href = 'entrepreneur-corporations.html'; return; }
 
     const { data: c, error } = await _supabase.from('entrepreneur_corps')
-      .select('id, name, ticker, custom_logo_url, rebrand_cooldown_until_tick, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, freighters_owned, crude_reserve, refined_reserve, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent, head_of_state_title, head_of_state_first_name, head_of_state_last_name)')
+      .select('id, name, ticker, custom_logo_url, rebrand_cooldown_until_tick, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, freighters_owned, crude_reserve, refined_reserve, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -3609,7 +3609,7 @@ function initials(s, n) {
         const allNationIds = Array.from(new Set([c.hq_nation_id, ...rhqNationIds]));
         const { data: plotRows, error: pErr } = await _supabase.from('nation_oil_plots')
           .select('id, slot_index, name, nation_id, surveyed, surveyed_at_tick, surveyed_by_faction, tier, crude_present, '
-                + 'nation:nations!nation_id(name, head_of_state_title, head_of_state_first_name, head_of_state_last_name)')
+                + 'nation:nations!nation_id(name)')
           .in('nation_id', allNationIds)
           .order('slot_index', { ascending: true });
         if (pErr) console.warn('[entrepreneur-corp] oil plots fetch error:', pErr.message);
@@ -4897,13 +4897,8 @@ function initials(s, n) {
         // Per-row Nation cell — plots can now come from the HQ nation
         // AND any nation where the corp owns a Regional HQ.
         const nationCell = (p) => {
-          const nm    = p.nation?.name || '—';
-          const title = p.nation?.head_of_state_title || 'President';
-          const who   = [p.nation?.head_of_state_first_name, p.nation?.head_of_state_last_name].filter(Boolean).join(' ');
-          return `<div class="surv-cell">
-              <div style="color:#fff;font-weight:600;">${escapeHtml(nm)}</div>
-              <div style="color:#888;font-size:10px;margin-top:2px;">${escapeHtml(title)} ${escapeHtml(who || '—')}</div>
-            </div>`;
+          const nm = p.nation?.name || '—';
+          return `<div class="surv-cell"><div style="color:#fff;font-weight:600;">${escapeHtml(nm)}</div></div>`;
         };
         // Ownership defaults to "No Permit" until the permit mechanic lands.
         const ownershipCellHtml = '<div class="surv-cell"><span class="surv-status">No Permit</span></div>';
