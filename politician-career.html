@@ -1349,18 +1349,21 @@ function render(politician, shard, nation, party) {
   document.getElementById('cc-title-lead').textContent = lead;
   document.getElementById('cc-title-tail').textContent = tail;
 
-  // Subtitle: age · nation · affiliation note. Independents get the
-  // explicit "no current position" line; office-holders read
-  // "{Office Title} of {party}"; un-officed members read
-  // "member of {party}". The office title comes from OFFICE_TITLES
-  // (the same map used in the Stand-for-Election lockout + Tier 1
-  // rung descriptions), so the surfaces never disagree.
+  // Subtitle: age · nation · affiliation note (when there is one).
+  // Office-holders read "{Office Title} of {party}"; un-officed party
+  // members read "member of {party}". Independents (no office, no
+  // party — e.g. civil servants whose role is conveyed by the title
+  // line above) drop the segment entirely so the subtitle doesn't
+  // contradict the title. Office title comes from OFFICE_TITLES (the
+  // same map used in the rung descriptions), so the surfaces never
+  // disagree.
   const office = politician.politician_office || null;
   const positionNote = office && party
     ? `${officeTitle(office)} of ${party.faction_name}`
-    : (party ? `member of ${party.faction_name}` : 'no current position');
-  document.getElementById('cc-subtitle').textContent =
-    `Age ${age} · ${nationName} · ${positionNote}`;
+    : (party ? `member of ${party.faction_name}` : null);
+  document.getElementById('cc-subtitle').textContent = positionNote
+    ? `Age ${age} · ${nationName} · ${positionNote}`
+    : `Age ${age} · ${nationName}`;
 
   // Positions held — 1 when an office is held, 0 otherwise.
   document.getElementById('cc-positions').textContent = office ? '1' : '0';
