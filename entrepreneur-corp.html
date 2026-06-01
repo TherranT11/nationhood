@@ -2557,6 +2557,148 @@ function initials(s, n) {
       root.querySelector('#sv-close').addEventListener('click', () => closeSurveyModal(!!reload));
     }
 
+    // ── Link Pump to Plot: pick a surveyed-with-crude plot in the corp's
+    //    nation. Reuses the survey modal chrome (.sv-*) for consistency.
+    //    Plots already linked by OTHER pumps in the same corp are tagged
+    //    but still selectable (multi-pump-per-plot is allowed and drains
+    //    faster).
+    function openLinkPumpModal({ buildingId, pumpName }) {
+      let ov = document.getElementById('linkPumpModal');
+      if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'linkPumpModal';
+        ov.innerHTML = `
+          <div class="sv-modal" role="dialog" aria-modal="true">
+            <div class="sv-head">
+              <div>
+                <div class="sv-eyebrow">— OIL &amp; GAS · LINK PUMP —</div>
+                <div class="sv-title">Assign <span class="name" id="lp-pump-name">—</span></div>
+              </div>
+              <button class="sv-close" type="button" aria-label="Close" data-lp-close>&times;</button>
+            </div>
+            <div class="sv-body" id="lp-body"></div>
+          </div>`;
+        document.body.appendChild(ov);
+        ov.querySelector('[data-lp-close]').addEventListener('click', () => closeLinkPumpModal(false));
+      }
+      ov.querySelector('#lp-pump-name').textContent = pumpName || '—';
+      renderLinkPumpPicker(ov, buildingId);
+      ov.classList.add('open');
+    }
+    function closeLinkPumpModal(reload) {
+      const ov = document.getElementById('linkPumpModal');
+      if (!ov) return;
+      ov.classList.remove('open');
+      if (reload) location.reload();
+    }
+    function renderLinkPumpPicker(ov, buildingId) {
+      const body = ov.querySelector('#lp-body');
+      const pump = ownedBuildings.find(b => b.id === buildingId);
+      const currentPlotId = pump?.linked_plot_id || null;
+      const candidates = oilPlotsCache.filter(p => p.surveyed && Number(p.crude_present) > 0);
+      // Tally per-plot linked-pump count from this corp's pumps.
+      const linkedCount = new Map();
+      ownedBuildings.forEach(b => {
+        if (b.building_type === 'pump_jack' && b.status === 'completed' && b.linked_plot_id) {
+          linkedCount.set(b.linked_plot_id, (linkedCount.get(b.linked_plot_id) || 0) + 1);
+        }
+      });
+      let selectedId = currentPlotId && candidates.some(p => p.id === currentPlotId) ? currentPlotId : null;
+      const paint = () => {
+        const rowsHtml = candidates.length === 0
+          ? '<div class="sv-copy">No surveyed plots with crude available. Survey a plot first (or wait for another corp to survey one).</div>'
+          : candidates.map(p => {
+              const tag = linkedCount.get(p.id) ? ` <span style="color:#8aa;font-size:11px;">(${linkedCount.get(p.id)} pump${linkedCount.get(p.id) === 1 ? '' : 's'} of yours)</span>` : '';
+              const sel = selectedId === p.id;
+              return `<label class="lp-plot-row" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid ${sel ? '#8aaa6a' : '#222'};border-radius:4px;margin-bottom:6px;cursor:pointer;background:${sel ? '#1a201a' : 'transparent'};">
+                <input type="radio" name="lp-plot" value="${escapeHtml(p.id)}" ${sel ? 'checked' : ''} style="margin:0;">
+                <div style="flex:1;">
+                  <div style="color:#e8e8e8;">${escapeHtml(p.name)}${tag}</div>
+                  <div style="color:#8a8a8a;font-size:11px;">${escapeHtml(p.tier || '—')} · ${Number(p.crude_present).toLocaleString()} bbl remaining</div>
+                </div>
+              </label>`;
+            }).join('');
+        const unlinkBtn = currentPlotId
+          ? '<button type="button" class="sv-btn sv-btn--cancel" id="lp-unlink">Unlink</button>'
+          : '';
+        const confirmDisabled = !selectedId || selectedId === currentPlotId;
+        body.innerHTML = `
+          <div class="sv-copy">A pump only produces while linked to a surveyed plot. Each pump draws up to 3 bbl/tick from its plot; when the plot is empty the pump stops.</div>
+          <div style="margin:14px 0;">${rowsHtml}</div>
+          <div class="sv-actions">
+            <button type="button" class="sv-btn sv-btn--cancel" id="lp-cancel">Cancel</button>
+            ${unlinkBtn}
+            <button type="button" class="sv-btn sv-btn--primary" id="lp-confirm" ${confirmDisabled ? 'disabled' : ''}>${currentPlotId ? 'Re-Link' : 'Link'}</button>
+          </div>`;
+        body.querySelectorAll('input[name="lp-plot"]').forEach(r =>
+          r.addEventListener('change', () => { selectedId = r.value; paint(); }));
+        body.querySelector('#lp-cancel').addEventListener('click', () => closeLinkPumpModal(false));
+        const cb = body.querySelector('#lp-confirm');
+        if (cb) cb.addEventListener('click', () => fireLinkPump(ov, buildingId, selectedId));
+        const ub = body.querySelector('#lp-unlink');
+        if (ub) ub.addEventListener('click', () => fireUnlinkPump(ov, buildingId));
+      };
+      paint();
+    }
+    async function fireLinkPump(ov, buildingId, plotId) {
+      const btn = ov.querySelector('#lp-confirm');
+      if (!btn || btn.disabled) return;
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = 'Linking…';
+      try {
+        const { data, error } = await _supabase.rpc('link_pump_to_plot', {
+          p_building_id: buildingId, p_plot_id: plotId,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_authenticated:   'Sign in first.',
+            building_not_found:  'Pump not found.',
+            not_a_pump:          'That building isn’t a pump jack.',
+            pump_not_completed:  'Pump is still under construction.',
+            corp_not_found:      'Owning corp not found.',
+            not_owner:           'You don’t control this corp.',
+            plot_not_found:      'Plot not found.',
+            plot_outside_nation: 'That plot isn’t in this corp’s home nation.',
+            plot_not_surveyed:   'That plot hasn’t been surveyed yet.',
+            plot_depleted:       'That plot is empty.',
+          };
+          alert(REASON[data?.reason] || ('Link failed: ' + (data?.reason || 'unknown')));
+          btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        closeLinkPumpModal(true);
+      } catch (err) {
+        console.warn('[entrepreneur-corp] link_pump_to_plot failed', err);
+        alert('Could not link pump: ' + (err?.message || err));
+        btn.disabled = false; btn.textContent = prev;
+      }
+    }
+    async function fireUnlinkPump(ov, buildingId) {
+      const btn = ov.querySelector('#lp-unlink');
+      if (!btn) return;
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = 'Unlinking…';
+      try {
+        const { data, error } = await _supabase.rpc('unlink_pump_from_plot', {
+          p_building_id: buildingId,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          alert('Unlink failed: ' + (data?.reason || 'unknown'));
+          btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        closeLinkPumpModal(true);
+      } catch (err) {
+        console.warn('[entrepreneur-corp] unlink_pump_from_plot failed', err);
+        alert('Could not unlink pump: ' + (err?.message || err));
+        btn.disabled = false; btn.textContent = prev;
+      }
+    }
+
     // ── Debt Payment (manual servicing): pay an amount toward an active corp
     //    loan from treasury → lender. Interest accrues per tick; no auto-pay. ──
     async function openDebtPaymentModal() {
@@ -3425,6 +3567,9 @@ function initials(s, n) {
     // Owned-buildings rows, fetched once by renderProjects and reused by
     // renderAssets (single source — avoids a second corp_buildings read).
     let ownedBuildings = [];
+    // Oil plots — fetched by renderProjects for oil_and_gas corps; reused
+    // by renderAssets to resolve pump linked_plot_id → plot name.
+    let oilPlotsCache = [];
 
     const renderProjects = async () => {
       const pj = document.getElementById('cp-projects');
@@ -3439,7 +3584,7 @@ function initials(s, n) {
       const { data: bldgs, error: bErr } = await _supabase.from('corp_buildings')
         .select('id, name, tier, building_type, nation_id, cost_paid, ambition_granted, status, '
               + 'started_at_tick, completes_at_tick, completed_at_tick, '
-              + 'owner_corp_id, list_price, brokerage_offered, broker_corp_id, '
+              + 'owner_corp_id, list_price, brokerage_offered, broker_corp_id, linked_plot_id, '
               + 'nation:nations!nation_id(name, standard_of_living, infrastructure, politician_stability), '
               + 'offers:building_offers!building_id(id, amount, status, placed_at_tick, '
                 + 'buyer:entrepreneur_corps!buyer_corp_id(id, name, '
@@ -3461,6 +3606,7 @@ function initials(s, n) {
           .order('slot_index', { ascending: true });
         if (pErr) console.warn('[entrepreneur-corp] oil plots fetch error:', pErr.message);
         oilPlots = plotRows || [];
+        oilPlotsCache = oilPlots; // for renderAssets pump → plot resolution
       }
 
       // Phase 3 — apartment occupancy history for sparkline + trend.
@@ -4688,6 +4834,7 @@ function initials(s, n) {
       if (isOilGasCorp && canView) {
         const completed = (b) => b.status === 'completed';
         const pumpCount = rows.filter(b => completed(b) && b.building_type === 'pump_jack').length;
+        const linkedPumps = rows.filter(b => completed(b) && b.building_type === 'pump_jack' && b.linked_plot_id).length;
         const refineCap = rows.filter(completed).reduce((sum, b) =>
           sum + (OIL_GAS_DEFS[b.building_type]?.capacity || 0), 0);
         const gasDemand = rows.filter(b => completed(b) && b.building_type === 'gas_station')
@@ -4710,7 +4857,7 @@ function initials(s, n) {
             <div class="og-stats">
               <div class="og-stat"><div class="lab">Crude Reserve</div><div class="val">${crude.toLocaleString()} <span class="unit">bbl</span></div></div>
               <div class="og-stat"><div class="lab">Refined Reserve</div><div class="val">${refined.toLocaleString()} <span class="unit">bbl</span></div></div>
-              <div class="og-stat"><div class="lab">Pumps</div><div class="val">${pumpCount} <span class="unit">× ${pumpOutput} bbl/tick</span></div></div>
+              <div class="og-stat"><div class="lab">Pumps</div><div class="val">${linkedPumps}/${pumpCount} linked <span class="unit">· max ${linkedPumps * pumpOutput} bbl/tick</span></div></div>
               <div class="og-stat"><div class="lab">Refining Capacity</div><div class="val">${refineCap} <span class="unit">bbl/tick</span></div></div>
               <div class="og-stat"><div class="lab">Gas Station Demand</div><div class="val">${gasDemand} <span class="unit">bbl/tick</span></div></div>
             </div>
@@ -7252,6 +7399,7 @@ const openBidModal = (contractId, label, yourCost) => {
         host.innerHTML = `<div class="empty-card">No properties owned yet.${isConstructionCorp ? ' Break ground with Begin Construction above, or buy on the market.' : ' Acquire properties on the market.'}</div>`;
         return;
       }
+      const plotById = new Map(oilPlotsCache.map(p => [p.id, p]));
       host.innerHTML = rows.map(b => {
         const tier = TIER_TABLE[b.tier] || { label: b.tier };
         const typeLabel = b.building_type ? buildingTypeLabel(b.building_type) : '—';
@@ -7263,14 +7411,36 @@ const openBidModal = (contractId, label, yourCost) => {
           const listed = b.list_price != null;
           statusHtml = `<span class="num ${listed ? 'amber' : 'muted'}">${listed ? 'Listed ' + fmtUsd(Number(b.list_price)) : 'Held'}</span>`;
         }
+        // Pump-jack-specific: show linked plot + Assign / Change button.
+        let pumpHtml = '';
+        if (b.building_type === 'pump_jack' && b.status === 'completed') {
+          const plot = b.linked_plot_id ? plotById.get(b.linked_plot_id) : null;
+          const linkLabel = plot
+            ? `<span class="num ${plot.crude_present > 0 ? 'green' : 'amber'}">Linked: ${escapeHtml(plot.name)} (${Number(plot.crude_present).toLocaleString()} bbl)</span>`
+            : '<span class="num amber">Unlinked — pump idle</span>';
+          const btn = isOwner
+            ? `<button class="ap-btn-small" data-link-pump="${escapeHtml(b.id)}" data-pump-name="${escapeHtml(b.name || '')}">${plot ? 'Change' : 'Assign'}</button>`
+            : '';
+          pumpHtml = `<div class="sub" style="margin-top:4px;">${linkLabel} ${btn}</div>`;
+        }
         return `<div class="cf-row">
           <div>
             <div class="who">${escapeHtml(b.name || '—')}</div>
             <div class="sub">${escapeHtml(typeLabel)} · ${escapeHtml(tier.label || '')} · ${escapeHtml(b.nation?.name || '—')}</div>
+            ${pumpHtml}
           </div>
           ${statusHtml}
         </div>`;
       }).join('');
+      // Wire pump-link buttons.
+      if (isOwner) {
+        host.querySelectorAll('[data-link-pump]').forEach(btn => {
+          btn.addEventListener('click', () => openLinkPumpModal({
+            buildingId: btn.dataset.linkPump,
+            pumpName:   btn.dataset.pumpName,
+          }));
+        });
+      }
     };
 
     await renderProjects();
