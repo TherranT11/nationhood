@@ -2595,8 +2595,14 @@ function initials(s, n) {
       const body = ov.querySelector('#lp-body');
       const pump = ownedBuildings.find(b => b.id === buildingId);
       const currentPlotId = pump?.linked_plot_id || null;
+      // Only plots we hold the permit on are eligible — surveying gives
+      // information, not extraction rights. Plot also must be surveyed
+      // with crude > 0 to be worth linking (server enforces same gates).
       const candidates = oilPlotsCache.filter(p =>
-        p.surveyed && Number(p.crude_present) > 0 && p.nation_id === pump?.nation_id);
+        p.surveyed
+        && Number(p.crude_present) > 0
+        && p.nation_id === pump?.nation_id
+        && p.permit_holder_corp_id === id);
       // Tally per-plot linked-pump count from this corp's pumps.
       const linkedCount = new Map();
       ownedBuildings.forEach(b => {
@@ -2607,7 +2613,7 @@ function initials(s, n) {
       let selectedId = currentPlotId && candidates.some(p => p.id === currentPlotId) ? currentPlotId : null;
       const paint = () => {
         const rowsHtml = candidates.length === 0
-          ? '<div class="sv-copy">No surveyed plots with crude available. Survey a plot first (or wait for another corp to survey one).</div>'
+          ? '<div class="sv-copy">No permitted plots available. Acquire a permit in the Oil &amp; Gas Permits panel first — surveys reveal what\'s in the ground, but extraction requires the lease.</div>'
           : candidates.map(p => {
               const tag = linkedCount.get(p.id) ? ` <span style="color:#8aa;font-size:11px;">(${linkedCount.get(p.id)} pump${linkedCount.get(p.id) === 1 ? '' : 's'} of yours)</span>` : '';
               const sel = selectedId === p.id;
@@ -2624,7 +2630,7 @@ function initials(s, n) {
           : '';
         const confirmDisabled = !selectedId || selectedId === currentPlotId;
         body.innerHTML = `
-          <div class="sv-copy">A pump only produces while linked to a surveyed plot. Each pump draws up to 3 bbl/tick from its plot; when the plot is empty the pump stops.</div>
+          <div class="sv-copy">A pump only produces while linked to a plot the corp holds the permit on. Each pump draws up to 3 bbl/tick from its plot; when the plot empties or the permit transfers, the pump stops.</div>
           <div style="margin:14px 0;">${rowsHtml}</div>
           <div class="sv-actions">
             <button type="button" class="sv-btn sv-btn--cancel" id="lp-cancel">Cancel</button>
@@ -2661,7 +2667,7 @@ function initials(s, n) {
             corp_not_found:      'Owning corp not found.',
             not_owner:           'You don’t control this corp.',
             plot_not_found:      'Plot not found.',
-            plot_outside_nation: 'That plot isn’t in this corp’s home nation.',
+            no_permit:           'Your corp doesn’t hold the permit on that plot.',
             plot_not_surveyed:   'That plot hasn’t been surveyed yet.',
             plot_depleted:       'That plot is empty.',
           };
