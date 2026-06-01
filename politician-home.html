@@ -484,13 +484,12 @@ let party = null;
 let allEvents = [];
 let evCurrentTab = 'politics';
 let evTickNow = 0;
-let careerRows = [];  // persistent rows from politician_career_events.
+let careerRows = [];   // persistent rows from politician_career_events; merged with the derived founding event at render time.
+let activeRace = null; // politician_active_election row when one exists; drives the Pressing Issues campaign card.
 // Nation chat state. nationChatId is the group_chats.id for this nation's
 // chat_type='nation' row. Resolved during init; null = no chat available.
 let nationChatId = null;
 let chatSubscription = null;
-let careerRows = [];  // persistent rows from politician_career_events; merged with the derived founding event at render time.
-let activeRace = null; // politician_active_election row when one exists; drives the Pressing Issues campaign card.
 
 async function init() {
   let ctx = null;
@@ -612,7 +611,6 @@ function renderHero(shard) {
   const last  = politician.leader_last_name  || '';
   const ini = (((first[0] || '') + (last[0] || '')).toUpperCase()) || '—';
   const display = (first || last) ? (first + ' ' + last).trim() : (politician.faction_name || 'Politician');
-  const career = politician.politician_career || 'Member of the Party';
   // Hero pill — Affiliation. Derives from the live party FK
   // (politician_party_id → `party`), not from the politician_career
   // text column. The text column was added in 20270355 with DEFAULT
