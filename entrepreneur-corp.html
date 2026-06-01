@@ -2667,6 +2667,7 @@ function initials(s, n) {
             corp_not_found:      'Owning corp not found.',
             not_owner:           'You don’t control this corp.',
             plot_not_found:      'Plot not found.',
+            wrong_nation:        'That plot is in a different nation than the pump.',
             no_permit:           'Your corp doesn’t hold the permit on that plot.',
             plot_not_surveyed:   'That plot hasn’t been surveyed yet.',
             plot_depleted:       'That plot is empty.',
@@ -5059,8 +5060,13 @@ function initials(s, n) {
       // Oil & Gas Permits panel — sits between Surveys and Construction
       // Requests. Same 6-column shape as Surveys, but the Action button
       // opens a bid modal instead of firing the survey RPC.
-      // Per-year minimum bid is scarcity-driven (oil_plot_min_bid_per_year):
-      //   $5M × tier_mult × (totalPlots / unownedPlots, capped at 5×).
+      //
+      // SOURCE OF TRUTH for permit pricing is the SQL function
+      // oil_plot_min_bid_per_year (20270481). The constants below
+      // mirror that function so the table can preview per-plot minima
+      // without a round-trip per row. If the SQL formula moves, this
+      // block must move with it — oil_plot_acquire_permit is the
+      // authoritative gate either way.
       let permitsPanelHtml = '';
       if (isOilGasCorp && canView && oilPlots.length > 0) {
         const TIER_MULT = { dry: 0.2, small: 1, moderate: 2, large: 4, generational: 8 };
