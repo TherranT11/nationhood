@@ -800,13 +800,12 @@ function renderAffiliation(ctx) {
   // when they won. Renders nothing for offices without a scheduled
   // end (no office, or office without term tracking).
   const wonAt = Number(ctx.faction?.politician_office_won_at_tick) || 0;
-  const curr  = Number(ctx.shard?.current_tick) || 0;
   const endTick = termEndTickFor({
     office,
     nextGeneralElectionTick: Number(ctx.nation?.next_election_tick) || 0,
     officeWonAtTick: wonAt,
   });
-  const remaining = endTick != null ? Math.max(0, endTick - curr) : null;
+  const remaining = endTick != null ? Math.max(0, endTick - currentTick) : null;
   const tenureHtml = endTick != null
     ? `<div class="ah-tenure">
          <span class="ah-tenure-val">${escHtml(tickToDate(endTick))}</span>
@@ -825,8 +824,8 @@ function renderAffiliation(ctx) {
   // tier's actions share a single column server-side.
   const cooldownCol = variant.cooldownColumn || 'next_mp_action_tick';
   const nextActionTick = Number(ctx.faction?.[cooldownCol]) || 0;
-  const onCooldown = variant.actionsEnabled && nextActionTick > curr;
-  const cooldownLeft = onCooldown ? nextActionTick - curr : 0;
+  const onCooldown = variant.actionsEnabled && nextActionTick > currentTick;
+  const cooldownLeft = onCooldown ? nextActionTick - currentTick : 0;
 
   const actionsCount = variant.actions.length;
   const colsClass = actionsCount === 2 ? ' cols-2' : '';
@@ -1016,7 +1015,6 @@ function partyAbbrFrom(name) {
 function renderCampaignCard(ctx) {
   const tier = activeRace.race_tier;
   const isParl = tier === 'parliament';
-  const currentTick = Number(ctx.shard?.current_tick) || 0;
   // ticks_remaining is "act windows you still have including this one".
   // resolve_due fires when current > resolve_tick (strictly past), so the
   // resolve_tick itself is the player's final act window — display
@@ -1111,7 +1109,6 @@ function renderCampaignCard(ctx) {
 
 function renderCampaignActions(ctx) {
   const partyId = ctx.party?.id || null;
-  const currentTick = Number(ctx.shard?.current_tick) || 0;
   const gateTick    = Number(politician.next_member_action_tick) || 0;
   const speechTick  = Number(politician.speech_cooldown_until_tick) || 0;
   const universalLocked = gateTick > currentTick;
