@@ -478,10 +478,8 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, currentAge as ageNow, careerYears } from './js/utils.js';
 
-const START_AGE = 25;
-const TICKS_PER_AGE_YEAR = 12;
 
 // Career ladders. `branch: true` ladders render as a two-column pair
 // (Party Office | Government & State) directly under the Tier 0 Party
@@ -1126,17 +1124,6 @@ function splitCareerTitle(career) {
   return { lead: career, tail: '' };
 }
 
-function careerYears(politician, currentTick) {
-  if (politician?.founded_tick == null || currentTick == null) return 0;
-  const elapsed = Math.max(0, Number(currentTick) - Number(politician.founded_tick));
-  return Math.floor(elapsed / TICKS_PER_AGE_YEAR);
-}
-
-function ageNow(politician, currentTick) {
-  if (politician?.founded_tick == null || currentTick == null) return START_AGE;
-  const elapsed = Math.max(0, Number(currentTick) - Number(politician.founded_tick));
-  return START_AGE + Math.floor(elapsed / TICKS_PER_AGE_YEAR);
-}
 
 async function init() {
   let ctx = null;

@@ -109,16 +109,7 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle } from './js/utils.js';
-
-const START_AGE = 25;
-const TICKS_PER_AGE_YEAR = 12;
-const esc = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; };
-const ageFor = (foundedTick, currentTick) => {
-  if (foundedTick == null) return START_AGE;
-  const elapsed = Math.max(0, (currentTick || 0) - Number(foundedTick));
-  return START_AGE + Math.floor(elapsed / TICKS_PER_AGE_YEAR);
-};
+import { officeTitle, currentAge, escapeHtml } from './js/utils.js';
 
 async function renderActors(nationId, currentTick) {
   const host = document.getElementById('actors-host');
@@ -140,13 +131,13 @@ async function renderActors(nationId, currentTick) {
   }
   const rows = (data || []).map(a => {
     const name = [a.leader_first_name, a.leader_last_name].filter(Boolean).join(' ') || '—';
-    const age = ageFor(a.founded_tick, currentTick);
+    const age = currentAge(a, currentTick);
     const position = a.politician_office ? officeTitle(a.politician_office) : 'Civil Servant';
     const pc = Math.floor(Number(a.political_capital) || 0);
     return `<tr>
-      <td class="name">${esc(name)}</td>
+      <td class="name">${escapeHtml(name)}</td>
       <td>${age}</td>
-      <td>${esc(position)}</td>
+      <td>${escapeHtml(position)}</td>
       <td class="num">${pc.toLocaleString()}</td>
     </tr>`;
   }).join('');
