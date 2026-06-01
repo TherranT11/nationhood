@@ -4,7 +4,7 @@
 // one-for-one — same patterns for styles, switcher, countdown, bootstrap —
 // just teal where entrepreneur uses green.
 import { _supabase } from './supabase-client.js';
-import { APP_VERSION, fmtBig, displayName } from './utils.js';
+import { APP_VERSION, fmtBig, displayName, currentAge } from './utils.js';
 import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
 
 const POL_TABS = [
@@ -15,8 +15,6 @@ const POL_TABS = [
   { id: 'resources', label: 'RESOURCES', href: 'politician-resources.html' },
 ];
 
-const START_AGE = 25;
-const TICKS_PER_AGE_YEAR = 12;
 
 const STYLE_ID = 'pol-topbar-styles';
 function ensureStyles() {
@@ -93,12 +91,6 @@ function escAttr(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;');
 function flagFor(n) {
   if (!n) return '';
   return (n.nation_profiles && n.nation_profiles.flag_url) || n.flag_url || `assets/flags/${n.name}.png`;
-}
-
-function currentAge(faction, currentTick) {
-  if (!faction || faction.founded_tick == null) return START_AGE;
-  const elapsed = Math.max(0, (currentTick || 0) - Number(faction.founded_tick));
-  return START_AGE + Math.floor(elapsed / TICKS_PER_AGE_YEAR);
 }
 
 let _polCountdownTimer = null;

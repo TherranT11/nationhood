@@ -10,6 +10,28 @@
 // Single source of truth for the build label shown in every faction navbar.
 export const APP_VERSION = 'Alpha 2.8.0';
 
+// ===== AGE / CAREER MATH =====
+// Single source of truth for the politician age + career-years derivation.
+// Politicians spawn at START_AGE; each TICKS_PER_AGE_YEAR ticks elapsed
+// since founded_tick is one in-game year of age. Pre-cleanup these three
+// constants + functions lived in politician-topbar / politician-career /
+// politician-ministry-foreign separately — same math, three copies.
+
+export const START_AGE = 25;
+export const TICKS_PER_AGE_YEAR = 12;
+
+/** Years elapsed since the politician was founded. NULL-safe. */
+export function careerYears(faction, currentTick) {
+    if (!faction || faction.founded_tick == null || currentTick == null) return 0;
+    const elapsed = Math.max(0, Number(currentTick) - Number(faction.founded_tick));
+    return Math.floor(elapsed / TICKS_PER_AGE_YEAR);
+}
+
+/** In-game age of the politician. NULL-safe; defaults to START_AGE. */
+export function currentAge(faction, currentTick) {
+    return START_AGE + careerYears(faction, currentTick);
+}
+
 // ===== STRING ESCAPING =====
 
 /**
