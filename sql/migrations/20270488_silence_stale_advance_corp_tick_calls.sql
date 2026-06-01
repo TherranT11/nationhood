@@ -5,6 +5,8 @@
 --
 --   public.corp_properties              dropped in 20270251 (corp cull 5B)
 --   public.corp_executives              dropped in 20270248 (corp cull 4g)
+--   public.corp_equipment_deliveries    dropped in 20270251 (corp cull 5B)
+--                                                          / earlier 20260430
 --   public.loan_negotiations            dropped in 20270251 (corp cull 5B)
 --   public.process_lawsuit_deadlines    dropped in 20270247 (4f lawsuit
 --                                                            modernization)
@@ -14,6 +16,7 @@
 -- Per-tick logs from those failed calls were filling the cron output:
 --   [advance-corp-tick] Regional HQ income failed (corp_properties missing)
 --   [advance-corp-tick] Exec expiry failed (corp_executives missing)
+--   [Equipment Deliveries] Failed to fetch due deliveries (corp_equipment_deliveries missing)
 --   [advance-corp-tick] loan-negotiation sweep failed (relation missing)
 --   [advance-corp-tick] lawsuit deadline sweep failed (function missing)
 --
@@ -83,6 +86,28 @@ CREATE POLICY "corp_executives_stub_read" ON public.corp_executives
 
 COMMENT ON TABLE public.corp_executives IS
     'STUB — silences stale advance-corp-tick selects/updates after the table was dropped in 20270248. Drop me after advance-corp-tick is redeployed.';
+
+-- ── corp_equipment_deliveries stub ──────────────────────────────────
+-- Columns match the deployed code's select shape (id / faction_id /
+-- equipment_key / quantity / condition / delivery_tick). Empty table
+-- → select returns no rows → the loop body never runs → no deletes
+-- either. Same drop-on-redeploy story as the other stubs.
+CREATE TABLE IF NOT EXISTS public.corp_equipment_deliveries (
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    faction_id      uuid,
+    equipment_key   text,
+    quantity        int  DEFAULT 0,
+    condition       int  DEFAULT 100,
+    delivery_tick   int,
+    created_at      timestamptz DEFAULT NOW()
+);
+ALTER TABLE public.corp_equipment_deliveries ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "corp_equipment_deliveries_stub_read" ON public.corp_equipment_deliveries;
+CREATE POLICY "corp_equipment_deliveries_stub_read" ON public.corp_equipment_deliveries
+    FOR SELECT TO authenticated, service_role USING (true);
+
+COMMENT ON TABLE public.corp_equipment_deliveries IS
+    'STUB — silences stale advance-corp-tick selects after the table was dropped in 20270251 (re-dropped from 20260430). Drop me after advance-corp-tick is redeployed.';
 
 -- ── loan_negotiations stub ──────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.loan_negotiations (
