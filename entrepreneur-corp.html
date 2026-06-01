@@ -3512,16 +3512,13 @@ function initials(s, n) {
     // Airline economy — MIRRORS sql/migrations/20270186 + 20270187.
     // The SQL RPCs/allocator are authoritative; these constants drive
     // display and client-side affordability/idle previews only. seats +
-    // ops match ent_airline_seats / the allocator; range is the open_route
-    // per-class ceiling in range_units; terminal fee matches
-    // entrepreneur_claim_terminal ($5M + $2M × population_pct).
+    // ops match ent_airline_seats / the allocator.
     const AIRCRAFT = {
       regional:   { label: 'Regional',   cost: 60_000_000,  seats: 10, ops: 500 },
       narrowbody: { label: 'Narrowbody', cost: 90_000_000,  seats: 25, ops: 1200 },
       widebody:   { label: 'Widebody',   cost: 120_000_000, seats: 60, ops: 2500 },
     };
     const AIRCRAFT_CLASSES = ['regional', 'narrowbody', 'widebody'];
-    const terminalClaimFee = (popPct) => 5_000_000 + 2_000_000 * (Number(popPct) || 0);
 
     // JS mirrors of broker_list_building / broker_buy_listing's math
     // (20270184). Single helpers so the lock-fee + commission + rep
@@ -4253,19 +4250,15 @@ function initials(s, n) {
       }
 
       // Airline Operations panel (Airline corps only, owner-only).
-      // Fleet (owned + idle per class) · Terminals (claimed slots) ·
-      // Routes (active, with last-tick performance). Aircraft come from
-      // RFPs (request_aircraft_build → manufacturer bids → delivery); the
-      // inline forms call _claim_terminal / _open_route / _close_route /
-      // _release_terminal. Idle = owned − Σ assigned is
-      // computed here for display only — open_route enforces it
-      // server-side (this preview can never over-grant).
+      // Fleet (owned + idle per class) · Routes (active, with last-tick
+      // performance). Aircraft come from RFPs (request_aircraft_build
+      // → manufacturer bids → delivery); the inline forms call
+      // _open_route / _close_route. Route endpoints are gated server-
+      // side on HQ-nation presence OR a completed regional_hq in the
+      // endpoint nation (20270477 replaced the terminal layer).
       let airlinePanelHtml = '';
       if (c.industry === 'airline' && canView) {
-        const [termRes, routeRes, cityRes, aircraftRes, laneRes] = await Promise.all([
-          _supabase.from('airline_terminals')
-            .select('id, city_id, terminal_number, city:airline_cities!city_id(id, name, population_pct, is_capital)')
-            .eq('owner_corp_id', id),
+        const [routeRes, cityRes, aircraftRes, laneRes] = await Promise.all([
           _supabase.from('airline_routes')
             .select(`id, ticket_price, route_type, origin_city_id, dest_city_id,
                      aircraft_class,
@@ -4275,29 +4268,34 @@ function initials(s, n) {
             .eq('airline_corp_id', id).eq('status', 'active')
             .order('opened_at_tick', { ascending: true }),
           _supabase.from('airline_cities')
-            .select('id, name, population_pct, is_capital, nation:nations!nation_id(name)').order('name'),
+            .select('id, name, nation_id, population_pct, is_capital, nation:nations!nation_id(name)').order('name'),
           _supabase.from('corp_aircraft')
             .select('id, aircraft_class, condition, overhaul_count, is_overhauling, route_id, design:ent_aircraft_designs!ent_design_id(range_nm)')
             .eq('entrepreneur_corp_id', id)
             .order('aircraft_class', { ascending: true })
             .order('created_at', { ascending: true }),
-          // Every active route, lane-wide, for the competitor breakdown on
-          // each of this corp's routes (lanes are shared across airlines).
           _supabase.from('airline_routes')
             .select('origin_city_id, dest_city_id, last_tick_pax, airline_corp_id, airline:entrepreneur_corps!airline_corp_id(name)')
             .eq('status', 'active'),
         ]);
-        if (termRes.error)     console.warn('[entrepreneur-corp] terminals fetch error:', termRes.error.message);
         if (routeRes.error)    console.warn('[entrepreneur-corp] routes fetch error:', routeRes.error.message);
         if (cityRes.error)     console.warn('[entrepreneur-corp] cities fetch error:', cityRes.error.message);
         if (aircraftRes.error) console.warn('[entrepreneur-corp] aircraft fetch error:', aircraftRes.error.message);
         if (laneRes.error)     console.warn('[entrepreneur-corp] lane-routes fetch error:', laneRes.error.message);
 
-        const terminals = termRes.data || [];
         const routes    = routeRes.data || [];
         const allCities = cityRes.data || [];
         const aircraft  = aircraftRes.data || [];
         const corpCash  = getEntrepreneurCorpCash(c);
+
+        // Presence: HQ nation + every nation where this corp owns a
+        // completed regional_hq. Drives the From/To dropdowns.
+        const presenceNationIds = new Set([
+          c.hq_nation_id,
+          ...ownedBuildings
+            .filter(b => b.building_type === 'regional_hq' && b.status === 'completed' && b.nation_id)
+            .map(b => b.nation_id),
+        ]);
 
         // Distance matrix for all loaded cities. Keyed both directions
         // for easy lookup regardless of which city is "a" vs "b" in
@@ -4393,29 +4391,6 @@ function initials(s, n) {
           ${acRowsHtml}
           <div class="al-hint">Flying aircraft lose condition each tick (6%/tick on routes). Overhaul restores condition (cost 0.5% of price — $300k/$450k/$600k; the cap falls 1% per cycle). Retire scraps a plane — no refund.</div>`;
 
-        // ── Terminals: owned slots + claim form ──
-        const ownedCityIds = new Set(terminals.map(t => t.city_id));
-        const termRowsHtml = terminals.length
-          ? terminals.map(t => `
-              <div class="sh-row">
-                <div class="sh-row-info">
-                  <div class="sh-row-name">${escapeHtml(t.city?.name || 'City')}${t.city?.is_capital ? ' <span class="al-cap">CAPITAL</span>' : ''}</div>
-                  <div class="sh-row-sub">Terminal #${t.terminal_number} · pop weight <span class="accent">${Number(t.city?.population_pct) || 0}</span></div>
-                </div>
-                ${ownerOnly(`<div class="sh-row-actions">
-                  <button class="ap-btn-small reject al-release" data-tid="${t.id}" data-cname="${escapeHtml(t.city?.name || 'City')}">Release</button>
-                </div>`)}
-              </div>`).join('')
-          : `<div class="sh-empty">No terminals. Claim slots in two cities to open your first route.</div>`;
-        const claimOpts = allCities.filter(c2 => !ownedCityIds.has(c2.id))
-          .map(c2 => `<option value="${c2.id}" data-pop="${Number(c2.population_pct) || 0}">${escapeHtml(c2.name)} · ${escapeHtml(c2.nation?.name || '?')} — ${fmtUsd(terminalClaimFee(c2.population_pct))}</option>`).join('');
-        const claimForm = claimOpts
-          ? `<div class="al-form">
-               <select id="al-claim-city">${claimOpts}</select>
-               <button class="sh-buy-btn" id="al-claim">Claim Terminal</button>
-             </div>`
-          : `<div class="al-hint">You hold a terminal in every city.</div>`;
-
         // ── Routes: active list + open form ──
         // Routes are single-class (20270417). Plane count comes from the
         // aircraft list — each plane with route_id = this route counts.
@@ -4457,15 +4432,17 @@ function initials(s, n) {
                   </div>`)}
                 </div>`;
             }).join('')
-          : `<div class="sh-empty">No active routes. Claim two terminals, then open a route between them.</div>`;
+          : `<div class="sh-empty">No active routes. Open one below.</div>`;
 
-        // Open-route form: endpoints limited to cities where the corp
-        // owns a terminal (open_route requires a terminal at both ends).
-        const endpointOpts = terminals
-          .map(t => `<option value="${t.city_id}">${escapeHtml(t.city?.name || 'City')}</option>`).join('');
+        // Open-route form: endpoints are every city in a nation where
+        // the corp has presence (HQ or a completed regional_hq).
+        // entrepreneur_open_route enforces the same gate server-side.
+        const endpointOpts = allCities
+          .filter(c2 => presenceNationIds.has(c2.nation_id))
+          .map(c2 => `<option value="${c2.id}">${escapeHtml(c2.name)} · ${escapeHtml(c2.nation?.name || '?')}</option>`).join('');
         const classOpts = AIRCRAFT_CLASSES
           .map(k => `<option value="${k}">${escapeHtml(AIRCRAFT[k].label)}</option>`).join('');
-        const openForm = terminals.length >= 2
+        const openForm = endpointOpts
           ? `<div class="al-form al-form-route">
                <label>From <select id="al-route-origin">${endpointOpts}</select></label>
                <label>To <select id="al-route-dest">${endpointOpts}</select></label>
@@ -4474,8 +4451,8 @@ function initials(s, n) {
                <label>Aircraft <input type="number" id="al-route-count" min="1" value="1" /></label>
                <button class="sh-buy-btn" id="al-open-route">Open Route</button>
              </div>
-             <div class="al-hint">One class per route. Each aircraft's range must be ≥ the route distance. Cheaper tickets win a bigger share of the lane's passengers.</div>`
-          : `<div class="al-hint">Claim a terminal in at least two cities to open a route.</div>`;
+             <div class="al-hint">Endpoints: any city in your HQ nation or a nation where you own a Regional HQ. One class per route. Each aircraft's range must be ≥ the route distance. Cheaper tickets win a bigger share of the lane's passengers.</div>`
+          : `<div class="al-hint">No cities available — build a Regional HQ to expand beyond your HQ nation.</div>`;
 
         // Aircraft RFPs this airline has posted (open = taking bids,
         // active = a manufacturer is building to order).
@@ -4497,9 +4474,6 @@ function initials(s, n) {
         airlinePanelHtml = `
           ${fleetCard}
           ${rfpSection}
-          <div class="sh-section-head">Terminals · ${terminals.length}</div>
-          ${termRowsHtml}
-          ${ownerOnly(claimForm)}
           <div class="sh-section-head">Routes · ${routes.length}</div>
           ${routeRowsHtml}
           ${ownerOnly(openForm)}
@@ -5114,13 +5088,8 @@ function initials(s, n) {
             mode: btn.dataset.mode })));
         pj.querySelectorAll('.ao-cancel-btn').forEach(btn => btn.addEventListener('click', () =>
           cancelAircraftOrder(btn.dataset.oid, btn)));
-        const alClaim = document.getElementById('al-claim');
-        if (alClaim) alClaim.addEventListener('click', () => handleClaimTerminal(alClaim));
         const alOpen = document.getElementById('al-open-route');
         if (alOpen) alOpen.addEventListener('click', () => handleOpenRoute(alOpen));
-        pj.querySelectorAll('.al-release').forEach(btn => {
-          btn.addEventListener('click', () => handleReleaseTerminal(btn, btn.dataset.tid, btn.dataset.cname));
-        });
         pj.querySelectorAll('.al-close').forEach(btn => {
           btn.addEventListener('click', () => handleCloseRoute(btn, btn.dataset.rid, btn.dataset.rname));
         });
@@ -6948,68 +6917,10 @@ const openBidModal = (contractId, label, yourCost) => {
     // ── Airline-corp action handlers (al-*) ──
     // Same single-flight + per-button-disable gate as the shipping
     // handlers below. Every action writes the corp treasury or fleet via
-    // a SECURITY DEFINER RPC; the server is authoritative on funds, idle
-    // fleet, range, and terminal ownership — the client maps reasons to
-    // readable messages and reloads on success.
+    // a SECURITY DEFINER RPC; the server is authoritative on funds and
+    // idle fleet — the client maps reasons to readable messages and
+    // reloads on success.
     let airlineInFlight = false;
-
-    const handleClaimTerminal = async (btn) => {
-      if (airlineInFlight) return;
-      const cityId = document.getElementById('al-claim-city')?.value;
-      if (!cityId) { alert('Pick a city.'); return; }
-      airlineInFlight = true;
-      const prev = btn.textContent; btn.disabled = true; btn.textContent = 'CLAIMING…';
-      try {
-        const { data, error: rpcErr } = await _supabase.rpc('entrepreneur_claim_terminal', {
-          p_corp_id: id, p_city_id: cityId,
-        });
-        if (rpcErr) throw rpcErr;
-        if (!data || !data.success) {
-          const REASON = {
-            insufficient_funds:    data?.need != null ? `Corp treasury too low — need ${fmtUsd(Number(data.need))}.` : 'Corp treasury too low.',
-            already_have_terminal: 'You already hold a terminal in that city.',
-            no_terminal_available: 'No free terminal slots in that city.',
-            city_not_found:        'City no longer exists.',
-            not_airline_corp:      'Only Airline corps can claim terminals.',
-            not_owner:             'Only the corp owner can do that.',
-            corp_not_found:        'Corporation no longer exists.',
-          };
-          alert(REASON[data?.reason] || ('Could not claim: ' + (data?.reason || 'unknown')));
-          airlineInFlight = false; btn.disabled = false; btn.textContent = prev; return;
-        }
-        location.reload();
-      } catch (e) {
-        alert('Failed: ' + (e?.message || e));
-        airlineInFlight = false; btn.disabled = false; btn.textContent = prev;
-      }
-    };
-
-    const handleReleaseTerminal = async (btn, terminalId, cityName) => {
-      if (airlineInFlight) return;
-      if (!confirm(`Release the terminal in ${cityName}? There is no refund, and the slot frees up for other airlines.`)) return;
-      airlineInFlight = true;
-      const prev = btn.textContent; btn.disabled = true; btn.textContent = '…';
-      try {
-        const { data, error: rpcErr } = await _supabase.rpc('entrepreneur_release_terminal', {
-          p_corp_id: id, p_terminal_id: terminalId,
-        });
-        if (rpcErr) throw rpcErr;
-        if (!data || !data.success) {
-          const REASON = {
-            terminal_in_use:   'An active route uses this city — close that route first.',
-            not_your_terminal: 'That terminal is not yours.',
-            terminal_not_found:'Terminal no longer exists.',
-            not_owner:         'Only the corp owner can do that.',
-          };
-          alert(REASON[data?.reason] || ('Could not release: ' + (data?.reason || 'unknown')));
-          airlineInFlight = false; btn.disabled = false; btn.textContent = prev; return;
-        }
-        location.reload();
-      } catch (e) {
-        alert('Failed: ' + (e?.message || e));
-        airlineInFlight = false; btn.disabled = false; btn.textContent = prev;
-      }
-    };
 
     const handleOpenRoute = async (btn) => {
       if (airlineInFlight) return;
@@ -7037,8 +6948,7 @@ const openBidModal = (contractId, label, yourCost) => {
             invalid_ticket_price:      'Ticket price must be ≥ 0.',
             invalid_class:             'Pick a valid aircraft class.',
             no_aircraft_assigned:        'Assign at least one aircraft.',
-            no_terminal_origin:          'You need a terminal at the origin city.',
-            no_terminal_dest:            'You need a terminal at the destination city.',
+            no_presence_at_endpoint:     'Route must touch your HQ nation or a nation where you own a Regional HQ.',
             route_exists:                'You already run an active route on this lane.',
             no_distance_data:            'No distance data for that city pair.',
             insufficient_range_aircraft: `Not enough ${data?.class || 'aircraft'} with range ≥ ${data?.route_distance ?? '?'}. Available: ${data?.available_with_range ?? 0}, requested: ${data?.requested ?? 0}. Buy planes with longer range or pick a shorter route.`,
