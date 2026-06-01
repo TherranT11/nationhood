@@ -1391,6 +1391,17 @@ function initials(s, n) {
     const AD_AIRFRAMES  = [['business','Business Jet · 1–2 eng · 3 pax'],['regional','Regional · 2 eng · 10 pax'],['narrowbody','Narrowbody · 2 eng · 25 pax'],['widebody','Widebody · 2–4 eng · 60 pax']];
     const AD_MECHANICALS= [['hydraulics','Standard Hydraulic Systems'],['blackbox','Black Box & Flight Recorders'],['redundant-avionics','Redundant Avionics Suite']];
     const AD_OFFERINGS  = [['ife','In-Flight Entertainment'],['premium-seating','Premium Seating'],['high-density','High-Density Configuration']];
+    // SOURCE OF TRUTH is ent_design_aircraft in 20261028 / 20261104.
+    // This mirror powers the per-row tag and the running modules
+    // preview only — the RPC recomputes everything server-side.
+    const AD_MODULE_SPEC = {
+      'hydraulics':         { weight:0.5, safety:1,            cost:1000000 },
+      'blackbox':           { weight:0.3, safety:2,            cost:1500000 },
+      'redundant-avionics': { weight:0.7, safety:3,            cost:3000000 },
+      'ife':                { weight:0.3, demand:1,  pax:0,    cost:1500000 },
+      'premium-seating':    { weight:0.4, demand:2,  pax:0,    cost:2000000 },
+      'high-density':       { weight:0.2, demand:-1, pax:5,    cost:1000000 },
+    };
     const AD_REASON = {
       not_owner:'Only the corp owner can design.', not_aviation_manufacturing:'This corp is not an aviation manufacturer.',
       needs_engine_assembly_plant:'Requires a completed Engine Assembly Plant.', needs_assembly_plant:'Requires a completed Light Assembly Plant.',
@@ -1472,11 +1483,22 @@ function initials(s, n) {
       const overlay = document.getElementById('ad-aircraft-overlay');
       if (!overlay) return;
       const { data: engines, error: engErr } = await _supabase.from('ent_aircraft_designs')
-        .select('id, name, thrust').eq('design_type', 'engine').eq('status', 'available').order('name');
+        .select('id, name, thrust, weight').eq('design_type', 'engine').eq('status', 'available').order('name');
       if (engErr) console.warn('[entrepreneur-corp] available-engines fetch error:', engErr.message);
       const engOpts = engines || [];
       let submitting = false;
-      const checks = (nm, opts) => opts.map(([v,l]) => `<label style="display:block;font-size:12px;color:#cfcabf;margin:4px 0;"><input type="checkbox" name="${nm}" value="${v}"> ${l}</label>`).join('');
+      // Each checkbox renders its effect tag inline so the player sees
+      // safety/demand/pax/weight/cost at a glance before checking it.
+      const checks = (nm, opts) => opts.map(([v,l]) => {
+        const s = AD_MODULE_SPEC[v];
+        const tagBits = [];
+        if (s?.safety) tagBits.push(`+${s.safety} safety`);
+        if (s?.demand) tagBits.push(`${s.demand > 0 ? '+' : ''}${s.demand} demand`);
+        if (s?.pax)    tagBits.push(`+${s.pax} pax`);
+        if (s?.weight) tagBits.push(`wt ${s.weight}`);
+        const tag = s ? ` <span style="color:#8a8680;">· ${tagBits.join(' · ')} · ${fmtUsd(s.cost)}</span>` : '';
+        return `<label style="display:block;font-size:12px;color:#cfcabf;margin:4px 0;"><input type="checkbox" name="${nm}" value="${v}"> ${l}${tag}</label>`;
+      }).join('');
       overlay.innerHTML = `
         <div class="bm-modal" style="max-width:480px;">
           <div class="bm-head"><div class="ti">Design <em>Aircraft</em></div><div class="bm-x" id="ada-close">×</div></div>
@@ -1486,12 +1508,13 @@ function initials(s, n) {
             <input type="text" class="bm-input" id="ada-name" maxlength="60" placeholder="e.g. Skyline 100">
             <div class="bm-label">Airframe</div><select class="bm-select" id="ada-airframe">${AD_AIRFRAMES.map(([v,l]) => `<option value="${v}">${l}</option>`).join('')}</select>
             <div class="bm-label">Engine</div>
-            ${engOpts.length ? `<select class="bm-select" id="ada-engine">${engOpts.map(e => `<option value="${e.id}">${escapeHtml(e.name)} · thrust ${e.thrust}</option>`).join('')}</select>`
+            ${engOpts.length ? `<select class="bm-select" id="ada-engine">${engOpts.map(e => `<option value="${e.id}">${escapeHtml(e.name)} · thrust ${e.thrust} · wt ${e.weight ?? '—'}</option>`).join('')}</select>`
               : `<div style="font-size:12px;color:#c98a8a;">No available engine designs yet — design an engine first, or wait for one to finish research.</div>`}
             <div class="bm-label">Engine count</div>
             <input type="number" class="bm-input" id="ada-count" min="1" max="4" value="2">
             <div class="bm-label">Mechanicals (safety)</div>${checks('ada-mech', AD_MECHANICALS)}
             <div class="bm-label">Offerings (demand)</div>${checks('ada-off', AD_OFFERINGS)}
+            <div id="ada-preview" style="font-size:12px;color:#8aaa6a;margin:12px 0 0;line-height:1.5;"></div>
             <div class="bm-err" id="ada-err"></div>
           </div>
           <div class="bm-foot">
@@ -1503,6 +1526,26 @@ function initials(s, n) {
       document.getElementById('ada-close').onclick = close;
       document.getElementById('ada-cancel').onclick = close;
       overlay.onclick = (e) => { if (e.target === overlay) close(); };
+      // Live module totals — recomputes on every check/uncheck so the
+      // player can see weight + cost + effect deltas without submitting.
+      const updModulesPreview = () => {
+        const checked = [...overlay.querySelectorAll('input[name="ada-mech"]:checked, input[name="ada-off"]:checked')]
+          .map(x => AD_MODULE_SPEC[x.value]).filter(Boolean);
+        const totWeight = Math.round(checked.reduce((s,m) => s + (m.weight || 0), 0) * 10) / 10;
+        const totCost   = checked.reduce((s,m) => s + (m.cost   || 0), 0);
+        const totSafety = checked.reduce((s,m) => s + (m.safety || 0), 0);
+        const totDemand = checked.reduce((s,m) => s + (m.demand || 0), 0);
+        const totPax    = checked.reduce((s,m) => s + (m.pax    || 0), 0);
+        const parts = [`weight <b>${totWeight}</b>`, `cost <b>${fmtUsd(totCost)}</b>`];
+        if (totSafety) parts.push(`safety <b>+${totSafety}</b>`);
+        if (totDemand) parts.push(`demand <b>${totDemand > 0 ? '+' : ''}${totDemand}</b>`);
+        if (totPax)    parts.push(`pax <b>+${totPax}</b>`);
+        document.getElementById('ada-preview').innerHTML = `Modules: ${parts.join(' · ')}`;
+      };
+      overlay.querySelectorAll('input[name="ada-mech"], input[name="ada-off"]').forEach(cb => {
+        cb.addEventListener('change', updModulesPreview);
+      });
+      updModulesPreview();
       const btn = document.getElementById('ada-submit');
       if (btn && !btn.disabled) btn.onclick = async () => {
         if (submitting) return;
