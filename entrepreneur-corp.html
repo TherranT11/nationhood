@@ -556,48 +556,48 @@
   .surv-tier-generational { background:rgba(220,180,80,0.22); color:#e0c060; }
   .surv-action { justify-content:flex-end; }
   /* Survey modal — confirm + bonus picker, sits on top of the page. */
-  #surveyModal { position:fixed; inset:0; background:rgba(0,0,0,0.72);
+  .sv-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.72);
     display:none; align-items:center; justify-content:center; padding:30px 22px;
     z-index:220; overflow-y:auto; }
-  #surveyModal.open { display:flex; }
-  #surveyModal .sv-modal { width:100%; max-width:520px; background:#0d0d0d;
+  .sv-overlay.open { display:flex; }
+  .sv-overlay .sv-modal { width:100%; max-width:520px; background:#0d0d0d;
     border:0.5px solid rgba(255,255,255,0.1); border-radius:10px; overflow:hidden;
     box-shadow:0 24px 80px rgba(0,0,0,0.6); }
-  #surveyModal .sv-head { display:flex; justify-content:space-between; align-items:center;
+  .sv-overlay .sv-head { display:flex; justify-content:space-between; align-items:center;
     padding:16px 22px; border-bottom:0.5px solid rgba(255,255,255,0.07); }
-  #surveyModal .sv-eyebrow { font-size:9px; letter-spacing:0.16em; color:#c8b870;
+  .sv-overlay .sv-eyebrow { font-size:9px; letter-spacing:0.16em; color:#c8b870;
     font-weight:600; margin-bottom:4px; }
-  #surveyModal .sv-title { font-size:18px; font-weight:500; color:#fff; }
-  #surveyModal .sv-title .name { font-family:Georgia,serif; font-style:italic; color:#c8b870; }
-  #surveyModal .sv-close { width:28px; height:28px; border:0.5px solid rgba(255,255,255,0.07);
+  .sv-overlay .sv-title { font-size:18px; font-weight:500; color:#fff; }
+  .sv-overlay .sv-title .name { font-family:Georgia,serif; font-style:italic; color:#c8b870; }
+  .sv-overlay .sv-close { width:28px; height:28px; border:0.5px solid rgba(255,255,255,0.07);
     border-radius:5px; background:transparent; color:#888; font-size:18px; cursor:pointer; line-height:1; }
-  #surveyModal .sv-close:hover { color:#d4d4d4; border-color:rgba(255,255,255,0.2); }
-  #surveyModal .sv-body { padding:18px 22px; }
-  #surveyModal .sv-copy { font-size:11.5px; color:#cfcabf; line-height:1.6; margin-bottom:14px; }
-  #surveyModal .sv-bonus-row { display:flex; align-items:center; gap:10px; margin-bottom:14px;
+  .sv-overlay .sv-close:hover { color:#d4d4d4; border-color:rgba(255,255,255,0.2); }
+  .sv-overlay .sv-body { padding:18px 22px; }
+  .sv-overlay .sv-copy { font-size:11.5px; color:#cfcabf; line-height:1.6; margin-bottom:14px; }
+  .sv-overlay .sv-bonus-row { display:flex; align-items:center; gap:10px; margin-bottom:14px;
     padding:10px 12px; background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.07); border-radius:5px; }
-  #surveyModal .sv-bonus-lab { font-size:9.5px; letter-spacing:0.12em; color:#888; font-weight:600;
+  .sv-overlay .sv-bonus-lab { font-size:9.5px; letter-spacing:0.12em; color:#888; font-weight:600;
     text-transform:uppercase; flex-shrink:0; }
-  #surveyModal .sv-bonus-controls { display:flex; align-items:center; gap:8px; flex:1; justify-content:flex-end; }
-  #surveyModal .sv-bonus-btn { width:24px; height:24px; border-radius:3px; background:#1a1a1a;
+  .sv-overlay .sv-bonus-controls { display:flex; align-items:center; gap:8px; flex:1; justify-content:flex-end; }
+  .sv-overlay .sv-bonus-btn { width:24px; height:24px; border-radius:3px; background:#1a1a1a;
     border:0.5px solid rgba(255,255,255,0.15); color:#d4d4d4; font-size:14px; cursor:pointer; line-height:1; padding:0; }
-  #surveyModal .sv-bonus-btn:disabled { opacity:0.4; cursor:not-allowed; }
-  #surveyModal .sv-bonus-val { min-width:32px; text-align:center; font-variant-numeric:tabular-nums;
+  .sv-overlay .sv-bonus-btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .sv-overlay .sv-bonus-val { min-width:32px; text-align:center; font-variant-numeric:tabular-nums;
     font-weight:600; color:#fff; }
-  #surveyModal .sv-cost-line { font-size:12px; color:#cfcabf; font-variant-numeric:tabular-nums; }
-  #surveyModal .sv-cost-line b { color:#fff; }
-  #surveyModal .sv-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; }
-  #surveyModal .sv-btn { font-family:inherit; font-size:11px; letter-spacing:0.06em;
+  .sv-overlay .sv-cost-line { font-size:12px; color:#cfcabf; font-variant-numeric:tabular-nums; }
+  .sv-overlay .sv-cost-line b { color:#fff; }
+  .sv-overlay .sv-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; }
+  .sv-overlay .sv-btn { font-family:inherit; font-size:11px; letter-spacing:0.06em;
     padding:9px 16px; border-radius:4px; cursor:pointer; font-weight:600;
     border:0.5px solid rgba(255,255,255,0.15); background:#1a1a1a; color:#d4d4d4; }
-  #surveyModal .sv-btn:disabled { opacity:0.5; cursor:not-allowed; }
-  #surveyModal .sv-btn--cancel { color:#aaa; }
-  #surveyModal .sv-btn--cancel:hover:not(:disabled) { color:#fff; border-color:rgba(255,255,255,0.3); }
-  #surveyModal .sv-btn--primary { background:rgba(200,184,112,0.16); border-color:#c8b870; color:#e0c878; }
-  #surveyModal .sv-btn--primary:hover:not(:disabled) { background:rgba(200,184,112,0.26); }
-  #surveyModal .sv-result__title { font-size:14px; font-weight:600; margin-bottom:8px; letter-spacing:0.02em; }
-  #surveyModal .sv-result__body  { font-size:12px; color:#cfcabf; line-height:1.6; }
-  #surveyModal .sv-result__body strong { color:#fff; }
+  .sv-overlay .sv-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .sv-overlay .sv-btn--cancel { color:#aaa; }
+  .sv-overlay .sv-btn--cancel:hover:not(:disabled) { color:#fff; border-color:rgba(255,255,255,0.3); }
+  .sv-overlay .sv-btn--primary { background:rgba(200,184,112,0.16); border-color:#c8b870; color:#e0c878; }
+  .sv-overlay .sv-btn--primary:hover:not(:disabled) { background:rgba(200,184,112,0.26); }
+  .sv-overlay .sv-result__title { font-size:14px; font-weight:600; margin-bottom:8px; letter-spacing:0.02em; }
+  .sv-overlay .sv-result__body  { font-size:12px; color:#cfcabf; line-height:1.6; }
+  .sv-overlay .sv-result__body strong { color:#fff; }
   .bm-tiers { display:grid; grid-template-columns:1fr; gap:6px; }
   .bm-tier { display:grid; grid-template-columns:80px 1fr auto auto auto; gap:12px;
     padding:11px 14px; background:#121212; border:0.5px solid rgba(255,255,255,0.10);
@@ -2472,6 +2472,7 @@ function initials(s, n) {
       if (!ov) {
         ov = document.createElement('div');
         ov.id = 'surveyModal';
+        ov.className = 'sv-overlay';
         ov.innerHTML = `
           <div class="sv-modal" role="dialog" aria-modal="true">
             <div class="sv-head">
@@ -2610,6 +2611,7 @@ function initials(s, n) {
       if (!ov) {
         ov = document.createElement('div');
         ov.id = 'linkPumpModal';
+        ov.className = 'sv-overlay';
         ov.innerHTML = `
           <div class="sv-modal" role="dialog" aria-modal="true">
             <div class="sv-head">
@@ -2759,6 +2761,7 @@ function initials(s, n) {
       if (!ov) {
         ov = document.createElement('div');
         ov.id = 'bidPermitModal';
+        ov.className = 'sv-overlay';
         ov.innerHTML = `
           <div class="sv-modal" role="dialog" aria-modal="true">
             <div class="sv-head">
