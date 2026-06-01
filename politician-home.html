@@ -380,20 +380,11 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { tickToDate, fmtBig, officeTitle, termEndTickFor } from './js/utils.js';
+import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName } from './js/utils.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
 
 const NO_AFFILIATION_MESSAGE = 'This character has no affiliation.';
-// Civil-service ministry slug → display name. Same map as the one in
-// politician-career.html; both pages read the same factions
-// .politician_ministry slug.
-const MINISTRY_NAMES = {
-  defense:              'Defense',
-  foreign_affairs:      'Foreign Affairs & Trade',
-  economic_development: 'Economic Development',
-  interior:             'Interior',
-};
 
 // Career-log templates — keyed by politician_career_events.event_type. Adding
 // a new beat is one entry here plus whatever inserts the row server-side.
@@ -585,7 +576,7 @@ function renderHero(shard) {
         ? `${officeTitle(office)} · ${party.faction_name}`
         : `Party Member of ${party.faction_name}`)
     : (ministry
-        ? `Civil Servant in the Ministry of ${MINISTRY_NAMES[ministry] || ministry}`
+        ? `Civil Servant in the Ministry of ${ministryName(ministry) || ministry}`
         : NO_AFFILIATION_MESSAGE);
 }
 

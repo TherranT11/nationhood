@@ -494,20 +494,10 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName } from './js/utils.js';
 
 const START_AGE = 25;
 const TICKS_PER_AGE_YEAR = 12;
-
-// Civil-service ministry slug → human-readable display name. Used by the
-// Tier 1 Civil Servant rung, the Sit the Exam modal, and the career header
-// when the politician is a civil servant.
-const MINISTRY_NAMES = {
-  defense:              'Defense',
-  foreign_affairs:      'Foreign Affairs & Trade',
-  economic_development: 'Economic Development',
-  interior:             'Interior',
-};
 
 // Career ladders. `branch: true` ladders render as a two-column pair
 // (Party Office | Government & State) directly under the Tier 0 Party
@@ -701,7 +691,7 @@ const GOVT_SERVICE_RUNGS = [
     name: 'Civil Servant',
     trackPill:   { label: 'CIVIL SERVICE', kind: 'field' },
     held:        (s) => !!s.politicianMinistry,
-    descIfHeld:  (s) => `You serve in the Ministry of ${MINISTRY_NAMES[s.politicianMinistry] || '—'}. You process cases, handle paperwork, and learn how the state actually works from the inside.`,
+    descIfHeld:  (s) => `You serve in the Ministry of ${ministryName(s.politicianMinistry) || '—'}. You process cases, handle paperwork, and learn how the state actually works from the inside.`,
     descIfNot:   ()  => 'Junior bureaucrat in a ministry. You process cases, handle paperwork, and learn how the state actually works from the inside.',
     actions:     (s, isHeld) => isHeld
                     ? ['Brief the Minister', 'Submit a Report', 'Audit the Ministry']
@@ -1348,7 +1338,7 @@ function render(politician, shard, nation, party) {
   // lead="Civil Servant" + tail="of Defense" for the italic split.
   const ministrySlug = politician.politician_ministry || null;
   const career = party?.faction_name
-              || (ministrySlug ? `Civil Servant of ${MINISTRY_NAMES[ministrySlug] || ministrySlug}` : 'Independent');
+              || (ministrySlug ? `Civil Servant of ${ministryName(ministrySlug) || ministrySlug}` : 'Independent');
   const { lead, tail } = splitCareerTitle(career);
   const ini = initials(politician.leader_first_name, politician.leader_last_name, politician.faction_name);
   const age = ageNow(politician, shard?.current_tick);
