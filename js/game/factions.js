@@ -174,3 +174,60 @@ export const ENTREPRENEUR_ARCHETYPES = Object.freeze({
         startingCash: 28000000,
     },
 });
+
+/**
+ * Single source of truth for the "Join as Politician #N" entries that
+ * surface in every faction-switcher dropdown (common / entrepreneur /
+ * politician / military topbars).
+ *
+ * Cap: 4 politicians per user. Slot 1 keeps the historical "Join
+ * Project Neptune" label; slots 2-3 read "Join as Politician #N";
+ * slot 4 carries the "(alpha code)" tag and is gated client-side on
+ * the literal Patreon11 string. Same-nation duplicates are caught
+ * downstream by idx_factions_one_politician_per_user_per_nation
+ * (20270374); first-steps.html surfaces the 23505 with a friendly
+ * "You already hold a politician in this nation."
+ */
+export const POLITICIAN_SLOT_MAX = 4;
+const POLITICIAN_SLOT_4_ALPHA_CODE = 'Patreon11';
+
+/**
+ * Compute the next politician slot to surface in a switcher, or null
+ * if the user has hit the cap. Callers pass whatever faction list
+ * they have — the helper just counts. Active-vs-abandoned filtering
+ * (or not) is the caller's choice and matches each topbar's existing
+ * pattern.
+ */
+export function nextPoliticianSlot(allFactions) {
+    const count = (allFactions || []).filter(f => f?.faction_type === 'politician').length;
+    if (count >= POLITICIAN_SLOT_MAX) return null;
+    const slot = count + 1;
+    return {
+        slot,
+        label: slot === 1
+            ? 'Join Project Neptune'
+            : slot === POLITICIAN_SLOT_MAX
+                ? `Join as Politician #${slot} (alpha code)`
+                : `Join as Politician #${slot}`,
+        requiresAlphaCode: slot === POLITICIAN_SLOT_MAX,
+    };
+}
+
+/**
+ * Click handler for the politician-slot row. Prompts for the alpha
+ * code when the slot needs it, then stores the return URL and
+ * navigates to character-select.html. Aborts silently if the user
+ * cancels or types the wrong code.
+ */
+export function activatePoliticianSlot(slotInfo) {
+    if (!slotInfo) return;
+    if (slotInfo.requiresAlphaCode) {
+        const code = window.prompt('Alpha tester code required to claim slot #4:');
+        if (code !== POLITICIAN_SLOT_4_ALPHA_CODE) {
+            if (code != null) window.alert('Invalid alpha code.');
+            return;
+        }
+    }
+    sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search);
+    window.location.href = 'character-select.html';
+}

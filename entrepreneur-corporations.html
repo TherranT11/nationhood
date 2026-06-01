@@ -1052,6 +1052,16 @@ function renderPositions(corps, filter) {
       const err = document.getElementById('ec-err');
       if (!name) { err.textContent = 'Enter a corporation name.'; err.style.display = 'inline'; return; }
       if (!sel.hqNationId) { err.textContent = 'Select a headquarters nation.'; err.style.display = 'inline'; return; }
+      // Oil & Gas alpha gate — fixed-string client-side prompt. Same
+      // shape as the Patreon11 gate on politician slot #4. No server
+      // check; anyone who types Vanderbilt1 gets through.
+      if (sel.industry === 'oil_and_gas') {
+        const code = window.prompt('Alpha tester code required to found an Oil & Gas corporation:');
+        if (code !== 'Vanderbilt1') {
+          if (code != null) { err.textContent = 'Invalid alpha code.'; err.style.display = 'inline'; }
+          return;
+        }
+      }
       const cap = capRaw();
       founding = true;
       const btn = document.getElementById('ec-found');

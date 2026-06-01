@@ -7,7 +7,7 @@
 // extraction — that larger consolidation is tracked separately).
 import { _supabase } from './supabase-client.js';
 import { hfFmtBig, APP_VERSION } from './utils.js';
-import { getFactionTypeBadge, getFactionDashboardUrl, isFactionInactive, isHiddenFromSwitcher } from './game/factions.js';
+import { getFactionTypeBadge, getFactionDashboardUrl, isFactionInactive, isHiddenFromSwitcher, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
 
 const ENT_TABS = [
   { id: 'home',         label: 'HOME',         href: 'entrepreneur-dashboard.html' },
@@ -44,7 +44,7 @@ function ensureStyles() {
     font-size:11px; color:#8aaa6a; cursor:pointer; white-space:nowrap; }
   .ent-dd { position:absolute; right:0; top:calc(100% + 8px); background:#0f0f0f;
     border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; min-width:240px; max-width:340px;
-    display:none; z-index:100; overflow:hidden; }
+    display:none; z-index:100; overflow-y:auto; max-height:min(70vh, 420px); }
   .ent-dd.open { display:block; }
   .ent-dd-item { display:flex; align-items:center; gap:10px; padding:10px 14px; font-size:11px;
     color:#d4d4d4; cursor:pointer; border-bottom:0.5px solid rgba(255,255,255,0.06); }
@@ -161,14 +161,10 @@ function buildSwitcher(facs) {
       window.location.href = c.url;
     });
   }
-  // Project Neptune (Politician alpha) — hidden once the user holds a politician,
-  // matching the hide-on-claimed pattern above.
-  if (!facs.some(f => f.faction_type === 'politician')) {
-    addRow('create', '+', null, 'Join Project Neptune', () => {
-      sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search);
-      window.location.href = 'character-select.html';
-    });
-  }
+  // Politician slot row — label rule, cap, and Patreon11 gate all
+  // live in js/game/factions.js. Null when the user has hit the cap.
+  const polSlot = nextPoliticianSlot(facs);
+  if (polSlot) addRow('create', '+', null, polSlot.label, () => activatePoliticianSlot(polSlot));
   pill.addEventListener('click', (e) => { e.stopPropagation(); dd.classList.toggle('open'); });
   document.addEventListener('click', (e) => {
     if (!e.target.closest('#ent-pill') && !e.target.closest('#ent-dd')) dd.classList.remove('open');

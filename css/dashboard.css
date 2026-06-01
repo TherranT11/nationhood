@@ -262,6 +262,8 @@ body > *:not(#top-bar):not(.home-subtabs):not(.pa-subtabs):not(.gov-subtabs):not
     border: 1px solid var(--border-main, rgba(255,255,255,0.08));
     z-index: 1000;
     box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    overflow-y: auto;
+    max-height: min(70vh, 420px);
 }
 .faction-dropdown.open { display: block; }
 .faction-dropdown__item {

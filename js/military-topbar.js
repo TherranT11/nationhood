@@ -16,6 +16,8 @@ import {
     getFactionDashboardUrl,
     getBranchDisplayLabel,
     isHiddenFromSwitcher,
+    nextPoliticianSlot,
+    activatePoliticianSlot,
 } from './game/factions.js';
 import { escapeHtml as escHtml, APP_VERSION } from './utils.js';
 
@@ -214,12 +216,13 @@ export function renderMilitaryTopBar(container, opts = {}) {
             <span class="mil-dd-name">Become an Entrepreneur</span>
         </div>`;
     }
-    // Project Neptune (Politician alpha) — hidden once the user holds a politician.
-    const hasPolitician = (allUserFactions || []).some(f => f.faction_type === 'politician');
-    if (!hasPolitician) {
-        dropdownHtml += `<div class="mil-dd-item mil-dd-item--create" data-action="join-neptune">
+    // Politician slot row — label rule, cap, and Patreon11 gate all
+    // live in js/game/factions.js. Null when the user has hit the cap.
+    const polSlot = nextPoliticianSlot(allUserFactions);
+    if (polSlot) {
+        dropdownHtml += `<div class="mil-dd-item mil-dd-item--create" data-action="join-politician">
             <span class="mil-dd-type" style="color:var(--teal,#5aafa5)">+</span>
-            <span class="mil-dd-name">Join Project Neptune</span>
+            <span class="mil-dd-name">${escHtml(polSlot.label)}</span>
         </div>`;
     }
 
@@ -299,9 +302,8 @@ export function renderMilitaryTopBar(container, opts = {}) {
                 window.location.href = 'faction-select.html';
                 return;
             }
-            if (item.dataset.action === 'join-neptune') {
-                sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search);
-                window.location.href = 'character-select.html';
+            if (item.dataset.action === 'join-politician') {
+                activatePoliticianSlot(polSlot);
                 return;
             }
             const fid = item.dataset.factionId;

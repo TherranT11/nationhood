@@ -5,7 +5,7 @@
 // just teal where entrepreneur uses green.
 import { _supabase } from './supabase-client.js';
 import { APP_VERSION, fmtBig, displayName } from './utils.js';
-import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl } from './game/factions.js';
+import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
 
 const POL_TABS = [
   { id: 'home',      label: 'HOME',      href: 'politician-home.html' },
@@ -51,7 +51,7 @@ function ensureStyles() {
     font-size:11px; color:#5aafa5; cursor:pointer; white-space:nowrap; }
   .pol-dd { position:absolute; right:0; top:calc(100% + 8px); background:#0f0f0f;
     border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; min-width:240px; max-width:340px;
-    display:none; z-index:100; overflow:hidden; }
+    display:none; z-index:100; overflow-y:auto; max-height:min(70vh, 420px); }
   .pol-dd.open { display:block; }
   .pol-dd-item { display:flex; align-items:center; gap:10px; padding:10px 14px; font-size:11px;
     color:#d4d4d4; cursor:pointer; border-bottom:0.5px solid rgba(255,255,255,0.06); }
@@ -60,6 +60,7 @@ function ensureStyles() {
   .pol-dd-badge { font-size:9px; letter-spacing:0.06em; min-width:40px; }
   .pol-dd-name { flex:1; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .pol-dd-empty { padding:10px; color:#666; font-size:10px; }
+  .pol-dd-item.create, .pol-dd-item.create .pol-dd-name { color:#888; }
   .pol-util { color:#666; font-size:11px; cursor:pointer; }
   .pol-util:hover { color:#d4d4d4; }
   .pol-nav { display:flex; gap:32px; padding:0 28px; border-bottom:0.5px solid rgba(255,255,255,0.08);
@@ -117,24 +118,41 @@ function startCountdown(nextTickAt) {
 function buildSwitcher(facs) {
   const dd = document.getElementById('pol-dd');
   if (!dd) return;
-  if (!facs.length) {
-    dd.innerHTML = '<div class="pol-dd-empty">No other factions.</div>';
-    return;
-  }
-  dd.innerHTML = facs.map(f => {
+  const list = facs || [];
+  // Existing rows — every active, non-hidden faction the user owns.
+  const items = list.map(f => {
     const { label, color } = getFactionTypeBadge(f.faction_type);
     return `<div class="pol-dd-item" data-id="${esc(f.id)}">
       <span class="pol-dd-badge" style="color:${color}">${esc(label)}</span>
       <span class="pol-dd-name">${esc(f.faction_name || 'Unnamed')}</span>
     </div>`;
-  }).join('');
-  dd.querySelectorAll('.pol-dd-item').forEach(el => {
+  });
+  // Politician slot row — label rule, cap, and Patreon11 gate all
+  // live in js/game/factions.js. Null when the user has hit the cap.
+  // A user viewing the politician topbar always holds at least one
+  // politician, so polSlot here will be at minimum slot #2.
+  const polSlot = nextPoliticianSlot(list);
+  if (polSlot) {
+    items.push(`<div class="pol-dd-item create" data-join-politician>
+      <span class="pol-dd-badge">+</span>
+      <span class="pol-dd-name">${esc(polSlot.label)}</span>
+    </div>`);
+  }
+  if (!items.length) {
+    dd.innerHTML = '<div class="pol-dd-empty">No other factions.</div>';
+    return;
+  }
+  dd.innerHTML = items.join('');
+  dd.querySelectorAll('.pol-dd-item[data-id]').forEach(el => {
     el.addEventListener('click', () => {
-      const f = facs.find(x => x.id === el.dataset.id);
+      const f = list.find(x => x.id === el.dataset.id);
       if (!f) return;
       sessionStorage.setItem('active_faction_id', f.id);
       window.location.href = getFactionDashboardUrl(f) || 'faction-select.html';
     });
+  });
+  dd.querySelectorAll('.pol-dd-item[data-join-politician]').forEach(el => {
+    el.addEventListener('click', () => activatePoliticianSlot(polSlot));
   });
 }
 

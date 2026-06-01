@@ -804,7 +804,7 @@ const LOCAL_GOV_ACTIONS = [
 const LEGISLATURE_ACTIONS = [
   { ic: '☞',         name: 'FLOOR SPEECH',       cost: 'no cost',           desc: 'Rise on the Assembly floor and speak to a chosen issue. Visible, recorded, risked.', action: 'floor-speech' },
   { ic: '⚛',         name: 'HOLD A RALLY',       cost: '−$10K party funds', desc: 'Hold a rally with local party members to build support.',                             action: 'hold-rally' },
-  { ic: '\u{1F377}', name: 'FUNDRAISING DINNER', cost: 'no cost',           desc: 'Work the room at a donor-class fundraiser. Court the wallets that matter.',          action: 'fundraising-dinner' },
+  { ic: '\u{1F377}', name: 'FUNDRAISING DINNER', cost: '−1 party popularity', desc: 'Work the room at a donor-class fundraiser. Roll 1d20 for thousands in donations; the donor-circuit visibility costs the party 1 popularity.', action: 'fundraising-dinner' },
 ];
 // Civil Servant action placeholders — no `action` key means the
 // existing render logic at renderAffiliation treats them as disabled.
@@ -1034,10 +1034,8 @@ function fmtMpResult(data) {
       : `${label}: flopped${stake}. Your reputation dropped to ${data.new_reputation}.`;
   }
   if (data.action === 'fundraising_dinner') {
-    const money = `Raised $${Number(data.money_raised || 0).toLocaleString()} for ${data.party_name || 'your party'}`;
-    if (data.stat_delta === 'political_capital') return `${label}: ${money} — you embarrassed yourself${stake}. Political Capital dropped to ${data.new_political_capital}.`;
-    if (data.stat_delta === 'charisma')  return `${label}: ${money} — you owned the room${stake}. Charisma rose to ${data.new_charisma}.`;
-    return `${label}: ${money}${stake}.`;
+    const money = `$${Number(data.money_raised || 0).toLocaleString()}`;
+    return `${label}: rolled ${data.roll} — raised ${money} for ${data.party_name || 'your party'}. Party popularity dropped to ${data.new_party_popularity}%.`;
   }
   return `${label}: done.`;
 }
