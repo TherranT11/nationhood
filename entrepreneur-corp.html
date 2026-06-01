@@ -2700,6 +2700,121 @@ function initials(s, n) {
       }
     }
 
+    // ── Bid on Oil Plot Permit ─────────────────────────────────────────
+    // Modal: years (1-25 slider) × offer (≥ per-year minimum × years).
+    // RPC: oil_plot_acquire_permit. Reloads on success so the row flips
+    // to "YOURS" and the scarcity multiplier recomputes for siblings.
+    function openBidPermitModal({ plotId, plotName, minPerYear }) {
+      let ov = document.getElementById('bidPermitModal');
+      if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'bidPermitModal';
+        ov.innerHTML = `
+          <div class="sv-modal" role="dialog" aria-modal="true">
+            <div class="sv-head">
+              <div>
+                <div class="sv-eyebrow">— OIL &amp; GAS · PERMIT BID —</div>
+                <div class="sv-title">Bid on <span class="name" id="bp-plot-name">—</span></div>
+              </div>
+              <button class="sv-close" type="button" aria-label="Close" data-bp-close>&times;</button>
+            </div>
+            <div class="sv-body" id="bp-body"></div>
+          </div>`;
+        document.body.appendChild(ov);
+        ov.querySelector('[data-bp-close]').addEventListener('click', () => closeBidPermitModal(false));
+      }
+      ov.querySelector('#bp-plot-name').textContent = plotName || '—';
+      renderBidPermitForm(ov, plotId, minPerYear);
+      ov.classList.add('open');
+    }
+    function closeBidPermitModal(reload) {
+      const ov = document.getElementById('bidPermitModal');
+      if (!ov) return;
+      ov.classList.remove('open');
+      if (reload) location.reload();
+    }
+    function renderBidPermitForm(ov, plotId, minPerYear) {
+      const body = ov.querySelector('#bp-body');
+      let years = 5;
+      let offer = minPerYear * years;
+      const paint = () => {
+        const minTotal = minPerYear * years;
+        const offerOk  = offer >= minTotal;
+        body.innerHTML = `
+          <div class="sv-copy">
+            Permit holders get exclusive drilling rights for the lease term. Per-year minimum: <b>${fmtUsd(minPerYear)}</b> (recomputes as more plots in the nation get permitted).
+          </div>
+          <div class="sv-bonus-row">
+            <span class="sv-bonus-lab">Years on lease</span>
+            <div class="sv-bonus-controls">
+              <button class="sv-bonus-btn" id="bp-years-dec" ${years <= 1 ? 'disabled' : ''}>−</button>
+              <span class="sv-bonus-val" id="bp-years-val">${years}</span>
+              <button class="sv-bonus-btn" id="bp-years-inc" ${years >= 25 ? 'disabled' : ''}>+</button>
+            </div>
+          </div>
+          <div class="sv-bonus-row" style="margin-top:10px;">
+            <span class="sv-bonus-lab">Offer</span>
+            <input type="number" id="bp-offer" value="${offer}" min="${minTotal}" step="1000000"
+                   style="background:#0a0a0a;border:0.5px solid rgba(255,255,255,0.12);color:#cfcabf;padding:6px 10px;border-radius:4px;font-family:inherit;font-size:12px;width:160px;text-align:right;" />
+          </div>
+          <div class="sv-cost-line">
+            Minimum for ${years} year${years === 1 ? '' : 's'}: <b>${fmtUsd(minTotal)}</b>.
+            ${offerOk ? '' : `<span style="color:#c87a7a;"> Your offer is below the minimum.</span>`}
+          </div>
+          <div class="sv-actions">
+            <button type="button" class="sv-btn sv-btn--cancel" id="bp-cancel">Cancel</button>
+            <button type="button" class="sv-btn sv-btn--primary" id="bp-confirm" ${offerOk ? '' : 'disabled'}>Submit Bid</button>
+          </div>`;
+        body.querySelector('#bp-years-dec').addEventListener('click', () => {
+          if (years > 1) { years -= 1; offer = Math.max(offer, minPerYear * years); paint(); }
+        });
+        body.querySelector('#bp-years-inc').addEventListener('click', () => {
+          if (years < 25) { years += 1; offer = Math.max(offer, minPerYear * years); paint(); }
+        });
+        body.querySelector('#bp-offer').addEventListener('input', (e) => {
+          offer = Math.max(0, parseInt(e.target.value, 10) || 0);
+          const confirmBtn = body.querySelector('#bp-confirm');
+          if (confirmBtn) confirmBtn.disabled = offer < (minPerYear * years);
+        });
+        body.querySelector('#bp-cancel').addEventListener('click', () => closeBidPermitModal(false));
+        body.querySelector('#bp-confirm').addEventListener('click', () => fireBidPermit(ov, plotId, offer, years));
+      };
+      paint();
+    }
+    async function fireBidPermit(ov, plotId, amount, years) {
+      const btn = ov.querySelector('#bp-confirm');
+      if (!btn || btn.disabled) return;
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = 'Submitting…';
+      try {
+        const { data, error } = await _supabase.rpc('oil_plot_acquire_permit', {
+          p_plot_id: plotId, p_amount: amount, p_years: years,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_authenticated:   'Sign in first.',
+            invalid_years:       'Lease must be between 1 and 25 years.',
+            invalid_amount:      'Offer must be a positive amount.',
+            no_oil_corp:         'You don’t own an Oil &amp; Gas corp.',
+            plot_not_found:      'Plot no longer exists.',
+            already_permitted:   'Someone already holds the permit on that plot.',
+            amount_too_low:      `Offer is below the minimum (${fmtUsd(Number(data.minimum) || 0)} for ${years} year${years === 1 ? '' : 's'}).`,
+            insufficient_funds:  `Treasury too low. Need ${fmtUsd(Number(data.need) || 0)}, have ${fmtUsd(Number(data.have) || 0)}.`,
+          };
+          alert(REASON[data?.reason] || ('Bid failed: ' + (data?.reason || 'unknown')));
+          btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        closeBidPermitModal(true);
+      } catch (err) {
+        console.warn('[entrepreneur-corp] oil_plot_acquire_permit failed', err);
+        alert('Could not submit bid: ' + (err?.message || err));
+        btn.disabled = false; btn.textContent = prev;
+      }
+    }
+
     // ── Debt Payment (manual servicing): pay an amount toward an active corp
     //    loan from treasury → lender. Interest accrues per tick; no auto-pay. ──
     async function openDebtPaymentModal() {
@@ -3613,7 +3728,9 @@ function initials(s, n) {
       if (c.industry === 'oil_and_gas' && c.hq_nation_id) {
         const { data: plotRows, error: pErr } = await _supabase.from('nation_oil_plots')
           .select('id, slot_index, name, nation_id, surveyed, surveyed_at_tick, surveyed_by_faction, tier, crude_present, '
-                + 'nation:nations!nation_id(name)')
+                + 'permit_holder_corp_id, permit_amount_paid, permit_years, permit_expires_at_tick, '
+                + 'nation:nations!nation_id(name), '
+                + 'permit_holder:entrepreneur_corps!permit_holder_corp_id(id, name)')
           .in('nation_id', Array.from(presenceNationIds))
           .order('slot_index', { ascending: true });
         if (pErr) console.warn('[entrepreneur-corp] oil plots fetch error:', pErr.message);
@@ -4933,7 +5050,83 @@ function initials(s, n) {
           </div>`;
       }
 
-      pj.innerHTML = launchBtn + portfolioHtml + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + personalLoanReqsHtml + airlinePanelHtml + aviationPanelHtml + oilGasPanelHtml + surveysPanelHtml + ordersPanelHtml + requestPanelHtml;
+      // Oil & Gas Permits panel — sits between Surveys and Construction
+      // Requests. Same 6-column shape as Surveys, but the Action button
+      // opens a bid modal instead of firing the survey RPC.
+      // Per-year minimum bid is scarcity-driven (oil_plot_min_bid_per_year):
+      //   $5M × tier_mult × (totalPlots / unownedPlots, capped at 5×).
+      let permitsPanelHtml = '';
+      if (isOilGasCorp && canView && oilPlots.length > 0) {
+        const TIER_MULT = { dry: 0.2, small: 1, moderate: 2, large: 4, generational: 8 };
+        const SCARCITY_CAP = 5;
+        // Scarcity per-nation — recompute client-side so the table reflects
+        // the same value the server would charge.
+        const scarcityByNation = new Map();
+        for (const nid of presenceNationIds) {
+          const plots = oilPlots.filter(p => p.nation_id === nid);
+          const owned = plots.filter(p => p.permit_holder_corp_id).length;
+          const total = plots.length;
+          const s = total > 0 ? Math.min(SCARCITY_CAP, total / Math.max(1, total - owned)) : 1;
+          scarcityByNation.set(nid, s);
+        }
+        const minBidPerYear = (p) => {
+          const tierM = TIER_MULT[p.tier] ?? 1;
+          const s     = scarcityByNation.get(p.nation_id) ?? 1;
+          return Math.round(5_000_000 * tierM * s);
+        };
+        const permitRowsHtml = oilPlots.map(p => {
+          const tierLabel = p.surveyed
+            ? `Surveyed <span class="surv-tier surv-tier-${p.tier || 'dry'}">${escapeHtml((p.tier || '—').toUpperCase())}</span>`
+            : 'Unsurveyed';
+          const crude = p.surveyed && p.crude_present > 0
+            ? `${Number(p.crude_present).toLocaleString()} <span class="unit">bbl</span>`
+            : '<span style="color:#666;">—</span>';
+          const holderName = p.permit_holder?.name || 'Private Owner';
+          const isHeld     = !!p.permit_holder_corp_id;
+          const heldByYou  = isHeld && p.permit_holder_corp_id === id;
+          let actionHtml;
+          if (!isOwner) {
+            actionHtml = '<span style="color:#666;font-size:10px;">—</span>';
+          } else if (heldByYou) {
+            actionHtml = '<span style="color:#8aaa6a;font-size:10px;">YOURS</span>';
+          } else if (isHeld) {
+            actionHtml = '<span style="color:#666;font-size:10px;">—</span>';
+          } else {
+            const mb = minBidPerYear(p);
+            actionHtml = `<button class="ap-btn-small" data-bid-plot="${escapeHtml(p.id)}"
+                                   data-plot-name="${escapeHtml(p.name)}"
+                                   data-min-year="${mb}">Bid</button>`;
+          }
+          return `<div class="surv-row">
+              <div class="surv-cell surv-name">${escapeHtml(p.name)}</div>
+              <div class="surv-cell"><div style="color:#fff;font-weight:600;">${escapeHtml(p.nation?.name || '—')}</div></div>
+              <div class="surv-cell surv-status ${p.surveyed ? 'surveyed' : ''}">${tierLabel}</div>
+              <div class="surv-cell surv-crude">${crude}</div>
+              <div class="surv-cell"><span style="color:${isHeld ? '#cfcabf' : '#888'};">${escapeHtml(holderName)}</span></div>
+              <div class="surv-cell surv-action">${actionHtml}</div>
+            </div>`;
+        }).join('');
+        permitsPanelHtml = `
+          <div class="section-heading"><span class="sans">Oil &amp; Gas</span><span class="serif">Permits</span></div>
+          <div class="og-panel">
+            <div class="surv-table">
+              <div class="surv-row surv-head">
+                <div class="surv-cell">Name</div>
+                <div class="surv-cell">Nation</div>
+                <div class="surv-cell">Status</div>
+                <div class="surv-cell">Crude Oil Present</div>
+                <div class="surv-cell">Owner</div>
+                <div class="surv-cell surv-action">Action</div>
+              </div>
+              ${permitRowsHtml}
+            </div>
+            <div class="og-prices" style="margin-top:10px;">
+              Min bid per year = <b>$5M</b> × tier (dry 0.2 / small 1 / moderate 2 / large 4 / generational 8 / unsurveyed 1) × scarcity (capped 5×). As more plots in the nation get permitted, the price on the remaining ones climbs.
+            </div>
+          </div>`;
+      }
+
+      pj.innerHTML = launchBtn + portfolioHtml + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + personalLoanReqsHtml + airlinePanelHtml + aviationPanelHtml + oilGasPanelHtml + surveysPanelHtml + permitsPanelHtml + ordersPanelHtml + requestPanelHtml;
 
       // Wire the Oil & Gas sell buttons.
       if (isOilGasCorp && isOwner) {
@@ -4970,6 +5163,15 @@ function initials(s, n) {
           btn.addEventListener('click', () => openSurveyModal({
             plotId:   btn.dataset.surveyPlot,
             plotName: btn.dataset.plotName,
+          }));
+        });
+        // Wire the [Bid] buttons in the Permits panel. Each carries the
+        // per-year minimum so the modal can preview the total.
+        document.querySelectorAll('[data-bid-plot]').forEach(btn => {
+          btn.addEventListener('click', () => openBidPermitModal({
+            plotId:        btn.dataset.bidPlot,
+            plotName:      btn.dataset.plotName,
+            minPerYear:    Number(btn.dataset.minYear) || 0,
           }));
         });
       }
