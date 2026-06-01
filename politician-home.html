@@ -385,6 +385,15 @@ import { bootstrapPolitician } from './js/politician-topbar.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
 
 const NO_AFFILIATION_MESSAGE = 'This character has no affiliation.';
+// Civil-service ministry slug → display name. Same map as the one in
+// politician-career.html; both pages read the same factions
+// .politician_ministry slug.
+const MINISTRY_NAMES = {
+  defense:              'Defense',
+  foreign_affairs:      'Foreign Affairs & Trade',
+  economic_development: 'Economic Development',
+  interior:             'Interior',
+};
 
 // Career-log templates — keyed by politician_career_events.event_type. Adding
 // a new beat is one entry here plus whatever inserts the row server-side.
@@ -413,6 +422,13 @@ const CAREER_EVENT_TEMPLATES = {
   },
   won_election:  (name, target) => `${name} won the election in ${target || 'a contested district'}.`,
   lost_election: (name, target) => `${name} lost the election in ${target || 'a contested district'}.`,
+  // Civil Servant — Sit the Exam outcomes from politician_sit_the_exam
+  // (20270471). target_name carries the rolled ministry's display name
+  // on both pass and fail.
+  civil_service_exam_passed: (name, target) =>
+    `${name} has completed the exam to become a civil servant within the Ministry of ${target || 'a ministry'}.`,
+  civil_service_exam_failed: (name, target) =>
+    `${name}'s civil service exam application to the Ministry of ${target || 'a ministry'} was rejected.`,
 };
 
 let politician = null;
@@ -562,12 +578,15 @@ function renderHero(shard) {
   // (membership is implicit in holding the office). Same source as
   // politician-career.html's affiliation block — single OFFICE_TITLES
   // map in js/utils.js so the two surfaces never disagree.
-  const office = politician.politician_office || null;
+  const office   = politician.politician_office || null;
+  const ministry = politician.politician_ministry || null;
   document.getElementById('hero-affiliation').textContent = party
     ? (office
         ? `${officeTitle(office)} · ${party.faction_name}`
         : `Party Member of ${party.faction_name}`)
-    : NO_AFFILIATION_MESSAGE;
+    : (ministry
+        ? `Civil Servant in the Ministry of ${MINISTRY_NAMES[ministry] || ministry}`
+        : NO_AFFILIATION_MESSAGE);
 }
 
 // Paint the split hero name. first goes in the bold span, last + any
