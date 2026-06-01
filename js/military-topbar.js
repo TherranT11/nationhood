@@ -214,12 +214,21 @@ export function renderMilitaryTopBar(container, opts = {}) {
             <span class="mil-dd-name">Become an Entrepreneur</span>
         </div>`;
     }
-    // Project Neptune (Politician alpha) — hidden once the user holds a politician.
-    const hasPolitician = (allUserFactions || []).some(f => f.faction_type === 'politician');
-    if (!hasPolitician) {
-        dropdownHtml += `<div class="mil-dd-item mil-dd-item--create" data-action="join-neptune">
+    // Politician slots — first one is "Join Project Neptune", slots 2-4
+    // are "Join as Politician #N". Cap at 4. Slot 4 requires Patreon11
+    // (fixed string, client-side prompt). Same-nation dupes caught by
+    // the DB unique index from 20270374.
+    const polCount = (allUserFactions || []).filter(f => f.faction_type === 'politician').length;
+    if (polCount < 4) {
+        const polNext = polCount + 1;
+        const polLabel = polNext === 1
+            ? 'Join Project Neptune'
+            : polNext === 4
+                ? `Join as Politician #${polNext} (alpha code)`
+                : `Join as Politician #${polNext}`;
+        dropdownHtml += `<div class="mil-dd-item mil-dd-item--create" data-action="join-politician" data-slot="${polNext}">
             <span class="mil-dd-type" style="color:var(--teal,#5aafa5)">+</span>
-            <span class="mil-dd-name">Join Project Neptune</span>
+            <span class="mil-dd-name">${escHtml(polLabel)}</span>
         </div>`;
     }
 
@@ -299,7 +308,15 @@ export function renderMilitaryTopBar(container, opts = {}) {
                 window.location.href = 'faction-select.html';
                 return;
             }
-            if (item.dataset.action === 'join-neptune') {
+            if (item.dataset.action === 'join-politician') {
+                const slot = Number(item.dataset.slot);
+                if (slot === 4) {
+                    const code = window.prompt('Alpha tester code required to claim slot #4:');
+                    if (code !== 'Patreon11') {
+                        if (code != null) window.alert('Invalid alpha code.');
+                        return;
+                    }
+                }
                 sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search);
                 window.location.href = 'character-select.html';
                 return;

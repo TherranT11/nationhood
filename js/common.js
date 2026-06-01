@@ -891,15 +891,25 @@ export function updateTopBarInfo(faction, shard, nation) {
                 <span class="faction-dropdown__name">Become an Entrepreneur</span>
             </div>`;
         }
-        // Project Neptune (Politician alpha). Shown only when the user doesn't
-        // already hold a politician — matches the "Found a Party"/"Become an
-        // Entrepreneur" hide-once-claimed pattern above. Alpha-gated on the
-        // next page; remembers the current page so Cancel returns there.
-        const hasPolitician = _userFactions.some(f => f.faction_type === 'politician');
-        if (!hasPolitician) {
-            html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search); window.location.href='character-select.html'">
+        // Politician slots — first is "Join Project Neptune" (alpha-gated
+        // on the next page), slots 2-4 are "Join as Politician #N". Cap
+        // at 4. Slot 4 requires the Patreon11 alpha code (fixed string,
+        // client-side prompt). Same-nation dupes caught by the DB
+        // unique index from 20270374.
+        const polCount = _userFactions.filter(f => f.faction_type === 'politician').length;
+        if (polCount < 4) {
+            const polNext = polCount + 1;
+            const polLabel = polNext === 1
+                ? 'Join Project Neptune'
+                : polNext === 4
+                    ? `Join as Politician #${polNext} (alpha code)`
+                    : `Join as Politician #${polNext}`;
+            const slotGate = polNext === 4
+                ? "var c=window.prompt('Alpha tester code required to claim slot #4:'); if(c!=='Patreon11'){if(c!=null)window.alert('Invalid alpha code.'); return;} "
+                : '';
+            html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="${slotGate}sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search); window.location.href='character-select.html'">
                 <span class="faction-dropdown__type" style="color:var(--teal,#5aafa5)">+</span>
-                <span class="faction-dropdown__name">Join Project Neptune</span>
+                <span class="faction-dropdown__name">${polLabel}</span>
             </div>`;
         }
         dropdown.innerHTML = html;

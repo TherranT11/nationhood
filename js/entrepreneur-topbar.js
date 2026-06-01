@@ -161,10 +161,27 @@ function buildSwitcher(facs) {
       window.location.href = c.url;
     });
   }
-  // Project Neptune (Politician alpha) — hidden once the user holds a politician,
-  // matching the hide-on-claimed pattern above.
-  if (!facs.some(f => f.faction_type === 'politician')) {
-    addRow('create', '+', null, 'Join Project Neptune', () => {
+  // Politician slots — first one is "Join Project Neptune" (matches
+  // the historical CTA); slots 2-4 read "Join as Politician #N". Cap
+  // at 4 politicians per user; slot 4 requires the Patreon11 alpha
+  // code (fixed string, client-side prompt). Same-nation duplicates
+  // are caught downstream by the DB unique index from 20270374.
+  const polCount = facs.filter(f => f.faction_type === 'politician').length;
+  if (polCount < 4) {
+    const next = polCount + 1;
+    const label = next === 1
+      ? 'Join Project Neptune'
+      : next === 4
+        ? `Join as Politician #${next} (alpha code)`
+        : `Join as Politician #${next}`;
+    addRow('create', '+', null, label, () => {
+      if (next === 4) {
+        const code = window.prompt('Alpha tester code required to claim slot #4:');
+        if (code !== 'Patreon11') {
+          if (code != null) window.alert('Invalid alpha code.');
+          return;
+        }
+      }
       sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search);
       window.location.href = 'character-select.html';
     });

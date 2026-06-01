@@ -60,6 +60,7 @@ function ensureStyles() {
   .pol-dd-badge { font-size:9px; letter-spacing:0.06em; min-width:40px; }
   .pol-dd-name { flex:1; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .pol-dd-empty { padding:10px; color:#666; font-size:10px; }
+  .pol-dd-item.create, .pol-dd-item.create .pol-dd-name { color:#888; }
   .pol-util { color:#666; font-size:11px; cursor:pointer; }
   .pol-util:hover { color:#d4d4d4; }
   .pol-nav { display:flex; gap:32px; padding:0 28px; border-bottom:0.5px solid rgba(255,255,255,0.08);
@@ -117,23 +118,55 @@ function startCountdown(nextTickAt) {
 function buildSwitcher(facs) {
   const dd = document.getElementById('pol-dd');
   if (!dd) return;
-  if (!facs.length) {
-    dd.innerHTML = '<div class="pol-dd-empty">No other factions.</div>';
-    return;
-  }
-  dd.innerHTML = facs.map(f => {
+  const list = facs || [];
+  // Existing rows — every active, non-hidden faction the user owns.
+  const items = list.map(f => {
     const { label, color } = getFactionTypeBadge(f.faction_type);
     return `<div class="pol-dd-item" data-id="${esc(f.id)}">
       <span class="pol-dd-badge" style="color:${color}">${esc(label)}</span>
       <span class="pol-dd-name">${esc(f.faction_name || 'Unnamed')}</span>
     </div>`;
-  }).join('');
-  dd.querySelectorAll('.pol-dd-item').forEach(el => {
+  });
+  // Politician slots — slots 2-4 appear once the user already holds a
+  // politician (slot 1 is the existing Project Neptune CTA on the
+  // entrepreneur topbar; politicians can spawn additional ones from
+  // here). Cap at 4; slot 4 requires Patreon11 (fixed string).
+  const polCount = list.filter(f => f.faction_type === 'politician').length;
+  if (polCount >= 1 && polCount < 4) {
+    const next = polCount + 1;
+    const label = next === 4
+      ? `Join as Politician #${next} (alpha code)`
+      : `Join as Politician #${next}`;
+    items.push(`<div class="pol-dd-item create" data-join-slot="${next}">
+      <span class="pol-dd-badge">+</span>
+      <span class="pol-dd-name">${esc(label)}</span>
+    </div>`);
+  }
+  if (!items.length) {
+    dd.innerHTML = '<div class="pol-dd-empty">No other factions.</div>';
+    return;
+  }
+  dd.innerHTML = items.join('');
+  dd.querySelectorAll('.pol-dd-item[data-id]').forEach(el => {
     el.addEventListener('click', () => {
-      const f = facs.find(x => x.id === el.dataset.id);
+      const f = list.find(x => x.id === el.dataset.id);
       if (!f) return;
       sessionStorage.setItem('active_faction_id', f.id);
       window.location.href = getFactionDashboardUrl(f) || 'faction-select.html';
+    });
+  });
+  dd.querySelectorAll('.pol-dd-item[data-join-slot]').forEach(el => {
+    el.addEventListener('click', () => {
+      const slot = Number(el.dataset.joinSlot);
+      if (slot === 4) {
+        const code = window.prompt('Alpha tester code required to claim slot #4:');
+        if (code !== 'Patreon11') {
+          if (code != null) window.alert('Invalid alpha code.');
+          return;
+        }
+      }
+      sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search);
+      window.location.href = 'character-select.html';
     });
   });
 }
