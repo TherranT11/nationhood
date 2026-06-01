@@ -3172,9 +3172,9 @@ function initials(s, n) {
     // per-class ceiling in range_units; terminal fee matches
     // entrepreneur_claim_terminal ($5M + $2M × population_pct).
     const AIRCRAFT = {
-      regional:   { label: 'Regional',   cost: 60_000_000,  seats: 10, ops: 500,  range: 20 },
-      narrowbody: { label: 'Narrowbody', cost: 90_000_000,  seats: 25, ops: 1200, range: 60 },
-      widebody:   { label: 'Widebody',   cost: 120_000_000, seats: 60, ops: 2500, range: Infinity },
+      regional:   { label: 'Regional',   cost: 60_000_000,  seats: 10, ops: 500 },
+      narrowbody: { label: 'Narrowbody', cost: 90_000_000,  seats: 25, ops: 1200 },
+      widebody:   { label: 'Widebody',   cost: 120_000_000, seats: 60, ops: 2500 },
     };
     const AIRCRAFT_CLASSES = ['regional', 'narrowbody', 'widebody'];
     const terminalClaimFee = (popPct) => 5_000_000 + 2_000_000 * (Number(popPct) || 0);
@@ -3902,7 +3902,7 @@ function initials(s, n) {
             .eq('airline_corp_id', id).eq('status', 'active')
             .order('opened_at_tick', { ascending: true }),
           _supabase.from('airline_cities')
-            .select('id, name, population_pct, is_capital').order('name'),
+            .select('id, name, population_pct, is_capital, nation:nations!nation_id(name)').order('name'),
           _supabase.from('corp_aircraft')
             .select('id, aircraft_class, condition, overhaul_count, is_overhauling, route_id, design:ent_aircraft_designs!ent_design_id(range_nm)')
             .eq('entrepreneur_corp_id', id)
@@ -4035,7 +4035,7 @@ function initials(s, n) {
               </div>`).join('')
           : `<div class="sh-empty">No terminals. Claim slots in two cities to open your first route.</div>`;
         const claimOpts = allCities.filter(c2 => !ownedCityIds.has(c2.id))
-          .map(c2 => `<option value="${c2.id}" data-pop="${Number(c2.population_pct) || 0}">${escapeHtml(c2.name)} — ${fmtUsd(terminalClaimFee(c2.population_pct))}</option>`).join('');
+          .map(c2 => `<option value="${c2.id}" data-pop="${Number(c2.population_pct) || 0}">${escapeHtml(c2.name)} · ${escapeHtml(c2.nation?.name || '?')} — ${fmtUsd(terminalClaimFee(c2.population_pct))}</option>`).join('');
         const claimForm = claimOpts
           ? `<div class="al-form">
                <select id="al-claim-city">${claimOpts}</select>
@@ -4101,7 +4101,7 @@ function initials(s, n) {
                <label>Aircraft <input type="number" id="al-route-count" min="1" value="1" /></label>
                <button class="sh-buy-btn" id="al-open-route">Open Route</button>
              </div>
-             <div class="al-hint">One class per route. Regional/Narrowbody serve short lanes only; cross-nation routes need Widebodies. Cheaper tickets win a bigger share of the lane's passengers.</div>`
+             <div class="al-hint">One class per route. Each aircraft's range must be ≥ the route distance. Cheaper tickets win a bigger share of the lane's passengers.</div>`
           : `<div class="al-hint">Claim a terminal in at least two cities to open a route.</div>`;
 
         // Aircraft RFPs this airline has posted (open = taking bids,
