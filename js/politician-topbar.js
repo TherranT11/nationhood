@@ -228,7 +228,7 @@ export function renderPoliticianTopbar(container, { faction, shard, nation, allU
 
 // Auth + fetch + render the topbar into #pol-topbar-container. Returns
 // { user, faction, shard, nation, allUserFactions } so the page can render
-// its body off the same data. Redirects to login or character-select if the
+// its body off the same data. Redirects to login or first-steps if the
 // caller isn't an authenticated politician. Throws on hard query failure.
 export async function bootstrapPolitician(activeTab) {
   const { data: { user } } = await _supabase.auth.getUser();
@@ -251,7 +251,7 @@ export async function bootstrapPolitician(activeTab) {
                || null;
 
   if (!faction) {
-    window.location.href = 'character-select.html';
+    window.location.href = 'first-steps.html';
     return null;
   }
 

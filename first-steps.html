@@ -219,10 +219,6 @@ async function init() {
   const { data: { user } } = await _supabase.auth.getUser();
   if (!user) { window.location.href = 'login.html'; return; }
   currentUser = user;
-  if (sessionStorage.getItem('neptune_unlocked') !== '1') {
-    window.location.href = 'character-select.html';
-    return;
-  }
 
   try {
     const [
@@ -448,7 +444,11 @@ function goBack() {
   renderStep();
 }
 
-function cancelJourney() { window.location.href = 'character-select.html'; }
+function cancelJourney() {
+  const back = sessionStorage.getItem('neptune_return_url') || 'dashboard.html';
+  sessionStorage.removeItem('neptune_return_url');
+  window.location.href = back;
+}
 
 function confirmStep() {
   if (currentStep === 1) {
@@ -526,7 +526,6 @@ async function createPolitician() {
     }
 
     sessionStorage.setItem('active_faction_id', factionId);
-    sessionStorage.removeItem('neptune_unlocked');
     sessionStorage.removeItem('neptune_return_url');
     window.location.href = 'politician-home.html';
   } catch (err) {
@@ -538,7 +537,7 @@ async function createPolitician() {
 }
 
 // ─── WIRING ────────────────────────────────────────────────────────
-document.getElementById('back-btn').addEventListener('click', () => { window.location.href = 'character-select.html'; });
+document.getElementById('back-btn').addEventListener('click', cancelJourney);
 document.getElementById('goback-btn').addEventListener('click', goBack);
 document.getElementById('cancel-btn').addEventListener('click', cancelJourney);
 document.getElementById('confirm-btn').addEventListener('click', confirmStep);

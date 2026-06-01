@@ -216,7 +216,7 @@ export function nextPoliticianSlot(allFactions) {
 /**
  * Click handler for the politician-slot row. Prompts for the alpha
  * code when the slot needs it, then stores the return URL and
- * navigates to character-select.html. Aborts silently if the user
+ * navigates to first-steps.html. Aborts silently if the user
  * cancels or types the wrong code.
  */
 export function activatePoliticianSlot(slotInfo) {
@@ -229,5 +229,5 @@ export function activatePoliticianSlot(slotInfo) {
         }
     }
     sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search);
-    window.location.href = 'character-select.html';
+    window.location.href = 'first-steps.html';
 }
