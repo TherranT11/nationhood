@@ -37,6 +37,20 @@
 .mn-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07); border-radius:7px;
   padding:24px 22px; color:#666; font-size:11px; font-style:italic; text-align:center; }
 
+/* Actor table — slots into the .mn-card wrapper, replaces the
+   blank-state message once the fetch returns rows. */
+.mn-table { width:100%; border-collapse:collapse; font-size:11.5px; }
+.mn-table thead th { color:#666; font-weight:600; font-size:9px; letter-spacing:0.13em;
+  text-transform:uppercase; padding:14px 18px; text-align:left; border-bottom:0.5px solid rgba(255,255,255,0.07); }
+.mn-table thead th.num { text-align:right; }
+.mn-table tbody td { color:#cfcabf; padding:13px 18px; border-bottom:0.5px solid rgba(255,255,255,0.05);
+  font-variant-numeric:tabular-nums; }
+.mn-table tbody tr:last-child td { border-bottom:none; }
+.mn-table tbody td.name { color:#fff; font-weight:600; font-variant-numeric:normal; }
+.mn-table tbody td.num { text-align:right; }
+.mn-section-host { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07); border-radius:7px; overflow:hidden; }
+.mn-section-host.empty { padding:24px 22px; color:#666; font-size:11px; font-style:italic; text-align:center; }
+
 @media (max-width:700px) {
   .mof-card { flex-direction:column; }
   .mof-stats { width:100%; justify-content:space-between; gap:14px; padding-top:8px;
@@ -80,7 +94,7 @@
 
   <!-- II. Actors -->
   <div class="mn-head"><span class="mn-num">II.</span><span class="lab">Actors</span></div>
-  <div class="mn-card">Nothing recorded yet.</div>
+  <div id="actors-host" class="mn-section-host empty">Nothing recorded yet.</div>
 
   <!-- III. Agencies -->
   <div class="mn-head"><span class="mn-num">III.</span><span class="lab">Agencies</span></div>
@@ -94,11 +108,68 @@
 
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
+import { _supabase } from './js/supabase-client.js';
+import { officeTitle } from './js/utils.js';
+
+const START_AGE = 25;
+const TICKS_PER_AGE_YEAR = 12;
+const esc = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; };
+const ageFor = (foundedTick, currentTick) => {
+  if (foundedTick == null) return START_AGE;
+  const elapsed = Math.max(0, (currentTick || 0) - Number(foundedTick));
+  return START_AGE + Math.floor(elapsed / TICKS_PER_AGE_YEAR);
+};
+
+async function renderActors(nationId, currentTick) {
+  const host = document.getElementById('actors-host');
+  if (!host || !nationId) return;
+  // Civil Servants posted to Foreign Affairs & Trade in this nation.
+  // politician_ministry slug = 'foreign_affairs' (set by
+  // politician_sit_the_exam, 20270471). Sorted by founded_tick so the
+  // most senior servant lists first.
+  const { data, error } = await _supabase.from('factions')
+    .select('id, leader_first_name, leader_last_name, founded_tick, politician_office, political_capital')
+    .eq('faction_type', 'politician')
+    .eq('nation_id', nationId)
+    .eq('politician_ministry', 'foreign_affairs')
+    .is('abandoned_at', null)
+    .order('founded_tick', { ascending: true });
+  if (error) {
+    console.warn('[politician-ministry-foreign] actors fetch error:', error.message);
+    return;
+  }
+  const rows = (data || []).map(a => {
+    const name = [a.leader_first_name, a.leader_last_name].filter(Boolean).join(' ') || '—';
+    const age = ageFor(a.founded_tick, currentTick);
+    const position = a.politician_office ? officeTitle(a.politician_office) : 'Civil Servant';
+    const pc = Math.floor(Number(a.political_capital) || 0);
+    return `<tr>
+      <td class="name">${esc(name)}</td>
+      <td>${age}</td>
+      <td>${esc(position)}</td>
+      <td class="num">${pc.toLocaleString()}</td>
+    </tr>`;
+  }).join('');
+  if (!rows) return;  // keep the blank-state message
+  host.classList.remove('empty');
+  host.innerHTML = `<table class="mn-table">
+      <thead><tr>
+        <th>Name</th>
+        <th>Age</th>
+        <th>Position</th>
+        <th class="num">Political Capital</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
 
 (async () => {
-  try { await bootstrapPolitician('nation'); }
+  let ctx;
+  try { ctx = await bootstrapPolitician('nation'); }
   catch (e) { console.warn('[politician-ministry-foreign] bootstrap failed:', e?.message || e); return; }
+  if (!ctx) return;
   document.getElementById('content').style.display = 'block';
+  await renderActors(ctx.nation?.id || null, Number(ctx.shard?.current_tick) || 0);
 })();
 </script>
 
