@@ -1678,10 +1678,10 @@ function renderElectionOffer(offer, ctx) {
   // / mockup. Political Capital is numeric in the DB; floor to int for display.
   const f = ctx.faction || {};
   const cap  = Math.floor(Number(f.political_capital)      || 0);
-  const cha  = Number(f.politician_charisma)    || 0;
+  const sta  = Number(f.politician_standing)    || 0;
   const cred = Number(f.politician_credibility) || 0;
   document.getElementById('em-stat-infl').textContent = cap;
-  document.getElementById('em-stat-cha' ).textContent = cha;
+  document.getElementById('em-stat-cha' ).textContent = sta;
   document.getElementById('em-stat-cred').textContent = cred;
 
   const body = document.getElementById('em-body');
