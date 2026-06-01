@@ -51,24 +51,18 @@ Remove the action/interaction layer for Autocracy factions (both Strongman and N
 
 ---
 
-### 2. STANDING SYSTEM
+### 2. STANDING SYSTEM — REMOVED
 
-**What it is:** Faction-level standing stat (0-90) representing political influence. Decays -1/tick if no standing-building action in 3 ticks. Affects embezzle income, buy influence costs, intimidation effectiveness, coup probability.
+**What it was:** Faction-level standing stat (0-90) representing political influence. Decays -1/tick if no standing-building action in 3 ticks. Affects embezzle income, buy influence costs, intimidation effectiveness, coup probability.
 
-**DB columns (leave in place, stop using):**
-- `factions.standing` (default 30)
-- `factions.last_standing_action_tick`
-- `stewards.standing` (default 40) — part of steward system removal
+**Status (as of 20270398_drop_dormant_factions_standing.sql):**
+- `factions.standing` — dropped
+- `factions.last_standing_action_tick` — dropped
+- `stewards.standing` — still present (stewards table cull is its own task)
+- `processStandingTick()` + `STANDING_CAP` / `STANDING_RELEVANCE_DECAY_TICKS` / `COUP_MIN_STANDING` configs — went out with `political-actions.js`'s autocracy-action prune (see Phase 1 work)
+- how-to.html descriptions of Standing — retired in the same drop migration commit
 
-**Tick processing to remove:**
-- `processStandingTick()` — `political-actions.js:2383-2460` / `advance-tick:16033`
-- Tick caller line in advance-tick: ~24394
-
-**Config to remove:**
-- `STANDING_CAP: 90`
-- `STANDING_RELEVANCE_DECAY_TICKS: 3`
-- `COUP_MIN_STANDING: 15`
-- All per-action standing constants (covered in action removal)
+The how-to.html "Approval, embezzlement, and reputational damage" section is what remains; the Standing-specific paragraphs and table rows are gone.
 
 ---
 
