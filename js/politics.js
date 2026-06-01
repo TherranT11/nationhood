@@ -7,13 +7,13 @@ import { fetchActiveCoalition, loadSeats } from './game/government-structure.js'
 import { INACTIVITY_DRAIN_THRESHOLD } from './game/electorate.js';
 import { hasElectedPresident } from './game/government-types.js';
 import { initGameConfigForNation, switchPartyEndorsement } from './game/config.js';
-import { ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, disbandParty, getNationNames } from './game/political-actions.js';
+import { ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, disbandParty, getNationNames } from './game/political-actions.js';
 import { PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress } from './game/protest.js';
 import { ISSUE_DEFS, ISSUE_IDS } from './game/electorate.js';
 import { getStrongholdSectors } from './game/sectors.js';
 import { isGovernmentPresidential, getGovDisplayLabel } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
-import { getElectabilityTier, getTraitAPModifier } from './game/party-leadership.js';
+import { getElectabilityTier } from './game/party-leadership.js';
 
 // ── Shared helpers ──
 
@@ -2216,22 +2216,10 @@ function caIsReady() {
 }
 
 function caGetCost() {
-    if (_caSelected === 'protest') {
-        const f = _currentFaction;
-        const tick = _currentShard?.current_tick || 0;
-        const decayed = getDecayedUseCount(f?.protest_use_count || 0, f?.protest_last_use_tick, tick);
-        return getProtestCost(decayed);
-    }
-    if (_caSelected === 'press_conference') {
-        const _f2 = _currentFaction;
-        const _t2 = _currentShard?.current_tick || 0;
-        return Math.max(1, 1 + (_caPressEscalation || 0) + (_f2 ? getTraitAPModifier('press_conference', _f2, _t2) : 0));
-    }
+    // Only consumed by money-cost actions (affordability check + label). The
+    // campaign actions are free since the AP cull, so the result is otherwise unused.
     const act = CA_ACTIONS.find(a => a.id === _caSelected);
-    if (!act) return 0;
-    // Campaign Attack cost scales with current polarization
-    if (act.id === 'attack') return getAttackAPCost(_currentNation?.polarization);
-    return act.ap;
+    return act?.ap ?? 0;
 }
 
 async function renderDemocracyActions(nation, faction, shard, allParties) {
@@ -3254,7 +3242,7 @@ async function handleCampaignConfirm(container, f, n, otherParties, tick) {
     // Protest is not in CA_ACTIONS (added dynamically for opposition only);
     // look it up separately so the confirm handler can reach the protest branch.
     const sel = CA_ACTIONS.find(a => a.id === _caSelected)
-        || (_caSelected === 'protest' ? { id: 'protest', name: 'Organise a Protest', ap: caGetCost(), color: '#d9534f' } : null);
+        || (_caSelected === 'protest' ? { id: 'protest', name: 'Organise a Protest', color: '#d9534f' } : null);
     if (!sel) return;
     const cost = caGetCost();
     const isMoneyAct = !!sel.money;

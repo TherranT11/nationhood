@@ -18,7 +18,6 @@ import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, EO_D
 import { adjustGovernmentApprovalEvent, adjustCredibility } from './momentum.js';
 import { getNationNames } from './political-actions.js';
 import { enactBill } from './bills.js';
-import { getTraitAPModifier } from './party-leadership.js';
 
 // ─── Executive Order Config Constants ───
 
@@ -357,22 +356,6 @@ function randomMinisterName(nationName = '') {
     const first = firstNames[Math.floor(Math.random() * firstNames.length)];
     const last = lastNames[Math.floor(Math.random() * lastNames.length)];
     return { first, last };
-}
-
-/**
- * Get the executive order AP modifier from leader traits.
- * Returns a number to add to the base AP cost.
- */
-async function getEOTraitAPModifier(supabase, factionId) {
-    const { data: faction } = await supabase
-        .from('factions')
-        .select('leader_positive_traits, leader_negative_traits, last_action_tick')
-        .eq('id', factionId)
-        .single();
-    if (!faction) return 0;
-    // Pass tick=0 so quick_study/slow_to_act (first-action-per-tick traits) never fire for EOs —
-    // those traits only apply to campaign actions, not executive orders.
-    return getTraitAPModifier('executive_order', faction, 0);
 }
 
 async function getCurrentTick(supabase) {
