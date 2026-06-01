@@ -19,7 +19,6 @@
 
 import { statDirectionSign } from './stats.js';
 import { fetchActiveCoalition, deriveLeadPartyId } from './government-structure.js';
-import { deductAP } from './config.js';
 import { computeEngagementScores } from './engagement.js';
 
 // ============================================================================

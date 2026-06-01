@@ -3,7 +3,7 @@
  * Extracted from game-common.js
  */
 
-import { deductAP, GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './config.js';
+import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './config.js';
 import { CANONICAL_GOVERNMENT_TYPES, hasParliamentaryPM, isSemiPresidential } from './government-types.js';
 import { RAW_SCALING_DIVISORS, STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
 import { MINISTER_APPROVAL_CONFIG, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, buildMinistryBaselines, normalizeNationStatKey, translateStatEffect, statDirectionSign } from './stats.js';
@@ -1053,15 +1053,10 @@ export function buildAttackVectors(evidence) {
  * Returns { success, outcomeId, outcomeName, headline, effects, weights, opensCounter, newAp }
  */
 export async function executeAttack(supabase, factionId, nationId, targetFactionId, vectorId, currentTick) {
-    // ── 1. Validate AP (with leader trait modifiers + polarization scaling) ──
+    // ── 1. Load faction ──
     const { data: faction } = await supabase
-        .from('factions').select('action_points, faction_name, leader_positive_traits, leader_negative_traits, last_action_tick').eq('id', factionId).single();
+        .from('factions').select('faction_name, leader_positive_traits, leader_negative_traits, last_action_tick').eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
-    const baseAttackCost = getAttackAPCost(0);
-    const attackApMod = getTraitAPModifier('attack', faction, currentTick);
-    const effectiveAttackCost = Math.max(1, baseAttackCost + attackApMod);
-    if ((faction.action_points || 0) < effectiveAttackCost)
-        return { success: false, error: `Not enough AP. Need ${effectiveAttackCost}.` };
 
     // ── 2. Load target ──
     const { data: targetFaction } = await supabase
@@ -1127,9 +1122,7 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
         effects.push({ label: 'Polarization', value: outcome.polarization });
     }
 
-    // ── 8. Deduct AP + track last_action_tick ──
-    const attackDetail = 'Campaign Attack' + (attackApMod !== 0 ? ' (trait ' + (attackApMod > 0 ? '+' : '') + attackApMod + ')' : '');
-    const apResult = await deductAP(supabase, factionId, effectiveAttackCost, { reason: 'attack', detail: attackDetail, tick: currentTick });
+    // ── 8. Track last_action_tick ──
     await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Attack] last_action_tick update failed:', error.message); });
 
     // ── 9. Generate headline ──
@@ -1141,7 +1134,7 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
         party_id: factionId,
         nation_id: nationId,
         action_type: 'attack',
-        ap_cost: effectiveAttackCost,
+        ap_cost: 0,
         money_cost: 0,
         tick_performed: currentTick,
         result: {
@@ -1174,7 +1167,6 @@ export async function executeAttack(supabase, factionId, nationId, targetFaction
         effects,
         weights,
         opensCounter,
-        newAp: apResult.newAp ?? ((faction.action_points || 0) - effectiveAttackCost),
     };
 }
 
@@ -3531,7 +3523,6 @@ export async function disbandParty(supabase, nationId, factionId, currentTick, o
             nation_id: null,
             abandoned_at: new Date().toISOString(),
             disband_cooldown_until_tick: currentTick + 24,
-            action_points: 0,
             last_seen_tick: null,
             founded_tick: null
         })

@@ -469,14 +469,13 @@ export async function initPartyActions(supabase, state) {
     // here so every render in this module reads live state.
     try {
         const { data: freshFaction } = await _supabase.from('factions')
-            .select('momentum, party_funds, seats, action_points, bloc_id, last_petition_for_reform_tick')
+            .select('momentum, party_funds, seats, bloc_id, last_petition_for_reform_tick')
             .eq('id', faction.id)
             .single();
         if (freshFaction) {
             faction.momentum = freshFaction.momentum ?? faction.momentum;
             faction.party_funds = freshFaction.party_funds ?? faction.party_funds;
             faction.seats = freshFaction.seats ?? faction.seats;
-            faction.action_points = freshFaction.action_points ?? faction.action_points;
             faction.bloc_id = freshFaction.bloc_id ?? null;
             faction.last_petition_for_reform_tick = freshFaction.last_petition_for_reform_tick ?? null;
         }
@@ -1118,7 +1117,6 @@ function renderPage(root) {
     const seats = faction.seats || 0;
     const totalSeats = nation?.total_seats || 120;
     const seatPct = totalSeats > 0 ? Math.round((seats / totalSeats) * 100) : 0;
-    const ap = faction.action_points ?? 0;
     const approval = faction.approval_rating ?? 0;
     const momentum = faction.momentum ?? 50;
     const partyFunds = faction.party_funds ?? 0;
@@ -5383,7 +5381,6 @@ async function executeRebrand(overlay, root, handler) {
             party_id: faction.id,
             nation_id: _state.nation?.id,
             action_type: 'rebrand',
-            ap_cost: 3,
             money_cost: 0,
             tick_performed: tick,
             result: { oldName: faction.faction_name, newName: name, oldAbbr: faction.abbreviation, newAbbr: abbr, oldColor: faction.party_color, newColor: color },
@@ -7784,7 +7781,6 @@ function openStatementModal(root) {
                 party_id: faction.id,
                 nation_id: _state.nation?.id,
                 action_type: 'issue_statement',
-                ap_cost: 1,
                 money_cost: 0,
                 tick_performed: tick,
                 result: {

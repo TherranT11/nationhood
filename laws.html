@@ -381,7 +381,7 @@
         <div class="modal-footer">
             <button class="btn-cancel" onclick="closeDefaultModal()">Cancel</button>
             <button class="btn-submit default-submit-btn" id="submit-default-btn" onclick="submitDefaultResolution()">
-                File Default Resolution — <span id="default-ap-cost">6</span> AP
+                File Default Resolution
             </button>
         </div>
     </div>
@@ -391,7 +391,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage, qCache, qCacheSet, qCacheBust, markBillsSeen, cleanSeenBills } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
-import { GAME_CONFIG, FOUNDATIONAL_REPEAL_DEFAULTS, initGameConfigForNation, deductAP } from './js/game/config.js';
+import { GAME_CONFIG, FOUNDATIONAL_REPEAL_DEFAULTS, initGameConfigForNation } from './js/game/config.js';
 import { isGovernmentPresidential, hasElectedPresident, getCurrentConstitutionalSystem, getConstitutionalSystemLabel } from './js/game/government-types.js';
 import { loadSeats, detectHeadFaction, fetchActiveCoalition, getCompatiblePolicies } from './js/game/government-structure.js';
 import { calculateBillSupport, enactBill, failBill, syncVoteTallies, enactFoundationalBill, getRequiredSeats, evaluateBillVote } from './js/game/bills.js';
@@ -658,16 +658,10 @@ async function loadLawsData() {
         // unavailable, falling back to title-case).
         loadSectorsLookup();
 
-        const { data: parties } = await _supabase.from('factions').select('id, faction_name, seats, action_points, abbreviation, party_color').eq('nation_id', nid).eq('faction_type', 'party');
+        const { data: parties } = await _supabase.from('factions').select('id, faction_name, seats, abbreviation, party_color').eq('nation_id', nid).eq('faction_type', 'party');
         allParties = parties || [];
         const seatData = await loadSeats(_supabase, nid, allParties, currentFaction?.id);
         allPartySeats = seatData.allPartySeats; currentSeats = seatData.currentSeats;
-
-        // Refresh current faction AP from fresh DB data
-        const freshFaction = allParties.find(p => p.id === currentFaction?.id);
-        if (freshFaction && currentFaction) {
-            currentFaction.action_points = freshFaction.action_points;
-        }
 
         const queries = [
             // Phase 3.1: embed every policy_options row per policy so the
@@ -4569,7 +4563,6 @@ async function openDefaultResolutionModal() {
     document.getElementById('austerity-commitments-list').innerHTML = '';
     document.getElementById('default-type-select').value = 'full';
     document.getElementById('repayment-rate-group').style.display = 'none';
-    document.getElementById('default-ap-cost').textContent = SOVEREIGN_DEFAULT_CONFIG.DEFAULT_RESOLUTION_AP_COST;
     document.getElementById('default-resolution-modal').classList.add('active');
     updateDefaultPreview();
 }
@@ -4742,7 +4735,6 @@ async function submitDefaultResolution() {
     if (!confirm(
         `Are you sure you want to file a ${defaultType === 'full' ? 'Full Default' : 'Partial Restructuring'} Resolution?\n\n` +
         `This will:\n` +
-        `• Cost ${cfg.DEFAULT_RESOLUTION_AP_COST} AP\n` +
         `• Immediately hit Power (${cfg.FILING_POWER_HIT}) and Industry (${cfg.FILING_INDUSTRY_HIT})\n` +
         `• Go directly to a floor vote (${cfg.VOTING_TICKS} ticks)\n` +
         `• Require a 2/3 supermajority to pass`
@@ -4751,16 +4743,6 @@ async function submitDefaultResolution() {
     isSubmitting = true;
     document.getElementById('submit-default-btn').disabled = true;
 
-    // Deduct AP
-    const apResult = await deductAP(_supabase, currentFaction.id, cfg.DEFAULT_RESOLUTION_AP_COST);
-    if (!apResult.success) {
-        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
-        alert('Not enough AP. Need ' + cfg.DEFAULT_RESOLUTION_AP_COST + ' AP, have ' + (apResult.currentAp ?? '?') + '.');
-        isSubmitting = false;
-        document.getElementById('submit-default-btn').disabled = false;
-        return;
-    }
-    currentFaction.action_points = apResult.newAp;
     sessionStorage.removeItem('nationhood_state');
 
     try {

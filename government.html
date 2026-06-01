@@ -61,7 +61,7 @@ import { initPage, qCacheBust, loadBlocMap, blocTagHtml } from './js/common.js';
 import { escapeHtml, tickToDate } from './js/utils.js';
 import { mountPetitionPressingIssues } from './js/petition-pressing-issues.js';
 import { mountCosReportPressingIssues } from './js/cos-report-pressing.js';
-import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS, deductAP } from './js/game/config.js';
+import { GAME_CONFIG, initGameConfigForNation, FORMATION_DEADLINE_TICKS } from './js/game/config.js';
 import { scalePolicyOngoingCost } from './js/game/budget.js';
 import { fileNoConfidenceMotion } from './js/game/no-confidence.js';
 import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, isPresidentialRepublic, isPresidentialDomainMinistry, getMinistryDomain, isCohabitation, isAbsoluteMonarchy, PRESIDENTIAL_DOMAIN_MINISTRIES, CANONICAL_GOVERNMENT_TYPES } from './js/game/government-types.js';
@@ -4999,9 +4999,7 @@ function renderParliamentaryEmergency(activeHOG) {
         `;
     }
 
-    const ap = currentFaction?.action_points || 0;
-    const cost = EO_CONFIG.NATIONAL_EMERGENCY_AP || 4;
-    const canDeclare = ap >= cost;
+    const canDeclare = true;
 
     return `
         <div class="info-block" style="border-left: 3px solid var(--amber); margin-bottom: 16px;">
@@ -5085,7 +5083,7 @@ async function renderGovernmentPage() {
             fetchActiveCoalition(_supabase, currentNation.id),
             fetchMinistries(),
             _supabase.from('factions')
-                .select('id, faction_name, abbreviation, seats, loyalty, action_points, party_color, party_logo, custom_logo_url, leader_first_name, leader_last_name, leader_age, leader_ideology, leader_positive_traits, leader_negative_traits')
+                .select('id, faction_name, abbreviation, seats, loyalty, party_color, party_logo, custom_logo_url, leader_first_name, leader_last_name, leader_age, leader_ideology, leader_positive_traits, leader_negative_traits')
                 .eq('nation_id', currentNation.id).eq('faction_type', 'party')
         ]);
 
@@ -5159,12 +5157,6 @@ async function renderGovernmentPage() {
             electionResults = electionData.results?.votes || [];
             // Use factions.seats as the single source of truth for total legislature seats
             totalLegislatureSeats = allParties.reduce((sum, p) => sum + (p.seats || 0), 0);
-        }
-
-        // Refresh current faction AP
-        const freshFaction = allParties.find(p => p.id === currentFaction?.id);
-        if (freshFaction && currentFaction) {
-            currentFaction.action_points = freshFaction.action_points;
         }
 
         // Seat loading via game-common.js
@@ -7347,10 +7339,7 @@ function buildMinisterIdentity(ministry) {
 }
 
 function buildMgmtButtons(key, ministry, govContext) {
-    const ap = currentFaction?.action_points || 0;
     const isFilled = ministry && ministry.minister_first_name;
-    const noAP = ap < 1;
-    const disabledStyle = 'style="opacity:0.4;cursor:not-allowed;"';
     let btns = '';
 
     if (govContext.type === 'parliamentary') {
@@ -7358,11 +7347,7 @@ function buildMgmtButtons(key, ministry, govContext) {
             btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--resign" onclick="event.stopPropagation();resignMinistry('${key}')">RESIGN</div>`;
         }
         if (govContext.isPMParty && !govContext.isCaretaker && !govContext.isMyMinistry && isFilled) {
-            if (noAP) {
-                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" ${disabledStyle}>DISMISS</div>`;
-            } else {
-                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" onclick="event.stopPropagation();fireMinister('${key}')">DISMISS</div>`;
-            }
+            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" onclick="event.stopPropagation();fireMinister('${key}')">DISMISS</div>`;
         }
         if (!isFilled && govContext.canAppoint) {
             btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--appoint" onclick="event.stopPropagation();openAssignModal('${key}')">APPOINT</div>`;
@@ -7372,11 +7357,7 @@ function buildMgmtButtons(key, ministry, govContext) {
             btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--resign" onclick="event.stopPropagation();resignMinistry('${key}')">RESIGN</div>`;
         }
         if (govContext.isPMParty && isFilled) {
-            if (noAP) {
-                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" ${disabledStyle}>DISMISS</div>`;
-            } else {
-                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" onclick="event.stopPropagation();fireMinister('${key}')">DISMISS</div>`;
-            }
+            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" onclick="event.stopPropagation();fireMinister('${key}')">DISMISS</div>`;
         }
         if (!isFilled && govContext.isPMParty) {
             btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--nominate" onclick="event.stopPropagation();openNominateModal('${key}')">NOMINATE</div>`;
@@ -7386,11 +7367,7 @@ function buildMgmtButtons(key, ministry, govContext) {
             btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--resign" onclick="event.stopPropagation();resignMinistry('${key}')">RESIGN</div>`;
         }
         if (govContext.isPresidentParty && isFilled) {
-            if (noAP) {
-                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" ${disabledStyle}>DISMISS</div>`;
-            } else {
-                btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" onclick="event.stopPropagation();fireMinister('${key}')">DISMISS</div>`;
-            }
+            btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--dismiss" onclick="event.stopPropagation();fireMinister('${key}')">DISMISS</div>`;
         }
         if (!isFilled && govContext.isPresidentParty) {
             btns += `<div class="ministry-card__mgmt-btn ministry-card__mgmt-btn--nominate" onclick="event.stopPropagation();openNominateModal('${key}')">NOMINATE</div>`;
@@ -7442,7 +7419,6 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
     const config = MINISTRY_ACTIONS[ministryKey];
     if (!config || !config.actions || config.actions.length === 0) return '';
     const pop = currentNation?.population || 20000000;
-    const ap = currentFaction?.action_points || 0;
     const canUse = isMyMinistry === true;
 
     // Discretionary balance for this ministry
@@ -7479,7 +7455,6 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
 
         const countKey = ministryKey + ':' + action.id;
         const useCount = ministryActionUseCounts[countKey] || 0;
-        const apCost = action.apCosts[Math.min(useCount, 3)];
         const tagsHtml = (action.tags || []).map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
         const actionId = ministryKey + '-' + action.id;
         const isActive = activeMinistryActions[actionId] || false;
@@ -7518,7 +7493,7 @@ function buildMinistryActionRows(ministryKey, isMyMinistry) {
         }
 
         const isBlocked = !!blockReason;
-        const isDisabled = !canUse || (ap < apCost && !isActive) || isBlocked;
+        const isDisabled = !canUse || isBlocked;
 
         let stateClass = '';
         let btnHtml = '';
@@ -7629,14 +7604,12 @@ function buildDefenseActionRows(isMyMinistry) {
 
 // ==================== EDUCATION MINISTRY — CUSTOM ACTION ROWS ====================
 
-function buildExpandInfrastructureActionRow({ ministryKey, action, canUse, ap, pop, discretionaryBalance }) {
+function buildExpandInfrastructureActionRow({ ministryKey, action, canUse, pop, discretionaryBalance }) {
     if (!action) return '';
     const actionId = `${ministryKey}-expandInfrastructure`;
     const isActive = activeMinistryActions[actionId] || false;
     const countKey = `${ministryKey}:expandInfrastructure`;
     const useCount = ministryActionUseCounts[countKey] || 0;
-    const apCosts = Array.isArray(action.apCosts) && action.apCosts.length ? action.apCosts : [0, 0, 0, 0];
-    const apCost = apCosts[Math.min(useCount, apCosts.length - 1)];
     const tagsHtml = (action.tags || []).map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
 
     const oneTimeCost = action.oneTimeCostPerMillion && !action.budgetPerCapita
@@ -7647,7 +7620,7 @@ function buildExpandInfrastructureActionRow({ ministryKey, action, canUse, ap, p
     const canCoverPerTick = !hasPerTickCost || discretionaryBalance > 0;
     const canCoverOneTime = !hasOneTimeCost || discretionaryBalance >= oneTimeCost;
     const isBudgetBlocked = !canCoverPerTick || !canCoverOneTime;
-    const isDisabled = !isActive && (!canUse || ap < apCost || isBudgetBlocked);
+    const isDisabled = !isActive && (!canUse || isBudgetBlocked);
 
     let budgetTagHtml = '';
     if (hasOneTimeCost) {
@@ -7677,9 +7650,6 @@ function buildExpandInfrastructureActionRow({ ministryKey, action, canUse, ap, p
     } else if (isBudgetBlocked) {
         stateClass = ' disabled';
         btnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Insufficient discretionary funds">🔒</div>`;
-    } else if (ap < apCost) {
-        stateClass = ' disabled';
-        btnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
         btnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ FREE</div>`;
     }
@@ -7718,7 +7688,6 @@ function buildEducationActionRows(isMyMinistry) {
     const config = MINISTRY_ACTIONS.education;
     if (!config?.actions) return '';
     const pop = currentNation?.population || 20000000;
-    const ap = currentFaction?.action_points || 0;
     const canUse = isMyMinistry === true;
 
     // Discretionary balance
@@ -7742,7 +7711,6 @@ function buildEducationActionRows(isMyMinistry) {
         ministryKey: 'education',
         action: expandAction,
         canUse,
-        ap,
         pop,
         discretionaryBalance
     });
@@ -7751,7 +7719,6 @@ function buildEducationActionRows(isMyMinistry) {
     const currAction = config.actions.find(a => a.id === 'standardisedCurriculum');
     const currActionId = 'education-standardisedCurriculum';
     const currActive = activeMinistryActions[currActionId] || false;
-    const currApCost = 6;
     const currTagsHtml = currAction.tags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
     // Budget cost: ~$1M per million pop per year, ÷12 for per-tick
     const currBudgetPerTick = Math.round((pop / 1_000_000) * 1_000_000 / 12);
@@ -7779,13 +7746,11 @@ function buildEducationActionRows(isMyMinistry) {
         currBtnHtml = `<div style="font-family:var(--font-mono);font-size:8px;color:#4a4840;">COOLDOWN ${cooldownRemaining}</div>`;
     } else if (!canUse) {
         currBtnHtml = '';
-    } else if (ap < currApCost) {
-        currBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
         currBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openCurriculumModal()">▶ FREE</div>`;
     }
 
-    const currStateClass = (currActive || _activeCurriculumDrift) ? ' active' : (inCooldown || !canUse || ap < currApCost) ? ' disabled' : '';
+    const currStateClass = (currActive || _activeCurriculumDrift) ? ' active' : (inCooldown || !canUse) ? ' disabled' : '';
 
     html += `<div class="ministry-action${currStateClass}" id="${currActionId}">
         <div class="ministry-action__top">
@@ -7805,7 +7770,6 @@ function buildEducationActionRows(isMyMinistry) {
     const privActive = activeMinistryActions[privActionId] || false;
     const privCountKey = 'education:privateEducationIncentives';
     const privUseCount = ministryActionUseCounts[privCountKey] || 0;
-    const privApCost = privAction.apCosts[Math.min(privUseCount, 3)];
     const privTagsHtml = privAction.tags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
 
     // Budget savings tag
@@ -7819,14 +7783,11 @@ function buildEducationActionRows(isMyMinistry) {
         privBtnHtml = '<div class="ministry-action__active-indicator">● ACTIVE</div>';
     } else if (!canUse) {
         privStateClass = ' disabled';
-    } else if (ap < privApCost) {
-        privStateClass = ' disabled';
-        privBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
         privBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${privActionId}')">▶ FREE</div>`;
     }
 
-    html += `<div class="ministry-action${privStateClass}" id="${privActionId}" ${!privActive && canUse && ap >= privApCost ? `onclick="ministryActionSelect('${privActionId}')"` : ''}>
+    html += `<div class="ministry-action${privStateClass}" id="${privActionId}" ${!privActive && canUse ? `onclick="ministryActionSelect('${privActionId}')"` : ''}>
         <div class="ministry-action__top">
             <span class="ministry-action__name">Private Education Incentives</span>
             <span class="ministry-action__ap-cost">FREE${privUseCount > 0 ? ' (use ' + (privUseCount + 1) + ')' : ''}</span>
@@ -7850,7 +7811,6 @@ function buildHealthcareActionRows(isMyMinistry) {
     const config = MINISTRY_ACTIONS.healthcare;
     if (!config?.actions) return '';
     const pop = currentNation?.population || 20000000;
-    const ap = currentFaction?.action_points || 0;
     const canUse = isMyMinistry === true;
 
     // Discretionary balance
@@ -7868,7 +7828,6 @@ function buildHealthcareActionRows(isMyMinistry) {
         ministryKey: 'healthcare',
         action: expandAction,
         canUse,
-        ap,
         pop,
         discretionaryBalance
     });
@@ -7879,7 +7838,6 @@ function buildHealthcareActionRows(isMyMinistry) {
     const prevActive = activeMinistryActions[prevActionId] || false;
     const prevCountKey = 'healthcare:preventativeCare';
     const prevUseCount = ministryActionUseCounts[prevCountKey] || 0;
-    const prevApCost = prevAction.apCosts[Math.min(prevUseCount, 3)];
     const prevOneTimeCost = calculateHealthActionCost(prevAction, pop);
     const prevCostLabel = formatUpfrontCost(prevOneTimeCost);
     const prevTagsHtml = prevAction.tags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
@@ -7898,14 +7856,11 @@ function buildHealthcareActionRows(isMyMinistry) {
         prevStateClass = ' disabled';
         prevBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Insufficient discretionary funds">🔒</div>`;
         prevExtraHtml = `<div style="font-family:var(--font-mono);font-size:7px;color:var(--red);margin-top:2px;">Insufficient discretionary funds.</div>`;
-    } else if (ap < prevApCost) {
-        prevStateClass = ' disabled';
-        prevBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
         prevBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();healthcareActionSelect('${prevActionId}')">▶ FREE</div>`;
     }
 
-    html += `<div class="ministry-action${prevStateClass}" id="${prevActionId}" ${!prevActive && canUse && prevCanAfford && ap >= prevApCost ? `onclick="healthcareActionSelect('${prevActionId}')"` : ''}>
+    html += `<div class="ministry-action${prevStateClass}" id="${prevActionId}" ${!prevActive && canUse && prevCanAfford ? `onclick="healthcareActionSelect('${prevActionId}')"` : ''}>
         <div class="ministry-action__top">
             <span class="ministry-action__name">Preventative Care Programme</span>
             <span class="ministry-action__ap-cost">FREE${prevUseCount > 0 ? ' (use ' + (prevUseCount + 1) + ')' : ''}</span>
@@ -7925,7 +7880,6 @@ function buildHealthcareActionRows(isMyMinistry) {
     const pharmaActiveDir = typeof pharmaActiveRaw === 'string' ? pharmaActiveRaw : null;
     const pharmaCountKey = 'healthcare:pharmaceuticalRegulation';
     const pharmaUseCount = ministryActionUseCounts[pharmaCountKey] || 0;
-    const pharmaApCost = pharmaAction.apCosts[Math.min(pharmaUseCount, 3)];
 
     // Show direction-specific tags if a direction is selected or active
     const displayDir = pharmaActiveDir || _pharmaSelectedDirection;
@@ -7952,9 +7906,6 @@ function buildHealthcareActionRows(isMyMinistry) {
         pharmaBtnHtml = `<div class="ministry-action__active-indicator" style="color:#5cb85c;">● ACTIVE — ${dirLabel}</div>`;
     } else if (!canUse) {
         pharmaStateClass = ' disabled';
-    } else if (ap < pharmaApCost) {
-        pharmaStateClass = ' disabled';
-        pharmaBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
         pharmaBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openPharmaceuticalSelector()">▶ FREE</div>`;
     }
@@ -7992,7 +7943,6 @@ function renderPharmaSelectorUI(container) {
     const pop = currentNation?.population || 20000000;
     const pharmaCountKey = 'healthcare:pharmaceuticalRegulation';
     const pharmaUseCount = ministryActionUseCounts[pharmaCountKey] || 0;
-    const pharmaApCost = config.apCosts[Math.min(pharmaUseCount, 3)];
     const ministry = ministryData.find(m => m.ministry_key === 'healthcare');
     const discretionaryBalance = Number(ministry?.discretionary_balance || 0);
 
@@ -8080,7 +8030,6 @@ async function confirmPharmaceuticalAction(direction) {
 
     const countKey = 'healthcare:pharmaceuticalRegulation';
     const useCount = ministryActionUseCounts[countKey] || 0;
-    const apCost = config.apCosts[Math.min(useCount, 3)];
     const pop = currentNation.population || 20000000;
     const oneTimeCost = calculateHealthActionCost(dirConfig, pop);
 
@@ -8146,7 +8095,7 @@ async function confirmPharmaceuticalAction(direction) {
             p_faction_id: currentFaction.id,
             p_ministry_key: 'healthcare',
             p_action_key: 'pharmaceuticalRegulation',
-            p_ap_cost: apCost,
+            p_ap_cost: 0,
             p_applied_at_tick: currentTick,
             p_stat_effects: statEffects,
             p_action_data: actionData
@@ -8161,8 +8110,6 @@ async function confirmPharmaceuticalAction(direction) {
         catch (_) { /* fund deduction failed — will be stale until page reload */ }
 
         // Update local state
-        const prevAP = currentFaction.action_points || 0;
-        currentFaction.action_points = Math.max(0, prevAP - apCost);
         ministryActionUseCounts[countKey] = useCount + 1;
         activeMinistryActions[actionId] = direction; // store direction as value
         _pharmaSelectedDirection = null;
@@ -8217,7 +8164,6 @@ function healthcareActionSelect(actionId) {
     const config = MINISTRY_ACTIONS.healthcare.actions.find(a => a.id === 'preventativeCare');
     const countKey = 'healthcare:preventativeCare';
     const useCount = ministryActionUseCounts[countKey] || 0;
-    const apCost = config.apCosts[Math.min(useCount, 3)];
     const pop = currentNation?.population || 20000000;
     const oneTimeCost = calculateHealthActionCost(config, pop);
     const costLabel = formatUpfrontCost(oneTimeCost);
@@ -8240,7 +8186,6 @@ function healthcareActionDeselect(actionId) {
     const config = MINISTRY_ACTIONS.healthcare.actions.find(a => a.id === 'preventativeCare');
     const countKey = 'healthcare:preventativeCare';
     const useCount = ministryActionUseCounts[countKey] || 0;
-    const apCost = config.apCosts[Math.min(useCount, 3)];
 
     const btns = document.getElementById(actionId + '-btns');
     if (btns) {
@@ -8259,7 +8204,6 @@ async function confirmHealthcareAction(actionId) {
     const config = MINISTRY_ACTIONS.healthcare.actions.find(a => a.id === 'preventativeCare');
     const countKey = 'healthcare:preventativeCare';
     const useCount = ministryActionUseCounts[countKey] || 0;
-    const apCost = config.apCosts[Math.min(useCount, 3)];
     const pop = currentNation.population || 20000000;
     const oneTimeCost = calculateHealthActionCost(config, pop);
     const statEffects = buildStatEffects(config, useCount);
@@ -8294,7 +8238,7 @@ async function confirmHealthcareAction(actionId) {
             p_faction_id: currentFaction.id,
             p_ministry_key: 'healthcare',
             p_action_key: 'preventativeCare',
-            p_ap_cost: apCost,
+            p_ap_cost: 0,
             p_applied_at_tick: currentTick,
             p_stat_effects: statEffects,
             p_action_data: actionData
@@ -8309,8 +8253,6 @@ async function confirmHealthcareAction(actionId) {
         catch (_) { /* fund deduction failed — will be stale until page reload */ }
 
         // Update local state
-        const prevAP = currentFaction.action_points || 0;
-        currentFaction.action_points = Math.max(0, prevAP - apCost);
         ministryActionUseCounts[countKey] = useCount + 1;
         activeMinistryActions[actionId] = true;
         sessionStorage.removeItem('nationhood_state');
@@ -8349,7 +8291,6 @@ function buildLaborActionRows(isMyMinistry) {
     const config = MINISTRY_ACTIONS.labor;
     if (!config?.actions) return '';
     const pop = currentNation?.population || 20000000;
-    const ap = currentFaction?.action_points || 0;
     const canUse = isMyMinistry === true;
 
     // Discretionary balance
@@ -8367,7 +8308,6 @@ function buildLaborActionRows(isMyMinistry) {
         ministryKey: 'labor',
         action: expandAction,
         canUse,
-        ap,
         pop,
         discretionaryBalance
     });
@@ -8380,7 +8320,6 @@ function buildLaborActionRows(isMyMinistry) {
     const laborActiveDir = typeof laborActiveRaw === 'string' ? laborActiveRaw : null;
     const laborCountKey = 'labor:laborPolicy';
     const laborUseCount = ministryActionUseCounts[laborCountKey] || 0;
-    const laborApCost = laborAction.apCosts[Math.min(laborUseCount, 3)];
 
     // Show direction-specific tags if a direction is selected or active
     const displayDir = laborActiveDir || _laborSelectedDirection;
@@ -8407,9 +8346,6 @@ function buildLaborActionRows(isMyMinistry) {
         laborBtnHtml = `<div class="ministry-action__active-indicator" style="color:#5cb85c;">● ACTIVE — ${dirLabel}</div>`;
     } else if (!canUse) {
         laborStateClass = ' disabled';
-    } else if (ap < laborApCost) {
-        laborStateClass = ' disabled';
-        laborBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
         laborBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openLaborPolicySelector()">▶ FREE</div>`;
     }
@@ -8433,7 +8369,6 @@ function buildLaborActionRows(isMyMinistry) {
     const wfActive = activeMinistryActions[wfActionId] || false;
     const wfCountKey = 'labor:workforceDevelopment';
     const wfUseCount = ministryActionUseCounts[wfCountKey] || 0;
-    const wfApCost = wfAction.apCosts[Math.min(wfUseCount, 3)];
     const wfOneTimeCost = calculateLaborActionCost(wfAction, pop);
     const wfCostLabel = formatUpfrontCost(wfOneTimeCost);
     const wfTagsHtml = wfAction.tags.map(t => `<span class="tag tag--${t.cls}">${t.label}</span>`).join('');
@@ -8452,14 +8387,11 @@ function buildLaborActionRows(isMyMinistry) {
         wfStateClass = ' disabled';
         wfBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;" title="Insufficient discretionary funds">🔒</div>`;
         wfExtraHtml = `<div style="font-family:var(--font-mono);font-size:7px;color:var(--red);margin-top:2px;">Insufficient discretionary funds.</div>`;
-    } else if (ap < wfApCost) {
-        wfStateClass = ' disabled';
-        wfBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
         wfBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();laborActionSelect('${wfActionId}')">▶ FREE</div>`;
     }
 
-    html += `<div class="ministry-action${wfStateClass}" id="${wfActionId}" ${!wfActive && canUse && wfCanAfford && ap >= wfApCost ? `onclick="laborActionSelect('${wfActionId}')"` : ''}>
+    html += `<div class="ministry-action${wfStateClass}" id="${wfActionId}" ${!wfActive && canUse && wfCanAfford ? `onclick="laborActionSelect('${wfActionId}')"` : ''}>
         <div class="ministry-action__top">
             <span class="ministry-action__name">Workforce Development Programme</span>
             <span class="ministry-action__ap-cost">FREE${wfUseCount > 0 ? ' (use ' + (wfUseCount + 1) + ')' : ''}</span>
@@ -8488,7 +8420,6 @@ function renderLaborSelectorUI(container) {
     const pop = currentNation?.population || 20000000;
     const laborCountKey = 'labor:laborPolicy';
     const laborUseCount = ministryActionUseCounts[laborCountKey] || 0;
-    const laborApCost = config.apCosts[Math.min(laborUseCount, 3)];
     const ministry = ministryData.find(m => m.ministry_key === 'labor');
     const discretionaryBalance = Number(ministry?.discretionary_balance || 0);
 
@@ -8576,7 +8507,6 @@ async function confirmLaborPolicyAction(direction) {
 
     const countKey = 'labor:laborPolicy';
     const useCount = ministryActionUseCounts[countKey] || 0;
-    const apCost = config.apCosts[Math.min(useCount, 3)];
     const pop = currentNation.population || 20000000;
     const oneTimeCost = calculateLaborActionCost(dirConfig, pop);
 
@@ -8641,7 +8571,7 @@ async function confirmLaborPolicyAction(direction) {
             p_faction_id: currentFaction.id,
             p_ministry_key: 'labor',
             p_action_key: 'laborPolicy',
-            p_ap_cost: apCost,
+            p_ap_cost: 0,
             p_applied_at_tick: currentTick,
             p_stat_effects: statEffects,
             p_action_data: actionData
@@ -8656,8 +8586,6 @@ async function confirmLaborPolicyAction(direction) {
         catch (_) { /* fund deduction failed — will be stale until page reload */ }
 
         // Update local state
-        const prevAP = currentFaction.action_points || 0;
-        currentFaction.action_points = Math.max(0, prevAP - apCost);
         ministryActionUseCounts[countKey] = useCount + 1;
         activeMinistryActions[actionId] = direction; // store direction as value
         _laborSelectedDirection = null;
@@ -8712,7 +8640,6 @@ function laborActionSelect(actionId) {
     const config = MINISTRY_ACTIONS.labor.actions.find(a => a.id === 'workforceDevelopment');
     const countKey = 'labor:workforceDevelopment';
     const useCount = ministryActionUseCounts[countKey] || 0;
-    const apCost = config.apCosts[Math.min(useCount, 3)];
     const pop = currentNation?.population || 20000000;
     const oneTimeCost = calculateLaborActionCost(config, pop);
     const costLabel = formatUpfrontCost(oneTimeCost);
@@ -8735,7 +8662,6 @@ function laborActionDeselect(actionId) {
     const config = MINISTRY_ACTIONS.labor.actions.find(a => a.id === 'workforceDevelopment');
     const countKey = 'labor:workforceDevelopment';
     const useCount = ministryActionUseCounts[countKey] || 0;
-    const apCost = config.apCosts[Math.min(useCount, 3)];
 
     const btns = document.getElementById(actionId + '-btns');
     if (btns) {
@@ -8754,7 +8680,6 @@ async function confirmLaborWorkforceAction(actionId) {
     const config = MINISTRY_ACTIONS.labor.actions.find(a => a.id === 'workforceDevelopment');
     const countKey = 'labor:workforceDevelopment';
     const useCount = ministryActionUseCounts[countKey] || 0;
-    const apCost = config.apCosts[Math.min(useCount, 3)];
     const pop = currentNation.population || 20000000;
     const oneTimeCost = calculateLaborActionCost(config, pop);
     const statEffects = buildStatEffects(config, useCount);
@@ -8789,7 +8714,7 @@ async function confirmLaborWorkforceAction(actionId) {
             p_faction_id: currentFaction.id,
             p_ministry_key: 'labor',
             p_action_key: 'workforceDevelopment',
-            p_ap_cost: apCost,
+            p_ap_cost: 0,
             p_applied_at_tick: currentTick,
             p_stat_effects: statEffects,
             p_action_data: actionData
@@ -8804,8 +8729,6 @@ async function confirmLaborWorkforceAction(actionId) {
         catch (_) { /* fund deduction failed — will be stale until page reload */ }
 
         // Update local state
-        const prevAP = currentFaction.action_points || 0;
-        currentFaction.action_points = Math.max(0, prevAP - apCost);
         ministryActionUseCounts[countKey] = useCount + 1;
         activeMinistryActions[actionId] = true;
         sessionStorage.removeItem('nationhood_state');
@@ -8845,7 +8768,6 @@ function buildEnergyActionRows(isMyMinistry) {
     const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
     const pop = currentNation?.population ?? 20000000;
     const reserveCap = Math.round((pop / 1000000) * 20);
-    const ap = currentFaction?.action_points ?? 0;
     const canUse = isMyMinistry === true;
     const ministry = ministryData.find(m => m.ministry_key === 'energy');
     const discretionaryBalance = Number(ministry?.discretionary_balance || 0);
@@ -8861,15 +8783,12 @@ function buildEnergyActionRows(isMyMinistry) {
         ministryKey: 'energy',
         action: expandAction,
         canUse,
-        ap,
         pop,
         discretionaryBalance
     });
 
     // Action 2: Build Oil Reserves
-    const buildApCosts = [2, 3, 5, 7];
     const buildUseCount = _energyBuildUseCount ?? 0;
-    const buildApCost = buildApCosts[Math.min(buildUseCount, 3)];
     const activeCycles = _energyBuildCycles.length;
 
     // Calculate accumulation rate from energy + industry stats (19-col schema)
@@ -8898,19 +8817,14 @@ function buildEnergyActionRows(isMyMinistry) {
         buildDesc = `Accumulating reserves. ${activeCycles} cycle${activeCycles > 1 ? 's' : ''} active. ${maxTicks} tick${maxTicks !== 1 ? 's' : ''} remaining. Reserve: ${reserveMb} Mb.`;
         buildApLabel = `<span style="color:#5cb85c;">BUILDING</span>`;
         // Can still stack another cycle
-        if (canUse && ap >= buildApCost) {
+        if (canUse) {
             buildBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openBuildOilReserves()">▶ FREE</div>`;
-        } else if (!canUse) {
-            buildBtnHtml = '';
         } else {
-            buildBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
+            buildBtnHtml = '';
         }
     } else if (!canUse) {
         buildStateClass = ' disabled';
         buildBtnHtml = '';
-    } else if (ap < buildApCost) {
-        buildStateClass = ' disabled';
-        buildBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
         buildBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openBuildOilReserves()">▶ FREE</div>`;
     }
@@ -8939,7 +8853,6 @@ function buildEnergyActionRows(isMyMinistry) {
     </div>`;
 
     // Action 3: Release Oil Reserves
-    const releaseApCost = 2; // flat cost
     const noReserves = reserveMb <= 0;
     const tooLow = reserveMb < 10;
     const releaseActive = activeMinistryActions?.['energy-releaseOilReserves'] || false;
@@ -8966,9 +8879,6 @@ function buildEnergyActionRows(isMyMinistry) {
     } else if (!canUse) {
         releaseStateClass = ' disabled';
         releaseBtnHtml = '';
-    } else if (ap < releaseApCost) {
-        releaseStateClass = ' disabled';
-        releaseBtnHtml = `<div class="ministry-action__btn-execute" style="opacity:0.4;cursor:not-allowed;">▶ FREE</div>`;
     } else {
         releaseBtnHtml = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();openReleaseOilReserves()">▶ FREE</div>`;
     }
@@ -9005,9 +8915,6 @@ function openBuildOilReserves() {
     const container = document.getElementById('energy-build-confirm');
     if (!container) return;
 
-    const buildApCosts = [2, 3, 5, 7];
-    const useCount = _energyBuildUseCount ?? 0;
-    const apCost = buildApCosts[Math.min(useCount, 3)];
     const energyStat = Number(currentNation?.energy ?? 50);
     const industryStat = Number(currentNation?.industry ?? 50);
     const buildRate = Math.round((energyStat + industryStat) * 0.5);
@@ -9056,11 +8963,7 @@ async function confirmBuildOilReserves() {
     if (!currentFaction || !currentNation) return;
     if (!isMyMinistryByKey('energy')) return;
 
-    const buildApCosts = [2, 3, 5, 7];
     const useCount = _energyBuildUseCount ?? 0;
-    const apCost = buildApCosts[Math.min(useCount, 3)];
-    const ap = currentFaction?.action_points ?? 0;
-    if (ap < apCost) { alert('Unexpected error.'); return; }
 
     const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
     const pop = currentNation?.population ?? 20000000;
@@ -9074,14 +8977,6 @@ async function confirmBuildOilReserves() {
 
     _energyBuildConfirming = true;
     try {
-        // Deduct AP
-        const newAP = Math.max(0, ap - apCost);
-        const { error: apErr } = await _supabase
-            .from('factions')
-            .update({ action_points: newAP })
-            .eq('id', currentFaction.id);
-        if (apErr) throw apErr;
-
         // Insert build cycle
         const { error: cycleErr } = await _supabase
             .from('energy_oil_build_cycles')
@@ -9094,8 +8989,6 @@ async function confirmBuildOilReserves() {
                 is_active: true
             });
         if (cycleErr) {
-            // Refund AP on failure
-            await _supabase.from('factions').update({ action_points: ap }).eq('id', currentFaction.id);
             throw cycleErr;
         }
 
@@ -9104,12 +8997,11 @@ async function confirmBuildOilReserves() {
             p_nation_id: currentNation.id,
             p_trigger_key: 'energy_build_oil_reserves',
             p_tick: currentTick,
-            p_placeholders: { rate_per_tick: buildRate, ap_cost: apCost, active_cycles: (_energyBuildCycles.length + 1) }
+            p_placeholders: { rate_per_tick: buildRate, ap_cost: 0, active_cycles: (_energyBuildCycles.length + 1) }
         });
         if (buildEvtErr) console.warn('[Energy] Build event failed:', buildEvtErr.message);
 
         // Update local state
-        currentFaction.action_points = newAP;
         _energyBuildUseCount = useCount + 1;
         _energyBuildCycles.push({
             activated_on_tick: currentTick,
@@ -9225,10 +9117,6 @@ async function confirmReleaseOilReserves() {
     if (!currentFaction || !currentNation) return;
     if (!isMyMinistryByKey('energy')) return;
 
-    const releaseApCost = 2;
-    const ap = currentFaction?.action_points ?? 0;
-    if (ap < releaseApCost) { alert('Unexpected error.'); return; }
-
     const reserveMb = Number(currentNation?.strategic_oil_reserve_mb ?? 0);
     const amount = _energyReleaseAmount;
     if (amount < 10) { alert('Minimum release is 10 Mb.'); return; }
@@ -9269,7 +9157,7 @@ async function confirmReleaseOilReserves() {
             p_faction_id: currentFaction.id,
             p_ministry_key: 'energy',
             p_action_key: 'releaseOilReserves',
-            p_ap_cost: releaseApCost,
+            p_ap_cost: 0,
             p_applied_at_tick: currentTick,
             p_stat_effects: statEffects,
             p_action_data: actionData,
@@ -9278,7 +9166,6 @@ async function confirmReleaseOilReserves() {
         if (rpcErr) throw rpcErr;
 
         // Update local state
-        currentFaction.action_points = Math.max(0, ap - releaseApCost);
         currentNation.strategic_oil_reserve_mb = newReserve;
 
         // Fire event (best-effort)
@@ -9418,13 +9305,6 @@ async function confirmCurriculum() {
     if (!_curriculumSelections || _curriculumSelections.length === 0) { _confirmCurriculumLock = false; return; }
     if (!isMyMinistryByKey('education')) { _confirmCurriculumLock = false; return; }
     const sels = [..._curriculumSelections]; // 1 or 2 selections
-    const apCost = 0;
-
-    if ((currentFaction?.action_points || 0) < apCost) {
-        alert('Unexpected error.');
-        _confirmCurriculumLock = false;
-        return;
-    }
 
     closeCurriculumModal();
 
@@ -9481,7 +9361,7 @@ async function confirmCurriculum() {
             p_faction_id: currentFaction.id,
             p_ministry_key: 'education',
             p_action_key: 'standardisedCurriculum',
-            p_ap_cost: apCost,
+            p_ap_cost: 0,
             p_applied_at_tick: currentTick,
             p_stat_effects: [], // drift handled separately
             p_action_data: actionData
@@ -9489,7 +9369,6 @@ async function confirmCurriculum() {
         if (rpcErr) throw rpcErr;
 
         // Update local state
-        currentFaction.action_points = Math.max(0, (currentFaction.action_points || 0) - apCost);
         ministryActionUseCounts['education:standardisedCurriculum'] = (ministryActionUseCounts['education:standardisedCurriculum'] || 0) + 1;
         activeMinistryActions[actionId] = true;
         _activeCurriculumDrift = {
@@ -9841,13 +9720,6 @@ function beginDoctrineAnnounce(doctrineId) {
         }
     }
 
-    // AP check
-    const ap = currentFaction?.action_points || 0;
-    if (def.apCost > 0 && ap < def.apCost) {
-        showDoctrineAlert(doctrineId, 'Unexpected error.');
-        return;
-    }
-
     // Show inline confirmation
     const actionsEl = document.getElementById('doctrine-actions-' + doctrineId);
     if (!actionsEl) return;
@@ -9900,18 +9772,6 @@ async function confirmDoctrineAnnounce(doctrineId) {
             if (currentNuclear && currentNuclear.doctrine_id !== doctrineId) {
                 oldNuclearDoctrine = currentNuclear;
             }
-        }
-
-        // Deduct AP
-        if (def.apCost > 0) {
-            const apResult = await deductAP(_supabase, currentFaction.id, def.apCost);
-            if (!apResult.success) {
-                showDoctrineAlert(doctrineId, apResult.error || 'Unexpected error.');
-                _doctrineConfirmingId = null;
-                return;
-            }
-            currentFaction.action_points = Math.max(0, (currentFaction.action_points || 0) - def.apCost);
-            sessionStorage.removeItem('nationhood_state');
         }
 
         if (def.sector === NUCLEAR_SECTOR && oldNuclearDoctrine) {
@@ -9968,7 +9828,7 @@ async function confirmDoctrineAnnounce(doctrineId) {
             action_label: 'Declare Doctrine',
             description: `Announced ${def.name} (${DOCTRINE_SECTOR_LABELS[def.sector]}).`,
             outcome: 'success',
-            ap_spent: def.apCost,
+            ap_spent: 0,
             tick: currentTick
         });
 
@@ -10115,9 +9975,6 @@ function ministryActionSelect(actionId) {
         if (cAction?.oneTimeCostPerMillion && !cAction?.budgetPerCapita) {
             const cPop = currentNation?.population || 20000000;
             const cCost = calculateOneTimeCost(cAction, cPop);
-            const cCountKey = cMinKey + ':' + cActId;
-            const cUseCount = ministryActionUseCounts[cCountKey] || 0;
-            const cApCost = cAction.apCosts[Math.min(cUseCount, 3)];
             const cFmt = cCost >= 1e9 ? '$' + (cCost/1e9).toFixed(1) + 'B' : cCost >= 1e6 ? '$' + Math.round(cCost/1e6) + 'M' : '$' + Math.round(cCost).toLocaleString('en-US');
             confirmLabel = `✓ ${cFmt}`;
         }
@@ -10134,21 +9991,6 @@ function ministryActionDeselect(actionId) {
     row.classList.remove('selected');
     if (selectedMinistryAction === actionId) selectedMinistryAction = null;
 
-    // Parse ministry key and action ID to restore AP cost
-    const parts = actionId.split('-');
-    const ministryKey = parts[0];
-    const actId = parts.slice(1).join('');
-    const config = MINISTRY_ACTIONS[ministryKey];
-    let apCost = 1;
-    if (config) {
-        const action = config.actions.find(a => a.id === actId);
-        if (action) {
-            const countKey = ministryKey + ':' + actId;
-            const useCount = ministryActionUseCounts[countKey] || 0;
-            apCost = action.apCosts[Math.min(useCount, 3)];
-        }
-    }
-
     const btns = document.getElementById(actionId + '-btns');
     if (btns) {
         btns.innerHTML = `<div class="ministry-action__btn-execute" onclick="event.stopPropagation();ministryActionSelect('${actionId}')">▶ FREE</div>`;
@@ -10162,14 +10004,12 @@ function refreshMinistryActionStates(ministryKey) {
     if (ministryKey === 'defense' || ministryKey === 'healthcare' || ministryKey === 'education' || ministryKey === 'energy') return;
     const config = MINISTRY_ACTIONS[ministryKey];
     if (!config?.actions) return;
-    const ap = currentFaction?.action_points || 0;
     const canUse = isMyMinistryByKey(ministryKey);
     const ministry = ministryData.find(m => m.ministry_key === ministryKey);
     const discretionaryBalance = Number(ministry?.discretionary_balance || 0);
     config.actions.forEach(action => {
         const countKey = ministryKey + ':' + action.id;
         const useCount = ministryActionUseCounts[countKey] || 0;
-        const apCost = action.apCosts[Math.min(useCount, 3)];
         const actionId = ministryKey + '-' + action.id;
         const row = document.getElementById(actionId);
         if (!row || row.classList.contains('active')) return;
@@ -10183,7 +10023,7 @@ function refreshMinistryActionStates(ministryKey) {
             blockReason = 'No Discretionary Funds available.';
         }
         const isBlocked = !!blockReason;
-        const isDisabled = !canUse || ap < apCost || isBlocked;
+        const isDisabled = !canUse || isBlocked;
         const btns = document.getElementById(actionId + '-btns');
         const apLabel = row.querySelector('.ministry-action__ap-cost');
         if (apLabel) apLabel.textContent = 'FREE' + (useCount > 0 ? ' (use ' + (useCount + 1) + ')' : '');
@@ -10238,7 +10078,6 @@ async function ministryActionConfirm(actionId) {
 
     const countKey = ministryKey + ':' + actId;
     const useCount = ministryActionUseCounts[countKey] || 0;
-    const apCost = action.apCosts[Math.min(useCount, 3)];
     const statEffects = buildStatEffects(action, useCount);
 
     // Discretionary funds check for money-drawing actions
@@ -10323,7 +10162,7 @@ async function ministryActionConfirm(actionId) {
             p_faction_id: currentFaction.id,
             p_ministry_key: ministryKey,
             p_action_key: actId,
-            p_ap_cost: apCost,
+            p_ap_cost: 0,
             p_applied_at_tick: currentTick,
             p_stat_effects: statEffects,
             p_action_data: actionData
@@ -10339,8 +10178,6 @@ async function ministryActionConfirm(actionId) {
         }
 
         // Update local state
-        const prevAP = currentFaction.action_points || 0;
-        currentFaction.action_points = Math.max(0, prevAP - apCost);
         ministryActionUseCounts[countKey] = useCount + 1;
         activeMinistryActions[actionId] = true;
         sessionStorage.removeItem('nationhood_state');
@@ -10416,7 +10253,6 @@ function renderProtestCrisisCard() {
     const isLeadParty = coalitionData?.lead_party_id === currentFaction?.id ||
                         currentNation?.ruling_faction_id === currentFaction?.id;
     const ownsInterior = ministryData.some(m => m.ministry_key === 'interior' && m.party_id === currentFaction?.id);
-    const ap = currentFaction?.action_points || 0;
 
     // Public Address cooldown check
     const paCooldownRemaining = p.public_address_last_tick != null
@@ -10503,8 +10339,6 @@ async function protestCrisisAction(actionType) {
         }
 
         if (result && result.success) {
-            // Update local AP
-            if (result.newAp != null) currentFaction.action_points = result.newAp;
             sessionStorage.removeItem('nationhood_state');
 
             if (actionType === 'epo' && result.outcome === 'escalated') {
@@ -11205,14 +11039,6 @@ async function purgeMinister(ministryKey) {
     )) return;
     _govActionLock = true;
 
-    const apResult = await deductAP(_supabase, currentFaction.id, 0);
-    if (!apResult.success) {
-        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
-        alert('Unexpected error.');
-        _govActionLock = false;
-        return;
-    }
-    currentFaction.action_points = apResult.newAp;
     sessionStorage.removeItem('nationhood_state');
 
     try {
@@ -11344,14 +11170,6 @@ async function requestMinistry(ministryKey) {
     const myCount = ministryRequests.filter(r => r.faction_id === currentFaction.id).length;
     if (myCount >= 2) { alert('You can only have 2 active ministry requests.'); return; }
     _govActionLock = true;
-    const apResult = await deductAP(_supabase, currentFaction.id, 0);
-    if (!apResult.success) {
-        if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
-        alert('Unexpected error.');
-        _govActionLock = false;
-        return;
-    }
-    currentFaction.action_points = apResult.newAp;
     sessionStorage.removeItem('nationhood_state');
 
     try {
@@ -11679,7 +11497,7 @@ async function openEOModal() {
 
     try {
         eoOrderData = await fetchActiveOrders(_supabase, currentNation.id);
-        eoAvailability = await checkOrderAvailability(_supabase, currentNation.id, currentFaction.id, currentFaction.action_points || 0);
+        eoAvailability = await checkOrderAvailability(_supabase, currentNation.id, currentFaction.id, 0);
     } catch (e) {
         listEl.innerHTML = `<div style="color:var(--red);font-size:0.85rem;">Error: ${e.message}</div>`;
         return;
@@ -12484,15 +12302,6 @@ async function refreshGovernmentUI() {
     _govActionLock = true;
 
     try {
-        // Deduct AP
-        const apResult = await deductAP(_supabase, currentFaction.id, 0);
-        if (!apResult.success) {
-            if (apResult.currentAp !== undefined) currentFaction.action_points = apResult.currentAp;
-            alert('Unexpected error.');
-            return;
-        }
-        currentFaction.action_points = apResult.newAp;
-
         // Clear minister and reset approval
         await _supabase.from('ministries').update({
             minister_first_name: null,

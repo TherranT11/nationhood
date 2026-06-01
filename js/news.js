@@ -653,7 +653,6 @@ function bindSubmitHandler() {
         const body = document.getElementById('nws-article-body').value.trim();
         const fileInput = document.getElementById('nws-article-image');
         const file = fileInput.files[0] || null;
-        const isCrossPub = !canWriteToPublication(_publication, _state?.nation?.name);
 
         // Validation
         if (!title) return showFormError('Please enter a headline.');
@@ -705,17 +704,6 @@ function bindSubmitHandler() {
                 showFormSuccess('Article updated!');
             } else {
                 // ── CREATE MODE ──
-
-                // Cross-publication post costs 1 AP
-                if (isCrossPub) {
-                    const { deductAP } = await import('./game/config.js');
-                    const apResult = await deductAP(_supabase, faction.id, 1);
-                    if (!apResult.success) {
-                        showFormError('Not enough AP to post on another publication (need 1 AP).');
-                        return;
-                    }
-                    faction.action_points = apResult.newAp;
-                }
 
                 let imageUrl = null;
                 if (file) {
@@ -908,7 +896,7 @@ function resetModalToCreateMode() {
     const charCount = document.getElementById('nws-char-count');
     if (charCount) {
         charCount.textContent = '0 / 12000';
-        charCount.classList.remove('nws-near-limit', 'nws-ap-qualified');
+        charCount.classList.remove('nws-near-limit');
     }
     const removeBtn = document.getElementById('nws-remove-image-btn');
     if (removeBtn) removeBtn.style.display = 'none';
