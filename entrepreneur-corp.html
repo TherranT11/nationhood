@@ -3593,6 +3593,17 @@ function initials(s, n) {
       const rows = bldgs || [];
       ownedBuildings = rows; // shared with renderAssets (section III)
 
+      // Single source for "what nations does this corp operate in" —
+      // the corp's HQ nation + every nation with a completed regional_hq.
+      // Used by the oil-plots fetch (visibility) and the airline panel
+      // (open-route From/To dropdowns). Server-side gates (survey_oil_plot,
+      // entrepreneur_open_route) enforce the same set independently.
+      const rhqNationIds = rows
+        .filter(b => b.building_type === 'regional_hq' && b.status === 'completed' && b.nation_id)
+        .map(b => b.nation_id);
+      const presenceNationIds = new Set(
+        c.hq_nation_id ? [c.hq_nation_id, ...rhqNationIds] : rhqNationIds);
+
       // Oil plots — fetched for oil_and_gas corps only. Shared across
       // every O&G corp in the nation (race to survey). Visibility scope:
       // the corp's HQ nation PLUS every nation where the corp owns a
@@ -3600,14 +3611,10 @@ function initials(s, n) {
       // foreign plots are read-only until the permit mechanic lands.
       let oilPlots = [];
       if (c.industry === 'oil_and_gas' && c.hq_nation_id) {
-        const rhqNationIds = rows
-          .filter(b => b.building_type === 'regional_hq' && b.status === 'completed' && b.nation_id)
-          .map(b => b.nation_id);
-        const allNationIds = Array.from(new Set([c.hq_nation_id, ...rhqNationIds]));
         const { data: plotRows, error: pErr } = await _supabase.from('nation_oil_plots')
           .select('id, slot_index, name, nation_id, surveyed, surveyed_at_tick, surveyed_by_faction, tier, crude_present, '
                 + 'nation:nations!nation_id(name)')
-          .in('nation_id', allNationIds)
+          .in('nation_id', Array.from(presenceNationIds))
           .order('slot_index', { ascending: true });
         if (pErr) console.warn('[entrepreneur-corp] oil plots fetch error:', pErr.message);
         // Group HQ-nation plots first, then RHQ nations in fetch order.
@@ -4287,15 +4294,6 @@ function initials(s, n) {
         const allCities = cityRes.data || [];
         const aircraft  = aircraftRes.data || [];
         const corpCash  = getEntrepreneurCorpCash(c);
-
-        // Presence: HQ nation + every nation where this corp owns a
-        // completed regional_hq. Drives the From/To dropdowns.
-        const presenceNationIds = new Set([
-          c.hq_nation_id,
-          ...ownedBuildings
-            .filter(b => b.building_type === 'regional_hq' && b.status === 'completed' && b.nation_id)
-            .map(b => b.nation_id),
-        ]);
 
         // Distance matrix for all loaded cities. Keyed both directions
         // for easy lookup regardless of which city is "a" vs "b" in

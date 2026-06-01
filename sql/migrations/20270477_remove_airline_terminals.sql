@@ -30,9 +30,14 @@
 
 BEGIN;
 
--- ── 1. Drop the claim/release RPCs ──────────────────────────────────
+-- ── 1. Drop the claim/release RPCs and the now-orphaned admin_delete_hub ──
+-- admin_delete_hub still referenced airline_terminals. admin_create_hub /
+-- admin_update_hub were already dropped by 20270465 (the orphan UI in
+-- admin.html that calls them is a pre-existing issue, not introduced
+-- here — flag for follow-up).
 DROP FUNCTION IF EXISTS public.entrepreneur_claim_terminal(uuid, uuid);
 DROP FUNCTION IF EXISTS public.entrepreneur_release_terminal(uuid, uuid);
+DROP FUNCTION IF EXISTS public.admin_delete_hub(uuid);
 
 -- ── 2. entrepreneur_open_route: HQ/RHQ presence gate ────────────────
 -- Body copied byte-for-byte from 20270465_airline_three_city_distance_model.sql
