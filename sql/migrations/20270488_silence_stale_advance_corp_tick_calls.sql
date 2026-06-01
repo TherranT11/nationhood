@@ -1,7 +1,7 @@
 -- TEMPORARY: silence stale advance-corp-tick edge function log spam.
 --
 -- The deployed advance-corp-tick is behind the repo source and still
--- calls into three things that have been removed from the DB:
+-- calls into six DB objects that have been removed:
 --
 --   public.corp_properties              dropped in 20270251 (corp cull 5B)
 --   public.corp_executives              dropped in 20270248 (corp cull 4g)
@@ -21,7 +21,7 @@
 --   [advance-corp-tick] lawsuit deadline sweep failed (function missing)
 --
 -- Real fix is to redeploy the edge function (the repo source has all
--- three call sites removed). Until that happens this migration drops
+-- six call sites removed). Until that happens this migration drops
 -- empty stub tables + no-op stub RPCs so the deployed function's
 -- calls succeed silently — selects return zero rows, updates affect
 -- zero rows, the RPCs return 0.
