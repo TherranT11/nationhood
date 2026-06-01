@@ -471,6 +471,8 @@ const CAREER_EVENT_TEMPLATES = {
     `${name} has completed the exam to become a civil servant within the Ministry of ${target || 'a ministry'}.`,
   civil_service_exam_failed: (name, target) =>
     `${name}'s civil service exam application to the Ministry of ${target || 'a ministry'} was rejected.`,
+  resigned_office: (name, target) =>
+    `${name} resigns from their office as ${target || 'an elected official'}.`,
 };
 
 let politician = null;
@@ -930,6 +932,19 @@ function renderAffiliation(ctx) {
     </div>`;
   }).join('');
 
+  // Resign affordance — only rendered when the politician actually
+  // holds an office (no point on the Party Member fallback variant).
+  // RPC: politician_resign_office (-2 political_capital, -2 party
+  // popularity, clears the office, logs a resigned_office career row).
+  const resignHtml = office
+    ? `<div style="padding:6px 20px 12px; text-align:right;">
+         <button class="resign-btn" data-resign-office
+                 style="background:transparent; border:0.5px solid rgba(200,120,120,0.3); color:#c87a7a;
+                        font-size:10px; letter-spacing:0.08em; padding:5px 12px; border-radius:4px;
+                        cursor:pointer; font-family:inherit;">RESIGN</button>
+       </div>`
+    : '';
+
   host.innerHTML = `
     <div class="affil ${variant.variant}">
       <div class="ah-row">
@@ -945,6 +960,7 @@ function renderAffiliation(ctx) {
         <div class="ar-lab">REPEATABLE ACTIONS · PICK ONE EACH TICK</div>
         <div class="ar-buttons${colsClass}">${actionsHtml}</div>
       </div>
+      ${resignHtml}
     </div>`;
 
   // Wire enabled (non-cooldown, non-disabled) buttons to their RPCs.
@@ -953,6 +969,8 @@ function renderAffiliation(ctx) {
   host.querySelectorAll('.act-btn[data-action]').forEach(btn => {
     btn.addEventListener('click', () => handleMpAction(btn));
   });
+  const resignBtn = host.querySelector('[data-resign-office]');
+  if (resignBtn) resignBtn.addEventListener('click', () => handleResignOffice(resignBtn, variant.name));
 }
 
 // Unified action catalog — MP (20270433/20270460) + Local (20270461).
@@ -1030,6 +1048,26 @@ const ACTION_REASON = {
   insufficient_party_funds: 'Your party can’t cover the cost.',
   no_shard:                 'Shard not found.',
 };
+
+async function handleResignOffice(btn, officeName) {
+  if (!confirm(`Resign from your office as ${officeName}? Costs 2 Political Capital and -2 party popularity. The seat opens until the next election.`)) return;
+  btn.disabled = true;
+  const prev = btn.textContent;
+  btn.textContent = 'RESIGNING…';
+  try {
+    const { data, error } = await _supabase.rpc('politician_resign_office');
+    if (error) throw error;
+    if (!data?.success) {
+      alert('Resignation failed: ' + (data?.reason || 'unknown'));
+      btn.disabled = false; btn.textContent = prev;
+      return;
+    }
+    location.reload();
+  } catch (e) {
+    alert('Failed: ' + (e?.message || e));
+    btn.disabled = false; btn.textContent = prev;
+  }
+}
 
 async function handleMpAction(btn) {
   const slug = btn.dataset.action;
