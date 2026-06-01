@@ -534,7 +534,7 @@
   .og-sell-row { display:flex; gap:8px; flex-wrap:wrap; }
   .og-sell-row .ap-btn-small:disabled { opacity:0.4; cursor:not-allowed; }
   /* Surveys table — one row per oil plot in the corp's home nation. */
-  .surv-table { display:grid; grid-template-columns:2fr 1fr 1fr auto; gap:0;
+  .surv-table { display:grid; grid-template-columns:1.6fr 1.5fr 1fr 1fr 1fr auto; gap:0;
     border:0.5px solid rgba(255,255,255,0.08); border-radius:5px; overflow:hidden; }
   .surv-row { display:contents; }
   .surv-cell { padding:11px 14px; font-size:11px; color:#cfcabf;
@@ -971,7 +971,7 @@ function initials(s, n) {
     if (!id) { window.location.href = 'entrepreneur-corporations.html'; return; }
 
     const { data: c, error } = await _supabase.from('entrepreneur_corps')
-      .select('id, name, ticker, custom_logo_url, rebrand_cooldown_until_tick, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, freighters_owned, crude_reserve, refined_reserve, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
+      .select('id, name, ticker, custom_logo_url, rebrand_cooldown_until_tick, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, freighters_owned, crude_reserve, refined_reserve, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent, head_of_state_title, head_of_state_first_name, head_of_state_last_name)')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -4881,6 +4881,17 @@ function initials(s, n) {
           large:        'Large',
           generational: 'Generational',
         };
+        // Nation cell — same across all rows since plots are nation-scoped
+        // to the corp's HQ. Head of state stacked underneath the name.
+        const hqName    = c.hq?.name || '—';
+        const hosTitle  = c.hq?.head_of_state_title || 'President';
+        const hosPerson = [c.hq?.head_of_state_first_name, c.hq?.head_of_state_last_name].filter(Boolean).join(' ');
+        const nationCellHtml = `<div class="surv-cell">
+            <div style="color:#fff;font-weight:600;">${escapeHtml(hqName)}</div>
+            <div style="color:#888;font-size:10px;margin-top:2px;">${escapeHtml(hosTitle)} ${escapeHtml(hosPerson || '—')}</div>
+          </div>`;
+        // Ownership defaults to "No Permit" until the permit mechanic lands.
+        const ownershipCellHtml = '<div class="surv-cell"><span class="surv-status">No Permit</span></div>';
         const plotRowsHtml = oilPlots.map(p => {
           if (p.surveyed) {
             const tierLabel = TIER_LABELS[p.tier] || p.tier || '—';
@@ -4890,8 +4901,10 @@ function initials(s, n) {
               : '<span class="surv-status">—</span>';
             return `<div class="surv-row">
               <div class="surv-cell surv-name">${escapeHtml(p.name)}</div>
+              ${nationCellHtml}
               <div class="surv-cell surv-status surveyed">Surveyed <span class="${tierClass}">${escapeHtml(tierLabel)}</span></div>
               <div class="surv-cell surv-crude">${crude}</div>
+              ${ownershipCellHtml}
               <div class="surv-cell surv-action"><span style="color:#666;font-size:10px;">—</span></div>
             </div>`;
           }
@@ -4900,8 +4913,10 @@ function initials(s, n) {
             : '<span style="color:#666;font-size:10px;">—</span>';
           return `<div class="surv-row">
             <div class="surv-cell surv-name">${escapeHtml(p.name)}</div>
+            ${nationCellHtml}
             <div class="surv-cell surv-status">Unsurveyed</div>
             <div class="surv-cell surv-crude"><span style="color:#666;">—</span></div>
+            ${ownershipCellHtml}
             <div class="surv-cell surv-action">${actionBtn}</div>
           </div>`;
         }).join('');
@@ -4916,8 +4931,10 @@ function initials(s, n) {
               <div class="surv-table">
                 <div class="surv-row surv-head">
                   <div class="surv-cell">Name</div>
+                  <div class="surv-cell">Nation</div>
                   <div class="surv-cell">Status</div>
                   <div class="surv-cell">Crude Oil Present</div>
+                  <div class="surv-cell">Ownership</div>
                   <div class="surv-cell surv-action">Action</div>
                 </div>
                 ${plotRowsHtml}
