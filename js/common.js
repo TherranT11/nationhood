@@ -10,7 +10,7 @@
 import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
 import { hasActiveGovernment } from './game/government-structure.js';
-import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl } from './game/factions.js';
+import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
 import { escapeHtml, APP_VERSION } from './utils.js';
 
 // ===== QUERY CACHE =====
@@ -891,28 +891,22 @@ export function updateTopBarInfo(faction, shard, nation) {
                 <span class="faction-dropdown__name">Become an Entrepreneur</span>
             </div>`;
         }
-        // Politician slots — first is "Join Project Neptune" (alpha-gated
-        // on the next page), slots 2-4 are "Join as Politician #N". Cap
-        // at 4. Slot 4 requires the Patreon11 alpha code (fixed string,
-        // client-side prompt). Same-nation dupes caught by the DB
-        // unique index from 20270374.
-        const polCount = _userFactions.filter(f => f.faction_type === 'politician').length;
-        if (polCount < 4) {
-            const polNext = polCount + 1;
-            const polLabel = polNext === 1
-                ? 'Join Project Neptune'
-                : polNext === 4
-                    ? `Join as Politician #${polNext} (alpha code)`
-                    : `Join as Politician #${polNext}`;
-            const slotGate = polNext === 4
-                ? "var c=window.prompt('Alpha tester code required to claim slot #4:'); if(c!=='Patreon11'){if(c!=null)window.alert('Invalid alpha code.'); return;} "
-                : '';
-            html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="${slotGate}sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search); window.location.href='character-select.html'">
+        // Politician slot row — label rule, cap, and Patreon11 gate
+        // all live in js/game/factions.js. Null when the user has hit
+        // the cap. Wired via addEventListener below (the inline-onclick
+        // rows above predate this surface; their gates are too simple
+        // to be worth converting in this pass).
+        const polSlot = nextPoliticianSlot(_userFactions);
+        if (polSlot) {
+            html += `<div class="faction-dropdown__item faction-dropdown__item--create" data-join-politician>
                 <span class="faction-dropdown__type" style="color:var(--teal,#5aafa5)">+</span>
-                <span class="faction-dropdown__name">${polLabel}</span>
+                <span class="faction-dropdown__name">${polSlot.label}</span>
             </div>`;
         }
         dropdown.innerHTML = html;
+        dropdown.querySelectorAll('[data-join-politician]').forEach(el => {
+            el.addEventListener('click', () => activatePoliticianSlot(polSlot));
+        });
     }
 
     const apEl = document.getElementById('topbar-ap');

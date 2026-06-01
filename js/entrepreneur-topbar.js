@@ -7,7 +7,7 @@
 // extraction — that larger consolidation is tracked separately).
 import { _supabase } from './supabase-client.js';
 import { hfFmtBig, APP_VERSION } from './utils.js';
-import { getFactionTypeBadge, getFactionDashboardUrl, isFactionInactive, isHiddenFromSwitcher } from './game/factions.js';
+import { getFactionTypeBadge, getFactionDashboardUrl, isFactionInactive, isHiddenFromSwitcher, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
 
 const ENT_TABS = [
   { id: 'home',         label: 'HOME',         href: 'entrepreneur-dashboard.html' },
@@ -161,31 +161,10 @@ function buildSwitcher(facs) {
       window.location.href = c.url;
     });
   }
-  // Politician slots — first one is "Join Project Neptune" (matches
-  // the historical CTA); slots 2-4 read "Join as Politician #N". Cap
-  // at 4 politicians per user; slot 4 requires the Patreon11 alpha
-  // code (fixed string, client-side prompt). Same-nation duplicates
-  // are caught downstream by the DB unique index from 20270374.
-  const polCount = facs.filter(f => f.faction_type === 'politician').length;
-  if (polCount < 4) {
-    const next = polCount + 1;
-    const label = next === 1
-      ? 'Join Project Neptune'
-      : next === 4
-        ? `Join as Politician #${next} (alpha code)`
-        : `Join as Politician #${next}`;
-    addRow('create', '+', null, label, () => {
-      if (next === 4) {
-        const code = window.prompt('Alpha tester code required to claim slot #4:');
-        if (code !== 'Patreon11') {
-          if (code != null) window.alert('Invalid alpha code.');
-          return;
-        }
-      }
-      sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search);
-      window.location.href = 'character-select.html';
-    });
-  }
+  // Politician slot row — label rule, cap, and Patreon11 gate all
+  // live in js/game/factions.js. Null when the user has hit the cap.
+  const polSlot = nextPoliticianSlot(facs);
+  if (polSlot) addRow('create', '+', null, polSlot.label, () => activatePoliticianSlot(polSlot));
   pill.addEventListener('click', (e) => { e.stopPropagation(); dd.classList.toggle('open'); });
   document.addEventListener('click', (e) => {
     if (!e.target.closest('#ent-pill') && !e.target.closest('#ent-dd')) dd.classList.remove('open');

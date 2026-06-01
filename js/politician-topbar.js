@@ -5,7 +5,7 @@
 // just teal where entrepreneur uses green.
 import { _supabase } from './supabase-client.js';
 import { APP_VERSION, fmtBig, displayName } from './utils.js';
-import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl } from './game/factions.js';
+import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
 
 const POL_TABS = [
   { id: 'home',      label: 'HOME',      href: 'politician-home.html' },
@@ -127,19 +127,15 @@ function buildSwitcher(facs) {
       <span class="pol-dd-name">${esc(f.faction_name || 'Unnamed')}</span>
     </div>`;
   });
-  // Politician slots — slots 2-4 appear once the user already holds a
-  // politician (slot 1 is the existing Project Neptune CTA on the
-  // entrepreneur topbar; politicians can spawn additional ones from
-  // here). Cap at 4; slot 4 requires Patreon11 (fixed string).
-  const polCount = list.filter(f => f.faction_type === 'politician').length;
-  if (polCount >= 1 && polCount < 4) {
-    const next = polCount + 1;
-    const label = next === 4
-      ? `Join as Politician #${next} (alpha code)`
-      : `Join as Politician #${next}`;
-    items.push(`<div class="pol-dd-item create" data-join-slot="${next}">
+  // Politician slot row — label rule, cap, and Patreon11 gate all
+  // live in js/game/factions.js. Null when the user has hit the cap.
+  // A user viewing the politician topbar always holds at least one
+  // politician, so polSlot here will be at minimum slot #2.
+  const polSlot = nextPoliticianSlot(list);
+  if (polSlot) {
+    items.push(`<div class="pol-dd-item create" data-join-politician>
       <span class="pol-dd-badge">+</span>
-      <span class="pol-dd-name">${esc(label)}</span>
+      <span class="pol-dd-name">${esc(polSlot.label)}</span>
     </div>`);
   }
   if (!items.length) {
@@ -155,19 +151,8 @@ function buildSwitcher(facs) {
       window.location.href = getFactionDashboardUrl(f) || 'faction-select.html';
     });
   });
-  dd.querySelectorAll('.pol-dd-item[data-join-slot]').forEach(el => {
-    el.addEventListener('click', () => {
-      const slot = Number(el.dataset.joinSlot);
-      if (slot === 4) {
-        const code = window.prompt('Alpha tester code required to claim slot #4:');
-        if (code !== 'Patreon11') {
-          if (code != null) window.alert('Invalid alpha code.');
-          return;
-        }
-      }
-      sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search);
-      window.location.href = 'character-select.html';
-    });
+  dd.querySelectorAll('.pol-dd-item[data-join-politician]').forEach(el => {
+    el.addEventListener('click', () => activatePoliticianSlot(polSlot));
   });
 }
 
