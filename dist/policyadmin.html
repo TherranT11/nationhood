@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nationhood | Policy Builder</title>
-  <script type="module" crossorigin src="/assets/policyadmin-Dba5uCDj.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
-  <link rel="modulepreload" crossorigin href="/assets/utils-oN1e812_.js">
+  <script type="module" crossorigin src="/assets/policyadmin-Bkh_UeX1.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-CzgKGX6o.js">
   <link rel="stylesheet" crossorigin href="/assets/policyadmin-DC2qTpUn.css">
   <link rel="stylesheet" crossorigin href="/assets/dashboard-vpNbURZY.css">
 </head>
@@ -115,13 +115,33 @@
                             </div>
                         </div>
                     </div>
-                    <div class="form-field">
-                        <label>Policy Type</label>
-                        <select id="b-policy-type" onchange="onPolicyTypeChange()">
-                            <option value="structural">🏗️ Structural — Activate once, stays on, rescind to remove</option>
-                            <option value="lever">🔄 Lever — Toggle on/off, pays upfront each activation</option>
-                            <option value="multi_option_spectrum">🎯 Multi-Option Spectrum — players pick one option, switching changes targets</option>
-                        </select>
+                    <div class="form-row">
+                        <div class="form-field">
+                            <label>Policy Type</label>
+                            <select id="b-policy-type" onchange="onPolicyTypeChange()">
+                                <option value="structural">🏗️ Structural — Activate once, stays on, rescind to remove</option>
+                                <option value="lever">🔄 Lever — Toggle on/off, pays upfront each activation</option>
+                                <option value="multi_option_spectrum">🎯 Multi-Option Spectrum — players pick one option, switching changes targets</option>
+                            </select>
+                        </div>
+                        <div class="form-field">
+                            <label>Budget Category</label>
+                            <select id="b-budget-category">
+                                <option value="">— Auto (law category → Other Programs) —</option>
+                                <option value="welfare_benefits">Welfare Benefits</option>
+                                <option value="pension">Pension</option>
+                                <option value="procurement_capital">Procurement &amp; Capital</option>
+                                <option value="subsidies_industry">Subsidies &amp; Industry Support</option>
+                                <option value="defense_security">Defense &amp; Security</option>
+                                <option value="national_infra">National Infrastructure</option>
+                                <option value="sports_culture">Sports &amp; Culture</option>
+                                <option value="foreign_aid">Foreign Aid &amp; Diplomacy</option>
+                                <option value="discretionary">Discretionary Programs</option>
+                                <option value="regulatory_agencies">Regulatory Agencies</option>
+                                <option value="other_programs">Other Programs</option>
+                            </select>
+                            <div style="font-size:0.7rem;color:#888;margin-top:4px;">Which COSTS row this policy's ongoing cost shows under in the budget. Leave on Auto to fall back to the law category.</div>
+                        </div>
                     </div>
                 </div>
 

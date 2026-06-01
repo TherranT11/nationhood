@@ -1,0 +1,1 @@
+import"./supabase-client-BXEzLDpS.js";import{b as o}from"./entrepreneur-topbar-BMZMuYND.js";import"./utils-CzgKGX6o.js";import"./factions-C2s734Ze.js";o("lobbying").catch(r=>console.warn("[entrepreneur-lobbying] init failed:",r?.message||r));

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Politician — Industries &amp; Corporations</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  :root{
+    --bg:#080808; --panel:#0d0d0d; --panel2:#101010;
+    --green:#6ab07a; --green-dim:#3a5a42; --green-bg:#0e1611;
+    --amber:#d4b87a; --amber-dim:#5a4d2e; --amber-bg:#161208;
+    --steel:#7a9aab; --steel-dim:#3a5060; --steel-bg:#0e1218;
+    --red:#c87a7a; --red-dim:#5a3030; --red-bg:#160e0e;
+    --line:rgba(255,255,255,0.07); --txt:#d4d4d4; --mut:#888; --faint:#666;
+    /* category colors */
+    --extract:#d4926a; --extract-bg:#160e08; --extract-dim:#5a3a1e;
+    --finance:#7a9aab; --finance-bg:#0e1218; --finance-dim:#3a5060;
+    --transport:#9aab7a; --transport-bg:#13160e; --transport-dim:#4a5a3a;
+    --industry:#c89e6e; --industry-bg:#130f0c; --industry-dim:#5a4530;
+    --service:#b9a2d4; --service-bg:#100e16; --service-dim:#3e3055;
+  }
+  body{background:var(--bg);color:var(--txt);font-family:-apple-system,system-ui,sans-serif;min-height:100vh;}
+  .content{padding:30px 22px;}
+  .wrap{max-width:1280px;margin:0 auto;}
+
+  .crumb{font-size:9px;letter-spacing:0.13em;color:var(--faint);margin-bottom:16px;text-transform:uppercase;}
+  .crumb a{color:var(--mut);text-decoration:none;}
+  .crumb a:hover{color:var(--extract);}
+  .crumb .sep{margin:0 7px;color:#3a3a3a;}
+  .crumb .here{color:var(--extract);}
+
+  .page-head{margin-bottom:22px;}
+  .page-eyebrow{font-size:9px;letter-spacing:0.16em;color:var(--extract);margin-bottom:7px;text-transform:uppercase;}
+  .page-title{font-size:28px;font-weight:500;color:#fff;letter-spacing:-0.012em;}
+  .page-title .serif{font-family:Georgia,serif;font-style:italic;color:var(--extract);}
+  .page-sub{font-size:11.5px;color:var(--mut);margin-top:6px;line-height:1.5;max-width:780px;}
+  .page-sub strong{color:#d4d4d4;font-weight:600;}
+
+  .summary{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-bottom:24px;}
+  .sm-card{background:var(--panel);border:0.5px solid var(--line);border-radius:6px;padding:13px 15px;border-left-width:3px;border-left-style:solid;}
+  .sm-card.extract{border-left-color:var(--extract);}
+  .sm-card.finance{border-left-color:var(--finance);}
+  .sm-card.transport{border-left-color:var(--transport);}
+  .sm-card.industry{border-left-color:var(--industry);}
+  .sm-card.service{border-left-color:var(--service);}
+  .sm-lab{font-size:8px;letter-spacing:0.12em;font-weight:600;margin-bottom:6px;text-transform:uppercase;}
+  .sm-card.extract .sm-lab{color:var(--extract);}
+  .sm-card.finance .sm-lab{color:var(--finance);}
+  .sm-card.transport .sm-lab{color:var(--transport);}
+  .sm-card.industry .sm-lab{color:var(--industry);}
+  .sm-card.service .sm-lab{color:var(--service);}
+  .sm-val{font-size:18px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums;line-height:1;}
+  .sm-val .of{font-size:10px;color:var(--mut);font-weight:500;}
+  .sm-foot{font-size:9px;color:var(--mut);margin-top:5px;}
+
+  .cat-section{margin-bottom:26px;}
+  .cat-head{display:flex;align-items:center;gap:11px;padding:11px 16px;border-radius:6px;margin-bottom:12px;border:0.5px solid;}
+  .cat-head.extract{background:var(--extract-bg);border-color:var(--extract-dim);}
+  .cat-head.finance{background:var(--finance-bg);border-color:var(--finance-dim);}
+  .cat-head.transport{background:var(--transport-bg);border-color:var(--transport-dim);}
+  .cat-head.industry{background:var(--industry-bg);border-color:var(--industry-dim);}
+  .cat-head.service{background:var(--service-bg);border-color:var(--service-dim);}
+  .cat-icon{font-size:16px;}
+  .cat-head.extract .cat-icon{color:var(--extract);}
+  .cat-head.finance .cat-icon{color:var(--finance);}
+  .cat-head.transport .cat-icon{color:var(--transport);}
+  .cat-head.industry .cat-icon{color:var(--industry);}
+  .cat-head.service .cat-icon{color:var(--service);}
+  .cat-name{font-size:13px;font-weight:600;color:#fff;letter-spacing:-0.005em;flex:1;}
+  .cat-stats{font-size:9px;color:var(--mut);letter-spacing:0.04em;}
+  .cat-stats strong{color:#fff;font-weight:600;}
+
+  .industry{background:var(--panel);border:0.5px solid var(--line);border-radius:6px;margin-bottom:10px;overflow:hidden;border-left:3px solid;}
+  .industry.extract{border-left-color:var(--extract);}
+  .industry.finance{border-left-color:var(--finance);}
+  .industry.transport{border-left-color:var(--transport);}
+  .industry.industry{border-left-color:var(--industry);}
+  .industry.service{border-left-color:var(--service);}
+
+  .ind-row{display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:0.5px solid var(--line);}
+  .ind-name-block{flex:1;}
+  .ind-name{font-size:13.5px;font-weight:600;color:#fff;letter-spacing:-0.005em;}
+  .ind-blurb{font-size:10px;color:var(--mut);margin-top:3px;line-height:1.5;font-style:italic;}
+
+  /* Trade-asset line under each industry blurb. Compact row of label
+     + asset name + per-unit recipient deltas (1 traded away → N of
+     each stat on the receiver). Chips green for positive deltas, red
+     for negative — same palette the page already uses for strength
+     tiers so the language reads consistently. */
+  .ind-trade{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px;font-size:10px;}
+  .ind-trade-icon{color:#8a8a8a;font-size:11px;}
+  .ind-trade-label{color:#5a5a5a;letter-spacing:0.1em;font-weight:600;text-transform:uppercase;}
+  .ind-trade-name{color:#cfcabf;font-weight:600;}
+  .ind-trade-arrow{color:#444;}
+  .ind-trade-boost{font-family:monospace;font-size:9.5px;padding:1px 5px;border-radius:3px;letter-spacing:0.02em;}
+  .ind-trade-boost.up{color:var(--green);border:0.5px solid rgba(106,176,122,0.3);background:rgba(106,176,122,0.06);}
+  .ind-trade-boost.down{color:var(--red);border:0.5px solid rgba(200,122,122,0.3);background:rgba(200,122,122,0.06);}
+
+  .ind-strength{display:flex;align-items:center;gap:11px;flex-shrink:0;}
+  .str-final{font-size:22px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums;line-height:1;}
+  .str-final.low{color:var(--red);}
+  .str-final.mid{color:var(--amber);}
+  .str-final.high{color:var(--green);}
+
+  .corps{padding:12px 18px 14px;background:#0a0a0a;}
+  .corps-lab{font-size:8px;letter-spacing:0.13em;color:var(--faint);margin-bottom:9px;}
+  .corp-list{display:flex;flex-direction:column;gap:5px;}
+  .corp{display:flex;align-items:center;gap:11px;padding:8px 11px;background:#0d0d0d;border:0.5px solid var(--line);border-radius:5px;}
+  .corp-badge{width:28px;height:28px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0;}
+  .corp-info{flex:1;min-width:0;}
+  .corp-name{font-size:11.5px;font-weight:600;color:#fff;line-height:1.2;}
+  .corp-meta{font-size:9.5px;color:var(--mut);margin-top:2px;}
+  .corp-type{font-size:8px;letter-spacing:0.1em;font-weight:600;padding:3px 7px;border-radius:3px;flex-shrink:0;}
+  .corp-type.public{background:var(--steel-bg);color:var(--steel);border:0.5px solid var(--steel-dim);}
+  .corp-type.private{background:#0d0d0d;color:var(--mut);border:0.5px solid var(--line);}
+  .corp-type.state{background:var(--amber-bg);color:var(--amber);border:0.5px solid var(--amber-dim);}
+  .corp-val{font-size:11px;color:#fff;font-variant-numeric:tabular-nums;text-align:right;width:78px;flex-shrink:0;font-weight:500;}
+  .corp-val .m{color:var(--mut);font-weight:400;}
+
+  .cb-extract{background:#160e08;border:0.5px solid #5a3a1e;color:var(--extract);}
+  .cb-finance{background:#0e1218;border:0.5px solid #3a5060;color:var(--finance);}
+  .cb-transport{background:#13160e;border:0.5px solid #4a5a3a;color:var(--transport);}
+  .cb-industry{background:#130f0c;border:0.5px solid #5a4530;color:var(--industry);}
+  .cb-service{background:#100e16;border:0.5px solid #3e3055;color:var(--service);}
+
+  .no-corps{font-size:10px;color:var(--faint);font-style:italic;padding:6px 0;text-align:center;}
+  .loading{font-family:monospace;font-size:11px;color:#4a4940;text-align:center;padding:80px 20px;}
+  .fail{font-family:monospace;font-size:11px;color:#c87a7a;text-align:center;padding:80px 20px;}
+
+  @media (max-width:780px){
+    .summary{grid-template-columns:repeat(2,1fr);}
+    .ind-row{flex-wrap:wrap;}
+    .ind-strength{margin-left:auto;}
+  }
+</style>
+  <script type="module" crossorigin src="/assets/politician-economy-DusyA3pC.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-CzgKGX6o.js">
+  <link rel="modulepreload" crossorigin href="/assets/factions-C2s734Ze.js">
+  <link rel="modulepreload" crossorigin href="/assets/politician-topbar-5igJjSS-.js">
+</head>
+<body>
+
+<div id="pol-topbar-container"></div>
+
+<div class="content" id="content" style="display:none;">
+  <div class="wrap">
+
+    <div class="crumb">
+      <a href="politician-nation.html" id="cr-nation">NATION</a>
+      <span class="sep">&rsaquo;</span><a href="politician-nation.html">ECONOMY</a>
+      <span class="sep">&rsaquo;</span><span class="here">INDUSTRIES &amp; CORPORATIONS</span>
+    </div>
+
+    <div class="page-head">
+      <div class="page-eyebrow" id="ph-eyebrow">— INDUSTRIES &amp; CORPORATIONS —</div>
+      <div class="page-title">The Sectors of the <span class="serif">Economy</span></div>
+      <div class="page-sub" id="ph-sub">All industries operating in this nation, ranked by strength on a scale of 0 to 10. Strength is built from a sector's natural base in this country plus the corporations operating in it — <strong>+1 strength per two corporations</strong>.</div>
+    </div>
+
+    <div class="summary" id="summary-host"></div>
+
+    <div id="sectors-host"></div>
+
+  </div>
+</div>
+
+<div id="loading" class="loading">LOADING...</div>
+
+</body>
+</html>

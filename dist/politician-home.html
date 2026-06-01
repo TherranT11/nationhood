@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Politician — Home</title>
+<style>
+/* Topbar / nav / body base styles live in js/politician-topbar.js — one source
+   used by every politician page (mirrors the entrepreneur-topbar pattern).
+   This page only styles its own body content. */
+* { box-sizing:border-box; margin:0; padding:0; }
+.content { padding:32px 24px 24px; }
+
+.hero { display:grid; grid-template-columns:1fr auto; gap:32px; margin-bottom:22px; }
+.identity { display:flex; align-items:flex-start; gap:20px; }
+.identity-portrait { width:88px; height:88px;
+  background:linear-gradient(135deg, #2a2a25, #1a1a17);
+  border:0.5px solid rgba(90,175,165,0.3); border-radius:4px;
+  display:flex; align-items:center; justify-content:center;
+  color:#5aafa5; font-size:28px; font-weight:500; letter-spacing:0.03em; flex-shrink:0; }
+.identity-body .eyebrow { color:#5aafa5; font-size:10px; letter-spacing:0.15em; margin-bottom:6px; }
+.identity-body .name { display:flex; align-items:baseline; gap:10px; margin-bottom:10px; }
+.identity-body .name .first { font-size:44px; font-weight:500; color:#fff; letter-spacing:-0.02em; line-height:1; }
+.identity-body .name .last  { font-family:Georgia,'Times New Roman',serif; font-size:44px; font-style:italic;
+  color:#5aafa5; letter-spacing:-0.01em; line-height:1; }
+.meta-row { display:flex; gap:28px; font-size:11px; letter-spacing:0.08em; color:#888; margin-bottom:12px; }
+.meta-row .label { color:#555; margin-right:6px; }
+.meta-row .val   { color:#d4d4d4; }
+
+.anchor { text-align:right; padding-left:28px;
+  border-left:0.5px solid rgba(255,255,255,0.08); min-width:280px; }
+.anchor-label   { color:#555; font-size:10px; letter-spacing:0.15em; margin-bottom:6px; }
+.anchor-message { color:#888; font-size:14px; font-style:italic; line-height:1.5; max-width:280px; margin-left:auto; }
+/* Player Nickname row — sits under the AFFILIATION block in the
+   anchor. Toggle between display + inline edit. The pencil opens
+   edit mode; ✓ saves, ✕ cancels. 12-char limit enforced both
+   client-side (maxlength) and server-side (CHECK constraint). */
+.anchor-nick      { margin-top:14px; padding-top:14px; border-top:0.5px solid rgba(255,255,255,0.06); }
+.anchor-nick-row  { display:flex; align-items:center; gap:8px; justify-content:flex-end; }
+.anchor-nick-val  { color:#cfcabf; font-size:13px; font-family:Georgia,'Times New Roman',serif;
+  font-style:italic; }
+.anchor-nick-val.empty { color:#555; }
+.anchor-nick-btn  { background:transparent; border:0.5px solid rgba(255,255,255,0.08);
+  border-radius:3px; padding:3px 6px; cursor:pointer; color:#888; font-size:11px;
+  transition:color 0.15s, border-color 0.15s; }
+.anchor-nick-btn:hover { color:#bbb; border-color:rgba(255,255,255,0.2); }
+.anchor-nick-input { background:#080808; border:0.5px solid rgba(255,255,255,0.15);
+  border-radius:3px; padding:4px 8px; color:#fff; font-size:13px; font-family:inherit;
+  width:130px; outline:none; }
+.anchor-nick-input:focus { border-color:#5aafa5; }
+
+/* Top row: World Events (left) + Nation Chat (right), 520px panels. */
+.top-row { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:24px; }
+.panel { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:7px; overflow:hidden; display:flex; flex-direction:column; height:520px; }
+
+/* World Events panel: 5 category tabs + scrollable dispatch feed. */
+.we-tabs { display:flex; gap:0; border-bottom:0.5px solid rgba(255,255,255,0.07);
+  padding:0 18px; background:#0a0a0a; flex-shrink:0; }
+.we-tab { font-size:8.5px; letter-spacing:0.12em; padding:9px 13px;
+  border-bottom:2px solid transparent; color:#888; font-weight:600; cursor:pointer; }
+.we-tab.active { color:#a0d8d8; border-bottom-color:#7ac8c8; }
+.we-feed { flex:1; overflow-y:auto; padding:14px 18px; display:flex; flex-direction:column; gap:13px;
+  list-style:none; }
+.we-item { padding:11px 0; border-bottom:0.5px solid rgba(255,255,255,0.04); }
+.we-item:last-child { border-bottom:none; }
+.we-meta { display:flex; align-items:center; justify-content:space-between;
+  font-size:7.5px; letter-spacing:0.12em; font-weight:600; margin-bottom:6px; }
+.we-cat { color:#7ac8c8; }
+.we-country { color:#888; font-weight:500; margin-left:6px; }
+.we-time { color:#666; font-family:monospace; letter-spacing:0.04em; }
+.we-title { font-size:11.5px; font-weight:600; color:#fff; margin-bottom:4px; line-height:1.3; }
+.we-body { font-size:10px; color:#888; line-height:1.55; }
+.we-empty { color:#666; font-size:11px; padding:22px 4px; text-align:center; font-style:italic; }
+.p-head { padding:13px 18px; background:#0a0a0a;
+  border-bottom:0.5px solid rgba(255,255,255,0.07);
+  display:flex; align-items:center; gap:11px; flex-shrink:0; }
+.p-titles { flex:1; min-width:0; }
+.p-eyebrow { font-size:8px; letter-spacing:0.14em; font-weight:600; margin-bottom:3px; color:#5aafa5;
+  text-transform:uppercase; }
+.p-title { font-size:13px; font-weight:600; color:#fff; letter-spacing:-0.005em;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.p-title .serif { font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#a0d8d8; }
+.p-right { font-size:9px; color:#888; letter-spacing:0.06em; flex-shrink:0; }
+
+/* Nation Chat panel — wired against group_chats (chat_type='nation') +
+   group_chat_messages. Politicians + movement_parties enroll via the
+   trigger in 20270469_nation_chat_includes_politicians.sql. */
+.nc .p-eyebrow { color:#e07070; }
+.nc .p-title .serif { color:#f0a0a0; }
+.nc-online { display:flex; align-items:center; gap:5px;
+  font-size:8.5px; color:#888; letter-spacing:0.06em; }
+.nc-online::before { content:""; width:5px; height:5px; border-radius:50%;
+  background:#6ab07a; box-shadow:0 0 4px #6ab07a; }
+.nc-feed { flex:1; padding:14px 18px;
+  display:flex; flex-direction:column-reverse;  /* newest-first stack */
+  gap:11px; overflow-y:auto; }
+.nc-empty { color:#666; font-size:11px; padding:22px 4px; text-align:center; font-style:italic; }
+
+.msg { display:flex; gap:10px; }
+.msg-badge { width:28px; height:28px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:9.5px; font-weight:700; color:#fff; flex-shrink:0;
+  background:#444; }
+.msg-body { flex:1; min-width:0; }
+.msg-head { display:flex; align-items:baseline; gap:7px; margin-bottom:3px; flex-wrap:wrap; }
+.msg-name { font-size:10.5px; font-weight:600; color:#fff; letter-spacing:-0.005em; }
+.msg-role { font-size:7.5px; letter-spacing:0.11em; font-weight:600;
+  padding:1px 5px; border-radius:2px; background:#1a1a1a; color:#888; }
+.msg-time { font-size:8.5px; color:#666; font-family:monospace;
+  letter-spacing:0.04em; margin-left:auto; }
+.msg-text { font-size:10.5px; color:#ccc; line-height:1.55; word-wrap:break-word; }
+.msg-system { font-style:italic; color:#888; font-size:10px; padding:6px 12px;
+  border-left:2px solid rgba(255,255,255,0.08); }
+
+.nc-input { padding:11px 18px; border-top:0.5px solid rgba(255,255,255,0.07);
+  background:#0a0a0a; display:flex; align-items:center; gap:9px; flex-shrink:0; }
+.nc-input-pill { display:flex; align-items:center; gap:6px;
+  padding:4px 9px; background:#0d0d0d;
+  border:0.5px solid rgba(255,255,255,0.07); border-radius:4px; flex-shrink:0; }
+.nc-input-badge { width:18px; height:18px; border-radius:50%;
+  background:#e07070; color:#fff;
+  display:flex; align-items:center; justify-content:center;
+  font-size:7.5px; font-weight:700; }
+.nc-input-name { font-size:9.5px; font-weight:600; color:#bbb; }
+.nc-input-field { flex:1; min-width:0; font-size:10px; padding:7px 11px;
+  background:#080808; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:4px; color:#d4d4d4; font-family:inherit; }
+.nc-input-field::placeholder { color:#555; font-style:italic; }
+.nc-input-send { font-size:8.5px; letter-spacing:0.1em;
+  padding:7px 13px; border-radius:3px;
+  background:rgba(224,112,112,0.1); border:0.5px solid #e07070;
+  color:#f0a0a0; font-weight:700; cursor:pointer; font-family:inherit; }
+.nc-input-send:disabled { opacity:0.5; cursor:not-allowed; }
+
+/* Stats row + cards (existing; minor mockup spacing tweak) */
+.stats-row { display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:28px; }
+.stat-card { background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px; padding:14px 16px; }
+.stat-card.accent { border-top:2px solid #5aafa5; }
+.stat-card .stat-label { color:#666; font-size:10px; letter-spacing:0.13em; margin-bottom:8px; }
+.stat-card .stat-value { font-size:24px; font-weight:500; color:#fff; line-height:1; }
+.stat-card .stat-value.text { font-size:18px; color:#5aafa5; }
+
+.section-heading { display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
+.section-heading .roman { color:#555; font-size:11px; letter-spacing:0.1em; }
+.section-heading .sans  { font-size:22px; font-weight:500; color:#fff; }
+.section-heading .serif { font-size:22px; font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#5aafa5; }
+.section-heading .meta  { margin-left:auto; color:#555; font-size:10px; letter-spacing:0.1em; }
+.retire-btn { margin-left:auto; font-family:monospace; font-size:10px; letter-spacing:0.08em;
+  text-transform:uppercase; font-weight:600; padding:7px 13px; border-radius:4px;
+  background:transparent; color:#c87a7a; border:0.5px solid rgba(200,122,122,0.4);
+  cursor:pointer; transition:background 0.12s, border-color 0.12s; }
+.retire-btn:hover    { background:rgba(200,122,122,0.10); border-color:#c87a7a; }
+.retire-btn:disabled { color:#555; border-color:rgba(255,255,255,0.06); cursor:not-allowed; background:transparent; }
+.empty { background:#121212; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
+  padding:22px 18px; color:#666; font-size:12px; line-height:1.6; text-align:center;
+  margin-bottom:28px; }
+
+/* Career log — one date-prefixed row per event, listed newest-first. */
+/* ─── Active Campaign card (Pressing Issues) ─────────────────────────
+   Rendered when politician_active_election has a row for the current
+   politician. Visual vocabulary matches the rest of the page (teal
+   politician accent, monospaced labels, 0.5px borders); the partisan
+   red accent appears only on the YOU side of the matchup and the
+   party-name string in the description. All selectors prefixed with
+   .ci- ("campaign issue") so the card is portable and won't collide
+   with future Pressing-Issues sources. */
+.ci-camp { background:#121212; border:0.5px solid rgba(255,255,255,0.12); border-radius:6px;
+  overflow:hidden; border-left:3px solid #c8a64e; }
+.ci-top { display:flex; align-items:flex-start; gap:14px; padding:14px 16px;
+  border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.ci-top-titles { flex:1; min-width:0; }
+.ci-eyebrow { font-size:8.5px; letter-spacing:0.14em; color:#c8a64e; font-weight:600; margin-bottom:4px; }
+.ci-name { font-size:14px; font-weight:600; color:#fff; letter-spacing:-0.005em; line-height:1.25; }
+.ci-name .serif { font-family:Georgia,serif; font-style:italic; color:#c8a64e; }
+.ci-sub { font-size:10.5px; color:#888; margin-top:5px; line-height:1.5; }
+.ci-sub strong { color:#c87a7a; font-weight:600; }
+.ci-meta { flex-shrink:0; text-align:right; }
+.ci-time { font-size:18px; font-weight:600; color:#fff; font-variant-numeric:tabular-nums; line-height:1; }
+.ci-time-l { font-size:7.5px; letter-spacing:0.1em; color:#666; margin-top:4px; }
+.ci-time-l.final { color:#d4b87a; font-weight:600; }
+
+.ci-poll { padding:14px 16px; border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.ci-poll-lab { font-size:8.5px; letter-spacing:0.13em; color:#666; margin-bottom:9px; }
+.ci-poll-nums { display:flex; justify-content:space-between; gap:8px; font-size:10px; margin-bottom:5px; }
+.ci-poll-nums .v { font-family:monospace; font-size:10px; }
+.ci-pn-you { color:#c87a7a; font-weight:600; }
+.ci-pn-opp { color:#6ac4c4; font-weight:600; }
+.ci-pn-und { color:#888; }
+.ci-poll-bar { height:9px; border-radius:3px; background:#1a1a1a; overflow:hidden; display:flex; }
+.ci-pb-you { background:#c87a7a; }
+.ci-pb-opp { background:#6ac4c4; }
+.ci-pb-und { background:#3a3a3a; }
+
+.ci-match { padding:14px 16px; border-bottom:0.5px solid rgba(255,255,255,0.06); display:flex; align-items:center; gap:12px; }
+.ci-side { flex:1; text-align:center; }
+.ci-side .ci-who { font-size:8px; letter-spacing:0.08em; color:#888; margin-bottom:4px; }
+.ci-side.you .ci-who { color:#c87a7a; font-weight:600; }
+.ci-side.opp .ci-who { color:#6ac4c4; font-weight:600; }
+.ci-portrait { width:32px; height:32px; border-radius:5px; display:flex; align-items:center; justify-content:center;
+  font-size:10px; font-weight:700; margin:0 auto 5px; }
+.ci-portrait.you { background:#1a0c0c; border:0.5px solid #6a2a2a; color:#c87a7a; }
+.ci-portrait.opp { background:#0e1414; border:0.5px solid #2e5252; color:#6ac4c4; }
+.ci-side .ci-pname { font-size:10px; color:#fff; font-weight:500; line-height:1.2; }
+.ci-vs { font-size:9px; letter-spacing:0.13em; color:#666; font-weight:600; flex-shrink:0; }
+.ci-stat { padding:8px 11px; background:#0a0a0a; border-radius:4px; border:0.5px solid rgba(255,255,255,0.06);
+  display:flex; flex-direction:column; align-items:center; gap:4px; min-width:90px; flex-shrink:0; }
+.ci-stat-lab { font-size:7.5px; letter-spacing:0.1em; color:#666; }
+.ci-stat-row { display:flex; align-items:baseline; gap:8px; font-variant-numeric:tabular-nums; font-weight:600; }
+.ci-stat-row .you { color:#c87a7a; font-size:15px; }
+.ci-stat-row .vs  { color:#555; font-size:8px; letter-spacing:0.08em; }
+.ci-stat-row .opp { color:#6ac4c4; font-size:15px; }
+
+.ci-events { padding:14px 16px; border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.ci-events-lab { font-size:8.5px; letter-spacing:0.13em; color:#666; margin-bottom:9px; }
+.ci-ev-row { display:flex; align-items:flex-start; gap:10px; padding:6px 0; font-size:11px; color:#bbb; line-height:1.45; }
+.ci-ev-icon { width:18px; flex-shrink:0; color:#888; font-size:11px; text-align:center; padding-top:1px; }
+.ci-ev-text strong { color:#fff; }
+
+.ci-actions { padding:14px 16px; background:#0a0a0a; }
+.ci-actions-lab { font-size:8.5px; letter-spacing:0.13em; color:#666; margin-bottom:9px;
+  display:flex; justify-content:space-between; align-items:baseline; }
+.ci-actions-lab .remind { color:#888; font-style:italic; font-size:8.5px; letter-spacing:0.04em; text-transform:none; }
+.ci-act-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; }
+.ci-act { padding:10px 11px; background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:5px;
+  text-align:left; cursor:pointer; transition:all 0.15s; font:inherit; color:inherit; }
+.ci-act:hover:not(:disabled) { background:#161616; border-color:rgba(255,255,255,0.16); }
+.ci-act:disabled { cursor:not-allowed; opacity:0.4; }
+.ci-act-head { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+.ci-act-icon { font-size:12px; }
+.ci-act-name { font-size:11px; font-weight:600; color:#fff; flex:1; }
+.ci-act-blurb { font-size:9.5px; color:#888; line-height:1.4; margin-bottom:6px; }
+.ci-act-meta { display:flex; justify-content:space-between; font-size:8.5px; letter-spacing:0.04em; }
+.ci-act-effect { color:#6ab07a; font-weight:600; }
+.ci-act-effect.var { color:#d4b87a; }
+.ci-act-cost { color:#666; }
+.ci-act-lockmsg { padding:8px 11px; margin-top:8px; background:#0a0a0a; border-radius:4px;
+  border:0.5px dashed rgba(255,255,255,0.08); font-size:10px; color:#888; text-align:center; }
+
+/* Career log — one date-prefixed row per event, listed newest-first. Visual
+   weight tuned to match the Pressing Issues card above it: same background,
+   same border opacity, similar internal padding. */
+.career-events { background:#121212; border:0.5px solid rgba(255,255,255,0.12); border-radius:4px;
+  padding:4px 18px; }
+.career-event  { display:flex; gap:14px; padding:14px 0;
+  border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.career-event:last-child { border-bottom:none; }
+.career-event .date { font-family:monospace; font-size:10px; color:#888;
+  letter-spacing:0.05em; flex-shrink:0; min-width:120px; padding-top:1px; }
+.career-event .text { font-size:12px; color:#d4d4d4; line-height:1.5; }
+
+.loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
+
+@media (max-width:900px) {
+  .top-row { grid-template-columns:1fr; }
+}
+@media (max-width:700px) {
+  .hero { grid-template-columns:1fr; gap:18px; }
+  .anchor { text-align:left; padding-left:0; border-left:none; border-top:0.5px solid rgba(255,255,255,0.08); padding-top:14px; }
+  .anchor-message { margin-left:0; }
+  .stats-row { grid-template-columns:repeat(2, 1fr); }
+  .identity-body .name .first, .identity-body .name .last { font-size:32px; }
+}
+
+/* ─── Current Affiliation panel ─────────────────────────────────────
+   Shows the politician's current role + the repeatable actions
+   associated with it. Variant theming via --acc-* CSS vars set per
+   politician_office:
+     Party Member  → party teal
+     Local Govt    → green (Community Organizer / City Council Member)
+     Legislature   → steel-blue (Member of Parliament / Senior MP)
+   All action buttons are visually present but disabled — their RPC
+   wiring lands when the per-role action mechanics ship. */
+.affil { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07); border-radius:7px;
+  overflow:hidden; border-left:3px solid var(--acc); margin-top:8px; }
+.affil.var-party { --acc:#7a9aab; --acc-bg:#0e1218; --acc-dim:#3a5060; --acc-bright:#a5c0d0; }
+.affil.var-local { --acc:#9aab7a; --acc-bg:#13160e; --acc-dim:#4a5a3a; --acc-bright:#b9c898; }
+.affil.var-leg   { --acc:#7a9aab; --acc-bg:#0e1218; --acc-dim:#3a5060; --acc-bright:#a5c0d0; }
+
+.ah-row { display:flex; align-items:flex-start; gap:14px; padding:16px 20px;
+  border-bottom:0.5px solid rgba(255,255,255,0.07); background:var(--acc-bg); }
+.ah-badge { width:38px; height:38px; border-radius:5px; background:#0a0a0a;
+  border:0.5px solid var(--acc-dim); color:var(--acc-bright);
+  display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; }
+.ah-info { flex:1; min-width:0; }
+.ah-eyebrow { font-size:8px; letter-spacing:0.14em; color:var(--acc); font-weight:600; margin-bottom:4px; }
+.ah-name { font-size:14px; font-weight:600; color:#fff; letter-spacing:-0.005em; line-height:1.3; }
+.ah-rank { font-size:10px; color:#888; font-style:italic; margin-left:7px; font-weight:400; }
+.ah-desc { font-size:10.5px; color:#bbb; margin-top:5px; line-height:1.55; }
+.ah-desc strong { color:var(--acc-bright); font-weight:600; }
+.ah-tenure { flex-shrink:0; text-align:right; font-size:9px; color:#888; letter-spacing:0.04em; }
+.ah-tenure-val { font-size:13px; color:var(--acc-bright); font-weight:700;
+  font-variant-numeric:tabular-nums; display:block; line-height:1; }
+.ah-tenure-lab { font-size:8px; color:#666; margin-top:3px; }
+
+.act-row { padding:14px 20px; }
+.ar-lab { font-size:8.5px; letter-spacing:0.14em; color:#666; font-weight:600; margin-bottom:10px; }
+.ar-buttons { display:grid; grid-template-columns:repeat(3,1fr); gap:9px; }
+.ar-buttons.cols-2 { grid-template-columns:repeat(2,1fr); }
+
+.act-btn { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.07); border-radius:5px;
+  padding:13px 14px; text-align:left; display:flex; flex-direction:column; gap:5px;
+  cursor:pointer; transition:background 0.15s, border-color 0.15s; }
+.act-btn:not(.disabled):hover { background:#101010; border-color:var(--acc-dim); }
+.act-btn:not(.disabled):hover .act-name { color:var(--acc-bright); }
+.act-btn.disabled { opacity:0.45; cursor:not-allowed; transition:none; }
+.act-btn.disabled:hover { background:#0a0a0a; border-color:rgba(255,255,255,0.07); }
+.act-btn.cooldown { opacity:0.55; cursor:not-allowed; }
+.act-btn.cooldown:hover { background:#0a0a0a; border-color:rgba(255,255,255,0.07); }
+.act-cooldown { font-size:8.5px; letter-spacing:0.1em; color:#d4b87a; font-weight:600; font-family:monospace; margin-top:3px; }
+.act-head { display:flex; align-items:center; gap:8px; }
+.act-ic { font-size:13px; color:var(--acc-bright); flex-shrink:0; }
+.act-name { font-size:11px; font-weight:600; color:#fff; letter-spacing:0.04em; flex:1; }
+.act-cost { font-size:8.5px; letter-spacing:0.1em; color:#d4b87a; font-weight:600; font-family:monospace; }
+.act-desc { font-size:9.5px; color:#888; line-height:1.5; }
+
+@media (max-width: 768px) {
+  .ar-buttons { grid-template-columns:1fr; }
+  .ar-buttons.cols-2 { grid-template-columns:1fr; }
+}
+</style>
+  <script type="module" crossorigin src="/assets/politician-home-CtTMrtlk.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-CzgKGX6o.js">
+  <link rel="modulepreload" crossorigin href="/assets/factions-C2s734Ze.js">
+  <link rel="modulepreload" crossorigin href="/assets/politician-topbar-5igJjSS-.js">
+</head>
+<body>
+
+<div id="pol-topbar-container"></div>
+
+<div class="content" id="content" style="display:none;">
+  <div class="hero">
+    <div class="identity">
+      <div class="identity-portrait" id="hero-portrait">—</div>
+      <div class="identity-body">
+        <div class="eyebrow">— POLITICIAN —</div>
+        <div class="name">
+          <span class="first" id="hero-first">—</span>
+          <span class="last"  id="hero-last"></span>
+        </div>
+        <div class="meta-row">
+          <div><span class="label">AGE</span><span class="val" id="hero-age">—</span></div>
+          <div><span class="label">NATION</span><span class="val" id="hero-nation">—</span></div>
+          <div><span class="label">AFFILIATION</span><span class="val" id="hero-career">—</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="anchor">
+      <div class="anchor-label">AFFILIATION</div>
+      <div class="anchor-message" id="hero-affiliation">This character has no affiliation.</div>
+      <div class="anchor-nick">
+        <div class="anchor-label">PLAYER NICKNAME</div>
+        <div class="anchor-nick-row" id="nick-row"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOP ROW: World Events (dispatch feed) + Nation Chat side-by-side. -->
+  <div class="top-row">
+
+    <!-- World Events — global event_log feed, 5 category tabs. -->
+    <div class="panel we">
+      <div class="p-head">
+        <div class="p-titles">
+          <div class="p-eyebrow">DISPATCHES &middot; ALL NATIONS</div>
+          <div class="p-title">World <span class="serif">Events</span></div>
+        </div>
+        <div class="p-right" id="ev-count">—</div>
+      </div>
+      <div class="we-tabs" id="ev-tabs">
+        <div class="we-tab active" data-tab="politics">POLITICS</div>
+        <div class="we-tab" data-tab="corporate">CORPORATE</div>
+        <div class="we-tab" data-tab="military">MILITARY</div>
+        <div class="we-tab" data-tab="nation">NATION</div>
+        <div class="we-tab" data-tab="world">WORLD</div>
+      </div>
+      <ul class="we-feed" id="ev-list"><li class="we-empty">Loading&hellip;</li></ul>
+    </div>
+
+    <!-- Nation Chat — wired against group_chats (chat_type='nation'). -->
+    <div class="panel nc">
+      <div class="p-head">
+        <div class="p-titles">
+          <div class="p-eyebrow" id="nc-eyebrow">POLITICAL CHATTER</div>
+          <div class="p-title">Nation <span class="serif">Floor</span></div>
+        </div>
+        <div class="p-right"><span class="nc-online" id="nc-online">—</span></div>
+      </div>
+      <div class="nc-feed" id="nc-feed">
+        <div class="nc-empty">Loading chat&hellip;</div>
+      </div>
+      <div class="nc-input">
+        <div class="nc-input-pill">
+          <span class="nc-input-badge" id="nc-self-badge">—</span>
+          <span class="nc-input-name" id="nc-self-name">—</span>
+        </div>
+        <input class="nc-input-field" id="nc-input-field" type="text"
+               placeholder="Post to the floor&hellip;" maxlength="500" />
+        <button class="nc-input-send" id="nc-input-send" disabled>POST</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats-row" id="stats-row"></div>
+
+  <div class="section-heading">
+    <span class="roman">I.</span>
+    <span class="sans">Pressing</span>
+    <span class="serif">Issues</span>
+  </div>
+  <div id="pressing-issues"></div>
+
+  <div class="section-heading" style="margin-top:28px;">
+    <span class="roman">II.</span>
+    <span class="sans">Current</span>
+    <span class="serif">Affiliation</span>
+  </div>
+  <div id="affiliation-host"></div>
+
+  <div class="section-heading" style="margin-top:28px;">
+    <span class="roman">III.</span>
+    <span class="sans">Political</span>
+    <span class="serif">Career</span>
+    <button class="retire-btn" id="retire-btn" title="End this politician's career">Retire</button>
+  </div>
+  <div class="career-events" id="career-events"></div>
+</div>
+
+<div id="loading" class="loading">LOADING...</div>
+
+</body>
+</html>

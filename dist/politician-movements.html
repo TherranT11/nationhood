@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Politician — Movements</title>
+<style>
+/* Topbar / nav / body base live in js/politician-topbar.js. This page only
+   styles its own body content. Action card shape mirrors entrepreneur-
+   corporations.html's .ec-action in teal. */
+* { box-sizing:border-box; margin:0; padding:0; }
+.content { padding:32px 24px 24px; }
+
+.pm-actions { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:14px; }
+.pm-action  { background:#0e1212; border:0.5px solid rgba(90,175,165,0.2); border-radius:6px;
+  padding:18px 20px; display:flex; align-items:center; gap:14px; cursor:not-allowed; opacity:0.85; }
+.pm-action .ic { width:38px; height:38px; flex-shrink:0; border-radius:4px; display:flex;
+  align-items:center; justify-content:center; background:rgba(90,175,165,0.08);
+  border:0.5px solid rgba(90,175,165,0.4); color:#5aafa5; font-size:18px; font-weight:500; }
+.pm-action .body { flex:1; min-width:0; }
+.pm-action .nm   { font-size:15px; font-weight:500; color:#fff; margin-bottom:3px; }
+.pm-action .ds   { font-size:11px; color:#888; line-height:1.5; }
+.pm-action .tag  { margin-left:auto; font-size:10px; color:#666; letter-spacing:0.08em;
+  text-transform:uppercase; white-space:nowrap; }
+
+.section-heading { display:flex; align-items:baseline; gap:10px; margin:28px 0 14px; }
+.section-heading .roman { color:#555; font-size:11px; letter-spacing:0.1em; }
+.section-heading .sans  { font-size:22px; font-weight:500; color:#fff; }
+.section-heading .serif { font-size:22px; font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#5aafa5; }
+.section-heading .meta  { margin-left:auto; color:#555; font-size:10px; letter-spacing:0.1em; }
+
+.mv-tabs { display:flex; gap:6px; margin-bottom:14px; }
+.mv-tab { padding:8px 16px; font-size:11px; letter-spacing:0.08em; color:#888;
+  background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:3px; cursor:pointer; }
+.mv-tab:hover:not(.active) { color:#d4d4d4; }
+.mv-tab.active { color:#5aafa5; border-color:rgba(90,175,165,0.4); background:#121613; }
+
+.empty { background:#121212; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
+  padding:22px 18px; color:#666; font-size:12px; line-height:1.6; text-align:center; }
+
+/* Movement card list — one row per movement party (faction_type='movement_party')
+   in the politician's nation. Compact and readable; uses the party's color as a
+   left-rail accent so a player can tell parties apart at a glance. The whole
+   row is a link to the party detail page. */
+.mv-card { display:flex; align-items:center; gap:16px; padding:18px 20px;
+  background:#0e1212; border:0.5px solid rgba(255,255,255,0.08); border-radius:6px;
+  margin-bottom:10px; border-left:3px solid #5aafa5; cursor:pointer;
+  transition:background 0.12s, border-color 0.12s; }
+.mv-card:hover { background:#11181a; border-color:rgba(255,255,255,0.14); }
+.mv-card .badge { width:46px; height:46px; flex-shrink:0; border-radius:4px;
+  display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.04);
+  color:#d4d4d4; font-size:17px; font-weight:600; font-family:monospace; letter-spacing:0.05em; }
+.mv-card .body { flex:1; min-width:0; }
+.mv-card .title { font-size:18px; color:#fff; font-weight:500; margin-bottom:4px; }
+.mv-card .sub   { font-size:14px; color:#888; line-height:1.5; }
+.mv-card .seats { margin-left:auto; font-family:monospace; font-size:14px; color:#666;
+  letter-spacing:0.08em; text-transform:uppercase; white-space:nowrap; text-align:right; }
+.mv-card .seats strong { display:block; color:#d4d4d4; font-size:20px; font-weight:600; margin-top:3px; }
+.mv-card .popularity { font-family:monospace; font-size:14px; color:#666;
+  letter-spacing:0.08em; text-transform:uppercase; white-space:nowrap; text-align:right; margin-left:18px; }
+.mv-card .popularity strong { display:block; color:#d4d4d4; font-size:20px; font-weight:600; margin-top:3px; }
+/* Archetype + status badges — both admin-set on the Add Party form
+   (20270394). Archetype is uniform slate-blue (neutral so it doesn't
+   compete with status's coalition-role semantics); status takes
+   one of three colours (teal Governing / amber Coalition / muted
+   Opposition). Either badge is hidden entirely when its column is
+   null. Same .x-badge base shape so they line up visually. */
+.mv-card .mv-badge { display:inline-block; margin-left:10px; padding:2px 8px;
+  font-family:monospace; font-size:10px; font-weight:700; letter-spacing:0.08em;
+  text-transform:uppercase; vertical-align:middle; border-radius:3px;
+  border:0.5px solid currentColor; }
+.mv-card .archetype-badge          { color:#7a9aab; background:rgba(122,154,171,0.10); }
+.mv-card .status-badge.governing   { color:#5aafa5; background:rgba(90,175,165,0.10); }
+.mv-card .status-badge.coalition   { color:#c89e6e; background:rgba(200,158,110,0.10); }
+.mv-card .status-badge.opposition  { color:#888;    background:rgba(150,150,150,0.06); }
+/* Gold chip — matches the Tier 0 MEMBERSHIP accent on the Career page
+   so "Your Party" reads as the same personal-affiliation cue. */
+.mv-card .your-party-badge         { color:#c8a64e; background:rgba(200,166,78,0.10); border-color:rgba(200,166,78,0.30); }
+
+/* Join Political Party action card needs to look active when the live
+   feature is wired (the rest stay disabled with the Soon tag). */
+.pm-action.is-live { cursor:pointer; opacity:1; border-color:rgba(90,175,165,0.45); }
+.pm-action.is-live:hover { background:#101616; border-color:#5aafa5; }
+.pm-action.is-live .tag { color:#5aafa5; }
+
+/* Join modal — full-page overlay, scrollable inner list. Mirrors the
+   visual language of the rest of the politician surface (teal accents,
+   compact monospace meta) so it doesn't read like an out-of-game popup. */
+.jp-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:200;
+  display:none; align-items:flex-start; justify-content:center; padding:40px 20px; overflow-y:auto; }
+.jp-overlay.open { display:flex; }
+.jp-modal { width:100%; max-width:980px; background:#0d0d0d;
+  border:0.5px solid rgba(255,255,255,0.10); border-radius:10px; overflow:hidden;
+  box-shadow:0 24px 80px rgba(0,0,0,0.6); }
+.jp-head { display:flex; align-items:flex-start; justify-content:space-between;
+  padding:18px 24px; border-bottom:0.5px solid rgba(255,255,255,0.07); }
+.jp-titles .eyebrow { font-size:9px; letter-spacing:0.16em; color:#5aafa5; margin-bottom:5px; }
+.jp-titles .title   { font-size:20px; font-weight:500; color:#fff; }
+.jp-titles .serif   { font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#5aafa5; }
+.jp-titles .sub     { font-size:11px; color:#888; margin-top:5px; letter-spacing:0.03em; }
+.jp-close { width:28px; height:28px; border:0.5px solid rgba(255,255,255,0.10); border-radius:5px;
+  display:flex; align-items:center; justify-content:center; color:#888; font-size:14px;
+  cursor:pointer; background:transparent; }
+.jp-close:hover { background:#161616; color:#fff; }
+
+.jp-col-head { display:grid; grid-template-columns:38px 1.7fr 1.4fr 90px 84px;
+  gap:14px; align-items:center; padding:9px 24px; background:#0a0a0a;
+  border-bottom:0.5px solid rgba(255,255,255,0.07);
+  font-size:8px; letter-spacing:0.1em; color:#666; text-transform:uppercase; font-weight:600; }
+.jp-col-head .c { text-align:center; } .jp-col-head .r { text-align:right; }
+
+.jp-list  { max-height:560px; overflow-y:auto; }
+.jp-party { border-bottom:0.5px solid rgba(255,255,255,0.05); padding:14px 24px; transition:background 0.15s; }
+.jp-party:hover { background:#0f0f0f; }
+.jp-party:last-child { border-bottom:none; }
+.jp-row { display:grid; grid-template-columns:38px 1.7fr 1.4fr 90px 84px;
+  gap:14px; align-items:center; }
+.jp-logo { width:38px; height:38px; border-radius:5px; display:flex; align-items:center;
+  justify-content:center; font-size:12px; font-weight:700; font-family:monospace;
+  letter-spacing:0.04em; color:#cfcabf; background:rgba(255,255,255,0.05); flex-shrink:0; }
+.jp-name { font-size:13px; font-weight:600; color:#fff; line-height:1.2; }
+.jp-abbr { font-size:9px; color:#888; margin-top:2px; letter-spacing:0.04em; }
+.jp-leader { font-size:11px; color:#d4d4d4; line-height:1.25; }
+.jp-leader .none { color:#666; font-style:italic; }
+.jp-seats { text-align:center; }
+.jp-seats .n  { font-size:13px; color:#fff; font-weight:600; font-variant-numeric:tabular-nums; }
+.jp-seats .of { font-size:8px; color:#666; letter-spacing:0.04em; }
+.jp-act { text-align:right; }
+.jp-btn { font-size:9px; letter-spacing:0.08em; padding:7px 13px; border-radius:4px;
+  font-family:monospace; font-weight:600; cursor:pointer; background:transparent;
+  text-transform:uppercase; }
+.jp-btn--join     { color:#5aafa5; border:0.5px solid rgba(90,175,165,0.4); }
+.jp-btn--join:hover { background:rgba(90,175,165,0.10); border-color:#5aafa5; }
+.jp-btn--leave    { color:#c89e6e; border:0.5px solid rgba(200,158,110,0.4); }
+.jp-btn--leave:hover { background:rgba(200,158,110,0.10); border-color:#c89e6e; }
+.jp-btn--disabled { color:#555; border:0.5px solid rgba(255,255,255,0.06); cursor:not-allowed; }
+.jp-desc { font-size:10.5px; color:#9a9a9a; line-height:1.55; margin-top:10px;
+  padding-left:52px; padding-right:84px; font-style:italic; }
+.jp-empty { padding:40px 24px; text-align:center; color:#666; font-size:12px; font-style:italic; }
+
+/* Found-a-party modal — shares the .jp-overlay shell with the join modal
+   (same backdrop, same modal frame). Body differs: stepped fields, an
+   archetype picker, a summary line, and a footer cost gate. */
+.fp-body  { padding:22px 24px; }
+.fp-lab   { font-size:9px; letter-spacing:0.13em; color:#666; margin-bottom:9px;
+  display:flex; align-items:center; gap:8px; }
+.fp-lab .step { width:16px; height:16px; border-radius:50%; border:0.5px solid rgba(90,175,165,0.4);
+  color:#5aafa5; font-size:8px; display:inline-flex; align-items:center; justify-content:center; }
+.fp-ident { display:flex; gap:12px; margin-bottom:22px; align-items:stretch; }
+.fp-logo  { width:56px; height:56px; border-radius:6px; flex-shrink:0; display:flex;
+  align-items:center; justify-content:center; font-size:18px; font-weight:700;
+  font-family:monospace; transition:all 0.2s; background:#161616;
+  border:0.5px solid rgba(255,255,255,0.10); color:#888; }
+.fp-fields { flex:1; display:flex; flex-direction:column; gap:8px; }
+.fp-name-grid { display:grid; grid-template-columns:1fr 90px; gap:8px; }
+.fp-inp { background:#141414; border:0.5px solid rgba(255,255,255,0.12); border-radius:5px;
+  color:#fff; padding:11px 13px; font-size:14px; font-family:inherit; outline:none; }
+.fp-inp:focus { border-color:#5aafa5; }
+.fp-inp::placeholder { color:#555; }
+.fp-inp.abbr { font-size:12px; letter-spacing:0.1em; text-transform:uppercase; }
+.fp-inp.desc { font-size:12px; }
+
+.fp-arch-grid { display:grid; grid-template-columns:repeat(5, 1fr); gap:8px; margin-bottom:18px; }
+.fp-arch { border:0.5px solid rgba(255,255,255,0.07); border-radius:6px; padding:11px 9px;
+  cursor:pointer; text-align:center; transition:all 0.15s; background:#0d0d0d; }
+.fp-arch:hover { background:#131313; }
+.fp-arch.sel  { border-width:1px; }
+.fp-arch .ai  { font-size:15px; margin-bottom:6px; line-height:1; }
+.fp-arch .an  { font-size:10px; font-weight:600; line-height:1.2; color:#ccc; }
+.fp-arch.sel .an { color:#fff; }
+
+.fp-arch-detail { background:#0c100c; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:6px; padding:14px 16px; margin-bottom:22px; }
+.fp-arch-detail .nm { font-size:13px; font-weight:600; color:#fff; margin-bottom:7px; }
+.fp-arch-detail .ds { font-size:11px; color:#9a9a9a; line-height:1.55; font-style:italic; }
+
+.fp-summary { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.07); border-radius:7px;
+  padding:16px; margin-bottom:18px; }
+.fp-sum-lab { font-size:9px; letter-spacing:0.13em; color:#666; margin-bottom:10px; }
+.fp-sum-row { display:flex; align-items:flex-start; gap:10px; font-size:11px; padding:5px 0;
+  color:#bbb; line-height:1.45; }
+.fp-sum-row .si { font-size:11px; width:16px; text-align:center; flex-shrink:0; }
+.fp-sum-row .si.cost { color:#c8a64e; } .fp-sum-row .si.you { color:#5aafa5; }
+.fp-sum-row .si.zero { color:#888; }   .fp-sum-row .si.warn { color:#c87a7a; }
+.fp-sum-row strong { color:#fff; font-weight:600; }
+
+.fp-foot { display:flex; align-items:center; justify-content:space-between;
+  padding:18px 24px; border-top:0.5px solid rgba(255,255,255,0.07); background:#0a0a0a; }
+.fp-cost { display:flex; align-items:center; gap:14px; }
+.fp-cost .lab { font-size:8px; letter-spacing:0.1em; color:#666; }
+.fp-cost .val { font-size:15px; font-weight:600; margin-top:2px; font-variant-numeric:tabular-nums; }
+.fp-cost .val.have { color:#8aaa6a; }
+.fp-cost .val.need { color:#c87a7a; }
+.fp-cost .arrow { color:#444; font-size:13px; align-self:center; padding-top:10px; }
+.fp-gate { font-size:9px; color:#888; margin-top:6px; letter-spacing:0.02em; }
+.fp-gate.bad { color:#c87a7a; }
+.fp-submit { font-size:11px; letter-spacing:0.08em; padding:13px 24px; border-radius:5px;
+  cursor:pointer; border:0.5px solid #5aafa5; color:#0a0a0a; background:#5aafa5;
+  font-weight:600; font-family:monospace; text-transform:uppercase; }
+.fp-submit:hover    { background:#7ac4b5; }
+.fp-submit:disabled { background:#1a1a1a; color:#555; border-color:rgba(255,255,255,0.06); cursor:not-allowed; }
+
+.fp-err { font-size:11px; color:#c87a7a; margin-top:6px; min-height:14px; }
+
+.loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
+
+@media (max-width:700px) {
+  .pm-actions { grid-template-columns:1fr; gap:10px; }
+  .jp-col-head, .jp-row { grid-template-columns:38px 1fr 84px; }
+  .jp-col-head > :nth-child(3), .jp-col-head > :nth-child(4),
+  .jp-row .jp-leader, .jp-row .jp-seats { display:none; }
+  .jp-desc { padding-left:52px; padding-right:0; }
+  .fp-arch-grid { grid-template-columns:repeat(2, 1fr); }
+  .fp-foot { flex-direction:column; align-items:stretch; gap:14px; }
+  .fp-submit { width:100%; }
+}
+</style>
+  <script type="module" crossorigin src="/assets/politician-movements-D470mWRJ.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-CzgKGX6o.js">
+  <link rel="modulepreload" crossorigin href="/assets/factions-C2s734Ze.js">
+  <link rel="modulepreload" crossorigin href="/assets/politician-topbar-5igJjSS-.js">
+  <link rel="modulepreload" crossorigin href="/assets/politician-party-actions-ClD-uaEO.js">
+</head>
+<body>
+
+<div id="pol-topbar-container"></div>
+
+<div class="content" id="content" style="display:none;">
+  <div class="pm-actions">
+    <div class="pm-action is-live" data-action="join-party" id="pm-join-party">
+      <div class="ic">&#x2197;</div>
+      <div class="body">
+        <div class="nm">Join a Political Party</div>
+        <div class="ds">Apply to join an existing political party in your nation.</div>
+      </div>
+      <div class="tag">Open</div>
+    </div>
+    <div class="pm-action" data-action="join-ngo">
+      <div class="ic">&#x2197;</div>
+      <div class="body">
+        <div class="nm">Join a Non-Government Organization</div>
+        <div class="ds">Apply to a union, advocacy group, or charity.</div>
+      </div>
+      <div class="tag">Soon</div>
+    </div>
+    <div class="pm-action" data-action="join-dissident">
+      <div class="ic">&#x2197;</div>
+      <div class="body">
+        <div class="nm">Join a Dissident Group</div>
+        <div class="ds">Approach an underground organisation.</div>
+      </div>
+      <div class="tag">Soon</div>
+    </div>
+  </div>
+
+  <div class="pm-actions">
+    <div class="pm-action is-live" data-action="start-party" id="pm-start-party">
+      <div class="ic">+</div>
+      <div class="body">
+        <div class="nm">Start a Political Party</div>
+        <div class="ds">Found a new political party in your nation. Requires 100 Influence.</div>
+      </div>
+      <div class="tag">Open</div>
+    </div>
+    <div class="pm-action" data-action="start-ngo">
+      <div class="ic">+</div>
+      <div class="body">
+        <div class="nm">Start a Non-Government Organization</div>
+        <div class="ds">Found a union, advocacy group, or charity.</div>
+      </div>
+      <div class="tag">Soon</div>
+    </div>
+    <div class="pm-action" data-action="start-dissident">
+      <div class="ic">+</div>
+      <div class="body">
+        <div class="nm">Start a Dissident Group</div>
+        <div class="ds">Begin underground organising.</div>
+      </div>
+      <div class="tag">Soon</div>
+    </div>
+  </div>
+
+  <div class="section-heading">
+    <span class="roman">I.</span>
+    <span class="sans">Active</span>
+    <span class="serif">Movements</span>
+  </div>
+
+  <div class="mv-tabs" id="mv-tabs">
+    <div class="mv-tab active" data-tab="party">Political Parties</div>
+    <div class="mv-tab" data-tab="ngo">NGO</div>
+    <div class="mv-tab" data-tab="dissident">Dissident Groups</div>
+  </div>
+
+  <div id="mv-list">
+    <div class="empty">No active political party affiliations yet.</div>
+  </div>
+</div>
+
+<div id="loading" class="loading">LOADING...</div>
+
+<!-- Join Political Party modal — overlay listing every movement_party in
+     the politician's nation. Per-row JOIN/LEAVE button based on current
+     affiliation. Opens from the action card or auto-opens on ?openJoin=1. -->
+<div id="jp-overlay" class="jp-overlay">
+  <div class="jp-modal">
+    <div class="jp-head">
+      <div class="jp-titles">
+        <div class="eyebrow">— MOVEMENTS —</div>
+        <div class="title">Join a <span class="serif">Political Party</span></div>
+        <div class="sub" id="jp-sub">Choose the vehicle for your ambitions.</div>
+      </div>
+      <button class="jp-close" id="jp-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="jp-col-head">
+      <span></span>
+      <span>Party</span>
+      <span>Leader</span>
+      <span class="c">Seats</span>
+      <span class="r"></span>
+    </div>
+    <div class="jp-list" id="jp-list"></div>
+  </div>
+</div>
+
+<!-- Found-a-party modal — opens from the Start a Political Party action
+     card. Politician needs >= 100 Influence (gate, not deducted) and may
+     have at most one active founded movement. -->
+<div id="fp-overlay" class="jp-overlay">
+  <div class="jp-modal" style="max-width:760px;">
+    <div class="jp-head">
+      <div class="jp-titles">
+        <div class="eyebrow">— MOVEMENTS —</div>
+        <div class="title">Found a <span class="serif">Political Party</span></div>
+        <div class="sub" id="fp-sub">Create a new force in your nation's politics.</div>
+      </div>
+      <button class="jp-close" id="fp-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="fp-body">
+      <div class="fp-lab"><span class="step">1</span> NAME YOUR PARTY</div>
+      <div class="fp-ident">
+        <div class="fp-logo" id="fp-logo">??</div>
+        <div class="fp-fields">
+          <div class="fp-name-grid">
+            <input class="fp-inp" id="fp-name" maxlength="80" placeholder="Party name…">
+            <input class="fp-inp abbr" id="fp-abbr" maxlength="8" placeholder="ABBR">
+          </div>
+          <input class="fp-inp desc" id="fp-desc" maxlength="240" placeholder="Optional one-line description — e.g. &quot;A new beginning for the nation&quot;">
+        </div>
+      </div>
+      <div class="fp-lab"><span class="step">2</span> CHOOSE YOUR ARCHETYPE</div>
+      <div class="fp-arch-grid" id="fp-arch-grid"></div>
+      <div class="fp-arch-detail" id="fp-arch-detail" style="display:none;"></div>
+    </div>
+    <div class="fp-foot">
+      <div>
+        <div class="fp-cost">
+          <div><div class="lab">YOUR INFLUENCE</div><div class="val have" id="fp-cost-have">0</div></div>
+          <span class="arrow">/</span>
+          <div><div class="lab">REQUIRED</div><div class="val need">100</div></div>
+        </div>
+        <div class="fp-gate" id="fp-gate">Requires 100 Influence. Founding does not deduct.</div>
+        <div class="fp-err" id="fp-err"></div>
+      </div>
+      <button class="fp-submit" id="fp-submit" disabled>Found Party</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Politician — Election</title>
+<style>
+/* Topbar / nav / body base live in js/politician-topbar.js. This page
+   borrows politician-nation's amber-on-dark accent (read as "regal /
+   sovereign") for the hero, but switches party rows to teal — the same
+   accent rule party.html follows — so the per-party list reads "your
+   party context" rather than "national chrome". */
+* { box-sizing:border-box; margin:0; padding:0; }
+.content { padding:32px 24px 24px; max-width:1100px; margin:0 auto; }
+
+.crumb { font-size:11px; color:#666; margin-bottom:18px; letter-spacing:0.04em; }
+.crumb a { color:#888; text-decoration:none; }
+.crumb a:hover { color:#cfcabf; }
+.crumb .current { color:#c8a64e; }
+
+.hero-card { background:#0d0d0c; border:0.5px solid rgba(200,166,78,0.18);
+  border-radius:6px; padding:28px 24px; margin-bottom:18px; }
+.hero-eyebrow { font-size:10px; letter-spacing:0.16em; color:#c8a64e;
+  text-transform:uppercase; margin-bottom:10px; }
+.hero-eyebrow .nation { color:#fff; }
+.hero-title { font-size:36px; font-weight:500; color:#fff; line-height:1.1;
+  letter-spacing:-0.01em; margin-bottom:8px; }
+.hero-title .when { font-family:Georgia,'Times New Roman',serif; font-style:italic;
+  color:#c8a64e; }
+.hero-sub { font-size:13px; color:#888; line-height:1.5; }
+
+.stats-strip { display:grid; grid-template-columns:repeat(3,1fr); gap:1px;
+  background:rgba(255,255,255,0.06); margin-bottom:18px;
+  border:0.5px solid rgba(255,255,255,0.06); border-radius:6px; overflow:hidden; }
+.ss { background:#0a0a0a; padding:18px 20px; }
+.ss .ssl { display:block; font-size:9px; letter-spacing:0.13em; color:#666;
+  text-transform:uppercase; margin-bottom:6px; }
+.ss .ssv { font-size:22px; font-weight:500; color:#fff; line-height:1.1; }
+.ss .ssd { font-size:11px; color:#888; margin-top:4px; }
+
+.chamber-card { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.06);
+  border-radius:6px; padding:20px 18px; margin-bottom:18px; }
+.chamber-head { font-size:9px; letter-spacing:0.13em; color:#666; text-transform:uppercase;
+  margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; }
+.chamber-head .needed { color:#888; letter-spacing:0.04em; text-transform:none; }
+.chamber-bar { height:24px; background:#000; border-radius:3px; overflow:hidden;
+  display:flex; }
+.chamber-bar > .seg { height:100%; }
+.chamber-bar > .seg:first-child { border-top-left-radius:3px; border-bottom-left-radius:3px; }
+.chamber-bar > .seg:last-child  { border-top-right-radius:3px; border-bottom-right-radius:3px; }
+.chamber-foot { font-size:10px; color:#666; margin-top:10px; line-height:1.5; }
+
+.panel { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.06);
+  border-radius:6px; padding:18px 18px 6px; margin-bottom:18px; }
+.panel-head { font-size:10px; letter-spacing:0.13em; color:#666;
+  text-transform:uppercase; margin-bottom:14px; padding:0 4px; }
+
+.party-row { display:grid; grid-template-columns:38px 1fr 200px 90px;
+  gap:14px; align-items:center; padding:14px 4px;
+  border-bottom:0.5px solid rgba(255,255,255,0.04); }
+.party-row:last-child { border-bottom:none; }
+.p-badge { width:30px; height:30px; border-radius:4px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:monospace; font-size:10px; font-weight:700; }
+.p-id-name { font-size:14px; font-weight:500; color:#fff; line-height:1.2; }
+.p-id-meta { font-size:10px; color:#666; margin-top:4px; letter-spacing:0.04em; }
+.p-bar-wrap { display:flex; flex-direction:column; gap:5px; }
+.p-bar-row  { display:flex; justify-content:space-between; align-items:baseline;
+  font-size:10px; }
+.p-bar-row .lab { color:#888; letter-spacing:0.07em; text-transform:uppercase; }
+.p-bar-row .pct { color:#cfcabf; font-family:monospace; }
+.p-bar { height:4px; background:rgba(255,255,255,0.05); border-radius:2px; overflow:hidden; }
+.p-bar .fill { height:100%; border-radius:2px; }
+.p-seats { text-align:right; }
+.p-seats .v   { font-size:24px; font-weight:600; color:#fff; line-height:1; font-variant-numeric:tabular-nums; }
+.p-seats .sub { font-size:10px; color:#666; margin-top:4px; }
+.p-seats .gain { font-size:10px; margin-top:4px; font-family:monospace; }
+.p-seats .gain.up   { color:#7ac3a1; }
+.p-seats .gain.down { color:#c87a7a; }
+.p-seats .gain.flat { color:#666; }
+
+.empty { color:#666; font-size:13px; font-style:italic;
+  padding:30px 16px; text-align:center; }
+
+.loading { color:#666; font-size:13px; padding:40px 24px; text-align:center; font-style:italic; }
+.fail    { color:#c87a7a; font-size:13px; padding:40px 24px; text-align:center; }
+
+@media (max-width:700px) {
+  .stats-strip { grid-template-columns:1fr 1fr; }
+  .ss:nth-child(3) { grid-column:1 / -1; border-top:0.5px solid rgba(255,255,255,0.06); }
+  .party-row { grid-template-columns:30px 1fr auto; gap:10px; }
+  .party-row .p-bar-wrap { display:none; }
+}
+</style>
+  <script type="module" crossorigin src="/assets/election-hA0EB9sl.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-CzgKGX6o.js">
+  <link rel="modulepreload" crossorigin href="/assets/factions-C2s734Ze.js">
+  <link rel="modulepreload" crossorigin href="/assets/politician-topbar-5igJjSS-.js">
+</head>
+<body>
+
+<div id="pol-topbar-container"></div>
+
+<div class="content" id="content" style="display:none;">
+  <div class="crumb">
+    <a href="politician-home.html">Home</a> /
+    <a href="politician-nation.html">Nation</a> /
+    <span class="current">Election</span>
+  </div>
+
+  <div class="hero-card">
+    <div class="hero-eyebrow">— GENERAL ELECTION · <span class="nation" id="hero-nation">—</span> —</div>
+    <div class="hero-title"><span class="when" id="hero-when">—</span></div>
+    <div class="hero-sub" id="hero-sub">—</div>
+  </div>
+
+  <div class="stats-strip">
+    <div class="ss">
+      <span class="ssl">Seats at Stake</span>
+      <div class="ssv" id="ss-seats">—</div>
+      <div class="ssd" id="ss-majority"></div>
+    </div>
+    <div class="ss">
+      <span class="ssl">Active Parties</span>
+      <div class="ssv" id="ss-parties">—</div>
+      <div class="ssd" id="ss-parties-sub"></div>
+    </div>
+    <div class="ss">
+      <span class="ssl">Eligible Voters</span>
+      <div class="ssv" id="ss-voters">—</div>
+      <div class="ssd">70% of population</div>
+    </div>
+  </div>
+
+  <div class="chamber-card">
+    <div class="chamber-head">
+      <span>PROJECTED CHAMBER</span>
+      <span class="needed" id="chamber-needed">—</span>
+    </div>
+    <div class="chamber-bar" id="chamber-bar"></div>
+    <div class="chamber-foot">Each bar segment is sized to the projected seat count. Seats are awarded by largest-remainder of each party's popularity rating; the actual election rolls the same allocator with a random tiebreak.</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">PROJECTED RESULTS</div>
+    <div id="parties-host"></div>
+  </div>
+</div>
+
+<div id="loading" class="loading">Loading election…</div>
+
+</body>
+</html>
