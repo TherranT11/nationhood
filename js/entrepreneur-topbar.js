@@ -44,7 +44,7 @@ function ensureStyles() {
     font-size:11px; color:#8aaa6a; cursor:pointer; white-space:nowrap; }
   .ent-dd { position:absolute; right:0; top:calc(100% + 8px); background:#0f0f0f;
     border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; min-width:240px; max-width:340px;
-    display:none; z-index:100; overflow:hidden; }
+    display:none; z-index:100; overflow-y:auto; max-height:min(70vh, 420px); }
   .ent-dd.open { display:block; }
   .ent-dd-item { display:flex; align-items:center; gap:10px; padding:10px 14px; font-size:11px;
     color:#d4d4d4; cursor:pointer; border-bottom:0.5px solid rgba(255,255,255,0.06); }
