@@ -152,10 +152,12 @@ export function renderPoliticianTopbar(container, { faction, shard, nation, allU
   const display = displayName(f) || 'Politician';
   const baseLabel = last ? `${(first[0] || '').toUpperCase()}. ${last}` : (first || 'Politician');
   const pillLabel = nick ? `${baseLabel} (${nick})` : baseLabel;
-  // Politician topbar shows an INFLUENCE score (was POL CASH). Sourced from
-  // factions.politician_influence (added in migration 20270357); fmtBig keeps
-  // small values plain ("0", "27") and magnitude-scales higher ones ("1.2k").
-  const influence = fmtBig(Number(f.politician_influence) || 0);
+  // Politician topbar shows POLITICAL CAPITAL (was INFLUENCE — renamed
+  // 20270463, was POL CASH before that). Sourced from factions
+  // .political_capital (originally added 20270357 as politician_
+  // influence); fmtBig keeps small values plain ("0", "27") and
+  // magnitude-scales higher ones ("1.2k").
+  const politicalCapital = fmtBig(Number(f.political_capital) || 0);
   const age = String(currentAge(f, s.current_tick || 0));
   const nationHtml = nation
     ? `<img class="flag" src="${escAttr(flagFor(nation))}" alt="" onerror="this.style.visibility='hidden'">${esc(nation.name)}`
@@ -176,7 +178,7 @@ export function renderPoliticianTopbar(container, { faction, shard, nation, allU
         <div><div class="label">NEXT TICK</div><div class="value" id="pol-next-tick">—</div></div>
       </div>
       <div class="right">
-        <div class="cash-pill"><span class="label">INFLUENCE: </span><span class="value">${esc(influence)}</span></div>
+        <div class="cash-pill"><span class="label">POLITICAL CAPITAL: </span><span class="value">${esc(politicalCapital)}</span></div>
         <div class="pol-switcher">
           <span class="pol-pill" id="pol-pill" title="Switch faction">${esc(pillLabel)} &#x25BE;</span>
           <div class="pol-dd" id="pol-dd"></div>
@@ -216,7 +218,7 @@ export async function bootstrapPolitician(activeTab) {
 
   const [facRes, shardRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, nickname, founded_tick, party_funds, abandoned_at, is_banned, politician_charisma, politician_reputation, politician_credibility, politician_influence, politician_suspicion, politician_party_id, politician_office, politician_office_won_at_tick, speech_cooldown_until_tick, door_knock_cooldown_until_tick, next_member_action_tick, next_party_motion_tick, next_mp_action_tick')
+      .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, nickname, founded_tick, party_funds, abandoned_at, is_banned, politician_charisma, politician_reputation, politician_credibility, political_capital, politician_suspicion, volunteers, politician_party_id, politician_office, politician_office_won_at_tick, speech_cooldown_until_tick, door_knock_cooldown_until_tick, next_member_action_tick, next_party_motion_tick, next_mp_action_tick, next_local_action_tick')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
     _supabase.from('shard').select('current_tick, current_date, next_tick_at').eq('name', 'Alpha Shard').single(),
   ]);

@@ -424,7 +424,7 @@
     </div>
     <div class="em-footer" id="em-footer" style="display:none;">
       <div class="em-your-stats">
-        <div class="em-stat-block"><div class="li">INFLUENCE</div><div class="lv infl" id="em-stat-infl">—</div></div>
+        <div class="em-stat-block"><div class="li">POL. CAPITAL</div><div class="lv infl" id="em-stat-infl">—</div></div>
         <div class="em-stat-block"><div class="li">CHARISMA</div><div class="lv cha"  id="em-stat-cha" >—</div></div>
         <div class="em-stat-block"><div class="li">CREDIBILITY</div><div class="lv cred" id="em-stat-cred">—</div></div>
       </div>
@@ -1091,10 +1091,10 @@ async function init() {
     const { data, error } = await _supabase.rpc('politician_resolve_due_elections');
     if (!error && data?.resolved) resolution = data;
     if (resolution) {
-      // Reflect the post-resolution influence in ctx.faction immediately
-      // so the topbar / mock-up stat readout don't lag a tick behind the
-      // banner copy.
-      ctx.faction.politician_influence = resolution.politician_influence;
+      // Reflect the post-resolution Political Capital in ctx.faction
+      // immediately so the topbar / mock-up stat readout don't lag a
+      // tick behind the banner copy.
+      ctx.faction.political_capital = resolution.political_capital;
     }
   } catch (_) { /* non-fatal — banner just won't show */ }
 
@@ -1166,14 +1166,14 @@ function renderResolutionBanner(r) {
   const district = r.district || 'a district';
   const pollYou = Number(r.polling_you);
   const pollOpp = Number(r.polling_opp);
-  const delta = Number(r.influence_delta || 0);
+  const delta = Number(r.political_capital_delta || 0);
   const deltaLabel = delta === 0 ? '' : (delta > 0 ? `+${delta}` : `${delta}`);
   const headline = won ? 'ELECTION — VICTORY' : 'ELECTION — DEFEAT';
 
   // Compose the body as discrete sentences so each clause renders only
-  // when it has something to say. Party-reward + influence sentences
-  // tail-append; they're suppressed for losses (no party reward, and
-  // influence delta of 0 in a community loss).
+  // when it has something to say. Party-reward + Political Capital
+  // sentences tail-append; they're suppressed for losses (no party
+  // reward, and Political Capital delta of 0 in a community loss).
   const sentences = [];
   sentences.push(won
     ? `You won the ${tier} race in ${escHtml(district)} against ${escHtml(opp)}.`
@@ -1210,7 +1210,7 @@ function renderResolutionBanner(r) {
     }
   }
   if (deltaLabel) {
-    sentences.push(`Influence ${deltaLabel}.`);
+    sentences.push(`Political Capital ${deltaLabel}.`);
   }
   // Office stamp — surfaces the new factions.politician_office value
   // in the same banner that announced the win. The page reload that
@@ -1675,12 +1675,12 @@ function renderElectionOffer(offer, ctx) {
   const parl = offer.parliament || {};
 
   // Footer stats are read live off ctx.faction so they match the topbar
-  // / mockup. influence is numeric in the DB; floor to int for display.
+  // / mockup. Political Capital is numeric in the DB; floor to int for display.
   const f = ctx.faction || {};
-  const inf  = Math.floor(Number(f.politician_influence)   || 0);
+  const cap  = Math.floor(Number(f.political_capital)      || 0);
   const cha  = Number(f.politician_charisma)    || 0;
   const cred = Number(f.politician_credibility) || 0;
-  document.getElementById('em-stat-infl').textContent = inf;
+  document.getElementById('em-stat-infl').textContent = cap;
   document.getElementById('em-stat-cha' ).textContent = cha;
   document.getElementById('em-stat-cred').textContent = cred;
 
@@ -1729,15 +1729,15 @@ function renderOptionCard(tier, race, eyebrow, titleLead, blurb, resolveTicks) {
   const badgeBorder = hasColor ? partyColor : 'rgba(255,255,255,0.07)';
   const stakeWin   = Number(race.stake_win)  || 0;
   const stakeLose  = Number(race.stake_lose) || 0;
-  const winValTxt  = `+${stakeWin} Influence`;
+  const winValTxt  = `+${stakeWin} Pol. Capital`;
   // Parliament loss also costs the party -0.5 Popularity (20270452).
   // Community losses stay party-neutral. Magnitudes hardcoded here
   // because they're rules-constant, not per-race dynamic.
   const loseValTxt = isParl
     ? (stakeLose === 0
         ? '−0.5 Party Popularity'
-        : `${stakeLose} Influence · −0.5 Party Popularity`)
-    : (stakeLose === 0 ? 'No cost' : `${stakeLose} Influence`);
+        : `${stakeLose} Pol. Capital · −0.5 Party Popularity`)
+    : (stakeLose === 0 ? 'No cost' : `${stakeLose} Pol. Capital`);
   const loseClass  = (isParl || stakeLose !== 0) ? 'lose' : 'zero';
   // Entry fee — parliament only, $50K from party treasury, win or lose.
   const entryFeeRow = isParl
