@@ -296,7 +296,11 @@ export async function bootstrapPolitician(activeTab) {
     } catch (_) { /* non-fatal */ }
   }
 
-  const allUserFactions = factions.filter(f => f.id !== faction.id);
+  // Include the active politician in the switcher list (matches the
+  // entrepreneur / military / common topbars). Filtering them out
+  // caused nextPoliticianSlot to undercount by 1, so a user with two
+  // politicians saw "Join as Politician #2" instead of "#3".
+  const allUserFactions = factions;
 
   const container = document.getElementById('pol-topbar-container');
   if (container) {
