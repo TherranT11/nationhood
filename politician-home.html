@@ -49,8 +49,7 @@
   width:130px; outline:none; }
 .anchor-nick-input:focus { border-color:#5aafa5; }
 
-/* ── Top row: World Events + Nation Chat side-by-side ───────────────── */
-.top-row { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:24px; }
+/* Nation Chat panel takes the wide container at the top, 520px tall. */
 .panel { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07);
   border-radius:7px; overflow:hidden; display:flex; flex-direction:column; height:520px; }
 .p-head { padding:13px 18px; background:#0a0a0a;
@@ -64,28 +63,9 @@
 .p-title .serif { font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#a0d8d8; }
 .p-right { font-size:9px; color:#888; letter-spacing:0.06em; flex-shrink:0; }
 
-/* World Events panel (formerly DISPATCHES, repositioned + widened) */
-.we-tabs { display:flex; gap:0; border-bottom:0.5px solid rgba(255,255,255,0.07);
-  padding:0 18px; background:#0a0a0a; flex-shrink:0; }
-.we-tab { font-size:8.5px; letter-spacing:0.12em; padding:9px 13px;
-  border-bottom:2px solid transparent; color:#888; font-weight:600; cursor:pointer; }
-.we-tab.active { color:#a0d8d8; border-bottom-color:#7ac8c8; }
-.we-feed { flex:1; overflow-y:auto; padding:14px 18px; display:flex; flex-direction:column; gap:13px;
-  list-style:none; }
-.we-item { padding:11px 0; border-bottom:0.5px solid rgba(255,255,255,0.04); }
-.we-item:last-child { border-bottom:none; }
-.we-meta { display:flex; align-items:center; justify-content:space-between;
-  font-size:7.5px; letter-spacing:0.12em; font-weight:600; margin-bottom:6px; }
-.we-cat { color:#7ac8c8; }
-.we-country { color:#888; font-weight:500; margin-left:6px; }
-.we-time { color:#666; font-family:monospace; letter-spacing:0.04em; }
-.we-title { font-size:11.5px; font-weight:600; color:#fff; margin-bottom:4px; line-height:1.3; }
-.we-body { font-size:10px; color:#888; line-height:1.55; }
-.we-empty { color:#666; font-size:11px; padding:22px 4px; text-align:center; font-style:italic; }
-
 /* Nation Chat panel — wired against group_chats (chat_type='nation') +
    group_chat_messages. Politicians + movement_parties enroll via the
-   trigger in 20270400_nation_chat_includes_politicians.sql. */
+   trigger in 20270469_nation_chat_includes_politicians.sql. */
 .nc .p-eyebrow { color:#e07070; }
 .nc .p-title .serif { color:#f0a0a0; }
 .nc-online { display:flex; align-items:center; gap:5px;
@@ -251,9 +231,6 @@
 
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
-@media (max-width:900px) {
-  .top-row { grid-template-columns:1fr; }
-}
 @media (max-width:700px) {
   .hero { grid-template-columns:1fr; gap:18px; }
   .anchor { text-align:left; padding-left:0; border-left:none; border-top:0.5px solid rgba(255,255,255,0.08); padding-top:14px; }
@@ -351,69 +328,26 @@
     </div>
   </div>
 
-  <!-- TOP ROW: World Events + Nation Chat side-by-side -->
-  <div class="top-row">
-
-    <!-- World Events -->
-    <div class="panel we">
-      <div class="p-head">
-        <div class="p-titles">
-          <div class="p-eyebrow">DISPATCHES &middot; ALL NATIONS</div>
-          <div class="p-title">World <span class="serif">Events</span></div>
-        </div>
-        <div class="p-right" id="ev-count">—</div>
+  <!-- Nation Chat — wide container at the top, wired against group_chats. -->
+  <div class="panel nc" style="margin-bottom:24px;">
+    <div class="p-head">
+      <div class="p-titles">
+        <div class="p-eyebrow" id="nc-eyebrow">POLITICAL CHATTER</div>
+        <div class="p-title">Nation <span class="serif">Floor</span></div>
       </div>
-      <div class="we-tabs" id="ev-tabs">
-        <div class="we-tab active" data-tab="politics">POLITICS</div>
-        <div class="we-tab" data-tab="corporate">CORPORATE</div>
-        <div class="we-tab" data-tab="military">MILITARY</div>
-        <div class="we-tab" data-tab="nation">NATION</div>
-        <div class="we-tab" data-tab="world">WORLD</div>
-      </div>
-      <ul class="we-feed" id="ev-list"><li class="we-empty">Loading&hellip;</li></ul>
+      <div class="p-right"><span class="nc-online" id="nc-online">—</span></div>
     </div>
-
-    <!-- Nation Chat (new — wired against group_chats nation chat) -->
-    <div class="panel nc">
-      <div class="p-head">
-        <div class="p-titles">
-          <div class="p-eyebrow" id="nc-eyebrow">POLITICAL CHATTER</div>
-          <div class="p-title">Nation <span class="serif">Floor</span></div>
-        </div>
-        <div class="p-right"><span class="nc-online" id="nc-online">—</span></div>
+    <div class="nc-feed" id="nc-feed">
+      <div class="nc-empty">Loading chat&hellip;</div>
+    </div>
+    <div class="nc-input">
+      <div class="nc-input-pill">
+        <span class="nc-input-badge" id="nc-self-badge">—</span>
+        <span class="nc-input-name" id="nc-self-name">—</span>
       </div>
-      <div class="nc-feed" id="nc-feed">
-        <div class="nc-empty">Loading chat&hellip;</div>
-      </div>
-      <div class="nc-input">
-        <div class="nc-input-pill">
-          <span class="nc-input-badge" id="nc-self-badge">—</span>
-          <span class="nc-input-name" id="nc-self-name">—</span>
-        </div>
-        <input class="nc-input-field" id="nc-input-field" type="text"
-               placeholder="Post to the floor&hellip;" maxlength="500" />
-        <button class="nc-input-send" id="nc-input-send" disabled>POST</button>
-    <div class="content-right">
-      <div class="section-heading">
-        <span class="roman">I.</span>
-        <span class="sans">Pressing</span>
-        <span class="serif">Issues</span>
-      </div>
-      <div id="pressing-issues"></div>
-
-      <div class="section-heading" style="margin-top:28px;">
-        <span class="roman">II.</span>
-        <span class="sans">Current</span>
-        <span class="serif">Affiliation</span>
-      </div>
-      <div id="affiliation-host"></div>
-
-      <div class="section-heading" style="margin-top:28px;">
-        <span class="roman">III.</span>
-        <span class="sans">Political</span>
-        <span class="serif">Career</span>
-        <button class="retire-btn" id="retire-btn" title="End this politician's career">Retire</button>
-      </div>
+      <input class="nc-input-field" id="nc-input-field" type="text"
+             placeholder="Post to the floor&hellip;" maxlength="500" />
+      <button class="nc-input-send" id="nc-input-send" disabled>POST</button>
     </div>
   </div>
 
@@ -424,10 +358,17 @@
     <span class="sans">Pressing</span>
     <span class="serif">Issues</span>
   </div>
-  <div class="empty">No pressing issues right now.</div>
+  <div id="pressing-issues"></div>
 
-  <div class="section-heading">
+  <div class="section-heading" style="margin-top:28px;">
     <span class="roman">II.</span>
+    <span class="sans">Current</span>
+    <span class="serif">Affiliation</span>
+  </div>
+  <div id="affiliation-host"></div>
+
+  <div class="section-heading" style="margin-top:28px;">
+    <span class="roman">III.</span>
     <span class="sans">Political</span>
     <span class="serif">Career</span>
     <button class="retire-btn" id="retire-btn" title="End this politician's career">Retire</button>
@@ -444,10 +385,6 @@ import { bootstrapPolitician } from './js/politician-topbar.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
 
 const NO_AFFILIATION_MESSAGE = 'This character has no affiliation.';
-// Dispatch bucket categories — mirror entrepreneur-dashboard.html so the same
-// event_log row falls into the same bucket on both surfaces.
-const POLITICS_CATEGORIES  = ['politics','political','government','crisis','diplomatic','diplomacy','international','economy','executive_order','protest','bill','new_party'];
-const CORPORATE_CATEGORIES = ['corporate','business','trade'];
 
 // Career-log templates — keyed by politician_career_events.event_type. Adding
 // a new beat is one entry here plus whatever inserts the row server-side.
@@ -481,9 +418,7 @@ const CAREER_EVENT_TEMPLATES = {
 let politician = null;
 let nation = null;
 let party = null;
-let allEvents = [];
-let evCurrentTab = 'politics';
-let evTickNow = 0;
+let currentTick = 0;
 let careerRows = [];   // persistent rows from politician_career_events; merged with the derived founding event at render time.
 let activeRace = null; // politician_active_election row when one exists; drives the Pressing Issues campaign card.
 // Nation chat state. nationChatId is the group_chats.id for this nation's
@@ -504,7 +439,7 @@ async function init() {
   politician = ctx.faction;
   nation     = ctx.nation;
   party      = ctx.party || null;
-  evTickNow  = Number(ctx.shard?.current_tick) || 0;
+  currentTick  = Number(ctx.shard?.current_tick) || 0;
 
   // Resolve any due election so the Political Capital card on this page is honest
   // even when the player visits home before career. The career page is
@@ -519,12 +454,7 @@ async function init() {
   } catch (_) { /* non-fatal */ }
 
   try {
-    const [evRes, careerRes, raceRes] = await Promise.all([
-      _supabase.from('event_log')
-        .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
-        .not('category', 'is', null)
-        .order('fired_at_tick', { ascending: false })
-        .limit(200),
+    const [careerRes, raceRes] = await Promise.all([
       _supabase.from('politician_career_events')
         .select('event_tick, event_type, target_name, metadata')
         .eq('faction_id', politician.id)
@@ -538,15 +468,12 @@ async function init() {
         .eq('politician_id', politician.id)
         .maybeSingle(),
     ]);
-    if (evRes.error) throw evRes.error;
     if (careerRes.error) throw careerRes.error;
     if (raceRes.error) console.error('politician-home: active_election fetch failed', raceRes.error);
-    allEvents  = evRes.data || [];
     careerRows = careerRes.data || [];
     activeRace = raceRes.data || null;
   } catch (err) {
-    console.error('politician-home: event_log / career-events fetch failed', err);
-    allEvents = [];
+    console.error('politician-home: career-events / active_election fetch failed', err);
     careerRows = [];
     activeRace = null;
   }
@@ -556,8 +483,6 @@ async function init() {
   renderPressingIssues(ctx);
   renderAffiliation(ctx);
   renderCareer();
-  renderDispatches();
-  bindDispatchTabs();
   bindRetireButton(ctx.allUserFactions || []);
   // Nation Chat is fire-and-forget — chat panel renders its own loading
   // and empty states; failure doesn't block the rest of the page.
@@ -875,13 +800,12 @@ function renderAffiliation(ctx) {
   // when they won. Renders nothing for offices without a scheduled
   // end (no office, or office without term tracking).
   const wonAt = Number(ctx.faction?.politician_office_won_at_tick) || 0;
-  const curr  = Number(ctx.shard?.current_tick) || 0;
   const endTick = termEndTickFor({
     office,
     nextGeneralElectionTick: Number(ctx.nation?.next_election_tick) || 0,
     officeWonAtTick: wonAt,
   });
-  const remaining = endTick != null ? Math.max(0, endTick - curr) : null;
+  const remaining = endTick != null ? Math.max(0, endTick - currentTick) : null;
   const tenureHtml = endTick != null
     ? `<div class="ah-tenure">
          <span class="ah-tenure-val">${escHtml(tickToDate(endTick))}</span>
@@ -900,8 +824,8 @@ function renderAffiliation(ctx) {
   // tier's actions share a single column server-side.
   const cooldownCol = variant.cooldownColumn || 'next_mp_action_tick';
   const nextActionTick = Number(ctx.faction?.[cooldownCol]) || 0;
-  const onCooldown = variant.actionsEnabled && nextActionTick > curr;
-  const cooldownLeft = onCooldown ? nextActionTick - curr : 0;
+  const onCooldown = variant.actionsEnabled && nextActionTick > currentTick;
+  const cooldownLeft = onCooldown ? nextActionTick - currentTick : 0;
 
   const actionsCount = variant.actions.length;
   const colsClass = actionsCount === 2 ? ' cols-2' : '';
@@ -1091,7 +1015,6 @@ function partyAbbrFrom(name) {
 function renderCampaignCard(ctx) {
   const tier = activeRace.race_tier;
   const isParl = tier === 'parliament';
-  const currentTick = Number(ctx.shard?.current_tick) || 0;
   // ticks_remaining is "act windows you still have including this one".
   // resolve_due fires when current > resolve_tick (strictly past), so the
   // resolve_tick itself is the player's final act window — display
@@ -1186,7 +1109,6 @@ function renderCampaignCard(ctx) {
 
 function renderCampaignActions(ctx) {
   const partyId = ctx.party?.id || null;
-  const currentTick = Number(ctx.shard?.current_tick) || 0;
   const gateTick    = Number(politician.next_member_action_tick) || 0;
   const speechTick  = Number(politician.speech_cooldown_until_tick) || 0;
   const universalLocked = gateTick > currentTick;
@@ -1260,63 +1182,6 @@ function bindCampaignActions(ctx) {
   });
 }
 
-// ── Dispatches: classify, filter, render. Mirrors entrepreneur-dashboard.html
-// for politics/corporate/military buckets; nation/world are scope filters.
-function formatEventName(raw) {
-  if (!raw) return '';
-  return String(raw).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-function dispatchBucketForRow(row) {
-  if ((row?.trigger_key || '').toLowerCase().startsWith('military_')) return 'military';
-  const c = (row?.category || '').toLowerCase();
-  if (CORPORATE_CATEGORIES.includes(c)) return 'corporate';
-  if (POLITICS_CATEGORIES.includes(c))  return 'politics';
-  return null;
-}
-function eventMatchesTab(row, tab) {
-  if (tab === 'world')  return true;
-  if (tab === 'nation') return politician.nation_id && row.nation_id === politician.nation_id;
-  return dispatchBucketForRow(row) === tab;
-}
-function bindDispatchTabs() {
-  const bar = document.getElementById('ev-tabs');
-  if (!bar) return;
-  bar.addEventListener('click', (e) => {
-    const btn = e.target.closest('.we-tab');
-    if (!btn || btn.classList.contains('active')) return;
-    bar.querySelectorAll('.we-tab').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    evCurrentTab = btn.dataset.tab;
-    renderDispatches();
-  });
-}
-function renderDispatches() {
-  const listEl  = document.getElementById('ev-list');
-  const countEl = document.getElementById('ev-count');
-  if (!listEl) return;
-  const rows = allEvents.filter(r => eventMatchesTab(r, evCurrentTab)).slice(0, 30);
-  if (countEl) countEl.textContent = rows.length === 0 ? 'NONE' : `${rows.length} ITEM${rows.length === 1 ? '' : 'S'}`;
-  if (!rows.length) {
-    listEl.innerHTML = `<li class="we-empty">No ${escHtml(evCurrentTab)} dispatches yet.</li>`;
-    return;
-  }
-  listEl.innerHTML = rows.map(row => {
-    const cat = row.category || evCurrentTab;
-    const ago = Math.max(0, evTickNow - (Number(row.fired_at_tick) || 0));
-    const timeStr = ago === 0 ? 'JUST NOW' : ago === 1 ? '1 TICK AGO' : `${ago} TICKS AGO`;
-    const nationName = row.nations?.name || null;
-    const head = formatEventName(row.event_name) || 'Untitled dispatch';
-    const body = (row.description_chosen || row.description_used || '').trim();
-    return `<li class="we-item">
-      <div class="we-meta">
-        <span><span class="we-cat">${escHtml(cat.toUpperCase())}</span>${nationName ? `<span class="we-country">&middot; ${escHtml(nationName)}</span>` : ''}</span>
-        <span class="we-time">${timeStr}</span>
-      </div>
-      <div class="we-title">${escHtml(head)}</div>
-      ${body ? `<div class="we-body">${escHtml(body)}</div>` : ''}
-    </li>`;
-  }).join('');
-}
 
 // ════════════════════════════════════════════════════════════════════
 // Nation Chat — group_chats (chat_type='nation') + group_chat_messages
@@ -1452,7 +1317,7 @@ function roleColor(factionType) {
 }
 
 function chatTimeLabel(row) {
-  const tickAgo = evTickNow - (Number(row.sent_at_tick) || evTickNow);
+  const tickAgo = currentTick - (Number(row.sent_at_tick) || currentTick);
   if (tickAgo <= 0) return 'just now';
   if (tickAgo === 1) return '1 tick';
   return `${tickAgo} ticks`;
@@ -1485,7 +1350,7 @@ async function postChatMessage() {
       chat_id: nationChatId,
       sender_id: politician.id,
       message_text: text.slice(0, 500),
-      sent_at_tick: evTickNow,
+      sent_at_tick: currentTick,
       is_system: false,
     });
     if (error) throw error;
