@@ -520,24 +520,28 @@ function renderDispatches() {
 const CHAT_MSG_LIMIT = 50;
 
 async function initNationChat() {
-  if (!politician?.nation_id) return;
+  const feed = document.getElementById('nc-feed');
+  if (!politician?.nation_id) {
+    if (feed) feed.innerHTML = '<div class="nc-empty">No nation context.</div>';
+    return;
+  }
 
   // 1. Resolve this nation's chat row.
   const { data: chatRow, error: chatErr } = await _supabase
     .from('group_chats')
-    .select('id, name')
+    .select('id')
     .eq('chat_type', 'nation')
     .eq('nation_id', politician.nation_id)
     .maybeSingle();
   if (chatErr || !chatRow) {
-    document.getElementById('nc-feed').innerHTML = '<div class="nc-empty">No chat for this nation.</div>';
+    if (feed) feed.innerHTML = '<div class="nc-empty">No chat for this nation.</div>';
     return;
   }
   nationChatId = chatRow.id;
 
-  // 2. Eyebrow + title: "REPUBLIC OF X · POLITICAL CHATTER" / "The X Floor"
+  // 2. Eyebrow: "$NATION · POLITICAL CHATTER".
   const ncEyebrow = document.getElementById('nc-eyebrow');
-  if (ncEyebrow && nation?.name) ncEyebrow.textContent = `${(nation.name || '').toUpperCase()} · POLITICAL CHATTER`;
+  if (ncEyebrow && nation?.name) ncEyebrow.textContent = `${nation.name.toUpperCase()} · POLITICAL CHATTER`;
 
   // 3. Self pill — initials + last name in the input bar.
   const first = politician.leader_first_name || '';
@@ -548,18 +552,18 @@ async function initNationChat() {
   if (selfBadge) selfBadge.textContent = ini;
   if (selfName)  selfName.textContent  = last || first || politician.faction_name || 'You';
 
-  // 4. Member count (the "X online" line — fuzzy proxy until presence lands).
-  const { count: memberCount } = await _supabase
+  // 4. Member count — fuzzy "X online" proxy until presence tracking lands.
+  const { count: memberCount, error: countErr } = await _supabase
     .from('group_chat_members')
     .select('faction_id', { count: 'exact', head: true })
     .eq('chat_id', nationChatId);
   const onlineEl = document.getElementById('nc-online');
-  if (onlineEl) onlineEl.textContent = `${memberCount || 0} MEMBER${memberCount === 1 ? '' : 'S'}`;
+  if (onlineEl) {
+    if (countErr) onlineEl.textContent = '—';
+    else          onlineEl.textContent = `${memberCount || 0} MEMBER${memberCount === 1 ? '' : 'S'}`;
+  }
 
-  // 5. Load recent messages (last N), prepend system intro if first time.
   await loadChatMessages();
-
-  // 6. Bind input + subscribe to live inserts.
   bindChatInput();
   subscribeChatInserts();
 }
