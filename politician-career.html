@@ -225,6 +225,43 @@
    parliament. The footer surfaces the politician's three live stats so
    the player sees their numbers without leaving the modal.
 */
+/* Sit the Exam modal — minimal confirm + result UI scoped under
+   #examModal. Two-state body: confirm/cancel pair flips to a roll
+   result on Confirm; the result close button reloads the page on
+   success (so the rung flips to held + the header updates). */
+#examModal { position:fixed; inset:0; background:rgba(0,0,0,0.72);
+  display:none; align-items:center; justify-content:center; padding:30px 22px;
+  z-index:210; overflow-y:auto; }
+#examModal.open { display:flex; }
+#examModal .exam-modal { width:100%; max-width:560px; background:#0d0d0d;
+  border:0.5px solid rgba(255,255,255,0.1); border-radius:10px; overflow:hidden;
+  box-shadow:0 24px 80px rgba(0,0,0,0.6); }
+#examModal .exam-head { display:flex; align-items:center; justify-content:space-between;
+  padding:16px 22px; border-bottom:0.5px solid rgba(255,255,255,0.07); }
+#examModal .exam-eyebrow { font-size:9px; letter-spacing:0.16em; color:#7ac8c8; margin-bottom:4px; font-weight:600; }
+#examModal .exam-title { font-size:20px; font-weight:500; color:#fff; }
+#examModal .exam-title .serif { font-family:Georgia,serif; font-style:italic; color:#a0d8d8; }
+#examModal .exam-close { width:28px; height:28px; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:5px; display:flex; align-items:center; justify-content:center;
+  background:transparent; color:#888; font-size:18px; cursor:pointer; line-height:1; }
+#examModal .exam-close:hover { color:#d4d4d4; border-color:rgba(255,255,255,0.2); }
+#examModal .exam-body { padding:22px 24px; }
+#examModal .exam-copy { color:#d4d4d4; font-size:12px; line-height:1.6; margin-bottom:18px; }
+#examModal .exam-copy strong { color:#fff; font-weight:600; }
+#examModal .exam-actions { display:flex; gap:10px; justify-content:flex-end; }
+#examModal .exam-btn { font-family:inherit; font-size:11px; letter-spacing:0.06em;
+  padding:9px 16px; border-radius:4px; cursor:pointer; font-weight:600;
+  border:0.5px solid rgba(255,255,255,0.15); background:#1a1a1a; color:#d4d4d4; }
+#examModal .exam-btn:disabled { opacity:0.5; cursor:not-allowed; }
+#examModal .exam-btn--cancel { color:#aaa; }
+#examModal .exam-btn--cancel:hover:not(:disabled) { color:#fff; border-color:rgba(255,255,255,0.3); }
+#examModal .exam-btn--primary { background:rgba(122,200,200,0.14); border-color:#7ac8c8; color:#a0d8d8; }
+#examModal .exam-btn--primary:hover:not(:disabled) { background:rgba(122,200,200,0.22); }
+#examModal .exam-result { margin-bottom:18px; }
+#examModal .exam-result__title { font-size:14px; font-weight:600; margin-bottom:8px; letter-spacing:0.02em; }
+#examModal .exam-result__body  { font-size:12px; color:#cfcfcf; line-height:1.6; }
+#examModal .exam-result__body strong { color:#fff; }
+
 #electionModal { position:fixed; inset:0; background:rgba(0,0,0,0.72);
   display:none; align-items:flex-start; justify-content:center; padding:30px 22px;
   z-index:200; overflow-y:auto; }
@@ -436,11 +473,28 @@
   </div>
 </div>
 
+<!-- Sit the Exam modal. Hidden by default; opened by the Civil Servant
+     (Tier 1, Government Service) rung's [Sit the Exam] action button
+     via openSitTheExamModal(). Renders a confirm/cancel pair first,
+     then swaps to a roll-result view on Confirm. -->
+<div id="examModal" aria-hidden="true">
+  <div class="exam-modal" role="dialog" aria-modal="true" aria-labelledby="exam-title">
+    <div class="exam-head">
+      <div class="exam-titles">
+        <div class="exam-eyebrow">— GOVERNMENT SERVICE · CIVIL SERVANT —</div>
+        <div class="exam-title" id="exam-title">Sit the <span class="serif">Exam</span></div>
+      </div>
+      <button class="exam-close" type="button" aria-label="Close" data-exam-close>&times;</button>
+    </div>
+    <div class="exam-body" id="exam-body"></div>
+  </div>
+</div>
+
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName } from './js/utils.js';
 
 const START_AGE = 25;
 const TICKS_PER_AGE_YEAR = 12;
@@ -636,11 +690,24 @@ const GOVT_SERVICE_RUNGS = [
     tierNum: 1, tierName: 'FIRST OFFICE',
     name: 'Civil Servant',
     trackPill:   { label: 'CIVIL SERVICE', kind: 'field' },
-    held:        ()  => false,
-    descIfHeld:  ()  => 'You process cases, handle paperwork, and learn how the state actually works from the inside.',
+    held:        (s) => !!s.politicianMinistry,
+    descIfHeld:  (s) => `You serve in the Ministry of ${ministryName(s.politicianMinistry) || '—'}. You process cases, handle paperwork, and learn how the state actually works from the inside.`,
     descIfNot:   ()  => 'Junior bureaucrat in a ministry. You process cases, handle paperwork, and learn how the state actually works from the inside.',
-    actions:     ['Process a Case', 'Flag an Issue'],
-    actionIfNot: { label: 'Sit the Exam', kind: 'disabled' },
+    actions:     (s, isHeld) => isHeld
+                    ? ['Brief the Minister', 'Submit a Report', 'Audit the Ministry']
+                    : ['Process a Case', 'Flag an Issue'],
+    actionIfNot: (s) => {
+      // Gate: must have no current affiliation. The Sit the Exam button
+      // disables otherwise so the modal doesn't fire only to be rejected
+      // server-side; the RPC checks the same gates as a defence in depth.
+      if (s.partyId) return { label: 'Sit the Exam', kind: 'disabled' };
+      if (s.office)  return { label: 'Sit the Exam', kind: 'disabled' };
+      if (s.civilServiceCooldownUntilTick && s.civilServiceCooldownUntilTick > s.currentTick) {
+        const ticks = s.civilServiceCooldownUntilTick - s.currentTick;
+        return { label: `Re-apply in ${ticks} tick${ticks === 1 ? '' : 's'}`, kind: 'disabled' };
+      }
+      return { label: 'Sit the Exam', kind: 'primary', action: 'sit-the-exam' };
+    },
   },
   {
     tierNum: 2,
@@ -1250,6 +1317,8 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     activeRace:              activeRace || null,
     office:                  office || null,
     officeWonAtTick:         Number(ctx?.faction?.politician_office_won_at_tick) || 0,
+    politicianMinistry:      ctx?.faction?.politician_ministry || null,
+    civilServiceCooldownUntilTick: Number(ctx?.faction?.civil_service_exam_cooldown_until_tick) || 0,
     currentTick:             Number(ctx?.shard?.current_tick) || 0,
     nextGeneralElectionTick: Number(ctx?.nation?.next_election_tick) || 0,
     committeeCount:          Number(committeeCount) || 0,
@@ -1263,7 +1332,13 @@ function render(politician, shard, nation, party) {
   // dropped after every surface stopped reading it (see commit log
   // around 20270410); the Tier 0 Party Member rung reads the same FK
   // so the header and the rung always agree.
-  const career = party?.faction_name || 'Independent';
+  // If the politician is a civil servant (no party but assigned to a
+  // ministry), surface that in the header in place of "Independent".
+  // splitCareerTitle turns "Civil Servant of Defense" into
+  // lead="Civil Servant" + tail="of Defense" for the italic split.
+  const ministrySlug = politician.politician_ministry || null;
+  const career = party?.faction_name
+              || (ministrySlug ? `Civil Servant of ${ministryName(ministrySlug) || ministrySlug}` : 'Independent');
   const { lead, tail } = splitCareerTitle(career);
   const ini = initials(politician.leader_first_name, politician.leader_last_name, politician.faction_name);
   const age = ageNow(politician, shard?.current_tick);
@@ -1453,8 +1528,12 @@ function renderRungs(rungs, state) {
     // dark paints crimson for ethically darker operational levers
     // (wet ops, compromise, black programs). String form stays the
     // common case so the older ladders don't need a touch-up.
-    const chipsHtml = (Array.isArray(r.actions) && r.actions.length)
-      ? `<div class="rung__chips">${r.actions.map(a => {
+    // Some rungs vary their chip set by held state (Civil Servant
+    // surfaces a different ministry-side action list once the exam is
+    // passed); for those, r.actions is a function taking the state.
+    const actionsList = typeof r.actions === 'function' ? r.actions(state, isHeld) : r.actions;
+    const chipsHtml = (Array.isArray(actionsList) && actionsList.length)
+      ? `<div class="rung__chips">${actionsList.map(a => {
           const label = typeof a === 'string' ? a : (a.label || '');
           let mod = '';
           if (typeof a === 'object' && a !== null) {
@@ -1587,6 +1666,130 @@ function bindRungActions(ctx) {
         }
       });
     });
+
+  // Sit the Exam — Civil Servant (Tier 1, Government Service ladder).
+  // Opens the confirm/result modal; the modal owns the RPC call.
+  document.querySelectorAll('[data-action="sit-the-exam"]').forEach(btn => {
+    btn.addEventListener('click', () => openSitTheExamModal());
+  });
+  document.querySelectorAll('#examModal [data-exam-close]').forEach(btn => {
+    btn.addEventListener('click', () => closeSitTheExamModal(false));
+  });
+}
+
+// ─── Sit the Exam modal ───────────────────────────────────────────
+// Two-state modal: (1) confirm, (2) result. Confirm calls
+// politician_sit_the_exam; the result view replaces the body in
+// place. Closing the modal after a successful exam reloads the page
+// so the rung flips to held + the header updates to Civil Servant.
+
+function openSitTheExamModal() {
+  const overlay = document.getElementById('examModal');
+  if (!overlay) return;
+  renderExamModalConfirm();
+  overlay.classList.add('open');
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
+function closeSitTheExamModal(reload) {
+  const overlay = document.getElementById('examModal');
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  overlay.setAttribute('aria-hidden', 'true');
+  if (reload) location.reload();
+}
+
+function renderExamModalConfirm() {
+  const body = document.getElementById('exam-body');
+  if (!body) return;
+  body.innerHTML = `
+    <div class="exam-copy">
+      Sit the civil-service entrance exam. <strong>1d6</strong> roll.
+      On a <strong>1</strong> the Ministry rejects your application
+      (&minus;2 Political Capital, re-apply in 12 ticks). On
+      <strong>2&ndash;6</strong> you pass: +3 Political Capital and a
+      random ministry assignment (Defense / Foreign Affairs & Trade /
+      Economic Development / Interior).
+    </div>
+    <div class="exam-actions">
+      <button type="button" class="exam-btn exam-btn--cancel" id="exam-cancel">Cancel</button>
+      <button type="button" class="exam-btn exam-btn--primary" id="exam-confirm">Confirm</button>
+    </div>`;
+  document.getElementById('exam-cancel').addEventListener('click', () => closeSitTheExamModal(false));
+  document.getElementById('exam-confirm').addEventListener('click', confirmSitTheExam);
+}
+
+async function confirmSitTheExam() {
+  const confirmBtn = document.getElementById('exam-confirm');
+  const cancelBtn  = document.getElementById('exam-cancel');
+  if (!confirmBtn) return;
+  confirmBtn.disabled = true;
+  if (cancelBtn) cancelBtn.disabled = true;
+  const prev = confirmBtn.textContent;
+  confirmBtn.textContent = 'Rolling…';
+  try {
+    const { data, error } = await _supabase.rpc('politician_sit_the_exam');
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated:     'Sign in to sit the exam.',
+        no_politician:         'No politician on this account.',
+        has_party:             'You must leave your party before sitting the civil service exam.',
+        in_office:             'You must not hold a political office to sit the civil service exam.',
+        already_civil_servant: 'You are already a civil servant.',
+        cooldown:              'Your last application was rejected. You may apply again next month.',
+        no_shard:              'Game state unavailable. Try again.',
+      };
+      renderExamModalResult({
+        kind: 'bad',
+        title: 'Application blocked',
+        body: REASON[data?.reason] || ('Could not sit the exam: ' + (data?.reason || 'unknown')),
+        reload: false,
+      });
+      return;
+    }
+    if (data.outcome === 'fail') {
+      renderExamModalResult({
+        kind: 'bad',
+        title: `Rolled a 1 — rejected`,
+        body: `Due to a poor application, the Ministry of ${escHtml(data.ministry_name)} has rejected your application. You may apply again next month. <strong>−2 Political Capital</strong>.`,
+        reload: true,
+      });
+    } else {
+      renderExamModalResult({
+        kind: 'good',
+        title: `Rolled a ${data.roll} — appointed`,
+        body: `You have been appointed to the <strong>Ministry of ${escHtml(data.ministry_name)}</strong>. <strong>+3 Political Capital</strong>. Your career page will update on close.`,
+        reload: true,
+      });
+    }
+  } catch (err) {
+    console.warn('politician-career: sit_the_exam failed', err);
+    renderExamModalResult({
+      kind: 'bad',
+      title: 'Failed',
+      body: 'Could not complete the exam: ' + (err?.message || err),
+      reload: false,
+    });
+  } finally {
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = prev; }
+    if (cancelBtn)  { cancelBtn.disabled = false; }
+  }
+}
+
+function renderExamModalResult({ kind, title, body, reload }) {
+  const root = document.getElementById('exam-body');
+  if (!root) return;
+  const accent = kind === 'good' ? '#6ab07a' : '#c87a7a';
+  root.innerHTML = `
+    <div class="exam-result">
+      <div class="exam-result__title" style="color:${accent};">${escHtml(title)}</div>
+      <div class="exam-result__body">${body}</div>
+    </div>
+    <div class="exam-actions">
+      <button type="button" class="exam-btn exam-btn--primary" id="exam-close">Close</button>
+    </div>`;
+  document.getElementById('exam-close').addEventListener('click', () => closeSitTheExamModal(!!reload));
 }
 
 // ─── Stand for Election modal ─────────────────────────────────────

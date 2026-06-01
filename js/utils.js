@@ -264,6 +264,19 @@ export const OFFICE_TITLES = {
 };
 export function officeTitle(office) { return OFFICE_TITLES[office] || ''; }
 
+// Civil-service ministry slug → display name. Source of truth for the
+// politician_ministry column (factions; CHECK constraint enumerates the
+// four slugs in migration 20270471). Read by politician-career.html's
+// Tier 1 Civil Servant rung + header, and politician-home.html's hero
+// affiliation. Extend when new ministries land on the CHECK constraint.
+export const MINISTRY_NAMES = {
+    defense:              'Defense',
+    foreign_affairs:      'Foreign Affairs & Trade',
+    economic_development: 'Economic Development',
+    interior:             'Interior',
+};
+export function ministryName(slug) { return MINISTRY_NAMES[slug] || ''; }
+
 // ===== GAME DATE =====
 
 export const MONTHS = [
