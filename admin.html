@@ -4720,9 +4720,8 @@ document.addEventListener('admin-panel-loaded', () => {
 // admin_set_hub_ranges) since these tables have no client write policy.
 let hubNations = [];     // [{id,name,population}]
 let hubNationPop = {};   // nation id -> population
-let hubsAll = [];        // [{id,nation_id,name,population_pct,terminal_count,runway_type,is_capital,nation_name}]
-let hubRangeMap = {};    // "aId|bId" (both directions) -> range_units
-const HUB_RUNWAYS = [['short', 'Short Runway'], ['standard', 'Standard'], ['international', 'International']];
+let hubsAll = [];        // [{id,nation_id,name,population_pct,is_capital,nation_name}]
+let hubRangeMap = {};    // "aId|bId" (both directions) -> distance
 const HUB_INPUT = 'background:#1a1a1a; border:1px solid #333; color:#eee; padding:4px; border-radius:2px;';
 
 async function initHubsTab() {
@@ -4762,8 +4761,8 @@ function onHubNationSelect() {
 async function loadHubs() {
     try {
         const [cityRes, rangeRes] = await Promise.all([
-            _supabase.from('airline_cities').select('id, nation_id, name, population_pct, terminal_count, runway_type, is_capital'),
-            _supabase.from('airline_city_ranges').select('city_a_id, city_b_id, range_units'),
+            _supabase.from('airline_cities').select('id, nation_id, name, population_pct, is_capital'),
+            _supabase.from('airline_city_ranges').select('city_a_id, city_b_id, distance'),
         ]);
         if (cityRes.error) throw cityRes.error;
         if (rangeRes.error) throw rangeRes.error;
@@ -4772,8 +4771,8 @@ async function loadHubs() {
         hubsAll.sort((a, b) => a.nation_name.localeCompare(b.nation_name) || a.name.localeCompare(b.name));
         hubRangeMap = {};
         (rangeRes.data || []).forEach(r => {
-            hubRangeMap[`${r.city_a_id}|${r.city_b_id}`] = r.range_units;
-            hubRangeMap[`${r.city_b_id}|${r.city_a_id}`] = r.range_units;
+            hubRangeMap[`${r.city_a_id}|${r.city_b_id}`] = r.distance;
+            hubRangeMap[`${r.city_b_id}|${r.city_a_id}`] = r.distance;
         });
         renderHubList();
         renderHubMatrix();
@@ -4795,19 +4794,15 @@ function renderHubList() {
     let html = `<table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
         <thead><tr style="background:#252525; color:#ffcc00; text-transform:uppercase; font-size:0.7rem; letter-spacing:1px;">
             <th style="${th}">Nation</th><th style="${th}">Name</th>
-            <th style="${th} width:90px;">Weight</th><th style="${th} width:150px;">Runway</th>
-            <th style="${th} width:90px;">Terminals</th><th style="${th} width:70px;">Capital</th>
+            <th style="${th} width:90px;">Weight</th>
+            <th style="${th} width:70px;">Capital</th>
             <th style="${th} width:150px;">Actions</th>
         </tr></thead><tbody>`;
     hubsAll.forEach(h => {
-        const runwayOpts = HUB_RUNWAYS.map(([v, l]) =>
-            `<option value="${v}"${h.runway_type === v ? ' selected' : ''}>${l}</option>`).join('');
         html += `<tr data-hub-row="${h.id}" style="border-bottom:1px solid #2a2a2a;">
             <td style="padding:8px; color:#9aa;">${escHtml(h.nation_name)}</td>
             <td style="padding:8px;"><input type="text" maxlength="80" data-hf="name" value="${escapeAttr(h.name)}" style="width:140px; ${HUB_INPUT}"></td>
-            <td style="padding:8px;"><input type="number" min="1" max="15" step="1" data-hf="weight" value="${Number(h.population_pct)}" style="width:60px; text-align:center; ${HUB_INPUT}"></td>
-            <td style="padding:8px;"><select data-hf="runway" style="${HUB_INPUT}">${runwayOpts}</select></td>
-            <td style="padding:8px;"><input type="number" min="1" max="10" step="1" data-hf="terminals" value="${Number(h.terminal_count)}" style="width:56px; text-align:center; ${HUB_INPUT}"></td>
+            <td style="padding:8px;"><input type="number" min="0" max="100" step="0.01" data-hf="weight" value="${Number(h.population_pct)}" style="width:70px; text-align:center; ${HUB_INPUT}"></td>
             <td style="padding:8px; text-align:center;"><input type="checkbox" data-hf="capital"${h.is_capital ? ' checked' : ''}></td>
             <td style="padding:8px;">
                 <button class="btn btn-success" style="padding:3px 10px; font-size:0.75rem;" onclick="saveHub('${h.id}', this)">Save</button>
@@ -4860,18 +4855,14 @@ async function addHub(btn) {
     statusEl.textContent = '';
     if (!nationId) return setErr('Select a nation first.');
     const name = (document.getElementById('hub-new-name').value || '').trim();
-    const weight = parseInt(document.getElementById('hub-new-weight').value, 10);
-    const runway = document.getElementById('hub-new-runway').value;
-    const terminals = parseInt(document.getElementById('hub-new-terminals').value, 10);
+    const weight = parseFloat(document.getElementById('hub-new-weight').value);
     const isCapital = document.getElementById('hub-new-capital').checked;
     if (name.length < 2) return setErr('Hub name must be at least 2 characters.');
-    if (!Number.isFinite(weight) || weight < 1 || weight > 15) return setErr('Weight must be 1–15.');
-    if (!Number.isFinite(terminals) || terminals < 1 || terminals > 10) return setErr('Terminals must be 1–10.');
+    if (!Number.isFinite(weight) || weight < 0 || weight > 100) return setErr('Weight must be 0–100.');
     await withButtonLock(btn, async () => {
         try {
             const { data, error } = await _supabase.rpc('admin_create_hub', {
-                p_nation_id: nationId, p_name: name, p_weight: weight,
-                p_runway: runway, p_terminals: terminals, p_is_capital: isCapital,
+                p_nation_id: nationId, p_name: name, p_weight: weight, p_is_capital: isCapital,
             });
             if (error) throw error;
             if (!data || !data.success) {
@@ -4894,25 +4885,21 @@ async function saveHub(hubId, btn) {
     if (!row) return;
     const get = f => row.querySelector(`[data-hf="${f}"]`);
     const name = (get('name').value || '').trim();
-    const weight = parseInt(get('weight').value, 10);
-    const runway = get('runway').value;
-    const terminals = parseInt(get('terminals').value, 10);
+    const weight = parseFloat(get('weight').value);
     const isCapital = get('capital').checked;
     if (name.length < 2) return alert('Hub name must be at least 2 characters.');
-    if (!Number.isFinite(weight) || weight < 1 || weight > 15) return alert('Weight must be 1–15.');
-    if (!Number.isFinite(terminals) || terminals < 1 || terminals > 10) return alert('Terminals must be 1–10.');
+    if (!Number.isFinite(weight) || weight < 0 || weight > 100) return alert('Weight must be 0–100.');
     await withButtonLock(btn, async () => {
         try {
             const { data, error } = await _supabase.rpc('admin_update_hub', {
-                p_hub_id: hubId, p_name: name, p_weight: weight,
-                p_runway: runway, p_terminals: terminals, p_is_capital: isCapital,
+                p_hub_id: hubId, p_name: name, p_weight: weight, p_is_capital: isCapital,
             });
             if (error) throw error;
             if (!data || !data.success) {
                 const REASON = {
-                    terminals_below_owned: `Can't shrink below owned slots (${data?.owned ?? '?'} owned).`,
                     name_exists: 'Another hub in this nation already has that name.',
                     hub_not_found: 'Hub no longer exists.',
+                    capital_exists: 'This nation already has a capital.',
                 };
                 return alert(REASON[data?.reason] || ('Could not save: ' + (data?.reason || 'unknown')));
             }

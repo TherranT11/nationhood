@@ -3904,7 +3904,7 @@ function initials(s, n) {
           _supabase.from('airline_cities')
             .select('id, name, population_pct, is_capital').order('name'),
           _supabase.from('corp_aircraft')
-            .select('id, aircraft_class, condition, overhaul_count, is_overhauling, route_id')
+            .select('id, aircraft_class, condition, overhaul_count, is_overhauling, route_id, design:ent_aircraft_designs!ent_design_id(range_nm)')
             .eq('entrepreneur_corp_id', id)
             .order('aircraft_class', { ascending: true })
             .order('created_at', { ascending: true }),
@@ -3925,6 +3925,22 @@ function initials(s, n) {
         const allCities = cityRes.data || [];
         const aircraft  = aircraftRes.data || [];
         const corpCash  = getEntrepreneurCorpCash(c);
+
+        // Distance matrix for all loaded cities. Keyed both directions
+        // for easy lookup regardless of which city is "a" vs "b" in
+        // the canonical pair. Used by route cards (display) and the
+        // aircraft list (range badge vs route distance).
+        const distanceMap = new Map();
+        if (allCities.length > 0) {
+          const { data: dist } = await _supabase
+            .from('airline_city_ranges')
+            .select('city_a_id, city_b_id, distance');
+          for (const r of (dist || [])) {
+            distanceMap.set(`${r.city_a_id}|${r.city_b_id}`, r.distance);
+            distanceMap.set(`${r.city_b_id}|${r.city_a_id}`, r.distance);
+          }
+        }
+        const distFor = (oId, dId) => distanceMap.get(`${oId}|${dId}`) ?? null;
 
         // Lane → { total pax, per-airline pax } across every active route on
         // the city pair (shared lanes). Drives the competitor breakdown.
@@ -3967,6 +3983,7 @@ function initials(s, n) {
               const cls  = AIRCRAFT[a.aircraft_class];
               const cond = Math.round(Number(a.condition) || 0);
               const condCls = cond < 30 ? 'red' : cond < 60 ? 'dim' : 'accent';
+              const range = Math.round(Number(a.design?.range_nm) || 0);
               const assign = a.is_overhauling
                 ? '<span class="dim">In overhaul</span>'
                 : a.route_id
@@ -3979,7 +3996,8 @@ function initials(s, n) {
                 <div class="sh-row">
                   <div class="sh-row-info">
                     <div class="sh-row-name">${cls?.label || a.aircraft_class}
-                      <span class="al-cond ${condCls}">${cond}%</span>${a.overhaul_count > 0 ? ` <span class="dim">· ${a.overhaul_count} overhaul${a.overhaul_count > 1 ? 's' : ''}</span>` : ''}</div>
+                      <span class="al-cond ${condCls}">${cond}%</span>
+                      <span class="dim">· range ${range}</span>${a.overhaul_count > 0 ? ` <span class="dim">· ${a.overhaul_count} overhaul${a.overhaul_count > 1 ? 's' : ''}</span>` : ''}</div>
                     <div class="sh-row-sub">${assign}</div>
                   </div>
                   ${ownerOnly(`<div class="sh-row-actions">
@@ -4046,11 +4064,13 @@ function initials(s, n) {
                 [...lane.byCorp.entries()].sort((a, b) => b[1] - a[1])
                   .map(([n, p]) => `<span class="${n === 'You' ? 'accent' : 'dim'}">${escapeHtml(n)} ${p}</span>`).join(' · ')
               }</div>` : '';
+              const rDist = distFor(r.origin_city_id, r.dest_city_id);
+              const distBadge = rDist != null ? ` <span class="dim">· distance ${rDist}</span>` : '';
               return `
                 <div class="sh-row">
                   <div class="sh-row-info">
                     <div class="sh-row-name">${escapeHtml(r.origin?.name || '?')} ↔ ${escapeHtml(r.dest?.name || '?')}
-                      <span class="al-tag">${r.route_type === 'international' ? 'INT’L' : 'DOM'}</span></div>
+                      <span class="al-tag">${r.route_type === 'international' ? 'INT’L' : 'DOM'}</span>${distBadge}</div>
                     <div class="sh-row-sub">
                       ${planes} · ticket <span class="accent">${fmtUsd(Number(r.ticket_price) || 0)}</span> ·
                       last tick: <span class="accent">${Number(r.last_tick_pax) || 0}</span> pax,
@@ -6552,16 +6572,14 @@ const openBidModal = (contractId, label, yourCost) => {
             same_city:                 'Origin and destination must differ.',
             invalid_ticket_price:      'Ticket price must be ≥ 0.',
             invalid_class:             'Pick a valid aircraft class.',
-            no_aircraft_assigned:      'Assign at least one aircraft.',
-            no_terminal_origin:        'You need a terminal at the origin city.',
-            no_terminal_dest:          'You need a terminal at the destination city.',
-            route_exists:              'You already run an active route on this lane.',
-            no_range_data:             'No distance data for that city pair.',
-            regional_out_of_range:     data?.range != null ? `Too far for Regional (range ${data.range} > ${data.class_max}). Use Narrowbody/Widebody.` : 'Regional aircraft cannot fly that far.',
-            narrowbody_out_of_range:   data?.range != null ? `Too far for Narrowbody (range ${data.range} > ${data.class_max}). Use Widebody.` : 'Narrowbody aircraft cannot fly that far.',
-            insufficient_idle_aircraft:`Not enough idle ${data?.class || 'aircraft'} — ${data?.idle ?? 0} idle, ${data?.requested ?? 0} requested.`,
-            not_airline_corp:          'Only Airline corps can open routes.',
-            not_owner:                 'Only the corp owner can do that.',
+            no_aircraft_assigned:        'Assign at least one aircraft.',
+            no_terminal_origin:          'You need a terminal at the origin city.',
+            no_terminal_dest:            'You need a terminal at the destination city.',
+            route_exists:                'You already run an active route on this lane.',
+            no_distance_data:            'No distance data for that city pair.',
+            insufficient_range_aircraft: `Not enough ${data?.class || 'aircraft'} with range ≥ ${data?.route_distance ?? '?'}. Available: ${data?.available_with_range ?? 0}, requested: ${data?.requested ?? 0}. Buy planes with longer range or pick a shorter route.`,
+            not_airline_corp:            'Only Airline corps can open routes.',
+            not_owner:                   'Only the corp owner can do that.',
           };
           alert(REASON[data?.reason] || ('Could not open route: ' + (data?.reason || 'unknown')));
           airlineInFlight = false; btn.disabled = false; btn.textContent = prev; return;
