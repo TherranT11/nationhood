@@ -2460,10 +2460,10 @@ function initials(s, n) {
         const cost = 5000000 + (bonus * 10000000);
         body.innerHTML = `
           <div class="sv-copy">
-            Roll <strong>1d20 − 5</strong> + bonus. Tier mapping:
-            <strong>dry</strong> ≤ −2 · <strong>small</strong> −1..+2 ·
-            <strong>moderate</strong> +3..+8 · <strong>large</strong> +9..+13 ·
-            <strong>generational</strong> ≥ +14.
+            Roll <strong>1d20</strong> + bonus. Tier mapping:
+            <strong>dry</strong> 1-10 · <strong>small</strong> 11-15 ·
+            <strong>moderate</strong> 16-17 · <strong>large</strong> 18 ·
+            <strong>generational</strong> 19-20.
           </div>
           <div class="sv-bonus-row">
             <span class="sv-bonus-lab">Bonus to roll</span>
@@ -4923,7 +4923,7 @@ function initials(s, n) {
                 ${plotRowsHtml}
               </div>
               <div class="og-prices" style="margin-top:10px;">
-                Surveying costs <b>${fmtUsd(5000000)}</b> base, +<b>${fmtUsd(10000000)}</b> per +1 to the roll. Roll = <b>1d20 − 5</b> + bonus. Tiers: dry ≤ −2 · small −1..+2 · moderate +3..+8 · large +9..+13 · generational ≥ +14.
+                Surveying costs <b>${fmtUsd(5000000)}</b> base, +<b>${fmtUsd(10000000)}</b> per +1 to the roll. Roll = <b>1d20</b> + bonus. Tiers: dry 1-10 · small 11-15 · moderate 16-17 · large 18 · generational 19-20.
               </div>` : ''}
           </div>`;
       }
