@@ -537,6 +537,18 @@ const LADDERS = [
 //
 // tierName carries the special badge text the renderer surfaces next
 // to the tier number — "FIRST OFFICE" for Tier 1, "APEX" for the top.
+
+// Run-for-Election entry — shared by the Member of Parliament and
+// Community Organizer first-office rungs. Both buttons open the same
+// race-picker modal (openElectionModal) where the player chooses
+// parliament vs community; the rung placement is purely visual.
+function runForElectionAction(s) {
+  if (s.office)     return null;
+  if (s.activeRace) return { label: 'Race in flight',     kind: 'disabled' };
+  if (!s.partyId)   return { label: 'Join a party first', kind: 'disabled' };
+  return { label: 'Run for Election', kind: 'primary', action: 'stand-for-election' };
+}
+
 const PARTY_OFFICE_RUNGS = [
   {
     name: 'Member of Parliament',
@@ -544,16 +556,7 @@ const PARTY_OFFICE_RUNGS = [
     held:        (s) => s.office === 'member_of_parliament',
     descIfHeld:  ()  => 'You hold a seat in the National Assembly.',
     descIfNot:   ()  => 'Win a seat in the National Assembly. You are now in the chamber, voting on the laws of the republic.',
-    // Run-for-Election entry — opens the race-picker modal where the
-    // player chooses parliament vs community. Same modal both ladders
-    // open; the rung-level placement just puts the button next to the
-    // matching first-office row instead of a single centered CTA.
-    actionIfNot: (s) => {
-      if (s.office)      return null;
-      if (s.activeRace)  return { label: 'Race in flight',     kind: 'disabled' };
-      if (!s.partyId)    return { label: 'Join a party first', kind: 'disabled' };
-      return { label: 'Run for Election', kind: 'primary', action: 'stand-for-election' };
-    },
+    actionIfNot: runForElectionAction,
   },
   {
     name: 'Senior MP',
@@ -782,14 +785,7 @@ const GOVERNMENT_RUNGS = [
     held:        (s) => s.office === 'community_organizer',
     descIfHeld:  ()  => 'You hold the neighborhood seat — small but real.',
     descIfNot:   ()  => 'A neighborhood seat. Small but real — most political careers begin here.',
-    // Run-for-Election entry — see the matching block on the Member
-    // of Parliament rung. Both buttons open the same picker modal.
-    actionIfNot: (s) => {
-      if (s.office)      return null;
-      if (s.activeRace)  return { label: 'Race in flight',     kind: 'disabled' };
-      if (!s.partyId)    return { label: 'Join a party first', kind: 'disabled' };
-      return { label: 'Run for Election', kind: 'primary', action: 'stand-for-election' };
-    },
+    actionIfNot: runForElectionAction,
   },
   {
     name: 'City Council Member',
