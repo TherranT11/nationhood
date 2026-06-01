@@ -229,5 +229,5 @@ export function activatePoliticianSlot(slotInfo) {
         }
     }
     sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search);
-    window.location.href = 'character-select.html';
+    window.location.href = 'first-steps.html';
 }
